@@ -16,11 +16,12 @@ export type ToolFormValues = {
   name: string;
   short_description: string;
   full_description: string;
-  execution_target_kind: 'interface_wrapper' | 'mcp_proxy';
+  execution_target_kind: 'interface_wrapper' | 'mcp_proxy' | 'assistant_client';
   interface_id?: string;
   upstream_connection_id?: string;
   remote_tool_name?: string;
   source_schema_hash?: string;
+  capability_code?: string;
   input_mapping: McpInputMappingValue | ConsoleMcpProxyInputMapping;
   output_mapping: Record<string, unknown> | ConsoleMcpProxyOutputMapping;
   parameter_schema: Record<string, unknown>;
@@ -66,12 +67,18 @@ export function interfaceOptionLabel(entry: ConsoleMcpInterfaceCapability) {
 }
 
 export function toolTypeLabel(tool: ConsoleMcpTool) {
+  if (tool.execution_target.kind === 'assistant_client') {
+    return 'Assistant client';
+  }
   return tool.execution_target.kind === 'mcp_proxy'
     ? i18nText('settingsMcpManagement', 'auto.tool_type_mcp_proxy')
     : i18nText('settingsMcpManagement', 'auto.tool_type_interface_wrapper');
 }
 
 export function toolSourceLabel(tool: ConsoleMcpTool) {
+  if (tool.execution_target.kind === 'assistant_client') {
+    return tool.execution_target.capability_code;
+  }
   return tool.execution_target.kind === 'mcp_proxy'
     ? `${tool.execution_target.upstream_connection_id} / ${tool.execution_target.remote_tool_name}`
     : tool.execution_target.interface_id;

@@ -32,9 +32,12 @@ struct ClientToolResult {
 type PendingClientToolCalls = BTreeMap<Uuid, oneshot::Sender<Result<ClientToolResult, String>>>;
 
 #[derive(Clone)]
-pub(super) struct AssistantClientToolBridge {
+pub struct AssistantClientToolBridge {
     enabled_tools: Vec<AssistantClientToolId>,
-    outbound: mpsc::Sender<String>,
+    connection_id: Uuid,
+    outbound: Arc<Mutex<mpsc::Sender<String>>>,
+    active_connection_id: Arc<Mutex<Uuid>>,
+    declared_tools: Arc<Mutex<Vec<AssistantClientToolId>>>,
     pending: Arc<Mutex<PendingClientToolCalls>>,
     connected: Arc<AtomicBool>,
 }
@@ -42,10 +45,14 @@ pub(super) struct AssistantClientToolBridge {
 impl AssistantClientToolBridge {
     pub(super) fn new() -> (Self, mpsc::Receiver<String>) {
         let (outbound, frames) = mpsc::channel(8);
+        let connection_id = Uuid::now_v7();
         (
             Self {
                 enabled_tools: Vec::new(),
-                outbound,
+                connection_id,
+                outbound: Arc::new(Mutex::new(outbound)),
+                active_connection_id: Arc::new(Mutex::new(connection_id)),
+                declared_tools: Arc::new(Mutex::new(Vec::new())),
                 pending: Arc::new(Mutex::new(BTreeMap::new())),
                 connected: Arc::new(AtomicBool::new(true)),
             },
@@ -53,16 +60,33 @@ impl AssistantClientToolBridge {
         )
     }
 
-    pub(super) fn for_tools(&self, enabled_tools: Vec<AssistantClientToolId>) -> Self {
+    pub(super) async fn for_tools(
+        &self,
+        enabled_tools: Vec<AssistantClientToolId>,
+        declared_tools: Vec<AssistantClientToolId>,
+    ) -> Self {
+        *self.declared_tools.lock().await = declared_tools;
         Self {
             enabled_tools,
+            connection_id: self.connection_id,
             outbound: self.outbound.clone(),
+            active_connection_id: self.active_connection_id.clone(),
+            declared_tools: self.declared_tools.clone(),
             pending: self.pending.clone(),
             connected: self.connected.clone(),
         }
     }
 
-    pub(super) async fn complete(&self, call_id: Uuid, result: Value, is_error: bool) -> bool {
+    pub(super) async fn complete_for_connection(
+        &self,
+        connection_id: Uuid,
+        call_id: Uuid,
+        result: Value,
+        is_error: bool,
+    ) -> bool {
+        if *self.active_connection_id.lock().await != connection_id {
+            return false;
+        }
         self.pending
             .lock()
             .await
@@ -74,11 +98,43 @@ impl AssistantClientToolBridge {
             })
     }
 
+    pub(super) async fn replace_connection(
+        &self,
+        connection: &Self,
+        declared_tools: Vec<AssistantClientToolId>,
+    ) {
+        self.fail_pending("assistant client connection replaced")
+            .await;
+        let replacement_outbound = connection.outbound.lock().await.clone();
+        *self.outbound.lock().await = replacement_outbound;
+        *self.active_connection_id.lock().await = connection.connection_id;
+        *self.declared_tools.lock().await = declared_tools;
+        self.connected.store(true, Ordering::Release);
+    }
+
+    pub(super) fn connection_id(&self) -> Uuid {
+        self.connection_id
+    }
+
+    pub(super) async fn close_connection(&self, connection_id: Uuid) {
+        if *self.active_connection_id.lock().await != connection_id {
+            return;
+        }
+        self.connected.store(false, Ordering::Release);
+        self.fail_pending("assistant client connection closed")
+            .await;
+    }
+
     pub(super) async fn close(&self) {
         self.connected.store(false, Ordering::Release);
+        self.fail_pending("assistant client connection closed")
+            .await;
+    }
+
+    async fn fail_pending(&self, message: &str) {
         let pending = std::mem::take(&mut *self.pending.lock().await);
         for (_, sender) in pending {
-            let _ = sender.send(Err("assistant client connection closed".to_string()));
+            let _ = sender.send(Err(message.to_string()));
         }
     }
 
@@ -99,6 +155,15 @@ impl AssistantClientToolBridge {
                     "required": ["scope", "target_id"],
                     "additionalProperties": false
                 }),
+            ),
+            AssistantClientToolId::ListPageBlocks
+            | AssistantClientToolId::InspectBlockRender
+            | AssistantClientToolId::SearchBlockRender
+            | AssistantClientToolId::ReadBlockRenderFragment
+            | AssistantClientToolId::ClickBlockElement
+            | AssistantClientToolId::RecompileBlock => (
+                "Execute a Frontstage browser capability declared by an imported built-in MCP tool.",
+                json!({"type":"object","additionalProperties":true}),
             ),
         };
         RuntimeInternalToolRegistration {
@@ -128,11 +193,16 @@ impl AssistantClientToolBridge {
         if !self.connected.load(Ordering::Acquire) {
             return Err(anyhow!("assistant client connection is unavailable"));
         }
+        let declared = self.declared_tools.lock().await;
+        if !declared.iter().any(|tool| tool.as_str() == provider_name) {
+            return Err(anyhow!("assistant client capability was not declared"));
+        }
+        drop(declared);
         let call_id = Uuid::now_v7();
         let (sender, receiver) = oneshot::channel();
         self.pending.lock().await.insert(call_id, sender);
-        if self
-            .outbound
+        let outbound = self.outbound.lock().await.clone();
+        if outbound
             .send(
                 json!({
                     "type":"client_tool.call",
@@ -158,6 +228,44 @@ impl AssistantClientToolBridge {
             }
         };
         Ok((call_id, result))
+    }
+
+    pub(crate) async fn invoke_capability(
+        &self,
+        capability_code: &str,
+        arguments: Value,
+    ) -> Result<(Value, bool)> {
+        let (_, result) = self.call_client_tool(capability_code, arguments).await?;
+        Ok((result.result, result.is_error))
+    }
+
+    pub(crate) async fn has_declared_capability(&self, capability_code: &str) -> bool {
+        if !self.connected.load(Ordering::Acquire) {
+            return false;
+        }
+        self.declared_tools
+            .lock()
+            .await
+            .iter()
+            .any(|tool| tool.as_str() == capability_code)
+    }
+
+    pub(crate) async fn has_frontstage_capability_bundle(&self) -> bool {
+        if !self.connected.load(Ordering::Acquire) {
+            return false;
+        }
+        const REQUIRED: [&str; 6] = [
+            "list_page_blocks",
+            "inspect_block_render",
+            "search_block_render",
+            "read_block_render_fragment",
+            "click_block_element",
+            "recompile_block",
+        ];
+        let declared = self.declared_tools.lock().await;
+        REQUIRED
+            .iter()
+            .all(|required| declared.iter().any(|tool| tool.as_str() == *required))
     }
 }
 
@@ -240,6 +348,12 @@ mod tests {
     #[tokio::test]
     async fn ac_002_client_tool_call_and_result_are_correlated_by_call_id() {
         let (bridge, mut frames) = AssistantClientToolBridge::new();
+        let bridge = bridge
+            .for_tools(
+                vec![AssistantClientToolId::GetClientContext],
+                vec![AssistantClientToolId::GetClientContext],
+            )
+            .await;
         let invocation = {
             let bridge = bridge.clone();
             tokio::spawn(async move {
@@ -255,7 +369,12 @@ mod tests {
 
         assert!(
             bridge
-                .complete(call_id, json!({"url":"/settings"}), false)
+                .complete_for_connection(
+                    bridge.connection_id(),
+                    call_id,
+                    json!({"url":"/settings"}),
+                    false,
+                )
                 .await
         );
         let (returned_call_id, result) = invocation.await.unwrap().unwrap();
@@ -267,6 +386,12 @@ mod tests {
     #[tokio::test]
     async fn ac_005_closing_the_socket_returns_client_unavailable_without_a_side_effect() {
         let (bridge, mut frames) = AssistantClientToolBridge::new();
+        let bridge = bridge
+            .for_tools(
+                vec![AssistantClientToolId::RefreshClientView],
+                vec![AssistantClientToolId::RefreshClientView],
+            )
+            .await;
         let registration =
             AssistantClientToolBridge::registration(AssistantClientToolId::RefreshClientView);
         let node = CompiledNode {
@@ -304,6 +429,55 @@ mod tests {
             .unwrap();
         assert_eq!(disconnected.content["code"], json!("client_unavailable"));
         assert!(frames.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn ac_003_replacing_a_connection_fails_old_pending_calls_without_replay() {
+        let (session, mut old_frames) = AssistantClientToolBridge::new();
+        let session = session
+            .for_tools(Vec::new(), vec![AssistantClientToolId::ClickBlockElement])
+            .await;
+        let pending = {
+            let session = session.clone();
+            tokio::spawn(async move {
+                session
+                    .invoke_capability("click_block_element", json!({}))
+                    .await
+            })
+        };
+        let _: Value = serde_json::from_str(&old_frames.recv().await.unwrap()).unwrap();
+        let (replacement, mut replacement_frames) = AssistantClientToolBridge::new();
+        session
+            .replace_connection(&replacement, vec![AssistantClientToolId::ClickBlockElement])
+            .await;
+        assert!(pending.await.unwrap().is_err());
+        assert!(replacement_frames.try_recv().is_err());
+    }
+
+    #[tokio::test]
+    async fn ac_001_frontstage_discovery_tracks_the_active_connection_lease() {
+        let frontstage_tools = vec![
+            AssistantClientToolId::ListPageBlocks,
+            AssistantClientToolId::InspectBlockRender,
+            AssistantClientToolId::SearchBlockRender,
+            AssistantClientToolId::ReadBlockRenderFragment,
+            AssistantClientToolId::ClickBlockElement,
+            AssistantClientToolId::RecompileBlock,
+        ];
+        let (session, _) = AssistantClientToolBridge::new();
+        let session = session
+            .for_tools(Vec::new(), frontstage_tools.clone())
+            .await;
+        assert!(session.has_frontstage_capability_bundle().await);
+
+        session.close_connection(session.connection_id()).await;
+        assert!(!session.has_frontstage_capability_bundle().await);
+
+        let (replacement, _) = AssistantClientToolBridge::new();
+        session
+            .replace_connection(&replacement, frontstage_tools)
+            .await;
+        assert!(session.has_frontstage_capability_bundle().await);
     }
 }
 

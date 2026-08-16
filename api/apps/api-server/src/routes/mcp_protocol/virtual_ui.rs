@@ -133,6 +133,7 @@ pub(crate) struct ApiMcpRuntimeToolInvoker {
     authorization: RuntimeMcpAuthorization,
     catalog: domain::McpCatalogSnapshot,
     run_level_instance_ids: Vec<String>,
+    assistant_client: Option<Arc<crate::routes::assistant::AssistantClientToolBridge>>,
 }
 
 #[derive(Clone)]
@@ -212,6 +213,7 @@ impl ApiMcpRuntimeToolInvoker {
             authorization,
             catalog,
             run_level_instance_ids,
+            assistant_client: None,
         })
     }
 
@@ -230,7 +232,16 @@ impl ApiMcpRuntimeToolInvoker {
             authorization: RuntimeMcpAuthorization::ForwardedActor(actor),
             catalog,
             run_level_instance_ids,
+            assistant_client: None,
         })
+    }
+
+    pub(crate) fn with_assistant_client(
+        mut self,
+        assistant_client: Option<Arc<crate::routes::assistant::AssistantClientToolBridge>>,
+    ) -> Self {
+        self.assistant_client = assistant_client;
+        self
     }
 
     fn selected_occurrences(&self, node: &CompiledNode) -> Vec<(String, McpLlmRegistrationSource)> {
@@ -334,6 +345,7 @@ impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
                     &scope,
                     operation_name,
                     arguments,
+                    self.assistant_client.as_deref(),
                 )
                 .await
             }
@@ -370,6 +382,7 @@ impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
                         &scope,
                         operation_name,
                         arguments,
+                        self.assistant_client.as_deref(),
                     ),
                 )
                 .await
@@ -581,6 +594,7 @@ pub(crate) async fn dispatch(
     scope: &VirtualMcpScope,
     name: &str,
     arguments: Value,
+    assistant_client: Option<&crate::routes::assistant::AssistantClientToolBridge>,
 ) -> Result<VirtualToolOutcome, ApiError> {
     let registrations = mcp_llm_registrations(
         &scope
@@ -600,17 +614,66 @@ pub(crate) async fn dispatch(
         .map(|item| VirtualMcpScope::single(item.instance_id.clone()))
         .unwrap_or_else(|| scope.clone());
     let operation = registration.map(|item| item.operation);
+    let allow_assistant_client = match assistant_client {
+        Some(client) => client.has_frontstage_capability_bundle().await,
+        None => false,
+    };
     match (name, operation) {
-        (_, Some(McpLlmOperation::List)) => list(state, actor, &effective_scope, &arguments).await,
-        (_, Some(McpLlmOperation::Get)) => Ok(get(catalog, &effective_scope, &arguments)),
+        (_, Some(McpLlmOperation::List)) => {
+            list(
+                state,
+                actor,
+                catalog,
+                &effective_scope,
+                &arguments,
+                allow_assistant_client,
+            )
+            .await
+        }
+        (_, Some(McpLlmOperation::Get)) => Ok(get(
+            catalog,
+            &effective_scope,
+            &arguments,
+            allow_assistant_client,
+        )),
         (_, Some(McpLlmOperation::Result)) => result(state, actor, &arguments).await,
         (_, Some(McpLlmOperation::Call)) => {
-            call(state, headers, actor, catalog, &effective_scope, &arguments).await
+            call(
+                state,
+                headers,
+                actor,
+                catalog,
+                &effective_scope,
+                &arguments,
+                assistant_client,
+            )
+            .await
         }
-        (MCP_LIST, None) => list(state, actor, scope, &arguments).await,
-        (MCP_GET, None) => Ok(get(catalog, scope, &arguments)),
+        (MCP_LIST, None) => {
+            list(
+                state,
+                actor,
+                catalog,
+                scope,
+                &arguments,
+                allow_assistant_client,
+            )
+            .await
+        }
+        (MCP_GET, None) => Ok(get(catalog, scope, &arguments, allow_assistant_client)),
         (MCP_RESULT, None) => result(state, actor, &arguments).await,
-        (MCP_CALL, None) => call(state, headers, actor, catalog, scope, &arguments).await,
+        (MCP_CALL, None) => {
+            call(
+                state,
+                headers,
+                actor,
+                catalog,
+                scope,
+                &arguments,
+                assistant_client,
+            )
+            .await
+        }
         _ => Ok(VirtualToolOutcome::Error {
             code: -32601,
             message: "Tool not found",
@@ -622,8 +685,10 @@ pub(crate) async fn dispatch(
 async fn list(
     state: &Arc<ApiState>,
     actor: &domain::ActorContext,
+    catalog: &domain::McpCatalogSnapshot,
     scope: &VirtualMcpScope,
     arguments: &Value,
+    allow_assistant_client: bool,
 ) -> Result<VirtualToolOutcome, ApiError> {
     let optional_string = |field| {
         arguments
@@ -671,6 +736,23 @@ async fn list(
     if let Some(limit) = limit {
         items.truncate(limit);
     }
+    if !allow_assistant_client {
+        let client_tool_ids = catalog
+            .tools
+            .iter()
+            .filter(|tool| {
+                matches!(
+                    tool.execution_target,
+                    domain::McpToolExecutionTarget::AssistantClient { .. }
+                )
+            })
+            .map(|tool| tool.tool_id.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        items.retain(|item| {
+            item.item_kind != domain::McpListItemKind::Tool
+                || !client_tool_ids.contains(item.id.as_str())
+        });
+    }
     Ok(VirtualToolOutcome::Success(result_delivery::tool_result(
         serde_json::to_value(items).unwrap_or_else(|_| json!([])),
     )))
@@ -680,11 +762,12 @@ fn get(
     catalog: &domain::McpCatalogSnapshot,
     scope: &VirtualMcpScope,
     arguments: &Value,
+    allow_assistant_client: bool,
 ) -> VirtualToolOutcome {
     let Some(tool_id) = string_argument(arguments, "tool_id") else {
         return VirtualToolOutcome::invalid("Invalid tool_id");
     };
-    let Some((_, tool)) = visible_tool(catalog, scope, tool_id) else {
+    let Some((_, tool)) = visible_tool(catalog, scope, tool_id, allow_assistant_client) else {
         return VirtualToolOutcome::invalid("Tool not visible");
     };
     VirtualToolOutcome::Success(result_delivery::tool_result(json!({
@@ -735,11 +818,17 @@ async fn call(
     catalog: &domain::McpCatalogSnapshot,
     scope: &VirtualMcpScope,
     arguments: &Value,
+    assistant_client: Option<&crate::routes::assistant::AssistantClientToolBridge>,
 ) -> Result<VirtualToolOutcome, ApiError> {
     let Some(tool_id) = string_argument(arguments, "tool_id") else {
         return Ok(VirtualToolOutcome::invalid("Invalid tool_id"));
     };
-    let Some((instance, tool)) = visible_tool(catalog, scope, tool_id) else {
+    let allow_assistant_client = match assistant_client {
+        Some(client) => client.has_frontstage_capability_bundle().await,
+        None => false,
+    };
+    let Some((instance, tool)) = visible_tool(catalog, scope, tool_id, allow_assistant_client)
+    else {
         return Ok(VirtualToolOutcome::invalid("Tool not visible"));
     };
     let des_id = arguments.get("des_id").and_then(Value::as_str);
@@ -756,6 +845,31 @@ async fn call(
         .unwrap_or_else(|| json!({}));
 
     match &tool.execution_target {
+        domain::McpToolExecutionTarget::AssistantClient { capability_code } => {
+            let Some(client) = assistant_client else {
+                return Ok(VirtualToolOutcome::invalid("Tool not visible"));
+            };
+            if !client.has_declared_capability(capability_code).await {
+                return Ok(VirtualToolOutcome::invalid("Tool not visible"));
+            }
+            match client
+                .invoke_capability(capability_code, tool_arguments)
+                .await
+            {
+                Ok((value, is_error)) if is_error => Ok(VirtualToolOutcome::failed(
+                    "Assistant client capability failed",
+                    value,
+                )),
+                Ok((value, false)) => Ok(VirtualToolOutcome::Success(
+                    result_delivery::tool_result(value),
+                )),
+                Err(error) => Ok(VirtualToolOutcome::failed(
+                    "Assistant client unavailable",
+                    json!({"reason": error.to_string(), "retry_original": false}),
+                )),
+                Ok((_, true)) => unreachable!(),
+            }
+        }
         domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
             let interface = match bindable_mcp_interface(state.as_ref(), actor, interface_id).await
             {
@@ -953,6 +1067,7 @@ fn visible_tool<'a>(
     catalog: &'a domain::McpCatalogSnapshot,
     scope: &VirtualMcpScope,
     tool_id: &str,
+    allow_assistant_client: bool,
 ) -> Option<(&'a domain::McpInstanceRecord, &'a domain::McpToolRecord)> {
     let mut matches = catalog.bindings.iter().filter_map(|binding| {
         if !binding.visible || binding.tool_id != tool_id {
@@ -966,6 +1081,21 @@ fn visible_tool<'a>(
         let tool = catalog.tools.iter().find(|tool| {
             tool.id == binding.tool_record_id && tool.status == McpToolStatus::Enabled
         })?;
+        if !allow_assistant_client
+            && matches!(
+                tool.execution_target,
+                domain::McpToolExecutionTarget::AssistantClient { .. }
+            )
+        {
+            return None;
+        }
+        if let domain::McpToolExecutionTarget::AssistantClient { capability_code } =
+            &tool.execution_target
+        {
+            if !domain::is_mcp_assistant_client_capability(capability_code) {
+                return None;
+            }
+        }
         Some((instance, tool))
     });
     let first = matches.next()?;
@@ -1150,7 +1280,7 @@ mod tests {
         let catalog = catalog_with_server_bound_workspace();
         let scope = VirtualMcpScope::selected(&catalog, &["selected".to_string()]);
         let VirtualToolOutcome::Success(result) =
-            get(&catalog, &scope, &json!({"tool_id": "lookup"}))
+            get(&catalog, &scope, &json!({"tool_id": "lookup"}), true)
         else {
             panic!("selected tool should be visible");
         };
@@ -1164,7 +1294,7 @@ mod tests {
         let catalog = catalog_with_server_bound_workspace();
         let scope = VirtualMcpScope::selected(&catalog, &[]);
         assert!(matches!(
-            get(&catalog, &scope, &json!({"tool_id": "lookup"})),
+            get(&catalog, &scope, &json!({"tool_id": "lookup"}), true),
             VirtualToolOutcome::Error { code: -32602, .. }
         ));
     }
@@ -1176,7 +1306,7 @@ mod tests {
         let scope = VirtualMcpScope::selected(&catalog, &["selected".to_string()]);
 
         assert!(matches!(
-            get(&catalog, &scope, &json!({"tool_id": "lookup"})),
+            get(&catalog, &scope, &json!({"tool_id": "lookup"}), true),
             VirtualToolOutcome::Success(_)
         ));
     }
@@ -1187,7 +1317,7 @@ mod tests {
         disabled.instances[0].status = McpInstanceStatus::Disabled;
         let scope = VirtualMcpScope::selected(&disabled, &["selected".to_string()]);
         assert!(matches!(
-            get(&disabled, &scope, &json!({"tool_id": "lookup"})),
+            get(&disabled, &scope, &json!({"tool_id": "lookup"}), true),
             VirtualToolOutcome::Error { code: -32602, .. }
         ));
 
@@ -1207,7 +1337,33 @@ mod tests {
         let scope =
             VirtualMcpScope::selected(&ambiguous, &["selected".to_string(), "second".to_string()]);
         assert!(matches!(
-            get(&ambiguous, &scope, &json!({"tool_id": "lookup"})),
+            get(&ambiguous, &scope, &json!({"tool_id": "lookup"}), true),
+            VirtualToolOutcome::Error { code: -32602, .. }
+        ));
+    }
+
+    #[test]
+    fn ac_008_assistant_client_target_is_hidden_without_a_browser_execution_port() {
+        let mut catalog = catalog_with_server_bound_workspace();
+        catalog.tools[0].execution_target = domain::McpToolExecutionTarget::AssistantClient {
+            capability_code: "inspect_block_render".to_string(),
+        };
+        let scope = VirtualMcpScope::selected(&catalog, &["selected".to_string()]);
+
+        assert!(matches!(
+            get(&catalog, &scope, &json!({"tool_id": "lookup"}), false),
+            VirtualToolOutcome::Error { code: -32602, .. }
+        ));
+        assert!(matches!(
+            get(&catalog, &scope, &json!({"tool_id": "lookup"}), true),
+            VirtualToolOutcome::Success(_)
+        ));
+
+        catalog.tools[0].execution_target = domain::McpToolExecutionTarget::AssistantClient {
+            capability_code: "run_javascript".to_string(),
+        };
+        assert!(matches!(
+            get(&catalog, &scope, &json!({"tool_id": "lookup"}), true),
             VirtualToolOutcome::Error { code: -32602, .. }
         ));
     }

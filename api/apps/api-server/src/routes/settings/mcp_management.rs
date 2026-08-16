@@ -644,6 +644,33 @@ pub async fn update_mcp_tool(
                     .await?,
             )))
         }
+        McpToolExecutionTargetDto::AssistantClient { .. } => {
+            let execution_target = to_domain_execution_target(&body.execution_target)?;
+            let record = McpManagementService::new(state.store.clone())
+                .update_proxy_tool_for_actor(
+                    &context.actor,
+                    UpdateMcpProxyToolCommand {
+                        actor_user_id: context.user.id,
+                        tool_id,
+                        des_id: body.des_id,
+                        name: body.name,
+                        short_description: body.short_description,
+                        full_description: body.full_description,
+                        execution_target,
+                        parameter_schema: body.parameter_schema,
+                        result_schema: body.result_schema,
+                        input_mapping: body.input_mapping,
+                        output_mapping: body.output_mapping,
+                        risk_level: parse_risk_level(&body.risk_level)?,
+                        status: parse_tool_status(&body.status)?,
+                    },
+                )
+                .await?;
+            Ok(Json(ApiSuccess::new(to_tool_response(
+                record,
+                &HashMap::new(),
+            ))))
+        }
     }
 }
 
@@ -844,6 +871,9 @@ fn interface_target_id(target: &McpToolExecutionTargetDto) -> Result<&str, ApiEr
         McpToolExecutionTargetDto::McpProxy { .. } => {
             Err(control_plane::errors::ControlPlaneError::InvalidInput("execution_target").into())
         }
+        McpToolExecutionTargetDto::AssistantClient { .. } => {
+            Err(control_plane::errors::ControlPlaneError::InvalidInput("execution_target").into())
+        }
     }
 }
 
@@ -865,6 +895,11 @@ fn to_domain_execution_target(
             remote_tool_name: remote_tool_name.clone(),
             source_schema_hash: source_schema_hash.clone(),
         },
+        McpToolExecutionTargetDto::AssistantClient { capability_code } => {
+            domain::McpToolExecutionTarget::AssistantClient {
+                capability_code: capability_code.clone(),
+            }
+        }
     })
 }
 

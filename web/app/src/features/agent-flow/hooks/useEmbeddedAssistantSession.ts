@@ -206,6 +206,14 @@ export function useEmbeddedAssistantSession(
   const streamGenerationRef = useRef(0);
   const liveTraceItemsRef = useRef<AgentFlowTraceItem[]>([]);
 
+  useEffect(
+    () =>
+      clientTools?.subscribeCapabilities?.(() => {
+        websocketControlRef.current?.refreshClientTools();
+      }),
+    [clientTools]
+  );
+
   const cancelActiveStream = useCallback(() => {
     streamGenerationRef.current += 1;
     streamAbortControllerRef.current?.abort();
@@ -458,6 +466,7 @@ export function useEmbeddedAssistantSession(
         csrfToken,
         handlers,
         {
+          clientTools,
           onControl: (control) => {
             websocketControlRef.current = control;
           }
@@ -491,7 +500,7 @@ export function useEmbeddedAssistantSession(
           }
         });
     },
-    [cancelActiveStream, csrfToken, reconcileRunSnapshot]
+    [cancelActiveStream, clientTools, csrfToken, reconcileRunSnapshot]
   );
 
   const restoreConversation = useCallback(

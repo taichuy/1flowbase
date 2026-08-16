@@ -2,6 +2,19 @@ use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+pub const MCP_ASSISTANT_CLIENT_CAPABILITY_CODES: [&str; 6] = [
+    "list_page_blocks",
+    "inspect_block_render",
+    "search_block_render",
+    "read_block_render_fragment",
+    "click_block_element",
+    "recompile_block",
+];
+
+pub fn is_mcp_assistant_client_capability(code: &str) -> bool {
+    MCP_ASSISTANT_CLIENT_CAPABILITY_CODES.contains(&code)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum McpToolExecutionTarget {
@@ -13,6 +26,9 @@ pub enum McpToolExecutionTarget {
         remote_tool_name: String,
         source_schema_hash: String,
     },
+    AssistantClient {
+        capability_code: String,
+    },
 }
 
 impl McpToolExecutionTarget {
@@ -20,6 +36,7 @@ impl McpToolExecutionTarget {
         match self {
             Self::InterfaceWrapper { interface_id } => Some(interface_id),
             Self::McpProxy { .. } => None,
+            Self::AssistantClient { .. } => None,
         }
     }
 }

@@ -82,6 +82,7 @@ pub(super) fn execution_target_kind(target: &domain::McpToolExecutionTarget) -> 
     match target {
         domain::McpToolExecutionTarget::InterfaceWrapper { .. } => "interface_wrapper",
         domain::McpToolExecutionTarget::McpProxy { .. } => "mcp_proxy",
+        domain::McpToolExecutionTarget::AssistantClient { .. } => "assistant_client",
     }
 }
 
@@ -93,7 +94,8 @@ pub(super) fn execution_target_upstream_connection_id(
             upstream_connection_id,
             ..
         } => Some(*upstream_connection_id),
-        domain::McpToolExecutionTarget::InterfaceWrapper { .. } => None,
+        domain::McpToolExecutionTarget::InterfaceWrapper { .. }
+        | domain::McpToolExecutionTarget::AssistantClient { .. } => None,
     }
 }
 
@@ -104,7 +106,8 @@ pub(super) fn execution_target_remote_tool_name(
         domain::McpToolExecutionTarget::McpProxy {
             remote_tool_name, ..
         } => Some(remote_tool_name),
-        domain::McpToolExecutionTarget::InterfaceWrapper { .. } => None,
+        domain::McpToolExecutionTarget::InterfaceWrapper { .. }
+        | domain::McpToolExecutionTarget::AssistantClient { .. } => None,
     }
 }
 
@@ -115,7 +118,20 @@ pub(super) fn execution_target_source_schema_hash(
         domain::McpToolExecutionTarget::McpProxy {
             source_schema_hash, ..
         } => Some(source_schema_hash),
-        domain::McpToolExecutionTarget::InterfaceWrapper { .. } => None,
+        domain::McpToolExecutionTarget::InterfaceWrapper { .. }
+        | domain::McpToolExecutionTarget::AssistantClient { .. } => None,
+    }
+}
+
+pub(super) fn execution_target_assistant_client_capability_code(
+    target: &domain::McpToolExecutionTarget,
+) -> Option<&str> {
+    match target {
+        domain::McpToolExecutionTarget::AssistantClient { capability_code } => {
+            Some(capability_code)
+        }
+        domain::McpToolExecutionTarget::InterfaceWrapper { .. }
+        | domain::McpToolExecutionTarget::McpProxy { .. } => None,
     }
 }
 
@@ -160,6 +176,9 @@ pub(super) fn map_tool(row: sqlx::postgres::PgRow) -> Result<domain::McpToolReco
             upstream_connection_id: row.get("upstream_connection_id"),
             remote_tool_name: row.get("remote_tool_name"),
             source_schema_hash: row.get("source_schema_hash"),
+        },
+        "assistant_client" => domain::McpToolExecutionTarget::AssistantClient {
+            capability_code: row.get("assistant_client_capability_code"),
         },
         _ => anyhow::bail!("invalid MCP tool execution kind"),
     };

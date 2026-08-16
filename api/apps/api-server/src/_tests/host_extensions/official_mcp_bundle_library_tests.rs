@@ -146,8 +146,26 @@ async fn mcp_library_verifies_signed_releases_and_resolves_existing_local_artifa
     );
     std::fs::remove_file(root.join("@taichuy/zh_hans/releases/1.10.0/receipt.json")).unwrap();
     let with_history = library.library_catalog().await.unwrap();
+    let built_in = with_history
+        .bundles
+        .iter()
+        .find(|bundle| {
+            bundle.organization == "1flowbase" && bundle.bundle_id == "frontstage_assistant"
+        })
+        .unwrap();
+    assert_eq!(built_in.current_bundle_version.as_deref(), Some("1.0.1"));
+    assert!(!library
+        .resolve_artifact("1flowbase", "frontstage_assistant", Some("1.0.1"))
+        .await
+        .unwrap()
+        .is_empty());
+    let synchronized_bundle = with_history
+        .bundles
+        .iter()
+        .find(|bundle| bundle.organization == "taichuy" && bundle.bundle_id == "zh_hans")
+        .unwrap();
     assert_eq!(
-        with_history.bundles[0].local_versions[0].bundle_version,
+        synchronized_bundle.local_versions[0].bundle_version,
         "1.10.0"
     );
     library
@@ -188,7 +206,14 @@ async fn mcp_library_verifies_signed_releases_and_resolves_existing_local_artifa
         .reconcile_local_installations()
         .await
         .unwrap();
-    assert_eq!(reconciled_repository.records().len(), 1);
+    assert_eq!(
+        reconciled_repository
+            .records()
+            .into_iter()
+            .filter(|record| record.identity.organization == "taichuy")
+            .count(),
+        1
+    );
     reconciled_repository.clear_local_path();
     let missing_path_error = reconciled_library
         .resolve_artifact("taichuy", "zh_hans", None)
@@ -205,8 +230,15 @@ async fn mcp_library_verifies_signed_releases_and_resolves_existing_local_artifa
         .reconcile_local_installations()
         .await
         .unwrap();
+    let missing_remote_bundle = reconciled_repository
+        .records()
+        .into_iter()
+        .find(|record| {
+            record.identity.organization == "taichuy" && record.identity.artifact_id == "zh_hans"
+        })
+        .unwrap();
     assert_eq!(
-        reconciled_repository.records()[0].status,
+        missing_remote_bundle.status,
         domain::ExtensionInstallationStatus::Missing
     );
     let _ = std::fs::remove_dir_all(root);
@@ -278,7 +310,16 @@ impl TestExtensionInstallationRepository {
     }
 
     fn clear_local_path(&self) {
-        self.records.lock().unwrap()[0].local_path = None;
+        self.records
+            .lock()
+            .unwrap()
+            .iter_mut()
+            .find(|record| {
+                record.identity.organization == "taichuy"
+                    && record.identity.artifact_id == "zh_hans"
+            })
+            .unwrap()
+            .local_path = None;
     }
 
     fn current_version(&self) -> Option<String> {

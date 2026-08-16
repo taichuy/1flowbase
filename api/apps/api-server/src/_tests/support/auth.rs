@@ -336,6 +336,7 @@ async fn test_state_with_runtime_profile_state(
             ),
             assistant_conversation_events: Default::default(),
             assistant_executions: Default::default(),
+            assistant_client_sessions: Default::default(),
             api_runtime_profile,
             plugin_runner_system,
             official_plugin_source: Arc::new(InMemoryOfficialPluginSource),

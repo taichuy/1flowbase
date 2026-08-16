@@ -43,7 +43,8 @@ pub mod conversation_events;
 mod run_activity;
 pub(crate) mod websocket;
 
-use client_tools::{AssistantClientToolBridge, AssistantRuntimeToolInvoker};
+pub use client_tools::AssistantClientToolBridge;
+use client_tools::AssistantRuntimeToolInvoker;
 pub use conversation_events::AssistantConversationSummaryResponse;
 use conversation_events::{AssistantConversationEventKind, AssistantConversationEventScope};
 pub use run_activity::AssistantRunActivityPageResponse;
@@ -74,6 +75,12 @@ const ASSISTANT_META_KEY: &str = "embedded_assistant";
 pub enum AssistantClientToolId {
     GetClientContext,
     RefreshClientView,
+    ListPageBlocks,
+    InspectBlockRender,
+    SearchBlockRender,
+    ReadBlockRenderFragment,
+    ClickBlockElement,
+    RecompileBlock,
 }
 
 impl AssistantClientToolId {
@@ -81,6 +88,12 @@ impl AssistantClientToolId {
         match self {
             Self::GetClientContext => "get_client_context",
             Self::RefreshClientView => "refresh_client_view",
+            Self::ListPageBlocks => "list_page_blocks",
+            Self::InspectBlockRender => "inspect_block_render",
+            Self::SearchBlockRender => "search_block_render",
+            Self::ReadBlockRenderFragment => "read_block_render_fragment",
+            Self::ClickBlockElement => "click_block_element",
+            Self::RecompileBlock => "recompile_block",
         }
     }
 }
@@ -856,6 +869,15 @@ async fn launch_assistant_execution(
         run_id,
     );
 
+    if let Some(client) = client_tool_bridge.as_ref() {
+        state
+            .assistant_client_sessions
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .insert(run_id, client.clone());
+    }
+
+    let mcp_client_bridge = client_tool_bridge.clone();
     let mcp_runtime_invoker: Arc<
         dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
     > = Arc::new(
@@ -865,14 +887,16 @@ async fn launch_assistant_execution(
             execution.actor.clone(),
             execution.mcp_instance_ids.clone(),
         )
-        .await?,
+        .await?
+        .with_assistant_client(mcp_client_bridge),
     );
     let assistant_runtime_tool_invoker = Arc::new(AssistantRuntimeToolInvoker::new(
         mcp_runtime_invoker,
-        client_tool_bridge,
+        client_tool_bridge.clone(),
     ));
     let background_state = state.clone();
     let execution_registry = state.assistant_executions.clone();
+    let client_session_registry = state.assistant_client_sessions.clone();
     let (start_sender, start_receiver) = oneshot::channel();
     let execution_handle = tokio::spawn(async move {
         if start_receiver.await.is_err() {
@@ -960,6 +984,13 @@ async fn launch_assistant_execution(
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .remove(&run_id);
+        let client_session = client_session_registry
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .remove(&run_id);
+        if let Some(client_session) = client_session {
+            client_session.close().await;
+        }
     });
     state
         .assistant_executions

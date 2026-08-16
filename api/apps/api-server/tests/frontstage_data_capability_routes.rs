@@ -227,6 +227,7 @@ async fn fixture() -> Fixture {
         ),
         assistant_conversation_events: Default::default(),
         assistant_executions: Default::default(),
+        assistant_client_sessions: Default::default(),
         api_runtime_profile: Arc::new(
             HostApiRuntimeProfileCollector::new(process_started_at).unwrap(),
         ),

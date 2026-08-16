@@ -312,6 +312,9 @@ pub struct ApiState {
     /// Process-local owner for detached embedded Assistant executions. Durable run state remains
     /// owned by the runtime repository.
     pub assistant_executions: Arc<Mutex<HashMap<uuid::Uuid, tokio::task::AbortHandle>>>,
+    /// Active browser capability lease for each detached Assistant execution.
+    pub assistant_client_sessions:
+        Arc<Mutex<HashMap<uuid::Uuid, Arc<crate::routes::assistant::AssistantClientToolBridge>>>>,
     pub api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
     pub plugin_runner_system: Arc<dyn PluginRunnerSystemPort>,
     pub official_plugin_source: Arc<dyn OfficialPluginSourcePort>,

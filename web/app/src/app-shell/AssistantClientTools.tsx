@@ -16,6 +16,10 @@ import { useTranslation } from 'react-i18next';
 
 import { APP_ROUTES } from '../routes/route-config';
 import { useAuthStore } from '../state/auth-store';
+import {
+  getFrontstageAssistantRuntime,
+  subscribeFrontstageAssistantRuntime
+} from '../features/frontstage/lib/assistant-frontstage-runtime';
 
 type AssistantRefreshTarget = () => Promise<void> | void;
 
@@ -39,8 +43,22 @@ export function createAssistantClientTools({
   refreshTargets,
   snapshot
 }: AssistantClientToolFactoryInput): ConsoleAssistantClientTools {
+  const baseToolIds = ['get_client_context', 'refresh_client_view'] as const;
+  const frontstageToolIds = [
+    'list_page_blocks',
+    'inspect_block_render',
+    'search_block_render',
+    'read_block_render_fragment',
+    'click_block_element',
+    'recompile_block'
+  ] as const;
   return {
-    toolIds: ['get_client_context', 'refresh_client_view'],
+    get toolIds() {
+      return getFrontstageAssistantRuntime()
+        ? [...baseToolIds, ...frontstageToolIds]
+        : [...baseToolIds];
+    },
+    subscribeCapabilities: subscribeFrontstageAssistantRuntime,
     async execute(call): Promise<ConsoleAssistantClientToolExecution> {
       if (call.name === 'get_client_context') {
         const current = snapshot();
@@ -55,6 +73,27 @@ export function createAssistantClientTools({
             viewport: current.viewport
           }
         };
+      }
+
+      if (
+        call.name === 'list_page_blocks' ||
+        call.name === 'inspect_block_render' ||
+        call.name === 'search_block_render' ||
+        call.name === 'read_block_render_fragment' ||
+        call.name === 'click_block_element' ||
+        call.name === 'recompile_block'
+      ) {
+        const runtime = getFrontstageAssistantRuntime();
+        if (!runtime) {
+          return {
+            is_error: true,
+            result: {
+              status: 'unavailable',
+              code: 'frontstage_runtime_unmounted'
+            }
+          };
+        }
+        return runtime.execute(call.name, call.arguments);
       }
 
       const scope = call.arguments.scope;

@@ -1026,25 +1026,26 @@ where
             .get_mcp_tool(actor.current_workspace_id, &command.tool_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("mcp_tool"))?;
-        if !matches!(
-            existing.execution_target,
-            domain::McpToolExecutionTarget::McpProxy { .. }
-        ) || existing.execution_target != command.execution_target
-        {
+        if existing.execution_target != command.execution_target {
             return Err(ControlPlaneError::InvalidInput("execution_target").into());
         }
-        validate_proxy_mapping_contract(
-            &command.input_mapping,
-            "local_path",
-            "remote_path",
-            "input_mapping",
-        )?;
-        validate_proxy_mapping_contract(
-            &command.output_mapping,
-            "remote_path",
-            "local_path",
-            "output_mapping",
-        )?;
+        if matches!(
+            command.execution_target,
+            domain::McpToolExecutionTarget::McpProxy { .. }
+        ) {
+            validate_proxy_mapping_contract(
+                &command.input_mapping,
+                "local_path",
+                "remote_path",
+                "input_mapping",
+            )?;
+            validate_proxy_mapping_contract(
+                &command.output_mapping,
+                "remote_path",
+                "local_path",
+                "output_mapping",
+            )?;
+        }
         self.repository
             .update_mcp_tool(&UpdateMcpToolInput {
                 actor_user_id: command.actor_user_id,

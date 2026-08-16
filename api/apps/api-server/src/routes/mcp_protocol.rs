@@ -109,6 +109,7 @@ async fn handle_mcp_request(
                 &scope,
                 name,
                 arguments,
+                None,
             )
             .await?
             {

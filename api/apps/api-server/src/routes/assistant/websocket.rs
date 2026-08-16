@@ -287,6 +287,8 @@ enum AssistantWebSocketCommand {
         run_id: Uuid,
         #[serde(default)]
         after_event_id: Option<String>,
+        #[serde(default)]
+        client_tool_ids: Vec<AssistantClientToolId>,
     },
     #[serde(rename = "client_tool.result")]
     ClientToolResult {
@@ -394,7 +396,22 @@ async fn run_connection(
                         }
                         Message::Text(text) => match serde_json::from_str::<AssistantWebSocketCommand>(text.as_str()) {
                             Ok(AssistantWebSocketCommand::ClientToolResult { request_id, call_id, result, is_error }) => {
-                                if client_tool_bridge.complete(call_id, result, is_error).await {
+                                let connection_id = client_tool_bridge.connection_id();
+                                let sessions = state
+                                    .assistant_client_sessions
+                                    .lock()
+                                    .unwrap_or_else(|poisoned| poisoned.into_inner())
+                                    .values()
+                                    .cloned()
+                                    .collect::<Vec<_>>();
+                                let mut completed = false;
+                                for session in sessions {
+                                    if session.complete_for_connection(connection_id, call_id, result.clone(), is_error).await {
+                                        completed = true;
+                                        break;
+                                    }
+                                }
+                                if completed {
                                     let _ = sender.send(Message::Text(json!({"type":"command.accepted","request_id":request_id,"command":"client_tool.result","call_id":call_id}).to_string())).await;
                                 } else {
                                     let _ = sender.send(command_error(Some(&request_id), "unknown_client_tool_call", "client tool call is not pending")).await;
@@ -502,7 +519,17 @@ async fn run_connection(
             }
         }
     }
-    client_tool_bridge.close().await;
+    let connection_id = client_tool_bridge.connection_id();
+    let sessions = state
+        .assistant_client_sessions
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .values()
+        .cloned()
+        .collect::<Vec<_>>();
+    for session in sessions {
+        session.close_connection(connection_id).await;
+    }
 }
 
 async fn execute_command(
@@ -550,7 +577,11 @@ async fn execute_command(
                 enabled_client_tools = ?enabled_client_tools,
                 "Assistant WebSocket client tool selection"
             );
-            let client_tool_bridge = Arc::new(client_tool_bridge.for_tools(enabled_client_tools));
+            let client_tool_bridge = Arc::new(
+                client_tool_bridge
+                    .for_tools(enabled_client_tools, client_tool_ids)
+                    .await,
+            );
             let run_id =
                 launch_assistant_execution(state.clone(), execution, Some(client_tool_bridge))
                     .await?;
@@ -560,6 +591,7 @@ async fn execute_command(
             request_id,
             run_id,
             after_event_id,
+            client_tool_ids,
         } => {
             let run = state
                 .store
@@ -576,6 +608,18 @@ async fn execute_command(
             }
             let from_sequence = sequence_from_event_id(run_id, after_event_id.as_deref())
                 .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("event_id"))?;
+            let session = state
+                .assistant_client_sessions
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .get(&run_id)
+                .cloned()
+                .ok_or(control_plane::errors::ControlPlaneError::Conflict(
+                    "assistant_client_session",
+                ))?;
+            session
+                .replace_connection(&client_tool_bridge, client_tool_ids)
+                .await;
             (request_id, run_id, from_sequence)
         }
         AssistantWebSocketCommand::Cancel { .. } => {
