@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 嵌入式助手生成态实时工具活动
-summary: 已在 dev 合入 runtime internal tool started/finished 实时事件和生成态“最新工具 + 累计数量”UI，等待用户人工验收。
+summary: 已在 dev 统一嵌入式助手实时与 durable activity 的 stream sequence，并实现当前思考自动展开、段结束自动折叠；等待用户人工验收。
 keywords:
   - embedded assistant
   - assistant_tool_call_started
@@ -9,7 +9,7 @@ keywords:
   - durable runtime event
   - live tool activity
 created_at: 2026-08-12 22
-updated_at: 2026-08-12 22
+updated_at: 2026-08-16 16
 decision_policy: verify_before_decision
 status: implemented_pending_user_acceptance
 scope:
@@ -17,12 +17,12 @@ scope:
   - api/crates/orchestration-runtime/src/execution_engine/llm_executor.rs
   - api/crates/control-plane/src/orchestration_runtime/live_debug_run/mod.rs
   - web/app/src/features/agent-flow/components/debug-console/conversation
-integration_commit: d9545e08a
+integration_commit: cf9a92f2c
 ---
 
 # 当前状态
 
-Root agent 已在隔离 worktree 完成跨前后端实现、集中 Dev Acceptance QA，并于 `2026-08-12 22` 合并到 `dev`；下一步由用户进行人工界面验收。
+Root agent 已在隔离 worktree 完成跨前后端实现、集中 Dev Acceptance QA，并于 `2026-08-16 16` 把 `cf9a92f2c` 合并到 `dev`；下一步由用户进行人工界面验收。
 
 # 为什么这样做
 
@@ -35,6 +35,9 @@ Root agent 已在隔离 worktree 完成跨前后端实现、集中 Dev Acceptanc
 - 生成期间全局只显示一个工具区域，正文只显示最新工具，Badge 显示当前回答累计数量。
 - terminal 后移除临时 Badge，继续展示原有完整工具详情。
 - 不增加 `round_id`、`round_index`，本期范围是 runtime internal tools。
+- durable activity 使用 `sequence_start` 定位活动、`sequence_end` 推进游标；可见工具或节点事件必须切断 reasoning/text 聚合，不能跨事件合并。
+- 生命周期事件先取得 runtime stream sequence，再携带同一序号持久化；终态和历史回放不得改写实时顺序。
+- 当前 reasoning 段自动展开；后续工具、输出或下一段 reasoning 到来时自动折叠。用户手动折叠后，同一段后续 delta 不得重新展开；终态默认全部收起。
 
 # 验收动机与停止条件
 
