@@ -635,8 +635,13 @@ where
                     )
                     .await?
             };
-            let rule = crate::billing::choose_pricing_rule(candidates, billing_started_at)?
-                .ok_or(ControlPlaneError::Conflict("pricing_rule_not_configured"))?;
+            let rule = crate::billing::choose_pricing_rule_for(
+                &input.provider_code,
+                &input.model,
+                candidates,
+                billing_started_at,
+            )?
+            .ok_or(ControlPlaneError::Conflict("pricing_rule_not_configured"))?;
             let input_tokens = estimate_provider_count_tokens(&input)
                 .map(|estimate| estimate.input_tokens)
                 .unwrap_or(0);

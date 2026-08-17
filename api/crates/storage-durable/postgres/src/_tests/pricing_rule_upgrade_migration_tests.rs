@@ -3,9 +3,11 @@ use std::borrow::Cow;
 use storage_postgres::PgControlPlaneStore;
 use uuid::Uuid;
 
-const MIGRATION_VERSION: i64 = 20260817130000;
-const MIGRATION_SQL: &str =
+const CLEANUP_MIGRATION_VERSION: i64 = 20260817140000;
+const LEGACY_MIGRATION_SQL: &str =
     include_str!("../../migrations/20260817130000_backfill_legacy_model_pricing_rules.sql");
+const CLEANUP_MIGRATION_SQL: &str =
+    include_str!("../../migrations/20260817140000_replace_generated_zero_pricing_rules.sql");
 
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
@@ -15,7 +17,7 @@ fn base_database_url() -> String {
 fn before_migrator() -> Migrator {
     let migrations = sqlx::migrate!("./migrations")
         .iter()
-        .filter(|migration| migration.version < MIGRATION_VERSION)
+        .filter(|migration| migration.version < CLEANUP_MIGRATION_VERSION)
         .cloned()
         .collect::<Vec<_>>();
     Migrator {
@@ -25,7 +27,7 @@ fn before_migrator() -> Migrator {
 }
 
 #[tokio::test]
-async fn legacy_pricing_migration_adds_only_missing_zero_rules() {
+async fn pricing_cleanup_replaces_generated_model_rules_with_one_global_fallback() {
     let database = postgres_test_support::PostgresTestSchema::create(&base_database_url())
         .await
         .unwrap();
@@ -97,11 +99,39 @@ async fn legacy_pricing_migration_adds_only_missing_zero_rules() {
     .await
     .unwrap();
 
-    sqlx::raw_sql(MIGRATION_SQL)
+    sqlx::raw_sql(LEGACY_MIGRATION_SQL)
         .execute(store.pool())
         .await
         .unwrap();
-    sqlx::raw_sql(MIGRATION_SQL)
+    sqlx::raw_sql(LEGACY_MIGRATION_SQL)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+    sqlx::query(
+        r#"insert into model_pricing_rules
+        (id,provider_code,upstream_model_id,input_token_unit_size,input_token_unit_price,
+         output_token_unit_size,output_token_unit_price,cache_hit_token_unit_size,
+         cache_hit_token_unit_price,currency_code,effective_from,timezone,weekday_mask,
+         priority,enabled,source_kind,source_catalog_id,source_version,source_checksum,
+         extensions,created_by)
+        values ($1,'plugin-provider','plugin-model',1000000,0,1000000,0,1000000,0,
+                'USD',now(),'UTC',127,10,true,'official',$2,'2026-08-17.2',$3,
+                '{"pricing_policy":"official_zero_default","reason":"upgrade_compatibility"}',$4)"#,
+    )
+    .bind(Uuid::now_v7())
+    .bind("old-plugin-model-rule")
+    .bind(format!("sha256:{}", "0".repeat(64)))
+    .bind(user_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    sqlx::raw_sql(CLEANUP_MIGRATION_SQL)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    sqlx::raw_sql(CLEANUP_MIGRATION_SQL)
         .execute(store.pool())
         .await
         .unwrap();
@@ -112,7 +142,21 @@ async fn legacy_pricing_migration_adds_only_missing_zero_rules() {
     .fetch_one(store.pool())
     .await
     .unwrap();
-    assert_eq!(free_rules, 1);
+    assert_eq!(free_rules, 0);
+    let old_official_rules: i64 = sqlx::query_scalar(
+        "select count(*) from model_pricing_rules where extensions->>'pricing_policy'='official_zero_default'",
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(old_official_rules, 0);
+    let global_fallbacks: i64 = sqlx::query_scalar(
+        "select count(*) from model_pricing_rules where provider_code='zero' and upstream_model_id='any' and input_token_unit_price=0 and output_token_unit_price=0 and cache_hit_token_unit_price=0 and extensions->>'pricing_policy'='global_zero_fallback'",
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(global_fallbacks, 1);
     let existing_price: String = sqlx::query_scalar(
         "select input_token_unit_price::text from model_pricing_rules where provider_code='legacy-provider' and upstream_model_id='legacy-priced'",
     )

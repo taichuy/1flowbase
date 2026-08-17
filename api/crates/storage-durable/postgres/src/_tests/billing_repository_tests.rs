@@ -275,3 +275,36 @@ async fn plugin_credit_command_requires_capability_permission_and_remains_idempo
         .to_string()
         .contains("credit_idempotency_payload_mismatch"));
 }
+
+#[tokio::test]
+async fn pricing_candidates_include_exact_rule_and_global_fallback() {
+    let (store, _workspace_id, user_id) = seeded_store().await;
+    let exact_id = Uuid::now_v7();
+    sqlx::query(
+        r#"insert into model_pricing_rules
+        (id,provider_code,upstream_model_id,input_token_unit_size,input_token_unit_price,
+         output_token_unit_size,output_token_unit_price,cache_hit_token_unit_size,
+         cache_hit_token_unit_price,currency_code,effective_from,timezone,weekday_mask,
+         priority,enabled,source_kind,extensions,created_by)
+        values ($1,'fixture-provider','fixture-model',1000000,1,1000000,2,1000000,0.5,
+                'USD',now()-interval '1 hour','UTC',127,0,true,'manual','{}',$2)"#,
+    )
+    .bind(exact_id)
+    .bind(user_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    let candidates = store
+        .match_pricing_rules(
+            "fixture-provider",
+            "fixture-model",
+            OffsetDateTime::now_utc(),
+        )
+        .await
+        .unwrap();
+    assert!(candidates.iter().any(|rule| rule.id == exact_id));
+    assert!(candidates
+        .iter()
+        .any(|rule| { rule.provider_code == "zero" && rule.upstream_model_id == "any" }));
+}

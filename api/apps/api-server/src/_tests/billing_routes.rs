@@ -18,6 +18,29 @@ async fn billing_routes_validate_pricing_and_manage_workspace_credit_ledger() {
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let member_id = create_member(&app, &cookie, &csrf, "billing-route-user", "temp-pass").await;
 
+    let catalog = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/billing/pricing-catalog")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(catalog.status(), StatusCode::OK);
+    let catalog_payload = response_json(catalog).await;
+    assert_eq!(
+        catalog_payload["data"]["rules"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(catalog_payload["data"]["rules"][0]["provider_code"], "zero");
+    assert_eq!(
+        catalog_payload["data"]["rules"][0]["upstream_model_id"],
+        "any"
+    );
+
     let create_rule = app
         .clone()
         .oneshot(
@@ -162,4 +185,20 @@ async fn billing_routes_validate_pricing_and_manage_workspace_credit_ledger() {
     assert_eq!(ledger.status(), StatusCode::OK);
     let ledger_payload = response_json(ledger).await;
     assert_eq!(ledger_payload["data"][0]["transaction_type"], "grant");
+}
+
+#[test]
+fn remote_pricing_catalog_cannot_downgrade_the_bundled_catalog() {
+    assert!(crate::routes::billing::catalog_version_is_at_least(
+        "2026-08-17.3",
+        "2026-08-17.3"
+    ));
+    assert!(crate::routes::billing::catalog_version_is_at_least(
+        "2026-08-17.10",
+        "2026-08-17.3"
+    ));
+    assert!(!crate::routes::billing::catalog_version_is_at_least(
+        "2026-08-17.2",
+        "2026-08-17.3"
+    ));
 }

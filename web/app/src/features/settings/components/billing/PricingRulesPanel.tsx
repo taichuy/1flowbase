@@ -50,6 +50,35 @@ type PricingRuleFilters = Omit<
 
 const DEFAULT_FILTERS: PricingRuleFilters = {};
 
+function formatTokenUnit(value: number) {
+  const units = [
+    { threshold: 1_000_000_000, suffix: 'B' },
+    { threshold: 1_000_000, suffix: 'M' },
+    { threshold: 1_000, suffix: 'K' }
+  ];
+  const unit = units.find(({ threshold }) => value >= threshold);
+  if (!unit) return String(value);
+  const scaled = (value / unit.threshold)
+    .toFixed(2)
+    .replace(/\.0+$/u, '')
+    .replace(/(\.\d*[1-9])0+$/u, '$1');
+  return `${scaled}${unit.suffix}`;
+}
+
+function formatUsdRate(value: string) {
+  const [rawInteger = '0', rawFraction = ''] = value.split('.');
+  const integer = rawInteger.replace(/^0+(?=\d)/u, '') || '0';
+  const significantFraction = rawFraction.replace(/0+$/u, '');
+  if (integer === '0' && significantFraction.length === 0) return '0';
+  if (significantFraction.length === 0) return `${integer}.00`;
+  if (significantFraction.length === 1) return `${integer}.${significantFraction}0`;
+  return `${integer}.${significantFraction}`;
+}
+
+function formatPricingRate(price: string, tokenUnit: number) {
+  return `$${formatUsdRate(price)} / ${formatTokenUnit(tokenUnit)}`;
+}
+
 function pricingUnitLabel(kind: PricingKind) {
   switch (kind) {
     case 'input':
@@ -197,21 +226,30 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
         title: i18nText('settings', 'auto.billing_input_price'),
         width: 200,
         render: (_: unknown, row: SettingsPricingRule) =>
-          `$${row.input_token_unit_price} / ${row.input_token_unit_size}`
+          formatPricingRate(
+            row.input_token_unit_price,
+            row.input_token_unit_size
+          )
       },
       {
         key: 'output_price',
         title: i18nText('settings', 'auto.billing_output_price'),
         width: 200,
         render: (_: unknown, row: SettingsPricingRule) =>
-          `$${row.output_token_unit_price} / ${row.output_token_unit_size}`
+          formatPricingRate(
+            row.output_token_unit_price,
+            row.output_token_unit_size
+          )
       },
       {
         key: 'cache_price',
         title: i18nText('settings', 'auto.billing_cache_price'),
         width: 200,
         render: (_: unknown, row: SettingsPricingRule) =>
-          `$${row.cache_hit_token_unit_price} / ${row.cache_hit_token_unit_size}`
+          formatPricingRate(
+            row.cache_hit_token_unit_price,
+            row.cache_hit_token_unit_size
+          )
       },
       {
         key: 'source_kind',

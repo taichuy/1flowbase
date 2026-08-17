@@ -77,12 +77,12 @@ describe('billing settings panels', () => {
           id: 'rule-1',
           provider_code: 'openai',
           upstream_model_id: 'gpt-test',
-          input_token_unit_size: 1_000_000,
-          input_token_unit_price: '1.25',
+          input_token_unit_size: 1_000,
+          input_token_unit_price: '0.000000000000000000',
           output_token_unit_size: 1_000_000,
           output_token_unit_price: '5',
-          cache_hit_token_unit_size: 1_000_000,
-          cache_hit_token_unit_price: '0.25',
+          cache_hit_token_unit_size: 1_000_000_000,
+          cache_hit_token_unit_price: '0.000001000000000000',
           currency_code: 'USD',
           effective_from: '2026-01-01T00:00:00Z',
           effective_to: null,
@@ -132,7 +132,9 @@ describe('billing settings panels', () => {
   test('shows fixed pricing columns and opens the validated rule editor', async () => {
     renderWithProviders(<PricingRulesPanel canManage />);
     expect(await screen.findByText('gpt-test')).toBeInTheDocument();
-    expect(screen.getByText('$1.25 / 1000000')).toBeInTheDocument();
+    expect(screen.getByText('$0 / 1K')).toBeInTheDocument();
+    expect(screen.getByText('$5.00 / 1M')).toBeInTheDocument();
+    expect(screen.getByText('$0.000001 / 1B')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /新增计费规则/ }));
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByLabelText('输入 Token 单位')).toBeInTheDocument();
