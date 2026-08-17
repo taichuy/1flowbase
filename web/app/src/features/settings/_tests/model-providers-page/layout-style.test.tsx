@@ -551,6 +551,24 @@ describe('ModelProvidersPage - layout and style', () => {
     expect(requestLogsCssSource).not.toContain('@media (max-height:');
   });
 
+  test('keeps model providers before pricing rules and request logs', () => {
+    const tabsSource = fs.readFileSync(
+      path.resolve(
+        import.meta.dirname,
+        '../../pages/settings-page/ModelProviderSettingsTabs.tsx'
+      ),
+      'utf8'
+    );
+
+    const providersIndex = tabsSource.indexOf("key: 'providers'");
+    const pricingIndex = tabsSource.indexOf("key: 'pricing'");
+    const requestLogsIndex = tabsSource.indexOf("key: 'request-logs'");
+
+    expect(providersIndex).toBeGreaterThan(-1);
+    expect(pricingIndex).toBeGreaterThan(providersIndex);
+    expect(requestLogsIndex).toBeGreaterThan(pricingIndex);
+  });
+
   test('AC-001 constrains provider modal tab panels to the scroll shell height', () => {
     const cssSource = fs.readFileSync(
       path.resolve(
