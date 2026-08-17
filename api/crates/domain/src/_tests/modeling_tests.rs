@@ -74,6 +74,7 @@ fn builtin_data_model_contract_covers_core_and_runtime_read_models() {
         "attachments",
         "users",
         "roles",
+        "model_pricing_rules",
         "application_run_log_summaries",
         "application_conversations",
         "application_conversation_messages",

@@ -332,6 +332,7 @@ struct RuntimeProviderInvoker<R, H> {
     provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
     provider_transport_store: Option<Arc<dyn crate::ports::ProviderTransportStore>>,
     provider_continuation: Option<crate::ports::ProviderContinuation>,
+    model_pricing_cache_store: Option<Arc<dyn CacheStore>>,
 }
 
 struct RuntimeFlowExecutionContext {
@@ -541,6 +542,7 @@ where
             provider_transport_payload: None,
             provider_transport_store: self.provider_transport_store.clone(),
             provider_continuation: None,
+            model_pricing_cache_store: self.model_routing_cache_store.clone(),
         }
     }
 
@@ -566,6 +568,7 @@ where
             provider_transport_payload: None,
             provider_transport_store: self.provider_transport_store.clone(),
             provider_continuation: None,
+            model_pricing_cache_store: self.model_routing_cache_store.clone(),
         }
     }
 

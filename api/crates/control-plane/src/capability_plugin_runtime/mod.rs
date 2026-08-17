@@ -33,6 +33,7 @@ pub struct ExecuteCapabilityNodeInput {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CapabilityExecutionOutput {
     pub output_payload: Value,
+    pub granted_credit_permissions: std::collections::BTreeSet<String>,
 }
 
 #[async_trait]

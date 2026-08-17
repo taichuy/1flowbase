@@ -369,6 +369,33 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         .ensure_builtin_user_and_role_models(bootstrap_result.root_user_id)
         .await?;
     system_metadata_bootstrap
+        .ensure_builtin_model_pricing_rules(bootstrap_result.root_user_id)
+        .await?;
+    routes::billing::sync_bundled_pricing_catalog(&store, bootstrap_result.root_user_id)
+        .await
+        .map_err(|error| error.0)?;
+    if cfg!(debug_assertions) {
+        let catalog_url = format!(
+            "https://raw.githubusercontent.com/{}/main/model-pricing/catalog/v1/catalog.json",
+            config.official_plugin_repository
+        );
+        let pricing_trusted_keys = config.official_plugin_trusted_public_keys()?;
+        if let Err(error) = routes::billing::sync_development_pricing_catalog(
+            &store,
+            bootstrap_result.root_user_id,
+            &catalog_url,
+            &pricing_trusted_keys,
+        )
+        .await
+        {
+            tracing::warn!(
+                catalog_url,
+                error = %error.0,
+                "development model pricing catalog unavailable; bundled snapshot remains active"
+            );
+        }
+    }
+    system_metadata_bootstrap
         .ensure_builtin_runtime_read_model_grants(
             bootstrap_result.root_user_id,
             bootstrap_result.workspace_id,
@@ -609,6 +636,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     });
     crate::workers::workflow_schedule::spawn_workflow_schedule_loops(state.clone());
     crate::workers::provider_request_logs::spawn_provider_request_log_worker(state.clone());
+    crate::workers::billing::spawn_billing_worker(state.clone());
 
     Ok(app_with_state_and_config_and_console_route_assembly(
         state,

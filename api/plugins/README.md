@@ -47,6 +47,26 @@ api/plugins/
 - Data-source plugins integrate external databases, SaaS APIs, or HTTP systems through the runtime-extension host path.
 - The host owns installation, assignment, secret storage, validation workflow, preview session lifetime, and durable imports.
 
+## CapabilityPlugin Credit Commands
+
+Only a `verified_official`, `process_per_call` CapabilityPlugin may declare narrow
+`permissions.credit` values (`credit.grant`, `credit.charge`, `credit.adjust`,
+`credit.toggle`, `credit.refund`, `credit.reserve`, `credit.settle`, or
+`credit.release`). The plugin never receives database access.
+
+An executing node requests one Core command by returning an object containing
+`_1flowbase_credit_command`. The command supplies `user_id`, decimal `amount`,
+`credit_unit: USD`, `reason`, paired `source_type/source_id`, and an
+`idempotency_key`. Reserve also supplies `provider_invocation_id` and
+`pricing_rule_id`; settle/release supply `billing_session_id`. The host fixes the
+workspace and plugin actor from the trusted invocation context, checks the
+manifest permission, executes the account transaction, removes the command, and
+adds `_1flowbase_credit_result` to the node output. Replaying the same key with a
+different payload is rejected.
+
+Successful commands publish `Credit*` facts through the durable outbox. Event
+delivery is at-least-once, so consumers must deduplicate by `event_id`.
+
 ## Template
 
 - Start from `plugins/templates/data_source_http_fixture` for an external data-source runtime-extension fixture.

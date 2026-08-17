@@ -562,6 +562,10 @@ where
             &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
         );
         let attempt_started_at = OffsetDateTime::now_utc();
+        invocation.input.trace_context.insert(
+            "provider_attempt_index".to_string(),
+            attempt_index.to_string(),
+        );
         let mut output = match invoker
             .invoke_resolved_llm(attempt_runtime, resolved_route, invocation.input)
             .await

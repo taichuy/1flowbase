@@ -96,6 +96,7 @@ async fn orchestration_runtime_compact_resolves_selected_runtime_and_provider_co
         ),
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
     let runtime = compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider");
     let result = orchestration_runtime::execution_engine::ProviderInvoker::compact(
@@ -214,6 +215,7 @@ async fn orchestration_runtime_count_tokens_resolves_selected_runtime_and_provid
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
     let runtime = compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider");
     let result = orchestration_runtime::execution_engine::ProviderInvoker::count_tokens(

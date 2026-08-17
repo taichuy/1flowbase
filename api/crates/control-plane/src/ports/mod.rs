@@ -1,6 +1,7 @@
 mod application;
 mod application_public_api;
 mod auth;
+mod billing_core;
 mod data_source;
 mod extension_installation;
 mod file_management;
@@ -37,6 +38,7 @@ use uuid::Uuid;
 pub use application::*;
 pub use application_public_api::*;
 pub use auth::*;
+pub use billing_core::*;
 pub use data_source::*;
 pub use extension_installation::*;
 pub use file_management::*;

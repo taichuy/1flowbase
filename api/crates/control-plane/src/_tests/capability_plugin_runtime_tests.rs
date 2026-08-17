@@ -49,6 +49,7 @@ impl CapabilityPluginRuntimePort for EchoCapabilityRuntime {
             output_payload: json!({
                 "answer": input.input_payload["query"],
             }),
+            granted_credit_permissions: Default::default(),
         })
     }
 }

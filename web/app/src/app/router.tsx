@@ -234,7 +234,7 @@ const templatesRoute = createRoute({
 
 function renderSettingsRoute(
   requestedSectionKey?: string,
-  modelProviderTab?: 'providers' | 'request-logs',
+  modelProviderTab?: 'providers' | 'pricing' | 'request-logs',
   rolePermissionTab?: RolePermissionTab,
   extensionCenterCategory?: SettingsExtensionCenterCategory,
   extensionCenterCursor?: string,
@@ -413,6 +413,7 @@ const extensionCenterCategories = new Set<SettingsExtensionCenterCategory>([
   'host-extensions',
   'i18n',
   'mcp',
+  'model-pricing',
   'runtime-extensions'
 ]);
 
@@ -477,6 +478,13 @@ const settingsModelProviderRequestLogsRoute = createRoute({
   path: '/settings/model-providers/request-logs',
   notFoundComponent: NotFoundPage,
   component: () => renderSettingsRoute('model-providers', 'request-logs')
+});
+
+const settingsModelProviderPricingRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/model-providers/pricing',
+  notFoundComponent: NotFoundPage,
+  component: () => renderSettingsRoute('model-providers', 'pricing')
 });
 
 const settingsMcpManagementRoute = createRoute({
@@ -712,6 +720,7 @@ const routeTree = rootRoute.addChildren([
     settingsModelProvidersRoute,
     settingsModelProviderInstancesRoute,
     settingsModelProviderRequestLogsRoute,
+    settingsModelProviderPricingRoute,
     settingsMcpManagementRoute,
     settingsUiManagementRoute,
     settingsUiManagementTemplatesRoute,

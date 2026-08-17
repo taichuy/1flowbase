@@ -2,6 +2,16 @@ use super::*;
 
 #[async_trait]
 pub trait OrchestrationRuntimeRepository: Send + Sync {
+    async fn execute_plugin_credit_command(
+        &self,
+        workspace_id: Uuid,
+        plugin_id: &str,
+        granted_permissions: &std::collections::BTreeSet<String>,
+        request: crate::ports::PluginCreditCommandRequest,
+    ) -> anyhow::Result<crate::ports::PluginCreditCommandResult> {
+        let _ = (workspace_id, plugin_id, granted_permissions, request);
+        anyhow::bail!("plugin credit command is not implemented")
+    }
     async fn upsert_compiled_plan(
         &self,
         input: &UpsertCompiledPlanInput,
@@ -317,6 +327,60 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         input: &AppendBillingSessionInput,
     ) -> anyhow::Result<domain::BillingSessionRecord>;
+    async fn model_billing_enabled_at(
+        &self,
+        workspace_id: Uuid,
+    ) -> anyhow::Result<Option<OffsetDateTime>> {
+        let _ = workspace_id;
+        Ok(None)
+    }
+    async fn model_billing_match_pricing_rules(
+        &self,
+        provider_code: &str,
+        upstream_model_id: &str,
+        at: OffsetDateTime,
+    ) -> anyhow::Result<Vec<crate::billing::PricingRule>> {
+        let _ = (provider_code, upstream_model_id, at);
+        Ok(Vec::new())
+    }
+    async fn model_billing_list_pricing_rules(
+        &self,
+        provider_code: &str,
+        upstream_model_id: &str,
+    ) -> anyhow::Result<Vec<crate::billing::PricingRule>> {
+        let _ = (provider_code, upstream_model_id);
+        Ok(Vec::new())
+    }
+    async fn model_billing_reserve_credit(
+        &self,
+        input: &ReserveCreditInput,
+    ) -> anyhow::Result<CreditReservation> {
+        let _ = input;
+        anyhow::bail!("model billing reservation is not configured")
+    }
+    async fn model_billing_settle_credit(
+        &self,
+        input: &SettleCreditInput,
+    ) -> anyhow::Result<CreditTransactionRecord> {
+        let _ = input;
+        anyhow::bail!("model billing settlement is not configured")
+    }
+    async fn model_billing_release_credit(
+        &self,
+        billing_session_id: Uuid,
+        reason: &str,
+    ) -> anyhow::Result<Option<CreditTransactionRecord>> {
+        let _ = (billing_session_id, reason);
+        anyhow::bail!("model billing release is not configured")
+    }
+    async fn model_billing_heartbeat_credit_reservation(
+        &self,
+        billing_session_id: Uuid,
+        reservation_expires_at: OffsetDateTime,
+    ) -> anyhow::Result<bool> {
+        let _ = (billing_session_id, reservation_expires_at);
+        anyhow::bail!("model billing reservation heartbeat is not configured")
+    }
     async fn append_audit_hash(
         &self,
         flow_run_id: Uuid,

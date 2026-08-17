@@ -1,0 +1,9 @@
+{
+  "schema_version": "1flowbase.model-pricing/v1",
+  "catalog_version": "2026-08-17.1",
+  "generated_at": "2026-08-17T12:00:00Z",
+  "currency_code": "USD",
+  "rules_checksum": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+  "signature": null,
+  "rules": []
+}

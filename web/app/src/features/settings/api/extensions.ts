@@ -28,6 +28,7 @@ export type SettingsExtensionApplicationAction =
   ConsoleExtensionApplicationAction;
 export type SettingsExtensionCenterCategory =
   | 'installed'
+  | 'model-pricing'
   | SettingsExtensionCategory;
 export type SettingsInstalledExtension = ConsoleInstalledExtension;
 export type SettingsExtensionCatalogEntry = ConsoleExtensionCatalogEntry;

@@ -22,6 +22,7 @@ async fn main_instance_routing_uses_current_registered_instances_instead_of_froz
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
     let runtime = orchestration_runtime::compiled_plan::CompiledLlmRuntime {
         provider_instance_id: frozen_instance_id.to_string(),
@@ -85,6 +86,7 @@ async fn main_instance_routing_reads_current_distribution_rule_and_order() {
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
     let runtime = orchestration_runtime::compiled_plan::CompiledLlmRuntime {
         provider_instance_id: String::new(),
@@ -167,6 +169,7 @@ async fn publisher_cutover_agent_flow_route_reads_receipt_marked_legacy_provider
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
     let runtime = compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider");
 
@@ -208,6 +211,7 @@ async fn root_1534_resolved_provider_route_pins_the_installation_used_for_invoca
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
     let runtime = compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider");
     let resolved = orchestration_runtime::execution_engine::ProviderInvoker::resolve_llm_route(

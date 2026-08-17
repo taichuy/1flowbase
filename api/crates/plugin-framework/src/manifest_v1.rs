@@ -56,6 +56,8 @@ pub struct PluginPermissionManifest {
     pub storage: String,
     pub mcp: String,
     pub subprocess: String,
+    #[serde(default)]
+    pub credit: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
@@ -473,6 +475,15 @@ fn validate_plugin_manifest(
     validate_execution_runtime_pair(manifest)?;
     validate_provider_runtime_capabilities(manifest, contract_policy)?;
     validate_permission_values(&manifest.permissions)?;
+    if !manifest.permissions.credit.is_empty()
+        && (manifest.consumption_kind != PluginConsumptionKind::CapabilityPlugin
+            || manifest.execution_mode != PluginExecutionMode::ProcessPerCall
+            || manifest.trust_level != "verified_official")
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "permissions.credit is only available to verified_official process_per_call capability plugins",
+        ));
+    }
     validate_binding_targets(&manifest.binding_targets)?;
     validate_slot_codes(manifest)?;
 
@@ -1527,6 +1538,28 @@ fn validate_permission_values(permissions: &PluginPermissionManifest) -> Framewo
     )?;
     validate_allowed(&permissions.mcp, "permissions.mcp", &["none"])?;
     validate_allowed(&permissions.subprocess, "permissions.subprocess", &["deny"])?;
+    let mut credit_permissions = HashSet::new();
+    for permission in &permissions.credit {
+        validate_allowed(
+            permission,
+            "permissions.credit[]",
+            &[
+                "credit.grant",
+                "credit.charge",
+                "credit.adjust",
+                "credit.toggle",
+                "credit.refund",
+                "credit.reserve",
+                "credit.settle",
+                "credit.release",
+            ],
+        )?;
+        if !credit_permissions.insert(permission.as_str()) {
+            return Err(PluginFrameworkError::invalid_provider_package(format!(
+                "permissions.credit[] contains duplicate value: {permission}"
+            )));
+        }
+    }
     Ok(())
 }
 

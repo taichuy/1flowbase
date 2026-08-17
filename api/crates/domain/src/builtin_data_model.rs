@@ -168,7 +168,8 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
         | "is_builtin"
         | "is_editable"
         | "auto_grant_new_permissions"
-        | "is_default_member_role" => crate::ModelFieldKind::Boolean,
+        | "is_default_member_role"
+        | "enabled" => crate::ModelFieldKind::Boolean,
         "size"
         | "total_tokens"
         | "unique_node_count"
@@ -180,9 +181,17 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
         | "input_cache_write_tokens"
         | "input_cache_hit_rate"
         | "sequence" => crate::ModelFieldKind::Number,
-        "created_at" | "updated_at" | "started_at" | "finished_at" | "completed_at" => {
-            crate::ModelFieldKind::Datetime
-        }
+        "input_token_unit_size"
+        | "input_token_unit_price"
+        | "output_token_unit_size"
+        | "output_token_unit_price"
+        | "cache_hit_token_unit_size"
+        | "cache_hit_token_unit_price"
+        | "weekday_mask"
+        | "priority" => crate::ModelFieldKind::Number,
+        "extensions" => crate::ModelFieldKind::Json,
+        "created_at" | "updated_at" | "started_at" | "finished_at" | "completed_at"
+        | "effective_from" | "effective_to" => crate::ModelFieldKind::Datetime,
         "introduction" | "content" | "reason" => crate::ModelFieldKind::Text,
         "scope_id"
         | "workspace_id"
@@ -223,6 +232,16 @@ fn builtin_field_required(model_code: &str, field_code: &str) -> bool {
                 | "default_display_role"
         ),
         "roles" => !matches!(field_code, "workspace_id" | "system_kind"),
+        "model_pricing_rules" => !matches!(
+            field_code,
+            "effective_to"
+                | "local_time_start"
+                | "local_time_end"
+                | "source_catalog_id"
+                | "source_version"
+                | "source_checksum"
+                | "created_by"
+        ),
         "application_run_log_summaries" => !matches!(
             field_code,
             "target_node_id"
@@ -328,6 +347,35 @@ const ROLES_FIELDS: &[&str] = &[
     "auto_grant_new_permissions",
     "is_default_member_role",
     "system_kind",
+];
+
+const MODEL_PRICING_RULES_FIELDS: &[&str] = &[
+    "id",
+    "provider_code",
+    "upstream_model_id",
+    "input_token_unit_size",
+    "input_token_unit_price",
+    "output_token_unit_size",
+    "output_token_unit_price",
+    "cache_hit_token_unit_size",
+    "cache_hit_token_unit_price",
+    "currency_code",
+    "effective_from",
+    "effective_to",
+    "timezone",
+    "weekday_mask",
+    "local_time_start",
+    "local_time_end",
+    "priority",
+    "enabled",
+    "source_kind",
+    "source_catalog_id",
+    "source_version",
+    "source_checksum",
+    "extensions",
+    "created_by",
+    "created_at",
+    "updated_at",
 ];
 
 const APPLICATION_RUN_LOG_SUMMARIES_FIELDS: &[&str] = &[
@@ -739,6 +787,13 @@ pub fn builtin_data_model_contract(code: &str) -> Option<BuiltinDataModelContrac
             physical_table_name: "roles",
             kind: BuiltinDataModelKind::Core,
             system_field_codes: ROLES_FIELDS,
+            capabilities: core_capabilities,
+        },
+        "model_pricing_rules" => BuiltinDataModelContract {
+            code: "model_pricing_rules",
+            physical_table_name: "model_pricing_rules",
+            kind: BuiltinDataModelKind::Core,
+            system_field_codes: MODEL_PRICING_RULES_FIELDS,
             capabilities: core_capabilities,
         },
         "application_run_log_summaries" => BuiltinDataModelContract {

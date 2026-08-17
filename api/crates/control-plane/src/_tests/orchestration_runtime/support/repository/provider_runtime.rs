@@ -340,6 +340,7 @@ impl CapabilityPluginRuntimePort for InMemoryProviderRuntime {
             output_payload: json!({
                 "answer": answer,
             }),
+            granted_credit_permissions: Default::default(),
         })
     }
 }

@@ -489,6 +489,7 @@ where
             flow_run_id: Some(flow_run.id),
             span_id: None,
             usage_ledger_id: None,
+            billing_session_id: None,
             workspace_id,
             provider_instance_id,
             provider_account_id: None,

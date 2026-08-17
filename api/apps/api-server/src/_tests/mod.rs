@@ -3,6 +3,7 @@ mod application_public_api;
 mod assistant;
 mod auth_center_routes;
 mod auth_routes;
+mod billing_routes;
 mod config_tests;
 mod console_navigation_routes;
 mod console_policy_migration_tests;

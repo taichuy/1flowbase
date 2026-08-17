@@ -321,6 +321,7 @@ pub struct ModelProviderMainInstanceSummaryResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ModelProviderOptionGroupResponse {
     pub model_id: String,
+    pub pricing_configured: bool,
     pub distribution_rule: String,
     pub model: ProviderModelDescriptorResponse,
     pub targets: Vec<ModelProviderOptionTargetResponse>,

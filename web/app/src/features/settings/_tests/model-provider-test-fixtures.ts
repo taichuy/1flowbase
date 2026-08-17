@@ -95,6 +95,7 @@ export function buildSettingsModelProviderOptions(): ConsoleModelProviderOptions
         model_groups: [
           {
             model_id: primaryContractProviderModels[0].model_id,
+            pricing_configured: false,
             distribution_rule: 'none',
             model: primaryContractProviderModels[0],
             targets: [
@@ -108,6 +109,7 @@ export function buildSettingsModelProviderOptions(): ConsoleModelProviderOptions
           },
           {
             model_id: primaryContractProviderModels[1].model_id,
+            pricing_configured: false,
             distribution_rule: 'none',
             model: primaryContractProviderModels[1],
             targets: [

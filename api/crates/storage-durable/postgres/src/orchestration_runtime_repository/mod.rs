@@ -25,14 +25,15 @@ use control_plane::{
         AppendUsageLedgerInput, ApplicationRunCountTokensResult, ApplicationRunOverviewReadModel,
         ApplicationRunResumeTimelineReadModel, ApplicationRunResumeTimelineSummaryReadModel,
         ApplicationRunTraceChildrenCursor, ApplicationRunTraceProjectionStatistics,
-        AttachCompiledPlanToFlowRunInput, BindInvocationContextInput, CallbackResumeContext,
-        CallbackResumeWaitingNode, ClearModelProviderRequestLogsBatchInput,
+        AttachCompiledPlanToFlowRunInput, BillingRepository, BindInvocationContextInput,
+        CallbackResumeContext, CallbackResumeWaitingNode, ClearModelProviderRequestLogsBatchInput,
         ClearModelProviderRequestLogsBatchResult, CommitFlowRunTerminalInput,
         CommitFlowRunTerminalReceipt, CommitFlowRunTerminalResult, CompleteCallbackTaskInput,
         CompleteFlowRunInput, CompleteNodeRunInput, ConvertLegacyRuntimeShadowBatchInput,
         ConvertLegacyRuntimeShadowBatchResult, CreateCallbackTaskInput, CreateCheckpointInput,
         CreateFlowRunInput, CreateFlowRunShellInput, CreateNodeRunInput,
-        CreateRuntimeDebugArtifactInput, DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
+        CreateRuntimeDebugArtifactInput, CreditReservation, CreditTransactionRecord,
+        DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
         DeleteDebugVariableCacheEntriesInput, DeleteModelProviderRequestLogsInput,
         FailQueuedFlowRunShellInput, FinalizePublishedRunMissingStreamTerminalPersistenceInput,
         FinalizePublishedRunMissingStreamTerminalPersistenceOutcome,
@@ -41,13 +42,13 @@ use control_plane::{
         LinkUsageLedgerToModelFailoverAttemptInput, ListApplicationConversationRunsPageInput,
         ListApplicationRunConversationMessageItemsPageInput, ListApplicationRunTraceChildrenPage,
         ListApplicationRunTraceChildrenPageInput, ListApplicationRunsPageInput,
-        ListModelProviderRequestLogsPageInput, ModelProviderRequestLogsPage,
+        ListModelProviderRequestLogsPageInput, ListPricingRulesInput, ModelProviderRequestLogsPage,
         OrchestrationRuntimeRepository, PersistWaitingKind, PersistWaitingStateInput,
         PersistedWaitingState, PutCanonicalRuntimeContentInput,
         RecordFlowRunCallbackResumeAttemptInput, RecordFlowRunCallbackResumeAttemptOutput,
-        ReplaceApplicationRunTraceProjectionInput, ResumeClaimDisposition, ResumeClaimKind,
-        ResumeClaimRecord, ResumeClaimStatus, RollbackLegacyRuntimeShadowInput,
-        RollbackLegacyRuntimeShadowResult, RuntimeContextContentVersion,
+        ReplaceApplicationRunTraceProjectionInput, ReserveCreditInput, ResumeClaimDisposition,
+        ResumeClaimKind, ResumeClaimRecord, ResumeClaimStatus, RollbackLegacyRuntimeShadowInput,
+        RollbackLegacyRuntimeShadowResult, RuntimeContextContentVersion, SettleCreditInput,
         UpdateCallbackTaskPayloadsInput, UpdateCheckpointPayloadsInput, UpdateFlowRunInput,
         UpdateFlowRunPayloadsInput, UpdateNodeRunInput, UpdateNodeRunPayloadsInput,
         UpdateRunEventPayloadInput, UpsertApplicationRunTraceProjectionStatusInput,
@@ -91,6 +92,17 @@ include!("side_effect_receipt_methods.rs");
 
 #[async_trait]
 impl OrchestrationRuntimeRepository for PgControlPlaneStore {
+    async fn execute_plugin_credit_command(
+        &self,
+        workspace_id: Uuid,
+        plugin_id: &str,
+        granted_permissions: &std::collections::BTreeSet<String>,
+        request: control_plane::ports::PluginCreditCommandRequest,
+    ) -> Result<control_plane::ports::PluginCreditCommandResult> {
+        control_plane::billing::CreditCommandService::new(self.clone())
+            .execute_plugin_request(workspace_id, plugin_id, granted_permissions, request)
+            .await
+    }
     async fn upsert_compiled_plan(
         &self,
         input: &UpsertCompiledPlanInput,
@@ -509,6 +521,72 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: &AppendBillingSessionInput,
     ) -> Result<domain::BillingSessionRecord> {
         PgControlPlaneStore::append_billing_session(self, input).await
+    }
+
+    async fn model_billing_enabled_at(&self, workspace_id: Uuid) -> Result<Option<OffsetDateTime>> {
+        BillingRepository::billing_enabled_at(self, workspace_id).await
+    }
+
+    async fn model_billing_match_pricing_rules(
+        &self,
+        provider_code: &str,
+        upstream_model_id: &str,
+        at: OffsetDateTime,
+    ) -> Result<Vec<control_plane::billing::PricingRule>> {
+        BillingRepository::match_pricing_rules(self, provider_code, upstream_model_id, at).await
+    }
+
+    async fn model_billing_list_pricing_rules(
+        &self,
+        provider_code: &str,
+        upstream_model_id: &str,
+    ) -> Result<Vec<control_plane::billing::PricingRule>> {
+        BillingRepository::list_pricing_rules(
+            self,
+            &ListPricingRulesInput {
+                provider_code: Some(provider_code.to_string()),
+                upstream_model_id: Some(upstream_model_id.to_string()),
+                include_disabled: false,
+                limit: 500,
+                offset: 0,
+            },
+        )
+        .await
+    }
+
+    async fn model_billing_reserve_credit(
+        &self,
+        input: &ReserveCreditInput,
+    ) -> Result<CreditReservation> {
+        BillingRepository::reserve_credit(self, input).await
+    }
+
+    async fn model_billing_settle_credit(
+        &self,
+        input: &SettleCreditInput,
+    ) -> Result<CreditTransactionRecord> {
+        BillingRepository::settle_credit(self, input).await
+    }
+
+    async fn model_billing_release_credit(
+        &self,
+        billing_session_id: Uuid,
+        reason: &str,
+    ) -> Result<Option<CreditTransactionRecord>> {
+        BillingRepository::release_credit(self, billing_session_id, reason).await
+    }
+
+    async fn model_billing_heartbeat_credit_reservation(
+        &self,
+        billing_session_id: Uuid,
+        reservation_expires_at: OffsetDateTime,
+    ) -> Result<bool> {
+        BillingRepository::heartbeat_credit_reservation(
+            self,
+            billing_session_id,
+            reservation_expires_at,
+        )
+        .await
     }
 
     async fn append_audit_hash(

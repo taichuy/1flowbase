@@ -1,6 +1,69 @@
 use super::*;
 
 #[test]
+fn verified_capability_plugin_may_declare_narrow_credit_permissions() {
+    let raw = r#"
+manifest_version: 1
+plugin_id: credit_fixture@0.1.0
+version: 0.1.0
+publisher_namespace: 1flowbase
+vendor: 1flowbase
+display_name: Credit Fixture
+description: Credit command fixture
+source_kind: official_registry
+trust_level: verified_official
+consumption_kind: capability_plugin
+execution_mode: process_per_call
+slot_codes: [node_contribution]
+binding_targets: [workspace]
+selection_mode: assignment_then_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.capability/v1
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: none
+  secrets: none
+  storage: none
+  mcp: none
+  subprocess: deny
+  credit: [credit.grant, credit.refund]
+runtime:
+  protocol: stdio_json
+  entry: bin/credit-fixture
+node_contributions:
+  - contribution_code: grant_credit
+    node_shell: action
+    category: data
+    title: Grant Credit
+    description: Grants credit through Core
+    icon: wallet
+    schema_ui: {sections: []}
+    schema_version: 1flowbase.node-contribution/v2
+    output_schema: {outputs: []}
+    side_effect_policy: external_write
+    infra_contracts: []
+    required_auth: []
+    visibility: public
+    experimental: false
+    dependency:
+      installation_kind: required
+      plugin_version_range: ">=0.1.0"
+"#;
+    let manifest = parse_plugin_manifest(raw).unwrap();
+    assert_eq!(
+        manifest.permissions.credit,
+        vec!["credit.grant", "credit.refund"]
+    );
+
+    let untrusted = parse_plugin_manifest(&raw.replace(
+        "trust_level: verified_official",
+        "trust_level: checksum_only",
+    ))
+    .unwrap_err();
+    assert!(untrusted.to_string().contains("permissions.credit"));
+}
+
+#[test]
 fn plugin_manifest_v1_accepts_node_contribution_v2_contract() {
     let manifest = parse_plugin_manifest(
         r#"

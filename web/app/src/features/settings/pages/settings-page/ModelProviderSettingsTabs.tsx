@@ -3,10 +3,11 @@ import { useNavigate } from '@tanstack/react-router';
 
 import { ModelProviderRequestLogsPanel } from '../../components/model-provider-request-logs/ModelProviderRequestLogsPanel';
 import { SettingsModelProvidersSection } from './SettingsModelProvidersSection';
+import { PricingRulesPanel } from '../../components/billing/PricingRulesPanel';
 import { i18nText } from '../../../../shared/i18n/text';
 import './model-provider-settings-tabs.css';
 
-export type ModelProviderSettingsTab = 'providers' | 'request-logs';
+export type ModelProviderSettingsTab = 'providers' | 'pricing' | 'request-logs';
 
 export function ModelProviderSettingsTabs({
   activeTab,
@@ -22,6 +23,11 @@ export function ModelProviderSettingsTabs({
       activeKey={activeTab}
       onChange={(key) => navigate({ to: `/settings/model-providers/${key}` })}
       items={[
+        {
+          key: 'pricing',
+          label: i18nText('settings', 'auto.billing_pricing_rules'),
+          children: <PricingRulesPanel canManage={canManage} />
+        },
         {
           key: 'providers',
           label: i18nText('settings', 'auto.model_providers'),

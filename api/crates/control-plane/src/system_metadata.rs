@@ -67,6 +67,165 @@ fn readonly_system_table_field(
     }
 }
 
+fn writable_system_table_field(
+    code: &'static str,
+    title: &'static str,
+    field_kind: ModelFieldKind,
+    is_required: bool,
+) -> SystemMetadataFieldTemplate {
+    SystemMetadataFieldTemplate {
+        code,
+        title,
+        historical_title: title,
+        description: None,
+        physical_column_name: Some(code),
+        field_kind,
+        is_system: true,
+        is_writable: true,
+        apply_physical_schema: false,
+        is_required,
+        is_unique: false,
+    }
+}
+
+pub fn model_pricing_rule_metadata_template() -> SystemMetadataModelTemplate {
+    let mut fields = vec![readonly_system_table_field(
+        "id",
+        "Rule ID",
+        "规则 ID",
+        "id",
+        ModelFieldKind::String,
+        true,
+        true,
+    )];
+    for (code, title, kind, required) in [
+        (
+            "provider_code",
+            "Provider Code",
+            ModelFieldKind::String,
+            true,
+        ),
+        (
+            "upstream_model_id",
+            "Upstream Model ID",
+            ModelFieldKind::String,
+            true,
+        ),
+        (
+            "input_token_unit_size",
+            "Input Token Unit Size",
+            ModelFieldKind::Number,
+            true,
+        ),
+        (
+            "input_token_unit_price",
+            "Input Token Unit Price",
+            ModelFieldKind::Number,
+            true,
+        ),
+        (
+            "output_token_unit_size",
+            "Output Token Unit Size",
+            ModelFieldKind::Number,
+            true,
+        ),
+        (
+            "output_token_unit_price",
+            "Output Token Unit Price",
+            ModelFieldKind::Number,
+            true,
+        ),
+        (
+            "cache_hit_token_unit_size",
+            "Cache Hit Token Unit Size",
+            ModelFieldKind::Number,
+            true,
+        ),
+        (
+            "cache_hit_token_unit_price",
+            "Cache Hit Token Unit Price",
+            ModelFieldKind::Number,
+            true,
+        ),
+        ("currency_code", "Currency", ModelFieldKind::String, true),
+        (
+            "effective_from",
+            "Effective From",
+            ModelFieldKind::Datetime,
+            true,
+        ),
+        (
+            "effective_to",
+            "Effective To",
+            ModelFieldKind::Datetime,
+            false,
+        ),
+        ("timezone", "Timezone", ModelFieldKind::String, true),
+        ("weekday_mask", "Weekday Mask", ModelFieldKind::Number, true),
+        (
+            "local_time_start",
+            "Local Time Start",
+            ModelFieldKind::String,
+            false,
+        ),
+        (
+            "local_time_end",
+            "Local Time End",
+            ModelFieldKind::String,
+            false,
+        ),
+        ("priority", "Priority", ModelFieldKind::Number, true),
+        ("enabled", "Enabled", ModelFieldKind::Boolean, true),
+        ("source_kind", "Source Kind", ModelFieldKind::String, true),
+        (
+            "source_catalog_id",
+            "Source Catalog ID",
+            ModelFieldKind::String,
+            false,
+        ),
+        (
+            "source_version",
+            "Source Version",
+            ModelFieldKind::String,
+            false,
+        ),
+        (
+            "source_checksum",
+            "Source Checksum",
+            ModelFieldKind::String,
+            false,
+        ),
+        ("extensions", "Extensions", ModelFieldKind::Json, true),
+        ("created_by", "Created By", ModelFieldKind::String, false),
+    ] {
+        fields.push(writable_system_table_field(code, title, kind, required));
+    }
+    fields.push(readonly_system_table_field(
+        "created_at",
+        "Created At",
+        "创建时间",
+        "created_at",
+        ModelFieldKind::Datetime,
+        true,
+        false,
+    ));
+    fields.push(readonly_system_table_field(
+        "updated_at",
+        "Updated At",
+        "更新时间",
+        "updated_at",
+        ModelFieldKind::Datetime,
+        true,
+        false,
+    ));
+    SystemMetadataModelTemplate {
+        code: "model_pricing_rules",
+        title: "Model Pricing Rules",
+        historical_title: "模型计费规则",
+        fields,
+    }
+}
+
 pub fn user_metadata_template() -> SystemMetadataModelTemplate {
     SystemMetadataModelTemplate {
         code: "users",
@@ -543,6 +702,14 @@ where
             ensured.push(self.ensure_template(actor_user_id, template).await?);
         }
         Ok(ensured)
+    }
+
+    pub async fn ensure_builtin_model_pricing_rules(
+        &self,
+        actor_user_id: Uuid,
+    ) -> Result<domain::ModelDefinitionRecord> {
+        self.ensure_template(actor_user_id, model_pricing_rule_metadata_template())
+            .await
     }
 
     pub async fn ensure_builtin_runtime_read_model_grants(

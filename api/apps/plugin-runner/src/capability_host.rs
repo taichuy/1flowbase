@@ -36,6 +36,7 @@ pub struct CapabilityValueOutput {
 #[derive(Debug, Clone, Serialize)]
 pub struct CapabilityExecutionOutput {
     pub output_payload: Value,
+    pub granted_credit_permissions: std::collections::BTreeSet<String>,
 }
 
 #[derive(Debug, Default)]
@@ -211,6 +212,8 @@ impl CapabilityHost {
         let plugin_id = plugin_id.to_string();
         let contribution_code = contribution_code.to_string();
         Ok(async move {
+            let granted_credit_permissions =
+                loaded.manifest.permissions.credit.iter().cloned().collect();
             let output = Self::call_runtime_loaded(
                 loaded,
                 CapabilityStdioMethod::Execute,
@@ -224,6 +227,7 @@ impl CapabilityHost {
             .await?;
             Ok(CapabilityExecutionOutput {
                 output_payload: output,
+                granted_credit_permissions,
             })
         })
     }

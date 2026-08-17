@@ -371,6 +371,7 @@ pub(super) fn map_cost_ledger_record(row: PgRow) -> domain::CostLedgerRecord {
         flow_run_id: row.get("flow_run_id"),
         span_id: row.get("span_id"),
         usage_ledger_id: row.get("usage_ledger_id"),
+        billing_session_id: row.get("billing_session_id"),
         workspace_id: row.get("workspace_id"),
         provider_instance_id: row.get("provider_instance_id"),
         provider_account_id: row.get("provider_account_id"),

@@ -289,6 +289,7 @@ pub(crate) fn migrated_core_console_route_assembly_with_interface_operations(
         .merge(super::user_api_keys::route_assembly())
         .merge(super::workspace::route_assembly())
         .merge(super::members::route_assembly())
+        .merge(super::billing::route_assembly())
         .merge(super::model_definitions::route_assembly())
         .merge(super::model_providers::route_assembly())
         .merge(super::frontend_block_catalog::route_assembly())
@@ -1093,6 +1094,7 @@ mod tests {
             .merge(crate::routes::frontstage::route_assembly())
             .merge(crate::routes::plugins::route_assembly())
             .merge(crate::routes::auth_center::route_assembly())
+            .merge(crate::routes::billing::route_assembly())
             .merge(crate::routes::system::route_assembly())
             .merge(crate::routes::system_backups::route_assembly())
             .merge(crate::routes::workspaces::route_assembly());
