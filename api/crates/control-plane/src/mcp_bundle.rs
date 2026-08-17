@@ -12,8 +12,8 @@ use crate::{
         validate_positive, McpManagementService,
     },
     ports::{
-        CreateMcpToolInput, McpManagementRepository, ReconcileManagedMcpBundleGraphInput,
-        ReplaceMcpBundleGraphInput,
+        CreateMcpToolInput, McpManagementRepository, ReplaceMcpBundleGraphInput,
+        SeedMcpBundleGraphInput,
     },
 };
 
@@ -31,7 +31,7 @@ pub struct ImportMcpBundleCommand {
     pub current_system_version: String,
 }
 
-pub struct ReconcileSystemManagedMcpBundleCommand {
+pub struct SeedBuiltinMcpBundleCommand {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub package: domain::McpBundlePackage,
@@ -151,13 +151,13 @@ where
         Ok(())
     }
 
-    pub async fn reconcile_system_managed_bundle(
+    pub async fn seed_builtin_bundle_once(
         &self,
-        command: ReconcileSystemManagedMcpBundleCommand,
+        command: SeedBuiltinMcpBundleCommand,
     ) -> Result<()> {
         validate_package(&command.package)?;
         if !command.package.connections.is_empty() {
-            return Err(ControlPlaneError::InvalidInput("managed_mcp_connections").into());
+            return Err(ControlPlaneError::InvalidInput("builtin_mcp_connections").into());
         }
         let source = domain::McpManagedBundleSource {
             organization: command.package.manifest.organization.clone(),
@@ -193,7 +193,7 @@ where
             })
             .collect();
         self.repository
-            .reconcile_managed_mcp_bundle_graph_atomically(&ReconcileManagedMcpBundleGraphInput {
+            .seed_mcp_bundle_graph_once_atomically(&SeedMcpBundleGraphInput {
                 actor_user_id: command.actor_user_id,
                 workspace_id: command.workspace_id,
                 source,
@@ -691,6 +691,11 @@ where
                 .replace_mcp_bundle_graph_atomically(&ReplaceMcpBundleGraphInput {
                     actor_user_id: command.actor_user_id,
                     workspace_id: actor.current_workspace_id,
+                    source: domain::McpManagedBundleSource {
+                        organization: command.package.manifest.organization.clone(),
+                        bundle_id: command.package.manifest.bundle_id.clone(),
+                        bundle_version: command.package.manifest.bundle_version.clone(),
+                    },
                     connections: command.package.connections.clone(),
                     tools,
                     instances: command.package.instances.clone(),

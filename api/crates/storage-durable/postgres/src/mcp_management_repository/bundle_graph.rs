@@ -63,10 +63,11 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
                     interface_id, execution_kind, upstream_connection_id, remote_tool_name,
                     source_schema_hash, assistant_client_capability_code, parameter_schema,
                     result_schema, input_mapping, output_mapping, permission_code, risk_level,
-                    des_id, des_id_required,
-                    status, created_by, updated_by
+                    des_id, des_id_required, status, managed_bundle_organization,
+                    managed_bundle_id, managed_bundle_version, created_by, updated_by
                 ) values (
-                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$22
+                    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,
+                    $19,$20,$21,$22,$23,$24,$25,$25
                 )
                 on conflict (workspace_id, tool_id) do update set
                     name=excluded.name,
@@ -86,6 +87,9 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
                     risk_level=excluded.risk_level,
                     des_id_required=excluded.des_id_required,
                     status=excluded.status,
+                    managed_bundle_organization=excluded.managed_bundle_organization,
+                    managed_bundle_id=excluded.managed_bundle_id,
+                    managed_bundle_version=excluded.managed_bundle_version,
                     revision=mcp_tools.revision + 1,
                     updated_by=excluded.updated_by,
                     updated_at=now()
@@ -116,6 +120,9 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
         .bind(&tool.des_id)
         .bind(tool.des_id_required)
         .bind(tool.status.as_str())
+        .bind(&input.source.organization)
+        .bind(&input.source.bundle_id)
+        .bind(&input.source.bundle_version)
         .bind(tool.actor_user_id)
         .execute(&mut *transaction)
         .await?;
@@ -126,13 +133,17 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
             r#"
                 insert into mcp_instances (
                     id, workspace_id, instance_id, name, description_short, status,
-                    default_entry_path, created_by, updated_by
-                ) values ($1,$2,$3,$4,$5,$6,$7,$8,$8)
+                    default_entry_path, managed_bundle_organization, managed_bundle_id,
+                    managed_bundle_version, created_by, updated_by
+                ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$11)
                 on conflict (workspace_id, instance_id) do update set
                     name=excluded.name,
                     description_short=excluded.description_short,
                     status=excluded.status,
                     default_entry_path=excluded.default_entry_path,
+                    managed_bundle_organization=excluded.managed_bundle_organization,
+                    managed_bundle_id=excluded.managed_bundle_id,
+                    managed_bundle_version=excluded.managed_bundle_version,
                     updated_by=excluded.updated_by,
                     updated_at=now()
                 returning id
@@ -145,6 +156,9 @@ pub(super) async fn replace_mcp_bundle_graph_atomically(
         .bind(&instance.description_short)
         .bind(instance.status.as_str())
         .bind(&instance.default_entry_path)
+        .bind(&input.source.organization)
+        .bind(&input.source.bundle_id)
+        .bind(&input.source.bundle_version)
         .bind(input.actor_user_id)
         .fetch_one(&mut *transaction)
         .await

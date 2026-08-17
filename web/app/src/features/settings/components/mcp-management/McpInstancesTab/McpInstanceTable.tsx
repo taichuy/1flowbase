@@ -5,6 +5,7 @@ import {
   LinkOutlined,
   MoreOutlined,
   PlusOutlined,
+  ReloadOutlined,
   SearchOutlined,
   SettingOutlined,
   UploadOutlined
@@ -38,6 +39,7 @@ export function McpInstanceTable({
   onEditDiscoveryPolicy,
   onCopy,
   onExport,
+  onRestoreDefault,
   onDelete
 }: {
   canManage: boolean;
@@ -51,6 +53,7 @@ export function McpInstanceTable({
   onEditDiscoveryPolicy: (instance: ConsoleMcpInstance) => void;
   onCopy: (instance: ConsoleMcpInstance) => void;
   onExport: (instance: ConsoleMcpInstance) => void;
+  onRestoreDefault: (instance: ConsoleMcpInstance) => void;
   onDelete: (instance: ConsoleMcpInstance) => Promise<unknown>;
 }) {
   const columns: ColumnsType<ConsoleMcpInstance> = [
@@ -79,7 +82,7 @@ export function McpInstanceTable({
       )
     },
     {
-      title: i18nText('settings', 'auto.built_in_source'),
+      title: i18nText('settingsMcpManagement', 'auto.bundle_source'),
       render: (_, record) =>
         record.managed_by ? (
           <Tag color="blue">
@@ -106,7 +109,7 @@ export function McpInstanceTable({
             aria-label={i18nText('settings', 'auto.edit')}
             icon={<EditOutlined />}
             size="small"
-            disabled={!canManage || record.managed_by !== null}
+            disabled={!canManage}
             onClick={() => onEdit(record)}
           />
           <Tooltip title={i18nText('settings', 'auto.directory_editor')}>
@@ -114,7 +117,7 @@ export function McpInstanceTable({
               aria-label={i18nText('settings', 'auto.directory_editor')}
               icon={<SettingOutlined />}
               size="small"
-              disabled={!canManage || record.managed_by !== null}
+              disabled={!canManage}
               onClick={() => onOpenDirectory(record)}
             />
           </Tooltip>
@@ -145,7 +148,7 @@ export function McpInstanceTable({
                       'settingsMcpManagement',
                       'auto.discovery_policy'
                     ),
-                    disabled: !canManage || record.managed_by !== null
+                    disabled: !canManage
                   },
                   {
                     key: 'copy',
@@ -165,19 +168,36 @@ export function McpInstanceTable({
                     ),
                     disabled: !canManage
                   },
+                  ...(record.managed_by?.organization === '1flowbase' &&
+                  record.managed_by.bundle_id === 'frontstage_assistant'
+                    ? [
+                        {
+                          key: 'restore_default',
+                          icon: <ReloadOutlined />,
+                          label: i18nText(
+                            'settingsMcpManagement',
+                            'auto.restore_instance_default'
+                          ),
+                          disabled: !canManage
+                        }
+                      ]
+                    : []),
                   { type: 'divider' },
                   {
                     key: 'delete',
                     icon: <DeleteOutlined />,
                     label: i18nText('settings', 'auto.delete'),
                     danger: true,
-                    disabled: !canManage || record.managed_by !== null
+                    disabled: !canManage
                   }
                 ],
                 onClick: ({ key }) => {
                   if (key === 'discovery_policy') onEditDiscoveryPolicy(record);
                   else if (key === 'export') onExport(record);
                   else if (key === 'copy') onCopy(record);
+                  else if (key === 'restore_default') {
+                    onRestoreDefault(record);
+                  }
                   else if (key === 'delete') {
                     Modal.confirm({
                       title: i18nText(

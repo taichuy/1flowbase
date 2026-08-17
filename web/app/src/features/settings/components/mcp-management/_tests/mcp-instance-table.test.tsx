@@ -44,6 +44,7 @@ describe('McpInstanceTable', () => {
         onEditDiscoveryPolicy={vi.fn()}
         onExport={vi.fn()}
         onOpenDirectory={vi.fn()}
+        onRestoreDefault={vi.fn()}
       />
     );
 
@@ -51,7 +52,7 @@ describe('McpInstanceTable', () => {
     expect(container.querySelector('code')).toBeNull();
   });
 
-  test('shows file ownership and disables managed instance editors', () => {
+  test('shows bundle provenance without disabling instance editors', () => {
     render(
       <McpInstanceTable
         canManage
@@ -86,15 +87,16 @@ describe('McpInstanceTable', () => {
         onEditDiscoveryPolicy={vi.fn()}
         onExport={vi.fn()}
         onOpenDirectory={vi.fn()}
+        onRestoreDefault={vi.fn()}
       />
     );
 
     expect(
       screen.getByText('1flowbase/frontstage_assistant@1.0.2')
     ).toBeInTheDocument();
-    expect(screen.getByLabelText('编辑')).toBeDisabled();
+    expect(screen.getByLabelText('编辑')).toBeEnabled();
     expect(
       screen.getByLabelText(i18nText('settings', 'auto.directory_editor'))
-    ).toBeDisabled();
+    ).toBeEnabled();
   });
 });

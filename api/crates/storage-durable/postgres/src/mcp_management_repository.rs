@@ -661,11 +661,11 @@ impl McpManagementRepository for PgControlPlaneStore {
         bundle_graph::replace_mcp_bundle_graph_atomically(self, input).await
     }
 
-    async fn reconcile_managed_mcp_bundle_graph_atomically(
+    async fn seed_mcp_bundle_graph_once_atomically(
         &self,
-        input: &control_plane::ports::ReconcileManagedMcpBundleGraphInput,
+        input: &control_plane::ports::SeedMcpBundleGraphInput,
     ) -> Result<()> {
-        managed_bundle_graph::reconcile_managed_mcp_bundle_graph_atomically(self, input).await
+        managed_bundle_graph::seed_mcp_bundle_graph_once_atomically(self, input).await
     }
 
     async fn update_mcp_instance(
@@ -1186,7 +1186,6 @@ impl McpManagementRepository for PgControlPlaneStore {
                   from mcp_instances
                   where mcp_instances.id = mcp_tool_bindings.instance_record_id
                     and mcp_instances.workspace_id = $7
-                    and mcp_instances.managed_bundle_id is null
               )
             returning
                 mcp_tool_bindings.*,
@@ -1206,7 +1205,7 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(input.workspace_id)
         .fetch_optional(self.pool())
         .await?
-        .ok_or(ControlPlaneError::Conflict("mcp_system_managed"))?;
+        .ok_or(ControlPlaneError::NotFound("mcp_tool_binding"))?;
 
         map_binding(row)
     }
@@ -1219,7 +1218,6 @@ impl McpManagementRepository for PgControlPlaneStore {
             where mcp_tool_bindings.id = $1
               and mcp_tool_bindings.instance_record_id = mcp_instances.id
               and mcp_instances.workspace_id = $2
-              and mcp_instances.managed_bundle_id is null
             "#,
         )
         .bind(binding_id)
@@ -1227,7 +1225,7 @@ impl McpManagementRepository for PgControlPlaneStore {
         .execute(self.pool())
         .await?;
         if result.rows_affected() == 0 {
-            return Err(ControlPlaneError::Conflict("mcp_system_managed").into());
+            return Err(ControlPlaneError::NotFound("mcp_tool_binding").into());
         }
         Ok(())
     }

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use control_plane::{errors::ControlPlaneError, ports::ReconcileManagedMcpBundleGraphInput};
+use control_plane::{errors::ControlPlaneError, ports::SeedMcpBundleGraphInput};
 use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;
@@ -10,9 +10,9 @@ use super::mappers::{
     execution_target_upstream_connection_id,
 };
 
-pub(super) async fn reconcile_managed_mcp_bundle_graph_atomically(
+pub(super) async fn seed_mcp_bundle_graph_once_atomically(
     store: &PgControlPlaneStore,
-    input: &ReconcileManagedMcpBundleGraphInput,
+    input: &SeedMcpBundleGraphInput,
 ) -> Result<()> {
     let mut transaction = store.pool().begin().await?;
     let imported_before = sqlx::query_scalar::<_, bool>(
@@ -34,6 +34,27 @@ pub(super) async fn reconcile_managed_mcp_bundle_graph_atomically(
     .bind(&input.source.bundle_id)
     .fetch_one(&mut *transaction)
     .await?;
+    if imported_before {
+        transaction.commit().await?;
+        return Ok(());
+    }
+
+    let extension_installation_id = sqlx::query_scalar::<_, Uuid>(
+        r#"
+        select id
+        from extension_installations
+        where category = 'mcp'
+          and organization = $1
+          and artifact_id = $2
+          and artifact_version = $3
+        "#,
+    )
+    .bind(&input.source.organization)
+    .bind(&input.source.bundle_id)
+    .bind(&input.source.bundle_version)
+    .fetch_optional(&mut *transaction)
+    .await?
+    .ok_or(ControlPlaneError::NotFound("mcp_bundle_installation"))?;
 
     let tool_ids = input
         .tools
@@ -73,8 +94,8 @@ pub(super) async fn reconcile_managed_mcp_bundle_graph_atomically(
     .bind(&instance_ids)
     .fetch_one(&mut *transaction)
     .await?;
-    if !imported_before && (unmanaged_tool_collision || unmanaged_instance_collision) {
-        return Err(ControlPlaneError::Conflict("mcp_system_managed_collision").into());
+    if unmanaged_tool_collision || unmanaged_instance_collision {
+        return Err(ControlPlaneError::Conflict("mcp_builtin_seed_collision").into());
     }
 
     for tool in &input.tools {
@@ -309,6 +330,20 @@ pub(super) async fn reconcile_managed_mcp_bundle_graph_atomically(
     .bind(&input.source.organization)
     .bind(&input.source.bundle_id)
     .bind(&tool_ids)
+    .execute(&mut *transaction)
+    .await?;
+
+    sqlx::query(
+        r#"
+        insert into mcp_extension_bundle_imports (
+            workspace_id, extension_installation_id, imported_by, result_status
+        ) values ($1, $2, $3, 'completed')
+        on conflict (workspace_id, extension_installation_id) do nothing
+        "#,
+    )
+    .bind(input.workspace_id)
+    .bind(extension_installation_id)
+    .bind(input.actor_user_id)
     .execute(&mut *transaction)
     .await?;
 

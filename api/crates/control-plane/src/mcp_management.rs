@@ -136,13 +136,6 @@ pub struct McpManagementService<R> {
     pub(crate) repository: R,
 }
 
-fn ensure_user_managed(source: &Option<domain::McpManagedBundleSource>) -> Result<()> {
-    if source.is_some() {
-        return Err(ControlPlaneError::Conflict("mcp_system_managed").into());
-    }
-    Ok(())
-}
-
 impl<R> McpManagementService<R>
 where
     R: McpManagementRepository,
@@ -781,12 +774,10 @@ where
     ) -> Result<domain::McpInstanceRecord> {
         validate_identifier(&command.instance_id, "instance_id")?;
         validate_path(&command.default_entry_path)?;
-        let existing = self
-            .repository
+        self.repository
             .get_mcp_instance(actor.current_workspace_id, &command.instance_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("mcp_instance"))?;
-        ensure_user_managed(&existing.managed_by)?;
         self.repository
             .update_mcp_instance(&UpdateMcpInstanceInput {
                 actor_user_id: command.actor_user_id,
@@ -810,12 +801,10 @@ where
         actor: &domain::ActorContext,
         instance_id: &str,
     ) -> Result<()> {
-        let existing = self
-            .repository
+        self.repository
             .get_mcp_instance(actor.current_workspace_id, instance_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("mcp_instance"))?;
-        ensure_user_managed(&existing.managed_by)?;
         self.repository
             .delete_mcp_instance(actor.current_workspace_id, instance_id)
             .await
@@ -841,7 +830,6 @@ where
             .get_mcp_instance(actor.current_workspace_id, &command.instance_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("mcp_instance"))?;
-        ensure_user_managed(&instance.managed_by)?;
         self.repository
             .upsert_mcp_group(&UpsertMcpGroupInput {
                 id: Uuid::now_v7(),
@@ -878,7 +866,6 @@ where
             .get_mcp_instance(actor.current_workspace_id, instance_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("mcp_instance"))?;
-        ensure_user_managed(&instance.managed_by)?;
         self.repository
             .delete_mcp_group_subtree(instance.id, path)
             .await
@@ -901,7 +888,6 @@ where
             .get_mcp_instance(actor.current_workspace_id, &command.instance_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("mcp_instance"))?;
-        ensure_user_managed(&instance.managed_by)?;
         let groups = self.repository.list_mcp_groups(&[instance.id]).await?;
         if !groups.iter().any(|group| group.path == command.source_path) {
             return Err(ControlPlaneError::NotFound("mcp_group").into());
@@ -1003,12 +989,10 @@ where
         command: UpdateMcpToolCommand,
     ) -> Result<domain::McpToolRecord> {
         validate_identifier(&command.tool_id, "tool_id")?;
-        let existing = self
-            .repository
+        self.repository
             .get_mcp_tool(actor.current_workspace_id, &command.tool_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("mcp_tool"))?;
-        ensure_user_managed(&existing.managed_by)?;
         let des_id = normalize_des_id(command.des_id);
         let interface = bindable_interface(command.interface_entry)?;
         let des_id_required = input_mapping_requires_des_id(&command.input_mapping);
@@ -1054,7 +1038,6 @@ where
             .get_mcp_tool(actor.current_workspace_id, &command.tool_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("mcp_tool"))?;
-        ensure_user_managed(&existing.managed_by)?;
         if existing.execution_target != command.execution_target {
             return Err(ControlPlaneError::InvalidInput("execution_target").into());
         }
@@ -1124,12 +1107,10 @@ where
         actor: &domain::ActorContext,
         command: RefreshMcpToolDescriptionCommand,
     ) -> Result<domain::McpToolRecord> {
-        let existing = self
-            .repository
+        self.repository
             .get_mcp_tool(actor.current_workspace_id, &command.tool_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("mcp_tool"))?;
-        ensure_user_managed(&existing.managed_by)?;
         self.repository
             .refresh_mcp_tool_des_id(
                 actor.current_workspace_id,
@@ -1150,12 +1131,10 @@ where
         actor: &domain::ActorContext,
         tool_id: &str,
     ) -> Result<()> {
-        let existing = self
-            .repository
+        self.repository
             .get_mcp_tool(actor.current_workspace_id, tool_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("mcp_tool"))?;
-        ensure_user_managed(&existing.managed_by)?;
         self.repository
             .delete_mcp_tool(actor.current_workspace_id, tool_id)
             .await
@@ -1180,13 +1159,11 @@ where
             .get_mcp_instance(actor.current_workspace_id, &command.instance_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("mcp_instance"))?;
-        ensure_user_managed(&instance.managed_by)?;
         let tool = self
             .repository
             .get_mcp_tool(actor.current_workspace_id, &command.tool_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("mcp_tool"))?;
-        ensure_user_managed(&tool.managed_by)?;
         self.repository
             .create_mcp_tool_binding(&CreateMcpToolBindingInput {
                 id: Uuid::now_v7(),
@@ -1292,7 +1269,6 @@ where
             .get_mcp_instance(actor.current_workspace_id, &command.instance_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("mcp_instance"))?;
-        ensure_user_managed(&instance.managed_by)?;
         self.repository
             .update_mcp_instance_discovery_policy(&UpdateMcpInstanceDiscoveryPolicyInput {
                 actor_user_id: command.actor_user_id,

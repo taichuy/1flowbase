@@ -172,13 +172,14 @@ pub struct CreateMcpInstanceGraphInput {
 pub struct ReplaceMcpBundleGraphInput {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
+    pub source: domain::McpManagedBundleSource,
     pub connections: Vec<domain::McpBundleUpstreamConnection>,
     pub tools: Vec<CreateMcpToolInput>,
     pub instances: Vec<domain::McpBundleInstance>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ReconcileManagedMcpBundleGraphInput {
+pub struct SeedMcpBundleGraphInput {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub source: domain::McpManagedBundleSource,
@@ -238,9 +239,9 @@ pub trait McpManagementRepository: Send + Sync {
         &self,
         input: &ReplaceMcpBundleGraphInput,
     ) -> anyhow::Result<()>;
-    async fn reconcile_managed_mcp_bundle_graph_atomically(
+    async fn seed_mcp_bundle_graph_once_atomically(
         &self,
-        input: &ReconcileManagedMcpBundleGraphInput,
+        input: &SeedMcpBundleGraphInput,
     ) -> anyhow::Result<()>;
     async fn update_mcp_instance(
         &self,

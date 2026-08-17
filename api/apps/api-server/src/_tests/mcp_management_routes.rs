@@ -13,7 +13,7 @@ async fn response_json(response: axum::response::Response) -> Value {
 }
 
 #[tokio::test]
-async fn issue_1748_managed_mcp_projection_and_mutations_fail_closed() {
+async fn ac_002_ac_006_bundle_source_is_projected_without_blocking_mutations() {
     let (app, database_url) = test_app_with_database_url().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let create_response = app
@@ -88,11 +88,7 @@ async fn issue_1748_managed_mcp_projection_and_mutations_fail_closed() {
         )
         .await
         .unwrap();
-    assert_eq!(delete_response.status(), StatusCode::CONFLICT);
-    assert_eq!(
-        response_json(delete_response).await["code"],
-        json!("mcp_system_managed")
-    );
+    assert_eq!(delete_response.status(), StatusCode::OK);
 }
 
 #[tokio::test]

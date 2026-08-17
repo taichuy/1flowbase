@@ -13,7 +13,7 @@ match_when:
   - 处理助手会话恢复、分页、旧运行或会话权限
   - 开始 GitHub issue 1608
 created_at: 2026-08-07 11
-updated_at: 2026-08-16 18
+updated_at: 2026-08-16 23
 last_verified_at: 2026-08-16 08
 decision_policy: verify_before_decision
 status: implemented_pending_user_acceptance
@@ -22,6 +22,7 @@ route_fix_commit: 07706dbae
 activity_timeline_commit: e39e1e2b1
 activity_presentation_commit: 3a28140a8
 ordered_activity_commit: f51fa3b4d
+canonical_history_commit: e57173ee1
 scope:
   - https://github.com/taichuy/1flowbase/issues/1608
   - web/app/src/features/agent-flow/components/embedded-assistant
@@ -119,3 +120,10 @@ scope:
 - 此决策取代本文件上一节“终态把最终输出之前全部过程收进单一折叠组”的交互：完成态保留中间正文、思考与工具的原始相对顺序，只把最后正式输出单独放在末尾。
 - 工具摘要补齐 `list(path) / get(tool_id) / call(tool_id)`；旧运行只能改善标题，已丢失的中间流序号不做猜测性回填。
 - `f51fa3b4d` 已 fast-forward 合入本地 `dev`；Rust activity 5/5、嵌入助手 29/29 和主工作树关键 3/3 通过，等待用户人工验收真实运行、完成与刷新恢复三态一致性。
+
+## 2026-08-16 Canonical thinking history 与确定性错误重试
+
+- 内置助手续轮历史改为由后端根据 `conversation_id` 从 durable projection 重建；前端不再把包含 `<think>` 的展示消息反向提交为模型历史。
+- succeeded LLM 的 canonical assistant message 持久化 `content_blocks` 与 `tool_calls`；reasoning block 由 DeepSeek Provider 映射回 `reasoning_content`。
+- Provider typed upstream error 同时支持 canonical `status_code` 与旧 `status`；HTTP 400 不再消耗 LLM 节点重试预算，DSML output protocol failure 继续复用节点纠错重试。
+- 核心 `e57173ee1` 已推送 `dev`；DeepSeek `0.1.23` 已发布六平台包并写回 official registry。自动化通过，等待用户人工验证同一 thinking conversation 的第二轮请求与 DSML 异常重试路径。

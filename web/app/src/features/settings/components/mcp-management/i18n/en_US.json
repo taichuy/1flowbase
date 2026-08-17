@@ -1,5 +1,12 @@
 {
   "auto": {
+    "tool_filters": "Tool filters",
+    "expand_filters": "More filters",
+    "collapse_filters": "Fewer filters",
+    "apply_filters": "Search",
+    "tool_keyword": "Keyword",
+    "tool_keyword_placeholder": "Search name, tool_id, operation, or source",
+    "bundle_source": "Bundle source",
     "cancel_child_group_creation": "Cancel child group creation",
     "directory_path": "Path",
     "display_name": "Display name",
@@ -72,6 +79,9 @@
     "mcp_bundle_action": "Action",
     "mcp_bundle_preview": "Preview",
     "mcp_bundle_import": "Import",
+    "restore_instance_default": "Restore defaults",
+    "restore_instance_default_title": "Restore instance defaults",
+    "confirm_restore_instance_default": "Confirm instance restore",
     "mcp_bundle_export": "Export",
     "mcp_instance_export": "Export this instance",
     "mcp_instance_export_title": "Export MCP instance bundle",

@@ -1,30 +1,23 @@
 use control_plane::mcp_bundle::{
     ExportMcpInstanceBundleCommand, ImportMcpBundleCommand, McpInstanceBundleExportKind,
-    ReconcileSystemManagedMcpBundleCommand,
+    SeedBuiltinMcpBundleCommand,
 };
+use control_plane::ports::{ExtensionInstallationRepository, UpsertExtensionInstallationInput};
 
 #[tokio::test]
-async fn issue_1748_managed_bundle_reconcile_is_scoped_idempotent_and_read_only() {
+async fn ac_001_ac_002_ac_003_builtin_bundle_is_seeded_once_and_remains_mutable() {
     let (store, workspace, actor) = seed_store().await;
     let service = McpManagementService::new(store.clone());
     let package = managed_frontstage_package("1.0.2");
+    seed_builtin_bundle_installation(&store, actor.id, "1.0.2").await;
     service
-        .reconcile_system_managed_bundle(ReconcileSystemManagedMcpBundleCommand {
+        .seed_builtin_bundle_once(SeedBuiltinMcpBundleCommand {
             actor_user_id: actor.id,
             workspace_id: workspace.id,
             package: package.clone(),
         })
         .await
         .unwrap();
-    service
-        .reconcile_system_managed_bundle(ReconcileSystemManagedMcpBundleCommand {
-            actor_user_id: actor.id,
-            workspace_id: workspace.id,
-            package,
-        })
-        .await
-        .unwrap();
-
     let catalog = service.read_workspace_catalog(actor.id).await.unwrap();
     assert_eq!(catalog.instances.len(), 1);
     assert_eq!(catalog.tools.len(), 2);
@@ -34,47 +27,85 @@ async fn issue_1748_managed_bundle_reconcile_is_scoped_idempotent_and_read_only(
     assert_eq!(source.bundle_id, "frontstage_assistant");
     assert_eq!(source.bundle_version, "1.0.2");
     assert!(catalog.tools.iter().all(|tool| tool.managed_by.is_some()));
-    assert!(service
+    service
         .delete_instance(actor.id, "frontstage_browser")
         .await
-        .unwrap_err()
-        .to_string()
-        .contains("mcp_system_managed"));
-    assert!(service
+        .unwrap();
+    service
         .delete_tool(actor.id, "frontstage_list_page_blocks")
         .await
-        .unwrap_err()
-        .to_string()
-        .contains("mcp_system_managed"));
-
-    let mut upgraded = managed_frontstage_package("1.0.3");
-    upgraded.tools.pop();
-    upgraded.instances[0].bindings.pop();
-    upgraded.instances[0].name = "Frontstage Browser Managed".into();
+        .unwrap();
     service
-        .reconcile_system_managed_bundle(ReconcileSystemManagedMcpBundleCommand {
+        .delete_tool(actor.id, "frontstage_inspect_block_render")
+        .await
+        .unwrap();
+
+    service
+        .seed_builtin_bundle_once(SeedBuiltinMcpBundleCommand {
             actor_user_id: actor.id,
             workspace_id: workspace.id,
-            package: upgraded,
+            package: package.clone(),
         })
         .await
         .unwrap();
-    let upgraded_catalog = service.read_workspace_catalog(actor.id).await.unwrap();
-    assert_eq!(upgraded_catalog.instances.len(), 1);
-    assert_eq!(
-        upgraded_catalog.instances[0].name,
-        "Frontstage Browser Managed"
-    );
-    assert_eq!(upgraded_catalog.tools.len(), 1);
-    assert_eq!(upgraded_catalog.bindings.len(), 1);
-    assert_eq!(
-        upgraded_catalog.instances[0]
-            .managed_by
-            .as_ref()
-            .unwrap()
-            .bundle_version,
-        "1.0.3"
-    );
+    let restarted_catalog = service.read_workspace_catalog(actor.id).await.unwrap();
+    assert!(restarted_catalog.instances.is_empty());
+    assert!(restarted_catalog.tools.is_empty());
+    assert!(restarted_catalog.bindings.is_empty());
+
+    service
+        .import_bundle(ImportMcpBundleCommand {
+            actor_user_id: actor.id,
+            package,
+            interface_catalog: Vec::new(),
+            current_system_version: "0.3.6".into(),
+        })
+        .await
+        .unwrap();
+    let restored_catalog = service.read_workspace_catalog(actor.id).await.unwrap();
+    assert_eq!(restored_catalog.instances.len(), 1);
+    assert_eq!(restored_catalog.tools.len(), 2);
+    assert!(restored_catalog.instances[0].managed_by.is_some());
+    service
+        .delete_instance(actor.id, "frontstage_browser")
+        .await
+        .unwrap();
+}
+
+async fn seed_builtin_bundle_installation(
+    store: &PgControlPlaneStore,
+    actor_user_id: uuid::Uuid,
+    version: &str,
+) {
+    ExtensionInstallationRepository::upsert_extension_installation(
+        store,
+        &UpsertExtensionInstallationInput {
+            installation_id: uuid::Uuid::now_v7(),
+            identity: domain::ExtensionInstallationIdentity {
+                category: domain::ExtensionCategory::Mcp,
+                organization: "1flowbase".into(),
+                artifact_id: "frontstage_assistant".into(),
+                version: version.into(),
+            },
+            node_id: "test-node".into(),
+            source_kind: "builtin".into(),
+            trust_level: "verified_official".into(),
+            local_path: "/tmp/frontstage-assistant.tar.gz".into(),
+            expected_checksum: Some("sha256:test".into()),
+            local_checksum: "sha256:test".into(),
+            signature_status: domain::ExtensionSignatureStatus::Verified,
+            signature_algorithm: Some("builtin-code-shipped".into()),
+            signing_key_id: Some("1flowbase-builtin".into()),
+            warnings: Vec::new(),
+            receipt: serde_json::json!({"kind": "builtin"}),
+            application_action: domain::ExtensionApplicationAction::ImportMcp,
+            status: domain::ExtensionInstallationStatus::Installed,
+            is_current: true,
+            created_by: actor_user_id,
+        },
+    )
+    .await
+    .unwrap();
 }
 use control_plane::mcp_management::{
     CopyMcpInstanceCommand, CreateMcpInstanceCommand, CreateMcpToolBindingCommand,

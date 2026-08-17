@@ -103,6 +103,7 @@ export function McpBundleReviewModal({
   review,
   loading = false,
   importing,
+  mode = 'import',
   integrityWarnings = [],
   onCancel,
   onImport
@@ -111,6 +112,7 @@ export function McpBundleReviewModal({
   review: McpBundleReview | null;
   loading?: boolean;
   importing: boolean;
+  mode?: 'import' | 'restore';
   integrityWarnings?: string[];
   onCancel: () => void;
   onImport: () => void;
@@ -130,7 +132,12 @@ export function McpBundleReviewModal({
     <Modal
       width={760}
       open={open ?? review !== null}
-      title={i18nText('settingsMcpManagement', 'auto.mcp_bundle_import_title')}
+      title={i18nText(
+        'settingsMcpManagement',
+        mode === 'restore'
+          ? 'auto.restore_instance_default_title'
+          : 'auto.mcp_bundle_import_title'
+      )}
       okText={
         loading
           ? i18nText('settingsMcpManagement', 'auto.mcp_bundle_preview')
@@ -138,7 +145,9 @@ export function McpBundleReviewModal({
             ? i18nText('settings', 'auto.close')
             : i18nText(
                 'settingsMcpManagement',
-                'auto.mcp_bundle_confirm_overwrite'
+                mode === 'restore'
+                  ? 'auto.confirm_restore_instance_default'
+                  : 'auto.mcp_bundle_confirm_overwrite'
               )
       }
       cancelButtonProps={{ style: imported ? { display: 'none' } : undefined }}

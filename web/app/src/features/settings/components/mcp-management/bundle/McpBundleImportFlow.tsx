@@ -40,11 +40,13 @@ function confirmedWarnings(warnings: Array<{ code: string }>) {
 export function McpBundleImportFlow({
   source,
   csrfToken,
+  mode = 'import',
   onClose,
   onApplied
 }: {
   source: McpBundleImportSource | null;
   csrfToken: string;
+  mode?: 'import' | 'restore';
   onClose: () => void;
   onApplied: () => Promise<void>;
 }) {
@@ -223,6 +225,7 @@ export function McpBundleImportFlow({
       review={review}
       loading={busy && review === null}
       importing={busy && review !== null}
+      mode={mode}
       integrityWarnings={integrityWarnings}
       onCancel={onClose}
       onImport={() => void importBundle()}

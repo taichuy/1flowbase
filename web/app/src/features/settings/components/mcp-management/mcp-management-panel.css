@@ -2,6 +2,26 @@
   min-height: 0;
 }
 
+.mcp-management--tools {
+  display: flex;
+  height: 100%;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mcp-management--tools > .ant-tabs-body-holder,
+.mcp-management--tools > .ant-tabs-body-holder > .ant-tabs-body,
+.mcp-management--tools
+  > .ant-tabs-body-holder
+  > .ant-tabs-body
+  > .ant-tabs-content-active {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .mcp-management__stack {
   width: 100%;
 }

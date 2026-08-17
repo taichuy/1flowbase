@@ -53,12 +53,6 @@ export interface McpToolsState {
   modalOpen: boolean;
   editingTool: ConsoleMcpTool | null;
   step: string;
-  keyword: string;
-  executionTargetKind: string | undefined;
-  interfaceId: string | undefined;
-  riskLevel: string | undefined;
-  status: string | undefined;
-  desIdRequired: boolean | undefined;
   exportingCatalog: boolean;
 }
 
@@ -69,33 +63,12 @@ export type McpToolsAction =
       value: SetStateAction<ConsoleMcpTool | null>;
     }
   | { type: 'setStep'; value: SetStateAction<string> }
-  | { type: 'setKeyword'; value: SetStateAction<string> }
-  | {
-      type: 'setExecutionTargetKind';
-      value: SetStateAction<string | undefined>;
-    }
-  | {
-      type: 'setInterfaceId';
-      value: SetStateAction<string | undefined>;
-    }
-  | { type: 'setRiskLevel'; value: SetStateAction<string | undefined> }
-  | { type: 'setStatus'; value: SetStateAction<string | undefined> }
-  | {
-      type: 'setDesIdRequired';
-      value: SetStateAction<boolean | undefined>;
-    }
   | { type: 'setExportingCatalog'; value: SetStateAction<boolean> };
 
 export const initialMcpToolsState: McpToolsState = {
   modalOpen: false,
   editingTool: null,
   step: 'basic',
-  keyword: '',
-  executionTargetKind: undefined,
-  interfaceId: undefined,
-  riskLevel: undefined,
-  status: undefined,
-  desIdRequired: undefined,
   exportingCatalog: false
 };
 
@@ -180,36 +153,6 @@ export function mcpToolsReducer(
       };
     case 'setStep':
       return { ...state, step: resolveSetState(action.value, state.step) };
-    case 'setKeyword':
-      return {
-        ...state,
-        keyword: resolveSetState(action.value, state.keyword)
-      };
-    case 'setExecutionTargetKind':
-      return {
-        ...state,
-        executionTargetKind: resolveSetState(
-          action.value,
-          state.executionTargetKind
-        )
-      };
-    case 'setInterfaceId':
-      return {
-        ...state,
-        interfaceId: resolveSetState(action.value, state.interfaceId)
-      };
-    case 'setRiskLevel':
-      return {
-        ...state,
-        riskLevel: resolveSetState(action.value, state.riskLevel)
-      };
-    case 'setStatus':
-      return { ...state, status: resolveSetState(action.value, state.status) };
-    case 'setDesIdRequired':
-      return {
-        ...state,
-        desIdRequired: resolveSetState(action.value, state.desIdRequired)
-      };
     case 'setExportingCatalog':
       return {
         ...state,

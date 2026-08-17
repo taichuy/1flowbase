@@ -446,8 +446,8 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         );
     }
     control_plane::mcp_management::McpManagementService::new(store.clone())
-        .reconcile_system_managed_bundle(
-            control_plane::mcp_bundle::ReconcileSystemManagedMcpBundleCommand {
+        .seed_builtin_bundle_once(
+            control_plane::mcp_bundle::SeedBuiltinMcpBundleCommand {
                 actor_user_id: bootstrap_result.root_user_id,
                 workspace_id: bootstrap_result.workspace_id,
                 package: official_mcp_bundles::ApiOfficialMcpBundleRegistry::bundled_frontstage_assistant_package()?,

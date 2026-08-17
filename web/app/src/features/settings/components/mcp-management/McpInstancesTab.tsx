@@ -76,6 +76,10 @@ import {
   type McpDirectoryEditorMode
 } from './mcp-management-state';
 import { McpBundleExportModal } from './bundle/McpBundleExportModal';
+import {
+  McpBundleImportFlow,
+  type McpBundleImportSource
+} from './bundle/McpBundleImportFlow';
 import { downloadMcpBundle } from './bundle/mcp-bundle-download';
 
 type InstanceFormValues = SaveConsoleMcpInstanceBody;
@@ -155,6 +159,8 @@ export function McpInstancesTab({
   const [bundleExportInstance, setBundleExportInstance] =
     useState<ConsoleMcpInstance | null>(null);
   const [exportingInstanceBundle, setExportingInstanceBundle] = useState(false);
+  const [restoreSource, setRestoreSource] =
+    useState<McpBundleImportSource | null>(null);
   const pendingDirectorySessionChangeRef = useRef<(() => void) | null>(null);
 
   const [instancesState, dispatchInstancesState] = useReducer(
@@ -810,6 +816,16 @@ export function McpInstancesTab({
           setCopyingInstance(record);
         }}
         onExport={setBundleExportInstance}
+        onRestoreDefault={(record) => {
+          const source = record.managed_by;
+          if (!source) return;
+          setRestoreSource({
+            kind: 'library',
+            organization: source.organization,
+            bundleId: source.bundle_id,
+            bundleVersion: source.bundle_version
+          });
+        }}
         onDelete={(record) =>
           deleteInstanceMutation.mutateAsync(record.instance_id)
         }
@@ -854,6 +870,17 @@ export function McpInstancesTab({
         exporting={exportingInstanceBundle}
         onCancel={() => setBundleExportInstance(null)}
         onExport={handleExportInstanceBundle}
+      />
+      <McpBundleImportFlow
+        mode="restore"
+        source={restoreSource}
+        csrfToken={csrfToken}
+        onClose={() => setRestoreSource(null)}
+        onApplied={async () => {
+          await queryClient.invalidateQueries({
+            queryKey: settingsMcpCatalogQueryKey
+          });
+        }}
       />
       {directoryModalOpen && selectedInstance ? (
         <FixedHeightModal
@@ -1182,11 +1209,11 @@ export function McpInstancesTab({
                   >
                     <Input />
                   </Form.Item>
+                  <Form.Item name="path" hidden>
+                    <Input />
+                  </Form.Item>
                   {directoryEditorIntent === 'create' && (
                     <>
-                      <Form.Item name="path" hidden>
-                        <Input />
-                      </Form.Item>
                       <Form.Item
                         label={i18nText(
                           'settingsMcpManagement',
