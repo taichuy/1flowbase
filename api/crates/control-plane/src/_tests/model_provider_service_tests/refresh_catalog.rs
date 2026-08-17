@@ -61,18 +61,24 @@ async fn model_provider_service_normalizes_multiple_enabled_model_ids_and_allows
                 enabled: true,
                 context_window_override_tokens: None,
                 supports_multimodal: None,
+                pricing_provider_code: domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.to_string(),
+                pricing_model_id: domain::DEFAULT_MODEL_PRICING_MODEL_ID.to_string(),
             },
             domain::ModelProviderConfiguredModel {
                 model_id: "custom-alpha".to_string(),
                 enabled: true,
                 context_window_override_tokens: None,
                 supports_multimodal: None,
+                pricing_provider_code: domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.to_string(),
+                pricing_model_id: domain::DEFAULT_MODEL_PRICING_MODEL_ID.to_string(),
             },
             domain::ModelProviderConfiguredModel {
                 model_id: "custom-beta".to_string(),
                 enabled: true,
                 context_window_override_tokens: None,
                 supports_multimodal: None,
+                pricing_provider_code: domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.to_string(),
+                pricing_model_id: domain::DEFAULT_MODEL_PRICING_MODEL_ID.to_string(),
             },
         ]
     );
@@ -114,18 +120,24 @@ async fn model_provider_service_normalizes_multiple_enabled_model_ids_and_allows
                 enabled: true,
                 context_window_override_tokens: None,
                 supports_multimodal: None,
+                pricing_provider_code: domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.to_string(),
+                pricing_model_id: domain::DEFAULT_MODEL_PRICING_MODEL_ID.to_string(),
             },
             domain::ModelProviderConfiguredModel {
                 model_id: "fixture_chat".to_string(),
                 enabled: true,
                 context_window_override_tokens: None,
                 supports_multimodal: None,
+                pricing_provider_code: domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.to_string(),
+                pricing_model_id: domain::DEFAULT_MODEL_PRICING_MODEL_ID.to_string(),
             },
             domain::ModelProviderConfiguredModel {
                 model_id: "custom-gamma".to_string(),
                 enabled: true,
                 context_window_override_tokens: None,
                 supports_multimodal: None,
+                pricing_provider_code: domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.to_string(),
+                pricing_model_id: domain::DEFAULT_MODEL_PRICING_MODEL_ID.to_string(),
             },
         ]
     );

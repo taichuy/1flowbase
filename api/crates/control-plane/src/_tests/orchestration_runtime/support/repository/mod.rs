@@ -282,6 +282,8 @@ impl InMemoryOrchestrationRuntimeRepository {
                 enabled: true,
                 context_window_override_tokens: None,
                 supports_multimodal: None,
+                pricing_provider_code: domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.to_string(),
+                pricing_model_id: domain::DEFAULT_MODEL_PRICING_MODEL_ID.to_string(),
             }],
             enabled_model_ids: vec!["gpt-5.4-mini".to_string()],
             included_in_main: true,
@@ -535,6 +537,8 @@ impl InMemoryOrchestrationRuntimeRepository {
                 enabled: true,
                 context_window_override_tokens: None,
                 supports_multimodal: None,
+                pricing_provider_code: domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.to_string(),
+                pricing_model_id: domain::DEFAULT_MODEL_PRICING_MODEL_ID.to_string(),
             })
             .collect::<Vec<_>>();
         let models_json = model_ids
@@ -711,6 +715,8 @@ impl InMemoryOrchestrationRuntimeRepository {
                 enabled: true,
                 context_window_override_tokens: None,
                 supports_multimodal: None,
+                pricing_provider_code: domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.to_string(),
+                pricing_model_id: domain::DEFAULT_MODEL_PRICING_MODEL_ID.to_string(),
             })
             .collect();
         instance.updated_at = OffsetDateTime::now_utc();
@@ -906,6 +912,8 @@ impl InMemoryOrchestrationRuntimeRepository {
                 enabled: true,
                 context_window_override_tokens: None,
                 supports_multimodal: None,
+                pricing_provider_code: domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.to_string(),
+                pricing_model_id: domain::DEFAULT_MODEL_PRICING_MODEL_ID.to_string(),
             }],
             enabled_model_ids: vec!["gpt-5.4-mini".to_string()],
             included_in_main: true,
@@ -931,6 +939,8 @@ impl InMemoryOrchestrationRuntimeRepository {
             enabled: true,
             context_window_override_tokens: None,
             supports_multimodal: None,
+            pricing_provider_code: domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.to_string(),
+            pricing_model_id: domain::DEFAULT_MODEL_PRICING_MODEL_ID.to_string(),
         }];
         backup_instance.enabled_model_ids = vec!["gpt-5.4-mini".to_string()];
         backup_instance.created_by = Uuid::nil();

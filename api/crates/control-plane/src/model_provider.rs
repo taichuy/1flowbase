@@ -516,7 +516,7 @@ where
         )?;
         let provider_config = merge_json_object(&public_config, &secret_config)?;
         let configured_models =
-            normalize_configured_models(command.configured_models, command.enabled_model_ids);
+            normalize_configured_models(command.configured_models, command.enabled_model_ids)?;
         let enabled_model_ids = configured_models_to_enabled_model_ids(&configured_models);
         let preview_state = self
             .resolve_preview_state(
@@ -631,7 +631,7 @@ where
         )?;
         let provider_config = merge_json_object(&merged_public_config, &merged_secret_config)?;
         let configured_models =
-            normalize_configured_models(command.configured_models, command.enabled_model_ids);
+            normalize_configured_models(command.configured_models, command.enabled_model_ids)?;
         let enabled_model_ids = configured_models_to_enabled_model_ids(&configured_models);
 
         if !is_empty_object(&patch_secret_config) {
@@ -1327,17 +1327,19 @@ fn normalize_enabled_model_ids(enabled_model_ids: Vec<String>) -> Vec<String> {
 fn normalize_configured_models(
     configured_models: Vec<domain::ModelProviderConfiguredModel>,
     enabled_model_ids: Vec<String>,
-) -> Vec<domain::ModelProviderConfiguredModel> {
+) -> Result<Vec<domain::ModelProviderConfiguredModel>> {
     if configured_models.is_empty() {
-        return normalize_enabled_model_ids(enabled_model_ids)
+        return Ok(normalize_enabled_model_ids(enabled_model_ids)
             .into_iter()
             .map(|model_id| domain::ModelProviderConfiguredModel {
                 model_id,
                 enabled: true,
                 context_window_override_tokens: None,
                 supports_multimodal: None,
+                pricing_provider_code: domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.to_string(),
+                pricing_model_id: domain::DEFAULT_MODEL_PRICING_MODEL_ID.to_string(),
             })
-            .collect();
+            .collect());
     }
 
     let mut normalized = Vec::new();
@@ -1347,14 +1349,36 @@ fn normalize_configured_models(
         if trimmed.is_empty() || !seen.insert(trimmed.to_string()) {
             continue;
         }
+        let pricing_provider_code = configured_model.pricing_provider_code.trim();
+        let pricing_model_id = configured_model.pricing_model_id.trim();
+        let (pricing_provider_code, pricing_model_id) = match (
+            pricing_provider_code.is_empty(),
+            pricing_model_id.is_empty(),
+        ) {
+            (false, false) => (
+                pricing_provider_code.to_string(),
+                pricing_model_id.to_string(),
+            ),
+            (true, true) => (
+                domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.to_string(),
+                domain::DEFAULT_MODEL_PRICING_MODEL_ID.to_string(),
+            ),
+            _ => {
+                return Err(
+                    ControlPlaneError::InvalidInput("model_pricing_target_incomplete").into(),
+                )
+            }
+        };
         normalized.push(domain::ModelProviderConfiguredModel {
             model_id: trimmed.to_string(),
             enabled: configured_model.enabled,
             context_window_override_tokens: configured_model.context_window_override_tokens,
             supports_multimodal: configured_model.supports_multimodal,
+            pricing_provider_code,
+            pricing_model_id,
         });
     }
-    normalized
+    Ok(normalized)
 }
 
 fn configured_models_to_enabled_model_ids(

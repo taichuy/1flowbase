@@ -288,6 +288,7 @@ where
         );
 
         let canonical_tool_registry = input.tools.clone();
+        let actual_provider_code = input.provider_code.clone();
         let tool_structure = provider_tool_structure_receipt(&input.tools);
         tracing::debug!(
             flow_run_id = ?self.flow_run_id,
@@ -299,17 +300,15 @@ where
             tool_structure = %tool_structure,
             "AI Gateway provider tool structure"
         );
+        let configured_model = instance
+            .configured_models
+            .iter()
+            .find(|model| model.model_id == runtime.model);
         let effective_context_window = input
             .model_parameters
             .get("requested_context_window")
             .and_then(Value::as_u64)
-            .or_else(|| {
-                instance
-                    .configured_models
-                    .iter()
-                    .find(|model| model.model_id == runtime.model)
-                    .and_then(|model| model.context_window_override_tokens)
-            })
+            .or_else(|| configured_model.and_then(|model| model.context_window_override_tokens))
             .or_else(|| {
                 package
                     .predefined_models
@@ -573,6 +572,12 @@ where
         };
 
         let billing_started_at = OffsetDateTime::now_utc();
+        let pricing_provider_code = configured_model
+            .map(|model| model.pricing_provider_code.as_str())
+            .unwrap_or(domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE);
+        let pricing_model_id = configured_model
+            .map(|model| model.pricing_model_id.as_str())
+            .unwrap_or(domain::DEFAULT_MODEL_PRICING_MODEL_ID);
         let billing = if self
             .repository
             .model_billing_enabled_at(self.workspace_id)
@@ -587,8 +592,10 @@ where
                     "billing_actor_context_required",
                 ))?;
             let candidates = if let Some(cache) = &self.model_pricing_cache_store {
-                let key =
-                    crate::billing::pricing_rules_cache_key(&input.provider_code, &input.model);
+                let key = crate::billing::pricing_rules_cache_key(
+                    pricing_provider_code,
+                    pricing_model_id,
+                );
                 match cache.get_json(&key).await? {
                     Some(value) => match serde_json::from_value(value) {
                         Ok(rules) => rules,
@@ -597,8 +604,8 @@ where
                             let rules = self
                                 .repository
                                 .model_billing_list_pricing_rules(
-                                    &input.provider_code,
-                                    &input.model,
+                                    pricing_provider_code,
+                                    pricing_model_id,
                                 )
                                 .await?;
                             cache
@@ -614,7 +621,10 @@ where
                     None => {
                         let rules = self
                             .repository
-                            .model_billing_list_pricing_rules(&input.provider_code, &input.model)
+                            .model_billing_list_pricing_rules(
+                                pricing_provider_code,
+                                pricing_model_id,
+                            )
                             .await?;
                         cache
                             .set_json(
@@ -629,15 +639,15 @@ where
             } else {
                 self.repository
                     .model_billing_match_pricing_rules(
-                        &input.provider_code,
-                        &input.model,
+                        pricing_provider_code,
+                        pricing_model_id,
                         billing_started_at,
                     )
                     .await?
             };
             let rule = crate::billing::choose_pricing_rule_for(
-                &input.provider_code,
-                &input.model,
+                pricing_provider_code,
+                pricing_model_id,
                 candidates,
                 billing_started_at,
             )?
@@ -784,8 +794,10 @@ where
             )?;
             let price_snapshot = json!({
                 "pricing_rule_id": rule.id,
-                "provider_code": rule.provider_code,
-                "upstream_model_id": rule.upstream_model_id,
+                "pricing_provider_code": rule.provider_code,
+                "pricing_model_id": rule.upstream_model_id,
+                "provider_code": actual_provider_code,
+                "upstream_model_id": runtime.model,
                 "currency_code": rule.currency_code,
                 "request_started_at": billing_started_at,
                 "input_token_unit_size": rule.input_token_unit_size,
@@ -815,8 +827,8 @@ where
                     failover_attempt_id: None,
                     provider_instance_id: Uuid::parse_str(&instance.id.to_string()).ok(),
                     gateway_route_id: None,
-                    model_id: Some(rule.upstream_model_id.clone()),
-                    upstream_model_id: Some(rule.upstream_model_id.clone()),
+                    model_id: Some(runtime.model.clone()),
+                    upstream_model_id: Some(runtime.model.clone()),
                     upstream_request_id: invocation_output
                         .as_ref()
                         .and_then(|output| output.result.response_id.clone()),
@@ -867,8 +879,8 @@ where
                     provider_instance_id: Some(instance.id),
                     provider_account_id: None,
                     gateway_route_id: None,
-                    model_id: Some(rule.upstream_model_id.clone()),
-                    upstream_model_id: Some(rule.upstream_model_id.clone()),
+                    model_id: Some(runtime.model.clone()),
+                    upstream_model_id: Some(runtime.model.clone()),
                     price_snapshot: price_snapshot.clone(),
                     raw_cost: Some(rated.total_cost.to_string()),
                     normalized_cost: Some(rated.total_cost.to_string()),

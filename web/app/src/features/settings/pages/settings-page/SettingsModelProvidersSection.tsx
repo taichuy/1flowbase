@@ -289,6 +289,7 @@ export function SettingsModelProvidersSection({
     modalInstances,
     modalCatalogEntry,
     modalProviderOption,
+    pricingTargets,
     overviewRows
   } = useModelProviderData({
     drawerState,
@@ -544,6 +545,7 @@ export function SettingsModelProvidersSection({
         catalogEntry={drawerCatalogEntry}
         instance={editingInstance}
         cachedModelCatalog={editingModelCatalog}
+        pricingTargets={pricingTargets}
         defaultIncludedInMain={drawerDefaultIncludedInMain}
         submitting={createMutation.isPending || updateMutation.isPending}
         onClose={() => setDrawerState(null)}

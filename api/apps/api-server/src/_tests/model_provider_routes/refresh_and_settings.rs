@@ -71,6 +71,15 @@ async fn model_provider_options_schema_accepts_real_dynamic_json_leaves_ac_001()
         validation_errors.is_empty(),
         "model-provider options must match generated OpenAPI response schema: {validation_errors:#?}"
     );
+    let zero_target = payload["data"]["pricing_targets"]
+        .as_array()
+        .expect("pricing targets")
+        .iter()
+        .find(|target| target["provider_code"] == "zero" && target["upstream_model_id"] == "any")
+        .expect("global zero pricing target");
+    assert_eq!(zero_target["input_token_unit_price"], "0");
+    assert_eq!(zero_target["output_token_unit_price"], "0");
+    assert_eq!(zero_target["cache_hit_token_unit_price"], "0");
 
     let fields = payload["data"]["providers"][0]["parameter_form"]["fields"]
         .as_array()

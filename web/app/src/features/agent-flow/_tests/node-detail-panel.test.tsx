@@ -192,7 +192,8 @@ describe('NodeDetailPanel', () => {
         supported_locales: ['zh_Hans', 'en_US']
       },
       i18n_catalog: {},
-      providers: []
+      providers: [],
+      pricing_targets: []
     });
     resolveAgentFlowNodeSchemaSpy.mockClear();
     createAgentFlowNodeSchemaAdapterSpy.mockClear();

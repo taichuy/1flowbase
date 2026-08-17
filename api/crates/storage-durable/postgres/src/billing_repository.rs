@@ -270,6 +270,16 @@ impl BillingRepository for PgControlPlaneStore {
     async fn upsert_pricing_rule(&self, input: &UpsertPricingRuleInput) -> Result<PricingRule> {
         input.rule.validate()?;
         let rule = &input.rule;
+        let mut transaction = self.pool().begin().await?;
+        sqlx::query("select pg_advisory_xact_lock(hashtextextended($1, 0))")
+            .bind(format!(
+                "{}:{}{}",
+                rule.provider_code.len(),
+                rule.provider_code,
+                rule.upstream_model_id
+            ))
+            .execute(&mut *transaction)
+            .await?;
         let overlaps: bool = sqlx::query_scalar(
             r#"select exists (
                 select 1 from model_pricing_rules existing
@@ -297,7 +307,7 @@ impl BillingRepository for PgControlPlaneStore {
         .bind(rule.weekday_mask)
         .bind(rule.local_time_start)
         .bind(rule.local_time_end)
-        .fetch_one(self.pool())
+        .fetch_one(&mut *transaction)
         .await?;
         if overlaps {
             return Err(ControlPlaneError::Conflict("pricing_rule_conflict").into());
@@ -339,7 +349,8 @@ impl BillingRepository for PgControlPlaneStore {
         .bind(&rule.timezone).bind(rule.weekday_mask).bind(rule.local_time_start).bind(rule.local_time_end)
         .bind(rule.priority).bind(rule.enabled).bind(&rule.source_kind).bind(&rule.source_catalog_id)
         .bind(&rule.source_version).bind(&rule.source_checksum).bind(&rule.extensions).bind(rule.created_by)
-        .fetch_one(self.pool()).await?;
+        .fetch_one(&mut *transaction).await?;
+        transaction.commit().await?;
         pricing_rule(row)
     }
 

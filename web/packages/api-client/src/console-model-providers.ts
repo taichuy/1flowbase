@@ -75,6 +75,25 @@ export interface ConsoleModelProviderConfiguredModel {
   enabled: boolean;
   context_window_override_tokens: number | null;
   supports_multimodal?: boolean | null;
+  pricing_provider_code?: string;
+  pricing_model_id?: string;
+}
+
+export interface ConsoleModelProviderPricingTarget {
+  provider_code: string;
+  upstream_model_id: string;
+  input_token_unit_size: number;
+  input_token_unit_price: string;
+  output_token_unit_size: number;
+  output_token_unit_price: string;
+  cache_hit_token_unit_size: number;
+  cache_hit_token_unit_price: string;
+  effective_from: string;
+  effective_to: string | null;
+  timezone: string;
+  weekday_mask: number;
+  local_time_start: string | null;
+  local_time_end: string | null;
 }
 
 export type ConsoleModelProviderDistributionRule =
@@ -305,6 +324,7 @@ export interface ConsoleModelProviderOptions {
   locale_meta: Record<string, unknown>;
   i18n_catalog: Record<string, unknown>;
   providers: ConsoleModelProviderOption[];
+  pricing_targets: ConsoleModelProviderPricingTarget[];
 }
 
 export interface DeleteConsoleModelProviderResult {
