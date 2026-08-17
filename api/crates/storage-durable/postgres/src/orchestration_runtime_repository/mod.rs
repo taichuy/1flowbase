@@ -546,12 +546,14 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
             &ListPricingRulesInput {
                 provider_code: Some(provider_code.to_string()),
                 upstream_model_id: Some(upstream_model_id.to_string()),
-                include_disabled: false,
-                limit: 500,
+                enabled: Some(true),
+                source_kind: None,
+                page_size: 500,
                 offset: 0,
             },
         )
         .await
+        .map(|page| page.items)
     }
 
     async fn model_billing_reserve_credit(

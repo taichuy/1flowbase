@@ -5,9 +5,16 @@ use crate::billing::PricingRule;
 pub struct ListPricingRulesInput {
     pub provider_code: Option<String>,
     pub upstream_model_id: Option<String>,
-    pub include_disabled: bool,
-    pub limit: i64,
+    pub enabled: Option<bool>,
+    pub source_kind: Option<String>,
+    pub page_size: i64,
     pub offset: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct PricingRulesPage {
+    pub items: Vec<PricingRule>,
+    pub total_count: i64,
 }
 
 #[derive(Debug, Clone)]
@@ -170,7 +177,7 @@ pub trait BillingRepository: Send + Sync {
     async fn list_pricing_rules(
         &self,
         input: &ListPricingRulesInput,
-    ) -> anyhow::Result<Vec<PricingRule>>;
+    ) -> anyhow::Result<PricingRulesPage>;
     async fn get_pricing_rule(&self, id: Uuid) -> anyhow::Result<Option<PricingRule>>;
     async fn match_pricing_rules(
         &self,

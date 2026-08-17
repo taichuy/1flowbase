@@ -48,9 +48,18 @@ use crate::{
 pub struct PricingRuleQuery {
     provider_code: Option<String>,
     upstream_model_id: Option<String>,
-    include_disabled: Option<bool>,
-    limit: Option<i64>,
-    offset: Option<i64>,
+    enabled: Option<bool>,
+    source_kind: Option<String>,
+    page: Option<i64>,
+    page_size: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PricingRulesPageResponse {
+    items: Vec<PricingRuleResponse>,
+    total_count: i64,
+    page: i64,
+    page_size: i64,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -323,21 +332,27 @@ pub async fn list_pricing_rules(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Query(q): Query<PricingRuleQuery>,
-) -> Result<Json<ApiSuccess<Vec<PricingRuleResponse>>>, ApiError> {
+) -> Result<Json<ApiSuccess<PricingRulesPageResponse>>, ApiError> {
     require_session(&state, &headers).await?;
-    let rows = state
+    let page = q.page.unwrap_or(1).max(1);
+    let page_size = q.page_size.unwrap_or(20).clamp(1, 100);
+    let result = state
         .store
         .list_pricing_rules(&ListPricingRulesInput {
             provider_code: q.provider_code,
             upstream_model_id: q.upstream_model_id,
-            include_disabled: q.include_disabled.unwrap_or(true),
-            limit: q.limit.unwrap_or(100),
-            offset: q.offset.unwrap_or(0),
+            enabled: q.enabled,
+            source_kind: q.source_kind,
+            page_size,
+            offset: (page - 1) * page_size,
         })
         .await?;
-    Ok(Json(ApiSuccess::new(
-        rows.into_iter().map(Into::into).collect(),
-    )))
+    Ok(Json(ApiSuccess::new(PricingRulesPageResponse {
+        items: result.items.into_iter().map(Into::into).collect(),
+        total_count: result.total_count,
+        page,
+        page_size,
+    })))
 }
 pub async fn create_pricing_rule(
     State(state): State<Arc<ApiState>>,
@@ -519,7 +534,7 @@ pub(crate) async fn sync_bundled_pricing_catalog<R: BillingRepository>(
     Ok(synced)
 }
 
-pub(crate) async fn sync_development_pricing_catalog<R: BillingRepository>(
+pub(crate) async fn sync_remote_pricing_catalog<R: BillingRepository>(
     repository: &R,
     actor_user_id: Uuid,
     catalog_url: &str,

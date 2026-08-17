@@ -41,6 +41,22 @@ export interface ConsolePricingCatalog {
   rules: ConsolePricingRuleInput[];
 }
 
+export interface ConsolePricingRulesFilter {
+  provider_code?: string;
+  upstream_model_id?: string;
+  enabled?: boolean;
+  source_kind?: 'official' | 'manual';
+  page?: number;
+  page_size?: number;
+}
+
+export interface ConsolePricingRulesPage {
+  items: ConsolePricingRule[];
+  total_count: number;
+  page: number;
+  page_size: number;
+}
+
 export interface ConsoleCreditAccount {
   id: string;
   workspace_id: string;
@@ -88,9 +104,21 @@ export interface ConsoleCreditCommandInput {
   metadata?: Record<string, unknown>;
 }
 
-export function listConsolePricingRules(baseUrl?: string) {
-  return apiFetch<ConsolePricingRule[]>({
-    path: '/api/console/settings/billing/pricing-rules',
+export function listConsolePricingRules(
+  filter: ConsolePricingRulesFilter = {},
+  baseUrl?: string
+) {
+  const search = new URLSearchParams();
+  if (filter.provider_code) search.set('provider_code', filter.provider_code);
+  if (filter.upstream_model_id)
+    search.set('upstream_model_id', filter.upstream_model_id);
+  if (filter.enabled !== undefined)
+    search.set('enabled', String(filter.enabled));
+  if (filter.source_kind) search.set('source_kind', filter.source_kind);
+  search.set('page', String(filter.page ?? 1));
+  search.set('page_size', String(filter.page_size ?? 20));
+  return apiFetch<ConsolePricingRulesPage>({
+    path: `/api/console/settings/billing/pricing-rules?${search.toString()}`,
     baseUrl
   });
 }

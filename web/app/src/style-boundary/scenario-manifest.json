@@ -1156,6 +1156,7 @@
       "web/app/src/features/settings/components/billing/CreditManagementPanel.tsx",
       "web/app/src/features/settings/components/billing/PricingCatalogPanel.tsx",
       "web/app/src/features/settings/components/billing/PricingRulesPanel.tsx",
+      "web/app/src/features/settings/components/billing/pricing-rules-panel.css",
       "web/app/src/features/settings/components/model-provider-request-logs/ModelProviderRequestLogsPanel.tsx",
       "web/app/src/features/settings/components/model-provider-request-logs/model-provider-request-logs-panel.css",
       "web/app/src/app/router.tsx",

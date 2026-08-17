@@ -25,6 +25,7 @@ mod orchestration_runtime_repository_tests;
 mod ordered_tree;
 mod physical_schema_repository_tests;
 mod plugin;
+mod pricing_rule_upgrade_migration_tests;
 mod protocol_context_migration_tests;
 mod runtime_record_repository_tests;
 mod runtime_registry_health_tests;

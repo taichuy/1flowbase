@@ -71,36 +71,41 @@ describe('billing settings panels', () => {
   beforeEach(() => {
     resetAuthStore();
     authenticate();
-    billingApi.listSettingsPricingRules.mockResolvedValue([
-      {
-        id: 'rule-1',
-        provider_code: 'openai',
-        upstream_model_id: 'gpt-test',
-        input_token_unit_size: 1_000_000,
-        input_token_unit_price: '1.25',
-        output_token_unit_size: 1_000_000,
-        output_token_unit_price: '5',
-        cache_hit_token_unit_size: 1_000_000,
-        cache_hit_token_unit_price: '0.25',
-        currency_code: 'USD',
-        effective_from: '2026-01-01T00:00:00Z',
-        effective_to: null,
-        timezone: 'UTC',
-        weekday_mask: 127,
-        local_time_start: null,
-        local_time_end: null,
-        priority: 0,
-        enabled: true,
-        source_kind: 'manual',
-        source_catalog_id: null,
-        source_version: null,
-        source_checksum: null,
-        extensions: {},
-        created_by: 'root-user',
-        created_at: '2026-08-17T00:00:00Z',
-        updated_at: '2026-08-17T00:00:00Z'
-      }
-    ]);
+    billingApi.listSettingsPricingRules.mockResolvedValue({
+      items: [
+        {
+          id: 'rule-1',
+          provider_code: 'openai',
+          upstream_model_id: 'gpt-test',
+          input_token_unit_size: 1_000_000,
+          input_token_unit_price: '1.25',
+          output_token_unit_size: 1_000_000,
+          output_token_unit_price: '5',
+          cache_hit_token_unit_size: 1_000_000,
+          cache_hit_token_unit_price: '0.25',
+          currency_code: 'USD',
+          effective_from: '2026-01-01T00:00:00Z',
+          effective_to: null,
+          timezone: 'UTC',
+          weekday_mask: 127,
+          local_time_start: null,
+          local_time_end: null,
+          priority: 0,
+          enabled: true,
+          source_kind: 'manual',
+          source_catalog_id: null,
+          source_version: null,
+          source_checksum: null,
+          extensions: {},
+          created_by: 'root-user',
+          created_at: '2026-08-17T00:00:00Z',
+          updated_at: '2026-08-17T00:00:00Z'
+        }
+      ],
+      total_count: 1,
+      page: 1,
+      page_size: 20
+    });
     membersApi.fetchSettingsMembers.mockResolvedValue([
       { id: 'user-1', account: 'member', name: 'Member One' }
     ]);
@@ -132,6 +137,24 @@ describe('billing settings panels', () => {
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByLabelText('输入 Token 单位')).toBeInTheDocument();
     expect(screen.getByLabelText('缓存命中单价')).toBeInTheDocument();
+  });
+
+  test('submits pricing filters through the shared server-paginated table', async () => {
+    renderWithProviders(<PricingRulesPanel canManage />);
+    await screen.findByText('gpt-test');
+    fireEvent.change(screen.getByLabelText('上游模型 ID'), {
+      target: { value: 'gpt-5' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /筛\s*选/ }));
+    await waitFor(() =>
+      expect(billingApi.listSettingsPricingRules).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          upstream_model_id: 'gpt-5',
+          page: 1,
+          page_size: 20
+        })
+      )
+    );
   });
 
   test('uses backend available balance and submits a credit command', async () => {

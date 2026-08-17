@@ -950,6 +950,8 @@
     "billing_output_price": "Output price",
     "billing_cache_price": "Cache-hit price",
     "billing_status": "Billing status",
+    "billing_source_official": "Official",
+    "billing_source_manual": "Manual",
     "billing_configured": "Pricing configured",
     "billing_not_configured": "Not configured; calls are rejected",
     "billing_add_rule": "Add pricing rule",

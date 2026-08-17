@@ -7,11 +7,13 @@ import {
 } from '../console-billing';
 
 describe('console billing client', () => {
-  vi.spyOn(transport, 'apiFetch').mockImplementation(async (input) => input as never);
+  vi.spyOn(transport, 'apiFetch').mockImplementation(
+    async (input) => input as never
+  );
 
   test('uses canonical pricing and credit routes', async () => {
     await expect(listConsolePricingRules()).resolves.toMatchObject({
-      path: '/api/console/settings/billing/pricing-rules'
+      path: '/api/console/settings/billing/pricing-rules?page=1&page_size=20'
     });
     await expect(listConsoleCreditAccounts()).resolves.toMatchObject({
       path: '/api/console/settings/billing/credit-accounts'

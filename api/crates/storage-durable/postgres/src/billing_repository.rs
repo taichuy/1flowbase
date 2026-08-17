@@ -6,7 +6,7 @@ use control_plane::{
     ports::{
         BillingRepository, CreditAccountRecord, CreditCommandInput, CreditOutboxEvent,
         CreditReservation, CreditTransactionRecord, ListCreditLedgerInput, ListPricingRulesInput,
-        ReserveCreditInput, SettleCreditInput, UpsertPricingRuleInput,
+        PricingRulesPage, ReserveCreditInput, SettleCreditInput, UpsertPricingRuleInput,
     },
 };
 use sqlx::{Postgres, QueryBuilder, Row, Transaction};
@@ -177,30 +177,61 @@ async fn insert_outbox(
 
 #[async_trait]
 impl BillingRepository for PgControlPlaneStore {
-    async fn list_pricing_rules(&self, input: &ListPricingRulesInput) -> Result<Vec<PricingRule>> {
+    async fn list_pricing_rules(&self, input: &ListPricingRulesInput) -> Result<PricingRulesPage> {
         let mut query = QueryBuilder::<Postgres>::new(PRICING_SELECT);
         query.push(" where true");
         if let Some(provider_code) = &input.provider_code {
-            query.push(" and provider_code = ").push_bind(provider_code);
+            query
+                .push(" and provider_code ilike ")
+                .push_bind(format!("%{provider_code}%"));
         }
         if let Some(model) = &input.upstream_model_id {
-            query.push(" and upstream_model_id = ").push_bind(model);
+            query
+                .push(" and upstream_model_id ilike ")
+                .push_bind(format!("%{model}%"));
         }
-        if !input.include_disabled {
-            query.push(" and enabled = true");
+        if let Some(enabled) = input.enabled {
+            query.push(" and enabled = ").push_bind(enabled);
+        }
+        if let Some(source_kind) = &input.source_kind {
+            query.push(" and source_kind = ").push_bind(source_kind);
         }
         query.push(
             " order by provider_code, upstream_model_id, priority desc, effective_from desc, id",
         );
-        query.push(" limit ").push_bind(input.limit.clamp(1, 500));
-        query.push(" offset ").push_bind(input.offset.max(0));
         query
+            .push(" limit ")
+            .push_bind(input.page_size.clamp(1, 500));
+        query.push(" offset ").push_bind(input.offset.max(0));
+        let items = query
             .build()
             .fetch_all(self.pool())
             .await?
             .into_iter()
             .map(pricing_rule)
-            .collect()
+            .collect::<Result<Vec<_>>>()?;
+
+        let mut count = QueryBuilder::<Postgres>::new(
+            "select count(*)::bigint from model_pricing_rules where true",
+        );
+        if let Some(provider_code) = &input.provider_code {
+            count
+                .push(" and provider_code ilike ")
+                .push_bind(format!("%{provider_code}%"));
+        }
+        if let Some(model) = &input.upstream_model_id {
+            count
+                .push(" and upstream_model_id ilike ")
+                .push_bind(format!("%{model}%"));
+        }
+        if let Some(enabled) = input.enabled {
+            count.push(" and enabled = ").push_bind(enabled);
+        }
+        if let Some(source_kind) = &input.source_kind {
+            count.push(" and source_kind = ").push_bind(source_kind);
+        }
+        let total_count = count.build_query_scalar().fetch_one(self.pool()).await?;
+        Ok(PricingRulesPage { items, total_count })
     }
 
     async fn get_pricing_rule(&self, id: Uuid) -> Result<Option<PricingRule>> {

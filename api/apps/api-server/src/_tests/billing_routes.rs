@@ -68,6 +68,31 @@ async fn billing_routes_validate_pricing_and_manage_workspace_credit_ledger() {
         Decimal::from_str("1.25").unwrap()
     );
 
+    // AC-005: pricing rules expose the same server-owned page contract used by
+    // the shared settings data table instead of returning an uncounted array.
+    let rules = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(
+                    "/api/console/settings/billing/pricing-rules?provider_code=fixture-provider&page=1&page_size=20&enabled=true&source_kind=manual",
+                )
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(rules.status(), StatusCode::OK);
+    let rules_payload = response_json(rules).await;
+    assert_eq!(rules_payload["data"]["total_count"], 1);
+    assert_eq!(rules_payload["data"]["page"], 1);
+    assert_eq!(rules_payload["data"]["page_size"], 20);
+    assert_eq!(
+        rules_payload["data"]["items"][0]["upstream_model_id"],
+        "fixture-model"
+    );
+
     let accounts = app
         .clone()
         .oneshot(

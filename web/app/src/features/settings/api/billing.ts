@@ -12,7 +12,9 @@ export {
   type ConsoleCreditTransaction as SettingsCreditTransaction,
   type ConsolePricingCatalog as SettingsPricingCatalog,
   type ConsolePricingRule as SettingsPricingRule,
-  type ConsolePricingRuleInput as SettingsPricingRuleInput
+  type ConsolePricingRuleInput as SettingsPricingRuleInput,
+  type ConsolePricingRulesFilter as SettingsPricingRulesFilter,
+  type ConsolePricingRulesPage as SettingsPricingRulesPage
 } from '@1flowbase/api-client';
 
 export const settingsPricingRulesQueryKey = [

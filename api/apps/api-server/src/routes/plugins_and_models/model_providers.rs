@@ -525,11 +525,13 @@ async fn priced_model_keys(state: &ApiState) -> Result<HashSet<(String, String)>
         .list_pricing_rules(&ListPricingRulesInput {
             provider_code: None,
             upstream_model_id: None,
-            include_disabled: false,
-            limit: 500,
+            enabled: Some(true),
+            source_kind: None,
+            page_size: 500,
             offset: 0,
         })
         .await?
+        .items
         .into_iter()
         .map(|rule| (rule.provider_code, rule.upstream_model_id))
         .collect())
