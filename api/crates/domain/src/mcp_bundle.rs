@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 use utoipa::ToSchema;
 
 use crate::{McpInstanceStatus, McpRiskLevel, McpToolExecutionTarget, McpToolStatus};
@@ -165,6 +166,52 @@ pub struct McpBundlePackage {
     pub tools: Vec<McpBundleTool>,
     pub instances: Vec<McpBundleInstance>,
     pub connections: Vec<McpBundleUpstreamConnection>,
+}
+
+impl McpBundlePackage {
+    pub fn project_instance(&self, instance_id: &str) -> Option<Self> {
+        let instance = self
+            .instances
+            .iter()
+            .find(|instance| instance.instance_id == instance_id)?
+            .clone();
+        let tool_ids = instance
+            .bindings
+            .iter()
+            .map(|binding| binding.tool_id.as_str())
+            .collect::<BTreeSet<_>>();
+        let tools = self
+            .tools
+            .iter()
+            .filter(|tool| tool_ids.contains(tool.tool_id.as_str()))
+            .cloned()
+            .collect::<Vec<_>>();
+        let connection_ids = tools
+            .iter()
+            .filter_map(|tool| match &tool.execution_target {
+                McpToolExecutionTarget::McpProxy {
+                    upstream_connection_id,
+                    ..
+                } => Some(*upstream_connection_id),
+                McpToolExecutionTarget::InterfaceWrapper { .. }
+                | McpToolExecutionTarget::AssistantClient { .. } => None,
+            })
+            .collect::<BTreeSet<_>>();
+        let connections = self
+            .connections
+            .iter()
+            .filter(|connection| connection_ids.contains(&connection.connection_id))
+            .cloned()
+            .collect();
+        let mut manifest = self.manifest.clone();
+        manifest.files.clear();
+        Some(Self {
+            manifest,
+            tools,
+            instances: vec![instance],
+            connections,
+        })
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]

@@ -18,7 +18,7 @@ import {
   type Edge
 } from '@xyflow/react';
 import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
-import { useEffect, useMemo } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { useRef } from 'react';
 
 import { useCanvasInteractions } from '../../hooks/interactions/use-canvas-interactions';
@@ -35,7 +35,12 @@ import {
 } from '../../store/editor/selectors';
 import { AgentFlowCustomConnectionLine } from '../canvas/custom-connection-line';
 import { NodePickerPopover } from '../node-picker/NodePickerPopover';
-import { agentFlowEdgeTypes, agentFlowNodeTypes } from '../canvas/node-types';
+import {
+  agentFlowEdgeTypes,
+  agentFlowNodeTypes,
+  type AgentFlowCanvasEdge,
+  type AgentFlowCanvasNode
+} from '../canvas/node-types';
 import type { NodePickerOption } from '../../lib/plugin-node-definitions';
 import { i18nText } from '../../../../shared/i18n/text';
 
@@ -187,6 +192,7 @@ function AgentFlowCanvasInner({
   onViewportGetterReady
 }: AgentFlowCanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
+  const reactFlow = useReactFlow<AgentFlowCanvasNode, AgentFlowCanvasEdge>();
   const document = useAgentFlowEditorStore(selectWorkingDocument);
   const activeContainerId = useAgentFlowEditorStore(selectActiveContainerId);
   const selectedEdgeId = useAgentFlowEditorStore(
@@ -240,22 +246,6 @@ function AgentFlowCanvasInner({
       selectedNodeId
     ]
   );
-  const nodes = useMemo(() => {
-    const transientNodePositions = canvasInteractions.transientNodePositions;
-
-    if (Object.keys(transientNodePositions).length === 0) {
-      return baseNodes;
-    }
-
-    return baseNodes.map((node) =>
-      transientNodePositions[node.id]
-        ? {
-            ...node,
-            position: transientNodePositions[node.id]
-          }
-        : node
-    );
-  }, [baseNodes, canvasInteractions.transientNodePositions]);
   const edges = useMemo(
     () =>
       toCanvasEdges(document, activeContainerId, selectedEdgeId, {
@@ -271,11 +261,19 @@ function AgentFlowCanvasInner({
     ]
   );
 
+  useEffect(() => {
+    reactFlow.setNodes(baseNodes);
+  }, [baseNodes, reactFlow]);
+
+  useEffect(() => {
+    reactFlow.setEdges(edges);
+  }, [edges, reactFlow]);
+
   return (
     <div className="agent-flow-canvas" ref={canvasRef}>
       <ReactFlow
-        edges={edges}
-        nodes={nodes}
+        defaultEdges={edges}
+        defaultNodes={baseNodes}
         defaultViewport={document.editor.viewport}
         nodeTypes={agentFlowNodeTypes}
         edgeTypes={agentFlowEdgeTypes}
@@ -374,10 +372,12 @@ function AgentFlowCanvasInner({
   );
 }
 
-export function AgentFlowCanvas(props: AgentFlowCanvasProps) {
+function AgentFlowCanvasComponent(props: AgentFlowCanvasProps) {
   return (
     <ReactFlowProvider>
       <AgentFlowCanvasInner {...props} />
     </ReactFlowProvider>
   );
 }
+
+export const AgentFlowCanvas = memo(AgentFlowCanvasComponent);

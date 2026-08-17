@@ -5,6 +5,7 @@ mod flow_tests;
 mod frontend_component_contract_tests;
 mod host_extension_tests;
 mod i18n_catalog_tests;
+mod mcp_bundle_tests;
 mod mcp_upstream_tests;
 mod modeling_tests;
 mod resource_tests;

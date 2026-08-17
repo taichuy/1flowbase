@@ -1,13 +1,11 @@
 import type { NodeChange } from '@xyflow/react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo } from 'react';
 
 import { arrangeCanvasLeftToRight } from '../../lib/document/transforms/layout';
 import { moveNodes } from '../../lib/document/transforms/node';
 import { setViewport } from '../../lib/document/transforms/viewport';
 import { useAgentFlowEditorStore } from '../../store/editor/provider';
 import { selectActiveContainerId } from '../../store/editor/selectors';
-
-type NodePositions = Record<string, { x: number; y: number }>;
 
 function getPositionChanges(changes: NodeChange[]) {
   return changes.filter(
@@ -36,27 +34,7 @@ function toPositions(
   );
 }
 
-function removePositions(current: NodePositions, nodeIds: string[]) {
-  if (nodeIds.length === 0) {
-    return current;
-  }
-
-  let changed = false;
-  const nextPositions = { ...current };
-
-  for (const nodeId of nodeIds) {
-    if (nodeId in nextPositions) {
-      delete nextPositions[nodeId];
-      changed = true;
-    }
-  }
-
-  return changed ? nextPositions : current;
-}
-
 export function useCanvasInteractions() {
-  const [transientNodePositions, setTransientNodePositions] =
-    useState<NodePositions>({});
   const activeContainerId = useAgentFlowEditorStore(selectActiveContainerId);
   const setWorkingDocument = useAgentFlowEditorStore(
     (state) => state.setWorkingDocument
@@ -64,27 +42,9 @@ export function useCanvasInteractions() {
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
-      const positionChanges = getPositionChanges(changes);
-
-      if (positionChanges.length === 0) {
-        return;
-      }
-
-      const movingChanges = positionChanges.filter(
-        (change) => change.dragging === true
-      );
-      const committedChanges = positionChanges.filter(
+      const committedChanges = getPositionChanges(changes).filter(
         (change) => change.dragging !== true
       );
-
-      if (movingChanges.length > 0) {
-        const movingPositions = toPositions(movingChanges);
-
-        setTransientNodePositions((currentPositions) => ({
-          ...currentPositions,
-          ...movingPositions
-        }));
-      }
 
       if (committedChanges.length === 0) {
         return;
@@ -92,9 +52,6 @@ export function useCanvasInteractions() {
 
       const committedPositions = toPositions(committedChanges);
 
-      setTransientNodePositions((currentPositions) =>
-        removePositions(currentPositions, Object.keys(committedPositions))
-      );
       setWorkingDocument((currentDocument) =>
         moveNodes(currentDocument, committedPositions)
       );
@@ -116,7 +73,6 @@ export function useCanvasInteractions() {
   );
 
   const arrangeCanvas = useCallback(() => {
-    setTransientNodePositions({});
     setWorkingDocument((currentDocument) =>
       arrangeCanvasLeftToRight(currentDocument, activeContainerId)
     );
@@ -124,11 +80,10 @@ export function useCanvasInteractions() {
 
   return useMemo(
     () => ({
-      transientNodePositions,
       onNodesChange,
       commitViewportChange,
       arrangeCanvas
     }),
-    [arrangeCanvas, commitViewportChange, onNodesChange, transientNodePositions]
+    [arrangeCanvas, commitViewportChange, onNodesChange]
   );
 }

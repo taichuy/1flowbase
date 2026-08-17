@@ -755,6 +755,7 @@
     "export": "Export",
     "mcp_management": "MCP management",
     "mcp_instances": "MCP instances",
+    "mcp_template_instance_status_modified": "Modified",
     "mcp_tool_config": "Tool configuration",
     "mcp_third_party": "Third-party MCP",
     "mcp_meta_config": "MCP configuration",

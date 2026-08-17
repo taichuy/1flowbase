@@ -31,8 +31,7 @@ use crate::{
     official_extension_catalog::{
         DownloadedOfficialExtensionArtifact, LocatedOfficialExtensionCatalogEntry,
         OfficialExtensionArtifactDescriptor, OfficialExtensionArtifactError,
-        OfficialExtensionCatalogEntry, OfficialExtensionCatalogFreshness,
-        OfficialExtensionCatalogSearchQuery,
+        OfficialExtensionCatalogEntry,
     },
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
@@ -47,8 +46,13 @@ use super::{
     MAX_PLUGIN_UPLOAD_BYTES,
 };
 
+mod builtin_mcp;
+mod catalog_page;
 mod dto;
 
+use builtin_mcp::builtin_frontstage_catalog_entry;
+pub(crate) use builtin_mcp::BUILTIN_FRONTSTAGE_CATALOG_ID;
+use catalog_page::load_catalog_page;
 pub use dto::*;
 
 pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
@@ -474,6 +478,7 @@ pub async fn delete_local_extension_installation(
 
 #[derive(Debug, Clone)]
 struct InstalledCatalogJoin {
+    installation_id: Uuid,
     current_version: String,
     source: String,
     trust: String,
@@ -502,6 +507,7 @@ fn project_installed_catalog_joins(
         joins.insert(
             entry.identity.catalog_id(),
             InstalledCatalogJoin {
+                installation_id: entry.id,
                 current_version: entry.identity.version,
                 source: entry.source_kind,
                 trust: entry.trust_level,
@@ -682,64 +688,15 @@ fn project_catalog_entry(
         },
         artifact_kind: None,
         installation_source: installation.map(|value| value.source.clone()),
+        extension_installation_id: installation.map(|value| value.installation_id.to_string()),
+        builtin_template_id: None,
         trust: installation
             .map(|value| value.trust.clone())
             .unwrap_or_else(|| catalog_trust.to_string()),
         warnings,
         compatibility,
+        mcp_instances: Vec::new(),
     }
-}
-
-async fn load_catalog_page(
-    state: &ApiState,
-    category: ExtensionCatalogCategory,
-    query: ExtensionCatalogGatewayQuery,
-) -> Result<ExtensionCatalogGatewayPageResponse, ApiError> {
-    let limit = query.limit.unwrap_or(50).clamp(1, 100);
-    let page = state
-        .official_extension_catalog_source
-        .search(
-            category.as_str(),
-            OfficialExtensionCatalogSearchQuery {
-                slot_code: query.slot_code,
-                q: query.q,
-                limit,
-                cursor: query.cursor,
-            },
-        )
-        .await?;
-    let installed = installed_catalog_joins(state, category).await?;
-    let trusted_key_ids = state
-        .official_plugin_source
-        .trusted_public_keys()
-        .iter()
-        .map(|key| key.key_id.clone())
-        .collect::<Vec<_>>();
-    let catalog_source = match page.source_kind.as_str() {
-        "official_repository" => "official",
-        _ => "mirror",
-    };
-    let entries = page
-        .entries
-        .into_iter()
-        .map(|entry| project_catalog_entry(entry, catalog_source, &installed, &trusted_key_ids))
-        .collect();
-    Ok(ExtensionCatalogGatewayPageResponse {
-        category: page.category,
-        freshness: match page.freshness {
-            OfficialExtensionCatalogFreshness::Fresh => "fresh",
-            OfficialExtensionCatalogFreshness::Stale => "stale",
-        }
-        .to_string(),
-        catalog_page: page.snapshot_checksum.clone(),
-        catalog_page_number: 0,
-        catalog_page_checksum: page.snapshot_checksum,
-        catalog_page_locator: page.snapshot_locator,
-        limit,
-        next_cursor: page.next_cursor,
-        total_entries: page.total_entries,
-        entries,
-    })
 }
 
 #[utoipa::path(
@@ -755,9 +712,10 @@ pub async fn list_extension_catalog_gateway(
     headers: HeaderMap,
     Query(query): Query<ExtensionCatalogGatewayQuery>,
 ) -> Result<Json<ApiSuccess<ExtensionCatalogGatewayPageResponse>>, ApiError> {
-    let _context = require_session(&state, &headers).await?;
+    let context = require_session(&state, &headers).await?;
     let category = ExtensionCatalogCategory::parse(&category)?;
-    let page = load_catalog_page(&state, category, query).await?;
+    let page =
+        load_catalog_page(&state, context.actor.current_workspace_id, category, query).await?;
     Ok(Json(ApiSuccess::new(page)))
 }
 
@@ -774,14 +732,24 @@ pub async fn get_extension_catalog_entry(
     headers: HeaderMap,
     Query(_query): Query<ExtensionCatalogGatewayQuery>,
 ) -> Result<Json<ApiSuccess<ExtensionCatalogGatewayEntryResponse>>, ApiError> {
-    let _context = require_session(&state, &headers).await?;
+    let context = require_session(&state, &headers).await?;
     let category = ExtensionCatalogCategory::parse(&category)?;
     let identity = catalog_identity(category, &catalog_id)?;
-    let located = find_catalog_entry_for_requested_identity(&state, category, &catalog_id)
-        .await?
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-            "extension_catalog_entry",
-        ))?;
+    if category == ExtensionCatalogCategory::Mcp && catalog_id == BUILTIN_FRONTSTAGE_CATALOG_ID {
+        let installed = installed_catalog_joins(&state, category).await?;
+        return Ok(Json(ApiSuccess::new(
+            builtin_frontstage_catalog_entry(
+                &state,
+                context.actor.current_workspace_id,
+                &installed,
+            )
+            .await?,
+        )));
+    }
+    let located = find_catalog_entry_for_requested_identity(&state, category, &catalog_id).await?;
+    let located = located.ok_or(control_plane::errors::ControlPlaneError::NotFound(
+        "extension_catalog_entry",
+    ))?;
     if located.entry.category != category.as_str()
         || located.entry.artifact != identity.artifact_id()
         || located.entry.id != catalog_id

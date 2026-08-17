@@ -17,8 +17,8 @@ match_when:
   - 调整浏览器客户端工具与 MCP 配置、扩展中心模板的边界
   - 判断助手窗口关闭、WebSocket 断开或重新附加运行时的前端工具可用性
 created_at: 2026-08-16 00
-updated_at: 2026-08-17 11
-last_verified_at: 2026-08-17 11
+updated_at: 2026-08-17 15
+last_verified_at: 2026-08-17 15
 decision_policy: verify_before_decision
 status: root_ready
 source_issue: "#1738"
@@ -70,3 +70,10 @@ scope:
 - 模板库继续持有不可变默认包；对应实例恢复必须先 preview，再由用户确认，恢复后的资源仍保持可编辑。
 - “配置包来源”只表达 provenance；不得再用它禁用前端操作或让 control-plane 返回 `mcp_system_managed`。
 - 用户纠正恢复入口归属：不得在列表顶部放“恢复默认”，避免形成恢复全部的语义；只在有配置包来源的对应实例“更多操作”中显示“恢复此实例默认”。
+
+## 2026-08-17 扩展中心恢复入口确认
+
+- 用户确认扩展中心是实例被删除后的标准恢复入口；MCP 管理行内“更多操作”保留为同一实例级 contract 的快捷入口。
+- `frontstage_assistant` 必须作为内置、离线可用模板合并进扩展中心 MCP catalog；远程 catalog 即使没有该条目也必须可见。
+- 扩展中心“查看”按模板实例展示 workspace 状态，并对每个实例提供“恢复默认”；不得恢复整个 Bundle，也不得在 MCP 管理列表伪造已删除实例。
+- 恢复请求直接使用随代码发布的不可变备份真值 `builtin_template_id + instance_id`，不依赖历史 import receipt 或 Extension Installation 索引；删除后仍能恢复。

@@ -25,6 +25,7 @@ import { useTranslation } from 'react-i18next';
 import '../../../../shared/ui/structured-list/structured-list.css';
 
 import { useAuthStore } from '../../../../state/auth-store';
+import { i18nText } from '../../../../shared/i18n/text';
 import {
   DataTable,
   DataTableColumnSettings,
@@ -129,6 +130,20 @@ function extensionApplicationStatusLabel(
       return t('auto.extension_application_applied');
     case 'available':
       return t('auto.extension_application_available');
+  }
+}
+
+function mcpTemplateWorkspaceStatusLabel(
+  status: SettingsExtensionCatalogEntry['mcp_instances'][number]['workspace_status'],
+  t: (key: string) => string
+) {
+  switch (status) {
+    case 'applied':
+      return t('auto.extension_application_applied');
+    case 'missing':
+      return t('auto.revoked');
+    case 'modified':
+      return t('auto.mcp_template_instance_status_modified');
   }
 }
 
@@ -274,7 +289,9 @@ function GenericExtensionCenterSection({
     if (!csrfToken || rows.length === 0) return;
 
     const checkableRows = rows.filter(
-      (row) => isInstalledRow(row) || row.current_version !== null
+      (row) =>
+        (isInstalledRow(row) || row.current_version !== null) &&
+        (isInstalledRow(row) || row.catalog_source !== 'builtin')
     );
     const groups = new Map<SettingsExtensionCategory, ExtensionRow[]>();
     for (const row of checkableRows) {
@@ -783,7 +800,7 @@ function GenericExtensionCenterSection({
                 </Button>
               ) : null}
             </Space>
-          ) : (
+          ) : row.catalog_source === 'builtin' ? null : (
             <span
               data-update-state={
                 row.installation_status === 'not_installed'
@@ -1037,6 +1054,63 @@ function GenericExtensionCenterSection({
                   : selected.trust}
               </Descriptions.Item>
             </Descriptions>
+            {!isInstalledRow(selected) &&
+            selected.category === 'mcp' &&
+            selected.mcp_instances.length > 0 ? (
+              <div className="structured-list structured-list--bordered">
+                <div className="structured-list__header">
+                  <Typography.Text strong>
+                    {t('auto.mcp_instances')}
+                  </Typography.Text>
+                </div>
+                <ul className="structured-list__items">
+                  {selected.mcp_instances.map((instance) => (
+                    <li
+                      className="structured-list__item"
+                      key={instance.instance_id}
+                    >
+                      <div className="structured-list__content">
+                        <Flex vertical gap={4}>
+                          <Space size={8} wrap>
+                            <Typography.Text strong>
+                              {instance.name}
+                            </Typography.Text>
+                            <Tag>
+                              {mcpTemplateWorkspaceStatusLabel(
+                                instance.workspace_status,
+                                t
+                              )}
+                            </Tag>
+                          </Space>
+                          <Typography.Text type="secondary">
+                            {instance.description_short ?? instance.instance_id}
+                          </Typography.Text>
+                        </Flex>
+                      </div>
+                      <div className="structured-list__actions">
+                        <Button
+                          type="link"
+                          disabled={!selected.builtin_template_id}
+                          onClick={() => {
+                            if (!selected.builtin_template_id) return;
+                            setApplicationTarget({
+                              builtinTemplateId: selected.builtin_template_id,
+                              instanceId: instance.instance_id,
+                              action: 'import_mcp'
+                            });
+                          }}
+                        >
+                          {i18nText(
+                            'settingsMcpManagement',
+                            'auto.restore_instance_default'
+                          )}
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
             {isInstalledRow(selected) ? (
               <div className="structured-list structured-list--bordered">
                 <div className="structured-list__header">

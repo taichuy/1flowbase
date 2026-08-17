@@ -64,6 +64,7 @@ fn root_1545_ac_4_catalog_projection_joins_real_local_version_by_stable_plugin_i
     let installed = HashMap::from([(
         "runtime-extensions:taichuy/openai".to_string(),
         InstalledCatalogJoin {
+            installation_id: Uuid::now_v7(),
             current_version: "0.1.32-dev".to_string(),
             source: "upload".to_string(),
             trust: "unknown".to_string(),

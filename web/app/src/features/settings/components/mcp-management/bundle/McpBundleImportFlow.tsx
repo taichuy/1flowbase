@@ -2,8 +2,10 @@ import { App } from 'antd';
 import { useEffect, useState } from 'react';
 
 import {
+  applySettingsBuiltinMcpTemplate,
   applySettingsInstalledMcpExtension,
   getSettingsInstalledMcpExtensionIntegrityChallenge,
+  previewSettingsBuiltinMcpTemplate,
   previewSettingsInstalledMcpExtension
 } from '../../../api/extensions';
 import {
@@ -28,7 +30,12 @@ export type McpBundleImportSource =
       bundleId: string;
       bundleVersion?: string;
     }
-  | { kind: 'installed_extension'; installationId: string };
+  | {
+      kind: 'installed_extension';
+      installationId: string;
+      instanceId?: string;
+    }
+  | { kind: 'builtin_template'; templateId: string; instanceId: string };
 
 function confirmedWarnings(warnings: Array<{ code: string }>) {
   return {
@@ -64,6 +71,12 @@ export function McpBundleImportFlow({
   const officialBundleId = source?.kind === 'official' ? source.bundleId : null;
   const installationId =
     source?.kind === 'installed_extension' ? source.installationId : null;
+  const installedInstanceId =
+    source?.kind === 'installed_extension' ? source.instanceId : undefined;
+  const builtinTemplateId =
+    source?.kind === 'builtin_template' ? source.templateId : null;
+  const builtinInstanceId =
+    source?.kind === 'builtin_template' ? source.instanceId : null;
   const libraryOrganization =
     source?.kind === 'library' ? source.organization : null;
   const libraryBundleId = source?.kind === 'library' ? source.bundleId : null;
@@ -102,16 +115,26 @@ export function McpBundleImportFlow({
           csrfToken
         );
       }
+      if (sourceKind === 'builtin_template') {
+        const result = await previewSettingsBuiltinMcpTemplate(
+          builtinTemplateId!,
+          builtinInstanceId!,
+          csrfToken
+        );
+        return result.preview;
+      }
 
       const result = await previewSettingsInstalledMcpExtension(
         installationId!,
-        csrfToken
+        csrfToken,
+        installedInstanceId
       );
       if (!cancelled) {
         setIntegrityWarnings(
           result.integrity_warnings.map((warning) => warning.message)
         );
         setInstalledOptions({
+          ...(installedInstanceId ? { instance_id: installedInstanceId } : {}),
           ...(result.required_integrity_override
             ? {
                 integrity_override: confirmedWarnings(
@@ -143,7 +166,10 @@ export function McpBundleImportFlow({
     };
   }, [
     csrfToken,
+    builtinInstanceId,
+    builtinTemplateId,
     installationId,
+    installedInstanceId,
     libraryBundleId,
     libraryBundleVersion,
     libraryOrganization,
@@ -180,13 +206,21 @@ export function McpBundleImportFlow({
                     : {},
                   csrfToken
                 )
-              : (
-                  await applySettingsInstalledMcpExtension(
-                    source.installationId,
-                    csrfToken,
-                    installedOptions
-                  )
-                ).import_report;
+              : source.kind === 'builtin_template'
+                ? (
+                    await applySettingsBuiltinMcpTemplate(
+                      source.templateId,
+                      source.instanceId,
+                      csrfToken
+                    )
+                  ).import_report
+                : (
+                    await applySettingsInstalledMcpExtension(
+                      source.installationId,
+                      csrfToken,
+                      installedOptions
+                    )
+                  ).import_report;
       setReview(report);
       await onApplied();
     } catch (error) {

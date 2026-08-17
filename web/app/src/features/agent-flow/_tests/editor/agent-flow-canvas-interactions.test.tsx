@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -31,38 +31,44 @@ type MockViewport = {
   zoom: number;
 };
 
+type MockReactFlowNode = {
+  id: string;
+  height?: number;
+  measured?: {
+    height?: number;
+    width?: number;
+  };
+  position?: {
+    x: number;
+    y: number;
+  };
+  width?: number;
+  data?: {
+    onRunNode?: (nodeId: string) => void;
+    onSelectNode?: (nodeId: string) => void;
+    showSourceHandle?: boolean;
+  };
+};
+
+type MockReactFlowEdge = {
+  id: string;
+  selected?: boolean;
+  source?: string;
+  target?: string;
+  sourceHandle?: string | null;
+  targetHandle?: string | null;
+  data?: {
+    onInsertNode?: (edgeId: string, nodeType: FlowNodeType) => void;
+  };
+};
+
 type MockReactFlowProps = {
   children?: ReactNode;
+  defaultEdges?: MockReactFlowEdge[];
+  defaultNodes?: MockReactFlowNode[];
   defaultViewport?: MockViewport;
-  nodes?: Array<{
-    id: string;
-    height?: number;
-    measured?: {
-      height?: number;
-      width?: number;
-    };
-    position?: {
-      x: number;
-      y: number;
-    };
-    width?: number;
-    data?: {
-      onRunNode?: (nodeId: string) => void;
-      onSelectNode?: (nodeId: string) => void;
-      showSourceHandle?: boolean;
-    };
-  }>;
-  edges?: Array<{
-    id: string;
-    selected?: boolean;
-    source?: string;
-    target?: string;
-    sourceHandle?: string | null;
-    targetHandle?: string | null;
-    data?: {
-      onInsertNode?: (edgeId: string, nodeType: FlowNodeType) => void;
-    };
-  }>;
+  nodes?: MockReactFlowNode[];
+  edges?: MockReactFlowEdge[];
   onConnect?: (connection: {
     source: string;
     target: string;
@@ -110,6 +116,7 @@ type MockReactFlowProps = {
 };
 
 let latestReactFlowProps: MockReactFlowProps | null = null;
+let canvasCommitCount = 0;
 let mockViewport: MockViewport = { x: 0, y: 0, zoom: 1 };
 let latestViewportChangeOptions: {
   onStart?: (viewport: MockViewport) => void;
@@ -125,6 +132,7 @@ const nodePickerOptions = buildNodePickerOptions(
     })
   ]).nodes
 );
+const emptyIssueCountByNodeId: Record<string, number> = {};
 
 function createInitialState(
   document = createDefaultAgentFlowDocument({ flowId: 'flow-1' })
@@ -203,7 +211,7 @@ function renderCanvas(
         }}
       />
       <AgentFlowCanvas
-        issueCountByNodeId={{}}
+        issueCountByNodeId={emptyIssueCountByNodeId}
         nodePickerOptions={nodePickerOptions}
       />
     </AgentFlowEditorStoreProvider>
@@ -218,6 +226,28 @@ function renderCanvas(
       return latestState;
     }
   };
+}
+
+function CanvasParentHarness() {
+  const [previewFrame, setPreviewFrame] = useState(0);
+  const runNode = useCallback(() => undefined, []);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => setPreviewFrame((current) => current + 1)}
+      >
+        advance preview frame
+      </button>
+      <span>{previewFrame}</span>
+      <AgentFlowCanvas
+        issueCountByNodeId={emptyIssueCountByNodeId}
+        nodePickerOptions={nodePickerOptions}
+        onRunNode={runNode}
+      />
+    </>
+  );
 }
 
 vi.mock('@xyflow/react', () => ({
@@ -235,7 +265,12 @@ vi.mock('@xyflow/react', () => ({
     Right: 'right'
   },
   ReactFlow: (props: MockReactFlowProps) => {
-    latestReactFlowProps = props;
+    canvasCommitCount += 1;
+    latestReactFlowProps = {
+      ...props,
+      edges: props.edges ?? props.defaultEdges,
+      nodes: props.nodes ?? props.defaultNodes
+    };
     mockViewport = props.viewport ?? props.defaultViewport ?? mockViewport;
 
     return (
@@ -296,6 +331,16 @@ vi.mock('@xyflow/react', () => ({
   useReactFlow: () => ({
     fitView: vi.fn(),
     screenToFlowPosition: ({ x, y }: { x: number; y: number }) => ({ x, y }),
+    setEdges: (edges: MockReactFlowProps['edges']) => {
+      if (latestReactFlowProps) {
+        latestReactFlowProps = { ...latestReactFlowProps, edges };
+      }
+    },
+    setNodes: (nodes: MockReactFlowProps['nodes']) => {
+      if (latestReactFlowProps) {
+        latestReactFlowProps = { ...latestReactFlowProps, nodes };
+      }
+    },
     zoomIn: vi.fn(),
     zoomOut: vi.fn()
   }),
@@ -305,6 +350,7 @@ vi.mock('@xyflow/react', () => ({
 describe('AgentFlowCanvas interactions', () => {
   beforeEach(() => {
     latestReactFlowProps = null;
+    canvasCommitCount = 0;
     latestViewportChangeOptions = null;
     mockViewport = { x: 0, y: 0, zoom: 1 };
   });
@@ -324,8 +370,9 @@ describe('AgentFlowCanvas interactions', () => {
     );
   });
 
-  test('keeps node drag move positions local until the drag ends', () => {
+  test('AC-002 lets React Flow own transient drag positions without rebuilding controlled nodes', () => {
     const { getState } = renderCanvas();
+    const initialCanvasCommitCount = canvasCommitCount;
     const initialPosition = getState().workingDocument.graph.nodes.find(
       (node) => node.id === 'node-llm'
     )?.position;
@@ -342,13 +389,26 @@ describe('AgentFlowCanvas interactions', () => {
         })
       ])
     );
-    expect(
-      latestReactFlowProps?.nodes?.find((node) => node.id === 'node-llm')
-        ?.position
-    ).toEqual({ x: 480, y: 250 });
+    expect(canvasCommitCount).toBe(initialCanvasCommitCount);
   });
 
-  test('lets React Flow measure controlled node heights from the DOM', () => {
+  test('AC-001 keeps the canvas render boundary stable during unrelated preview frames', () => {
+    render(
+      <AgentFlowEditorStoreProvider initialState={createInitialState()}>
+        <CanvasParentHarness />
+      </AgentFlowEditorStoreProvider>
+    );
+    const initialCanvasCommitCount = canvasCommitCount;
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'advance preview frame' })
+    );
+
+    expect(screen.getByText('1')).toBeInTheDocument();
+    expect(canvasCommitCount).toBe(initialCanvasCommitCount);
+  });
+
+  test('lets React Flow measure uncontrolled node heights from the DOM', () => {
     renderCanvas();
 
     const llmNode = latestReactFlowProps?.nodes?.find(

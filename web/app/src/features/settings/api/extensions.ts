@@ -1,4 +1,5 @@
 import {
+  applyConsoleBuiltinMcpTemplate,
   applyConsoleInstalledMcpExtension,
   checkConsoleExtensionUpdates,
   disableConsoleInstalledExtension,
@@ -12,6 +13,7 @@ import {
   listConsoleExtensionCatalog,
   listConsoleInstalledExtensions,
   previewConsoleInstalledMcpExtension,
+  previewConsoleBuiltinMcpTemplate,
   type ConsoleExtensionCatalogEntry,
   type ConsoleExtensionApplicationAction,
   type ConsoleExtensionCategory,
@@ -140,11 +142,13 @@ export function disableSettingsInstalledExtension(
 
 export function previewSettingsInstalledMcpExtension(
   extensionInstallationId: string,
-  csrfToken: string
+  csrfToken: string,
+  instanceId?: string
 ) {
   return previewConsoleInstalledMcpExtension(
     extensionInstallationId,
-    csrfToken
+    csrfToken,
+    instanceId ? { instance_id: instanceId } : {}
   );
 }
 
@@ -157,6 +161,30 @@ export function applySettingsInstalledMcpExtension(
     extensionInstallationId,
     csrfToken,
     options
+  );
+}
+
+export function previewSettingsBuiltinMcpTemplate(
+  builtinTemplateId: string,
+  instanceId: string,
+  csrfToken: string
+) {
+  return previewConsoleBuiltinMcpTemplate(
+    builtinTemplateId,
+    instanceId,
+    csrfToken
+  );
+}
+
+export function applySettingsBuiltinMcpTemplate(
+  builtinTemplateId: string,
+  instanceId: string,
+  csrfToken: string
+) {
+  return applyConsoleBuiltinMcpTemplate(
+    builtinTemplateId,
+    instanceId,
+    csrfToken
   );
 }
 

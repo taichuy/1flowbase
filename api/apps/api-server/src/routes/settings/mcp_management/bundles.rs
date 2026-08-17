@@ -158,6 +158,7 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 enum McpBundleSourceBody {
     OfficialCatalog(OfficialMcpBundleSelector),
     InstalledExtension(InstalledMcpExtensionSelector),
+    BuiltinTemplate(BuiltinMcpTemplateSelector),
 }
 
 #[derive(Debug, Deserialize)]
@@ -169,7 +170,14 @@ struct OfficialMcpBundleSelector {
 #[derive(Debug, Deserialize)]
 struct InstalledMcpExtensionSelector {
     extension_installation_id: String,
+    instance_id: Option<String>,
     integrity_override: Option<crate::routes::plugins::PluginRiskOverrideBody>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BuiltinMcpTemplateSelector {
+    builtin_template_id: String,
+    instance_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -177,6 +185,14 @@ struct InstalledMcpExtensionSelector {
 enum McpBundlePreviewSourceResponse {
     OfficialCatalog(domain::McpBundlePreview),
     InstalledExtension(InstalledMcpExtensionPreviewResponse),
+    BuiltinTemplate(BuiltinMcpTemplatePreviewResponse),
+}
+
+#[derive(Debug, Serialize)]
+struct BuiltinMcpTemplatePreviewResponse {
+    builtin_template_id: String,
+    workspace_application_status: String,
+    preview: domain::McpBundlePreview,
 }
 
 #[derive(Debug, Serialize)]
@@ -194,6 +210,14 @@ struct InstalledMcpExtensionPreviewResponse {
 enum McpBundleImportSourceResponse {
     OfficialCatalog(domain::McpBundleImportReport),
     InstalledExtension(InstalledMcpExtensionImportResponse),
+    BuiltinTemplate(BuiltinMcpTemplateImportResponse),
+}
+
+#[derive(Debug, Serialize)]
+struct BuiltinMcpTemplateImportResponse {
+    builtin_template_id: String,
+    workspace_application_status: String,
+    import_report: domain::McpBundleImportReport,
 }
 
 #[derive(Debug, Serialize)]
@@ -218,8 +242,15 @@ struct InstalledMcpExtensionIntegrityChallengeResponse {
     preview: domain::McpBundlePreview,
 }
 
+#[derive(Clone, Copy)]
+enum LoadedMcpBundleSourceKind {
+    OfficialCatalog,
+    InstalledExtension(uuid::Uuid),
+    BuiltinTemplate,
+}
+
 struct LoadedMcpBundleSource {
-    extension_installation_id: Option<uuid::Uuid>,
+    kind: LoadedMcpBundleSourceKind,
     package: domain::McpBundlePackage,
     integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
 }
@@ -566,8 +597,8 @@ async fn preview_official_bundle(
             current_system_version: current_system_version(),
         })
         .await?;
-    let response = match source.extension_installation_id {
-        Some(extension_installation_id) => {
+    let response = match source.kind {
+        LoadedMcpBundleSourceKind::InstalledExtension(extension_installation_id) => {
             let has_import_receipt = McpManagementService::new(state.store.clone())
                 .extension_bundle_is_imported(context.user.id, extension_installation_id)
                 .await?;
@@ -594,7 +625,23 @@ async fn preview_official_bundle(
                 },
             )
         }
-        None => McpBundlePreviewSourceResponse::OfficialCatalog(preview),
+        LoadedMcpBundleSourceKind::BuiltinTemplate => {
+            let workspace_application_status = if preview.effect_summary.changes > 0 {
+                "ready_to_import"
+            } else {
+                "already_present"
+            };
+            McpBundlePreviewSourceResponse::BuiltinTemplate(BuiltinMcpTemplatePreviewResponse {
+                builtin_template_id:
+                    crate::routes::plugins::extension_center::BUILTIN_FRONTSTAGE_CATALOG_ID
+                        .to_string(),
+                workspace_application_status: workspace_application_status.to_string(),
+                preview,
+            })
+        }
+        LoadedMcpBundleSourceKind::OfficialCatalog => {
+            McpBundlePreviewSourceResponse::OfficialCatalog(preview)
+        }
     };
     Ok(Json(ApiSuccess::new(response)))
 }
@@ -617,10 +664,11 @@ async fn import_official_bundle(
                 acknowledged_warnings: value.acknowledged_warnings.clone(),
             }),
         McpBundleSourceBody::OfficialCatalog(_) => None,
+        McpBundleSourceBody::BuiltinTemplate(_) => None,
     };
     let source = load_mcp_bundle_source(&state, body).await?;
     let service = McpManagementService::new(state.store.clone());
-    if let Some(extension_installation_id) = source.extension_installation_id {
+    if let LoadedMcpBundleSourceKind::InstalledExtension(extension_installation_id) = source.kind {
         let preview = service
             .preview_bundle(PreviewMcpBundleCommand {
                 actor_user_id: context.user.id,
@@ -663,7 +711,7 @@ async fn import_official_bundle(
         })
         .await?;
     let is_reconciled = report.effect_summary.conflicts == 0 && report.effect_summary.failed == 0;
-    if let Some(extension_installation_id) = source.extension_installation_id {
+    if let LoadedMcpBundleSourceKind::InstalledExtension(extension_installation_id) = source.kind {
         if is_reconciled {
             service
                 .record_extension_bundle_import(
@@ -674,8 +722,8 @@ async fn import_official_bundle(
                 .await?;
         }
     }
-    let response = match source.extension_installation_id {
-        Some(extension_installation_id) => {
+    let response = match source.kind {
+        LoadedMcpBundleSourceKind::InstalledExtension(extension_installation_id) => {
             let workspace_application_status = if is_reconciled {
                 "imported"
             } else if report.effect_summary.changes > 0 {
@@ -691,7 +739,25 @@ async fn import_official_bundle(
                 import_report: report,
             })
         }
-        None => McpBundleImportSourceResponse::OfficialCatalog(report),
+        LoadedMcpBundleSourceKind::BuiltinTemplate => {
+            let workspace_application_status = if is_reconciled {
+                "imported"
+            } else if report.effect_summary.changes > 0 {
+                "partially_imported"
+            } else {
+                "not_imported"
+            };
+            McpBundleImportSourceResponse::BuiltinTemplate(BuiltinMcpTemplateImportResponse {
+                builtin_template_id:
+                    crate::routes::plugins::extension_center::BUILTIN_FRONTSTAGE_CATALOG_ID
+                        .to_string(),
+                workspace_application_status: workspace_application_status.to_string(),
+                import_report: report,
+            })
+        }
+        LoadedMcpBundleSourceKind::OfficialCatalog => {
+            McpBundleImportSourceResponse::OfficialCatalog(report)
+        }
     };
     Ok(Json(ApiSuccess::new(response)).into_response())
 }
@@ -718,7 +784,7 @@ async fn load_mcp_bundle_source(
                 .download_artifact(&located.entry)
                 .await?;
             Ok(LoadedMcpBundleSource {
-                extension_installation_id: None,
+                kind: LoadedMcpBundleSourceKind::OfficialCatalog,
                 package: parse_downloaded_bundle(downloaded.artifact_bytes).await?,
                 integrity_warnings: Vec::new(),
             })
@@ -745,10 +811,32 @@ async fn load_mcp_bundle_source(
                     ))?;
             let bytes = tokio::fs::read(local_path).await?;
             let integrity_warnings = installed_extension_integrity_warnings(&installation, &bytes);
+            let package = parse_downloaded_bundle(bytes).await?;
+            let package = match selector.instance_id {
+                Some(instance_id) => package
+                    .project_instance(&instance_id)
+                    .ok_or(ControlPlaneError::NotFound("mcp_bundle_instance"))?,
+                None => package,
+            };
             Ok(LoadedMcpBundleSource {
-                extension_installation_id: Some(installation_id),
-                package: parse_downloaded_bundle(bytes).await?,
+                kind: LoadedMcpBundleSourceKind::InstalledExtension(installation_id),
+                package,
                 integrity_warnings,
+            })
+        }
+        McpBundleSourceBody::BuiltinTemplate(selector) => {
+            if selector.builtin_template_id
+                != crate::routes::plugins::extension_center::BUILTIN_FRONTSTAGE_CATALOG_ID
+            {
+                return Err(ControlPlaneError::NotFound("builtin_mcp_template").into());
+            }
+            let package = crate::official_mcp_bundles::ApiOfficialMcpBundleRegistry::bundled_frontstage_assistant_package()?
+                .project_instance(&selector.instance_id)
+                .ok_or(ControlPlaneError::NotFound("mcp_bundle_instance"))?;
+            Ok(LoadedMcpBundleSource {
+                kind: LoadedMcpBundleSourceKind::BuiltinTemplate,
+                package,
+                integrity_warnings: Vec::new(),
             })
         }
     }
@@ -988,7 +1076,9 @@ async fn parse_downloaded_bundle(bytes: Vec<u8>) -> Result<domain::McpBundlePack
         .map_err(Into::into)
 }
 
-fn parse_bundle_archive(bytes: &[u8]) -> Result<domain::McpBundlePackage, ControlPlaneError> {
+pub(crate) fn parse_bundle_archive(
+    bytes: &[u8],
+) -> Result<domain::McpBundlePackage, ControlPlaneError> {
     let mut archive = ZipArchive::new(Cursor::new(bytes))
         .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_archive"))?;
     if archive.is_empty() || archive.len() > MAX_BUNDLE_FILES {

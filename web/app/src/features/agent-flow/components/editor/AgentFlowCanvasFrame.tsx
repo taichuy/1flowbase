@@ -3,6 +3,7 @@ import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import { App, Button, Typography } from 'antd';
 import {
   type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -161,6 +162,7 @@ export function AgentFlowCanvasFrame({
   const viewportGetterRef = useRef<
     (() => FlowAuthoringDocument['editor']['viewport']) | null
   >(null);
+  const runNodeFromCanvasRef = useRef<(nodeId: string) => void>(() => {});
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const stopNodeDetailResizeRef = useRef<(() => void) | null>(null);
   const stopDebugConsoleResizeRef = useRef<(() => void) | null>(null);
@@ -233,6 +235,21 @@ export function AgentFlowCanvasFrame({
   );
   const [isResizingVariableCacheSidebar, setIsResizingVariableCacheSidebar] =
     useState(false);
+  const handleCanvasRunNode = useCallback((nodeId: string) => {
+    runNodeFromCanvasRef.current(nodeId);
+  }, []);
+  const handleViewportSnapshotChange = useCallback(
+    (viewport: FlowAuthoringDocument['editor']['viewport']) => {
+      viewportSnapshotRef.current = viewport;
+    },
+    []
+  );
+  const handleViewportGetterReady = useCallback(
+    (getter: (() => FlowAuthoringDocument['editor']['viewport']) | null) => {
+      viewportGetterRef.current = getter;
+    },
+    []
+  );
   const modelProviderOptionsQuery = useQuery({
     queryKey: modelProviderOptionsQueryKey,
     queryFn: fetchModelProviderOptions
@@ -749,6 +766,10 @@ export function AgentFlowCanvasFrame({
     runNodePreview('run', nodeId, plan.input_payload);
   }
 
+  useEffect(() => {
+    runNodeFromCanvasRef.current = handleRunNode;
+  });
+
   function handleDebugNode(nodeId: string) {
     const plan = buildNodeDebugVariableConfirmationPlan(
       documentRef.current,
@@ -914,13 +935,9 @@ export function AgentFlowCanvasFrame({
         <AgentFlowCanvas
           issueCountByNodeId={issueCountByNodeId}
           nodePickerOptions={nodePickerOptions}
-          onRunNode={handleRunNode}
-          onViewportSnapshotChange={(viewport) => {
-            viewportSnapshotRef.current = viewport;
-          }}
-          onViewportGetterReady={(getter) => {
-            viewportGetterRef.current = getter;
-          }}
+          onRunNode={handleCanvasRunNode}
+          onViewportSnapshotChange={handleViewportSnapshotChange}
+          onViewportGetterReady={handleViewportGetterReady}
         />
         <Button
           className="agent-flow-editor__variable-cache-trigger"

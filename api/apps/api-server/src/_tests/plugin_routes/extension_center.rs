@@ -17,11 +17,217 @@ use async_trait::async_trait;
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
+    Router,
 };
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
 use super::support::{create_member, create_role, replace_member_roles};
+
+#[derive(Clone)]
+struct EmptyCatalogSource;
+
+async fn restore_builtin_frontstage_instance(app: &Router, cookie: &str, csrf: &str) -> StatusCode {
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/bundles/import-official")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "builtin_template_id": "mcp:1flowbase/frontstage_assistant",
+                        "instance_id": "frontstage_browser"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap()
+        .status()
+}
+
+#[async_trait]
+impl OfficialExtensionCatalogSourcePort for EmptyCatalogSource {
+    async fn search(
+        &self,
+        category: &str,
+        _query: OfficialExtensionCatalogSearchQuery,
+    ) -> anyhow::Result<OfficialExtensionCatalogSearchResult> {
+        Ok(OfficialExtensionCatalogSearchResult {
+            category: category.to_string(),
+            source_kind: "official_repository".to_string(),
+            freshness: crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Fresh,
+            snapshot_checksum: "sha256:empty".to_string(),
+            snapshot_locator: "builtin://empty-catalog".to_string(),
+            total_entries: 0,
+            next_cursor: None,
+            entries: Vec::new(),
+        })
+    }
+
+    async fn list_page(
+        &self,
+        _category: &str,
+        _cursor: Option<&str>,
+    ) -> anyhow::Result<OfficialExtensionCatalogPage> {
+        anyhow::bail!("not used")
+    }
+
+    async fn find_entry(
+        &self,
+        _category: &str,
+        _catalog_id: &str,
+    ) -> anyhow::Result<Option<LocatedOfficialExtensionCatalogEntry>> {
+        Ok(None)
+    }
+
+    fn resolve_artifact(
+        &self,
+        _entry: &OfficialExtensionCatalogEntry,
+    ) -> anyhow::Result<OfficialExtensionArtifactDescriptor> {
+        anyhow::bail!("not used")
+    }
+
+    async fn download_artifact(
+        &self,
+        _entry: &OfficialExtensionCatalogEntry,
+    ) -> anyhow::Result<DownloadedOfficialExtensionArtifact> {
+        anyhow::bail!("not used")
+    }
+}
+
+#[tokio::test]
+async fn ac_001_builtin_mcp_template_is_listed_without_remote_catalog_entry() {
+    let app = test_app_with_official_extension_source(Arc::new(EmptyCatalogSource)).await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/settings/extension-center/catalog/mcp?limit=20")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let entry = payload["data"]["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["id"] == "mcp:1flowbase/frontstage_assistant")
+        .expect("built-in Frontstage MCP template must be projected into Extension Center");
+    assert_eq!(entry["catalog_source"], "builtin");
+    assert_eq!(entry["installation_status"], "installed");
+    assert_eq!(
+        entry["mcp_instances"][0]["instance_id"],
+        "frontstage_browser"
+    );
+    assert_eq!(entry["mcp_instances"][0]["workspace_status"], "missing");
+    assert_eq!(
+        entry["builtin_template_id"],
+        "mcp:1flowbase/frontstage_assistant"
+    );
+
+    assert_eq!(
+        restore_builtin_frontstage_instance(&app, &cookie, &csrf).await,
+        StatusCode::OK
+    );
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/settings/extension-center/catalog/mcp?limit=20")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let payload: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let entry = payload["data"]["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["id"] == "mcp:1flowbase/frontstage_assistant")
+        .unwrap();
+    assert_eq!(entry["mcp_instances"][0]["workspace_status"], "applied");
+
+    let deleted = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/console/mcp/instances/frontstage_browser")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/settings/extension-center/catalog/mcp?limit=20")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let payload: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let entry = payload["data"]["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["id"] == "mcp:1flowbase/frontstage_assistant")
+        .unwrap();
+    assert_eq!(entry["mcp_instances"][0]["workspace_status"], "missing");
+
+    assert_eq!(
+        restore_builtin_frontstage_instance(&app, &cookie, &csrf).await,
+        StatusCode::OK
+    );
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/settings/extension-center/catalog/mcp?limit=20")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let payload: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let entry = payload["data"]["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|entry| entry["id"] == "mcp:1flowbase/frontstage_assistant")
+        .unwrap();
+    assert_eq!(entry["mcp_instances"][0]["workspace_status"], "applied");
+}
 
 #[derive(Clone)]
 struct UnavailableArtifactSource {

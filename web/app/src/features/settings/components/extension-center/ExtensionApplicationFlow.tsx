@@ -12,7 +12,9 @@ import {
 } from '../i18n-catalog/I18nCatalogActivationFlow';
 
 export interface ExtensionApplicationTarget {
-  installationId: string;
+  installationId?: string;
+  builtinTemplateId?: string;
+  instanceId?: string;
   action: SettingsExtensionApplicationAction;
 }
 
@@ -30,16 +32,30 @@ export function ExtensionApplicationFlow({
   const mcpSource = useMemo<McpBundleImportSource | null>(
     () =>
       target?.action === 'import_mcp'
-        ? {
-            kind: 'installed_extension',
-            installationId: target.installationId
-          }
+        ? target.builtinTemplateId && target.instanceId
+          ? {
+              kind: 'builtin_template',
+              templateId: target.builtinTemplateId,
+              instanceId: target.instanceId
+            }
+          : target.installationId
+            ? {
+                kind: 'installed_extension',
+                installationId: target.installationId,
+                instanceId: target.instanceId
+              }
+            : null
         : null,
-    [target?.action, target?.installationId]
+    [
+      target?.action,
+      target?.builtinTemplateId,
+      target?.installationId,
+      target?.instanceId
+    ]
   );
   const i18nSource = useMemo<I18nCatalogActivationSource | null>(
     () =>
-      target?.action === 'activate_i18n'
+      target?.action === 'activate_i18n' && target.installationId
         ? {
             kind: 'installed_extension',
             installationId: target.installationId
@@ -52,7 +68,9 @@ export function ExtensionApplicationFlow({
     <>
       <InstalledAgentFlowImportFlow
         installationId={
-          target?.action === 'import_agent_flow' ? target.installationId : null
+          target?.action === 'import_agent_flow'
+            ? (target.installationId ?? null)
+            : null
         }
         csrfToken={csrfToken}
         onClose={onClose}

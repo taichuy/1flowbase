@@ -120,11 +120,21 @@ export interface ConsoleExtensionCatalogEntry {
   installation_status: string;
   artifact_kind: string | null;
   installation_source: string | null;
+  extension_installation_id: string | null;
+  builtin_template_id: string | null;
   trust: string;
   warnings: ConsoleExtensionWarning[];
   compatibility: ConsoleExtensionCompatibilityChallenge | null;
   slot_codes: string[];
   keywords: string[];
+  mcp_instances: ConsoleMcpExtensionTemplateInstance[];
+}
+
+export interface ConsoleMcpExtensionTemplateInstance {
+  instance_id: string;
+  name: string;
+  description_short: string | null;
+  workspace_status: 'applied' | 'missing' | 'modified';
 }
 
 export interface ConsoleExtensionCatalogPage {
@@ -174,6 +184,7 @@ export interface ConsoleExtensionInstallResponse {
 export type ConsoleMcpExtensionConflictResolution = 'keep_existing';
 
 export interface ConsoleInstalledMcpExtensionApplyOptions {
+  instance_id?: string;
   conflict_resolution?: ConsoleMcpExtensionConflictResolution;
   integrity_override?: ConsoleExtensionRiskOverride;
 }
@@ -200,6 +211,21 @@ export interface ConsoleInstalledMcpExtensionImport {
     | 'partially_imported'
     | 'not_imported';
   integrity_warnings: ConsoleExtensionWarning[];
+  import_report: ConsoleMcpBundleImportReport;
+}
+
+export interface ConsoleBuiltinMcpTemplatePreview {
+  builtin_template_id: string;
+  workspace_application_status: 'already_present' | 'ready_to_import';
+  preview: ConsoleMcpBundlePreview;
+}
+
+export interface ConsoleBuiltinMcpTemplateImport {
+  builtin_template_id: string;
+  workspace_application_status:
+    | 'imported'
+    | 'partially_imported'
+    | 'not_imported';
   import_report: ConsoleMcpBundleImportReport;
 }
 
@@ -413,12 +439,13 @@ export function uploadConsoleExtension(
 
 export function previewConsoleInstalledMcpExtension(
   extension_installation_id: string,
-  csrfToken: string
+  csrfToken: string,
+  options: Pick<ConsoleInstalledMcpExtensionApplyOptions, 'instance_id'> = {}
 ) {
   return apiFetch<ConsoleInstalledMcpExtensionPreview>({
     path: '/api/console/mcp/bundles/preview-official',
     method: 'POST',
-    body: { extension_installation_id },
+    body: { extension_installation_id, ...options },
     csrfToken
   });
 }
@@ -435,6 +462,32 @@ export function applyConsoleInstalledMcpExtension(
       extension_installation_id,
       ...options
     },
+    csrfToken
+  });
+}
+
+export function previewConsoleBuiltinMcpTemplate(
+  builtin_template_id: string,
+  instance_id: string,
+  csrfToken: string
+) {
+  return apiFetch<ConsoleBuiltinMcpTemplatePreview>({
+    path: '/api/console/mcp/bundles/preview-official',
+    method: 'POST',
+    body: { builtin_template_id, instance_id },
+    csrfToken
+  });
+}
+
+export function applyConsoleBuiltinMcpTemplate(
+  builtin_template_id: string,
+  instance_id: string,
+  csrfToken: string
+) {
+  return apiFetch<ConsoleBuiltinMcpTemplateImport>({
+    path: '/api/console/mcp/bundles/import-official',
+    method: 'POST',
+    body: { builtin_template_id, instance_id },
     csrfToken
   });
 }

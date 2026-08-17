@@ -140,9 +140,20 @@ pub struct ExtensionCatalogGatewayEntryResponse {
     pub installation_status: String,
     pub artifact_kind: Option<String>,
     pub installation_source: Option<String>,
+    pub extension_installation_id: Option<String>,
+    pub builtin_template_id: Option<String>,
     pub trust: String,
     pub warnings: Vec<ExtensionRiskWarningResponse>,
     pub compatibility: Option<ExtensionCompatibilityWarningResponse>,
+    pub mcp_instances: Vec<McpExtensionTemplateInstanceResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema, Clone)]
+pub struct McpExtensionTemplateInstanceResponse {
+    pub instance_id: String,
+    pub name: String,
+    pub description_short: Option<String>,
+    pub workspace_status: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

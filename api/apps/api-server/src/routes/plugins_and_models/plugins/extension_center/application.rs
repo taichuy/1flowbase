@@ -49,12 +49,42 @@ pub(super) async fn workspace_application_status(
             .await?
         }
         domain::ExtensionApplicationAction::ImportMcp => {
-            McpManagementRepository::has_mcp_extension_bundle_import(
-                &state.store,
-                workspace_id,
-                entry.id,
-            )
-            .await?
+            let local_path = entry
+                .local_path
+                .as_deref()
+                .ok_or(ControlPlaneError::Conflict(
+                    "extension_artifact_path_missing",
+                ))?;
+            let bytes = tokio::fs::read(local_path).await?;
+            let package = tokio::task::spawn_blocking(move || {
+                crate::routes::mcp_management::bundles::parse_bundle_archive(&bytes)
+            })
+            .await
+            .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_archive"))?;
+            let Ok(package) = package else {
+                return Ok("not_applied");
+            };
+            let mut all_instances_are_present = true;
+            for template in package.instances {
+                let current = McpManagementRepository::get_mcp_instance(
+                    &state.store,
+                    workspace_id,
+                    &template.instance_id,
+                )
+                .await?;
+                let has_matching_source = current
+                    .and_then(|instance| instance.managed_by)
+                    .is_some_and(|source| {
+                        source.organization == package.manifest.organization
+                            && source.bundle_id == package.manifest.bundle_id
+                            && source.bundle_version == package.manifest.bundle_version
+                    });
+                if !has_matching_source {
+                    all_instances_are_present = false;
+                    break;
+                }
+            }
+            all_instances_are_present
         }
         domain::ExtensionApplicationAction::ActivateI18n => {
             let catalog_state =

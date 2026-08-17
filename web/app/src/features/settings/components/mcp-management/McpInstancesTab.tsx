@@ -820,10 +820,9 @@ export function McpInstancesTab({
           const source = record.managed_by;
           if (!source) return;
           setRestoreSource({
-            kind: 'library',
-            organization: source.organization,
-            bundleId: source.bundle_id,
-            bundleVersion: source.bundle_version
+            kind: 'builtin_template',
+            templateId: `mcp:${source.organization}/${source.bundle_id}`,
+            instanceId: record.instance_id
           });
         }}
         onDelete={(record) =>

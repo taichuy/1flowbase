@@ -755,6 +755,7 @@
     "export": "导出",
     "mcp_management": "MCP 管理",
     "mcp_instances": "MCP 实例",
+    "mcp_template_instance_status_modified": "已修改",
     "mcp_tool_config": "Tool 配置",
     "mcp_third_party": "第三方MCP",
     "mcp_meta_config": "MCP 配置",

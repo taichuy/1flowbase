@@ -176,11 +176,14 @@ const catalogEntry = {
   installation_status: 'installed',
   artifact_kind: 'model_provider',
   installation_source: 'official',
+  extension_installation_id: null,
+  builtin_template_id: null,
   trust: 'official',
   warnings: [],
   compatibility: null,
   slot_codes: ['model_provider'],
-  keywords: ['openai', 'provider']
+  keywords: ['openai', 'provider'],
+  mcp_instances: []
 };
 
 const installableCatalogEntry = {
