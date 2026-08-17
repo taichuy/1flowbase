@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 模型供应商计费与用户额度 Issue Tree 已批准
-summary: 用户确认 USD 厂家费率、workspace+user 额度、全模型供应商调用原子预留/Token 结算及 Credit Command/Event 扩展边界；线上 Root #1752 与四个 Delivery #1754/#1755/#1753/#1756 已建立为原生 Sub-issues，执行前需按 long-running-work 完成唯一只读 Scout、Work Packet packetization 与集中 Test Batch。
+summary: 模型计费与用户额度 Root 已本地交付并合入 dev；人工验收反馈进一步收敛为独立厂家计费目录、单条 zero/any 全局零价兜底、精确规则优先及 K/M/B 与有效小数展示，Root #1752 等待用户复验。
 keywords:
   - model-pricing
   - user-credit
@@ -16,10 +16,10 @@ match_when:
   - 增加厂家计费目录或用户金额后台
   - 开放插件额度命令与事件
 created_at: 2026-08-17 12
-updated_at: 2026-08-17 12
-last_verified_at: 2026-08-17 12
+updated_at: 2026-08-17 20
+last_verified_at: 2026-08-17 20
 decision_policy: verify_before_decision
-status: active
+status: user_acceptance
 scope:
   - https://github.com/taichuy/1flowbase/issues/1752
   - https://github.com/taichuy/1flowbase/issues/1754
@@ -57,3 +57,12 @@ scope:
 
 - 未完成唯一只读 Scout、有限 Work Packet inventory 与 Root 集中 Test Batch 前不进入开发。
 - 新增多币种、支付/税务、厂家账单 reconciliation、公式 DSL、历史追溯扣款或插件直写余额时返回 problem-framing。
+
+## 2026-08-17 20 验收反馈修复
+
+- 厂家计费目录独立于 RuntimeExtension / 插件模型清单；相邻官方仓库只承载 catalog 发布真值。
+- 官方默认目录只保留 `provider_code=zero`、`upstream_model_id=any` 的单条零价兜底。
+- 匹配顺序为精确 `provider/model` 优先于 `zero/any`；删除或停用兜底后恢复缺规则拒绝。
+- 前端 Token 单位显示 `K/M/B`；零价显示 `$0`，非零金额去除数据库无意义尾零并至少展示两位常规小数。
+- beta 提交 `7f7669fea`，本地 dev merge `643abd773`，官方目录提交 `56815aa`；均未 push。
+- beta 数据库 migration、桌面/移动页面、前端、control-plane、storage-postgres 和 API 精确模块测试均已通过，证据已回填 Root #1752。
