@@ -35,6 +35,7 @@ pub struct SeedBuiltinMcpBundleCommand {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub package: domain::McpBundlePackage,
+    pub interface_catalog: Vec<domain::McpInterfaceCatalogEntry>,
 }
 
 pub struct ExportMcpBundleCommand {
@@ -164,7 +165,7 @@ where
             bundle_id: command.package.manifest.bundle_id.clone(),
             bundle_version: command.package.manifest.bundle_version.clone(),
         };
-        let interfaces = BTreeMap::new();
+        let interfaces = bindable_interfaces(command.interface_catalog);
         let tools = command
             .package
             .tools

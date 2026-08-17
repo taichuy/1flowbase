@@ -4,6 +4,7 @@ use axum::{
     body::{to_bytes, Body},
     http::{header::COOKIE, HeaderMap, HeaderValue, Request, StatusCode},
 };
+use control_plane::ports::{ExtensionInstallationRepository, UpsertExtensionInstallationInput};
 use orchestration_runtime::{
     compiled_plan::CompiledNode, execution_engine::RuntimeInternalToolInvoker,
 };
@@ -200,12 +201,21 @@ async fn create_interface_tool_and_binding(
 }
 
 async fn call_mcp(app: &axum::Router, token: &str, request: Value) -> Value {
+    call_mcp_instance(app, token, "taichuy", request).await
+}
+
+async fn call_mcp_instance(
+    app: &axum::Router,
+    token: &str,
+    instance_id: &str,
+    request: Value,
+) -> Value {
     let response = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri("/api/mcp/taichuy")
+                .uri(format!("/api/mcp/{instance_id}"))
                 .header("authorization", format!("Bearer {token}"))
                 .header("content-type", "application/json")
                 .body(Body::from(request.to_string()))
@@ -215,6 +225,195 @@ async fn call_mcp(app: &axum::Router, token: &str, request: Value) -> Value {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     response_json(response).await
+}
+
+#[tokio::test]
+async fn ac_005_builtin_frontstage_source_tools_are_discoverable_and_callable() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state(state.clone());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let mut headers = HeaderMap::new();
+    headers.insert(COOKIE, HeaderValue::from_str(&cookie).unwrap());
+    let context = require_session(&state, &headers).await.unwrap();
+    let workspace_id = context.actor.current_workspace_id;
+    let interface_catalog =
+        crate::openapi_interface::build_openapi_capability_catalog(&state, workspace_id)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(crate::routes::mcp_management::mcp_interface_entry_from_capability)
+            .collect();
+    ExtensionInstallationRepository::upsert_extension_installation(
+        &state.store,
+        &UpsertExtensionInstallationInput {
+            installation_id: uuid::Uuid::now_v7(),
+            identity: domain::ExtensionInstallationIdentity {
+                category: domain::ExtensionCategory::Mcp,
+                organization: "1flowbase".into(),
+                artifact_id: "frontstage_assistant".into(),
+                version: "1.1.0".into(),
+            },
+            node_id: "test-node".into(),
+            source_kind: "builtin".into(),
+            trust_level: "verified_official".into(),
+            local_path: "/tmp/frontstage-assistant.tar.gz".into(),
+            expected_checksum: Some("sha256:test".into()),
+            local_checksum: "sha256:test".into(),
+            signature_status: domain::ExtensionSignatureStatus::Verified,
+            signature_algorithm: Some("builtin-code-shipped".into()),
+            signing_key_id: Some("1flowbase-builtin".into()),
+            warnings: Vec::new(),
+            receipt: json!({"kind": "builtin"}),
+            application_action: domain::ExtensionApplicationAction::ImportMcp,
+            status: domain::ExtensionInstallationStatus::Installed,
+            is_current: true,
+            created_by: context.actor.user_id,
+        },
+    )
+    .await
+    .unwrap();
+    control_plane::mcp_management::McpManagementService::new(state.store.clone())
+        .seed_builtin_bundle_once(control_plane::mcp_bundle::SeedBuiltinMcpBundleCommand {
+            actor_user_id: context.actor.user_id,
+            workspace_id,
+            package: crate::official_mcp_bundles::ApiOfficialMcpBundleRegistry::bundled_frontstage_assistant_package().unwrap(),
+            interface_catalog,
+        })
+        .await
+        .unwrap();
+    let workspace_id = workspace_id.to_string();
+    let create_page = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/api/console/frontstage/{workspace_id}/pages"))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "title": "MCP source page",
+                        "rank": "a",
+                        "placement": "topbar",
+                        "slug": "mcp-source-page"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_page.status(), StatusCode::CREATED);
+    let page = response_json(create_page).await;
+    let page_id = page["data"]["page"]["id"].as_str().unwrap();
+    let tab_id = page["data"]["default_tab"]["id"].as_str().unwrap();
+    let create_block = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "tab_id": tab_id,
+                        "title": "MCP source block",
+                        "description": null,
+                        "presentation": "inline",
+                        "parent_block_id": null,
+                        "before_block_id": null,
+                        "after_block_id": null,
+                        "source_code": "alpha\nbeta\ngamma",
+                        "runtime_descriptor": null
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_block.status(), StatusCode::CREATED);
+    let block = response_json(create_block).await;
+    let block_id = block["data"]["block_id"].as_str().unwrap();
+    let token = create_api_key(&app, &cookie, &csrf).await;
+
+    let list = call_mcp_instance(
+        &app,
+        &token,
+        "frontstage_browser",
+        json!({
+            "jsonrpc":"2.0",
+            "id":201,
+            "method":"tools/call",
+            "params":{"name":"mcp_list","arguments":{"path":"/frontstage","keywords":["源码"],"path_regex":"","depth":1,"limit":20}}
+        }),
+    )
+    .await;
+    let listed = list["result"]["structuredContent"].as_array().unwrap();
+    assert!(listed
+        .iter()
+        .any(|item| item["id"] == json!("frontstage_read_block_source_fragment")));
+    assert!(listed
+        .iter()
+        .any(|item| item["id"] == json!("frontstage_patch_block_source")));
+
+    let get = call_mcp_instance(
+        &app,
+        &token,
+        "frontstage_browser",
+        json!({
+            "jsonrpc":"2.0",
+            "id":202,
+            "method":"tools/call",
+            "params":{"name":"mcp_get","arguments":{"tool_id":"frontstage_read_block_source_fragment"}}
+        }),
+    )
+    .await;
+    let input_schema = &get["result"]["structuredContent"]["input_schema"];
+    assert!(input_schema["properties"].get("page_id").is_some());
+    assert!(input_schema["properties"].get("block_id").is_some());
+    assert!(input_schema["properties"].get("workspace_id").is_none());
+
+    let read = call_mcp_instance(
+        &app,
+        &token,
+        "frontstage_browser",
+        json!({
+            "jsonrpc":"2.0",
+            "id":203,
+            "method":"tools/call",
+            "params":{"name":"mcp_call","arguments":{"tool_id":"frontstage_read_block_source_fragment","arguments":{"page_id":page_id,"block_id":block_id,"start_line":2,"line_count":1,"max_chars":20}}}
+        }),
+    )
+    .await;
+    assert_eq!(read["result"]["isError"], json!(false), "{read}");
+    let fragment = &read["result"]["structuredContent"];
+    assert_eq!(fragment["source_fragment"], json!("beta\n"));
+    let revision = fragment["source_revision"].as_str().unwrap();
+
+    let patch = call_mcp_instance(
+        &app,
+        &token,
+        "frontstage_browser",
+        json!({
+            "jsonrpc":"2.0",
+            "id":204,
+            "method":"tools/call",
+            "params":{"name":"mcp_call","arguments":{"tool_id":"frontstage_patch_block_source","max_inline_chars":12000,"arguments":{"page_id":page_id,"block_id":block_id,"expected_source_revision":revision,"edits":[{"start_line":2,"start_column":1,"end_line":2,"end_column":5,"replacement":"changed"}]}}}
+        }),
+    )
+    .await;
+    assert_eq!(patch["result"]["isError"], json!(false), "{patch}");
+    assert_eq!(
+        patch["result"]["structuredContent"]["source_code"],
+        json!("alpha\nchanged\ngamma"),
+        "{patch}"
+    );
 }
 
 fn runtime_mcp_test_node() -> CompiledNode {

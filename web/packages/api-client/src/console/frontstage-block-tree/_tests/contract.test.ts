@@ -6,6 +6,7 @@ import {
   deleteConsoleFrontstageBlockLeaf,
   deleteConsoleFrontstageBlockSubtree,
   getConsoleFrontstageBlockDeleteImpact,
+  getConsoleFrontstageBlockCodeFragment,
   getConsoleFrontstageBlockNode,
   getConsoleFrontstageBlockNodeCode,
   getConsoleFrontstageBlockRuntimeAssembly,
@@ -15,6 +16,7 @@ import {
   listConsoleFrontstageBlockRoots,
   moveConsoleFrontstageBlockNode,
   openConsoleFrontstageBlock,
+  patchConsoleFrontstageBlockNodeCode,
   saveConsoleFrontstageBlockNodeCode,
   searchConsoleFrontstageBlocks,
   updateConsoleFrontstageBlockDescriptors,
@@ -95,6 +97,22 @@ describe('frontstage block tree client contract', () => {
       getConsoleFrontstageBlockNodeCode('workspace 1', 'page/1', 'block/root')
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/code',
+      method: 'GET'
+    });
+    await expect(
+      getConsoleFrontstageBlockCodeFragment(
+        'workspace 1',
+        'page/1',
+        'block/root',
+        {
+          start_line: 101,
+          start_column: 3,
+          line_count: 80,
+          max_chars: 6000
+        }
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/code/fragment?start_line=101&start_column=3&line_count=80&max_chars=6000',
       method: 'GET'
     });
     await expect(
@@ -240,6 +258,32 @@ describe('frontstage block tree client contract', () => {
       body: expect.objectContaining({
         source_code: expect.stringContaining('export default Sales')
       })
+    });
+    const patchInput = {
+      expected_source_revision: 'a'.repeat(64),
+      edits: [
+        {
+          start_line: 12,
+          start_column: 3,
+          end_line: 14,
+          end_column: 1,
+          replacement: 'const next = true;\n'
+        }
+      ]
+    };
+    await expect(
+      patchConsoleFrontstageBlockNodeCode(
+        'workspace-1',
+        'page-1',
+        'sales',
+        patchInput,
+        'csrf'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/frontstage/workspace-1/pages/page-1/blocks/sales/code',
+      method: 'PATCH',
+      body: patchInput,
+      csrfToken: 'csrf'
     });
   });
 

@@ -501,3 +501,165 @@ async fn block_tree_writes_require_csrf_and_bulk_routes_require_design_permissio
         assert_error(&payload, "block_node_not_found");
     }
 }
+
+#[tokio::test]
+async fn ac_001_to_003_block_code_supports_bounded_reads_and_revision_guarded_range_edits() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let workspace_id = current_workspace_id(&app, &cookie).await;
+    let (page_id, tab_id) = create_block_page(&app, &cookie, &csrf, &workspace_id).await;
+    let source = "alpha\n订单😀\ncharlie\ndelta";
+    let (_, block_payload) = create_block(
+        &app,
+        &cookie,
+        &csrf,
+        &workspace_id,
+        &page_id,
+        Some(&tab_id),
+        "Editable source",
+        None,
+        source,
+        None,
+    )
+    .await;
+    let block_id = block_payload["data"]["block_id"].as_str().unwrap();
+    let code_path =
+        format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/code");
+    let fragment_path =
+        format!("{code_path}/fragment?start_line=2&start_column=1&line_count=2&max_chars=5");
+
+    let (fragment_status, fragment_payload) = get_json(&app, &fragment_path, &cookie).await;
+    assert_eq!(fragment_status, StatusCode::OK, "{fragment_payload}");
+    let fragment = &fragment_payload["data"];
+    assert_eq!(fragment["source_fragment"], json!("订单😀\nc"));
+    assert_eq!(fragment["start_line"], json!(2));
+    assert_eq!(fragment["start_column"], json!(1));
+    assert_eq!(fragment["end_line"], json!(3));
+    assert_eq!(fragment["end_column"], json!(2));
+    assert_eq!(fragment["total_lines"], json!(4));
+    assert_eq!(fragment["total_chars"], json!(23));
+    assert_eq!(fragment["next_line"], json!(3));
+    assert_eq!(fragment["next_column"], json!(2));
+    assert_eq!(fragment["truncated_by_max_chars"], json!(true));
+    let source_revision = fragment["source_revision"]
+        .as_str()
+        .expect("fragment must carry a source revision")
+        .to_owned();
+
+    let (patch_status, patch_payload) = send_json(
+        &app,
+        "PATCH",
+        &code_path,
+        &cookie,
+        &csrf,
+        json!({
+            "expected_source_revision": source_revision,
+            "edits": [
+                {
+                    "start_line": 2,
+                    "start_column": 3,
+                    "end_line": 2,
+                    "end_column": 4,
+                    "replacement": "完成✅"
+                },
+                {
+                    "start_line": 4,
+                    "start_column": 1,
+                    "end_line": 4,
+                    "end_column": 6,
+                    "replacement": "omega"
+                }
+            ]
+        }),
+    )
+    .await;
+    assert_eq!(patch_status, StatusCode::OK, "{patch_payload}");
+    assert_eq!(
+        patch_payload["data"]["source_code"],
+        json!("alpha\n订单完成✅\ncharlie\nomega")
+    );
+    let updated_revision = patch_payload["data"]["source_sha256"]
+        .as_str()
+        .expect("patched source must have a revision")
+        .to_owned();
+
+    let (stale_status, stale_payload) = send_json(
+        &app,
+        "PATCH",
+        &code_path,
+        &cookie,
+        &csrf,
+        json!({
+            "expected_source_revision": source_revision,
+            "edits": [{
+                "start_line": 1,
+                "start_column": 1,
+                "end_line": 1,
+                "end_column": 6,
+                "replacement": "stale"
+            }]
+        }),
+    )
+    .await;
+    assert_eq!(stale_status, StatusCode::CONFLICT, "{stale_payload}");
+    assert_error(&stale_payload, "frontstage_block_source_revision");
+
+    let (overlap_status, overlap_payload) = send_json(
+        &app,
+        "PATCH",
+        &code_path,
+        &cookie,
+        &csrf,
+        json!({
+            "expected_source_revision": updated_revision,
+            "edits": [
+                {
+                    "start_line": 1,
+                    "start_column": 1,
+                    "end_line": 1,
+                    "end_column": 4,
+                    "replacement": "A"
+                },
+                {
+                    "start_line": 1,
+                    "start_column": 3,
+                    "end_line": 1,
+                    "end_column": 6,
+                    "replacement": "B"
+                }
+            ]
+        }),
+    )
+    .await;
+    assert_eq!(overlap_status, StatusCode::BAD_REQUEST, "{overlap_payload}");
+    assert_error(&overlap_payload, "source_edit_overlap");
+
+    let (range_status, range_payload) = send_json(
+        &app,
+        "PATCH",
+        &code_path,
+        &cookie,
+        &csrf,
+        json!({
+            "expected_source_revision": updated_revision,
+            "edits": [{
+                "start_line": 99,
+                "start_column": 1,
+                "end_line": 99,
+                "end_column": 1,
+                "replacement": "out of range"
+            }]
+        }),
+    )
+    .await;
+    assert_eq!(range_status, StatusCode::BAD_REQUEST, "{range_payload}");
+    assert_error(&range_payload, "source_position");
+
+    let (after_rejection_status, after_rejection_payload) =
+        get_json(&app, &code_path, &cookie).await;
+    assert_eq!(after_rejection_status, StatusCode::OK);
+    assert_eq!(
+        after_rejection_payload["data"]["source_code"],
+        json!("alpha\n订单完成✅\ncharlie\nomega")
+    );
+}

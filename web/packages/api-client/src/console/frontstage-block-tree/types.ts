@@ -54,6 +54,22 @@ export interface ConsoleFrontstageBlockNodeCode {
   dependency_lock: unknown[] | null;
 }
 
+export interface ConsoleFrontstageBlockCodeFragment {
+  block_id: string;
+  page_id: string;
+  source_revision: string;
+  source_fragment: string;
+  start_line: number;
+  start_column: number;
+  end_line: number;
+  end_column: number;
+  total_lines: number;
+  total_chars: number;
+  next_line: number | null;
+  next_column: number | null;
+  truncated_by_max_chars: boolean;
+}
+
 export interface ConsoleFrontstageBlockRuntimeLayer {
   block_id: string;
   tab_id: string;
@@ -119,6 +135,26 @@ export interface DeleteConsoleFrontstageBlockSubtreeInput {
 export interface SaveConsoleFrontstageBlockNodeCodeInput {
   source_code: string;
   expected_source_revision?: string | null;
+}
+
+export interface ConsoleFrontstageSourceEdit {
+  start_line: number;
+  start_column: number;
+  end_line: number;
+  end_column: number;
+  replacement: string;
+}
+
+export interface PatchConsoleFrontstageBlockNodeCodeInput {
+  expected_source_revision: string;
+  edits: ConsoleFrontstageSourceEdit[];
+}
+
+export interface ConsoleFrontstageBlockCodeFragmentQuery {
+  start_line?: number;
+  start_column?: number;
+  line_count?: number;
+  max_chars?: number;
 }
 
 export interface ConsoleFrontstageBlockListQuery {

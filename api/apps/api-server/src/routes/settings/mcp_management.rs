@@ -2,6 +2,7 @@ pub(crate) mod bundles;
 pub(crate) mod debug_execute;
 mod dto;
 mod interface_catalog;
+pub(crate) use interface_catalog::mcp_interface_entry_from_capability;
 mod projections;
 pub(crate) mod upstream;
 pub(crate) mod upstream_client;

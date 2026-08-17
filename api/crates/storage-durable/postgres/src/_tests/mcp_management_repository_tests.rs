@@ -15,6 +15,7 @@ async fn ac_001_ac_002_ac_003_builtin_bundle_is_seeded_once_and_remains_mutable(
             actor_user_id: actor.id,
             workspace_id: workspace.id,
             package: package.clone(),
+            interface_catalog: Vec::new(),
         })
         .await
         .unwrap();
@@ -45,6 +46,7 @@ async fn ac_001_ac_002_ac_003_builtin_bundle_is_seeded_once_and_remains_mutable(
             actor_user_id: actor.id,
             workspace_id: workspace.id,
             package: package.clone(),
+            interface_catalog: Vec::new(),
         })
         .await
         .unwrap();
@@ -70,6 +72,68 @@ async fn ac_001_ac_002_ac_003_builtin_bundle_is_seeded_once_and_remains_mutable(
         .delete_instance(actor.id, "frontstage_browser")
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn ac_005_new_builtin_bundle_version_adds_managed_tools_once() {
+    let (store, workspace, actor) = seed_store().await;
+    let service = McpManagementService::new(store.clone());
+    seed_builtin_bundle_installation(&store, actor.id, "1.0.2").await;
+    service
+        .seed_builtin_bundle_once(SeedBuiltinMcpBundleCommand {
+            actor_user_id: actor.id,
+            workspace_id: workspace.id,
+            package: managed_frontstage_package("1.0.2"),
+            interface_catalog: Vec::new(),
+        })
+        .await
+        .unwrap();
+
+    seed_builtin_bundle_installation(&store, actor.id, "1.1.0").await;
+    let mut upgraded = managed_frontstage_package("1.1.0");
+    let mut source_tool = upgraded.tools[0].clone();
+    source_tool.tool_id = "frontstage_read_block_source_fragment".into();
+    source_tool.name = "read_block_source_fragment".into();
+    upgraded.tools.push(source_tool);
+    upgraded.instances[0]
+        .bindings
+        .push(domain::McpBundleToolBinding {
+            group_path: "/frontstage".into(),
+            tool_id: "frontstage_read_block_source_fragment".into(),
+            display_alias: None,
+            visible: true,
+            sort_order: 2,
+        });
+    service
+        .seed_builtin_bundle_once(SeedBuiltinMcpBundleCommand {
+            actor_user_id: actor.id,
+            workspace_id: workspace.id,
+            package: upgraded.clone(),
+            interface_catalog: Vec::new(),
+        })
+        .await
+        .unwrap();
+    service
+        .seed_builtin_bundle_once(SeedBuiltinMcpBundleCommand {
+            actor_user_id: actor.id,
+            workspace_id: workspace.id,
+            package: upgraded,
+            interface_catalog: Vec::new(),
+        })
+        .await
+        .unwrap();
+
+    let catalog = service.read_workspace_catalog(actor.id).await.unwrap();
+    assert_eq!(catalog.tools.len(), 3);
+    assert_eq!(catalog.bindings.len(), 3);
+    assert_eq!(
+        catalog.instances[0]
+            .managed_by
+            .as_ref()
+            .unwrap()
+            .bundle_version,
+        "1.1.0"
+    );
 }
 
 async fn seed_builtin_bundle_installation(
