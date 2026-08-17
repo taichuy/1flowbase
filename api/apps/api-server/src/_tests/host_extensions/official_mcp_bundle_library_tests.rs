@@ -145,6 +145,7 @@ async fn mcp_library_verifies_signed_releases_and_resolves_existing_local_artifa
         "startup reconciliation must preserve the database current selection even when a legacy current file disagrees"
     );
     std::fs::remove_file(root.join("@taichuy/zh_hans/releases/1.10.0/receipt.json")).unwrap();
+    installation_repository.insert_invalid_mcp_receipt();
     let with_history = library.library_catalog().await.unwrap();
     let built_in = with_history
         .bundles
@@ -153,9 +154,9 @@ async fn mcp_library_verifies_signed_releases_and_resolves_existing_local_artifa
             bundle.organization == "1flowbase" && bundle.bundle_id == "frontstage_assistant"
         })
         .unwrap();
-    assert_eq!(built_in.current_bundle_version.as_deref(), Some("1.0.1"));
+    assert_eq!(built_in.current_bundle_version.as_deref(), Some("1.0.2"));
     assert!(!library
-        .resolve_artifact("1flowbase", "frontstage_assistant", Some("1.0.1"))
+        .resolve_artifact("1flowbase", "frontstage_assistant", Some("1.0.2"))
         .await
         .unwrap()
         .is_empty());
@@ -320,6 +321,40 @@ impl TestExtensionInstallationRepository {
             })
             .unwrap()
             .local_path = None;
+    }
+
+    fn insert_invalid_mcp_receipt(&self) {
+        let now = time::OffsetDateTime::now_utc();
+        self.records
+            .lock()
+            .unwrap()
+            .push(domain::ExtensionInstallationRecord {
+                id: Uuid::now_v7(),
+                identity: domain::ExtensionInstallationIdentity {
+                    category: domain::ExtensionCategory::Mcp,
+                    organization: "legacy".into(),
+                    artifact_id: "old_receipt".into(),
+                    version: "1.0.0".into(),
+                },
+                source_kind: "official_registry".into(),
+                trust_level: "verified_official".into(),
+                expected_checksum: None,
+                signature_status: domain::ExtensionSignatureStatus::Verified,
+                signature_algorithm: None,
+                signing_key_id: None,
+                warnings: Vec::new(),
+                receipt: json!({"legacy": true}),
+                application_action: domain::ExtensionApplicationAction::ImportMcp,
+                is_system_reserved: false,
+                node_id: "test-node".into(),
+                local_path: Some("/legacy/receipt".into()),
+                local_checksum: Some("sha256:legacy".into()),
+                status: domain::ExtensionInstallationStatus::Installed,
+                is_current: false,
+                created_by: Uuid::nil(),
+                created_at: now,
+                updated_at: now,
+            });
     }
 
     fn current_version(&self) -> Option<String> {

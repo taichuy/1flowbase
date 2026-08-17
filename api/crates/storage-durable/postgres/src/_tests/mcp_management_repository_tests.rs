@@ -1,6 +1,81 @@
 use control_plane::mcp_bundle::{
     ExportMcpInstanceBundleCommand, ImportMcpBundleCommand, McpInstanceBundleExportKind,
+    ReconcileSystemManagedMcpBundleCommand,
 };
+
+#[tokio::test]
+async fn issue_1748_managed_bundle_reconcile_is_scoped_idempotent_and_read_only() {
+    let (store, workspace, actor) = seed_store().await;
+    let service = McpManagementService::new(store.clone());
+    let package = managed_frontstage_package("1.0.2");
+    service
+        .reconcile_system_managed_bundle(ReconcileSystemManagedMcpBundleCommand {
+            actor_user_id: actor.id,
+            workspace_id: workspace.id,
+            package: package.clone(),
+        })
+        .await
+        .unwrap();
+    service
+        .reconcile_system_managed_bundle(ReconcileSystemManagedMcpBundleCommand {
+            actor_user_id: actor.id,
+            workspace_id: workspace.id,
+            package,
+        })
+        .await
+        .unwrap();
+
+    let catalog = service.read_workspace_catalog(actor.id).await.unwrap();
+    assert_eq!(catalog.instances.len(), 1);
+    assert_eq!(catalog.tools.len(), 2);
+    assert_eq!(catalog.bindings.len(), 2);
+    let source = catalog.instances[0].managed_by.as_ref().unwrap();
+    assert_eq!(source.organization, "1flowbase");
+    assert_eq!(source.bundle_id, "frontstage_assistant");
+    assert_eq!(source.bundle_version, "1.0.2");
+    assert!(catalog.tools.iter().all(|tool| tool.managed_by.is_some()));
+    assert!(service
+        .delete_instance(actor.id, "frontstage_browser")
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("mcp_system_managed"));
+    assert!(service
+        .delete_tool(actor.id, "frontstage_list_page_blocks")
+        .await
+        .unwrap_err()
+        .to_string()
+        .contains("mcp_system_managed"));
+
+    let mut upgraded = managed_frontstage_package("1.0.3");
+    upgraded.tools.pop();
+    upgraded.instances[0].bindings.pop();
+    upgraded.instances[0].name = "Frontstage Browser Managed".into();
+    service
+        .reconcile_system_managed_bundle(ReconcileSystemManagedMcpBundleCommand {
+            actor_user_id: actor.id,
+            workspace_id: workspace.id,
+            package: upgraded,
+        })
+        .await
+        .unwrap();
+    let upgraded_catalog = service.read_workspace_catalog(actor.id).await.unwrap();
+    assert_eq!(upgraded_catalog.instances.len(), 1);
+    assert_eq!(
+        upgraded_catalog.instances[0].name,
+        "Frontstage Browser Managed"
+    );
+    assert_eq!(upgraded_catalog.tools.len(), 1);
+    assert_eq!(upgraded_catalog.bindings.len(), 1);
+    assert_eq!(
+        upgraded_catalog.instances[0]
+            .managed_by
+            .as_ref()
+            .unwrap()
+            .bundle_version,
+        "1.0.3"
+    );
+}
 use control_plane::mcp_management::{
     CopyMcpInstanceCommand, CreateMcpInstanceCommand, CreateMcpToolBindingCommand,
     CreateMcpToolCommand, McpManagementService, McpRemoteToolDefinition, McpUpstreamCredential,
@@ -265,6 +340,73 @@ fn runtime_profile_interface() -> domain::McpInterfaceCatalogEntry {
         risk_level: domain::McpRiskLevel::Low,
         bindable: true,
         disabled_reason: None,
+    }
+}
+
+fn managed_frontstage_package(version: &str) -> domain::McpBundlePackage {
+    let tool = |capability_code: &str| domain::McpBundleTool {
+        tool_id: format!("frontstage_{capability_code}"),
+        name: capability_code.into(),
+        short_description: capability_code.into(),
+        full_description: capability_code.into(),
+        execution_target: domain::McpToolExecutionTarget::AssistantClient {
+            capability_code: capability_code.into(),
+        },
+        parameter_schema_snapshot: serde_json::json!({"type":"object"}),
+        result_schema_snapshot: serde_json::json!({"type":"object"}),
+        input_mapping: serde_json::json!({}),
+        output_mapping: serde_json::json!({}),
+        permission_code_snapshot: None,
+        risk_level_snapshot: domain::McpRiskLevel::Low,
+        status: domain::McpToolStatus::Enabled,
+    };
+    let tools = vec![tool("list_page_blocks"), tool("inspect_block_render")];
+    domain::McpBundlePackage {
+        manifest: domain::McpBundleManifest {
+            schema_version: domain::MCP_BUNDLE_SCHEMA_VERSION.into(),
+            organization: "1flowbase".into(),
+            bundle_id: "frontstage_assistant".into(),
+            bundle_version: version.into(),
+            locale: "zh_Hans".into(),
+            minimum_host_version: "0.3.6".into(),
+            exported_from_system_version: "0.3.6".into(),
+            exported_at: "2026-08-17T02:00:00Z".into(),
+            files: Vec::new(),
+        },
+        instances: vec![domain::McpBundleInstance {
+            instance_id: "frontstage_browser".into(),
+            name: "Frontstage Browser".into(),
+            description_short: Some("Managed".into()),
+            status: domain::McpInstanceStatus::Enabled,
+            default_entry_path: "/frontstage".into(),
+            groups: vec![domain::McpBundleGroup {
+                path: "/frontstage".into(),
+                display_name: "Frontstage".into(),
+                description_short: None,
+                enabled: true,
+                sort_order: 0,
+            }],
+            bindings: tools
+                .iter()
+                .enumerate()
+                .map(|(index, tool)| domain::McpBundleToolBinding {
+                    group_path: "/frontstage".into(),
+                    tool_id: tool.tool_id.clone(),
+                    display_alias: None,
+                    visible: true,
+                    sort_order: index as i32,
+                })
+                .collect(),
+            discovery_policy: domain::McpBundleInstanceDiscoveryPolicy {
+                list_default_limit: 20,
+                list_max_depth: 3,
+                list_regex_enabled: false,
+                list_regex_max_length: 64,
+                list_return_fields: serde_json::json!(["id", "name"]),
+            },
+        }],
+        tools,
+        connections: Vec::new(),
     }
 }
 

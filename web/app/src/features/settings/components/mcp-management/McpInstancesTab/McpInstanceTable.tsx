@@ -79,6 +79,18 @@ export function McpInstanceTable({
       )
     },
     {
+      title: i18nText('settings', 'auto.built_in_source'),
+      render: (_, record) =>
+        record.managed_by ? (
+          <Tag color="blue">
+            {record.managed_by.organization}/{record.managed_by.bundle_id}@
+            {record.managed_by.bundle_version}
+          </Tag>
+        ) : (
+          '-'
+        )
+    },
+    {
       title: i18nText('settings', 'auto.directory_summary'),
       render: (_, record) => (
         <Typography.Text>
@@ -94,7 +106,7 @@ export function McpInstanceTable({
             aria-label={i18nText('settings', 'auto.edit')}
             icon={<EditOutlined />}
             size="small"
-            disabled={!canManage}
+            disabled={!canManage || record.managed_by !== null}
             onClick={() => onEdit(record)}
           />
           <Tooltip title={i18nText('settings', 'auto.directory_editor')}>
@@ -102,7 +114,7 @@ export function McpInstanceTable({
               aria-label={i18nText('settings', 'auto.directory_editor')}
               icon={<SettingOutlined />}
               size="small"
-              disabled={!canManage}
+              disabled={!canManage || record.managed_by !== null}
               onClick={() => onOpenDirectory(record)}
             />
           </Tooltip>
@@ -133,7 +145,7 @@ export function McpInstanceTable({
                       'settingsMcpManagement',
                       'auto.discovery_policy'
                     ),
-                    disabled: !canManage
+                    disabled: !canManage || record.managed_by !== null
                   },
                   {
                     key: 'copy',
@@ -159,7 +171,7 @@ export function McpInstanceTable({
                     icon: <DeleteOutlined />,
                     label: i18nText('settings', 'auto.delete'),
                     danger: true,
-                    disabled: !canManage
+                    disabled: !canManage || record.managed_by !== null
                   }
                 ],
                 onClick: ({ key }) => {

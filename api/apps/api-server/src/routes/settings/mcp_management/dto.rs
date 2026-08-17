@@ -9,11 +9,19 @@ pub struct McpInstanceResponse {
     pub description_short: Option<String>,
     pub status: String,
     pub default_entry_path: String,
+    pub managed_by: Option<McpManagedBundleSourceResponse>,
     pub created_by: String,
     pub updated_by: String,
     pub created_at: String,
     pub updated_at: String,
     pub llm_tool_registration: McpLlmToolRegistrationResponse,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct McpManagedBundleSourceResponse {
+    pub organization: String,
+    pub bundle_id: String,
+    pub bundle_version: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -76,6 +84,7 @@ pub struct McpToolResponse {
     pub availability_status: McpToolAvailabilityStatusDto,
     pub availability_reason: Option<String>,
     pub revision: i32,
+    pub managed_by: Option<McpManagedBundleSourceResponse>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, ToSchema)]

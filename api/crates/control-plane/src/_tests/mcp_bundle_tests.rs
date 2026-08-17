@@ -53,6 +53,7 @@ fn tool(
         des_id_required: false,
         status: domain::McpToolStatus::Enabled,
         revision: 1,
+        managed_by: None,
         created_by: Uuid::nil(),
         updated_by: Uuid::nil(),
         created_at: OffsetDateTime::UNIX_EPOCH,

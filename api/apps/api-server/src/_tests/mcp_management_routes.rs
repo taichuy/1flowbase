@@ -1,4 +1,4 @@
-use crate::_tests::support::{login_and_capture_cookie, test_app};
+use crate::_tests::support::{login_and_capture_cookie, test_app, test_app_with_database_url};
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -10,6 +10,89 @@ mod interface_inventory;
 
 async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
+}
+
+#[tokio::test]
+async fn issue_1748_managed_mcp_projection_and_mutations_fail_closed() {
+    let (app, database_url) = test_app_with_database_url().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/instances")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "instance_id": "frontstage_browser",
+                        "name": "Frontstage Browser",
+                        "description_short": null,
+                        "status": "enabled",
+                        "default_entry_path": "/frontstage"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::CREATED);
+    let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
+    sqlx::query(
+        r#"
+        update mcp_instances
+        set managed_bundle_organization='1flowbase',
+            managed_bundle_id='frontstage_assistant',
+            managed_bundle_version='1.0.2'
+        where instance_id='frontstage_browser'
+        "#,
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let list_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/mcp/instances")
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(list_response.status(), StatusCode::OK);
+    let payload = response_json(list_response).await;
+    assert_eq!(
+        payload["data"][0]["managed_by"],
+        json!({
+            "organization": "1flowbase",
+            "bundle_id": "frontstage_assistant",
+            "bundle_version": "1.0.2"
+        })
+    );
+
+    let delete_response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/console/mcp/instances/frontstage_browser")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(delete_response.status(), StatusCode::CONFLICT);
+    assert_eq!(
+        response_json(delete_response).await["code"],
+        json!("mcp_system_managed")
+    );
 }
 
 #[tokio::test]

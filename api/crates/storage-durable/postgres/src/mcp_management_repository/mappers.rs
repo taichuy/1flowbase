@@ -144,6 +144,7 @@ pub(super) fn map_instance(row: sqlx::postgres::PgRow) -> Result<domain::McpInst
         description_short: row.get("description_short"),
         status: parse_instance_status(row.get::<String, _>("status").as_str())?,
         default_entry_path: row.get("default_entry_path"),
+        managed_by: managed_bundle_source(&row),
         created_by: row.get("created_by"),
         updated_by: row.get("updated_by"),
         created_at: row.get("created_at"),
@@ -200,10 +201,25 @@ pub(super) fn map_tool(row: sqlx::postgres::PgRow) -> Result<domain::McpToolReco
         des_id_required: row.get("des_id_required"),
         status: parse_tool_status(row.get::<String, _>("status").as_str())?,
         revision: row.get("revision"),
+        managed_by: managed_bundle_source(&row),
         created_by: row.get("created_by"),
         updated_by: row.get("updated_by"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
+    })
+}
+
+fn managed_bundle_source(row: &sqlx::postgres::PgRow) -> Option<domain::McpManagedBundleSource> {
+    Some(domain::McpManagedBundleSource {
+        organization: row
+            .try_get::<Option<String>, _>("managed_bundle_organization")
+            .ok()??,
+        bundle_id: row
+            .try_get::<Option<String>, _>("managed_bundle_id")
+            .ok()??,
+        bundle_version: row
+            .try_get::<Option<String>, _>("managed_bundle_version")
+            .ok()??,
     })
 }
 

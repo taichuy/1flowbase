@@ -36,6 +36,7 @@ export const styleBoundaryMcpCatalog = {
       description_short: 'Workspace MCP instance',
       status: 'enabled',
       default_entry_path: '/',
+      managed_by: null,
       created_by: 'user-1',
       updated_by: 'user-1',
       created_at: '2026-06-21T00:00:00Z',
@@ -70,6 +71,7 @@ export const styleBoundaryMcpCatalog = {
       name: 'Runtime profile',
       short_description: 'Read runtime profile',
       full_description: 'Read the current system runtime profile.',
+      managed_by: null,
       execution_target: {
         kind: 'interface_wrapper' as const,
         interface_id: 'get_runtime_profile'

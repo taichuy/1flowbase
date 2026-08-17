@@ -445,6 +445,15 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
             "MCP template installation reconciliation unavailable; core startup continues"
         );
     }
+    control_plane::mcp_management::McpManagementService::new(store.clone())
+        .reconcile_system_managed_bundle(
+            control_plane::mcp_bundle::ReconcileSystemManagedMcpBundleCommand {
+                actor_user_id: bootstrap_result.root_user_id,
+                workspace_id: bootstrap_result.workspace_id,
+                package: official_mcp_bundles::ApiOfficialMcpBundleRegistry::bundled_frontstage_assistant_package()?,
+            },
+        )
+        .await?;
     let official_i18n_catalog_update_service =
         build_official_i18n_catalog_update_service(store.clone(), config);
     let plugin_management = control_plane::plugin_management::PluginManagementService::new(

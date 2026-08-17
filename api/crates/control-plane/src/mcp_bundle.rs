@@ -11,7 +11,10 @@ use crate::{
         input_mapping_requires_des_id, normalize_des_id, validate_identifier, validate_path,
         validate_positive, McpManagementService,
     },
-    ports::{CreateMcpToolInput, McpManagementRepository, ReplaceMcpBundleGraphInput},
+    ports::{
+        CreateMcpToolInput, McpManagementRepository, ReconcileManagedMcpBundleGraphInput,
+        ReplaceMcpBundleGraphInput,
+    },
 };
 
 pub struct PreviewMcpBundleCommand {
@@ -26,6 +29,12 @@ pub struct ImportMcpBundleCommand {
     pub package: domain::McpBundlePackage,
     pub interface_catalog: Vec<domain::McpInterfaceCatalogEntry>,
     pub current_system_version: String,
+}
+
+pub struct ReconcileSystemManagedMcpBundleCommand {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub package: domain::McpBundlePackage,
 }
 
 pub struct ExportMcpBundleCommand {
@@ -140,6 +149,58 @@ where
     pub async fn authorize_bundle_management(&self, actor_user_id: Uuid) -> Result<()> {
         self.authorize_manage(actor_user_id).await?;
         Ok(())
+    }
+
+    pub async fn reconcile_system_managed_bundle(
+        &self,
+        command: ReconcileSystemManagedMcpBundleCommand,
+    ) -> Result<()> {
+        validate_package(&command.package)?;
+        if !command.package.connections.is_empty() {
+            return Err(ControlPlaneError::InvalidInput("managed_mcp_connections").into());
+        }
+        let source = domain::McpManagedBundleSource {
+            organization: command.package.manifest.organization.clone(),
+            bundle_id: command.package.manifest.bundle_id.clone(),
+            bundle_version: command.package.manifest.bundle_version.clone(),
+        };
+        let interfaces = BTreeMap::new();
+        let tools = command
+            .package
+            .tools
+            .iter()
+            .map(|tool| {
+                let plan = bundle_tool_plan(tool, &interfaces);
+                CreateMcpToolInput {
+                    id: Uuid::now_v7(),
+                    actor_user_id: command.actor_user_id,
+                    workspace_id: command.workspace_id,
+                    tool_id: tool.tool_id.clone(),
+                    name: tool.name.clone(),
+                    short_description: tool.short_description.clone(),
+                    full_description: tool.full_description.clone(),
+                    execution_target: tool.execution_target.clone(),
+                    parameter_schema: plan.parameter_schema,
+                    result_schema: plan.result_schema,
+                    input_mapping: tool.input_mapping.clone(),
+                    output_mapping: tool.output_mapping.clone(),
+                    permission_code: plan.permission_code,
+                    risk_level: plan.risk_level,
+                    des_id: normalize_des_id(None),
+                    des_id_required: input_mapping_requires_des_id(&tool.input_mapping),
+                    status: plan.status,
+                }
+            })
+            .collect();
+        self.repository
+            .reconcile_managed_mcp_bundle_graph_atomically(&ReconcileManagedMcpBundleGraphInput {
+                actor_user_id: command.actor_user_id,
+                workspace_id: command.workspace_id,
+                source,
+                tools,
+                instances: command.package.instances,
+            })
+            .await
     }
 
     pub async fn export_bundle(
