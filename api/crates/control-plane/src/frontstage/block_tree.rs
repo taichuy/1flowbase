@@ -23,6 +23,9 @@ use super::{ensure_design_permission, FrontstagePageService};
 
 const MAX_BLOCK_TITLE_LEN: usize = 200;
 const DEFAULT_RENDERER_VERSION: &str = "v1";
+const MAX_SOURCE_FRAGMENT_LINES: u32 = 1_000;
+const MAX_SOURCE_FRAGMENT_CHARS: u32 = 50_000;
+const MAX_SOURCE_EDITS: usize = 100;
 
 pub struct FrontstageBlockScopeCommand {
     pub actor_user_id: Uuid,
@@ -106,6 +109,46 @@ pub struct SaveFrontstageBlockNodeCodeCommand {
     pub scope: FrontstageBlockScopeCommand,
     pub expected_source_revision: Option<String>,
     pub source_code: String,
+}
+
+pub struct GetFrontstageBlockCodeFragmentCommand {
+    pub scope: FrontstageBlockScopeCommand,
+    pub start_line: u32,
+    pub start_column: u32,
+    pub line_count: u32,
+    pub max_chars: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FrontstageSourceEdit {
+    pub start_line: u32,
+    pub start_column: u32,
+    pub end_line: u32,
+    pub end_column: u32,
+    pub replacement: String,
+}
+
+pub struct PatchFrontstageBlockNodeCodeCommand {
+    pub scope: FrontstageBlockScopeCommand,
+    pub expected_source_revision: String,
+    pub edits: Vec<FrontstageSourceEdit>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FrontstageBlockCodeFragment {
+    pub block_id: String,
+    pub page_id: Uuid,
+    pub source_revision: String,
+    pub source_fragment: String,
+    pub start_line: u32,
+    pub start_column: u32,
+    pub end_line: u32,
+    pub end_column: u32,
+    pub total_lines: u32,
+    pub total_chars: u64,
+    pub next_line: Option<u32>,
+    pub next_column: Option<u32>,
+    pub truncated_by_max_chars: bool,
 }
 
 pub struct FrontstageBlockOpenTarget {
@@ -662,6 +705,22 @@ where
             .ok_or(ControlPlaneError::NotFound("block_node_not_found").into())
     }
 
+    pub async fn get_block_code_fragment(
+        &self,
+        command: GetFrontstageBlockCodeFragmentCommand,
+    ) -> Result<FrontstageBlockCodeFragment> {
+        let block_id = command.scope.block_id.clone();
+        let code = self.get_block_node_code(command.scope).await?;
+        source_fragment(
+            block_id,
+            code,
+            command.start_line,
+            command.start_column,
+            command.line_count,
+            command.max_chars,
+        )
+    }
+
     pub async fn save_block_node_code(
         &self,
         command: SaveFrontstageBlockNodeCodeCommand,
@@ -693,6 +752,55 @@ where
                 source: FrontstageBlockSourceInput {
                     source_code: command.source_code,
                 },
+                audit_log,
+            })
+            .await
+            .map_err(map_block_repository_error)
+    }
+
+    pub async fn patch_block_node_code(
+        &self,
+        command: PatchFrontstageBlockNodeCodeCommand,
+    ) -> Result<domain::frontstage::FrontstageBlockCodeRecord> {
+        let expected_source_revision =
+            validate_source_revision(Some(command.expected_source_revision))?
+                .ok_or(ControlPlaneError::InvalidInput("expected_source_revision"))?;
+        let actor = self
+            .ensure_block_designer(
+                command.scope.actor_user_id,
+                command.scope.workspace_id,
+                command.scope.page_id,
+                None,
+            )
+            .await?;
+        let node = self.load_block_node(&command.scope).await?;
+        let current = self
+            .repository
+            .get_frontstage_block_code(
+                command.scope.workspace_id,
+                command.scope.page_id,
+                &node.code_ref,
+            )
+            .await?
+            .ok_or(ControlPlaneError::NotFound("block_node_not_found"))?;
+        if current.source_sha256.as_deref() != Some(expected_source_revision.as_str()) {
+            return Err(ControlPlaneError::Conflict("frontstage_block_source_revision").into());
+        }
+        let source_code = apply_source_edits(&current.source_code, command.edits)?;
+        let audit_log = block_audit(
+            &actor,
+            command.scope.page_id,
+            &command.scope.block_id,
+            "frontstage.block_node_code_patched",
+        );
+        self.repository
+            .save_frontstage_block_node_code(&SaveFrontstageBlockNodeCodeInput {
+                workspace_id: command.scope.workspace_id,
+                actor_user_id: command.scope.actor_user_id,
+                page_id: command.scope.page_id,
+                block_id: command.scope.block_id,
+                expected_source_revision: Some(expected_source_revision),
+                source: FrontstageBlockSourceInput { source_code },
                 audit_log,
             })
             .await
@@ -821,6 +929,151 @@ pub(super) fn validate_code(code: FrontstageBlockCodeInput) -> Result<Frontstage
         return Err(ControlPlaneError::InvalidInput("dependency_lock").into());
     }
     Ok(code)
+}
+
+fn source_fragment(
+    block_id: String,
+    code: domain::frontstage::FrontstageBlockCodeRecord,
+    start_line: u32,
+    start_column: u32,
+    line_count: u32,
+    max_chars: u32,
+) -> Result<FrontstageBlockCodeFragment> {
+    if line_count == 0 || line_count > MAX_SOURCE_FRAGMENT_LINES {
+        return Err(ControlPlaneError::InvalidInput("line_count").into());
+    }
+    if max_chars == 0 || max_chars > MAX_SOURCE_FRAGMENT_CHARS {
+        return Err(ControlPlaneError::InvalidInput("max_chars").into());
+    }
+    let source_revision = code
+        .source_sha256
+        .clone()
+        .ok_or(ControlPlaneError::Conflict(
+            "frontstage_block_source_revision",
+        ))?;
+    let line_starts = source_line_starts(&code.source_code);
+    let start_offset =
+        source_position_offset(&code.source_code, &line_starts, start_line, start_column)?;
+    let requested_line_end = usize::try_from(start_line - 1)
+        .map_err(|_| ControlPlaneError::InvalidInput("start_line"))?
+        .saturating_add(
+            usize::try_from(line_count)
+                .map_err(|_| ControlPlaneError::InvalidInput("line_count"))?,
+        )
+        .min(line_starts.len());
+    let requested_end_offset = line_starts
+        .get(requested_line_end)
+        .copied()
+        .unwrap_or(code.source_code.len());
+    let mut source_fragment = String::new();
+    let mut end_offset = start_offset;
+    let mut end_line = start_line;
+    let mut end_column = start_column;
+    for character in code.source_code[start_offset..requested_end_offset]
+        .chars()
+        .take(max_chars as usize)
+    {
+        source_fragment.push(character);
+        end_offset += character.len_utf8();
+        if character == '\n' {
+            end_line += 1;
+            end_column = 1;
+        } else {
+            end_column += 1;
+        }
+    }
+    let truncated_by_max_chars = end_offset < requested_end_offset;
+    let has_more = end_offset < code.source_code.len();
+    Ok(FrontstageBlockCodeFragment {
+        block_id,
+        page_id: code.page_id,
+        source_revision,
+        source_fragment,
+        start_line,
+        start_column,
+        end_line,
+        end_column,
+        total_lines: u32::try_from(line_starts.len())
+            .map_err(|_| ControlPlaneError::InvalidInput("source_code"))?,
+        total_chars: u64::try_from(code.source_code.chars().count())
+            .map_err(|_| ControlPlaneError::InvalidInput("source_code"))?,
+        next_line: has_more.then_some(end_line),
+        next_column: has_more.then_some(end_column),
+        truncated_by_max_chars,
+    })
+}
+
+fn apply_source_edits(source: &str, edits: Vec<FrontstageSourceEdit>) -> Result<String> {
+    if edits.is_empty() || edits.len() > MAX_SOURCE_EDITS {
+        return Err(ControlPlaneError::InvalidInput("edits").into());
+    }
+    let line_starts = source_line_starts(source);
+    let mut ranges = edits
+        .into_iter()
+        .map(|edit| {
+            let start =
+                source_position_offset(source, &line_starts, edit.start_line, edit.start_column)?;
+            let end = source_position_offset(source, &line_starts, edit.end_line, edit.end_column)?;
+            if start > end {
+                return Err(ControlPlaneError::InvalidInput("source_edit_range").into());
+            }
+            Ok((start, end, edit.replacement))
+        })
+        .collect::<Result<Vec<_>>>()?;
+    ranges.sort_by_key(|(start, end, _)| (*start, *end));
+    for pair in ranges.windows(2) {
+        let previous = &pair[0];
+        let current = &pair[1];
+        if current.0 < previous.1 || current.0 == previous.0 {
+            return Err(ControlPlaneError::InvalidInput("source_edit_overlap").into());
+        }
+    }
+    let mut patched = source.to_owned();
+    for (start, end, replacement) in ranges.into_iter().rev() {
+        patched.replace_range(start..end, &replacement);
+    }
+    Ok(patched)
+}
+
+fn source_line_starts(source: &str) -> Vec<usize> {
+    std::iter::once(0)
+        .chain(
+            source
+                .match_indices('\n')
+                .map(|(offset, _)| offset.saturating_add(1)),
+        )
+        .collect()
+}
+
+fn source_position_offset(
+    source: &str,
+    line_starts: &[usize],
+    line: u32,
+    column: u32,
+) -> Result<usize> {
+    if line == 0 || column == 0 {
+        return Err(ControlPlaneError::InvalidInput("source_position").into());
+    }
+    let line_index = usize::try_from(line - 1)
+        .map_err(|_| ControlPlaneError::InvalidInput("source_position"))?;
+    let line_start = *line_starts
+        .get(line_index)
+        .ok_or(ControlPlaneError::InvalidInput("source_position"))?;
+    let line_end = line_starts
+        .get(line_index.saturating_add(1))
+        .map(|offset| offset.saturating_sub(1))
+        .unwrap_or(source.len());
+    let line_source = &source[line_start..line_end];
+    let character_index = usize::try_from(column - 1)
+        .map_err(|_| ControlPlaneError::InvalidInput("source_position"))?;
+    if character_index == line_source.chars().count() {
+        return Ok(line_end);
+    }
+    line_source
+        .char_indices()
+        .nth(character_index)
+        .map(|(offset, _)| line_start + offset)
+        .ok_or(ControlPlaneError::InvalidInput("source_position").into())
 }
 
 pub(super) fn validate_source_revision(value: Option<String>) -> Result<Option<String>> {

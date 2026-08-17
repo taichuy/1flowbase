@@ -154,9 +154,9 @@ async fn mcp_library_verifies_signed_releases_and_resolves_existing_local_artifa
             bundle.organization == "1flowbase" && bundle.bundle_id == "frontstage_assistant"
         })
         .unwrap();
-    assert_eq!(built_in.current_bundle_version.as_deref(), Some("1.0.2"));
+    assert_eq!(built_in.current_bundle_version.as_deref(), Some("1.1.0"));
     assert!(!library
-        .resolve_artifact("1flowbase", "frontstage_assistant", Some("1.0.2"))
+        .resolve_artifact("1flowbase", "frontstage_assistant", Some("1.1.0"))
         .await
         .unwrap()
         .is_empty());

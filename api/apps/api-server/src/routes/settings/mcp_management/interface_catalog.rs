@@ -47,7 +47,7 @@ pub(super) async fn mcp_interface_catalog_entries(
     Ok(entries)
 }
 
-pub(super) fn mcp_interface_entry_from_capability(
+pub(crate) fn mcp_interface_entry_from_capability(
     entry: OpenApiCapabilityCatalogEntry,
 ) -> domain::McpInterfaceCatalogEntry {
     let source = match entry.source {

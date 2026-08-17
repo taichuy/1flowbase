@@ -8,11 +8,12 @@ use axum::{
 use control_plane::{
     frontstage::{
         CreateFrontstageBlockNodeCommand, DeleteFrontstageBlockSubtreeCommand,
-        FrontstageBlockScopeCommand, FrontstagePageService, ListFrontstageBlockChildrenCommand,
+        FrontstageBlockScopeCommand, FrontstagePageService, FrontstageSourceEdit,
+        GetFrontstageBlockCodeFragmentCommand, ListFrontstageBlockChildrenCommand,
         ListFrontstageBlockDescendantsCommand, ListFrontstageBlocksCommand,
-        MoveFrontstageBlockNodeCommand, SaveFrontstageBlockNodeCodeCommand,
-        SearchFrontstageBlocksCommand, UpdateFrontstageBlockDescriptorsCommand,
-        UpdateFrontstageBlockNodeCommand,
+        MoveFrontstageBlockNodeCommand, PatchFrontstageBlockNodeCodeCommand,
+        SaveFrontstageBlockNodeCodeCommand, SearchFrontstageBlocksCommand,
+        UpdateFrontstageBlockDescriptorsCommand, UpdateFrontstageBlockNodeCommand,
     },
     ports::FrontstageBlockPosition,
 };
@@ -99,6 +100,35 @@ pub struct DeleteFrontstageBlockSubtreeBody {
 pub struct SaveFrontstageBlockNodeCodeBody {
     pub expected_source_revision: Option<String>,
     pub source_code: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FrontstageSourceEditBody {
+    pub start_line: u32,
+    pub start_column: u32,
+    pub end_line: u32,
+    pub end_column: u32,
+    pub replacement: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PatchFrontstageBlockNodeCodeBody {
+    pub expected_source_revision: String,
+    pub edits: Vec<FrontstageSourceEditBody>,
+}
+
+#[derive(Debug, Deserialize, IntoParams)]
+pub struct FrontstageBlockCodeFragmentQuery {
+    #[serde(default = "default_source_start_line")]
+    pub start_line: u32,
+    #[serde(default = "default_source_start_column")]
+    pub start_column: u32,
+    #[serde(default = "default_source_line_count")]
+    pub line_count: u32,
+    #[serde(default = "default_source_max_chars")]
+    pub max_chars: u32,
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
@@ -202,6 +232,23 @@ pub struct FrontstageBlockNodeCodeResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
+pub struct FrontstageBlockCodeFragmentResponse {
+    pub block_id: String,
+    pub page_id: String,
+    pub source_revision: String,
+    pub source_fragment: String,
+    pub start_line: u32,
+    pub start_column: u32,
+    pub end_line: u32,
+    pub end_column: u32,
+    pub total_lines: u32,
+    pub total_chars: u64,
+    pub next_line: Option<u32>,
+    pub next_column: Option<u32>,
+    pub truncated_by_max_chars: bool,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
 pub struct FrontstageBlockRuntimeLayerResponse {
     pub block_id: String,
     pub tab_id: String,
@@ -281,7 +328,12 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route(
             "/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code",
             console_get(get_frontstage_block_node_code, Authenticated)
-                .put(save_frontstage_block_node_code, Authenticated),
+                .put(save_frontstage_block_node_code, Authenticated)
+                .patch(patch_frontstage_block_node_code, Authenticated),
+        )
+        .route(
+            "/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code/fragment",
+            console_get(get_frontstage_block_code_fragment, Authenticated),
         )
         .route(
             "/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/runtime-assembly",
@@ -648,6 +700,51 @@ pub async fn get_frontstage_block_node_code(
 
 #[utoipa::path(
     get,
+    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/code/fragment",
+    params(FrontstageBlockCodeFragmentQuery),
+    summary = "Read a bounded Frontstage block source fragment",
+    description = "Returns a revision-bound source fragment using 1-based Unicode line and column coordinates. line_count bounds the requested line span and max_chars bounds the returned Unicode scalar count.",
+    responses(
+        (status = 200, body = FrontstageBlockCodeFragmentResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn get_frontstage_block_code_fragment(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((workspace_id, page_id, block_id)): Path<(String, String, String)>,
+    Query(query): Query<FrontstageBlockCodeFragmentQuery>,
+) -> Result<Json<ApiSuccess<FrontstageBlockCodeFragmentResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let fragment = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
+        .get_block_code_fragment(GetFrontstageBlockCodeFragmentCommand {
+            scope: block_scope(&context, workspace_id, page_id, block_id)?,
+            start_line: query.start_line,
+            start_column: query.start_column,
+            line_count: query.line_count,
+            max_chars: query.max_chars,
+        })
+        .await?;
+    Ok(Json(ApiSuccess::new(FrontstageBlockCodeFragmentResponse {
+        block_id: fragment.block_id,
+        page_id: fragment.page_id.to_string(),
+        source_revision: fragment.source_revision,
+        source_fragment: fragment.source_fragment,
+        start_line: fragment.start_line,
+        start_column: fragment.start_column,
+        end_line: fragment.end_line,
+        end_column: fragment.end_column,
+        total_lines: fragment.total_lines,
+        total_chars: fragment.total_chars,
+        next_line: fragment.next_line,
+        next_column: fragment.next_column,
+        truncated_by_max_chars: fragment.truncated_by_max_chars,
+    })))
+}
+
+#[utoipa::path(
+    get,
     path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/runtime-assembly",
     summary = "Get a Frontstage block runtime assembly",
     description = "Returns one visible Block and its canonical ancestor chain as an ordered root-to-target runtime snapshot with independently resolved source code.",
@@ -697,6 +794,52 @@ pub async fn save_frontstage_block_node_code(
     ))))
 }
 
+#[utoipa::path(
+    patch,
+    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/code",
+    request_body = PatchFrontstageBlockNodeCodeBody,
+    summary = "Patch Frontstage block source ranges",
+    description = "Atomically applies non-overlapping edits expressed as 1-based Unicode line and column half-open ranges. The expected source revision is required and stale revisions fail with conflict without changing source.",
+    responses(
+        (status = 200, body = FrontstageBlockNodeCodeResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 409, body = crate::error_response::ErrorBody),
+        (status = 404, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn patch_frontstage_block_node_code(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((workspace_id, page_id, block_id)): Path<(String, String, String)>,
+    Json(body): Json<PatchFrontstageBlockNodeCodeBody>,
+) -> Result<Json<ApiSuccess<FrontstageBlockNodeCodeResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let scope = block_scope(&context, workspace_id, page_id, block_id)?;
+    let public_block_id = scope.block_id.clone();
+    let code = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
+        .patch_block_node_code(PatchFrontstageBlockNodeCodeCommand {
+            scope,
+            expected_source_revision: body.expected_source_revision,
+            edits: body
+                .edits
+                .into_iter()
+                .map(|edit| FrontstageSourceEdit {
+                    start_line: edit.start_line,
+                    start_column: edit.start_column,
+                    end_line: edit.end_line,
+                    end_column: edit.end_column,
+                    replacement: edit.replacement,
+                })
+                .collect(),
+        })
+        .await?;
+    Ok(Json(ApiSuccess::new(to_code_response(
+        public_block_id,
+        code,
+    ))))
+}
+
 fn block_scope(
     context: &crate::middleware::require_session::RequestContext,
     workspace_id: String,
@@ -713,6 +856,22 @@ fn block_scope(
 
 fn default_result_limit() -> u32 {
     100
+}
+
+fn default_source_start_line() -> u32 {
+    1
+}
+
+fn default_source_start_column() -> u32 {
+    1
+}
+
+fn default_source_line_count() -> u32 {
+    200
+}
+
+fn default_source_max_chars() -> u32 {
+    12_000
 }
 
 fn default_max_depth() -> u32 {

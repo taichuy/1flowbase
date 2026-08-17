@@ -3,7 +3,7 @@
     "schema_version": "1flowbase.mcp.bundle/v2",
     "organization": "1flowbase",
     "bundle_id": "frontstage_assistant",
-    "bundle_version": "1.0.2",
+    "bundle_version": "1.1.0",
     "locale": "zh_Hans",
     "minimum_host_version": "0.3.6",
     "exported_from_system_version": "0.3.6",
@@ -94,6 +94,52 @@
       "permission_code_snapshot": null,
       "risk_level_snapshot": "high",
       "status": "enabled"
+    },
+    {
+      "tool_id": "frontstage_read_block_source_fragment",
+      "name": "分页读取区块源码",
+      "short_description": "按 Unicode 行列和字符上限读取区块源码片段，并返回源码 revision 与下一读取位置。",
+      "full_description": "next_line 与 next_column 是下一片段的稳定起点；后续局部修改必须使用本次读取返回的 source_revision。max_chars 限制 Unicode 字符数量，并可能在一行中间停止。",
+      "execution_target": { "kind": "interface_wrapper", "interface_id": "get_frontstage_block_code_fragment" },
+      "parameter_schema_snapshot": { "type": "object" },
+      "result_schema_snapshot": { "type": "object" },
+      "input_mapping": {
+        "mappings": [
+          { "interface_param": "workspace_id", "source": { "kind": "server_binding", "binding": "workspace_id" }, "required": true },
+          { "interface_param": "page_id", "mcp_param": "page_id", "description": "低代码页面的稳定 ID。", "required": true },
+          { "interface_param": "block_id", "mcp_param": "block_id", "description": "需要读取源码的区块稳定 ID。", "required": true },
+          { "interface_param": "start_line", "mcp_param": "start_line", "description": "1-based 起始行；省略时从第 1 行开始。", "required": false },
+          { "interface_param": "start_column", "mcp_param": "start_column", "description": "1-based Unicode 起始列；省略时从第 1 列开始。", "required": false },
+          { "interface_param": "line_count", "mcp_param": "line_count", "description": "最多跨越的源码行数，范围 1 到 1000。", "required": false },
+          { "interface_param": "max_chars", "mcp_param": "max_chars", "description": "最多返回的 Unicode 字符数，范围 1 到 50000。", "required": false }
+        ]
+      },
+      "output_mapping": {},
+      "permission_code_snapshot": null,
+      "risk_level_snapshot": "low",
+      "status": "enabled"
+    },
+    {
+      "tool_id": "frontstage_patch_block_source",
+      "name": "局部修改区块源码",
+      "short_description": "使用源码 revision 原子应用一个或多个非重叠行列范围修改，并返回最新完整源码与新 revision。",
+      "full_description": "所有 edits 都相对于 expected_source_revision 对应的同一份源码，坐标为 1-based Unicode 行列，范围采用半开区间 [start,end)。revision 过期、坐标越界或 edits 重叠时整次调用失败且不写入。",
+      "execution_target": { "kind": "interface_wrapper", "interface_id": "patch_frontstage_block_node_code" },
+      "parameter_schema_snapshot": { "type": "object" },
+      "result_schema_snapshot": { "type": "object" },
+      "input_mapping": {
+        "mappings": [
+          { "interface_param": "workspace_id", "source": { "kind": "server_binding", "binding": "workspace_id" }, "required": true },
+          { "interface_param": "page_id", "mcp_param": "page_id", "description": "低代码页面的稳定 ID。", "required": true },
+          { "interface_param": "block_id", "mcp_param": "block_id", "description": "需要局部修改源码的区块稳定 ID。", "required": true },
+          { "interface_param": "expected_source_revision", "mcp_param": "expected_source_revision", "description": "读取源码片段时返回的 64 位 source_revision。", "required": true },
+          { "interface_param": "edits", "mcp_param": "edits", "description": "1 到 100 个非重叠源码修改；每项包含 start_line、start_column、end_line、end_column、replacement。", "required": true }
+        ]
+      },
+      "output_mapping": {},
+      "permission_code_snapshot": null,
+      "risk_level_snapshot": "high",
+      "status": "enabled"
     }
   ],
   "instances": [
@@ -118,7 +164,9 @@
         { "group_path": "/frontstage", "tool_id": "frontstage_search_block_render", "display_alias": null, "visible": true, "sort_order": 2 },
         { "group_path": "/frontstage", "tool_id": "frontstage_read_block_render_fragment", "display_alias": null, "visible": true, "sort_order": 3 },
         { "group_path": "/frontstage", "tool_id": "frontstage_click_block_element", "display_alias": null, "visible": true, "sort_order": 4 },
-        { "group_path": "/frontstage", "tool_id": "frontstage_recompile_block", "display_alias": null, "visible": true, "sort_order": 5 }
+        { "group_path": "/frontstage", "tool_id": "frontstage_recompile_block", "display_alias": null, "visible": true, "sort_order": 5 },
+        { "group_path": "/frontstage", "tool_id": "frontstage_read_block_source_fragment", "display_alias": null, "visible": true, "sort_order": 6 },
+        { "group_path": "/frontstage", "tool_id": "frontstage_patch_block_source", "display_alias": null, "visible": true, "sort_order": 7 }
       ],
       "discovery_policy": {
         "list_default_limit": 20,

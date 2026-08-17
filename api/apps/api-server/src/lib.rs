@@ -470,15 +470,6 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
             "MCP template installation reconciliation unavailable; core startup continues"
         );
     }
-    control_plane::mcp_management::McpManagementService::new(store.clone())
-        .seed_builtin_bundle_once(
-            control_plane::mcp_bundle::SeedBuiltinMcpBundleCommand {
-                actor_user_id: bootstrap_result.root_user_id,
-                workspace_id: bootstrap_result.workspace_id,
-                package: official_mcp_bundles::ApiOfficialMcpBundleRegistry::bundled_frontstage_assistant_package()?,
-            },
-        )
-        .await?;
     let official_i18n_catalog_update_service =
         build_official_i18n_catalog_update_service(store.clone(), config);
     let plugin_management = control_plane::plugin_management::PluginManagementService::new(
@@ -632,6 +623,23 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         bootstrap_workspace_id: bootstrap_result.workspace_id,
         bootstrap_workspace_name: config.bootstrap_workspace_name.clone(),
     });
+    let builtin_mcp_interfaces =
+        openapi_interface::build_openapi_capability_catalog(&state, bootstrap_result.workspace_id)
+            .await
+            .map_err(|error| error.0)?
+            .into_iter()
+            .map(routes::mcp_management::mcp_interface_entry_from_capability)
+            .collect();
+    control_plane::mcp_management::McpManagementService::new(state.store.clone())
+        .seed_builtin_bundle_once(
+            control_plane::mcp_bundle::SeedBuiltinMcpBundleCommand {
+                actor_user_id: bootstrap_result.root_user_id,
+                workspace_id: bootstrap_result.workspace_id,
+                package: official_mcp_bundles::ApiOfficialMcpBundleRegistry::bundled_frontstage_assistant_package()?,
+                interface_catalog: builtin_mcp_interfaces,
+            },
+        )
+        .await?;
     crate::workers::workflow_schedule::spawn_workflow_schedule_loops(state.clone());
     crate::workers::provider_request_logs::spawn_provider_request_log_worker(state.clone());
     crate::workers::billing::spawn_billing_worker(state.clone());

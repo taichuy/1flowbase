@@ -15,7 +15,7 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
     input: &SeedMcpBundleGraphInput,
 ) -> Result<()> {
     let mut transaction = store.pool().begin().await?;
-    let imported_before = sqlx::query_scalar::<_, bool>(
+    let version_imported_before = sqlx::query_scalar::<_, bool>(
         r#"
         select exists(
             select 1
@@ -26,15 +26,17 @@ pub(super) async fn seed_mcp_bundle_graph_once_atomically(
               and installation.category = 'mcp'
               and installation.organization = $2
               and installation.artifact_id = $3
+              and installation.artifact_version = $4
         )
         "#,
     )
     .bind(input.workspace_id)
     .bind(&input.source.organization)
     .bind(&input.source.bundle_id)
+    .bind(&input.source.bundle_version)
     .fetch_one(&mut *transaction)
     .await?;
-    if imported_before {
+    if version_imported_before {
         transaction.commit().await?;
         return Ok(());
     }
