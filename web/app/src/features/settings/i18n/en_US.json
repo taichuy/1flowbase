@@ -984,9 +984,7 @@
     "billing_transaction_type": "Transaction type",
     "billing_balance_after": "Balance after",
     "billing_created_at": "Created at",
-    "billing_catalog_truth": "The official plugin repository is the sole source for vendor pricing templates; the local database is authoritative after import.",
-    "billing_import_catalog": "Import or update official rules",
-    "billing_catalog_empty": "The bundled catalog has no importable rules. Add one manually under model providers.",
-    "billing_import_behavior": "Sync inserts or updates by stable ID and never deletes local rules."
+    "billing_import_catalog": "Update",
+    "billing_catalog_empty": "The bundled catalog has no importable rules. Add one manually under model providers."
   }
 }

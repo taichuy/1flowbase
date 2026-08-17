@@ -25,6 +25,21 @@ node scripts/node/cli/merge-current-to-main-latest.js
 
 ## Dev Runtime
 
+### `bash scripts/shell/apply-resource-limits.sh [config]`
+
+应用本机用户级资源配置。默认读取当前受限配置
+`scripts/shell/resource-limits.conf`；也可以显式传入其他配置文件：
+
+```bash
+bash scripts/shell/apply-resource-limits.sh
+bash scripts/shell/apply-resource-limits.sh \
+  scripts/shell/resource-limits.unlimited.example.conf
+```
+
+当前配置管理用户会话保护、应用内存压力策略、Rust 构建 slice、Cargo 最大
+job 数及仓库本地验证并发。无限制示例会删除这些脚本管理的配置，恢复系统与
+仓库默认值。配置通过 `systemctl --user` 生效，不需要 `sudo`。
+
 ### `node scripts/node/dev-up.js [选项] [start|ensure|stop|status|restart]`
 
 统一管理本地开发进程。默认动作是 `start`。

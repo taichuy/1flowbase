@@ -7,7 +7,7 @@ const {
 } = require('../testing/warning-capture.js');
 const { loadVerifyRuntimeConfig } = require('../testing/verify-runtime.js');
 
-function buildCommands({ cargoJobs, cargoTestThreads }) {
+function buildCommands({ cargoJobs, cargoTestThreads, incremental = false }) {
   return [
     {
       label: 'openapi-alignment',
@@ -25,7 +25,7 @@ function buildCommands({ cargoJobs, cargoTestThreads }) {
       cwd: 'api',
       env: buildCargoCommandEnv({
         cargoParallelism: cargoJobs,
-        disableIncremental: true,
+        incremental,
       }),
     },
   ];
@@ -47,6 +47,7 @@ async function main(_argv = [], deps = {}) {
     commands: buildCommands({
       cargoJobs: runtimeConfig.backend.cargoJobs,
       cargoTestThreads: runtimeConfig.backend.cargoTestThreads,
+      incremental: runtimeConfig.backend.incremental,
     }),
     spawnSyncImpl: deps.spawnSyncImpl,
     writeStdout: deps.writeStdout,

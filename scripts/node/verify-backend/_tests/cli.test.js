@@ -138,6 +138,22 @@ test('verify-backend buildCommands uses independent cargo jobs and cargo test th
   ]);
 });
 
+test('verify-backend buildCommands enables incremental compilation when configured', () => {
+  const commands = buildCommands({
+    cargoJobs: 2,
+    cargoTestThreads: 1,
+    incremental: true,
+    repoRoot: '/repo-root',
+    env: {},
+    target: 'test',
+  });
+
+  assert.deepEqual(commands[0].env, {
+    CARGO_BUILD_JOBS: '2',
+    CARGO_INCREMENTAL: '1',
+  });
+});
+
 test('verify-backend can build targeted shard commands for parallel CI', () => {
   assert.deepEqual(parseBackendCliArgs(['clippy', 'core-libs']), {
     help: false,

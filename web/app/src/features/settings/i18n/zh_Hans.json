@@ -984,9 +984,7 @@
     "billing_transaction_type": "流水类型",
     "billing_balance_after": "变更后余额",
     "billing_created_at": "发生时间",
-    "billing_catalog_truth": "官方插件仓库是厂家计费模板唯一真值；导入后本地数据库是运行时真值。",
-    "billing_import_catalog": "导入或更新官方规则",
-    "billing_catalog_empty": "当前内置目录没有可导入规则，可在模型供应商页面手动新增。",
-    "billing_import_behavior": "同步只按稳定 ID 新增或更新，不会删除本地规则。"
+    "billing_import_catalog": "更新",
+    "billing_catalog_empty": "当前内置目录没有可导入规则，可在模型供应商页面手动新增。"
   }
 }

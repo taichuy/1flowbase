@@ -1,7 +1,8 @@
 {
   "backend": {
     "cargoJobs": 1,
-    "cargoTestThreads": 1
+    "cargoTestThreads": 1,
+    "incremental": false
   },
   "frontend": {
     "turboConcurrency": 1,

@@ -43,12 +43,18 @@ function getCargoParallelism() {
   return Math.max(1, Math.floor(getAvailableParallelism() / 2));
 }
 
-function buildCargoCommandEnv({ cargoParallelism, disableIncremental = false }) {
+function buildCargoCommandEnv({
+  cargoParallelism,
+  disableIncremental = false,
+  incremental,
+}) {
   const env = {
     CARGO_BUILD_JOBS: String(cargoParallelism),
   };
 
-  if (disableIncremental) {
+  if (incremental === true) {
+    env.CARGO_INCREMENTAL = '1';
+  } else if (incremental === false || disableIncremental) {
     env.CARGO_INCREMENTAL = '0';
   }
 

@@ -103,6 +103,25 @@ test('test-backend buildCommands uses independent cargo jobs and cargo test thre
   ]);
 });
 
+test('test-backend buildCommands enables incremental compilation when configured', () => {
+  const commands = buildCommands({
+    cargoJobs: 2,
+    cargoTestThreads: 1,
+    incremental: true,
+    repoRoot: '/repo-root',
+    env: {},
+  });
+
+  assert.deepEqual(commands[1].env, {
+    CARGO_BUILD_JOBS: '2',
+    CARGO_INCREMENTAL: '1',
+  });
+  assert.deepEqual(commands.at(-1).env, {
+    CARGO_BUILD_JOBS: '2',
+    CARGO_INCREMENTAL: '1',
+  });
+});
+
 test('main prints help without running the backend gate', async () => {
   let output = '';
   let ran = false;

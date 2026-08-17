@@ -38,7 +38,13 @@ function buildRustBackendStaticGateCommand({ repoRoot, env = process.env }) {
   };
 }
 
-function buildBackendCommands({ cargoJobs, cargoTestThreads, repoRoot = getRepoRoot(), env = process.env }) {
+function buildBackendCommands({
+  cargoJobs,
+  cargoTestThreads,
+  incremental = false,
+  repoRoot = getRepoRoot(),
+  env = process.env,
+}) {
   return [
     buildRustBackendStaticGateCommand({ repoRoot, env }),
     ...IMAGE_LLM_VISION_GATE_TARGETS.map((target) => ({
@@ -55,14 +61,14 @@ function buildBackendCommands({ cargoJobs, cargoTestThreads, repoRoot = getRepoR
         `--test-threads=${cargoTestThreads}`,
       ],
       cwd: 'api',
-      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
+      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
     })),
     {
       label: 'cargo-test',
       command: 'cargo',
       args: ['test', '--workspace', '--jobs', String(cargoJobs), '--', `--test-threads=${cargoTestThreads}`],
       cwd: 'api',
-      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
+      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
     },
   ];
 }
@@ -95,6 +101,7 @@ async function runBackend(argv = [], deps = {}) {
     commands: buildBackendCommands({
       cargoJobs: runtimeConfig.backend.cargoJobs,
       cargoTestThreads: runtimeConfig.backend.cargoTestThreads,
+      incremental: runtimeConfig.backend.incremental,
       repoRoot,
       env,
     }),

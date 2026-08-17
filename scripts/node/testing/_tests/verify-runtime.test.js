@@ -32,6 +32,7 @@ test("loadVerifyRuntimeConfig returns defaults when local config is absent", () 
     backend: {
       cargoJobs: 8,
       cargoTestThreads: 8,
+      incremental: false,
     },
     frontend: {
       turboConcurrency: 8,
@@ -85,6 +86,7 @@ test("loadVerifyRuntimeConfig applies local overrides when config file exists", 
         backend: {
           cargoJobs: 3,
           cargoTestThreads: 2,
+          incremental: true,
         },
         frontend: {
           turboConcurrency: 2,
@@ -110,6 +112,7 @@ test("loadVerifyRuntimeConfig applies local overrides when config file exists", 
     backend: {
       cargoJobs: 3,
       cargoTestThreads: 2,
+      incremental: true,
     },
     frontend: {
       turboConcurrency: 2,
@@ -121,6 +124,24 @@ test("loadVerifyRuntimeConfig applies local overrides when config file exists", 
       pollIntervalMs: 1500,
     },
   });
+});
+
+test("loadVerifyRuntimeConfig rejects a non-boolean backend incremental override", () => {
+  const repoRoot = createRepoRoot();
+
+  fs.writeFileSync(
+    path.join(repoRoot, LOCAL_VERIFY_CONFIG_FILE),
+    JSON.stringify({
+      backend: {
+        incremental: "true",
+      },
+    }),
+  );
+
+  assert.throws(
+    () => loadVerifyRuntimeConfig({ repoRoot, env: {}, availableParallelism: 8 }),
+    /backend\.incremental must be a boolean/,
+  );
 });
 
 test("loadVerifyRuntimeConfig rejects unknown top-level keys", () => {
@@ -274,6 +295,7 @@ test("loadVerifyRuntimeConfig merges backend and lock overrides field by field",
     backend: {
       cargoJobs: 3,
       cargoTestThreads: 8,
+      incremental: false,
     },
     frontend: {
       turboConcurrency: 8,
@@ -318,6 +340,7 @@ test("loadVerifyRuntimeConfig uses full runner capacity and ignores local config
     backend: {
       cargoJobs: 10,
       cargoTestThreads: 10,
+      incremental: false,
     },
     frontend: {
       turboConcurrency: 10,

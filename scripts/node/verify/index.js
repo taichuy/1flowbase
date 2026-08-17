@@ -153,6 +153,7 @@ function buildBackendCargoCommand({
   target,
   cargoJobs,
   cargoTestThreads,
+  incremental = false,
   shard,
 }) {
   const normalizedShard = normalizeBackendShard(shard);
@@ -165,7 +166,7 @@ function buildBackendCargoCommand({
       command: 'cargo',
       args: ['clippy', ...packageArgs, '--all-targets', '--jobs', String(cargoJobs), '--', '-D', 'warnings'],
       cwd: 'api',
-      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
+      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
     };
   }
 
@@ -187,7 +188,7 @@ function buildBackendCargoCommand({
         ],
         cwd: 'api',
         env: {
-          ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
+          ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
           CARGO_PROFILE_TEST_DEBUG: '0',
           ...(normalizedShard.key.startsWith('api-server-')
             ? { RUST_MIN_STACK: String(8 * 1024 * 1024) }
@@ -202,7 +203,7 @@ function buildBackendCargoCommand({
       args: ['test', ...packageArgs, '--jobs', String(cargoJobs), '--', `--test-threads=${cargoTestThreads}`],
       cwd: 'api',
       env: {
-        ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
+        ...buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
         // Keep the monolithic API test harness inside the CI budget without changing test behavior.
         ...(normalizedShard?.key === 'api-server'
           ? { CARGO_PROFILE_TEST_DEBUG: '0' }
@@ -217,14 +218,14 @@ function buildBackendCargoCommand({
       command: 'cargo',
       args: ['check', ...packageArgs, '--jobs', String(cargoJobs)],
       cwd: 'api',
-      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
+      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
     };
   }
 
   throw new Error(`Unsupported backend cargo target: ${target}`);
 }
 
-function buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads }) {
+function buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads, incremental = false }) {
   return IMAGE_LLM_VISION_GATE_TARGETS.map((target) => ({
     label: target.label,
     command: 'cargo',
@@ -239,11 +240,11 @@ function buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads }) {
       `--test-threads=${cargoTestThreads}`,
     ],
     cwd: 'api',
-    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
+    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
   }));
 }
 
-function buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads }) {
+function buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads, incremental = false }) {
   return OFFICIAL_I18N_SEED_GATE_TARGETS.map((target) => ({
     label: target.label,
     command: 'cargo',
@@ -258,7 +259,7 @@ function buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads }) {
       `--test-threads=${cargoTestThreads}`,
     ],
     cwd: 'api',
-    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
+    env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
   }));
 }
 
@@ -275,6 +276,7 @@ function buildBackendFmtCommand({ cargoJobs }) {
 function buildBackendCommands({
   cargoJobs,
   cargoTestThreads,
+  incremental = false,
   repoRoot = getRepoRoot(),
   env = process.env,
   target = 'all',
@@ -289,24 +291,24 @@ function buildBackendCommands({
   }
 
   if (target === 'clippy' || target === 'test' || target === 'check') {
-    return [buildBackendCargoCommand({ target, cargoJobs, cargoTestThreads, shard })];
+    return [buildBackendCargoCommand({ target, cargoJobs, cargoTestThreads, incremental, shard })];
   }
 
   if (target === 'image-llm-vision') {
-    return buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads });
+    return buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads, incremental });
   }
 
   if (target === 'official-i18n-seed') {
-    return buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads });
+    return buildOfficialI18nSeedGateCommands({ cargoJobs, cargoTestThreads, incremental });
   }
 
   return [
     buildRustBackendStaticGateCommand({ repoRoot, env }),
     buildBackendFmtCommand({ cargoJobs }),
-    buildBackendCargoCommand({ target: 'clippy', cargoJobs, cargoTestThreads }),
-    ...buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads }),
-    buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads }),
-    buildBackendCargoCommand({ target: 'check', cargoJobs, cargoTestThreads }),
+    buildBackendCargoCommand({ target: 'clippy', cargoJobs, cargoTestThreads, incremental }),
+    ...buildImageLlmVisionGateCommands({ cargoJobs, cargoTestThreads, incremental }),
+    buildBackendCargoCommand({ target: 'test', cargoJobs, cargoTestThreads, incremental }),
+    buildBackendCargoCommand({ target: 'check', cargoJobs, cargoTestThreads, incremental }),
   ];
 }
 
@@ -371,6 +373,7 @@ async function runBackend(argv = [], deps = {}) {
     commands: buildBackendCommands({
       cargoJobs: runtimeConfig.backend.cargoJobs,
       cargoTestThreads: runtimeConfig.backend.cargoTestThreads,
+      incremental: runtimeConfig.backend.incremental,
       repoRoot,
       env,
       target: options.target,
@@ -382,7 +385,12 @@ async function runBackend(argv = [], deps = {}) {
   });
 }
 
-function buildBackendConsistencyCommands({ cargoJobs, cargoTestThreads, group = null }) {
+function buildBackendConsistencyCommands({
+  cargoJobs,
+  cargoTestThreads,
+  incremental = false,
+  group = null,
+}) {
   return BACKEND_CONSISTENCY_TARGETS
     .filter((target) => group === null || target.group === group)
     .map((target) => ({
@@ -399,7 +407,7 @@ function buildBackendConsistencyCommands({ cargoJobs, cargoTestThreads, group = 
         `--test-threads=${cargoTestThreads}`,
       ],
       cwd: 'api',
-      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
+      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
     }));
 }
 
@@ -463,6 +471,7 @@ async function runBackendConsistency(argv = [], deps = {}) {
     commands: buildBackendConsistencyCommands({
       cargoJobs: runtimeConfig.backend.cargoJobs,
       cargoTestThreads: runtimeConfig.backend.cargoTestThreads,
+      incremental: runtimeConfig.backend.incremental,
       group,
     }),
     spawnSyncImpl: deps.spawnSyncImpl,

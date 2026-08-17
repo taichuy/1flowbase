@@ -69,6 +69,14 @@ function assertPositiveInteger(name, value) {
   return value;
 }
 
+function assertBoolean(name, value) {
+  if (typeof value !== "boolean") {
+    throw new Error(`${name} must be a boolean`);
+  }
+
+  return value;
+}
+
 function assertKnownKeys(name, value, allowedKeys) {
   const unknownKeys = Object.keys(value)
     .filter((key) => !allowedKeys.has(key))
@@ -573,7 +581,7 @@ function resolveRuntimeConfig(config, availableParallelism) {
   assertKnownKeys(
     "backend",
     backendConfig,
-    new Set(["cargoJobs", "cargoTestThreads"]),
+    new Set(["cargoJobs", "cargoTestThreads", "incremental"]),
   );
   assertKnownKeys(
     "frontend",
@@ -589,6 +597,7 @@ function resolveRuntimeConfig(config, availableParallelism) {
   const cargoJobs = backendConfig.cargoJobs ?? backendDefaults.cargoJobs;
   const cargoTestThreads =
     backendConfig.cargoTestThreads ?? backendDefaults.cargoTestThreads;
+  const incremental = backendConfig.incremental ?? false;
   const turboConcurrency =
     frontendConfig.turboConcurrency ?? frontendDefaults.turboConcurrency;
   const vitestMaxWorkers =
@@ -599,6 +608,7 @@ function resolveRuntimeConfig(config, availableParallelism) {
 
   assertPositiveInteger("backend.cargoJobs", cargoJobs);
   assertPositiveInteger("backend.cargoTestThreads", cargoTestThreads);
+  assertBoolean("backend.incremental", incremental);
   assertPositiveInteger("frontend.turboConcurrency", turboConcurrency);
   assertPositiveInteger("frontend.vitestMaxWorkers", vitestMaxWorkers);
   assertPositiveInteger("locks.waitTimeoutMinutes", waitTimeoutMinutes);
@@ -630,6 +640,7 @@ function resolveRuntimeConfig(config, availableParallelism) {
     backend: {
       cargoJobs,
       cargoTestThreads,
+      incremental,
     },
     frontend: {
       turboConcurrency,

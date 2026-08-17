@@ -92,6 +92,7 @@ function buildStateProtocolCommands({
   env = process.env,
   cargoJobs,
   cargoTestThreads,
+  incremental = false,
   options = parseStateProtocolsCliArgs([]),
 }) {
   const nodeBinary = resolveNodeBinaryFromPath(env);
@@ -119,7 +120,7 @@ function buildStateProtocolCommands({
         `--test-threads=${cargoTestThreads}`,
       ],
       cwd: 'api',
-      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, disableIncremental: true }),
+      env: buildCargoCommandEnv({ cargoParallelism: cargoJobs, incremental }),
     },
   ];
 
@@ -198,6 +199,7 @@ async function runStateProtocols(argv = [], deps = {}) {
       env,
       cargoJobs: runtimeConfig.backend.cargoJobs,
       cargoTestThreads: runtimeConfig.backend.cargoTestThreads,
+      incremental: runtimeConfig.backend.incremental,
       options,
     }),
     spawnSyncImpl: deps.spawnSyncImpl,
