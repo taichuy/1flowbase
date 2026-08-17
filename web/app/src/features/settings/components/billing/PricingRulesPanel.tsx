@@ -76,7 +76,7 @@ function formatUsdRate(value: string) {
 }
 
 function formatPricingRate(price: string, tokenUnit: number) {
-  return `$${formatUsdRate(price)} / ${formatTokenUnit(tokenUnit)}`;
+  return `${formatTokenUnit(tokenUnit)} / ${formatUsdRate(price)}$`;
 }
 
 function pricingUnitLabel(kind: PricingKind) {

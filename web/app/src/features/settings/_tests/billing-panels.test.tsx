@@ -132,9 +132,9 @@ describe('billing settings panels', () => {
   test('shows fixed pricing columns and opens the validated rule editor', async () => {
     renderWithProviders(<PricingRulesPanel canManage />);
     expect(await screen.findByText('gpt-test')).toBeInTheDocument();
-    expect(screen.getByText('$0 / 1K')).toBeInTheDocument();
-    expect(screen.getByText('$5.00 / 1M')).toBeInTheDocument();
-    expect(screen.getByText('$0.000001 / 1B')).toBeInTheDocument();
+    expect(screen.getByText('1K / 0$')).toBeInTheDocument();
+    expect(screen.getByText('1M / 5.00$')).toBeInTheDocument();
+    expect(screen.getByText('1B / 0.000001$')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /新增计费规则/ }));
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByLabelText('输入 Token 单位')).toBeInTheDocument();
