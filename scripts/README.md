@@ -27,18 +27,53 @@ node scripts/node/cli/merge-current-to-main-latest.js
 
 ### `bash scripts/shell/apply-resource-limits.sh [config]`
 
-应用本机用户级资源配置。默认读取当前受限配置
-`scripts/shell/resource-limits.conf`；也可以显式传入其他配置文件：
+应用本机用户级资源配置。修改配置文件本身不会改变运行态；修改后需要执行脚本。
+不传参数时读取当前受限配置 `scripts/shell/resource-limits.conf`，也可以显式传入
+其他配置文件：
 
 ```bash
+# 应用当前受限配置
 bash scripts/shell/apply-resource-limits.sh
+
+# 撤销脚本管理的全部限制，恢复系统、Cargo 和仓库验证默认值
 bash scripts/shell/apply-resource-limits.sh \
   scripts/shell/resource-limits.unlimited.example.conf
+
+# 应用自定义配置
+bash scripts/shell/apply-resource-limits.sh /path/to/custom.conf
 ```
 
-当前配置管理用户会话保护、应用内存压力策略、Rust 构建 slice、Cargo 最大
-job 数及仓库本地验证并发。无限制示例会删除这些脚本管理的配置，恢复系统与
-仓库默认值。配置通过 `systemctl --user` 生效，不需要 `sudo`。
+配置通过 `systemctl --user` 生效，不需要 `sudo`。当前数值以
+`scripts/shell/resource-limits.conf` 为唯一真值，字段含义如下：
+
+| 字段 | 作用 |
+| --- | --- |
+| `PROFILE_MODE` | `limited` 写入并应用限制；`unlimited` 删除脚本管理的配置并恢复默认值。 |
+| `SESSION_MEMORY_LOW` | 为 `session.slice` 设置低水位内存保护，不是最大内存限制。 |
+| `APP_OOM_PRESSURE_LIMIT` | `app.slice` 的 PSI 内存压力阈值，不是物理内存使用率。 |
+| `APP_OOM_PRESSURE_DURATION` | `app.slice` 超过压力阈值后必须持续的时间；达到后才允许 `systemd-oomd` 选择其中的进程终止。 |
+| `DEV_OOM_PRESSURE_LIMIT` | `dev.slice` 的 PSI 内存压力阈值，只影响通过 `~/.local/bin/dev-run` 启动的开发进程。 |
+| `DEV_OOM_PRESSURE_DURATION` | `dev.slice` 超过压力阈值后必须持续的时间。`dev.slice` 与普通桌面应用分开统计。 |
+| `RUST_MEMORY_HIGH` | Rust 构建 slice 的软阈值；超过后内核开始加强回收和节流。 |
+| `RUST_MEMORY_MAX` | Rust 构建 slice 的内存硬上限。 |
+| `RUST_MEMORY_SWAP_MAX` | Rust 构建 slice 可使用的 swap 上限。 |
+| `CARGO_MAX_JOBS` | 全局 Cargo 包装器允许的最大编译 job 数；调用方显式设置更低值时保留低值。 |
+| `PROJECT_CARGO_JOBS` | 本仓库验证脚本使用的 Cargo 编译 job 数。 |
+| `PROJECT_CARGO_TEST_THREADS` | 本仓库验证脚本传给 Rust test harness 的测试线程数。 |
+| `PROJECT_CARGO_INCREMENTAL` | 是否为本仓库本地验证启用 Rust incremental compilation。 |
+
+脚本会管理以下本机文件：
+
+- `~/.config/systemd/user/session.slice.d/50-memory-protection.conf`
+- `~/.config/systemd/user/app.slice.d/50-memory-budget.conf`
+- `~/.config/systemd/user/dev.slice`
+- `~/.config/systemd/user/rust-build.slice`
+- `~/.local/bin/cargo`
+- 仓库根目录 `.1flowbase.verify.local.json`
+
+`resource-limits.unlimited.example.conf` 使用 `PROFILE_MODE=unlimited`，会删除上述
+脚本管理的文件。若 Rust 构建 slice 仍有运行中的进程，脚本同时把它的运行态
+`MemoryHigh`、`MemoryMax` 和 `MemorySwapMax` 设置为 `infinity`，无需等待进程退出。
 
 ### `node scripts/node/dev-up.js [选项] [start|ensure|stop|status|restart]`
 
