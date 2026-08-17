@@ -24,14 +24,14 @@ export function ModelProviderSettingsTabs({
       onChange={(key) => navigate({ to: `/settings/model-providers/${key}` })}
       items={[
         {
-          key: 'pricing',
-          label: i18nText('settings', 'auto.billing_pricing_rules'),
-          children: <PricingRulesPanel canManage={canManage} />
-        },
-        {
           key: 'providers',
           label: i18nText('settings', 'auto.model_providers'),
           children: <SettingsModelProvidersSection canManage={canManage} />
+        },
+        {
+          key: 'pricing',
+          label: i18nText('settings', 'auto.billing_pricing_rules'),
+          children: <PricingRulesPanel canManage={canManage} />
         },
         {
           key: 'request-logs',
