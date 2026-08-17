@@ -1094,6 +1094,7 @@ mod tests {
             .merge(crate::routes::frontstage::route_assembly())
             .merge(crate::routes::plugins::route_assembly())
             .merge(crate::routes::auth_center::route_assembly())
+            .merge(crate::routes::billing::route_assembly())
             .merge(crate::routes::system::route_assembly())
             .merge(crate::routes::system_backups::route_assembly())
             .merge(crate::routes::workspaces::route_assembly());

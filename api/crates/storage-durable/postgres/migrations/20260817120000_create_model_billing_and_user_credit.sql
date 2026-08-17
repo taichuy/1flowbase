@@ -127,7 +127,6 @@ alter table runtime_credit_ledger
 
 update runtime_credit_ledger set transaction_id = id where transaction_id is null;
 alter table runtime_credit_ledger alter column transaction_id set not null;
-alter table runtime_credit_ledger drop constraint if exists runtime_credit_ledger_workspace_id_idempotency_key_key;
 create unique index runtime_credit_ledger_account_idempotency_uidx
     on runtime_credit_ledger (account_id, idempotency_key)
     where account_id is not null;

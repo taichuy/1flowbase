@@ -49,10 +49,10 @@ fn token_rating_uses_mutually_exclusive_input_and_cache_quantities() {
 
     assert_eq!(cost.ordinary_input_tokens, 100_000);
     assert_eq!(cost.cache_hit_tokens, 200_000);
-    assert_eq!(cost.input_cost.to_string(), "0.125");
-    assert_eq!(cost.output_cost.to_string(), "0.25");
-    assert_eq!(cost.cache_hit_cost.to_string(), "0.05");
-    assert_eq!(cost.total_cost.to_string(), "0.425");
+    assert_eq!(cost.input_cost, Decimal::from_str("0.125").unwrap());
+    assert_eq!(cost.output_cost, Decimal::from_str("0.25").unwrap());
+    assert_eq!(cost.cache_hit_cost, Decimal::from_str("0.05").unwrap());
+    assert_eq!(cost.total_cost, Decimal::from_str("0.425").unwrap());
 }
 
 #[test]

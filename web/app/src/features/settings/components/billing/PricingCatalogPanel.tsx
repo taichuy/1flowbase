@@ -66,7 +66,7 @@ export function PricingCatalogPanel() {
           title={i18nText('settings', 'auto.billing_catalog_truth')}
           description={
             catalog.data
-              ? `${i18nText('settings', 'auto.billing_catalog_version')}: ${catalog.data.catalog_version}`
+              ? `${i18nText('settings', 'auto.translation_catalog_version')}: ${catalog.data.catalog_version}`
               : undefined
           }
         />
@@ -96,7 +96,7 @@ export function PricingCatalogPanel() {
                 dataIndex: 'upstream_model_id'
               },
               {
-                title: i18nText('settings', 'auto.billing_catalog_version'),
+                title: i18nText('settings', 'auto.translation_catalog_version'),
                 dataIndex: 'source_version'
               }
             ]}

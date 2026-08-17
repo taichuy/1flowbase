@@ -65,12 +65,14 @@ pub struct PricingRuleBody {
     pub cache_hit_token_unit_size: i64,
     pub cache_hit_token_unit_price: String,
     pub currency_code: Option<String>,
+    #[serde(with = "time::serde::rfc3339")]
     pub effective_from: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339::option")]
     pub effective_to: Option<OffsetDateTime>,
     pub timezone: String,
     pub weekday_mask: i16,
-    pub local_time_start: Option<Time>,
-    pub local_time_end: Option<Time>,
+    pub local_time_start: Option<String>,
+    pub local_time_end: Option<String>,
     pub priority: i32,
     pub enabled: bool,
     pub source_kind: Option<String>,
@@ -92,12 +94,14 @@ pub struct PricingRuleResponse {
     pub cache_hit_token_unit_size: i64,
     pub cache_hit_token_unit_price: String,
     pub currency_code: String,
+    #[serde(with = "time::serde::rfc3339")]
     pub effective_from: OffsetDateTime,
+    #[serde(with = "time::serde::rfc3339::option")]
     pub effective_to: Option<OffsetDateTime>,
     pub timezone: String,
     pub weekday_mask: i16,
-    pub local_time_start: Option<Time>,
-    pub local_time_end: Option<Time>,
+    pub local_time_start: Option<String>,
+    pub local_time_end: Option<String>,
     pub priority: i32,
     pub enabled: bool,
     pub source_kind: String,
@@ -127,8 +131,8 @@ impl From<PricingRule> for PricingRuleResponse {
             effective_to: rule.effective_to,
             timezone: rule.timezone,
             weekday_mask: rule.weekday_mask,
-            local_time_start: rule.local_time_start,
-            local_time_end: rule.local_time_end,
+            local_time_start: rule.local_time_start.map(|value| value.to_string()),
+            local_time_end: rule.local_time_end.map(|value| value.to_string()),
             priority: rule.priority,
             enabled: rule.enabled,
             source_kind: rule.source_kind,
@@ -172,8 +176,30 @@ fn body_to_rule(
         effective_to: body.effective_to,
         timezone: body.timezone,
         weekday_mask: body.weekday_mask,
-        local_time_start: body.local_time_start,
-        local_time_end: body.local_time_end,
+        local_time_start: body
+            .local_time_start
+            .map(|value| {
+                Time::parse(
+                    &value,
+                    time::macros::format_description!("[hour]:[minute]:[second]"),
+                )
+            })
+            .transpose()
+            .map_err(|_| {
+                control_plane::errors::ControlPlaneError::InvalidInput("local_time_start")
+            })?,
+        local_time_end: body
+            .local_time_end
+            .map(|value| {
+                Time::parse(
+                    &value,
+                    time::macros::format_description!("[hour]:[minute]:[second]"),
+                )
+            })
+            .transpose()
+            .map_err(|_| {
+                control_plane::errors::ControlPlaneError::InvalidInput("local_time_end")
+            })?,
         priority: body.priority,
         enabled: body.enabled,
         source_kind: body.source_kind.unwrap_or_else(|| "manual".into()),

@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -132,8 +138,12 @@ describe('billing settings panels', () => {
     renderWithProviders(<CreditManagementPanel canManage />);
     expect(await screen.findByText('$4.000000000000000000')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '增加额度' }));
-    const amount = await screen.findByLabelText('金额');
+    const dialog = await screen.findByRole('dialog');
+    const amount = within(dialog).getByLabelText('金额');
     fireEvent.change(amount, { target: { value: '2.50' } });
+    fireEvent.change(within(dialog).getByLabelText('原因'), {
+      target: { value: 'test grant' }
+    });
     fireEvent.click(screen.getByRole('button', { name: '确 定' }));
     await waitFor(() =>
       expect(billingApi.executeSettingsCreditCommand).toHaveBeenCalledWith(
