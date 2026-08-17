@@ -246,9 +246,15 @@ function GenericExtensionCenterSection({
   }, [activeTab, cursor, q]);
 
   const installedQuery = useQuery({
-    queryKey: settingsInstalledExtensionsQueryKey(cursor),
-    queryFn: () => fetchSettingsInstalledExtensions(cursor),
-    enabled: activeTab === 'installed',
+    queryKey: settingsInstalledExtensionsQueryKey(
+      activeTab === 'installed' ? cursor : undefined,
+      activeTab === 'installed' ? undefined : activeTab
+    ),
+    queryFn: () =>
+      fetchSettingsInstalledExtensions(
+        activeTab === 'installed' ? cursor : undefined,
+        activeTab === 'installed' ? undefined : activeTab
+      ),
     retry: false
   });
   const catalogQuery = useQuery({
@@ -276,7 +282,7 @@ function GenericExtensionCenterSection({
       }
       return page;
     },
-    enabled: activeTab !== 'installed',
+    enabled: activeTab !== 'installed' && installedQuery.isSuccess,
     retry: false
   });
 
@@ -286,7 +292,7 @@ function GenericExtensionCenterSection({
         ? (installedQuery.data?.entries ?? [])
         : catalogQuery.data?.category === activeTab
           ? catalogQuery.data.entries
-          : [],
+          : (installedQuery.data?.entries ?? []),
     [
       activeTab,
       catalogQuery.data?.category,
@@ -294,69 +300,79 @@ function GenericExtensionCenterSection({
       installedQuery.data?.entries
     ]
   );
+  const updateRows =
+    activeTab === 'installed' ? rows : (installedQuery.data?.entries ?? []);
 
-  const checkVisibleUpdates = useCallback(async () => {
-    if (!csrfToken || rows.length === 0) return;
+  const checkVisibleUpdates = useCallback(
+    async (candidateRows: ExtensionRow[]) => {
+      if (!csrfToken || candidateRows.length === 0) return;
 
-    const checkableRows = rows.filter(
-      (row) =>
-        (isInstalledRow(row) || row.current_version !== null) &&
-        (isInstalledRow(row) || row.catalog_source !== 'builtin')
-    );
-    const groups = new Map<SettingsExtensionCategory, ExtensionRow[]>();
-    for (const row of checkableRows) {
-      const group = groups.get(row.category) ?? [];
-      group.push(row);
-      groups.set(row.category, group);
-    }
-    if (groups.size === 0) return;
+      const checkableRows = candidateRows.filter(
+        (row) =>
+          (isInstalledRow(row) || row.current_version !== null) &&
+          (isInstalledRow(row) || row.catalog_source !== 'builtin')
+      );
+      const groups = new Map<SettingsExtensionCategory, ExtensionRow[]>();
+      for (const row of checkableRows) {
+        const group = groups.get(row.category) ?? [];
+        group.push(row);
+        groups.set(row.category, group);
+      }
+      if (groups.size === 0) return;
 
-    const requestId = ++updateCheckRequestRef.current;
-    setUpdateStates((current) => ({
-      ...current,
-      ...Object.fromEntries(
-        checkableRows.map((row) => [extensionKey(row), 'checking' as const])
-      )
-    }));
-    const results = await Promise.all(
-      [...groups.entries()].map(async ([category, entries]) => {
-        try {
-          const result = await checkSettingsExtensionUpdates(
-            {
-              category,
-              items: entries.map((entry) => ({
-                catalog_id: extensionCatalogId(entry),
-                current_version: isInstalledRow(entry)
-                  ? entry.version
-                  : entry.current_version!,
-                installed_versions: isInstalledRow(entry)
-                  ? entry.installed_versions.map((version) => version.version)
-                  : [entry.current_version!]
-              }))
-            },
-            csrfToken
-          );
-          return result.items.map(
-            (item) => [item.catalog_id, item.status] as const
-          );
-        } catch {
-          return entries.map(
-            (entry) => [extensionKey(entry), 'unknown_error'] as const
-          );
-        }
-      })
-    );
-    if (updateCheckRequestRef.current !== requestId) return;
-    setUpdateStates((current) => ({
-      ...current,
-      ...Object.fromEntries(results.flat())
-    }));
-  }, [csrfToken, rows]);
+      const requestId = ++updateCheckRequestRef.current;
+      setUpdateStates((current) => ({
+        ...current,
+        ...Object.fromEntries(
+          checkableRows.map((row) => [extensionKey(row), 'checking' as const])
+        )
+      }));
+      const results = await Promise.all(
+        [...groups.entries()].map(async ([category, entries]) => {
+          try {
+            const result = await checkSettingsExtensionUpdates(
+              {
+                category,
+                items: entries.map((entry) => ({
+                  catalog_id: extensionCatalogId(entry),
+                  current_version: isInstalledRow(entry)
+                    ? entry.version
+                    : entry.current_version!,
+                  installed_versions: isInstalledRow(entry)
+                    ? entry.installed_versions.map((version) => version.version)
+                    : [entry.current_version!]
+                }))
+              },
+              csrfToken
+            );
+            return result.items.map(
+              (item) => [item.catalog_id, item.status] as const
+            );
+          } catch {
+            return entries.map(
+              (entry) => [extensionKey(entry), 'unknown_error'] as const
+            );
+          }
+        })
+      );
+      if (updateCheckRequestRef.current !== requestId) return;
+      setUpdateStates((current) => ({
+        ...current,
+        ...Object.fromEntries(results.flat())
+      }));
+    },
+    [csrfToken]
+  );
 
   useEffect(() => {
-    if (activeTab === 'installed' || !catalogQuery.isSuccess) return;
-    void checkVisibleUpdates();
-  }, [activeTab, catalogQuery.isSuccess, checkVisibleUpdates]);
+    if (activeTab === 'installed' || !installedQuery.isSuccess) return;
+    void checkVisibleUpdates(installedQuery.data.entries);
+  }, [
+    activeTab,
+    checkVisibleUpdates,
+    installedQuery.data,
+    installedQuery.isSuccess
+  ]);
 
   const invalidateExtensionApplicationState = useCallback(async () => {
     await Promise.all([
@@ -887,11 +903,14 @@ function GenericExtensionCenterSection({
   const totalEntries =
     activeTab === 'installed'
       ? (installedQuery.data?.total_entries ?? 0)
-      : (catalogQuery.data?.total_entries ?? 0);
+      : (catalogQuery.data?.total_entries ??
+        installedQuery.data?.total_entries ??
+        0);
   const tableLoading =
     activeTab === 'installed'
       ? installedQuery.isLoading || installedQuery.isFetching
-      : catalogQuery.isLoading || catalogQuery.isFetching;
+      : installedQuery.isLoading ||
+        (catalogQuery.isLoading && rows.length === 0);
 
   return (
     <SettingsSectionSurface heightMode="fill">
@@ -944,98 +963,91 @@ function GenericExtensionCenterSection({
               </Button>
             }
           />
-        ) : (
-          <>
-            {activeTab !== 'installed' &&
-            catalogQuery.data?.freshness === 'stale' ? (
-              <Alert
-                type="warning"
-                showIcon
-                title={t('auto.extension_catalog_stale')}
+        ) : null}
+        {activeTab !== 'installed' &&
+        catalogQuery.data?.freshness === 'stale' ? (
+          <Alert
+            type="warning"
+            showIcon
+            title={t('auto.extension_catalog_stale')}
+          />
+        ) : null}
+        <DataTable<ExtensionRow>
+          rowKey={(row) => extensionKey(row)}
+          columns={columns}
+          configuration={tableConfiguration}
+          dataSource={rows}
+          emptyText={<Empty description={t('auto.no_extensions')} />}
+          loading={tableLoading}
+          toolbar={
+            <Flex justify="flex-end" gap={8} wrap>
+              {activeTab !== 'installed' ? (
+                <Input.Search
+                  allowClear
+                  aria-label={t('auto.drop_down_search_installable_vendors')}
+                  placeholder={t('auto.drop_down_search_installable_vendors')}
+                  style={{ width: 240 }}
+                  value={searchText}
+                  onChange={(event) => setSearchText(event.target.value)}
+                  onClear={() => {
+                    void navigate({
+                      to: '/settings/extension-center/$category',
+                      params: { category: activeTab },
+                      search: { q: undefined, cursor: undefined }
+                    });
+                  }}
+                  onSearch={(value) => {
+                    const normalizedQuery = value.trim();
+                    void navigate({
+                      to: '/settings/extension-center/$category',
+                      params: { category: activeTab },
+                      search: {
+                        q: normalizedQuery || undefined,
+                        cursor: undefined
+                      }
+                    });
+                  }}
+                />
+              ) : null}
+              <Button
+                disabled={updateRows.length === 0}
+                loading={Object.values(updateStates).some(
+                  (state) => state === 'checking'
+                )}
+                onClick={() => void checkVisibleUpdates(updateRows)}
+              >
+                {t('auto.check_updates')}
+              </Button>
+              <DataTableColumnSettings
+                columns={columns}
+                configuration={tableConfiguration}
               />
-            ) : null}
-            <DataTable<ExtensionRow>
-              rowKey={(row) => extensionKey(row)}
-              columns={columns}
-              configuration={tableConfiguration}
-              dataSource={rows}
-              emptyText={<Empty description={t('auto.no_extensions')} />}
-              loading={tableLoading}
-              toolbar={
-                <Flex justify="flex-end" gap={8} wrap>
-                  {activeTab !== 'installed' ? (
-                    <Input.Search
-                      allowClear
-                      aria-label={t(
-                        'auto.drop_down_search_installable_vendors'
-                      )}
-                      placeholder={t(
-                        'auto.drop_down_search_installable_vendors'
-                      )}
-                      style={{ width: 240 }}
-                      value={searchText}
-                      onChange={(event) => setSearchText(event.target.value)}
-                      onClear={() => {
-                        void navigate({
-                          to: '/settings/extension-center/$category',
-                          params: { category: activeTab },
-                          search: { q: undefined, cursor: undefined }
-                        });
-                      }}
-                      onSearch={(value) => {
-                        const normalizedQuery = value.trim();
-                        void navigate({
-                          to: '/settings/extension-center/$category',
-                          params: { category: activeTab },
-                          search: {
-                            q: normalizedQuery || undefined,
-                            cursor: undefined
-                          }
-                        });
-                      }}
-                    />
-                  ) : null}
-                  <Button
-                    disabled={rows.length === 0}
-                    loading={Object.values(updateStates).some(
-                      (state) => state === 'checking'
-                    )}
-                    onClick={() => void checkVisibleUpdates()}
-                  >
-                    {t('auto.check_updates')}
-                  </Button>
-                  <DataTableColumnSettings
-                    columns={columns}
-                    configuration={tableConfiguration}
-                  />
-                </Flex>
-              }
-              cursorPagination={{
-                currentPage: cursor ? 2 : 1,
-                hasPreviousPage: Boolean(cursor),
-                hasNextPage: Boolean(nextCursor),
-                previousLabel: t('auto.previous_page'),
-                nextLabel: t('auto.next_page'),
-                total: totalEntries,
-                onPreviousPage: () => {
-                  void navigate({
-                    to: '/settings/extension-center/$category',
-                    params: { category: activeTab },
-                    search: { q, cursor: undefined }
-                  });
-                },
-                onNextPage: () => {
-                  if (!nextCursor) return;
-                  void navigate({
-                    to: '/settings/extension-center/$category',
-                    params: { category: activeTab },
-                    search: { q, cursor: nextCursor }
-                  });
-                }
-              }}
-            />
-          </>
-        )}
+            </Flex>
+          }
+          cursorPagination={{
+            currentPage: cursor ? 2 : 1,
+            hasPreviousPage: Boolean(cursor),
+            hasNextPage: Boolean(nextCursor),
+            previousLabel: t('auto.previous_page'),
+            nextLabel: t('auto.next_page'),
+            total: totalEntries,
+            onPreviousPage: () => {
+              void navigate({
+                to: '/settings/extension-center/$category',
+                params: { category: activeTab },
+                search: { q, cursor: undefined }
+              });
+            },
+            onNextPage: () => {
+              if (!nextCursor) return;
+              void navigate({
+                to: '/settings/extension-center/$category',
+                params: { category: activeTab },
+                search: { q, cursor: nextCursor }
+              });
+            }
+          }}
+        />
       </Flex>
 
       <Drawer

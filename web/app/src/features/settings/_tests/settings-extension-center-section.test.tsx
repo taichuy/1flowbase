@@ -346,15 +346,31 @@ describe('SettingsExtensionCenterSection', () => {
     vi.spyOn(Modal, 'confirm').mockReturnValue({ destroy: vi.fn() } as never);
   });
 
-  test('AC-003 shows a retryable catalog error instead of an empty catalog', async () => {
+  test('AC-001 keeps the local category inventory visible when the remote catalog is unavailable', async () => {
     extensionsApi.fetchSettingsExtensionCatalog.mockRejectedValueOnce(
       new Error('catalog snapshot temporarily inconsistent')
+    );
+    extensionsApi.checkSettingsExtensionUpdates.mockRejectedValueOnce(
+      new Error('catalog unavailable')
     );
 
     renderSection('runtime-extensions');
 
-    expect(await screen.findByText('扩展目录暂时无法加载')).toBeInTheDocument();
-    expect(screen.queryByText('暂无扩展')).not.toBeInTheDocument();
+    expect(
+      await screen.findByText('在线扩展目录暂时无法加载')
+    ).toBeInTheDocument();
+    expect(await screen.findByText('openai')).toBeInTheDocument();
+    expect(extensionsApi.fetchSettingsInstalledExtensions).toHaveBeenCalledWith(
+      undefined,
+      'runtime-extensions'
+    );
+    await waitFor(() => {
+      expect(
+        screen
+          .getByRole('button', { name: '同步最新版本' })
+          .closest('[data-update-state]')
+      ).toHaveAttribute('data-update-state', 'unknown_error');
+    });
 
     extensionsApi.fetchSettingsExtensionCatalog.mockResolvedValueOnce({
       category: 'runtime-extensions',
@@ -379,7 +395,7 @@ describe('SettingsExtensionCenterSection', () => {
     renderSection();
 
     expect(await screen.findByText('openai')).toBeInTheDocument();
-    expect(screen.getAllByRole('tab')).toHaveLength(7);
+    expect(screen.getAllByRole('tab')).toHaveLength(8);
     expect(
       screen.getByRole('columnheader', { name: '来源' })
     ).toBeInTheDocument();
@@ -482,7 +498,7 @@ describe('SettingsExtensionCenterSection', () => {
           {
             catalog_id: 'runtime-extensions:taichuy/openai',
             current_version: '1.0.0',
-            installed_versions: ['1.0.0']
+            installed_versions: ['1.0.0', '0.9.0']
           }
         ]
       },
@@ -526,7 +542,7 @@ describe('SettingsExtensionCenterSection', () => {
     });
   });
 
-  test('catalog tabs automatically recheck after the visible page changes', async () => {
+  test('catalog tabs do not recheck the local inventory when the online page changes', async () => {
     const view = renderSection('runtime-extensions');
     await waitFor(() => {
       expect(extensionsApi.checkSettingsExtensionUpdates).toHaveBeenCalledTimes(
@@ -547,7 +563,7 @@ describe('SettingsExtensionCenterSection', () => {
         { q: undefined, slot_code: undefined, cursor: 'cursor-2' }
       );
       expect(extensionsApi.checkSettingsExtensionUpdates).toHaveBeenCalledTimes(
-        2
+        1
       );
     });
   });
@@ -1205,10 +1221,12 @@ describe('SettingsExtensionCenterSection', () => {
     expect(
       await screen.findByRole('link', { name: '前往 Agent Flow 模板管理' })
     ).toHaveAttribute('href', '/templates');
-    expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
-      'agent-flow',
-      { q: undefined, slot_code: undefined, cursor: undefined }
-    );
+    await waitFor(() => {
+      expect(extensionsApi.fetchSettingsExtensionCatalog).toHaveBeenCalledWith(
+        'agent-flow',
+        { q: undefined, slot_code: undefined, cursor: undefined }
+      );
+    });
     expect(extensionsApi.installSettingsExtension).not.toHaveBeenCalled();
     expect(
       applicationsApi.previewInstalledApplicationExtension
@@ -1327,7 +1345,7 @@ describe('SettingsExtensionCenterSection', () => {
     await waitFor(() => {
       expect(
         extensionsApi.previewSettingsInstalledMcpExtension
-      ).toHaveBeenCalledWith('mcp-installation-1', 'csrf-123');
+      ).toHaveBeenCalledWith('mcp-installation-1', 'csrf-123', undefined);
     });
     expect(
       await screen.findByText('本地产物校验值与安装记录不一致。')
