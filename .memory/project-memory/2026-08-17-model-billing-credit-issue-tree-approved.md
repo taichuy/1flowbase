@@ -64,5 +64,6 @@ scope:
 - 官方默认目录只保留 `provider_code=zero`、`upstream_model_id=any` 的单条零价兜底。
 - 匹配顺序为精确 `provider/model` 优先于 `zero/any`；删除或停用兜底后恢复缺规则拒绝。
 - 前端 Token 单位显示 `K/M/B`；零价显示 `$0`，非零金额去除数据库无意义尾零并至少展示两位常规小数。
-- beta 提交 `7f7669fea`，本地 dev merge `643abd773`，官方目录提交 `56815aa`；均未 push。
+- beta 提交 `7f7669fea` 与 `9ed6d1bae`，最终本地 dev merge `555dee792`，官方目录提交 `56815aa`；均未 push。
 - beta 数据库 migration、桌面/移动页面、前端、control-plane、storage-postgres 和 API 精确模块测试均已通过，证据已回填 Root #1752。
+- 集中 API 验证发现旧 Gateway 账本写入遗漏新 NOT NULL `transaction_id`；已按 migration 历史语义修复为 `transaction_id = ledger_id`，repository 1/1、beta Application Runtime 6/6、dev 合并态 6/6 通过。
