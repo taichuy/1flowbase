@@ -178,6 +178,15 @@ pub struct ReplaceMcpBundleGraphInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct ReconcileManagedMcpBundleGraphInput {
+    pub actor_user_id: Uuid,
+    pub workspace_id: Uuid,
+    pub source: domain::McpManagedBundleSource,
+    pub tools: Vec<CreateMcpToolInput>,
+    pub instances: Vec<domain::McpBundleInstance>,
+}
+
+#[derive(Debug, Clone)]
 pub struct UpsertMcpClientCredentialInput {
     pub id: Uuid,
     pub user_id: Uuid,
@@ -228,6 +237,10 @@ pub trait McpManagementRepository: Send + Sync {
     async fn replace_mcp_bundle_graph_atomically(
         &self,
         input: &ReplaceMcpBundleGraphInput,
+    ) -> anyhow::Result<()>;
+    async fn reconcile_managed_mcp_bundle_graph_atomically(
+        &self,
+        input: &ReconcileManagedMcpBundleGraphInput,
     ) -> anyhow::Result<()>;
     async fn update_mcp_instance(
         &self,

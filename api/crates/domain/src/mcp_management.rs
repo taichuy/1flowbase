@@ -463,6 +463,13 @@ pub struct McpParameterDescriptor {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct McpManagedBundleSource {
+    pub organization: String,
+    pub bundle_id: String,
+    pub bundle_version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct McpInstanceRecord {
     pub id: Uuid,
     pub workspace_id: Uuid,
@@ -471,6 +478,7 @@ pub struct McpInstanceRecord {
     pub description_short: Option<String>,
     pub status: McpInstanceStatus,
     pub default_entry_path: String,
+    pub managed_by: Option<McpManagedBundleSource>,
     pub created_by: Uuid,
     pub updated_by: Uuid,
     pub created_at: OffsetDateTime,
@@ -511,6 +519,7 @@ pub struct McpToolRecord {
     pub des_id_required: bool,
     pub status: McpToolStatus,
     pub revision: i32,
+    pub managed_by: Option<McpManagedBundleSource>,
     pub created_by: Uuid,
     pub updated_by: Uuid,
     pub created_at: OffsetDateTime,

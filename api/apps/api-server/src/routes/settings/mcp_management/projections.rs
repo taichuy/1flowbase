@@ -78,6 +78,7 @@ pub(super) fn to_instance_response(record: domain::McpInstanceRecord) -> McpInst
         description_short: record.description_short,
         status: record.status.as_str().into(),
         default_entry_path: record.default_entry_path,
+        managed_by: record.managed_by.map(to_managed_bundle_source_response),
         created_by: record.created_by.to_string(),
         updated_by: record.updated_by.to_string(),
         created_at: record.created_at.to_string(),
@@ -180,6 +181,7 @@ pub(super) fn to_tool_response_with_operation(
     operation: String,
     availability_status: domain::McpToolAvailabilityStatus,
 ) -> McpToolResponse {
+    let managed_by = record.managed_by.clone();
     McpToolResponse {
         id: record.id.to_string(),
         workspace_id: record.workspace_id.to_string(),
@@ -218,6 +220,17 @@ pub(super) fn to_tool_response_with_operation(
         availability_reason: (availability_status != domain::McpToolAvailabilityStatus::Available)
             .then(|| availability_status.as_str().to_string()),
         revision: record.revision,
+        managed_by: managed_by.map(to_managed_bundle_source_response),
+    }
+}
+
+fn to_managed_bundle_source_response(
+    source: domain::McpManagedBundleSource,
+) -> McpManagedBundleSourceResponse {
+    McpManagedBundleSourceResponse {
+        organization: source.organization,
+        bundle_id: source.bundle_id,
+        bundle_version: source.bundle_version,
     }
 }
 

@@ -158,7 +158,8 @@ pub struct McpBundleUpstreamConnection {
     pub status: crate::McpUpstreamConnectionStatus,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct McpBundlePackage {
     pub manifest: McpBundleManifest,
     pub tools: Vec<McpBundleTool>,

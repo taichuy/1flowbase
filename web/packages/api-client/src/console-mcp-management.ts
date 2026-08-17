@@ -8,11 +8,18 @@ export interface ConsoleMcpInstance {
   description_short: string | null;
   status: string;
   default_entry_path: string;
+  managed_by: ConsoleMcpManagedBundleSource | null;
   created_by: string;
   updated_by: string;
   created_at: string;
   updated_at: string;
   llm_tool_registration: ConsoleMcpLlmToolRegistration;
+}
+
+export interface ConsoleMcpManagedBundleSource {
+  organization: string;
+  bundle_id: string;
+  bundle_version: string;
 }
 
 export interface ConsoleMcpLlmToolRegistration {
@@ -109,6 +116,7 @@ export interface ConsoleMcpTool {
   availability_status: ConsoleMcpToolAvailabilityStatus;
   availability_reason: string | null;
   revision: number;
+  managed_by: ConsoleMcpManagedBundleSource | null;
 }
 
 export interface ConsoleMcpBundleManifest {

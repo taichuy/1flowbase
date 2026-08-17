@@ -19,6 +19,7 @@ describe('McpInstanceTable', () => {
             description_short: null,
             status: 'enabled',
             default_entry_path: '/',
+            managed_by: null,
             created_by: 'user-1',
             updated_by: 'user-1',
             created_at: '2026-08-08T00:00:00Z',
@@ -47,5 +48,50 @@ describe('McpInstanceTable', () => {
 
     expect(screen.getByText('workspace_ops')).toBeInTheDocument();
     expect(container.querySelector('code')).toBeNull();
+  });
+
+  test('shows file ownership and disables managed instance editors', () => {
+    render(
+      <McpInstanceTable
+        canManage
+        groupCounts={new Map()}
+        toolCounts={new Map()}
+        instances={[
+          {
+            id: 'managed-instance',
+            workspace_id: 'workspace-1',
+            instance_id: 'frontstage_browser',
+            name: 'Frontstage Browser',
+            description_short: null,
+            status: 'enabled',
+            default_entry_path: '/frontstage',
+            managed_by: {
+              organization: '1flowbase',
+              bundle_id: 'frontstage_assistant',
+              bundle_version: '1.0.2'
+            },
+            created_by: 'user-1',
+            updated_by: 'user-1',
+            created_at: '2026-08-17T00:00:00Z',
+            updated_at: '2026-08-17T00:00:00Z',
+            llm_tool_registration: { prefix: '', tools: [] }
+          }
+        ]}
+        onConnect={vi.fn()}
+        onCopy={vi.fn()}
+        onCreate={vi.fn()}
+        onDelete={vi.fn(async () => undefined)}
+        onEdit={vi.fn()}
+        onEditDiscoveryPolicy={vi.fn()}
+        onExport={vi.fn()}
+        onOpenDirectory={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByText('1flowbase/frontstage_assistant@1.0.2')
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText('编辑')).toBeDisabled();
+    expect(screen.getByLabelText('目录编辑器')).toBeDisabled();
   });
 });

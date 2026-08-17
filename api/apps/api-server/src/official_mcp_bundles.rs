@@ -26,6 +26,11 @@ pub const MCP_CATALOG_SCHEMA_VERSION: &str = "1flowbase.mcp-catalog/v2";
 const SOURCE_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
 const SOURCE_REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 const MAX_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
+pub(crate) const BUNDLED_FRONTSTAGE_ORGANIZATION: &str = "1flowbase";
+pub(crate) const BUNDLED_FRONTSTAGE_BUNDLE_ID: &str = "frontstage_assistant";
+pub(crate) const BUNDLED_FRONTSTAGE_VERSION: &str = "1.0.2";
+const BUNDLED_FRONTSTAGE_PACKAGE_BYTES: &[u8] =
+    include_bytes!("../resources/mcp/frontstage-assistant.json");
 
 fn rewrite_github_release_url(url: &str, github_proxy_url: Option<&str>) -> String {
     let Some(github_proxy_url) = github_proxy_url
@@ -219,7 +224,8 @@ pub struct ApiOfficialMcpBundleRegistry {
 }
 
 impl ApiOfficialMcpBundleRegistry {
-    fn bundled_frontstage_assistant_package() -> domain::McpBundlePackage {
+    #[allow(dead_code)]
+    fn legacy_bundled_frontstage_assistant_package() -> domain::McpBundlePackage {
         const CAPABILITIES: [(&str, &str, &str, &str); 6] = [
             (
                 "list_page_blocks",
@@ -346,28 +352,43 @@ impl ApiOfficialMcpBundleRegistry {
         }
     }
 
+    pub(crate) fn bundled_frontstage_assistant_package() -> Result<domain::McpBundlePackage> {
+        let package: domain::McpBundlePackage =
+            serde_json::from_slice(BUNDLED_FRONTSTAGE_PACKAGE_BYTES)
+                .context("built-in Frontstage MCP package file is invalid")?;
+        if package.manifest.organization != BUNDLED_FRONTSTAGE_ORGANIZATION
+            || package.manifest.bundle_id != BUNDLED_FRONTSTAGE_BUNDLE_ID
+            || package.manifest.bundle_version != BUNDLED_FRONTSTAGE_VERSION
+        {
+            bail!("built-in Frontstage MCP package identity is invalid");
+        }
+        Ok(package)
+    }
+
     fn ensure_bundled_frontstage_assistant(&self) -> Result<()> {
-        let organization = "1flowbase";
-        let bundle_id = "frontstage_assistant";
-        let version = "1.0.1";
-        if bundle_path(&self.root, organization, bundle_id, version).is_file()
-            && receipt_path(&self.root, organization, bundle_id, version).is_file()
+        let organization = BUNDLED_FRONTSTAGE_ORGANIZATION;
+        let bundle_id = BUNDLED_FRONTSTAGE_BUNDLE_ID;
+        let version = BUNDLED_FRONTSTAGE_VERSION;
+        let package = Self::bundled_frontstage_assistant_package()?;
+        let bytes =
+            crate::routes::mcp_management::bundles::build_bundle_archive(package.clone())
+                .map_err(|error| anyhow!("failed to package built-in Frontstage MCP: {error}"))?;
+        let checksum = format!("sha256:{:x}", Sha256::digest(&bytes));
+        if read_receipt(&self.root, organization, bundle_id, version)?
+            .is_some_and(|receipt| receipt.checksum == checksum)
+            && bundle_path(&self.root, organization, bundle_id, version).is_file()
         {
             return Ok(());
         }
-        let bytes = crate::routes::mcp_management::bundles::build_bundle_archive(
-            Self::bundled_frontstage_assistant_package(),
-        )
-        .map_err(|error| anyhow!("failed to package built-in Frontstage MCP: {error}"))?;
         let receipt = LocalMcpBundleReceipt {
             organization: organization.to_string(),
             bundle_id: bundle_id.to_string(),
             bundle_version: version.to_string(),
-            locale: "zh_Hans".to_string(),
-            minimum_host_version: env!("CARGO_PKG_VERSION").to_string(),
-            exported_from_system_version: env!("CARGO_PKG_VERSION").to_string(),
-            release_tag: "builtin/frontstage-assistant/v1.0.1".to_string(),
-            checksum: format!("sha256:{:x}", Sha256::digest(&bytes)),
+            locale: package.manifest.locale,
+            minimum_host_version: package.manifest.minimum_host_version,
+            exported_from_system_version: package.manifest.exported_from_system_version,
+            release_tag: format!("builtin/frontstage-assistant/v{version}"),
+            checksum,
             algorithm: "builtin-code-shipped".to_string(),
             key_id: "1flowbase-builtin".to_string(),
             signature: "code-shipped".to_string(),
@@ -690,7 +711,19 @@ impl ApiOfficialMcpBundleRegistry {
     ) -> Result<McpBundleLibraryCatalog> {
         let mut entries = BTreeMap::new();
         for record in self.indexed_records().await? {
-            let receipt = Self::receipt_from_record(&record)?;
+            let receipt = match Self::receipt_from_record(&record) {
+                Ok(receipt) => receipt,
+                Err(error) => {
+                    tracing::warn!(
+                        organization = %record.identity.organization,
+                        bundle_id = %record.identity.artifact_id,
+                        bundle_version = %record.identity.version,
+                        error = %error,
+                        "invalid MCP template receipt excluded from library projection"
+                    );
+                    continue;
+                }
+            };
             let key = (
                 record.identity.organization.clone(),
                 record.identity.artifact_id.clone(),
@@ -808,9 +841,12 @@ impl OfficialMcpBundleSourcePort for ApiOfficialMcpBundleRegistry {
                 .await?;
             }
         }
-        if let Some(receipt) =
-            read_receipt(&self.root, "1flowbase", "frontstage_assistant", "1.0.1")?
-        {
+        if let Some(receipt) = read_receipt(
+            &self.root,
+            BUNDLED_FRONTSTAGE_ORGANIZATION,
+            BUNDLED_FRONTSTAGE_BUNDLE_ID,
+            BUNDLED_FRONTSTAGE_VERSION,
+        )? {
             self.index_receipt(&receipt, true).await?;
         }
         for record in self
