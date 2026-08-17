@@ -439,6 +439,21 @@ pub struct ModelProviderConfiguredModel {
     pub context_window_override_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub supports_multimodal: Option<bool>,
+    #[serde(default = "default_model_pricing_provider_code")]
+    pub pricing_provider_code: String,
+    #[serde(default = "default_model_pricing_model_id")]
+    pub pricing_model_id: String,
+}
+
+pub const DEFAULT_MODEL_PRICING_PROVIDER_CODE: &str = "zero";
+pub const DEFAULT_MODEL_PRICING_MODEL_ID: &str = "any";
+
+fn default_model_pricing_provider_code() -> String {
+    DEFAULT_MODEL_PRICING_PROVIDER_CODE.to_string()
+}
+
+fn default_model_pricing_model_id() -> String {
+    DEFAULT_MODEL_PRICING_MODEL_ID.to_string()
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

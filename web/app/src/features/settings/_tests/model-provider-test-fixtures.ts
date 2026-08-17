@@ -23,12 +23,16 @@ export function buildSettingsModelProviderInstances() {
         {
           model_id: 'gpt-4o-mini',
           enabled: true,
-          context_window_override_tokens: null
+          context_window_override_tokens: null,
+          pricing_provider_code: 'zero',
+          pricing_model_id: 'any'
         },
         {
           model_id: 'gpt-4o',
           enabled: true,
-          context_window_override_tokens: null
+          context_window_override_tokens: null,
+          pricing_provider_code: 'openai',
+          pricing_model_id: 'gpt-4o'
         }
       ],
       enabled_model_ids: ['gpt-4o-mini', 'gpt-4o'],
@@ -53,7 +57,9 @@ export function buildSettingsModelProviderInstances() {
         {
           model_id: 'gpt-4.1-mini',
           enabled: true,
-          context_window_override_tokens: null
+          context_window_override_tokens: null,
+          pricing_provider_code: 'zero',
+          pricing_model_id: 'any'
         }
       ],
       enabled_model_ids: ['gpt-4.1-mini'],
@@ -76,6 +82,40 @@ export function buildSettingsModelProviderOptions(): ConsoleModelProviderOptions
       supported_locales: ['zh_Hans', 'en_US']
     },
     i18n_catalog: {},
+    pricing_targets: [
+      {
+        provider_code: 'zero',
+        upstream_model_id: 'any',
+        input_token_unit_size: 1_000_000,
+        input_token_unit_price: '0',
+        output_token_unit_size: 1_000_000,
+        output_token_unit_price: '0',
+        cache_hit_token_unit_size: 1_000_000,
+        cache_hit_token_unit_price: '0',
+        effective_from: '2026-01-01T00:00:00Z',
+        effective_to: null,
+        timezone: 'UTC',
+        weekday_mask: 127,
+        local_time_start: null,
+        local_time_end: null
+      },
+      {
+        provider_code: 'openai',
+        upstream_model_id: 'gpt-4o',
+        input_token_unit_size: 1_000_000,
+        input_token_unit_price: '2.5',
+        output_token_unit_size: 1_000_000,
+        output_token_unit_price: '10',
+        cache_hit_token_unit_size: 1_000_000,
+        cache_hit_token_unit_price: '1.25',
+        effective_from: '2026-01-01T00:00:00Z',
+        effective_to: null,
+        timezone: 'UTC',
+        weekday_mask: 127,
+        local_time_start: null,
+        local_time_end: null
+      }
+    ],
     providers: [
       {
         provider_code: modelProviderCatalogEntries[0].provider_code,

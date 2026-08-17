@@ -1,4 +1,7 @@
-use std::{collections::HashSet, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashSet},
+    sync::Arc,
+};
 
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
@@ -16,7 +19,10 @@ use control_plane::model_provider::{
     ModelProviderService, PreviewModelProviderModelsCommand, UpdateModelProviderInstanceCommand,
     UpdateModelProviderMainInstanceCommand, ValidateModelProviderResult,
 };
-use control_plane::ports::{BillingRepository, ListPricingRulesInput};
+use control_plane::{
+    billing::PricingRule,
+    ports::{BillingRepository, ListPricingRulesInput},
+};
 use plugin_framework::{
     provider_contract::{
         PluginFormCondition, PluginFormFieldSchema, PluginFormOption, PluginFormSchema,
@@ -358,6 +364,8 @@ fn to_instance_response(view: ModelProviderInstanceView) -> ModelProviderInstanc
                 enabled: model.enabled,
                 context_window_override_tokens: model.context_window_override_tokens,
                 supports_multimodal: model.supports_multimodal,
+                pricing_provider_code: model.pricing_provider_code,
+                pricing_model_id: model.pricing_model_id,
             })
             .collect(),
         enabled_model_ids: view.instance.enabled_model_ids,
@@ -506,35 +514,93 @@ fn to_option_response(
 fn to_options_view_response(
     locale_meta: LocaleMetaResponse,
     options: ModelProviderOptionsView,
-    priced_models: &HashSet<(String, String)>,
+    pricing_targets: Vec<ModelProviderPricingTargetResponse>,
 ) -> ModelProviderOptionsResponse {
+    let priced_models = pricing_targets
+        .iter()
+        .map(|target| {
+            (
+                target.provider_code.clone(),
+                target.upstream_model_id.clone(),
+            )
+        })
+        .collect::<HashSet<_>>();
     ModelProviderOptionsResponse {
         locale_meta,
         i18n_catalog: serde_json::to_value(options.i18n_catalog).unwrap(),
         providers: options
             .providers
             .into_iter()
-            .map(|option| to_option_response(option, priced_models))
+            .map(|option| to_option_response(option, &priced_models))
             .collect(),
+        pricing_targets,
     }
 }
 
-async fn priced_model_keys(state: &ApiState) -> Result<HashSet<(String, String)>, ApiError> {
-    Ok(state
-        .store
-        .list_pricing_rules(&ListPricingRulesInput {
-            provider_code: None,
-            upstream_model_id: None,
-            enabled: Some(true),
-            source_kind: None,
-            page_size: 500,
-            offset: 0,
-        })
-        .await?
-        .items
-        .into_iter()
-        .map(|rule| (rule.provider_code, rule.upstream_model_id))
-        .collect())
+async fn current_pricing_targets(
+    state: &ApiState,
+) -> Result<Vec<ModelProviderPricingTargetResponse>, ApiError> {
+    let mut offset = 0;
+    let mut rules = Vec::new();
+    loop {
+        let page = state
+            .store
+            .list_pricing_rules(&ListPricingRulesInput {
+                provider_code: None,
+                upstream_model_id: None,
+                enabled: Some(true),
+                source_kind: None,
+                page_size: 500,
+                offset,
+            })
+            .await?;
+        let page_len = page.items.len();
+        rules.extend(page.items);
+        offset += page_len as i64;
+        if page_len < 500 || offset >= page.total_count {
+            break;
+        }
+    }
+
+    let mut grouped = BTreeMap::<(String, String), Vec<PricingRule>>::new();
+    for rule in rules {
+        grouped
+            .entry((rule.provider_code.clone(), rule.upstream_model_id.clone()))
+            .or_default()
+            .push(rule);
+    }
+
+    let now = time::OffsetDateTime::now_utc();
+    let mut targets = Vec::new();
+    for rules in grouped.into_values() {
+        let Some(rule) = control_plane::billing::choose_pricing_rule(rules, now)? else {
+            continue;
+        };
+        targets.push(ModelProviderPricingTargetResponse {
+            provider_code: rule.provider_code,
+            upstream_model_id: rule.upstream_model_id,
+            input_token_unit_size: rule.input_token_unit_size,
+            input_token_unit_price: rule.input_token_unit_price.to_string(),
+            output_token_unit_size: rule.output_token_unit_size,
+            output_token_unit_price: rule.output_token_unit_price.to_string(),
+            cache_hit_token_unit_size: rule.cache_hit_token_unit_size,
+            cache_hit_token_unit_price: rule.cache_hit_token_unit_price.to_string(),
+            effective_from: format_time(rule.effective_from),
+            effective_to: format_optional_time(rule.effective_to),
+            timezone: rule.timezone,
+            weekday_mask: rule.weekday_mask,
+            local_time_start: rule.local_time_start.map(|value| value.to_string()),
+            local_time_end: rule.local_time_end.map(|value| value.to_string()),
+        });
+    }
+    targets.sort_by_key(|target| {
+        (
+            target.provider_code != domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE,
+            target.provider_code.clone(),
+            target.upstream_model_id.clone(),
+        )
+    });
+    Ok(targets)
 }
 
 fn resolve_locale_meta(
@@ -819,6 +885,8 @@ pub async fn create_instance(
                     enabled: model.enabled,
                     context_window_override_tokens: model.context_window_override_tokens,
                     supports_multimodal: model.supports_multimodal,
+                    pricing_provider_code: model.pricing_provider_code,
+                    pricing_model_id: model.pricing_model_id,
                 })
                 .collect(),
             enabled_model_ids: body.enabled_model_ids,
@@ -865,6 +933,8 @@ pub async fn update_instance(
                     enabled: model.enabled,
                     context_window_override_tokens: model.context_window_override_tokens,
                     supports_multimodal: model.supports_multimodal,
+                    pricing_provider_code: model.pricing_provider_code,
+                    pricing_model_id: model.pricing_model_id,
                 })
                 .collect(),
             enabled_model_ids: body.enabled_model_ids,
@@ -1148,11 +1218,11 @@ pub async fn list_options(
     )
     .options(context.user.id, requested_locales(&locale_meta))
     .await?;
-    let priced_models = priced_model_keys(&state).await?;
+    let pricing_targets = current_pricing_targets(&state).await?;
     Ok(Json(ApiSuccess::new(to_options_view_response(
         locale_meta,
         options,
-        &priced_models,
+        pricing_targets,
     ))))
 }
 

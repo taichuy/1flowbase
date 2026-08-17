@@ -570,8 +570,11 @@ describe('ModelProvidersPage - instances modal', () => {
       fireEvent.click(
         within(screen.getByRole('dialog')).getByRole('button', { name: '新增' })
       );
-      fireEvent.change(screen.getByLabelText('模型 ID 1'), {
-        target: { value: 'gpt-4o-mini' }
+      expect(await screen.findByText('新增 模型配置')).toBeInTheDocument();
+      expect(screen.getByLabelText('模型 ID')).toHaveValue('gpt-4o-mini');
+      fireEvent.click(screen.getByRole('button', { name: /确\s*认/ }));
+      await waitFor(() => {
+        expect(screen.queryByText('新增 模型配置')).not.toBeInTheDocument();
       });
       expect(screen.getByRole('switch', { name: '启用模型 1' })).toBeChecked();
 
@@ -593,7 +596,9 @@ describe('ModelProvidersPage - instances modal', () => {
                 model_id: 'gpt-4o-mini',
                 enabled: true,
                 context_window_override_tokens: null,
-                supports_multimodal: false
+                supports_multimodal: false,
+                pricing_provider_code: 'zero',
+                pricing_model_id: 'any'
               }
             ],
             included_in_main: true,
@@ -666,6 +671,14 @@ describe('ModelProvidersPage - instances modal', () => {
       expect(
         within(mainInstanceTable).getByRole('columnheader', { name: '分组' })
       ).toBeInTheDocument();
+      expect(
+        within(mainInstanceTable).queryByRole('columnheader', {
+          name: '计费状态'
+        })
+      ).not.toBeInTheDocument();
+      expect(
+        within(mainInstanceTable).queryByRole('link', { name: '模型计费规则' })
+      ).not.toBeInTheDocument();
       expect(
         within(mainInstanceTable).getByRole('row', {
           name: /gpt-4o-mini.*OpenAI Production.*OpenAI Backup/
@@ -1166,7 +1179,9 @@ describe('ModelProvidersPage - instances modal', () => {
         (await screen.findAllByText(primaryContractProviderModels[0].model_id))
           .length
       ).toBeGreaterThanOrEqual(1);
-      expect(screen.getByLabelText('模型 ID 1')).toHaveValue('gpt-4o-mini');
+      fireEvent.click(screen.getByRole('button', { name: '编辑模型 1' }));
+      expect(await screen.findByText('编辑 模型配置')).toBeInTheDocument();
+      expect(screen.getByLabelText('模型 ID')).toHaveValue('gpt-4o-mini');
     }
   );
 

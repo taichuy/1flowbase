@@ -39,6 +39,7 @@ import {
 } from '../../api/billing';
 import { formatPricingRate } from './pricing-rate-display';
 import './pricing-rules-panel.css';
+import { formatPricingRate } from '../../lib/pricing-format';
 
 const DEFAULT_UNIT = 1_000_000;
 const PAGE_SIZE = 20;

@@ -1,7 +1,10 @@
 use std::{collections::BTreeSet, sync::Arc};
 
-use control_plane::billing::CreditCommandService;
-use control_plane::ports::{BillingRepository, CreditCommandInput, ReserveCreditInput};
+use control_plane::billing::{CreditCommandService, PricingRule};
+use control_plane::ports::{
+    BillingRepository, CreditCommandInput, ReserveCreditInput, UpsertPricingRuleInput,
+};
+use rust_decimal::Decimal;
 use serde_json::json;
 use storage_postgres::{run_migrations, PgControlPlaneStore};
 use time::{Duration, OffsetDateTime};
@@ -307,4 +310,62 @@ async fn pricing_candidates_include_exact_rule_and_global_fallback() {
     assert!(candidates
         .iter()
         .any(|rule| { rule.provider_code == "zero" && rule.upstream_model_id == "any" }));
+}
+
+#[tokio::test]
+async fn concurrent_pricing_rule_writes_cannot_create_an_overlapping_schedule() {
+    let (store, _workspace_id, user_id) = seeded_store().await;
+    let store = Arc::new(store);
+    let barrier = Arc::new(Barrier::new(2));
+    let effective_from = OffsetDateTime::now_utc() - Duration::hours(1);
+    let mut tasks = Vec::new();
+    for _ in 0..2 {
+        let store = store.clone();
+        let barrier = barrier.clone();
+        let rule = PricingRule {
+            id: Uuid::now_v7(),
+            provider_code: "concurrent-provider".into(),
+            upstream_model_id: "concurrent-model".into(),
+            input_token_unit_size: 1_000_000,
+            input_token_unit_price: Decimal::ONE,
+            output_token_unit_size: 1_000_000,
+            output_token_unit_price: Decimal::ONE,
+            cache_hit_token_unit_size: 1_000_000,
+            cache_hit_token_unit_price: Decimal::ZERO,
+            currency_code: "USD".into(),
+            effective_from,
+            effective_to: None,
+            timezone: "UTC".into(),
+            weekday_mask: 127,
+            local_time_start: None,
+            local_time_end: None,
+            priority: 0,
+            enabled: true,
+            source_kind: "manual".into(),
+            source_catalog_id: None,
+            source_version: None,
+            source_checksum: None,
+            extensions: json!({}),
+            created_by: Some(user_id),
+            created_at: OffsetDateTime::now_utc(),
+            updated_at: OffsetDateTime::now_utc(),
+        };
+        tasks.push(tokio::spawn(async move {
+            barrier.wait().await;
+            store
+                .upsert_pricing_rule(&UpsertPricingRuleInput { rule })
+                .await
+        }));
+    }
+
+    let mut accepted = 0;
+    let mut conflicts = 0;
+    for task in tasks {
+        match task.await.unwrap() {
+            Ok(_) => accepted += 1,
+            Err(error) if error.to_string().contains("pricing_rule_conflict") => conflicts += 1,
+            Err(error) => panic!("unexpected pricing rule error: {error}"),
+        }
+    }
+    assert_eq!((accepted, conflicts), (1, 1));
 }

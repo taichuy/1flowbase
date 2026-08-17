@@ -10,6 +10,18 @@ pub struct ConfiguredModelBody {
     pub enabled: bool,
     pub context_window_override_tokens: Option<u64>,
     pub supports_multimodal: Option<bool>,
+    #[serde(default = "default_pricing_provider_code")]
+    pub pricing_provider_code: String,
+    #[serde(default = "default_pricing_model_id")]
+    pub pricing_model_id: String,
+}
+
+fn default_pricing_provider_code() -> String {
+    domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.to_string()
+}
+
+fn default_pricing_model_id() -> String {
+    domain::DEFAULT_MODEL_PRICING_MODEL_ID.to_string()
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -207,6 +219,8 @@ pub struct ConfiguredModelResponse {
     pub context_window_override_tokens: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub supports_multimodal: Option<bool>,
+    pub pricing_provider_code: String,
+    pub pricing_model_id: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -295,6 +309,25 @@ pub struct ModelProviderOptionsResponse {
     #[schema(value_type = Object)]
     pub i18n_catalog: serde_json::Value,
     pub providers: Vec<ModelProviderOptionResponse>,
+    pub pricing_targets: Vec<ModelProviderPricingTargetResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelProviderPricingTargetResponse {
+    pub provider_code: String,
+    pub upstream_model_id: String,
+    pub input_token_unit_size: i64,
+    pub input_token_unit_price: String,
+    pub output_token_unit_size: i64,
+    pub output_token_unit_price: String,
+    pub cache_hit_token_unit_size: i64,
+    pub cache_hit_token_unit_price: String,
+    pub effective_from: String,
+    pub effective_to: Option<String>,
+    pub timezone: String,
+    pub weekday_mask: i16,
+    pub local_time_start: Option<String>,
+    pub local_time_end: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

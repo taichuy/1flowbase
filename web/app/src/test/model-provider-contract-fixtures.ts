@@ -27,8 +27,10 @@ export const modelProviderCatalogContract = {
   }))
 } satisfies ConsoleModelProviderCatalogResponse;
 
-export const modelProviderOptionsContract =
-  modelProviderOptionsContractJson as ConsoleModelProviderOptions;
+export const modelProviderOptionsContract = {
+  ...modelProviderOptionsContractJson,
+  pricing_targets: []
+} as ConsoleModelProviderOptions;
 
 export const modelProviderCatalogEntries = modelProviderCatalogContract.entries;
 export const modelProviderOptionsProviders =

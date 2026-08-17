@@ -8,7 +8,12 @@ import {
   formatModelContextWindowValue,
   parseModelContextWindowInput
 } from '../components/model-providers/model-context-window';
-import { buildSettingsModelProviderInstances } from './model-provider-test-fixtures';
+import {
+  buildSettingsModelProviderInstances,
+  buildSettingsModelProviderOptions
+} from './model-provider-test-fixtures';
+
+const pricingTargets = buildSettingsModelProviderOptions().pricing_targets;
 
 describe('model-context-window helpers', () => {
   test.each([
@@ -62,6 +67,7 @@ describe('ModelProviderInstanceDrawer', () => {
         catalogEntry={modelProviderCatalogEntries[0]}
         instance={null}
         cachedModelCatalog={null}
+        pricingTargets={pricingTargets}
         defaultIncludedInMain={true}
         submitting={false}
         onClose={() => undefined}
@@ -78,14 +84,12 @@ describe('ModelProviderInstanceDrawer', () => {
     expect(
       await screen.findByRole('separator', { name: '调整供应商抽屉宽度' })
     ).toHaveAttribute('aria-valuenow', '560');
-    expect(screen.getByRole('separator', { name: '调整供应商抽屉宽度' })).toHaveAttribute(
-      'aria-valuemin',
-      '480'
-    );
-    expect(screen.getByRole('separator', { name: '调整供应商抽屉宽度' })).toHaveAttribute(
-      'aria-valuemax',
-      '1200'
-    );
+    expect(
+      screen.getByRole('separator', { name: '调整供应商抽屉宽度' })
+    ).toHaveAttribute('aria-valuemin', '480');
+    expect(
+      screen.getByRole('separator', { name: '调整供应商抽屉宽度' })
+    ).toHaveAttribute('aria-valuemax', '1200');
   });
 
   test(
@@ -127,6 +131,7 @@ describe('ModelProviderInstanceDrawer', () => {
           catalogEntry={catalogEntry}
           instance={null}
           cachedModelCatalog={null}
+          pricingTargets={pricingTargets}
           defaultIncludedInMain={true}
           submitting={false}
           onClose={() => undefined}
@@ -203,6 +208,7 @@ describe('ModelProviderInstanceDrawer', () => {
           catalogEntry={modelProviderCatalogEntries[0]}
           instance={null}
           cachedModelCatalog={null}
+          pricingTargets={pricingTargets}
           defaultIncludedInMain={true}
           submitting={false}
           onClose={() => undefined}
@@ -214,9 +220,7 @@ describe('ModelProviderInstanceDrawer', () => {
 
       await screen.findByRole('dialog');
       expect(screen.getByText('API 密钥授权配置')).toBeInTheDocument();
-      expect(
-        screen.getByRole('button', { name: '新增' })
-      ).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '新增' })).toBeInTheDocument();
       expect(screen.queryByText('校验模型')).not.toBeInTheDocument();
       expect(screen.queryByText('validate_model')).not.toBeInTheDocument();
       expect(screen.queryByLabelText('organization')).not.toBeInTheDocument();
@@ -260,17 +264,33 @@ describe('ModelProviderInstanceDrawer', () => {
       });
       fireEvent.mouseDown(cachedModelSelect);
       fireEvent.click(await screen.findByText('gpt-4o-mini'));
-      expect(screen.queryByLabelText('模型 ID 1')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: '编辑模型 1' })
+      ).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByRole('button', { name: '新增' }));
-      fireEvent.change(screen.getByLabelText('模型 ID 1'), {
-        target: { value: 'gpt-4o-mini' }
+      expect(await screen.findByText('新增 模型配置')).toBeInTheDocument();
+      expect(screen.getByLabelText('模型 ID')).toHaveValue('gpt-4o-mini');
+      expect(screen.getAllByText('1M / 0$')).toHaveLength(3);
+      fireEvent.change(screen.getByPlaceholderText('厂家 Code'), {
+        target: { value: 'openai' }
+      });
+      fireEvent.click(screen.getByText('openai'));
+      expect(screen.getByText('1M / 2.50$')).toBeInTheDocument();
+      expect(screen.getByText('1M / 10.00$')).toBeInTheDocument();
+      expect(screen.getByText('1M / 1.25$')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /确\s*认/ }));
+      await waitFor(() => {
+        expect(screen.queryByText('新增 模型配置')).not.toBeInTheDocument();
       });
 
       fireEvent.click(screen.getByRole('button', { name: '新增' }));
-
-      fireEvent.change(screen.getByLabelText('模型 ID 2'), {
+      fireEvent.change(await screen.findByLabelText('模型 ID'), {
         target: { value: 'manual-model-id' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: /确\s*认/ }));
+      await waitFor(() => {
+        expect(screen.queryByText('新增 模型配置')).not.toBeInTheDocument();
       });
       fireEvent.click(screen.getByRole('switch', { name: '启用模型 2' }));
 
@@ -298,8 +318,10 @@ describe('ModelProviderInstanceDrawer', () => {
       await waitFor(() => {
         expect(previewModels).toHaveBeenCalledTimes(2);
       });
-      expect(screen.getByLabelText('模型 ID 1')).toHaveValue('gpt-4o-mini');
-      expect(screen.getByLabelText('模型 ID 2')).toHaveValue('manual-model-id');
+      expect(screen.getAllByText('gpt-4o-mini').length).toBeGreaterThanOrEqual(
+        1
+      );
+      expect(screen.getByText('manual-model-id')).toBeInTheDocument();
 
       fireEvent.mouseDown(screen.getByRole('combobox', { name: '缓存模型' }));
       expect(await screen.findByText('gpt-4.1-mini')).toBeInTheDocument();
@@ -315,13 +337,17 @@ describe('ModelProviderInstanceDrawer', () => {
               model_id: 'gpt-4o-mini',
               enabled: true,
               context_window_override_tokens: null,
-              supports_multimodal: false
+              supports_multimodal: true,
+              pricing_provider_code: 'openai',
+              pricing_model_id: 'gpt-4o'
             },
             {
               model_id: 'manual-model-id',
               enabled: false,
               context_window_override_tokens: null,
-              supports_multimodal: false
+              supports_multimodal: false,
+              pricing_provider_code: 'zero',
+              pricing_model_id: 'any'
             }
           ],
           included_in_main: true,
@@ -349,6 +375,7 @@ describe('ModelProviderInstanceDrawer', () => {
           catalogEntry={modelProviderCatalogEntries[0]}
           instance={instance}
           cachedModelCatalog={null}
+          pricingTargets={pricingTargets}
           defaultIncludedInMain={true}
           submitting={false}
           onClose={() => undefined}
@@ -393,6 +420,7 @@ describe('ModelProviderInstanceDrawer', () => {
           catalogEntry={modelProviderCatalogEntries[0]}
           instance={null}
           cachedModelCatalog={null}
+          pricingTargets={pricingTargets}
           defaultIncludedInMain={true}
           submitting={false}
           onClose={() => undefined}
@@ -416,15 +444,14 @@ describe('ModelProviderInstanceDrawer', () => {
         target: { value: 'OpenAI Draft' }
       });
       fireEvent.click(screen.getByRole('button', { name: '新增' }));
-      fireEvent.change(screen.getByLabelText('模型 ID 1'), {
+      fireEvent.change(await screen.findByLabelText('模型 ID'), {
         target: { value: 'gpt-4o-mini' }
       });
-      fireEvent.click(screen.getByRole('switch', { name: '启用多模态模型 1' }));
-      fireEvent.change(screen.getByLabelText('上下文 1'), {
+      fireEvent.change(screen.getByLabelText('上下文'), {
         target: { value: 'abc' }
       });
 
-      fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+      fireEvent.click(screen.getByRole('button', { name: /确\s*认/ }));
 
       await waitFor(() => {
         expect(submit).not.toHaveBeenCalled();
@@ -433,9 +460,14 @@ describe('ModelProviderInstanceDrawer', () => {
         ).toBeInTheDocument();
       });
 
-      fireEvent.change(screen.getByLabelText('上下文 1'), {
+      fireEvent.change(screen.getByLabelText('上下文'), {
         target: { value: '200K' }
       });
+      fireEvent.click(screen.getByRole('button', { name: /确\s*认/ }));
+      await waitFor(() => {
+        expect(screen.queryByText('新增 模型配置')).not.toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByRole('switch', { name: '启用多模态模型 1' }));
       fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
 
       await waitFor(() => {
@@ -450,7 +482,9 @@ describe('ModelProviderInstanceDrawer', () => {
               model_id: 'gpt-4o-mini',
               enabled: true,
               context_window_override_tokens: 200000,
-              supports_multimodal: true
+              supports_multimodal: true,
+              pricing_provider_code: 'zero',
+              pricing_model_id: 'any'
             }
           ],
           included_in_main: true,
@@ -472,7 +506,9 @@ describe('ModelProviderInstanceDrawer', () => {
             model_id: 'gpt-4o-mini',
             enabled: true,
             context_window_override_tokens: 16000,
-            supports_multimodal: true
+            supports_multimodal: true,
+            pricing_provider_code: 'zero',
+            pricing_model_id: 'any'
           }
         ]
       };
@@ -484,6 +520,7 @@ describe('ModelProviderInstanceDrawer', () => {
           catalogEntry={modelProviderCatalogEntries[0]}
           instance={instance}
           cachedModelCatalog={null}
+          pricingTargets={pricingTargets}
           defaultIncludedInMain={true}
           submitting={false}
           onClose={() => undefined}
@@ -497,10 +534,17 @@ describe('ModelProviderInstanceDrawer', () => {
         />
       );
 
-      expect(await screen.findByLabelText('上下文 1')).toHaveValue('16K');
+      fireEvent.click(
+        await screen.findByRole('button', { name: '编辑模型 1' })
+      );
+      expect(screen.getByLabelText('上下文')).toHaveValue('16K');
 
-      fireEvent.change(screen.getByLabelText('上下文 1'), {
+      fireEvent.change(screen.getByLabelText('上下文'), {
         target: { value: '' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: /确\s*认/ }));
+      await waitFor(() => {
+        expect(screen.queryByText('编辑 模型配置')).not.toBeInTheDocument();
       });
       fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
 
@@ -512,7 +556,9 @@ describe('ModelProviderInstanceDrawer', () => {
                 model_id: 'gpt-4o-mini',
                 enabled: true,
                 context_window_override_tokens: null,
-                supports_multimodal: true
+                supports_multimodal: true,
+                pricing_provider_code: 'zero',
+                pricing_model_id: 'any'
               }
             ]
           })

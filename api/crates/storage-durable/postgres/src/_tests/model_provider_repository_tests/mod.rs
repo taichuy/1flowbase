@@ -354,6 +354,8 @@ async fn create_ready_instance(
                     enabled: true,
                     context_window_override_tokens: None,
                     supports_multimodal: None,
+                    pricing_provider_code: domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.to_string(),
+                    pricing_model_id: domain::DEFAULT_MODEL_PRICING_MODEL_ID.to_string(),
                 })
                 .collect(),
             enabled_model_ids,

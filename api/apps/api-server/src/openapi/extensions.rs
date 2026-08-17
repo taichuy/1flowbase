@@ -315,6 +315,7 @@ use utoipa::OpenApi;
         crate::routes::model_providers::UpdateModelProviderMainInstanceBody,
         crate::routes::model_providers::ModelProviderOptionResponse,
         crate::routes::model_providers::ModelProviderOptionsResponse,
+        crate::routes::model_providers::ModelProviderPricingTargetResponse,
         crate::routes::model_providers::DeletedResponse,
     ))
 )]

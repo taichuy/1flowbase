@@ -257,3 +257,22 @@ fn model_provider_request_log_contract_matches_all_seeded_physical_fields() {
         );
     }
 }
+
+#[test]
+fn historical_configured_models_default_to_the_global_zero_pricing_target() {
+    let model: crate::ModelProviderConfiguredModel = serde_json::from_value(serde_json::json!({
+        "model_id": "legacy-model",
+        "enabled": true,
+        "context_window_override_tokens": null
+    }))
+    .unwrap();
+
+    assert_eq!(
+        model.pricing_provider_code,
+        crate::DEFAULT_MODEL_PRICING_PROVIDER_CODE
+    );
+    assert_eq!(
+        model.pricing_model_id,
+        crate::DEFAULT_MODEL_PRICING_MODEL_ID
+    );
+}

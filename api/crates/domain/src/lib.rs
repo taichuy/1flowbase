@@ -135,7 +135,7 @@ pub use model_provider::{
     PluginAvailabilityStatus, PluginDesiredState, PluginInstallationRecord,
     PluginPackageCatalogProjectionRecord, PluginPackageCatalogProjectionStatus,
     PluginRuntimeStatus, PluginTaskKind, PluginTaskRecord, PluginTaskStatus,
-    PluginVerificationStatus,
+    PluginVerificationStatus, DEFAULT_MODEL_PRICING_MODEL_ID, DEFAULT_MODEL_PRICING_PROVIDER_CODE,
 };
 pub use modeling::{
     DataModelAdvisorFinding, DataModelAdvisorSeverity, DataModelOwnerKind, DataModelProtection,

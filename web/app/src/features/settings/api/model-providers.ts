@@ -21,6 +21,7 @@ import {
   type ConsoleModelProviderMainInstance,
   type ConsoleModelProviderModelCatalog,
   type ConsoleModelProviderOptions,
+  type ConsoleModelProviderPricingTarget,
   type ConsoleModelProviderRequestLogsFilter,
   type ClearConsoleModelProviderRequestLogsBatchInput,
   type DeleteConsoleModelProviderRequestLogsInput,
@@ -37,6 +38,8 @@ export type SettingsModelProviderCatalogEntry =
   ConsoleModelProviderCatalogEntry;
 export type SettingsModelProviderInstance = ConsoleModelProviderInstance;
 export type SettingsModelProviderOptions = ConsoleModelProviderOptions;
+export type SettingsModelProviderPricingTarget =
+  ConsoleModelProviderPricingTarget;
 export type SettingsModelProviderModelCatalog =
   ConsoleModelProviderModelCatalog;
 export type SettingsRevealModelProviderSecretResult =
