@@ -251,7 +251,11 @@ impl BillingRepository for PgControlPlaneStore {
         let rows = sqlx::query(
             &(PRICING_SELECT.to_owned()
                 + r#"
-            where provider_code = $1 and upstream_model_id = $2 and enabled = true
+            where (
+                    (provider_code = $1 and upstream_model_id = $2)
+                    or (provider_code = 'zero' and upstream_model_id = 'any')
+                  )
+              and enabled = true
               and effective_from <= $3 and (effective_to is null or effective_to > $3)
             order by priority desc, effective_from desc, id"#),
         )

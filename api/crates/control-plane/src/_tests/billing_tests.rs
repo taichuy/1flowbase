@@ -103,3 +103,37 @@ fn pricing_cache_key_is_unambiguous_and_stable() {
         crate::billing::pricing_rules_cache_key("open", "ai:gpt")
     );
 }
+
+#[test]
+fn exact_pricing_rule_wins_over_global_zero_fallback() {
+    let at = datetime!(2026-08-17 00:00 UTC);
+    let mut exact = rule();
+    exact.priority = 0;
+    let mut fallback = rule();
+    fallback.provider_code = "zero".to_string();
+    fallback.upstream_model_id = "any".to_string();
+    fallback.priority = 999;
+    fallback.input_token_unit_price = Decimal::ZERO;
+    fallback.output_token_unit_price = Decimal::ZERO;
+    fallback.cache_hit_token_unit_price = Decimal::ZERO;
+
+    let selected = crate::billing::choose_pricing_rule_for(
+        "openai",
+        "gpt-test",
+        vec![fallback.clone(), exact.clone()],
+        at,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(selected.id, exact.id);
+
+    let selected = crate::billing::choose_pricing_rule_for(
+        "anthropic",
+        "claude-test",
+        vec![fallback.clone()],
+        at,
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(selected.id, fallback.id);
+}

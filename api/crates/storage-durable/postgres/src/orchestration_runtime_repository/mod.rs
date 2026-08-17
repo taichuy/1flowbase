@@ -541,7 +541,7 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         provider_code: &str,
         upstream_model_id: &str,
     ) -> Result<Vec<control_plane::billing::PricingRule>> {
-        BillingRepository::list_pricing_rules(
+        let mut candidates = BillingRepository::list_pricing_rules(
             self,
             &ListPricingRulesInput {
                 provider_code: Some(provider_code.to_string()),
@@ -553,7 +553,37 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
             },
         )
         .await
-        .map(|page| page.items)
+        .map(|page| page.items)?;
+        candidates.retain(|rule| {
+            rule.provider_code == provider_code && rule.upstream_model_id == upstream_model_id
+        });
+        if provider_code != control_plane::billing::GLOBAL_ZERO_PROVIDER_CODE
+            || upstream_model_id != control_plane::billing::GLOBAL_ZERO_MODEL_ID
+        {
+            let mut fallback = BillingRepository::list_pricing_rules(
+                self,
+                &ListPricingRulesInput {
+                    provider_code: Some(
+                        control_plane::billing::GLOBAL_ZERO_PROVIDER_CODE.to_string(),
+                    ),
+                    upstream_model_id: Some(
+                        control_plane::billing::GLOBAL_ZERO_MODEL_ID.to_string(),
+                    ),
+                    enabled: Some(true),
+                    source_kind: None,
+                    page_size: 500,
+                    offset: 0,
+                },
+            )
+            .await?
+            .items;
+            fallback.retain(|rule| {
+                rule.provider_code == control_plane::billing::GLOBAL_ZERO_PROVIDER_CODE
+                    && rule.upstream_model_id == control_plane::billing::GLOBAL_ZERO_MODEL_ID
+            });
+            candidates.extend(fallback);
+        }
+        Ok(candidates)
     }
 
     async fn model_billing_reserve_credit(

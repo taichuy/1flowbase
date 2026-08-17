@@ -6,7 +6,9 @@ use axum::{
     Json,
 };
 use control_plane::{
-    billing::{pricing_rules_cache_key, PricingRule},
+    billing::{
+        pricing_rules_cache_key, PricingRule, GLOBAL_ZERO_MODEL_ID, GLOBAL_ZERO_PROVIDER_CODE,
+    },
     ports::{
         BillingRepository, CreditCommandInput, ListCreditLedgerInput, ListPricingRulesInput,
         UpsertPricingRuleInput,
@@ -17,6 +19,16 @@ async fn invalidate_pricing_rules_cache(
     state: &ApiState,
     rule: &PricingRule,
 ) -> Result<(), ApiError> {
+    if rule.provider_code == GLOBAL_ZERO_PROVIDER_CODE
+        && rule.upstream_model_id == GLOBAL_ZERO_MODEL_ID
+    {
+        state
+            .infrastructure
+            .cache_store()
+            .clear_cache_domain("model-pricing")
+            .await?;
+        return Ok(());
+    }
     state
         .infrastructure
         .cache_store()
@@ -422,7 +434,19 @@ pub struct ImportCatalogBody {
 }
 #[derive(Debug, Deserialize)]
 struct BundledPricingCatalog {
+    catalog_version: String,
     rules: Vec<PricingRuleBody>,
+}
+
+pub(crate) fn catalog_version_is_at_least(candidate: &str, baseline: &str) -> bool {
+    fn version_key(value: &str) -> Option<(&str, u64)> {
+        let (date, revision) = value.rsplit_once('.')?;
+        Some((date, revision.parse().ok()?))
+    }
+    match (version_key(candidate), version_key(baseline)) {
+        (Some(candidate), Some(baseline)) => candidate >= baseline,
+        _ => false,
+    }
 }
 
 fn bundled_pricing_catalog(state: &ApiState) -> Result<(Value, BundledPricingCatalog), ApiError> {
@@ -566,6 +590,10 @@ pub(crate) async fn sync_remote_pricing_catalog<R: BillingRepository>(
     }
     let value: Value = serde_json::from_slice(&bytes)?;
     let (value, catalog, rule_bytes, expected_checksum) = pricing_catalog_payload(value)?;
+    let bundled_version = bundled_pricing_catalog_payload()?.1.catalog_version;
+    if !catalog_version_is_at_least(&catalog.catalog_version, &bundled_version) {
+        return Ok(0);
+    }
     verify_catalog_signature_with_keys(
         &value,
         &rule_bytes,
