@@ -165,10 +165,12 @@ impl PgControlPlaneStore {
         &self,
         input: &AppendCreditLedgerInput,
     ) -> Result<domain::CreditLedgerRecord> {
+        let ledger_id = Uuid::now_v7();
         let row = sqlx::query(
             r#"
             insert into runtime_credit_ledger (
                 id,
+                transaction_id,
                 workspace_id,
                 user_id,
                 application_id,
@@ -183,7 +185,7 @@ impl PgControlPlaneStore {
                 reason,
                 idempotency_key,
                 status
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::numeric,
+            ) values ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10::numeric,
                       $11::numeric, $12, $13, $14, $15)
             on conflict (workspace_id, idempotency_key) do update
             set idempotency_key = excluded.idempotency_key
@@ -206,7 +208,7 @@ impl PgControlPlaneStore {
                 created_at
             "#,
         )
-        .bind(Uuid::now_v7())
+        .bind(ledger_id)
         .bind(input.workspace_id)
         .bind(input.user_id)
         .bind(input.application_id)
@@ -537,6 +539,4 @@ impl PgControlPlaneStore {
 
         Ok(map_capability_invocation_record(row))
     }
-
-
 }

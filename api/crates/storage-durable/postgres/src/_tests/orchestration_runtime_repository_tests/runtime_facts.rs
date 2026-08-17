@@ -290,6 +290,14 @@ async fn credit_ledger_idempotency_prevents_double_debit() {
     .await
     .unwrap();
 
+    let transaction_id: Uuid =
+        sqlx::query_scalar("select transaction_id from runtime_credit_ledger where id = $1")
+            .bind(first.id)
+            .fetch_one(store.pool())
+            .await
+            .unwrap();
+    assert_eq!(transaction_id, first.id);
+
     let replay = <PgControlPlaneStore as OrchestrationRuntimeRepository>::append_credit_ledger(
         &store,
         &AppendCreditLedgerInput {
