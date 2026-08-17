@@ -136,7 +136,7 @@ describe('billing settings panels', () => {
 
   test('uses backend available balance and submits a credit command', async () => {
     renderWithProviders(<CreditManagementPanel canManage />);
-    expect(await screen.findByText('$4.000000000000000000')).toBeInTheDocument();
+    expect(await screen.findByText('$4.00')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '增加额度' }));
     const dialog = await screen.findByRole('dialog');
     const amount = within(dialog).getByLabelText('金额');

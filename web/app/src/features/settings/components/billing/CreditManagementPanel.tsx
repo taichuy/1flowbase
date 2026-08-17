@@ -28,6 +28,18 @@ import { SettingsSectionSurface } from '../SettingsSectionSurface';
 
 type MoneyCommand = 'grant' | 'charge' | 'adjust' | 'refund';
 
+const formatUsd = (value: string | undefined) => {
+  const [integer = '0', fraction = ''] = (value ?? '0').split('.');
+  const significantFraction = fraction.replace(/0+$/, '');
+  const displayedFraction =
+    significantFraction.length === 0
+      ? '00'
+      : significantFraction.length === 1
+        ? `${significantFraction}0`
+        : significantFraction;
+  return `$${integer}.${displayedFraction}`;
+};
+
 function moneyCommandLabel(command: MoneyCommand) {
   switch (command) {
     case 'grant':
@@ -141,17 +153,17 @@ export function CreditManagementPanel({ canManage }: { canManage: boolean }) {
           },
           {
             title: i18nText('settings', 'auto.billing_current_balance'),
-            render: (_, row) => `$${row.account?.current_balance ?? '0'}`
+            render: (_, row) => formatUsd(row.account?.current_balance)
           },
           {
             title: i18nText('settings', 'auto.billing_reserved_amount'),
-            render: (_, row) => `$${row.account?.reserved_amount ?? '0'}`
+            render: (_, row) => formatUsd(row.account?.reserved_amount)
           },
           {
             title: i18nText('settings', 'auto.billing_available_balance'),
             render: (_, row) => (
               <Tag color={row.account?.credit_insufficient ? 'red' : 'green'}>
-                ${row.account?.available_balance ?? '0'}
+                {formatUsd(row.account?.available_balance)}
               </Tag>
             )
           },
@@ -244,11 +256,11 @@ export function CreditManagementPanel({ canManage }: { canManage: boolean }) {
             },
             {
               title: i18nText('settings', 'auto.billing_amount'),
-              render: (_, r) => `$${r.amount}`
+              render: (_, r) => formatUsd(r.amount)
             },
             {
               title: i18nText('settings', 'auto.billing_balance_after'),
-              render: (_, r) => `$${r.balance_after}`
+              render: (_, r) => formatUsd(r.balance_after)
             },
             {
               title: i18nText('settings', 'auto.billing_reason'),

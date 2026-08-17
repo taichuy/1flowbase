@@ -3,7 +3,9 @@ use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
+use rust_decimal::Decimal;
 use serde_json::{json, Value};
+use std::str::FromStr;
 use tower::ServiceExt;
 
 async fn response_json(response: axum::response::Response) -> Value {
@@ -56,7 +58,15 @@ async fn billing_routes_validate_pricing_and_manage_workspace_credit_ledger() {
     assert_eq!(create_rule.status(), StatusCode::OK);
     let rule_payload = response_json(create_rule).await;
     assert_eq!(rule_payload["data"]["currency_code"], "USD");
-    assert_eq!(rule_payload["data"]["input_token_unit_price"], "1.25");
+    assert_eq!(
+        Decimal::from_str(
+            rule_payload["data"]["input_token_unit_price"]
+                .as_str()
+                .unwrap()
+        )
+        .unwrap(),
+        Decimal::from_str("1.25").unwrap()
+    );
 
     let accounts = app
         .clone()
