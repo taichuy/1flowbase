@@ -274,6 +274,7 @@ export interface ConsoleModelProviderMainInstanceSummary {
 
 export interface ConsoleModelProviderOptionGroup {
   model_id: string;
+  pricing_configured: boolean;
   distribution_rule: ConsoleModelProviderDistributionRule;
   model: ConsoleProviderModelDescriptor;
   targets: ConsoleModelProviderOptionTarget[];

@@ -52,6 +52,7 @@ async fn orchestration_runtime_canonicalizes_live_provider_tool_call_names() {
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
     let runtime = orchestration_runtime::compiled_plan::CompiledLlmRuntime {
         provider_instance_id: provider_instance_id.to_string(),

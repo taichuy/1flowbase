@@ -21,6 +21,7 @@ async fn orchestration_runtime_textualizes_user_media_when_selected_model_is_not
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
     let runtime = orchestration_runtime::compiled_plan::CompiledLlmRuntime {
         provider_instance_id: provider_instance_id.to_string(),
@@ -89,6 +90,7 @@ async fn orchestration_runtime_keeps_user_media_when_configured_model_supports_m
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
     let runtime = orchestration_runtime::compiled_plan::CompiledLlmRuntime {
         provider_instance_id: provider_instance_id.to_string(),

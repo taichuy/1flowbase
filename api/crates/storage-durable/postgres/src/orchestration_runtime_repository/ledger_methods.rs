@@ -102,6 +102,7 @@ impl PgControlPlaneStore {
                 flow_run_id,
                 span_id,
                 usage_ledger_id,
+                billing_session_id,
                 workspace_id,
                 provider_instance_id,
                 provider_account_id,
@@ -114,13 +115,14 @@ impl PgControlPlaneStore {
                 settlement_currency,
                 cost_source,
                 cost_status
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
-                      $11, $12::numeric, $13::numeric, $14, $15, $16)
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+                      $12, $13::numeric, $14::numeric, $15, $16, $17)
             returning
                 id,
                 flow_run_id,
                 span_id,
                 usage_ledger_id,
+                billing_session_id,
                 workspace_id,
                 provider_instance_id,
                 provider_account_id,
@@ -140,6 +142,7 @@ impl PgControlPlaneStore {
         .bind(input.flow_run_id)
         .bind(input.span_id)
         .bind(input.usage_ledger_id)
+        .bind(input.billing_session_id)
         .bind(input.workspace_id)
         .bind(input.provider_instance_id)
         .bind(input.provider_account_id)

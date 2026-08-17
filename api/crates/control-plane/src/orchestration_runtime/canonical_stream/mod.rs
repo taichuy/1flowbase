@@ -208,7 +208,6 @@ pub struct CanonicalUsage {
 }
 
 impl CanonicalUsage {
-    #[cfg(test)]
     pub fn value(&self) -> &ProviderUsage {
         &self.value
     }
@@ -345,7 +344,6 @@ impl CanonicalStreamAccumulator {
         &self.reasoning
     }
 
-    #[cfg(test)]
     pub fn usage(&self) -> &CanonicalUsage {
         &self.usage
     }

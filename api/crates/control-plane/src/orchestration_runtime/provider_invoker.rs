@@ -6,6 +6,7 @@ use plugin_framework::{
     provider_contract::ProviderCountTokensFallbackReason,
     provider_count_tokens_estimator::estimate_provider_count_tokens,
 };
+use sha2::{Digest, Sha256};
 
 use super::canonical_stream::{
     CanonicalBlockId, CanonicalCallId, CanonicalContentKind, CanonicalItemId, CanonicalStreamEvent,
@@ -21,6 +22,66 @@ pub(super) use failover_queue::freeze_failover_queue_routes;
 const PROVIDER_LIVE_EVENT_LANE_CAPACITY: usize = 32;
 
 const VISIBLE_INTERNAL_LLM_MEDIA_TOOLS_CONTEXT_KEY: &str = "visible_internal_llm_media_tools";
+
+fn billing_invocation_id(
+    flow_run_id: Uuid,
+    node_id: Option<&str>,
+    input: &ProviderInvocationInput,
+) -> Uuid {
+    let attempt = input
+        .trace_context
+        .get("provider_attempt_index")
+        .map(String::as_str)
+        .unwrap_or("0");
+    let digest = Sha256::digest(format!(
+        "{flow_run_id}:{}:{}:{}:{attempt}",
+        node_id.unwrap_or("unknown"),
+        input.provider_instance_id,
+        input.model
+    ));
+    let mut bytes = [0_u8; 16];
+    bytes.copy_from_slice(&digest[..16]);
+    Uuid::from_bytes(bytes)
+}
+
+fn collected_provider_usage(
+    events: &[ProviderStreamEvent],
+    result: &plugin_framework::provider_contract::ProviderUsage,
+) -> plugin_framework::provider_contract::ProviderUsage {
+    fn add(target: &mut Option<u64>, value: Option<u64>) {
+        if let Some(value) = value {
+            *target = Some(target.unwrap_or_default().saturating_add(value));
+        }
+    }
+    fn delta(
+        target: &mut plugin_framework::provider_contract::ProviderUsage,
+        value: &plugin_framework::provider_contract::ProviderUsage,
+    ) {
+        add(&mut target.input_tokens, value.input_tokens);
+        add(
+            &mut target.input_cache_hit_tokens,
+            value.input_cache_hit_tokens,
+        );
+        add(
+            &mut target.input_cache_miss_tokens,
+            value.input_cache_miss_tokens,
+        );
+        add(&mut target.output_tokens, value.output_tokens);
+        add(&mut target.reasoning_tokens, value.reasoning_tokens);
+        add(&mut target.cache_read_tokens, value.cache_read_tokens);
+        add(&mut target.cache_write_tokens, value.cache_write_tokens);
+        add(&mut target.total_tokens, value.total_tokens);
+    }
+    let mut usage = result.clone();
+    for event in events {
+        match event {
+            ProviderStreamEvent::UsageSnapshot { usage: snapshot } => usage = snapshot.clone(),
+            ProviderStreamEvent::UsageDelta { usage: value } => delta(&mut usage, value),
+            _ => {}
+        }
+    }
+    usage
+}
 
 fn provider_tool_structure_receipt(tools: &[Value]) -> Value {
     Value::Array(
@@ -272,6 +333,7 @@ where
                 node_run_id: self.active_node_run_id?,
             })
         });
+        let billing_node_id = active_node.as_ref().map(|node| node.node_id.clone());
         if let (Some(active_node), Some(stream), Some(flow_run_id)) = (
             active_node.as_ref(),
             self.runtime_event_stream.as_ref(),
@@ -510,25 +572,331 @@ where
             None
         };
 
+        let billing_started_at = OffsetDateTime::now_utc();
+        let billing = if self
+            .repository
+            .model_billing_enabled_at(self.workspace_id)
+            .await?
+            .is_some_and(|enabled_at| billing_started_at >= enabled_at)
+        {
+            let actor = self
+                .flow_execution_context
+                .as_ref()
+                .map(|context| &context.data_model.actor)
+                .ok_or(ControlPlaneError::Conflict(
+                    "billing_actor_context_required",
+                ))?;
+            let candidates = if let Some(cache) = &self.model_pricing_cache_store {
+                let key =
+                    crate::billing::pricing_rules_cache_key(&input.provider_code, &input.model);
+                match cache.get_json(&key).await? {
+                    Some(value) => match serde_json::from_value(value) {
+                        Ok(rules) => rules,
+                        Err(_) => {
+                            cache.delete(&key).await?;
+                            let rules = self
+                                .repository
+                                .model_billing_list_pricing_rules(
+                                    &input.provider_code,
+                                    &input.model,
+                                )
+                                .await?;
+                            cache
+                                .set_json(
+                                    &key,
+                                    serde_json::to_value(&rules)?,
+                                    Some(time::Duration::minutes(5)),
+                                )
+                                .await?;
+                            rules
+                        }
+                    },
+                    None => {
+                        let rules = self
+                            .repository
+                            .model_billing_list_pricing_rules(&input.provider_code, &input.model)
+                            .await?;
+                        cache
+                            .set_json(
+                                &key,
+                                serde_json::to_value(&rules)?,
+                                Some(time::Duration::minutes(5)),
+                            )
+                            .await?;
+                        rules
+                    }
+                }
+            } else {
+                self.repository
+                    .model_billing_match_pricing_rules(
+                        &input.provider_code,
+                        &input.model,
+                        billing_started_at,
+                    )
+                    .await?
+            };
+            let rule = crate::billing::choose_pricing_rule(candidates, billing_started_at)?
+                .ok_or(ControlPlaneError::Conflict("pricing_rule_not_configured"))?;
+            let input_tokens = estimate_provider_count_tokens(&input)
+                .map(|estimate| estimate.input_tokens)
+                .unwrap_or(0);
+            let maximum_output_tokens = input
+                .model_parameters
+                .get("max_output_tokens")
+                .or_else(|| input.model_parameters.get("max_tokens"))
+                .and_then(Value::as_u64)
+                .unwrap_or(0);
+            let estimate = crate::billing::rate_token_usage(
+                &rule,
+                &crate::billing::TokenUsage {
+                    input_tokens: i64::try_from(input_tokens).unwrap_or(i64::MAX),
+                    input_cache_hit_tokens: 0,
+                    input_cache_miss_tokens: Some(i64::try_from(input_tokens).unwrap_or(i64::MAX)),
+                    output_tokens: i64::try_from(maximum_output_tokens).unwrap_or(i64::MAX),
+                },
+            )?;
+            let flow_run_id = self
+                .flow_run_id
+                .ok_or(ControlPlaneError::Conflict("billing_flow_run_required"))?;
+            let invocation_id =
+                billing_invocation_id(flow_run_id, billing_node_id.as_deref(), &input);
+            let reservation = self
+                .repository
+                .model_billing_reserve_credit(&crate::ports::ReserveCreditInput {
+                    workspace_id: self.workspace_id,
+                    user_id: actor.user_id,
+                    amount: estimate.total_cost.to_string(),
+                    flow_run_id: Some(flow_run_id),
+                    provider_invocation_id: invocation_id,
+                    pricing_rule_id: rule.id,
+                    charge_enabled_default: !actor.is_root,
+                    reservation_expires_at: billing_started_at + time::Duration::minutes(15),
+                })
+                .await?;
+            Some((rule, reservation, invocation_id, flow_run_id))
+        } else {
+            None
+        };
+
+        let billing_heartbeat = billing.as_ref().map(|(_, reservation, _, _)| {
+            let repository = self.repository.clone();
+            let billing_session_id = reservation.billing_session_id;
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+                loop {
+                    interval.tick().await;
+                    match repository
+                        .model_billing_heartbeat_credit_reservation(
+                            billing_session_id,
+                            OffsetDateTime::now_utc() + time::Duration::minutes(15),
+                        )
+                        .await
+                    {
+                        Ok(true) => {}
+                        Ok(false) => break,
+                        Err(error) => tracing::warn!(
+                            billing_session_id = %billing_session_id,
+                            error = %error,
+                            "model billing reservation heartbeat failed"
+                        ),
+                    }
+                }
+            })
+        });
+
         let invocation_result = self
             .runtime
             .invoke_stream_with_live_events(&installation, input, live_provider_events)
             .await;
+        if let Some(handle) = billing_heartbeat {
+            handle.abort();
+        }
         tracing::debug!(
             provider_invoke_ms = provider_invoke_started.elapsed().as_millis() as u64,
             "provider invoke finished"
         );
-        if let Some(handle) = required_forward_handle {
-            handle.await.map_err(|error| {
+        let canonical_stream_state = if let Some(handle) = required_forward_handle {
+            Some(handle.await.map_err(|error| {
                 anyhow!("provider live event forwarding task panicked: {error}")
-            })??;
-        }
+            })??)
+        } else {
+            None
+        };
         if let Some(handle) = diagnostic_forward_handle {
             handle.await.map_err(|error| {
                 anyhow!("provider diagnostic event forwarding task panicked: {error}")
             })?;
         }
-        let mut invocation_output = invocation_result?;
+        let (mut invocation_output, invocation_error) = match invocation_result {
+            Ok(output) => (Some(output), None),
+            Err(error) => (None, Some(error)),
+        };
+        if let Some((rule, reservation, invocation_id, flow_run_id)) = billing {
+            let usage = invocation_output.as_ref().map_or_else(
+                || {
+                    canonical_stream_state
+                        .as_ref()
+                        .map(|state| state.accumulated().usage().value().clone())
+                        .unwrap_or_default()
+                },
+                |output| collected_provider_usage(&output.events, &output.result.usage),
+            );
+            let has_usage = usage.input_tokens.is_some()
+                || usage.input_cache_miss_tokens.is_some()
+                || usage.input_cache_hit_tokens.is_some()
+                || usage.output_tokens.is_some();
+            if !has_usage {
+                self.repository
+                    .model_billing_release_credit(
+                        reservation.billing_session_id,
+                        if invocation_error.is_some() {
+                            "provider_invocation_failed_without_usage"
+                        } else {
+                            "provider_usage_unavailable"
+                        },
+                    )
+                    .await?;
+                if let Some(error) = invocation_error {
+                    return Err(error);
+                }
+                return Err(ControlPlaneError::Conflict("provider_usage_unavailable").into());
+            }
+            let rated = crate::billing::rate_token_usage(
+                &rule,
+                &crate::billing::TokenUsage {
+                    input_tokens: i64::try_from(usage.input_tokens.unwrap_or(0))
+                        .unwrap_or(i64::MAX),
+                    input_cache_hit_tokens: i64::try_from(
+                        usage.input_cache_hit_tokens.unwrap_or(0),
+                    )
+                    .unwrap_or(i64::MAX),
+                    input_cache_miss_tokens: usage
+                        .input_cache_miss_tokens
+                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                    output_tokens: i64::try_from(usage.output_tokens.unwrap_or(0))
+                        .unwrap_or(i64::MAX),
+                },
+            )?;
+            let price_snapshot = json!({
+                "pricing_rule_id": rule.id,
+                "provider_code": rule.provider_code,
+                "upstream_model_id": rule.upstream_model_id,
+                "currency_code": rule.currency_code,
+                "request_started_at": billing_started_at,
+                "input_token_unit_size": rule.input_token_unit_size,
+                "input_token_unit_price": rule.input_token_unit_price.to_string(),
+                "output_token_unit_size": rule.output_token_unit_size,
+                "output_token_unit_price": rule.output_token_unit_price.to_string(),
+                "cache_hit_token_unit_size": rule.cache_hit_token_unit_size,
+                "cache_hit_token_unit_price": rule.cache_hit_token_unit_price.to_string(),
+            });
+            let usage_snapshot = json!({
+                "usage_source": "provider_reported",
+                "ordinary_input_tokens": rated.ordinary_input_tokens,
+                "input_cache_hit_tokens": rated.cache_hit_tokens,
+                "output_tokens": rated.output_tokens,
+                "raw_usage": usage,
+            });
+            let active_node = self
+                .flow_execution_context
+                .as_ref()
+                .and_then(|context| context.active_node.lock().ok()?.clone());
+            let usage_ledger = self
+                .repository
+                .append_usage_ledger(&crate::ports::AppendUsageLedgerInput {
+                    flow_run_id,
+                    node_run_id: active_node.as_ref().map(|node| node.node_run_id),
+                    span_id: None,
+                    failover_attempt_id: None,
+                    provider_instance_id: Uuid::parse_str(&instance.id.to_string()).ok(),
+                    gateway_route_id: None,
+                    model_id: Some(rule.upstream_model_id.clone()),
+                    upstream_model_id: Some(rule.upstream_model_id.clone()),
+                    upstream_request_id: invocation_output
+                        .as_ref()
+                        .and_then(|output| output.result.response_id.clone()),
+                    input_tokens: usage
+                        .input_tokens
+                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                    cached_input_tokens: usage
+                        .input_cache_hit_tokens
+                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                    output_tokens: usage
+                        .output_tokens
+                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                    reasoning_output_tokens: usage
+                        .reasoning_tokens
+                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                    total_tokens: usage
+                        .total_tokens()
+                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                    input_cache_hit_tokens: usage
+                        .input_cache_hit_tokens
+                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                    input_cache_miss_tokens: usage
+                        .input_cache_miss_tokens
+                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                    cache_read_tokens: usage
+                        .cache_read_tokens
+                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                    cache_write_tokens: usage
+                        .cache_write_tokens
+                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                    price_snapshot: Some(price_snapshot.clone()),
+                    cost_snapshot: Some(
+                        json!({"total_cost":rated.total_cost.to_string(),"currency_code":"USD"}),
+                    ),
+                    usage_status: domain::UsageLedgerStatus::Recorded,
+                    raw_usage: serde_json::to_value(&usage)?,
+                    normalized_usage: usage_snapshot.clone(),
+                })
+                .await?;
+            let cost_ledger = self
+                .repository
+                .append_cost_ledger(&crate::ports::AppendCostLedgerInput {
+                    flow_run_id: Some(flow_run_id),
+                    span_id: None,
+                    usage_ledger_id: Some(usage_ledger.id),
+                    billing_session_id: Some(reservation.billing_session_id),
+                    workspace_id: self.workspace_id,
+                    provider_instance_id: Some(instance.id),
+                    provider_account_id: None,
+                    gateway_route_id: None,
+                    model_id: Some(rule.upstream_model_id.clone()),
+                    upstream_model_id: Some(rule.upstream_model_id.clone()),
+                    price_snapshot: price_snapshot.clone(),
+                    raw_cost: Some(rated.total_cost.to_string()),
+                    normalized_cost: Some(rated.total_cost.to_string()),
+                    settlement_currency: Some("USD".to_string()),
+                    cost_source: "local_token_pricing".to_string(),
+                    cost_status: "rated".to_string(),
+                })
+                .await?;
+            self.repository
+                .model_billing_settle_credit(&crate::ports::SettleCreditInput {
+                    billing_session_id: reservation.billing_session_id,
+                    actual_amount: rated.total_cost.to_string(),
+                    cost_ledger_id: Some(cost_ledger.id),
+                    usage_ledger_id: Some(usage_ledger.id),
+                    price_snapshot: price_snapshot.clone(),
+                    usage_snapshot: usage_snapshot.clone(),
+                })
+                .await?;
+            if let Some(output) = invocation_output.as_mut() {
+                let provider_metadata = std::mem::take(&mut output.result.provider_metadata);
+                output.result.provider_metadata = json!({
+                    "_1flowbase_billing": {"provider_invocation_id":invocation_id,"billing_session_id":reservation.billing_session_id,
+                        "pricing_rule_id":rule.id,"usage_ledger_id":usage_ledger.id,"cost_ledger_id":cost_ledger.id,
+                        "total_cost":rated.total_cost.to_string(),"currency_code":"USD","charge_skipped":reservation.charge_skipped},
+                    "_1flowbase_upstream_provider_metadata": provider_metadata,
+                });
+            }
+        }
+        if let Some(error) = invocation_error {
+            return Err(error);
+        }
+        let mut invocation_output = invocation_output
+            .ok_or_else(|| anyhow!("provider invocation completed without output or error"))?;
         let runtime_stream_timing = provider_stream_timing
             .lock()
             .map_err(|_| anyhow!("provider stream timing lock is poisoned"))?
@@ -1137,6 +1505,7 @@ where
             provider_transport_payload: self.provider_transport_payload.clone(),
             provider_transport_store: self.provider_transport_store.clone(),
             provider_continuation: self.provider_continuation.clone(),
+            model_pricing_cache_store: self.model_pricing_cache_store.clone(),
         }
     }
 
@@ -1306,8 +1675,10 @@ where
         if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
             return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
         }
+        let plugin_id = installation.plugin_id.clone();
+        let credit_commands_allowed = installation.trust_level == "verified_official";
 
-        let output = self
+        let mut output = self
             .runtime
             .execute_node(ExecuteCapabilityNodeInput {
                 installation,
@@ -1316,6 +1687,39 @@ where
                 input_payload,
             })
             .await?;
+
+        if let Some(command_value) = output
+            .output_payload
+            .as_object_mut()
+            .and_then(|payload| payload.remove("_1flowbase_credit_command"))
+        {
+            if !credit_commands_allowed {
+                return Err(ControlPlaneError::PermissionDenied(
+                    "plugin_credit_command_requires_verified_official_plugin",
+                )
+                .into());
+            }
+            let request: crate::ports::PluginCreditCommandRequest =
+                serde_json::from_value(command_value)
+                    .map_err(|_| ControlPlaneError::InvalidInput("plugin_credit_command"))?;
+            let result = self
+                .repository
+                .execute_plugin_credit_command(
+                    self.workspace_id,
+                    &plugin_id,
+                    &output.granted_credit_permissions,
+                    request,
+                )
+                .await?;
+            output
+                .output_payload
+                .as_object_mut()
+                .expect("credit command was extracted from an object payload")
+                .insert(
+                    "_1flowbase_credit_result".to_string(),
+                    serde_json::to_value(result)?,
+                );
+        }
 
         Ok(
             orchestration_runtime::execution_engine::CapabilityInvocationOutput {

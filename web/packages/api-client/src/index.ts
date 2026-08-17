@@ -24,6 +24,7 @@ export * from './console-node-contributions';
 export * from './console-navigation';
 export * from './console-me';
 export * from './console-members';
+export * from './console-billing';
 export * from './console-permissions';
 export * from './console-plugins';
 export * from './console-roles';

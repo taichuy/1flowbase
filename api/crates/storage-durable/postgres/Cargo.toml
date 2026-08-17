@@ -20,6 +20,7 @@ rand_regex.workspace = true
 regex-syntax.workspace = true
 runtime-core = { path = "../../runtime-core" }
 serde_json.workspace = true
+rust_decimal.workspace = true
 sha2.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true

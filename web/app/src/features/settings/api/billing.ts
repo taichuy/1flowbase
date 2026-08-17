@@ -1,0 +1,34 @@
+export {
+  createConsolePricingRule as createSettingsPricingRule,
+  deleteConsolePricingRule as deleteSettingsPricingRule,
+  executeConsoleCreditCommand as executeSettingsCreditCommand,
+  getConsolePricingCatalog as getSettingsPricingCatalog,
+  importConsolePricingCatalog as importSettingsPricingCatalog,
+  listConsoleCreditAccounts as listSettingsCreditAccounts,
+  listConsoleCreditLedger as listSettingsCreditLedger,
+  listConsolePricingRules as listSettingsPricingRules,
+  updateConsolePricingRule as updateSettingsPricingRule,
+  type ConsoleCreditAccount as SettingsCreditAccount,
+  type ConsoleCreditTransaction as SettingsCreditTransaction,
+  type ConsolePricingCatalog as SettingsPricingCatalog,
+  type ConsolePricingRule as SettingsPricingRule,
+  type ConsolePricingRuleInput as SettingsPricingRuleInput
+} from '@1flowbase/api-client';
+
+export const settingsPricingRulesQueryKey = [
+  'settings',
+  'billing',
+  'pricing-rules'
+] as const;
+export const settingsPricingCatalogQueryKey = [
+  'settings',
+  'billing',
+  'pricing-catalog'
+] as const;
+export const settingsCreditAccountsQueryKey = [
+  'settings',
+  'billing',
+  'credit-accounts'
+] as const;
+export const settingsCreditLedgerQueryKey = (userId?: string) =>
+  ['settings', 'billing', 'credit-ledger', userId ?? 'all'] as const;

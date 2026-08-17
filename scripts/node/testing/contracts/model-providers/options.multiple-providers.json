@@ -64,6 +64,7 @@
       "model_groups": [
         {
           "model_id": "gpt-4o-mini",
+          "pricing_configured": false,
           "distribution_rule": "none",
           "model": {
             "model_id": "gpt-4o-mini",
@@ -149,6 +150,7 @@
       "model_groups": [
         {
           "model_id": "claude-3-5-sonnet",
+          "pricing_configured": false,
           "distribution_rule": "none",
           "model": {
             "model_id": "claude-3-5-sonnet",

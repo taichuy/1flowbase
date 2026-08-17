@@ -29,6 +29,7 @@ async fn native_provider_transport_payload_restores_the_ephemeral_invocation_cap
         ),
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
     let runtime = compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider");
     let input = ProviderInvocationInput {
@@ -97,6 +98,7 @@ async fn native_provider_transport_affinity_rejects_a_different_selected_llm_bef
         ),
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
     let runtime = compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider");
     let input = ProviderInvocationInput {
@@ -170,6 +172,7 @@ async fn issue_1743_bound_native_continuation_sends_only_sealed_delta_wire() {
         provider_transport_payload: Some(payload),
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
     let runtime = compiled_llm_runtime(provider_instance_id.to_string(), "fixture_provider");
     let pipelined =

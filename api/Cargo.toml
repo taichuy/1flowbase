@@ -47,6 +47,7 @@ rand_regex = { version = "0.19", default-features = false }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 regex = "1"
 regex-syntax = "0.8"
+rust_decimal = { version = "1", features = ["serde-with-str"] }
 rquickjs = "0.11"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

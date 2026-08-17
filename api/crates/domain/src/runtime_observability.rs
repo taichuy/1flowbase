@@ -352,6 +352,7 @@ pub struct CostLedgerRecord {
     pub flow_run_id: Option<Uuid>,
     pub span_id: Option<Uuid>,
     pub usage_ledger_id: Option<Uuid>,
+    pub billing_session_id: Option<Uuid>,
     pub workspace_id: Uuid,
     pub provider_instance_id: Option<Uuid>,
     pub provider_account_id: Option<Uuid>,

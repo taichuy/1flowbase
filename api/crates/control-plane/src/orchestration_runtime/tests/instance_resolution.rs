@@ -20,6 +20,7 @@ async fn orchestration_runtime_resolve_llm_instance_keeps_invalid_uuid_as_source
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
 
     let error = invoker
@@ -52,6 +53,7 @@ async fn orchestration_runtime_resolve_llm_instance_does_not_fallback_when_selec
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
 
     let error = invoker
@@ -95,6 +97,7 @@ async fn orchestration_runtime_resolve_llm_instance_does_not_fallback_when_selec
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
 
     let error = invoker
@@ -132,6 +135,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_provider_code_mismat
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
 
     let error = invoker
@@ -172,6 +176,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_instance_not_in_main
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
 
     let error = invoker
@@ -216,6 +221,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_unassigned_installat
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
 
     let error = invoker
@@ -264,6 +270,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_disabled_installatio
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
 
     let error = invoker
@@ -312,6 +319,7 @@ async fn orchestration_runtime_resolve_llm_route_rejects_unavailable_installatio
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
 
     let result = orchestration_runtime::execution_engine::ProviderInvoker::resolve_llm_route(
@@ -353,6 +361,7 @@ async fn orchestration_runtime_resolve_llm_instance_uses_selected_child_instance
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
 
     let resolved = invoker
@@ -405,6 +414,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_model_only_present_i
         provider_transport_payload: None,
         provider_transport_store: None,
         provider_continuation: None,
+        model_pricing_cache_store: None,
     };
 
     let error = invoker

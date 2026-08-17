@@ -791,6 +791,7 @@ describe('LlmModelField', () => {
     duplicatedProvider.model_groups = [
       {
         model_id: 'gpt-4o-mini',
+        pricing_configured: false,
         distribution_rule: 'none',
         model: {
           ...primaryProviderFirstModel,

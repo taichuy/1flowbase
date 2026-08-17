@@ -1054,6 +1054,7 @@ impl CapabilityPluginRuntimePort for ApiProviderRuntime {
                 .await
                 .map(|output| CapabilityExecutionOutput {
                     output_payload: output.output_payload,
+                    granted_credit_permissions: output.granted_credit_permissions,
                 })
                 .map_err(|error| map_framework_error(error, "capability_runtime")),
             Err(error) => Err(error),

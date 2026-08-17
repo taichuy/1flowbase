@@ -3,7 +3,7 @@ import { Suspense, lazy, type ReactNode } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 
 import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
-import { MemberManagementPanel } from '../../components/MemberManagementPanel';
+import { MemberSettingsTabs } from './MemberSettingsTabs';
 import {
   RolePermissionPanel,
   type RolePermissionTab
@@ -111,7 +111,7 @@ export function SettingsSectionBody({
 }: {
   sectionKey: SettingsSectionKey;
   access: SettingsSectionAccess;
-  modelProviderTab?: 'providers' | 'request-logs';
+  modelProviderTab?: 'providers' | 'pricing' | 'request-logs';
   rolePermissionTab?: RolePermissionTab;
   extensionCenterCategory?: SettingsExtensionCenterCategory;
   extensionCenterCursor?: string;
@@ -144,7 +144,7 @@ export function SettingsSectionBody({
       );
     case 'members':
       return (
-        <MemberManagementPanel
+        <MemberSettingsTabs
           canManageMembers={access.canManageMembers}
           canManageRoleBindings={access.canManageRoles}
         />

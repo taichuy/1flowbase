@@ -34,7 +34,7 @@ export function SettingsPage({
   extensionCenterQ
 }: {
   requestedSectionKey?: string;
-  modelProviderTab?: 'providers' | 'request-logs';
+  modelProviderTab?: 'providers' | 'pricing' | 'request-logs';
   rolePermissionTab?: RolePermissionTab;
   extensionCenterCategory?: SettingsExtensionCenterCategory;
   extensionCenterCursor?: string;

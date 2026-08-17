@@ -613,6 +613,7 @@ describe('ModelProvidersPage - instances modal', () => {
       const options = buildSettingsModelProviderOptions();
       options.providers[0].model_groups[0] = {
         model_id: primaryContractProviderModels[0].model_id,
+        pricing_configured: false,
         distribution_rule: 'none',
         model: primaryContractProviderModels[0],
         targets: [
@@ -1034,6 +1035,7 @@ describe('ModelProvidersPage - instances modal', () => {
       const options = buildSettingsModelProviderOptions();
       options.providers[0].model_groups[0] = {
         model_id: primaryContractProviderModels[0].model_id,
+        pricing_configured: false,
         distribution_rule: 'none',
         model: primaryContractProviderModels[0],
         targets: [

@@ -59,6 +59,7 @@ import {
   type ExtensionApplicationTarget
 } from '../../components/extension-center/ExtensionApplicationFlow';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
+import { PricingCatalogPanel } from '../../components/billing/PricingCatalogPanel';
 
 type ExtensionRow = SettingsInstalledExtension | SettingsExtensionCatalogEntry;
 type UpdateState =
@@ -182,7 +183,16 @@ export function SettingsExtensionCenterSection(props: {
   cursor?: string;
   q?: string;
 }) {
-  return <GenericExtensionCenterSection {...props} />;
+  if (props.category === 'model-pricing') {
+    return <PricingCatalogPanel />;
+  }
+  return (
+    <GenericExtensionCenterSection
+      category={props.category}
+      cursor={props.cursor}
+      q={props.q}
+    />
+  );
 }
 
 function GenericExtensionCenterSection({
@@ -190,7 +200,7 @@ function GenericExtensionCenterSection({
   cursor,
   q
 }: {
-  category: SettingsExtensionCenterCategory;
+  category: Exclude<SettingsExtensionCenterCategory, 'model-pricing'>;
   cursor?: string;
   q?: string;
 }) {
@@ -898,7 +908,11 @@ function GenericExtensionCenterSection({
             ...CATEGORIES.map((category) => ({
               key: category,
               label: category
-            }))
+            })),
+            {
+              key: 'model-pricing',
+              label: t('auto.billing_vendor_model_pricing')
+            }
           ]}
         />
         {activeTab !== 'installed' && catalogQuery.isError ? (

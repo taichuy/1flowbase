@@ -1438,6 +1438,7 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
             flow_run_id: input.flow_run_id,
             span_id: input.span_id,
             usage_ledger_id: input.usage_ledger_id,
+            billing_session_id: input.billing_session_id,
             workspace_id: input.workspace_id,
             provider_instance_id: input.provider_instance_id,
             provider_account_id: input.provider_account_id,

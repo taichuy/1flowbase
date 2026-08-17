@@ -154,6 +154,7 @@ fn issue_1743_invoker(
         provider_transport_payload: None,
         provider_transport_store: Some(store),
         provider_continuation: Some(continuation),
+        model_pricing_cache_store: None,
     }
 }
 

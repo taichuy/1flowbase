@@ -28,7 +28,7 @@ pub use plugins_and_models_group::{
     node_contributions, plugins, runtime_models,
 };
 pub use settings_group::{
-    application_management, auth_center, data_models, docs, file_storages, file_tables,
+    application_management, auth_center, billing, data_models, docs, file_storages, file_tables,
     host_infrastructure, i18n_catalog, mcp_management, members, navigation, permissions, roles,
     system, system_backups, ui_management, workspace, workspaces,
 };

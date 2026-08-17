@@ -151,8 +151,10 @@ pub async fn list_settings_options(
     )
     .options(context.user.id, requested_locales(&locale_meta))
     .await?;
+    let priced_models = priced_model_keys(&state).await?;
     Ok(Json(ApiSuccess::new(to_options_view_response(
         locale_meta,
         options,
+        &priced_models,
     ))))
 }

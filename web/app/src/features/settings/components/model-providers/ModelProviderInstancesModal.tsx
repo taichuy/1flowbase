@@ -205,6 +205,21 @@ export function ModelProviderInstancesModal({
       }
     },
     {
+      key: 'pricing_status',
+      title: i18nText('settings', 'auto.billing_status'),
+      width: 140,
+      render: (_, group) =>
+        group.pricing_configured ? (
+          <Tag color="green">
+            {i18nText('settings', 'auto.billing_configured')}
+          </Tag>
+        ) : (
+          <Tag color="red">
+            {i18nText('settings', 'auto.billing_not_configured')}
+          </Tag>
+        )
+    },
+    {
       key: 'distribution_rule',
       title: i18nText('settings', 'auto.distribution_rule'),
       width: 160,
@@ -233,19 +248,29 @@ export function ModelProviderInstancesModal({
     {
       key: 'operation',
       title: i18nText('settings', 'auto.operation'),
-      width: 88,
+      width: 180,
       render: (_, group) => (
-        <Button
-          type="link"
-          size="small"
-          disabled={!canManage || updatingMainInstance || !mainInstance}
-          onClick={(event) => {
-            event.stopPropagation();
-            setEditingGroup(group);
-          }}
-        >
-          {i18nText('settings', 'auto.edit')}
-        </Button>
+        <Space size={4}>
+          <Button
+            type="link"
+            size="small"
+            disabled={!canManage || updatingMainInstance || !mainInstance}
+            onClick={(event) => {
+              event.stopPropagation();
+              setEditingGroup(group);
+            }}
+          >
+            {i18nText('settings', 'auto.edit')}
+          </Button>
+          <Button
+            type="link"
+            size="small"
+            href="/settings/model-providers/pricing"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {i18nText('settings', 'auto.billing_pricing_rules')}
+          </Button>
+        </Space>
       )
     }
   ];

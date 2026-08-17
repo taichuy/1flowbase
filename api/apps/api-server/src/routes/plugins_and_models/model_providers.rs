@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
@@ -16,6 +16,7 @@ use control_plane::model_provider::{
     ModelProviderService, PreviewModelProviderModelsCommand, UpdateModelProviderInstanceCommand,
     UpdateModelProviderMainInstanceCommand, ValidateModelProviderResult,
 };
+use control_plane::ports::{BillingRepository, ListPricingRulesInput};
 use plugin_framework::{
     provider_contract::{
         PluginFormCondition, PluginFormFieldSchema, PluginFormOption, PluginFormSchema,
@@ -457,7 +458,11 @@ fn to_model_catalog_response(
     }
 }
 
-fn to_option_response(option: ModelProviderOptionEntry) -> ModelProviderOptionResponse {
+fn to_option_response(
+    option: ModelProviderOptionEntry,
+    priced_models: &HashSet<(String, String)>,
+) -> ModelProviderOptionResponse {
+    let provider_code = option.provider_code.clone();
     ModelProviderOptionResponse {
         icon: normalize_provider_icon(&option.provider_code, option.icon),
         provider_code: option.provider_code,
@@ -478,6 +483,8 @@ fn to_option_response(option: ModelProviderOptionEntry) -> ModelProviderOptionRe
             .model_groups
             .into_iter()
             .map(|group| ModelProviderOptionGroupResponse {
+                pricing_configured: priced_models
+                    .contains(&(provider_code.clone(), group.model_id.clone())),
                 model_id: group.model_id,
                 distribution_rule: group.distribution_rule.as_str().to_string(),
                 model: to_model_descriptor_response(group.model),
@@ -499,6 +506,7 @@ fn to_option_response(option: ModelProviderOptionEntry) -> ModelProviderOptionRe
 fn to_options_view_response(
     locale_meta: LocaleMetaResponse,
     options: ModelProviderOptionsView,
+    priced_models: &HashSet<(String, String)>,
 ) -> ModelProviderOptionsResponse {
     ModelProviderOptionsResponse {
         locale_meta,
@@ -506,9 +514,25 @@ fn to_options_view_response(
         providers: options
             .providers
             .into_iter()
-            .map(to_option_response)
+            .map(|option| to_option_response(option, priced_models))
             .collect(),
     }
+}
+
+async fn priced_model_keys(state: &ApiState) -> Result<HashSet<(String, String)>, ApiError> {
+    Ok(state
+        .store
+        .list_pricing_rules(&ListPricingRulesInput {
+            provider_code: None,
+            upstream_model_id: None,
+            include_disabled: false,
+            limit: 500,
+            offset: 0,
+        })
+        .await?
+        .into_iter()
+        .map(|rule| (rule.provider_code, rule.upstream_model_id))
+        .collect())
 }
 
 fn resolve_locale_meta(
@@ -1122,9 +1146,11 @@ pub async fn list_options(
     )
     .options(context.user.id, requested_locales(&locale_meta))
     .await?;
+    let priced_models = priced_model_keys(&state).await?;
     Ok(Json(ApiSuccess::new(to_options_view_response(
         locale_meta,
         options,
+        &priced_models,
     ))))
 }
 

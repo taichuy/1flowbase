@@ -289,6 +289,7 @@ pub(crate) fn migrated_core_console_route_assembly_with_interface_operations(
         .merge(super::user_api_keys::route_assembly())
         .merge(super::workspace::route_assembly())
         .merge(super::members::route_assembly())
+        .merge(super::billing::route_assembly())
         .merge(super::model_definitions::route_assembly())
         .merge(super::model_providers::route_assembly())
         .merge(super::frontend_block_catalog::route_assembly())

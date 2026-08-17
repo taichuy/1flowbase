@@ -4,6 +4,7 @@ pub mod application;
 pub mod application_public_api;
 pub mod audit;
 pub mod auth;
+pub mod billing;
 pub mod bootstrap;
 pub mod capability_plugin_runtime;
 pub mod capability_runtime;
