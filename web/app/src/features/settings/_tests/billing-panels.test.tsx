@@ -139,7 +139,7 @@ describe('billing settings panels', () => {
     expect(await screen.findByText('$4.00')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '增加额度' }));
     const dialog = await screen.findByRole('dialog');
-    const amount = within(dialog).getByLabelText('金额');
+    const amount = within(dialog).getByLabelText('金额（USD）');
     fireEvent.change(amount, { target: { value: '2.50' } });
     fireEvent.change(within(dialog).getByLabelText('原因'), {
       target: { value: 'test grant' }
