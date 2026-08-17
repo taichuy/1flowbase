@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
+import { i18nText } from '../../../../../shared/i18n/text';
 import { McpInstanceTable } from '../McpInstancesTab/McpInstanceTable';
 
 describe('McpInstanceTable', () => {
@@ -92,6 +93,8 @@ describe('McpInstanceTable', () => {
       screen.getByText('1flowbase/frontstage_assistant@1.0.2')
     ).toBeInTheDocument();
     expect(screen.getByLabelText('编辑')).toBeDisabled();
-    expect(screen.getByLabelText('目录编辑器')).toBeDisabled();
+    expect(
+      screen.getByLabelText(i18nText('settings', 'auto.directory_editor'))
+    ).toBeDisabled();
   });
 });

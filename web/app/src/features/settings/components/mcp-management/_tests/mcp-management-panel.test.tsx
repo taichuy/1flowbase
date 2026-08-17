@@ -420,6 +420,7 @@ function renderPanelWithMountedTool({
               description_short: null,
               status: 'enabled',
               default_entry_path: '/',
+              managed_by: null,
               created_by: 'user-1',
               updated_by: 'user-1',
               created_at: '2026-07-06T00:00:00Z',
@@ -456,6 +457,7 @@ function renderPanelWithMountedTool({
               name: 'Search customer',
               short_description: 'Find matching customers',
               full_description: 'Search customer',
+              managed_by: null,
               execution_target: proxy
                 ? {
                     kind: 'mcp_proxy' as const,
