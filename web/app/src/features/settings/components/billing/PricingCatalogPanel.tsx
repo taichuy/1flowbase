@@ -33,7 +33,7 @@ export function PricingCatalogPanel() {
   });
   return (
     <SettingsSectionSurface heightMode="fill">
-      <Space direction="vertical" size={16} style={{ width: '100%' }}>
+      <Space orientation="vertical" size={16} style={{ width: '100%' }}>
         <Tabs
           activeKey="model-pricing"
           onChange={(category) =>
