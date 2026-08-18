@@ -37,7 +37,6 @@ import {
   type SettingsPricingRule,
   type SettingsPricingRulesFilter
 } from '../../api/billing';
-import { formatPricingRate } from './pricing-rate-display';
 import './pricing-rules-panel.css';
 import { formatPricingRate } from '../../lib/pricing-format';
 
