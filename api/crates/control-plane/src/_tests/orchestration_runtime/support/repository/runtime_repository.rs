@@ -1528,6 +1528,67 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
         Ok(record)
     }
 
+    async fn model_billing_enabled_at(
+        &self,
+        _workspace_id: Uuid,
+    ) -> Result<Option<OffsetDateTime>> {
+        Ok(self.model_billing_enabled_at_value())
+    }
+
+    async fn model_billing_match_pricing_rules(
+        &self,
+        provider_code: &str,
+        upstream_model_id: &str,
+        _at: OffsetDateTime,
+    ) -> Result<Vec<crate::billing::PricingRule>> {
+        if self.model_billing_enabled_at_value().is_none() {
+            return Ok(Vec::new());
+        }
+        Ok(vec![test_model_pricing_rule(
+            provider_code,
+            upstream_model_id,
+        )])
+    }
+
+    async fn model_billing_reserve_credit(
+        &self,
+        input: &crate::ports::ReserveCreditInput,
+    ) -> Result<crate::ports::CreditReservation> {
+        self.record_model_billing_reservation();
+        Ok(crate::ports::CreditReservation {
+            billing_session_id: Uuid::now_v7(),
+            account_id: input.user_id,
+            reserved_amount: input.amount.clone(),
+            charge_skipped: false,
+            charge_skip_reason: None,
+        })
+    }
+
+    async fn model_billing_release_credit(
+        &self,
+        billing_session_id: Uuid,
+        reason: &str,
+    ) -> Result<Option<crate::ports::CreditTransactionRecord>> {
+        self.record_model_billing_release(billing_session_id, reason);
+        Ok(None)
+    }
+
+    async fn model_billing_heartbeat_credit_reservation(
+        &self,
+        _billing_session_id: Uuid,
+        _reservation_expires_at: OffsetDateTime,
+    ) -> Result<bool> {
+        Ok(true)
+    }
+
+    async fn finalize_model_billing(
+        &self,
+        _input: &crate::ports::FinalizeModelBillingInput,
+    ) -> Result<crate::ports::FinalizedModelBilling> {
+        self.record_model_billing_finalize_attempt();
+        anyhow::bail!("test finalize stub only records settlement attempts")
+    }
+
     async fn append_audit_hash(
         &self,
         flow_run_id: Uuid,
@@ -1982,5 +2043,42 @@ impl OrchestrationRuntimeRepository for InMemoryOrchestrationRuntimeRepository {
             checkpoints: Vec::new(),
             events,
         }))
+    }
+}
+
+fn test_model_pricing_rule(
+    provider_code: &str,
+    upstream_model_id: &str,
+) -> crate::billing::PricingRule {
+    let now = OffsetDateTime::now_utc();
+    crate::billing::PricingRule {
+        id: Uuid::now_v7(),
+        provider_code: provider_code.to_string(),
+        upstream_model_id: upstream_model_id.to_string(),
+        input_token_unit_size: 1000,
+        input_token_unit_price: rust_decimal::Decimal::new(1, 3),
+        output_token_unit_size: 1000,
+        output_token_unit_price: rust_decimal::Decimal::new(2, 3),
+        cache_hit_token_unit_size: 1000,
+        cache_hit_token_unit_price: rust_decimal::Decimal::new(1, 4),
+        currency_code: "USD".to_string(),
+        effective_from: now - time::Duration::days(1),
+        effective_to: None,
+        timezone: "UTC".to_string(),
+        weekday_mask: 127,
+        local_time_start: None,
+        local_time_end: None,
+        priority: 0,
+        enabled: true,
+        rating_policy_enabled: false,
+        rating_policy: serde_json::Value::Null,
+        source_kind: "manual".to_string(),
+        source_catalog_id: None,
+        source_version: None,
+        source_checksum: None,
+        extensions: serde_json::Value::Null,
+        created_by: None,
+        created_at: now,
+        updated_at: now,
     }
 }

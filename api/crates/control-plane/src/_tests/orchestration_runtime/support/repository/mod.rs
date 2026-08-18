@@ -59,6 +59,10 @@ struct InMemoryOrchestrationRuntimeState {
     fail_next_published_stream_terminal_projection: bool,
     application_run_detail_read_count: usize,
     model_routing_catalog_read_count: usize,
+    model_billing_enabled_at: Option<time::OffsetDateTime>,
+    model_billing_credit_releases: Vec<(Uuid, String)>,
+    model_billing_reserved_session_count: usize,
+    model_billing_finalize_attempt_count: usize,
 }
 
 #[derive(Clone)]
@@ -74,6 +78,65 @@ impl InMemoryOrchestrationRuntimeRepository {
             .lock()
             .expect("runtime repo mutex poisoned")
             .model_routing_catalog_read_count
+    }
+
+    pub(crate) fn enable_model_billing(&self) {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .model_billing_enabled_at =
+            Some(time::OffsetDateTime::now_utc() - time::Duration::hours(1));
+    }
+
+    pub(super) fn model_billing_enabled_at_value(&self) -> Option<time::OffsetDateTime> {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .model_billing_enabled_at
+    }
+
+    pub(super) fn record_model_billing_reservation(&self) {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .model_billing_reserved_session_count += 1;
+    }
+
+    pub(super) fn record_model_billing_release(&self, billing_session_id: Uuid, reason: &str) {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .model_billing_credit_releases
+            .push((billing_session_id, reason.to_string()));
+    }
+
+    pub(super) fn record_model_billing_finalize_attempt(&self) {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .model_billing_finalize_attempt_count += 1;
+    }
+
+    pub(crate) fn model_billing_credit_releases(&self) -> Vec<(Uuid, String)> {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .model_billing_credit_releases
+            .clone()
+    }
+
+    pub(crate) fn model_billing_reserved_session_count(&self) -> usize {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .model_billing_reserved_session_count
+    }
+
+    pub(crate) fn model_billing_finalize_attempt_count(&self) -> usize {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .model_billing_finalize_attempt_count
     }
 
     pub(super) fn reset_application_run_detail_read_count(&self) {

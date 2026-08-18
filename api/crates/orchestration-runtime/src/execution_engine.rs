@@ -78,6 +78,7 @@ pub use llm_callbacks::pending_llm_tool_callback_requires_ephemeral_provider_con
 use llm_callbacks::*;
 use llm_context::*;
 use llm_error_payloads::*;
+pub use llm_final_content::billable_provider_output;
 use llm_final_content::*;
 use llm_invocation::*;
 use llm_metrics::*;

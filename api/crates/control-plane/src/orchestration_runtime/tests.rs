@@ -50,6 +50,7 @@ fn provider_user_input(provider_instance_id: Uuid) -> ProviderInvocationInput {
     }
 }
 
+mod billing_usage_guard;
 mod instance_resolution;
 mod internal_tool_events;
 mod live_tool_events;

@@ -178,6 +178,25 @@ pub(super) fn has_valid_provider_output(
                 .is_some_and(|response_id| !response_id.trim().is_empty()))
 }
 
+/// Billable-output criteria shared with the control-plane billing guard: an
+/// invocation output is billable exactly when the executor would accept it as a
+/// valid provider result.
+pub fn billable_provider_output(
+    events: &[ProviderStreamEvent],
+    result: &ProviderInvocationResult,
+    native_responses_passthrough: bool,
+) -> bool {
+    let final_content = resolve_final_llm_content(
+        result.final_content.clone(),
+        collect_dify_style_deltas(events),
+    );
+    has_valid_provider_output(
+        final_content.as_deref(),
+        result,
+        native_responses_passthrough,
+    )
+}
+
 pub(super) fn reasoning_only_provider_output_error(
     final_content: Option<&str>,
     result: &ProviderInvocationResult,

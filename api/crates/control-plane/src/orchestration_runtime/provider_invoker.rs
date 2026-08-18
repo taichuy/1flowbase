@@ -90,6 +90,32 @@ fn collected_provider_usage(
     usage
 }
 
+/// Fail-closed billing conflict for the narrow case where the provider produced
+/// billable output but reported no usage. Carries the stream evidence so the
+/// surfaced failure stays diagnosable.
+fn provider_usage_unavailable_conflict(
+    output: &crate::ports::ProviderRuntimeInvocationOutput,
+) -> plugin_framework::PluginFrameworkError {
+    plugin_framework::PluginFrameworkError::runtime(
+        ProviderRuntimeError::new(
+            ProviderRuntimeErrorKind::ProviderInvalidResponse,
+            "provider_usage_unavailable",
+        )
+        .with_provider_details(json!({
+            "reason": "billable provider output arrived without provider-reported usage",
+            "billable_output": true,
+            "finish_reason": serde_json::to_value(&output.result.finish_reason)
+                .unwrap_or(Value::Null),
+            "stream_termination": output
+                .result
+                .provider_metadata
+                .get("stream_termination")
+                .cloned()
+                .unwrap_or(Value::Null),
+        })),
+    )
+}
+
 fn provider_tool_structure_receipt(tools: &[Value]) -> Value {
     Value::Array(
         tools
@@ -726,6 +752,9 @@ where
             })
         });
 
+        let native_responses_passthrough = input.required_capabilities.contains(
+            &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
+        );
         let invocation_result = self
             .runtime
             .invoke_stream_with_live_events(&installation, input, live_provider_events)
@@ -749,7 +778,7 @@ where
                 anyhow!("provider diagnostic event forwarding task panicked: {error}")
             })?;
         }
-        let (mut invocation_output, invocation_error) = match invocation_result {
+        let (mut invocation_output, mut invocation_error) = match invocation_result {
             Ok(output) => (Some(output), None),
             Err(error) => (None, Some(error)),
         };
@@ -778,57 +807,68 @@ where
                         },
                     )
                     .await?;
-                if let Some(error) = invocation_error {
+                if let Some(error) = invocation_error.take() {
                     return Err(error);
                 }
-                return Err(ControlPlaneError::Conflict("provider_usage_unavailable").into());
-            }
-            let rated = crate::billing::rate_token_usage(
-                &rule,
-                &crate::billing::TokenUsage {
-                    input_tokens: i64::try_from(usage.input_tokens.unwrap_or(0))
+                if let Some(output) = invocation_output.as_ref() {
+                    if orchestration_runtime::execution_engine::billable_provider_output(
+                        &output.events,
+                        &output.result,
+                        native_responses_passthrough,
+                    ) {
+                        return Err(provider_usage_unavailable_conflict(output).into());
+                    }
+                }
+                // No usage and no billable output: the reservation is already
+                // released, so hand the transport-Ok stream back to the executor
+                // and let classification surface the upstream evidence.
+            } else {
+                let rated = crate::billing::rate_token_usage(
+                    &rule,
+                    &crate::billing::TokenUsage {
+                        input_tokens: i64::try_from(usage.input_tokens.unwrap_or(0))
+                            .unwrap_or(i64::MAX),
+                        input_cache_hit_tokens: i64::try_from(
+                            usage.input_cache_hit_tokens.unwrap_or(0),
+                        )
                         .unwrap_or(i64::MAX),
-                    input_cache_hit_tokens: i64::try_from(
-                        usage.input_cache_hit_tokens.unwrap_or(0),
-                    )
-                    .unwrap_or(i64::MAX),
-                    input_cache_miss_tokens: usage
-                        .input_cache_miss_tokens
-                        .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
-                    output_tokens: i64::try_from(usage.output_tokens.unwrap_or(0))
-                        .unwrap_or(i64::MAX),
-                },
-            )?;
-            let price_snapshot = json!({
-                "pricing_rule_id": rule.id,
-                "pricing_provider_code": rule.provider_code,
-                "pricing_model_id": rule.upstream_model_id,
-                "provider_code": actual_provider_code,
-                "upstream_model_id": runtime.model,
-                "currency_code": rule.currency_code,
-                "request_started_at": billing_started_at,
-                "input_token_unit_size": rated.applied_rates.input.unit_size,
-                "input_token_unit_price": rated.applied_rates.input.unit_price.to_string(),
-                "output_token_unit_size": rated.applied_rates.output.unit_size,
-                "output_token_unit_price": rated.applied_rates.output.unit_price.to_string(),
-                "cache_hit_token_unit_size": rated.applied_rates.cache_hit.unit_size,
-                "cache_hit_token_unit_price": rated.applied_rates.cache_hit.unit_price.to_string(),
-                "rating_policy_enabled": rule.rating_policy_enabled,
-                "rating_policy": rule.rating_policy.clone(),
-                "rating_policy_match": rated.rating_policy_match.clone(),
-            });
-            let usage_snapshot = json!({
-                "usage_source": "provider_reported",
-                "ordinary_input_tokens": rated.ordinary_input_tokens,
-                "input_cache_hit_tokens": rated.cache_hit_tokens,
-                "output_tokens": rated.output_tokens,
-                "raw_usage": usage,
-            });
-            let active_node = self
-                .flow_execution_context
-                .as_ref()
-                .and_then(|context| context.active_node.lock().ok()?.clone());
-            let finalized = self
+                        input_cache_miss_tokens: usage
+                            .input_cache_miss_tokens
+                            .map(|value| i64::try_from(value).unwrap_or(i64::MAX)),
+                        output_tokens: i64::try_from(usage.output_tokens.unwrap_or(0))
+                            .unwrap_or(i64::MAX),
+                    },
+                )?;
+                let price_snapshot = json!({
+                    "pricing_rule_id": rule.id,
+                    "pricing_provider_code": rule.provider_code,
+                    "pricing_model_id": rule.upstream_model_id,
+                    "provider_code": actual_provider_code,
+                    "upstream_model_id": runtime.model,
+                    "currency_code": rule.currency_code,
+                    "request_started_at": billing_started_at,
+                    "input_token_unit_size": rated.applied_rates.input.unit_size,
+                    "input_token_unit_price": rated.applied_rates.input.unit_price.to_string(),
+                    "output_token_unit_size": rated.applied_rates.output.unit_size,
+                    "output_token_unit_price": rated.applied_rates.output.unit_price.to_string(),
+                    "cache_hit_token_unit_size": rated.applied_rates.cache_hit.unit_size,
+                    "cache_hit_token_unit_price": rated.applied_rates.cache_hit.unit_price.to_string(),
+                    "rating_policy_enabled": rule.rating_policy_enabled,
+                    "rating_policy": rule.rating_policy.clone(),
+                    "rating_policy_match": rated.rating_policy_match.clone(),
+                });
+                let usage_snapshot = json!({
+                    "usage_source": "provider_reported",
+                    "ordinary_input_tokens": rated.ordinary_input_tokens,
+                    "input_cache_hit_tokens": rated.cache_hit_tokens,
+                    "output_tokens": rated.output_tokens,
+                    "raw_usage": usage,
+                });
+                let active_node = self
+                    .flow_execution_context
+                    .as_ref()
+                    .and_then(|context| context.active_node.lock().ok()?.clone());
+                let finalized = self
                 .repository
                 .finalize_model_billing(&crate::ports::FinalizeModelBillingInput {
                     usage: crate::ports::AppendUsageLedgerInput {
@@ -906,47 +946,48 @@ where
                     },
                 })
                 .await;
-            if let Some(output) = invocation_output.as_mut() {
-                let provider_metadata = std::mem::take(&mut output.result.provider_metadata);
-                let billing_metadata = match finalized {
-                    Ok(finalized) => json!({
-                        "provider_invocation_id": invocation_id,
-                        "billing_session_id": reservation.billing_session_id,
-                        "pricing_rule_id": rule.id,
-                        "usage_ledger_id": finalized.usage.id,
-                        "cost_ledger_id": finalized.cost.id,
-                        "pricing_provider_code": rule.provider_code,
-                        "pricing_model_id": rule.upstream_model_id,
-                        "total_cost": rated.total_cost.to_string(),
-                        "currency_code": "USD",
-                        "charge_skipped": reservation.charge_skipped,
-                        "billing_status": "settled",
-                    }),
-                    Err(error) => {
-                        tracing::error!(
-                            provider_invocation_id = %invocation_id,
-                            billing_session_id = %reservation.billing_session_id,
-                            error = %error,
-                            "model billing finalization failed after provider response"
-                        );
-                        json!({
+                if let Some(output) = invocation_output.as_mut() {
+                    let provider_metadata = std::mem::take(&mut output.result.provider_metadata);
+                    let billing_metadata = match finalized {
+                        Ok(finalized) => json!({
                             "provider_invocation_id": invocation_id,
                             "billing_session_id": reservation.billing_session_id,
                             "pricing_rule_id": rule.id,
+                            "usage_ledger_id": finalized.usage.id,
+                            "cost_ledger_id": finalized.cost.id,
                             "pricing_provider_code": rule.provider_code,
                             "pricing_model_id": rule.upstream_model_id,
                             "total_cost": rated.total_cost.to_string(),
                             "currency_code": "USD",
                             "charge_skipped": reservation.charge_skipped,
-                            "billing_status": "reconciliation_failed",
-                            "billing_error_code": "billing_finalize_failed",
-                        })
-                    }
-                };
-                output.result.provider_metadata = json!({
-                    "_1flowbase_billing": billing_metadata,
-                    "_1flowbase_upstream_provider_metadata": provider_metadata,
-                });
+                            "billing_status": "settled",
+                        }),
+                        Err(error) => {
+                            tracing::error!(
+                                provider_invocation_id = %invocation_id,
+                                billing_session_id = %reservation.billing_session_id,
+                                error = %error,
+                                "model billing finalization failed after provider response"
+                            );
+                            json!({
+                                "provider_invocation_id": invocation_id,
+                                "billing_session_id": reservation.billing_session_id,
+                                "pricing_rule_id": rule.id,
+                                "pricing_provider_code": rule.provider_code,
+                                "pricing_model_id": rule.upstream_model_id,
+                                "total_cost": rated.total_cost.to_string(),
+                                "currency_code": "USD",
+                                "charge_skipped": reservation.charge_skipped,
+                                "billing_status": "reconciliation_failed",
+                                "billing_error_code": "billing_finalize_failed",
+                            })
+                        }
+                    };
+                    output.result.provider_metadata = json!({
+                        "_1flowbase_billing": billing_metadata,
+                        "_1flowbase_upstream_provider_metadata": provider_metadata,
+                    });
+                }
             }
         }
         if let Some(error) = invocation_error {
