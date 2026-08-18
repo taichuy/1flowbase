@@ -271,11 +271,38 @@ describe('ModelProviderInstanceDrawer', () => {
       fireEvent.click(screen.getByRole('button', { name: '新增' }));
       expect(await screen.findByText('新增 模型配置')).toBeInTheDocument();
       expect(screen.getByLabelText('模型 ID')).toHaveValue('gpt-4o-mini');
-      expect(screen.getAllByText('1M / 0$')).toHaveLength(3);
-      fireEvent.change(screen.getByPlaceholderText('厂家 Code'), {
-        target: { value: 'openai' }
+      const multimodalSwitch = screen.getByRole('switch', {
+        name: '多模态'
       });
-      fireEvent.click(screen.getByText('openai'));
+      const enabledSwitch = screen.getByRole('switch', { name: '启用' });
+      expect(multimodalSwitch).toBeChecked();
+      expect(enabledSwitch).toBeChecked();
+      fireEvent.click(multimodalSwitch);
+      fireEvent.click(enabledSwitch);
+      expect(screen.getAllByText('1M / 0$')).toHaveLength(3);
+      expect(screen.queryByText('生效时间')).not.toBeInTheDocument();
+      const pricingProviderSelect = screen.getByRole('combobox', {
+        name: '厂家 Code'
+      });
+      fireEvent.mouseDown(pricingProviderSelect);
+      fireEvent.change(pricingProviderSelect, { target: { value: 'pen' } });
+      await waitFor(() => {
+        expect(
+          screen.queryByRole('option', { name: 'zero' })
+        ).not.toBeInTheDocument();
+      });
+      const openAiOptions = await screen.findAllByText('openai');
+      fireEvent.click(openAiOptions[openAiOptions.length - 1]);
+      await waitFor(() => {
+        expect(screen.queryAllByText('1M / 0$')).toHaveLength(0);
+      });
+      const pricingModelSelect = screen.getByRole('combobox', {
+        name: '上游模型 ID'
+      });
+      fireEvent.mouseDown(pricingModelSelect);
+      fireEvent.change(pricingModelSelect, { target: { value: '4o' } });
+      const modelOptions = await screen.findAllByText('gpt-4o');
+      fireEvent.click(modelOptions[modelOptions.length - 1]);
       expect(screen.getByText('1M / 2.50$')).toBeInTheDocument();
       expect(screen.getByText('1M / 10.00$')).toBeInTheDocument();
       expect(screen.getByText('1M / 1.25$')).toBeInTheDocument();
@@ -288,6 +315,11 @@ describe('ModelProviderInstanceDrawer', () => {
       fireEvent.change(await screen.findByLabelText('模型 ID'), {
         target: { value: 'manual-model-id' }
       });
+      const manualMultimodalSwitch = screen.getByRole('switch', {
+        name: '多模态'
+      });
+      expect(manualMultimodalSwitch).toBeChecked();
+      fireEvent.click(manualMultimodalSwitch);
       fireEvent.click(screen.getByRole('button', { name: /确\s*认/ }));
       await waitFor(() => {
         expect(screen.queryByText('新增 模型配置')).not.toBeInTheDocument();
@@ -335,9 +367,9 @@ describe('ModelProviderInstanceDrawer', () => {
           configured_models: [
             {
               model_id: 'gpt-4o-mini',
-              enabled: true,
+              enabled: false,
               context_window_override_tokens: null,
-              supports_multimodal: true,
+              supports_multimodal: false,
               pricing_provider_code: 'openai',
               pricing_model_id: 'gpt-4o'
             },
@@ -538,6 +570,14 @@ describe('ModelProviderInstanceDrawer', () => {
         await screen.findByRole('button', { name: '编辑模型 1' })
       );
       expect(screen.getByLabelText('上下文')).toHaveValue('16K');
+      const multimodalSwitch = screen.getByRole('switch', {
+        name: '多模态'
+      });
+      const enabledSwitch = screen.getByRole('switch', { name: '启用' });
+      expect(multimodalSwitch).toBeChecked();
+      expect(enabledSwitch).toBeChecked();
+      fireEvent.click(multimodalSwitch);
+      fireEvent.click(enabledSwitch);
 
       fireEvent.change(screen.getByLabelText('上下文'), {
         target: { value: '' }
@@ -554,9 +594,9 @@ describe('ModelProviderInstanceDrawer', () => {
             configured_models: [
               {
                 model_id: 'gpt-4o-mini',
-                enabled: true,
+                enabled: false,
                 context_window_override_tokens: null,
-                supports_multimodal: true,
+                supports_multimodal: false,
                 pricing_provider_code: 'zero',
                 pricing_model_id: 'any'
               }

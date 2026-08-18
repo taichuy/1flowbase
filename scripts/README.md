@@ -414,6 +414,29 @@ node scripts/node/plugin/cli.js package <plugin-path> --out ./dist
 
 当前 demo dev 仍是本地 scaffold，不代表真实 `plugin-runner` debug runtime 已经打通。
 
+## 清理rust缓存
+
+在仓库根目录执行：
+
+```bash
+cargo clean --manifest-path api/Cargo.toml
+```
+
+这会清理 Rust workspace 的 `api/target/` 中间产物。
+
+随后预热全部 debug 构建目标：
+
+```bash
+cargo build --manifest-path api/Cargo.toml --workspace --all-targets --locked
+```
+
+后续日常开发、运行和测试会复用这批 debug 缓存。若你后面要跑 release 二进制，则还需单独预热：
+
+```bash
+cargo build --manifest-path api/Cargo.toml --workspace --release --locked
+```
+
+
 ## Artifact Cleanup
 
 ### `node scripts/node/clean-build-cache/cli.js [all|backend|frontend] [选项]`

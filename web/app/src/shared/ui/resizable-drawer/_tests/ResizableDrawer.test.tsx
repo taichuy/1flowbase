@@ -1,8 +1,14 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { ResizableDrawer } from '../ResizableDrawer';
+
+const WIDTH_STORAGE_KEY_PREFIX = 'resizable-drawer:width:';
+
+function widthStorageKey(pathname = window.location.pathname) {
+  return `${WIDTH_STORAGE_KEY_PREFIX}${pathname}`;
+}
 
 vi.mock('antd', async () => {
   const actual = await vi.importActual<typeof import('antd')>('antd');
@@ -63,6 +69,15 @@ vi.mock('antd', async () => {
 });
 
 describe('ResizableDrawer', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    window.history.replaceState({}, '', '/settings/model-providers/providers');
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   test('delegates pointer resizing to Ant Design while retaining shared width constraints', () => {
     const requestAnimationFrame = vi.spyOn(window, 'requestAnimationFrame');
     const { container } = render(
@@ -104,5 +119,125 @@ describe('ResizableDrawer', () => {
     expect(handle).toHaveAttribute('aria-valuenow', '640');
     fireEvent.keyDown(handle, { key: 'End' });
     expect(handle).toHaveAttribute('aria-valuenow', '1200');
+  });
+
+  test('AC-001 persists the last width for the current page and restores it after remount', () => {
+    const { container, unmount } = render(
+      <ResizableDrawer
+        open
+        title="供应商配置"
+        defaultWidth={560}
+        minWidth={480}
+        maxWidth={1200}
+        resizeLabel="调整供应商抽屉宽度"
+        onClose={vi.fn()}
+      >
+        <div>provider body</div>
+      </ResizableDrawer>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: '模拟原生拖拽' }));
+
+    expect(window.localStorage.getItem(widthStorageKey())).toBe('920');
+
+    unmount();
+
+    const { container: remountedContainer } = render(
+      <ResizableDrawer
+        open
+        title="供应商配置"
+        defaultWidth={560}
+        minWidth={480}
+        maxWidth={1200}
+        resizeLabel="调整供应商抽屉宽度"
+        onClose={vi.fn()}
+      >
+        <div>provider body</div>
+      </ResizableDrawer>
+    );
+
+    expect(
+      remountedContainer.querySelector<HTMLElement>(
+        '.ant-drawer-content-wrapper'
+      )
+    ).toHaveStyle({ width: '920px' });
+    expect(container.querySelector('.ant-drawer-content-wrapper')).toBeNull();
+  });
+
+  test('AC-002 clamps a stored width to the current drawer range', () => {
+    window.localStorage.setItem(widthStorageKey(), '1440');
+
+    const { container } = render(
+      <ResizableDrawer
+        open
+        title="供应商配置"
+        defaultWidth={560}
+        minWidth={480}
+        maxWidth={1200}
+        resizeLabel="调整供应商抽屉宽度"
+        onClose={vi.fn()}
+      >
+        <div>provider body</div>
+      </ResizableDrawer>
+    );
+
+    expect(
+      container.querySelector<HTMLElement>('.ant-drawer-content-wrapper')
+    ).toHaveStyle({ width: '1200px' });
+  });
+
+  test('AC-003 ignores a non-finite stored width', () => {
+    window.localStorage.setItem(widthStorageKey(), 'Infinity');
+
+    const { container } = render(
+      <ResizableDrawer
+        open
+        title="供应商配置"
+        defaultWidth={560}
+        minWidth={480}
+        maxWidth={1200}
+        resizeLabel="调整供应商抽屉宽度"
+        onClose={vi.fn()}
+      >
+        <div>provider body</div>
+      </ResizableDrawer>
+    );
+
+    expect(
+      container.querySelector<HTMLElement>('.ant-drawer-content-wrapper')
+    ).toHaveStyle({ width: '560px' });
+  });
+
+  test('AC-004 falls back to local state when browser storage is unavailable', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('storage unavailable');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('storage unavailable');
+    });
+
+    const { container } = render(
+      <ResizableDrawer
+        open
+        title="供应商配置"
+        defaultWidth={560}
+        minWidth={480}
+        maxWidth={1200}
+        resizeLabel="调整供应商抽屉宽度"
+        onClose={vi.fn()}
+      >
+        <div>provider body</div>
+      </ResizableDrawer>
+    );
+
+    expect(
+      container.querySelector<HTMLElement>('.ant-drawer-content-wrapper')
+    ).toHaveStyle({ width: '560px' });
+
+    fireEvent.click(screen.getByRole('button', { name: '模拟原生拖拽' }));
+
+    expect(
+      container.querySelector<HTMLElement>('.ant-drawer-content-wrapper')
+    ).toHaveStyle({ width: '920px' });
   });
 });

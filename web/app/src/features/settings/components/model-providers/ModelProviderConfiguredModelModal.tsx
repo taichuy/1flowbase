@@ -5,8 +5,9 @@ import {
   Empty,
   Flex,
   Form,
-  Input,
   Modal,
+  Select,
+  Switch,
   Table,
   Typography
 } from 'antd';
@@ -22,25 +23,11 @@ import {
 export type ConfiguredModelEditorValue = {
   model_id: string;
   context_window_input: string;
+  supports_multimodal: boolean;
+  enabled: boolean;
   pricing_provider_code: string;
   pricing_model_id: string;
 };
-
-function pricingTargetKey(providerCode: string, modelId: string) {
-  return JSON.stringify([providerCode, modelId]);
-}
-
-function formatEffectiveWindow(target: SettingsModelProviderPricingTarget) {
-  const effectiveFrom = target.effective_from.replace('T', ' ').slice(0, 16);
-  const effectiveTo = target.effective_to
-    ? target.effective_to.replace('T', ' ').slice(0, 16)
-    : '∞';
-  const localWindow =
-    target.local_time_start && target.local_time_end
-      ? ` · ${target.local_time_start.slice(0, 5)}–${target.local_time_end.slice(0, 5)}`
-      : '';
-  return `${effectiveFrom} → ${effectiveTo} · ${target.timezone}${localWindow}`;
-}
 
 export function ModelProviderConfiguredModelModal({
   open,
@@ -64,43 +51,48 @@ export function ModelProviderConfiguredModelModal({
   const [form] = Form.useForm<{
     model_id: string;
     context_window_input: string;
+    supports_multimodal: boolean;
+    enabled: boolean;
   }>();
-  const [providerFilter, setProviderFilter] = useState('');
-  const [modelFilter, setModelFilter] = useState('');
-  const [selectedTargetKey, setSelectedTargetKey] = useState<string>();
+  const [selectedProviderCode, setSelectedProviderCode] = useState('zero');
+  const [selectedModelId, setSelectedModelId] = useState('any');
   const [pricingError, setPricingError] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     form.setFieldsValue({
       model_id: initialValue?.model_id ?? '',
-      context_window_input: initialValue?.context_window_input ?? ''
+      context_window_input: initialValue?.context_window_input ?? '',
+      supports_multimodal: initialValue?.supports_multimodal ?? false,
+      enabled: initialValue?.enabled ?? true
     });
-    setProviderFilter('');
-    setModelFilter('');
-    setSelectedTargetKey(
-      pricingTargetKey(
-        initialValue?.pricing_provider_code ?? 'zero',
-        initialValue?.pricing_model_id ?? 'any'
-      )
-    );
+    setSelectedProviderCode(initialValue?.pricing_provider_code ?? 'zero');
+    setSelectedModelId(initialValue?.pricing_model_id ?? 'any');
     setPricingError(false);
   }, [form, initialValue, open]);
 
-  const filteredTargets = useMemo(() => {
-    const normalizedProvider = providerFilter.trim().toLowerCase();
-    const normalizedModel = modelFilter.trim().toLowerCase();
-    return pricingTargets.filter(
-      (target) =>
-        target.provider_code.toLowerCase().includes(normalizedProvider) &&
-        target.upstream_model_id.toLowerCase().includes(normalizedModel)
-    );
-  }, [modelFilter, pricingTargets, providerFilter]);
+  const providerOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(pricingTargets.map((target) => target.provider_code))
+      ).map((providerCode) => ({ label: providerCode, value: providerCode })),
+    [pricingTargets]
+  );
+  const modelOptions = useMemo(
+    () =>
+      pricingTargets
+        .filter((target) => target.provider_code === selectedProviderCode)
+        .map((target) => ({
+          label: target.upstream_model_id,
+          value: target.upstream_model_id
+        })),
+    [pricingTargets, selectedProviderCode]
+  );
 
   const selectedTarget = pricingTargets.find(
     (target) =>
-      pricingTargetKey(target.provider_code, target.upstream_model_id) ===
-      selectedTargetKey
+      target.provider_code === selectedProviderCode &&
+      target.upstream_model_id === selectedModelId
   );
 
   async function handleSave() {
@@ -112,6 +104,8 @@ export function ModelProviderConfiguredModelModal({
     onSave({
       model_id: values.model_id.trim(),
       context_window_input: values.context_window_input?.trim() ?? '',
+      supports_multimodal: values.supports_multimodal,
+      enabled: values.enabled,
       pricing_provider_code: selectedTarget.provider_code,
       pricing_model_id: selectedTarget.upstream_model_id
     });
@@ -195,68 +189,69 @@ export function ModelProviderConfiguredModelModal({
           </Form.Item>
         </Flex>
 
+        <Flex gap={24} align="center" style={{ marginBottom: 12 }}>
+          <Flex gap={8} align="center">
+            <Typography.Text>
+              {i18nText('settings', 'auto.multimodal')}
+            </Typography.Text>
+            <Form.Item
+              name="supports_multimodal"
+              valuePropName="checked"
+              noStyle
+            >
+              <Switch aria-label={i18nText('settings', 'auto.multimodal')} />
+            </Form.Item>
+          </Flex>
+          <Flex gap={8} align="center">
+            <Typography.Text>
+              {i18nText('settings', 'auto.enabled')}
+            </Typography.Text>
+            <Form.Item name="enabled" valuePropName="checked" noStyle>
+              <Switch aria-label={i18nText('settings', 'auto.enabled')} />
+            </Form.Item>
+          </Flex>
+        </Flex>
+
         <Typography.Title level={5} style={{ marginTop: 0 }}>
           {i18nText('settings', 'auto.billing_pricing_rules')}
         </Typography.Title>
-        <Flex gap={12} style={{ marginBottom: 12 }}>
-          <Input
-            allowClear
-            value={providerFilter}
-            onChange={(event) => setProviderFilter(event.target.value)}
-            placeholder={i18nText('settings', 'auto.billing_provider_code')}
-          />
-          <Input
-            allowClear
-            value={modelFilter}
-            onChange={(event) => setModelFilter(event.target.value)}
-            placeholder={i18nText('settings', 'auto.billing_model_id')}
-          />
+        <Flex gap={12} align="start">
+          <Form.Item
+            label={i18nText('settings', 'auto.billing_provider_code')}
+            style={{ flex: 1, marginBottom: 0 }}
+          >
+            <Select
+              showSearch
+              aria-label={i18nText('settings', 'auto.billing_provider_code')}
+              value={selectedProviderCode || undefined}
+              options={providerOptions}
+              optionFilterProp="label"
+              placeholder={i18nText('settings', 'auto.billing_provider_code')}
+              onChange={(providerCode) => {
+                setSelectedProviderCode(providerCode);
+                setSelectedModelId('');
+                setPricingError(false);
+              }}
+            />
+          </Form.Item>
+          <Form.Item
+            label={i18nText('settings', 'auto.billing_model_id')}
+            style={{ flex: 1, marginBottom: 0 }}
+          >
+            <Select
+              showSearch
+              aria-label={i18nText('settings', 'auto.billing_model_id')}
+              value={selectedModelId || undefined}
+              options={modelOptions}
+              optionFilterProp="label"
+              placeholder={i18nText('settings', 'auto.billing_model_id')}
+              onChange={(modelId) => {
+                setSelectedModelId(modelId);
+                setPricingError(false);
+              }}
+            />
+          </Form.Item>
         </Flex>
-        <Table<SettingsModelProviderPricingTarget>
-          size="small"
-          pagination={false}
-          scroll={{ y: 200 }}
-          rowKey={(target) =>
-            pricingTargetKey(target.provider_code, target.upstream_model_id)
-          }
-          dataSource={filteredTargets}
-          locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
-          rowSelection={{
-            type: 'radio',
-            selectedRowKeys: selectedTargetKey ? [selectedTargetKey] : [],
-            onChange: (keys) => {
-              setSelectedTargetKey(String(keys[0] ?? ''));
-              setPricingError(false);
-            }
-          }}
-          onRow={(target) => ({
-            onClick: () => {
-              setSelectedTargetKey(
-                pricingTargetKey(target.provider_code, target.upstream_model_id)
-              );
-              setPricingError(false);
-            }
-          })}
-          columns={[
-            {
-              key: 'provider_code',
-              dataIndex: 'provider_code',
-              title: i18nText('settings', 'auto.billing_provider_code'),
-              width: 150
-            },
-            {
-              key: 'upstream_model_id',
-              dataIndex: 'upstream_model_id',
-              title: i18nText('settings', 'auto.billing_model_id'),
-              width: 190
-            },
-            {
-              key: 'effective_time',
-              title: i18nText('settings', 'auto.billing_effective_from'),
-              render: (_, target) => formatEffectiveWindow(target)
-            }
-          ]}
-        />
         {pricingError ? (
           <Typography.Text type="danger">
             {i18nText('settings', 'auto.billing_select_rule_required')}
@@ -268,7 +263,7 @@ export function ModelProviderConfiguredModelModal({
           pagination={false}
           style={{ marginTop: 16 }}
           rowKey={(target) =>
-            pricingTargetKey(target.provider_code, target.upstream_model_id)
+            `${target.provider_code}:${target.upstream_model_id}`
           }
           dataSource={selectedTarget ? [selectedTarget] : []}
           locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}

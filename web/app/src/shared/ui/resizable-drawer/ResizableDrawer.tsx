@@ -27,6 +27,7 @@ const DEFAULT_MIN_WIDTH = 480;
 const DEFAULT_MAX_WIDTH = 1200;
 const NATIVE_DRAGGER_HIT_WIDTH = 16;
 const NATIVE_DRAGGER_OFFSET = -NATIVE_DRAGGER_HIT_WIDTH / 2;
+const WIDTH_STORAGE_KEY_PREFIX = 'resizable-drawer:width:';
 
 export function ResizableDrawer({
   bodyClassName,
@@ -45,8 +46,9 @@ export function ResizableDrawer({
   viewportGutter = 0,
   zIndex
 }: ResizableDrawerProps) {
-  const initialWidth = clampWidth(defaultWidth, minWidth, maxWidth);
-  const [width, setWidth] = useState(initialWidth);
+  const storageKey = pageWidthStorageKey();
+  const initialWidth = resolveWidth(defaultWidth, minWidth, maxWidth, storageKey);
+  const [width, setWidth] = useState(() => initialWidth);
   const viewportWidth =
     viewportGutter > 0 ? `calc(100vw - ${viewportGutter}px)` : '100vw';
 
@@ -54,9 +56,20 @@ export function ResizableDrawer({
     if (!open) {
       return;
     }
-    const nextWidth = clampWidth(defaultWidth, minWidth, maxWidth);
+    const nextWidth = resolveWidth(
+      defaultWidth,
+      minWidth,
+      maxWidth,
+      storageKey
+    );
     setWidth(nextWidth);
-  }, [defaultWidth, maxWidth, minWidth, open]);
+  }, [defaultWidth, maxWidth, minWidth, open, storageKey]);
+
+  const updateWidth = (nextWidth: number) => {
+    const resolvedWidth = clampWidth(nextWidth, minWidth, maxWidth);
+    setWidth(resolvedWidth);
+    writeStoredWidth(storageKey, resolvedWidth);
+  };
 
   const resolvedRootClassName = ['resizable-drawer', rootClassName]
     .filter(Boolean)
@@ -73,7 +86,7 @@ export function ResizableDrawer({
       placement="right"
       resizable={{
         onResize: (nextWidth) => {
-          setWidth(clampWidth(nextWidth, minWidth, maxWidth));
+          updateWidth(nextWidth);
         }
       }}
       rootClassName={resolvedRootClassName}
@@ -109,16 +122,16 @@ export function ResizableDrawer({
           onKeyDown={(event) => {
             if (event.key === 'ArrowLeft') {
               event.preventDefault();
-              setWidth((current) => clampWidth(current + 40, minWidth, maxWidth));
+              updateWidth(width + 40);
             } else if (event.key === 'ArrowRight') {
               event.preventDefault();
-              setWidth((current) => clampWidth(current - 40, minWidth, maxWidth));
+              updateWidth(width - 40);
             } else if (event.key === 'Home') {
               event.preventDefault();
-              setWidth(minWidth);
+              updateWidth(minWidth);
             } else if (event.key === 'End') {
               event.preventDefault();
-              setWidth(maxWidth);
+              updateWidth(maxWidth);
             }
           }}
         />
@@ -130,4 +143,56 @@ export function ResizableDrawer({
 
 function clampWidth(width: number, minWidth: number, maxWidth: number) {
   return Math.min(maxWidth, Math.max(minWidth, width));
+}
+
+function pageWidthStorageKey() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  return `${WIDTH_STORAGE_KEY_PREFIX}${window.location.pathname}`;
+}
+
+function resolveWidth(
+  defaultWidth: number,
+  minWidth: number,
+  maxWidth: number,
+  storageKey: string | null
+) {
+  return clampWidth(
+    readStoredWidth(storageKey) ?? defaultWidth,
+    minWidth,
+    maxWidth
+  );
+}
+
+function readStoredWidth(storageKey: string | null) {
+  if (!storageKey) {
+    return null;
+  }
+
+  try {
+    const storedWidth = window.localStorage.getItem(storageKey);
+
+    if (!storedWidth?.trim()) {
+      return null;
+    }
+
+    const width = Number(storedWidth);
+    return Number.isFinite(width) ? width : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredWidth(storageKey: string | null, width: number) {
+  if (!storageKey) {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(storageKey, String(width));
+  } catch {
+    // Browser privacy settings must not disable local resizing.
+  }
 }

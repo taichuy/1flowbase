@@ -461,11 +461,20 @@ function ModelProviderInstanceDrawerContent({
   }
 
   function openConfiguredModelEditor(row?: ConfiguredModelRow) {
+    const modelId = row?.model_id ?? selectedCachedModelId ?? '';
+    const previewModel = previewModels.find(
+      (model) => model.model_id === modelId
+    );
     setConfiguredModelEditor({
       rowKey: row?.key ?? null,
       initialValue: {
-        model_id: row?.model_id ?? selectedCachedModelId ?? '',
+        model_id: modelId,
         context_window_input: row?.context_window_input ?? '',
+        supports_multimodal:
+          row?.supports_multimodal ??
+          previewModel?.supports_multimodal ??
+          false,
+        enabled: row?.enabled ?? true,
         pricing_provider_code: row?.pricing_provider_code ?? 'zero',
         pricing_model_id: row?.pricing_model_id ?? 'any'
       }
@@ -485,17 +494,12 @@ function ModelProviderInstanceDrawerContent({
             : row
         );
       }
-      const previewModel = previewModels.find(
-        (model) => model.model_id === value.model_id
-      );
       return [
         ...current,
         {
           key: nextConfiguredModelKey(),
           ...value,
-          context_window_error: null,
-          supports_multimodal: previewModel?.supports_multimodal ?? false,
-          enabled: true
+          context_window_error: null
         }
       ];
     });
