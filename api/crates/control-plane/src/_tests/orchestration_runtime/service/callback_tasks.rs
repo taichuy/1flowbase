@@ -54,7 +54,7 @@ impl orchestration_runtime::execution_engine::RuntimeInternalToolInvoker
 #[tokio::test]
 async fn ac_002_runtime_internal_tool_lifecycle_is_durable_and_live_before_node_completion() {
     use plugin_framework::provider_contract::{
-        ProviderFinishReason, ProviderInvocationResult, ProviderToolCall,
+        ProviderFinishReason, ProviderInvocationResult, ProviderToolCall, ProviderUsage,
     };
 
     let service = OrchestrationRuntimeService::for_tests_with_provider_results(vec![
@@ -66,11 +66,21 @@ async fn ac_002_runtime_internal_tool_lifecycle_is_durable_and_live_before_node_
                 provider_metadata: json!({}),
             }],
             finish_reason: Some(ProviderFinishReason::ToolCall),
+            usage: ProviderUsage {
+                input_tokens: Some(1_147),
+                output_tokens: Some(108),
+                ..ProviderUsage::default()
+            },
             ..ProviderInvocationResult::default()
         },
         ProviderInvocationResult {
             final_content: Some("context loaded".to_string()),
             finish_reason: Some(ProviderFinishReason::Stop),
+            usage: ProviderUsage {
+                input_tokens: Some(9_008),
+                output_tokens: Some(802),
+                ..ProviderUsage::default()
+            },
             ..ProviderInvocationResult::default()
         },
     ])
@@ -135,6 +145,21 @@ async fn ac_002_runtime_internal_tool_lifecycle_is_durable_and_live_before_node_
     assert!(durable_events
         .iter()
         .any(|event| event.event_type == "assistant_tool_call_finished"));
+
+    let attempts = service
+        .list_model_failover_attempt_ledger(started.flow_run.id)
+        .await;
+    assert_eq!(
+        attempts.len(),
+        2,
+        "each upstream provider round must remain independently observable"
+    );
+    assert!(attempts.iter().all(|attempt| attempt.status == "succeeded"));
+
+    let usage = service.list_usage_ledger(started.flow_run.id).await;
+    assert_eq!(usage.len(), 2);
+    assert_eq!(usage[0].total_tokens, Some(1_255));
+    assert_eq!(usage[1].total_tokens, Some(9_810));
 }
 
 #[test]

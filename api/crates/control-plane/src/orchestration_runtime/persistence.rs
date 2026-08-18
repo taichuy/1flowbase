@@ -236,12 +236,19 @@ where
             .await?;
     }
 
+    let request_log_conversation_id = match flow_run.external_conversation_id.clone() {
+        Some(conversation_id) => Some(conversation_id),
+        None => repository
+            .get_flow_run_assistant_conversation_id(flow_run.id)
+            .await?
+            .map(|conversation_id| conversation_id.to_string()),
+    };
     let persisted_node_traces = persist_flow_debug_node_traces(
         repository,
         scope_id,
         application_name,
         flow_run.application_id,
-        flow_run.external_conversation_id.as_deref(),
+        request_log_conversation_id.as_deref(),
         task_queue,
         flow_run.id,
         flow_run.created_by,

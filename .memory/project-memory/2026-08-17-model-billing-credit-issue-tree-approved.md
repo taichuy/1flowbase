@@ -16,8 +16,8 @@ match_when:
   - 增加厂家计费目录或用户金额后台
   - 开放插件额度命令与事件
 created_at: 2026-08-17 12
-updated_at: 2026-08-18 10
-last_verified_at: 2026-08-18 10
+updated_at: 2026-08-18 17
+last_verified_at: 2026-08-18 17
 decision_policy: verify_before_decision
 status: user_acceptance
 scope:
@@ -75,3 +75,25 @@ scope:
 - `model-pricing` 继续使用独立领域 schema，不复用 Extension Catalog 的 `organization` 字段，不把厂家建模为插件。
 - 主仓启动远程同步改为读取并校验分页目录；扩展中心目录 API 与前端改为厂家/模型模糊筛选和服务端分页，兼容完整快照仍用于离线启动与按稳定规则 ID 导入。
 - 官方仓库和主仓改动均保留在各自工作树，尚未 commit/push；集中测试已通过，Playwright 本地 browser binary 缺失，因此页面截图未验证。
+
+## 2026-08-18 11 特殊计费规则与标准价格
+
+- 波峰波谷继续由物理规则的有效期、星期、时区和时段表达；特殊规则 JSON 第一版只支持标准 API USD 的输入 Token 阈值分档。
+- `rating_policy_enabled + rating_policy` 已贯通 migration、领域校验、repository、API、运行时预留/结算价格快照和前端编辑/列表。
+- 官方目录版本 `2026-08-18.1` 当前生成 30 条规则：6 条输入 Token 分档、10 条 DeepSeek 时段规则、1 条 `zero/any` 兜底；价格只取厂家标准 API 发布价，不录入 Coding Plan、Credits、订阅价格和未开放模型。
+- 当前 dev 的 3100/7800/7801 已通过 `dev-up` 重启；认证目录/规则 API 返回 200，Playwright 使用系统 Chrome 成功取得 `/settings/model-providers/pricing` 页面证据。
+
+## 2026-08-18 13 请求日志费用快照
+
+- `model_provider_request_logs` 按 provider attempt 保存 `pricing_provider_code`、`pricing_model_id`、`total_cost` 和 `currency_code` 不可变快照；不关联费率表外键，不在列表读取时 Join 或重算。
+- 四字段必须同时为空或同时有效；历史日志保持空值，当前计费成功的 attempt 使用本地 Token 定价结果，金额继续以 Decimal 字符串进入 API。
+- `/settings/model-providers/request-logs` 默认展示费用列，并提供供应商 Code、计费模型 ID 两个可选列；USD 继续使用数字在前、`$` 在后的金额格式。
+- dev migration、request-log worker、repository、API、runtime metadata 恢复、前端定向测试和受保护页面运行态均已验证；等待用户人工触发一次新模型请求复验真实非空费用行。
+
+## 2026-08-18 17 多轮模型调用计费与日志一致性修复
+
+- 每次真实上游模型调用生成独立 `provider_invocation_id`，内部工具回调前后的多轮调用不再复用 `billing_session_id`；`runtime_cost_ledger_billing_session_uidx` 继续保留。
+- LLM 循环累积每轮 provider attempt 与 Token usage，全局重新编号 attempt；工具回调本身不伪造模型请求。
+- usage、cost、credit settlement、billing session 状态和 outbox 收敛到同一 PostgreSQL 事务；本地计费结算失败保留上游正常输出，通过 `billing_status=reconciliation_failed` 单独暴露，不再改写为 `provider_invalid_response`。
+- request log 按每个 attempt 持久化，增加 `billing_status`，并在没有 external conversation 时回填 `flow_runs.assistant_conversation_id`。
+- 定向 Rust/PostgreSQL/API/前端测试、`cargo fmt --check`、`git diff --check`、migration、后端重启、health 和认证 request-log API 已通过；历史异常 run 保持原始账本，不做静默追溯修改。

@@ -169,7 +169,8 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
         | "is_editable"
         | "auto_grant_new_permissions"
         | "is_default_member_role"
-        | "enabled" => crate::ModelFieldKind::Boolean,
+        | "enabled"
+        | "rating_policy_enabled" => crate::ModelFieldKind::Boolean,
         "size"
         | "total_tokens"
         | "unique_node_count"
@@ -189,7 +190,7 @@ fn builtin_field_kind(model_code: &str, field_code: &str) -> crate::ModelFieldKi
         | "cache_hit_token_unit_price"
         | "weekday_mask"
         | "priority" => crate::ModelFieldKind::Number,
-        "extensions" => crate::ModelFieldKind::Json,
+        "extensions" | "rating_policy" => crate::ModelFieldKind::Json,
         "created_at" | "updated_at" | "started_at" | "finished_at" | "completed_at"
         | "effective_from" | "effective_to" => crate::ModelFieldKind::Datetime,
         "introduction" | "content" | "reason" => crate::ModelFieldKind::Text,
@@ -360,6 +361,7 @@ const MODEL_PRICING_RULES_FIELDS: &[&str] = &[
     "cache_hit_token_unit_size",
     "cache_hit_token_unit_price",
     "currency_code",
+    "billing_status",
     "effective_from",
     "effective_to",
     "timezone",
@@ -368,6 +370,8 @@ const MODEL_PRICING_RULES_FIELDS: &[&str] = &[
     "local_time_end",
     "priority",
     "enabled",
+    "rating_policy_enabled",
+    "rating_policy",
     "source_kind",
     "source_catalog_id",
     "source_version",
@@ -506,6 +510,10 @@ const MODEL_PROVIDER_REQUEST_LOGS_FIELDS: &[&str] = &[
     "plugin_id",
     "protocol",
     "upstream_model_id",
+    "pricing_provider_code",
+    "pricing_model_id",
+    "total_cost",
+    "currency_code",
     "reasoning_effort",
     "status",
     "error_code",
@@ -655,6 +663,41 @@ const MODEL_PROVIDER_REQUEST_LOG_FIELD_CONTRACTS: &[BuiltinDataModelFieldContrac
         physical_column_name: "upstream_model_id",
         field_kind: crate::ModelFieldKind::String,
         is_required: true,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "pricing_provider_code",
+        physical_column_name: "pricing_provider_code",
+        field_kind: crate::ModelFieldKind::String,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "pricing_model_id",
+        physical_column_name: "pricing_model_id",
+        field_kind: crate::ModelFieldKind::String,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "total_cost",
+        physical_column_name: "total_cost",
+        field_kind: crate::ModelFieldKind::Number,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "currency_code",
+        physical_column_name: "currency_code",
+        field_kind: crate::ModelFieldKind::String,
+        is_required: false,
+        is_unique: false,
+    },
+    BuiltinDataModelFieldContract {
+        code: "billing_status",
+        physical_column_name: "billing_status",
+        field_kind: crate::ModelFieldKind::String,
+        is_required: false,
         is_unique: false,
     },
     BuiltinDataModelFieldContract {

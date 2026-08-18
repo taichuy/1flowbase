@@ -94,6 +94,8 @@ export interface ConsoleModelProviderPricingTarget {
   weekday_mask: number;
   local_time_start: string | null;
   local_time_end: string | null;
+  rating_policy_enabled: boolean;
+  rating_policy: Record<string, unknown>;
 }
 
 export type ConsoleModelProviderDistributionRule =
@@ -145,6 +147,11 @@ export interface ConsoleModelProviderRequestLog {
   plugin_id: string | null;
   protocol: string;
   upstream_model_id: string;
+  pricing_provider_code: string | null;
+  pricing_model_id: string | null;
+  total_cost: string | null;
+  currency_code: string | null;
+  billing_status: string | null;
   reasoning_effort: string | null;
   status: ConsoleModelProviderRequestLogStatus | string;
   error_code: string | null;

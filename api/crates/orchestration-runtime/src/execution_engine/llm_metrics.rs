@@ -502,13 +502,44 @@ pub(super) fn attach_provider_stream_timing(attempt: &mut Value, timing: Option<
     attempt.insert("provider_stream_timing".to_string(), timing.clone());
 }
 
-pub(super) fn take_provider_stream_timing(result: &mut ProviderInvocationResult) -> Option<Value> {
-    let metadata = result.provider_metadata.as_object_mut()?;
-    let timing = metadata.remove("_1flowbase_runtime_stream_timing");
-    if let Some(upstream_metadata) = metadata.remove("_1flowbase_upstream_provider_metadata") {
+#[derive(Default)]
+pub(super) struct ProviderObservabilityMetadata {
+    pub(super) stream_timing: Option<Value>,
+    pub(super) billing: Option<Value>,
+}
+
+pub(super) fn attach_provider_billing(attempt: &mut Value, billing: Option<&Value>) {
+    let (Some(attempt), Some(billing)) = (attempt.as_object_mut(), billing) else {
+        return;
+    };
+    attempt.insert("billing".to_string(), billing.clone());
+}
+
+pub(super) fn take_provider_observability_metadata(
+    result: &mut ProviderInvocationResult,
+) -> ProviderObservabilityMetadata {
+    let mut extracted = ProviderObservabilityMetadata::default();
+    loop {
+        let Some(metadata) = result.provider_metadata.as_object_mut() else {
+            break;
+        };
+        let is_wrapper = metadata.contains_key("_1flowbase_upstream_provider_metadata")
+            && (metadata.contains_key("_1flowbase_runtime_stream_timing")
+                || metadata.contains_key("_1flowbase_billing"));
+        if !is_wrapper {
+            break;
+        }
+        extracted.stream_timing = metadata
+            .remove("_1flowbase_runtime_stream_timing")
+            .or(extracted.stream_timing);
+        extracted.billing = metadata.remove("_1flowbase_billing").or(extracted.billing);
+        let Some(upstream_metadata) = metadata.remove("_1flowbase_upstream_provider_metadata")
+        else {
+            break;
+        };
         result.provider_metadata = upstream_metadata;
     }
-    timing
+    extracted
 }
 
 pub(super) fn build_llm_metrics_payload(
@@ -616,9 +647,32 @@ mod provider_stream_timing_tests {
             ..ProviderInvocationResult::default()
         };
 
-        let receipt = take_provider_stream_timing(&mut result);
+        let receipt = take_provider_observability_metadata(&mut result).stream_timing;
 
         assert_eq!(receipt, Some(timing));
+        assert_eq!(result.provider_metadata, upstream);
+    }
+
+    #[test]
+    fn provider_observability_wrapper_extracts_billing_and_restores_upstream_metadata() {
+        let upstream = json!({"response_id": "response-1"});
+        let billing = json!({
+            "pricing_provider_code": "openai",
+            "pricing_model_id": "gpt-x",
+            "total_cost": "0.00125",
+            "currency_code": "USD"
+        });
+        let mut result = ProviderInvocationResult {
+            provider_metadata: json!({
+                "_1flowbase_billing": billing,
+                "_1flowbase_upstream_provider_metadata": upstream
+            }),
+            ..ProviderInvocationResult::default()
+        };
+
+        let observability = take_provider_observability_metadata(&mut result);
+
+        assert_eq!(observability.billing, Some(billing));
         assert_eq!(result.provider_metadata, upstream);
     }
 }

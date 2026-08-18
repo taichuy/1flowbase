@@ -41,6 +41,13 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         application_id: Uuid,
         flow_run_id: Uuid,
     ) -> anyhow::Result<Option<domain::FlowRunRecord>>;
+    async fn get_flow_run_assistant_conversation_id(
+        &self,
+        flow_run_id: Uuid,
+    ) -> anyhow::Result<Option<Uuid>> {
+        let _ = flow_run_id;
+        Ok(None)
+    }
     async fn create_node_run(
         &self,
         input: &CreateNodeRunInput,
@@ -319,6 +326,31 @@ pub trait OrchestrationRuntimeRepository: Send + Sync {
         &self,
         input: &AppendCostLedgerInput,
     ) -> anyhow::Result<domain::CostLedgerRecord>;
+    async fn finalize_model_billing(
+        &self,
+        input: &FinalizeModelBillingInput,
+    ) -> anyhow::Result<FinalizedModelBilling> {
+        let usage = self.append_usage_ledger(&input.usage).await?;
+        let cost = self
+            .append_cost_ledger(&AppendCostLedgerInput {
+                usage_ledger_id: Some(usage.id),
+                billing_session_id: Some(input.settlement.billing_session_id),
+                ..input.cost.clone()
+            })
+            .await?;
+        let credit = self
+            .model_billing_settle_credit(&SettleCreditInput {
+                cost_ledger_id: Some(cost.id),
+                usage_ledger_id: Some(usage.id),
+                ..input.settlement.clone()
+            })
+            .await?;
+        Ok(FinalizedModelBilling {
+            usage,
+            cost,
+            credit,
+        })
+    }
     async fn append_credit_ledger(
         &self,
         input: &AppendCreditLedgerInput,

@@ -363,6 +363,85 @@ pub struct LlmNodeExecution {
     pub(super) recoverable_error_message: Option<String>,
 }
 
+#[derive(Default)]
+pub(super) struct LlmRoundMetricsAccumulator {
+    attempts: Vec<Value>,
+    usage: ProviderUsage,
+    next_round_index: usize,
+}
+
+impl LlmRoundMetricsAccumulator {
+    pub(super) fn absorb(&mut self, execution: &LlmNodeExecution) {
+        let Some(attempts) = execution
+            .metrics_payload
+            .get("attempts")
+            .and_then(Value::as_array)
+        else {
+            return;
+        };
+        let inferred_round_index = self.next_round_index;
+        for attempt in attempts {
+            let mut attempt = attempt.clone();
+            let round_index = attempt
+                .get("provider_round_index")
+                .and_then(Value::as_u64)
+                .and_then(|value| usize::try_from(value).ok())
+                .unwrap_or(inferred_round_index);
+            self.next_round_index = self.next_round_index.max(round_index.saturating_add(1));
+            if let Some(attempt) = attempt.as_object_mut() {
+                attempt.insert("provider_round_index".to_string(), json!(round_index));
+                attempt.insert("attempt_index".to_string(), json!(self.attempts.len()));
+            }
+            if let Some(usage) = attempt
+                .get("usage")
+                .cloned()
+                .and_then(|usage| serde_json::from_value::<ProviderUsage>(usage).ok())
+            {
+                add_provider_usage(&mut self.usage, &usage);
+            }
+            self.attempts.push(attempt);
+        }
+    }
+
+    pub(super) fn apply(&self, execution: &mut LlmNodeExecution) {
+        let Some(metrics) = execution.metrics_payload.as_object_mut() else {
+            return;
+        };
+        let mut usage = self.usage.clone();
+        if usage.total_tokens.is_none() {
+            usage.total_tokens = usage.total_tokens();
+        }
+        metrics.insert("attempts".to_string(), Value::Array(self.attempts.clone()));
+        metrics.insert(
+            "usage".to_string(),
+            serde_json::to_value(usage).unwrap_or(Value::Null),
+        );
+    }
+}
+
+fn add_provider_usage(target: &mut ProviderUsage, source: &ProviderUsage) {
+    fn add(target: &mut Option<u64>, source: Option<u64>) {
+        if let Some(source) = source {
+            *target = Some(target.unwrap_or_default().saturating_add(source));
+        }
+    }
+
+    add(&mut target.input_tokens, source.input_tokens);
+    add(&mut target.output_tokens, source.output_tokens);
+    add(&mut target.reasoning_tokens, source.reasoning_tokens);
+    add(&mut target.cache_read_tokens, source.cache_read_tokens);
+    add(&mut target.cache_write_tokens, source.cache_write_tokens);
+    add(
+        &mut target.input_cache_hit_tokens,
+        source.input_cache_hit_tokens,
+    );
+    add(
+        &mut target.input_cache_miss_tokens,
+        source.input_cache_miss_tokens,
+    );
+    add(&mut target.total_tokens, source.total_tokens);
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CapabilityNodeExecution {
     pub output_payload: Value,

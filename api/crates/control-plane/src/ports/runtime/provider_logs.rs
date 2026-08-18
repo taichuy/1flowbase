@@ -27,6 +27,16 @@ pub struct ProviderRequestLogTask {
     pub plugin_id: Option<String>,
     pub protocol: String,
     pub upstream_model_id: String,
+    #[serde(default)]
+    pub pricing_provider_code: Option<String>,
+    #[serde(default)]
+    pub pricing_model_id: Option<String>,
+    #[serde(default)]
+    pub total_cost: Option<String>,
+    #[serde(default)]
+    pub currency_code: Option<String>,
+    #[serde(default)]
+    pub billing_status: Option<String>,
     pub reasoning_effort: Option<String>,
     pub status: String,
     pub error_code: Option<String>,
@@ -103,6 +113,11 @@ pub struct ModelProviderRequestLogRecord {
     pub plugin_id: Option<String>,
     pub protocol: String,
     pub upstream_model_id: String,
+    pub pricing_provider_code: Option<String>,
+    pub pricing_model_id: Option<String>,
+    pub total_cost: Option<String>,
+    pub currency_code: Option<String>,
+    pub billing_status: Option<String>,
     pub reasoning_effort: Option<String>,
     pub status: String,
     pub error_code: Option<String>,

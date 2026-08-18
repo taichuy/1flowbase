@@ -591,6 +591,8 @@ async fn current_pricing_targets(
             weekday_mask: rule.weekday_mask,
             local_time_start: rule.local_time_start.map(|value| value.to_string()),
             local_time_end: rule.local_time_end.map(|value| value.to_string()),
+            rating_policy_enabled: rule.rating_policy_enabled,
+            rating_policy: rule.rating_policy,
         });
     }
     targets.sort_by_key(|target| {
@@ -821,6 +823,11 @@ fn to_request_log_response(
         plugin_id: record.plugin_id,
         protocol: record.protocol,
         upstream_model_id: record.upstream_model_id,
+        pricing_provider_code: record.pricing_provider_code,
+        pricing_model_id: record.pricing_model_id,
+        total_cost: record.total_cost,
+        currency_code: record.currency_code,
+        billing_status: record.billing_status,
         reasoning_effort: record.reasoning_effort,
         status: record.status,
         error_code: record.error_code,
@@ -1254,6 +1261,11 @@ mod request_log_response_tests {
                 plugin_id: Some("gemini@0.1.20".into()),
                 protocol: "google_genai".into(),
                 upstream_model_id: "gemini-3-flash".into(),
+                pricing_provider_code: Some("zero".into()),
+                pricing_model_id: Some("any".into()),
+                total_cost: Some("0".into()),
+                currency_code: Some("USD".into()),
+                billing_status: Some("settled".into()),
                 reasoning_effort: None,
                 status: "succeeded".into(),
                 error_code: None,
@@ -1276,5 +1288,9 @@ mod request_log_response_tests {
         assert_eq!(response.plugin_id.as_deref(), Some("gemini@0.1.20"));
         assert_eq!(response.input_cache_hit_tokens, Some(97));
         assert_eq!(response.input_cache_hit_rate, Some(0.5));
+        assert_eq!(response.pricing_provider_code.as_deref(), Some("zero"));
+        assert_eq!(response.pricing_model_id.as_deref(), Some("any"));
+        assert_eq!(response.total_cost.as_deref(), Some("0"));
+        assert_eq!(response.currency_code.as_deref(), Some("USD"));
     }
 }

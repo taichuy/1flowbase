@@ -28,6 +28,13 @@ fn billing_invocation_id(
     node_id: Option<&str>,
     input: &ProviderInvocationInput,
 ) -> Uuid {
+    if let Some(invocation_id) = input
+        .trace_context
+        .get("provider_invocation_id")
+        .and_then(|value| Uuid::parse_str(value).ok())
+    {
+        return invocation_id;
+    }
     let attempt = input
         .trace_context
         .get("provider_attempt_index")
@@ -800,12 +807,15 @@ where
                 "upstream_model_id": runtime.model,
                 "currency_code": rule.currency_code,
                 "request_started_at": billing_started_at,
-                "input_token_unit_size": rule.input_token_unit_size,
-                "input_token_unit_price": rule.input_token_unit_price.to_string(),
-                "output_token_unit_size": rule.output_token_unit_size,
-                "output_token_unit_price": rule.output_token_unit_price.to_string(),
-                "cache_hit_token_unit_size": rule.cache_hit_token_unit_size,
-                "cache_hit_token_unit_price": rule.cache_hit_token_unit_price.to_string(),
+                "input_token_unit_size": rated.applied_rates.input.unit_size,
+                "input_token_unit_price": rated.applied_rates.input.unit_price.to_string(),
+                "output_token_unit_size": rated.applied_rates.output.unit_size,
+                "output_token_unit_price": rated.applied_rates.output.unit_price.to_string(),
+                "cache_hit_token_unit_size": rated.applied_rates.cache_hit.unit_size,
+                "cache_hit_token_unit_price": rated.applied_rates.cache_hit.unit_price.to_string(),
+                "rating_policy_enabled": rule.rating_policy_enabled,
+                "rating_policy": rule.rating_policy.clone(),
+                "rating_policy_match": rated.rating_policy_match.clone(),
             });
             let usage_snapshot = json!({
                 "usage_source": "provider_reported",
@@ -818,9 +828,10 @@ where
                 .flow_execution_context
                 .as_ref()
                 .and_then(|context| context.active_node.lock().ok()?.clone());
-            let usage_ledger = self
+            let finalized = self
                 .repository
-                .append_usage_ledger(&crate::ports::AppendUsageLedgerInput {
+                .finalize_model_billing(&crate::ports::FinalizeModelBillingInput {
+                    usage: crate::ports::AppendUsageLedgerInput {
                     flow_run_id,
                     node_run_id: active_node.as_ref().map(|node| node.node_run_id),
                     span_id: None,
@@ -866,45 +877,74 @@ where
                     usage_status: domain::UsageLedgerStatus::Recorded,
                     raw_usage: serde_json::to_value(&usage)?,
                     normalized_usage: usage_snapshot.clone(),
+                    },
+                    cost: crate::ports::AppendCostLedgerInput {
+                        flow_run_id: Some(flow_run_id),
+                        span_id: None,
+                        usage_ledger_id: None,
+                        billing_session_id: None,
+                        workspace_id: self.workspace_id,
+                        provider_instance_id: Some(instance.id),
+                        provider_account_id: None,
+                        gateway_route_id: None,
+                        model_id: Some(runtime.model.clone()),
+                        upstream_model_id: Some(runtime.model.clone()),
+                        price_snapshot: price_snapshot.clone(),
+                        raw_cost: Some(rated.total_cost.to_string()),
+                        normalized_cost: Some(rated.total_cost.to_string()),
+                        settlement_currency: Some("USD".to_string()),
+                        cost_source: "local_token_pricing".to_string(),
+                        cost_status: "rated".to_string(),
+                    },
+                    settlement: crate::ports::SettleCreditInput {
+                        billing_session_id: reservation.billing_session_id,
+                        actual_amount: rated.total_cost.to_string(),
+                        cost_ledger_id: None,
+                        usage_ledger_id: None,
+                        price_snapshot: price_snapshot.clone(),
+                        usage_snapshot: usage_snapshot.clone(),
+                    },
                 })
-                .await?;
-            let cost_ledger = self
-                .repository
-                .append_cost_ledger(&crate::ports::AppendCostLedgerInput {
-                    flow_run_id: Some(flow_run_id),
-                    span_id: None,
-                    usage_ledger_id: Some(usage_ledger.id),
-                    billing_session_id: Some(reservation.billing_session_id),
-                    workspace_id: self.workspace_id,
-                    provider_instance_id: Some(instance.id),
-                    provider_account_id: None,
-                    gateway_route_id: None,
-                    model_id: Some(runtime.model.clone()),
-                    upstream_model_id: Some(runtime.model.clone()),
-                    price_snapshot: price_snapshot.clone(),
-                    raw_cost: Some(rated.total_cost.to_string()),
-                    normalized_cost: Some(rated.total_cost.to_string()),
-                    settlement_currency: Some("USD".to_string()),
-                    cost_source: "local_token_pricing".to_string(),
-                    cost_status: "rated".to_string(),
-                })
-                .await?;
-            self.repository
-                .model_billing_settle_credit(&crate::ports::SettleCreditInput {
-                    billing_session_id: reservation.billing_session_id,
-                    actual_amount: rated.total_cost.to_string(),
-                    cost_ledger_id: Some(cost_ledger.id),
-                    usage_ledger_id: Some(usage_ledger.id),
-                    price_snapshot: price_snapshot.clone(),
-                    usage_snapshot: usage_snapshot.clone(),
-                })
-                .await?;
+                .await;
             if let Some(output) = invocation_output.as_mut() {
                 let provider_metadata = std::mem::take(&mut output.result.provider_metadata);
+                let billing_metadata = match finalized {
+                    Ok(finalized) => json!({
+                        "provider_invocation_id": invocation_id,
+                        "billing_session_id": reservation.billing_session_id,
+                        "pricing_rule_id": rule.id,
+                        "usage_ledger_id": finalized.usage.id,
+                        "cost_ledger_id": finalized.cost.id,
+                        "pricing_provider_code": rule.provider_code,
+                        "pricing_model_id": rule.upstream_model_id,
+                        "total_cost": rated.total_cost.to_string(),
+                        "currency_code": "USD",
+                        "charge_skipped": reservation.charge_skipped,
+                        "billing_status": "settled",
+                    }),
+                    Err(error) => {
+                        tracing::error!(
+                            provider_invocation_id = %invocation_id,
+                            billing_session_id = %reservation.billing_session_id,
+                            error = %error,
+                            "model billing finalization failed after provider response"
+                        );
+                        json!({
+                            "provider_invocation_id": invocation_id,
+                            "billing_session_id": reservation.billing_session_id,
+                            "pricing_rule_id": rule.id,
+                            "pricing_provider_code": rule.provider_code,
+                            "pricing_model_id": rule.upstream_model_id,
+                            "total_cost": rated.total_cost.to_string(),
+                            "currency_code": "USD",
+                            "charge_skipped": reservation.charge_skipped,
+                            "billing_status": "reconciliation_failed",
+                            "billing_error_code": "billing_finalize_failed",
+                        })
+                    }
+                };
                 output.result.provider_metadata = json!({
-                    "_1flowbase_billing": {"provider_invocation_id":invocation_id,"billing_session_id":reservation.billing_session_id,
-                        "pricing_rule_id":rule.id,"usage_ledger_id":usage_ledger.id,"cost_ledger_id":cost_ledger.id,
-                        "total_cost":rated.total_cost.to_string(),"currency_code":"USD","charge_skipped":reservation.charge_skipped},
+                    "_1flowbase_billing": billing_metadata,
                     "_1flowbase_upstream_provider_metadata": provider_metadata,
                 });
             }

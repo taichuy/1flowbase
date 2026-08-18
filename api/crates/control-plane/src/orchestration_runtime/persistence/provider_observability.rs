@@ -1,6 +1,5 @@
 use super::model_attempts::{
     append_model_attempts_from_metrics, enqueue_provider_request_log_tasks, usage_i64,
-    winner_attempt_id,
 };
 use super::*;
 use std::sync::Arc;
@@ -149,14 +148,6 @@ where
         })
         .await?;
 
-    let usage = trace.metrics_payload.get("usage").cloned();
-    let raw_usage = usage.clone().unwrap_or_else(|| json!({}));
-    let usage_status = if usage.is_some() && trace.error_payload.is_none() {
-        domain::UsageLedgerStatus::Recorded
-    } else {
-        domain::UsageLedgerStatus::UnavailableError
-    };
-
     let attempts = append_model_attempts_from_metrics(
         repository,
         flow_run_id,
@@ -180,52 +171,68 @@ where
         &trace.metrics_payload,
     )
     .await;
-    let usage_attempt_id = winner_attempt_id(&attempts);
-
-    let usage_ledger = repository
-        .append_usage_ledger(&AppendUsageLedgerInput {
-            flow_run_id,
-            node_run_id: Some(node_run_id),
-            span_id: Some(span_id),
-            failover_attempt_id: usage_attempt_id,
-            provider_instance_id: trace
-                .metrics_payload
-                .get("provider_instance_id")
-                .and_then(Value::as_str)
-                .and_then(|value| Uuid::parse_str(value).ok()),
-            gateway_route_id: None,
-            model_id: trace
-                .metrics_payload
-                .get("model")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            upstream_model_id: trace
-                .metrics_payload
-                .get("model")
-                .and_then(Value::as_str)
-                .map(str::to_string),
-            upstream_request_id: None,
-            input_tokens: usage_i64(&raw_usage, "input_tokens"),
-            cached_input_tokens: usage_i64(&raw_usage, "cached_input_tokens"),
-            output_tokens: usage_i64(&raw_usage, "output_tokens"),
-            reasoning_output_tokens: usage_i64(&raw_usage, "reasoning_tokens"),
-            total_tokens: usage_i64(&raw_usage, "total_tokens"),
-            input_cache_hit_tokens: usage_i64(&raw_usage, "input_cache_hit_tokens"),
-            input_cache_miss_tokens: usage_i64(&raw_usage, "input_cache_miss_tokens"),
-            cache_read_tokens: usage_i64(&raw_usage, "cache_read_tokens"),
-            cache_write_tokens: usage_i64(&raw_usage, "cache_write_tokens"),
-            price_snapshot: None,
-            cost_snapshot: None,
-            usage_status,
-            raw_usage: raw_usage.clone(),
-            normalized_usage: raw_usage,
-        })
-        .await?;
-    if let Some(failover_attempt_id) = usage_attempt_id {
+    let attempt_metrics = trace
+        .metrics_payload
+        .get("attempts")
+        .and_then(Value::as_array);
+    for (index, attempt) in attempts.iter().enumerate() {
+        if attempt.usage_ledger_id.is_some() {
+            continue;
+        }
+        let metric = attempt_metrics
+            .and_then(|metrics| metrics.get(index))
+            .unwrap_or(&trace.metrics_payload);
+        let raw_usage = metric.get("usage").cloned().unwrap_or_else(|| json!({}));
+        let has_usage = [
+            "input_tokens",
+            "output_tokens",
+            "input_cache_hit_tokens",
+            "input_cache_miss_tokens",
+        ]
+        .iter()
+        .any(|field| usage_i64(&raw_usage, field).is_some());
+        let input_tokens = usage_i64(&raw_usage, "input_tokens");
+        let output_tokens = usage_i64(&raw_usage, "output_tokens");
+        let total_tokens =
+            usage_i64(&raw_usage, "total_tokens").or_else(|| match (input_tokens, output_tokens) {
+                (Some(input), Some(output)) => Some(input.saturating_add(output)),
+                _ => None,
+            });
+        let usage_ledger = repository
+            .append_usage_ledger(&AppendUsageLedgerInput {
+                flow_run_id,
+                node_run_id: Some(node_run_id),
+                span_id: Some(span_id),
+                failover_attempt_id: Some(attempt.id),
+                provider_instance_id: attempt.provider_instance_id,
+                gateway_route_id: None,
+                model_id: Some(attempt.upstream_model_id.clone()),
+                upstream_model_id: Some(attempt.upstream_model_id.clone()),
+                upstream_request_id: attempt.upstream_request_id.clone(),
+                input_tokens,
+                cached_input_tokens: usage_i64(&raw_usage, "cached_input_tokens"),
+                output_tokens,
+                reasoning_output_tokens: usage_i64(&raw_usage, "reasoning_tokens"),
+                total_tokens,
+                input_cache_hit_tokens: usage_i64(&raw_usage, "input_cache_hit_tokens"),
+                input_cache_miss_tokens: usage_i64(&raw_usage, "input_cache_miss_tokens"),
+                cache_read_tokens: usage_i64(&raw_usage, "cache_read_tokens"),
+                cache_write_tokens: usage_i64(&raw_usage, "cache_write_tokens"),
+                price_snapshot: None,
+                cost_snapshot: None,
+                usage_status: if has_usage {
+                    domain::UsageLedgerStatus::Recorded
+                } else {
+                    domain::UsageLedgerStatus::UnavailableError
+                },
+                raw_usage: raw_usage.clone(),
+                normalized_usage: raw_usage,
+            })
+            .await?;
         repository
             .link_usage_ledger_to_model_failover_attempt(
                 &LinkUsageLedgerToModelFailoverAttemptInput {
-                    failover_attempt_id,
+                    failover_attempt_id: attempt.id,
                     usage_ledger_id: usage_ledger.id,
                 },
             )

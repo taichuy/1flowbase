@@ -74,6 +74,11 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
         provider_instance_id: 'provider-1',
         provider_instance_display_name: 'Gemini A',
         provider_code: 'gemini',
+        pricing_provider_code: 'zero',
+        pricing_model_id: 'any',
+        total_cost: '0',
+        currency_code: 'USD',
+        billing_status: 'settled',
         plugin_id: 'gemini@0.1.20',
         protocol: 'gemini',
         upstream_model_id: 'gemini-3-flash',
@@ -124,6 +129,9 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
   ).toBeInTheDocument();
   expect(screen.getByText('空响应')).toBeInTheDocument();
   expect(screen.getByText('Gemini A')).toBeInTheDocument();
+  expect(screen.getByText('费用')).toBeInTheDocument();
+  expect(screen.getByText('0$')).toBeInTheDocument();
+  expect(screen.getByText('已结算')).toBeInTheDocument();
   expect(screen.getByText('模型供应商插件')).toBeInTheDocument();
   expect(screen.getByText('gemini@0.1.20')).toBeInTheDocument();
   expect(screen.getByText('命中缓存 tokens')).toBeInTheDocument();
@@ -175,6 +183,10 @@ test('AC-006 renders zero output as an empty response anomaly', async () => {
     expect(lastFilter.user_id).toBeUndefined();
     expect(lastFilter.started_after).toEqual(expect.any(String));
   });
+
+  fireEvent.mouseDown(screen.getByRole('combobox', { name: '字段配置' }));
+  expect(await screen.findByText('供应商 Code')).toBeInTheDocument();
+  expect(screen.getByText('计费模型 ID')).toBeInTheDocument();
 });
 
 test('AC-006 does not render a conversation link for legacy rows', async () => {

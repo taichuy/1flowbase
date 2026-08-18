@@ -97,7 +97,9 @@ export function buildSettingsModelProviderOptions(): ConsoleModelProviderOptions
         timezone: 'UTC',
         weekday_mask: 127,
         local_time_start: null,
-        local_time_end: null
+        local_time_end: null,
+        rating_policy_enabled: false,
+        rating_policy: {}
       },
       {
         provider_code: 'openai',
@@ -113,7 +115,9 @@ export function buildSettingsModelProviderOptions(): ConsoleModelProviderOptions
         timezone: 'UTC',
         weekday_mask: 127,
         local_time_start: null,
-        local_time_end: null
+        local_time_end: null,
+        rating_policy_enabled: false,
+        rating_policy: {}
       }
     ],
     providers: [

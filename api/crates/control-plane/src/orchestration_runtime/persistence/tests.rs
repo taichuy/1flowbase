@@ -647,6 +647,13 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
         "protocol": "google_genai",
         "upstream_model_id": "gemini-3-flash",
         "status": "empty_response",
+        "billing": {
+            "pricing_provider_code": "zero",
+            "pricing_model_id": "any",
+            "total_cost": "0",
+            "currency_code": "USD",
+            "billing_status": "settled"
+        },
         "event_count": 2,
         "time_to_first_token_ms": null,
         "usage": {
@@ -689,6 +696,11 @@ fn ac_015_provider_request_log_task_projects_empty_response_and_attempt_usage() 
     assert_eq!(task.total_tokens, Some(12));
     assert_eq!(task.input_cache_hit_tokens, Some(9));
     assert_eq!(task.input_cache_hit_rate, Some(0.75));
+    assert_eq!(task.pricing_provider_code.as_deref(), Some("zero"));
+    assert_eq!(task.pricing_model_id.as_deref(), Some("any"));
+    assert_eq!(task.total_cost.as_deref(), Some("0"));
+    assert_eq!(task.currency_code.as_deref(), Some("USD"));
+    assert_eq!(task.billing_status.as_deref(), Some("settled"));
     assert_eq!(task.time_to_first_token_ms, None);
     assert_eq!(task.total_duration_ms, Some(7426));
     serde_json::to_value(task).unwrap();

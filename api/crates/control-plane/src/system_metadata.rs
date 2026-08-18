@@ -176,6 +176,13 @@ pub fn model_pricing_rule_metadata_template() -> SystemMetadataModelTemplate {
         ),
         ("priority", "Priority", ModelFieldKind::Number, true),
         ("enabled", "Enabled", ModelFieldKind::Boolean, true),
+        (
+            "rating_policy_enabled",
+            "Rating Policy Enabled",
+            ModelFieldKind::Boolean,
+            true,
+        ),
+        ("rating_policy", "Rating Policy", ModelFieldKind::Json, true),
         ("source_kind", "Source Kind", ModelFieldKind::String, true),
         (
             "source_catalog_id",

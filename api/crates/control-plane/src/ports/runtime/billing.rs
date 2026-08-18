@@ -48,6 +48,20 @@ pub struct AppendCostLedgerInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct FinalizeModelBillingInput {
+    pub usage: AppendUsageLedgerInput,
+    pub cost: AppendCostLedgerInput,
+    pub settlement: SettleCreditInput,
+}
+
+#[derive(Debug, Clone)]
+pub struct FinalizedModelBilling {
+    pub usage: domain::UsageLedgerRecord,
+    pub cost: domain::CostLedgerRecord,
+    pub credit: CreditTransactionRecord,
+}
+
+#[derive(Debug, Clone)]
 pub struct AppendCreditLedgerInput {
     pub workspace_id: Uuid,
     pub user_id: Option<Uuid>,

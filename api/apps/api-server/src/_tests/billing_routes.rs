@@ -72,6 +72,19 @@ async fn billing_routes_validate_pricing_and_manage_workspace_credit_ledger() {
                         "local_time_end":null,
                         "priority":0,
                         "enabled":true,
+                        "rating_policy_enabled":true,
+                        "rating_policy":{
+                            "schema_version":"1flowbase.model-rating-policy/v1",
+                            "type":"input_token_tiers",
+                            "tiers":[{
+                                "when":{"operator":"gte","value":200000},
+                                "rates":{
+                                    "input":{"unit_size":1000000,"unit_price":"2.5"},
+                                    "output":{"unit_size":1000000,"unit_price":"10"},
+                                    "cache_hit":{"unit_size":1000000,"unit_price":"0.5"}
+                                }
+                            }]
+                        },
                         "source_kind":"manual",
                         "extensions":{}
                     })
@@ -84,6 +97,11 @@ async fn billing_routes_validate_pricing_and_manage_workspace_credit_ledger() {
     assert_eq!(create_rule.status(), StatusCode::OK);
     let rule_payload = response_json(create_rule).await;
     assert_eq!(rule_payload["data"]["currency_code"], "USD");
+    assert_eq!(rule_payload["data"]["rating_policy_enabled"], true);
+    assert_eq!(
+        rule_payload["data"]["rating_policy"]["type"],
+        "input_token_tiers"
+    );
     assert_eq!(
         Decimal::from_str(
             rule_payload["data"]["input_token_unit_price"]

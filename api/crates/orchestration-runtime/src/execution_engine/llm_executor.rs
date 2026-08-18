@@ -35,6 +35,7 @@ where
         .ok_or_else(|| anyhow!("runtime internal tool registrations have no invoker"))?;
     let mut llm_variable_pool = variable_pool.clone();
     let mut internal_events = Vec::new();
+    let mut round_metrics = LlmRoundMetricsAccumulator::default();
 
     loop {
         let mut execution = execute_llm_node_with_visible_internal_tools(
@@ -47,11 +48,14 @@ where
             invoker,
         )
         .await?;
+        round_metrics.absorb(&execution);
         if execution.error_payload.is_some() {
+            round_metrics.apply(&mut execution);
             attach_runtime_internal_tool_events(&mut execution, &internal_events);
             return Ok(execution);
         }
         let Some(tool_calls) = output_tool_calls(&execution.output_payload) else {
+            round_metrics.apply(&mut execution);
             attach_runtime_internal_tool_events(&mut execution, &internal_events);
             return Ok(execution);
         };
@@ -72,6 +76,7 @@ where
             })
             .collect::<Vec<_>>();
         if internal_calls.is_empty() {
+            round_metrics.apply(&mut execution);
             attach_runtime_internal_tool_events(&mut execution, &internal_events);
             return Ok(execution);
         }
@@ -163,6 +168,7 @@ where
                 output.insert("tool_calls".to_string(), Value::Array(external_calls));
             }
             execution.pending_callback = Some(callback_wait);
+            round_metrics.apply(&mut execution);
             attach_runtime_internal_tool_events(&mut execution, &internal_events);
             return Ok(execution);
         }
@@ -566,6 +572,10 @@ where
             "provider_attempt_index".to_string(),
             attempt_index.to_string(),
         );
+        invocation.input.trace_context.insert(
+            "provider_invocation_id".to_string(),
+            uuid::Uuid::now_v7().to_string(),
+        );
         let mut output = match invoker
             .invoke_resolved_llm(attempt_runtime, resolved_route, invocation.input)
             .await
@@ -637,7 +647,7 @@ where
         };
         let attempt_finished_at = OffsetDateTime::now_utc();
         canonicalize_provider_output_tool_call_names(&mut output, &invocation_tools);
-        let provider_stream_timing = take_provider_stream_timing(&mut output.result);
+        let provider_observability = take_provider_observability_metadata(&mut output.result);
 
         let usage = collect_usage(&output.events, &output.result.usage);
         let finish_reason = output
@@ -748,7 +758,8 @@ where
             finished_at: attempt_finished_at,
             time_to_first_token_ms: output.time_to_first_token_ms,
         });
-        attach_provider_stream_timing(&mut attempt, provider_stream_timing.as_ref());
+        attach_provider_stream_timing(&mut attempt, provider_observability.stream_timing.as_ref());
+        attach_provider_billing(&mut attempt, provider_observability.billing.as_ref());
         attempt_metrics.push(attempt.clone());
 
         if let Some(error_payload) = &error_payload {

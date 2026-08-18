@@ -341,6 +341,8 @@ async fn concurrent_pricing_rule_writes_cannot_create_an_overlapping_schedule() 
             local_time_end: None,
             priority: 0,
             enabled: true,
+            rating_policy_enabled: false,
+            rating_policy: json!({}),
             source_kind: "manual".into(),
             source_catalog_id: None,
             source_version: None,

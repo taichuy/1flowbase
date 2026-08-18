@@ -19,6 +19,8 @@ export interface ConsolePricingRule {
   local_time_end: string | null;
   priority: number;
   enabled: boolean;
+  rating_policy_enabled: boolean;
+  rating_policy: Record<string, unknown>;
   source_kind: 'official' | 'manual';
   source_catalog_id: string | null;
   source_version: string | null;

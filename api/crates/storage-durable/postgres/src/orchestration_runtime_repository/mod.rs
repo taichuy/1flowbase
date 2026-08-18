@@ -35,8 +35,9 @@ use control_plane::{
         CreateRuntimeDebugArtifactInput, CreditReservation, CreditTransactionRecord,
         DataModelSideEffectReceiptClaim, DebugVariableCacheEntry,
         DeleteDebugVariableCacheEntriesInput, DeleteModelProviderRequestLogsInput,
-        FailQueuedFlowRunShellInput, FinalizePublishedRunMissingStreamTerminalPersistenceInput,
-        FinalizePublishedRunMissingStreamTerminalPersistenceOutcome,
+        FailQueuedFlowRunShellInput, FinalizeModelBillingInput,
+        FinalizePublishedRunMissingStreamTerminalPersistenceInput,
+        FinalizePublishedRunMissingStreamTerminalPersistenceOutcome, FinalizedModelBilling,
         FinishFlowRunCallbackResumeAttemptInput, FinishResumeClaimInput,
         GetApplicationRunMonitoringReportInput, GetRuntimeDebugArtifactInput,
         LinkUsageLedgerToModelFailoverAttemptInput, ListApplicationConversationRunsPageInput,
@@ -148,6 +149,18 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         flow_run_id: Uuid,
     ) -> Result<Option<domain::FlowRunRecord>> {
         PgControlPlaneStore::get_flow_run(self, application_id, flow_run_id).await
+    }
+
+    async fn get_flow_run_assistant_conversation_id(
+        &self,
+        flow_run_id: Uuid,
+    ) -> Result<Option<Uuid>> {
+        sqlx::query_scalar("select assistant_conversation_id from flow_runs where id = $1")
+            .bind(flow_run_id)
+            .fetch_optional(self.pool())
+            .await
+            .map(|value| value.flatten())
+            .map_err(Into::into)
     }
 
     async fn create_node_run(&self, input: &CreateNodeRunInput) -> Result<domain::NodeRunRecord> {
@@ -507,6 +520,13 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         input: &AppendCostLedgerInput,
     ) -> Result<domain::CostLedgerRecord> {
         PgControlPlaneStore::append_cost_ledger(self, input).await
+    }
+
+    async fn finalize_model_billing(
+        &self,
+        input: &FinalizeModelBillingInput,
+    ) -> Result<FinalizedModelBilling> {
+        PgControlPlaneStore::finalize_model_billing(self, input).await
     }
 
     async fn append_credit_ledger(

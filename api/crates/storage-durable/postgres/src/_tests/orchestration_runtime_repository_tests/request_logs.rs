@@ -27,6 +27,11 @@ fn request_log(
         plugin_id: Some("fixture_provider@1.0.0".into()),
         protocol: "openai_compatible".into(),
         upstream_model_id: "gpt-5.4-mini".into(),
+        pricing_provider_code: Some("openai".into()),
+        pricing_model_id: Some("gpt-5.4-mini".into()),
+        total_cost: Some("0.001250000000000000".into()),
+        currency_code: Some("USD".into()),
+        billing_status: Some("settled".into()),
         reasoning_effort: Some("high".into()),
         status: status.into(),
         error_code: None,
@@ -89,7 +94,7 @@ async fn provider_request_log_user_projection_keeps_legacy_rows_null_and_rejects
     .unwrap();
 
     let legacy = sqlx::query(
-        "select user_id, user_account from model_provider_request_logs where attempt_id = $1",
+        "select user_id, user_account, pricing_provider_code, pricing_model_id, total_cost::text as total_cost, currency_code from model_provider_request_logs where attempt_id = $1",
     )
     .bind(legacy_attempt_id)
     .fetch_one(&pool)
@@ -97,6 +102,14 @@ async fn provider_request_log_user_projection_keeps_legacy_rows_null_and_rejects
     .unwrap();
     assert!(legacy.get::<Option<Uuid>, _>("user_id").is_none());
     assert!(legacy.get::<Option<String>, _>("user_account").is_none());
+    assert!(legacy
+        .get::<Option<String>, _>("pricing_provider_code")
+        .is_none());
+    assert!(legacy
+        .get::<Option<String>, _>("pricing_model_id")
+        .is_none());
+    assert!(legacy.get::<Option<String>, _>("total_cost").is_none());
+    assert!(legacy.get::<Option<String>, _>("currency_code").is_none());
 
     let partial = sqlx::query(
         r#"
@@ -116,6 +129,24 @@ async fn provider_request_log_user_projection_keeps_legacy_rows_null_and_rejects
     .execute(&pool)
     .await;
     assert!(partial.is_err());
+
+    let partial_billing = sqlx::query(
+        r#"
+        insert into model_provider_request_logs (
+            id, scope_id, attempt_id, flow_run_id, application_name, attempt_index,
+            provider_code, protocol, upstream_model_id, pricing_provider_code, status,
+            failed_after_first_token, started_at
+        ) values ($1, $2, $3, $4, 'Invalid billing snapshot', 1,
+            'fixture', 'openai_chat', 'fixture-model', 'zero', 'succeeded', false, now())
+        "#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(scope_id)
+    .bind(Uuid::now_v7())
+    .bind(Uuid::now_v7())
+    .execute(&pool)
+    .await;
+    assert!(partial_billing.is_err());
 }
 
 #[tokio::test]
@@ -237,6 +268,19 @@ async fn provider_request_logs_batch_insert_is_idempotent_and_queryable() {
     );
     assert_eq!(page.items[0].input_cache_hit_tokens, Some(60));
     assert_eq!(page.items[0].input_cache_hit_rate, Some(0.5));
+    assert_eq!(
+        page.items[0].pricing_provider_code.as_deref(),
+        Some("openai")
+    );
+    assert_eq!(
+        page.items[0].pricing_model_id.as_deref(),
+        Some("gpt-5.4-mini")
+    );
+    assert_eq!(
+        page.items[0].total_cost.as_deref(),
+        Some("0.001250000000000000")
+    );
+    assert_eq!(page.items[0].currency_code.as_deref(), Some("USD"));
 }
 
 #[tokio::test]

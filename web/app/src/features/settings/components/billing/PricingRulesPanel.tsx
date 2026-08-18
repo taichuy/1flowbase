@@ -16,6 +16,10 @@ import {
 } from 'antd';
 
 import { useAuthStore } from '../../../../state/auth-store';
+import {
+  formatDateTime,
+  getCurrentIntlLocale
+} from '../../../../shared/i18n/format';
 import { i18nText } from '../../../../shared/i18n/text';
 import {
   DataTable,
@@ -73,10 +77,30 @@ function pricingPriceLabel(kind: PricingKind) {
   }
 }
 
+function formatWeekdayMask(weekdayMask: number) {
+  if (weekdayMask === 0b111_1111) {
+    return i18nText('settings', 'auto.billing_every_day');
+  }
+
+  const weekdayFormatter = new Intl.DateTimeFormat(getCurrentIntlLocale(), {
+    weekday: 'short',
+    timeZone: 'UTC'
+  });
+  const monday = Date.UTC(2024, 0, 1);
+  const weekdays = Array.from({ length: 7 }, (_, index) => index)
+    .filter((index) => (weekdayMask & (1 << index)) !== 0)
+    .map((index) =>
+      weekdayFormatter.format(new Date(monday + index * 86_400_000))
+    );
+
+  return weekdays.join(', ');
+}
+
 export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const [form] = Form.useForm();
+  const ratingPolicyEnabled = Form.useWatch('rating_policy_enabled', form);
   const [editing, setEditing] = useState<SettingsPricingRule | null>(null);
   const [open, setOpen] = useState(false);
   const [page, setPage] = useState(1);
@@ -124,6 +148,10 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
           : null,
         priority: Number(values.priority),
         enabled: Boolean(values.enabled),
+        rating_policy_enabled: Boolean(values.rating_policy_enabled),
+        rating_policy: JSON.parse(
+          String(values.rating_policy_json ?? '{}')
+        ) as Record<string, unknown>,
         source_kind: editing?.source_kind ?? ('manual' as const),
         source_catalog_id: editing?.source_catalog_id ?? null,
         source_version: editing?.source_version ?? null,
@@ -161,7 +189,12 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
     (rule?: SettingsPricingRule) => {
       setEditing(rule ?? null);
       form.setFieldsValue(
-        rule ?? {
+        rule
+          ? {
+              ...rule,
+              rating_policy_json: JSON.stringify(rule.rating_policy, null, 2)
+            }
+          : {
           input_token_unit_size: DEFAULT_UNIT,
           output_token_unit_size: DEFAULT_UNIT,
           cache_hit_token_unit_size: DEFAULT_UNIT,
@@ -172,7 +205,9 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
           timezone: 'UTC',
           weekday_mask: 127,
           priority: 0,
-          enabled: true
+          enabled: true,
+          rating_policy_enabled: false,
+          rating_policy_json: '{}'
         }
       );
       setOpen(true);
@@ -222,6 +257,96 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
             row.cache_hit_token_unit_price,
             row.cache_hit_token_unit_size
           )
+      },
+      {
+        key: 'effective_from',
+        title: i18nText('settings', 'auto.billing_effective_from'),
+        dataIndex: 'effective_from',
+        width: 190,
+        render: (value: unknown) => formatDateTime(String(value))
+      },
+      {
+        key: 'effective_to',
+        title: i18nText('settings', 'auto.billing_effective_to'),
+        dataIndex: 'effective_to',
+        width: 190,
+        render: (value: unknown) =>
+          value
+            ? formatDateTime(String(value))
+            : i18nText('settings', 'auto.billing_permanently_valid')
+      },
+      {
+        key: 'timezone',
+        title: i18nText('settings', 'auto.billing_timezone'),
+        dataIndex: 'timezone',
+        width: 160,
+        defaultVisibility: 'hidden'
+      },
+      {
+        key: 'weekday_mask',
+        title: i18nText('settings', 'auto.billing_weekday_mask'),
+        dataIndex: 'weekday_mask',
+        width: 180,
+        defaultVisibility: 'hidden',
+        render: (value: unknown) => formatWeekdayMask(Number(value))
+      },
+      {
+        key: 'local_time_start',
+        title: i18nText('settings', 'auto.billing_local_start'),
+        dataIndex: 'local_time_start',
+        width: 150,
+        defaultVisibility: 'hidden',
+        render: (value: unknown) =>
+          value
+            ? String(value)
+            : i18nText('settings', 'auto.billing_unrestricted')
+      },
+      {
+        key: 'local_time_end',
+        title: i18nText('settings', 'auto.billing_local_end'),
+        dataIndex: 'local_time_end',
+        width: 150,
+        defaultVisibility: 'hidden',
+        render: (value: unknown) =>
+          value
+            ? String(value)
+            : i18nText('settings', 'auto.billing_unrestricted')
+      },
+      {
+        key: 'priority',
+        title: i18nText('settings', 'auto.billing_priority'),
+        dataIndex: 'priority',
+        width: 120,
+        defaultVisibility: 'hidden'
+      },
+      {
+        key: 'rating_policy_enabled',
+        title: i18nText(
+          'settings',
+          'auto.billing_rating_policy_enabled'
+        ),
+        dataIndex: 'rating_policy_enabled',
+        width: 150,
+        defaultVisibility: 'hidden',
+        render: (value: unknown) => (
+          <Tag color={value ? 'green' : 'default'}>
+            {value
+              ? i18nText('settings', 'auto.enabled')
+              : i18nText('settings', 'auto.deactivate')}
+          </Tag>
+        )
+      },
+      {
+        key: 'rating_policy',
+        title: i18nText('settings', 'auto.billing_rating_policy'),
+        dataIndex: 'rating_policy',
+        width: 180,
+        defaultVisibility: 'hidden',
+        render: (_: unknown, row: SettingsPricingRule) =>
+          row.rating_policy_enabled &&
+          row.rating_policy.type === 'input_token_tiers'
+            ? i18nText('settings', 'auto.billing_input_token_tiers')
+            : i18nText('settings', 'auto.billing_no_rating_policy')
       },
       {
         key: 'source_kind',
@@ -458,6 +583,54 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
               </Form.Item>
             </Space>
           ))}
+          <Space align="start" wrap>
+            <Form.Item
+              name="rating_policy_enabled"
+              label={i18nText(
+                'settings',
+                'auto.billing_rating_policy_enabled'
+              )}
+              valuePropName="checked"
+            >
+              <Switch />
+            </Form.Item>
+            <Form.Item
+              name="rating_policy_json"
+              label={i18nText('settings', 'auto.billing_rating_policy')}
+              rules={[
+                {
+                  validator: async (_, value) => {
+                    try {
+                      const parsed = JSON.parse(String(value ?? '{}'));
+                      if (
+                        typeof parsed !== 'object' ||
+                        parsed === null ||
+                        Array.isArray(parsed)
+                      ) {
+                        throw new Error('rating policy must be an object');
+                      }
+                    } catch {
+                      throw new Error(
+                        i18nText(
+                          'settings',
+                          'auto.billing_rating_policy_json_invalid'
+                        )
+                      );
+                    }
+                  }
+                }
+              ]}
+            >
+              <Input.TextArea
+                aria-label={i18nText(
+                  'settings',
+                  'auto.billing_rating_policy'
+                )}
+                autoSize={{ minRows: 4, maxRows: 12 }}
+                disabled={!ratingPolicyEnabled}
+              />
+            </Form.Item>
+          </Space>
           <Space align="start" wrap>
             <Form.Item
               name="effective_from"

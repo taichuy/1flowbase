@@ -111,8 +111,16 @@ where
                     .get("error_message_ref")
                     .and_then(Value::as_str)
                     .map(str::to_string),
-                usage_ledger_id: None,
-                cost_ledger_id: None,
+                usage_ledger_id: selected_attempt
+                    .get("billing")
+                    .and_then(|billing| billing.get("usage_ledger_id"))
+                    .and_then(Value::as_str)
+                    .and_then(|value| Uuid::parse_str(value).ok()),
+                cost_ledger_id: selected_attempt
+                    .get("billing")
+                    .and_then(|billing| billing.get("cost_ledger_id"))
+                    .and_then(Value::as_str)
+                    .and_then(|value| Uuid::parse_str(value).ok()),
                 response_ref: selected_attempt
                     .get("response_ref")
                     .and_then(Value::as_str)
@@ -198,8 +206,13 @@ pub(super) fn provider_request_log_task_from_attempt(
         .and_then(Value::as_bool)
         .unwrap_or(false);
     let usage = attempt.get("usage").cloned().unwrap_or_else(|| json!({}));
+    let input_tokens = usage_i64(&usage, "input_tokens");
     let output_tokens = usage_i64(&usage, "output_tokens");
-    let total_tokens = usage_i64(&usage, "total_tokens");
+    let total_tokens =
+        usage_i64(&usage, "total_tokens").or_else(|| match (input_tokens, output_tokens) {
+            (Some(input), Some(output)) => Some(input.saturating_add(output)),
+            _ => None,
+        });
     let input_cache_hit_tokens = usage_i64(&usage, "input_cache_hit_tokens")
         .or_else(|| usage_i64(&usage, "cache_read_tokens"))
         .or_else(|| usage_i64(&usage, "cached_input_tokens"));
@@ -219,6 +232,7 @@ pub(super) fn provider_request_log_task_from_attempt(
         raw_status
     };
     let first_token_at = parse_attempt_first_token_at(attempt);
+    let billing = attempt.get("billing");
     ProviderRequestLogTask {
         scope_id,
         attempt_id,
@@ -270,6 +284,26 @@ pub(super) fn provider_request_log_task_from_attempt(
             .and_then(Value::as_str)
             .unwrap_or("unknown")
             .to_string(),
+        pricing_provider_code: billing
+            .and_then(|value| value.get("pricing_provider_code"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        pricing_model_id: billing
+            .and_then(|value| value.get("pricing_model_id"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        total_cost: billing
+            .and_then(|value| value.get("total_cost"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        currency_code: billing
+            .and_then(|value| value.get("currency_code"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
+        billing_status: billing
+            .and_then(|value| value.get("billing_status"))
+            .and_then(Value::as_str)
+            .map(str::to_string),
         reasoning_effort: attempt
             .get("reasoning_effort")
             .and_then(Value::as_str)
@@ -280,7 +314,7 @@ pub(super) fn provider_request_log_task_from_attempt(
             .and_then(Value::as_str)
             .map(str::to_string),
         failed_after_first_token,
-        input_tokens: usage_i64(&usage, "input_tokens"),
+        input_tokens,
         output_tokens,
         total_tokens,
         input_cache_hit_tokens,
@@ -298,15 +332,6 @@ pub(super) fn provider_request_log_task_from_attempt(
                 .unwrap_or(i64::MAX),
         ),
     }
-}
-
-pub(in crate::orchestration_runtime) fn winner_attempt_id(
-    attempts: &[domain::ModelFailoverAttemptLedgerRecord],
-) -> Option<Uuid> {
-    attempts
-        .iter()
-        .find(|attempt| attempt.status == "succeeded")
-        .map(|attempt| attempt.id)
 }
 
 fn parse_attempt_first_token_at(attempt: &Value) -> Option<OffsetDateTime> {

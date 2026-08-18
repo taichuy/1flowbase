@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Empty, Flex, Input } from 'antd';
+import { Button, Empty, Flex, Input, Tag } from 'antd';
 import { Tabs } from 'antd';
 import { useNavigate } from '@tanstack/react-router';
 import { useAuthStore } from '../../../../state/auth-store';
@@ -102,6 +102,21 @@ export function PricingCatalogPanel() {
           formatPricingRate(
             row.cache_hit_token_unit_price,
             row.cache_hit_token_unit_size
+          )
+      },
+      {
+        key: 'rating_policy',
+        title: i18nText('settings', 'auto.billing_rating_policy'),
+        width: 180,
+        render: (_: unknown, row: PricingCatalogRule) =>
+          row.rating_policy_enabled ? (
+            <Tag color="blue">
+              {row.rating_policy.type === 'input_token_tiers'
+                ? i18nText('settings', 'auto.billing_input_token_tiers')
+                : i18nText('settings', 'auto.enabled')}
+            </Tag>
+          ) : (
+            i18nText('settings', 'auto.billing_no_rating_policy')
           )
       },
       {

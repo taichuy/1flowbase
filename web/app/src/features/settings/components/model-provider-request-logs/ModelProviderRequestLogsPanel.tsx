@@ -37,6 +37,7 @@ import {
   fetchSettingsModelProviderRequestLogs,
   settingsModelProviderRequestLogsQueryKey
 } from '../../api/model-providers';
+import { formatUsdAmount } from '../billing/pricing-rate-display';
 
 const PAGE_SIZE = 20;
 
@@ -188,6 +189,49 @@ export function ModelProviderRequestLogsPanel() {
         render: (_, row) => statusTag(row)
       },
       {
+        key: 'total_cost',
+        title: i18nText('settings', 'auto.request_log_cost'),
+        dataIndex: 'total_cost',
+        width: 120,
+        render: (value, row) =>
+          typeof value === 'string' && row.currency_code === 'USD'
+            ? `${formatUsdAmount(value)}$`
+            : '—'
+      },
+      {
+        key: 'billing_status',
+        title: i18nText('settings', 'auto.request_log_billing_status'),
+        dataIndex: 'billing_status',
+        width: 110,
+        render: (value) => {
+          if (value === 'settled') {
+            return (
+              <Tag color="success">
+                {i18nText('settings', 'auto.request_log_billing_settled')}
+              </Tag>
+            );
+          }
+          if (value === 'pending') {
+            return (
+              <Tag color="processing">
+                {i18nText('settings', 'auto.request_log_billing_pending')}
+              </Tag>
+            );
+          }
+          if (value === 'reconciliation_failed') {
+            return (
+              <Tag color="error">
+                {i18nText(
+                  'settings',
+                  'auto.request_log_billing_reconciliation_failed'
+                )}
+              </Tag>
+            );
+          }
+          return '—';
+        }
+      },
+      {
         title: i18nText('settings', 'auto.provider'),
         key: 'provider',
         width: 180,
@@ -206,6 +250,22 @@ export function ModelProviderRequestLogsPanel() {
         title: i18nText('settings', 'auto.request_log_model'),
         dataIndex: 'upstream_model_id',
         width: 160
+      },
+      {
+        key: 'pricing_provider_code',
+        title: i18nText('settings', 'auto.request_log_pricing_provider_code'),
+        dataIndex: 'pricing_provider_code',
+        defaultVisibility: 'hidden',
+        width: 150,
+        render: (value) => (typeof value === 'string' ? value : '—')
+      },
+      {
+        key: 'pricing_model_id',
+        title: i18nText('settings', 'auto.request_log_pricing_model_id'),
+        dataIndex: 'pricing_model_id',
+        defaultVisibility: 'hidden',
+        width: 160,
+        render: (value) => (typeof value === 'string' ? value : '—')
       },
       {
         key: 'reasoning_effort',

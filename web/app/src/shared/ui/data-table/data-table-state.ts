@@ -7,6 +7,7 @@ export type DataTableColumn<T extends object> = {
   key: string;
   title: string;
   width: number;
+  defaultVisibility?: 'visible' | 'hidden';
   minWidth?: number;
   align?: 'left' | 'center' | 'right';
   sizing?: 'fixed' | 'fill';
@@ -28,7 +29,9 @@ export type DataTableConfiguration = DataTableState & {
 export function getDefaultVisibleKeys<T extends object>(
   columns: Array<DataTableColumn<T>>
 ) {
-  return columns.map((column) => column.key);
+  return columns
+    .filter((column) => column.defaultVisibility !== 'hidden')
+    .map((column) => column.key);
 }
 
 export function getDefaultColumnWidths<T extends object>(
@@ -52,7 +55,7 @@ export function normalizeVisibleKeys<T extends object>(
   visibleColumnKeys: string[]
 ) {
   const defaultVisibleKeys = getDefaultVisibleKeys(columns);
-  const normalized = defaultVisibleKeys.filter((key) =>
+  const normalized = columns.map((column) => column.key).filter((key) =>
     visibleColumnKeys.includes(key)
   );
 
@@ -100,11 +103,15 @@ export function normalizeDataTableState<T extends object>(
   const storedVisibleColumnKeys = Array.isArray(state.visibleColumnKeys)
     ? normalizeVisibleKeys(columns, state.visibleColumnKeys)
     : fallback.visibleColumnKeys;
-  const visibleColumnKeys = getDefaultVisibleKeys(columns).filter(
-    (key) =>
-      storedVisibleColumnKeys.includes(key) ||
-      !Object.prototype.hasOwnProperty.call(parsedWidths, key)
-  );
+  const defaultVisibleKeys = getDefaultVisibleKeys(columns);
+  const visibleColumnKeys = columns
+    .map((column) => column.key)
+    .filter(
+      (key) =>
+        storedVisibleColumnKeys.includes(key) ||
+        (!Object.prototype.hasOwnProperty.call(parsedWidths, key) &&
+          defaultVisibleKeys.includes(key))
+    );
 
   return {
     visibleColumnKeys,

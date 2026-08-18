@@ -101,6 +101,8 @@ describe('billing settings panels', () => {
           local_time_end: null,
           priority: 0,
           enabled: true,
+          rating_policy_enabled: false,
+          rating_policy: {},
           source_kind: 'manual',
           source_catalog_id: null,
           source_version: null,
@@ -139,6 +141,8 @@ describe('billing settings panels', () => {
           local_time_end: null,
           priority: 0,
           enabled: true,
+          rating_policy_enabled: false,
+          rating_policy: {},
           source_kind: 'official',
           source_catalog_id: '10000000-0000-4000-8000-000000000001',
           source_version: '2026-08-18.1',
@@ -183,10 +187,42 @@ describe('billing settings panels', () => {
     expect(screen.getByText('1K / 0$')).toBeInTheDocument();
     expect(screen.getByText('1M / 5.00$')).toBeInTheDocument();
     expect(screen.getByText('1B / 0.000001$')).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: '生效时间' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: '失效时间' })
+    ).toBeInTheDocument();
+    expect(screen.getByText('永久有效')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('columnheader', { name: '时区' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByRole('combobox', { name: '字段配置' }));
+    const columnOptions = await screen.findByRole('listbox');
+    for (const name of [
+      '时区',
+      '适用星期',
+      '时段开始',
+      '时段结束',
+      '优先级'
+    ]) {
+      expect(
+        within(columnOptions).getByRole('option', { name })
+      ).toBeInTheDocument();
+    }
+    for (const name of ['适用星期', '时段开始', '时段结束']) {
+      fireEvent.click(within(columnOptions).getByRole('option', { name }));
+    }
+    expect(await screen.findByText('每天')).toBeInTheDocument();
+    expect(screen.getAllByText('不限')).toHaveLength(2);
+
     fireEvent.click(screen.getByRole('button', { name: /新增计费规则/ }));
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
     expect(screen.getByLabelText('输入 Token 单位')).toBeInTheDocument();
     expect(screen.getByLabelText('缓存命中单价')).toBeInTheDocument();
+    expect(screen.getByLabelText('启用特殊规则')).not.toBeChecked();
+    expect(screen.getByLabelText('特殊计费规则')).toBeDisabled();
   });
 
   test('submits pricing filters through the shared server-paginated table', async () => {

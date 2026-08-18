@@ -263,6 +263,15 @@ async fn assistant_conversation_projects_cancelled_partial_answer_status() {
         )
         .await
         .unwrap();
+        assert_eq!(
+            <PgControlPlaneStore as OrchestrationRuntimeRepository>::get_flow_run_assistant_conversation_id(
+                &store,
+                run.id,
+            )
+            .await
+            .unwrap(),
+            Some(conversation.conversation_id)
+        );
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::commit_flow_run_terminal(
             &store,
             &CommitFlowRunTerminalInput {

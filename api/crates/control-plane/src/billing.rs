@@ -277,6 +277,8 @@ pub struct PricingRule {
     pub local_time_end: Option<Time>,
     pub priority: i32,
     pub enabled: bool,
+    pub rating_policy_enabled: bool,
+    pub rating_policy: serde_json::Value,
     pub source_kind: String,
     pub source_catalog_id: Option<String>,
     pub source_version: Option<String>,
@@ -324,13 +326,177 @@ impl PricingRule {
         match (self.local_time_start, self.local_time_end) {
             (None, None) => {}
             (Some(start), Some(end)) if start < end => {}
+            (Some(start), Some(end)) if start > end && self.weekday_mask == 0b111_1111 => {}
             _ => return Err(anyhow!("pricing_local_time_range_invalid")),
         }
         if self.priority < 0 {
             return Err(anyhow!("pricing_priority_invalid"));
         }
+        if self.rating_policy_enabled {
+            validated_input_token_tier_policy(&self.rating_policy)?;
+        }
         Ok(())
     }
+}
+
+const RATING_POLICY_SCHEMA_V1: &str = "1flowbase.model-rating-policy/v1";
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InputTokenTierPolicyDocument {
+    schema_version: String,
+    #[serde(rename = "type")]
+    policy_type: String,
+    tiers: Vec<InputTokenTierDocument>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InputTokenTierDocument {
+    when: InputTokenThresholdDocument,
+    rates: TokenRateSetDocument,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InputTokenThresholdDocument {
+    operator: String,
+    value: i64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TokenRateSetDocument {
+    input: TokenRateDocument,
+    output: TokenRateDocument,
+    cache_hit: TokenRateDocument,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TokenRateDocument {
+    unit_size: i64,
+    unit_price: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TokenRate {
+    pub unit_size: i64,
+    pub unit_price: Decimal,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AppliedTokenRates {
+    pub input: TokenRate,
+    pub output: TokenRate,
+    pub cache_hit: TokenRate,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RatingPolicyMatch {
+    pub schema_version: &'static str,
+    pub policy_type: &'static str,
+    pub tier_index: usize,
+    pub input_tokens: i64,
+    pub operator: String,
+    pub threshold: i64,
+}
+
+fn token_rate(document: &TokenRateDocument) -> Result<TokenRate> {
+    let unit_price = document
+        .unit_price
+        .parse::<Decimal>()
+        .map_err(|_| anyhow!("rating_policy_invalid"))?;
+    if document.unit_size <= 0 || unit_price.is_sign_negative() {
+        return Err(anyhow!("rating_policy_invalid"));
+    }
+    Ok(TokenRate {
+        unit_size: document.unit_size,
+        unit_price,
+    })
+}
+
+fn validated_input_token_tier_policy(
+    value: &serde_json::Value,
+) -> Result<InputTokenTierPolicyDocument> {
+    let policy: InputTokenTierPolicyDocument =
+        serde_json::from_value(value.clone()).map_err(|_| anyhow!("rating_policy_invalid"))?;
+    if policy.schema_version != RATING_POLICY_SCHEMA_V1
+        || policy.policy_type != "input_token_tiers"
+        || policy.tiers.is_empty()
+    {
+        return Err(anyhow!("rating_policy_invalid"));
+    }
+    let mut previous_threshold = None;
+    for tier in &policy.tiers {
+        if tier.when.value < 0 || !matches!(tier.when.operator.as_str(), "gt" | "gte") {
+            return Err(anyhow!("rating_policy_invalid"));
+        }
+        if previous_threshold.is_some_and(|previous| tier.when.value <= previous) {
+            return Err(anyhow!("rating_policy_tiers_not_strictly_ascending"));
+        }
+        previous_threshold = Some(tier.when.value);
+        token_rate(&tier.rates.input)?;
+        token_rate(&tier.rates.output)?;
+        token_rate(&tier.rates.cache_hit)?;
+    }
+    Ok(policy)
+}
+
+fn base_token_rates(rule: &PricingRule) -> AppliedTokenRates {
+    AppliedTokenRates {
+        input: TokenRate {
+            unit_size: rule.input_token_unit_size,
+            unit_price: rule.input_token_unit_price,
+        },
+        output: TokenRate {
+            unit_size: rule.output_token_unit_size,
+            unit_price: rule.output_token_unit_price,
+        },
+        cache_hit: TokenRate {
+            unit_size: rule.cache_hit_token_unit_size,
+            unit_price: rule.cache_hit_token_unit_price,
+        },
+    }
+}
+
+fn applied_token_rates(
+    rule: &PricingRule,
+    input_tokens: i64,
+) -> Result<(AppliedTokenRates, Option<RatingPolicyMatch>)> {
+    if !rule.rating_policy_enabled {
+        return Ok((base_token_rates(rule), None));
+    }
+    let policy = validated_input_token_tier_policy(&rule.rating_policy)?;
+    let matched =
+        policy
+            .tiers
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, tier)| match tier.when.operator.as_str() {
+                "gt" => input_tokens > tier.when.value,
+                "gte" => input_tokens >= tier.when.value,
+                _ => false,
+            });
+    let Some((tier_index, tier)) = matched else {
+        return Ok((base_token_rates(rule), None));
+    };
+    Ok((
+        AppliedTokenRates {
+            input: token_rate(&tier.rates.input)?,
+            output: token_rate(&tier.rates.output)?,
+            cache_hit: token_rate(&tier.rates.cache_hit)?,
+        },
+        Some(RatingPolicyMatch {
+            schema_version: RATING_POLICY_SCHEMA_V1,
+            policy_type: "input_token_tiers",
+            tier_index,
+            input_tokens,
+            operator: tier.when.operator.clone(),
+            threshold: tier.when.value,
+        }),
+    ))
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -350,6 +516,8 @@ pub struct RatedTokenCost {
     pub output_cost: Decimal,
     pub cache_hit_cost: Decimal,
     pub total_cost: Decimal,
+    pub applied_rates: AppliedTokenRates,
+    pub rating_policy_match: Option<RatingPolicyMatch>,
 }
 
 pub fn rate_token_usage(rule: &PricingRule, usage: &TokenUsage) -> Result<RatedTokenCost> {
@@ -365,12 +533,13 @@ pub fn rate_token_usage(rule: &PricingRule, usage: &TokenUsage) -> Result<RatedT
     let ordinary_input_tokens = usage
         .input_cache_miss_tokens
         .unwrap_or_else(|| usage.input_tokens.saturating_sub(cache_hit_tokens));
-    let input_cost = Decimal::from(ordinary_input_tokens) * rule.input_token_unit_price
-        / Decimal::from(rule.input_token_unit_size);
-    let output_cost = Decimal::from(usage.output_tokens) * rule.output_token_unit_price
-        / Decimal::from(rule.output_token_unit_size);
-    let cache_hit_cost = Decimal::from(cache_hit_tokens) * rule.cache_hit_token_unit_price
-        / Decimal::from(rule.cache_hit_token_unit_size);
+    let (applied_rates, rating_policy_match) = applied_token_rates(rule, usage.input_tokens)?;
+    let input_cost = Decimal::from(ordinary_input_tokens) * applied_rates.input.unit_price
+        / Decimal::from(applied_rates.input.unit_size);
+    let output_cost = Decimal::from(usage.output_tokens) * applied_rates.output.unit_price
+        / Decimal::from(applied_rates.output.unit_size);
+    let cache_hit_cost = Decimal::from(cache_hit_tokens) * applied_rates.cache_hit.unit_price
+        / Decimal::from(applied_rates.cache_hit.unit_size);
     Ok(RatedTokenCost {
         ordinary_input_tokens,
         cache_hit_tokens,
@@ -379,6 +548,8 @@ pub fn rate_token_usage(rule: &PricingRule, usage: &TokenUsage) -> Result<RatedT
         output_cost,
         cache_hit_cost,
         total_cost: input_cost + output_cost + cache_hit_cost,
+        applied_rates,
+        rating_policy_match,
     })
 }
 
@@ -407,7 +578,8 @@ pub fn rule_matches_local_window(rule: &PricingRule, at: OffsetDateTime) -> Resu
     }
     Ok(match (rule.local_time_start, rule.local_time_end) {
         (None, None) => true,
-        (Some(start), Some(end)) => local.time() >= start && local.time() < end,
+        (Some(start), Some(end)) if start < end => local.time() >= start && local.time() < end,
+        (Some(start), Some(end)) if start > end => local.time() >= start || local.time() < end,
         _ => false,
     })
 }

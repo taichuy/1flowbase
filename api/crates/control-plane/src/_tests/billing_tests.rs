@@ -1,7 +1,10 @@
 use crate::billing::{rate_token_usage, PricingRule, TokenUsage};
 use rust_decimal::Decimal;
 use std::str::FromStr;
-use time::{macros::datetime, Weekday};
+use time::{
+    macros::{datetime, time},
+    Weekday,
+};
 
 fn rule() -> PricingRule {
     PricingRule {
@@ -23,6 +26,8 @@ fn rule() -> PricingRule {
         local_time_end: None,
         priority: 0,
         enabled: true,
+        rating_policy_enabled: false,
+        rating_policy: serde_json::json!({}),
         source_kind: "manual".to_string(),
         source_catalog_id: None,
         source_version: None,
@@ -32,6 +37,97 @@ fn rule() -> PricingRule {
         created_at: datetime!(2026-01-01 00:00 UTC),
         updated_at: datetime!(2026-01-01 00:00 UTC),
     }
+}
+
+#[test]
+fn input_token_tier_overrides_base_rates_at_the_configured_threshold() {
+    let mut tiered = rule();
+    tiered.rating_policy_enabled = true;
+    tiered.rating_policy = serde_json::json!({
+        "schema_version": "1flowbase.model-rating-policy/v1",
+        "type": "input_token_tiers",
+        "tiers": [{
+            "when": { "operator": "gt", "value": 272000 },
+            "rates": {
+                "input": { "unit_size": 1000000, "unit_price": "10" },
+                "output": { "unit_size": 1000000, "unit_price": "45" },
+                "cache_hit": { "unit_size": 1000000, "unit_price": "1" }
+            }
+        }]
+    });
+
+    let below = rate_token_usage(
+        &tiered,
+        &TokenUsage {
+            input_tokens: 272_000,
+            input_cache_hit_tokens: 0,
+            input_cache_miss_tokens: Some(272_000),
+            output_tokens: 0,
+        },
+    )
+    .unwrap();
+    assert!(below.rating_policy_match.is_none());
+    assert_eq!(
+        below.applied_rates.input.unit_price,
+        Decimal::from_str("1.25").unwrap()
+    );
+
+    let above = rate_token_usage(
+        &tiered,
+        &TokenUsage {
+            input_tokens: 300_000,
+            input_cache_hit_tokens: 0,
+            input_cache_miss_tokens: Some(300_000),
+            output_tokens: 10_000,
+        },
+    )
+    .unwrap();
+    assert_eq!(above.rating_policy_match.unwrap().tier_index, 0);
+    assert_eq!(above.applied_rates.input.unit_price, Decimal::TEN);
+    assert_eq!(above.applied_rates.output.unit_price, Decimal::from(45));
+    assert_eq!(above.total_cost, Decimal::from_str("3.45").unwrap());
+}
+
+#[test]
+fn enabled_rating_policy_rejects_unknown_or_ambiguous_tiers() {
+    let mut invalid = rule();
+    invalid.rating_policy_enabled = true;
+    invalid.rating_policy = serde_json::json!({
+        "schema_version": "1flowbase.model-rating-policy/v1",
+        "type": "unknown",
+        "tiers": []
+    });
+    assert_eq!(
+        invalid.validate().unwrap_err().to_string(),
+        "rating_policy_invalid"
+    );
+
+    invalid.rating_policy = serde_json::json!({
+        "schema_version": "1flowbase.model-rating-policy/v1",
+        "type": "input_token_tiers",
+        "tiers": [
+            {
+                "when": { "operator": "gte", "value": 200000 },
+                "rates": {
+                    "input": { "unit_size": 1000000, "unit_price": "2" },
+                    "output": { "unit_size": 1000000, "unit_price": "6" },
+                    "cache_hit": { "unit_size": 1000000, "unit_price": "0.5" }
+                }
+            },
+            {
+                "when": { "operator": "gt", "value": 200000 },
+                "rates": {
+                    "input": { "unit_size": 1000000, "unit_price": "4" },
+                    "output": { "unit_size": 1000000, "unit_price": "12" },
+                    "cache_hit": { "unit_size": 1000000, "unit_price": "1" }
+                }
+            }
+        ]
+    });
+    assert_eq!(
+        invalid.validate().unwrap_err().to_string(),
+        "rating_policy_tiers_not_strictly_ascending"
+    );
 }
 
 #[test]
@@ -90,6 +186,29 @@ fn pricing_rule_rejects_invalid_core_rates_and_currency() {
 fn weekday_mask_uses_monday_as_low_bit() {
     assert_eq!(crate::billing::weekday_bit(Weekday::Monday), 1);
     assert_eq!(crate::billing::weekday_bit(Weekday::Sunday), 64);
+}
+
+#[test]
+fn daily_window_can_end_at_midnight_without_a_pricing_gap() {
+    let mut wrapping = rule();
+    wrapping.local_time_start = Some(time!(10:00));
+    wrapping.local_time_end = Some(time!(00:00));
+    assert!(crate::billing::rule_matches_local_window(
+        &wrapping,
+        datetime!(2026-08-18 23:59:59.999_999_999 UTC)
+    )
+    .unwrap());
+    assert!(!crate::billing::rule_matches_local_window(
+        &wrapping,
+        datetime!(2026-08-18 09:59:59 UTC)
+    )
+    .unwrap());
+
+    wrapping.weekday_mask = 0b000_1111;
+    assert_eq!(
+        wrapping.validate().unwrap_err().to_string(),
+        "pricing_local_time_range_invalid"
+    );
 }
 
 #[test]

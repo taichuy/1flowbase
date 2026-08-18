@@ -110,6 +110,27 @@ describe('DataTable', () => {
     });
   });
 
+  test('keeps optional schema columns hidden by default while preserving them in column settings', () => {
+    const optionalColumns = [
+      ...columns,
+      {
+        key: 'timezone',
+        title: '时区',
+        width: 140,
+        defaultVisibility: 'hidden' as const
+      }
+    ] satisfies Array<DataTableColumn<SampleRow>>;
+
+    expect(normalizeDataTableState(optionalColumns, undefined)).toEqual({
+      visibleColumnKeys: ['name', 'owner'],
+      columnWidths: {
+        name: 180,
+        owner: 140,
+        timezone: 140
+      }
+    });
+  });
+
   test('renders rows with fixed scroll shell and pagination', async () => {
     render(
       <DataTable<SampleRow>

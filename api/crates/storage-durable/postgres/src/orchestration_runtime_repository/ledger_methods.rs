@@ -161,6 +161,119 @@ impl PgControlPlaneStore {
         Ok(map_cost_ledger_record(row))
     }
 
+    async fn finalize_model_billing(
+        &self,
+        input: &FinalizeModelBillingInput,
+    ) -> Result<FinalizedModelBilling> {
+        let mut tx = self.pool().begin().await?;
+        let usage_id = Uuid::now_v7();
+        let usage_row = sqlx::query(
+            r#"
+            insert into runtime_usage_ledger (
+                id, flow_run_id, node_run_id, span_id, failover_attempt_id,
+                provider_instance_id, gateway_route_id, model_id, upstream_model_id,
+                upstream_request_id, input_tokens, cached_input_tokens, output_tokens,
+                reasoning_output_tokens, total_tokens, input_cache_hit_tokens,
+                input_cache_miss_tokens, cache_read_tokens, cache_write_tokens,
+                price_snapshot, cost_snapshot, usage_status, raw_usage, normalized_usage
+            ) values (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+                $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24
+            )
+            returning id, flow_run_id, node_run_id, span_id, failover_attempt_id,
+                provider_instance_id, gateway_route_id, model_id, upstream_model_id,
+                upstream_request_id, input_tokens, cached_input_tokens, output_tokens,
+                reasoning_output_tokens, total_tokens, input_cache_hit_tokens,
+                input_cache_miss_tokens, cache_read_tokens, cache_write_tokens,
+                price_snapshot, cost_snapshot, usage_status, raw_usage, normalized_usage,
+                created_at
+            "#,
+        )
+        .bind(usage_id)
+        .bind(input.usage.flow_run_id)
+        .bind(input.usage.node_run_id)
+        .bind(input.usage.span_id)
+        .bind(input.usage.failover_attempt_id)
+        .bind(input.usage.provider_instance_id)
+        .bind(input.usage.gateway_route_id)
+        .bind(input.usage.model_id.as_deref())
+        .bind(input.usage.upstream_model_id.as_deref())
+        .bind(input.usage.upstream_request_id.as_deref())
+        .bind(input.usage.input_tokens)
+        .bind(input.usage.cached_input_tokens)
+        .bind(input.usage.output_tokens)
+        .bind(input.usage.reasoning_output_tokens)
+        .bind(input.usage.total_tokens)
+        .bind(input.usage.input_cache_hit_tokens)
+        .bind(input.usage.input_cache_miss_tokens)
+        .bind(input.usage.cache_read_tokens)
+        .bind(input.usage.cache_write_tokens)
+        .bind(&input.usage.price_snapshot)
+        .bind(&input.usage.cost_snapshot)
+        .bind(input.usage.usage_status.as_str())
+        .bind(&input.usage.raw_usage)
+        .bind(&input.usage.normalized_usage)
+        .fetch_one(&mut *tx)
+        .await?;
+        let usage = map_usage_ledger_record(usage_row)?;
+
+        let cost_id = Uuid::now_v7();
+        let cost_row = sqlx::query(
+            r#"
+            insert into runtime_cost_ledger (
+                id, flow_run_id, span_id, usage_ledger_id, billing_session_id,
+                workspace_id, provider_instance_id, provider_account_id,
+                gateway_route_id, model_id, upstream_model_id, price_snapshot,
+                raw_cost, normalized_cost, settlement_currency, cost_source, cost_status
+            ) values (
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
+                $12, $13::numeric, $14::numeric, $15, $16, $17
+            )
+            returning id, flow_run_id, span_id, usage_ledger_id, billing_session_id,
+                workspace_id, provider_instance_id, provider_account_id,
+                gateway_route_id, model_id, upstream_model_id, price_snapshot,
+                raw_cost::text as raw_cost, normalized_cost::text as normalized_cost,
+                settlement_currency, cost_source, cost_status, created_at
+            "#,
+        )
+        .bind(cost_id)
+        .bind(input.cost.flow_run_id.or(Some(input.usage.flow_run_id)))
+        .bind(input.cost.span_id)
+        .bind(usage.id)
+        .bind(input.settlement.billing_session_id)
+        .bind(input.cost.workspace_id)
+        .bind(input.cost.provider_instance_id)
+        .bind(input.cost.provider_account_id)
+        .bind(input.cost.gateway_route_id)
+        .bind(input.cost.model_id.as_deref())
+        .bind(input.cost.upstream_model_id.as_deref())
+        .bind(&input.cost.price_snapshot)
+        .bind(input.cost.raw_cost.as_deref())
+        .bind(input.cost.normalized_cost.as_deref())
+        .bind(input.cost.settlement_currency.as_deref())
+        .bind(&input.cost.cost_source)
+        .bind(&input.cost.cost_status)
+        .fetch_one(&mut *tx)
+        .await?;
+        let cost = map_cost_ledger_record(cost_row);
+
+        let credit = crate::billing_repository::settle_credit_in_transaction(
+            &mut tx,
+            &SettleCreditInput {
+                cost_ledger_id: Some(cost.id),
+                usage_ledger_id: Some(usage.id),
+                ..input.settlement.clone()
+            },
+        )
+        .await?;
+        tx.commit().await?;
+        Ok(FinalizedModelBilling {
+            usage,
+            cost,
+            credit,
+        })
+    }
+
     async fn append_credit_ledger(
         &self,
         input: &AppendCreditLedgerInput,

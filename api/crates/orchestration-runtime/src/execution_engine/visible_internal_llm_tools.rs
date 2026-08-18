@@ -116,6 +116,7 @@ where
             .unwrap_or_default();
     let mut route_events = pending_llm_tool_callback_visible_internal_events(node, variable_pool);
     let mut provider_events = Vec::new();
+    let mut round_metrics = LlmRoundMetricsAccumulator::default();
 
     loop {
         let mut execution = execute_llm_node_provider_round(
@@ -128,9 +129,11 @@ where
             invoker,
         )
         .await?;
+        round_metrics.absorb(&execution);
         provider_events.extend(execution.provider_events.clone());
 
         if execution.error_payload.is_some() {
+            round_metrics.apply(&mut execution);
             if !provider_events.is_empty() {
                 execution.provider_events = provider_events;
             }
@@ -139,6 +142,7 @@ where
 
         let Some(tool_calls) = output_tool_calls(&execution.output_payload) else {
             append_output_text(&mut visible_transcript, &execution.output_payload);
+            round_metrics.apply(&mut execution);
             return Ok(execution_with_visible_transcript(
                 execution,
                 visible_transcript,
@@ -149,6 +153,7 @@ where
 
         let internal_tool_calls = visible_internal_tool_calls(&tool_calls, &tools);
         if internal_tool_calls.is_empty() {
+            round_metrics.apply(&mut execution);
             if !provider_events.is_empty() {
                 execution.provider_events = provider_events;
             }
@@ -201,6 +206,7 @@ where
                     checkpoint_variable_pool,
                 )?;
                 execution.pending_callback = Some(callback_wait);
+                round_metrics.apply(&mut execution);
                 if !provider_events.is_empty() {
                     execution.provider_events = provider_events;
                 }
@@ -321,6 +327,7 @@ where
                 );
             }
             refresh_llm_tool_callback_wait_from_checkpoint(&mut callback_wait, llm_variable_pool)?;
+            round_metrics.apply(&mut execution);
             let mut pending_execution = execution_with_visible_transcript(
                 execution,
                 visible_transcript,
@@ -381,6 +388,7 @@ where
                         },
                     );
                     let pending_visible_transcript = format!("{visible_transcript}{branch_text}");
+                    round_metrics.apply(&mut execution);
                     let mut pending_execution = execution_with_visible_transcript(
                         execution,
                         pending_visible_transcript,

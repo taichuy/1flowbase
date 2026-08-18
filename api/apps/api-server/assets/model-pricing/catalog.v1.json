@@ -1,11 +1,1041 @@
 {
   "schema_version": "1flowbase.model-pricing/v1",
-  "catalog_version": "2026-08-17.3",
-  "generated_at": "2026-08-18T01:27:21.743Z",
+  "catalog_version": "2026-08-18.1",
+  "generated_at": "2026-08-18T03:29:25.746Z",
   "currency_code": "USD",
-  "rules_checksum": "sha256:c61c8357d7dd6e9e0afe4eb0e7140b9be3233fdb05bd5ff28c930181554cb467",
+  "rules_checksum": "sha256:1ceb2dc36cf49acfce9d7516e03c37fcbe9c44b8a8213210873268984d0c57c5",
   "signature": null,
   "rules": [
+    {
+      "id": "22000000-0000-4000-8000-000000000001",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "10",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "50",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "1",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "anthropic",
+      "upstream_model_id": "claude-fable-5",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "22000000-0000-4000-8000-000000000001",
+      "source_checksum": "sha256:1d172b49999565ee3cabb10ac270015e98802022ec2b36d6b24f89c1b8d653b8",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "22000000-0000-4000-8000-000000000004",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "1",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "5",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.1",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "anthropic",
+      "upstream_model_id": "claude-haiku-4-5-20251001",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "22000000-0000-4000-8000-000000000004",
+      "source_checksum": "sha256:18dbce56e983f7299820c94b36e1b4a572c400d2de40aae9a67c1e1da0b48d09",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "22000000-0000-4000-8000-000000000002",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "5",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "25",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.5",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "anthropic",
+      "upstream_model_id": "claude-opus-5",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "22000000-0000-4000-8000-000000000002",
+      "source_checksum": "sha256:d135a8e5a042e83c88c3a84dc372293dc8ccd36b4f3da4b35b21aea8bce6e7ff",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "22000000-0000-4000-8000-000000000003",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "2",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "10",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.2",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "anthropic",
+      "upstream_model_id": "claude-sonnet-5",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "22000000-0000-4000-8000-000000000003",
+      "source_checksum": "sha256:7183ce6076a384472ccbeccd1aeda08e48b7c886b69dec8215b270ebf9320770",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "24000000-0000-4000-8000-000000000001",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "0.22",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "0.66",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.007",
+      "effective_from": "2026-08-16T16:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": "00:00:00",
+      "local_time_end": "01:00:00",
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "time_band": "off_peak",
+        "source": "vendor_published"
+      },
+      "provider_code": "deepseek",
+      "upstream_model_id": "deepseek-v4-flash",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "24000000-0000-4000-8000-000000000001",
+      "source_checksum": "sha256:580aff9139b2191889ea4a821ba5e4b8ae1220fe0e377724d3e94a1722de0e3c",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "24000000-0000-4000-8000-000000000002",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "0.44",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "1.32",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.014",
+      "effective_from": "2026-08-16T16:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": "01:00:00",
+      "local_time_end": "04:00:00",
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "time_band": "peak",
+        "source": "vendor_published"
+      },
+      "provider_code": "deepseek",
+      "upstream_model_id": "deepseek-v4-flash",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "24000000-0000-4000-8000-000000000002",
+      "source_checksum": "sha256:01a91fe2b58cb86cc0395f1ee9abd62426d3700816dc9781e6f27f50e2442ec6",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "24000000-0000-4000-8000-000000000003",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "0.22",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "0.66",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.007",
+      "effective_from": "2026-08-16T16:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": "04:00:00",
+      "local_time_end": "06:00:00",
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "time_band": "off_peak",
+        "source": "vendor_published"
+      },
+      "provider_code": "deepseek",
+      "upstream_model_id": "deepseek-v4-flash",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "24000000-0000-4000-8000-000000000003",
+      "source_checksum": "sha256:10a2bf683f8b5128b3d299189d002e01e867db53e1ac5bb454dc31536d0e419a",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "24000000-0000-4000-8000-000000000004",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "0.44",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "1.32",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.014",
+      "effective_from": "2026-08-16T16:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": "06:00:00",
+      "local_time_end": "10:00:00",
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "time_band": "peak",
+        "source": "vendor_published"
+      },
+      "provider_code": "deepseek",
+      "upstream_model_id": "deepseek-v4-flash",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "24000000-0000-4000-8000-000000000004",
+      "source_checksum": "sha256:cfa94fd8c5614f9576bda3b32c4b64c08f52870800aa79626e18f3e8927bf9f4",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "24000000-0000-4000-8000-000000000005",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "0.22",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "0.66",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.007",
+      "effective_from": "2026-08-16T16:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": "10:00:00",
+      "local_time_end": "00:00:00",
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "time_band": "off_peak",
+        "source": "vendor_published"
+      },
+      "provider_code": "deepseek",
+      "upstream_model_id": "deepseek-v4-flash",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "24000000-0000-4000-8000-000000000005",
+      "source_checksum": "sha256:82d93edc821ab40f651e859e881148f96a44f35d33293634d5a20519ab3bed65",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "24000000-0000-4000-8000-000000000006",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "0.66",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "1.98",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.022",
+      "effective_from": "2026-08-16T16:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": "00:00:00",
+      "local_time_end": "01:00:00",
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "time_band": "off_peak",
+        "source": "vendor_published"
+      },
+      "provider_code": "deepseek",
+      "upstream_model_id": "deepseek-v4-pro",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "24000000-0000-4000-8000-000000000006",
+      "source_checksum": "sha256:a97fc6c7b5fcd7db891d62feab380a995c5b5ad0bef462633cb06fdf72246296",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "24000000-0000-4000-8000-000000000007",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "1.32",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "3.96",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.044",
+      "effective_from": "2026-08-16T16:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": "01:00:00",
+      "local_time_end": "04:00:00",
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "time_band": "peak",
+        "source": "vendor_published"
+      },
+      "provider_code": "deepseek",
+      "upstream_model_id": "deepseek-v4-pro",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "24000000-0000-4000-8000-000000000007",
+      "source_checksum": "sha256:817c73f6e041a9ad001beb9430d4aec06c1c4fe7bcfa6131bd1b383762bb0265",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "24000000-0000-4000-8000-000000000008",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "0.66",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "1.98",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.022",
+      "effective_from": "2026-08-16T16:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": "04:00:00",
+      "local_time_end": "06:00:00",
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "time_band": "off_peak",
+        "source": "vendor_published"
+      },
+      "provider_code": "deepseek",
+      "upstream_model_id": "deepseek-v4-pro",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "24000000-0000-4000-8000-000000000008",
+      "source_checksum": "sha256:38b03431baf18dd4a653a8edef370609bdcf4c1dee57680e794766ad56bd41e2",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "24000000-0000-4000-8000-000000000009",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "1.32",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "3.96",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.044",
+      "effective_from": "2026-08-16T16:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": "06:00:00",
+      "local_time_end": "10:00:00",
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "time_band": "peak",
+        "source": "vendor_published"
+      },
+      "provider_code": "deepseek",
+      "upstream_model_id": "deepseek-v4-pro",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "24000000-0000-4000-8000-000000000009",
+      "source_checksum": "sha256:0fc8f53f1018c45bb142ea33edc6b496b2aa9358951ba325382ef9f77423624f",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "24000000-0000-4000-8000-000000000010",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "0.66",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "1.98",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.022",
+      "effective_from": "2026-08-16T16:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": "10:00:00",
+      "local_time_end": "00:00:00",
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "time_band": "off_peak",
+        "source": "vendor_published"
+      },
+      "provider_code": "deepseek",
+      "upstream_model_id": "deepseek-v4-pro",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "24000000-0000-4000-8000-000000000010",
+      "source_checksum": "sha256:09e435f13fb8d9a74ff4e66259c437bd85a2e8459ffe5c1878a4ab1834e9224d",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "27000000-0000-4000-8000-000000000003",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "2",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "12",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.2",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": true,
+      "rating_policy": {
+        "schema_version": "1flowbase.model-rating-policy/v1",
+        "type": "input_token_tiers",
+        "tiers": [
+          {
+            "when": {
+              "operator": "gt",
+              "value": 200000
+            },
+            "rates": {
+              "input": {
+                "unit_size": 1000000,
+                "unit_price": "4"
+              },
+              "output": {
+                "unit_size": 1000000,
+                "unit_price": "18"
+              },
+              "cache_hit": {
+                "unit_size": 1000000,
+                "unit_price": "0.4"
+              }
+            }
+          }
+        ]
+      },
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "google",
+      "upstream_model_id": "gemini-3.1-pro-preview",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "27000000-0000-4000-8000-000000000003",
+      "source_checksum": "sha256:f834f428605b0cb92ff73db691353099ffcccc2b9e4cb343c722aa34c22d06ba",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "27000000-0000-4000-8000-000000000004",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "0.3",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "2.5",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.03",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "google",
+      "upstream_model_id": "gemini-3.5-flash-lite",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "27000000-0000-4000-8000-000000000004",
+      "source_checksum": "sha256:4ab70688c21fb51034c81c91dbf03edc7a4452ce6aa5911b8e96a93ee17203f9",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "27000000-0000-4000-8000-000000000001",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "0.75",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "3.75",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.075",
+      "effective_from": "2026-08-13T00:00:00Z",
+      "effective_to": "2027-01-01T00:00:00Z",
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api_promotion",
+        "source": "vendor_published"
+      },
+      "provider_code": "google",
+      "upstream_model_id": "gemini-3.7-flash",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "27000000-0000-4000-8000-000000000001",
+      "source_checksum": "sha256:61a961f0999561271f2823479ef4ddd78e0c0478c63a192b75821475999463ec",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "27000000-0000-4000-8000-000000000002",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "1.5",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "7.5",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.15",
+      "effective_from": "2027-01-01T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "google",
+      "upstream_model_id": "gemini-3.7-flash",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "27000000-0000-4000-8000-000000000002",
+      "source_checksum": "sha256:35d721b9df634138b4820538930b7a7063fbfe75842d682806f2334474ce76f6",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "25000000-0000-4000-8000-000000000003",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "0.95",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "4",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.16",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "kimi",
+      "upstream_model_id": "kimi-k2.6",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "25000000-0000-4000-8000-000000000003",
+      "source_checksum": "sha256:07e6c7c5d05acc645ce3683bf028818ed552274aebf787bb2a961a5d8065c6a8",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "25000000-0000-4000-8000-000000000002",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "0.95",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "4",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.19",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "kimi",
+      "upstream_model_id": "kimi-k2.7-code",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "25000000-0000-4000-8000-000000000002",
+      "source_checksum": "sha256:f8b008b2b88218d0f49e8b34686636f54fd78182573b5e2566aabe69819b4c02",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "25000000-0000-4000-8000-000000000001",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "3",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "15",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.3",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "kimi",
+      "upstream_model_id": "kimi-k3",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "25000000-0000-4000-8000-000000000001",
+      "source_checksum": "sha256:ec422205ebfba8f89269ddcabfda7aaed8baa21e550c135541952d376e9c53c6",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "21000000-0000-4000-8000-000000000003",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "0.2",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "1.2",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.02",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": true,
+      "rating_policy": {
+        "schema_version": "1flowbase.model-rating-policy/v1",
+        "type": "input_token_tiers",
+        "tiers": [
+          {
+            "when": {
+              "operator": "gt",
+              "value": 272000
+            },
+            "rates": {
+              "input": {
+                "unit_size": 1000000,
+                "unit_price": "0.4"
+              },
+              "output": {
+                "unit_size": 1000000,
+                "unit_price": "1.8"
+              },
+              "cache_hit": {
+                "unit_size": 1000000,
+                "unit_price": "0.04"
+              }
+            }
+          }
+        ]
+      },
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "openai",
+      "upstream_model_id": "gpt-5.6-luna",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "21000000-0000-4000-8000-000000000003",
+      "source_checksum": "sha256:606021f41a3838f7073b1bb3b2c77150e3706bc41bc1b2b7f79240ff32a9e912",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "21000000-0000-4000-8000-000000000001",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "5",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "30",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.5",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": true,
+      "rating_policy": {
+        "schema_version": "1flowbase.model-rating-policy/v1",
+        "type": "input_token_tiers",
+        "tiers": [
+          {
+            "when": {
+              "operator": "gt",
+              "value": 272000
+            },
+            "rates": {
+              "input": {
+                "unit_size": 1000000,
+                "unit_price": "10"
+              },
+              "output": {
+                "unit_size": 1000000,
+                "unit_price": "45"
+              },
+              "cache_hit": {
+                "unit_size": 1000000,
+                "unit_price": "1"
+              }
+            }
+          }
+        ]
+      },
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "openai",
+      "upstream_model_id": "gpt-5.6-sol",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "21000000-0000-4000-8000-000000000001",
+      "source_checksum": "sha256:a378185c60a34322f8ea8a31b1f544a91c8802b46ac07a59e72a452a08300760",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "21000000-0000-4000-8000-000000000002",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "2",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "12",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.2",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": true,
+      "rating_policy": {
+        "schema_version": "1flowbase.model-rating-policy/v1",
+        "type": "input_token_tiers",
+        "tiers": [
+          {
+            "when": {
+              "operator": "gt",
+              "value": 272000
+            },
+            "rates": {
+              "input": {
+                "unit_size": 1000000,
+                "unit_price": "4"
+              },
+              "output": {
+                "unit_size": 1000000,
+                "unit_price": "18"
+              },
+              "cache_hit": {
+                "unit_size": 1000000,
+                "unit_price": "0.4"
+              }
+            }
+          }
+        ]
+      },
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "openai",
+      "upstream_model_id": "gpt-5.6-terra",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "21000000-0000-4000-8000-000000000002",
+      "source_checksum": "sha256:9350800348eded2fe96a2d7140698fb5ecc2b6c312964edcacb986b9d902f5b6",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "26000000-0000-4000-8000-000000000002",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "2",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "6",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.3",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": true,
+      "rating_policy": {
+        "schema_version": "1flowbase.model-rating-policy/v1",
+        "type": "input_token_tiers",
+        "tiers": [
+          {
+            "when": {
+              "operator": "gte",
+              "value": 200000
+            },
+            "rates": {
+              "input": {
+                "unit_size": 1000000,
+                "unit_price": "4"
+              },
+              "output": {
+                "unit_size": 1000000,
+                "unit_price": "12"
+              },
+              "cache_hit": {
+                "unit_size": 1000000,
+                "unit_price": "0.6"
+              }
+            }
+          }
+        ]
+      },
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "xai",
+      "upstream_model_id": "grok-4.5",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "26000000-0000-4000-8000-000000000002",
+      "source_checksum": "sha256:756a9601788eea4180132d9a4f79e8a9b1ce7e72c27a2b5b6eb687b1b9714fd1",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "26000000-0000-4000-8000-000000000001",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "2",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "6",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.5",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": true,
+      "rating_policy": {
+        "schema_version": "1flowbase.model-rating-policy/v1",
+        "type": "input_token_tiers",
+        "tiers": [
+          {
+            "when": {
+              "operator": "gte",
+              "value": 200000
+            },
+            "rates": {
+              "input": {
+                "unit_size": 1000000,
+                "unit_price": "4"
+              },
+              "output": {
+                "unit_size": 1000000,
+                "unit_price": "12"
+              },
+              "cache_hit": {
+                "unit_size": 1000000,
+                "unit_price": "1"
+              }
+            }
+          }
+        ]
+      },
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "xai",
+      "upstream_model_id": "grok-4.6",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "26000000-0000-4000-8000-000000000001",
+      "source_checksum": "sha256:4257d035de3dc178ecdbb7071425f82bcff931ca609ba3f7551ce6fabba71ad9",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "23000000-0000-4000-8000-000000000003",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "0.6",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "2.2",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.11",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "zai",
+      "upstream_model_id": "glm-4.7",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "23000000-0000-4000-8000-000000000003",
+      "source_checksum": "sha256:e0c8cd3eadcb09487886e66fdc5065aaf559da598bb2190ef1cfebd696907a38",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "23000000-0000-4000-8000-000000000002",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "1.2",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "4",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.24",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "zai",
+      "upstream_model_id": "glm-5-turbo",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "23000000-0000-4000-8000-000000000002",
+      "source_checksum": "sha256:505120d1080d110838333e730dbad0cba7eff1a10ee913fe3135df35c8dd7430",
+      "source_version": "2026-08-18.1"
+    },
+    {
+      "id": "23000000-0000-4000-8000-000000000001",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "1.4",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "4.4",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0.26",
+      "effective_from": "2026-08-18T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "price_type": "standard_api",
+        "source": "vendor_published"
+      },
+      "provider_code": "zai",
+      "upstream_model_id": "glm-5.2",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "23000000-0000-4000-8000-000000000001",
+      "source_checksum": "sha256:b591a36093ce1bd16febba2fa912a9c4736de081801922212e4db22c59d7e581",
+      "source_version": "2026-08-18.1"
+    },
     {
       "id": "10000000-0000-4000-8000-000000000001",
       "input_token_unit_size": 1000000,
@@ -22,6 +1052,8 @@
       "local_time_end": null,
       "priority": 0,
       "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
       "extensions": {
         "pricing_policy": "global_zero_fallback",
         "owner": "model_pricing_catalog"
@@ -31,8 +1063,8 @@
       "currency_code": "USD",
       "source_kind": "official",
       "source_catalog_id": "10000000-0000-4000-8000-000000000001",
-      "source_checksum": "sha256:3d7deb82e47e3bf970cedb943b99d514932e95641e64d78e31ab5df0298f1339",
-      "source_version": "2026-08-17.3"
+      "source_checksum": "sha256:3fa6ddd6482e265abdce0b96d459fe12d0137a613355c36b16553aec7c853d5c",
+      "source_version": "2026-08-18.1"
     }
   ]
 }

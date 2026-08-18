@@ -13,7 +13,7 @@ function formatTokenUnit(value: number) {
   return `${scaled}${unit.suffix}`;
 }
 
-function formatUsdRate(value: string) {
+export function formatUsdAmount(value: string) {
   const [rawInteger = '0', rawFraction = ''] = value.split('.');
   const integer = rawInteger.replace(/^0+(?=\d)/u, '') || '0';
   const significantFraction = rawFraction.replace(/0+$/u, '');
@@ -24,5 +24,5 @@ function formatUsdRate(value: string) {
 }
 
 export function formatPricingRate(price: string, tokenUnit: number) {
-  return `${formatTokenUnit(tokenUnit)} / ${formatUsdRate(price)}$`;
+  return `${formatTokenUnit(tokenUnit)} / ${formatUsdAmount(price)}$`;
 }
