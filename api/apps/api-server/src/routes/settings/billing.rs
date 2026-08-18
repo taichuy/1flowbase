@@ -74,6 +74,25 @@ pub struct PricingRulesPageResponse {
     page_size: i64,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct PricingCatalogQuery {
+    provider_code: Option<String>,
+    upstream_model_id: Option<String>,
+    page: Option<usize>,
+    page_size: Option<usize>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PricingCatalogPageResponse {
+    schema_version: &'static str,
+    catalog_version: String,
+    currency_code: &'static str,
+    items: Vec<PricingRuleBody>,
+    total_count: usize,
+    page: usize,
+    page_size: usize,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct PricingRuleBody {
     pub id: Option<Uuid>,
@@ -423,10 +442,52 @@ pub async fn delete_pricing_rule(
 pub async fn get_pricing_catalog(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    Query(query): Query<PricingCatalogQuery>,
+) -> Result<Json<ApiSuccess<PricingCatalogPageResponse>>, ApiError> {
     require_session(&state, &headers).await?;
-    let value = bundled_pricing_catalog(&state)?.0;
-    Ok(Json(ApiSuccess::new(value)))
+    let (_, catalog) = bundled_pricing_catalog(&state)?;
+    let provider_filter = query
+        .provider_code
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let model_filter = query
+        .upstream_model_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let filtered = catalog
+        .rules
+        .into_iter()
+        .filter(|rule| {
+            provider_filter.is_none_or(|filter| {
+                rule.provider_code
+                    .to_lowercase()
+                    .contains(&filter.to_lowercase())
+            }) && model_filter.is_none_or(|filter| {
+                rule.upstream_model_id
+                    .to_lowercase()
+                    .contains(&filter.to_lowercase())
+            })
+        })
+        .collect::<Vec<_>>();
+    let page = query.page.unwrap_or(1).max(1);
+    let page_size = query.page_size.unwrap_or(20).clamp(1, 100);
+    let total_count = filtered.len();
+    let items = filtered
+        .into_iter()
+        .skip((page - 1) * page_size)
+        .take(page_size)
+        .collect();
+    Ok(Json(ApiSuccess::new(PricingCatalogPageResponse {
+        schema_version: "1flowbase.model-pricing-page/v1",
+        catalog_version: catalog.catalog_version,
+        currency_code: "USD",
+        items,
+        total_count,
+        page,
+        page_size,
+    })))
 }
 #[derive(Debug, Deserialize)]
 pub struct ImportCatalogBody {
@@ -435,6 +496,32 @@ pub struct ImportCatalogBody {
 #[derive(Debug, Deserialize)]
 struct BundledPricingCatalog {
     catalog_version: String,
+    rules: Vec<PricingRuleBody>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemotePricingCatalogIndex {
+    schema_version: String,
+    catalog_version: String,
+    currency_code: String,
+    total_rules: usize,
+    pages: Vec<RemotePricingCatalogPageReference>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemotePricingCatalogPageReference {
+    page: usize,
+    rule_count: usize,
+    checksum: String,
+    locator: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemotePricingCatalogPage {
+    schema_version: String,
+    catalog_version: String,
+    currency_code: String,
+    page: usize,
     rules: Vec<PricingRuleBody>,
 }
 
@@ -561,47 +648,73 @@ pub(crate) async fn sync_bundled_pricing_catalog<R: BillingRepository>(
 pub(crate) async fn sync_remote_pricing_catalog<R: BillingRepository>(
     repository: &R,
     actor_user_id: Uuid,
-    catalog_url: &str,
-    trusted_public_keys: &[plugin_framework::TrustedPublicKey],
+    catalog_index_url: &str,
 ) -> Result<usize, ApiError> {
-    let response = reqwest::Client::builder()
+    let client = reqwest::Client::builder()
         .connect_timeout(std::time::Duration::from_secs(2))
         .timeout(std::time::Duration::from_secs(8))
-        .build()?
-        .get(catalog_url)
-        .send()
-        .await?
-        .error_for_status()?;
-    if response
-        .content_length()
-        .is_some_and(|size| size > 2 * 1024 * 1024)
+        .build()?;
+    let index_bytes =
+        fetch_pricing_catalog_document(&client, catalog_index_url, 512 * 1024).await?;
+    let index: RemotePricingCatalogIndex = serde_json::from_slice(&index_bytes)?;
+    if index.schema_version != "1flowbase.model-pricing-index/v1"
+        || index.currency_code != "USD"
+        || index.pages.len() > 1_000
+        || index.total_rules > 100_000
     {
         return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-            "pricing_catalog_too_large",
+            "pricing_catalog_index",
         )
         .into());
     }
-    let bytes = response.bytes().await?;
-    if bytes.len() > 2 * 1024 * 1024 {
-        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-            "pricing_catalog_too_large",
-        )
-        .into());
-    }
-    let value: Value = serde_json::from_slice(&bytes)?;
-    let (value, catalog, rule_bytes, expected_checksum) = pricing_catalog_payload(value)?;
     let bundled_version = bundled_pricing_catalog_payload()?.1.catalog_version;
-    if !catalog_version_is_at_least(&catalog.catalog_version, &bundled_version) {
+    if !catalog_version_is_at_least(&index.catalog_version, &bundled_version) {
         return Ok(0);
     }
-    verify_catalog_signature_with_keys(
-        &value,
-        &rule_bytes,
-        &expected_checksum,
-        trusted_public_keys,
+    let page_locator_prefix = catalog_index_url.strip_suffix("index.json").ok_or(
+        control_plane::errors::ControlPlaneError::InvalidInput("pricing_catalog_index_url"),
     )?;
+    let mut rules = Vec::with_capacity(index.total_rules);
+    for (position, reference) in index.pages.into_iter().enumerate() {
+        let expected_page = position + 1;
+        let expected_locator = format!("{page_locator_prefix}pages/{expected_page}.json");
+        if reference.page != expected_page || reference.locator != expected_locator {
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                "pricing_catalog_page_locator",
+            )
+            .into());
+        }
+        let bytes =
+            fetch_pricing_catalog_document(&client, &reference.locator, 2 * 1024 * 1024).await?;
+        let actual_checksum = format!("sha256:{:x}", Sha256::digest(&bytes));
+        if actual_checksum != reference.checksum {
+            return Err(control_plane::errors::ControlPlaneError::Conflict(
+                "pricing_catalog_page_checksum_mismatch",
+            )
+            .into());
+        }
+        let page: RemotePricingCatalogPage = serde_json::from_slice(&bytes)?;
+        if page.schema_version != "1flowbase.model-pricing-page/v1"
+            || page.catalog_version != index.catalog_version
+            || page.currency_code != "USD"
+            || page.page != reference.page
+            || page.rules.len() != reference.rule_count
+        {
+            return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                "pricing_catalog_page",
+            )
+            .into());
+        }
+        rules.extend(page.rules);
+    }
+    if rules.len() != index.total_rules {
+        return Err(control_plane::errors::ControlPlaneError::Conflict(
+            "pricing_catalog_rule_count_mismatch",
+        )
+        .into());
+    }
     let mut synced = 0;
-    for body in catalog.rules {
+    for body in rules {
         let rule = body_to_rule(body, actor_user_id, None)?;
         if rule.source_kind != "official" || rule.source_catalog_id.is_none() {
             return Err(control_plane::errors::ControlPlaneError::InvalidInput(
@@ -615,6 +728,31 @@ pub(crate) async fn sync_remote_pricing_catalog<R: BillingRepository>(
         synced += 1;
     }
     Ok(synced)
+}
+
+async fn fetch_pricing_catalog_document(
+    client: &reqwest::Client,
+    url: &str,
+    size_limit: usize,
+) -> Result<Vec<u8>, ApiError> {
+    let response = client.get(url).send().await?.error_for_status()?;
+    if response
+        .content_length()
+        .is_some_and(|size| size > size_limit as u64)
+    {
+        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+            "pricing_catalog_too_large",
+        )
+        .into());
+    }
+    let bytes = response.bytes().await?;
+    if bytes.len() > size_limit {
+        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+            "pricing_catalog_too_large",
+        )
+        .into());
+    }
+    Ok(bytes.to_vec())
 }
 pub async fn import_pricing_catalog(
     State(state): State<Arc<ApiState>>,

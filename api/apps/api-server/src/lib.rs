@@ -375,15 +375,13 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         .await
         .map_err(|error| error.0)?;
     let catalog_url = format!(
-        "https://raw.githubusercontent.com/{}/main/model-pricing/catalog/v1/catalog.json",
+        "https://raw.githubusercontent.com/{}/main/model-pricing/catalog/v1/index.json",
         config.official_plugin_repository
     );
-    let pricing_trusted_keys = config.official_plugin_trusted_public_keys()?;
     if let Err(error) = routes::billing::sync_remote_pricing_catalog(
         &store,
         bootstrap_result.root_user_id,
         &catalog_url,
-        &pricing_trusted_keys,
     )
     .await
     {

@@ -113,15 +113,22 @@ vi.mock('@1flowbase/api-client', () => ({
   updateConsolePricingRule: vi.fn().mockResolvedValue({ id: 'pricing-rule-1' }),
   deleteConsolePricingRule: vi.fn().mockResolvedValue({ deleted: true }),
   getConsolePricingCatalog: vi.fn().mockResolvedValue({
-    schema_version: '1flowbase.model-pricing/v1',
+    schema_version: '1flowbase.model-pricing-page/v1',
     catalog_version: 'test',
     currency_code: 'USD',
-    rules: []
+    items: [],
+    total_count: 0,
+    page: 1,
+    page_size: 20
   }),
-  importConsolePricingCatalog: vi.fn().mockResolvedValue({ imported: 0, deleted: 0 }),
+  importConsolePricingCatalog: vi
+    .fn()
+    .mockResolvedValue({ imported: 0, deleted: 0 }),
   listConsoleCreditAccounts: vi.fn().mockResolvedValue([]),
   listConsoleCreditLedger: vi.fn().mockResolvedValue([]),
-  executeConsoleCreditCommand: vi.fn().mockResolvedValue({ id: 'credit-ledger-1' }),
+  executeConsoleCreditCommand: vi
+    .fn()
+    .mockResolvedValue({ id: 'credit-ledger-1' }),
   listConsolePermissions: vi.fn().mockResolvedValue([]),
   listConsoleRoles: vi.fn().mockResolvedValue([]),
   createConsoleRole: vi.fn().mockResolvedValue({ code: 'member' }),

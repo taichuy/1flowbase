@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Empty, Flex } from 'antd';
+import { Button, Empty, Flex, Input } from 'antd';
 import { Tabs } from 'antd';
 import { useNavigate } from '@tanstack/react-router';
 import { useAuthStore } from '../../../../state/auth-store';
@@ -10,7 +10,11 @@ import {
   DataTableColumnSettings,
   type DataTableColumn
 } from '../../../../shared/ui/data-table/DataTable';
-import { DataTableLayout } from '../../../../shared/ui/data-table/DataTableLayout';
+import {
+  DataTableFilterField,
+  DataTableFilterForm,
+  DataTableLayout
+} from '../../../../shared/ui/data-table/DataTableLayout';
 import { useUserPreferenceDataTableConfiguration } from '../../../../shared/ui/data-table/user-preference-data-table';
 import {
   getSettingsPricingCatalog,
@@ -24,22 +28,32 @@ import './pricing-catalog-panel.css';
 import { formatPricingRate } from './pricing-rate-display';
 
 const PAGE_SIZE = 20;
-type PricingCatalogRule = SettingsPricingCatalog['rules'][number];
+type PricingCatalogRule = SettingsPricingCatalog['items'][number];
 
 export function PricingCatalogPanel() {
   const navigate = useNavigate();
   const csrf = useAuthStore((s) => s.csrfToken);
   const client = useQueryClient();
   const [page, setPage] = useState(1);
+  const [providerCode, setProviderCode] = useState('');
+  const [upstreamModelId, setUpstreamModelId] = useState('');
+  const [appliedFilters, setAppliedFilters] = useState({
+    provider_code: undefined as string | undefined,
+    upstream_model_id: undefined as string | undefined
+  });
+  const filter = useMemo(
+    () => ({ ...appliedFilters, page, page_size: PAGE_SIZE }),
+    [appliedFilters, page]
+  );
   const catalog = useQuery({
-    queryKey: settingsPricingCatalogQueryKey,
-    queryFn: () => getSettingsPricingCatalog()
+    queryKey: settingsPricingCatalogQueryKey(filter),
+    queryFn: () => getSettingsPricingCatalog(filter)
   });
   const importing = useMutation({
     mutationFn: () => {
       if (!csrf) throw new Error('missing csrf token');
       return importSettingsPricingCatalog(
-        (catalog.data?.rules ?? []).map((rule) => rule.id),
+        (catalog.data?.items ?? []).map((rule) => rule.id),
         csrf
       );
     },
@@ -110,11 +124,25 @@ export function PricingCatalogPanel() {
     columns,
     preferenceKey: 'settings.pricing_catalog'
   });
-  const rows = catalog.data?.rules ?? [];
-  const currentPageRows = useMemo(
-    () => rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
-    [page, rows]
-  );
+  const rows = catalog.data?.items ?? [];
+
+  function applyFilters() {
+    setPage(1);
+    setAppliedFilters({
+      provider_code: providerCode.trim() || undefined,
+      upstream_model_id: upstreamModelId.trim() || undefined
+    });
+  }
+
+  function resetFilters() {
+    setProviderCode('');
+    setUpstreamModelId('');
+    setPage(1);
+    setAppliedFilters({
+      provider_code: undefined,
+      upstream_model_id: undefined
+    });
+  }
 
   return (
     <SettingsSectionSurface heightMode="fill">
@@ -145,17 +173,52 @@ export function PricingCatalogPanel() {
             }
           ]}
         />
-        <DataTableLayout>
+        <DataTableLayout
+          filters={
+            <DataTableFilterForm
+              ariaLabel={i18nText(
+                'settings',
+                'auto.translation_catalog_filter'
+              )}
+              resetLabel={i18nText('settings', 'auto.reset')}
+              submitLabel={i18nText(
+                'settings',
+                'auto.translation_catalog_filter'
+              )}
+              onReset={resetFilters}
+              onSubmit={applyFilters}
+            >
+              <DataTableFilterField
+                label={i18nText('settings', 'auto.billing_provider_code')}
+              >
+                <Input
+                  aria-label={i18nText(
+                    'settings',
+                    'auto.billing_provider_code'
+                  )}
+                  value={providerCode}
+                  onChange={(event) => setProviderCode(event.target.value)}
+                />
+              </DataTableFilterField>
+              <DataTableFilterField
+                label={i18nText('settings', 'auto.billing_model_id')}
+              >
+                <Input
+                  aria-label={i18nText('settings', 'auto.billing_model_id')}
+                  value={upstreamModelId}
+                  onChange={(event) => setUpstreamModelId(event.target.value)}
+                />
+              </DataTableFilterField>
+            </DataTableFilterForm>
+          }
+        >
           <DataTable<PricingCatalogRule>
             columns={columns}
             configuration={tableConfiguration}
-            dataSource={currentPageRows}
+            dataSource={rows}
             emptyText={
               <Empty
-                description={i18nText(
-                  'settings',
-                  'auto.billing_catalog_empty'
-                )}
+                description={i18nText('settings', 'auto.billing_catalog_empty')}
               />
             }
             loading={catalog.isLoading || catalog.isFetching}
@@ -178,7 +241,7 @@ export function PricingCatalogPanel() {
                 />
               </Flex>
             }
-            total={rows.length}
+            total={catalog.data?.total_count ?? 0}
             onPageChange={setPage}
           />
         </DataTableLayout>

@@ -10,6 +10,12 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const billingApi = vi.hoisted(() => ({
   settingsPricingRulesQueryKey: ['settings', 'billing', 'pricing-rules'],
+  settingsPricingCatalogQueryKey: vi.fn((filter) => [
+    'settings',
+    'billing',
+    'pricing-catalog',
+    filter
+  ]),
   settingsCreditAccountsQueryKey: ['settings', 'billing', 'credit-accounts'],
   settingsCreditLedgerQueryKey: vi.fn((userId?: string) => [
     'settings',
@@ -21,6 +27,8 @@ const billingApi = vi.hoisted(() => ({
   createSettingsPricingRule: vi.fn(),
   updateSettingsPricingRule: vi.fn(),
   deleteSettingsPricingRule: vi.fn(),
+  getSettingsPricingCatalog: vi.fn(),
+  importSettingsPricingCatalog: vi.fn(),
   listSettingsCreditAccounts: vi.fn(),
   listSettingsCreditLedger: vi.fn(),
   executeSettingsCreditCommand: vi.fn()
@@ -37,6 +45,7 @@ vi.mock('../api/members', () => membersApi);
 import { AppProviders } from '../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
 import { CreditManagementPanel } from '../components/billing/CreditManagementPanel';
+import { PricingCatalogPanel } from '../components/billing/PricingCatalogPanel';
 import { PricingRulesPanel } from '../components/billing/PricingRulesPanel';
 
 function authenticate() {
@@ -106,6 +115,45 @@ describe('billing settings panels', () => {
       page: 1,
       page_size: 20
     });
+    billingApi.getSettingsPricingCatalog.mockResolvedValue({
+      schema_version: '1flowbase.model-pricing-page/v1',
+      catalog_version: '2026-08-18.1',
+      currency_code: 'USD',
+      items: [
+        {
+          id: '10000000-0000-4000-8000-000000000001',
+          provider_code: 'zero',
+          upstream_model_id: 'any',
+          input_token_unit_size: 1_000_000,
+          input_token_unit_price: '0',
+          output_token_unit_size: 1_000_000,
+          output_token_unit_price: '0',
+          cache_hit_token_unit_size: 1_000_000,
+          cache_hit_token_unit_price: '0',
+          currency_code: 'USD',
+          effective_from: '2026-08-17T00:00:00Z',
+          effective_to: null,
+          timezone: 'UTC',
+          weekday_mask: 127,
+          local_time_start: null,
+          local_time_end: null,
+          priority: 0,
+          enabled: true,
+          source_kind: 'official',
+          source_catalog_id: '10000000-0000-4000-8000-000000000001',
+          source_version: '2026-08-18.1',
+          source_checksum: `sha256:${'a'.repeat(64)}`,
+          extensions: {}
+        }
+      ],
+      total_count: 1,
+      page: 1,
+      page_size: 20
+    });
+    billingApi.importSettingsPricingCatalog.mockResolvedValue({
+      imported: 1,
+      deleted: 0
+    });
     membersApi.fetchSettingsMembers.mockResolvedValue([
       { id: 'user-1', account: 'member', name: 'Member One' }
     ]);
@@ -156,6 +204,33 @@ describe('billing settings panels', () => {
           page_size: 20
         })
       )
+    );
+  });
+
+  test('loads and filters the official catalog through backend pagination', async () => {
+    renderWithProviders(<PricingCatalogPanel />);
+    expect(await screen.findByText('zero')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /更\s*新/ }));
+    await waitFor(() =>
+      expect(billingApi.importSettingsPricingCatalog).toHaveBeenCalledWith(
+        ['10000000-0000-4000-8000-000000000001'],
+        'csrf-123'
+      )
+    );
+    fireEvent.change(screen.getByLabelText('厂家 Code'), {
+      target: { value: 'openai' }
+    });
+    fireEvent.change(screen.getByLabelText('上游模型 ID'), {
+      target: { value: 'gpt' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: /筛\s*选/ }));
+    await waitFor(() =>
+      expect(billingApi.getSettingsPricingCatalog).toHaveBeenLastCalledWith({
+        provider_code: 'openai',
+        upstream_model_id: 'gpt',
+        page: 1,
+        page_size: 20
+      })
     );
   });
 

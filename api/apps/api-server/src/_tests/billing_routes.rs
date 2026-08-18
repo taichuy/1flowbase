@@ -22,7 +22,7 @@ async fn billing_routes_validate_pricing_and_manage_workspace_credit_ledger() {
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/settings/billing/pricing-catalog")
+                .uri("/api/console/settings/billing/pricing-catalog?provider_code=zer&upstream_model_id=an&page=1&page_size=1")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -32,12 +32,15 @@ async fn billing_routes_validate_pricing_and_manage_workspace_credit_ledger() {
     assert_eq!(catalog.status(), StatusCode::OK);
     let catalog_payload = response_json(catalog).await;
     assert_eq!(
-        catalog_payload["data"]["rules"].as_array().unwrap().len(),
+        catalog_payload["data"]["items"].as_array().unwrap().len(),
         1
     );
-    assert_eq!(catalog_payload["data"]["rules"][0]["provider_code"], "zero");
+    assert_eq!(catalog_payload["data"]["total_count"], 1);
+    assert_eq!(catalog_payload["data"]["page"], 1);
+    assert_eq!(catalog_payload["data"]["page_size"], 1);
+    assert_eq!(catalog_payload["data"]["items"][0]["provider_code"], "zero");
     assert_eq!(
-        catalog_payload["data"]["rules"][0]["upstream_model_id"],
+        catalog_payload["data"]["items"][0]["upstream_model_id"],
         "any"
     );
 

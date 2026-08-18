@@ -1,22 +1,19 @@
 {
   "schema_version": "1flowbase.model-pricing/v1",
   "catalog_version": "2026-08-17.3",
-  "generated_at": "2026-08-17T14:00:00Z",
+  "generated_at": "2026-08-18T01:27:21.743Z",
   "currency_code": "USD",
-  "rules_checksum": "sha256:a687a608b266ff23a6013984e260293a840db34296af4f7ffcbdc5a1b6451fba",
+  "rules_checksum": "sha256:c61c8357d7dd6e9e0afe4eb0e7140b9be3233fdb05bd5ff28c930181554cb467",
   "signature": null,
   "rules": [
     {
       "id": "10000000-0000-4000-8000-000000000001",
-      "provider_code": "zero",
-      "upstream_model_id": "any",
       "input_token_unit_size": 1000000,
       "input_token_unit_price": "0",
       "output_token_unit_size": 1000000,
       "output_token_unit_price": "0",
       "cache_hit_token_unit_size": 1000000,
       "cache_hit_token_unit_price": "0",
-      "currency_code": "USD",
       "effective_from": "2026-08-17T00:00:00Z",
       "effective_to": null,
       "timezone": "UTC",
@@ -25,14 +22,17 @@
       "local_time_end": null,
       "priority": 0,
       "enabled": true,
-      "source_kind": "official",
-      "source_catalog_id": "10000000-0000-4000-8000-000000000001",
-      "source_version": "2026-08-17.3",
-      "source_checksum": "sha256:8b0d406bb9b1bb66616f82f291a84180a99b55d41415f6f11bcfdc9d51b8cb82",
       "extensions": {
         "pricing_policy": "global_zero_fallback",
         "owner": "model_pricing_catalog"
-      }
+      },
+      "provider_code": "zero",
+      "upstream_model_id": "any",
+      "currency_code": "USD",
+      "source_kind": "official",
+      "source_catalog_id": "10000000-0000-4000-8000-000000000001",
+      "source_checksum": "sha256:3d7deb82e47e3bf970cedb943b99d514932e95641e64d78e31ab5df0298f1339",
+      "source_version": "2026-08-17.3"
     }
   ]
 }

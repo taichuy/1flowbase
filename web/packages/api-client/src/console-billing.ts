@@ -38,7 +38,17 @@ export interface ConsolePricingCatalog {
   schema_version: string;
   catalog_version: string;
   currency_code: 'USD';
-  rules: ConsolePricingRuleInput[];
+  items: ConsolePricingRuleInput[];
+  total_count: number;
+  page: number;
+  page_size: number;
+}
+
+export interface ConsolePricingCatalogFilter {
+  provider_code?: string;
+  upstream_model_id?: string;
+  page?: number;
+  page_size?: number;
 }
 
 export interface ConsolePricingRulesFilter {
@@ -165,9 +175,18 @@ export function deleteConsolePricingRule(
   });
 }
 
-export function getConsolePricingCatalog(baseUrl?: string) {
+export function getConsolePricingCatalog(
+  filter: ConsolePricingCatalogFilter = {},
+  baseUrl?: string
+) {
+  const search = new URLSearchParams();
+  if (filter.provider_code) search.set('provider_code', filter.provider_code);
+  if (filter.upstream_model_id)
+    search.set('upstream_model_id', filter.upstream_model_id);
+  search.set('page', String(filter.page ?? 1));
+  search.set('page_size', String(filter.page_size ?? 20));
   return apiFetch<ConsolePricingCatalog>({
-    path: '/api/console/settings/billing/pricing-catalog',
+    path: `/api/console/settings/billing/pricing-catalog?${search.toString()}`,
     baseUrl
   });
 }

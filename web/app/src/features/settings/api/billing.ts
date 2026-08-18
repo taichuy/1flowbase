@@ -1,3 +1,5 @@
+import type { ConsolePricingCatalogFilter } from '@1flowbase/api-client';
+
 export {
   createConsolePricingRule as createSettingsPricingRule,
   deleteConsolePricingRule as deleteSettingsPricingRule,
@@ -11,6 +13,7 @@ export {
   type ConsoleCreditAccount as SettingsCreditAccount,
   type ConsoleCreditTransaction as SettingsCreditTransaction,
   type ConsolePricingCatalog as SettingsPricingCatalog,
+  type ConsolePricingCatalogFilter as SettingsPricingCatalogFilter,
   type ConsolePricingRule as SettingsPricingRule,
   type ConsolePricingRuleInput as SettingsPricingRuleInput,
   type ConsolePricingRulesFilter as SettingsPricingRulesFilter,
@@ -22,11 +25,9 @@ export const settingsPricingRulesQueryKey = [
   'billing',
   'pricing-rules'
 ] as const;
-export const settingsPricingCatalogQueryKey = [
-  'settings',
-  'billing',
-  'pricing-catalog'
-] as const;
+export const settingsPricingCatalogQueryKey = (
+  filter: ConsolePricingCatalogFilter
+) => ['settings', 'billing', 'pricing-catalog', filter] as const;
 export const settingsCreditAccountsQueryKey = [
   'settings',
   'billing',

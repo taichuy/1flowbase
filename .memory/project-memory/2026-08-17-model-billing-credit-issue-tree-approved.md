@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 模型供应商计费与用户额度 Issue Tree 已批准
-summary: 模型计费与用户额度 Root 已本地交付并合入 dev；人工验收反馈进一步收敛为独立厂家计费目录、单条 zero/any 全局零价兜底、精确规则优先及 K/M/B 与有效小数展示，Root #1752 等待用户复验。
+summary: 模型计费与用户额度 Root 已本地交付并合入 dev；厂家计费目录进一步批准并实现为按 provider_code 组织的人工源、确定性自动分页、完整兼容快照，以及主仓服务端筛选分页，Root #1752 等待用户复验。
 keywords:
   - model-pricing
   - user-credit
@@ -16,8 +16,8 @@ match_when:
   - 增加厂家计费目录或用户金额后台
   - 开放插件额度命令与事件
 created_at: 2026-08-17 12
-updated_at: 2026-08-17 20
-last_verified_at: 2026-08-17 20
+updated_at: 2026-08-18 10
+last_verified_at: 2026-08-18 10
 decision_policy: verify_before_decision
 status: user_acceptance
 scope:
@@ -67,3 +67,11 @@ scope:
 - beta 提交 `7f7669fea` 与 `9ed6d1bae`，最终本地 dev merge `555dee792`，官方目录提交 `56815aa`；均未 push。
 - beta 数据库 migration、桌面/移动页面、前端、control-plane、storage-postgres 和 API 精确模块测试均已通过，证据已回填 Root #1752。
 - 集中 API 验证发现旧 Gateway 账本写入遗漏新 NOT NULL `transaction_id`；已按 migration 历史语义修复为 `transaction_id = ledger_id`，repository 1/1、beta Application Runtime 6/6、dev 合并态 6/6 通过。
+
+## 2026-08-18 10 厂家目录分页与组织
+
+- 人工源固定为 `model-pricing/@<provider_code>/<model-key>/pricing.json`；目录厂家必须与文件内 `provider_code` 一致，真实 `upstream_model_id` 以文件字段为准，不从路径反推。
+- 生成器确定性维护 `index.json`、`pages/*.json`、`search-index.json`、`_maintenance/catalog-state.json`、`catalog.json` 与 `dist/catalog-seed.json`；默认页大小 100。
+- `model-pricing` 继续使用独立领域 schema，不复用 Extension Catalog 的 `organization` 字段，不把厂家建模为插件。
+- 主仓启动远程同步改为读取并校验分页目录；扩展中心目录 API 与前端改为厂家/模型模糊筛选和服务端分页，兼容完整快照仍用于离线启动与按稳定规则 ID 导入。
+- 官方仓库和主仓改动均保留在各自工作树，尚未 commit/push；集中测试已通过，Playwright 本地 browser binary 缺失，因此页面截图未验证。
