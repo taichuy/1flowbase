@@ -830,6 +830,256 @@ async fn llm_node_retries_protocol_only_empty_response() {
 }
 
 #[tokio::test]
+async fn llm_node_retries_unknown_finish_reason_after_partial_text_without_exposing_it() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.config["retry_enabled"] = json!(true);
+    llm.config["max_retries"] = json!(1);
+    llm.config["retry_interval_ms"] = json!(0);
+    let (invoker, captured_inputs) = sequential_tool_output_invoker(vec![
+        ProviderInvocationOutput {
+            events: vec![
+                ProviderStreamEvent::TextDelta {
+                    delta: "I will search for the function next.".to_string(),
+                },
+                ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::Unknown,
+                },
+            ],
+            result: ProviderInvocationResult {
+                final_content: Some("I will search for the function next.".to_string()),
+                finish_reason: Some(ProviderFinishReason::Unknown),
+                provider_metadata: json!({
+                    "stream_termination": {
+                        "raw_finish_reason": "insufficient_system_resource",
+                        "raw_finish_reason_state": "present",
+                        "transport_termination": "done"
+                    }
+                }),
+                ..ProviderInvocationResult::default()
+            },
+            first_token_at: None,
+            time_to_first_token_ms: None,
+        },
+        provider_output(final_llm_response("retry succeeded")),
+    ]);
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": { "query": "hello" } }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+    let llm_trace = outcome
+        .node_traces
+        .iter()
+        .find(|trace| trace.node_id == "node-llm")
+        .expect("llm trace should exist");
+
+    assert_eq!(
+        captured_inputs.lock().expect("inputs mutex poisoned").len(),
+        2
+    );
+    assert_eq!(llm_trace.output_payload["text"], json!("retry succeeded"));
+    assert_eq!(
+        llm_trace.metrics_payload["attempts"][0]["status"],
+        json!("failed")
+    );
+    assert_eq!(
+        llm_trace.metrics_payload["attempts"][0]["error_code"],
+        json!("provider_invalid_response")
+    );
+    assert_eq!(
+        llm_trace.metrics_payload["attempts"][1]["retry_reason"],
+        json!("provider_invalid_response")
+    );
+}
+
+#[tokio::test]
+async fn unknown_finish_reason_fails_without_exposing_partial_text_or_losing_termination_evidence()
+{
+    let (invoker, captured_inputs) =
+        sequential_tool_output_invoker(vec![ProviderInvocationOutput {
+            events: vec![
+                ProviderStreamEvent::TextDelta {
+                    delta: "I will search for the function next.".to_string(),
+                },
+                ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::Unknown,
+                },
+            ],
+            result: ProviderInvocationResult {
+                final_content: Some("I will search for the function next.".to_string()),
+                finish_reason: Some(ProviderFinishReason::Unknown),
+                provider_metadata: json!({
+                    "stream_termination": {
+                        "raw_finish_reason": "insufficient_system_resource",
+                        "raw_finish_reason_status": "unrecognized",
+                        "transport_termination": "done"
+                    }
+                }),
+                ..ProviderInvocationResult::default()
+            },
+            first_token_at: None,
+            time_to_first_token_ms: None,
+        }]);
+
+    let outcome = start_flow_debug_run(
+        &llm_answer_plan(),
+        &json!({ "node-start": { "query": "hello" } }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        captured_inputs.lock().expect("inputs mutex poisoned").len(),
+        1
+    );
+    match outcome.stop_reason {
+        ExecutionStopReason::Failed(failure) => {
+            assert_eq!(
+                failure.error_payload["error_code"],
+                "provider_invalid_response"
+            );
+            assert_eq!(
+                failure.error_payload["stream_termination"]["raw_finish_reason"],
+                "insufficient_system_resource"
+            );
+            assert_eq!(
+                failure.error_payload["stream_termination"]["transport_termination"],
+                "done"
+            );
+        }
+        other => panic!("expected unknown finish reason failure, got {other:?}"),
+    }
+    let llm_trace = outcome
+        .node_traces
+        .iter()
+        .find(|trace| trace.node_id == "node-llm")
+        .expect("llm trace should exist");
+    assert!(llm_trace.output_payload.get("text").is_none());
+}
+
+#[tokio::test]
+async fn llm_node_retries_stop_with_reasoning_only_without_persisting_it_as_an_answer() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.config["retry_enabled"] = json!(true);
+    llm.config["max_retries"] = json!(1);
+    llm.config["retry_interval_ms"] = json!(0);
+    let (invoker, captured_inputs) = sequential_tool_output_invoker(vec![
+        ProviderInvocationOutput {
+            events: vec![
+                ProviderStreamEvent::ReasoningDelta {
+                    delta: "I will inspect the implementation next.".to_string(),
+                },
+                ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::Stop,
+                },
+            ],
+            result: ProviderInvocationResult {
+                finish_reason: Some(ProviderFinishReason::Stop),
+                ..ProviderInvocationResult::default()
+            },
+            first_token_at: None,
+            time_to_first_token_ms: None,
+        },
+        provider_output(final_llm_response("retry succeeded")),
+    ]);
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": { "query": "hello" } }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+    let llm_trace = outcome
+        .node_traces
+        .iter()
+        .find(|trace| trace.node_id == "node-llm")
+        .expect("llm trace should exist");
+
+    assert_eq!(
+        captured_inputs.lock().expect("inputs mutex poisoned").len(),
+        2
+    );
+    assert_eq!(llm_trace.output_payload["text"], json!("retry succeeded"));
+    assert_eq!(
+        llm_trace.metrics_payload["attempts"][0]["error_code"],
+        json!("provider_invalid_response")
+    );
+    assert_eq!(
+        llm_trace.metrics_payload["attempts"][1]["retry_reason"],
+        json!("provider_invalid_response")
+    );
+}
+
+#[tokio::test]
+async fn stop_with_reasoning_only_fails_without_projecting_reasoning_as_answer() {
+    let (invoker, captured_inputs) =
+        sequential_tool_output_invoker(vec![ProviderInvocationOutput {
+            events: vec![
+                ProviderStreamEvent::ReasoningDelta {
+                    delta: "I will inspect the implementation next.".to_string(),
+                },
+                ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::Stop,
+                },
+            ],
+            result: ProviderInvocationResult {
+                finish_reason: Some(ProviderFinishReason::Stop),
+                ..ProviderInvocationResult::default()
+            },
+            first_token_at: None,
+            time_to_first_token_ms: None,
+        }]);
+
+    let outcome = start_flow_debug_run(
+        &llm_answer_plan(),
+        &json!({ "node-start": { "query": "hello" } }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        captured_inputs.lock().expect("inputs mutex poisoned").len(),
+        1
+    );
+    match &outcome.stop_reason {
+        ExecutionStopReason::Failed(failure) => {
+            assert_eq!(
+                failure.error_payload["error_code"],
+                json!("provider_invalid_response")
+            );
+        }
+        other => panic!("expected reasoning-only provider failure, got {other:?}"),
+    }
+    let llm_trace = outcome
+        .node_traces
+        .iter()
+        .find(|trace| trace.node_id == "node-llm")
+        .expect("llm trace should exist");
+    assert!(llm_trace.output_payload.get("text").is_none());
+    assert_eq!(
+        llm_trace.debug_payload["provider_events"][0],
+        json!({
+            "type": "reasoning_delta",
+            "delta": "I will inspect the implementation next."
+        })
+    );
+}
+
+#[tokio::test]
 async fn llm_node_retry_consumes_output_protocol_failure_and_adds_model_feedback() {
     let mut plan = base_plan();
     let llm = plan

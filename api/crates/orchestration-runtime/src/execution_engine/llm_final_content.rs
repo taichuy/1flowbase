@@ -168,7 +168,7 @@ pub(super) fn has_valid_provider_output(
     result: &ProviderInvocationResult,
     native_responses_passthrough: bool,
 ) -> bool {
-    final_content.is_some_and(|content| !content.trim().is_empty())
+    final_content.is_some_and(|content| !strip_llm_think_tags(content).trim().is_empty())
         || !result.tool_calls.is_empty()
         || !result.mcp_calls.is_empty()
         || (native_responses_passthrough
@@ -176,6 +176,30 @@ pub(super) fn has_valid_provider_output(
                 .response_id
                 .as_deref()
                 .is_some_and(|response_id| !response_id.trim().is_empty()))
+}
+
+pub(super) fn reasoning_only_provider_output_error(
+    final_content: Option<&str>,
+    result: &ProviderInvocationResult,
+    native_responses_passthrough: bool,
+) -> Option<ProviderRuntimeError> {
+    let is_reasoning_only = final_content.is_some_and(|content| {
+        !content.trim().is_empty()
+            && strip_llm_think_tags(content).trim().is_empty()
+            && result.tool_calls.is_empty()
+            && result.mcp_calls.is_empty()
+            && !(native_responses_passthrough
+                && result
+                    .response_id
+                    .as_deref()
+                    .is_some_and(|response_id| !response_id.trim().is_empty()))
+    });
+    is_reasoning_only.then(|| {
+        ProviderRuntimeError::new(
+            ProviderRuntimeErrorKind::ProviderInvalidResponse,
+            "provider returned reasoning without visible content, tool calls, or MCP calls",
+        )
+    })
 }
 
 pub(super) fn build_empty_provider_response_error_payload(runtime: &CompiledLlmRuntime) -> Value {
@@ -199,6 +223,49 @@ pub(super) fn invalid_tool_call_finish_error(
                 "provider returned finish_reason=tool_call without tool_calls",
             )
         })
+}
+
+pub(super) fn invalid_finish_reason_error(
+    finish_reason: Option<&ProviderFinishReason>,
+    result: &ProviderInvocationResult,
+) -> Option<ProviderRuntimeError> {
+    let message = match finish_reason {
+        Some(ProviderFinishReason::Unknown) => "provider returned an unknown finish_reason",
+        None => "provider returned no finish_reason",
+        _ => return None,
+    };
+    let mut error =
+        ProviderRuntimeError::new(ProviderRuntimeErrorKind::ProviderInvalidResponse, message);
+    if let Some(stream_termination) =
+        provider_stream_termination_diagnostic(&result.provider_metadata)
+    {
+        error = error.with_provider_details(json!({
+            "stream_termination": stream_termination,
+        }));
+    }
+    Some(error)
+}
+
+fn provider_stream_termination_diagnostic(provider_metadata: &Value) -> Option<Value> {
+    let stream_termination = provider_metadata.get("stream_termination")?.as_object()?;
+    let raw_finish_reason = match stream_termination.get("raw_finish_reason") {
+        Some(Value::String(reason)) if reason.len() <= 256 => Value::String(reason.clone()),
+        Some(Value::Null) => Value::Null,
+        _ => return None,
+    };
+    let raw_finish_reason_status = stream_termination
+        .get("raw_finish_reason_status")
+        .and_then(Value::as_str)
+        .filter(|status| matches!(*status, "recognized" | "unrecognized" | "missing"))?;
+    let transport_termination = stream_termination
+        .get("transport_termination")
+        .and_then(Value::as_str)
+        .filter(|termination| matches!(*termination, "done" | "eof" | "error"))?;
+    Some(json!({
+        "raw_finish_reason": raw_finish_reason,
+        "raw_finish_reason_status": raw_finish_reason_status,
+        "transport_termination": transport_termination,
+    }))
 }
 
 pub(super) fn first_provider_error(
@@ -254,6 +321,13 @@ pub(crate) fn build_provider_error_payload(
     });
     if let Some(status_code) = provider_status_code(error.provider_details.as_ref()) {
         payload["status_code"] = json!(status_code);
+    }
+    if let Some(stream_termination) = error
+        .provider_details
+        .as_ref()
+        .and_then(provider_stream_termination_diagnostic)
+    {
+        payload["stream_termination"] = stream_termination;
     }
     if error.kind == ProviderRuntimeErrorKind::SemanticCapabilityUnsupported {
         if let Some(details) = error.provider_details.as_ref().and_then(Value::as_object) {

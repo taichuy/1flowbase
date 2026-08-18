@@ -668,9 +668,34 @@ where
             } else {
                 None
             };
+        let invalid_finish_reason_error = if stream_provider_error.is_none()
+            && output_protocol_failure.is_none()
+            && invalid_tool_call_error.is_none()
+        {
+            invalid_finish_reason_error(finish_reason.as_ref(), &output.result)
+        } else {
+            None
+        };
+        let retryable_invalid_finish_reason = invalid_finish_reason_error.is_some();
+        let reasoning_only_output_error = if stream_provider_error.is_none()
+            && output_protocol_failure.is_none()
+            && invalid_tool_call_error.is_none()
+            && invalid_finish_reason_error.is_none()
+        {
+            reasoning_only_provider_output_error(
+                final_content.as_deref(),
+                &output.result,
+                native_responses_passthrough,
+            )
+        } else {
+            None
+        };
+        let retryable_reasoning_only_output = reasoning_only_output_error.is_some();
         let terminal_finish_error = (stream_provider_error.is_none()
             && output_protocol_failure.is_none()
             && invalid_tool_call_error.is_none()
+            && invalid_finish_reason_error.is_none()
+            && reasoning_only_output_error.is_none()
             && matches!(finish_reason, Some(ProviderFinishReason::Error)))
         .then(|| {
             ProviderRuntimeError::normalize(
@@ -692,6 +717,8 @@ where
         };
         let provider_error = stream_provider_error
             .or(invalid_tool_call_error)
+            .or(invalid_finish_reason_error)
+            .or(reasoning_only_output_error)
             .or(terminal_finish_error);
         let failed_after_first_token = (provider_error.is_some()
             || output_protocol_failure.is_some())
@@ -765,7 +792,10 @@ where
         if let Some(error_payload) = &error_payload {
             failed_attempts.push(attempt);
             if retry_enabled
-                && (output_protocol_failure.is_some() || !failed_after_first_token)
+                && (output_protocol_failure.is_some()
+                    || retryable_invalid_finish_reason
+                    || retryable_reasoning_only_output
+                    || !failed_after_first_token)
                 && provider_error
                     .as_ref()
                     .is_none_or(provider_error_allows_retry)
