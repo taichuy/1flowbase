@@ -2179,7 +2179,7 @@ describe('EmbeddedAgentAssistant', () => {
     expect(await screen.findByText('历史最终回答')).toBeInTheDocument();
     expect(screen.queryByText('历史思考')).not.toBeInTheDocument();
     fireEvent.click(
-      screen.getByText(
+      await screen.findByText(
         i18nText('appShell', 'auto.assistant_activity_duration_seconds', {
           value1: 3
         })
