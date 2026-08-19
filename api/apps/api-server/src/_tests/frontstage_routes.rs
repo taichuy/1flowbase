@@ -111,11 +111,23 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
             ),
             (
                 "GET",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code/fragment",
+            ),
+            (
+                "GET",
                 "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/runtime-assembly",
+            ),
+            (
+                "PATCH",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code",
             ),
             (
                 "PUT",
                 "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code",
+            ),
+            (
+                "PUT",
+                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/block-descriptors",
             ),
             ("POST", "/api/console/frontstage/:workspace_id/pages/groups",),
             (
@@ -156,10 +168,6 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
             ),
             (
                 "POST",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/blocks",
-            ),
-            (
-                "POST",
                 "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/queries/dispatch",
             ),
             (
@@ -173,14 +181,6 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
             (
                 "POST",
                 "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/callable-interfaces/write-grants",
-            ),
-            (
-                "GET",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/block-codes/:code_ref",
-            ),
-            (
-                "PUT",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/block-codes/:code_ref",
             ),
         ])
     );

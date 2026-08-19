@@ -128,18 +128,6 @@ async fn frontstage_read_apis_require_visibility_but_writes_keep_design_permissi
     .await;
     let page_id = page_payload["data"]["page"]["id"].as_str().unwrap();
     let tab_id = page_payload["data"]["default_tab"]["id"].as_str().unwrap();
-    let code_path =
-        format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/block-codes/hero");
-    let (save_status, _) = send_json(
-        &app,
-        "PUT",
-        &code_path,
-        &root_cookie,
-        &root_csrf,
-        ready_executable_payload("export default 1;"),
-    )
-    .await;
-    assert_eq!(save_status, StatusCode::OK);
 
     let (viewer_cookie, viewer_csrf) =
         login_and_capture_cookie(&app, "frontstage-code-viewer", "temp-pass").await;
@@ -151,20 +139,6 @@ async fn frontstage_read_apis_require_visibility_but_writes_keep_design_permissi
     .await;
     assert_eq!(detail_status, StatusCode::NOT_FOUND);
 
-    let (read_status, _) = get_json(&app, &code_path, &viewer_cookie).await;
-    assert_eq!(read_status, StatusCode::NOT_FOUND);
-
-    let (write_status, _) = send_json(
-        &app,
-        "PUT",
-        &code_path,
-        &viewer_cookie,
-        &viewer_csrf,
-        ready_executable_payload("export default 2;"),
-    )
-    .await;
-    assert_eq!(write_status, StatusCode::OK);
-
     let (content_write_status, _) = save_page_content(
         &app,
         &viewer_cookie,
@@ -172,7 +146,7 @@ async fn frontstage_read_apis_require_visibility_but_writes_keep_design_permissi
         &workspace_id,
         page_id,
         tab_id,
-        json!({ "version": 1, "blocks": [] }),
+        json!({ "version": 1 }),
     )
     .await;
     assert_eq!(content_write_status, StatusCode::OK);
@@ -261,7 +235,7 @@ async fn ac_010_capability_dispatch_rejects_unknown_ids_and_rechecks_action_perm
     .await;
     let (member_cookie, member_csrf) =
         login_and_capture_cookie(&app, "frontstage-capability-designer", "temp-pass").await;
-    let save_params = json!({ "payload": { "version": 1, "blocks": [] } });
+    let save_params = json!({ "payload": { "version": 1 } });
 
     let (allowed_status, _) = dispatch_capability(
         &app,

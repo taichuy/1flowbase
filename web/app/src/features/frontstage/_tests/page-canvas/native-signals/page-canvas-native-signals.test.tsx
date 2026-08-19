@@ -18,6 +18,7 @@ import {
   PageCanvas,
   type FrontstagePageCanvasRuntimeContext
 } from '../../../components/PageCanvas';
+import type { FrontstageBlockInstance } from '../../../lib/page-document';
 import type {
   FrontstageNativePreparationSnapshot,
   FrontstageNativePreparedRuntime
@@ -51,6 +52,7 @@ describe('PageCanvas Native Signal context', () => {
       return <div data-testid="unrelated-ready">Unrelated</div>;
     };
     const content = pageContent();
+    const blocks = runtimeBlocks();
     const runtimeContext: FrontstagePageCanvasRuntimeContext = {
       currentUser: { id: 'user-1', displayName: 'Ada' },
       workspace: { id: 'workspace-1', name: 'Workspace' },
@@ -67,6 +69,7 @@ describe('PageCanvas Native Signal context', () => {
       <PageCanvas
         content={content}
         runtimeContext={runtimeContext}
+        runtimeBlocks={blocks}
         runtimePreparations={mountedPreparations}
       />
     );
@@ -114,6 +117,7 @@ describe('PageCanvas Native Signal context', () => {
       <PageCanvas
         content={content}
         runtimeContext={runtimeContext}
+        runtimeBlocks={blocks}
         runtimePreparations={[
           { ...mountedPreparations[0], mountIntent: null },
           mountedPreparations[1],
@@ -133,6 +137,7 @@ describe('PageCanvas Native Signal context', () => {
       <PageCanvas
         content={content}
         runtimeContext={runtimeContext}
+        runtimeBlocks={blocks}
         runtimePreparations={mountedPreparations}
       />
     );
@@ -160,6 +165,7 @@ describe('PageCanvas Native Signal context', () => {
     const diagnostics: string[] = [];
     const host: FrontstageNativeBlockContextHost = {
       interface: interfaceHandler,
+      openBlock: vi.fn(),
       observeApiCall: ({ status }) => observations.push(status),
       reportDiagnostic: ({ message }) => diagnostics.push(message)
     };
@@ -197,6 +203,7 @@ describe('PageCanvas Native Signal context', () => {
     render(
       <PageCanvas
         content={pageContent()}
+        runtimeBlocks={runtimeBlocks()}
         runtimePreparations={[preparation('producer', 0, ApiBlock)]}
         nativeContextHost={host}
       />
@@ -332,4 +339,51 @@ function pageContent(): FrontstagePageContent {
       }
     }
   });
+}
+
+function runtimeBlocks(): FrontstageBlockInstance[] {
+  const block = (
+    id: string,
+    order: number,
+    ports: NonNullable<FrontstageBlockInstance['ports']>
+  ): FrontstageBlockInstance => ({
+    id,
+    rendererVersion: 'v1',
+    sourceId: id,
+    codeRef: `${id}-code`,
+    sourceCodeRef: `${id}-code`,
+    catalog: {
+      providerCode: 'official',
+      installationId: 'installation-1'
+    },
+    contribution: {
+      pluginId: 'official.blocks',
+      pluginVersion: '1.0.0',
+      code: id
+    },
+    props: {},
+    ports,
+    presentation: { heightMode: 'auto', height: null },
+    layout: { order, region: 'main' },
+    order,
+    runtime: { kind: 'native_react', entry: `blocks/${id}.js`, hint: 'native_react' }
+  });
+
+  return [
+    block('producer', 0, {
+      inputs: [],
+      outputs: [{ name: 'total', schema: { type: 'integer' } }]
+    }),
+    block('consumer', 1, {
+      inputs: [
+        {
+          name: 'total',
+          schema: { type: 'integer' },
+          source: { block_id: 'producer', output: 'total', scope: 'tab' }
+        }
+      ],
+      outputs: []
+    }),
+    block('unrelated', 2, { inputs: [], outputs: [] })
+  ];
 }

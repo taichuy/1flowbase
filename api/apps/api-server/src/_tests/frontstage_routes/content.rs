@@ -1,7 +1,7 @@
 use super::*;
 
 #[tokio::test]
-async fn page_detail_and_block_code_round_trip_are_persisted_by_page_scope() {
+async fn page_detail_round_trip_is_persisted_by_page_scope() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let workspace_id = current_workspace_id(&app, &cookie).await;
@@ -38,81 +38,8 @@ async fn page_detail_and_block_code_round_trip_are_persisted_by_page_scope() {
         json!(schema_root_uid)
     );
 
-    let code_path =
-        format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/block-codes/hero");
-    let (save_status, save_payload) = send_json(
-        &app,
-        "PUT",
-        &code_path,
-        &cookie,
-        &csrf,
-        ready_executable_payload("export default function Hero() { return 'v1'; }"),
-    )
-    .await;
-    assert_eq!(save_status, StatusCode::OK);
-    assert_eq!(
-        save_payload["data"]["source_code"],
-        json!("export default function Hero() { return 'v1'; }")
-    );
-    assert_eq!(
-        save_payload["data"]["source_sha256"],
-        json!("ab3463e9dfd1db406efe272f203d2d1c5e4ce7b39fdef237c7c0ae1769b3a46e")
-    );
-
-    let (overwrite_status, overwrite_payload) = send_json(
-        &app,
-        "PUT",
-        &code_path,
-        &cookie,
-        &csrf,
-        ready_executable_payload("export default function Hero() { return 'v1'; }\n"),
-    )
-    .await;
-    assert_eq!(overwrite_status, StatusCode::OK);
-    assert_eq!(
-        overwrite_payload["data"]["source_sha256"],
-        json!("8a4cd977e632b3c538e8aa30fa97b8d0e3a4f220ec246bd29c89a427ebe3e599")
-    );
-    assert_ne!(
-        save_payload["data"]["source_sha256"],
-        overwrite_payload["data"]["source_sha256"]
-    );
-
-    let (read_status, read_payload) = get_json(&app, &code_path, &cookie).await;
-    assert_eq!(read_status, StatusCode::OK);
-    assert_eq!(read_payload["data"]["code_ref"], json!("hero"));
-    assert_eq!(
-        read_payload["data"]["source_code"],
-        json!("export default function Hero() { return 'v1'; }\n")
-    );
-    assert_eq!(
-        read_payload["data"]["source_sha256"],
-        overwrite_payload["data"]["source_sha256"]
-    );
-
-    let (_, other_page_payload) = create_page(
-        &app,
-        &cookie,
-        &csrf,
-        &workspace_id,
-        Some("Sibling"),
-        Some(group_id),
-        "b",
-    )
-    .await;
-    let other_page_id = other_page_payload["data"]["page"]["id"].as_str().unwrap();
-    let (other_page_code_status, _) = get_json(
-        &app,
-        &format!("/api/console/frontstage/{workspace_id}/pages/{other_page_id}/block-codes/hero"),
-        &cookie,
-    )
-    .await;
-    assert_eq!(other_page_code_status, StatusCode::NOT_FOUND);
-
     let delete_status = delete_node(&app, &cookie, &csrf, &workspace_id, group_id).await;
     assert_eq!(delete_status, StatusCode::NO_CONTENT);
-    let (deleted_code_status, _) = get_json(&app, &code_path, &cookie).await;
-    assert_eq!(deleted_code_status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -140,13 +67,7 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
     let document_payload = json!({
         "version": 1,
         "root_uid": schema_root_uid,
-        "blocks": [
-            {
-                "id": "hero-1",
-                "codeRef": "hero",
-                "renderer_version": "v1"
-            }
-        ]
+        "document_meta": { "layout": "canvas" }
     });
 
     let (save_status, save_payload) = save_page_content(
@@ -202,9 +123,12 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
     .await;
     assert_eq!(sibling_detail_status, StatusCode::OK);
     assert_eq!(
-        sibling_detail_payload["data"]["document"]["payload"]["blocks"],
-        json!([])
+        sibling_detail_payload["data"]["document"]["payload"]["version"],
+        json!(1)
     );
+    assert!(sibling_detail_payload["data"]["document"]["payload"]
+        .get("blocks")
+        .is_none());
 
     let other_csrf = switch_workspace(&app, &cookie, &csrf, &other_workspace_id.to_string()).await;
     let (_, other_page_payload) = create_page(
@@ -229,14 +153,14 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
         &workspace_id,
         other_page_id,
         other_tab_id,
-        json!({ "version": 1, "blocks": [] }),
+        json!({ "version": 1 }),
     )
     .await;
     assert_eq!(cross_workspace_status, StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
-async fn page_content_save_rejects_missing_or_unsupported_block_renderer_versions() {
+async fn page_content_save_rejects_legacy_block_payload() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let workspace_id = current_workspace_id(&app, &cookie).await;
@@ -253,7 +177,7 @@ async fn page_content_save_rejects_missing_or_unsupported_block_renderer_version
     let page_id = page_payload["data"]["page"]["id"].as_str().unwrap();
     let tab_id = page_payload["data"]["default_tab"]["id"].as_str().unwrap();
 
-    let (missing_status, missing_payload) = save_page_content(
+    let (status, payload) = save_page_content(
         &app,
         &cookie,
         &csrf,
@@ -262,61 +186,12 @@ async fn page_content_save_rejects_missing_or_unsupported_block_renderer_version
         tab_id,
         json!({
             "version": 1,
-            "blocks": [{ "id": "hero", "codeRef": "hero-code" }]
+            "blocks": []
         }),
     )
     .await;
-    assert_eq!(missing_status, StatusCode::BAD_REQUEST);
-    assert_eq!(
-        missing_payload["code"],
-        json!("frontstage_block_renderer_version_missing")
-    );
-
-    let (unsupported_status, unsupported_payload) = save_page_content(
-        &app,
-        &cookie,
-        &csrf,
-        &workspace_id,
-        page_id,
-        tab_id,
-        json!({
-            "version": 1,
-            "blocks": [{
-                "id": "future",
-                "codeRef": "future-code",
-                "renderer_version": "v2"
-            }]
-        }),
-    )
-    .await;
-    assert_eq!(unsupported_status, StatusCode::BAD_REQUEST);
-    assert_eq!(
-        unsupported_payload["code"],
-        json!("frontstage_block_renderer_version_unsupported")
-    );
-
-    let (accepted_status, accepted_payload) = save_page_content(
-        &app,
-        &cookie,
-        &csrf,
-        &workspace_id,
-        page_id,
-        tab_id,
-        json!({
-            "version": 1,
-            "blocks": [{
-                "id": "hero",
-                "codeRef": "hero-code",
-                "renderer_version": "v1"
-            }]
-        }),
-    )
-    .await;
-    assert_eq!(accepted_status, StatusCode::OK);
-    assert_eq!(
-        accepted_payload["data"]["document"]["payload"]["blocks"][0]["renderer_version"],
-        json!("v1")
-    );
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(payload["code"], json!("frontstage_document_blocks"));
 }
 
 #[tokio::test]
@@ -408,11 +283,7 @@ async fn page_tabs_keep_documents_isolated_and_reject_last_tab_deletion() {
     let second_document = json!({
         "version": 1,
         "root_uid": second_root_uid,
-        "blocks": [{
-            "id": "second",
-            "codeRef": "second-code",
-            "renderer_version": "v1"
-        }]
+        "document_meta": { "tab": "details" }
     });
     let (save_status, _) = save_page_content(
         &app,
@@ -433,9 +304,12 @@ async fn page_tabs_keep_documents_isolated_and_reject_last_tab_deletion() {
     )
     .await;
     assert_eq!(
-        default_detail["data"]["document"]["payload"]["blocks"],
-        json!([])
+        default_detail["data"]["document"]["payload"]["version"],
+        json!(1)
     );
+    assert!(default_detail["data"]["document"]["payload"]
+        .get("blocks")
+        .is_none());
     let (_, second_detail) = get_json(
         &app,
         &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{second_tab_id}"),

@@ -579,7 +579,7 @@ describe('console assistant client', () => {
 
     vi.stubGlobal('WebSocket', CapabilityLeaseWebSocket);
     await startConsoleAssistantRunWebSocket(
-      { application_id: 'application-1', query: 'hello', history: [] },
+      { application_id: 'application-1', query: 'hello' },
       'csrf-token',
       { onEvent: vi.fn() },
       {

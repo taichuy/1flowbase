@@ -98,6 +98,7 @@ function createContext(overrides: Partial<BlockContext> = {}): BlockContext {
       stream: vi.fn()
     },
     events: { emit: vi.fn() },
+    navigation: { openBlock: vi.fn() },
     theme: { mode: 'light', tokens: {} },
     ui: {},
     ...overrides

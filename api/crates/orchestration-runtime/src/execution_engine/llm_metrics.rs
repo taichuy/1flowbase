@@ -39,14 +39,14 @@ pub(crate) enum LlmRoutePreflightCause {
     Unsupported {
         code: ProviderProjectionErrorCode,
         block: ProviderCanonicalBlockLocator,
-        receipt: ProviderGenerateTranslationReceipt,
+        receipt: Box<ProviderGenerateTranslationReceipt>,
     },
     InvalidCanonicalContract {
         message: String,
     },
     MissingReasoningCapabilities {
         capabilities: BTreeSet<String>,
-        receipt: ProviderGenerateTranslationReceipt,
+        receipt: Box<ProviderGenerateTranslationReceipt>,
     },
 }
 
@@ -242,7 +242,7 @@ pub(crate) fn preflight_llm_route_candidate(
         } else {
             Err(LlmRoutePreflightCause::MissingReasoningCapabilities {
                 capabilities,
-                receipt: ProviderGenerateTranslationReceipt::default(),
+                receipt: Box::default(),
             })
         };
     };
@@ -257,7 +257,7 @@ pub(crate) fn preflight_llm_route_candidate(
             } => LlmRoutePreflightCause::Unsupported {
                 code,
                 block,
-                receipt,
+                receipt: Box::new(receipt),
             },
             ProviderGenerateProjectionError::InvalidContract { message } => {
                 LlmRoutePreflightCause::InvalidCanonicalContract { message }
@@ -274,7 +274,7 @@ pub(crate) fn preflight_llm_route_candidate(
     } else {
         Err(LlmRoutePreflightCause::MissingReasoningCapabilities {
             capabilities,
-            receipt: projection.receipt,
+            receipt: Box::new(projection.receipt),
         })
     }
 }
@@ -519,10 +519,7 @@ pub(super) fn take_provider_observability_metadata(
     result: &mut ProviderInvocationResult,
 ) -> ProviderObservabilityMetadata {
     let mut extracted = ProviderObservabilityMetadata::default();
-    loop {
-        let Some(metadata) = result.provider_metadata.as_object_mut() else {
-            break;
-        };
+    while let Some(metadata) = result.provider_metadata.as_object_mut() {
         let is_wrapper = metadata.contains_key("_1flowbase_upstream_provider_metadata")
             && (metadata.contains_key("_1flowbase_runtime_stream_timing")
                 || metadata.contains_key("_1flowbase_billing"));
