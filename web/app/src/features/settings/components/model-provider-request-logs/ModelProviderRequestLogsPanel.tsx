@@ -200,7 +200,7 @@ export function ModelProviderRequestLogsPanel() {
       },
       {
         key: 'billing_status',
-        title: i18nText('settings', 'auto.request_log_billing_status'),
+        title: i18nText('settings', 'auto.billing_status'),
         dataIndex: 'billing_status',
         width: 110,
         render: (value) => {

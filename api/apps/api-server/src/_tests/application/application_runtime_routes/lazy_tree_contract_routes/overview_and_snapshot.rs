@@ -51,7 +51,7 @@ async fn application_runtime_routes_run_overview_loads_detail_without_trace_node
 
 #[tokio::test]
 async fn application_runtime_routes_debug_snapshot_uses_orchestration_plane() {
-    let (state, _) = test_api_state_with_database_url().await;
+    let (state, database_url) = test_api_state_with_database_url().await;
     let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let provider_instance_id = create_ready_provider_instance(&app, &cookie, &csrf).await;
@@ -62,9 +62,9 @@ async fn application_runtime_routes_debug_snapshot_uses_orchestration_plane() {
         start_llm_preview(&app, &cookie, &csrf, &application_id, "总结退款政策").await;
     let flow_run_id = preview_payload["data"]["flow_run"]["id"].as_str().unwrap();
     let flow_run_uuid = Uuid::parse_str(flow_run_id).unwrap();
-    <MainDurableStore as OrchestrationRuntimeRepository>::append_runtime_event(
-        &state.store,
-        &AppendRuntimeEventInput {
+    seed_flow_run_history_events(
+        &database_url,
+        &[AppendRuntimeEventInput {
             flow_run_id: flow_run_uuid,
             node_run_id: None,
             span_id: None,
@@ -90,7 +90,7 @@ async fn application_runtime_routes_debug_snapshot_uses_orchestration_plane() {
             }),
             visibility: domain::RuntimeEventVisibility::Workspace,
             durability: domain::RuntimeEventDurability::Durable,
-        },
+        }],
     )
     .await
     .unwrap();

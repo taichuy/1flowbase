@@ -1,6 +1,5 @@
 use super::*;
-use control_plane::ports::{AppendRuntimeEventInput, OrchestrationRuntimeRepository};
-use storage_durable::MainDurableStore;
+use control_plane::ports::AppendRuntimeEventInput;
 
 #[tokio::test]
 async fn get_runtime_debug_stream_returns_trusted_parts() {
@@ -112,12 +111,8 @@ async fn get_runtime_debug_stream_uses_sequence_cursor_and_limit() {
     )
     .await;
 
-    let store = storage_durable::build_main_durable_postgres(&database_url)
-        .await
-        .unwrap()
-        .store;
-    let appended = <MainDurableStore as OrchestrationRuntimeRepository>::append_runtime_events(
-        &store,
+    let appended = seed_flow_run_history_events(
+        &database_url,
         &[
             AppendRuntimeEventInput {
                 flow_run_id: run_id,
@@ -153,7 +148,7 @@ async fn get_runtime_debug_stream_uses_sequence_cursor_and_limit() {
     )
     .await
     .unwrap();
-    let from_sequence = appended[0].sequence - 1;
+    let from_sequence = appended[0] - 1;
 
     let first_page = app
         .clone()
@@ -178,7 +173,7 @@ async fn get_runtime_debug_stream_uses_sequence_cursor_and_limit() {
     assert_eq!(first_payload["data"]["has_more"].as_bool(), Some(true));
     assert_eq!(
         first_payload["data"]["next_sequence"].as_i64(),
-        Some(appended[0].sequence)
+        Some(appended[0])
     );
     assert_eq!(first_payload["data"]["parts"].as_array().unwrap().len(), 1);
     assert_eq!(
@@ -193,7 +188,7 @@ async fn get_runtime_debug_stream_uses_sequence_cursor_and_limit() {
                 .method("GET")
                 .uri(format!(
                     "/api/console/applications/{application_id}/logs/runs/{run_id}/debug-stream?from_sequence={}&limit=1",
-                    appended[0].sequence
+                    appended[0]
                 ))
                 .header("cookie", &cookie)
                 .body(Body::empty())
@@ -209,7 +204,7 @@ async fn get_runtime_debug_stream_uses_sequence_cursor_and_limit() {
     assert_eq!(second_payload["data"]["has_more"].as_bool(), Some(false));
     assert_eq!(
         second_payload["data"]["next_sequence"].as_i64(),
-        Some(appended[1].sequence)
+        Some(appended[1])
     );
     assert_eq!(
         second_payload["data"]["parts"][0]["payload"]["payload"]["label"].as_str(),
@@ -351,14 +346,23 @@ async fn external_agent_opaque_boundary_keeps_external_trust_level() {
     let preview_payload: Value = serde_json::from_slice(&preview_body).unwrap();
     let run_id =
         Uuid::parse_str(preview_payload["data"]["flow_run"]["id"].as_str().unwrap()).unwrap();
-    let store = storage_durable::build_main_durable_postgres(&database_url)
-        .await
-        .unwrap()
-        .store;
-    control_plane::runtime_observability::mark_external_opaque_boundary(
-        &store,
-        run_id,
-        json!({ "reason": "external local tool execution not observed" }),
+    seed_flow_run_history_events(
+        &database_url,
+        &[AppendRuntimeEventInput {
+            flow_run_id: run_id,
+            node_run_id: None,
+            span_id: None,
+            parent_span_id: None,
+            event_type: "external_agent_opaque_boundary_marked".into(),
+            layer: domain::RuntimeEventLayer::Diagnostic,
+            source: domain::RuntimeEventSource::ExternalAgent,
+            trust_level: domain::RuntimeTrustLevel::ExternalOpaque,
+            item_id: None,
+            ledger_ref: None,
+            payload: json!({ "reason": "external local tool execution not observed" }),
+            visibility: domain::RuntimeEventVisibility::Workspace,
+            durability: domain::RuntimeEventDurability::Durable,
+        }],
     )
     .await
     .unwrap();

@@ -105,7 +105,7 @@ alter table frontstage_page_visibility_rules
     self.repository.save_frontstage_page_content(&input).await
   }
 
-  pub async fn get_block_code(&self, command: GetFrontstageBlockCodeCommand) -> Result<BlockCode> {
+  pub async fn get_block_node_code(&self, command: GetFrontstageBlockCodeCommand) -> Result<BlockCode> {
     let actor = self.repository.load_actor_context_for_workspace(command.actor_user_id, command.workspace_id).await?;
     self.ensure_page_visible(&actor, command.workspace_id, command.page_id).await?;
     self.repository.get_frontstage_block_code(command.workspace_id, command.page_id, &command.code_ref).await
@@ -138,7 +138,7 @@ alter table frontstage_page_visibility_rules
     self.repository.save_frontstage_page_content(&input).await
   }
 
-  pub async fn get_block_code(&self, command: GetFrontstageBlockCodeCommand) -> Result<BlockCode> {
+  pub async fn get_block_node_code(&self, command: GetFrontstageBlockCodeCommand) -> Result<BlockCode> {
     self.ensure_existing_page(command.workspace_id, command.page_id).await?;
     self.repository.get_frontstage_block_code(command.workspace_id, command.page_id, &command.code_ref).await
   }
@@ -148,6 +148,12 @@ alter table frontstage_page_visibility_rules
     self.repository.save_frontstage_block_code(&input).await
   }
 }`
+  );
+
+  writeFile(
+    repoRoot,
+    'api/crates/control-plane/src/frontstage/block_tree.rs',
+    '// block tree service methods live in mod.rs for this fixture\n'
   );
 
   writeFile(

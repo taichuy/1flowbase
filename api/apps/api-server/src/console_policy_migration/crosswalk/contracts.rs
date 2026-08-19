@@ -221,6 +221,15 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     core_simple_settings(
         "system.members",
         &[
+            "billing.credit.adjust",
+            "billing.credit.charge",
+            "billing.credit.disable",
+            "billing.credit.enable",
+            "billing.credit.grant",
+            "billing.credit.refund",
+            "billing.credit_accounts.list",
+            "billing.credit_accounts.view",
+            "billing.credit_ledger.list",
             "members.create",
             "members.delete",
             "members.disable",
@@ -242,6 +251,12 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
     core_simple_settings(
         "system.model-providers",
         &[
+            "billing.pricing_catalog.import",
+            "billing.pricing_catalog.view",
+            "billing.pricing_rules.create",
+            "billing.pricing_rules.delete",
+            "billing.pricing_rules.list",
+            "billing.pricing_rules.update",
             "model_provider_plugins.artifact.install",
             "model_provider_plugins.artifact.refresh",
             "model_provider_plugins.families.delete",

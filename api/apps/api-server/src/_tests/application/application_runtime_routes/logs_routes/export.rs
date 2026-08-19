@@ -512,8 +512,8 @@ async fn application_runtime_routes_logs_export_json_trace_dump_preserves_detail
     let pool = sqlx::PgPool::connect(&database_url).await.unwrap();
     let run_uuid = Uuid::parse_str(&run_id).unwrap();
     let llm_node_run_id = latest_llm_node_run_id(&pool, run_uuid).await;
-    <MainDurableStore as OrchestrationRuntimeRepository>::update_node_run(
-        &state.store,
+    seed_node_run_history(
+        &database_url,
         &UpdateNodeRunInput {
             node_run_id: llm_node_run_id,
             status: domain::NodeRunStatus::Failed,

@@ -188,6 +188,11 @@ fn model_provider_request_log_contract_matches_all_seeded_physical_fields() {
         ("plugin_id", String, false, false),
         ("protocol", String, true, false),
         ("upstream_model_id", String, true, false),
+        ("pricing_provider_code", String, false, false),
+        ("pricing_model_id", String, false, false),
+        ("total_cost", Number, false, false),
+        ("currency_code", String, false, false),
+        ("billing_status", String, false, false),
         ("reasoning_effort", String, false, false),
         ("status", String, true, false),
         ("error_code", String, false, false),
@@ -221,6 +226,12 @@ fn model_provider_request_log_contract_matches_all_seeded_physical_fields() {
         include_str!(
             "../../../storage-durable/postgres/migrations/20260816130000_add_provider_request_log_plugin_cache_snapshots.sql"
         ),
+        include_str!(
+            "../../../storage-durable/postgres/migrations/20260818120000_add_provider_request_log_billing_snapshot.sql"
+        ),
+        include_str!(
+            "../../../storage-durable/postgres/migrations/20260818130000_add_provider_request_log_billing_status.sql"
+        ),
     ];
     for (code, field_kind, is_required, is_unique) in expected {
         let field = contract
@@ -243,18 +254,52 @@ fn model_provider_request_log_contract_matches_all_seeded_physical_fields() {
             .flat_map(|migration| migration.lines())
             .find(|line| {
                 line.trim_start().starts_with("('") && line.contains(&format!(", '{code}', "))
-            })
-            .unwrap_or_else(|| panic!("missing migration seed row for {code}"));
-        let expected_seed_contract = format!(
-            ", '{}', {}, {},",
-            field_kind.as_str(),
-            is_required,
-            is_unique
-        );
-        assert!(
-            seeded_row.contains(&expected_seed_contract),
-            "migration seed mismatch for {code}: expected {expected_seed_contract} in {seeded_row}"
-        );
+            });
+        let Some(seeded_row) = seeded_row else {
+            // billing_status is seeded via a dedicated single-field insert
+            // whose contract flags are column-position literals, not a values
+            // row.
+            assert_eq!(
+                code, "billing_status",
+                "missing migration seed row for {code}"
+            );
+            let migration = migrations
+                .iter()
+                .find(|migration| migration.contains("'billing_status',"))
+                .expect("missing billing_status seed migration");
+            assert!(
+                migration.contains(&format!("'{}',", field_kind.as_str())),
+                "billing_status seed migration must declare kind {}",
+                field_kind.as_str()
+            );
+            assert!(!is_required && !is_unique);
+            continue;
+        };
+        if seeded_row.contains(" true,") || seeded_row.contains(" false,") {
+            let expected_seed_contract = format!(
+                ", '{}', {}, {},",
+                field_kind.as_str(),
+                is_required,
+                is_unique
+            );
+            assert!(
+                seeded_row.contains(&expected_seed_contract),
+                "migration seed mismatch for {code}: expected {expected_seed_contract} in {seeded_row}"
+            );
+        } else {
+            // Billing snapshot rows carry only (id, code, title, kind,
+            // sort_order); is_required / is_unique are select-level `false`
+            // literals in that migration.
+            assert!(
+                seeded_row.contains(&format!(", '{}', ", field_kind.as_str())),
+                "migration seed kind mismatch for {code}: expected {} in {seeded_row}",
+                field_kind.as_str()
+            );
+            assert!(
+                !is_required && !is_unique,
+                "flagless seed row for {code} only supports optional non-unique fields"
+            );
+        }
     }
 }
 

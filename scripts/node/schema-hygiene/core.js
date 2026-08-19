@@ -557,7 +557,7 @@ function parseCreateTable(statement, context) {
 
 function parseCreateIndex(statement, context) {
   const cleaned = stripSqlComments(statement).replace(/\s+/gu, ' ').trim();
-  const match = /^create\s+(unique\s+)?index\s+(?:concurrently\s+)?(?:if\s+not\s+exists\s+)?("[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*)\s+on\s+(?:only\s+)?([a-zA-Z0-9_."$]+)(?:\s+using\s+([a-zA-Z_][a-zA-Z0-9_$]*))?\s*\(([\s\S]+)\)(?:\s+where\s+([\s\S]+))?$/iu.exec(cleaned);
+  const match = /^create\s+(unique\s+)?index\s+(?:concurrently\s+)?(?:if\s+not\s+exists\s+)?("[^"]+"|[a-zA-Z_][a-zA-Z0-9_$]*)\s+on\s+(?:only\s+)?([a-zA-Z0-9_."$]+)(?:\s+using\s+([a-zA-Z_][a-zA-Z0-9_$]*))?\s*\(([\s\S]+)\)(?:\s+nulls\s+not\s+distinct)?(?:\s+where\s+([\s\S]+))?$/iu.exec(cleaned);
   if (!match) {
     context.parseErrors.push(createParseError(context, 'unsupported-create-index', statement));
     return;
