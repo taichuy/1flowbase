@@ -1,4 +1,5 @@
 import {
+  authenticateConsoleModelProviderInstance,
   clearConsoleModelProviderRequestLogsBatch,
   createConsoleModelProviderInstance,
   deleteConsoleModelProviderInstance,
@@ -17,6 +18,8 @@ import {
   validateConsoleModelProviderInstance,
   type ConsoleModelProviderCatalogEntry,
   type ConsoleModelProviderCatalogResponse,
+  type ConsoleModelProviderAuthOperation,
+  type ConsoleAuthenticateModelProviderInstanceResult,
   type ConsoleModelProviderInstance,
   type ConsoleModelProviderMainInstance,
   type ConsoleModelProviderModelCatalog,
@@ -36,6 +39,10 @@ import {
 
 export type SettingsModelProviderCatalogEntry =
   ConsoleModelProviderCatalogEntry;
+export type SettingsModelProviderAuthOperation =
+  ConsoleModelProviderAuthOperation;
+export type SettingsAuthenticateModelProviderInstanceResult =
+  ConsoleAuthenticateModelProviderInstanceResult;
 export type SettingsModelProviderInstance = ConsoleModelProviderInstance;
 export type SettingsModelProviderOptions = ConsoleModelProviderOptions;
 export type SettingsModelProviderPricingTarget =
@@ -196,6 +203,21 @@ function localizeCatalogEntryConfigSchema(
 ) {
   return {
     ...entry,
+    ...(entry.auth
+      ? {
+          auth: {
+            ...entry.auth,
+            actions: entry.auth.actions.map((action) => ({
+              ...action,
+              label: resolveCatalogLocalizedValue(
+                response,
+                entry.namespace,
+                action.label
+              )
+            }))
+          }
+        }
+      : {}),
     form_schema: entry.form_schema.map((field) => {
       const label = resolveOptionalCatalogLocalizedValue(
         response,
@@ -306,6 +328,18 @@ export function validateSettingsModelProviderInstance(
   csrfToken: string
 ) {
   return validateConsoleModelProviderInstance(instanceId, csrfToken);
+}
+
+export function authenticateSettingsModelProviderInstance(
+  instanceId: string,
+  operation: SettingsModelProviderAuthOperation,
+  csrfToken: string
+) {
+  return authenticateConsoleModelProviderInstance(
+    instanceId,
+    operation,
+    csrfToken
+  );
 }
 
 export function refreshSettingsModelProviderModels(

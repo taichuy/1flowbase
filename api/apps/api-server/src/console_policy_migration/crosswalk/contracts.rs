@@ -255,6 +255,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "model_providers.catalog.view",
             "model_providers.instances.create",
             "model_providers.instances.delete",
+            "model_providers.instances.authenticate",
             "model_providers.instances.models.refresh",
             "model_providers.instances.models.view",
             "model_providers.instances.secrets.reveal",

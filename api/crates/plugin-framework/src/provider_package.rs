@@ -15,8 +15,8 @@ use crate::{
         LegacyInstalledManifestEligibility, PluginManifestV1,
     },
     provider_contract::{
-        ModelDiscoveryMode, PluginFormOption, PluginFormSchema, ProviderModelDescriptor,
-        ProviderModelSource,
+        ModelDiscoveryMode, PluginFormOption, PluginFormSchema, ProviderAuthManifest,
+        ProviderModelDescriptor, ProviderModelSource,
     },
 };
 
@@ -97,6 +97,7 @@ pub struct ProviderDefinition {
     pub supports_model_fetch_without_credentials: bool,
     pub parameter_form: Option<PluginFormSchema>,
     pub form_schema: Vec<ProviderConfigField>,
+    pub auth: Option<ProviderAuthManifest>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -163,6 +164,9 @@ impl ProviderPackage {
                 raw_provider.provider_code, provider_code
             )));
         }
+        if let Some(auth) = raw_provider.auth.as_ref() {
+            validate_provider_auth(auth)?;
+        }
 
         let provider = ProviderDefinition {
             provider_code: raw_provider.provider_code.clone(),
@@ -179,6 +183,7 @@ impl ProviderPackage {
                 .supports_model_fetch_without_credentials,
             parameter_form: raw_provider.parameter_form,
             form_schema: raw_provider.config_schema,
+            auth: raw_provider.auth,
         };
 
         let i18n = load_i18n_catalog(&root.join("i18n"))?;
@@ -237,6 +242,8 @@ struct RawProviderDefinition {
     parameter_form: Option<PluginFormSchema>,
     #[serde(default)]
     config_schema: Vec<ProviderConfigField>,
+    #[serde(default)]
+    auth: Option<ProviderAuthManifest>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -283,6 +290,39 @@ fn validate_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> {
         _ => {
             return Err(PluginFrameworkError::invalid_provider_package(
                 "model provider package must declare execution_mode=process_per_call with runtime.protocol=stdio_json or execution_mode=stateful_provider_worker with runtime.protocol=stdio_json_worker",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn validate_provider_auth(auth: &ProviderAuthManifest) -> FrameworkResult<()> {
+    let mut action_codes = std::collections::BTreeSet::new();
+    for action in &auth.actions {
+        if action.code.trim().is_empty() || action.label.trim().is_empty() {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "provider auth actions must declare non-empty code and label",
+            ));
+        }
+        if !action_codes.insert(action.code.as_str()) {
+            return Err(PluginFrameworkError::invalid_provider_package(format!(
+                "duplicate provider auth action: {}",
+                action.code
+            )));
+        }
+        if action.user_action_kinds.is_empty() {
+            return Err(PluginFrameworkError::invalid_provider_package(format!(
+                "provider auth action must declare user_action_kinds: {}",
+                action.code
+            )));
+        }
+    }
+
+    let mut secret_keys = std::collections::BTreeSet::new();
+    for key in &auth.managed_secret_keys {
+        if key.trim().is_empty() || !secret_keys.insert(key.as_str()) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "provider auth managed_secret_keys must be non-empty and unique",
             ));
         }
     }

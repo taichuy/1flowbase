@@ -10,7 +10,6 @@ use async_trait::async_trait;
 use plugin_framework::{
     provider_contract::{ProviderInvocationInput, ProviderModelDescriptor, ProviderStreamEvent},
     provider_package::ProviderPackage,
-    ProviderConfigField,
 };
 use serde_json::{json, Value};
 use time::OffsetDateTime;

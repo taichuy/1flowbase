@@ -298,3 +298,74 @@ fn provider_package_requires_default_locale_bundle() {
     let error = ProviderPackage::load_from_dir(fixture.path()).unwrap_err();
     assert!(error.to_string().contains("en_US"));
 }
+
+#[test]
+fn provider_package_projects_declared_auth_actions_and_managed_secret_keys() {
+    let fixture = make_package_fixture();
+    let provider_path = fixture.path().join("provider/acme_openai_compatible.yaml");
+    let provider = fs::read_to_string(&provider_path).unwrap();
+    fs::write(
+        provider_path,
+        format!(
+            r#"{provider}
+auth:
+  actions:
+    - code: device_code
+      label: Device Code
+      user_action_kinds:
+        - device_code
+    - code: callback
+      label: Paste Callback URL
+      user_action_kinds:
+        - paste_callback_url
+  managed_secret_keys:
+    - access_token
+    - refresh_token
+"#
+        ),
+    )
+    .unwrap();
+
+    let package = ProviderPackage::load_from_dir(fixture.path()).unwrap();
+    let auth = package
+        .provider
+        .auth
+        .expect("auth declaration should be projected from provider package");
+    assert_eq!(auth.actions.len(), 2);
+    assert_eq!(auth.actions[0].code, "device_code");
+    assert_eq!(
+        auth.managed_secret_keys,
+        vec!["access_token", "refresh_token"]
+    );
+}
+
+#[test]
+fn provider_package_rejects_duplicate_auth_actions_and_managed_secret_keys() {
+    let fixture = make_package_fixture();
+    let provider_path = fixture.path().join("provider/acme_openai_compatible.yaml");
+    let provider = fs::read_to_string(&provider_path).unwrap();
+    fs::write(
+        provider_path,
+        format!(
+            r#"{provider}
+auth:
+  actions:
+    - code: device_code
+      label: Device Code
+      user_action_kinds:
+        - device_code
+    - code: device_code
+      label: Another Device Code
+      user_action_kinds:
+        - device_code
+  managed_secret_keys:
+    - access_token
+    - access_token
+"#
+        ),
+    )
+    .unwrap();
+
+    let error = ProviderPackage::load_from_dir(fixture.path()).unwrap_err();
+    assert!(error.to_string().contains("duplicate provider auth action"));
+}

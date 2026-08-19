@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use anyhow::Result;
-use plugin_framework::provider_contract::{ProviderModelDescriptor, ProviderModelSource};
+use plugin_framework::provider_contract::{
+    ProviderAuthManifest, ProviderModelDescriptor, ProviderModelSource,
+};
 use plugin_framework::provider_package::ProviderConfigField;
 use serde_json::Value;
 use uuid::Uuid;
@@ -34,6 +36,7 @@ struct ModelProviderCatalogProjectionView {
     model_discovery_mode: String,
     supports_model_fetch_without_credentials: bool,
     form_schema: Vec<ProviderConfigField>,
+    auth: Option<ProviderAuthManifest>,
     predefined_models: Vec<ProviderModelDescriptor>,
     i18n_bundles: BTreeMap<String, Value>,
     catalog_refresh_status: String,
@@ -118,6 +121,7 @@ where
             desired_state: installation.desired_state.as_str().to_string(),
             availability_status: artifact.availability_status.as_str().to_string(),
             form_schema: projection.form_schema,
+            auth: projection.auth,
             predefined_models: projection
                 .predefined_models
                 .into_iter()
@@ -345,6 +349,7 @@ fn model_provider_projection_view(
             model_discovery_mode: "unknown".to_string(),
             supports_model_fetch_without_credentials: false,
             form_schema: Vec::new(),
+            auth: None,
             predefined_models: Vec::new(),
             i18n_bundles: BTreeMap::new(),
             catalog_refresh_status: domain::PluginPackageCatalogProjectionStatus::Missing
@@ -368,6 +373,11 @@ fn model_provider_projection_view(
             .and_then(Value::as_bool)
             .unwrap_or(false),
         form_schema: projection_provider_array(snapshot, "form_schema"),
+        auth: snapshot
+            .get("provider")
+            .and_then(|provider| provider.get("auth"))
+            .cloned()
+            .and_then(|value| serde_json::from_value(value).ok()),
         predefined_models: projection_provider_array(snapshot, "predefined_models"),
         i18n_bundles: projection_i18n_bundles(snapshot),
         catalog_refresh_status: projection.projection_status.as_str().to_string(),

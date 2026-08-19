@@ -51,6 +51,17 @@ pub trait ProviderRuntimePort: Send + Sync {
         installation: &domain::LocalPluginInstallationRecord,
         provider_config: serde_json::Value,
     ) -> anyhow::Result<serde_json::Value>;
+    async fn authenticate_provider(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        provider_config: serde_json::Value,
+        operation: plugin_framework::provider_contract::ProviderAuthOperation,
+    ) -> anyhow::Result<plugin_framework::provider_contract::ProviderAuthResult> {
+        let _ = installation;
+        let _ = provider_config;
+        let _ = operation;
+        anyhow::bail!("provider authentication is not implemented by this runtime")
+    }
     async fn list_models(
         &self,
         installation: &domain::LocalPluginInstallationRecord,

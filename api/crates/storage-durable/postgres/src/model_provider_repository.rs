@@ -7,9 +7,10 @@ use control_plane::{
         CreateModelFailoverQueueSnapshotInput, CreateModelFailoverQueueTemplateInput,
         CreateModelProviderCatalogSourceInput, CreateModelProviderInstanceInput,
         CreateModelProviderPreviewSessionInput, ModelProviderRepository,
-        ReassignModelProviderInstancesInput, UpdateModelProviderInstanceInput,
-        UpsertModelProviderCatalogCacheInput, UpsertModelProviderCatalogEntryInput,
-        UpsertModelProviderMainInstanceInput, UpsertModelProviderSecretInput,
+        PatchModelProviderSecretInput, ReassignModelProviderInstancesInput,
+        UpdateModelProviderInstanceInput, UpsertModelProviderCatalogCacheInput,
+        UpsertModelProviderCatalogEntryInput, UpsertModelProviderMainInstanceInput,
+        UpsertModelProviderSecretInput,
     },
 };
 use serde_json::Value;
@@ -489,6 +490,56 @@ impl ModelProviderRepository for PgControlPlaneStore {
         .bind(input.provider_instance_id)
         .fetch_one(self.pool())
         .await?;
+
+        map_secret(row)
+    }
+
+    async fn patch_secret(
+        &self,
+        input: &PatchModelProviderSecretInput,
+    ) -> Result<domain::ModelProviderSecretRecord> {
+        let encrypted_secret_json =
+            encrypt_secret_json(&input.plaintext_secret_json, &input.master_key)?;
+        let row = sqlx::query(
+            r#"
+            insert into model_provider_instance_secrets (
+                id,
+                provider_instance_id,
+                scope_id,
+                encrypted_secret_json,
+                secret_version,
+                created_by,
+                updated_by
+            )
+            select
+                $1,
+                instances.id,
+                instances.scope_id,
+                $2,
+                1,
+                instances.updated_by,
+                instances.updated_by
+            from model_provider_instances instances
+            where instances.id = $3
+              and $4 is null
+            on conflict (provider_instance_id) do update
+            set encrypted_secret_json = excluded.encrypted_secret_json,
+                secret_version = model_provider_instance_secrets.secret_version + 1,
+                updated_by = excluded.updated_by,
+                updated_at = now()
+            where model_provider_instance_secrets.secret_version = $4
+            returning provider_instance_id, encrypted_secret_json, secret_version, updated_at
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(&encrypted_secret_json)
+        .bind(input.provider_instance_id)
+        .bind(input.expected_secret_version)
+        .fetch_optional(self.pool())
+        .await?
+        .ok_or(ControlPlaneError::Conflict(
+            "model_provider_secret_version_conflict",
+        ))?;
 
         map_secret(row)
     }

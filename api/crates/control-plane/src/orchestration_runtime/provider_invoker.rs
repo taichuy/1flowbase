@@ -186,8 +186,10 @@ where
         let package = load_installed_provider_package(&installation)?;
         input.provider_config = build_provider_runtime_config(
             &self.repository,
+            &self.runtime,
             &self.provider_secret_master_key,
             &package,
+            &installation,
             &instance,
         )
         .await?;
@@ -207,8 +209,10 @@ where
             input.set_provider_config(
                 build_provider_runtime_config(
                     &self.repository,
+                    &self.runtime,
                     &self.provider_secret_master_key,
                     &package,
+                    &installation,
                     &instance,
                 )
                 .await?,
@@ -310,8 +314,10 @@ where
         let runtime_config_started = std::time::Instant::now();
         input.provider_config = build_provider_runtime_config(
             &self.repository,
+            &self.runtime,
             &self.provider_secret_master_key,
             &package,
+            &installation,
             &instance,
         )
         .await?;

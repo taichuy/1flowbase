@@ -303,6 +303,7 @@ export function SettingsModelProvidersSection({
     updateMainInstanceSettingsMutation,
     previewMutation,
     validateMutation,
+    authenticateMutation,
     refreshMutation,
     revealSecretMutation,
     deleteMutation,
@@ -331,6 +332,7 @@ export function SettingsModelProvidersSection({
     getErrorMessage(updateInstanceInclusionMutation.error) ??
     getErrorMessage(updateMainInstanceSettingsMutation.error) ??
     getErrorMessage(previewMutation.error) ??
+    getErrorMessage(authenticateMutation.error) ??
     getErrorMessage(revealSecretMutation.error) ??
     getErrorMessage(validateMutation.error) ??
     getErrorMessage(refreshMutation.error) ??
@@ -562,6 +564,16 @@ export function SettingsModelProvidersSection({
           return typeof result.value === 'string'
             ? result.value
             : JSON.stringify(result.value ?? '');
+        }}
+        onAuthenticate={async (operation) => {
+          if (!editingInstance) {
+            throw new Error('missing provider instance');
+          }
+
+          return authenticateMutation.mutateAsync({
+            instanceId: editingInstance.id,
+            operation
+          });
         }}
         onSubmit={async (values) => {
           if (drawerState?.mode === 'edit' && editingInstance) {

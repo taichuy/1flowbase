@@ -1,4 +1,8 @@
-use std::{collections::HashMap, fs, sync::Arc};
+use std::{
+    collections::{HashMap, VecDeque},
+    fs,
+    sync::Arc,
+};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -10,15 +14,16 @@ use crate::{
     errors::ControlPlaneError,
     i18n::RequestedLocales,
     model_provider::{
-        CreateModelProviderInstanceCommand, DeleteModelProviderInstanceCommand,
-        ModelProviderConfiguredModelInput, ModelProviderService, PreviewModelProviderModelsCommand,
+        AuthenticateModelProviderInstanceCommand, CreateModelProviderInstanceCommand,
+        DeleteModelProviderInstanceCommand, ModelProviderConfiguredModelInput,
+        ModelProviderService, PreviewModelProviderModelsCommand,
         UpdateModelProviderInstanceCommand, UpdateModelProviderMainInstanceCommand,
     },
     ports::{
         AuthRepository, CreateModelProviderInstanceInput, CreateModelProviderPreviewSessionInput,
         CreatePluginAssignmentInput, CreatePluginTaskInput, ModelProviderRepository,
-        PluginRepository, ProviderRuntimeInvocationOutput, ProviderRuntimePort,
-        ReassignModelProviderInstancesInput, RoleConsolePolicyReader,
+        PatchModelProviderSecretInput, PluginRepository, ProviderRuntimeInvocationOutput,
+        ProviderRuntimePort, ReassignModelProviderInstancesInput, RoleConsolePolicyReader,
         UpdateModelProviderInstanceInput, UpdatePluginDesiredStateInput,
         UpdatePluginTaskStatusInput, UpdateProfileInput, UpsertModelProviderCatalogCacheInput,
         UpsertModelProviderMainInstanceInput, UpsertModelProviderSecretInput,
@@ -37,7 +42,8 @@ use domain::{
     PluginRuntimeStatus, PluginTaskRecord, PluginVerificationStatus, ScopeContext, UserRecord,
 };
 use plugin_framework::provider_contract::{
-    ProviderInvocationInput, ProviderInvocationResult, ProviderModelDescriptor, ProviderModelSource,
+    ProviderAuthOperation, ProviderAuthResult, ProviderAuthStatus, ProviderInvocationInput,
+    ProviderInvocationResult, ProviderModelDescriptor, ProviderModelSource,
 };
 use time::OffsetDateTime;
 
@@ -297,6 +303,14 @@ impl MemoryModelProviderRepository {
             .get(&instance_id)
             .map(|(_, value)| value.clone())
             .unwrap_or_else(|| json!({}))
+    }
+
+    async fn secret_version(&self, instance_id: Uuid) -> Option<i32> {
+        self.secrets
+            .read()
+            .await
+            .get(&instance_id)
+            .map(|(record, _)| record.secret_version)
     }
 
     async fn set_reference_count(&self, instance_id: Uuid, count: u64) {
@@ -893,6 +907,38 @@ impl ModelProviderRepository for MemoryModelProviderRepository {
         Ok(record)
     }
 
+    async fn patch_secret(
+        &self,
+        input: &PatchModelProviderSecretInput,
+    ) -> Result<ModelProviderSecretRecord> {
+        let mut secrets = self.secrets.write().await;
+        let next_version = match (
+            input.expected_secret_version,
+            secrets.get(&input.provider_instance_id),
+        ) {
+            (None, None) => 1,
+            (Some(expected), Some((record, _))) if record.secret_version == expected => {
+                record.secret_version + 1
+            }
+            _ => {
+                return Err(
+                    ControlPlaneError::Conflict("model_provider_secret_version_conflict").into(),
+                );
+            }
+        };
+        let record = ModelProviderSecretRecord {
+            provider_instance_id: input.provider_instance_id,
+            encrypted_secret_json: json!({ "masked": true }),
+            secret_version: next_version,
+            updated_at: OffsetDateTime::now_utc(),
+        };
+        secrets.insert(
+            input.provider_instance_id,
+            (record.clone(), input.plaintext_secret_json.clone()),
+        );
+        Ok(record)
+    }
+
     async fn upsert_main_instance(
         &self,
         input: &UpsertModelProviderMainInstanceInput,
@@ -1083,8 +1129,11 @@ impl ModelProviderRepository for MemoryModelProviderRepository {
 #[derive(Clone, Default)]
 struct MemoryProviderRuntime {
     validate_calls: Arc<RwLock<Vec<Uuid>>>,
+    validate_configs: Arc<RwLock<Vec<Value>>>,
     list_model_calls: Arc<RwLock<Vec<Uuid>>>,
     list_models_error: Arc<RwLock<Option<String>>>,
+    auth_operations: Arc<RwLock<Vec<ProviderAuthOperation>>>,
+    auth_results: Arc<RwLock<VecDeque<ProviderAuthResult>>>,
 }
 
 impl MemoryProviderRuntime {
@@ -1094,6 +1143,18 @@ impl MemoryProviderRuntime {
 
     async fn set_list_models_error(&self, message: Option<&str>) {
         *self.list_models_error.write().await = message.map(str::to_string);
+    }
+
+    async fn push_auth_result(&self, result: ProviderAuthResult) {
+        self.auth_results.write().await.push_back(result);
+    }
+
+    async fn auth_operations(&self) -> Vec<ProviderAuthOperation> {
+        self.auth_operations.read().await.clone()
+    }
+
+    async fn validate_configs(&self) -> Vec<Value> {
+        self.validate_configs.read().await.clone()
     }
 }
 
@@ -1109,12 +1170,36 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
         provider_config: Value,
     ) -> Result<Value> {
         self.validate_calls.write().await.push(installation.id);
+        self.validate_configs
+            .write()
+            .await
+            .push(provider_config.clone());
         Ok(json!({
             "sanitized": {
                 "base_url": provider_config["base_url"],
                 "api_key": "***"
             }
         }))
+    }
+
+    async fn authenticate_provider(
+        &self,
+        _installation: &LocalPluginInstallationRecord,
+        _provider_config: Value,
+        operation: ProviderAuthOperation,
+    ) -> Result<ProviderAuthResult> {
+        self.auth_operations.write().await.push(operation);
+        Ok(self
+            .auth_results
+            .write()
+            .await
+            .pop_front()
+            .unwrap_or(ProviderAuthResult {
+                status: ProviderAuthStatus::Authorized,
+                message: None,
+                user_action: None,
+                managed_secret_patch: Default::default(),
+            }))
     }
 
     async fn list_models(
@@ -1192,6 +1277,7 @@ async fn ac_1281_model_provider_legacy_only_does_not_authorize() {
 }
 
 mod access_main_instance;
+mod auth;
 mod instance_lifecycle;
 mod model_options;
 mod refresh_catalog;

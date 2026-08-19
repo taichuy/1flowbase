@@ -91,6 +91,7 @@ pub enum ProviderStdioMethod {
     ListModels,
     Invoke,
     Balance,
+    Auth,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -117,6 +118,89 @@ pub struct ProviderStdioResponse {
     pub result: Value,
     #[serde(default)]
     pub error: Option<ProviderStdioError>,
+}
+
+/// A provider-owned authentication action. The host owns only dispatch and
+/// encrypted persistence; provider-specific OAuth and token semantics stay in
+/// the runtime extension.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ProviderAuthOperation {
+    Begin { action: String },
+    Poll,
+    Submit { value: String },
+    Cancel,
+    Maintain,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderAuthRuntimeInput {
+    #[serde(default)]
+    pub provider_config: Value,
+    pub operation: ProviderAuthOperation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderAuthStatus {
+    Pending,
+    Authorized,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderAuthUserActionKind {
+    DeviceCode,
+    PasteCallbackUrl,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderAuthUserAction {
+    pub kind: ProviderAuthUserActionKind,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub open_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub poll_interval_seconds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderAuthResult {
+    pub status: ProviderAuthStatus,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_action: Option<ProviderAuthUserAction>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub managed_secret_patch: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderAuthActionManifest {
+    pub code: String,
+    pub label: String,
+    #[serde(default)]
+    pub user_action_kinds: Vec<ProviderAuthUserActionKind>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderAuthManifest {
+    #[serde(default)]
+    pub actions: Vec<ProviderAuthActionManifest>,
+    #[serde(default)]
+    pub managed_secret_keys: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

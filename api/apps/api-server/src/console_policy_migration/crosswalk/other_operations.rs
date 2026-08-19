@@ -121,6 +121,7 @@ pub(super) const LEGACY_OPERATION_MAPPINGS: &[LegacyGrantMappingSpec] = &[
             "model_provider_plugins.install.upload",
             "model_providers.instances.create",
             "model_providers.instances.delete",
+            "model_providers.instances.authenticate",
             "model_providers.instances.models.refresh",
             "model_providers.instances.secrets.reveal",
             "model_providers.instances.update",

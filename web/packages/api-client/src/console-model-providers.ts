@@ -121,7 +121,40 @@ export interface ConsoleModelProviderCatalogEntry {
   desired_state: string;
   availability_status: string;
   form_schema: ConsoleModelProviderConfigField[];
+  auth?: ConsoleModelProviderAuthProjection;
   predefined_models: ConsoleProviderModelDescriptor[];
+}
+
+export interface ConsoleModelProviderAuthProjection {
+  actions: ConsoleModelProviderAuthAction[];
+}
+
+export interface ConsoleModelProviderAuthAction {
+  code: string;
+  label: string;
+  user_action_kinds: Array<'device_code' | 'paste_callback_url' | string>;
+}
+
+export type ConsoleModelProviderAuthOperation =
+  | { type: 'begin'; action: string }
+  | { type: 'poll' }
+  | { type: 'submit'; value: string }
+  | { type: 'cancel' };
+
+export interface ConsoleModelProviderAuthUserAction {
+  kind: 'device_code' | 'paste_callback_url' | string;
+  open_url: string | null;
+  user_code: string | null;
+  expires_at: string | null;
+  poll_interval_seconds: number | null;
+  prompt: string | null;
+}
+
+export interface ConsoleAuthenticateModelProviderInstanceResult {
+  instance: ConsoleModelProviderInstance;
+  status: 'pending' | 'authorized' | 'failed' | 'cancelled';
+  message: string | null;
+  user_action: ConsoleModelProviderAuthUserAction | null;
 }
 
 export type ConsoleModelProviderRequestLogStatus =
@@ -457,6 +490,21 @@ export function validateConsoleModelProviderInstance(
   return apiFetch<ConsoleValidateModelProviderResult>({
     path: `/api/console/settings/model-providers/instances/${instanceId}/validate`,
     method: 'POST',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function authenticateConsoleModelProviderInstance(
+  instanceId: string,
+  operation: ConsoleModelProviderAuthOperation,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleAuthenticateModelProviderInstanceResult>({
+    path: `/api/console/settings/model-providers/instances/${instanceId}/authenticate`,
+    method: 'POST',
+    body: { operation },
     csrfToken,
     baseUrl
   });

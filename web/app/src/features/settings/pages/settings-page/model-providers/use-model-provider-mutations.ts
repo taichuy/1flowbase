@@ -2,6 +2,7 @@ import { useMutation, type QueryClient } from '@tanstack/react-query';
 import type { Dispatch, SetStateAction } from 'react';
 
 import {
+  authenticateSettingsModelProviderInstance,
   createSettingsModelProviderInstance,
   deleteSettingsModelProviderInstance,
   previewSettingsModelProviderModels,
@@ -14,6 +15,7 @@ import {
   updateSettingsModelProviderMainInstance,
   validateSettingsModelProviderInstance,
   type SettingsModelProviderInstance,
+  type SettingsModelProviderAuthOperation,
   type SettingsModelProviderMainInstance
 } from '../../../api/model-providers';
 import {
@@ -255,6 +257,24 @@ export function useModelProviderMutations({
     onSuccess: invalidateModelProviderQueries
   });
 
+  const authenticateMutation = useMutation({
+    mutationFn: async (input: {
+      instanceId: string;
+      operation: SettingsModelProviderAuthOperation;
+    }) => {
+      if (!csrfToken) {
+        throw new Error('missing csrf token');
+      }
+
+      return authenticateSettingsModelProviderInstance(
+        input.instanceId,
+        input.operation,
+        csrfToken
+      );
+    },
+    onSuccess: invalidateModelProviderQueries
+  });
+
   const refreshMutation = useMutation({
     mutationFn: async (instanceId: string) => {
       if (!csrfToken) {
@@ -482,6 +502,7 @@ export function useModelProviderMutations({
     updateMainInstanceSettingsMutation,
     previewMutation,
     validateMutation,
+    authenticateMutation,
     refreshMutation,
     revealSecretMutation,
     deleteMutation,

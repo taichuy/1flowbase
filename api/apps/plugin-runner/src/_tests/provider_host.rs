@@ -1,8 +1,9 @@
 use super::*;
 use plugin_framework::provider_contract::{
     NativeModelRequestContext, NativePromptBlock, NativePromptCacheControl,
-    NativePromptCacheControlType, ProtocolContextEnvelope, ProviderCompactProfile,
-    ProviderInvocationCapability, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
+    NativePromptCacheControlType, ProtocolContextEnvelope, ProviderAuthOperation,
+    ProviderCompactProfile, ProviderInvocationCapability,
+    PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
 };
 use std::{
     fs,
@@ -49,6 +50,51 @@ impl TempProviderPackage {
 
     fn write_provider_package(&self, display_name: &str) {
         self.write_provider_package_with_runtime_timeout(display_name, 30_000);
+    }
+
+    fn declare_device_code_auth(&self) {
+        let provider_path = self.path().join("provider/fixture_provider.yaml");
+        let provider = fs::read_to_string(&provider_path)
+            .expect("fixture provider definition should be readable");
+        let provider = provider.replace(
+            "config_schema: []",
+            r#"auth:
+  actions:
+    - code: device_code
+      label: Device Code
+      user_action_kinds:
+        - device_code
+  managed_secret_keys:
+    - access_token
+config_schema: []"#,
+        );
+        fs::write(provider_path, provider)
+            .expect("fixture provider definition should declare device-code auth");
+    }
+
+    fn write_auth_runtime(&self, result: &str) {
+        self.write(
+            "bin/fixture_provider",
+            &format!(
+                r#"#!/usr/bin/env bash
+set -euo pipefail
+payload="$(cat)"
+case "${{payload}}" in
+  *'"method":"auth"'*) printf '%s' '{{"ok":true,"result":{result}}}' ;;
+  *) printf '%s' '{{"ok":false,"error":{{"kind":"provider_invalid_response","message":"expected auth method"}}}}' ;;
+esac
+"#
+            ),
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let path = self.path().join("bin/fixture_provider");
+            let mut permissions = fs::metadata(&path).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(path, permissions).unwrap();
+        }
     }
 
     fn remove_publisher_namespace(&self) -> String {
@@ -445,6 +491,65 @@ fn load_if_needed_reloads_when_provider_source_identity_changes() {
 
     let loaded = host.loaded_packages.get(&summary.plugin_id).unwrap();
     assert_eq!(loaded.package.manifest.display_name, "Mutated Provider");
+}
+
+#[tokio::test]
+async fn provider_auth_rejects_an_undeclared_begin_action_before_spawning_the_runtime() {
+    let package = TempProviderPackage::new();
+    package.declare_device_code_auth();
+    let spawn_marker = package.path().join("auth-spawn-side-effect-marker");
+    package.write_spawn_side_effect_runtime(&spawn_marker);
+    let mut host = ProviderHost::default();
+    let plugin_id = host
+        .load(package.path().to_str().unwrap())
+        .unwrap()
+        .plugin_id;
+
+    let error = host
+        .authenticate(
+            &plugin_id,
+            json!({}),
+            ProviderAuthOperation::Begin {
+                action: "undeclared_action".to_string(),
+            },
+        )
+        .await
+        .expect_err("undeclared provider auth actions must fail before runtime execution");
+
+    assert!(error
+        .to_string()
+        .contains("provider auth action is not declared by the package"));
+    assert!(
+        !spawn_marker.exists(),
+        "an undeclared auth action must not start the provider process"
+    );
+}
+
+#[tokio::test]
+async fn provider_auth_rejects_an_undeclared_managed_secret_patch_from_the_runtime() {
+    let package = TempProviderPackage::new();
+    package.declare_device_code_auth();
+    package.write_auth_runtime(
+        r#"{"status":"authorized","managed_secret_patch":{"unexpected_secret":"leak"}}"#,
+    );
+    let mut host = ProviderHost::default();
+    let plugin_id = host
+        .load(package.path().to_str().unwrap())
+        .unwrap()
+        .plugin_id;
+
+    let error = host
+        .authenticate(
+            &plugin_id,
+            json!({}),
+            ProviderAuthOperation::Begin {
+                action: "device_code".to_string(),
+            },
+        )
+        .await
+        .expect_err("undeclared auth secret patches must fail closed");
+
+    assert!(error.to_string().contains("undeclared managed secret key"));
 }
 
 fn invocation_input(model: &str) -> ProviderInvocationInput {

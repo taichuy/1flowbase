@@ -26,8 +26,9 @@ use plugin_framework::{
     },
     error::PluginFrameworkError,
     provider_contract::{
-        ProviderBalanceResult, ProviderCompactResult, ProviderCountTokensInput,
-        ProviderCountTokensResult, ProviderInvocationInput, ProviderModelDescriptor,
+        ProviderAuthOperation, ProviderAuthResult, ProviderBalanceResult, ProviderCompactResult,
+        ProviderCountTokensInput, ProviderCountTokensResult, ProviderInvocationInput,
+        ProviderModelDescriptor,
     },
 };
 use plugin_runner::{
@@ -335,6 +336,25 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         operation
             .await
             .map(|output| output.output)
+            .map_err(map_provider_framework_error)
+    }
+
+    async fn authenticate_provider(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        provider_config: Value,
+        operation: ProviderAuthOperation,
+    ) -> anyhow::Result<ProviderAuthResult> {
+        let binding = self.resolve_model_provider_binding(installation)?;
+        self.ensure_provider_loaded(&binding).await?;
+        let auth_operation = {
+            let host = self.services.provider_host.read().await;
+            host.authenticate_operation(&binding.plugin_id, provider_config, operation)
+                .map_err(map_provider_framework_error)?
+        };
+        auth_operation
+            .await
+            .map(|output| output.result)
             .map_err(map_provider_framework_error)
     }
 

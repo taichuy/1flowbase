@@ -142,6 +142,14 @@ pub struct UpsertModelProviderSecretInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct PatchModelProviderSecretInput {
+    pub provider_instance_id: Uuid,
+    pub expected_secret_version: Option<i32>,
+    pub plaintext_secret_json: serde_json::Value,
+    pub master_key: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct UpsertModelProviderMainInstanceInput {
     pub workspace_id: Uuid,
     pub provider_code: String,
@@ -190,6 +198,14 @@ pub trait ModelProviderRepository: Send + Sync {
         &self,
         input: &UpsertModelProviderSecretInput,
     ) -> anyhow::Result<domain::ModelProviderSecretRecord>;
+    async fn patch_secret(
+        &self,
+        _input: &PatchModelProviderSecretInput,
+    ) -> anyhow::Result<domain::ModelProviderSecretRecord> {
+        Err(anyhow::anyhow!(
+            "model provider secret compare-and-swap is not supported by this repository"
+        ))
+    }
     async fn upsert_main_instance(
         &self,
         input: &UpsertModelProviderMainInstanceInput,

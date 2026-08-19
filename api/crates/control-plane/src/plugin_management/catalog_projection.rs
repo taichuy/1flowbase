@@ -110,6 +110,7 @@ pub(super) fn provider_catalog_snapshot(package: &ProviderPackage) -> Result<Val
             "model_discovery_mode": format!("{:?}", package.provider.model_discovery_mode).to_ascii_lowercase(),
             "supports_model_fetch_without_credentials": package.provider.supports_model_fetch_without_credentials,
             "form_schema": serde_json::to_value(&package.provider.form_schema)?,
+            "auth": serde_json::to_value(&package.provider.auth)?,
             "parameter_form": serde_json::to_value(&package.provider.parameter_form)?,
             "predefined_models": serde_json::to_value(&package.predefined_models)?,
         },

@@ -12,7 +12,8 @@ use plugin_framework::{
     error::{FrameworkResult, PluginFrameworkError},
     manifest_v1::PluginExecutionMode,
     provider_contract::{
-        ModelDiscoveryMode, ProviderBalanceResult, ProviderCompactError, ProviderCompactResult,
+        ModelDiscoveryMode, ProviderAuthOperation, ProviderAuthResult, ProviderAuthRuntimeInput,
+        ProviderBalanceResult, ProviderCompactError, ProviderCompactResult,
         ProviderCountTokensError, ProviderCountTokensFallbackReason, ProviderCountTokensInput,
         ProviderCountTokensResult, ProviderGenerateTranslationReceipt, ProviderInvocationInput,
         ProviderInvocationResult, ProviderModelDescriptor, ProviderRuntimeError,
@@ -111,6 +112,11 @@ pub struct ProviderModelsOutput {
 #[derive(Debug, Clone, Serialize)]
 pub struct ProviderBalanceOutput {
     pub balance: ProviderBalanceResult,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderAuthOutput {
+    pub result: ProviderAuthResult,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -408,6 +414,86 @@ impl ProviderHost {
             )
             .await?;
             Ok(ProviderValidationOutput { output })
+        })
+    }
+
+    pub async fn authenticate(
+        &self,
+        plugin_id: &str,
+        provider_config: Value,
+        operation: ProviderAuthOperation,
+    ) -> FrameworkResult<ProviderAuthOutput> {
+        self.authenticate_operation(plugin_id, provider_config, operation)?
+            .await
+    }
+
+    pub fn authenticate_operation(
+        &self,
+        plugin_id: &str,
+        provider_config: Value,
+        operation: ProviderAuthOperation,
+    ) -> FrameworkResult<
+        impl std::future::Future<Output = FrameworkResult<ProviderAuthOutput>> + Send + 'static,
+    > {
+        let loaded = self.loaded_package(plugin_id)?.clone();
+        let auth = loaded.package.provider.auth.clone().ok_or_else(|| {
+            PluginFrameworkError::invalid_provider_contract(
+                "provider package does not declare authentication support",
+            )
+        })?;
+        if let ProviderAuthOperation::Begin { action } = &operation {
+            if !auth
+                .actions
+                .iter()
+                .any(|candidate| candidate.code == *action)
+            {
+                return Err(PluginFrameworkError::invalid_provider_contract(
+                    "provider auth action is not declared by the package",
+                ));
+            }
+        }
+        let provider_workers = Arc::clone(&self.provider_workers);
+        Ok(async move {
+            let input = serde_json::to_value(ProviderAuthRuntimeInput {
+                provider_config,
+                operation: operation.clone(),
+            })
+            .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
+            let raw = Self::call_runtime_loaded(
+                loaded,
+                provider_workers,
+                ProviderStdioMethod::Auth,
+                input,
+            )
+            .await?;
+            let result: ProviderAuthResult = serde_json::from_value(raw).map_err(|error| {
+                PluginFrameworkError::invalid_provider_contract(error.to_string())
+            })?;
+            for key in result.managed_secret_patch.keys() {
+                if !auth
+                    .managed_secret_keys
+                    .iter()
+                    .any(|allowed| allowed == key)
+                {
+                    return Err(PluginFrameworkError::invalid_provider_contract(
+                        "provider auth result includes an undeclared managed secret key",
+                    ));
+                }
+            }
+            if let Some(user_action) = result.user_action.as_ref() {
+                let allowed = auth.actions.iter().any(|action| {
+                    action
+                        .user_action_kinds
+                        .iter()
+                        .any(|kind| kind == &user_action.kind)
+                });
+                if !allowed {
+                    return Err(PluginFrameworkError::invalid_provider_contract(
+                        "provider auth result includes an undeclared user action kind",
+                    ));
+                }
+            }
+            Ok(ProviderAuthOutput { result })
         })
     }
 

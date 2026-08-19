@@ -10,7 +10,7 @@ use crate::{
 };
 
 use super::{
-    instances::build_provider_runtime_config,
+    instances::maintain_provider_runtime_config,
     shared::{
         empty_object, ensure_model_provider_permission, load_actor_context_for_user,
         ready_model_provider_installation, ModelProviderNodeArtifactContext,
@@ -46,14 +46,20 @@ where
         return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
     }
     let package = load_installed_provider_package(&installation)?;
+    let provider_config = maintain_provider_runtime_config(
+        repository,
+        runtime,
+        provider_secret_master_key,
+        &package,
+        &installation,
+        &instance,
+    )
+    .await?;
     let secret_json = repository
         .get_secret_json(instance.id, provider_secret_master_key)
         .await?
         .unwrap_or_else(empty_object);
     let secret_values = collect_secret_strings(&secret_json);
-    let provider_config =
-        build_provider_runtime_config(repository, provider_secret_master_key, &package, &instance)
-            .await?;
 
     let result = runtime.get_balance(&installation, provider_config).await?;
     let redacted = redact_value(&serde_json::to_value(result)?, &secret_values);

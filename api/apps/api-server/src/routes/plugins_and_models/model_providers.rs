@@ -10,6 +10,7 @@ use axum::{
     Json, Router,
 };
 use control_plane::model_provider::{
+    AuthenticateModelProviderInstanceCommand, AuthenticateModelProviderInstanceResult,
     ClearModelProviderRequestLogsBatchCommand, ClearModelProviderRequestLogsContinuation,
     CreateModelProviderInstanceCommand, DeleteModelProviderInstanceCommand,
     DeleteSelectedModelProviderRequestLogsCommand, ListModelProviderRequestLogsCommand,
@@ -26,6 +27,7 @@ use control_plane::{
 use plugin_framework::{
     provider_contract::{
         PluginFormCondition, PluginFormFieldSchema, PluginFormOption, PluginFormSchema,
+        ProviderAuthOperation, ProviderAuthStatus, ProviderAuthUserActionKind,
         ProviderModelDescriptor,
     },
     provider_package::ProviderConfigField,
@@ -293,6 +295,7 @@ fn to_catalog_response(entry: ModelProviderCatalogEntry) -> ModelProviderCatalog
             .into_iter()
             .map(to_config_field_response)
             .collect(),
+        auth: entry.auth.map(to_auth_projection_response),
         predefined_models: entry
             .predefined_models
             .into_iter()
@@ -301,6 +304,68 @@ fn to_catalog_response(entry: ModelProviderCatalogEntry) -> ModelProviderCatalog
         catalog_refresh_status: entry.catalog_refresh_status,
         catalog_last_error_message: entry.catalog_last_error_message,
         catalog_refreshed_at: format_optional_time(entry.catalog_refreshed_at),
+    }
+}
+
+fn provider_auth_user_action_kind(value: ProviderAuthUserActionKind) -> String {
+    match value {
+        ProviderAuthUserActionKind::DeviceCode => "device_code",
+        ProviderAuthUserActionKind::PasteCallbackUrl => "paste_callback_url",
+    }
+    .to_string()
+}
+
+fn provider_auth_status(value: ProviderAuthStatus) -> String {
+    match value {
+        ProviderAuthStatus::Pending => "pending",
+        ProviderAuthStatus::Authorized => "authorized",
+        ProviderAuthStatus::Failed => "failed",
+        ProviderAuthStatus::Cancelled => "cancelled",
+    }
+    .to_string()
+}
+
+fn to_auth_projection_response(
+    auth: plugin_framework::provider_contract::ProviderAuthManifest,
+) -> ModelProviderAuthProjectionResponse {
+    ModelProviderAuthProjectionResponse {
+        actions: auth
+            .actions
+            .into_iter()
+            .map(|action| ModelProviderAuthActionResponse {
+                code: action.code,
+                label: action.label,
+                user_action_kinds: action
+                    .user_action_kinds
+                    .into_iter()
+                    .map(provider_auth_user_action_kind)
+                    .collect(),
+            })
+            .collect(),
+    }
+}
+
+fn to_authenticate_response(
+    result: AuthenticateModelProviderInstanceResult,
+) -> AuthenticateModelProviderInstanceResponse {
+    AuthenticateModelProviderInstanceResponse {
+        instance: to_instance_response(ModelProviderInstanceView {
+            instance: result.instance,
+            cache: None,
+        }),
+        status: provider_auth_status(result.result.status),
+        message: result.result.message,
+        user_action: result
+            .result
+            .user_action
+            .map(|action| ModelProviderAuthUserActionResponse {
+                kind: provider_auth_user_action_kind(action.kind),
+                open_url: action.open_url,
+                user_code: action.user_code,
+                expires_at: action.expires_at,
+                poll_interval_seconds: action.poll_interval_seconds,
+                prompt: action.prompt,
+            }),
     }
 }
 
@@ -973,6 +1038,39 @@ pub async fn validate_instance(
         .validate_instance(context.user.id, parse_uuid(&id, "id")?)
         .await?;
     Ok(Json(ApiSuccess::new(to_validate_response(result))))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/settings/model-providers/instances/{id}/authenticate",
+    operation_id = "model_provider_authenticate_instance",
+    request_body = AuthenticateModelProviderInstanceBody,
+    responses((status = 200, body = AuthenticateModelProviderInstanceResponse), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn authenticate_instance(
+    State(state): State<Arc<ApiState>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<AuthenticateModelProviderInstanceBody>,
+) -> Result<Json<ApiSuccess<AuthenticateModelProviderInstanceResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let operation =
+        serde_json::from_value::<ProviderAuthOperation>(body.operation).map_err(|_| {
+            control_plane::errors::ControlPlaneError::InvalidInput("provider_auth_operation")
+        })?;
+    let result = settings_service(
+        &state,
+        &context.actor,
+        "model_providers.instances.authenticate",
+    )
+    .authenticate_instance(AuthenticateModelProviderInstanceCommand {
+        actor_user_id: context.user.id,
+        instance_id: parse_uuid(&id, "id")?,
+        operation,
+    })
+    .await?;
+    Ok(Json(ApiSuccess::new(to_authenticate_response(result))))
 }
 
 #[utoipa::path(

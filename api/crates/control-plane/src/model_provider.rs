@@ -6,7 +6,10 @@ use std::{
 
 use anyhow::Result;
 use plugin_framework::{
-    provider_contract::{PluginFormSchema, ProviderBalanceResult, ProviderModelDescriptor},
+    provider_contract::{
+        PluginFormSchema, ProviderAuthOperation, ProviderAuthResult, ProviderBalanceResult,
+        ProviderModelDescriptor,
+    },
     provider_package::{ProviderConfigField, ProviderPackage},
 };
 use serde_json::{json, Value};
@@ -32,15 +35,16 @@ mod balance;
 mod catalog;
 pub mod catalog_source;
 pub mod failover_queue;
-mod instances;
+pub(crate) mod instances;
 mod main_instance;
 mod options;
 mod request_log_maintenance;
 pub(crate) mod routing;
 mod shared;
 
+use self::instances::{execute_provider_auth, maintain_provider_runtime_config};
 use self::{
-    instances::{build_provider_runtime_config, hydrate_instance_view},
+    instances::hydrate_instance_view,
     shared::{
         empty_object, ensure_installation_assigned, ensure_model_provider_permission,
         is_empty_object, load_actor_context_for_user, map_catalog_source, map_model_discovery_mode,
@@ -100,6 +104,12 @@ pub struct PreviewModelProviderModelsCommand {
     pub config_json: Value,
 }
 
+pub struct AuthenticateModelProviderInstanceCommand {
+    pub actor_user_id: Uuid,
+    pub instance_id: Uuid,
+    pub operation: ProviderAuthOperation,
+}
+
 #[derive(Debug, Clone)]
 pub struct ModelProviderCatalogEntry {
     pub installation_id: Uuid,
@@ -119,6 +129,7 @@ pub struct ModelProviderCatalogEntry {
     pub desired_state: String,
     pub availability_status: String,
     pub form_schema: Vec<ProviderConfigField>,
+    pub auth: Option<plugin_framework::provider_contract::ProviderAuthManifest>,
     pub predefined_models: Vec<LocalizedProviderModelDescriptor>,
     pub catalog_refresh_status: String,
     pub catalog_last_error_message: Option<String>,
@@ -165,6 +176,12 @@ pub struct ValidateModelProviderResult {
     pub instance: domain::ModelProviderInstanceRecord,
     pub cache: domain::ModelProviderCatalogCacheRecord,
     pub output: Value,
+}
+
+#[derive(Debug, Clone)]
+pub struct AuthenticateModelProviderInstanceResult {
+    pub instance: domain::ModelProviderInstanceRecord,
+    pub result: ProviderAuthResult,
 }
 
 #[derive(Debug, Clone)]
@@ -788,9 +805,6 @@ where
             return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
         }
         let package = load_installed_provider_package(&installation)?;
-        let provider_config = self
-            .build_provider_runtime_config(&package, &instance)
-            .await?;
         ensure_model_provider_instance_transition(
             instance.status,
             domain::ModelProviderInstanceStatus::Ready,
@@ -799,6 +813,9 @@ where
 
         let validation_result = async {
             self.ensure_runtime_loaded(&installation).await?;
+            let provider_config = self
+                .maintain_provider_runtime_config(&package, &installation, &instance)
+                .await?;
             let output = self
                 .runtime
                 .validate_provider(&installation, provider_config.clone())
@@ -932,6 +949,58 @@ where
         self.invalidate_routing_catalog(actor.current_workspace_id)
             .await;
         result
+    }
+
+    pub async fn authenticate_instance(
+        &self,
+        command: AuthenticateModelProviderInstanceCommand,
+    ) -> Result<AuthenticateModelProviderInstanceResult> {
+        let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
+        ensure_model_provider_permission(&actor, "manage", &self.use_case).await?;
+        let instance = self
+            .repository
+            .get_instance(actor.current_workspace_id, command.instance_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("model_provider_instance"))?;
+        let installation = self.ready_installation(instance.installation_id).await?;
+        let package = load_installed_provider_package(&installation)?;
+        self.ensure_runtime_loaded(&installation).await?;
+        let (_, result) = execute_provider_auth(
+            &self.repository,
+            &self.runtime,
+            &self.provider_secret_master_key,
+            &package,
+            &installation,
+            &instance,
+            command.operation,
+        )
+        .await?;
+        self.repository
+            .append_audit_log(&audit_log(
+                Some(actor.current_workspace_id),
+                Some(command.actor_user_id),
+                "model_provider_instance",
+                Some(instance.id),
+                "model_provider.authentication",
+                json!({
+                    "provider_code": instance.provider_code,
+                    "status": result.status,
+                }),
+            ))
+            .await?;
+        let hydrated = self
+            .hydrate_instance_view(
+                instance,
+                self.repository
+                    .get_catalog_cache(command.instance_id)
+                    .await?,
+                &package.provider.form_schema,
+            )
+            .await?;
+        Ok(AuthenticateModelProviderInstanceResult {
+            instance: hydrated.instance,
+            result,
+        })
     }
 
     pub async fn preview_models(
@@ -1233,15 +1302,18 @@ where
         .await
     }
 
-    async fn build_provider_runtime_config(
+    async fn maintain_provider_runtime_config(
         &self,
         package: &ProviderPackage,
+        installation: &domain::LocalPluginInstallationRecord,
         instance: &domain::ModelProviderInstanceRecord,
     ) -> Result<Value> {
-        build_provider_runtime_config(
+        maintain_provider_runtime_config(
             &self.repository,
+            &self.runtime,
             &self.provider_secret_master_key,
             package,
+            installation,
             instance,
         )
         .await

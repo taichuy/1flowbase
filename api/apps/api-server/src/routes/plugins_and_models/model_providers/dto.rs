@@ -53,6 +53,12 @@ pub struct UpdateModelProviderBody {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+pub struct AuthenticateModelProviderInstanceBody {
+    #[schema(value_type = Object)]
+    pub operation: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateModelProviderMainInstanceBody {
     pub auto_include_new_instances: bool,
     pub expected_revision: i64,
@@ -198,10 +204,24 @@ pub struct ModelProviderCatalogEntryResponse {
     pub desired_state: String,
     pub availability_status: String,
     pub form_schema: Vec<ModelProviderConfigFieldResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auth: Option<ModelProviderAuthProjectionResponse>,
     pub predefined_models: Vec<ProviderModelDescriptorResponse>,
     pub catalog_refresh_status: String,
     pub catalog_last_error_message: Option<String>,
     pub catalog_refreshed_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelProviderAuthProjectionResponse {
+    pub actions: Vec<ModelProviderAuthActionResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelProviderAuthActionResponse {
+    pub code: String,
+    pub label: String,
+    pub user_action_kinds: Vec<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -247,6 +267,24 @@ pub struct ValidateModelProviderResponse {
     pub instance: ModelProviderInstanceResponse,
     #[schema(value_type = Object)]
     pub output: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelProviderAuthUserActionResponse {
+    pub kind: String,
+    pub open_url: Option<String>,
+    pub user_code: Option<String>,
+    pub expires_at: Option<String>,
+    pub poll_interval_seconds: Option<u64>,
+    pub prompt: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct AuthenticateModelProviderInstanceResponse {
+    pub instance: ModelProviderInstanceResponse,
+    pub status: String,
+    pub message: Option<String>,
+    pub user_action: Option<ModelProviderAuthUserActionResponse>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

@@ -88,6 +88,13 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
+            "/settings/model-providers/instances/:id/authenticate",
+            console_post(
+                authenticate_instance,
+                ConsoleOperation("model_providers.instances.authenticate".to_string()),
+            ),
+        )
+        .route(
             "/settings/model-providers/instances/:id/secrets/reveal",
             console_post(
                 reveal_secret,

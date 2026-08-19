@@ -96,6 +96,7 @@ const modelProvidersApi = vi.hoisted(() => ({
   createSettingsModelProviderInstance: vi.fn(),
   updateSettingsModelProviderInstance: vi.fn(),
   updateSettingsModelProviderMainInstance: vi.fn(),
+  authenticateSettingsModelProviderInstance: vi.fn(),
   revealSettingsModelProviderSecret: vi.fn(),
   validateSettingsModelProviderInstance: vi.fn(),
   refreshSettingsModelProviderModels: vi.fn(),
@@ -1117,6 +1118,135 @@ describe('ModelProvidersPage - instances modal', () => {
           name: '注入主实例 OpenAI Production'
         })
       ).toBeInTheDocument();
+    }
+  );
+
+  test(
+    'AC-001 runs generic device and callback authorization actions from the instance drawer',
+    { timeout: 15000 },
+    async () => {
+      authenticateAsModelProviderManager();
+      const instance = buildSettingsModelProviderInstances()[0];
+      modelProvidersApi.fetchSettingsModelProviderCatalog.mockResolvedValue([
+        {
+          ...modelProviderCatalogEntries[0],
+          auth: {
+            actions: [
+              {
+                code: 'device_login',
+                label: 'Generic device sign-in',
+                user_action_kinds: ['device_code']
+              },
+              {
+                code: 'callback_login',
+                label: 'Generic callback sign-in',
+                user_action_kinds: ['paste_callback_url']
+              }
+            ]
+          }
+        }
+      ]);
+      modelProvidersApi.authenticateSettingsModelProviderInstance
+        .mockResolvedValueOnce({
+          instance,
+          status: 'pending',
+          message: null,
+          user_action: {
+            kind: 'device_code',
+            open_url: 'https://provider.example/device',
+            user_code: 'ABCD-EFGH',
+            expires_at: '2026-08-19T12:00:00Z',
+            poll_interval_seconds: 600,
+            prompt: 'Use the code to continue.'
+          }
+        })
+        .mockResolvedValueOnce({
+          instance,
+          status: 'cancelled',
+          message: null,
+          user_action: null
+        })
+        .mockResolvedValueOnce({
+          instance,
+          status: 'pending',
+          message: null,
+          user_action: {
+            kind: 'paste_callback_url',
+            open_url: 'https://provider.example/callback',
+            user_code: null,
+            expires_at: null,
+            poll_interval_seconds: 600,
+            prompt: 'Paste the callback URL after signing in.'
+          }
+        })
+        .mockResolvedValueOnce({
+          instance,
+          status: 'authorized',
+          message: null,
+          user_action: null
+        });
+
+      renderApp('/settings/model-providers');
+
+      const modal = await openProviderInstancesModal();
+      await openSourceManagementTab(modal);
+      fireEvent.click(
+        within(modal).getByRole('button', {
+          name: '编辑 API Key OpenAI Production'
+        })
+      );
+
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Generic device sign-in' })
+      );
+      await waitFor(() => {
+        expect(
+          modelProvidersApi.authenticateSettingsModelProviderInstance
+        ).toHaveBeenCalledWith(
+          'provider-1',
+          { type: 'begin', action: 'device_login' },
+          'csrf-123'
+        );
+      });
+      expect(screen.getByText('ABCD-EFGH')).toBeInTheDocument();
+      expect(
+        screen.getByRole('link', { name: '打开授权页面' })
+      ).toHaveAttribute('href', 'https://provider.example/device');
+
+      fireEvent.click(screen.getByRole('button', { name: '取消授权' }));
+      await waitFor(() => {
+        expect(
+          modelProvidersApi.authenticateSettingsModelProviderInstance
+        ).toHaveBeenLastCalledWith(
+          'provider-1',
+          { type: 'cancel' },
+          'csrf-123'
+        );
+      });
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Generic callback sign-in' })
+      );
+      expect(
+        await screen.findByLabelText('回调 URL 或代码')
+      ).toBeInTheDocument();
+      fireEvent.change(screen.getByLabelText('回调 URL 或代码'), {
+        target: { value: 'http://127.0.0.1/callback?code=example' }
+      });
+      fireEvent.click(screen.getByRole('button', { name: '提交授权' }));
+      await waitFor(() => {
+        expect(
+          modelProvidersApi.authenticateSettingsModelProviderInstance
+        ).toHaveBeenLastCalledWith(
+          'provider-1',
+          {
+            type: 'submit',
+            value: 'http://127.0.0.1/callback?code=example'
+          },
+          'csrf-123'
+        );
+      });
+      expect(await screen.findByText('已授权')).toBeInTheDocument();
     }
   );
 

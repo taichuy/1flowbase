@@ -363,6 +363,10 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("model_providers.instances.create", "system.model-providers"),
     settings("model_providers.instances.delete", "system.model-providers"),
     settings(
+        "model_providers.instances.authenticate",
+        "system.model-providers",
+    ),
+    settings(
         "model_providers.instances.models.refresh",
         "system.model-providers",
     ),

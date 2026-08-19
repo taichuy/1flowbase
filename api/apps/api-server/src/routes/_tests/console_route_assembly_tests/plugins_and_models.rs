@@ -109,6 +109,11 @@ fn ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_ownershi
             ),
             (
                 "POST",
+                "/api/console/settings/model-providers/instances/:id/authenticate",
+                "model_providers.instances.authenticate"
+            ),
+            (
+                "POST",
                 "/api/console/settings/model-providers/instances/:id/secrets/reveal",
                 "model_providers.instances.secrets.reveal"
             ),

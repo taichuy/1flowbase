@@ -14,6 +14,9 @@ import {
 } from './model-provider-test-fixtures';
 
 const pricingTargets = buildSettingsModelProviderOptions().pricing_targets;
+const unsupportedAuthentication = async () => {
+  throw new Error('provider authentication is not configured');
+};
 
 describe('model-context-window helpers', () => {
   test.each([
@@ -78,6 +81,7 @@ describe('ModelProviderInstanceDrawer', () => {
           expires_at: '2026-04-22T12:00:00Z'
         })}
         onRevealSecret={async () => 'super-secret'}
+        onAuthenticate={unsupportedAuthentication}
       />
     );
 
@@ -142,6 +146,7 @@ describe('ModelProviderInstanceDrawer', () => {
             expires_at: '2026-04-22T12:00:00Z'
           })}
           onRevealSecret={async () => 'super-secret'}
+          onAuthenticate={unsupportedAuthentication}
         />
       );
 
@@ -215,6 +220,7 @@ describe('ModelProviderInstanceDrawer', () => {
           onSubmit={submit}
           onPreviewModels={previewModels}
           onRevealSecret={async () => 'super-secret'}
+          onAuthenticate={unsupportedAuthentication}
         />
       );
 
@@ -418,6 +424,7 @@ describe('ModelProviderInstanceDrawer', () => {
             expires_at: '2026-04-22T12:00:00Z'
           })}
           onRevealSecret={async () => 'backup-secret'}
+          onAuthenticate={unsupportedAuthentication}
         />
       );
 
@@ -463,6 +470,7 @@ describe('ModelProviderInstanceDrawer', () => {
             expires_at: '2026-04-22T12:00:00Z'
           })}
           onRevealSecret={async () => 'super-secret'}
+          onAuthenticate={unsupportedAuthentication}
         />
       );
 
@@ -563,6 +571,7 @@ describe('ModelProviderInstanceDrawer', () => {
             expires_at: '2026-04-22T12:00:00Z'
           })}
           onRevealSecret={async () => 'super-secret'}
+          onAuthenticate={unsupportedAuthentication}
         />
       );
 

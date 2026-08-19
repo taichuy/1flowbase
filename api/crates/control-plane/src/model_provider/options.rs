@@ -15,7 +15,7 @@ use crate::{
 };
 
 use super::{
-    instances::build_provider_runtime_config,
+    instances::maintain_provider_runtime_config,
     shared::{
         empty_object, ensure_model_provider_permission, is_secret_field,
         load_actor_context_for_user, map_catalog_source, map_model_discovery_mode,
@@ -97,9 +97,15 @@ where
         return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
     }
     let package = load_installed_provider_package(&installation)?;
-    let provider_config =
-        build_provider_runtime_config(repository, provider_secret_master_key, &package, &instance)
-            .await?;
+    let provider_config = maintain_provider_runtime_config(
+        repository,
+        runtime,
+        provider_secret_master_key,
+        &package,
+        &installation,
+        &instance,
+    )
+    .await?;
     let existing_cache = repository.get_catalog_cache(instance.id).await?;
 
     let refresh_result = async {
