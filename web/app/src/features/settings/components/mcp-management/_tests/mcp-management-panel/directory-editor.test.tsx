@@ -1499,7 +1499,7 @@ describe('McpManagementPanel', () => {
     expect(within(dialog).getByText('第三方原始结果')).toBeInTheDocument();
     expect(within(dialog).getByText('本地映射结果')).toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
     await waitFor(() => {
       expect(mcpManagementApi.updateSettingsMcpTool).toHaveBeenCalledWith(
         'search_customer',
