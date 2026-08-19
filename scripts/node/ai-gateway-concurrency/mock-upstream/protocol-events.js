@@ -550,7 +550,7 @@ function responsesWireEvents(nonce, vector) {
         name: 'lookup', arguments: JSON.stringify({ query: 'fixture' }), output: 'fixture result',
       },
       {
-        id: `mcp_approval_${nonce}`, type: 'mcp_approval_request', server_label: 'fixture_mcp', status: 'in_progress',
+        id: `mcp_approval_${nonce}`, type: 'mcp_approval_request', server_label: 'fixture_mcp',
         name: 'lookup', arguments: JSON.stringify({ query: 'approval fixture' }),
       },
     ]

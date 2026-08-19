@@ -821,11 +821,14 @@ test('controlled wire vectors observe honest provider MCP output without executo
       'fixture_mcp', 'fixture_mcp', 'fixture_mcp',
     ]);
     assert.equal(output.every((item) => typeof item.id === 'string' && item.id.length > 0), true);
-    assert.equal(output.every((item) => typeof item.status === 'string' && item.status.length > 0), true);
+    assert.equal(output.slice(0, 2).every((item) =>
+      typeof item.status === 'string' && item.status.length > 0,
+    ), true);
     assert.equal(output[1].name, 'lookup');
     assert.deepEqual(JSON.parse(output[1].arguments), { query: 'fixture' });
     assert.equal(output[2].name, 'lookup');
     assert.deepEqual(JSON.parse(output[2].arguments), { query: 'approval fixture' });
+    assert.equal(Object.hasOwn(output[2], 'status'), false);
     const snapshot = upstream.snapshot();
     assert.equal(snapshot.counters.gatewayExecutorInvocations, 0);
     assert.equal(snapshot.counters.networkObserverOutbound, 0);
