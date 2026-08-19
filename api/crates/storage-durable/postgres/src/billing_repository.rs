@@ -203,7 +203,7 @@ pub(crate) async fn settle_credit_in_transaction(
         let existing = transaction_record(&row)?;
         let existing_actual: rust_decimal::Decimal = session
             .try_get::<Option<String>, _>("actual_amount")?
-            .ok_or_else(|| ControlPlaneError::Conflict("billing_session_settlement_invalid"))?
+            .ok_or(ControlPlaneError::Conflict("billing_session_settlement_invalid"))?
             .parse()?;
         if existing_actual != actual
             || existing.metadata.get("price_snapshot") != Some(&input.price_snapshot)
