@@ -570,6 +570,17 @@ test("React Doctor keeps current debt as a narrow baseline", () => {
     },
     {
       files: [
+        "src/features/settings/components/mcp-management/McpToolsTab.tsx",
+      ],
+      rules: [
+        "react-doctor/jsx-no-jsx-as-prop",
+        "react-doctor/design-no-vague-button-label",
+        "react-doctor/no-derived-state",
+        "react-doctor/no-giant-component",
+      ],
+    },
+    {
+      files: [
         "src/features/settings/components/model-providers/ModelProviderInstanceDrawer.tsx",
       ],
       rules: [
