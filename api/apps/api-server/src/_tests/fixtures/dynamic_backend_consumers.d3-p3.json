@@ -1,7 +1,7 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 306,
-  "count": 612,
+  "projected_interface_count": 321,
+  "count": 642,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -99,6 +99,12 @@
       "DELETE",
       "/api/console/settings/auth-center/authenticators/:id",
       "Delete auth center authenticators"
+    ],
+    [
+      "billing.pricing_rules.delete",
+      "DELETE",
+      "/api/console/settings/billing/pricing-rules/:id",
+      "Delete billing pricing rules"
     ],
     [
       "delete_model",
@@ -599,6 +605,36 @@
       "View auth center overview"
     ],
     [
+      "billing.credit_accounts.list",
+      "GET",
+      "/api/console/settings/billing/credit-accounts",
+      "List billing credit accounts"
+    ],
+    [
+      "billing.credit_accounts.view",
+      "GET",
+      "/api/console/settings/billing/credit-accounts/:user_id",
+      "View billing credit accounts"
+    ],
+    [
+      "billing.credit_ledger.list",
+      "GET",
+      "/api/console/settings/billing/credit-ledger",
+      "List billing credit ledger"
+    ],
+    [
+      "billing.pricing_catalog.view",
+      "GET",
+      "/api/console/settings/billing/pricing-catalog",
+      "View billing pricing catalog"
+    ],
+    [
+      "billing.pricing_rules.list",
+      "GET",
+      "/api/console/settings/billing/pricing-rules",
+      "List billing pricing rules"
+    ],
+    [
       "data_sources.list",
       "GET",
       "/api/console/settings/data-models/data-sources",
@@ -945,6 +981,12 @@
       "PATCH",
       "/api/console/applications/:id/orchestration/versions/:version_id",
       "Update version"
+    ],
+    [
+      "billing.pricing_rules.update",
+      "PATCH",
+      "/api/console/settings/billing/pricing-rules/:id",
+      "Update billing pricing rules"
     ],
     [
       "data_sources.defaults.update",
@@ -1341,6 +1383,54 @@
       "POST",
       "/api/console/settings/auth-center/authenticators/:id/copy",
       "Copy auth center authenticators"
+    ],
+    [
+      "billing.credit.adjust",
+      "POST",
+      "/api/console/settings/billing/credits/:user_id/adjust",
+      "Billing credit adjust"
+    ],
+    [
+      "billing.credit.charge",
+      "POST",
+      "/api/console/settings/billing/credits/:user_id/charge",
+      "Billing credit charge"
+    ],
+    [
+      "billing.credit.disable",
+      "POST",
+      "/api/console/settings/billing/credits/:user_id/disable",
+      "Disable billing credit"
+    ],
+    [
+      "billing.credit.enable",
+      "POST",
+      "/api/console/settings/billing/credits/:user_id/enable",
+      "Enable billing credit"
+    ],
+    [
+      "billing.credit.grant",
+      "POST",
+      "/api/console/settings/billing/credits/:user_id/grant",
+      "Billing credit grant"
+    ],
+    [
+      "billing.credit.refund",
+      "POST",
+      "/api/console/settings/billing/credits/:user_id/refund",
+      "Billing credit refund"
+    ],
+    [
+      "billing.pricing_catalog.import",
+      "POST",
+      "/api/console/settings/billing/pricing-catalog/import",
+      "Import billing pricing catalog"
+    ],
+    [
+      "billing.pricing_rules.create",
+      "POST",
+      "/api/console/settings/billing/pricing-rules",
+      "Create billing pricing rules"
     ],
     [
       "data_sources.create",

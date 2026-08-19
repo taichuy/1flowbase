@@ -1,16 +1,16 @@
 {
   "packet": "D5-P4/P6",
-  "catalog_version": "2.0.8",
-  "semantic_sha256": "sha256:d8ae35721539ee7acd34a2a722b405d786851d9ec679dc53f5b5889da225e7a9",
-  "official_commit": "b92881bffb209f24b46fc6b1a1e65a624940d13a",
+  "catalog_version": "2.0.9",
+  "semantic_sha256": "sha256:12a7f55003d06723fead00a9124015b369c692df0317574c8e631966f99b1577",
+  "official_commit": "dc101f4f430b70ee15606cfaf2910c4c426e1c25",
   "expected": {
-    "p3_identities": 612,
+    "p3_identities": 642,
     "p4_identities": 74,
     "p5_consumers": 46,
     "p5_identities": 41,
     "p6_consumers": 19,
     "p6_identities": 11,
-    "catalog_keys": 738
+    "catalog_keys": 768
   },
   "p7_references": [
     {

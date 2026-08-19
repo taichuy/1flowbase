@@ -574,10 +574,13 @@ async fn anthropic_blocking_keeps_non_reasoning_markers_in_visible_output() {
     assert_eq!(response.status(), StatusCode::OK);
     let payload = response_json(response).await;
     assert_eq!(payload["type"], json!("message"));
+    assert_eq!(payload["content"][0]["type"], json!("thinking"));
+    assert_eq!(payload["content"][0]["thinking"], json!("provider marker"));
+    assert_eq!(payload["content"][1]["type"], json!("text"));
     assert_eq!(
-        payload["content"][0]["text"],
+        payload["content"][1]["text"],
         json!("<tool_call>marker</tool_call>\n\n---\n\n下面是美化后内容\n\nvisible marker output"),
-        "blocking projection must only remove the canonical reasoning segment"
+        "blocking projection must preserve the non-reasoning segment after the canonical reasoning block"
     );
 }
 
