@@ -838,3 +838,29 @@ test('controlled wire vectors observe honest provider MCP output without executo
     }
   });
 });
+
+// Root AC-019/020: provider AdditionalTools output conforms to the strict public Responses schema.
+test('controlled wire vectors retain schema-complete additional tools output', async () => {
+  await withMockUpstream(async ({ httpBaseUrl }) => {
+    const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'mock-model', stream: true,
+        input: [
+          { type: 'tool_search_output', id: 'ts_1', tools: [{ type: 'function', name: 'fixture_read' }] },
+          { type: 'additional_tools', id: 'at_1', role: 'assistant', tools: [{ type: 'function', name: 'fixture_read' }] },
+        ],
+      }),
+    });
+    const output = parseSse(await response.text())
+      .filter((event) => event.event === 'response.output_item.done')
+      .map((event) => event.data.item);
+    assert.deepEqual(output.map((item) => item.type), ['tool_search_output', 'additional_tools']);
+    assert.equal(output[1].role, 'assistant');
+    assert.deepEqual(output[1].tools, [{
+      type: 'function', name: 'fixture_read', strict: false,
+      parameters: { type: 'object', properties: {} },
+    }]);
+    assert.equal(Object.hasOwn(output[1], 'status'), false);
+  });
+});

@@ -559,10 +559,20 @@ function responsesWireEvents(nonce, vector) {
       'tool-search-output-additional-tools': ['tool_search_output', 'additional_tools'],
       'hosted-tools': ['file_search_call', 'program', 'shell_call'],
       'mcp-approval-continuation': [],
-    }[vector] ?? ['future_gateway_drift']).map((type, index) => ({
-      id: `wire_${index}_${nonce}`, type, status: 'completed',
-      x_synthetic_unknown: type === 'future_gateway_drift' ? { preserve: true } : undefined,
-    }));
+    }[vector] ?? ['future_gateway_drift']).map((type, index) => (
+      type === 'additional_tools'
+        ? {
+          id: `wire_${index}_${nonce}`, type, role: 'assistant',
+          tools: [{
+            type: 'function', name: 'fixture_read', strict: false,
+            parameters: { type: 'object', properties: {} },
+          }],
+        }
+        : {
+          id: `wire_${index}_${nonce}`, type, status: 'completed',
+          x_synthetic_unknown: type === 'future_gateway_drift' ? { preserve: true } : undefined,
+        }
+    ));
   const chunks = [{ type: 'response.created', sequence_number: 0, response }];
   for (const [index, item] of output.entries()) {
     chunks.push({ type: 'response.output_item.added', sequence_number: chunks.length, output_index: index, item });
