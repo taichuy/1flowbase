@@ -15,6 +15,37 @@ function createPageContent(
   return createFrontstagePageContentFixture(overrides);
 }
 
+function createRuntimeBlock(
+  id: string,
+  overrides: Partial<FrontstageBlockInstance> = {}
+): FrontstageBlockInstance {
+  const codeRef = `${id}-code`;
+  return {
+    id,
+    rendererVersion: 'v1',
+    sourceId: id,
+    codeRef,
+    sourceCodeRef: codeRef,
+    catalog: { providerCode: null, installationId: null },
+    contribution: {
+      pluginId: null,
+      pluginVersion: null,
+      code: `official.${id}`
+    },
+    props: {},
+    ports: { inputs: [], outputs: [] },
+    presentation: { heightMode: 'auto', height: null },
+    layout: { order: 0, region: 'main' },
+    order: 0,
+    runtime: {
+      kind: 'native_react',
+      entry: `blocks/${id}.js`,
+      hint: 'native_react'
+    },
+    ...overrides
+  };
+}
+
 describe('PageCanvas', () => {
   test('renders canonical runtime blocks when the embedded page document is empty', () => {
     const canonicalBlock: FrontstageBlockInstance = {
@@ -117,22 +148,8 @@ describe('PageCanvas', () => {
 
     view.rerender(
       <PageCanvas
-        content={createPageContent({
-          root: {
-            uid: 'root-1',
-            payload: {
-              blocks: [
-                {
-                  id: 'first-block',
-                  renderer_version: 'v1',
-                  codeRef: 'first-block-code',
-                  contributionCode: 'official.first-block',
-                  runtime: 'inline'
-                }
-              ]
-            }
-          }
-        })}
+        content={createPageContent()}
+        runtimeBlocks={[createRuntimeBlock('first-block')]}
         isDesignMode
       />
     );
@@ -146,31 +163,17 @@ describe('PageCanvas', () => {
   test('renders blocks sorted by order — each block shows loading placeholder', () => {
     render(
       <PageCanvas
-        content={createPageContent({
-          root: {
-            uid: 'root-1',
-            payload: {
-              blocks: [
-                {
-                  id: 'hero',
-                  renderer_version: 'v1',
-                  codeRef: 'hero-code',
-                  contributionCode: 'official.hero',
-                  runtime: { kind: 'native_react', entry: 'blocks/hero.html' },
-                  layout: { order: 20, region: 'main' }
-                },
-                {
-                  id: 'cta',
-                  renderer_version: 'v1',
-                  codeRef: 'cta-code',
-                  contributionCode: 'official.cta',
-                  runtime: 'inline',
-                  layout: { order: 10, region: 'footer' }
-                }
-              ]
-            }
-          }
-        })}
+        content={createPageContent()}
+        runtimeBlocks={[
+          createRuntimeBlock('hero', {
+            layout: { order: 20, region: 'main' },
+            order: 20
+          }),
+          createRuntimeBlock('cta', {
+            layout: { order: 10, region: 'footer' },
+            order: 10
+          })
+        ]}
       />
     );
 
@@ -185,23 +188,13 @@ describe('PageCanvas', () => {
   test('shows loading placeholder for blocks without runtime sessions', () => {
     render(
       <PageCanvas
-        content={createPageContent({
-          root: {
-            uid: 'root-1',
-            payload: {
-              blocks: [
-                {
-                  id: 'hero',
-                  renderer_version: 'v1',
-                  codeRef: 'hero-code',
-                  contributionCode: 'official.hero',
-                  runtime: { kind: 'native_react', entry: 'blocks/hero.js' },
-                  layout: { order: 10, region: 'main', span: 12 }
-                }
-              ]
-            }
-          }
-        })}
+        content={createPageContent()}
+        runtimeBlocks={[
+          createRuntimeBlock('hero', {
+            layout: { order: 10, region: 'main', span: 12 },
+            order: 10
+          })
+        ]}
       />
     );
 
@@ -216,22 +209,8 @@ describe('PageCanvas', () => {
   test('shows an explicit error instead of rendering an unsupported renderer version', () => {
     render(
       <PageCanvas
-        content={createPageContent({
-          root: {
-            uid: 'root-1',
-            payload: {
-              blocks: [
-                {
-                  id: 'future',
-                  renderer_version: 'v2',
-                  codeRef: 'future-code',
-                  contributionCode: 'official.future',
-                  runtime: { kind: 'native_react', entry: 'blocks/future.js' }
-                }
-              ]
-            }
-          }
-        })}
+        content={createPageContent()}
+        runtimeBlocks={[createRuntimeBlock('future', { rendererVersion: 'v2' })]}
       />
     );
 
@@ -244,22 +223,8 @@ describe('PageCanvas', () => {
     render(
       <PageCanvas
         onSelectBlock={onSelectBlock}
-        content={createPageContent({
-          root: {
-            uid: 'root-1',
-            payload: {
-              blocks: [
-                {
-                  id: 'hero',
-                  renderer_version: 'v1',
-                  codeRef: 'hero-code',
-                  contributionCode: 'official.hero',
-                  runtime: 'inline'
-                }
-              ]
-            }
-          }
-        })}
+        content={createPageContent()}
+        runtimeBlocks={[createRuntimeBlock('hero')]}
         isDesignMode
       />
     );
@@ -275,22 +240,8 @@ describe('PageCanvas', () => {
   test('does not show hover toolbar when isDesignMode is false', () => {
     render(
       <PageCanvas
-        content={createPageContent({
-          root: {
-            uid: 'root-1',
-            payload: {
-              blocks: [
-                {
-                  id: 'hero',
-                  renderer_version: 'v1',
-                  codeRef: 'hero-code',
-                  contributionCode: 'official.hero',
-                  runtime: 'inline'
-                }
-              ]
-            }
-          }
-        })}
+        content={createPageContent()}
+        runtimeBlocks={[createRuntimeBlock('hero')]}
         isDesignMode={false}
       />
     );
@@ -312,30 +263,17 @@ describe('PageCanvas', () => {
 
     render(
       <PageCanvas
-        content={createPageContent({
-          root: {
-            uid: 'root-1',
-            payload: {
-              blocks: [
-                {
-                  id: 'hero',
-                  codeRef: 'hero-code',
-                  contributionCode: 'official.hero',
-                  runtime: { kind: 'native_react', entry: 'blocks/hero.js' },
-                  layout: { order: 10, region: 'main' }
-                },
-                {
-                  id: 'cta',
-                  renderer_version: 'v1',
-                  codeRef: 'cta-code',
-                  contributionCode: 'official.cta',
-                  runtime: { kind: 'native_react', entry: 'blocks/cta.js' },
-                  layout: { order: 20, region: 'footer' }
-                }
-              ]
-            }
-          }
-        })}
+        content={createPageContent()}
+        runtimeBlocks={[
+          createRuntimeBlock('hero', {
+            layout: { order: 10, region: 'main' },
+            order: 10
+          }),
+          createRuntimeBlock('cta', {
+            layout: { order: 20, region: 'footer' },
+            order: 20
+          })
+        ]}
         isDesignMode
         designActions={designActions}
       />

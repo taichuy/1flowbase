@@ -6,6 +6,7 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
+import type { ConsoleFrontstageBlockNode } from '@1flowbase/api-client';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { AppProviders } from '../../../../app/AppProviders';
@@ -16,8 +17,7 @@ import {
   useFrontstageDesignModeStore
 } from '../../../../state/frontstage-design-mode-store';
 import type {
-  FrontstagePageContent,
-  SaveFrontstageTabDocumentInput
+  FrontstagePageContent
 } from '../../api/page-content';
 import {
   createFrontstagePageContentFixture,
@@ -36,6 +36,27 @@ const blockCatalogHook = vi.hoisted(() => ({
 const blockCodeHook = vi.hoisted(() => ({
   useFrontstageBlockCode: vi.fn()
 }));
+const runtimeSessionsHook = vi.hoisted(() => ({
+  useFrontstagePageCanvasNativePreparations: vi.fn(() => ({
+    preparations: [],
+    retryBlock: vi.fn()
+  }))
+}));
+const blockTreeMutations = vi.hoisted(() => ({
+  create: { mutateAsync: vi.fn(), isPending: false },
+  update: { mutateAsync: vi.fn(), isPending: false },
+  updateDescriptors: { mutateAsync: vi.fn(), isPending: false },
+  move: { mutateAsync: vi.fn(), isPending: false },
+  deleteLeaf: { mutateAsync: vi.fn(), isPending: false },
+  deleteSubtree: { mutateAsync: vi.fn(), isPending: false },
+  saveCode: { mutateAsync: vi.fn(), isPending: false }
+}));
+const blockTreeMutationsHook = vi.hoisted(() => ({
+  useFrontstageBlockTreeMutations: vi.fn(() => blockTreeMutations)
+}));
+const blockTreeApi = vi.hoisted(() => ({
+  fetchFrontstageBlockDeleteImpact: vi.fn()
+}));
 
 vi.mock(
   '../../hooks/use-frontstage-page-content-save',
@@ -43,6 +64,15 @@ vi.mock(
 );
 vi.mock('../../hooks/use-frontstage-block-catalog', () => blockCatalogHook);
 vi.mock('../../hooks/use-frontstage-block-code', () => blockCodeHook);
+vi.mock(
+  '../../hooks/use-frontstage-page-canvas-native-preparations',
+  () => runtimeSessionsHook
+);
+vi.mock(
+  '../../hooks/use-frontstage-block-tree-mutations',
+  () => blockTreeMutationsHook
+);
+vi.mock('../../api/block-tree', () => blockTreeApi);
 vi.mock('../../components/jsx-studio/FrontstageJsxStudioDrawer', () => ({
   FrontstageJsxStudioDrawer: ({
     open,
@@ -110,91 +140,42 @@ function createPageContent(
   return createFrontstagePageContentFixture(overrides);
 }
 
-function createBlockPayload(blockId: string, order: number) {
+function createBlockRoot(
+  blockId: string,
+  order: number
+): ConsoleFrontstageBlockNode {
   return {
-    id: blockId,
-    codeRef: `${blockId}-code`,
-    catalog: {
-      providerCode: null,
-      installationId: null
+    block_id: blockId,
+    workspace_id: 'workspace-1',
+    page_id: 'page-1',
+    tab_id: 'tab-1',
+    parent_block_id: null,
+    rank: `${order + 1}`.padStart(6, '0'),
+    presentation: 'page',
+    title: blockId,
+    description: null,
+    schema_version: 1,
+    code_ref: `${blockId}-code`,
+    input_mapping: {},
+    output_mapping: {},
+    runtime_descriptor: {
+      id: blockId,
+      rendererVersion: 'v1',
+      codeRef: `${blockId}-code`,
+      contributionCode: 'frontstage.js-ui-block',
+      runtime: { kind: 'native_react', entry: 'index.js' },
+      layout: { order, region: 'main' }
     },
-    contribution: {
-      pluginId: null,
-      pluginVersion: null,
-      code: 'frontstage.js-ui-block'
-    },
-    props: {},
-    'x-layout': {
-      order,
-      region: 'main'
-    },
-    runtime: {
-      kind: 'js-ui',
-      entry: null,
-      hint: 'js-ui'
-    }
+    created_at: '2026-08-19T00:00:00Z',
+    updated_at: '2026-08-19T00:00:00Z'
   };
-}
-
-function createPageContentWithBlocks(
-  blockIds: string[]
-): FrontstagePageContent {
-  const blocks = blockIds.map((blockId, index) =>
-    createBlockPayload(blockId, index)
-  );
-
-  return createPageContent({
-    schema: {
-      rootUid: 'root-1',
-      payload: { blocks }
-    },
-    root: {
-      uid: 'root-1',
-      payload: { blocks }
-    }
-  });
-}
-
-function createSavedPageContentFromInput(
-  input: SaveFrontstageTabDocumentInput
-): FrontstagePageContent {
-  return createPageContent({
-    schema: {
-      rootUid: 'root-1',
-      payload: input.payload
-    },
-    root: {
-      uid: 'root-1',
-      payload: input.payload
-    }
-  });
-}
-
-function getSavedBlocks(input: SaveFrontstageTabDocumentInput) {
-  const payload = input.payload;
-  if (typeof payload !== 'object' || payload === null) {
-    throw new Error('root payload must be an object');
-  }
-
-  const blocks = (payload as { blocks?: unknown }).blocks;
-  if (!Array.isArray(blocks)) {
-    throw new Error('root payload blocks must be an array');
-  }
-
-  return blocks as Array<Record<string, unknown>>;
-}
-
-function getSavedBlockIds(input: SaveFrontstageTabDocumentInput): unknown[] {
-  return getSavedBlocks(input).map((block) => block.id);
 }
 
 function mockPageContentSaveState(
   overrides: Partial<FrontstagePageContentSaveState> = {}
 ): FrontstagePageContentSaveState {
   const state = {
-    save: vi.fn((input: SaveFrontstageTabDocumentInput) =>
-      Promise.resolve(createSavedPageContentFromInput(input))
-    ),
+    save: vi.fn(),
     saving: false,
     isPending: false,
     error: null,
@@ -230,7 +211,7 @@ function mockFrontstageBlockCode() {
   });
 }
 
-function renderFrontStagePage(pageContent: FrontstagePageContent) {
+function renderFrontStagePage(blockIds: string[]) {
   return render(
     <AppProviders>
       <FrontStagePage
@@ -243,7 +224,8 @@ function renderFrontStagePage(pageContent: FrontstagePageContent) {
             kind: 'page'
           }
         ]}
-        pageContent={pageContent}
+        pageContent={createPageContent()}
+        blockRoots={blockIds.map(createBlockRoot)}
       />
     </AppProviders>
   );
@@ -298,68 +280,32 @@ describe('FrontStagePage block arrange actions', () => {
     mockPageContentSaveState();
     mockFrontstageBlockCatalog();
     mockFrontstageBlockCode();
+    blockTreeApi.fetchFrontstageBlockDeleteImpact.mockResolvedValue({
+      affected_count: 1
+    });
   });
 
-  test('saves selected block deletion and falls back to the next block', async () => {
+  test('deletes a selected root through the current block-tree contract', async () => {
     authenticate(['frontstage.page.design']);
-    const saveState = mockPageContentSaveState();
-    renderFrontStagePage(
-      createPageContentWithBlocks(['hero', 'feature', 'cta'])
-    );
+    renderFrontStagePage(['hero', 'feature', 'cta']);
 
     await activateDesignMode();
     await clickAndFlush(getBlockRow('feature'));
     await confirmBlockDelete('feature');
 
     await waitFor(() => {
-      expect(saveState.save).toHaveBeenCalledTimes(1);
-    });
-
-    const [saveInput] = saveState.save.mock.calls[0] as [
-      SaveFrontstageTabDocumentInput
-    ];
-    expect(getSavedBlockIds(saveInput)).toEqual(['hero', 'cta']);
-
-    await waitFor(() => {
-      expect(
-        screen.queryByTestId('block-slot-feature')
-      ).not.toBeInTheDocument();
-      expect(screen.getByTestId('block-slot-hero')).toBeInTheDocument();
-      expect(screen.getByTestId('block-slot-cta')).toBeInTheDocument();
-    });
-  });
-
-  test('clears selected block when deleting the only block', async () => {
-    authenticate(['frontstage.page.design']);
-    const saveState = mockPageContentSaveState();
-    renderFrontStagePage(createPageContentWithBlocks(['hero']));
-
-    await activateDesignMode();
-    await clickAndFlush(getBlockRow('hero'));
-    await confirmBlockDelete('hero');
-
-    await waitFor(() => {
-      expect(saveState.save).toHaveBeenCalledTimes(1);
-    });
-
-    const [saveInput] = saveState.save.mock.calls[0] as [
-      SaveFrontstageTabDocumentInput
-    ];
-    expect(getSavedBlockIds(saveInput)).toEqual([]);
-
-    await waitFor(() => {
-      expect(
-        screen.getByTestId('page-canvas-design-empty-state')
-      ).toBeEmptyDOMElement();
+      expect(blockTreeMutations.deleteLeaf.mutateAsync).toHaveBeenCalledWith({
+        block_id: 'feature',
+        parent_block_id: null,
+        tab_id: 'tab-1'
+      });
     });
   });
 
   test('disables selected block arrange actions while page content is saving', async () => {
     authenticate(['frontstage.page.design']);
     mockPageContentSaveState({ saving: true, isPending: true });
-    renderFrontStagePage(
-      createPageContentWithBlocks(['hero', 'feature', 'cta'])
-    );
+    renderFrontStagePage(['hero', 'feature', 'cta']);
 
     await activateDesignMode();
     await clickAndFlush(getBlockRow('feature'));
@@ -382,7 +328,7 @@ describe('FrontStagePage block arrange actions', () => {
 
   test('opens JSX Studio on the code section for the selected block in design mode', async () => {
     authenticate(['frontstage.page.design']);
-    renderFrontStagePage(createPageContentWithBlocks(['hero', 'cta']));
+    renderFrontStagePage(['hero', 'cta']);
 
     await activateDesignMode();
     await clickAndFlush(getBlockRow('hero'));
@@ -400,7 +346,7 @@ describe('FrontStagePage block arrange actions', () => {
 
   test('#1300 exposes one JSX Studio edit action for a selected block', async () => {
     authenticate(['frontstage.page.design']);
-    renderFrontStagePage(createPageContentWithBlocks(['hero']));
+    renderFrontStagePage(['hero']);
 
     await activateDesignMode();
     await clickAndFlush(getBlockRow('hero'));
@@ -421,7 +367,7 @@ describe('FrontStagePage block arrange actions', () => {
 
   test('hides block editor entry outside design mode and without design permission', async () => {
     authenticate(['frontstage.page.design']);
-    const view = renderFrontStagePage(createPageContentWithBlocks(['hero']));
+    const view = renderFrontStagePage(['hero']);
 
     await clickAndFlush(getBlockRow('hero'));
     expect(
@@ -455,7 +401,8 @@ describe('FrontStagePage block arrange actions', () => {
               kind: 'page'
             }
           ]}
-          pageContent={createPageContentWithBlocks(['hero'])}
+          pageContent={createPageContent()}
+          blockRoots={[createBlockRoot('hero', 0)]}
         />
       </AppProviders>
     );
@@ -467,10 +414,10 @@ describe('FrontStagePage block arrange actions', () => {
 
   test('shows a clear block save error in design mode', async () => {
     authenticate(['frontstage.page.design']);
-    mockPageContentSaveState({
-      save: vi.fn(() => Promise.reject(new Error('arrange failed')))
-    });
-    renderFrontStagePage(createPageContentWithBlocks(['hero', 'cta']));
+    blockTreeApi.fetchFrontstageBlockDeleteImpact.mockRejectedValueOnce(
+      new Error('arrange failed')
+    );
+    renderFrontStagePage(['hero', 'cta']);
 
     await activateDesignMode();
     await clickAndFlush(getBlockRow('cta'));
@@ -482,9 +429,7 @@ describe('FrontStagePage block arrange actions', () => {
 
   test('does not show block action toolbar in browsing mode or without design permission', async () => {
     authenticate(['frontstage.page.design']);
-    const view = renderFrontStagePage(
-      createPageContentWithBlocks(['hero', 'cta'])
-    );
+    const view = renderFrontStagePage(['hero', 'cta']);
 
     await clickAndFlush(getBlockRow('hero'));
     expect(
@@ -510,7 +455,11 @@ describe('FrontStagePage block arrange actions', () => {
               kind: 'page'
             }
           ]}
-          pageContent={createPageContentWithBlocks(['hero', 'cta'])}
+          pageContent={createPageContent()}
+          blockRoots={[
+            createBlockRoot('hero', 0),
+            createBlockRoot('cta', 1)
+          ]}
         />
       </AppProviders>
     );

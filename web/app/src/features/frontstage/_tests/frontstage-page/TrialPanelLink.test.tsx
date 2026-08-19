@@ -5,6 +5,7 @@ import {
   screen,
   waitFor
 } from '@testing-library/react';
+import type { ConsoleFrontstageBlockNode } from '@1flowbase/api-client';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { AppProviders } from '../../../../app/AppProviders';
@@ -78,25 +79,7 @@ function authenticate() {
   });
 }
 
-function createPageContent(blocks?: Array<Record<string, unknown>>) {
-  const payload = blocks ?? [
-    {
-      id: 'cta',
-      codeRef: 'cta-code',
-      catalog: {
-        providerCode: '1flowbase',
-        installationId: 'builtin-installation'
-      },
-      contribution: {
-        pluginId: 'builtin-frontstage',
-        pluginVersion: '1.0.0',
-        code: 'frontstage.js-ui-block'
-      },
-      props: {},
-      'x-layout': { order: 1, region: 'main' },
-      runtime: { kind: 'js-ui', entry: null, hint: 'js-ui' }
-    }
-  ];
+function createPageContent() {
   return {
     page: {
       id: 'page-1',
@@ -115,7 +98,43 @@ function createPageContent(blocks?: Array<Record<string, unknown>>) {
       routeSegment: null,
       documentRootUid: 'root-1'
     },
-    document: { rootUid: 'root-1', payload: { blocks: payload } }
+    document: { rootUid: 'root-1', payload: {} }
+  };
+}
+
+function createBlockRoot(): ConsoleFrontstageBlockNode {
+  return {
+    block_id: 'cta',
+    workspace_id: 'workspace-1',
+    page_id: 'page-1',
+    tab_id: 'tab-1',
+    parent_block_id: null,
+    rank: '001000',
+    presentation: 'page',
+    title: 'CTA',
+    description: null,
+    schema_version: 1,
+    code_ref: 'cta-code',
+    input_mapping: {},
+    output_mapping: {},
+    runtime_descriptor: {
+      id: 'cta',
+      rendererVersion: 'v1',
+      codeRef: 'cta-code',
+      catalog: {
+        providerCode: '1flowbase',
+        installationId: 'builtin-installation'
+      },
+      contribution: {
+        pluginId: 'builtin-frontstage',
+        pluginVersion: '1.0.0',
+        code: 'frontstage.js-ui-block'
+      },
+      runtime: { kind: 'native_react', entry: 'index.js' },
+      layout: { order: 1, region: 'main' }
+    },
+    created_at: '2026-08-19T00:00:00Z',
+    updated_at: '2026-08-19T00:00:00Z'
   };
 }
 
@@ -127,6 +146,7 @@ function renderFrontStagePage() {
         pageId="page-1"
         initialPageTree={[{ id: 'page-1', title: '页面 page-1', kind: 'page' }]}
         pageContent={createPageContent()}
+        blockRoots={[createBlockRoot()]}
       />
     </AppProviders>
   );
