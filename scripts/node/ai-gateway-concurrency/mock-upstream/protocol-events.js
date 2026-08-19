@@ -537,6 +537,45 @@ function losslessProtocolEvents(transport, nonce, segments = LOSSLESS_SENTINEL_S
   throw new Error(`unsupported lossless fixture transport: ${transport}`);
 }
 
+function responsesWireOutputItem(nonce, type, index) {
+  const id = `wire_${index}_${nonce}`;
+  const tool = {
+    type: 'function', name: 'fixture_read', strict: false,
+    parameters: { type: 'object', properties: {} },
+  };
+  if (type === 'tool_search_call') {
+    return {
+      id, type, call_id: `tool_search_call_${nonce}`, execution: 'server',
+      arguments: { query: 'fixture' }, status: 'completed',
+    };
+  }
+  if (type === 'tool_search_output') {
+    return {
+      id, type, call_id: `tool_search_call_${nonce}`, execution: 'server',
+      tools: [tool], status: 'completed',
+    };
+  }
+  if (type === 'additional_tools') return { id, type, role: 'assistant', tools: [tool] };
+  if (type === 'file_search_call') return { id, type, status: 'completed', queries: ['fixture'] };
+  if (type === 'program') {
+    return {
+      id, type, call_id: `program_call_${nonce}`,
+      code: 'await fixture_read({ query: "fixture" });', fingerprint: `program_${nonce}`,
+    };
+  }
+  if (type === 'shell_call') {
+    return {
+      id, type, call_id: `shell_call_${nonce}`,
+      action: { commands: ['printf fixture'], timeout_ms: null, max_output_length: null },
+      status: 'completed', environment: null,
+    };
+  }
+  return {
+    id, type, status: 'completed',
+    x_synthetic_unknown: type === 'future_gateway_drift' ? { preserve: true } : undefined,
+  };
+}
+
 function responsesWireEvents(nonce, vector) {
   const response = { id: `resp_${nonce}`, object: 'response', status: 'in_progress', model: 'mock-model', output: [] };
   const output = vector === 'mcp-list-call-approval'
@@ -559,20 +598,7 @@ function responsesWireEvents(nonce, vector) {
       'tool-search-output-additional-tools': ['tool_search_output', 'additional_tools'],
       'hosted-tools': ['file_search_call', 'program', 'shell_call'],
       'mcp-approval-continuation': [],
-    }[vector] ?? ['future_gateway_drift']).map((type, index) => (
-      type === 'additional_tools'
-        ? {
-          id: `wire_${index}_${nonce}`, type, role: 'assistant',
-          tools: [{
-            type: 'function', name: 'fixture_read', strict: false,
-            parameters: { type: 'object', properties: {} },
-          }],
-        }
-        : {
-          id: `wire_${index}_${nonce}`, type, status: 'completed',
-          x_synthetic_unknown: type === 'future_gateway_drift' ? { preserve: true } : undefined,
-        }
-    ));
+    }[vector] ?? ['future_gateway_drift']).map((type, index) => responsesWireOutputItem(nonce, type, index));
   const chunks = [{ type: 'response.created', sequence_number: 0, response }];
   for (const [index, item] of output.entries()) {
     chunks.push({ type: 'response.output_item.added', sequence_number: chunks.length, output_index: index, item });
