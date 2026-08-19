@@ -670,6 +670,13 @@ describe('settings api wrappers', () => {
       i18n_catalog: {
         'plugin.openai': {
           zh_Hans: {
+            auth: {
+              actions: {
+                device_code: {
+                  label: '设备授权'
+                }
+              }
+            },
             fields: {
               transport_mode: {
                 label: '传输模式',
@@ -700,6 +707,15 @@ describe('settings api wrappers', () => {
         {
           ...modelProviderCatalogEntries[0],
           namespace: 'plugin.openai',
+          auth: {
+            actions: [
+              {
+                code: 'device_code',
+                label: 'auth.actions.device_code.label',
+                user_action_kinds: ['device_code']
+              }
+            ]
+          },
           form_schema: [
             {
               key: 'transport_mode',
@@ -752,6 +768,15 @@ describe('settings api wrappers', () => {
         description: '显式使用 Responses WebSocket 传输。'
       }
     ]);
+    expect(entry.auth).toEqual({
+      actions: [
+        {
+          code: 'device_code',
+          label: '设备授权',
+          user_action_kinds: ['device_code']
+        }
+      ]
+    });
   });
 
   test('forwards plugin query keys and request helpers', async () => {

@@ -165,6 +165,12 @@ vi.mock('@1flowbase/api-client', () => ({
   updateConsoleModelProviderMainInstance: vi
     .fn()
     .mockResolvedValue(modelProviderApiFixtures.mainInstance),
+  authenticateConsoleModelProviderInstance: vi.fn().mockResolvedValue({
+    instance: { id: 'provider-1' },
+    status: 'authorized',
+    message: null,
+    user_action: null
+  }),
   validateConsoleModelProviderInstance: vi.fn().mockResolvedValue({
     instance: {
       id: 'provider-1',

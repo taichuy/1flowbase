@@ -1,6 +1,7 @@
 import { describe, expect, test, vi } from 'vitest';
 import * as transport from '../transport';
 import {
+  authenticateConsoleModelProviderInstance,
   clearConsoleModelProviderRequestLogsBatch,
   createConsoleModelProviderInstance,
   deleteConsoleModelProviderInstance,
@@ -58,6 +59,11 @@ describe('console model provider settings route contract', () => {
         csrfToken
       ),
       validateConsoleModelProviderInstance('instance-1', csrfToken),
+      authenticateConsoleModelProviderInstance(
+        'instance-1',
+        { type: 'begin', action: 'device_code' },
+        csrfToken
+      ),
       getConsoleModelProviderModels('instance-1'),
       refreshConsoleModelProviderModels('instance-1', csrfToken),
       revealConsoleModelProviderSecret('instance-1', 'api_key', csrfToken),
@@ -77,6 +83,7 @@ describe('console model provider settings route contract', () => {
       '/api/console/settings/model-providers/providers/provider-1/main-instance',
       '/api/console/settings/model-providers/providers/provider-1/main-instance',
       '/api/console/settings/model-providers/instances/instance-1/validate',
+      '/api/console/settings/model-providers/instances/instance-1/authenticate',
       '/api/console/settings/model-providers/instances/instance-1/models',
       '/api/console/settings/model-providers/instances/instance-1/models/refresh',
       '/api/console/settings/model-providers/instances/instance-1/secrets/reveal',
@@ -86,6 +93,11 @@ describe('console model provider settings route contract', () => {
       '/api/console/settings/model-providers/request-logs',
       '/api/console/settings/model-providers/request-logs/clear'
     ]);
+    expect(apiFetch.mock.calls[8]?.[0]).toMatchObject({
+      method: 'POST',
+      csrfToken,
+      body: { operation: { type: 'begin', action: 'device_code' } }
+    });
   });
 });
 
