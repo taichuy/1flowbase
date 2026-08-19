@@ -138,6 +138,25 @@ provider_metadata: {}
     fs::write(root.join("scripts/demo.sh"), "echo demo").unwrap();
 }
 
+fn create_auth_provider_fixture(root: &Path) {
+    create_provider_fixture(root);
+    let provider_path = root.join("provider/fixture_provider.yaml");
+    let mut provider = fs::read_to_string(&provider_path).unwrap();
+    provider.push_str(
+        r#"
+auth:
+  actions:
+    - code: device_code
+      label: Device Code
+      user_action_kinds:
+        - device_code
+  managed_secret_keys:
+    - access_token
+"#,
+    );
+    fs::write(provider_path, provider).unwrap();
+}
+
 fn write_fixture_provider_runtime_script(path: &Path) {
     fs::write(
         path,
@@ -160,9 +179,19 @@ switch (request.method) {
   case 'validate':
     result = {
       sanitized: {
-        api_key: request.input?.api_key ? "***" : null
+        api_key: request.input?.api_key ? "***" : null,
+        access_token: request.input?.access_token ? "***" : null
       }
     };
+    break;
+  case 'auth':
+    result = request.input?.operation?.type === 'begin'
+      ? {
+          status: "authorized",
+          message: "Fixture device code authorized",
+          managed_secret_patch: { access_token: "fixture-access-token" }
+        }
+      : { status: "authorized" };
     break;
   case 'list_models':
     result = listModels;
@@ -216,9 +245,18 @@ process.stdout.write(JSON.stringify({ ok: true, result }));
 }
 
 async fn install_enable_assign(app: &axum::Router, cookie: &str, csrf: &str) -> String {
+    install_enable_assign_with_fixture(app, cookie, csrf, create_provider_fixture).await
+}
+
+async fn install_enable_assign_with_fixture(
+    app: &axum::Router,
+    cookie: &str,
+    csrf: &str,
+    create_fixture: fn(&Path),
+) -> String {
     let package_root =
         std::env::temp_dir().join(format!("model-provider-route-{}", uuid::Uuid::now_v7()));
-    create_provider_fixture(&package_root);
+    create_fixture(&package_root);
 
     let install = app
         .clone()
@@ -324,6 +362,7 @@ fn schema_ref_name(schema: &Value) -> Option<String> {
         })
 }
 
+mod auth;
 mod lifecycle;
 mod refresh_and_settings;
 mod request_log_maintenance;

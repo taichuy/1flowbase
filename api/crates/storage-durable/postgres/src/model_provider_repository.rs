@@ -521,7 +521,14 @@ impl ModelProviderRepository for PgControlPlaneStore {
                 instances.updated_by
             from model_provider_instances instances
             where instances.id = $3
-              and $4 is null
+              and (
+                  $4 is null
+                  or exists (
+                      select 1
+                      from model_provider_instance_secrets existing
+                      where existing.provider_instance_id = instances.id
+                  )
+              )
             on conflict (provider_instance_id) do update
             set encrypted_secret_json = excluded.encrypted_secret_json,
                 secret_version = model_provider_instance_secrets.secret_version + 1,

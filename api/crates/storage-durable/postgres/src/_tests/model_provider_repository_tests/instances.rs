@@ -236,6 +236,79 @@ async fn model_provider_repository_persists_instances_catalog_cache_and_encrypte
 }
 
 #[tokio::test]
+async fn model_provider_repository_patches_existing_secrets_with_compare_and_swap() {
+    let (store, workspace, actor, installation_id) = seed_store().await;
+    let instance_id = Uuid::now_v7();
+    ModelProviderRepository::create_instance(
+        &store,
+        &CreateModelProviderInstanceInput {
+            instance_id,
+            workspace_id: workspace.id,
+            installation_id,
+            provider_code: "fixture_provider".into(),
+            protocol: "openai_compatible".into(),
+            display_name: "Secret Rotation Fixture".into(),
+            status: ModelProviderInstanceStatus::Draft,
+            config_json: json!({ "base_url": "https://api.example.com" }),
+            configured_models: vec![],
+            enabled_model_ids: vec![],
+            included_in_main: None,
+            created_by: actor.id,
+        },
+    )
+    .await
+    .unwrap();
+    ModelProviderRepository::upsert_secret(
+        &store,
+        &UpsertModelProviderSecretInput {
+            provider_instance_id: instance_id,
+            plaintext_secret_json: json!({ "api_key": "initial-secret" }),
+            secret_version: 1,
+            master_key: "provider-secret-master-key".into(),
+        },
+    )
+    .await
+    .unwrap();
+
+    let patched = ModelProviderRepository::patch_secret(
+        &store,
+        &PatchModelProviderSecretInput {
+            provider_instance_id: instance_id,
+            expected_secret_version: Some(1),
+            plaintext_secret_json: json!({
+                "api_key": "initial-secret",
+                "access_token": "rotated-access-token"
+            }),
+            master_key: "provider-secret-master-key".into(),
+        },
+    )
+    .await
+    .expect("the current secret version should permit one atomic rotation");
+    assert_eq!(patched.secret_version, 2);
+    let secret =
+        ModelProviderRepository::get_secret_json(&store, instance_id, "provider-secret-master-key")
+            .await
+            .unwrap()
+            .unwrap();
+    assert_eq!(secret["access_token"], "rotated-access-token");
+
+    let stale = ModelProviderRepository::patch_secret(
+        &store,
+        &PatchModelProviderSecretInput {
+            provider_instance_id: instance_id,
+            expected_secret_version: Some(1),
+            plaintext_secret_json: json!({ "access_token": "stale-access-token" }),
+            master_key: "provider-secret-master-key".into(),
+        },
+    )
+    .await
+    .expect_err("a stale secret version must fail closed");
+    assert!(stale
+        .to_string()
+        .contains("model_provider_secret_version_conflict"));
+}
+
+#[tokio::test]
 async fn model_provider_repository_persists_main_instance_defaults_and_instance_inclusion_flags() {
     let (store, workspace, actor, installation_id) = seed_store().await;
 

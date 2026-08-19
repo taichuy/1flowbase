@@ -2,10 +2,10 @@ use control_plane::ports::{
     CreateModelCatalogSyncRunInput, CreateModelFailoverQueueItemInput,
     CreateModelFailoverQueueSnapshotInput, CreateModelFailoverQueueTemplateInput,
     CreateModelProviderCatalogSourceInput, CreateModelProviderInstanceInput,
-    ModelProviderRepository, ReassignModelProviderInstancesInput, UpdateModelProviderInstanceInput,
-    UpsertModelProviderCatalogCacheInput, UpsertModelProviderCatalogEntryInput,
-    UpsertModelProviderMainInstanceInput, UpsertModelProviderSecretInput,
-    UpsertPluginInstallationInput,
+    ModelProviderRepository, PatchModelProviderSecretInput, ReassignModelProviderInstancesInput,
+    UpdateModelProviderInstanceInput, UpsertModelProviderCatalogCacheInput,
+    UpsertModelProviderCatalogEntryInput, UpsertModelProviderMainInstanceInput,
+    UpsertModelProviderSecretInput, UpsertPluginInstallationInput,
 };
 use domain::{
     ModelProviderCatalogRefreshStatus, ModelProviderCatalogSource, ModelProviderDiscoveryMode,
