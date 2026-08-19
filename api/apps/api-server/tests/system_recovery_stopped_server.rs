@@ -44,7 +44,6 @@ use uuid::Uuid;
 
 const DOCKER_IMAGE: &str = "postgres:18-alpine";
 const POSTGRES_PASSWORD: &str = "stopped-server-fixture";
-const BACKUP_KEY_BASE64: &str = "BwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwcHBwc=";
 const PROVIDER_SECRET: &str = "stopped-server-provider-secret";
 const SYSTEM_BUILD: &str = "test.stopped-server";
 const NODE_ID: &str = "stopped-server-node";
@@ -270,7 +269,6 @@ impl RecoveryScenario {
             .env("API_NODE_ID", NODE_ID)
             .env("API_SYSTEM_BUILD_IDENTITY", SYSTEM_BUILD)
             .env("API_PROVIDER_SECRET_MASTER_KEY", PROVIDER_SECRET)
-            .env("API_SYSTEM_BACKUP_KEY_BASE64", BACKUP_KEY_BASE64)
             .env("API_SYSTEM_BACKUP_REPOSITORY_ROOT", &self.roots.repository)
             .env("API_BUSINESS_FILE_LOCAL_ROOT", &self.roots.objects)
             .env("API_PROVIDER_INSTALL_ROOT", &self.roots.providers)
@@ -379,7 +377,7 @@ impl RecoveryScenario {
         let serialized = payload.to_string();
         let forbidden = [
             PROVIDER_SECRET.to_owned(),
-            BACKUP_KEY_BASE64.to_owned(),
+            PROVIDER_SECRET.to_owned(),
             self.roots.objects.to_string_lossy().into_owned(),
             self.roots.providers.to_string_lossy().into_owned(),
         ];
@@ -710,7 +708,7 @@ impl RecoveryScenario {
             .unwrap(),
         );
         let key_provider =
-            Arc::new(EnvironmentBackupKeyProvider::from_base64(BACKUP_KEY_BASE64).unwrap());
+            Arc::new(EnvironmentBackupKeyProvider::from_master_key(PROVIDER_SECRET).unwrap());
         let toolchain = storage_durable::PostgreSqlToolchain::discover(
             &harness.tools.pg_dump,
             &harness.tools.pg_restore,

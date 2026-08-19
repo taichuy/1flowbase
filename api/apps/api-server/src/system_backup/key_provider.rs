@@ -1,5 +1,4 @@
 use async_trait::async_trait;
-use base64::{engine::general_purpose::STANDARD, Engine as _};
 use control_plane::ports::{BackupKeyMaterial, BackupKeyProvider, BackupKeyProviderError};
 use domain::KeyFingerprint;
 use sha2::{Digest, Sha256};
@@ -11,11 +10,13 @@ pub struct EnvironmentBackupKeyProvider {
 }
 
 impl EnvironmentBackupKeyProvider {
-    pub fn from_base64(value: &str) -> Result<Self, BackupKeyProviderError> {
-        let decoded = STANDARD
-            .decode(value.trim())
+    pub fn from_master_key(value: &str) -> Result<Self, BackupKeyProviderError> {
+        let mut derivation = Sha256::new();
+        derivation.update(b"1flowbase/system-backup/key/v1\0");
+        derivation.update(value.as_bytes());
+        let key = derivation.finalize();
+        let key = <[u8; 32]>::try_from(key.as_slice())
             .map_err(|_| BackupKeyProviderError::Unavailable)?;
-        let key = <[u8; 32]>::try_from(decoded).map_err(|_| BackupKeyProviderError::Unavailable)?;
         let fingerprint = Sha256::digest(key)
             .iter()
             .map(|byte| format!("{byte:02x}"))
@@ -47,5 +48,20 @@ impl BackupKeyProvider for EnvironmentBackupKeyProvider {
             return Err(BackupKeyProviderError::NotFound);
         }
         self.key_material()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EnvironmentBackupKeyProvider;
+
+    #[test]
+    fn derives_a_stable_backup_key_from_the_provider_master_key() {
+        let first = EnvironmentBackupKeyProvider::from_master_key("master-key").unwrap();
+        let second = EnvironmentBackupKeyProvider::from_master_key("master-key").unwrap();
+        let other = EnvironmentBackupKeyProvider::from_master_key("other-key").unwrap();
+
+        assert_eq!(first.key, second.key);
+        assert_ne!(first.key, other.key);
     }
 }

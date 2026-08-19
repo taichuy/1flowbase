@@ -64,7 +64,7 @@ async fn main() -> Result<()> {
     let config = ApiConfig::from_env()?;
     let repository = open_repository(&config).await?;
     let key_provider = Arc::new(
-        EnvironmentBackupKeyProvider::from_base64(&config.system_backup_key_base64)
+        EnvironmentBackupKeyProvider::from_master_key(&config.provider_secret_master_key)
             .map_err(|_| anyhow!("system backup key is unavailable"))?,
     );
 
