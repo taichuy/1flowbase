@@ -9,9 +9,12 @@ const {
   LOSSLESS_LONG_TEXT,
   LOSSLESS_SENTINEL_SEGMENTS,
   anthropicToolEvents,
+  chatTextEvents,
   chatToolEvents,
   losslessProtocolEvents,
+  responsesEvents,
   responsesToolEvents,
+  responsesWireEvents,
 } = require('../protocol-events');
 
 test('AC-001: lossless sentinels retain repeated whitespace, Markdown, CJK, emoji, and empty delta', () => {
@@ -107,5 +110,28 @@ test('AC-001/006: every provider transport fixture has all deltas and one succes
       || Object.hasOwn(chunk.choices?.[0]?.delta ?? {}, 'content')
     ).length, LOSSLESS_SENTINEL_SEGMENTS.length);
     assert.ok(stream.terminal);
+  }
+});
+
+test('billing conformance: successful OpenAI fixture terminals report provider usage', () => {
+  const expectedResponsesUsage = { input_tokens: 1, output_tokens: 1, total_tokens: 2 };
+  const expectedChatUsage = { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 };
+  const successfulResponses = [
+    responsesEvents('usage'),
+    responsesToolEvents('usage', '/tmp/tool'),
+    responsesWireEvents('usage', 'hosted-tools'),
+    losslessProtocolEvents(TRANSPORT.RESPONSES_SSE, 'usage'),
+  ];
+  const successfulChats = [
+    chatTextEvents('usage'),
+    chatToolEvents('usage', '/tmp/tool'),
+    losslessProtocolEvents(TRANSPORT.CHAT_COMPLETIONS_SSE, 'usage'),
+  ];
+
+  for (const stream of successfulResponses) {
+    assert.deepEqual(stream.terminal.response.usage, expectedResponsesUsage);
+  }
+  for (const stream of successfulChats) {
+    assert.deepEqual(stream.terminal.usage, expectedChatUsage);
   }
 });

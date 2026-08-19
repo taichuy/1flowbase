@@ -9,6 +9,9 @@ const DEFAULT_BARRIER_MARKERS = Object.freeze({
   clientSecond: 'marker-2',
 });
 
+const RESPONSES_USAGE = Object.freeze({ input_tokens: 1, output_tokens: 1, total_tokens: 2 });
+const CHAT_COMPLETIONS_USAGE = Object.freeze({ prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 });
+
 function posixShellArgument(value) {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
@@ -84,6 +87,7 @@ function responsesEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${
         ...response,
         status: 'completed',
         output: [completedItem],
+        usage: RESPONSES_USAGE,
       },
     },
     cancelled: {
@@ -149,7 +153,7 @@ function responsesObservableItemEvents(nonce, firstText, secondText) {
     terminal: {
       type: 'response.completed',
       sequence_number: chunks.length,
-      response: { ...response, status: 'completed', output: completedItems },
+      response: { ...response, status: 'completed', output: completedItems, usage: RESPONSES_USAGE },
     },
   };
 }
@@ -301,7 +305,7 @@ function responsesToolEvents(
     chunks,
     terminal: {
       type: 'response.completed', sequence_number: chunks.length,
-      response: { ...response, status: 'completed', output: items },
+      response: { ...response, status: 'completed', output: items, usage: RESPONSES_USAGE },
     },
   };
 }
@@ -389,7 +393,7 @@ function chatToolEvents(
     }, finish_reason: null }] }],
     terminal: { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{ index: 0, delta: {
       content: `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} ${finalText}`,
-    }, finish_reason: 'stop' }] },
+    }, finish_reason: 'stop' }], usage: CHAT_COMPLETIONS_USAGE },
   };
   const toolPaths = Array.isArray(toolPath) ? toolPath : [toolPath];
   const descriptor = normalizedToolDescriptor(tool, {
@@ -413,7 +417,7 @@ function chatToolEvents(
     }, finish_reason: null }] }],
     terminal: { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{
       index: 0, delta: {}, finish_reason: 'tool_calls',
-    }] },
+    }], usage: CHAT_COMPLETIONS_USAGE },
   };
 }
 
@@ -456,7 +460,7 @@ function chatTextEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${n
     ],
     terminal: { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{
       index: 0, delta: {}, finish_reason: 'stop',
-    }] },
+    }], usage: CHAT_COMPLETIONS_USAGE },
   };
 }
 
@@ -495,7 +499,7 @@ function losslessProtocolEvents(transport, nonce, segments = LOSSLESS_SENTINEL_S
       terminal: {
         type: 'response.completed',
         sequence_number: deltas.length + 1,
-        response: { ...response, status: 'completed' },
+        response: { ...response, status: 'completed', usage: RESPONSES_USAGE },
       },
     };
   }
@@ -511,6 +515,7 @@ function losslessProtocolEvents(transport, nonce, segments = LOSSLESS_SENTINEL_S
         id: `chatcmpl_${nonce}`,
         object: 'chat.completion.chunk',
         choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+        usage: CHAT_COMPLETIONS_USAGE,
       },
     };
   }
@@ -568,7 +573,7 @@ function responsesWireEvents(nonce, vector) {
     providerOutputTypes: output.map((item) => item.type),
     terminal: {
       type: 'response.completed', sequence_number: chunks.length,
-      response: { ...response, status: 'completed', output },
+      response: { ...response, status: 'completed', output, usage: RESPONSES_USAGE },
     },
   };
 }
