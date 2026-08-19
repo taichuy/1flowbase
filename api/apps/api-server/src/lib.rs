@@ -658,15 +658,15 @@ fn resolve_system_backup_startup(
 {
     match result {
         Ok(runtime) => Ok(Some(runtime)),
-        Err(system_backup::SystemBackupRuntimeError::PostgreSqlToolchainUnavailable) => {
+        Err(error) => {
             tracing::warn!(
                 capability = "system_backup",
                 error_code = "system_backup_unavailable",
-                "PostgreSQL backup toolchain is unavailable; system backup APIs are disabled"
+                error = %error,
+                "system backup initialization failed; system backup APIs are disabled"
             );
             Ok(None)
         }
-        Err(error) => Err(error),
     }
 }
 
@@ -778,15 +778,13 @@ mod tests {
     }
 
     #[test]
-    fn postgresql_compatibility_failure_still_blocks_api_startup() {
+    fn system_backup_initialization_failure_does_not_block_api_startup() {
         let result = resolve_system_backup_startup(Err(
             crate::system_backup::SystemBackupRuntimeError::PostgreSqlPreflight,
-        ));
+        ))
+        .expect("optional system backup failure should degrade startup");
 
-        assert!(matches!(
-            result,
-            Err(crate::system_backup::SystemBackupRuntimeError::PostgreSqlPreflight)
-        ));
+        assert!(result.is_none());
     }
 }
 

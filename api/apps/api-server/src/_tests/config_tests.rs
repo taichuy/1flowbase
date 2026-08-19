@@ -56,16 +56,12 @@ fn api_config_does_not_require_ephemeral_backend_env() {
 }
 
 #[test]
-fn api_config_reads_explicit_system_backup_repository_and_key() {
+fn api_config_reads_explicit_system_backup_repository() {
     let mut env = base_env_without_ephemeral_backend();
     env.extend([
         (
             "API_SYSTEM_BACKUP_REPOSITORY_ROOT",
             "/mnt/1flowbase-backups",
-        ),
-        (
-            "API_SYSTEM_BACKUP_KEY_BASE64",
-            "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
         ),
         ("API_SYSTEM_BUILD_IDENTITY", "git.5f906803"),
     ]);
@@ -76,21 +72,7 @@ fn api_config_reads_explicit_system_backup_repository_and_key() {
         config.system_backup_repository_root,
         "/mnt/1flowbase-backups"
     );
-    assert_eq!(
-        config.system_backup_key_base64,
-        "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
-    );
     assert_eq!(config.system_build_identity, "git.5f906803");
-}
-
-#[test]
-fn api_config_rejects_invalid_system_backup_key_length() {
-    let mut env = base_env_without_ephemeral_backend();
-    env.push(("API_SYSTEM_BACKUP_KEY_BASE64", "c2hvcnQ="));
-
-    let error = ApiConfig::from_env_map(&env).unwrap_err();
-
-    assert!(error.to_string().contains("API_SYSTEM_BACKUP_KEY_BASE64"));
 }
 
 #[test]
@@ -405,6 +387,32 @@ fn api_config_rejects_production_without_allowed_origins() {
 }
 
 #[test]
+fn api_config_accepts_production_without_optional_system_backup_settings() {
+    let config = ApiConfig::from_env_map(&[
+        (
+            "API_DATABASE_URL",
+            "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase",
+        ),
+        ("API_ENV", "production"),
+        ("API_ALLOWED_ORIGINS", "https://console.example.com"),
+        (
+            "API_PROVIDER_SECRET_MASTER_KEY",
+            "strong-provider-secret-master-key",
+        ),
+        ("API_SYSTEM_BUILD_IDENTITY", "git.config-test"),
+        ("BOOTSTRAP_ROOT_ACCOUNT", "root"),
+        ("BOOTSTRAP_ROOT_EMAIL", "root@example.com"),
+        ("BOOTSTRAP_ROOT_PASSWORD", "secret"),
+        ("BOOTSTRAP_WORKSPACE_NAME", "1flowbase"),
+    ])
+    .expect("optional system backup settings must not block production config");
+
+    assert!(config
+        .system_backup_repository_root
+        .ends_with("tmp/system-backups"));
+}
+
+#[test]
 fn api_config_accepts_production_with_explicit_allowed_origins() {
     let config = ApiConfig::from_env_map(&[
         (
@@ -421,10 +429,6 @@ fn api_config_accepts_production_with_explicit_allowed_origins() {
         (
             "API_SYSTEM_BACKUP_REPOSITORY_ROOT",
             "/tmp/1flowbase-backups",
-        ),
-        (
-            "API_SYSTEM_BACKUP_KEY_BASE64",
-            "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
         ),
         ("API_SYSTEM_BUILD_IDENTITY", "git.config-test"),
         ("BOOTSTRAP_ROOT_ACCOUNT", "root"),
@@ -492,10 +496,6 @@ fn api_config_marks_session_cookie_secure_in_production() {
             "API_SYSTEM_BACKUP_REPOSITORY_ROOT",
             "/tmp/1flowbase-backups",
         ),
-        (
-            "API_SYSTEM_BACKUP_KEY_BASE64",
-            "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
-        ),
         ("API_SYSTEM_BUILD_IDENTITY", "git.config-test"),
         ("BOOTSTRAP_ROOT_ACCOUNT", "root"),
         ("BOOTSTRAP_ROOT_EMAIL", "root@example.com"),
@@ -520,10 +520,6 @@ fn api_config_allows_disabling_secure_session_cookie_for_plain_http_deployments(
         (
             "API_SYSTEM_BACKUP_REPOSITORY_ROOT",
             "/tmp/1flowbase-backups",
-        ),
-        (
-            "API_SYSTEM_BACKUP_KEY_BASE64",
-            "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=",
         ),
         ("API_SYSTEM_BUILD_IDENTITY", "git.config-test"),
         (
