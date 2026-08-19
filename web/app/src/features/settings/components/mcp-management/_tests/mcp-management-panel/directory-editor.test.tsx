@@ -1415,11 +1415,13 @@ describe('McpManagementPanel', () => {
     const typeFilter = screen.getByRole('combobox', { name: 'Tool 类型' });
     fireEvent.mouseDown(typeFilter);
     await selectAntdOption('接口封装');
+    fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }));
     expect(
       screen.queryByRole('row', { name: /Search customer/ })
     ).not.toBeInTheDocument();
     fireEvent.mouseDown(typeFilter);
     await selectAntdOption('MCP 代理');
+    fireEvent.click(screen.getByRole('button', { name: /查\s*询/ }));
     const toolRow = screen.getByRole('row', { name: /Search customer/ });
     expect(within(toolRow).getByText('MCP 代理')).toBeInTheDocument();
     fireEvent.click(within(toolRow).getAllByRole('button')[0]);

@@ -757,6 +757,10 @@ export function McpToolsTab({
             >
               <Select<McpToolsRouteState['execution_target_kind']>
                 allowClear
+                aria-label={i18nText(
+                  'settingsMcpManagement',
+                  'auto.tool_type'
+                )}
                 placeholder={i18nText(
                   'settingsMcpManagement',
                   'auto.tool_type'
