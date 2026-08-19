@@ -512,7 +512,6 @@ export function McpToolsTab({
     }
     const nextState = { ...routeState, page: pageCount };
     updateRouteState(nextState, 'replace');
-    setFilterDraft(nextState);
   }, [pageCount, routeState, updateRouteState]);
 
   const applyFilters = useCallback(() => {
@@ -915,8 +914,14 @@ export function McpToolsTab({
                 下一步
               </Button>
             ) : null}
-            <Button onClick={() => setModalOpen(false)}>Cancel</Button>
             <Button
+              aria-label={i18nText('settings', 'auto.cancel')}
+              onClick={() => setModalOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              aria-label={i18nText('settings', 'auto.save')}
               type="primary"
               loading={saveToolMutation.isPending}
               onClick={() => form.submit()}

@@ -1409,7 +1409,7 @@ describe('McpManagementPanel', () => {
       within(dialog).queryByText('mcp_get(tool_id)')
     ).not.toBeInTheDocument();
     expect(within(dialog).queryByText('audit_policy')).not.toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+    fireEvent.click(within(dialog).getByText('OK'));
 
     await waitFor(() => {
       expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
