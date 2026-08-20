@@ -19,7 +19,9 @@ const PAGE_ENVELOPE_RESERVE_CHARS: usize = 768;
 // CacheStore. Raw serialized-detail bytes are not a safe proxy because the
 // chunk itself is stored as a JSON string and may add escaping overhead.
 const DETAIL_CHUNK_MAX_BYTES: usize = EPHEMERAL_VALUE_MAX_BYTES;
-// Upper bound on cached detail size (MAX_DETAIL_CHUNKS * DETAIL_CHUNK_MAX_BYTES).
+// Preserve the existing total continuation ceiling while allowing each stored
+// JSON string chunk to use the full CacheStore value budget.
+const MAX_DETAIL_TOTAL_BYTES: usize = MAX_DETAIL_CHUNKS * (EPHEMERAL_VALUE_MAX_BYTES / 2);
 const MAX_DETAIL_CHUNKS: usize = 16;
 
 #[derive(Clone, Copy)]
@@ -256,6 +258,9 @@ async fn cache_detail(
             json!({ "format": "inline", "detail": detail }),
         )
         .await;
+    }
+    if serialized_detail.len() > MAX_DETAIL_TOTAL_BYTES {
+        return DetailCacheStatus::Unavailable("cache_capacity_exceeded");
     }
 
     let Some(chunks) = split_at_json_string_bytes(&serialized_detail, DETAIL_CHUNK_MAX_BYTES)
