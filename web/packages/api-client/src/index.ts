@@ -21,6 +21,7 @@ export * from './console-assistant';
 export * from './console-model-providers';
 export * from './console-mcp-management';
 export * from './console-node-contributions';
+export * from './console/network-center';
 export * from './console-navigation';
 export * from './console-me';
 export * from './console-members';

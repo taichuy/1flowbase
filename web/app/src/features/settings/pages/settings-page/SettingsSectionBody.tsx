@@ -12,6 +12,7 @@ import { SettingsSectionSurface } from '../../components/SettingsSectionSurface'
 import { SystemRuntimePanel } from '../../components/SystemRuntimePanel';
 import type { SettingsSectionKey } from '../../lib/settings-sections';
 import type { SettingsExtensionCenterCategory } from '../../api/extensions';
+import type { NetworkCenterPage } from '../network-center/NetworkCenterSection';
 import { SettingsAuthCenterSection } from './SettingsAuthCenterSection';
 import { SettingsDataModelsSection } from './SettingsDataModelsSection';
 import { SettingsFilesSection } from './SettingsFilesSection';
@@ -79,6 +80,11 @@ const UiManagementPanel = lazy(() =>
     default: module.UiManagementPanel
   }))
 );
+const NetworkCenterSection = lazy(() =>
+  import('../network-center/NetworkCenterSection').then((module) => ({
+    default: module.NetworkCenterSection
+  }))
+);
 
 function SettingsSectionFallback() {
   return <LoadingState compact />;
@@ -105,6 +111,7 @@ export function SettingsSectionBody({
   access,
   modelProviderTab = 'providers',
   rolePermissionTab = 'console-policy',
+  networkCenterPage = 'providers',
   extensionCenterCategory = 'installed',
   extensionCenterCursor,
   extensionCenterQ
@@ -113,6 +120,7 @@ export function SettingsSectionBody({
   access: SettingsSectionAccess;
   modelProviderTab?: 'providers' | 'pricing' | 'request-logs';
   rolePermissionTab?: RolePermissionTab;
+  networkCenterPage?: NetworkCenterPage;
   extensionCenterCategory?: SettingsExtensionCenterCategory;
   extensionCenterCursor?: string;
   extensionCenterQ?: string;
@@ -170,6 +178,12 @@ export function SettingsSectionBody({
     case 'data-models':
       return (
         <SettingsDataModelsSection canManage={access.canManageDataModels} />
+      );
+    case 'network-center':
+      return (
+        <SettingsSectionBoundary>
+          <NetworkCenterSection page={networkCenterPage} />
+        </SettingsSectionBoundary>
       );
     case 'mcp-management':
       return (

@@ -1029,6 +1029,15 @@
     "billing_transaction_type": "流水类型",
     "billing_balance_after": "变更后余额",
     "billing_created_at": "发生时间",
-    "billing_catalog_empty": "当前内置目录没有可导入规则，可在模型供应商页面手动新增。"
+    "billing_catalog_empty": "当前内置目录没有可导入规则，可在模型供应商页面手动新增。",
+    "network_center": "网络中心",
+    "network_center_providers": "出口提供方",
+    "network_center_pools": "出口池",
+    "network_center_routes": "出口路由",
+    "network_center_registered_providers": "已注册提供方",
+    "network_center_providers_load_failed": "无法加载出口提供方。",
+    "network_center_no_providers": "尚未注册出口提供方。",
+    "network_center_pools_unavailable": "出口池管理暂未开放。",
+    "network_center_routes_unavailable": "出口路由管理暂未开放。"
   }
 }

@@ -20,6 +20,7 @@ import { SettingsSectionBody } from './settings-page/SettingsSectionBody';
 import { useSettingsSections } from './settings-page/use-settings-sections';
 import type { RolePermissionTab } from '../components/RolePermissionPanel';
 import type { SettingsExtensionCenterCategory } from '../api/extensions';
+import type { NetworkCenterPage } from './network-center/NetworkCenterSection';
 
 function hasAnyPermission(permissions: string[], candidates: string[]) {
   return candidates.some((permission) => permissions.includes(permission));
@@ -29,6 +30,7 @@ export function SettingsPage({
   requestedSectionKey,
   modelProviderTab,
   rolePermissionTab,
+  networkCenterPage,
   extensionCenterCategory,
   extensionCenterCursor,
   extensionCenterQ
@@ -36,6 +38,7 @@ export function SettingsPage({
   requestedSectionKey?: string;
   modelProviderTab?: 'providers' | 'pricing' | 'request-logs';
   rolePermissionTab?: RolePermissionTab;
+  networkCenterPage?: NetworkCenterPage;
   extensionCenterCategory?: SettingsExtensionCenterCategory;
   extensionCenterCursor?: string;
   extensionCenterQ?: string;
@@ -169,6 +172,7 @@ export function SettingsPage({
           access={sectionAccess}
           modelProviderTab={modelProviderTab}
           rolePermissionTab={rolePermissionTab}
+          networkCenterPage={networkCenterPage}
           extensionCenterCategory={extensionCenterCategory}
           extensionCenterCursor={extensionCenterCursor}
           extensionCenterQ={extensionCenterQ}

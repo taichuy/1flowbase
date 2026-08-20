@@ -165,6 +165,15 @@ const consoleNavigationApi = vi.hoisted(() => ({
   fetchSettingsConsoleNavigation: vi.fn()
 }));
 
+const networkCenterApi = vi.hoisted(() => ({
+  settingsNetworkEgressProvidersQueryKey: [
+    'settings',
+    'network-center',
+    'providers'
+  ],
+  fetchSettingsNetworkEgressProviders: vi.fn()
+}));
+
 const extensionsApi = vi.hoisted(() => ({
   settingsInstalledExtensionsQueryKey: vi.fn(() => ['extensions', 'installed']),
   settingsExtensionCatalogQueryKey: vi.fn(
@@ -196,6 +205,7 @@ vi.mock(
   '../../features/settings/api/console-navigation',
   () => consoleNavigationApi
 );
+vi.mock('../../features/settings/api/network-center', () => networkCenterApi);
 vi.mock('../../features/settings/api/extensions', () => extensionsApi);
 
 import { AppProviders } from '../../app/AppProviders';
@@ -233,6 +243,10 @@ const settingsRouteRecords = {
   'extension-center': {
     label_key: 'auto.extension_center',
     path: '/settings/extension-center'
+  },
+  'network-center': {
+    label_key: 'auto.network_center',
+    path: '/settings/network-center/providers'
   }
 } as const;
 
@@ -424,6 +438,8 @@ describe('section shell routing', () => {
       auto_include_new_instances: true,
       distribution_rule: 'none'
     });
+    networkCenterApi.fetchSettingsNetworkEgressProviders.mockReset();
+    networkCenterApi.fetchSettingsNetworkEgressProviders.mockResolvedValue([]);
     dataModelsApi.fetchSettingsDataSourceInstances.mockResolvedValue([]);
     dataModelsApi.fetchSettingsAllDataModels.mockResolvedValue([]);
     dataModelsApi.fetchSettingsDataModels.mockResolvedValue([]);
@@ -595,6 +611,54 @@ describe('section shell routing', () => {
           modelProvidersApi.fetchSettingsModelProviderRequestLogs
         ).toHaveBeenCalled();
       }, SECTION_REDIRECT_WAIT_OPTIONS);
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
+
+  test.each([
+    ['/settings/network-center/providers', 'network-center-providers-shell'],
+    ['/settings/network-center/pools', 'network-center-pools-shell'],
+    ['/settings/network-center/routes', 'network-center-routes-shell']
+  ])(
+    'AC-004 keeps %s protected and projects the network center shell',
+    async (pathname, shellTestId) => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+        settingsConsoleNavigation(['network-center'])
+      );
+      authenticateWithPermissions([
+        'settings_feature.access.system.network-center'
+      ]);
+
+      renderApp(pathname);
+
+      expect(await screen.findByTestId(shellTestId)).toBeInTheDocument();
+      await waitFor(() => {
+        expect(
+          networkCenterApi.fetchSettingsNetworkEgressProviders
+        ).toHaveBeenCalled();
+      }, SECTION_REDIRECT_WAIT_OPTIONS);
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
+
+  test(
+    'AC-004 does not render network center when backend navigation omits its permission projection',
+    async () => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+        settingsConsoleNavigation(['api-key-authentication'])
+      );
+      authenticateWithPermissions(['user.view.all']);
+
+      renderApp('/settings/network-center/providers');
+
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/api-key-authentication'
+        );
+      }, SECTION_REDIRECT_WAIT_OPTIONS);
+      expect(
+        networkCenterApi.fetchSettingsNetworkEgressProviders
+      ).not.toHaveBeenCalled();
     },
     SECTION_REDIRECT_TEST_TIMEOUT
   );

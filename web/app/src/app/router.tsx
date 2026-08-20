@@ -36,6 +36,7 @@ import { useAuthStore } from '../state/auth-store';
 import { i18nText } from '../shared/i18n/text';
 import type { RolePermissionTab } from '../features/settings/components/RolePermissionPanel';
 import type { SettingsExtensionCenterCategory } from '../features/settings/api/extensions';
+import type { NetworkCenterPage } from '../features/settings/pages/network-center/NetworkCenterSection';
 
 const ApplicationDetailPage = lazy(() =>
   import('../features/applications/pages/ApplicationDetailPage').then(
@@ -236,6 +237,7 @@ function renderSettingsRoute(
   requestedSectionKey?: string,
   modelProviderTab?: 'providers' | 'pricing' | 'request-logs',
   rolePermissionTab?: RolePermissionTab,
+  networkCenterPage?: NetworkCenterPage,
   extensionCenterCategory?: SettingsExtensionCenterCategory,
   extensionCenterCursor?: string,
   extensionCenterQ?: string
@@ -247,6 +249,7 @@ function renderSettingsRoute(
           requestedSectionKey={requestedSectionKey}
           modelProviderTab={modelProviderTab}
           rolePermissionTab={rolePermissionTab}
+          networkCenterPage={networkCenterPage}
           extensionCenterCategory={extensionCenterCategory}
           extensionCenterCursor={extensionCenterCursor}
           extensionCenterQ={extensionCenterQ}
@@ -445,6 +448,7 @@ const settingsExtensionCenterCategoryRoute = createRoute({
       'extension-center',
       undefined,
       undefined,
+      undefined,
       category as SettingsExtensionCenterCategory,
       cursor,
       q
@@ -485,6 +489,30 @@ const settingsModelProviderPricingRoute = createRoute({
   path: '/settings/model-providers/pricing',
   notFoundComponent: NotFoundPage,
   component: () => renderSettingsRoute('model-providers', 'pricing')
+});
+
+const settingsNetworkCenterProvidersRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/network-center/providers',
+  notFoundComponent: NotFoundPage,
+  component: () =>
+    renderSettingsRoute('network-center', undefined, undefined, 'providers')
+});
+
+const settingsNetworkCenterPoolsRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/network-center/pools',
+  notFoundComponent: NotFoundPage,
+  component: () =>
+    renderSettingsRoute('network-center', undefined, undefined, 'pools')
+});
+
+const settingsNetworkCenterRoutesRoute = createRoute({
+  getParentRoute: () => shellRoute,
+  path: '/settings/network-center/routes',
+  notFoundComponent: NotFoundPage,
+  component: () =>
+    renderSettingsRoute('network-center', undefined, undefined, 'routes')
 });
 
 const settingsMcpManagementRoute = createRoute({
@@ -721,6 +749,9 @@ const routeTree = rootRoute.addChildren([
     settingsModelProviderInstancesRoute,
     settingsModelProviderRequestLogsRoute,
     settingsModelProviderPricingRoute,
+    settingsNetworkCenterProvidersRoute,
+    settingsNetworkCenterPoolsRoute,
+    settingsNetworkCenterRoutesRoute,
     settingsMcpManagementRoute,
     settingsUiManagementRoute,
     settingsUiManagementTemplatesRoute,

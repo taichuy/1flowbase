@@ -1029,6 +1029,15 @@
     "billing_transaction_type": "Transaction type",
     "billing_balance_after": "Balance after",
     "billing_created_at": "Created at",
-    "billing_catalog_empty": "The bundled catalog has no importable rules. Add one manually under model providers."
+    "billing_catalog_empty": "The bundled catalog has no importable rules. Add one manually under model providers.",
+    "network_center": "Network center",
+    "network_center_providers": "Egress providers",
+    "network_center_pools": "Egress pools",
+    "network_center_routes": "Egress routes",
+    "network_center_registered_providers": "Registered providers",
+    "network_center_providers_load_failed": "Unable to load egress providers.",
+    "network_center_no_providers": "No egress providers are registered.",
+    "network_center_pools_unavailable": "Egress pool management is not available yet.",
+    "network_center_routes_unavailable": "Egress route management is not available yet."
   }
 }

@@ -13,6 +13,7 @@ export type SettingsSectionKey =
   | 'extension-center'
   | 'files'
   | 'data-models'
+  | 'network-center'
   | 'mcp-management'
   | 'ui-management'
   | 'model-providers'
@@ -65,6 +66,7 @@ const settingsSectionKeys = new Set<SettingsSectionKey>([
   'extension-center',
   'files',
   'data-models',
+  'network-center',
   'mcp-management',
   'ui-management',
   'model-providers',
@@ -185,6 +187,11 @@ export const settingsSectionDefinitions: SettingsSectionDefinition[] = [
     key: 'model-providers',
     label_key: 'auto.model_providers',
     to: '/settings/model-providers'
+  },
+  {
+    key: 'network-center',
+    label_key: 'auto.network_center',
+    to: '/settings/network-center/providers'
   },
   {
     key: 'mcp-management',
