@@ -204,6 +204,36 @@ function mcpApprovalContinuation(capture) {
   };
 }
 
+async function readMcpApprovalStart(response) {
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('WireAudit MCP start did not return a readable SSE body');
+  const decoder = new TextDecoder();
+  let capture = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    capture += decoder.decode(value, { stream: !done });
+    if (capture.endsWith('\n\n') || done) {
+      try {
+        const continuation = mcpApprovalContinuation(capture);
+        return {
+          capture,
+          continuation,
+          finish: async () => {
+            while (true) {
+              const rest = await reader.read();
+              capture += decoder.decode(rest.value, { stream: !rest.done });
+              if (rest.done) return capture;
+            }
+          },
+        };
+      } catch (error) {
+        if (done) throw error;
+      }
+    }
+    if (done) throw new Error('WireAudit MCP start ended before approval request');
+  }
+}
+
 async function snapshot(url, fetchImpl) {
   const response = await fetchImpl(url);
   if (!response.ok) throw new Error(`controlled upstream snapshot returned HTTP ${response.status}`);
@@ -229,9 +259,9 @@ async function runWireAudit(inputs, { fetchImpl = globalThis.fetch, secretCanary
       }),
     });
     if (!response.ok) throw new Error(`WireAudit ${vector.name} returned HTTP ${response.status}`);
-    vector.capture = await response.text();
     if (vector.name === 'mcp-list-call-approval') {
-      const continuation = mcpApprovalContinuation(vector.capture);
+      const mcpStart = await readMcpApprovalStart(response);
+      const continuation = mcpStart.continuation;
       const approvalResponse = await fetchImpl(`${inputs.manifest.gatewayBaseUrl}/v1/responses`, {
         method: 'POST',
         headers: {
@@ -250,7 +280,9 @@ async function runWireAudit(inputs, { fetchImpl = globalThis.fetch, secretCanary
           `WireAudit mcp-approval-continuation ${continuation.previous_response_id} returned HTTP ${approvalResponse.status}: ${await approvalResponse.text()}`,
         );
       }
-      vector.capture += `\n${await approvalResponse.text()}`;
+      vector.capture = `${await mcpStart.finish()}\n${await approvalResponse.text()}`;
+    } else {
+      vector.capture = await response.text();
     }
   }
   const after = await snapshot(controlled.snapshotUrl, fetchImpl);
