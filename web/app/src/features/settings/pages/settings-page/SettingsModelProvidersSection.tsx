@@ -333,6 +333,11 @@ export function SettingsModelProvidersSection({
     setOfficialInstallState,
     setUploadValidationMessage,
     setUploadResultSummary,
+    onUploadSucceeded: () => {
+      setUploadModalOpen(false);
+      clearUploadState();
+      window.location.reload();
+    },
     setRecentVersionSwitchNotice
   });
 

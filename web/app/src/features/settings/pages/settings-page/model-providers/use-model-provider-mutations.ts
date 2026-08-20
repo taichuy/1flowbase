@@ -56,6 +56,7 @@ export function useModelProviderMutations({
   setOfficialInstallState,
   setUploadValidationMessage,
   setUploadResultSummary,
+  onUploadSucceeded,
   setRecentVersionSwitchNotice
 }: {
   csrfToken: string | null;
@@ -67,6 +68,7 @@ export function useModelProviderMutations({
   setOfficialInstallState: Dispatch<SetStateAction<OfficialInstallState>>;
   setUploadValidationMessage: Dispatch<SetStateAction<string | null>>;
   setUploadResultSummary: Dispatch<SetStateAction<UploadResultSummary>>;
+  onUploadSucceeded: () => void;
   setRecentVersionSwitchNotice: Dispatch<
     SetStateAction<RecentVersionSwitchNotice>
   >;
@@ -431,6 +433,7 @@ export function useModelProviderMutations({
         ).label
       });
       await invalidatePluginContributionQueries();
+      onUploadSucceeded();
     }
   });
 

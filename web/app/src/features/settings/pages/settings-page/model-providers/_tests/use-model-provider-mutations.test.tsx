@@ -71,7 +71,10 @@ function createQueryClient() {
   });
 }
 
-function setupMutations(queryClient = createQueryClient()) {
+function setupMutations(
+  queryClient = createQueryClient(),
+  onUploadSucceeded = vi.fn()
+) {
   const stateSetter = vi.fn();
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -87,6 +90,7 @@ function setupMutations(queryClient = createQueryClient()) {
         setOfficialInstallState: stateSetter,
         setUploadValidationMessage: stateSetter,
         setUploadResultSummary: stateSetter,
+        onUploadSucceeded,
         setRecentVersionSwitchNotice: stateSetter
       }),
     { wrapper }
@@ -389,5 +393,26 @@ describe('useModelProviderMutations', () => {
       queryKey: blockCatalogApi.frontstageBlockCatalogQueryKeyPrefix,
       type: 'inactive'
     });
+  });
+
+  test('notifies the page after a successful plugin upload', async () => {
+    const onUploadSucceeded = vi.fn();
+    pluginsApi.uploadSettingsPluginPackage.mockResolvedValue({
+      installation: {
+        display_name: 'Blocks',
+        plugin_version: '1.0.0',
+        trust_level: 'official',
+        availability_status: 'available'
+      }
+    });
+    const mutations = setupMutations(createQueryClient(), onUploadSucceeded);
+
+    await act(async () => {
+      await mutations.current.uploadMutation.mutateAsync(
+        new File(['plugin'], 'blocks.1flowbasepkg')
+      );
+    });
+
+    expect(onUploadSucceeded).toHaveBeenCalledOnce();
   });
 });
