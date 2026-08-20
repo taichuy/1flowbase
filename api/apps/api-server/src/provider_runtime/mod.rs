@@ -33,7 +33,8 @@ use plugin_framework::{
     },
 };
 use plugin_runner::{
-    capability_host::CapabilityHost, data_source_host::DataSourceHost, provider_host::ProviderHost,
+    capability_host::CapabilityHost, data_source_host::DataSourceHost,
+    network_egress_host::NetworkEgressHost, provider_host::ProviderHost,
 };
 use runtime_core::runtime_engine::DataSourceRuntimeRecordBackend;
 use serde::{de::DeserializeOwned, Serialize};
@@ -60,6 +61,7 @@ pub struct ApiRuntimeServices {
     provider_host: Arc<RwLock<ProviderHost>>,
     capability_host: Arc<RwLock<CapabilityHost>>,
     data_source_host: Arc<RwLock<DataSourceHost>>,
+    network_egress_host: Arc<RwLock<NetworkEgressHost>>,
     data_model_template_catalog:
         runtime_core::data_model_template_registry::DataModelTemplateCatalog,
     model_provider_slot_resolver: Option<ModelProviderSlotResolver>,
@@ -84,6 +86,7 @@ impl ApiRuntimeServices {
             provider_host,
             capability_host,
             data_source_host,
+            network_egress_host: Arc::new(RwLock::new(NetworkEgressHost::default())),
             data_model_template_catalog:
                 runtime_core::data_model_template_registry::DataModelTemplateCatalog::core(),
             model_provider_slot_resolver: Some(ModelProviderSlotResolver::new(extension_graph)),
@@ -103,6 +106,7 @@ impl ApiRuntimeServices {
             provider_host,
             capability_host,
             data_source_host,
+            network_egress_host: Arc::new(RwLock::new(NetworkEgressHost::default())),
             data_model_template_catalog:
                 runtime_core::data_model_template_registry::DataModelTemplateCatalog::core(),
             model_provider_slot_resolver: None,
@@ -278,6 +282,9 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             }
             "1flowbase.data_source/v1" => self.ensure_data_source_loaded(installation).await,
             "1flowbase.capability/v1" => self.ensure_capability_loaded(installation).await,
+            plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT => {
+                self.ensure_network_egress_loaded(installation).await
+            }
             _ => Err(ControlPlaneError::InvalidInput("plugin_installation").into()),
         }
     }
@@ -315,6 +322,14 @@ impl ProviderRuntimePort for ApiProviderRuntime {
                     .map_err(map_provider_framework_error)?;
                 Ok(())
             }
+            plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT => self
+                .services
+                .network_egress_host
+                .write()
+                .await
+                .unload(&installation.plugin_id)
+                .await
+                .map_err(map_provider_framework_error),
             _ => Err(ControlPlaneError::InvalidInput("plugin_installation").into()),
         }
     }
@@ -1270,6 +1285,34 @@ impl ApiProviderRuntime {
                 })
             })?;
         Ok(())
+    }
+
+    async fn ensure_network_egress_loaded(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+    ) -> anyhow::Result<()> {
+        let source_identity = format!(
+            "installation_id={};checksum={};manifest_fingerprint={};updated_at={}",
+            installation.id,
+            installation.expected_checksum.as_deref().unwrap_or(""),
+            installation
+                .artifact
+                .manifest_fingerprint
+                .as_deref()
+                .unwrap_or(""),
+            installation.updated_at.unix_timestamp_nanos()
+        );
+        self.services
+            .network_egress_host
+            .write()
+            .await
+            .load_if_needed(
+                &installation.plugin_id,
+                required_local_path(installation)?,
+                &source_identity,
+            )
+            .await
+            .map_err(map_provider_framework_error)
     }
 }
 

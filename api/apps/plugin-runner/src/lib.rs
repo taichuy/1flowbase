@@ -53,6 +53,7 @@ pub mod capability_host;
 pub mod capability_stdio;
 pub mod data_source_host;
 pub mod data_source_stdio;
+pub mod network_egress_host;
 pub mod package_loader;
 mod plugin_scope;
 pub mod provider_host;

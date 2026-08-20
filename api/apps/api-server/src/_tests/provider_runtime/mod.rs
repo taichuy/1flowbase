@@ -561,6 +561,71 @@ fn fixture_installation(package: &TempProviderPackage) -> domain::LocalPluginIns
     }
 }
 
+fn write_network_egress_package(package: &TempProviderPackage) {
+    package.write(
+        "manifest.yaml",
+        r#"manifest_version: 1
+plugin_id: fixture_egress
+version: 0.1.0
+publisher_namespace: 1flowbase
+vendor: 1flowbase
+display_name: Fixture Egress
+description: API runtime fixture
+source_kind: uploaded
+trust_level: checksum_only
+consumption_kind: runtime_extension
+execution_mode: stateful_runtime_worker
+slot_codes:
+  - network_egress_provider
+binding_targets:
+  - workspace
+selection_mode: manual_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.network_egress_provider/v1
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: none
+  secrets: none
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json_worker
+  entry: bin/fixture_egress
+  limits:
+    timeout_ms: 2000
+node_contributions: []
+"#,
+    );
+    package.write(
+        "bin/fixture_egress",
+        "#!/usr/bin/env bash\nset -euo pipefail\nwhile IFS= read -r _; do exit 1; done\n",
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = package.path().join("bin/fixture_egress");
+        let mut permissions = fs::metadata(&path)
+            .expect("fixture runtime metadata must be readable")
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).expect("fixture runtime must be executable");
+    }
+}
+
+fn network_egress_fixture_installation(
+    package: &TempProviderPackage,
+) -> domain::LocalPluginInstallationRecord {
+    let mut installation = fixture_installation(package);
+    installation.installation.provider_code = "fixture_egress".to_string();
+    installation.installation.plugin_id = "fixture_egress@0.1.0".to_string();
+    installation.installation.contract_version =
+        plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT.to_string();
+    installation.installation.protocol = "stdio_json_worker".to_string();
+    installation
+}
+
 fn strict_fixture_installation(
     package: &TempProviderPackage,
 ) -> domain::LocalPluginInstallationRecord {
@@ -930,6 +995,28 @@ fn provider_runtime_consumer_has_no_provider_specific_branch_and_production_wire
     assert!(boot.contains("ApiRuntimeServices::new("));
     assert!(boot.contains("Arc::clone(&extension_graph)"));
     assert!(!boot.contains("new_without_model_provider_extension_graph_for_tests"));
+}
+
+#[tokio::test]
+async fn ac_003_api_runtime_dispatches_network_egress_lifecycle_without_model_provider_v2_wire() {
+    let package = TempProviderPackage::new();
+    write_network_egress_package(&package);
+    let installation = network_egress_fixture_installation(&package);
+    let services = Arc::new(
+        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
+            Arc::new(RwLock::new(ProviderHost::default())),
+            Arc::new(RwLock::new(CapabilityHost::default())),
+            Arc::new(RwLock::new(DataSourceHost::default())),
+        ),
+    );
+    let runtime = ApiProviderRuntime::new(services);
+
+    ProviderRuntimePort::activate_plugin(&runtime, &installation)
+        .await
+        .expect("network egress activation must dispatch its stateful worker");
+    ProviderRuntimePort::deactivate_plugin(&runtime, &installation.installation)
+        .await
+        .expect("network egress deactivation must revoke its active lease");
 }
 
 #[tokio::test]
