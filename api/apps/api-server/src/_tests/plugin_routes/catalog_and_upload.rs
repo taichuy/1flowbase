@@ -311,6 +311,13 @@ async fn model_provider_settings_install_upload_accepts_package_larger_than_defa
         .unwrap();
 
     assert_eq!(response.status(), StatusCode::CREATED);
+    let upload_payload: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(
+        upload_payload["data"]["installation"]["desired_state"],
+        "active_requested"
+    );
+    assert_eq!(upload_payload["data"]["task"]["task_kind"], "assign");
 
     let installed = app
         .clone()

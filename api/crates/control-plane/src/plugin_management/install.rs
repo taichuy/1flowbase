@@ -624,6 +624,16 @@ where
         .await
     }
 
+    pub async fn install_uploaded_model_provider(
+        &self,
+        command: InstallUploadedPluginCommand,
+    ) -> Result<InstallPluginResult> {
+        let actor_user_id = command.actor_user_id;
+        let installation_id = self.install_uploaded_plugin(command).await?.installation.id;
+        self.enable_and_assign_model_provider_installation(actor_user_id, installation_id)
+            .await
+    }
+
     pub async fn install_extension_node_plugin(
         &self,
         command: InstallExtensionNodePluginCommand,
@@ -753,32 +763,11 @@ where
             if is_host_extension_installation(&install.installation) {
                 return Ok::<InstallPluginResult, anyhow::Error>(install);
             }
-            self.enable_plugin(EnablePluginCommand {
-                actor_user_id: command.actor_user_id,
-                installation_id: install.installation.id,
-            })
-            .await?;
-            let task = self
-                .assign_plugin(AssignPluginCommand {
-                    actor_user_id: command.actor_user_id,
-                    installation_id: install.installation.id,
-                })
-                .await?;
-            let installation = self
-                .repository
-                .get_installation(install.installation.id)
-                .await?
-                .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
-            let local_artifact = self
-                .repository
-                .get_artifact_instance(&self.node_id, installation.id)
-                .await?
-                .ok_or(ControlPlaneError::NotFound("plugin_artifact_instance"))?;
-            Ok::<InstallPluginResult, anyhow::Error>(InstallPluginResult {
-                installation,
-                local_artifact,
-                task,
-            })
+            self.enable_and_assign_model_provider_installation(
+                command.actor_user_id,
+                install.installation.id,
+            )
+            .await
         }
         .await;
         result
@@ -843,20 +832,32 @@ where
         if is_host_extension_installation(&install.installation) {
             return Ok(install);
         }
+        self.enable_and_assign_model_provider_installation(
+            command.actor_user_id,
+            install.installation.id,
+        )
+        .await
+    }
+
+    async fn enable_and_assign_model_provider_installation(
+        &self,
+        actor_user_id: Uuid,
+        installation_id: Uuid,
+    ) -> Result<InstallPluginResult> {
         self.enable_plugin(EnablePluginCommand {
-            actor_user_id: command.actor_user_id,
-            installation_id: install.installation.id,
+            actor_user_id,
+            installation_id,
         })
         .await?;
         let task = self
             .assign_plugin(AssignPluginCommand {
-                actor_user_id: command.actor_user_id,
-                installation_id: install.installation.id,
+                actor_user_id,
+                installation_id,
             })
             .await?;
         let installation = self
             .repository
-            .get_installation(install.installation.id)
+            .get_installation(installation_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
         let local_artifact = self

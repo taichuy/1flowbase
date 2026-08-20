@@ -384,7 +384,7 @@ pub async fn install_uploaded_plugin(
         &context.actor,
         "model_provider_plugins.install.upload",
     )
-    .install_uploaded_plugin(InstallUploadedPluginCommand {
+    .install_uploaded_model_provider(InstallUploadedPluginCommand {
         actor_user_id: context.user.id,
         file_name,
         package_bytes,
