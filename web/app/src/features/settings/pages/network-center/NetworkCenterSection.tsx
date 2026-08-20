@@ -7,6 +7,7 @@ import {
 } from '../../api/network-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { i18nText } from '../../../../shared/i18n/text';
+import { NetworkEgressPoolsPanel } from '../../network-center/pools/NetworkEgressPoolsPanel';
 
 export type NetworkCenterPage = 'providers' | 'pools' | 'routes';
 
@@ -83,32 +84,6 @@ function NetworkCenterProvidersShell({
   );
 }
 
-function NetworkCenterPoolsShell({
-  providerCount,
-  isLoading
-}: {
-  providerCount: number;
-  isLoading: boolean;
-}) {
-  return (
-    <SettingsSectionSurface heightMode="fill">
-      <Flex vertical gap={16}>
-        <Typography.Title level={2} data-testid="network-center-pools-shell">
-          {i18nText('settings', 'auto.network_center_pools')}
-        </Typography.Title>
-        <ProviderRegistrySummary
-          providerCount={providerCount}
-          isLoading={isLoading}
-        />
-        <Result
-          status="info"
-          title={i18nText('settings', 'auto.network_center_pools_unavailable')}
-        />
-      </Flex>
-    </SettingsSectionSurface>
-  );
-}
-
 function NetworkCenterRoutesShell({
   providerCount,
   isLoading
@@ -144,12 +119,7 @@ export function NetworkCenterSection({ page }: { page: NetworkCenterPage }) {
 
   switch (page) {
     case 'pools':
-      return (
-        <NetworkCenterPoolsShell
-          providerCount={providerCount}
-          isLoading={providersQuery.isLoading}
-        />
-      );
+      return <NetworkEgressPoolsPanel providers={providersQuery.data ?? []} />;
     case 'routes':
       return (
         <NetworkCenterRoutesShell
