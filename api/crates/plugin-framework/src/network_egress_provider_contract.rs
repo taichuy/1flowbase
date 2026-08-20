@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 use crate::error::{FrameworkResult, PluginFrameworkError};
 
@@ -115,12 +116,33 @@ impl SyncEgressesResult {
 pub struct EgressDescriptor {
     pub provider_egress_key: String,
     pub display_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub region: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tags: Option<Vec<String>>,
+    pub availability: EgressAvailability,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum EgressAvailability {
+    Available,
+    Unavailable,
 }
 
 impl EgressDescriptor {
     fn validate(&self) -> FrameworkResult<()> {
         validate_non_empty(&self.provider_egress_key, "provider_egress_key")?;
-        validate_non_empty(&self.display_name, "display_name")
+        validate_non_empty(&self.display_name, "display_name")?;
+        if let Some(region) = &self.region {
+            validate_non_empty(region, "region")?;
+        }
+        if let Some(tags) = &self.tags {
+            for tag in tags {
+                validate_non_empty(tag, "tags[]")?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -129,18 +151,19 @@ impl EgressDescriptor {
 #[serde(deny_unknown_fields)]
 pub struct ForwardProxyLease {
     pub lease_id: String,
-    pub http_proxy_host: String,
-    pub http_proxy_port: u16,
+    pub http_proxy_url: String,
     pub cleanup_token: String,
+    /// Nonzero Unix-epoch milliseconds; the Runner compares this value with its own clock.
+    pub expires_at: u64,
 }
 
 impl ForwardProxyLease {
     fn validate(&self) -> FrameworkResult<()> {
         validate_non_empty(&self.lease_id, "lease_id")?;
-        validate_non_empty(&self.http_proxy_host, "http_proxy_host")?;
-        if self.http_proxy_port == 0 {
+        validate_http_proxy_url(&self.http_proxy_url)?;
+        if self.expires_at == 0 {
             return Err(PluginFrameworkError::invalid_provider_contract(
-                "http_proxy_port must be between 1 and 65535",
+                "expires_at must be a nonzero Unix-epoch milliseconds integer",
             ));
         }
         validate_non_empty(&self.cleanup_token, "cleanup_token")
@@ -158,6 +181,28 @@ fn validate_non_empty(value: &str, field: &str) -> FrameworkResult<()> {
         return Err(PluginFrameworkError::invalid_provider_contract(format!(
             "{field} must not be empty"
         )));
+    }
+    Ok(())
+}
+
+fn validate_http_proxy_url(value: &str) -> FrameworkResult<()> {
+    let url = Url::parse(value).map_err(|_| {
+        PluginFrameworkError::invalid_provider_contract(
+            "http_proxy_url must be a valid http://host:port URL",
+        )
+    })?;
+    if url.scheme() != "http"
+        || url.host_str().is_none()
+        || url.port().is_none()
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.path() != "/"
+        || url.query().is_some()
+        || url.fragment().is_some()
+    {
+        return Err(PluginFrameworkError::invalid_provider_contract(
+            "http_proxy_url must be a credential-free http://host:port URL",
+        ));
     }
     Ok(())
 }

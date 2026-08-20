@@ -17,6 +17,7 @@ tar.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 uuid.workspace = true
+url.workspace = true
 zip.workspace = true
 serde_yaml = "0.9"
 

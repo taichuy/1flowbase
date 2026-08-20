@@ -1,6 +1,6 @@
 use plugin_framework::{
-    AcquireHttpForwardProxyInput, CleanupReceipt, EgressDescriptor, ForwardProxyLease,
-    NetworkEgressProviderStdioRequest, NetworkEgressProviderStdioResponse,
+    AcquireHttpForwardProxyInput, CleanupReceipt, EgressAvailability, EgressDescriptor,
+    ForwardProxyLease, NetworkEgressProviderStdioRequest, NetworkEgressProviderStdioResponse,
     ReleaseHttpForwardProxyInput, SyncEgressesInput, SyncEgressesResult,
     NETWORK_EGRESS_PROVIDER_CONTRACT,
 };
@@ -49,8 +49,18 @@ fn ac_003_ac_005_third_party_responses_are_typed_and_egress_descriptors_are_stab
         "operation": "sync_egresses",
         "result": {
             "egresses": [
-                {"provider_egress_key": "egress-eu-1", "display_name": "Europe 1"},
-                {"provider_egress_key": "egress-us-1", "display_name": "US 1"}
+                {
+                    "provider_egress_key": "egress-eu-1",
+                    "display_name": "Europe 1",
+                    "region": "eu-west",
+                    "tags": ["eu", "shared"],
+                    "availability": "available"
+                },
+                {
+                    "provider_egress_key": "egress-us-1",
+                    "display_name": "US 1",
+                    "availability": "unavailable"
+                }
             ]
         }
     }))
@@ -62,21 +72,40 @@ fn ac_003_ac_005_third_party_responses_are_typed_and_egress_descriptors_are_stab
             EgressDescriptor {
                 provider_egress_key: "egress-eu-1".to_owned(),
                 display_name: "Europe 1".to_owned(),
+                region: Some("eu-west".to_owned()),
+                tags: Some(vec!["eu".to_owned(), "shared".to_owned()]),
+                availability: EgressAvailability::Available,
             },
             EgressDescriptor {
                 provider_egress_key: "egress-us-1".to_owned(),
                 display_name: "US 1".to_owned(),
+                region: None,
+                tags: None,
+                availability: EgressAvailability::Unavailable,
             },
         ],
     });
     assert_eq!(response, expected);
+    let encoded = serde_json::to_value(&response).unwrap();
+    assert_eq!(
+        serde_json::from_value::<NetworkEgressProviderStdioResponse>(encoded).unwrap(),
+        response
+    );
 
     let unsorted: NetworkEgressProviderStdioResponse = serde_json::from_value(json!({
         "operation": "sync_egresses",
         "result": {
             "egresses": [
-                {"provider_egress_key": "egress-us-1", "display_name": "US 1"},
-                {"provider_egress_key": "egress-eu-1", "display_name": "Europe 1"}
+                {
+                    "provider_egress_key": "egress-us-1",
+                    "display_name": "US 1",
+                    "availability": "available"
+                },
+                {
+                    "provider_egress_key": "egress-eu-1",
+                    "display_name": "Europe 1",
+                    "availability": "available"
+                }
             ]
         }
     }))
@@ -94,9 +123,9 @@ fn ac_004_ac_014_proxy_lease_and_cleanup_receipt_are_secret_and_config_free() {
         "operation": "acquire_http_forward_proxy",
         "result": {
             "lease_id": "lease-01",
-            "http_proxy_host": "127.0.0.1",
-            "http_proxy_port": 18080,
-            "cleanup_token": "cleanup-opaque-token"
+            "http_proxy_url": "http://127.0.0.1:18080",
+            "cleanup_token": "cleanup-opaque-token",
+            "expires_at": 1777777777000
         }
     }))
     .unwrap();
@@ -105,9 +134,9 @@ fn ac_004_ac_014_proxy_lease_and_cleanup_receipt_are_secret_and_config_free() {
         acquire_response,
         NetworkEgressProviderStdioResponse::AcquireHttpForwardProxy(ForwardProxyLease {
             lease_id: "lease-01".to_owned(),
-            http_proxy_host: "127.0.0.1".to_owned(),
-            http_proxy_port: 18080,
+            http_proxy_url: "http://127.0.0.1:18080".to_owned(),
             cleanup_token: "cleanup-opaque-token".to_owned(),
+            expires_at: 1_777_777_777_000,
         })
     );
 
@@ -133,6 +162,24 @@ fn ac_004_ac_014_proxy_lease_and_cleanup_receipt_are_secret_and_config_free() {
     }))
     .unwrap_err();
     assert!(secret_or_config.to_string().contains("provider_config"));
+
+    let encoded = serde_json::to_value(&acquire_response).unwrap();
+    assert_eq!(
+        encoded,
+        json!({
+            "operation": "acquire_http_forward_proxy",
+            "result": {
+                "lease_id": "lease-01",
+                "http_proxy_url": "http://127.0.0.1:18080",
+                "cleanup_token": "cleanup-opaque-token",
+                "expires_at": 1777777777000
+            }
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<NetworkEgressProviderStdioResponse>(encoded).unwrap(),
+        acquire_response
+    );
 }
 
 #[test]
@@ -155,13 +202,52 @@ fn ac_016_stdio_contract_rejects_unknown_operations_and_missing_or_invalid_field
     let invalid_proxy =
         NetworkEgressProviderStdioResponse::AcquireHttpForwardProxy(ForwardProxyLease {
             lease_id: "lease-01".to_owned(),
-            http_proxy_host: "127.0.0.1".to_owned(),
-            http_proxy_port: 0,
+            http_proxy_url: "https://127.0.0.1:18080".to_owned(),
             cleanup_token: "cleanup-opaque-token".to_owned(),
+            expires_at: 0,
         });
     assert!(invalid_proxy
         .validate()
         .unwrap_err()
         .to_string()
-        .contains("http_proxy_port"));
+        .contains("http_proxy_url"));
+
+    let missing_expiry =
+        NetworkEgressProviderStdioResponse::AcquireHttpForwardProxy(ForwardProxyLease {
+            lease_id: "lease-01".to_owned(),
+            http_proxy_url: "http://127.0.0.1:18080".to_owned(),
+            cleanup_token: "cleanup-opaque-token".to_owned(),
+            expires_at: 0,
+        });
+    assert!(missing_expiry
+        .validate()
+        .unwrap_err()
+        .to_string()
+        .contains("expires_at"));
+
+    let obsolete_host_port = serde_json::from_value::<NetworkEgressProviderStdioResponse>(json!({
+        "operation": "acquire_http_forward_proxy",
+        "result": {
+            "lease_id": "lease-01",
+            "http_proxy_host": "127.0.0.1",
+            "http_proxy_port": 18080,
+            "cleanup_token": "cleanup-opaque-token",
+            "expires_at": 1777777777000
+        }
+    }))
+    .unwrap_err();
+    assert!(obsolete_host_port.to_string().contains("http_proxy_host"));
+
+    let missing_availability =
+        serde_json::from_value::<NetworkEgressProviderStdioResponse>(json!({
+            "operation": "sync_egresses",
+            "result": {
+                "egresses": [{
+                    "provider_egress_key": "egress-us-1",
+                    "display_name": "US 1"
+                }]
+            }
+        }))
+        .unwrap_err();
+    assert!(missing_availability.to_string().contains("availability"));
 }
