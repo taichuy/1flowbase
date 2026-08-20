@@ -222,9 +222,7 @@ fn parse_uuid(value: String) -> Result<Uuid> {
 }
 
 fn parse_size(value: String) -> Result<u64> {
-    let (whole, fraction) = value
-        .split_once('.')
-        .unwrap_or((value.as_str(), ""));
+    let (whole, fraction) = value.split_once('.').unwrap_or((value.as_str(), ""));
     if whole.is_empty()
         || !whole.bytes().all(|byte| byte.is_ascii_digit())
         || !fraction.bytes().all(|byte| byte == b'0')
