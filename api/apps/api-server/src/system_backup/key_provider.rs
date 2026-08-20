@@ -104,7 +104,16 @@ impl BackupKeyProvider for EnvironmentBackupKeyProvider {
 mod tests {
     use super::EnvironmentBackupKeyProvider;
     use base64::{engine::general_purpose::STANDARD, Engine as _};
-    use control_plane::ports::BackupKeyProvider;
+    use control_plane::{
+        ports::BackupKeyProvider,
+        system_backup::{authenticate_backup_manifest, verify_backup_manifest},
+    };
+    use domain::{
+        ApplicationBuild, ArtifactRebuildability, BackupComponent, BackupComponentDisposition,
+        BackupComponentId, BackupComponentKind, BackupComponentRestoreTarget, BackupManifest,
+        BackupSetId, BackupSourceIdentity, ContentDigest, KeyFingerprint, MigrationHead,
+    };
+    use time::OffsetDateTime;
 
     #[test]
     fn derives_a_stable_backup_key_from_the_provider_master_key() {
@@ -148,5 +157,52 @@ mod tests {
             provider.key_for(&unknown).await,
             Err(control_plane::ports::BackupKeyProviderError::NotFound)
         ));
+    }
+
+    #[tokio::test]
+    async fn pre_upgrade_sealed_manifest_verifies_through_legacy_fingerprint_route() {
+        let legacy_key = [9_u8; 32];
+        let provider = EnvironmentBackupKeyProvider::from_master_key_with_legacy(
+            "master-key",
+            Some(&STANDARD.encode(legacy_key)),
+        )
+        .unwrap();
+        let legacy_fingerprint = super::parse_legacy_key(&STANDARD.encode(legacy_key))
+            .unwrap()
+            .fingerprint;
+        let legacy_material = provider.key_for(&legacy_fingerprint).await.unwrap();
+        let manifest = BackupManifest::try_new(
+            BackupSetId::new(),
+            OffsetDateTime::UNIX_EPOCH,
+            ApplicationBuild::try_from("pre-upgrade.fixture").unwrap(),
+            MigrationHead::try_from("migration.fixture").unwrap(),
+            KeyFingerprint::try_from("b".repeat(64)).unwrap(),
+            legacy_fingerprint.clone(),
+            vec![BackupComponent {
+                component_id: BackupComponentId::try_from("postgres/main").unwrap(),
+                kind: BackupComponentKind::PostgreSql,
+                source_identity: BackupSourceIdentity::try_from("postgres/main").unwrap(),
+                content_type: "application/octet-stream".to_owned(),
+                size_bytes: 1,
+                content_digest: ContentDigest::try_from("d".repeat(64)).unwrap(),
+                disposition: BackupComponentDisposition::Embedded,
+                rebuildability: ArtifactRebuildability::NotApplicable,
+                restore_target: BackupComponentRestoreTarget::PostgreSql,
+            }],
+            1,
+            ContentDigest::try_from("e".repeat(64)).unwrap(),
+        )
+        .unwrap();
+        let sealed = authenticate_backup_manifest(manifest, &legacy_material).unwrap();
+
+        verify_backup_manifest(&sealed, &legacy_material).unwrap();
+        assert_eq!(
+            sealed.manifest().backup_key_fingerprint(),
+            &legacy_fingerprint
+        );
+        assert_ne!(
+            provider.active_key().await.unwrap().expose_bytes(),
+            &legacy_key
+        );
     }
 }
