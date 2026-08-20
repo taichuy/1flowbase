@@ -166,7 +166,7 @@ function readPluginCode(pluginPath) {
     const pluginCode = rawPluginId.includes('@')
       ? rawPluginId.slice(0, rawPluginId.indexOf('@'))
       : rawPluginId;
-    return sanitizeCode(pluginCode);
+    return pluginCode;
   }
 
   return sanitizeCode(getPluginName(pluginPath));

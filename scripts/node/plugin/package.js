@@ -36,6 +36,109 @@ function createTarArchive(archivePath, sourceDir) {
   }
 }
 
+function readRuntimeEntry(manifestPath) {
+  const lines = fs.readFileSync(manifestPath, 'utf8').split(/\r?\n/);
+  let runtimeIndent = null;
+
+  for (const line of lines) {
+    const runtimeMatch = line.match(/^(\s*)runtime:\s*(?:#.*)?$/);
+    if (runtimeMatch) {
+      runtimeIndent = runtimeMatch[1].length;
+      continue;
+    }
+
+    if (runtimeIndent === null || /^\s*(?:#.*)?$/.test(line)) {
+      continue;
+    }
+
+    const indent = line.match(/^\s*/)[0].length;
+    if (indent <= runtimeIndent) {
+      runtimeIndent = null;
+      continue;
+    }
+
+    const entryMatch = line.match(/^\s*entry:\s*([^\s#]+)\s*(?:#.*)?$/);
+    if (entryMatch) {
+      return entryMatch[1];
+    }
+  }
+
+  throw new Error('manifest 必须声明 runtime.entry');
+}
+
+function assertSupportedRuntimeEntry(entry) {
+  if (
+    !entry ||
+    entry.includes('\\') ||
+    path.posix.isAbsolute(entry) ||
+    path.win32.isAbsolute(entry)
+  ) {
+    throw new Error('runtime.entry 必须是安全的 bin/ 相对可执行文件路径');
+  }
+
+  const segments = entry.split('/');
+  if (
+    segments.length !== 2 ||
+    segments[0] !== 'bin' ||
+    !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(segments[1])
+  ) {
+    throw new Error('runtime.entry 必须是安全的 bin/ 相对可执行文件路径');
+  }
+
+  return entry;
+}
+
+function assertSupportedPackageIdentity(pluginCode) {
+  if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(pluginCode)) {
+    throw new Error('plugin_id 必须是打包器支持的稳定身份');
+  }
+
+  return pluginCode;
+}
+
+function runtimeEntryForTarget(runtimeEntry, target) {
+  if (
+    target.executableSuffix &&
+    !runtimeEntry.toLowerCase().endsWith(target.executableSuffix)
+  ) {
+    return `${runtimeEntry}${target.executableSuffix}`;
+  }
+
+  return runtimeEntry;
+}
+
+function writeStagedRuntimeEntry(manifestPath, runtimeEntry) {
+  const lines = fs.readFileSync(manifestPath, 'utf8').split(/\r?\n/);
+  let runtimeIndent = null;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const runtimeMatch = line.match(/^(\s*)runtime:\s*(?:#.*)?$/);
+    if (runtimeMatch) {
+      runtimeIndent = runtimeMatch[1].length;
+      continue;
+    }
+
+    if (runtimeIndent === null || /^\s*(?:#.*)?$/.test(line)) {
+      continue;
+    }
+
+    const indent = line.match(/^\s*/)[0].length;
+    if (indent <= runtimeIndent) {
+      runtimeIndent = null;
+      continue;
+    }
+
+    if (/^\s*entry:\s*[^\s#]+\s*(?:#.*)?$/.test(line)) {
+      lines[index] = `${line.match(/^\s*/)[0]}entry: ${runtimeEntry}`;
+      fs.writeFileSync(manifestPath, lines.join('\n'), 'utf8');
+      return;
+    }
+  }
+
+  throw new Error('staged manifest 必须声明 runtime.entry');
+}
+
 function parseRustTargetTriple(raw) {
   switch (String(raw || '').trim()) {
     case 'x86_64-unknown-linux-gnu':
@@ -131,7 +234,7 @@ function createPluginPackage(pluginPath, outputDir, options = {}) {
   }
   const target = parseRustTargetTriple(options.targetTriple);
   const stagedRoot = createPackageArtifactRoot(resolvedPluginPath);
-  const pluginCode = readPluginCode(resolvedPluginPath);
+  const pluginCode = assertSupportedPackageIdentity(readPluginCode(resolvedPluginPath));
   const version = readManifestField(resolvedPluginPath, 'version', '0.1.0');
   const manifestPluginId = readManifestField(
     resolvedPluginPath,
@@ -144,6 +247,10 @@ function createPluginPackage(pluginPath, outputDir, options = {}) {
     'contract_version',
     '1flowbase.provider/v2'
   );
+  const runtimeEntry = assertSupportedRuntimeEntry(
+    readRuntimeEntry(path.join(resolvedPluginPath, 'manifest.yaml'))
+  );
+  const stagedRuntimeEntry = runtimeEntryForTarget(runtimeEntry, target);
 
   if (!fs.existsSync(runtimeBinaryFile)) {
     throw new Error(`runtime binary 不存在：${runtimeBinaryFile}`);
@@ -151,8 +258,14 @@ function createPluginPackage(pluginPath, outputDir, options = {}) {
 
   fs.mkdirSync(resolvedOutputDir, { recursive: true });
 
-  const binaryName = `${pluginCode}-provider${target.executableSuffix}`;
-  const stagedBinaryPath = path.join(stagedRoot, 'bin', binaryName);
+  if (stagedRuntimeEntry !== runtimeEntry) {
+    writeStagedRuntimeEntry(
+      path.join(stagedRoot, 'manifest.yaml'),
+      stagedRuntimeEntry
+    );
+  }
+
+  const stagedBinaryPath = path.join(stagedRoot, ...stagedRuntimeEntry.split('/'));
   fs.mkdirSync(path.dirname(stagedBinaryPath), { recursive: true });
   fs.copyFileSync(runtimeBinaryFile, stagedBinaryPath);
   fs.chmodSync(stagedBinaryPath, 0o755);
@@ -205,6 +318,8 @@ function createPluginPackage(pluginPath, outputDir, options = {}) {
 }
 
 module.exports = {
+  assertSupportedRuntimeEntry,
   createPluginPackage,
   parseRustTargetTriple,
+  runtimeEntryForTarget,
 };

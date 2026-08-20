@@ -326,6 +326,124 @@ test('plugin package writes a windows executable and asset suffix', async () => 
   assert.ok(fs.readdirSync(outputDir).some((name) => name.includes('@windows-amd64@')));
 });
 
+test('plugin package preserves hyphenated manifest identity and synchronizes the staged Windows entry', async () => {
+  const pluginPath = makeTempPluginPath();
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-plugin-dist-'));
+  const extractedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-plugin-extract-'));
+  const signingKeyFile = path.join(outputDir, 'official-signing-key.pem');
+  const { privateKey } = crypto.generateKeyPairSync('ed25519');
+
+  await main(['init', pluginPath]);
+
+  const sourceManifestPath = path.join(pluginPath, 'manifest.yaml');
+  const sourceManifest = fs
+    .readFileSync(sourceManifestPath, 'utf8')
+    .replaceAll('acme_openai_compatible', 'chatgpt-codex');
+  fs.writeFileSync(sourceManifestPath, sourceManifest, 'utf8');
+
+  const sourceProviderPath = path.join(
+    pluginPath,
+    'provider',
+    'acme_openai_compatible.yaml'
+  );
+  const providerPath = path.join(pluginPath, 'provider', 'chatgpt-codex.yaml');
+  fs.renameSync(sourceProviderPath, providerPath);
+  fs.writeFileSync(
+    providerPath,
+    fs
+      .readFileSync(providerPath, 'utf8')
+      .replaceAll('acme_openai_compatible', 'chatgpt-codex'),
+    'utf8'
+  );
+
+  const runtimeBinary = writeFakeRuntimeBinary(
+    outputDir,
+    'chatgpt-codex-provider.exe'
+  );
+  fs.writeFileSync(
+    signingKeyFile,
+    privateKey.export({ format: 'pem', type: 'pkcs8' }),
+    'utf8'
+  );
+
+  const result = await main([
+    'package',
+    pluginPath,
+    '--out',
+    outputDir,
+    '--runtime-binary',
+    runtimeBinary,
+    '--target',
+    'x86_64-pc-windows-msvc',
+    '--signing-key-pem-file',
+    signingKeyFile,
+    '--signing-key-id',
+    'official-key-2026-04',
+    '--issued-at',
+    '2026-04-19T13:00:00Z',
+  ]);
+
+  assert.match(
+    result.packageName,
+    /^1flowbase@chatgpt-codex@0\.1\.0@windows-amd64@[a-f0-9]{64}\.1flowbasepkg$/
+  );
+  assert.match(
+    fs.readFileSync(sourceManifestPath, 'utf8'),
+    /entry: bin\/chatgpt-codex-provider\n/
+  );
+
+  const unpack = spawnSync('tar', ['-xzf', result.packageFile, '-C', extractedDir]);
+  assert.equal(unpack.status, 0);
+  assert.match(
+    fs.readFileSync(path.join(extractedDir, 'manifest.yaml'), 'utf8'),
+    /entry: bin\/chatgpt-codex-provider\.exe\n/
+  );
+  assert.equal(
+    fs.existsSync(
+      path.join(extractedDir, 'bin', 'chatgpt-codex-provider.exe')
+    ),
+    true
+  );
+
+  const release = JSON.parse(
+    fs.readFileSync(
+      path.join(extractedDir, '_meta', 'official-release.json'),
+      'utf8'
+    )
+  );
+  assert.equal(release.plugin_id, 'chatgpt-codex');
+  assert.equal(release.provider_code, 'chatgpt-codex');
+});
+
+test('plugin package rejects runtime entries outside its staged bin contract', async () => {
+  const pluginPath = makeTempPluginPath();
+  const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-plugin-dist-'));
+
+  await main(['init', pluginPath]);
+  const manifestPath = path.join(pluginPath, 'manifest.yaml');
+  fs.writeFileSync(
+    manifestPath,
+    fs
+      .readFileSync(manifestPath, 'utf8')
+      .replace('entry: bin/acme_openai_compatible-provider', 'entry: ../runtime'),
+    'utf8'
+  );
+
+  await assert.rejects(
+    main([
+      'package',
+      pluginPath,
+      '--out',
+      outputDir,
+      '--runtime-binary',
+      writeFakeRuntimeBinary(outputDir),
+      '--target',
+      'x86_64-unknown-linux-musl',
+    ]),
+    /runtime\.entry 必须是安全的 bin\/ 相对可执行文件路径/
+  );
+});
+
 test('plugin package streams tar output into the archive file instead of passing the output path to tar', async () => {
   const pluginPath = makeTempPluginPath();
   const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-plugin-dist-'));
