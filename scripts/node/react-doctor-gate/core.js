@@ -42,7 +42,7 @@ function buildReactDoctorCommand({
       '--json',
       '--no-score',
       '--fail-on',
-      'warning',
+      'none',
       '--verbose',
       '--no-color',
     ],

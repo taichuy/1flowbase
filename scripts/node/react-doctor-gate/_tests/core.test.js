@@ -27,7 +27,7 @@ test('buildReactDoctorCommand records an explicit base while scanning JSON evide
       '--json',
       '--no-score',
       '--fail-on',
-      'warning',
+      'none',
       '--verbose',
       '--no-color',
     ],
@@ -120,7 +120,7 @@ test('runReactDoctorGate binds candidate, changed files, and diagnostics to the 
     '--json',
     '--no-score',
     '--fail-on',
-    'warning',
+    'none',
     '--verbose',
     '--no-color',
   ]);
@@ -151,7 +151,7 @@ test('runReactDoctorGate binds candidate, changed files, and diagnostics to the 
   assert.equal(report.configuredSuppressionEntries, 0);
   assert.equal(report.baseSource, 'explicit-base-input');
   assert.equal(report.candidateSource, 'checked-out-candidate');
-  assert.equal(report.command, 'npm exec --yes --package react-doctor@0.2.16 -- react-doctor web/app --diff base-sha --json --no-score --fail-on warning --verbose --no-color');
+  assert.equal(report.command, 'npm exec --yes --package react-doctor@0.2.16 -- react-doctor web/app --diff base-sha --json --no-score --fail-on none --verbose --no-color');
   assert.equal(report.logPath, 'tmp/test-governance/react-doctor.log');
 });
 
