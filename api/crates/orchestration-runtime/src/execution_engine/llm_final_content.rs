@@ -163,6 +163,16 @@ pub(super) fn finish_reason_from_events(
     })
 }
 
+pub(super) fn resolved_provider_finish_reason(
+    result: &ProviderInvocationResult,
+    events: &[ProviderStreamEvent],
+) -> Option<ProviderFinishReason> {
+    result
+        .finish_reason
+        .clone()
+        .or_else(|| finish_reason_from_events(events))
+}
+
 pub(super) fn has_valid_provider_output(
     final_content: Option<&str>,
     result: &ProviderInvocationResult,
@@ -190,12 +200,13 @@ pub fn billable_provider_output(
     // protocol failure belongs to the executor's failure path. Billing must
     // not turn that mixed outcome into provider_usage_unavailable merely
     // because the partial content looks valid.
+    let finish_reason = resolved_provider_finish_reason(result, events);
     if events.iter().any(|event| {
         matches!(
             event,
             ProviderStreamEvent::Error { .. } | ProviderStreamEvent::OutputProtocolFailure { .. }
         )
-    }) || matches!(result.finish_reason, Some(ProviderFinishReason::Error))
+    }) || matches!(finish_reason, Some(ProviderFinishReason::Error))
     {
         return false;
     }

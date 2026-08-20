@@ -7,6 +7,7 @@ const path = require('node:path');
 const {
   buildReactDoctorCommand,
   resolveReactDoctorDiffBase,
+  resolveSuppressedDiagnostics,
   runReactDoctorGate,
 } = require('../core.js');
 
@@ -145,8 +146,21 @@ test('runReactDoctorGate binds candidate, changed files, and diagnostics to the 
     'web/app/src/features/b.tsx',
   ]);
   assert.equal(report.changedFileCount, 2);
-  assert.equal(report.unsuppressed, 2);
-  assert.equal(report.suppressed, 0);
+  assert.equal(report.unsuppressedDiagnostics, 2);
+  assert.equal(report.suppressedDiagnostics, null);
+  assert.equal(report.configuredSuppressionEntries, 0);
+  assert.equal(report.baseSource, 'explicit-base-input');
+  assert.equal(report.candidateSource, 'checked-out-candidate');
   assert.equal(report.command, 'npm exec --yes --package react-doctor@0.2.16 -- react-doctor web/app --diff base-sha --json --no-score --fail-on warning --verbose --no-color');
   assert.equal(report.logPath, 'tmp/test-governance/react-doctor.log');
+});
+
+test('suppressed diagnostics remain unknown when React Doctor does not report them', () => {
+  assert.equal(resolveSuppressedDiagnostics({ summary: { totalDiagnosticCount: 2 } }), null);
+  assert.equal(
+    resolveSuppressedDiagnostics({
+      summary: { totalDiagnosticCount: 2, suppressedDiagnosticCount: 1 },
+    }),
+    1,
+  );
 });

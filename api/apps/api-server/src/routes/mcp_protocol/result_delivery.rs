@@ -249,13 +249,14 @@ async fn cache_detail(
         Ok(serialized_detail) => serialized_detail,
         Err(_) => return DetailCacheStatus::Unavailable("serialization_failed"),
     };
-    if serialized_detail.len() <= DETAIL_CHUNK_MAX_BYTES {
+    let inline_value = inline_cache_value(detail);
+    if serialized(&inline_value).len() <= DETAIL_CHUNK_MAX_BYTES {
         return store_cache_value(
             state,
             workspace_id,
             result_ref,
             &cache_key(workspace_id, result_ref),
-            json!({ "format": "inline", "detail": detail }),
+            inline_value,
         )
         .await;
     }
@@ -293,6 +294,10 @@ async fn cache_detail(
         json!({ "format": "chunked", "chunk_count": chunks.len() }),
     )
     .await
+}
+
+fn inline_cache_value(detail: &Value) -> Value {
+    json!({ "format": "inline", "detail": detail })
 }
 
 async fn store_cache_value(
@@ -670,6 +675,29 @@ mod assistant_mcp_tests {
             &json!({"items": [1, 2, 3]}),
             DEFAULT_INLINE_CHARS,
         ));
+    }
+
+    #[test]
+    fn inline_cache_admission_counts_the_complete_envelope_at_the_exact_boundary() {
+        let empty = serialized(&inline_cache_value(&json!(""))).len();
+        let exact_detail = json!("a".repeat(DETAIL_CHUNK_MAX_BYTES - empty));
+        let over_detail = json!("a".repeat(DETAIL_CHUNK_MAX_BYTES - empty + 1));
+
+        assert_eq!(
+            serialized(&inline_cache_value(&exact_detail)).len(),
+            DETAIL_CHUNK_MAX_BYTES
+        );
+        assert!(serialized(&inline_cache_value(&over_detail)).len() > DETAIL_CHUNK_MAX_BYTES);
+    }
+
+    #[test]
+    fn inline_cache_admission_counts_utf8_and_escape_expansion() {
+        let detail = json!("界\\\"\n".repeat((DETAIL_CHUNK_MAX_BYTES - 12) / 9));
+        let serialized_size = serialized(&inline_cache_value(&detail)).len();
+
+        assert!(serialized_size > DETAIL_CHUNK_MAX_BYTES);
+        let raw_detail_size = serialized(&detail).len();
+        assert!(raw_detail_size <= DETAIL_CHUNK_MAX_BYTES);
     }
 
     #[test]

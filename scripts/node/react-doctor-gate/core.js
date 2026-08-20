@@ -176,6 +176,18 @@ function parseDoctorJsonReport(stdout) {
   }
 }
 
+function resolveSuppressedDiagnostics(doctorReport) {
+  return doctorReport?.summary?.suppressedDiagnosticCount ?? null;
+}
+
+function resolveBaseSource(env = process.env) {
+  return env.REACT_DOCTOR_BASE_SOURCE?.trim() || 'explicit-base-input';
+}
+
+function resolveCandidateSource(env = process.env) {
+  return env.REACT_DOCTOR_CANDIDATE_SOURCE?.trim() || 'checked-out-candidate';
+}
+
 function writeReactDoctorReports({
   repoRoot,
   env = process.env,
@@ -194,7 +206,7 @@ function writeReactDoctorReports({
   const status = exitCode === 0 ? 'passed' : 'failed';
   const log = stripAnsiControlSequences(`${stdout || ''}${stderr || ''}`);
   const doctorReport = parseDoctorJsonReport(stdout || '');
-  const suppressed = countConfiguredSuppressions({
+  const configuredSuppressionEntries = countConfiguredSuppressions({
     repoRoot,
     changedFiles: range.changedFiles,
   });
@@ -205,9 +217,14 @@ function writeReactDoctorReports({
     candidateSha: range.candidateSha,
     changedFiles: range.changedFiles,
     changedFileCount: range.changedFiles.length,
-    unsuppressed: doctorReport?.summary?.totalDiagnosticCount ?? null,
-    suppressed,
-    suppressionSource: 'web/app/doctor.config.json override entries intersecting changed files',
+    unsuppressedDiagnostics: doctorReport?.summary?.totalDiagnosticCount ?? null,
+    suppressedDiagnostics: resolveSuppressedDiagnostics(doctorReport),
+    configuredSuppressionEntries,
+    suppressionSource: 'react-doctor JSON report when available; otherwise unavailable',
+    configuredSuppressionSource:
+      'web/app/doctor.config.json override entries intersecting changed files',
+    baseSource: resolveBaseSource(env),
+    candidateSource: resolveCandidateSource(env),
     command: formatCommand(command),
     cwd: toRepoRelative(repoRoot, command.cwd),
     logPath: toRepoRelative(repoRoot, logPath),
@@ -224,9 +241,12 @@ function writeReactDoctorReports({
     `- Exit code: ${exitCode}`,
     `- Base SHA: ${report.baseSha}`,
     `- Candidate SHA: ${report.candidateSha}`,
+    `- Base source: ${report.baseSource}`,
+    `- Candidate source: ${report.candidateSource}`,
     `- Changed files: ${report.changedFileCount}`,
-    `- Unsuppressed diagnostics: ${report.unsuppressed ?? 'unavailable'}`,
-    `- Suppressed baseline entries: ${report.suppressed ?? 'unavailable'}`,
+    `- Unsuppressed diagnostics: ${report.unsuppressedDiagnostics ?? 'unavailable'}`,
+    `- Suppressed diagnostics: ${report.suppressedDiagnostics ?? 'unavailable'}`,
+    `- Configured suppression entries: ${report.configuredSuppressionEntries ?? 'unavailable'}`,
     `- Command: \`${report.command}\``,
     `- Log: ${report.logPath}`,
     `- JSON: ${report.reportPath}`,
@@ -287,6 +307,9 @@ module.exports = {
   buildReactDoctorCommand,
   countConfiguredSuppressions,
   parseDoctorJsonReport,
+  resolveBaseSource,
+  resolveCandidateSource,
+  resolveSuppressedDiagnostics,
   resolveReactDoctorDiffBase,
   resolveReactDoctorRange,
   resolveReactDoctorCandidate,

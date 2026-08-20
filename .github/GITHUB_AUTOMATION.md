@@ -58,18 +58,22 @@ focused structural frontend debt evidence:
 
 ```yaml
 scope: repo-frontend-react-doctor
-run: REACT_DOCTOR_DIFF_BASE=<base-sha> REACT_DOCTOR_CANDIDATE_SHA=<candidate-sha> node scripts/node/react-doctor-gate.js
+run: REACT_DOCTOR_DIFF_BASE=<protected-baseline-sha> REACT_DOCTOR_CANDIDATE_SHA=<candidate-sha> node scripts/node/react-doctor-gate.js
 ```
+
+Manual `repo-frontend-react-doctor` and `scope: ci` dispatches must provide the
+protected baseline through the `react_doctor_base` input. Scheduled runs resolve
+the base from the most recent successful `quality-gate.yml` run on the target
+branch, excluding the current candidate; if no such run exists, the gate fails
+closed. The artifact records the selected baseline source and run id.
 
 Current React Doctor structural debt is kept in `web/app/doctor.config.json` as
 narrow per-file rule overrides for those stricter runs. The gate writes
 `tmp/test-governance/react-doctor.*` alongside the standard quality gate report
 artifact. The gate records an explicit base and candidate SHA, the complete
-changed-file list, unsuppressed diagnostics, and configured suppression entries
-intersecting those files. The workflow defaults the base to the target parent;
-set `REACT_DOCTOR_DIFF_BASE` to an older ref, such as `origin/main`, for a
-broader structural debt audit. A candidate that is not the checked-out commit
-fails closed.
+changed-file list, unsuppressed diagnostics, measured suppressed diagnostics
+when React Doctor reports them, and configured suppression entries intersecting
+those files. A candidate that is not the checked-out commit fails closed.
 
 The final aggregate job downloads the component artifacts and publishes a single
 report with:

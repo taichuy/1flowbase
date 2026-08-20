@@ -1,5 +1,7 @@
 use super::*;
-use plugin_framework::provider_contract::{ProviderRuntimeError, ProviderUsage};
+use plugin_framework::provider_contract::{
+    ProviderOutputProtocolFailure, ProviderRuntimeError, ProviderUsage,
+};
 use plugin_framework::PluginFrameworkError;
 
 fn billing_flow_execution_context(flow_run_id: Uuid) -> Arc<RuntimeFlowExecutionContext> {
@@ -65,9 +67,53 @@ fn partial_upstream_error_output() -> crate::ports::ProviderRuntimeInvocationOut
         ],
         result: ProviderInvocationResult {
             final_content: Some("partial answer".to_string()),
+            ..ProviderInvocationResult::default()
+        },
+    }
+}
+
+fn event_only_finish_error_output() -> crate::ports::ProviderRuntimeInvocationOutput {
+    crate::ports::ProviderRuntimeInvocationOutput {
+        events: vec![
+            ProviderStreamEvent::TextDelta {
+                delta: "partial answer".to_string(),
+            },
+            ProviderStreamEvent::Finish {
+                reason: ProviderFinishReason::Error,
+            },
+        ],
+        result: ProviderInvocationResult {
+            final_content: Some("partial answer".to_string()),
+            ..ProviderInvocationResult::default()
+        },
+    }
+}
+
+fn result_only_finish_error_output() -> crate::ports::ProviderRuntimeInvocationOutput {
+    crate::ports::ProviderRuntimeInvocationOutput {
+        events: vec![ProviderStreamEvent::TextDelta {
+            delta: "partial answer".to_string(),
+        }],
+        result: ProviderInvocationResult {
+            final_content: Some("partial answer".to_string()),
             finish_reason: Some(ProviderFinishReason::Error),
             ..ProviderInvocationResult::default()
         },
+    }
+}
+
+fn output_protocol_failure_output() -> crate::ports::ProviderRuntimeInvocationOutput {
+    crate::ports::ProviderRuntimeInvocationOutput {
+        events: vec![ProviderStreamEvent::OutputProtocolFailure {
+            failure: ProviderOutputProtocolFailure {
+                protocol: "fixture".to_string(),
+                error_code: "invalid_output".to_string(),
+                message: "provider emitted invalid output".to_string(),
+                retry_feedback: "retry with a valid output".to_string(),
+                provider_details: json!({"fixture": true}),
+            },
+        }],
+        result: ProviderInvocationResult::default(),
     }
 }
 
@@ -155,6 +201,89 @@ async fn billing_no_usage_after_partial_content_preserves_upstream_failure() {
         repository_probe.model_billing_credit_releases()[0].1,
         "provider_usage_unavailable"
     );
+}
+
+#[tokio::test]
+async fn billing_no_usage_with_event_only_finish_error_returns_output_for_classification() {
+    let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let (provider_instance_id, _) = repository.seed_included_provider_instances();
+    repository.enable_model_billing();
+    let runtime = test_support::InMemoryProviderRuntime::with_provider_outputs(vec![
+        event_only_finish_error_output(),
+    ]);
+    let repository_probe = repository.clone();
+    let invoker = billing_invoker(repository, runtime);
+    let runtime = compiled_llm_runtime(provider_instance_id, "fixture_provider");
+
+    let output = orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(
+        &invoker,
+        &runtime,
+        provider_user_input(provider_instance_id),
+    )
+    .await
+    .expect("event-only finish error must reach executor classification");
+
+    assert!(output.events.iter().any(|event| {
+        matches!(event, ProviderStreamEvent::Finish { reason } if *reason == ProviderFinishReason::Error)
+    }));
+    assert_eq!(repository_probe.model_billing_credit_releases().len(), 1);
+    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 0);
+}
+
+#[tokio::test]
+async fn billing_no_usage_with_result_only_finish_error_returns_output_for_classification() {
+    let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let (provider_instance_id, _) = repository.seed_included_provider_instances();
+    repository.enable_model_billing();
+    let runtime = test_support::InMemoryProviderRuntime::with_provider_outputs(vec![
+        result_only_finish_error_output(),
+    ]);
+    let repository_probe = repository.clone();
+    let invoker = billing_invoker(repository, runtime);
+    let runtime = compiled_llm_runtime(provider_instance_id, "fixture_provider");
+
+    let output = orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(
+        &invoker,
+        &runtime,
+        provider_user_input(provider_instance_id),
+    )
+    .await
+    .expect("result-only finish error must reach executor classification");
+
+    assert_eq!(
+        output.result.finish_reason,
+        Some(ProviderFinishReason::Error)
+    );
+    assert_eq!(repository_probe.model_billing_credit_releases().len(), 1);
+    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 0);
+}
+
+#[tokio::test]
+async fn billing_no_usage_with_output_protocol_failure_returns_output_for_classification() {
+    let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let (provider_instance_id, _) = repository.seed_included_provider_instances();
+    repository.enable_model_billing();
+    let runtime = test_support::InMemoryProviderRuntime::with_provider_outputs(vec![
+        output_protocol_failure_output(),
+    ]);
+    let repository_probe = repository.clone();
+    let invoker = billing_invoker(repository, runtime);
+    let runtime = compiled_llm_runtime(provider_instance_id, "fixture_provider");
+
+    let output = orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(
+        &invoker,
+        &runtime,
+        provider_user_input(provider_instance_id),
+    )
+    .await
+    .expect("protocol failure must reach executor classification");
+
+    assert!(output
+        .events
+        .iter()
+        .any(|event| { matches!(event, ProviderStreamEvent::OutputProtocolFailure { .. }) }));
+    assert_eq!(repository_probe.model_billing_credit_releases().len(), 1);
+    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 0);
 }
 
 // AC-002 + AC-004: billing armed, empty stream (no events, no output, no usage)
