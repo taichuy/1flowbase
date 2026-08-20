@@ -13,10 +13,6 @@ import {
 import { ScrollableSurface } from '../../../../shared/ui/scrollable-surface/ScrollableSurface';
 import type { SettingsPluginFamilyEntry } from '../../api/plugins';
 import type { SettingsModelProviderCatalogEntry } from '../../api/model-providers';
-import {
-  formatPluginArtifactAvailabilityStatus,
-  isPluginArtifactUnavailable
-} from './plugin-installation-status';
 import { ModelProviderOverviewSummary } from '../../pages/settings-page/model-providers/ModelProviderOverviewSummary';
 import { i18nText } from '../../../../shared/i18n/text';
 
@@ -55,13 +51,11 @@ export function ModelProviderCatalogPanel({
   switchingProviderCode,
   upgradingProviderCode,
   uninstallingProviderCode,
-  reinstallingProviderCode,
   onCreate,
   onViewInstances,
   onUpgradeLatest,
   onSwitchVersion,
-  onUninstall,
-  onReinstall
+  onUninstall
 }: {
   overviewRows: { key: string; label: string; value: string }[];
   entries: SettingsPluginFamilyEntry[];
@@ -74,7 +68,6 @@ export function ModelProviderCatalogPanel({
   switchingProviderCode?: string | null;
   upgradingProviderCode?: string | null;
   uninstallingProviderCode?: string | null;
-  reinstallingProviderCode?: string | null;
   onCreate: (entry: SettingsPluginFamilyEntry) => void;
   onViewInstances: (entry: SettingsPluginFamilyEntry) => void;
   onUpgradeLatest: (entry: SettingsPluginFamilyEntry) => void;
@@ -83,7 +76,6 @@ export function ModelProviderCatalogPanel({
     installationId: string
   ) => void;
   onUninstall: (entry: SettingsPluginFamilyEntry) => void;
-  onReinstall: (entry: SettingsPluginFamilyEntry) => void;
 }) {
   return (
     <ScrollableSurface className="model-provider-panel__catalog">
@@ -119,18 +111,10 @@ export function ModelProviderCatalogPanel({
                   key: 'actions',
                   width: 280,
                   render: (_: unknown, entry: SettingsPluginFamilyEntry) => {
-                    const localArtifact = entry.current_local_artifact;
-                    const artifactUnavailable = isPluginArtifactUnavailable(
-                      localArtifact.artifact_status
-                    );
                     const upgrading =
                       upgradingProviderCode === entry.provider_code;
                     const uninstalling =
                       uninstallingProviderCode === entry.provider_code;
-                    const uninstalled =
-                      localArtifact.artifact_status === 'missing';
-                    const reinstalling =
-                      reinstallingProviderCode === entry.provider_code;
 
                     return (
                       <Space
@@ -148,71 +132,58 @@ export function ModelProviderCatalogPanel({
                         </Button>
                         <Button
                           type="link"
-                          disabled={artifactUnavailable || uninstalling}
+                          disabled={uninstalling}
                           onClick={() => onCreate(entry)}
                         >
                           {i18nText('settings', 'auto.new')}
                         </Button>
-                        {uninstalled ? (
-                          <Button
-                            type="link"
-                            loading={reinstalling}
-                            disabled={uninstalling || reinstalling}
-                            onClick={() => onReinstall(entry)}
-                          >
-                            {i18nText('settings', 'auto.reinstall')}
-                          </Button>
-                        ) : (
-                          <Tooltip
-                            title={
-                              entry.has_update
-                                ? undefined
-                                : entry.latest_version === null
+                        <Tooltip
+                          title={
+                            entry.has_update
+                              ? undefined
+                              : entry.latest_version === null
+                                ? i18nText(
+                                    'settings',
+                                    'auto.update_check_failed'
+                                  )
+                                : i18nText(
+                                    'settings',
+                                    'auto.currently_latest_version'
+                                  )
+                          }
+                        >
+                          <span>
+                            <Badge
+                              dot={entry.has_update && !upgrading}
+                              color="gold"
+                              title={
+                                entry.has_update
                                   ? i18nText(
                                       'settings',
-                                      'auto.update_check_failed'
+                                      'auto.updates_available'
                                     )
-                                  : i18nText(
-                                      'settings',
-                                      'auto.currently_latest_version'
-                                    )
-                            }
-                          >
-                            <span>
-                              <Badge
-                                dot={entry.has_update && !upgrading}
-                                color="gold"
-                                title={
-                                  entry.has_update
-                                    ? i18nText(
-                                        'settings',
-                                        'auto.updates_available'
-                                      )
-                                    : undefined
-                                }
+                                  : undefined
+                              }
+                            >
+                              <Button
+                                type="link"
+                                loading={upgrading}
+                                disabled={!entry.has_update || uninstalling}
+                                onClick={() => onUpgradeLatest(entry)}
                               >
-                                <Button
-                                  type="link"
-                                  loading={upgrading}
-                                  disabled={!entry.has_update || uninstalling}
-                                  onClick={() => onUpgradeLatest(entry)}
-                                >
-                                  {i18nText('settings', 'auto.update')}
-                                </Button>
-                              </Badge>
-                            </span>
-                          </Tooltip>
-                        )}
-                        {!uninstalled ? (
-                          <Button
-                            danger
-                            type="link"
-                            loading={uninstalling}
-                            onClick={() => onUninstall(entry)}
-                          >
-                            {i18nText('settings', 'auto.uninstall_plugin')}
-                          </Button>
-                        ) : null}
+                                {i18nText('settings', 'auto.update')}
+                              </Button>
+                            </Badge>
+                          </span>
+                        </Tooltip>
+                        <Button
+                          danger
+                          type="link"
+                          loading={uninstalling}
+                          onClick={() => onUninstall(entry)}
+                        >
+                          {i18nText('settings', 'auto.uninstall_plugin')}
+                        </Button>
                       </Space>
                     );
                   }
@@ -233,31 +204,24 @@ export function ModelProviderCatalogPanel({
             title: i18nText('settings', 'auto.status'),
             key: 'status',
             width: 190,
-            render: (_, entry) => {
-              const artifactStatus = formatPluginArtifactAvailabilityStatus(
-                entry.current_local_artifact.artifact_status
-              );
-
-              return (
-                <Space
-                  wrap
-                  size={[6, 6]}
-                  className="model-provider-panel__catalog-status"
-                >
-                  <Tag color={artifactStatus.color}>{artifactStatus.label}</Tag>
-                  <Tag>{entry.model_discovery_mode}</Tag>
-                </Space>
-              );
-            }
+            render: (_, entry) => (
+              <Space
+                wrap
+                size={[6, 6]}
+                className="model-provider-panel__catalog-status"
+              >
+                <Tag color="green">
+                  {i18nText('settings', 'auto.available')}
+                </Tag>
+                <Tag>{entry.model_discovery_mode}</Tag>
+              </Space>
+            )
           },
           {
             title: i18nText('settings', 'auto.version'),
             key: 'version',
             width: 220,
             render: (_, entry) => {
-              const artifactUnavailable = isPluginArtifactUnavailable(
-                entry.current_local_artifact.artifact_status
-              );
               const localArtifactVersion =
                 entry.current_local_artifact.local_version;
               const shouldShowLocalArtifactVersion =
@@ -293,10 +257,7 @@ export function ModelProviderCatalogPanel({
                           { value1: entry.display_name }
                         )}
                         loading={switchingProviderCode === entry.provider_code}
-                        disabled={
-                          artifactUnavailable ||
-                          uninstallingProviderCode === entry.provider_code
-                        }
+                        disabled={uninstallingProviderCode === entry.provider_code}
                         options={versionOptions}
                         onChange={(installationId) => {
                           if (

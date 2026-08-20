@@ -310,7 +310,6 @@ export function SettingsModelProvidersSection({
     deleteMutation,
     familyDeleteMutation,
     officialInstallMutation,
-    installCurrentNodeArtifactMutation,
     uploadMutation,
     versionMutation
   } = useModelProviderMutations({
@@ -478,15 +477,6 @@ export function SettingsModelProvidersSection({
                     ? familyDeleteMutation.variables
                     : null
                 }
-                reinstallingProviderCode={
-                  installCurrentNodeArtifactMutation.isPending
-                    ? families.find(
-                        (entry) =>
-                          entry.current_installation_id ===
-                          installCurrentNodeArtifactMutation.variables
-                      )?.provider_code
-                    : null
-                }
                 onViewInstances={(entry) => {
                   setInstanceModalState({
                     providerCode: entry.provider_code,
@@ -511,11 +501,6 @@ export function SettingsModelProvidersSection({
                 }}
                 onUninstall={(entry) => {
                   familyDeleteMutation.mutate(entry.provider_code);
-                }}
-                onReinstall={(entry) => {
-                  installCurrentNodeArtifactMutation.mutate(
-                    entry.current_installation_id
-                  );
                 }}
               />
             </Layout.Content>

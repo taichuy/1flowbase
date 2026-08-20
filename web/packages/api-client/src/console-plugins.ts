@@ -137,6 +137,7 @@ export interface ConsolePluginFamilyEntry {
   model_discovery_mode: string;
   current_installation_id: string;
   current_version: string;
+  installation_status: ConsoleOfficialPluginInstallStatus;
   current_local_artifact: ConsolePluginArtifactInstance;
   latest_version: string | null;
   has_update: boolean;

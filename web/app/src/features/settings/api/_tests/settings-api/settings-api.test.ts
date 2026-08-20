@@ -830,6 +830,7 @@ describe('settings api wrappers', () => {
           model_discovery_mode: 'hybrid',
           current_installation_id: 'installation-1',
           current_version: '0.3.7',
+          installation_status: 'assigned',
           current_local_artifact: {
             node_id: 'test-node',
             installation_id: 'installation-1',
@@ -913,7 +914,8 @@ describe('settings api wrappers', () => {
         display_name: 'OpenAI Compatible',
         description: '面向 OpenAI 兼容 Chat Completions API 的 provider 插件。',
         plugin_type: 'model_provider',
-        current_version: '0.3.7'
+        current_version: '0.3.7',
+        installation_status: 'assigned'
       })
     ]);
     await expect(fetchSettingsOfficialPluginCatalog()).resolves.toEqual(

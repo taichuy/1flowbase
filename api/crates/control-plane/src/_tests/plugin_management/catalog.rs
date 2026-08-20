@@ -747,6 +747,26 @@ async fn plugin_management_service_uses_persisted_missing_artifact_snapshot_for_
         repository.artifact_snapshot_update_count().await,
         maintenance_update_count
     );
+
+    repository
+        .create_assignment(&CreatePluginAssignmentInput {
+            installation_id,
+            workspace_id,
+            provider_code: "fixture_provider".into(),
+            actor_user_id: repository.actor.user_id,
+        })
+        .await
+        .unwrap();
+    let families = service
+        .list_families(
+            repository.actor.user_id,
+            PluginCatalogFilter::default(),
+            requested_locales(),
+        )
+        .await
+        .unwrap();
+
+    assert!(families.entries.is_empty());
 }
 
 #[tokio::test]

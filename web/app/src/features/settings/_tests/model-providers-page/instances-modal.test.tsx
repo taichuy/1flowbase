@@ -343,6 +343,7 @@ describe('ModelProvidersPage - instances modal', () => {
         model_discovery_mode: 'hybrid',
         current_installation_id: 'installation-1',
         current_version: '0.1.0',
+        installation_status: 'assigned',
         current_local_artifact: {
           node_id: 'test-node',
           installation_id: 'installation-1',

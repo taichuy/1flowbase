@@ -428,9 +428,7 @@ function OfficialPluginCard({
   const upgrading = upgradingProviderCode === entry.provider_code;
   const belowMinimumHostVersion = isBelowMinimumHostVersion(entry);
   const activeFamily =
-    family?.current_local_artifact.artifact_status === 'ready'
-      ? family
-      : undefined;
+    entry.install_status === 'uninstalled' ? undefined : family;
   const buttonLabel = activeFamily
     ? activeFamily.latest_version === null
       ? i18nText('settings', 'auto.update_check_failed')

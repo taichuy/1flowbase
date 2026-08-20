@@ -312,6 +312,7 @@ export const styleBoundaryPluginFamiliesCatalog = {
     model_discovery_mode: entry.model_discovery_mode,
     current_installation_id: entry.installation_id,
     current_version: entry.plugin_version,
+    installation_status: 'assigned',
     current_local_artifact: {
       node_id: 'style-boundary-node',
       installation_id: entry.installation_id,

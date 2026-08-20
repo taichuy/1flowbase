@@ -2,8 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 import type {
-  SettingsOfficialPluginCatalogEntry,
-  SettingsPluginFamilyEntry
+  SettingsOfficialPluginCatalogEntry
 } from '../../../api/plugins';
 import { OfficialPluginInstallPanel } from '../OfficialPluginInstallPanel';
 
@@ -43,8 +42,7 @@ function renderPanel(
   handlers: Partial<
     Pick<OfficialPluginInstallPanelProps, 'onInstall' | 'onUpgradeLatest'>
   > = {},
-  sourceMeta: OfficialPluginInstallPanelProps['sourceMeta'] = null,
-  family?: SettingsPluginFamilyEntry
+  sourceMeta: OfficialPluginInstallPanelProps['sourceMeta'] = null
 ) {
   const onInstall =
     handlers.onInstall ?? vi.fn<OfficialPluginInstallPanelProps['onInstall']>();
@@ -56,7 +54,7 @@ function renderPanel(
     <OfficialPluginInstallPanel
       sourceMeta={sourceMeta}
       entries={[entry]}
-      familiesByProviderCode={family ? { [entry.provider_code]: family } : {}}
+      familiesByProviderCode={{}}
       canManage
       searchQuery=""
       activePluginId={null}
@@ -153,43 +151,13 @@ describe('OfficialPluginInstallPanel', () => {
     });
   });
 
-  test('AC-1785 treats a missing family artifact as uninstalled and reinstalls instead of upgrading', async () => {
+  test('AC-1785 offers reinstall from the official catalog without an installed family row', async () => {
     const onInstall = vi.fn();
     const onUpgradeLatest = vi.fn();
-    const uninstalledFamily: SettingsPluginFamilyEntry = {
-      provider_code: baseEntry.provider_code,
-      plugin_type: baseEntry.plugin_type,
-      namespace: 'plugin.openai_compatible',
-      label_key: 'plugin.label',
-      description_key: 'plugin.description',
-      provider_label_key: 'provider.label',
-      icon: null,
-      protocol: baseEntry.protocol,
-      help_url: baseEntry.help_url,
-      default_base_url: null,
-      model_discovery_mode: baseEntry.model_discovery_mode,
-      current_installation_id: 'installation-1',
-      current_version: baseEntry.latest_version,
-      current_local_artifact: {
-        node_id: 'node-1',
-        installation_id: 'installation-1',
-        local_version: baseEntry.latest_version,
-        local_checksum: null,
-        installed_path: null,
-        artifact_status: 'missing',
-        runtime_status: 'inactive',
-        checked_at: '2026-08-20T10:00:00Z',
-        last_error: 'artifact_missing'
-      },
-      latest_version: baseEntry.latest_version,
-      has_update: false,
-      installed_versions: []
-    };
     renderPanel(
       { ...baseEntry, install_status: 'uninstalled' },
       { onInstall, onUpgradeLatest },
-      null,
-      uninstalledFamily
+      null
     );
 
     expect(screen.getByText('已卸载')).toBeInTheDocument();

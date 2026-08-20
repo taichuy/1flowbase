@@ -20,6 +20,16 @@ part of this issue's hot-unload contract. The complete `control-plane` and `api-
 library suites were not green during the concentrated QA batch, so their failures remain
 explicitly unverified rather than being attributed to or masked by this issue.
 
+## Query projection boundary
+
+The retained `extension_installations` record is not an installed-state predicate. For this
+issue, the control-plane derives `installation_status` from the node-local Artifact snapshot:
+`missing` is `uninstalled`, while a ready Artifact attached to the workspace is `assigned`.
+The model-provider family DTO is the owner of that projection; frontend counts and actions
+consume its status and must not inspect `current_local_artifact.artifact_status` to infer it.
+No durable lifecycle field or migration is introduced because a global boolean would conflict
+with the `(node_id, installation_id)` Artifact truth.
+
 ## Status projection follow-up
 
 An uninstalled plugin retains its durable installation record, so UI and API projections must
@@ -28,3 +38,11 @@ not use record existence as the installed predicate. For `RuntimeExtension` and
 the installed provider count, offers `reinstall`, and must not enter update/upgrade flows.
 Reinstalling restores the retained installation identity and configuration. `HostExtension`
 continues to use its restart-scoped lifecycle and is explicitly excluded from this projection.
+
+## Installed-list projection follow-up
+
+The user subsequently clarified that retained uninstalled records must not appear in the
+model-provider page's "installed providers" list at all. `list_families` is therefore an
+installed-only current-node query: only a ready Artifact is returned. The official catalog
+remains the sole UI projection for a retained missing Artifact and exposes reinstallation;
+durable installation, configuration, instances, assignments, and history remain unchanged.

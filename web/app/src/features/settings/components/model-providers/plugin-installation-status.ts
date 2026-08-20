@@ -28,28 +28,3 @@ export function formatPluginAvailabilityStatus(status: string) {
       return { color: 'default', label: i18nText('settings', 'auto.disabled') };
   }
 }
-
-export function formatPluginArtifactAvailabilityStatus(status: string) {
-  if (status === 'ready') {
-    return {
-      color: 'green',
-      label: i18nText('settings', 'auto.available')
-    };
-  }
-
-  if (status === 'missing') {
-    return {
-      color: 'default',
-      label: i18nText('settings', 'auto.uninstalled')
-    };
-  }
-
-  return {
-    color: 'red',
-    label: i18nText('settings', 'auto.unavailable')
-  };
-}
-
-export function isPluginArtifactUnavailable(status: string) {
-  return status !== 'ready';
-}

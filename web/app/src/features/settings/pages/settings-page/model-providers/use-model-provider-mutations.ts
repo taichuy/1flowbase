@@ -20,7 +20,6 @@ import {
 } from '../../../api/model-providers';
 import {
   deleteSettingsPluginFamily,
-  installSettingsPluginCurrentNodeArtifact,
   installSettingsOfficialPlugin,
   refreshSettingsPluginCurrentNodeArtifact,
   settingsOfficialPluginsQueryKey,
@@ -421,20 +420,6 @@ export function useModelProviderMutations({
     onSuccess: invalidatePluginContributionQueries
   });
 
-  const installCurrentNodeArtifactMutation = useMutation({
-    mutationFn: async (installationId: string) => {
-      if (!csrfToken) {
-        throw new Error('missing csrf token');
-      }
-
-      return installSettingsPluginCurrentNodeArtifact(
-        installationId,
-        csrfToken
-      );
-    },
-    onSuccess: invalidatePluginContributionQueries
-  });
-
   const versionMutation = useMutation({
     mutationFn: async (
       input:
@@ -510,7 +495,6 @@ export function useModelProviderMutations({
     officialInstallMutation,
     uploadMutation,
     refreshCurrentNodeArtifactMutation,
-    installCurrentNodeArtifactMutation,
     versionMutation
   };
 }

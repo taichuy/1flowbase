@@ -362,6 +362,7 @@ pub struct PluginFamilyView {
     pub model_discovery_mode: String,
     pub current_installation_id: Uuid,
     pub current_version: String,
+    pub installation_status: OfficialPluginInstallStatus,
     pub current_local_artifact: domain::PluginArtifactInstanceRecord,
     pub latest_version: Option<String>,
     pub has_update: bool,
@@ -931,6 +932,9 @@ where
             let namespace = plugin_namespace(&current.provider_code);
             let current_local_artifact =
                 local_artifact_snapshot(&artifact_snapshots, &self.node_id, &current);
+            if !current_local_artifact.artifact_status.is_ready() {
+                continue;
+            }
             let projection = plugin_catalog_projection_view(projections.get(&current.id));
             merge_i18n_catalog(
                 &mut i18n_catalog,
@@ -992,6 +996,7 @@ where
                 icon: metadata_string(&current.metadata_json, "icon"),
                 current_installation_id: current.id,
                 current_version: current.plugin_version.clone(),
+                installation_status: OfficialPluginInstallStatus::Assigned,
                 current_local_artifact,
                 latest_version: latest_version.clone(),
                 has_update: latest_version.as_deref().is_some_and(|version| {
