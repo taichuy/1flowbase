@@ -19,6 +19,8 @@ import type {
   SettingsPluginFamilyEntry
 } from '../../api/plugins';
 import { i18nText } from '../../../../shared/i18n/text';
+import { OfficialPluginInstallConfirmContent } from './OfficialPluginUpgradeConfirmation';
+import { confirmOfficialPluginUpgrade } from './official-plugin-upgrade-confirmation';
 
 type InstallState = 'idle' | 'installing' | 'success' | 'failed';
 const BELOW_MINIMUM_HOST_VERSION = 'below_minimum_host_version';
@@ -252,145 +254,6 @@ function getStatusTags(
 
   tags.push(entry.model_discovery_mode);
   return tags;
-}
-
-function OfficialPluginInstallConfirmContent({
-  entry,
-  family,
-  belowMinimumHostVersion
-}: {
-  entry: SettingsOfficialPluginCatalogEntry;
-  family: SettingsPluginFamilyEntry | undefined;
-  belowMinimumHostVersion: boolean;
-}) {
-  return (
-    <div className="model-provider-panel__install-confirm">
-      <div className="model-provider-panel__install-confirm-card">
-        <Typography.Title level={5}>{entry.display_name}</Typography.Title>
-        <Typography.Paragraph type="secondary">
-          {family
-            ? i18nText(
-                'settings',
-                'auto.workspace_s_upgraded_latest_official_version_completion_all_instances_supplier',
-                {
-                  value1: entry.display_name,
-                  value2: entry.latest_version
-                }
-              )
-            : i18nText(
-                'settings',
-                'auto.latest_official_version_about_installed_completion_automatically_enabled_workspace',
-                { value1: entry.latest_version }
-              )}
-        </Typography.Paragraph>
-        <div className="model-provider-panel__catalog-item-meta">
-          <span>
-            {i18nText('settings', 'auto.agreement')}
-            {entry.protocol}
-          </span>
-          <span>
-            {i18nText('settings', 'auto.discovery_mode')}
-            {entry.model_discovery_mode}
-          </span>
-        </div>
-        {belowMinimumHostVersion ? (
-          <Alert
-            type="warning"
-            showIcon
-            title={i18nText(
-              'settings',
-              'auto.host_version_below_minimum_warning'
-            )}
-            description={
-              <div className="model-provider-panel__install-warning-detail">
-                <Typography.Text>
-                  {i18nText('settings', 'auto.current_host_version_value', {
-                    value1: entry.current_host_version
-                  })}
-                </Typography.Text>
-                <Typography.Text>
-                  {i18nText('settings', 'auto.minimum_host_version_value', {
-                    value1: entry.minimum_host_version
-                  })}
-                </Typography.Text>
-                <Typography.Text>
-                  {i18nText('settings', 'auto.plugin_version_value', {
-                    value1: entry.latest_version
-                  })}
-                </Typography.Text>
-                <Typography.Text>
-                  {i18nText('settings', 'auto.possible_risk_value', {
-                    value1: i18nText(
-                      'settings',
-                      'auto.host_version_below_minimum_risk'
-                    )
-                  })}
-                </Typography.Text>
-                <Typography.Text>
-                  {i18nText(
-                    'settings',
-                    'auto.upgrade_one_flowbase_before_continuing'
-                  )}
-                </Typography.Text>
-              </div>
-            }
-          />
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-export function confirmOfficialPluginUpgrade({
-  modal,
-  entry,
-  family,
-  upgrading,
-  onUpgradeLatest
-}: {
-  modal: ReturnType<typeof Modal.useModal>[0];
-  entry: SettingsOfficialPluginCatalogEntry;
-  family: SettingsPluginFamilyEntry;
-  upgrading: boolean;
-  onUpgradeLatest: (
-    entry: SettingsOfficialPluginCatalogEntry,
-    compatibilityOverride?: SettingsPluginCompatibilityOverride
-  ) => void;
-}) {
-  const belowMinimumHostVersion = isBelowMinimumHostVersion(entry);
-  const buttonLabel = belowMinimumHostVersion
-    ? i18nText('settings', 'auto.still_update')
-    : i18nText('settings', 'auto.upgrade_latest_version');
-  const compatibilityOverride = belowMinimumHostVersion
-    ? ({
-        reason: BELOW_MINIMUM_HOST_VERSION,
-        acknowledged_current_host_version: entry.current_host_version,
-        acknowledged_minimum_host_version: entry.minimum_host_version
-      } satisfies SettingsPluginCompatibilityOverride)
-    : undefined;
-
-  void modal.confirm({
-    title: i18nText('settings', 'auto.upgrade_plugin'),
-    icon: null,
-    centered: true,
-    width: INSTALL_CONFIRM_MODAL_WIDTH,
-    okText: buttonLabel,
-    cancelText: i18nText('settings', 'auto.cancel'),
-    okButtonProps: {
-      loading: upgrading,
-      disabled: !family.has_update
-    },
-    content: (
-      <OfficialPluginInstallConfirmContent
-        entry={entry}
-        family={family}
-        belowMinimumHostVersion={belowMinimumHostVersion}
-      />
-    ),
-    onOk: async () => {
-      onUpgradeLatest(entry, compatibilityOverride);
-    }
-  });
 }
 
 function OfficialPluginCard({
