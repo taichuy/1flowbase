@@ -720,7 +720,7 @@ async fn model_providers_feature_only_completes_plugin_install_and_family_lifecy
         )
         .await
         .unwrap();
-    assert_eq!(delete.status(), StatusCode::CONFLICT);
+    assert_eq!(delete.status(), StatusCode::OK);
 }
 
 fn upload_body(boundary: &str, file_name: &str, package_bytes: &[u8]) -> Vec<u8> {

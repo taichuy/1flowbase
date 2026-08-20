@@ -871,12 +871,12 @@ fn provider_runtime_consumer_has_no_provider_specific_branch_and_production_wire
         consumer
             .matches("self.resolve_model_provider_binding(installation)?")
             .count(),
-        9,
+        10,
         "every ProviderRuntimePort operation must resolve the typed slot binding"
     );
     assert_eq!(
         consumer.matches("&binding.plugin_id").count(),
-        9,
+        10,
         "ProviderHost load and operation paths must use the binding plugin id"
     );
     assert_eq!(

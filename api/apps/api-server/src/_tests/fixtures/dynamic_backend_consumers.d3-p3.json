@@ -1,7 +1,6 @@
 {
   "packet": "D3-P3",
   "projected_interface_count": 321,
-  "count": 642,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {

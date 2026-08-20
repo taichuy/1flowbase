@@ -220,13 +220,16 @@ fn scan_host_extensions_from_dropins(
 fn is_current_node_artifact_conflict(error: &anyhow::Error) -> bool {
     matches!(
         error.downcast_ref::<ControlPlaneError>(),
-        Some(ControlPlaneError::Conflict(
-            "plugin_artifact_missing"
-                | "plugin_artifact_outdated"
-                | "plugin_artifact_mismatched"
-                | "plugin_artifact_corrupted"
-                | "plugin_runtime_load_failed"
-        ))
+        Some(
+            ControlPlaneError::PluginUnavailable
+                | ControlPlaneError::Conflict(
+                    "plugin_artifact_missing"
+                        | "plugin_artifact_outdated"
+                        | "plugin_artifact_mismatched"
+                        | "plugin_artifact_corrupted"
+                        | "plugin_runtime_load_failed",
+                ),
+        )
     )
 }
 
