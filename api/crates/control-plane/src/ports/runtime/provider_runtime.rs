@@ -76,6 +76,26 @@ pub trait ProviderRuntimePort: Send + Sync {
         let _ = provider_config;
         anyhow::bail!("provider balance is not implemented by this runtime")
     }
+    async fn get_usage_windows(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        provider_config: serde_json::Value,
+    ) -> anyhow::Result<ProviderUsageWindowsResult> {
+        let _ = installation;
+        let _ = provider_config;
+        anyhow::bail!("provider usage windows are not implemented by this runtime")
+    }
+    async fn reset_credit(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        provider_config: serde_json::Value,
+        operation: ProviderResetCreditOperation,
+    ) -> anyhow::Result<ProviderResetCreditResult> {
+        let _ = installation;
+        let _ = provider_config;
+        let _ = operation;
+        anyhow::bail!("provider reset credits are not implemented by this runtime")
+    }
     async fn count_tokens(
         &self,
         installation: &domain::LocalPluginInstallationRecord,

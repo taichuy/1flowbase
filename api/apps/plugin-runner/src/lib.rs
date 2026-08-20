@@ -23,7 +23,9 @@ use plugin_framework::{
         DataSourceUpdateRecordOutput, NativeSqlExecutionOutput,
     },
     error::{PluginFrameworkError, PluginFrameworkErrorKind},
-    provider_contract::{ProviderAuthOperation, ProviderInvocationInput},
+    provider_contract::{
+        ProviderAuthOperation, ProviderInvocationInput, ProviderResetCreditOperation,
+    },
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -38,7 +40,8 @@ use crate::data_source_host::{
 };
 use crate::provider_host::{
     LoadedProviderSummary, ProviderActiveStreamsOutput, ProviderAuthOutput, ProviderBalanceOutput,
-    ProviderHost, ProviderInvokeStreamOutput, ProviderModelsOutput, ProviderValidationOutput,
+    ProviderHost, ProviderInvokeStreamOutput, ProviderModelsOutput, ProviderResetCreditOutput,
+    ProviderUsageWindowsOutput, ProviderValidationOutput,
 };
 pub use capability_host::CapabilityHost;
 pub use data_source_host::DataSourceHost;
@@ -151,6 +154,21 @@ struct BalanceProviderRequest {
     plugin_id: String,
     #[serde(default)]
     provider_config: Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct UsageProviderRequest {
+    plugin_id: String,
+    #[serde(default)]
+    provider_config: Value,
+}
+
+#[derive(Debug, Deserialize)]
+struct ResetCreditProviderRequest {
+    plugin_id: String,
+    #[serde(default)]
+    provider_config: Value,
+    operation: ProviderResetCreditOperation,
 }
 
 #[derive(Debug, Deserialize)]
@@ -371,6 +389,34 @@ async fn get_balance(
         let host = state.provider_host.read().await;
         host.get_balance_operation(&request.plugin_id, request.provider_config)
             .map_err(map_framework_error)?
+    };
+    operation.await.map(Json).map_err(map_framework_error)
+}
+
+async fn get_usage_windows(
+    State(state): State<AppState>,
+    Json(request): Json<UsageProviderRequest>,
+) -> Result<Json<ProviderUsageWindowsOutput>, (StatusCode, Json<ErrorResponse>)> {
+    let operation = {
+        let host = state.provider_host.read().await;
+        host.get_usage_windows_operation(&request.plugin_id, request.provider_config)
+            .map_err(map_framework_error)?
+    };
+    operation.await.map(Json).map_err(map_framework_error)
+}
+
+async fn reset_credit(
+    State(state): State<AppState>,
+    Json(request): Json<ResetCreditProviderRequest>,
+) -> Result<Json<ProviderResetCreditOutput>, (StatusCode, Json<ErrorResponse>)> {
+    let operation = {
+        let host = state.provider_host.read().await;
+        host.reset_credit_operation(
+            &request.plugin_id,
+            request.provider_config,
+            request.operation,
+        )
+        .map_err(map_framework_error)?
     };
     operation.await.map(Json).map_err(map_framework_error)
 }
@@ -668,6 +714,8 @@ pub fn app_with_state(state: AppState) -> Router {
         .route("/providers/validate", post(validate_provider))
         .route("/providers/list-models", post(list_models))
         .route("/providers/balance", post(get_balance))
+        .route("/providers/usage", post(get_usage_windows))
+        .route("/providers/reset-credit", post(reset_credit))
         .route("/providers/authenticate", post(authenticate_provider))
         .route("/providers/invoke-stream", post(invoke_stream))
         .route("/providers/active-streams", get(active_provider_streams))

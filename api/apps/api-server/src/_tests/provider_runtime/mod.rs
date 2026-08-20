@@ -18,8 +18,9 @@ use plugin_framework::{
     },
     provider_contract::{
         ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
-        ProviderCountTokensInput, ProviderInvocationInput, ProviderRuntimeErrorKind,
-        ProviderWireOperation,
+        ProviderCountTokensInput, ProviderInvocationInput, ProviderResetCreditOperation,
+        ProviderResetCreditResult, ProviderRuntimeErrorKind, ProviderWireOperation,
+        PROVIDER_RESET_CREDITS_CAPABILITY, PROVIDER_USAGE_WINDOWS_CAPABILITY,
     },
     DataModelOperationHandlerRef, DataModelTemplateIdentity, DataSourceConfigInput,
     DataSourceExecuteModelOperationInput, DataSourceModelOperationActorContext,
@@ -210,6 +211,48 @@ case "${payload}" in
 esac
 "#,
         );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = package.path().join("bin/fixture_provider");
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).unwrap();
+    }
+}
+
+fn write_account_operations_provider_package(package: &TempProviderPackage) {
+    write_balance_provider_package(package);
+    let manifest_path = package.path().join("manifest.yaml");
+    let manifest = fs::read_to_string(&manifest_path).unwrap().replace(
+        "  limits:\n",
+        &format!(
+            "  capabilities:\n    - {PROVIDER_USAGE_WINDOWS_CAPABILITY}\n    - {PROVIDER_RESET_CREDITS_CAPABILITY}\n  limits:\n"
+        ),
+    );
+    fs::write(manifest_path, manifest).unwrap();
+    package.write(
+        "bin/fixture_provider",
+        r#"#!/usr/bin/env bash
+payload="$(cat)"
+case "${payload}" in
+  *'"method":"usage"'*)
+    printf '%s' '{"ok":true,"result":{"windows":[{"limit_window_seconds":18000,"used_percent":42.0},{"limit_window_seconds":604800,"used_percent":61.0,"reset_at":null}],"queried_at":"2026-08-20T05:00:00Z"}}'
+    ;;
+  *'"method":"reset_credit"'*'"type":"count"'*)
+    printf '%s' '{"ok":true,"result":{"type":"count","available_count":2}}'
+    ;;
+  *'"method":"reset_credit"'*'"type":"consume"'*'"idempotency_key":"attempt-123"'*)
+    printf '%s' '{"ok":true,"result":{"type":"consumed"}}'
+    ;;
+  *)
+    printf '%s' '{"ok":false,"error":{"kind":"provider_invalid_response","message":"unknown method"}}'
+    exit 1
+    ;;
+esac
+"#,
+    );
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -871,12 +914,12 @@ fn provider_runtime_consumer_has_no_provider_specific_branch_and_production_wire
         consumer
             .matches("self.resolve_model_provider_binding(installation)?")
             .count(),
-        9,
+        12,
         "every ProviderRuntimePort operation must resolve the typed slot binding"
     );
     assert_eq!(
         consumer.matches("&binding.plugin_id").count(),
-        9,
+        12,
         "ProviderHost load and operation paths must use the binding plugin id"
     );
     assert_eq!(
@@ -990,6 +1033,52 @@ async fn provider_runtime_get_balance_ensures_loaded_and_calls_host() {
     assert_eq!(balance.balance_infos[0].currency, "CNY");
     assert_eq!(balance.balance_infos[0].total_balance, "110.00");
     assert_eq!(balance.provider_metadata["provider"], "deepseek");
+}
+
+#[tokio::test]
+async fn provider_runtime_projects_declared_usage_and_reset_credit_operations() {
+    let package = TempProviderPackage::new();
+    write_account_operations_provider_package(&package);
+    let runtime = ApiProviderRuntime::new(Arc::new(
+        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
+            Arc::new(RwLock::new(ProviderHost::default())),
+            Arc::new(RwLock::new(CapabilityHost::default())),
+            Arc::new(RwLock::new(DataSourceHost::default())),
+        ),
+    ));
+    let installation = fixture_installation(&package);
+
+    let usage = runtime
+        .get_usage_windows(&installation, json!({ "api_key": "secret" }))
+        .await
+        .expect("usage should be returned through the api runtime adapter");
+    assert_eq!(usage.windows[0].limit_window_seconds, 18_000);
+    assert_eq!(usage.windows[1].used_percent, 61.0);
+
+    let count = runtime
+        .reset_credit(
+            &installation,
+            json!({}),
+            ProviderResetCreditOperation::Count,
+        )
+        .await
+        .expect("count should be returned through the api runtime adapter");
+    assert_eq!(
+        count,
+        ProviderResetCreditResult::Count { available_count: 2 }
+    );
+
+    let consumed = runtime
+        .reset_credit(
+            &installation,
+            json!({}),
+            ProviderResetCreditOperation::Consume {
+                idempotency_key: "attempt-123".to_string(),
+            },
+        )
+        .await
+        .expect("consume should preserve the one logical attempt key");
+    assert_eq!(consumed, ProviderResetCreditResult::Consumed);
 }
 
 #[tokio::test]

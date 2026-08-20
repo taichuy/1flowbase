@@ -2,8 +2,9 @@ use super::*;
 use plugin_framework::provider_contract::{
     NativeModelRequestContext, NativePromptBlock, NativePromptCacheControl,
     NativePromptCacheControlType, ProtocolContextEnvelope, ProviderAuthOperation,
-    ProviderCompactProfile, ProviderInvocationCapability,
-    PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
+    ProviderCompactProfile, ProviderInvocationCapability, ProviderResetCreditOperation,
+    ProviderResetCreditResult, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
+    PROVIDER_RESET_CREDITS_CAPABILITY, PROVIDER_USAGE_WINDOWS_CAPABILITY,
 };
 use std::{
     fs,
@@ -200,6 +201,54 @@ config_schema: []
         );
         fs::write(&manifest_path, manifest)
             .expect("fixture provider manifest should declare Compact capability");
+    }
+
+    fn declare_usage_and_reset_credit_capabilities(&self) {
+        let manifest_path = self.path().join("manifest.yaml");
+        let manifest = fs::read_to_string(&manifest_path)
+            .expect("fixture provider manifest should be readable");
+        let manifest = manifest.replace(
+            "  limits:\n",
+            &format!(
+                "  capabilities:\n    - {PROVIDER_USAGE_WINDOWS_CAPABILITY}\n    - {PROVIDER_RESET_CREDITS_CAPABILITY}\n  limits:\n"
+            ),
+        );
+        fs::write(&manifest_path, manifest)
+            .expect("fixture provider manifest should declare account operations");
+    }
+
+    fn write_usage_and_reset_credit_runtime(&self) {
+        self.write(
+            "bin/fixture_provider",
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+payload="$(cat)"
+case "${payload}" in
+  *'"method":"usage"'*)
+    printf '%s' '{"ok":true,"result":{"windows":[{"limit_window_seconds":18000,"used_percent":42.0,"reset_at":"2026-08-20T10:00:00Z"},{"limit_window_seconds":604800,"used_percent":61.0}],"queried_at":"2026-08-20T05:00:00Z"}}'
+    ;;
+  *'"method":"reset_credit"'*'"type":"count"'*)
+    printf '%s' '{"ok":true,"result":{"type":"count","available_count":2}}'
+    ;;
+  *'"method":"reset_credit"'*'"type":"consume"'*'"idempotency_key":"attempt-123"'*)
+    printf '%s' '{"ok":true,"result":{"type":"consumed"}}'
+    ;;
+  *)
+    printf '%s' '{"ok":false,"error":{"kind":"provider_invalid_response","message":"unknown method"}}'
+    exit 1
+    ;;
+esac
+"#,
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let path = self.path().join("bin/fixture_provider");
+            let mut permissions = fs::metadata(&path).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(path, permissions).unwrap();
+        }
     }
 
     fn write_count_tokens_response_runtime(&self, response: &str) {
@@ -550,6 +599,79 @@ async fn provider_auth_rejects_an_undeclared_managed_secret_patch_from_the_runti
         .expect_err("undeclared auth secret patches must fail closed");
 
     assert!(error.to_string().contains("undeclared managed secret key"));
+}
+
+#[tokio::test]
+async fn provider_account_operations_require_manifest_capabilities_before_runtime_execution() {
+    let package = TempProviderPackage::new();
+    let spawn_marker = package.path().join("account-operation-spawn-marker");
+    package.write_spawn_side_effect_runtime(&spawn_marker);
+    let mut host = ProviderHost::default();
+    let plugin_id = host
+        .load(package.path().to_str().unwrap())
+        .unwrap()
+        .plugin_id;
+
+    let usage_error = host
+        .get_usage_windows(&plugin_id, json!({}))
+        .await
+        .expect_err("usage must be hidden until the package declares it");
+    assert!(usage_error
+        .to_string()
+        .contains("does not declare usage windows support"));
+
+    let reset_error = host
+        .reset_credit(&plugin_id, json!({}), ProviderResetCreditOperation::Count)
+        .await
+        .expect_err("reset credit must be hidden until the package declares it");
+    assert!(reset_error
+        .to_string()
+        .contains("does not declare reset credits support"));
+    assert!(
+        !spawn_marker.exists(),
+        "an undeclared account operation must not start the provider runtime"
+    );
+}
+
+#[tokio::test]
+async fn provider_account_operations_project_usage_and_single_logical_attempt_key() {
+    let package = TempProviderPackage::new();
+    package.declare_usage_and_reset_credit_capabilities();
+    package.write_usage_and_reset_credit_runtime();
+    let mut host = ProviderHost::default();
+    let plugin_id = host
+        .load(package.path().to_str().unwrap())
+        .unwrap()
+        .plugin_id;
+
+    let usage = host
+        .get_usage_windows(&plugin_id, json!({ "api_key": "secret" }))
+        .await
+        .expect("declared usage operation should project normalized windows");
+    assert_eq!(usage.usage.windows.len(), 2);
+    assert_eq!(usage.usage.windows[0].limit_window_seconds, 18_000);
+    assert_eq!(usage.usage.windows[1].used_percent, 61.0);
+
+    let count = host
+        .reset_credit(&plugin_id, json!({}), ProviderResetCreditOperation::Count)
+        .await
+        .expect("declared reset count should project the available count");
+    assert_eq!(
+        count.result,
+        ProviderResetCreditResult::Count { available_count: 2 }
+    );
+
+    let consume = host
+        .reset_credit(
+            &plugin_id,
+            json!({}),
+            ProviderResetCreditOperation::Consume {
+                idempotency_key: "attempt-123".to_string(),
+            },
+        )
+        .await
+        .expect("consume should forward exactly the logical attempt key");
+    assert_eq!(consume.result, ProviderResetCreditResult::Consumed);
 }
 
 fn invocation_input(model: &str) -> ProviderInvocationInput {

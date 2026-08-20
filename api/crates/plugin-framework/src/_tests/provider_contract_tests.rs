@@ -15,9 +15,11 @@ use plugin_framework::{
         ProviderInvocationResult, ProviderMessage, ProviderMessageRole, ProviderNativeTransport,
         ProviderOutputItemPhase, ProviderOutputProtocolFailure, ProviderProjectionErrorCode,
         ProviderProjectionFidelity, ProviderProjectionLossCode, ProviderProjectionSource,
+        ProviderResetCreditOperation, ProviderResetCreditResult, ProviderResetCreditRuntimeInput,
         ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod,
         ProviderStdioRequest, ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall,
-        ProviderUsage, ProviderWireOperation, PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
+        ProviderUsage, ProviderUsageWindow, ProviderUsageWindowsResult, ProviderWireOperation,
+        PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
     },
 };
 use serde_json::json;
@@ -240,6 +242,61 @@ fn provider_balance_stdio_method_serializes_balance() {
             "method": "balance",
             "input": { "api_key": "secret" }
         })
+    );
+}
+
+#[test]
+fn provider_usage_and_reset_credit_stdio_contracts_are_typed() {
+    let usage = ProviderStdioRequest {
+        method: ProviderStdioMethod::Usage,
+        input: json!({ "api_key": "secret" }),
+    };
+    assert_eq!(serde_json::to_value(usage).unwrap()["method"], "usage");
+
+    let reset_credit = ProviderStdioRequest {
+        method: ProviderStdioMethod::ResetCredit,
+        input: serde_json::to_value(ProviderResetCreditRuntimeInput {
+            provider_config: json!({ "api_key": "secret" }),
+            operation: ProviderResetCreditOperation::Consume {
+                idempotency_key: "attempt-123".to_string(),
+            },
+        })
+        .unwrap(),
+    };
+    assert_eq!(
+        serde_json::to_value(reset_credit).unwrap(),
+        json!({
+            "method": "reset_credit",
+            "input": {
+                "provider_config": { "api_key": "secret" },
+                "operation": {
+                    "type": "consume",
+                    "idempotency_key": "attempt-123"
+                }
+            }
+        })
+    );
+
+    let usage_result = ProviderUsageWindowsResult {
+        windows: vec![ProviderUsageWindow {
+            limit_window_seconds: 18_000,
+            used_percent: 42.0,
+            reset_at: Some("2026-08-20T10:00:00Z".to_string()),
+        }],
+        queried_at: "2026-08-20T05:00:00Z".to_string(),
+    };
+    let usage_payload = serde_json::to_value(usage_result).unwrap();
+    assert_eq!(usage_payload["windows"][0]["limit_window_seconds"], 18_000);
+    assert_eq!(usage_payload["windows"][0]["used_percent"], 42.0);
+
+    let count = ProviderResetCreditResult::Count { available_count: 2 };
+    assert_eq!(
+        serde_json::to_value(count).unwrap(),
+        json!({ "type": "count", "available_count": 2 })
+    );
+    assert_eq!(
+        serde_json::to_value(ProviderResetCreditResult::Consumed).unwrap(),
+        json!({ "type": "consumed" })
     );
 }
 

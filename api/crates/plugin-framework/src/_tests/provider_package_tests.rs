@@ -5,7 +5,10 @@ use std::{
 
 use plugin_framework::{
     installation::ProviderCatalogEntry,
-    provider_contract::{ModelDiscoveryMode, ProviderModelSource},
+    provider_contract::{
+        ModelDiscoveryMode, ProviderModelSource, ProviderOperationalCapability,
+        PROVIDER_RESET_CREDITS_CAPABILITY, PROVIDER_USAGE_WINDOWS_CAPABILITY,
+    },
     provider_package::ProviderPackage,
     PluginConsumptionKind,
 };
@@ -243,6 +246,28 @@ fn provider_package_loads_manifest_v1_runtime_entry_and_static_models() {
     assert!(catalog_entry.form_schema[3].advanced);
     assert_eq!(catalog_entry.predefined_models.len(), 1);
     assert_eq!(catalog_entry.icon.as_deref(), Some("icon.svg"));
+}
+
+#[test]
+fn provider_package_projects_declared_operational_capabilities() {
+    let fixture = make_package_fixture();
+    let manifest_path = fixture.path().join("manifest.yaml");
+    let manifest = fs::read_to_string(&manifest_path).unwrap().replace(
+        "  limits:\n",
+        &format!(
+            "  capabilities:\n    - {PROVIDER_USAGE_WINDOWS_CAPABILITY}\n    - {PROVIDER_RESET_CREDITS_CAPABILITY}\n  limits:\n"
+        ),
+    );
+    fs::write(manifest_path, manifest).unwrap();
+
+    let package = ProviderPackage::load_from_dir(fixture.path()).unwrap();
+
+    assert!(package
+        .provider
+        .supports_operational_capability(ProviderOperationalCapability::UsageWindows));
+    assert!(package
+        .provider
+        .supports_operational_capability(ProviderOperationalCapability::ResetCredits));
 }
 
 #[test]

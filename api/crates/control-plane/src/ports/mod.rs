@@ -30,7 +30,8 @@ use domain::{
 use plugin_framework::provider_contract::{
     ProviderBalanceResult, ProviderCompactResult, ProviderCountTokensInput,
     ProviderCountTokensResult, ProviderInvocationInput, ProviderInvocationResult,
-    ProviderModelDescriptor, ProviderStreamEvent,
+    ProviderModelDescriptor, ProviderResetCreditOperation, ProviderResetCreditResult,
+    ProviderStreamEvent, ProviderUsageWindowsResult,
 };
 use time::OffsetDateTime;
 use uuid::Uuid;

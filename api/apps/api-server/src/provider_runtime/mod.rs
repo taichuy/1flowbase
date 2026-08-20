@@ -28,7 +28,8 @@ use plugin_framework::{
     provider_contract::{
         ProviderAuthOperation, ProviderAuthResult, ProviderBalanceResult, ProviderCompactResult,
         ProviderCountTokensInput, ProviderCountTokensResult, ProviderInvocationInput,
-        ProviderModelDescriptor,
+        ProviderModelDescriptor, ProviderResetCreditOperation, ProviderResetCreditResult,
+        ProviderUsageWindowsResult,
     },
 };
 use plugin_runner::{
@@ -154,6 +155,24 @@ impl ApiProviderRuntime {
         provider_config: Value,
     ) -> anyhow::Result<ProviderBalanceResult> {
         <Self as ProviderRuntimePort>::get_balance(self, installation, provider_config).await
+    }
+
+    pub async fn get_usage_windows(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        provider_config: Value,
+    ) -> anyhow::Result<ProviderUsageWindowsResult> {
+        <Self as ProviderRuntimePort>::get_usage_windows(self, installation, provider_config).await
+    }
+
+    pub async fn reset_credit(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        provider_config: Value,
+        operation: ProviderResetCreditOperation,
+    ) -> anyhow::Result<ProviderResetCreditResult> {
+        <Self as ProviderRuntimePort>::reset_credit(self, installation, provider_config, operation)
+            .await
     }
 }
 
@@ -395,6 +414,43 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         operation
             .await
             .map(|output| output.balance)
+            .map_err(map_provider_framework_error)
+    }
+
+    async fn get_usage_windows(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        provider_config: Value,
+    ) -> anyhow::Result<ProviderUsageWindowsResult> {
+        let binding = self.resolve_model_provider_binding(installation)?;
+        self.ensure_provider_loaded(&binding).await?;
+        let operation = {
+            let host = self.services.provider_host.read().await;
+            host.get_usage_windows_operation(&binding.plugin_id, provider_config)
+                .map_err(map_provider_framework_error)?
+        };
+        operation
+            .await
+            .map(|output| output.usage)
+            .map_err(map_provider_framework_error)
+    }
+
+    async fn reset_credit(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        provider_config: Value,
+        reset_credit_operation: ProviderResetCreditOperation,
+    ) -> anyhow::Result<ProviderResetCreditResult> {
+        let binding = self.resolve_model_provider_binding(installation)?;
+        self.ensure_provider_loaded(&binding).await?;
+        let operation = {
+            let host = self.services.provider_host.read().await;
+            host.reset_credit_operation(&binding.plugin_id, provider_config, reset_credit_operation)
+                .map_err(map_provider_framework_error)?
+        };
+        operation
+            .await
+            .map(|output| output.result)
             .map_err(map_provider_framework_error)
     }
 

@@ -16,7 +16,7 @@ use crate::{
     },
     provider_contract::{
         ModelDiscoveryMode, PluginFormOption, PluginFormSchema, ProviderAuthManifest,
-        ProviderModelDescriptor, ProviderModelSource,
+        ProviderModelDescriptor, ProviderModelSource, ProviderOperationalCapability,
     },
 };
 
@@ -98,6 +98,16 @@ pub struct ProviderDefinition {
     pub parameter_form: Option<PluginFormSchema>,
     pub form_schema: Vec<ProviderConfigField>,
     pub auth: Option<ProviderAuthManifest>,
+    pub operational_capabilities: BTreeSet<ProviderOperationalCapability>,
+}
+
+impl ProviderDefinition {
+    pub fn supports_operational_capability(
+        &self,
+        capability: ProviderOperationalCapability,
+    ) -> bool {
+        self.operational_capabilities.contains(&capability)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -184,6 +194,13 @@ impl ProviderPackage {
             parameter_form: raw_provider.parameter_form,
             form_schema: raw_provider.config_schema,
             auth: raw_provider.auth,
+            operational_capabilities: [
+                ProviderOperationalCapability::UsageWindows,
+                ProviderOperationalCapability::ResetCredits,
+            ]
+            .into_iter()
+            .filter(|capability| capability.declared_by(&manifest.runtime.capabilities))
+            .collect(),
         };
 
         let i18n = load_i18n_catalog(&root.join("i18n"))?;

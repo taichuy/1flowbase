@@ -16,9 +16,11 @@ use plugin_framework::{
         ProviderBalanceResult, ProviderCompactError, ProviderCompactResult,
         ProviderCountTokensError, ProviderCountTokensFallbackReason, ProviderCountTokensInput,
         ProviderCountTokensResult, ProviderGenerateTranslationReceipt, ProviderInvocationInput,
-        ProviderInvocationResult, ProviderModelDescriptor, ProviderRuntimeError,
-        ProviderRuntimeErrorKind, ProviderStdioMethod, ProviderStdioRequest, ProviderStreamEvent,
-        ProviderWireOperation, CURRENT_PROVIDER_CONTRACT,
+        ProviderInvocationResult, ProviderModelDescriptor, ProviderOperationalCapability,
+        ProviderResetCreditOperation, ProviderResetCreditResult, ProviderResetCreditRuntimeInput,
+        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderStdioMethod, ProviderStdioRequest,
+        ProviderStreamEvent, ProviderUsageWindowsResult, ProviderWireOperation,
+        CURRENT_PROVIDER_CONTRACT,
     },
     provider_count_tokens_estimator::estimate_provider_count_tokens,
     PluginRuntimeLimits,
@@ -112,6 +114,16 @@ pub struct ProviderModelsOutput {
 #[derive(Debug, Clone, Serialize)]
 pub struct ProviderBalanceOutput {
     pub balance: ProviderBalanceResult,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderUsageWindowsOutput {
+    pub usage: ProviderUsageWindowsResult,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ProviderResetCreditOutput {
+    pub result: ProviderResetCreditResult,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -573,6 +585,108 @@ impl ProviderHost {
             Ok(ProviderBalanceOutput {
                 balance: normalize_balance(raw_balance)?,
             })
+        })
+    }
+
+    pub async fn get_usage_windows(
+        &self,
+        plugin_id: &str,
+        provider_config: Value,
+    ) -> FrameworkResult<ProviderUsageWindowsOutput> {
+        self.get_usage_windows_operation(plugin_id, provider_config)?
+            .await
+    }
+
+    pub fn get_usage_windows_operation(
+        &self,
+        plugin_id: &str,
+        provider_config: Value,
+    ) -> FrameworkResult<
+        impl std::future::Future<Output = FrameworkResult<ProviderUsageWindowsOutput>> + Send + 'static,
+    > {
+        let loaded = self.loaded_package(plugin_id)?.clone();
+        if !loaded
+            .package
+            .provider
+            .supports_operational_capability(ProviderOperationalCapability::UsageWindows)
+        {
+            return Err(PluginFrameworkError::invalid_provider_contract(
+                "provider package does not declare usage windows support",
+            ));
+        }
+        let provider_workers = Arc::clone(&self.provider_workers);
+        Ok(async move {
+            let raw_usage = Self::call_runtime_loaded(
+                loaded,
+                provider_workers,
+                ProviderStdioMethod::Usage,
+                provider_config,
+            )
+            .await?;
+            Ok(ProviderUsageWindowsOutput {
+                usage: normalize_usage_windows(raw_usage)?,
+            })
+        })
+    }
+
+    pub async fn reset_credit(
+        &self,
+        plugin_id: &str,
+        provider_config: Value,
+        operation: ProviderResetCreditOperation,
+    ) -> FrameworkResult<ProviderResetCreditOutput> {
+        self.reset_credit_operation(plugin_id, provider_config, operation)?
+            .await
+    }
+
+    pub fn reset_credit_operation(
+        &self,
+        plugin_id: &str,
+        provider_config: Value,
+        operation: ProviderResetCreditOperation,
+    ) -> FrameworkResult<
+        impl std::future::Future<Output = FrameworkResult<ProviderResetCreditOutput>> + Send + 'static,
+    > {
+        if matches!(
+            &operation,
+            ProviderResetCreditOperation::Consume { idempotency_key }
+                if idempotency_key.trim().is_empty()
+        ) {
+            return Err(PluginFrameworkError::invalid_provider_contract(
+                "reset credit consume requires a non-empty idempotency key",
+            ));
+        }
+        let loaded = self.loaded_package(plugin_id)?.clone();
+        if !loaded
+            .package
+            .provider
+            .supports_operational_capability(ProviderOperationalCapability::ResetCredits)
+        {
+            return Err(PluginFrameworkError::invalid_provider_contract(
+                "provider package does not declare reset credits support",
+            ));
+        }
+        let provider_workers = Arc::clone(&self.provider_workers);
+        Ok(async move {
+            let input = serde_json::to_value(ProviderResetCreditRuntimeInput {
+                provider_config,
+                operation: operation.clone(),
+            })
+            .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
+            let raw_result = Self::call_runtime_loaded(
+                loaded,
+                provider_workers,
+                ProviderStdioMethod::ResetCredit,
+                input,
+            )
+            .await?;
+            let result = normalize_reset_credit_result(raw_result)?;
+            if !reset_credit_result_matches_operation(&result, &operation) {
+                return Err(PluginFrameworkError::invalid_provider_contract(
+                    "provider reset credit result does not match requested operation",
+                ));
+            }
+            Ok(ProviderResetCreditOutput { result })
         })
     }
 
@@ -1165,9 +1279,10 @@ mod supervisor;
 
 use operations::{
     elapsed_milliseconds, format_timestamp, merge_models, normalize_balance, normalize_models,
-    provider_invocation_limits, provider_pool_key, provider_stream_transport,
-    provider_worker_cleanup_receipt, provider_worker_handle, provider_worker_supervisor_snapshot,
-    record_provider_worker_cleanup, take_provider_worker_for_quiesce,
+    normalize_reset_credit_result, normalize_usage_windows, provider_invocation_limits,
+    provider_pool_key, provider_stream_transport, provider_worker_cleanup_receipt,
+    provider_worker_handle, provider_worker_supervisor_snapshot, record_provider_worker_cleanup,
+    reset_credit_result_matches_operation, take_provider_worker_for_quiesce,
 };
 
 #[cfg(test)]

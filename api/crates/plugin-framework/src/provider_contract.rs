@@ -16,6 +16,8 @@ pub const NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY: &str = "__native_model_prompt
 pub const NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY: &str = "__native_model_request_context";
 pub const CURRENT_PROVIDER_CONTRACT: &str = "1flowbase.provider/v2";
 pub const PROVIDER_COUNT_TOKENS_CAPABILITY: &str = "count_tokens";
+pub const PROVIDER_USAGE_WINDOWS_CAPABILITY: &str = "usage.rate_limit_windows";
+pub const PROVIDER_RESET_CREDITS_CAPABILITY: &str = "reset_credits";
 pub const PROVIDER_COMPACT_RESPONSES_COMPACT_CAPABILITY: &str = "compact.responses_compact";
 pub const PROVIDER_COMPACT_RESPONSES_COMPACTION_V2_CAPABILITY: &str =
     "compact.responses_compaction_v2";
@@ -92,6 +94,8 @@ pub enum ProviderStdioMethod {
     Invoke,
     Balance,
     Auth,
+    Usage,
+    ResetCredit,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -118,6 +122,30 @@ pub struct ProviderStdioResponse {
     pub result: Value,
     #[serde(default)]
     pub error: Option<ProviderStdioError>,
+}
+
+/// Provider operations that are opt-in because they expose account-level
+/// state or perform an externally visible account action.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderOperationalCapability {
+    UsageWindows,
+    ResetCredits,
+}
+
+impl ProviderOperationalCapability {
+    pub const fn manifest_capability(self) -> &'static str {
+        match self {
+            Self::UsageWindows => PROVIDER_USAGE_WINDOWS_CAPABILITY,
+            Self::ResetCredits => PROVIDER_RESET_CREDITS_CAPABILITY,
+        }
+    }
+
+    pub fn declared_by(self, runtime_capabilities: &[String]) -> bool {
+        runtime_capabilities
+            .iter()
+            .any(|capability| capability == self.manifest_capability())
+    }
 }
 
 /// A provider-owned authentication action. The host owns only dispatch and
@@ -220,6 +248,46 @@ pub struct ProviderBalanceResult {
     pub balance_infos: Vec<ProviderBalanceInfo>,
     #[serde(default = "empty_provider_metadata")]
     pub provider_metadata: Value,
+}
+
+/// A normalized provider account usage window. The provider owns upstream
+/// labels and payloads; the host only understands duration and percentage.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderUsageWindow {
+    pub limit_window_seconds: u64,
+    pub used_percent: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reset_at: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderUsageWindowsResult {
+    pub windows: Vec<ProviderUsageWindow>,
+    pub queried_at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ProviderResetCreditOperation {
+    Count,
+    Consume { idempotency_key: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderResetCreditRuntimeInput {
+    #[serde(default)]
+    pub provider_config: Value,
+    pub operation: ProviderResetCreditOperation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ProviderResetCreditResult {
+    Count { available_count: u32 },
+    Consumed,
 }
 
 fn empty_provider_metadata() -> Value {

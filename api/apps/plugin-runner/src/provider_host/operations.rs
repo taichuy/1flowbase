@@ -176,6 +176,52 @@ pub(super) fn normalize_balance(raw: Value) -> FrameworkResult<ProviderBalanceRe
         .map_err(|error| PluginFrameworkError::invalid_provider_contract(error.to_string()))
 }
 
+pub(super) fn normalize_usage_windows(raw: Value) -> FrameworkResult<ProviderUsageWindowsResult> {
+    let usage: ProviderUsageWindowsResult = serde_json::from_value(raw)
+        .map_err(|error| PluginFrameworkError::invalid_provider_contract(error.to_string()))?;
+    if usage.queried_at.trim().is_empty() {
+        return Err(PluginFrameworkError::invalid_provider_contract(
+            "provider usage queried_at must be non-empty",
+        ));
+    }
+    for window in &usage.windows {
+        if window.limit_window_seconds == 0 {
+            return Err(PluginFrameworkError::invalid_provider_contract(
+                "provider usage limit_window_seconds must be greater than zero",
+            ));
+        }
+        if !window.used_percent.is_finite() || !(0.0..=100.0).contains(&window.used_percent) {
+            return Err(PluginFrameworkError::invalid_provider_contract(
+                "provider usage used_percent must be within 0 through 100",
+            ));
+        }
+    }
+    Ok(usage)
+}
+
+pub(super) fn normalize_reset_credit_result(
+    raw: Value,
+) -> FrameworkResult<ProviderResetCreditResult> {
+    serde_json::from_value(raw)
+        .map_err(|error| PluginFrameworkError::invalid_provider_contract(error.to_string()))
+}
+
+pub(super) fn reset_credit_result_matches_operation(
+    result: &ProviderResetCreditResult,
+    operation: &ProviderResetCreditOperation,
+) -> bool {
+    matches!(
+        (result, operation),
+        (
+            ProviderResetCreditResult::Count { .. },
+            ProviderResetCreditOperation::Count
+        ) | (
+            ProviderResetCreditResult::Consumed,
+            ProviderResetCreditOperation::Consume { .. }
+        )
+    )
+}
+
 pub(super) fn merge_models(
     static_models: &[ProviderModelDescriptor],
     dynamic_models: Vec<ProviderModelDescriptor>,
