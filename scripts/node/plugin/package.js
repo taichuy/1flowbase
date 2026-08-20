@@ -9,7 +9,11 @@ const {
   removeDirIfExists,
 } = require('./fs.js');
 const { readManifestField, readPluginCode } = require('./manifest.js');
-const { payloadSha256, writeOfficialSignatureFiles } = require('./release.js');
+const {
+  payloadSha256,
+  writeOfficialSignatureFiles,
+  writeRuntimeCoreComplianceMetadata,
+} = require('./release.js');
 
 function hashFile(filePath) {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
@@ -232,6 +236,11 @@ function createPluginPackage(pluginPath, outputDir, options = {}) {
   if (!options.targetTriple) {
     throw new Error('package 需要 --target 指定 rust target triple');
   }
+  const hasSigningKeyPemFile = Boolean(options.signingKeyPemFile);
+  const hasSigningKeyId = Boolean(options.signingKeyId);
+  if (hasSigningKeyPemFile !== hasSigningKeyId) {
+    throw new Error('package 使用签名时需要同时提供 signing key PEM 与 signing key id');
+  }
   const target = parseRustTargetTriple(options.targetTriple);
   const stagedRoot = createPackageArtifactRoot(resolvedPluginPath);
   const pluginCode = assertSupportedPackageIdentity(readPluginCode(resolvedPluginPath));
@@ -277,7 +286,20 @@ function createPluginPackage(pluginPath, outputDir, options = {}) {
 
   try {
     let signatureMetadata = null;
-    if (options.signingKeyPemFile && options.signingKeyId) {
+    let runtimeCore = null;
+    if (hasSigningKeyPemFile) {
+      if (!options.runtimeCoreGplLicenseNoticeFile) {
+        throw new Error('runtime core 签名包需要 GPL license notice');
+      }
+      if (!options.runtimeCoreCorrespondingSource) {
+        throw new Error('runtime core 签名包需要 corresponding source pointer');
+      }
+      runtimeCore = writeRuntimeCoreComplianceMetadata(stagedRoot, {
+        binaryPath: stagedRuntimeEntry,
+        targetTriple: target.rustTargetTriple,
+        gplLicenseNoticeFile: path.resolve(options.runtimeCoreGplLicenseNoticeFile),
+        correspondingSource: options.runtimeCoreCorrespondingSource,
+      });
       signatureMetadata = writeOfficialSignatureFiles(stagedRoot, {
         pluginId: manifestPluginId,
         providerCode: pluginCode,
@@ -287,6 +309,7 @@ function createPluginPackage(pluginPath, outputDir, options = {}) {
         signingKeyPemFile: path.resolve(options.signingKeyPemFile),
         signingKeyId: options.signingKeyId,
         issuedAt: options.issuedAt || new Date().toISOString(),
+        runtimeCore,
       });
     }
 
@@ -310,6 +333,8 @@ function createPluginPackage(pluginPath, outputDir, options = {}) {
       rustTarget: target.rustTargetTriple,
       signatureAlgorithm: signatureMetadata?.signatureAlgorithm ?? null,
       signingKeyId: signatureMetadata?.signingKeyId ?? null,
+      runtimeCoreBinarySha256: runtimeCore?.binary_sha256 ?? null,
+      runtimeCoreCorrespondingSource: runtimeCore?.corresponding_source ?? null,
     };
   } finally {
     removeDirIfExists(stagedRoot);

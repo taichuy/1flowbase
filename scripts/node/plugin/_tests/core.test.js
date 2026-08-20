@@ -8,7 +8,7 @@ const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 
 const { main, startDemoServer } = require('../core.js');
-const { parseRustTargetTriple } = require('../package.js');
+const { createPluginPackage, parseRustTargetTriple } = require('../package.js');
 
 test('plugin package supports the native GNU Linux targets used by GitHub runners', () => {
   assert.deepEqual(parseRustTargetTriple('x86_64-unknown-linux-gnu'), {
@@ -575,6 +575,7 @@ test('plugin package writes official signature metadata when signing inputs are 
   const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-plugin-dist-'));
   const extractedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-plugin-extract-'));
   const signingKeyFile = path.join(outputDir, 'official-signing-key.pem');
+  const licenseNoticeFile = path.join(outputDir, 'COPYING');
   const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
 
   await main(['init', pluginPath]);
@@ -584,23 +585,21 @@ test('plugin package writes official signature metadata when signing inputs are 
     privateKey.export({ format: 'pem', type: 'pkcs8' }),
     'utf8'
   );
+  fs.writeFileSync(
+    licenseNoticeFile,
+    'GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n',
+    'utf8'
+  );
 
-  const result = await main([
-    'package',
-    pluginPath,
-    '--out',
-    outputDir,
-    '--runtime-binary',
-    fakeBinary,
-    '--target',
-    'x86_64-unknown-linux-musl',
-    '--signing-key-pem-file',
-    signingKeyFile,
-    '--signing-key-id',
-    'official-key-2026-04',
-    '--issued-at',
-    '2026-04-19T13:00:00Z',
-  ]);
+  const result = createPluginPackage(pluginPath, outputDir, {
+    runtimeBinaryFile: fakeBinary,
+    targetTriple: 'x86_64-unknown-linux-musl',
+    signingKeyPemFile: signingKeyFile,
+    signingKeyId: 'official-key-2026-04',
+    issuedAt: '2026-04-19T13:00:00Z',
+    runtimeCoreGplLicenseNoticeFile: licenseNoticeFile,
+    runtimeCoreCorrespondingSource: 'https://example.test/acme-openai-compatible/source/v0.1.0',
+  });
 
   const unpack = spawnSync('tar', ['-xzf', result.packageFile, '-C', extractedDir]);
   assert.equal(unpack.status, 0);
