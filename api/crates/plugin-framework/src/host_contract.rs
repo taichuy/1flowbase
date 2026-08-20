@@ -43,6 +43,7 @@ pub enum RuntimeSlotCode {
     FileProcessor,
     RecordValidator,
     FieldComputedValue,
+    NetworkEgressProvider,
 }
 
 impl RuntimeSlotCode {
@@ -56,6 +57,7 @@ impl RuntimeSlotCode {
             Self::FileProcessor => "file_processor",
             Self::RecordValidator => "record_validator",
             Self::FieldComputedValue => "field_computed_value",
+            Self::NetworkEgressProvider => "network_egress_provider",
         }
     }
 }

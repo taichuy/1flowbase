@@ -34,6 +34,7 @@ pub enum PluginExecutionMode {
     InProcess,
     ProcessPerCall,
     StatefulProviderWorker,
+    StatefulRuntimeWorker,
     DeclarativeOnly,
 }
 
@@ -43,6 +44,7 @@ impl PluginExecutionMode {
             Self::InProcess => "in_process",
             Self::ProcessPerCall => "process_per_call",
             Self::StatefulProviderWorker => "stateful_provider_worker",
+            Self::StatefulRuntimeWorker => "stateful_runtime_worker",
             Self::DeclarativeOnly => "declarative_only",
         }
     }
@@ -486,6 +488,7 @@ fn validate_plugin_manifest(
     }
     validate_binding_targets(&manifest.binding_targets)?;
     validate_slot_codes(manifest)?;
+    validate_network_egress_provider_manifest(manifest)?;
 
     if manifest.consumption_kind == PluginConsumptionKind::HostExtension
         && manifest
@@ -667,9 +670,20 @@ fn validate_execution_runtime_pair(manifest: &PluginManifestV1) -> FrameworkResu
             "stateful_provider_worker execution_mode requires runtime.protocol=stdio_json_worker",
         ));
     }
+    if manifest.execution_mode == PluginExecutionMode::StatefulRuntimeWorker
+        && manifest.runtime.protocol != "stdio_json_worker"
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "stateful_runtime_worker execution_mode requires runtime.protocol=stdio_json_worker",
+        ));
+    }
 
     if manifest.runtime.protocol == "stdio_json_worker"
-        && manifest.execution_mode != PluginExecutionMode::StatefulProviderWorker
+        && !matches!(
+            manifest.execution_mode,
+            PluginExecutionMode::StatefulProviderWorker
+                | PluginExecutionMode::StatefulRuntimeWorker
+        )
     {
         return Err(PluginFrameworkError::invalid_provider_package(
             "stdio_json_worker runtime.protocol requires execution_mode=stateful_provider_worker",
@@ -1418,6 +1432,7 @@ fn validate_slot_codes(manifest: &PluginManifestV1) -> FrameworkResult<()> {
         "file_processor",
         "record_validator",
         "field_computed_value",
+        "network_egress_provider",
     ];
     const HOST_EXTENSION_ALLOWED: &[&str] = &["host_bootstrap"];
     const CAPABILITY_PLUGIN_ALLOWED: &[&str] =
@@ -1431,6 +1446,39 @@ fn validate_slot_codes(manifest: &PluginManifestV1) -> FrameworkResult<()> {
 
     for slot in &manifest.slot_codes {
         validate_allowed(slot, "slot_codes[]", allowed)?;
+    }
+
+    Ok(())
+}
+
+fn validate_network_egress_provider_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> {
+    let declares_network_egress_provider = manifest
+        .slot_codes
+        .iter()
+        .any(|slot| slot == "network_egress_provider");
+    if !declares_network_egress_provider {
+        return Ok(());
+    }
+
+    if manifest.consumption_kind != PluginConsumptionKind::RuntimeExtension
+        || manifest.slot_codes.as_slice() != ["network_egress_provider"]
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "network_egress_provider must be the only slot of a runtime_extension",
+        ));
+    }
+    if manifest.contract_version != crate::NETWORK_EGRESS_PROVIDER_CONTRACT {
+        return Err(PluginFrameworkError::invalid_provider_package(format!(
+            "network_egress_provider must declare contract_version={}",
+            crate::NETWORK_EGRESS_PROVIDER_CONTRACT
+        )));
+    }
+    if manifest.execution_mode != PluginExecutionMode::StatefulRuntimeWorker
+        || manifest.runtime.protocol != "stdio_json_worker"
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "network_egress_provider must declare execution_mode=stateful_runtime_worker with runtime.protocol=stdio_json_worker",
+        ));
     }
 
     Ok(())
@@ -1579,6 +1627,12 @@ fn validate_contract_version(manifest: &PluginManifestV1) -> FrameworkResult<()>
         PluginConsumptionKind::HostExtension => "1flowbase.host_extension/v1",
         PluginConsumptionKind::RuntimeExtension => {
             if manifest
+                .slot_codes
+                .iter()
+                .any(|slot| slot == "network_egress_provider")
+            {
+                crate::NETWORK_EGRESS_PROVIDER_CONTRACT
+            } else if manifest
                 .slot_codes
                 .iter()
                 .any(|slot| matches!(slot.as_str(), "data_source" | "data_import_snapshot"))

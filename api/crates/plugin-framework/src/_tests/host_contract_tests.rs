@@ -21,6 +21,10 @@ fn runtime_slot_codes_are_stable() {
         "data_import_snapshot"
     );
     assert_eq!(RuntimeSlotCode::FileProcessor.as_str(), "file_processor");
+    assert_eq!(
+        RuntimeSlotCode::NetworkEgressProvider.as_str(),
+        "network_egress_provider"
+    );
 }
 
 #[test]
