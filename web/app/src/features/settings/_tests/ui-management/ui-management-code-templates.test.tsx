@@ -31,6 +31,58 @@ const blockCatalogHook = vi.hoisted(() => ({
   useFrontstageBlockCatalog: vi.fn()
 }));
 const templateRunPanel = vi.hoisted(() => ({ render: vi.fn() }));
+const sourceStudio = vi.hoisted(() => ({ render: vi.fn() }));
+
+const templateCodeModules = [
+  {
+    source: '@1flowbase/block-sdk',
+    version: '1.0.0',
+    binding: 'fetched' as const,
+    assets: [
+      {
+        role: 'browser_module' as const,
+        media_type: 'text/javascript',
+        sha256: 'a'.repeat(64),
+        url: '/assets/block-sdk.js',
+        integrity: 'verified_sha256' as const
+      }
+    ],
+    exports: ['blockSdkVersion'],
+    type_declarations: "declare module '@1flowbase/block-sdk' {}"
+  },
+  {
+    source: '@1flowbase/native-components',
+    version: '1.0.0',
+    binding: 'fetched' as const,
+    assets: [
+      {
+        role: 'browser_module' as const,
+        media_type: 'text/javascript',
+        sha256: 'b'.repeat(64),
+        url: '/assets/native-components.js',
+        integrity: 'verified_sha256' as const
+      },
+      {
+        role: 'shadow_style' as const,
+        media_type: 'text/css',
+        sha256: 'c'.repeat(64),
+        url: '/assets/native-components.css',
+        integrity: 'verified_sha256' as const
+      }
+    ],
+    exports: ['Surface'],
+    type_declarations: "declare module '@1flowbase/native-components' {}"
+  }
+];
+const previewSource = [
+  "import type { BlockComponentProps } from '@1flowbase/block-sdk';",
+  "import { Surface } from '@1flowbase/native-components';",
+  'export default function Changed({ ctx }: BlockComponentProps) {',
+  '  return <Surface>{ctx.workspace.id}</Surface>;',
+  '}'
+].join('\n');
+const officialSource = previewSource.replace('Changed', 'OfficialBlock');
+const managedSource = previewSource.replace('Changed', 'ManagedLatest');
 
 vi.mock('../../api/ui-management', () => uiManagementApi);
 vi.mock('../../../frontstage/hooks/use-frontstage-block-catalog', () => blockCatalogHook);
@@ -50,6 +102,8 @@ vi.mock('../../../frontstage/components/jsx-studio/JsxStudioRunPanel', () => ({
 vi.mock('../../../../shared/code-block/BlockSourceStudio', () => ({
   BlockSourceStudio: (props: {
     editorHeader?: React.ReactNode;
+    editorDiagnostics?: Array<{ message: string }>;
+    loading: boolean;
     onChange: (source: string) => void;
     onClose: () => void;
     onRun: (source: string) => void;
@@ -58,35 +112,35 @@ vi.mock('../../../../shared/code-block/BlockSourceStudio', () => ({
     source: string;
     testId: string;
     renderResource: (section: 'configuration' | 'run') => React.ReactNode;
-  }) => (
-    <section data-testid={props.testId}>
-      <div data-testid="studio-editor-header">{props.editorHeader}</div>
-      <aside data-testid="studio-resource-panel">
-        {props.renderResource('configuration')}
-      </aside>
-      <span>{props.readOnly ? 'studio-readonly' : 'studio-editable'}</span>
-      <pre>{props.source}</pre>
-      <button
-        onClick={() => props.onChange('export default function Changed() {}')}
-      >
-        change-source
-      </button>
-      <button onClick={() => props.onRun(props.source)}>studio-run</button>
-      <button onClick={props.onSave}>studio-save</button>
-      <button onClick={props.onClose}>studio-close</button>
-      <aside data-testid="studio-run-panel">
-        {props.renderResource('run')}
-      </aside>
-    </section>
-  )
+  }) => {
+    sourceStudio.render(props);
+    return (
+      <section data-testid={props.testId}>
+        <div data-testid="studio-editor-header">{props.editorHeader}</div>
+        <aside data-testid="studio-resource-panel">
+          {props.renderResource('configuration')}
+        </aside>
+        <span>{props.readOnly ? 'studio-readonly' : 'studio-editable'}</span>
+        <pre data-testid="studio-source">{props.source}</pre>
+        <button onClick={() => props.onChange(previewSource)}>
+          change-source
+        </button>
+        <button disabled={props.loading} onClick={() => props.onRun(props.source)}>
+          studio-run
+        </button>
+        <button onClick={props.onSave}>studio-save</button>
+        <button onClick={props.onClose}>studio-close</button>
+        <aside data-testid="studio-run-panel">
+          {props.renderResource('run')}
+        </aside>
+      </section>
+    );
+  }
 }));
 
 import { AppProviders } from '../../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import { UiManagementPanel } from '../../components/ui-management/UiManagementPanel';
-
-const officialSource = 'export default function OfficialBlock() {}';
-const managedSource = 'export default function ManagedLatest() {}';
 
 function renderPanel() {
   return render(
@@ -94,6 +148,10 @@ function renderPanel() {
       <UiManagementPanel canManage />
     </AppProviders>
   );
+}
+
+function studioSourceText(source: string) {
+  return source.replace(/\s+/g, ' ');
 }
 
 describe('UiManagementPanel code templates', () => {
@@ -161,9 +219,10 @@ describe('UiManagementPanel code templates', () => {
           pluginVersion: '1.0.0',
           contributionCode: 'frontstage.js-ui-block',
           entry: 'index.js',
-          codeModules: []
+          codeModules: templateCodeModules
         }
-      ]
+      ],
+      externalNpm: { status: 'available' }
     });
   });
 
@@ -186,7 +245,9 @@ describe('UiManagementPanel code templates', () => {
     expect(screen.getByTestId('ui-code-template-studio')).toHaveTextContent(
       'studio-readonly'
     );
-    expect(screen.getByText(officialSource)).toBeInTheDocument();
+    expect(screen.getByTestId('studio-source')).toHaveTextContent(
+      studioSourceText(officialSource)
+    );
   });
 
   test('AC-002 copies an official template snapshot into an independent managed draft', async () => {
@@ -194,8 +255,8 @@ describe('UiManagementPanel code templates', () => {
     await screen.findByText('官方区块');
 
     fireEvent.click(screen.getAllByRole('button', { name: /复\s*制/ })[0]!);
-    expect(screen.getByTestId('ui-code-template-studio')).toHaveTextContent(
-      officialSource
+    expect(screen.getByTestId('studio-source')).toHaveTextContent(
+      studioSourceText(officialSource)
     );
     expect(screen.getByLabelText('名称')).toHaveValue('官方区块 - 副本');
     fireEvent.click(screen.getByRole('button', { name: 'change-source' }));
@@ -207,7 +268,7 @@ describe('UiManagementPanel code templates', () => {
           provider_code: '1flowbase',
           contribution_code: 'frontstage.js-ui-block',
           name: '官方区块 - 副本',
-          source: 'export default function Changed() {}',
+          source: previewSource,
           language: 'tsx'
         },
         'csrf-token'
@@ -220,8 +281,8 @@ describe('UiManagementPanel code templates', () => {
     await screen.findByText('自定义区块');
 
     fireEvent.click(screen.getAllByRole('button', { name: /复\s*制/ })[1]!);
-    expect(screen.getByTestId('ui-code-template-studio')).toHaveTextContent(
-      managedSource
+    expect(screen.getByTestId('studio-source')).toHaveTextContent(
+      studioSourceText(managedSource)
     );
     fireEvent.click(screen.getByRole('button', { name: 'studio-save' }));
     await waitFor(() =>
@@ -235,8 +296,8 @@ describe('UiManagementPanel code templates', () => {
     );
 
     fireEvent.click(screen.getByRole('button', { name: /编\s*辑/ }));
-    expect(screen.getByTestId('ui-code-template-studio')).toHaveTextContent(
-      managedSource
+    expect(screen.getByTestId('studio-source')).toHaveTextContent(
+      studioSourceText(managedSource)
     );
     expect(screen.getByTestId('ui-code-template-studio')).toHaveTextContent(
       'studio-editable'
@@ -280,7 +341,7 @@ describe('UiManagementPanel code templates', () => {
     );
   });
 
-  test('AC-006 runs an unsaved template draft in a restricted preview block', async () => {
+  test('AC-006 runs an unsaved template draft through the registered block runtime', async () => {
     renderPanel();
     await screen.findByText('自定义区块');
 
@@ -290,31 +351,50 @@ describe('UiManagementPanel code templates', () => {
 
     expect(screen.getByText('Template preview run')).toBeInTheDocument();
     expect(
-      screen.getByText(
+      screen.queryByText(
         '当前为受限预览：可验证组件渲染与本地交互，接口调用、事件、导航和输出能力不可用。'
       )
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     const runProps = templateRunPanel.render.mock.calls.at(-1)?.[0] as {
       block: { id: string; props: Record<string, unknown> };
       code: string;
       revision: string;
+      nativeDependencyLock: Array<{ module_source: string }>;
+      nativeDependencyLockError: string | null;
+      externalNpm: { status: string };
       createBlockContext(input: {
         plan: {
           blockId: string;
           props: Record<string, unknown>;
         };
       }): {
+        currentUser: { id: string; displayName?: string } | null;
         workspace: { id: string };
+        page: { id: string; route: string; title?: string };
+        ui: { locale?: string };
         props: Record<string, unknown>;
-        api: { get(path: string): Promise<unknown> };
       };
     };
     expect(runProps.block).toMatchObject({
       id: 'ui-code-template:1flowbase:frontstage.js-ui-block',
       props: {}
     });
-    expect(runProps.code).toBe('export default function Changed() {}');
+    expect(runProps.code).toBe(previewSource);
     expect(runProps.revision).toBe('run:1');
+    const studioProps = sourceStudio.render.mock.calls.at(-1)?.[0] as {
+      editorDiagnostics: Array<{ message: string }>;
+    };
+    expect(studioProps.editorDiagnostics).toEqual([]);
+    expect(runProps.nativeDependencyLock).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ module_source: '@1flowbase/block-sdk' }),
+        expect.objectContaining({
+          module_source: '@1flowbase/native-components'
+        })
+      ])
+    );
+    expect(runProps.nativeDependencyLockError).toBeNull();
+    expect(runProps.externalNpm).toEqual({ status: 'available' });
 
     const previewContext = runProps.createBlockContext({
       plan: {
@@ -322,12 +402,38 @@ describe('UiManagementPanel code templates', () => {
         props: {}
       }
     });
-    expect(previewContext.workspace).toEqual({ id: 'workspace-1' });
-    expect(previewContext.props).toEqual({});
-    await expect(previewContext.api.get('/api/example')).rejects.toThrow(
-      'ctx.api.get'
+    expect(previewContext.currentUser).toEqual(
+      expect.objectContaining({ id: 'user-1' })
     );
+    expect(previewContext.workspace).toEqual({ id: 'workspace-1' });
+    expect(previewContext.page).toEqual({
+      id: runProps.block.id,
+      route: '/settings/ui-management/code-templates/1flowbase%3Afrontstage.js-ui-block',
+      title: '自定义区块'
+    });
+    expect(previewContext.ui).toEqual({ locale: undefined });
+    expect(previewContext.props).toEqual({});
     expect(uiManagementApi.updateSettingsUiTemplate).not.toHaveBeenCalled();
+  });
+
+  test('AC-007 waits for the contribution catalog before validating registered imports', async () => {
+    blockCatalogHook.useFrontstageBlockCatalog.mockReturnValue({
+      items: [],
+      loading: true,
+      externalNpm: { status: 'pending' }
+    });
+    renderPanel();
+    await screen.findByText('自定义区块');
+
+    fireEvent.click(screen.getByRole('button', { name: /编\s*辑/ }));
+
+    const studioProps = sourceStudio.render.mock.calls.at(-1)?.[0] as {
+      editorDiagnostics: Array<{ message: string }>;
+      loading: boolean;
+    };
+    expect(studioProps.loading).toBe(true);
+    expect(studioProps.editorDiagnostics).toEqual([]);
+    expect(screen.getByRole('button', { name: 'studio-run' })).toBeDisabled();
   });
 
   test('AC-005 switches the configurable default between managed and official templates', async () => {

@@ -4,13 +4,15 @@ import {
   diagnoseLegacyBlockModuleSource,
   validateNativeTrustedBlockSource
 } from '@1flowbase/page-runtime';
-import { Alert, App, Empty, Form, Input, Select } from 'antd';
+import { App, Empty, Form, Input, Select } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
 import { diagnoseUnsupportedTailwindUtilities } from '../../../../shared/code-block/tailwind-utility-diagnostics';
+import { useAuthStore } from '../../../../state/auth-store';
 import { useFrontstageBlockCatalog } from '../../../frontstage/hooks/use-frontstage-block-catalog';
+import { resolveFrontstageNativeDependencyLock } from '../../../frontstage/lib/block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../../frontstage/lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../../frontstage/lib/jsx-studio/context-injection';
 import {
@@ -53,6 +55,8 @@ export function UiCodeTemplateStudio({
 }) {
   const { t } = useTranslation('settingsUiManagement');
   const { message } = App.useApp();
+  const actor = useAuthStore((state) => state.actor);
+  const me = useAuthStore((state) => state.me);
   const [draft, setDraft] = useState(initialValue);
   const [previewRequest, setPreviewRequest] = useState<{
     revision: string;
@@ -71,6 +75,14 @@ export function UiCodeTemplateStudio({
     () => createFrontstageJsxEditorProjection({ catalogEntry }),
     [catalogEntry]
   );
+  const nativeDependencyLockResolution = useMemo(
+    () =>
+      resolveFrontstageNativeDependencyLock({
+        catalogEntry,
+        workspaceId: workspaceId ?? 'workspace'
+      }),
+    [catalogEntry, workspaceId]
+  );
   const readOnly = mode === 'view';
   const contributionIdentity = templateIdentity(
     draft.provider_code,
@@ -85,6 +97,7 @@ export function UiCodeTemplateStudio({
   );
   const diagnostics = useMemo(() => {
     if (draft.source.trim().length === 0) return [];
+    if (catalog.loading) return [];
     const legacy = diagnoseLegacyBlockModuleSource(draft.source);
     const values = legacy
       ? [legacy]
@@ -104,7 +117,12 @@ export function UiCodeTemplateStudio({
       },
       values
     );
-  }, [contributionIdentity, draft.source, projection.allowedImportSources]);
+  }, [
+    catalog.loading,
+    contributionIdentity,
+    draft.source,
+    projection.allowedImportSources
+  ]);
 
   useEffect(() => {
     if (!open) return;
@@ -118,10 +136,33 @@ export function UiCodeTemplateStudio({
       const unavailable = createFrontstageUnavailableBlockContext(plan);
       return {
         ...unavailable,
-        workspace: { id: workspaceId ?? 'workspace' }
+        currentUser: actor
+          ? {
+              id: actor.id,
+              displayName:
+                me?.nickname?.trim() || me?.name?.trim() || actor.account
+            }
+          : null,
+        workspace: { id: workspaceId ?? 'workspace' },
+        page: {
+          id: plan.blockId,
+          route: `/settings/ui-management/code-templates/${encodeURIComponent(contributionIdentity)}`,
+          ...(draft.name.trim() ? { title: draft.name.trim() } : {})
+        },
+        application: null,
+        theme: { mode: 'light' as const, tokens: {} },
+        ui: { locale: me?.preferred_locale ?? undefined }
       };
     },
-    [workspaceId]
+    [
+      actor,
+      contributionIdentity,
+      draft.name,
+      me?.name,
+      me?.nickname,
+      me?.preferred_locale,
+      workspaceId
+    ]
   );
 
   const insertCode = (insertion: FrontstageJsxInsertion) => {
@@ -260,7 +301,7 @@ export function UiCodeTemplateStudio({
       editorDiagnostics={diagnostics}
       extraLibs={projection.monacoExtraLibs}
       initialSection="configuration"
-      loading={false}
+      loading={catalog.loading}
       open={open}
       owner="settings:ui-management:code-templates"
       path={`file:///settings/ui-code-templates/${encodeURIComponent(contributionIdentity || 'new')}.${draft.language}`}
@@ -296,15 +337,17 @@ export function UiCodeTemplateStudio({
         ) : section === 'run' ? (
           previewRequest ? (
             <div className="frontstage-jsx-studio__resource-scroll">
-              <Alert
-                showIcon
-                type="info"
-                title={t('template_preview_limited')}
-              />
               <JsxStudioRunPanel
                 block={authoringBlock}
                 code={previewRequest.source}
                 createBlockContext={createPreviewBlockContext}
+                externalNpm={catalog.externalNpm}
+                nativeDependencyLock={
+                  nativeDependencyLockResolution.dependencyLock
+                }
+                nativeDependencyLockError={
+                  nativeDependencyLockResolution.error
+                }
                 revision={previewRequest.revision}
               />
             </div>
