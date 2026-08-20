@@ -27,19 +27,37 @@ const uiManagementApi = vi.hoisted(() => ({
   setSettingsUiTemplateDefault: vi.fn(),
   updateSettingsUiTemplate: vi.fn()
 }));
+const blockCatalogHook = vi.hoisted(() => ({
+  useFrontstageBlockCatalog: vi.fn()
+}));
+const templateRunPanel = vi.hoisted(() => ({ render: vi.fn() }));
 
 vi.mock('../../api/ui-management', () => uiManagementApi);
+vi.mock('../../../frontstage/hooks/use-frontstage-block-catalog', () => blockCatalogHook);
+vi.mock('../../../frontstage/components/jsx-studio/JsxStudioResourcePanel', () => ({
+  JsxStudioResourcePanel: (props: {
+    runPanel?: React.ReactNode;
+    section: string;
+  }) => (props.section === 'run' ? props.runPanel : null)
+}));
+vi.mock('../../../frontstage/components/jsx-studio/JsxStudioRunPanel', () => ({
+  JsxStudioRunPanel: (props: unknown) => {
+    templateRunPanel.render(props);
+    return <div>Template preview run</div>;
+  }
+}));
 
 vi.mock('../../../../shared/code-block/BlockSourceStudio', () => ({
   BlockSourceStudio: (props: {
     editorHeader?: React.ReactNode;
     onChange: (source: string) => void;
     onClose: () => void;
+    onRun: (source: string) => void;
     onSave: () => void;
     readOnly: boolean;
     source: string;
     testId: string;
-    renderResource: (section: 'configuration') => React.ReactNode;
+    renderResource: (section: 'configuration' | 'run') => React.ReactNode;
   }) => (
     <section data-testid={props.testId}>
       <div data-testid="studio-editor-header">{props.editorHeader}</div>
@@ -53,8 +71,12 @@ vi.mock('../../../../shared/code-block/BlockSourceStudio', () => ({
       >
         change-source
       </button>
+      <button onClick={() => props.onRun(props.source)}>studio-run</button>
       <button onClick={props.onSave}>studio-save</button>
       <button onClick={props.onClose}>studio-close</button>
+      <aside data-testid="studio-run-panel">
+        {props.renderResource('run')}
+      </aside>
     </section>
   )
 }));
@@ -128,6 +150,21 @@ describe('UiManagementPanel code templates', () => {
     });
     uiManagementApi.resetSettingsUiTemplateDefault.mockResolvedValue(undefined);
     uiManagementApi.setSettingsUiTemplateDefault.mockResolvedValue(undefined);
+    blockCatalogHook.useFrontstageBlockCatalog.mockReturnValue({
+      items: [
+        {
+          id: '1flowbase:frontstage.js-ui-block',
+          runtimeKind: 'native_react',
+          installationId: 'builtin-installation',
+          providerCode: '1flowbase',
+          pluginId: 'builtin-frontstage',
+          pluginVersion: '1.0.0',
+          contributionCode: 'frontstage.js-ui-block',
+          entry: 'index.js',
+          codeModules: []
+        }
+      ]
+    });
   });
 
   afterEach(() => {
@@ -241,6 +278,56 @@ describe('UiManagementPanel code templates', () => {
         'csrf-token'
       )
     );
+  });
+
+  test('AC-006 runs an unsaved template draft in a restricted preview block', async () => {
+    renderPanel();
+    await screen.findByText('自定义区块');
+
+    fireEvent.click(screen.getByRole('button', { name: /编\s*辑/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'change-source' }));
+    fireEvent.click(screen.getByRole('button', { name: 'studio-run' }));
+
+    expect(screen.getByText('Template preview run')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        '当前为受限预览：可验证组件渲染与本地交互，接口调用、事件、导航和输出能力不可用。'
+      )
+    ).toBeInTheDocument();
+    const runProps = templateRunPanel.render.mock.calls.at(-1)?.[0] as {
+      block: { id: string; props: Record<string, unknown> };
+      code: string;
+      revision: string;
+      createBlockContext(input: {
+        plan: {
+          blockId: string;
+          props: Record<string, unknown>;
+        };
+      }): {
+        workspace: { id: string };
+        props: Record<string, unknown>;
+        api: { get(path: string): Promise<unknown> };
+      };
+    };
+    expect(runProps.block).toMatchObject({
+      id: 'ui-code-template:1flowbase:frontstage.js-ui-block',
+      props: {}
+    });
+    expect(runProps.code).toBe('export default function Changed() {}');
+    expect(runProps.revision).toBe('run:1');
+
+    const previewContext = runProps.createBlockContext({
+      plan: {
+        blockId: runProps.block.id,
+        props: {}
+      }
+    });
+    expect(previewContext.workspace).toEqual({ id: 'workspace-1' });
+    expect(previewContext.props).toEqual({});
+    await expect(previewContext.api.get('/api/example')).rejects.toThrow(
+      'ctx.api.get'
+    );
+    expect(uiManagementApi.updateSettingsUiTemplate).not.toHaveBeenCalled();
   });
 
   test('AC-005 switches the configurable default between managed and official templates', async () => {
