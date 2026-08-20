@@ -112,6 +112,41 @@ impl Drop for TempNetworkEgressPackage {
 }
 
 #[tokio::test]
+async fn nc_02b_sync_egresses_exposes_only_the_validated_provider_catalog() {
+    let package = TempNetworkEgressPackage::new();
+    package.write_runtime(
+        "http://127.0.0.1:18080",
+        unix_milliseconds_now() + 300_000,
+        false,
+        None,
+    );
+    let mut host = NetworkEgressHost::default();
+    host.load_if_needed(
+        "fixture_egress@0.1.0",
+        &package.path().display().to_string(),
+        "fixture-v1",
+    )
+    .await
+    .expect("fixture worker must register");
+
+    let egresses = host
+        .sync_egresses("fixture_egress@0.1.0")
+        .await
+        .expect("typed sync result must be returned");
+    assert_eq!(egresses.len(), 1);
+    assert_eq!(egresses[0].provider_egress_key, "egress-us-1");
+    assert_eq!(
+        egresses[0].availability,
+        plugin_framework::EgressAvailability::Available
+    );
+    assert!(host.sync_egresses("missing@0.1.0").await.is_err());
+
+    host.unload("fixture_egress@0.1.0")
+        .await
+        .expect("worker without a lease must stop cleanly");
+}
+
+#[tokio::test]
 async fn ac_002_ac_003_ac_005_ac_014_resolves_public_lease_and_cleans_mihomo_tree() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("fixture proxy listener must bind");
     let port = listener

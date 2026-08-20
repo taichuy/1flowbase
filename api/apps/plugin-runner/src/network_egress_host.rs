@@ -9,7 +9,7 @@ use std::{
 use axum::http::Uri;
 use plugin_framework::{
     error::{FrameworkResult, PluginFrameworkError},
-    AcquireHttpForwardProxyInput, EgressAvailability, ForwardProxyLease,
+    AcquireHttpForwardProxyInput, EgressAvailability, EgressDescriptor, ForwardProxyLease,
     NetworkEgressProviderPackage, NetworkEgressProviderStdioRequest,
     NetworkEgressProviderStdioResponse, PluginRuntimeLimits, ReleaseHttpForwardProxyInput,
     SyncEgressesInput, SyncEgressesResult,
@@ -131,6 +131,25 @@ impl NetworkEgressHost {
             ))
         })?;
         let result = worker.resolve_http_forward_proxy(provider_egress_key).await;
+        if result.is_err() && !worker.is_live()? {
+            self.retire_failed_worker(plugin_id).await;
+        }
+        result
+    }
+
+    /// Returns the provider-owned egress catalog through the validated v1 worker operation.
+    /// Descriptors deliberately contain only display and availability data, never provider
+    /// configuration, proxy capabilities, or secrets.
+    pub async fn sync_egresses(
+        &mut self,
+        plugin_id: &str,
+    ) -> FrameworkResult<Vec<EgressDescriptor>> {
+        let worker = self.workers.get_mut(plugin_id).ok_or_else(|| {
+            PluginFrameworkError::invalid_provider_package(format!(
+                "network egress package is not loaded: {plugin_id}"
+            ))
+        })?;
+        let result = worker.sync_egresses().await.map(|result| result.egresses);
         if result.is_err() && !worker.is_live()? {
             self.retire_failed_worker(plugin_id).await;
         }
