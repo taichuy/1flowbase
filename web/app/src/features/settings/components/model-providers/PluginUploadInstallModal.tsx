@@ -47,30 +47,42 @@ export function PluginUploadInstallModal({
           className="model-provider-panel__upload-control"
           maxCount={1}
           fileList={fileList}
+          showUploadList={false}
           onChange={({ fileList: nextFiles }) => onChange(nextFiles)}
-          itemRender={(_originNode, file, _fileList, actions) => (
-            <div className="model-provider-panel__upload-file">
-              <Tooltip title={file.name}>
-                <Typography.Text
-                  className="model-provider-panel__upload-file-name"
-                  ellipsis
-                  title={file.name}
-                >
-                  {file.name}
-                </Typography.Text>
-              </Tooltip>
-              <Button
-                aria-label={i18nText('settings', 'auto.remove_upload_package')}
-                icon={<DeleteOutlined />}
-                onClick={actions.remove}
-                size="small"
-                type="text"
-              />
-            </div>
-          )}
         >
           {i18nText('settings', 'auto.select_plug_package_upload_install')}
         </Upload.Dragger>
+        {fileList.length > 0 ? (
+          <div className="model-provider-panel__upload-file-list">
+            {fileList.map((file) => (
+              <div className="model-provider-panel__upload-file" key={file.uid}>
+                <Tooltip title={file.name}>
+                  <Typography.Text
+                    className="model-provider-panel__upload-file-name"
+                    ellipsis
+                    title={file.name}
+                  >
+                    {file.name}
+                  </Typography.Text>
+                </Tooltip>
+                <Button
+                  aria-label={i18nText(
+                    'settings',
+                    'auto.remove_upload_package'
+                  )}
+                  icon={<DeleteOutlined />}
+                  onClick={() =>
+                    onChange(
+                      fileList.filter((candidate) => candidate.uid !== file.uid)
+                    )
+                  }
+                  size="small"
+                  type="text"
+                />
+              </div>
+            ))}
+          </div>
+        ) : null}
         {resultSummary ? (
           <Alert
             className="model-provider-panel__upload-alert"

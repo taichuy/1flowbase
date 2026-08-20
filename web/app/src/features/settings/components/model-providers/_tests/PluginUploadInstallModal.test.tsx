@@ -29,14 +29,22 @@ describe('PluginUploadInstallModal', () => {
     const modalContent = document.querySelector(
       '.model-provider-panel__upload-modal'
     );
+    const uploadControl = document.querySelector(
+      '.model-provider-panel__upload-control'
+    );
+    const selectedFileList = document.querySelector(
+      '.model-provider-panel__upload-file-list'
+    );
     const filenameTrigger = screen.getByText(filename);
     const errorAlert = screen.getByText(errorMessage);
 
-    if (!modalContent) {
+    if (!modalContent || !uploadControl || !selectedFileList) {
       throw new Error('Expected the plugin upload modal content to render.');
     }
 
     expect(modalContent).toContainElement(filenameTrigger);
+    expect(selectedFileList).toContainElement(filenameTrigger);
+    expect(uploadControl).not.toContainElement(filenameTrigger);
     expect(modalContent).toContainElement(errorAlert);
     expect(filenameTrigger).toHaveAttribute('title', filename);
   });

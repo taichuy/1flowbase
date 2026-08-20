@@ -399,6 +399,7 @@
 }
 
 .model-provider-panel__upload-control,
+.model-provider-panel__upload-file-list,
 .model-provider-panel__upload-file,
 .model-provider-panel__upload-alert,
 .model-provider-panel__upload-submit,
@@ -419,6 +420,15 @@
 .model-provider-panel__upload-alert .ant-alert-description {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.model-provider-panel__upload-file-list {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 8px;
+  background: var(--ant-color-fill-quaternary);
 }
 
 .model-provider-panel__upload-file {
