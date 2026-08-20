@@ -225,6 +225,39 @@ async fn issue_1743_atomic_claim_owned_copy_survives_probe_and_actual_rebuild() 
     );
 }
 
+#[tokio::test]
+async fn issue_1743_provider_continuation_is_staged_before_late_billing_classification() {
+    let provider_instance_id = Uuid::now_v7();
+    let flow_run_id = Uuid::now_v7();
+    let store = Arc::new(Issue1743ContinuationStore::default());
+    let invoker = issue_1743_invoker(
+        flow_run_id,
+        store.clone(),
+        crate::ports::ProviderContinuation::new(
+            "resp-staged",
+            issue_1743_affinity(provider_instance_id),
+        )
+        .unwrap(),
+    );
+
+    invoker
+        .stage_provider_continuation(&issue_1743_runtime(provider_instance_id), Some("resp-next"))
+        .await
+        .expect("provider continuation must be staged before billing classification");
+
+    assert_eq!(
+        crate::ports::ProviderTransportStore::get_continuation(
+            store.as_ref(),
+            crate::ports::ProviderContinuationSlotId::for_flow_run(flow_run_id),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .response_id(),
+        "resp-next"
+    );
+}
+
 #[test]
 fn issue_1743_continuation_route_requires_affinity_and_native_capability() {
     let provider_instance_id = Uuid::now_v7();

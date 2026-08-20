@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 321,
+  "projected_interface_count": 322,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -1604,6 +1604,12 @@
       "POST",
       "/api/console/settings/model-providers/instances",
       "Create model providers instances"
+    ],
+    [
+      "model_providers.instances.authenticate",
+      "POST",
+      "/api/console/settings/model-providers/instances/:id/authenticate",
+      "Model providers instances authenticate"
     ],
     [
       "model_providers.instances.models.refresh",
