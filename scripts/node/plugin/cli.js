@@ -12,6 +12,7 @@ function packageUsage() {
   --signing-key-pem-file <file>
   --signing-key-id <id>
   --issued-at <iso8601>
+  --runtime-core-binary <file>
   --runtime-core-gpl-license-notice <file>
   --runtime-core-corresponding-source <https-url>
 `);
@@ -30,6 +31,7 @@ function parsePackageArgs(argv) {
     signingKeyPemFile: null,
     signingKeyId: null,
     issuedAt: null,
+    runtimeCoreBinaryFile: null,
     runtimeCoreGplLicenseNoticeFile: null,
     runtimeCoreCorrespondingSource: null,
   };
@@ -47,7 +49,9 @@ function parsePackageArgs(argv) {
     else if (arg === '--signing-key-pem-file') options.signingKeyPemFile = path.resolve(value);
     else if (arg === '--signing-key-id') options.signingKeyId = value;
     else if (arg === '--issued-at') options.issuedAt = value;
-    else if (arg === '--runtime-core-gpl-license-notice') {
+    else if (arg === '--runtime-core-binary') {
+      options.runtimeCoreBinaryFile = path.resolve(value);
+    } else if (arg === '--runtime-core-gpl-license-notice') {
       options.runtimeCoreGplLicenseNoticeFile = path.resolve(value);
     } else if (arg === '--runtime-core-corresponding-source') {
       options.runtimeCoreCorrespondingSource = value;
@@ -67,6 +71,9 @@ function parsePackageArgs(argv) {
   }
   if (options.signingKeyPemFile && !options.runtimeCoreGplLicenseNoticeFile) {
     throw new Error('runtime core 签名包需要 --runtime-core-gpl-license-notice <file>');
+  }
+  if (options.signingKeyPemFile && !options.runtimeCoreBinaryFile) {
+    throw new Error('runtime core 签名包需要 --runtime-core-binary <file>');
   }
   if (options.signingKeyPemFile && !options.runtimeCoreCorrespondingSource) {
     throw new Error('runtime core 签名包需要 --runtime-core-corresponding-source <https-url>');

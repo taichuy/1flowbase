@@ -111,6 +111,14 @@ function runtimeEntryForTarget(runtimeEntry, target) {
   return runtimeEntry;
 }
 
+function runtimeCoreArtifactForTarget(target) {
+  return [
+    'runtime-core',
+    target.rustTargetTriple,
+    `1flowbase-runtime-core${target.executableSuffix}`,
+  ].join('/');
+}
+
 function writeStagedRuntimeEntry(manifestPath, runtimeEntry) {
   const lines = fs.readFileSync(manifestPath, 'utf8').split(/\r?\n/);
   let runtimeIndent = null;
@@ -230,6 +238,9 @@ function createPluginPackage(pluginPath, outputDir, options = {}) {
   const runtimeBinaryFile = options.runtimeBinaryFile
     ? path.resolve(options.runtimeBinaryFile)
     : null;
+  const runtimeCoreBinaryFile = options.runtimeCoreBinaryFile
+    ? path.resolve(options.runtimeCoreBinaryFile)
+    : null;
   if (!runtimeBinaryFile) {
     throw new Error('package 需要 --runtime-binary 指向已编译 provider 可执行文件');
   }
@@ -288,14 +299,34 @@ function createPluginPackage(pluginPath, outputDir, options = {}) {
     let signatureMetadata = null;
     let runtimeCore = null;
     if (hasSigningKeyPemFile) {
+      if (!runtimeCoreBinaryFile) {
+        throw new Error('runtime core 签名包需要 --runtime-core-binary 指向已编译 runtime core CLI');
+      }
+      if (runtimeCoreBinaryFile === runtimeBinaryFile) {
+        throw new Error('runtime core binary 必须与 manifest.runtime.entry wrapper 使用不同输入文件');
+      }
       if (!options.runtimeCoreGplLicenseNoticeFile) {
         throw new Error('runtime core 签名包需要 GPL license notice');
       }
       if (!options.runtimeCoreCorrespondingSource) {
         throw new Error('runtime core 签名包需要 corresponding source pointer');
       }
+      if (!fs.existsSync(runtimeCoreBinaryFile)) {
+        throw new Error(`runtime core binary 不存在：${runtimeCoreBinaryFile}`);
+      }
+      if (!fs.statSync(runtimeCoreBinaryFile).isFile()) {
+        throw new Error(`runtime core binary 必须是普通文件：${runtimeCoreBinaryFile}`);
+      }
+      const runtimeCoreArtifactPath = runtimeCoreArtifactForTarget(target);
+      const stagedRuntimeCorePath = path.join(
+        stagedRoot,
+        ...runtimeCoreArtifactPath.split('/')
+      );
+      fs.mkdirSync(path.dirname(stagedRuntimeCorePath), { recursive: true });
+      fs.copyFileSync(runtimeCoreBinaryFile, stagedRuntimeCorePath);
+      fs.chmodSync(stagedRuntimeCorePath, 0o755);
       runtimeCore = writeRuntimeCoreComplianceMetadata(stagedRoot, {
-        binaryPath: stagedRuntimeEntry,
+        artifactPath: runtimeCoreArtifactPath,
         targetTriple: target.rustTargetTriple,
         gplLicenseNoticeFile: path.resolve(options.runtimeCoreGplLicenseNoticeFile),
         correspondingSource: options.runtimeCoreCorrespondingSource,
@@ -333,7 +364,7 @@ function createPluginPackage(pluginPath, outputDir, options = {}) {
       rustTarget: target.rustTargetTriple,
       signatureAlgorithm: signatureMetadata?.signatureAlgorithm ?? null,
       signingKeyId: signatureMetadata?.signingKeyId ?? null,
-      runtimeCoreBinarySha256: runtimeCore?.binary_sha256 ?? null,
+      runtimeCoreArtifactSha256: runtimeCore?.artifact_sha256 ?? null,
       runtimeCoreCorrespondingSource: runtimeCore?.corresponding_source ?? null,
     };
   } finally {
@@ -346,5 +377,6 @@ module.exports = {
   assertSupportedRuntimeEntry,
   createPluginPackage,
   parseRustTargetTriple,
+  runtimeCoreArtifactForTarget,
   runtimeEntryForTarget,
 };

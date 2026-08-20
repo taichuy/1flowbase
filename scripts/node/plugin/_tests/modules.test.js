@@ -87,7 +87,8 @@ test('AC-006/AC-014: signed package archives bind a target runtime core binary t
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-plugin-runtime-core-'));
   const pluginPath = path.join(workspace, 'acme-provider');
   const outputDir = path.join(workspace, 'dist');
-  const runtimeBinary = path.join(workspace, 'acme-provider');
+  const runtimeBinary = path.join(workspace, 'acme-provider-wrapper');
+  const runtimeCoreBinary = path.join(workspace, '1flowbase-runtime-core');
   const licenseNotice = path.join(workspace, 'COPYING');
   const signingKeyFile = path.join(workspace, 'official-signing-key.pem');
   const extractedDir = path.join(workspace, 'extracted');
@@ -97,6 +98,8 @@ test('AC-006/AC-014: signed package archives bind a target runtime core binary t
   fs.mkdirSync(outputDir, { recursive: true });
   fs.writeFileSync(runtimeBinary, '#!/usr/bin/env sh\nexit 0\n', 'utf8');
   fs.chmodSync(runtimeBinary, 0o755);
+  fs.writeFileSync(runtimeCoreBinary, '#!/usr/bin/env sh\necho runtime-core\n', 'utf8');
+  fs.chmodSync(runtimeCoreBinary, 0o755);
   fs.writeFileSync(
     licenseNotice,
     'GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n',
@@ -121,6 +124,8 @@ test('AC-006/AC-014: signed package archives bind a target runtime core binary t
       runtimeBinary,
       '--target',
       'x86_64-unknown-linux-musl',
+      '--runtime-core-binary',
+      runtimeCoreBinary,
       '--signing-key-pem-file',
       signingKeyFile,
       '--signing-key-id',
@@ -142,13 +147,15 @@ test('AC-006/AC-014: signed package archives bind a target runtime core binary t
 
   const unpack = spawnSync('tar', ['-xzf', packageFile, '-C', extractedDir]);
   assert.equal(unpack.status, 0);
-  const release = JSON.parse(
-    fs.readFileSync(path.join(extractedDir, '_meta', 'official-release.json'), 'utf8')
-  );
+  const releasePath = path.join(extractedDir, '_meta', 'official-release.json');
+  const signaturePath = path.join(extractedDir, '_meta', 'official-release.sig');
+  const releaseBytes = fs.readFileSync(releasePath);
+  const signatureBytes = fs.readFileSync(signaturePath);
+  const release = JSON.parse(releaseBytes.toString('utf8'));
   assert.deepEqual(release.runtime_core, {
     target_triple: 'x86_64-unknown-linux-musl',
-    binary_path: 'bin/acme_provider-provider',
-    binary_sha256: `sha256:${crypto.createHash('sha256').update(fs.readFileSync(runtimeBinary)).digest('hex')}`,
+    artifact_path: 'runtime-core/x86_64-unknown-linux-musl/1flowbase-runtime-core',
+    artifact_sha256: `sha256:${crypto.createHash('sha256').update(fs.readFileSync(runtimeCoreBinary)).digest('hex')}`,
     gpl_license_notice_path: '_meta/runtime-core-gpl-license-notice.txt',
     gpl_license_notice_sha256: `sha256:${crypto.createHash('sha256').update(fs.readFileSync(licenseNotice)).digest('hex')}`,
     corresponding_source: 'https://example.test/acme-provider/source/v0.1.0',
@@ -161,20 +168,60 @@ test('AC-006/AC-014: signed package archives bind a target runtime core binary t
     fs.readFileSync(licenseNotice, 'utf8')
   );
   assert.equal(
+    fs.readFileSync(path.join(extractedDir, 'manifest.yaml'), 'utf8').includes(
+      'entry: bin/acme_provider-provider'
+    ),
+    true
+  );
+  assert.equal(
+    fs.readFileSync(path.join(extractedDir, 'bin', 'acme_provider-provider'), 'utf8'),
+    fs.readFileSync(runtimeBinary, 'utf8')
+  );
+  assert.equal(
     verifySignedRuntimeCoreRelease(extractedDir, publicKey),
     release
   );
 
-  fs.appendFileSync(path.join(extractedDir, 'bin', 'acme_provider-provider'), 'tamper');
+  fs.appendFileSync(
+    path.join(
+      extractedDir,
+      'runtime-core',
+      'x86_64-unknown-linux-musl',
+      '1flowbase-runtime-core'
+    ),
+    'tamper'
+  );
   assert.throws(
     () => verifySignedRuntimeCoreRelease(extractedDir, publicKey),
-    /runtime_core\.binary_sha256/
+    /runtime_core\.artifact_sha256/
   );
 
   fs.copyFileSync(
-    runtimeBinary,
-    path.join(extractedDir, 'bin', 'acme_provider-provider')
+    runtimeCoreBinary,
+    path.join(
+      extractedDir,
+      'runtime-core',
+      'x86_64-unknown-linux-musl',
+      '1flowbase-runtime-core'
+    )
   );
+  const mismatchedReceipt = {
+    ...release,
+    runtime_core: {
+      ...release.runtime_core,
+      artifact_sha256: 'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+    },
+  };
+  const mismatchedReceiptBytes = Buffer.from(JSON.stringify(mismatchedReceipt), 'utf8');
+  fs.writeFileSync(releasePath, mismatchedReceiptBytes);
+  fs.writeFileSync(signaturePath, crypto.sign(null, mismatchedReceiptBytes, privateKey));
+  assert.throws(
+    () => verifySignedRuntimeCoreRelease(extractedDir, publicKey),
+    /runtime_core\.artifact_sha256/
+  );
+
+  fs.writeFileSync(releasePath, releaseBytes);
+  fs.writeFileSync(signaturePath, signatureBytes);
   fs.writeFileSync(
     path.join(extractedDir, '_meta', 'runtime-core-gpl-license-notice.txt'),
     'GNU GENERAL PUBLIC LICENSE\nVersion 3, altered\n',
@@ -184,6 +231,16 @@ test('AC-006/AC-014: signed package archives bind a target runtime core binary t
     () => verifySignedRuntimeCoreRelease(extractedDir, publicKey),
     /runtime_core\.gpl_license_notice_sha256/
   );
+
+  const missingReceipt = { ...release };
+  delete missingReceipt.runtime_core;
+  const missingReceiptBytes = Buffer.from(JSON.stringify(missingReceipt), 'utf8');
+  fs.writeFileSync(releasePath, missingReceiptBytes);
+  fs.writeFileSync(signaturePath, crypto.sign(null, missingReceiptBytes, privateKey));
+  assert.throws(
+    () => verifySignedRuntimeCoreRelease(extractedDir, publicKey),
+    /缺少 runtime_core/
+  );
 });
 
 test('signed runtime core packaging rejects missing or invalid GPL/source compliance inputs', () => {
@@ -191,6 +248,7 @@ test('signed runtime core packaging rejects missing or invalid GPL/source compli
   const pluginPath = path.join(workspace, 'acme-provider');
   const outputDir = path.join(workspace, 'dist');
   const runtimeBinary = path.join(workspace, 'acme-provider');
+  const runtimeCoreBinary = path.join(workspace, '1flowbase-runtime-core');
   const signingKeyFile = path.join(workspace, 'official-signing-key.pem');
   const invalidNotice = path.join(workspace, 'NOTICE');
   const gplNotice = path.join(workspace, 'COPYING');
@@ -199,11 +257,13 @@ test('signed runtime core packaging rejects missing or invalid GPL/source compli
   createPluginScaffold(pluginPath);
   fs.mkdirSync(outputDir, { recursive: true });
   fs.writeFileSync(runtimeBinary, 'runtime core', 'utf8');
+  fs.writeFileSync(runtimeCoreBinary, 'runtime core binary', 'utf8');
   fs.writeFileSync(invalidNotice, 'proprietary notice', 'utf8');
   fs.writeFileSync(gplNotice, 'GPL-3.0-or-later\n', 'utf8');
   fs.writeFileSync(signingKeyFile, privateKey.export({ format: 'pem', type: 'pkcs8' }), 'utf8');
   const baseOptions = {
     runtimeBinaryFile: runtimeBinary,
+    runtimeCoreBinaryFile: runtimeCoreBinary,
     targetTriple: 'x86_64-unknown-linux-musl',
     signingKeyPemFile: signingKeyFile,
     signingKeyId: 'official-key-2026-04',
@@ -212,6 +272,26 @@ test('signed runtime core packaging rejects missing or invalid GPL/source compli
   assert.throws(
     () => createPluginPackage(pluginPath, outputDir, baseOptions),
     /runtime core 签名包需要 GPL license notice/
+  );
+  assert.throws(
+    () =>
+      createPluginPackage(pluginPath, outputDir, {
+        ...baseOptions,
+        runtimeCoreGplLicenseNoticeFile: gplNotice,
+        runtimeCoreCorrespondingSource: 'https://example.test/acme-provider/source/v0.1.0',
+        runtimeCoreBinaryFile: null,
+      }),
+    /runtime core 签名包需要 --runtime-core-binary/
+  );
+  assert.throws(
+    () =>
+      createPluginPackage(pluginPath, outputDir, {
+        ...baseOptions,
+        runtimeCoreBinaryFile: runtimeBinary,
+        runtimeCoreGplLicenseNoticeFile: gplNotice,
+        runtimeCoreCorrespondingSource: 'https://example.test/acme-provider/source/v0.1.0',
+      }),
+    /必须与 manifest\.runtime\.entry wrapper 使用不同输入文件/
   );
   assert.throws(
     () =>

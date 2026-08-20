@@ -54,23 +54,32 @@ function assertCorrespondingSource(pointer) {
   return url.toString();
 }
 
-function assertRuntimeCoreBinaryPath(binaryPath) {
+function assertRuntimeCoreArtifactPath(artifactPath) {
   if (
-    !binaryPath ||
-    path.posix.isAbsolute(binaryPath) ||
-    binaryPath.includes('\\') ||
-    binaryPath.split('/').some((segment) => !segment || segment === '.' || segment === '..')
+    !artifactPath ||
+    path.posix.isAbsolute(artifactPath) ||
+    artifactPath.includes('\\')
   ) {
-    throw new Error('runtime core binary_path 必须是安全的 archive 相对路径');
+    throw new Error('runtime core artifact_path 必须是安全的 archive 相对路径');
   }
 
-  return binaryPath;
+  const segments = artifactPath.split('/');
+  if (
+    segments.length !== 3 ||
+    segments[0] !== 'runtime-core' ||
+    !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(segments[1]) ||
+    !/^1flowbase-runtime-core(?:\.exe)?$/.test(segments[2])
+  ) {
+    throw new Error('runtime core artifact_path 必须位于安全的 runtime-core/<target>/ 路径');
+  }
+
+  return artifactPath;
 }
 
 function writeRuntimeCoreComplianceMetadata(stagedRoot, options) {
-  const binaryPath = assertRuntimeCoreBinaryPath(options.binaryPath);
-  const stagedBinaryPath = path.join(stagedRoot, ...binaryPath.split('/'));
-  assertRegularFile(stagedBinaryPath, 'runtime core binary');
+  const artifactPath = assertRuntimeCoreArtifactPath(options.artifactPath);
+  const stagedArtifactPath = path.join(stagedRoot, ...artifactPath.split('/'));
+  assertRegularFile(stagedArtifactPath, 'runtime core artifact');
   assertRegularFile(options.gplLicenseNoticeFile, 'runtime core GPL license notice');
 
   const licenseNotice = fs.readFileSync(options.gplLicenseNoticeFile, 'utf8');
@@ -85,8 +94,8 @@ function writeRuntimeCoreComplianceMetadata(stagedRoot, options) {
 
   return {
     target_triple: String(options.targetTriple),
-    binary_path: binaryPath,
-    binary_sha256: sha256File(stagedBinaryPath),
+    artifact_path: artifactPath,
+    artifact_sha256: sha256File(stagedArtifactPath),
     gpl_license_notice_path: RUNTIME_CORE_LICENSE_NOTICE_PATH,
     gpl_license_notice_sha256: sha256File(noticePath),
     corresponding_source: correspondingSource,
@@ -200,11 +209,11 @@ function verifySignedRuntimeCoreRelease(stagedRoot, trustedPublicKey) {
   if (!String(runtimeCore.target_triple || '').trim()) {
     throw new Error('runtime_core.target_triple 不能为空');
   }
-  const binaryPath = assertRuntimeCoreBinaryPath(runtimeCore.binary_path);
-  const binaryAbsolutePath = path.join(stagedRoot, ...binaryPath.split('/'));
-  assertRegularFile(binaryAbsolutePath, 'runtime core binary');
-  if (sha256File(binaryAbsolutePath) !== runtimeCore.binary_sha256) {
-    throw new Error('runtime_core.binary_sha256 与 archive binary 不匹配');
+  const artifactPath = assertRuntimeCoreArtifactPath(runtimeCore.artifact_path);
+  const artifactAbsolutePath = path.join(stagedRoot, ...artifactPath.split('/'));
+  assertRegularFile(artifactAbsolutePath, 'runtime core artifact');
+  if (sha256File(artifactAbsolutePath) !== runtimeCore.artifact_sha256) {
+    throw new Error('runtime_core.artifact_sha256 与 archive artifact 不匹配');
   }
   if (runtimeCore.gpl_license_notice_path !== RUNTIME_CORE_LICENSE_NOTICE_PATH) {
     throw new Error('runtime_core.gpl_license_notice_path 无效');
@@ -220,9 +229,6 @@ function verifySignedRuntimeCoreRelease(stagedRoot, trustedPublicKey) {
     throw new Error('runtime_core.gpl_license_notice_sha256 与 archive notice 不匹配');
   }
   assertCorrespondingSource(runtimeCore.corresponding_source);
-  if (release.payload_sha256 !== payloadSha256(stagedRoot)) {
-    throw new Error('official release payload_sha256 与 archive payload 不匹配');
-  }
 
   return release;
 }
