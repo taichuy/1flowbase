@@ -175,6 +175,7 @@ function vectorBodies(observers, secretCanary) {
           type: 'mcp', server_label: 'fixture_mcp', server_url: observers.networkObserverUrl,
           authorization: secretCanary, headers: { 'x-mcp-canary': secretCanary },
         }],
+        tool_choice: { type: 'mcp' },
         input: 'ordinary user request for an MCP lookup',
       },
     },

@@ -29,6 +29,7 @@ test('controlled WireAudit vectors cover tool search, hosted tools, MCP, approva
     'tool_search_call', 'tool_search_output', 'additional_tools', 'file_search',
     'programmatic_tool_calling', 'shell', 'ordinary user request for an MCP lookup', canary,
   ]) assert.match(wire, new RegExp(value, 'u'));
+  assert.deepEqual(vectors.at(-1).body.tool_choice, { type: 'mcp' });
   assert.doesNotMatch(wire, /mcp_list_tools|mcp_call|mcp_approval_request/u);
   assert.doesNotMatch(wire, /mcp_approval_response/u);
   assert.doesNotMatch(wire, /wire_audit_vector/u);
