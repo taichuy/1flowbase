@@ -333,6 +333,9 @@ test("verify workflow keeps React Doctor out of automatic merge blockers", () =>
 
 test("quality gate workflow includes React Doctor in scheduled and manual ci runs", () => {
   const workflow = readQualityGateWorkflow();
+  const singleScopeBlock = workflow.match(
+    /single-scope-gate:[\s\S]*?\n\n  repo-tooling-gate:/u,
+  )?.[0] || "";
   const jobBlock = workflow.match(
     /repo-frontend-react-doctor-gate:[\s\S]*?\n\n  repo-backend-gate:/u,
   )?.[0] || "";
@@ -363,6 +366,9 @@ test("quality gate workflow includes React Doctor in scheduled and manual ci run
     jobBlock,
     /repo-frontend-react-doctor-gate:[\s\S]*?name: test-governance-repo-frontend-react-doctor/u,
   );
+  assert.match(singleScopeBlock, /REACT_DOCTOR_DIFF_BASE: \$\{\{ inputs\.react_doctor_base \}\}/u);
+  assert.match(singleScopeBlock, /REACT_DOCTOR_BASE_SOURCE: workflow_dispatch\.react_doctor_base/u);
+  assert.match(singleScopeBlock, /REACT_DOCTOR_CANDIDATE_SOURCE: quality-gate-target-sha/u);
   assert.match(
     workflow,
     /aggregate:\n(?:.*\n)*?\s+needs:\n\s+- repo-tooling-gate\n\s+- repo-frontend-gate\n\s+- repo-frontend-react-doctor-gate\n\s+- repo-backend-gate/u,
