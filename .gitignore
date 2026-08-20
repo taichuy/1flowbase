@@ -67,3 +67,4 @@ docker/1flowbase.code-workspace
 docs/private/*
 docs/ziliao/*
 .codex/*
+deploy/*
