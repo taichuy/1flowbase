@@ -11,8 +11,9 @@ use control_plane::{
     errors::ControlPlaneError,
     plugin_lifecycle::reconcile_installation_snapshot,
     ports::{
-        DataSourceCrudRuntimePort, DataSourceRepository, DataSourceRuntimePort, PluginRepository,
-        ProviderLiveEventSenders, ProviderRuntimeInvocationOutput, ProviderRuntimePort,
+        DataSourceCrudRuntimePort, DataSourceRepository, DataSourceRuntimePort,
+        NetworkEgressRuntimePort, PluginRepository, ProviderLiveEventSenders,
+        ProviderRuntimeInvocationOutput, ProviderRuntimePort,
     },
 };
 use plugin_framework::{
@@ -627,6 +628,26 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         );
         finish_runtime_activity(activity, &result);
         result
+    }
+}
+
+#[async_trait]
+impl NetworkEgressRuntimePort for ApiProviderRuntime {
+    async fn sync_network_egresses(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+    ) -> anyhow::Result<Vec<plugin_framework::EgressDescriptor>> {
+        if installation.contract_version != plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT {
+            return Err(ControlPlaneError::InvalidInput("plugin_installation").into());
+        }
+        self.ensure_network_egress_loaded(installation).await?;
+        self.services
+            .network_egress_host
+            .write()
+            .await
+            .sync_egresses(&installation.plugin_id)
+            .await
+            .map_err(map_provider_framework_error)
     }
 }
 

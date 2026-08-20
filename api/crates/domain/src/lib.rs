@@ -20,6 +20,7 @@ pub mod mcp_bundle;
 pub mod mcp_management;
 pub mod model_provider;
 pub mod modeling;
+pub mod network_egress;
 pub mod node_contribution;
 pub mod orchestration;
 pub mod plugin_worker;
@@ -144,6 +145,10 @@ pub use modeling::{
     RoleDataPolicyRecord, RoleDataPolicyScope, ScopeDataModelGrantRecord,
     ScopeDataModelPermissionProfile, CORE_DATA_MODEL_TEMPLATE_PROVIDER,
     GENERAL_DATA_MODEL_TEMPLATE_CODE, GENERAL_DATA_MODEL_TEMPLATE_VERSION,
+};
+pub use network_egress::{
+    NetworkEgressHealthStatus, NetworkEgressProjectionRecord, NetworkEgressProviderLifecycle,
+    NetworkEgressProviderRecord,
 };
 pub use node_contribution::{NodeContributionDependencyStatus, NodeContributionRegistryEntry};
 pub use orchestration::{

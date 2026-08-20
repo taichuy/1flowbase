@@ -426,6 +426,13 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("model_scope_grants.list", "system.data-models"),
     settings("model_scope_grants.update", "system.data-models"),
     other("node_contributions.view", "other.node-contributions"),
+    settings("network_egress_providers.create", "system.network-center"),
+    settings(
+        "network_egress_providers.lifecycle.update",
+        "system.network-center",
+    ),
+    settings("network_egress_providers.list", "system.network-center"),
+    settings("network_egress_providers.sync", "system.network-center"),
     other("plugins.artifact.install", "other.plugins"),
     other("plugins.artifact.refresh", "other.plugins"),
     other("plugins.assign", "other.plugins"),

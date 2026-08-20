@@ -45,6 +45,7 @@ pub const SYSTEM_MEMBERS_SETTINGS_FEATURE_PERMISSION: &str =
 pub const SYSTEM_MCP_MANAGEMENT_SETTINGS_FEATURE_ID: &str = "system.mcp-management";
 pub const SYSTEM_MCP_MANAGEMENT_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.mcp-management";
+pub const SYSTEM_NETWORK_CENTER_SETTINGS_FEATURE_ID: &str = "system.network-center";
 pub const SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_ID: &str = "system.model-providers";
 pub const SYSTEM_MODEL_PROVIDERS_SETTINGS_FEATURE_PERMISSION: &str =
     "settings_feature.access.system.model-providers";
@@ -654,6 +655,30 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("POST", "/api/console/settings/members/{id}/enable"),
                 ("POST", "/api/console/settings/members/{id}/reset-password"),
                 ("PUT", "/api/console/settings/members/{id}/roles"),
+            ]),
+        },
+        SettingsFeatureRegistration {
+            feature_id: SYSTEM_NETWORK_CENTER_SETTINGS_FEATURE_ID.to_string(),
+            owner: SettingsFeatureOwner {
+                kind: SettingsFeatureOwnerKind::Core,
+                owner_id: "boot-core".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+            },
+            lifecycle: SettingsFeatureLifecycle::Active,
+            console_surface: SettingsFeatureConsoleSurface {
+                route_id: "settings.network-center".to_string(),
+                surface_key: "network-center".to_string(),
+                path: "/settings/network-center/providers".to_string(),
+                label_key: "auto.network_center".to_string(),
+                description_key:
+                    "console.policy_groups.settings.system.network-center.description".to_string(),
+                order: 250,
+            },
+            api_routes: settings_api_routes(&[
+                ("GET", "/api/console/settings/network-center/providers"),
+                ("POST", "/api/console/settings/network-center/providers"),
+                ("PATCH", "/api/console/settings/network-center/providers/{id}"),
+                ("POST", "/api/console/settings/network-center/providers/{id}/sync"),
             ]),
         },
         SettingsFeatureRegistration {

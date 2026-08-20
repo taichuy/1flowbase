@@ -42,6 +42,7 @@ pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
     settings_feature!("auto.memory_observation", "Memory observation"),
     settings_feature!("auto.user_management", "User management"),
     settings_feature!("auto.model_providers", "Model providers"),
+    settings_feature!("auto.network_center", "Network center"),
     settings_feature!("auto.mcp_management", "MCP management"),
     settings_feature!("auto.permission_management", "Permission management"),
     settings_feature!("auto.ui_management", "UI management"),
@@ -96,6 +97,10 @@ pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
     settings_feature!(
         "console.policy_groups.settings.system.model-providers.description",
         "Model provider operations"
+    ),
+    settings_feature!(
+        "console.policy_groups.settings.system.network-center.description",
+        "Network egress provider operations"
     ),
     settings_feature!(
         "console.policy_groups.settings.system.mcp-management.description",

@@ -138,6 +138,10 @@ use utoipa::OpenApi;
         crate::routes::model_providers::delete_instance,
         crate::routes::model_providers::list_options,
         crate::routes::model_providers::settings_routes::list_settings_options,
+        crate::routes::network_center::list_network_egress_providers,
+        crate::routes::network_center::create_network_egress_provider,
+        crate::routes::network_center::update_network_egress_provider_lifecycle,
+        crate::routes::network_center::sync_network_egress_provider,
     ),
     components(schemas(
         crate::routes::plugins::InstallPluginBody,
@@ -317,6 +321,10 @@ use utoipa::OpenApi;
         crate::routes::model_providers::ModelProviderOptionsResponse,
         crate::routes::model_providers::ModelProviderPricingTargetResponse,
         crate::routes::model_providers::DeletedResponse,
+        crate::routes::network_center::CreateNetworkEgressProviderBody,
+        crate::routes::network_center::NetworkEgressProjectionResponse,
+        crate::routes::network_center::NetworkEgressProviderResponse,
+        crate::routes::network_center::UpdateNetworkEgressProviderLifecycleBody,
     ))
 )]
 pub(super) struct ExtensionsOpenApi;
