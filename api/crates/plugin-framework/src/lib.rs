@@ -16,6 +16,7 @@ pub mod host_extension_manifest;
 pub mod host_extension_registry;
 pub mod installation;
 pub mod manifest_v1;
+pub mod network_egress_provider_contract;
 pub mod network_egress_provider_package;
 pub mod package_intake;
 pub mod provider_contract;
@@ -62,6 +63,7 @@ pub use manifest_v1::{
     NodeContributionManifest, PluginExecutionMode, PluginManifestV1, PluginPermissionManifest,
     PluginRuntimeLimits, PluginRuntimeManifest,
 };
+pub use network_egress_provider_contract::*;
 pub use network_egress_provider_package::{
     NetworkEgressProviderPackage, NETWORK_EGRESS_PROVIDER_CONTRACT,
 };
