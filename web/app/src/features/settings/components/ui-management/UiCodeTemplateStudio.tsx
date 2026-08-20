@@ -4,8 +4,8 @@ import {
   diagnoseLegacyBlockModuleSource,
   validateNativeTrustedBlockSource
 } from '@1flowbase/page-runtime';
-import { App, Empty, Form, Input, Select } from 'antd';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, App, Empty, Form, Input, Select } from 'antd';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
@@ -19,6 +19,11 @@ import {
   type FrontstageJsxInsertion
 } from '../../../frontstage/lib/jsx-studio/source-insertion';
 import type { FrontstageBlockInstance } from '../../../frontstage/lib/page-document';
+import {
+  JsxStudioRunPanel,
+  type JsxStudioRunBlockContextInput
+} from '../../../frontstage/components/jsx-studio/JsxStudioRunPanel';
+import { createFrontstageUnavailableBlockContext } from '../../../frontstage/lib/native-trusted-block-react-adapter';
 import { JsxStudioResourcePanel } from '../../../frontstage/components/jsx-studio/JsxStudioResourcePanel';
 import type {
   SettingsUiOfficialTemplate,
@@ -49,7 +54,12 @@ export function UiCodeTemplateStudio({
   const { t } = useTranslation('settingsUiManagement');
   const { message } = App.useApp();
   const [draft, setDraft] = useState(initialValue);
+  const [previewRequest, setPreviewRequest] = useState<{
+    revision: string;
+    source: string;
+  } | null>(null);
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
+  const previewSequenceRef = useRef(0);
   const catalog = useFrontstageBlockCatalog({ workspaceId });
   const catalogEntry =
     catalog.items.find(
@@ -97,8 +107,22 @@ export function UiCodeTemplateStudio({
   }, [contributionIdentity, draft.source, projection.allowedImportSources]);
 
   useEffect(() => {
-    if (open) setDraft(initialValue);
+    if (!open) return;
+    setDraft(initialValue);
+    setPreviewRequest(null);
+    previewSequenceRef.current = 0;
   }, [initialValue, open]);
+
+  const createPreviewBlockContext = useCallback(
+    ({ plan }: JsxStudioRunBlockContextInput) => {
+      const unavailable = createFrontstageUnavailableBlockContext(plan);
+      return {
+        ...unavailable,
+        workspace: { id: workspaceId ?? 'workspace' }
+      };
+    },
+    [workspaceId]
+  );
 
   const insertCode = (insertion: FrontstageJsxInsertion) => {
     const editor = editorRef.current;
@@ -257,15 +281,43 @@ export function UiCodeTemplateStudio({
       }}
       onInjectContext={injectFrontstageContextComment}
       onReset={() => setDraft(initialValue)}
-      onRun={() => undefined}
+      onRun={(source) => {
+        if (diagnoseLegacyBlockModuleSource(source)) return;
+        previewSequenceRef.current += 1;
+        setPreviewRequest({
+          revision: `run:${previewSequenceRef.current}`,
+          source
+        });
+      }}
       onSave={submit}
       renderResource={(section) =>
         section === 'configuration' ? (
           identityForm
-        ) : section === 'run' || !workspaceId ? (
+        ) : section === 'run' ? (
+          previewRequest ? (
+            <div className="frontstage-jsx-studio__resource-scroll">
+              <Alert
+                showIcon
+                type="info"
+                title={t('template_preview_limited')}
+              />
+              <JsxStudioRunPanel
+                block={authoringBlock}
+                code={previewRequest.source}
+                createBlockContext={createPreviewBlockContext}
+                revision={previewRequest.revision}
+              />
+            </div>
+          ) : (
+            <Empty
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+              description={t('template_preview_idle')}
+            />
+          )
+        ) : !workspaceId ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description={t('template_preview_unavailable')}
+            description={t('template_resources_unavailable')}
           />
         ) : (
           <JsxStudioResourcePanel
