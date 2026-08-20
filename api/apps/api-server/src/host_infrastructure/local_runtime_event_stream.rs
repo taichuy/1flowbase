@@ -319,6 +319,8 @@ fn is_required_delivery_event(event: &RuntimeEventEnvelope) -> bool {
                 | "tool_call_commit"
                 | "mcp_call_delta"
                 | "mcp_call_commit"
+                | "provider_output_item_added"
+                | "provider_output_item_done"
                 | "usage_delta"
                 | "usage_snapshot"
                 | "usage_recorded"
