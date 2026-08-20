@@ -69,14 +69,16 @@ function parsePackageArgs(argv) {
   if (Boolean(options.signingKeyPemFile) !== Boolean(options.signingKeyId)) {
     throw new Error('package 使用签名时需要同时提供 signing key PEM 与 signing key id');
   }
-  if (options.signingKeyPemFile && !options.runtimeCoreGplLicenseNoticeFile) {
-    throw new Error('runtime core 签名包需要 --runtime-core-gpl-license-notice <file>');
+  const runtimeCoreInputs = [
+    options.runtimeCoreBinaryFile,
+    options.runtimeCoreGplLicenseNoticeFile,
+    options.runtimeCoreCorrespondingSource,
+  ];
+  if (runtimeCoreInputs.some(Boolean) && !options.signingKeyPemFile) {
+    throw new Error('runtime core receipt 需要同时提供签名 key PEM 与 key id');
   }
-  if (options.signingKeyPemFile && !options.runtimeCoreBinaryFile) {
-    throw new Error('runtime core 签名包需要 --runtime-core-binary <file>');
-  }
-  if (options.signingKeyPemFile && !options.runtimeCoreCorrespondingSource) {
-    throw new Error('runtime core 签名包需要 --runtime-core-corresponding-source <https-url>');
+  if (runtimeCoreInputs.some(Boolean) && !runtimeCoreInputs.every(Boolean)) {
+    throw new Error('runtime core receipt 需要 --runtime-core-binary、GPL notice 和 corresponding source');
   }
 
   return options;

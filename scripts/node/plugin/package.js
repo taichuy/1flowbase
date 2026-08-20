@@ -249,6 +249,11 @@ function createPluginPackage(pluginPath, outputDir, options = {}) {
   }
   const hasSigningKeyPemFile = Boolean(options.signingKeyPemFile);
   const hasSigningKeyId = Boolean(options.signingKeyId);
+  const hasRuntimeCoreReceipt = Boolean(
+    runtimeCoreBinaryFile ||
+      options.runtimeCoreGplLicenseNoticeFile ||
+      options.runtimeCoreCorrespondingSource
+  );
   if (hasSigningKeyPemFile !== hasSigningKeyId) {
     throw new Error('package 使用签名时需要同时提供 signing key PEM 与 signing key id');
   }
@@ -298,7 +303,10 @@ function createPluginPackage(pluginPath, outputDir, options = {}) {
   try {
     let signatureMetadata = null;
     let runtimeCore = null;
-    if (hasSigningKeyPemFile) {
+    if (hasRuntimeCoreReceipt) {
+      if (!hasSigningKeyPemFile) {
+        throw new Error('runtime core receipt 需要同时提供签名 key PEM 与 key id');
+      }
       if (!runtimeCoreBinaryFile) {
         throw new Error('runtime core 签名包需要 --runtime-core-binary 指向已编译 runtime core CLI');
       }
@@ -331,6 +339,8 @@ function createPluginPackage(pluginPath, outputDir, options = {}) {
         gplLicenseNoticeFile: path.resolve(options.runtimeCoreGplLicenseNoticeFile),
         correspondingSource: options.runtimeCoreCorrespondingSource,
       });
+    }
+    if (hasSigningKeyPemFile) {
       signatureMetadata = writeOfficialSignatureFiles(stagedRoot, {
         pluginId: manifestPluginId,
         providerCode: pluginCode,

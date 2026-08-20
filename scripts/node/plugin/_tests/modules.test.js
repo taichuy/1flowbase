@@ -96,6 +96,7 @@ test('AC-006/AC-014: signed package archives bind a target runtime core binary t
 
   createPluginScaffold(pluginPath);
   fs.mkdirSync(outputDir, { recursive: true });
+  fs.mkdirSync(extractedDir, { recursive: true });
   fs.writeFileSync(runtimeBinary, '#!/usr/bin/env sh\nexit 0\n', 'utf8');
   fs.chmodSync(runtimeBinary, 0o755);
   fs.writeFileSync(runtimeCoreBinary, '#!/usr/bin/env sh\necho runtime-core\n', 'utf8');
@@ -177,7 +178,7 @@ test('AC-006/AC-014: signed package archives bind a target runtime core binary t
     fs.readFileSync(path.join(extractedDir, 'bin', 'acme_provider-provider'), 'utf8'),
     fs.readFileSync(runtimeBinary, 'utf8')
   );
-  assert.equal(
+  assert.deepEqual(
     verifySignedRuntimeCoreRelease(extractedDir, publicKey),
     release
   );
@@ -247,7 +248,7 @@ test('signed runtime core packaging rejects missing or invalid GPL/source compli
   const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-plugin-runtime-core-invalid-'));
   const pluginPath = path.join(workspace, 'acme-provider');
   const outputDir = path.join(workspace, 'dist');
-  const runtimeBinary = path.join(workspace, 'acme-provider');
+  const runtimeBinary = path.join(workspace, 'acme-provider-wrapper');
   const runtimeCoreBinary = path.join(workspace, '1flowbase-runtime-core');
   const signingKeyFile = path.join(workspace, 'official-signing-key.pem');
   const invalidNotice = path.join(workspace, 'NOTICE');

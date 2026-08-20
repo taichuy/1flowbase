@@ -575,8 +575,6 @@ test('plugin package writes official signature metadata when signing inputs are 
   const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-plugin-dist-'));
   const extractedDir = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-plugin-extract-'));
   const signingKeyFile = path.join(outputDir, 'official-signing-key.pem');
-  const licenseNoticeFile = path.join(outputDir, 'COPYING');
-  const runtimeCoreBinary = path.join(outputDir, '1flowbase-runtime-core');
   const { privateKey, publicKey } = crypto.generateKeyPairSync('ed25519');
 
   await main(['init', pluginPath]);
@@ -586,22 +584,13 @@ test('plugin package writes official signature metadata when signing inputs are 
     privateKey.export({ format: 'pem', type: 'pkcs8' }),
     'utf8'
   );
-  fs.writeFileSync(runtimeCoreBinary, '#!/usr/bin/env sh\nexit 0\n', 'utf8');
-  fs.writeFileSync(
-    licenseNoticeFile,
-    'GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n',
-    'utf8'
-  );
 
   const result = createPluginPackage(pluginPath, outputDir, {
     runtimeBinaryFile: fakeBinary,
-    runtimeCoreBinaryFile: runtimeCoreBinary,
     targetTriple: 'x86_64-unknown-linux-musl',
     signingKeyPemFile: signingKeyFile,
     signingKeyId: 'official-key-2026-04',
     issuedAt: '2026-04-19T13:00:00Z',
-    runtimeCoreGplLicenseNoticeFile: licenseNoticeFile,
-    runtimeCoreCorrespondingSource: 'https://example.test/acme-openai-compatible/source/v0.1.0',
   });
 
   const unpack = spawnSync('tar', ['-xzf', result.packageFile, '-C', extractedDir]);
@@ -624,6 +613,7 @@ test('plugin package writes official signature metadata when signing inputs are 
   assert.equal(release.signature_algorithm, 'ed25519');
   assert.equal(release.signing_key_id, 'official-key-2026-04');
   assert.equal(release.issued_at, '2026-04-19T13:00:00Z');
+  assert.equal(release.runtime_core, undefined);
   assert.equal(release.payload_sha256, payloadSha256(extractedDir));
   assert.equal(
     crypto.verify(null, releaseBytes, publicKey, signature),

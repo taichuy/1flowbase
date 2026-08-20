@@ -145,9 +145,6 @@ function payloadSha256(rootDir) {
 }
 
 function writeOfficialSignatureFiles(stagedRoot, options) {
-  if (!options.runtimeCore || typeof options.runtimeCore !== 'object') {
-    throw new Error('official release 签名需要 runtime_core receipt');
-  }
   const privateKeyPem = fs.readFileSync(options.signingKeyPemFile, 'utf8');
   const privateKey = crypto.createPrivateKey(privateKeyPem);
   const release = {
@@ -161,7 +158,7 @@ function writeOfficialSignatureFiles(stagedRoot, options) {
     signature_algorithm: 'ed25519',
     signing_key_id: options.signingKeyId,
     issued_at: options.issuedAt,
-    runtime_core: options.runtimeCore,
+    ...(options.runtimeCore ? { runtime_core: options.runtimeCore } : {}),
   };
   const releaseBytes = Buffer.from(JSON.stringify(release), 'utf8');
   const signature = crypto.sign(null, releaseBytes, privateKey);
