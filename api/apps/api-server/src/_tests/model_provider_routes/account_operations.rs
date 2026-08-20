@@ -1,5 +1,14 @@
 use super::*;
 
+async fn response_json(response: axum::response::Response) -> serde_json::Value {
+    serde_json::from_slice(
+        &axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap()
+}
+
 #[tokio::test]
 async fn provider_account_routes_project_capabilities_and_protect_consume_with_csrf() {
     let app = test_app().await;
