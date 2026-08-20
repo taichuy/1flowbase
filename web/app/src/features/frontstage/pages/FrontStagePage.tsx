@@ -38,7 +38,6 @@ import { useFrontstagePageContentSave } from '../hooks/use-frontstage-page-conte
 import {
   appendFrontstageBlock,
   createFrontstageBlockCompositionState,
-  updateFrontstageBlock,
   updateFrontstageBlockLayout,
   updateFrontstageBlockPresentation,
   updateFrontstagePageLayoutMode,
@@ -94,6 +93,7 @@ import './frontstage-page.css';
 const EMPTY_RUNTIME_DEMANDS: FrontstageRuntimeDemandByBlockId = Object.freeze(
   {}
 );
+const EMPTY_BLOCK_ROOTS: NonNullable<FrontStagePageProps['blockRoots']> = [];
 
 export const FrontStagePage: FC<FrontStagePageProps> = ({
   workspaceId,
@@ -101,7 +101,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   tabId,
   blockRuntimeAssembly,
   blockRuntimeInputs,
-  blockRoots = [],
+  blockRoots = EMPTY_BLOCK_ROOTS,
   isBlockRootsLoading = false,
   hasBlockRootsLoadError = false,
   isBlockRuntimeRoute = false,

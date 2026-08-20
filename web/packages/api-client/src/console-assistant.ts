@@ -379,7 +379,11 @@ export async function subscribeConsoleAssistantConversationsWebSocket(
       settled = true;
       clearTimers();
       socket?.close();
-      error ? reject(error) : resolve();
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
     };
 
     abortController.signal.addEventListener('abort', () => finish(), {

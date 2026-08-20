@@ -88,7 +88,7 @@ async fn ac_002_ac_006_bundle_source_is_projected_without_blocking_mutations() {
         )
         .await
         .unwrap();
-    assert_eq!(delete_response.status(), StatusCode::OK);
+    assert_eq!(delete_response.status(), StatusCode::NO_CONTENT);
 }
 
 #[tokio::test]

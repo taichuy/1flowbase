@@ -248,7 +248,7 @@ export function PricingCatalogPanel() {
                   loading={importing.isPending}
                   onClick={() => importing.mutate()}
                 >
-                  {i18nText('settings', 'auto.billing_import_catalog')}
+                  {i18nText('settingsBilling', 'auto.billing_import_catalog')}
                 </Button>
                 <DataTableColumnSettings
                   columns={columns}

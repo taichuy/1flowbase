@@ -154,6 +154,7 @@ function readBoundaryForContext({ functionName, context }) {
   const normalized = context.toLowerCase();
   const hasFlowRunScope = /\bwhere\b[\s\S]*\bflow_run_id\s*=\s*\$/u.test(normalized);
   const hasNodeRunScope = /\bwhere\b[\s\S]*\bnode_run_id\s*=\s*\$/u.test(normalized);
+  const hasConversationScope = /\bwhere\b[\s\S]*\bconversation_id\s*=\s*\$/u.test(normalized);
   const hasApplicationAndRunId =
     /\bwhere\b[\s\S]*\bapplication_id\s*=\s*\$/u.test(normalized)
     && /\b(?:id|flow_run_id)\s*=\s*\$/u.test(normalized);
@@ -171,7 +172,7 @@ function readBoundaryForContext({ functionName, context }) {
   if (hasApplicationAndRunId || hasTraceNodeId || hasPrimaryKeyBatch || /\b(detail|content|fetch|get_latest)\b/u.test(name)) {
     return isPageOrList && (hasFlowRunScope || hasNodeRunScope) ? 'run_scope' : 'detail';
   }
-  if (hasFlowRunScope || hasNodeRunScope) {
+  if (hasFlowRunScope || hasNodeRunScope || hasConversationScope) {
     return 'run_scope';
   }
   if (isPageOrList) {

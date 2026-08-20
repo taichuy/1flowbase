@@ -809,18 +809,32 @@ async fn failover_queue_records_each_attempt_and_links_usage_to_winner() {
     assert_eq!(attempts[0].status, "failed");
     assert_eq!(attempts[0].provider_instance_id, Some(primary_instance_id));
     assert_eq!(attempts[0].upstream_model_id, "gpt-5.4-mini");
-    assert_eq!(attempts[0].usage_ledger_id, None);
     assert_eq!(attempts[1].attempt_index, 1);
     assert_eq!(attempts[1].status, "succeeded");
     assert_eq!(attempts[1].provider_instance_id, Some(backup_instance_id));
     assert_eq!(attempts[1].upstream_model_id, "backup-model");
-    assert_eq!(usage.len(), 1);
-    assert_eq!(usage[0].failover_attempt_id, Some(attempts[1].id));
-    assert_eq!(attempts[1].usage_ledger_id, Some(usage[0].id));
+    // Per-attempt usage accounting: every failover attempt gets its own usage
+    // ledger entry; the failed attempt carries unavailable-usage evidence and
+    // the winner carries the recorded usage.
+    assert_eq!(usage.len(), 2);
+    let failed_usage = usage
+        .iter()
+        .find(|entry| entry.failover_attempt_id == Some(attempts[0].id))
+        .expect("failed attempt should have a linked usage ledger entry");
+    assert_eq!(
+        failed_usage.usage_status,
+        domain::UsageLedgerStatus::UnavailableError
+    );
+    let winner_usage = usage
+        .iter()
+        .find(|entry| entry.failover_attempt_id == Some(attempts[1].id))
+        .expect("winning attempt should have a linked usage ledger entry");
+    assert_eq!(attempts[0].usage_ledger_id, Some(failed_usage.id));
+    assert_eq!(attempts[1].usage_ledger_id, Some(winner_usage.id));
 }
 
 #[tokio::test]
-async fn all_failed_failover_attempts_do_not_receive_usage_ledger_link() {
+async fn all_failed_failover_attempts_link_unavailable_usage_evidence() {
     let service = OrchestrationRuntimeService::for_tests_with_fail_before_token_models(vec![
         "gpt-5.4-mini",
         "backup-model",
@@ -867,15 +881,20 @@ async fn all_failed_failover_attempts_do_not_receive_usage_ledger_link() {
 
     assert_eq!(attempts.len(), 2);
     assert!(attempts.iter().all(|attempt| attempt.status == "failed"));
-    assert!(attempts
-        .iter()
-        .all(|attempt| attempt.usage_ledger_id.is_none()));
-    assert_eq!(usage.len(), 1);
-    assert_eq!(usage[0].failover_attempt_id, None);
-    assert_eq!(
-        usage[0].usage_status,
-        domain::UsageLedgerStatus::UnavailableError
-    );
+    // Per-attempt usage accounting: each failed attempt keeps its own
+    // unavailable-usage ledger entry as auditable evidence.
+    assert_eq!(usage.len(), 2);
+    for attempt in &attempts {
+        let entry = usage
+            .iter()
+            .find(|entry| entry.failover_attempt_id == Some(attempt.id))
+            .expect("each failed attempt should have a linked usage ledger entry");
+        assert_eq!(attempt.usage_ledger_id, Some(entry.id));
+        assert_eq!(
+            entry.usage_status,
+            domain::UsageLedgerStatus::UnavailableError
+        );
+    }
 }
 
 fn failover_queue_document(

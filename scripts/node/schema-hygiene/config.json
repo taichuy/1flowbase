@@ -63,6 +63,7 @@
     "ui_component_contract_revisions"
   ],
   "systemScopeTables": [
+    "model_pricing_rules",
     "retained_frontend_module_assets",
     "ui_code_template_defaults",
     "ui_code_template_revisions",
@@ -586,6 +587,33 @@
     "forbidden": ["misc", "legacy", "todo", "n/a", "none"]
   },
   "exemptions": {
+    "credit_event_outbox": {
+      "kind": "delivery_outbox",
+      "reason": "outbox rows are identified by event_id, routed by workspace_id, and mutate only delivery lifecycle columns (locked_by, locked_until, published_at, last_error) instead of a generic updated_at",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "user_credit_accounts": {
+      "kind": "workspace_routed_account",
+      "reason": "credit accounts are routed by (workspace_id, user_id, credit_unit) with a workspace_id + updated_at listing index; scope_id expansion is deferred to a dedicated billing scope migration",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "workspace_billing_settings": {
+      "kind": "bounded_workspace_singleton",
+      "reason": "one billing settings row per workspace uses workspace_id as its stable identity and is bounded by the workspaces table",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
     "assistant_conversations": {
       "kind": "bounded_conversation_projection",
       "reason": "assistant conversations use conversation_id as their stable identity and the scoped user application updated index matches the bounded listing contract",

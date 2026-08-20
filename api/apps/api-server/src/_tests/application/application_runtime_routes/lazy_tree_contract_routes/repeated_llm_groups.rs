@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn application_runtime_routes_trace_tree_groups_repeated_llm_node_runs_at_root() {
-    let (state, _) = test_api_state_with_database_url().await;
+    let (state, database_url) = test_api_state_with_database_url().await;
     let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let provider_instance_id = create_ready_provider_instance(&app, &cookie, &csrf).await;
@@ -16,8 +16,8 @@ async fn application_runtime_routes_trace_tree_groups_repeated_llm_node_runs_at_
     let first_node_run_id =
         Uuid::parse_str(preview_payload["data"]["node_run"]["id"].as_str().unwrap()).unwrap();
 
-    <MainDurableStore as OrchestrationRuntimeRepository>::update_node_run(
-        &state.store,
+    seed_node_run_history(
+        &database_url,
         &UpdateNodeRunInput {
             node_run_id: first_node_run_id,
             status: domain::NodeRunStatus::Succeeded,
@@ -57,8 +57,8 @@ async fn application_runtime_routes_trace_tree_groups_repeated_llm_node_runs_at_
     .await
     .unwrap();
 
-    let second_node_run = <MainDurableStore as OrchestrationRuntimeRepository>::create_node_run(
-        &state.store,
+    let second_node_run_id = seed_node_run_history_record(
+        &database_url,
         &CreateNodeRunInput {
             flow_run_id: flow_run_uuid,
             node_id: "node-llm".to_string(),
@@ -89,10 +89,10 @@ async fn application_runtime_routes_trace_tree_groups_repeated_llm_node_runs_at_
     )
     .await
     .unwrap();
-    <MainDurableStore as OrchestrationRuntimeRepository>::update_node_run(
-        &state.store,
+    seed_node_run_history(
+        &database_url,
         &UpdateNodeRunInput {
-            node_run_id: second_node_run.id,
+            node_run_id: second_node_run_id,
             status: domain::NodeRunStatus::WaitingCallback,
             output_payload: json!({
                 "tool_calls": [

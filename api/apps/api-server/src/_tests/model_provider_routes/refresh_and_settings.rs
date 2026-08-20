@@ -77,9 +77,18 @@ async fn model_provider_options_schema_accepts_real_dynamic_json_leaves_ac_001()
         .iter()
         .find(|target| target["provider_code"] == "zero" && target["upstream_model_id"] == "any")
         .expect("global zero pricing target");
-    assert_eq!(zero_target["input_token_unit_price"], "0");
-    assert_eq!(zero_target["output_token_unit_price"], "0");
-    assert_eq!(zero_target["cache_hit_token_unit_price"], "0");
+    assert_eq!(
+        zero_target["input_token_unit_price"],
+        "0.000000000000000000"
+    );
+    assert_eq!(
+        zero_target["output_token_unit_price"],
+        "0.000000000000000000"
+    );
+    assert_eq!(
+        zero_target["cache_hit_token_unit_price"],
+        "0.000000000000000000"
+    );
 
     let fields = payload["data"]["providers"][0]["parameter_form"]["fields"]
         .as_array()
@@ -191,8 +200,8 @@ async fn model_provider_routes_refresh_models_keeps_enabled_model_ids_unchanged(
     assert_eq!(
         list_payload["data"][0]["configured_models"],
         json!([
-            { "model_id": "fixture_chat", "enabled": true, "context_window_override_tokens": 128000 },
-            { "model_id": "custom-refresh", "enabled": false, "context_window_override_tokens": null }
+            { "model_id": "fixture_chat", "enabled": true, "context_window_override_tokens": 128000, "pricing_provider_code": "zero", "pricing_model_id": "any" },
+            { "model_id": "custom-refresh", "enabled": false, "context_window_override_tokens": null, "pricing_provider_code": "zero", "pricing_model_id": "any" }
         ])
     );
     assert_eq!(

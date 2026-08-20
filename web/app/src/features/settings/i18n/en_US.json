@@ -445,7 +445,6 @@
     "request_log_user_account": "User account",
     "request_log_model": "Model",
     "request_log_cost": "Cost",
-    "request_log_billing_status": "Billing status",
     "request_log_billing_settled": "Settled",
     "request_log_billing_pending": "Pending",
     "request_log_billing_reconciliation_failed": "Reconciliation failed",
@@ -1019,7 +1018,6 @@
     "billing_transaction_type": "Transaction type",
     "billing_balance_after": "Balance after",
     "billing_created_at": "Created at",
-    "billing_import_catalog": "Update",
     "billing_catalog_empty": "The bundled catalog has no importable rules. Add one manually under model providers."
   }
 }

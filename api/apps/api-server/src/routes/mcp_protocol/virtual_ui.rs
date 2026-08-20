@@ -586,6 +586,7 @@ fn apply_catalog_registration_capabilities(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch(
     state: &Arc<ApiState>,
     headers: &HeaderMap,

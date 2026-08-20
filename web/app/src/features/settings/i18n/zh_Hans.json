@@ -445,7 +445,6 @@
     "request_log_user_account": "用户账号",
     "request_log_model": "模型",
     "request_log_cost": "费用",
-    "request_log_billing_status": "计费状态",
     "request_log_billing_settled": "已结算",
     "request_log_billing_pending": "待结算",
     "request_log_billing_reconciliation_failed": "对账失败",
@@ -1019,7 +1018,6 @@
     "billing_transaction_type": "流水类型",
     "billing_balance_after": "变更后余额",
     "billing_created_at": "发生时间",
-    "billing_import_catalog": "更新",
     "billing_catalog_empty": "当前内置目录没有可导入规则，可在模型供应商页面手动新增。"
   }
 }

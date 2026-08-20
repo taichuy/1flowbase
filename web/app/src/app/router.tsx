@@ -614,7 +614,7 @@ const frontstageSlugPageRoute = createRoute({
   getParentRoute: () => shellRoute,
   path: FRONTSTAGE_SLUG_PAGE_PATH,
   notFoundComponent: NotFoundPage,
-  component: () => {
+  component: function FrontstageSlugPageRouteComponent() {
     const { slug, pageId } = frontstageSlugPageRoute.useParams();
     const childRouteState = useRouterState({
       select: (state) => {

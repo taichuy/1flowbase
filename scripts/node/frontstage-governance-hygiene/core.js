@@ -20,6 +20,14 @@ const FRONTSTAGE_SERVICE_FILE = path.join(
   'frontstage',
   'mod.rs'
 );
+const FRONTSTAGE_BLOCK_TREE_SERVICE_FILE = path.join(
+  'api',
+  'crates',
+  'control-plane',
+  'src',
+  'frontstage',
+  'block_tree.rs'
+);
 const FRONTSTAGE_REPOSITORY_FILE = path.join(
   'api',
   'crates',
@@ -46,7 +54,7 @@ const FRONTEND_SETTINGS_SECTIONS_FILE = path.join(
 );
 const VISIBILITY_GATED_READ_SERVICE_METHODS = [
   'get_page_detail',
-  'get_block_code',
+  'get_block_node_code',
 ];
 
 function getRepoRoot() {
@@ -289,7 +297,22 @@ function hasVisibilityGate(serviceSource, methodName) {
   const body = extractRustMethodBody(serviceSource, methodName);
   if (!body) return false;
   if (/\bensure_page_visible\s*\(/u.test(body)) return true;
-  if (!/\bensure_page_tab_visible\s*\(/u.test(body)) return false;
+  // Block-tree reads route visibility through load_visible_block, which owns
+  // the ensure_page_tab_visible call for every gated block read.
+  if (/\bload_visible_block\s*\(/u.test(body)) {
+    const loadVisibleBlockBody = extractRustMethodBody(
+      serviceSource,
+      'load_visible_block'
+    );
+    if (
+      !loadVisibleBlockBody
+      || !/\bensure_page_tab_visible\s*\(/u.test(loadVisibleBlockBody)
+    ) {
+      return false;
+    }
+  } else if (!/\bensure_page_tab_visible\s*\(/u.test(body)) {
+    return false;
+  }
 
   const tabVisibilityBody = extractRustMethodBody(
     serviceSource,
@@ -336,13 +359,17 @@ function collectFrontstageGovernanceInventory({
   repoRoot = getRepoRoot(),
   migrationsDir = DEFAULT_MIGRATIONS_DIR,
   frontstageServicePath = FRONTSTAGE_SERVICE_FILE,
+  frontstageBlockTreeServicePath = FRONTSTAGE_BLOCK_TREE_SERVICE_FILE,
   frontstageRepositoryPath = FRONTSTAGE_REPOSITORY_FILE,
   backendSettingsRoutesPath = BACKEND_SETTINGS_ROUTES_FILE,
   frontendSettingsSectionsPath = FRONTEND_SETTINGS_SECTIONS_FILE,
 } = {}) {
   const migrationSources = collectMigrationSources(repoRoot, migrationsDir);
   const migrationSql = migrationSources.map((migration) => migration.source).join('\n');
-  const serviceSource = readRequiredFile(repoRoot, frontstageServicePath);
+  const serviceSource = [
+    readRequiredFile(repoRoot, frontstageServicePath),
+    readRequiredFile(repoRoot, frontstageBlockTreeServicePath),
+  ].join('\n');
   const repositorySource = readRequiredFile(repoRoot, frontstageRepositoryPath);
   const backendSettingsRoutesSource = readRequiredFile(repoRoot, backendSettingsRoutesPath);
   const frontendSettingsSectionsSource = readRequiredFile(repoRoot, frontendSettingsSectionsPath);

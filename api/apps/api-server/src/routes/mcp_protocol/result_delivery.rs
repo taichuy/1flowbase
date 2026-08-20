@@ -15,6 +15,12 @@ pub(crate) const DETAIL_TTL_SECONDS: i64 = 10 * 60;
 
 const CACHE_KEY_PREFIX: &str = "mcp-result";
 const PAGE_ENVELOPE_RESERVE_CHARS: usize = 768;
+// Each stored chunk is re-serialized as a JSON string when cached; escaping can
+// at most double its byte length, so keep raw chunks at half the store's
+// per-value ceiling.
+const DETAIL_CHUNK_MAX_BYTES: usize = EPHEMERAL_VALUE_MAX_BYTES / 2;
+// Upper bound on cached detail size (MAX_DETAIL_CHUNKS * DETAIL_CHUNK_MAX_BYTES).
+const MAX_DETAIL_CHUNKS: usize = 16;
 
 #[derive(Clone, Copy)]
 pub(crate) enum CompletedOperation<'a> {
@@ -155,8 +161,14 @@ pub(crate) async fn read_continuation(
         })
         .ok()
         .flatten();
+    let detail = match cached {
+        Some(manifest) => {
+            resolve_cached_detail(state, actor.current_workspace_id, result_ref, manifest).await
+        }
+        None => None,
+    };
 
-    let Some(detail) = cached else {
+    let Some(detail) = detail else {
         let mut unavailable = json!({
             "result_ref": result_ref,
             "detail_status": "detail_unavailable",
@@ -231,21 +243,61 @@ async fn cache_detail(
     if contains_base64_like(detail, None) {
         return DetailCacheStatus::Unavailable("binary_or_base64_content");
     }
-    let bytes = match serde_json::to_vec(detail) {
-        Ok(bytes) => bytes,
+    let serialized_detail = match serde_json::to_string(detail) {
+        Ok(serialized_detail) => serialized_detail,
         Err(_) => return DetailCacheStatus::Unavailable("serialization_failed"),
     };
-    if bytes.len() > EPHEMERAL_VALUE_MAX_BYTES {
+    if serialized_detail.len() <= DETAIL_CHUNK_MAX_BYTES {
+        return store_cache_value(
+            state,
+            workspace_id,
+            result_ref,
+            &cache_key(workspace_id, result_ref),
+            json!({ "format": "inline", "detail": detail }),
+        )
+        .await;
+    }
+
+    let chunks = split_at_char_boundaries(&serialized_detail, DETAIL_CHUNK_MAX_BYTES);
+    if chunks.len() > MAX_DETAIL_CHUNKS {
         return DetailCacheStatus::Unavailable("cache_capacity_exceeded");
     }
+    for (index, chunk) in chunks.iter().enumerate() {
+        let status = store_cache_value(
+            state,
+            workspace_id,
+            result_ref,
+            &chunk_cache_key(workspace_id, result_ref, index),
+            Value::String(chunk.clone()),
+        )
+        .await;
+        if let DetailCacheStatus::Unavailable(reason) = status {
+            return DetailCacheStatus::Unavailable(reason);
+        }
+    }
+    // The manifest is written last so a reader never observes it before all
+    // chunks are in place.
+    store_cache_value(
+        state,
+        workspace_id,
+        result_ref,
+        &cache_key(workspace_id, result_ref),
+        json!({ "format": "chunked", "chunk_count": chunks.len() }),
+    )
+    .await
+}
+
+async fn store_cache_value(
+    state: &ApiState,
+    workspace_id: Uuid,
+    result_ref: Uuid,
+    key: &str,
+    value: Value,
+) -> DetailCacheStatus {
     match state
         .infrastructure
         .cache_store()
-        .set_json(
-            &cache_key(workspace_id, result_ref),
-            detail.clone(),
-            Some(Duration::seconds(DETAIL_TTL_SECONDS)),
-        )
+        .set_json(key, value, Some(Duration::seconds(DETAIL_TTL_SECONDS)))
         .await
     {
         Ok(()) => DetailCacheStatus::Available,
@@ -261,8 +313,61 @@ async fn cache_detail(
     }
 }
 
+/// Reassembles a cached detail from its manifest; `None` means the cached
+/// entry is missing, incomplete, or corrupt, and callers should treat it the
+/// same as a cache miss.
+async fn resolve_cached_detail(
+    state: &ApiState,
+    workspace_id: Uuid,
+    result_ref: Uuid,
+    manifest: Value,
+) -> Option<Value> {
+    match manifest.get("format").and_then(Value::as_str) {
+        Some("inline") => manifest.get("detail").cloned(),
+        Some("chunked") => {
+            let chunk_count = manifest
+                .get("chunk_count")
+                .and_then(Value::as_u64)
+                .and_then(|count| usize::try_from(count).ok())
+                .filter(|count| (1..=MAX_DETAIL_CHUNKS).contains(count))?;
+            let mut serialized_detail = String::new();
+            for index in 0..chunk_count {
+                let chunk = state
+                    .infrastructure
+                    .cache_store()
+                    .get_json(&chunk_cache_key(workspace_id, result_ref, index))
+                    .await
+                    .ok()
+                    .flatten()?;
+                serialized_detail.push_str(chunk.as_str()?);
+            }
+            serde_json::from_str(&serialized_detail).ok()
+        }
+        _ => None,
+    }
+}
+
+fn split_at_char_boundaries(value: &str, max_bytes: usize) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut current = String::new();
+    for character in value.chars() {
+        if current.len() + character.len_utf8() > max_bytes && !current.is_empty() {
+            chunks.push(std::mem::take(&mut current));
+        }
+        current.push(character);
+    }
+    if !current.is_empty() {
+        chunks.push(current);
+    }
+    chunks
+}
+
 fn cache_key(workspace_id: Uuid, result_ref: Uuid) -> String {
     format!("{CACHE_KEY_PREFIX}:{workspace_id}:{result_ref}")
+}
+
+fn chunk_cache_key(workspace_id: Uuid, result_ref: Uuid, index: usize) -> String {
+    format!("{CACHE_KEY_PREFIX}:{workspace_id}:{result_ref}:chunk:{index}")
 }
 
 fn compact_summary(operation_id: &str, value: &Value) -> Value {
@@ -512,6 +617,15 @@ fn serialized(value: &Value) -> String {
 #[cfg(test)]
 mod assistant_mcp_tests {
     use super::*;
+
+    #[test]
+    fn split_at_char_boundaries_respects_utf8_and_reassembles() {
+        let value = format!("{}界{}", "a".repeat(9), "b".repeat(9));
+        let chunks = split_at_char_boundaries(&value, 10);
+        assert!(chunks.iter().all(|chunk| chunk.len() <= 10));
+        assert!(chunks.len() >= 2);
+        assert_eq!(chunks.concat(), value);
+    }
 
     #[test]
     fn assistant_mcp_small_result_remains_inline() {

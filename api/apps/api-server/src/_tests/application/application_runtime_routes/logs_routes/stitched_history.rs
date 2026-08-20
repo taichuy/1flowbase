@@ -162,8 +162,8 @@ async fn application_runtime_routes_trace_tree_stitches_prior_claude_code_tool_r
         )
         .await
         .unwrap();
-    <MainDurableStore as OrchestrationRuntimeRepository>::append_runtime_events(
-        &state.store,
+    seed_flow_run_history_events(
+        &database_url,
         &[
             AppendRuntimeEventInput {
                 flow_run_id: run_a_uuid,

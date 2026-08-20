@@ -1,6 +1,6 @@
 {
   "manifest": {
-    "catalog_version": "2.0.8",
+    "catalog_version": "2.0.9",
     "files": [
       {
         "keys": [
@@ -72,6 +72,14 @@
           "Auth center authenticators order in the system backend.",
           "Batch delete models",
           "Batch delete models in the system backend.",
+          "Billing credit adjust",
+          "Billing credit adjust in the system backend.",
+          "Billing credit charge",
+          "Billing credit charge in the system backend.",
+          "Billing credit grant",
+          "Billing credit grant in the system backend.",
+          "Billing credit refund",
+          "Billing credit refund in the system backend.",
           "Bind file tables storage",
           "Bind file tables storage in the system backend.",
           "Cancel flow run",
@@ -104,6 +112,8 @@
           "Create application tag in the system backend.",
           "Create auth center authenticators",
           "Create auth center authenticators in the system backend.",
+          "Create billing pricing rules",
+          "Create billing pricing rules in the system backend.",
           "Create data sources",
           "Create data sources in the system backend.",
           "Create file storages",
@@ -150,6 +160,8 @@
           "Delete applications in the system backend.",
           "Delete auth center authenticators",
           "Delete auth center authenticators in the system backend.",
+          "Delete billing pricing rules",
+          "Delete billing pricing rules in the system backend.",
           "Delete debug variable cache entries",
           "Delete debug variable cache entries in the system backend.",
           "Delete file storages",
@@ -194,6 +206,8 @@
           "Delete system backups in the system backend.",
           "Disable an installed executable extension",
           "Disable an installed executable extension in the system backend.",
+          "Disable billing credit",
+          "Disable billing credit in the system backend.",
           "Disable members",
           "Disable members in the system backend.",
           "Discover data sources",
@@ -204,6 +218,8 @@
           "Enable an installed executable extension in the system backend.",
           "Enable auth center authenticators",
           "Enable auth center authenticators in the system backend.",
+          "Enable billing credit",
+          "Enable billing credit in the system backend.",
           "Enable members",
           "Enable members in the system backend.",
           "Enable plugins",
@@ -316,6 +332,8 @@
           "I18n catalog update activate in the system backend.",
           "Import applications orchestration template",
           "Import applications orchestration template in the system backend.",
+          "Import billing pricing catalog",
+          "Import billing pricing catalog in the system backend.",
           "Import MCP bundle library release",
           "Import MCP bundle library release in the system backend.",
           "Import MCP upstream tools",
@@ -352,6 +370,12 @@
           "List application runs in the system backend.",
           "List applications",
           "List applications in the system backend.",
+          "List billing credit accounts",
+          "List billing credit accounts in the system backend.",
+          "List billing credit ledger",
+          "List billing credit ledger in the system backend.",
+          "List billing pricing rules",
+          "List billing pricing rules in the system backend.",
           "List console docs category operations",
           "List console docs category operations in the system backend.",
           "List data sources",
@@ -550,6 +574,8 @@
           "Update auth center authenticator config in the system backend.",
           "Update auth center authenticator public UI block",
           "Update auth center authenticator public UI block in the system backend.",
+          "Update billing pricing rules",
+          "Update billing pricing rules in the system backend.",
           "Update data sources defaults",
           "Update data sources defaults in the system backend.",
           "Update extension center",
@@ -610,6 +636,10 @@
           "Upsert MCP groups in the system backend.",
           "View auth center overview",
           "View auth center overview in the system backend.",
+          "View billing credit accounts",
+          "View billing credit accounts in the system backend.",
+          "View billing pricing catalog",
+          "View billing pricing catalog in the system backend.",
           "View data sources",
           "View data sources in the system backend.",
           "View extension center catalog",
@@ -683,7 +713,7 @@
         ],
         "locale": "en_US",
         "path": "i18n/@taichuy/platform/console/interfaces/en_US.json",
-        "sha256": "sha256:013cf13427a4a48563691fbd3f2d7e0bad81d6a0401f3f35d6244346687448d8"
+        "sha256": "sha256:934d6c58bdfaef7f4ce0cc647fa5cb0dc5c397dba8846f061382cdee17b5e8cc"
       },
       {
         "keys": [
@@ -693,6 +723,14 @@
           "Auth center authenticators order in the system backend.",
           "Batch delete models",
           "Batch delete models in the system backend.",
+          "Billing credit adjust",
+          "Billing credit adjust in the system backend.",
+          "Billing credit charge",
+          "Billing credit charge in the system backend.",
+          "Billing credit grant",
+          "Billing credit grant in the system backend.",
+          "Billing credit refund",
+          "Billing credit refund in the system backend.",
           "Bind file tables storage",
           "Bind file tables storage in the system backend.",
           "Cancel flow run",
@@ -725,6 +763,8 @@
           "Create application tag in the system backend.",
           "Create auth center authenticators",
           "Create auth center authenticators in the system backend.",
+          "Create billing pricing rules",
+          "Create billing pricing rules in the system backend.",
           "Create data sources",
           "Create data sources in the system backend.",
           "Create file storages",
@@ -771,6 +811,8 @@
           "Delete applications in the system backend.",
           "Delete auth center authenticators",
           "Delete auth center authenticators in the system backend.",
+          "Delete billing pricing rules",
+          "Delete billing pricing rules in the system backend.",
           "Delete debug variable cache entries",
           "Delete debug variable cache entries in the system backend.",
           "Delete file storages",
@@ -815,6 +857,8 @@
           "Delete system backups in the system backend.",
           "Disable an installed executable extension",
           "Disable an installed executable extension in the system backend.",
+          "Disable billing credit",
+          "Disable billing credit in the system backend.",
           "Disable members",
           "Disable members in the system backend.",
           "Discover data sources",
@@ -825,6 +869,8 @@
           "Enable an installed executable extension in the system backend.",
           "Enable auth center authenticators",
           "Enable auth center authenticators in the system backend.",
+          "Enable billing credit",
+          "Enable billing credit in the system backend.",
           "Enable members",
           "Enable members in the system backend.",
           "Enable plugins",
@@ -937,6 +983,8 @@
           "I18n catalog update activate in the system backend.",
           "Import applications orchestration template",
           "Import applications orchestration template in the system backend.",
+          "Import billing pricing catalog",
+          "Import billing pricing catalog in the system backend.",
           "Import MCP bundle library release",
           "Import MCP bundle library release in the system backend.",
           "Import MCP upstream tools",
@@ -973,6 +1021,12 @@
           "List application runs in the system backend.",
           "List applications",
           "List applications in the system backend.",
+          "List billing credit accounts",
+          "List billing credit accounts in the system backend.",
+          "List billing credit ledger",
+          "List billing credit ledger in the system backend.",
+          "List billing pricing rules",
+          "List billing pricing rules in the system backend.",
           "List console docs category operations",
           "List console docs category operations in the system backend.",
           "List data sources",
@@ -1171,6 +1225,8 @@
           "Update auth center authenticator config in the system backend.",
           "Update auth center authenticator public UI block",
           "Update auth center authenticator public UI block in the system backend.",
+          "Update billing pricing rules",
+          "Update billing pricing rules in the system backend.",
           "Update data sources defaults",
           "Update data sources defaults in the system backend.",
           "Update extension center",
@@ -1231,6 +1287,10 @@
           "Upsert MCP groups in the system backend.",
           "View auth center overview",
           "View auth center overview in the system backend.",
+          "View billing credit accounts",
+          "View billing credit accounts in the system backend.",
+          "View billing pricing catalog",
+          "View billing pricing catalog in the system backend.",
           "View data sources",
           "View data sources in the system backend.",
           "View extension center catalog",
@@ -1304,7 +1364,7 @@
         ],
         "locale": "zh_Hans",
         "path": "i18n/@taichuy/platform/console/interfaces/zh_Hans.json",
-        "sha256": "sha256:60ec5e391a282858bf1df67d66eed204faadc68487efd2c4ec3b9303246d8c29"
+        "sha256": "sha256:94f7ff344d128fcdf58f08117dbc96b0b6f658d0a9a30c6d5b7927dd232dfe7c"
       },
       {
         "keys": [
@@ -1637,13 +1697,13 @@
         "sha256": "sha256:0e4a9ef46625f96367b250d16a1fb8941357251c3608c87d34808d57a795ff1b"
       }
     ],
-    "generated_at": "2026-08-15T00:00:00.000Z",
+    "generated_at": "2026-08-19T09:46:07.000Z",
     "locales": [
       "en_US",
       "zh_Hans"
     ],
     "schema_version": "1flowbase.i18n-catalog-seed/v2",
-    "semantic_sha256": "sha256:d8ae35721539ee7acd34a2a722b405d786851d9ec679dc53f5b5889da225e7a9",
+    "semantic_sha256": "sha256:12a7f55003d06723fead00a9124015b369c692df0317574c8e631966f99b1577",
     "source_locale": "en_US"
   },
   "messages": [
@@ -1841,6 +1901,62 @@
       "translations": {
         "en_US": "Batch delete models in the system backend.",
         "zh_Hans": "批量删除模型（系统后端）"
+      }
+    },
+    {
+      "key": "Billing credit adjust",
+      "translations": {
+        "en_US": "Billing credit adjust",
+        "zh_Hans": "调整用户余额"
+      }
+    },
+    {
+      "key": "Billing credit adjust in the system backend.",
+      "translations": {
+        "en_US": "Billing credit adjust in the system backend.",
+        "zh_Hans": "调整用户余额（系统后端）"
+      }
+    },
+    {
+      "key": "Billing credit charge",
+      "translations": {
+        "en_US": "Billing credit charge",
+        "zh_Hans": "直接扣除用户额度"
+      }
+    },
+    {
+      "key": "Billing credit charge in the system backend.",
+      "translations": {
+        "en_US": "Billing credit charge in the system backend.",
+        "zh_Hans": "直接扣除用户额度（系统后端）"
+      }
+    },
+    {
+      "key": "Billing credit grant",
+      "translations": {
+        "en_US": "Billing credit grant",
+        "zh_Hans": "增加用户额度"
+      }
+    },
+    {
+      "key": "Billing credit grant in the system backend.",
+      "translations": {
+        "en_US": "Billing credit grant in the system backend.",
+        "zh_Hans": "增加用户额度（系统后端）"
+      }
+    },
+    {
+      "key": "Billing credit refund",
+      "translations": {
+        "en_US": "Billing credit refund",
+        "zh_Hans": "向用户退款"
+      }
+    },
+    {
+      "key": "Billing credit refund in the system backend.",
+      "translations": {
+        "en_US": "Billing credit refund in the system backend.",
+        "zh_Hans": "向用户退款（系统后端）"
       }
     },
     {
@@ -2121,6 +2237,20 @@
       "translations": {
         "en_US": "Create auth center authenticators in the system backend.",
         "zh_Hans": "创建认证中心认证器（系统后端）"
+      }
+    },
+    {
+      "key": "Create billing pricing rules",
+      "translations": {
+        "en_US": "Create billing pricing rules",
+        "zh_Hans": "创建模型计费规则"
+      }
+    },
+    {
+      "key": "Create billing pricing rules in the system backend.",
+      "translations": {
+        "en_US": "Create billing pricing rules in the system backend.",
+        "zh_Hans": "创建模型计费规则（系统后端）"
       }
     },
     {
@@ -2537,6 +2667,20 @@
       }
     },
     {
+      "key": "Delete billing pricing rules",
+      "translations": {
+        "en_US": "Delete billing pricing rules",
+        "zh_Hans": "删除模型计费规则"
+      }
+    },
+    {
+      "key": "Delete billing pricing rules in the system backend.",
+      "translations": {
+        "en_US": "Delete billing pricing rules in the system backend.",
+        "zh_Hans": "删除模型计费规则（系统后端）"
+      }
+    },
+    {
       "key": "Delete debug variable cache entries",
       "translations": {
         "en_US": "Delete debug variable cache entries",
@@ -2845,6 +2989,20 @@
       }
     },
     {
+      "key": "Disable billing credit",
+      "translations": {
+        "en_US": "Disable billing credit",
+        "zh_Hans": "停用用户扣费"
+      }
+    },
+    {
+      "key": "Disable billing credit in the system backend.",
+      "translations": {
+        "en_US": "Disable billing credit in the system backend.",
+        "zh_Hans": "停用用户扣费（系统后端）"
+      }
+    },
+    {
       "key": "Disable members",
       "translations": {
         "en_US": "Disable members",
@@ -2954,6 +3112,20 @@
       "translations": {
         "en_US": "Enable auth center authenticators in the system backend.",
         "zh_Hans": "启用认证中心认证器（系统后端）"
+      }
+    },
+    {
+      "key": "Enable billing credit",
+      "translations": {
+        "en_US": "Enable billing credit",
+        "zh_Hans": "启用用户扣费"
+      }
+    },
+    {
+      "key": "Enable billing credit in the system backend.",
+      "translations": {
+        "en_US": "Enable billing credit in the system backend.",
+        "zh_Hans": "启用用户扣费（系统后端）"
       }
     },
     {
@@ -3804,6 +3976,20 @@
       }
     },
     {
+      "key": "Import billing pricing catalog",
+      "translations": {
+        "en_US": "Import billing pricing catalog",
+        "zh_Hans": "导入厂家模型计费目录"
+      }
+    },
+    {
+      "key": "Import billing pricing catalog in the system backend.",
+      "translations": {
+        "en_US": "Import billing pricing catalog in the system backend.",
+        "zh_Hans": "导入厂家模型计费目录（系统后端）"
+      }
+    },
+    {
       "key": "Import MCP bundle library release",
       "translations": {
         "en_US": "Import MCP bundle library release",
@@ -4081,6 +4267,48 @@
       "translations": {
         "en_US": "List applications in the system backend.",
         "zh_Hans": "列出应用（系统后端）"
+      }
+    },
+    {
+      "key": "List billing credit accounts",
+      "translations": {
+        "en_US": "List billing credit accounts",
+        "zh_Hans": "列出用户额度账户"
+      }
+    },
+    {
+      "key": "List billing credit accounts in the system backend.",
+      "translations": {
+        "en_US": "List billing credit accounts in the system backend.",
+        "zh_Hans": "列出用户额度账户（系统后端）"
+      }
+    },
+    {
+      "key": "List billing credit ledger",
+      "translations": {
+        "en_US": "List billing credit ledger",
+        "zh_Hans": "列出额度流水"
+      }
+    },
+    {
+      "key": "List billing credit ledger in the system backend.",
+      "translations": {
+        "en_US": "List billing credit ledger in the system backend.",
+        "zh_Hans": "列出额度流水（系统后端）"
+      }
+    },
+    {
+      "key": "List billing pricing rules",
+      "translations": {
+        "en_US": "List billing pricing rules",
+        "zh_Hans": "列出模型计费规则"
+      }
+    },
+    {
+      "key": "List billing pricing rules in the system backend.",
+      "translations": {
+        "en_US": "List billing pricing rules in the system backend.",
+        "zh_Hans": "列出模型计费规则（系统后端）"
       }
     },
     {
@@ -5834,6 +6062,20 @@
       }
     },
     {
+      "key": "Update billing pricing rules",
+      "translations": {
+        "en_US": "Update billing pricing rules",
+        "zh_Hans": "更新模型计费规则"
+      }
+    },
+    {
+      "key": "Update billing pricing rules in the system backend.",
+      "translations": {
+        "en_US": "Update billing pricing rules in the system backend.",
+        "zh_Hans": "更新模型计费规则（系统后端）"
+      }
+    },
+    {
       "key": "Update data sources defaults",
       "translations": {
         "en_US": "Update data sources defaults",
@@ -6307,6 +6549,34 @@
       "translations": {
         "en_US": "View auth center overview in the system backend.",
         "zh_Hans": "查看认证中心概览（系统后端）"
+      }
+    },
+    {
+      "key": "View billing credit accounts",
+      "translations": {
+        "en_US": "View billing credit accounts",
+        "zh_Hans": "查看用户额度账户"
+      }
+    },
+    {
+      "key": "View billing credit accounts in the system backend.",
+      "translations": {
+        "en_US": "View billing credit accounts in the system backend.",
+        "zh_Hans": "查看用户额度账户（系统后端）"
+      }
+    },
+    {
+      "key": "View billing pricing catalog",
+      "translations": {
+        "en_US": "View billing pricing catalog",
+        "zh_Hans": "查看厂家模型计费目录"
+      }
+    },
+    {
+      "key": "View billing pricing catalog in the system backend.",
+      "translations": {
+        "en_US": "View billing pricing catalog in the system backend.",
+        "zh_Hans": "查看厂家模型计费目录（系统后端）"
       }
     },
     {

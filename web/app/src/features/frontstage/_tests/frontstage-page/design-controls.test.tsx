@@ -1006,8 +1006,6 @@ describe('FrontStagePage - design controls', () => {
         }
       })
     ]);
-    const saveState = mockPageContentSaveState();
-
     render(
       <AppProviders>
         <FrontStagePageHarness
@@ -1071,7 +1069,6 @@ describe('FrontStagePage - design controls', () => {
       createCatalogEntry({ codeCapabilities: undefined })
     ]);
     const saveState = mockPageContentSaveState();
-
     render(
       <AppProviders>
         <FrontStagePageHarness
@@ -1095,7 +1092,6 @@ describe('FrontStagePage - design controls', () => {
 
   test('R8-AC-004 shows Catalog permission failures without a fallback', async () => {
     authenticate(['frontstage.page.design']);
-    const saveState = mockPageContentSaveState();
     mockFrontstageBlockCatalog([], {
       error: new Error('Catalog forbidden')
     });
@@ -1133,7 +1129,6 @@ describe('FrontStagePage - design controls', () => {
     'R8-AC-004 rejects $label without choosing a fallback',
     async ({ entries, message }) => {
       authenticate(['frontstage.page.design']);
-      const saveState = mockPageContentSaveState();
       mockFrontstageBlockCatalog(entries);
 
       render(

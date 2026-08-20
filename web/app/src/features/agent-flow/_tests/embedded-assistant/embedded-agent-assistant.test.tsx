@@ -610,10 +610,9 @@ describe('EmbeddedAgentAssistant', () => {
     expect(screen.getByLabelText('等待操作')).toBeInTheDocument();
     expect(screen.getByLabelText('运行失败')).toBeInTheDocument();
     expect(
-      screen
-        .getByText('Completed conversation')
-        .closest('.ant-conversations-item')
-        ?.querySelector('[data-assistant-run-status]')
+      screen.queryByText('Completed conversation')?.closest(
+        '.ant-conversations-item'
+      )?.querySelector('[data-assistant-run-status]') ?? null
     ).toBeNull();
   });
 
@@ -820,7 +819,7 @@ describe('EmbeddedAgentAssistant', () => {
 
   test('caches only the main conversation width and assistant window height', async () => {
     innerWidthSpy?.mockReturnValue(2_000);
-    const firstRender = render(
+    const view = render(
       <AppProviders>
         <EmbeddedAgentAssistant />
       </AppProviders>
@@ -902,7 +901,7 @@ describe('EmbeddedAgentAssistant', () => {
       windowHeight: initialHeight - 100
     });
 
-    firstRender.unmount();
+    view.unmount();
     render(
       <AppProviders>
         <EmbeddedAgentAssistant />
@@ -2180,7 +2179,7 @@ describe('EmbeddedAgentAssistant', () => {
     expect(await screen.findByText('历史最终回答')).toBeInTheDocument();
     expect(screen.queryByText('历史思考')).not.toBeInTheDocument();
     fireEvent.click(
-      screen.getByText(
+      await screen.findByText(
         i18nText('appShell', 'auto.assistant_activity_duration_seconds', {
           value1: 3
         })

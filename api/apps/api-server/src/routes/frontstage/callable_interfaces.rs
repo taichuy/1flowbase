@@ -457,6 +457,7 @@ pub async fn issue_frontstage_callable_write_grant(
     )))
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn resolve_source_callable(
     state: &ApiState,
     context: &crate::middleware::require_session::RequestContext,

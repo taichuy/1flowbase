@@ -1936,7 +1936,9 @@ async fn root_1569_ac_010_large_or_base64_like_detail_is_never_cached_or_inlined
         domain::ActorContext::root(uuid::Uuid::now_v7(), state.bootstrap_workspace_id, "root");
     for (detail, expected_reason) in [
         (
-            json!({"rows": "界".repeat(control_plane::ports::EPHEMERAL_VALUE_MAX_BYTES)}),
+            // Beyond the chunked-continuation ceiling (16 chunks * 512 KiB):
+            // each "界" serializes to 3 bytes, so this is ~9 MiB.
+            json!({"rows": "界".repeat(3 * control_plane::ports::EPHEMERAL_VALUE_MAX_BYTES)}),
             "cache_capacity_exceeded",
         ),
         (

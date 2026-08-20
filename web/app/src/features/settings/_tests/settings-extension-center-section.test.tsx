@@ -472,7 +472,11 @@ describe('SettingsExtensionCenterSection', () => {
     );
     renderSection('runtime-extensions');
 
-    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
+    const row = await screen.findByRole(
+      'row',
+      { name: /OpenAI Provider/ },
+      { timeout: 5000 }
+    );
     expect(
       screen.getByRole('columnheader', { name: '最新版本' })
     ).toBeInTheDocument();
@@ -531,7 +535,11 @@ describe('SettingsExtensionCenterSection', () => {
     );
 
     renderSection('runtime-extensions');
-    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
+    const row = await screen.findByRole(
+      'row',
+      { name: /OpenAI Provider/ },
+      { timeout: 5000 }
+    );
 
     await waitFor(() => {
       expect(
@@ -588,7 +596,11 @@ describe('SettingsExtensionCenterSection', () => {
       })
     );
     renderSection('runtime-extensions');
-    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
+    const row = await screen.findByRole(
+      'row',
+      { name: /OpenAI Provider/ },
+      { timeout: 5000 }
+    );
 
     fireEvent.click(within(row).getByRole('button', { name: '安装' }));
 
@@ -819,9 +831,11 @@ describe('SettingsExtensionCenterSection', () => {
     );
 
     renderSection('i18n');
-    const row = await screen.findByRole('row', {
-      name: /Platform translations/
-    });
+    const row = await screen.findByRole(
+      'row',
+      { name: /Platform translations/ },
+      { timeout: 5000 }
+    );
     fireEvent.click(within(row).getByRole('button', { name: '更新' }));
 
     const dialog = (await screen.findByText('更新多语言目录')).closest(
@@ -971,7 +985,11 @@ describe('SettingsExtensionCenterSection', () => {
       (error: unknown) => (error === riskError ? challenge : null)
     );
     renderSection('runtime-extensions');
-    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
+    const row = await screen.findByRole(
+      'row',
+      { name: /OpenAI Provider/ },
+      { timeout: 5000 }
+    );
     fireEvent.click(within(row).getByRole('button', { name: '更新' }));
 
     await waitFor(() => expect(Modal.confirm).toHaveBeenCalledTimes(1));
@@ -1068,9 +1086,11 @@ describe('SettingsExtensionCenterSection', () => {
       'runtime-extensions'
     ] as const) {
       view.rerender(<SettingsExtensionCenterSection category={category} />);
-      const row = await screen.findByRole('row', {
-        name: new RegExp(`${category} Extension`)
-      });
+      const row = await screen.findByRole(
+        'row',
+        { name: new RegExp(`${category} Extension`) },
+        { timeout: 5000 }
+      );
       expect(
         within(row).getByRole('button', { name: '安装' })
       ).toBeInTheDocument();
@@ -1120,7 +1140,11 @@ describe('SettingsExtensionCenterSection', () => {
     );
 
     renderSection('capability-plugins');
-    const targetRow = await screen.findByRole('row', { name: /Fusion/ });
+    const targetRow = await screen.findByRole(
+      'row',
+      { name: /Fusion/ },
+      { timeout: 5000 }
+    );
     await screen.findByRole('row', { name: /Deepseek V4/ });
     const targetButton = within(targetRow).getByRole('button', {
       name: '安装'

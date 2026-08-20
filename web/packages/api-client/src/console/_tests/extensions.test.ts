@@ -163,11 +163,14 @@ describe('extension center client contract', () => {
       installation_status: 'not_installed',
       artifact_kind: 'plugin',
       installation_source: null,
+      extension_installation_id: null,
+      builtin_template_id: null,
       trust: 'official',
       warnings: [],
       compatibility: null,
       slot_codes: ['data_source'],
-      keywords: ['postgres', 'analytics']
+      keywords: ['postgres', 'analytics'],
+      mcp_instances: []
     } satisfies ConsoleExtensionCatalogEntry;
 
     expect(entry.slot_codes).toEqual(['data_source']);

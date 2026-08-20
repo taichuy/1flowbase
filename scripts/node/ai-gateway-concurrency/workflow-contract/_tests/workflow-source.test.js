@@ -38,7 +38,18 @@ test('AC-003/005/006/008/019/024: workflow delegates all blocking checks to one 
 });
 
 test('AC-027/028: gate uses paired provider source, empty credentials, and always uploads evidence', () => {
-  assert.ok(source.includes(`ref: ${pairedSource.official_plugins.revision}`));
+  // The workflow must derive the official ref from the candidate's paired-source
+  // lock instead of hardcoding a revision, so cross-ref runs (workflow file from
+  // main, candidate from another branch) always pair the candidate's fixtures
+  // with the candidate's locked official source.
+  assert.match(pairedSource.official_plugins.revision, /^[a-f0-9]{40}$/u);
+  assert.match(source, /id: paired_official/u);
+  assert.match(
+    source,
+    /workflow-contract\/paired-source\.lock\.json'\)\.official_plugins\.revision/u,
+  );
+  assert.match(source, /ref: \$\{\{ steps\.paired_official\.outputs\.revision \}\}/u);
+  assert.doesNotMatch(source, /ref: [a-f0-9]{40}/u);
   assert.match(source, /OPENAI_API_KEY: ''/u);
   assert.match(source, /ANTHROPIC_API_KEY: ''/u);
   assert.match(source, /name: Upload bounded protocol evidence\n        if: always\(\)/u);

@@ -912,7 +912,7 @@ describe('McpManagementPanel', () => {
     expect(debugResult).toHaveTextContent('"query_target": "inputs.query"');
     expect(debugResult).not.toHaveTextContent('"mapping.input.query_target"');
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
       expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
@@ -1049,7 +1049,7 @@ describe('McpManagementPanel', () => {
     });
 
     clickSegmentedOption(dialog, 'debug');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
 
     expect(mcpManagementApi.createSettingsMcpTool).not.toHaveBeenCalled();
   }, 30_000);
@@ -1108,7 +1108,7 @@ describe('McpManagementPanel', () => {
     expect(within(dialog).getByRole('button', { name: '添加' })).toBeDisabled();
 
     clickSegmentedOption(dialog, 'debug');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
       expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
@@ -1178,7 +1178,7 @@ describe('McpManagementPanel', () => {
     expect(within(dialog).getByRole('button', { name: '全部' })).toBeDisabled();
 
     clickSegmentedOption(dialog, 'debug');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
       expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(
@@ -1372,7 +1372,7 @@ describe('McpManagementPanel', () => {
     });
 
     clickSegmentedOption(dialog, 'debug');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '保存' }));
 
     await waitFor(() => {
       expect(mcpManagementApi.createSettingsMcpTool).toHaveBeenCalledWith(

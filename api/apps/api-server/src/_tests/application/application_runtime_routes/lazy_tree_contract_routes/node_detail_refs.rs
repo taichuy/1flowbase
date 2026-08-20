@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn application_runtime_routes_trace_node_detail_ref_loads_node_run_payload_lazily() {
-    let (state, _) = test_api_state_with_database_url().await;
+    let (state, database_url) = test_api_state_with_database_url().await;
     let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let provider_instance_id = create_ready_provider_instance(&app, &cookie, &csrf).await;
@@ -15,8 +15,8 @@ async fn application_runtime_routes_trace_node_detail_ref_loads_node_run_payload
     let node_run_id =
         Uuid::parse_str(preview_payload["data"]["node_run"]["id"].as_str().unwrap()).unwrap();
 
-    <MainDurableStore as OrchestrationRuntimeRepository>::update_node_run(
-        &state.store,
+    seed_node_run_history(
+        &database_url,
         &UpdateNodeRunInput {
             node_run_id,
             status: domain::NodeRunStatus::Succeeded,
@@ -146,7 +146,7 @@ async fn application_runtime_routes_trace_node_detail_ref_loads_node_run_payload
 
 #[tokio::test]
 async fn application_runtime_routes_trace_node_detail_offloads_provider_events() {
-    let (state, _) = test_api_state_with_database_url().await;
+    let (state, database_url) = test_api_state_with_database_url().await;
     let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let provider_instance_id = create_ready_provider_instance(&app, &cookie, &csrf).await;
@@ -168,8 +168,8 @@ async fn application_runtime_routes_trace_node_detail_offloads_provider_events()
         .collect();
     let provider_raw_response = "raw-provider-response-".repeat(180);
 
-    <MainDurableStore as OrchestrationRuntimeRepository>::update_node_run(
-        &state.store,
+    seed_node_run_history(
+        &database_url,
         &UpdateNodeRunInput {
             node_run_id,
             status: domain::NodeRunStatus::Succeeded,

@@ -136,7 +136,10 @@ async fn orchestration_runtime_compact_resolves_selected_runtime_and_provider_co
         provider_instance_id.to_string()
     );
     assert_eq!(captured[0].model, "gpt-5.4-mini");
-    assert_eq!(captured[0].messages[0].content, "canonical compact prompt");
+    // The sealed native transport owns the wire representation: canonical
+    // history is removed at the selected Provider boundary so no second
+    // full-history payload accompanies the native request.
+    assert!(captured[0].messages.is_empty());
     assert!(captured[0].native_transport.is_some());
     assert!(!captured[0].provider_config.is_null());
 }

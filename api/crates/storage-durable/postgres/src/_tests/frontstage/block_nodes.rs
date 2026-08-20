@@ -824,12 +824,24 @@ async fn block_subtree_delete_revalidates_after_waiting_for_structure_lock() {
     .execute(&mut *lock_tx)
     .await
     .unwrap();
+    let raced_runtime_descriptor = json!({
+        "id": "raced-child",
+        "codeRef": "raced-code",
+        "rendererVersion": "v1",
+        "catalog": {},
+        "contribution": {},
+        "props": {},
+        "ports": { "inputs": [], "outputs": [] },
+        "x-layout": { "order": 0 },
+        "x-presentation": { "heightMode": "auto", "height": null },
+        "runtime": { "kind": "native_react", "entry": "index.js", "hint": "native_react" }
+    });
     sqlx::query(
         r#"
         insert into frontstage_block_nodes (
             id, scope_id, tree_partition_id, parent_id, sibling_rank, block_id, tab_id,
             presentation, code_ref, runtime_descriptor
-        ) values ($1, $2, $3, $4, 'U', 'raced-child', $5, 'page', 'raced-code', '{}')
+        ) values ($1, $2, $3, $4, 'U', 'raced-child', $5, 'page', 'raced-code', $6)
         "#,
     )
     .bind(raced_node_id)
@@ -837,6 +849,7 @@ async fn block_subtree_delete_revalidates_after_waiting_for_structure_lock() {
     .bind(page_id)
     .bind(root_internal_id)
     .bind(tab_id)
+    .bind(raced_runtime_descriptor)
     .execute(&mut *lock_tx)
     .await
     .unwrap();

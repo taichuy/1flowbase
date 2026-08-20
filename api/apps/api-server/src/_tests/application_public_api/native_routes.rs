@@ -661,7 +661,7 @@ async fn native_resume_rejects_missing_llm_tool_result_without_consuming_task() 
 }
 
 #[tokio::test]
-async fn native_tool_resume_consumes_in_request_and_records_failure_timeline() {
+async fn native_tool_resume_reports_terminal_conflict_without_duplicate_failure_timeline() {
     let (app, state) = test_app_with_state().await;
     let token =
         setup_published_native_app(&app, state.as_ref(), "Native Streaming Tool Resume App").await;
@@ -704,9 +704,9 @@ async fn native_tool_resume_consumes_in_request_and_records_failure_timeline() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(response.status(), StatusCode::CONFLICT);
     let payload = response_json(response).await;
-    assert_eq!(payload["code"], json!("internal_error"));
+    assert_eq!(payload["code"], json!("flow_run_terminal"));
 
     let stored_task = state
         .store
@@ -736,10 +736,10 @@ async fn native_tool_resume_consumes_in_request_and_records_failure_timeline() {
         .map(|event| event.event_type.as_str())
         .collect::<Vec<_>>();
     assert!(
-        event_types.contains(&"public_run_resume_requested")
-            && event_types.contains(&"public_run_resume_failed"),
-        "resume timeline should expose request and failure: {event_types:?}"
+        event_types.contains(&"public_run_resume_requested"),
+        "resume timeline should expose the request before the terminal conflict: {event_types:?}"
     );
+    assert!(!event_types.contains(&"public_run_resume_failed"));
     assert!(!event_types.contains(&"public_run_resume_claimed"));
 }
 

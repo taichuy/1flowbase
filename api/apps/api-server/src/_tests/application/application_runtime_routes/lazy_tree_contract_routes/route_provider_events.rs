@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn application_runtime_routes_trace_node_content_offloads_route_provider_events() {
-    let (state, _) = test_api_state_with_database_url().await;
+    let (state, database_url) = test_api_state_with_database_url().await;
     let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let provider_instance_id = create_ready_provider_instance(&app, &cookie, &csrf).await;
@@ -25,8 +25,8 @@ async fn application_runtime_routes_trace_node_content_offloads_route_provider_e
     let route_raw_response = "route-raw-response-".repeat(180);
     let route_output_text = "route-output-text-".repeat(180);
 
-    <MainDurableStore as OrchestrationRuntimeRepository>::update_node_run(
-        &state.store,
+    seed_node_run_history(
+        &database_url,
         &UpdateNodeRunInput {
             node_run_id,
             status: domain::NodeRunStatus::Succeeded,

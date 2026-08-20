@@ -1258,6 +1258,8 @@ impl ProviderInvocationInput {
         Ok((wire_value, receipt))
     }
 
+    // Runtime errors intentionally keep the complete upstream diagnostics payload.
+    #[allow(clippy::result_large_err)]
     pub fn project_current_provider_generate(
         &self,
         declared_capabilities: &[String],
@@ -1347,6 +1349,8 @@ impl ProviderInvocationInput {
         Ok(invocation)
     }
 
+    // Runtime errors intentionally keep the complete upstream diagnostics payload.
+    #[allow(clippy::result_large_err)]
     fn prepared_current_provider_generate_invocation(
         &self,
         declared_capabilities: &[String],
@@ -1590,6 +1594,8 @@ pub fn message_block_required_capabilities(
     Ok(capabilities)
 }
 
+// Runtime errors intentionally keep the complete upstream diagnostics payload.
+#[allow(clippy::result_large_err)]
 fn project_generate_reasoning_history(
     invocation: &mut ProviderInvocationInput,
     declared_capabilities: &BTreeSet<&str>,

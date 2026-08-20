@@ -3,7 +3,7 @@ use super::*;
 #[tokio::test]
 async fn application_runtime_routes_trace_node_content_excludes_tool_index_and_keeps_lazy_tool_detail(
 ) {
-    let (state, _) = test_api_state_with_database_url().await;
+    let (state, database_url) = test_api_state_with_database_url().await;
     let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let provider_instance_id = create_ready_provider_instance(&app, &cookie, &csrf).await;
@@ -17,8 +17,8 @@ async fn application_runtime_routes_trace_node_content_excludes_tool_index_and_k
     let node_run_id =
         Uuid::parse_str(preview_payload["data"]["node_run"]["id"].as_str().unwrap()).unwrap();
 
-    <MainDurableStore as OrchestrationRuntimeRepository>::update_node_run(
-        &state.store,
+    seed_node_run_history(
+        &database_url,
         &UpdateNodeRunInput {
             node_run_id,
             status: domain::NodeRunStatus::WaitingCallback,
@@ -110,8 +110,8 @@ async fn application_runtime_routes_trace_node_content_excludes_tool_index_and_k
     )
     .await
     .unwrap();
-    <MainDurableStore as OrchestrationRuntimeRepository>::append_runtime_events(
-        &state.store,
+    seed_flow_run_history_events(
+        &database_url,
         &[
             AppendRuntimeEventInput {
                 flow_run_id: flow_run_uuid,

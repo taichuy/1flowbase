@@ -749,6 +749,140 @@ async fn wait_for_run_detail(
     );
 }
 
+/// Seeds runtime events as pre-terminal history via direct SQL. The repository now fences
+/// event appends after a flow run commits terminal (`conflict: flow_run_terminal`), so read-side
+/// tests seed the historical rows they need directly instead of appending post-terminal.
+/// Returns the assigned sequences in input order.
+async fn seed_flow_run_history_events(
+    database_url: &str,
+    inputs: &[control_plane::ports::AppendRuntimeEventInput],
+) -> sqlx::Result<Vec<i64>> {
+    let pool = sqlx::PgPool::connect(database_url).await?;
+    let mut sequences = Vec::with_capacity(inputs.len());
+    for input in inputs {
+        let sequence = sqlx::query_scalar::<_, i64>(
+            r#"
+            insert into runtime_events (
+                id,
+                flow_run_id,
+                node_run_id,
+                span_id,
+                parent_span_id,
+                sequence,
+                event_type,
+                layer,
+                source,
+                trust_level,
+                item_id,
+                ledger_ref,
+                payload,
+                visibility,
+                durability
+            )
+            select
+                $1, $2, $3, $4, $5,
+                coalesce(max(sequence), 0) + 1,
+                $6, $7, $8, $9, $10, $11, $12, $13, $14
+            from runtime_events
+            where flow_run_id = $2
+            returning sequence
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(input.flow_run_id)
+        .bind(input.node_run_id)
+        .bind(input.span_id)
+        .bind(input.parent_span_id)
+        .bind(&input.event_type)
+        .bind(input.layer.as_str())
+        .bind(input.source.as_str())
+        .bind(input.trust_level.as_str())
+        .bind(input.item_id)
+        .bind(input.ledger_ref.as_deref())
+        .bind(&input.payload)
+        .bind(input.visibility.as_str())
+        .bind(input.durability.as_str())
+        .fetch_one(&pool)
+        .await?;
+        sequences.push(sequence);
+    }
+    Ok(sequences)
+}
+
+/// Rewrites a node run's persisted result as pre-terminal history via direct SQL, for the same
+/// reason as `seed_flow_run_history_events`: `update_node_run` is fenced once the owning flow
+/// run is terminal.
+async fn seed_node_run_history(
+    database_url: &str,
+    input: &control_plane::ports::UpdateNodeRunInput,
+) -> sqlx::Result<()> {
+    let pool = sqlx::PgPool::connect(database_url).await?;
+    sqlx::query(
+        r#"
+        update node_runs
+        set status = $2,
+            output_payload = $3,
+            error_payload = $4,
+            metrics_payload = $5,
+            debug_payload = $6,
+            finished_at = $7
+        where id = $1
+        "#,
+    )
+    .bind(input.node_run_id)
+    .bind(input.status.as_str())
+    .bind(&input.output_payload)
+    .bind(&input.error_payload)
+    .bind(&input.metrics_payload)
+    .bind(&input.debug_payload)
+    .bind(input.finished_at)
+    .execute(&pool)
+    .await?;
+    Ok(())
+}
+
+/// Inserts an extra node run as pre-terminal history via direct SQL, because `create_node_run`
+/// is fenced once the owning flow run is terminal. Returns the new node run id.
+async fn seed_node_run_history_record(
+    database_url: &str,
+    input: &control_plane::ports::CreateNodeRunInput,
+) -> sqlx::Result<Uuid> {
+    let pool = sqlx::PgPool::connect(database_url).await?;
+    let id = Uuid::now_v7();
+    sqlx::query(
+        r#"
+        insert into node_runs (
+            id,
+            scope_id,
+            flow_run_id,
+            node_id,
+            node_type,
+            node_alias,
+            status,
+            input_payload,
+            debug_payload,
+            started_at
+        )
+        select $1, applications.workspace_id, flow_runs.id, $3, $4, $5, $6, $7, $8, $9
+        from flow_runs
+        join applications on applications.id = flow_runs.application_id
+        where flow_runs.id = $2
+        "#,
+    )
+    .bind(id)
+    .bind(input.flow_run_id)
+    .bind(&input.node_id)
+    .bind(&input.node_type)
+    .bind(&input.node_alias)
+    .bind(input.status.as_str())
+    .bind(&input.input_payload)
+    .bind(&input.debug_payload)
+    .bind(input.started_at)
+    .execute(&pool)
+    .await?;
+    Ok(id)
+}
+
 async fn load_trace_node_content_payload(
     app: &axum::Router,
     cookie: &str,

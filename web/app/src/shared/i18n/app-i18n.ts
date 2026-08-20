@@ -37,6 +37,8 @@ import settingsMcpManagementZhHans from '../../features/settings/components/mcp-
 import settingsMcpManagementEnUS from '../../features/settings/components/mcp-management/i18n/en_US.json';
 import settingsUiManagementZhHans from '../../features/settings/components/ui-management/i18n/zh_Hans.json';
 import settingsUiManagementEnUS from '../../features/settings/components/ui-management/i18n/en_US.json';
+import settingsBillingZhHans from '../../features/settings/components/billing/i18n/zh_Hans.json';
+import settingsBillingEnUS from '../../features/settings/components/billing/i18n/en_US.json';
 import settingsZhHans from '../../features/settings/i18n/zh_Hans.json';
 import settingsEnUS from '../../features/settings/i18n/en_US.json';
 import sharedZhHans from './resources/zh_Hans.json';
@@ -63,6 +65,7 @@ const appTranslationResources = {
     settingsSystemBackups: settingsSystemBackupsZhHans,
     settingsMcpManagement: settingsMcpManagementZhHans,
     settingsUiManagement: settingsUiManagementZhHans,
+    settingsBilling: settingsBillingZhHans,
     settings: settingsZhHans,
     shared: sharedZhHans,
     sharedUi: sharedUiZhHans,
@@ -83,6 +86,7 @@ const appTranslationResources = {
     settingsSystemBackups: settingsSystemBackupsEnUS,
     settingsMcpManagement: settingsMcpManagementEnUS,
     settingsUiManagement: settingsUiManagementEnUS,
+    settingsBilling: settingsBillingEnUS,
     settings: settingsEnUS,
     shared: sharedEnUS,
     sharedUi: sharedUiEnUS,

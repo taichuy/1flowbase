@@ -621,7 +621,7 @@ fn verify_catalog_signature_with_keys(
             .and_then(Value::as_str)
             .unwrap_or_default();
         plugin_framework::verify_trusted_ed25519_artifact(
-            &rule_bytes,
+            rule_bytes,
             expected_checksum,
             algorithm,
             key_id,

@@ -13,7 +13,7 @@ const { HTTP_500_ERROR_BODY, createMockUpstream, wireAuditVectorFromBody } = req
 const {
   CALLBACK_RETRY_VECTOR_MARKER,
 } = require('../client-vector-contract');
-const { DEFAULT_BARRIER_MARKERS, chatTextEvents } = require('../protocol-events');
+const { DEFAULT_BARRIER_MARKERS, chatTextEvents, responsesWireEvents } = require('../protocol-events');
 const { errorFixtureMarker, upstreamErrorFixture } = require('../../protocol-oracle/error-fidelity');
 
 async function withMockUpstream(run, options = {}) {
@@ -821,11 +821,14 @@ test('controlled wire vectors observe honest provider MCP output without executo
       'fixture_mcp', 'fixture_mcp', 'fixture_mcp',
     ]);
     assert.equal(output.every((item) => typeof item.id === 'string' && item.id.length > 0), true);
-    assert.equal(output.every((item) => typeof item.status === 'string' && item.status.length > 0), true);
+    assert.equal(output.slice(0, 2).every((item) =>
+      typeof item.status === 'string' && item.status.length > 0,
+    ), true);
     assert.equal(output[1].name, 'lookup');
     assert.deepEqual(JSON.parse(output[1].arguments), { query: 'fixture' });
     assert.equal(output[2].name, 'lookup');
     assert.deepEqual(JSON.parse(output[2].arguments), { query: 'approval fixture' });
+    assert.equal(Object.hasOwn(output[2], 'status'), false);
     const snapshot = upstream.snapshot();
     assert.equal(snapshot.counters.gatewayExecutorInvocations, 0);
     assert.equal(snapshot.counters.networkObserverOutbound, 0);
@@ -834,4 +837,54 @@ test('controlled wire vectors observe honest provider MCP output without executo
       assert.equal(snapshot.entries.some((entry) => entry.event === event), true);
     }
   });
+});
+
+// Root AC-019/020: provider AdditionalTools output conforms to the strict public Responses schema.
+test('controlled wire vectors retain schema-complete additional tools output', async () => {
+  await withMockUpstream(async ({ httpBaseUrl }) => {
+    const response = await fetch(`${httpBaseUrl}${MOCK_ROUTE.RESPONSES}`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        model: 'mock-model', stream: true,
+        input: [
+          { type: 'tool_search_output', id: 'ts_1', tools: [{ type: 'function', name: 'fixture_read' }] },
+          { type: 'additional_tools', id: 'at_1', role: 'assistant', tools: [{ type: 'function', name: 'fixture_read' }] },
+        ],
+      }),
+    });
+    const output = parseSse(await response.text())
+      .filter((event) => event.event === 'response.output_item.done')
+      .map((event) => event.data.item);
+    assert.deepEqual(output.map((item) => item.type), ['tool_search_output', 'additional_tools']);
+    assert.equal(output[1].role, 'assistant');
+    assert.deepEqual(output[1].tools, [{
+      type: 'function', name: 'fixture_read', strict: false,
+      parameters: { type: 'object', properties: {} },
+    }]);
+    assert.equal(Object.hasOwn(output[1], 'status'), false);
+  });
+});
+
+// Root AC-019/020: all controlled output variants retain fields required by the pinned Responses schema.
+test('controlled wire vectors include required fields for every synthesized output item', () => {
+  const outputs = [
+    ...responsesWireEvents('schema-complete', 'tool-search-additional-tools').terminal.response.output,
+    ...responsesWireEvents('schema-complete', 'tool-search-output-additional-tools').terminal.response.output,
+    ...responsesWireEvents('schema-complete', 'hosted-tools').terminal.response.output,
+  ];
+  const byType = new Map(outputs.map((item) => [item.type, item]));
+  for (const type of ['tool_search_call', 'tool_search_output', 'program', 'shell_call']) {
+    assert.equal(typeof byType.get(type)?.call_id, 'string', `${type} requires a call_id`);
+  }
+  assert.equal(byType.get('tool_search_call').execution, 'server');
+  assert.deepEqual(byType.get('tool_search_call').arguments, { query: 'fixture' });
+  assert.equal(byType.get('tool_search_output').execution, 'server');
+  assert.equal(Array.isArray(byType.get('tool_search_output').tools), true);
+  assert.deepEqual(byType.get('file_search_call').queries, ['fixture']);
+  assert.equal(typeof byType.get('program')?.code, 'string');
+  assert.equal(typeof byType.get('program')?.fingerprint, 'string');
+  assert.deepEqual(byType.get('shell_call').action, {
+    commands: ['printf fixture'], timeout_ms: null, max_output_length: null,
+  });
+  assert.equal(byType.get('shell_call').environment, null);
 });

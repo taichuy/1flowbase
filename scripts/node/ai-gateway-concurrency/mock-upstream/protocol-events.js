@@ -9,6 +9,9 @@ const DEFAULT_BARRIER_MARKERS = Object.freeze({
   clientSecond: 'marker-2',
 });
 
+const RESPONSES_USAGE = Object.freeze({ input_tokens: 1, output_tokens: 1, total_tokens: 2 });
+const CHAT_COMPLETIONS_USAGE = Object.freeze({ prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 });
+
 function posixShellArgument(value) {
   return `'${value.replaceAll("'", `'"'"'`)}'`;
 }
@@ -84,6 +87,7 @@ function responsesEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${
         ...response,
         status: 'completed',
         output: [completedItem],
+        usage: RESPONSES_USAGE,
       },
     },
     cancelled: {
@@ -149,7 +153,7 @@ function responsesObservableItemEvents(nonce, firstText, secondText) {
     terminal: {
       type: 'response.completed',
       sequence_number: chunks.length,
-      response: { ...response, status: 'completed', output: completedItems },
+      response: { ...response, status: 'completed', output: completedItems, usage: RESPONSES_USAGE },
     },
   };
 }
@@ -301,7 +305,7 @@ function responsesToolEvents(
     chunks,
     terminal: {
       type: 'response.completed', sequence_number: chunks.length,
-      response: { ...response, status: 'completed', output: items },
+      response: { ...response, status: 'completed', output: items, usage: RESPONSES_USAGE },
     },
   };
 }
@@ -389,7 +393,7 @@ function chatToolEvents(
     }, finish_reason: null }] }],
     terminal: { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{ index: 0, delta: {
       content: `${DEFAULT_BARRIER_MARKERS.second} ${DEFAULT_BARRIER_MARKERS.clientSecond} ${finalText}`,
-    }, finish_reason: 'stop' }] },
+    }, finish_reason: 'stop' }], usage: CHAT_COMPLETIONS_USAGE },
   };
   const toolPaths = Array.isArray(toolPath) ? toolPath : [toolPath];
   const descriptor = normalizedToolDescriptor(tool, {
@@ -413,7 +417,7 @@ function chatToolEvents(
     }, finish_reason: null }] }],
     terminal: { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{
       index: 0, delta: {}, finish_reason: 'tool_calls',
-    }] },
+    }], usage: CHAT_COMPLETIONS_USAGE },
   };
 }
 
@@ -456,7 +460,7 @@ function chatTextEvents(nonce, firstText = `${nonce}:chunk-1`, secondText = `${n
     ],
     terminal: { id: `chatcmpl_${nonce}`, object: 'chat.completion.chunk', choices: [{
       index: 0, delta: {}, finish_reason: 'stop',
-    }] },
+    }], usage: CHAT_COMPLETIONS_USAGE },
   };
 }
 
@@ -495,7 +499,7 @@ function losslessProtocolEvents(transport, nonce, segments = LOSSLESS_SENTINEL_S
       terminal: {
         type: 'response.completed',
         sequence_number: deltas.length + 1,
-        response: { ...response, status: 'completed' },
+        response: { ...response, status: 'completed', usage: RESPONSES_USAGE },
       },
     };
   }
@@ -511,6 +515,7 @@ function losslessProtocolEvents(transport, nonce, segments = LOSSLESS_SENTINEL_S
         id: `chatcmpl_${nonce}`,
         object: 'chat.completion.chunk',
         choices: [{ index: 0, delta: {}, finish_reason: 'stop' }],
+        usage: CHAT_COMPLETIONS_USAGE,
       },
     };
   }
@@ -532,6 +537,45 @@ function losslessProtocolEvents(transport, nonce, segments = LOSSLESS_SENTINEL_S
   throw new Error(`unsupported lossless fixture transport: ${transport}`);
 }
 
+function responsesWireOutputItem(nonce, type, index) {
+  const id = `wire_${index}_${nonce}`;
+  const tool = {
+    type: 'function', name: 'fixture_read', strict: false,
+    parameters: { type: 'object', properties: {} },
+  };
+  if (type === 'tool_search_call') {
+    return {
+      id, type, call_id: `tool_search_call_${nonce}`, execution: 'server',
+      arguments: { query: 'fixture' }, status: 'completed',
+    };
+  }
+  if (type === 'tool_search_output') {
+    return {
+      id, type, call_id: `tool_search_call_${nonce}`, execution: 'server',
+      tools: [tool], status: 'completed',
+    };
+  }
+  if (type === 'additional_tools') return { id, type, role: 'assistant', tools: [tool] };
+  if (type === 'file_search_call') return { id, type, status: 'completed', queries: ['fixture'] };
+  if (type === 'program') {
+    return {
+      id, type, call_id: `program_call_${nonce}`,
+      code: 'await fixture_read({ query: "fixture" });', fingerprint: `program_${nonce}`,
+    };
+  }
+  if (type === 'shell_call') {
+    return {
+      id, type, call_id: `shell_call_${nonce}`,
+      action: { commands: ['printf fixture'], timeout_ms: null, max_output_length: null },
+      status: 'completed', environment: null,
+    };
+  }
+  return {
+    id, type, status: 'completed',
+    x_synthetic_unknown: type === 'future_gateway_drift' ? { preserve: true } : undefined,
+  };
+}
+
 function responsesWireEvents(nonce, vector) {
   const response = { id: `resp_${nonce}`, object: 'response', status: 'in_progress', model: 'mock-model', output: [] };
   const output = vector === 'mcp-list-call-approval'
@@ -545,7 +589,7 @@ function responsesWireEvents(nonce, vector) {
         name: 'lookup', arguments: JSON.stringify({ query: 'fixture' }), output: 'fixture result',
       },
       {
-        id: `mcp_approval_${nonce}`, type: 'mcp_approval_request', server_label: 'fixture_mcp', status: 'in_progress',
+        id: `mcp_approval_${nonce}`, type: 'mcp_approval_request', server_label: 'fixture_mcp',
         name: 'lookup', arguments: JSON.stringify({ query: 'approval fixture' }),
       },
     ]
@@ -554,10 +598,7 @@ function responsesWireEvents(nonce, vector) {
       'tool-search-output-additional-tools': ['tool_search_output', 'additional_tools'],
       'hosted-tools': ['file_search_call', 'program', 'shell_call'],
       'mcp-approval-continuation': [],
-    }[vector] ?? ['future_gateway_drift']).map((type, index) => ({
-      id: `wire_${index}_${nonce}`, type, status: 'completed',
-      x_synthetic_unknown: type === 'future_gateway_drift' ? { preserve: true } : undefined,
-    }));
+    }[vector] ?? ['future_gateway_drift']).map((type, index) => responsesWireOutputItem(nonce, type, index));
   const chunks = [{ type: 'response.created', sequence_number: 0, response }];
   for (const [index, item] of output.entries()) {
     chunks.push({ type: 'response.output_item.added', sequence_number: chunks.length, output_index: index, item });
@@ -568,7 +609,7 @@ function responsesWireEvents(nonce, vector) {
     providerOutputTypes: output.map((item) => item.type),
     terminal: {
       type: 'response.completed', sequence_number: chunks.length,
-      response: { ...response, status: 'completed', output },
+      response: { ...response, status: 'completed', output, usage: RESPONSES_USAGE },
     },
   };
 }

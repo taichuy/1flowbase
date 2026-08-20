@@ -63,8 +63,8 @@ async fn application_runtime_routes_trace_tree_content_exposes_visible_internal_
         .execute(&pool)
         .await
         .unwrap();
-    <MainDurableStore as OrchestrationRuntimeRepository>::append_runtime_events(
-        &state.store,
+    seed_flow_run_history_events(
+        &database_url,
         &[
             AppendRuntimeEventInput {
                 flow_run_id: flow_run_uuid,

@@ -20,8 +20,7 @@ import {
   listSettingsCreditAccounts,
   listSettingsCreditLedger,
   settingsCreditAccountsQueryKey,
-  settingsCreditLedgerQueryKey,
-  type SettingsCreditAccount
+  settingsCreditLedgerQueryKey
 } from '../../api/billing';
 import { settingsMembersQueryKey } from '../../api/members';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';

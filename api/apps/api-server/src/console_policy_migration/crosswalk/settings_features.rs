@@ -4,6 +4,12 @@ use super::{
 };
 
 const MODEL_PROVIDER_FEATURE_SIMPLE_OPERATIONS: &[&str] = &[
+    "billing.pricing_catalog.import",
+    "billing.pricing_catalog.view",
+    "billing.pricing_rules.create",
+    "billing.pricing_rules.delete",
+    "billing.pricing_rules.list",
+    "billing.pricing_rules.update",
     "model_provider_plugins.artifact.install",
     "model_provider_plugins.artifact.refresh",
     "model_provider_plugins.families.delete",
@@ -195,6 +201,15 @@ pub(super) const LEGACY_OPERATION_MAPPINGS: &[LegacyGrantMappingSpec] = &[
     legacy_mapping(
         "settings_feature.access.system.members",
         &[
+            "billing.credit.adjust",
+            "billing.credit.charge",
+            "billing.credit.disable",
+            "billing.credit.enable",
+            "billing.credit.grant",
+            "billing.credit.refund",
+            "billing.credit_accounts.list",
+            "billing.credit_accounts.view",
+            "billing.credit_ledger.list",
             "members.create",
             "members.delete",
             "members.disable",

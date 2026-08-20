@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate } from '@tanstack/react-router';
 import { Result } from 'antd';
-import { Suspense, useEffect, useRef } from 'react';
+import { Suspense, useEffect, useMemo, useRef } from 'react';
 
 import {
   FRONTSTAGE_SLUG_PAGE_BLOCK_PATH,
@@ -197,6 +197,51 @@ export function FrontstageWorkspacePage({
     enabled: Boolean(selectedPageId && resolvedTabId),
     retry: false
   });
+  const resolvedTab = pageContentQuery.data?.tab;
+  const canonicalTabRedirect = useMemo(() => {
+    if (
+      !selectedPageId ||
+      !tabRef ||
+      !resolvedTab ||
+      !rootNode?.slug ||
+      blockId
+    ) {
+      return null;
+    }
+
+    if (resolvedTab.isDefault) {
+      return (
+        <Navigate
+          to={FRONTSTAGE_SLUG_PAGE_PATH}
+          params={{ slug: rootNode.slug, pageId: selectedPageId }}
+          replace
+        />
+      );
+    }
+
+    if (resolvedTab.routeSegment && tabRef !== resolvedTab.routeSegment) {
+      return (
+        <Navigate
+          to={FRONTSTAGE_SLUG_PAGE_TAB_PATH}
+          params={{
+            slug: rootNode.slug,
+            pageId: selectedPageId,
+            tabRef: resolvedTab.routeSegment
+          }}
+          replace
+        />
+      );
+    }
+
+    return null;
+  }, [
+    blockId,
+    resolvedTab?.isDefault,
+    resolvedTab?.routeSegment,
+    rootNode?.slug,
+    selectedPageId,
+    tabRef
+  ]);
 
   if (rootNode?.kind === 'page' && !pageId && rootNode.slug && !blockId) {
     return (
@@ -243,32 +288,7 @@ export function FrontstageWorkspacePage({
     );
   }
 
-  const resolvedTab = pageContentQuery.data?.tab;
-  if (selectedPageId && tabRef && resolvedTab && rootNode?.slug && !blockId) {
-    if (resolvedTab.isDefault) {
-      return (
-        <Navigate
-          to={FRONTSTAGE_SLUG_PAGE_PATH}
-          params={{ slug: rootNode.slug, pageId: selectedPageId }}
-          replace
-        />
-      );
-    }
-
-    if (resolvedTab.routeSegment && tabRef !== resolvedTab.routeSegment) {
-      return (
-        <Navigate
-          to={FRONTSTAGE_SLUG_PAGE_TAB_PATH}
-          params={{
-            slug: rootNode.slug,
-            pageId: selectedPageId,
-            tabRef: resolvedTab.routeSegment
-          }}
-          replace
-        />
-      );
-    }
-  }
+  if (canonicalTabRedirect) return canonicalTabRedirect;
 
   if (blockId && isNotFoundResponseError(blockRuntimeAssemblyQuery.error)) {
     return (

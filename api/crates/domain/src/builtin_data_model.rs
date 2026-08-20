@@ -514,6 +514,7 @@ const MODEL_PROVIDER_REQUEST_LOGS_FIELDS: &[&str] = &[
     "pricing_model_id",
     "total_cost",
     "currency_code",
+    "billing_status",
     "reasoning_effort",
     "status",
     "error_code",

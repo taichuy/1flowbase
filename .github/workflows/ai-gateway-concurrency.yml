@@ -57,11 +57,23 @@ jobs:
         shell: bash
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      # The candidate's paired-source lock is the single source of truth for the
+      # official provider revision. Hardcoding a ref here made cross-ref runs
+      # (workflow file from main, candidate from another branch) pair a stale
+      # official source with the candidate's fixtures.
+      - name: Resolve paired official provider revision
+        id: paired_official
+        shell: bash
+        run: >-
+          echo "revision=$(node -p
+          "require('./scripts/node/ai-gateway-concurrency/workflow-contract/paired-source.lock.json').official_plugins.revision")"
+          >> "$GITHUB_OUTPUT"
+
       - name: Checkout paired official provider source
         uses: actions/checkout@v6
         with:
           repository: taichuy/1flowbase-official-plugins
-          ref: da9973284baed441613cfe1a174df15a6ef72809
+          ref: ${{ steps.paired_official.outputs.revision }}
           path: tmp/ai-gateway-concurrency/official-source
           fetch-depth: 1
 
