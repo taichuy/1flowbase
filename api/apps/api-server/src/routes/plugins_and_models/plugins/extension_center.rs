@@ -318,14 +318,21 @@ pub async fn list_local_extension_inventory(
         .await?
         {
             response.desired_state = Some(installation.desired_state.as_str().to_string());
-            response.availability_status =
-                control_plane::ports::PluginRepository::get_artifact_instance(
-                    &state.store,
-                    &state.api_node_id,
-                    installation.id,
-                )
-                .await?
-                .map(|artifact| artifact.availability_status.as_str().to_string());
+            if let Some(artifact) = control_plane::ports::PluginRepository::get_artifact_instance(
+                &state.store,
+                &state.api_node_id,
+                installation.id,
+            )
+            .await?
+            {
+                response.availability_status =
+                    Some(artifact.availability_status.as_str().to_string());
+                if is_runtime_uninstall_category(installation.category)
+                    && artifact.artifact_status == domain::PluginArtifactInstanceStatus::Missing
+                {
+                    response.status = "uninstalled".to_string();
+                }
+            }
         }
         for version in &mut response.installed_versions {
             if let Some(decision) =
@@ -512,6 +519,22 @@ struct InstalledCatalogJoin {
     current_version: String,
     source: String,
     trust: String,
+    status: InstalledCatalogJoinStatus,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InstalledCatalogJoinStatus {
+    Installed,
+    Uninstalled,
+}
+
+impl InstalledCatalogJoinStatus {
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Installed => "installed",
+            Self::Uninstalled => "uninstalled",
+        }
+    }
 }
 
 async fn installed_catalog_joins(
@@ -521,7 +544,26 @@ async fn installed_catalog_joins(
     let records = extension_installation_service(state)
         .list_installed_for_node(&state.api_node_id)
         .await?;
-    Ok(project_installed_catalog_joins(records, category))
+    let mut joins = project_installed_catalog_joins(records, category);
+    if matches!(
+        category,
+        ExtensionCatalogCategory::RuntimeExtensions | ExtensionCatalogCategory::CapabilityPlugins
+    ) {
+        for join in joins.values_mut() {
+            let artifact = control_plane::ports::PluginRepository::get_artifact_instance(
+                &state.store,
+                &state.api_node_id,
+                join.installation_id,
+            )
+            .await?;
+            if artifact.is_some_and(|artifact| {
+                artifact.artifact_status == domain::PluginArtifactInstanceStatus::Missing
+            }) {
+                join.status = InstalledCatalogJoinStatus::Uninstalled;
+            }
+        }
+    }
+    Ok(joins)
 }
 
 fn project_installed_catalog_joins(
@@ -541,6 +583,7 @@ fn project_installed_catalog_joins(
                 current_version: entry.identity.version,
                 source: entry.source_kind,
                 trust: entry.trust_level,
+                status: InstalledCatalogJoinStatus::Installed,
             },
         );
     }
@@ -711,11 +754,10 @@ fn project_catalog_entry(
         catalog_page: entry.catalog_page,
         catalog_source: catalog_source.to_string(),
         current_version: installation.map(|value| value.current_version.clone()),
-        installation_status: if installation.is_some() {
-            "installed".to_string()
-        } else {
-            "not_installed".to_string()
-        },
+        installation_status: installation
+            .map(|value| value.status.as_str())
+            .unwrap_or("not_installed")
+            .to_string(),
         artifact_kind: None,
         installation_source: installation.map(|value| value.source.clone()),
         extension_installation_id: installation.map(|value| value.installation_id.to_string()),
@@ -1259,23 +1301,35 @@ async fn install_or_update_official_extension(
         .find_local_installation(&state.api_node_id, &identity)
         .await?
     {
-        let node_plugin_installation_id = if is_node_plugin_category(category) {
-            Some(installation.id.to_string())
-        } else {
-            None
-        };
-        return Ok((
-            StatusCode::OK,
-            Json(ApiSuccess::new(ExtensionInstallResponse {
-                application_action: installation.application_action.as_str().to_string(),
-                application_status: default_application_status(installation.application_action)
-                    .to_string(),
-                installation: to_local_inventory_entry(installation),
-                local_artifact_was_present: true,
-                node_plugin_installation_id,
-            })),
-        )
-            .into_response());
+        let artifact_missing = is_node_plugin_category(category)
+            && control_plane::ports::PluginRepository::get_artifact_instance(
+                &state.store,
+                &state.api_node_id,
+                installation.id,
+            )
+            .await?
+            .is_some_and(|artifact| {
+                artifact.artifact_status == domain::PluginArtifactInstanceStatus::Missing
+            });
+        if !artifact_missing {
+            let node_plugin_installation_id = if is_node_plugin_category(category) {
+                Some(installation.id.to_string())
+            } else {
+                None
+            };
+            return Ok((
+                StatusCode::OK,
+                Json(ApiSuccess::new(ExtensionInstallResponse {
+                    application_action: installation.application_action.as_str().to_string(),
+                    application_status: default_application_status(installation.application_action)
+                        .to_string(),
+                    installation: to_local_inventory_entry(installation),
+                    local_artifact_was_present: true,
+                    node_plugin_installation_id,
+                })),
+            )
+                .into_response());
+        }
     }
 
     let located = state

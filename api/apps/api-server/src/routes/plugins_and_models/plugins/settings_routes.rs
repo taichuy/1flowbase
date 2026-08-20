@@ -104,11 +104,10 @@ pub async fn list_official_catalog(
         .map(|entry| {
             (
                 model_provider_catalog_id(&entry.installation),
-                if entry.assigned_to_current_workspace {
-                    "assigned"
-                } else {
-                    "installed"
-                },
+                model_provider_catalog_install_status(
+                    entry.local_artifact.artifact_status,
+                    entry.assigned_to_current_workspace,
+                ),
             )
         })
         .collect::<std::collections::HashMap<_, _>>();
@@ -244,9 +243,25 @@ fn exact_catalog_install_status<'a>(
         .unwrap_or("not_installed")
 }
 
+fn model_provider_catalog_install_status(
+    artifact_status: domain::PluginArtifactInstanceStatus,
+    assigned_to_current_workspace: bool,
+) -> &'static str {
+    if artifact_status == domain::PluginArtifactInstanceStatus::Missing {
+        "uninstalled"
+    } else if assigned_to_current_workspace {
+        "assigned"
+    } else {
+        "installed"
+    }
+}
+
 #[cfg(test)]
 mod catalog_identity_tests {
-    use super::{canonical_model_provider_catalog_id, exact_catalog_install_status};
+    use super::{
+        canonical_model_provider_catalog_id, exact_catalog_install_status,
+        model_provider_catalog_install_status,
+    };
     use std::collections::HashMap;
 
     #[test]
@@ -270,6 +285,24 @@ mod catalog_identity_tests {
         assert_eq!(
             exact_catalog_install_status(&installed, &other_publisher_catalog_id),
             "not_installed"
+        );
+    }
+
+    #[test]
+    fn ac_1785_only_a_missing_artifact_projects_as_uninstalled() {
+        assert_eq!(
+            model_provider_catalog_install_status(
+                domain::PluginArtifactInstanceStatus::Missing,
+                true,
+            ),
+            "uninstalled"
+        );
+        assert_eq!(
+            model_provider_catalog_install_status(
+                domain::PluginArtifactInstanceStatus::LoadFailed,
+                true,
+            ),
+            "assigned"
         );
     }
 }

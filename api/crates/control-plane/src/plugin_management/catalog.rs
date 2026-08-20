@@ -282,6 +282,7 @@ impl OfficialPluginCatalogFilter {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OfficialPluginInstallStatus {
     NotInstalled,
+    Uninstalled,
     Installed,
     Assigned,
 }
@@ -290,6 +291,7 @@ impl OfficialPluginInstallStatus {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::NotInstalled => "not_installed",
+            Self::Uninstalled => "uninstalled",
             Self::Installed => "installed",
             Self::Assigned => "assigned",
         }
@@ -742,6 +744,13 @@ where
             .map(|assignment| assignment.installation_id)
             .collect::<HashSet<_>>();
         let installations = self.repository.list_installations().await?;
+        let artifact_snapshots = self
+            .repository
+            .list_artifact_instances(&self.node_id)
+            .await?
+            .into_iter()
+            .map(|snapshot| (snapshot.installation_id, snapshot))
+            .collect::<HashMap<_, _>>();
         let official_snapshot = self.official_source.list_official_catalog().await?;
         let normalized_entries = normalize_official_entries(official_snapshot.entries);
 
@@ -753,13 +762,32 @@ where
                     .iter()
                     .filter(|installation| installation.provider_code == entry.provider_code)
                     .collect::<Vec<_>>();
-                let install_status = if matching_installations
+                let ready_installations = matching_installations
+                    .iter()
+                    .copied()
+                    .filter(|installation| {
+                        local_artifact_snapshot(&artifact_snapshots, &self.node_id, installation)
+                            .artifact_status
+                            .is_ready()
+                    })
+                    .collect::<Vec<_>>();
+                let install_status = if ready_installations
                     .iter()
                     .any(|installation| assigned_installation_ids.contains(&installation.id))
                 {
                     OfficialPluginInstallStatus::Assigned
-                } else if !matching_installations.is_empty() {
+                } else if !ready_installations.is_empty() {
                     OfficialPluginInstallStatus::Installed
+                } else if matching_installations.iter().any(|installation| {
+                    matches!(
+                        installation.category,
+                        domain::ExtensionCategory::RuntimeExtensions
+                            | domain::ExtensionCategory::CapabilityPlugins
+                    ) && local_artifact_snapshot(&artifact_snapshots, &self.node_id, installation)
+                        .artifact_status
+                        == domain::PluginArtifactInstanceStatus::Missing
+                }) {
+                    OfficialPluginInstallStatus::Uninstalled
                 } else {
                     OfficialPluginInstallStatus::NotInstalled
                 };

@@ -44,6 +44,10 @@ function getInstallButtonLabel(
     return i18nText('settings', 'auto.installed_workspace');
   }
 
+  if (entry.install_status === 'uninstalled') {
+    return i18nText('settings', 'auto.reinstall');
+  }
+
   if (activePluginId === entry.plugin_id && installState === 'failed') {
     return i18nText('settings', 'auto.retry_installation');
   }
@@ -89,6 +93,7 @@ function pickPreferredOfficialEntry(
   const statusScore = {
     assigned: 2,
     installed: 1,
+    uninstalled: 0,
     not_installed: 0
   } as const;
   const currentStatusScore = statusScore[current.install_status];
@@ -166,6 +171,10 @@ function OfficialPluginTagLabel({ tag }: { tag: string }) {
     return i18nText('settings', 'auto.update_check_failed');
   }
 
+  if (tag === 'uninstalled') {
+    return i18nText('settings', 'auto.uninstalled');
+  }
+
   if (tag === 'hybrid' || tag === 'dynamic' || tag === 'static') {
     return (
       <span className="model-provider-panel__tag-label">
@@ -229,6 +238,8 @@ function getStatusTags(
     tags.push('active');
   } else if (entry.install_status === 'installed') {
     tags.push('installed');
+  } else if (entry.install_status === 'uninstalled') {
+    tags.push('uninstalled');
   } else if (activePluginId === entry.plugin_id && installState === 'failed') {
     tags.push('failed');
   } else {
@@ -416,10 +427,14 @@ function OfficialPluginCard({
     (activePluginId === entry.plugin_id && installState === 'success');
   const upgrading = upgradingProviderCode === entry.provider_code;
   const belowMinimumHostVersion = isBelowMinimumHostVersion(entry);
-  const buttonLabel = family
-    ? family.latest_version === null
+  const activeFamily =
+    family?.current_local_artifact.artifact_status === 'ready'
+      ? family
+      : undefined;
+  const buttonLabel = activeFamily
+    ? activeFamily.latest_version === null
       ? i18nText('settings', 'auto.update_check_failed')
-      : family.has_update
+      : activeFamily.has_update
         ? upgrading
           ? i18nText('settings', 'auto.upgrading')
           : belowMinimumHostVersion
@@ -427,7 +442,7 @@ function OfficialPluginCard({
             : i18nText('settings', 'auto.upgrade_latest_version')
         : i18nText('settings', 'auto.currently_latest_version')
     : getInstallButtonLabel(entry, installState, activePluginId);
-  const buttonDisabled = family ? !family.has_update : installed;
+  const buttonDisabled = activeFamily ? !activeFamily.has_update : installed;
   const installCompatibilityOverride = belowMinimumHostVersion
     ? ({
         reason: BELOW_MINIMUM_HOST_VERSION,
@@ -437,11 +452,11 @@ function OfficialPluginCard({
     : undefined;
 
   function confirmInstall() {
-    if (family) {
+    if (activeFamily) {
       confirmOfficialPluginUpgrade({
         modal,
         entry,
-        family,
+        family: activeFamily,
         upgrading,
         onUpgradeLatest
       });
@@ -462,7 +477,7 @@ function OfficialPluginCard({
       content: (
         <OfficialPluginInstallConfirmContent
           entry={entry}
-          family={family}
+          family={activeFamily}
           belowMinimumHostVersion={belowMinimumHostVersion}
         />
       ),
@@ -493,7 +508,7 @@ function OfficialPluginCard({
           <Typography.Title level={5}>{entry.display_name}</Typography.Title>
         </div>
         <div className="model-provider-panel__catalog-item-tag-row">
-          {getStatusTags(entry, family, installState, activePluginId).map(
+          {getStatusTags(entry, activeFamily, installState, activePluginId).map(
             (tag) => (
               <Tag key={`${entry.plugin_id}-${tag}`} color={getTagColor(tag)}>
                 <OfficialPluginTagLabel tag={tag} />

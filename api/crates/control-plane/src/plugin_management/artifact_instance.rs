@@ -313,7 +313,37 @@ where
         }
         .await;
         let _ = fs::remove_dir_all(&package_root);
-        install_result
+        let artifact = install_result?;
+        if matches!(
+            installation.desired_state,
+            domain::PluginDesiredState::ActiveRequested
+        ) && !is_host_extension_installation(&installation)
+        {
+            let local_installation = self
+                .ready_current_node_installation(installation.id)
+                .await?;
+            match self.runtime.activate_plugin(&local_installation).await {
+                Ok(()) => {
+                    return self
+                        .mark_current_node_runtime_status(
+                            &installation,
+                            domain::PluginRuntimeStatus::Active,
+                            None,
+                        )
+                        .await;
+                }
+                Err(error) => {
+                    self.mark_current_node_runtime_status(
+                        &installation,
+                        domain::PluginRuntimeStatus::LoadFailed,
+                        Some(error.to_string()),
+                    )
+                    .await?;
+                    return Err(error);
+                }
+            }
+        }
+        Ok(artifact)
     }
 
     pub(super) async fn refresh_current_node_artifact_snapshot(

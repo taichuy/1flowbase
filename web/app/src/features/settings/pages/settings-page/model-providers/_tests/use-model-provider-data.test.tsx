@@ -127,6 +127,17 @@ describe('useModelProviderData', () => {
         model_discovery_mode: 'hybrid',
         current_installation_id: 'installation-1',
         current_version: '0.1.0',
+        current_local_artifact: {
+          node_id: 'node-1',
+          installation_id: 'installation-1',
+          local_version: '0.1.0',
+          local_checksum: null,
+          installed_path: '/tmp/openai-compatible',
+          artifact_status: 'ready',
+          runtime_status: 'active',
+          checked_at: '2026-08-20T10:00:00Z',
+          last_error: null
+        },
         latest_version: '0.1.0',
         has_update: false,
         installed_versions: []
@@ -166,6 +177,44 @@ describe('useModelProviderData', () => {
     expect(pluginsApi.fetchSettingsOfficialPluginCatalog).toHaveBeenCalledWith({
       locale: 'zh_Hans',
       q: undefined
+    });
+  });
+
+  test('AC-1785 excludes a missing artifact from the installed provider count', async () => {
+    pluginsApi.fetchSettingsPluginFamilies.mockResolvedValueOnce([
+      {
+        provider_code: 'openai_compatible',
+        display_name: 'OpenAI Compatible',
+        protocol: 'openai_compatible',
+        help_url: null,
+        default_base_url: 'https://api.openai.com/v1',
+        model_discovery_mode: 'hybrid',
+        current_installation_id: 'installation-1',
+        current_version: '0.1.0',
+        current_local_artifact: {
+          node_id: 'node-1',
+          installation_id: 'installation-1',
+          local_version: '0.1.0',
+          local_checksum: null,
+          installed_path: null,
+          artifact_status: 'missing',
+          runtime_status: 'inactive',
+          checked_at: '2026-08-20T10:00:00Z',
+          last_error: 'artifact_missing'
+        },
+        latest_version: '0.1.0',
+        has_update: false,
+        installed_versions: []
+      }
+    ]);
+
+    const view = renderUseModelProviderData();
+
+    await waitFor(() => {
+      expect(
+        view.result.current.overviewRows.find((row) => row.key === 'providers')
+          ?.value
+      ).toBe('0');
     });
   });
 });

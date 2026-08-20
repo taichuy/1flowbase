@@ -8,8 +8,9 @@ use crate::{
     errors::ControlPlaneError,
     i18n::RequestedLocales,
     plugin_management::{
-        OfficialPluginCatalogFilter, PluginCatalogFilter, PluginManagementService,
-        RefreshCurrentNodePluginArtifactCommand, RefreshPluginPackageCatalogProjectionCommand,
+        OfficialPluginCatalogFilter, OfficialPluginInstallStatus, PluginCatalogFilter,
+        PluginManagementService, RefreshCurrentNodePluginArtifactCommand,
+        RefreshPluginPackageCatalogProjectionCommand,
     },
     ports::{
         CreatePluginAssignmentInput, DownloadedOfficialPluginPackage,
@@ -745,6 +746,79 @@ async fn plugin_management_service_uses_persisted_missing_artifact_snapshot_for_
     assert_eq!(
         repository.artifact_snapshot_update_count().await,
         maintenance_update_count
+    );
+}
+
+#[tokio::test]
+async fn ac_1785_missing_artifact_is_uninstalled_in_the_official_catalog() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.view.all", "plugin_config.configure.all"],
+    ));
+    let install_root =
+        std::env::temp_dir().join(format!("plugin-official-uninstalled-{}", Uuid::now_v7()));
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    );
+    let installation_id = seed_test_installation(
+        &repository,
+        &install_root,
+        "openai_compatible",
+        "0.2.1",
+        PluginDesiredState::ActiveRequested,
+    )
+    .await;
+    repository
+        .create_assignment(&CreatePluginAssignmentInput {
+            installation_id,
+            workspace_id,
+            provider_code: "openai_compatible".into(),
+            actor_user_id: repository.actor.user_id,
+        })
+        .await
+        .unwrap();
+    let node_id = format!("local:{}", install_root.display());
+    let artifact = repository
+        .get_artifact_instance(&node_id, installation_id)
+        .await
+        .unwrap()
+        .unwrap();
+    repository
+        .upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
+            node_id,
+            installation_id,
+            local_version: artifact.local_version,
+            local_checksum: artifact.local_checksum,
+            local_path: None,
+            package_path: None,
+            manifest_fingerprint: artifact.manifest_fingerprint,
+            artifact_status: domain::PluginArtifactInstanceStatus::Missing,
+            runtime_status: domain::PluginRuntimeStatus::Inactive,
+            availability_status: domain::PluginAvailabilityStatus::ArtifactMissing,
+            checked_at: time::OffsetDateTime::now_utc(),
+            last_error: Some("artifact_missing".into()),
+            is_current: false,
+        })
+        .await
+        .unwrap();
+
+    let catalog = service
+        .list_official_catalog(
+            repository.actor.user_id,
+            OfficialPluginCatalogFilter::default(),
+            requested_locales(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(catalog.entries.len(), 1);
+    assert_eq!(
+        catalog.entries[0].install_status,
+        OfficialPluginInstallStatus::Uninstalled
     );
 }
 

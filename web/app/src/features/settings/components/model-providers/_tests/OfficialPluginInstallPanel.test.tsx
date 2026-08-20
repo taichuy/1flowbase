@@ -1,7 +1,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
-import type { SettingsOfficialPluginCatalogEntry } from '../../../api/plugins';
+import type {
+  SettingsOfficialPluginCatalogEntry,
+  SettingsPluginFamilyEntry
+} from '../../../api/plugins';
 import { OfficialPluginInstallPanel } from '../OfficialPluginInstallPanel';
 
 type OfficialPluginInstallPanelProps = Parameters<
@@ -40,7 +43,8 @@ function renderPanel(
   handlers: Partial<
     Pick<OfficialPluginInstallPanelProps, 'onInstall' | 'onUpgradeLatest'>
   > = {},
-  sourceMeta: OfficialPluginInstallPanelProps['sourceMeta'] = null
+  sourceMeta: OfficialPluginInstallPanelProps['sourceMeta'] = null,
+  family?: SettingsPluginFamilyEntry
 ) {
   const onInstall =
     handlers.onInstall ?? vi.fn<OfficialPluginInstallPanelProps['onInstall']>();
@@ -52,7 +56,7 @@ function renderPanel(
     <OfficialPluginInstallPanel
       sourceMeta={sourceMeta}
       entries={[entry]}
-      familiesByProviderCode={{}}
+      familiesByProviderCode={family ? { [entry.provider_code]: family } : {}}
       canManage
       searchQuery=""
       activePluginId={null}
@@ -147,5 +151,60 @@ describe('OfficialPluginInstallPanel', () => {
         acknowledged_minimum_host_version: '0.3.0'
       });
     });
+  });
+
+  test('AC-1785 treats a missing family artifact as uninstalled and reinstalls instead of upgrading', async () => {
+    const onInstall = vi.fn();
+    const onUpgradeLatest = vi.fn();
+    const uninstalledFamily: SettingsPluginFamilyEntry = {
+      provider_code: baseEntry.provider_code,
+      plugin_type: baseEntry.plugin_type,
+      namespace: 'plugin.openai_compatible',
+      label_key: 'plugin.label',
+      description_key: 'plugin.description',
+      provider_label_key: 'provider.label',
+      icon: null,
+      protocol: baseEntry.protocol,
+      help_url: baseEntry.help_url,
+      default_base_url: null,
+      model_discovery_mode: baseEntry.model_discovery_mode,
+      current_installation_id: 'installation-1',
+      current_version: baseEntry.latest_version,
+      current_local_artifact: {
+        node_id: 'node-1',
+        installation_id: 'installation-1',
+        local_version: baseEntry.latest_version,
+        local_checksum: null,
+        installed_path: null,
+        artifact_status: 'missing',
+        runtime_status: 'inactive',
+        checked_at: '2026-08-20T10:00:00Z',
+        last_error: 'artifact_missing'
+      },
+      latest_version: baseEntry.latest_version,
+      has_update: false,
+      installed_versions: []
+    };
+    renderPanel(
+      { ...baseEntry, install_status: 'uninstalled' },
+      { onInstall, onUpgradeLatest },
+      null,
+      uninstalledFamily
+    );
+
+    expect(screen.getByText('已卸载')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '重新安装' }));
+    const confirmButtons = await screen.findAllByRole('button', {
+      name: '重新安装'
+    });
+    fireEvent.click(confirmButtons[confirmButtons.length - 1]);
+
+    await waitFor(() =>
+      expect(onInstall).toHaveBeenCalledWith(
+        expect.objectContaining({ plugin_id: baseEntry.plugin_id }),
+        undefined
+      )
+    );
+    expect(onUpgradeLatest).not.toHaveBeenCalled();
   });
 });

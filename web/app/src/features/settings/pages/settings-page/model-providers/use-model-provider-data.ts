@@ -228,7 +228,9 @@ export function useModelProviderData({
   const invalidCount = instances.filter(
     (instance) => instance.status === 'invalid'
   ).length;
-  const providerCount = families.length;
+  const providerCount = families.filter(
+    (family) => family.current_local_artifact.artifact_status === 'ready'
+  ).length;
   const officialCount = officialCatalogEntries.length;
   const overviewRows = [
     {

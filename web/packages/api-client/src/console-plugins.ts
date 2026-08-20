@@ -52,6 +52,7 @@ export interface ConsolePluginInstallation {
 
 export type ConsoleOfficialPluginInstallStatus =
   | 'not_installed'
+  | 'uninstalled'
   | 'installed'
   | 'assigned';
 

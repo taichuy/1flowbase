@@ -14,10 +14,12 @@ use uuid::Uuid;
 use crate::{
     host_extension::is_model_provider_installation,
     plugin_management::{
-        AssignPluginCommand, DeletePluginFamilyCommand, EnablePluginCommand, InstallPluginCommand,
-        InstallUploadedPluginCommand, PluginCatalogFilter, PluginCompatibilityOverride,
-        PluginManagementService, PluginRiskOverride, SwitchPluginVersionCommand,
-        UpgradeLatestPluginFamilyCommand, PLUGIN_RISK_SIGNATURE_MISSING,
+        AssignPluginCommand, DeletePluginFamilyCommand, EnablePluginCommand,
+        InstallCurrentNodePluginArtifactCommand, InstallOfficialPluginCommand,
+        InstallPluginCommand, InstallUploadedPluginCommand, PluginCatalogFilter,
+        PluginCompatibilityOverride, PluginManagementService, PluginRiskOverride,
+        SwitchPluginVersionCommand, UpgradeLatestPluginFamilyCommand,
+        PLUGIN_RISK_SIGNATURE_MISSING,
     },
     ports::{
         CreatePluginAssignmentInput, DownloadedOfficialPluginPackage, ModelProviderRepository,
@@ -38,6 +40,65 @@ use super::support::{
     requested_locales, seed_test_installation, MemoryOfficialPluginSource,
     MemoryPluginManagementRepository, MemoryProviderRuntime,
 };
+
+#[tokio::test]
+async fn ac_1785_reinstalling_a_missing_artifact_reactivates_the_retained_family() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.view.all", "plugin_config.configure.all"],
+    ));
+    let runtime = MemoryProviderRuntime::default();
+    let install_root =
+        std::env::temp_dir().join(format!("plugin-artifact-reinstall-{}", Uuid::now_v7()));
+    let service = PluginManagementService::new(
+        repository.clone(),
+        runtime.clone(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    );
+    let installed = service
+        .install_official_plugin(InstallOfficialPluginCommand {
+            actor_user_id: repository.actor.user_id,
+            plugin_id: "1flowbase.openai_compatible".into(),
+            compatibility_override: None,
+            risk_override: Some(PluginRiskOverride {
+                reason: "fixture accepts unsigned official package".into(),
+                acknowledged_warnings: vec![PLUGIN_RISK_SIGNATURE_MISSING.into()],
+            }),
+        })
+        .await
+        .unwrap();
+
+    service
+        .delete_family(DeletePluginFamilyCommand {
+            actor_user_id: repository.actor.user_id,
+            provider_code: "openai_compatible".into(),
+        })
+        .await
+        .unwrap();
+    let reinstalled = service
+        .install_current_node_artifact(InstallCurrentNodePluginArtifactCommand {
+            actor_user_id: repository.actor.user_id,
+            installation_id: installed.installation.id,
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        reinstalled.artifact_status,
+        PluginArtifactInstanceStatus::Ready
+    );
+    assert_eq!(reinstalled.runtime_status, PluginRuntimeStatus::Active);
+    assert_eq!(
+        reinstalled.availability_status,
+        PluginAvailabilityStatus::Available
+    );
+    assert!(runtime
+        .loaded_installations()
+        .await
+        .contains(&installed.installation.id));
+}
 
 #[tokio::test]
 async fn plugin_management_service_switches_to_a_local_version_without_redownloading() {

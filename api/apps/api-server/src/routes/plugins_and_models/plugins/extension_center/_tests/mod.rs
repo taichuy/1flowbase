@@ -39,10 +39,10 @@ use crate::official_extension_catalog::{
 use super::upload::upload_challenge;
 use super::{
     artifact_preflight_challenge, catalog_application_action, default_application_status,
-    extension_update_status, paginate_installed_families, project_catalog_entry,
-    project_installed_catalog_joins, requested_installation_identity, validate_preflight_overrides,
-    verify_trusted_artifact_signature, InstalledCatalogJoin, PreflightDecision,
-    UploadedExtensionArtifact,
+    extension_update_status, is_runtime_uninstall_category, paginate_installed_families,
+    project_catalog_entry, project_installed_catalog_joins, requested_installation_identity,
+    validate_preflight_overrides, verify_trusted_artifact_signature, InstalledCatalogJoin,
+    InstalledCatalogJoinStatus, PreflightDecision, UploadedExtensionArtifact,
 };
 
 #[test]
@@ -71,6 +71,7 @@ fn root_1545_ac_4_catalog_projection_joins_real_local_version_by_stable_plugin_i
             current_version: "0.1.32-dev".to_string(),
             source: "upload".to_string(),
             trust: "unknown".to_string(),
+            status: InstalledCatalogJoinStatus::Installed,
         },
     )]);
 
@@ -87,6 +88,39 @@ fn root_1545_ac_4_catalog_projection_joins_real_local_version_by_stable_plugin_i
     assert_eq!(response.installation_source.as_deref(), Some("upload"));
     assert_eq!(response.trust, "unknown");
     assert!(response.artifact_kind.is_none());
+}
+
+#[test]
+fn ac_1785_catalog_projects_missing_runtime_artifact_as_uninstalled() {
+    let entry = runtime_entry();
+    let installed = HashMap::from([(
+        entry.id.clone(),
+        InstalledCatalogJoin {
+            installation_id: Uuid::now_v7(),
+            current_version: "0.2.0".to_string(),
+            source: "official".to_string(),
+            trust: "official".to_string(),
+            status: InstalledCatalogJoinStatus::Uninstalled,
+        },
+    )]);
+
+    let response = project_catalog_entry(entry, "official", &installed, &[]);
+
+    assert_eq!(response.installation_status, "uninstalled");
+    assert_eq!(response.current_version.as_deref(), Some("0.2.0"));
+}
+
+#[test]
+fn ac_1785_only_runtime_and_capability_categories_support_hot_uninstall() {
+    assert!(is_runtime_uninstall_category(
+        domain::ExtensionCategory::RuntimeExtensions
+    ));
+    assert!(is_runtime_uninstall_category(
+        domain::ExtensionCategory::CapabilityPlugins
+    ));
+    assert!(!is_runtime_uninstall_category(
+        domain::ExtensionCategory::HostExtensions
+    ));
 }
 
 #[test]

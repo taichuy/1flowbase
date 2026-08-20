@@ -726,6 +726,54 @@ describe('SettingsExtensionCenterSection', () => {
     });
   });
 
+  test('AC-1785 projects a missing runtime artifact as uninstalled and reinstalls through the install path', async () => {
+    extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValueOnce({
+      limit: 20,
+      total_entries: 1,
+      next_cursor: null,
+      entries: [
+        {
+          ...installedEntry,
+          status: 'uninstalled',
+          availability_status: 'artifact_missing'
+        }
+      ]
+    });
+    extensionsApi.fetchSettingsExtensionCatalogEntry.mockResolvedValueOnce({
+      ...catalogEntry,
+      installation_status: 'uninstalled'
+    });
+    renderSection();
+
+    const row = await screen.findByRole('row', { name: /openai/ });
+    expect(within(row).getByText('已卸载')).toBeInTheDocument();
+    expect(
+      within(row).queryByRole('button', { name: '卸载' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(row).queryByRole('button', { name: '同步最新版本' })
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: '检查更新' }));
+    expect(extensionsApi.checkSettingsExtensionUpdates).not.toHaveBeenCalled();
+
+    fireEvent.click(within(row).getByRole('button', { name: '重新安装' }));
+    await waitFor(() => {
+      expect(
+        extensionsApi.fetchSettingsExtensionCatalogEntry
+      ).toHaveBeenCalledWith(
+        'runtime-extensions',
+        'runtime-extensions:taichuy/openai'
+      );
+      expect(extensionsApi.installSettingsExtension).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'runtime-extensions:taichuy/openai' }),
+        'csrf-123',
+        {},
+        false
+      );
+    });
+  });
+
   test('D4-AC-013 keeps legacy version deletion for non-runtime extension categories', async () => {
     extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValueOnce({
       limit: 20,

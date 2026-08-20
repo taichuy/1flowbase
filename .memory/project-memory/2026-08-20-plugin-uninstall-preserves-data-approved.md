@@ -19,3 +19,12 @@ Native `HostExtension` remains trusted, boot-time activated and restart-scoped; 
 part of this issue's hot-unload contract. The complete `control-plane` and `api-server`
 library suites were not green during the concentrated QA batch, so their failures remain
 explicitly unverified rather than being attributed to or masked by this issue.
+
+## Status projection follow-up
+
+An uninstalled plugin retains its durable installation record, so UI and API projections must
+not use record existence as the installed predicate. For `RuntimeExtension` and
+`CapabilityPlugin`, `artifact_status=missing` projects to `uninstalled`: it is excluded from
+the installed provider count, offers `reinstall`, and must not enter update/upgrade flows.
+Reinstalling restores the retained installation identity and configuration. `HostExtension`
+continues to use its restart-scoped lifecycle and is explicitly excluded from this projection.

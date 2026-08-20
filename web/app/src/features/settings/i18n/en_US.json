@@ -285,6 +285,8 @@
     "edit_model": "Edit model {{value1}}",
     "upload_and_install": "Upload and install",
     "uninstall_plugin": "Uninstall",
+    "uninstalled": "Uninstalled",
+    "reinstall": "Reinstall",
     "plugin_upload_network_unavailable": "The upload did not complete. Check the network connection or reverse proxy, then try again.",
     "plugin_upload_platform_incompatible": "The package platform is incompatible with this host. Upload the linux-amd64 build.",
     "plugin_upload_package_invalid": "Package validation failed. Confirm that the file is complete and is a valid plugin package, then try again.",

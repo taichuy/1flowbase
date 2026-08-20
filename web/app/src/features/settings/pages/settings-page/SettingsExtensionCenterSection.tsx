@@ -128,6 +128,15 @@ function extensionInstallationStatus(row: ExtensionRow) {
   return isInstalledRow(row) ? row.status : row.installation_status;
 }
 
+function extensionInstallationStatusLabel(
+  row: ExtensionRow,
+  t: (key: string) => string
+) {
+  return extensionInstallationStatus(row) === 'uninstalled'
+    ? t('auto.uninstalled')
+    : extensionInstallationStatus(row);
+}
+
 function extensionApplicationStatusLabel(
   status: SettingsInstalledExtension['application_status'],
   t: (key: string) => string
@@ -319,7 +328,10 @@ function GenericExtensionCenterSection({
 
       const checkableRows = candidateRows.filter(
         (row) =>
-          (isInstalledRow(row) || row.current_version !== null) &&
+          (isInstalledRow(row)
+            ? row.status !== 'uninstalled'
+            : row.installation_status === 'installed' &&
+              row.current_version !== null) &&
           (isInstalledRow(row) || row.catalog_source !== 'builtin')
       );
       const groups = new Map<SettingsExtensionCategory, ExtensionRow[]>();
@@ -648,6 +660,23 @@ function GenericExtensionCenterSection({
     },
     [message, requestOperation, t]
   );
+  const resolveInstalledReinstall = useCallback(
+    async (row: SettingsInstalledExtension) => {
+      const key = extensionKey(row);
+      setActiveOperationKey(key);
+      try {
+        const entry = await fetchSettingsExtensionCatalogEntry(
+          row.category,
+          row.catalog_id
+        );
+        requestOperation({ kind: 'catalog', entry, update: false });
+      } catch {
+        setActiveOperationKey(null);
+        message.error(t('auto.extension_operation_failed'));
+      }
+    },
+    [message, requestOperation, t]
+  );
 
   const columns = useMemo<Array<DataTableColumn<ExtensionRow>>>(
     () => [
@@ -694,7 +723,7 @@ function GenericExtensionCenterSection({
         width: 190,
         render: (_, row) => (
           <Space size={4} wrap>
-            <Tag>{extensionInstallationStatus(row)}</Tag>
+            <Tag>{extensionInstallationStatusLabel(row, t)}</Tag>
             {isInstalledRow(row) ? (
               <>
                 <Tag>{row.desired_state ?? '—'}</Tag>
@@ -728,7 +757,11 @@ function GenericExtensionCenterSection({
                 const control = (
                   <Switch
                     aria-label={`${extensionName(row)} ${t('auto.enabled')}`}
-                    checked={row.desired_state !== 'disabled'}
+                    checked={
+                      row.status !== 'uninstalled' &&
+                      row.desired_state !== 'disabled'
+                    }
+                    disabled={row.status === 'uninstalled'}
                     loading={activatingInstallationId === row.id}
                     onChange={(enabled) =>
                       toggleInstalledExtensionActivation({
@@ -774,46 +807,56 @@ function GenericExtensionCenterSection({
           const updateState = updateStates[key] ?? 'unchecked';
           const action = isInstalledRow(row) ? (
             <Space size={4}>
-              <span data-update-state={updateState}>
-                <Tooltip
-                  title={
-                    updateState === 'update_available'
-                      ? t('auto.update_available')
-                      : updateState === 'current'
-                        ? t('auto.currently_latest_version')
-                        : updateState === 'unknown_error'
-                          ? t('auto.update_check_failed')
-                          : t('auto.check_updates')
-                  }
-                >
-                  <Badge
-                    dot
-                    color={
+              {row.status !== 'uninstalled' ? (
+                <span data-update-state={updateState}>
+                  <Tooltip
+                    title={
                       updateState === 'update_available'
-                        ? '#ffba00'
+                        ? t('auto.update_available')
                         : updateState === 'current'
-                          ? 'transparent'
+                          ? t('auto.currently_latest_version')
                           : updateState === 'unknown_error'
-                            ? '#fb565b'
-                            : 'transparent'
+                            ? t('auto.update_check_failed')
+                            : t('auto.check_updates')
                     }
                   >
-                    <Button
-                      type="link"
-                      loading={activeOperationKey === key}
-                      disabled={
-                        updateState !== 'update_available' ||
-                        (activeOperationKey !== null &&
-                          activeOperationKey !== key)
+                    <Badge
+                      dot
+                      color={
+                        updateState === 'update_available'
+                          ? '#ffba00'
+                          : updateState === 'current'
+                            ? 'transparent'
+                            : updateState === 'unknown_error'
+                              ? '#fb565b'
+                              : 'transparent'
                       }
-                      onClick={() => void resolveInstalledUpdate(row)}
                     >
-                      {t('auto.sync_latest')}
-                    </Button>
-                  </Badge>
-                </Tooltip>
-              </span>
-              {isFamilyUninstallRow(row) ? (
+                      <Button
+                        type="link"
+                        loading={activeOperationKey === key}
+                        disabled={
+                          updateState !== 'update_available' ||
+                          (activeOperationKey !== null &&
+                            activeOperationKey !== key)
+                        }
+                        onClick={() => void resolveInstalledUpdate(row)}
+                      >
+                        {t('auto.sync_latest')}
+                      </Button>
+                    </Badge>
+                  </Tooltip>
+                </span>
+              ) : null}
+              {isFamilyUninstallRow(row) && row.status === 'uninstalled' ? (
+                <Button
+                  type="link"
+                  loading={activeOperationKey === key}
+                  onClick={() => void resolveInstalledReinstall(row)}
+                >
+                  {t('auto.reinstall')}
+                </Button>
+              ) : isFamilyUninstallRow(row) ? (
                 <Button
                   danger
                   type="link"
@@ -860,15 +903,15 @@ function GenericExtensionCenterSection({
           ) : row.catalog_source === 'builtin' ? null : (
             <span
               data-update-state={
-                row.installation_status === 'not_installed'
-                  ? 'not_installed'
+                row.installation_status !== 'installed'
+                  ? row.installation_status
                   : updateState
               }
             >
               <Badge
                 dot
                 color={
-                  row.installation_status === 'not_installed'
+                  row.installation_status !== 'installed'
                     ? 'transparent'
                     : updateState === 'update_available'
                       ? '#ffba00'
@@ -889,13 +932,15 @@ function GenericExtensionCenterSection({
                     requestOperation({
                       kind: 'catalog',
                       entry: row,
-                      update: row.installation_status !== 'not_installed'
+                      update: row.installation_status === 'installed'
                     })
                   }
                 >
-                  {row.installation_status === 'not_installed'
-                    ? t('auto.install')
-                    : t('auto.update')}
+                  {row.installation_status === 'installed'
+                    ? t('auto.update')
+                    : row.installation_status === 'uninstalled'
+                      ? t('auto.reinstall')
+                      : t('auto.install')}
                 </Button>
               </Badge>
             </span>
@@ -917,6 +962,7 @@ function GenericExtensionCenterSection({
       activatingInstallationId,
       deleteInstalledExtension,
       deletingInstalledExtensionId,
+      resolveInstalledReinstall,
       resolveInstalledUpdate,
       requestOperation,
       t,

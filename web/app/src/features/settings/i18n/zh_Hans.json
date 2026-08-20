@@ -285,6 +285,8 @@
     "edit_model": "编辑模型 {{value1}}",
     "upload_and_install": "上传并安装",
     "uninstall_plugin": "卸载",
+    "uninstalled": "已卸载",
+    "reinstall": "重新安装",
     "plugin_upload_network_unavailable": "上传请求未完成，请检查网络连接或反向代理后重试。",
     "plugin_upload_platform_incompatible": "安装包平台与当前宿主不兼容，请上传 linux-amd64 版本。",
     "plugin_upload_package_invalid": "安装包校验失败，请确认文件完整且为有效插件包后重试。",

@@ -37,6 +37,13 @@ export function formatPluginArtifactAvailabilityStatus(status: string) {
     };
   }
 
+  if (status === 'missing') {
+    return {
+      color: 'default',
+      label: i18nText('settings', 'auto.uninstalled')
+    };
+  }
+
   return {
     color: 'red',
     label: i18nText('settings', 'auto.unavailable')

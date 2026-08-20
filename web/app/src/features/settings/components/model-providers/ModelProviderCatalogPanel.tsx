@@ -55,11 +55,13 @@ export function ModelProviderCatalogPanel({
   switchingProviderCode,
   upgradingProviderCode,
   uninstallingProviderCode,
+  reinstallingProviderCode,
   onCreate,
   onViewInstances,
   onUpgradeLatest,
   onSwitchVersion,
-  onUninstall
+  onUninstall,
+  onReinstall
 }: {
   overviewRows: { key: string; label: string; value: string }[];
   entries: SettingsPluginFamilyEntry[];
@@ -72,6 +74,7 @@ export function ModelProviderCatalogPanel({
   switchingProviderCode?: string | null;
   upgradingProviderCode?: string | null;
   uninstallingProviderCode?: string | null;
+  reinstallingProviderCode?: string | null;
   onCreate: (entry: SettingsPluginFamilyEntry) => void;
   onViewInstances: (entry: SettingsPluginFamilyEntry) => void;
   onUpgradeLatest: (entry: SettingsPluginFamilyEntry) => void;
@@ -80,6 +83,7 @@ export function ModelProviderCatalogPanel({
     installationId: string
   ) => void;
   onUninstall: (entry: SettingsPluginFamilyEntry) => void;
+  onReinstall: (entry: SettingsPluginFamilyEntry) => void;
 }) {
   return (
     <ScrollableSurface className="model-provider-panel__catalog">
@@ -123,6 +127,10 @@ export function ModelProviderCatalogPanel({
                       upgradingProviderCode === entry.provider_code;
                     const uninstalling =
                       uninstallingProviderCode === entry.provider_code;
+                    const uninstalled =
+                      localArtifact.artifact_status === 'missing';
+                    const reinstalling =
+                      reinstallingProviderCode === entry.provider_code;
 
                     return (
                       <Space
@@ -145,53 +153,66 @@ export function ModelProviderCatalogPanel({
                         >
                           {i18nText('settings', 'auto.new')}
                         </Button>
-                        <Tooltip
-                          title={
-                            entry.has_update
-                              ? undefined
-                              : entry.latest_version === null
-                                ? i18nText(
-                                    'settings',
-                                    'auto.update_check_failed'
-                                  )
-                                : i18nText(
-                                    'settings',
-                                    'auto.currently_latest_version'
-                                  )
-                          }
-                        >
-                          <span>
-                            <Badge
-                              dot={entry.has_update && !upgrading}
-                              color="gold"
-                              title={
-                                entry.has_update
+                        {uninstalled ? (
+                          <Button
+                            type="link"
+                            loading={reinstalling}
+                            disabled={uninstalling || reinstalling}
+                            onClick={() => onReinstall(entry)}
+                          >
+                            {i18nText('settings', 'auto.reinstall')}
+                          </Button>
+                        ) : (
+                          <Tooltip
+                            title={
+                              entry.has_update
+                                ? undefined
+                                : entry.latest_version === null
                                   ? i18nText(
                                       'settings',
-                                      'auto.updates_available'
+                                      'auto.update_check_failed'
                                     )
-                                  : undefined
-                              }
-                            >
-                              <Button
-                                type="link"
-                                loading={upgrading}
-                                disabled={!entry.has_update || uninstalling}
-                                onClick={() => onUpgradeLatest(entry)}
+                                  : i18nText(
+                                      'settings',
+                                      'auto.currently_latest_version'
+                                    )
+                            }
+                          >
+                            <span>
+                              <Badge
+                                dot={entry.has_update && !upgrading}
+                                color="gold"
+                                title={
+                                  entry.has_update
+                                    ? i18nText(
+                                        'settings',
+                                        'auto.updates_available'
+                                      )
+                                    : undefined
+                                }
                               >
-                                {i18nText('settings', 'auto.update')}
-                              </Button>
-                            </Badge>
-                          </span>
-                        </Tooltip>
-                        <Button
-                          danger
-                          type="link"
-                          loading={uninstalling}
-                          onClick={() => onUninstall(entry)}
-                        >
-                          {i18nText('settings', 'auto.uninstall_plugin')}
-                        </Button>
+                                <Button
+                                  type="link"
+                                  loading={upgrading}
+                                  disabled={!entry.has_update || uninstalling}
+                                  onClick={() => onUpgradeLatest(entry)}
+                                >
+                                  {i18nText('settings', 'auto.update')}
+                                </Button>
+                              </Badge>
+                            </span>
+                          </Tooltip>
+                        )}
+                        {!uninstalled ? (
+                          <Button
+                            danger
+                            type="link"
+                            loading={uninstalling}
+                            onClick={() => onUninstall(entry)}
+                          >
+                            {i18nText('settings', 'auto.uninstall_plugin')}
+                          </Button>
+                        ) : null}
                       </Space>
                     );
                   }
@@ -234,6 +255,9 @@ export function ModelProviderCatalogPanel({
             key: 'version',
             width: 220,
             render: (_, entry) => {
+              const artifactUnavailable = isPluginArtifactUnavailable(
+                entry.current_local_artifact.artifact_status
+              );
               const localArtifactVersion =
                 entry.current_local_artifact.local_version;
               const shouldShowLocalArtifactVersion =
@@ -270,6 +294,7 @@ export function ModelProviderCatalogPanel({
                         )}
                         loading={switchingProviderCode === entry.provider_code}
                         disabled={
+                          artifactUnavailable ||
                           uninstallingProviderCode === entry.provider_code
                         }
                         options={versionOptions}
