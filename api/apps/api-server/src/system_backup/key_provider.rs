@@ -114,6 +114,7 @@ mod tests {
         BackupSetId, BackupSourceIdentity, ContentDigest, KeyFingerprint, MigrationHead,
     };
     use time::OffsetDateTime;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     #[test]
     fn derives_a_stable_backup_key_from_the_provider_master_key() {
@@ -171,6 +172,7 @@ mod tests {
             .unwrap()
             .fingerprint;
         let legacy_material = provider.key_for(&legacy_fingerprint).await.unwrap();
+        let component_id = BackupComponentId::try_from("postgres/main").unwrap();
         let manifest = BackupManifest::try_new(
             BackupSetId::new(),
             OffsetDateTime::UNIX_EPOCH,
@@ -179,7 +181,7 @@ mod tests {
             KeyFingerprint::try_from("b".repeat(64)).unwrap(),
             legacy_fingerprint.clone(),
             vec![BackupComponent {
-                component_id: BackupComponentId::try_from("postgres/main").unwrap(),
+                component_id: component_id.clone(),
                 kind: BackupComponentKind::PostgreSql,
                 source_identity: BackupSourceIdentity::try_from("postgres/main").unwrap(),
                 content_type: "application/octet-stream".to_owned(),
@@ -204,5 +206,44 @@ mod tests {
             provider.active_key().await.unwrap().expose_bytes(),
             &legacy_key
         );
+
+        let plaintext = b"pre-upgrade backup payload".to_vec();
+        let (mut source_writer, source_reader) = tokio::io::duplex(plaintext.len() + 1);
+        source_writer.write_all(&plaintext).await.unwrap();
+        source_writer.shutdown().await.unwrap();
+        let (encrypted_writer, mut encrypted_reader) = tokio::io::duplex(4096);
+        let encryption_key = provider.key_for(&legacy_fingerprint).await.unwrap();
+        let backup_set_id = sealed.manifest().backup_set_id();
+        let encryption_component_id = component_id.clone();
+        let encrypt_task = tokio::spawn(async move {
+            control_plane::system_backup::encrypt_backup_stream(
+                source_reader,
+                encrypted_writer,
+                &encryption_key,
+                backup_set_id,
+                &encryption_component_id,
+            )
+            .await
+        });
+        let mut encrypted = Vec::new();
+        encrypted_reader.read_to_end(&mut encrypted).await.unwrap();
+        encrypt_task.await.unwrap().unwrap();
+
+        let (mut encrypted_writer, encrypted_reader) = tokio::io::duplex(encrypted.len() + 1);
+        encrypted_writer.write_all(&encrypted).await.unwrap();
+        encrypted_writer.shutdown().await.unwrap();
+        let (plaintext_writer, mut plaintext_reader) = tokio::io::duplex(plaintext.len() + 1);
+        control_plane::system_backup::decrypt_backup_stream(
+            encrypted_reader,
+            plaintext_writer,
+            &legacy_material,
+            backup_set_id,
+            &component_id,
+        )
+        .await
+        .unwrap();
+        let mut recovered = Vec::new();
+        plaintext_reader.read_to_end(&mut recovered).await.unwrap();
+        assert_eq!(recovered, plaintext);
     }
 }
