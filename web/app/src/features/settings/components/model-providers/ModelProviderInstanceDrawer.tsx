@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import {
-  Alert,
   Button,
   Empty,
   Flex,
@@ -29,6 +28,8 @@ import type {
   SettingsModelProviderInstance,
   SettingsModelProviderModelCatalog,
   SettingsModelProviderPricingTarget,
+  SettingsModelProviderResetCreditCountResult,
+  SettingsModelProviderUsageWindowsResult,
   PreviewSettingsModelProviderModelsResponse
 } from '../../api/model-providers';
 import { CollapseShell } from '../../../../shared/ui/collapse-shell/CollapseShell';
@@ -43,6 +44,8 @@ import {
   ModelProviderConfiguredModelModal,
   type ConfiguredModelEditorValue
 } from './ModelProviderConfiguredModelModal';
+import { ModelProviderAccountOperationsCard } from './ModelProviderAccountOperationsCard';
+import { ModelProviderAuthorizationCard } from './ModelProviderAuthorizationCard';
 
 type DrawerMode = 'create' | 'edit';
 type ModelProviderFormValue = string | boolean | number;
@@ -237,7 +240,7 @@ type ModelProviderInstanceDrawerProps = {
   pricingTargets: SettingsModelProviderPricingTarget[];
   defaultIncludedInMain: boolean;
   submitting: boolean;
-  onClose: () => void;
+  onClose: () => void | Promise<void>;
   onSubmit: (input: {
     display_name: string;
     included_in_main: boolean;
@@ -259,6 +262,19 @@ type ModelProviderInstanceDrawerProps = {
   onAuthenticate: (
     operation: SettingsModelProviderAuthOperation
   ) => Promise<AuthenticationResult>;
+  onCreateDraft?: (input: {
+    display_name: string;
+    included_in_main: boolean;
+    config: Record<string, unknown>;
+    operation: Extract<SettingsModelProviderAuthOperation, { type: 'begin' }>;
+  }) => Promise<AuthenticationResult>;
+  onDiscardDraft?: () => Promise<void>;
+  onValidate?: () => Promise<void>;
+  onRefreshUsage?: () => Promise<SettingsModelProviderUsageWindowsResult>;
+  onCountResetCredits?: () => Promise<SettingsModelProviderResetCreditCountResult>;
+  onConsumeResetCredit?: (input: {
+    idempotency_key: string;
+  }) => Promise<unknown>;
 };
 
 export function ModelProviderInstanceDrawer(
@@ -284,7 +300,13 @@ function ModelProviderInstanceDrawerContent({
   onSubmit,
   onPreviewModels,
   onRevealSecret,
-  onAuthenticate
+  onAuthenticate,
+  onCreateDraft,
+  onDiscardDraft,
+  onValidate,
+  onRefreshUsage,
+  onCountResetCredits,
+  onConsumeResetCredit
 }: ModelProviderInstanceDrawerProps) {
   const [form] = Form.useForm<{
     display_name: string;
@@ -310,6 +332,8 @@ function ModelProviderInstanceDrawerContent({
   >();
   const [previewToken, setPreviewToken] = useState<string | undefined>();
   const [previewingModels, setPreviewingModels] = useState(false);
+  const [usageSnapshot, setUsageSnapshot] =
+    useState<SettingsModelProviderUsageWindowsResult | null>(null);
   const [configuredModelEditor, setConfiguredModelEditor] = useState<{
     rowKey: string | null;
     initialValue: ConfiguredModelEditorValue;
@@ -322,6 +346,8 @@ function ModelProviderInstanceDrawerContent({
   const [authenticationRequestPending, setAuthenticationRequestPending] =
     useState(false);
   const [callbackValue, setCallbackValue] = useState('');
+  const initializedDrawerRef = useRef<string | null>(null);
+  const drawerIdentity = `${mode}:${catalogEntry?.installation_id ?? ''}:${instance?.id ?? ''}`;
 
   const nextConfiguredModelKey = useCallback(() => {
     const key = `configured-model-${configuredModelKeyRef.current}`;
@@ -360,6 +386,7 @@ function ModelProviderInstanceDrawerContent({
 
   useEffect(() => {
     if (!open) {
+      initializedDrawerRef.current = null;
       form.resetFields();
       setSecretDrafts({});
       setRevealedSecretKeys({});
@@ -370,6 +397,7 @@ function ModelProviderInstanceDrawerContent({
       setSelectedCachedModelId(undefined);
       setPreviewToken(undefined);
       setPreviewingModels(false);
+      setUsageSnapshot(null);
       setConfiguredModelEditor(null);
       setAuthenticationResult(null);
       setAuthenticationError(null);
@@ -377,6 +405,11 @@ function ModelProviderInstanceDrawerContent({
       setCallbackValue('');
       return;
     }
+
+    if (initializedDrawerRef.current === drawerIdentity) {
+      return;
+    }
+    initializedDrawerRef.current = drawerIdentity;
 
     form.setFieldsValue({
       display_name: instance?.display_name ?? catalogEntry?.display_name ?? '',
@@ -391,6 +424,7 @@ function ModelProviderInstanceDrawerContent({
     setRevealingSecretKey(null);
     setPreviewToken(undefined);
     setPreviewingModels(false);
+    setUsageSnapshot(null);
     setConfiguredModelEditor(null);
     setAuthenticationResult(null);
     setAuthenticationError(null);
@@ -403,70 +437,23 @@ function ModelProviderInstanceDrawerContent({
     form,
     instance,
     mode,
-    open
+    open,
+    drawerIdentity
   ]);
 
   useEffect(() => {
-    if (
-      !open ||
-      mode !== 'edit' ||
-      !cachedModelCatalog ||
-      previewModels.length > 0
-    ) {
+    if (!open || !instance || !cachedModelCatalog || previewModels.length > 0) {
       return;
     }
 
     setPreviewModels(cachedModelCatalog.models);
-  }, [cachedModelCatalog, mode, open, previewModels.length]);
+  }, [cachedModelCatalog, instance, open, previewModels.length]);
 
   function clearPreviewState() {
     setPreviewModels([]);
     setPreviewToken(undefined);
     setSelectedCachedModelId(undefined);
   }
-
-  const runAuthenticationOperation = useCallback(
-    async (operation: SettingsModelProviderAuthOperation) => {
-      setAuthenticationRequestPending(true);
-      setAuthenticationError(null);
-
-      try {
-        const result = await onAuthenticate(operation);
-        setAuthenticationResult(result);
-        if (result.status !== 'pending') {
-          setCallbackValue('');
-        }
-        return result;
-      } catch (error) {
-        setAuthenticationError(
-          error instanceof Error
-            ? error.message
-            : i18nText('settings', 'auto.provider_authentication_failed')
-        );
-        throw error;
-      } finally {
-        setAuthenticationRequestPending(false);
-      }
-    },
-    [onAuthenticate]
-  );
-
-  useEffect(() => {
-    const userAction = authenticationResult?.user_action;
-    if (authenticationResult?.status !== 'pending') {
-      return;
-    }
-
-    const pollIntervalSeconds = Math.max(
-      1,
-      userAction?.poll_interval_seconds ?? 5
-    );
-    const timer = window.setTimeout(() => {
-      void runAuthenticationOperation({ type: 'poll' }).catch(() => undefined);
-    }, pollIntervalSeconds * 1000);
-
-    return () => window.clearTimeout(timer);
-  }, [authenticationResult, runAuthenticationOperation]);
 
   function normalizeConfiguredModels(rows: ConfiguredModelRow[]) {
     const normalizedRows: Array<{
@@ -643,6 +630,102 @@ function ModelProviderInstanceDrawerContent({
     return config;
   }
 
+  const runAuthenticationOperation = useCallback(
+    async (operation: SettingsModelProviderAuthOperation) => {
+      setAuthenticationRequestPending(true);
+      setAuthenticationError(null);
+
+      try {
+        const result =
+          operation.type === 'begin' && !instance && onCreateDraft
+            ? await (async () => {
+                const values = await form.validateFields([
+                  ['display_name'],
+                  ['included_in_main'],
+                  ...configFieldNames
+                ]);
+                return onCreateDraft({
+                  display_name: values.display_name,
+                  included_in_main: values.included_in_main,
+                  config: buildDraftConfig(
+                    (values.config ?? {}) as Record<
+                      string,
+                      ModelProviderFormValue
+                    >
+                  ),
+                  operation
+                });
+              })()
+            : await onAuthenticate(operation);
+        setAuthenticationResult(result);
+        if (result.status !== 'pending') {
+          setCallbackValue('');
+        }
+        return result;
+      } catch (error) {
+        setAuthenticationError(
+          error instanceof Error
+            ? error.message
+            : i18nText('settings', 'auto.provider_authentication_failed')
+        );
+        throw error;
+      } finally {
+        setAuthenticationRequestPending(false);
+      }
+    },
+    [
+      buildDraftConfig,
+      configFieldNames,
+      form,
+      instance,
+      onAuthenticate,
+      onCreateDraft
+    ]
+  );
+
+  useEffect(() => {
+    const userAction = authenticationResult?.user_action;
+    if (authenticationResult?.status !== 'pending') {
+      return;
+    }
+
+    const pollIntervalSeconds = Math.max(
+      1,
+      userAction?.poll_interval_seconds ?? 5
+    );
+    const timer = window.setTimeout(() => {
+      void runAuthenticationOperation({ type: 'poll' }).catch(() => undefined);
+    }, pollIntervalSeconds * 1000);
+
+    return () => window.clearTimeout(timer);
+  }, [authenticationResult, runAuthenticationOperation]);
+
+  useEffect(() => {
+    const expiresAt = authenticationResult?.user_action?.expires_at;
+    if (
+      mode !== 'create' ||
+      !instance ||
+      !onDiscardDraft ||
+      authenticationResult?.status !== 'pending' ||
+      !expiresAt
+    ) {
+      return;
+    }
+
+    const expiresAtMilliseconds = Date.parse(expiresAt);
+    if (!Number.isFinite(expiresAtMilliseconds)) {
+      return;
+    }
+
+    const timer = window.setTimeout(
+      () => {
+        void onDiscardDraft().catch(() => undefined);
+      },
+      Math.max(0, expiresAtMilliseconds - Date.now())
+    );
+    return () => window.clearTimeout(timer);
+  }, [authenticationResult, instance, mode, onDiscardDraft]);
+
   function updateConfiguredModelRow(
     rowKey: string,
     patch: Partial<
@@ -667,11 +750,27 @@ function ModelProviderInstanceDrawerContent({
     );
   }
 
+  async function refreshUsageSnapshot() {
+    if (!onRefreshUsage) {
+      return null;
+    }
+
+    const snapshot = await onRefreshUsage();
+    setUsageSnapshot(snapshot);
+    return snapshot;
+  }
+
   async function handlePreviewModels() {
-    const values = await form.validateFields(configFieldNames);
     setPreviewingModels(true);
 
     try {
+      if (instance && onValidate) {
+        await onValidate();
+        await refreshUsageSnapshot();
+        return;
+      }
+
+      const values = await form.validateFields(configFieldNames);
       const preview = await onPreviewModels(
         buildDraftConfig(
           (values.config ?? {}) as Record<string, ModelProviderFormValue>
@@ -875,169 +974,37 @@ function ModelProviderInstanceDrawerContent({
   }
 
   function renderAuthenticationCard() {
-    if (!catalogEntry?.auth || !instance) {
+    if (!catalogEntry?.auth || (!instance && !onCreateDraft)) {
       return null;
     }
-
-    const userAction = authenticationResult?.user_action;
-    const isPending = authenticationResult?.status === 'pending';
-    const authenticationAlert = authenticationError
-      ? {
-          type: 'error' as const,
-          message: i18nText('settings', 'auto.provider_authentication_failed'),
-          description: authenticationError
-        }
-      : authenticationResult
-        ? {
-            type:
-              authenticationResult.status === 'authorized'
-                ? ('success' as const)
-                : authenticationResult.status === 'failed'
-                  ? ('error' as const)
-                  : ('info' as const),
-            message:
-              authenticationResult.status === 'authorized'
-                ? i18nText('settings', 'auto.provider_authenticated')
-                : authenticationResult.status === 'cancelled'
-                  ? i18nText(
-                      'settings',
-                      'auto.provider_authentication_cancelled'
-                    )
-                  : authenticationResult.status === 'failed'
-                    ? i18nText(
-                        'settings',
-                        'auto.provider_authentication_failed'
-                      )
-                    : i18nText(
-                        'settings',
-                        'auto.provider_authentication_pending'
-                      ),
-            description: authenticationResult.message
-          }
-        : null;
-
     return (
-      <div className="model-provider-drawer__card">
-        <div className="model-provider-drawer__card-title">
-          <CheckCircleOutlined />
-          <span>{i18nText('settings', 'auto.provider_authentication')}</span>
-        </div>
-        <div className="model-provider-drawer__card-body">
-          <Space orientation="vertical" size={12} style={{ width: '100%' }}>
-            <Typography.Text type="secondary">
-              {i18nText('settings', 'auto.provider_authentication_description')}
-            </Typography.Text>
-            <Space wrap>
-              {catalogEntry.auth.actions.map((action) => (
-                <Button
-                  key={action.code}
-                  disabled={isPending || authenticationRequestPending}
-                  loading={authenticationRequestPending}
-                  onClick={() => {
-                    void runAuthenticationOperation({
-                      type: 'begin',
-                      action: action.code
-                    }).catch(() => undefined);
-                  }}
-                >
-                  {action.label}
-                </Button>
-              ))}
-            </Space>
-            {authenticationAlert ? (
-              <Alert
-                showIcon
-                type={authenticationAlert.type}
-                message={authenticationAlert.message}
-                description={authenticationAlert.description ?? undefined}
-              />
-            ) : null}
-            {userAction ? (
-              <Space orientation="vertical" size={8} style={{ width: '100%' }}>
-                {userAction.prompt ? (
-                  <Typography.Text>{userAction.prompt}</Typography.Text>
-                ) : null}
-                {userAction.user_code ? (
-                  <Typography.Text code>{userAction.user_code}</Typography.Text>
-                ) : null}
-                {userAction.open_url ? (
-                  <Button
-                    href={userAction.open_url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {i18nText(
-                      'settings',
-                      'auto.provider_authentication_open_url'
-                    )}
-                  </Button>
-                ) : null}
-                {userAction.expires_at ? (
-                  <Typography.Text type="secondary">
-                    {i18nText(
-                      'settings',
-                      'auto.provider_authentication_expires_at',
-                      {
-                        value1: userAction.expires_at
-                      }
-                    )}
-                  </Typography.Text>
-                ) : null}
-                {userAction.kind === 'paste_callback_url' ? (
-                  <Space.Compact block>
-                    <Input
-                      aria-label={i18nText(
-                        'settings',
-                        'auto.provider_authentication_callback_value'
-                      )}
-                      autoComplete="off"
-                      value={callbackValue}
-                      onChange={(event) => setCallbackValue(event.target.value)}
-                      placeholder={i18nText(
-                        'settings',
-                        'auto.provider_authentication_callback_value'
-                      )}
-                    />
-                    <Button
-                      type="primary"
-                      disabled={
-                        callbackValue.trim().length === 0 ||
-                        authenticationRequestPending
-                      }
-                      loading={authenticationRequestPending}
-                      onClick={() => {
-                        void runAuthenticationOperation({
-                          type: 'submit',
-                          value: callbackValue.trim()
-                        }).catch(() => undefined);
-                      }}
-                    >
-                      {i18nText(
-                        'settings',
-                        'auto.provider_authentication_submit'
-                      )}
-                    </Button>
-                  </Space.Compact>
-                ) : null}
-              </Space>
-            ) : null}
-            {isPending ? (
-              <Button
-                danger
-                disabled={authenticationRequestPending}
-                loading={authenticationRequestPending}
-                onClick={() => {
-                  void runAuthenticationOperation({ type: 'cancel' }).catch(
-                    () => undefined
-                  );
-                }}
-              >
-                {i18nText('settings', 'auto.provider_authentication_cancel')}
-              </Button>
-            ) : null}
-          </Space>
-        </div>
-      </div>
+      <ModelProviderAuthorizationCard
+        catalogEntry={catalogEntry}
+        result={authenticationResult}
+        errorMessage={authenticationError}
+        pending={authenticationRequestPending}
+        callbackValue={callbackValue}
+        onCallbackValueChange={setCallbackValue}
+        onBegin={(action) => {
+          void runAuthenticationOperation({ type: 'begin', action }).catch(
+            () => undefined
+          );
+        }}
+        onSubmit={(value) => {
+          void runAuthenticationOperation({ type: 'submit', value }).catch(
+            () => undefined
+          );
+        }}
+        onCancel={() => {
+          if (mode === 'create' && instance && onDiscardDraft) {
+            void onDiscardDraft().catch(() => undefined);
+            return;
+          }
+          void runAuthenticationOperation({ type: 'cancel' }).catch(
+            () => undefined
+          );
+        }}
+      />
     );
   }
 
@@ -1227,6 +1194,19 @@ function ModelProviderInstanceDrawerContent({
                   ) : null}
                 </div>
               </div>
+
+              {instance ? (
+                <ModelProviderAccountOperationsCard
+                  catalogEntry={catalogEntry}
+                  usageSnapshot={usageSnapshot}
+                  onUsageSnapshot={setUsageSnapshot}
+                  onRefreshUsage={
+                    onRefreshUsage ? refreshUsageSnapshot : undefined
+                  }
+                  onCountResetCredits={onCountResetCredits}
+                  onConsumeResetCredit={onConsumeResetCredit}
+                />
+              ) : null}
 
               <div className="model-provider-drawer__card">
                 <div className="model-provider-drawer__card-title">

@@ -7,6 +7,8 @@ import type { SettingsModelProviderInstance } from '../../../../api/model-provid
 import { useModelProviderMutations } from '../use-model-provider-mutations';
 
 const modelProvidersApi = vi.hoisted(() => ({
+  authenticateSettingsModelProviderInstance: vi.fn(),
+  consumeSettingsModelProviderResetCredit: vi.fn(),
   settingsModelProviderCatalogQueryKey: [
     'settings',
     'model-providers',
@@ -24,6 +26,8 @@ const modelProvidersApi = vi.hoisted(() => ({
   ],
   createSettingsModelProviderInstance: vi.fn(),
   deleteSettingsModelProviderInstance: vi.fn(),
+  getSettingsModelProviderResetCreditCount: vi.fn(),
+  getSettingsModelProviderUsageWindows: vi.fn(),
   previewSettingsModelProviderModels: vi.fn(),
   refreshSettingsModelProviderModels: vi.fn(),
   revealSettingsModelProviderSecret: vi.fn(),
@@ -139,6 +143,16 @@ function buildPluginTask(id: string) {
 describe('useModelProviderMutations', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    modelProvidersApi.getSettingsModelProviderUsageWindows.mockResolvedValue({
+      queried_at: '2026-08-20T10:00:00Z',
+      windows: []
+    });
+    modelProvidersApi.getSettingsModelProviderResetCreditCount.mockResolvedValue(
+      { available_count: 2 }
+    );
+    modelProvidersApi.consumeSettingsModelProviderResetCredit.mockResolvedValue(
+      { consumed: true }
+    );
     modelProvidersApi.updateSettingsModelProviderInstance.mockResolvedValue(
       buildInstance()
     );
@@ -178,6 +192,38 @@ describe('useModelProviderMutations', () => {
         ],
         config: {}
       },
+      'csrf-123'
+    );
+  });
+
+  test('AC-005～007 dispatch account operations through the typed client and never retries a consume', async () => {
+    const mutations = setupMutations();
+
+    await act(async () => {
+      await mutations.current.usageMutation.mutateAsync('provider-1');
+      await mutations.current.resetCreditCountMutation.mutateAsync(
+        'provider-1'
+      );
+      await mutations.current.consumeResetCreditMutation.mutateAsync({
+        instanceId: 'provider-1',
+        idempotency_key: 'logical-reset-1'
+      });
+    });
+
+    expect(
+      modelProvidersApi.getSettingsModelProviderUsageWindows
+    ).toHaveBeenCalledWith('provider-1');
+    expect(
+      modelProvidersApi.getSettingsModelProviderResetCreditCount
+    ).toHaveBeenCalledWith('provider-1');
+    expect(
+      modelProvidersApi.consumeSettingsModelProviderResetCredit
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      modelProvidersApi.consumeSettingsModelProviderResetCredit
+    ).toHaveBeenCalledWith(
+      'provider-1',
+      { idempotency_key: 'logical-reset-1' },
       'csrf-123'
     );
   });

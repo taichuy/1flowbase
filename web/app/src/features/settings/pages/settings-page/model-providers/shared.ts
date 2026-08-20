@@ -9,7 +9,7 @@ import type { SettingsPluginFamilyEntry } from '../../../api/plugins';
 import { i18nText } from '../../../../../shared/i18n/text';
 
 export type ModelProviderDrawerState =
-  | { mode: 'create'; providerCode: string }
+  | { mode: 'create'; providerCode: string; draftInstanceId?: string }
   | { mode: 'edit'; instanceId: string }
   | null;
 
@@ -67,10 +67,7 @@ export function getPluginUploadErrorMessage(error: unknown) {
   if (error instanceof ApiClientError) {
     switch (error.code) {
       case 'plugin_runtime_target_mismatch':
-        return i18nText(
-          'settings',
-          'auto.plugin_upload_platform_incompatible'
-        );
+        return i18nText('settings', 'auto.plugin_upload_platform_incompatible');
       case 'provider_package':
         return i18nText('settings', 'auto.plugin_upload_package_invalid');
       default:

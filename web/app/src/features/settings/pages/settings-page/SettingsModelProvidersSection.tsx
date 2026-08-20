@@ -1,4 +1,10 @@
-import { useCallback, useMemo, useReducer, type SetStateAction } from 'react';
+import {
+  useCallback,
+  useMemo,
+  useReducer,
+  useRef,
+  type SetStateAction
+} from 'react';
 
 import { useQueryClient } from '@tanstack/react-query';
 import { Alert, Layout, Modal } from 'antd';
@@ -173,6 +179,7 @@ export function SettingsModelProvidersSection({
     modelProviderSectionReducer,
     initialModelProviderSectionState
   );
+  const drawerDraftInstanceIdRef = useRef<string | null>(null);
   const {
     drawerState,
     instanceModalState,
@@ -283,8 +290,8 @@ export function SettingsModelProvidersSection({
     officialSourceMeta,
     currentCatalogEntriesByProviderCode,
     familiesByProviderCode,
-    editingInstance,
-    editingModelCatalog,
+    drawerInstance,
+    drawerModelCatalog,
     drawerCatalogEntry,
     drawerDefaultIncludedInMain,
     modalInstances,
@@ -297,6 +304,8 @@ export function SettingsModelProvidersSection({
     instanceModalState,
     officialSearchQuery
   });
+  const activeDrawerInstanceId =
+    drawerInstance?.id ?? drawerDraftInstanceIdRef.current;
   const {
     createMutation,
     updateMutation,
@@ -304,6 +313,9 @@ export function SettingsModelProvidersSection({
     updateMainInstanceSettingsMutation,
     previewMutation,
     validateMutation,
+    usageMutation,
+    resetCreditCountMutation,
+    consumeResetCreditMutation,
     authenticateMutation,
     refreshMutation,
     revealSecretMutation,
@@ -334,6 +346,9 @@ export function SettingsModelProvidersSection({
     getErrorMessage(updateInstanceInclusionMutation.error) ??
     getErrorMessage(updateMainInstanceSettingsMutation.error) ??
     getErrorMessage(previewMutation.error) ??
+    getErrorMessage(usageMutation.error) ??
+    getErrorMessage(resetCreditCountMutation.error) ??
+    getErrorMessage(consumeResetCreditMutation.error) ??
     getErrorMessage(authenticateMutation.error) ??
     getErrorMessage(revealSecretMutation.error) ??
     getErrorMessage(validateMutation.error) ??
@@ -447,6 +462,27 @@ export function SettingsModelProvidersSection({
     });
   }
 
+  async function discardDrawerDraft() {
+    if (drawerState?.mode !== 'create' || !activeDrawerInstanceId) {
+      setDrawerState(null);
+      return;
+    }
+
+    try {
+      await authenticateMutation.mutateAsync({
+        instanceId: activeDrawerInstanceId,
+        operation: { type: 'cancel' }
+      });
+    } catch {
+      // Deleting this isolated Draft remains the cleanup boundary even when
+      // the provider no longer has a pending authorization to cancel.
+    }
+
+    await deleteMutation.mutateAsync(activeDrawerInstanceId);
+    drawerDraftInstanceIdRef.current = null;
+    setDrawerState(null);
+  }
+
   return (
     <>
       {upgradeModalContextHolder}
@@ -484,6 +520,7 @@ export function SettingsModelProvidersSection({
                   });
                 }}
                 onCreate={(entry) => {
+                  drawerDraftInstanceIdRef.current = null;
                   setDrawerState({
                     mode: 'create',
                     providerCode: entry.provider_code
@@ -557,19 +594,25 @@ export function SettingsModelProvidersSection({
         open={drawerState !== null}
         mode={drawerState?.mode ?? 'create'}
         catalogEntry={drawerCatalogEntry}
-        instance={editingInstance}
-        cachedModelCatalog={editingModelCatalog}
+        instance={drawerInstance}
+        cachedModelCatalog={drawerModelCatalog}
         pricingTargets={pricingTargets}
         defaultIncludedInMain={drawerDefaultIncludedInMain}
         submitting={createMutation.isPending || updateMutation.isPending}
-        onClose={() => setDrawerState(null)}
+        onClose={() => {
+          if (drawerState?.mode === 'create' && activeDrawerInstanceId) {
+            return discardDrawerDraft();
+          }
+          setDrawerState(null);
+        }}
+        onDiscardDraft={discardDrawerDraft}
         onRevealSecret={async (fieldKey) => {
-          if (!editingInstance) {
+          if (!activeDrawerInstanceId) {
             throw new Error('missing provider instance');
           }
 
           const result = await revealSecretMutation.mutateAsync({
-            instanceId: editingInstance.id,
+            instanceId: activeDrawerInstanceId,
             key: fieldKey
           });
 
@@ -578,25 +621,50 @@ export function SettingsModelProvidersSection({
             : JSON.stringify(result.value ?? '');
         }}
         onAuthenticate={async (operation) => {
-          if (!editingInstance) {
+          if (!activeDrawerInstanceId) {
             throw new Error('missing provider instance');
           }
 
           return authenticateMutation.mutateAsync({
-            instanceId: editingInstance.id,
+            instanceId: activeDrawerInstanceId,
             operation
           });
         }}
+        onCreateDraft={async (values) => {
+          if (!drawerCatalogEntry || drawerState?.mode !== 'create') {
+            throw new Error('missing provider catalog entry');
+          }
+
+          const draft = await createMutation.mutateAsync({
+            installationId: drawerCatalogEntry.installation_id,
+            display_name: values.display_name,
+            included_in_main: values.included_in_main,
+            configured_models: [],
+            config: values.config
+          });
+          drawerDraftInstanceIdRef.current = draft.id;
+          setDrawerState((current) =>
+            current?.mode === 'create'
+              ? { ...current, draftInstanceId: draft.id }
+              : current
+          );
+          return authenticateMutation.mutateAsync({
+            instanceId: draft.id,
+            operation: values.operation
+          });
+        }}
         onSubmit={async (values) => {
-          if (drawerState?.mode === 'edit' && editingInstance) {
+          if (activeDrawerInstanceId) {
             await updateMutation.mutateAsync({
-              instanceId: editingInstance.id,
+              instanceId: activeDrawerInstanceId,
               display_name: values.display_name,
               included_in_main: values.included_in_main,
               configured_models: values.configured_models,
               preview_token: values.preview_token,
               config: values.config
             });
+            drawerDraftInstanceIdRef.current = null;
+            setDrawerState(null);
             return;
           }
 
@@ -612,11 +680,13 @@ export function SettingsModelProvidersSection({
             preview_token: values.preview_token,
             config: values.config
           });
+          drawerDraftInstanceIdRef.current = null;
+          setDrawerState(null);
         }}
         onPreviewModels={async (config) => {
-          if (drawerState?.mode === 'edit' && editingInstance) {
+          if (activeDrawerInstanceId) {
             return previewMutation.mutateAsync({
-              instanceId: editingInstance.id,
+              instanceId: activeDrawerInstanceId,
               config
             });
           }
@@ -628,6 +698,33 @@ export function SettingsModelProvidersSection({
           return previewMutation.mutateAsync({
             installationId: drawerCatalogEntry.installation_id,
             config
+          });
+        }}
+        onValidate={async () => {
+          if (!activeDrawerInstanceId) {
+            throw new Error('missing provider instance');
+          }
+          await validateMutation.mutateAsync(activeDrawerInstanceId);
+        }}
+        onRefreshUsage={async () => {
+          if (!activeDrawerInstanceId) {
+            throw new Error('missing provider instance');
+          }
+          return usageMutation.mutateAsync(activeDrawerInstanceId);
+        }}
+        onCountResetCredits={async () => {
+          if (!activeDrawerInstanceId) {
+            throw new Error('missing provider instance');
+          }
+          return resetCreditCountMutation.mutateAsync(activeDrawerInstanceId);
+        }}
+        onConsumeResetCredit={({ idempotency_key }) => {
+          if (!activeDrawerInstanceId) {
+            return Promise.reject(new Error('missing provider instance'));
+          }
+          return consumeResetCreditMutation.mutateAsync({
+            instanceId: activeDrawerInstanceId,
+            idempotency_key
           });
         }}
       />

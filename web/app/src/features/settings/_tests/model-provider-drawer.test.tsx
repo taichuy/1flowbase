@@ -615,4 +615,83 @@ describe('ModelProviderInstanceDrawer', () => {
       });
     }
   );
+
+  test('AC-002 creates a draft before starting provider-owned callback authorization', async () => {
+    const createDraft = vi.fn().mockResolvedValue({
+      instance: buildSettingsModelProviderInstances()[0],
+      status: 'pending',
+      message: null,
+      user_action: {
+        kind: 'paste_callback_url',
+        open_url: 'https://auth.openai.example/authorize',
+        user_code: null,
+        expires_at: '2026-08-20T10:10:00Z',
+        poll_interval_seconds: null,
+        prompt: 'Authorize this draft.'
+      }
+    });
+    const catalogEntry = {
+      ...modelProviderCatalogEntries[0],
+      auth: {
+        actions: [
+          {
+            code: 'pkce_callback',
+            label: '生成授权链接',
+            user_action_kinds: ['paste_callback_url']
+          }
+        ]
+      }
+    };
+
+    render(
+      <ModelProviderInstanceDrawer
+        open
+        mode="create"
+        catalogEntry={catalogEntry}
+        instance={null}
+        cachedModelCatalog={null}
+        pricingTargets={pricingTargets}
+        defaultIncludedInMain={true}
+        submitting={false}
+        onClose={() => undefined}
+        onSubmit={async () => undefined}
+        onPreviewModels={async () => ({
+          models: [],
+          preview_token: 'preview-1',
+          expires_at: '2026-04-22T12:00:00Z'
+        })}
+        onRevealSecret={async () => 'super-secret'}
+        onAuthenticate={unsupportedAuthentication}
+        onCreateDraft={createDraft}
+      />
+    );
+
+    fireEvent.change(await screen.findByLabelText('API Endpoint'), {
+      target: { value: 'https://api.openai.com/v1' }
+    });
+    fireEvent.change(screen.getByLabelText('API Key'), {
+      target: { value: 'super-secret' }
+    });
+    fireEvent.change(screen.getByLabelText('名称'), {
+      target: { value: 'ChatGPT Codex Draft' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '生成授权链接' }));
+
+    await waitFor(() => {
+      expect(createDraft).toHaveBeenCalledWith({
+        display_name: 'ChatGPT Codex Draft',
+        included_in_main: true,
+        config: {
+          base_url: 'https://api.openai.com/v1',
+          api_key: 'super-secret'
+        },
+        operation: { type: 'begin', action: 'pkce_callback' }
+      });
+    });
+    expect(
+      await screen.findByRole('link', {
+        name: /打开授权页面|Open authorization page/
+      })
+    ).toHaveAttribute('href', 'https://auth.openai.example/authorize');
+  });
 });

@@ -154,20 +154,23 @@ export function useModelProviderData({
     return grouped;
   }, [providerOptions]);
 
-  const editingInstance =
+  const drawerInstanceId =
     drawerState?.mode === 'edit'
-      ? (instances.find((instance) => instance.id === drawerState.instanceId) ??
-        null)
-      : null;
+      ? drawerState.instanceId
+      : drawerState?.draftInstanceId;
+  const drawerInstance = drawerInstanceId
+    ? (instances.find((instance) => instance.id === drawerInstanceId) ?? null)
+    : null;
+  const editingInstance = drawerState?.mode === 'edit' ? drawerInstance : null;
 
   const drawerCatalogEntry =
     drawerState?.mode === 'create'
       ? (currentCatalogEntriesByProviderCode[drawerState.providerCode] ??
         catalogEntries[0] ??
         null)
-      : editingInstance
-        ? (catalogEntriesByInstallationId[editingInstance.installation_id] ??
-          currentCatalogEntriesByProviderCode[editingInstance.provider_code] ??
+      : drawerInstance
+        ? (catalogEntriesByInstallationId[drawerInstance.installation_id] ??
+          currentCatalogEntriesByProviderCode[drawerInstance.provider_code] ??
           null)
         : null;
 
@@ -214,12 +217,12 @@ export function useModelProviderData({
         false)
       : (editingInstance?.included_in_main ?? false);
 
-  const editingModelsQuery = useQuery({
-    queryKey: editingInstance
-      ? settingsModelProviderModelsQueryKey(editingInstance.id)
+  const drawerModelsQuery = useQuery({
+    queryKey: drawerInstance
+      ? settingsModelProviderModelsQueryKey(drawerInstance.id)
       : IDLE_MODEL_PROVIDER_MODELS_QUERY_KEY,
-    queryFn: () => fetchSettingsModelProviderModels(editingInstance!.id),
-    enabled: Boolean(editingInstance)
+    queryFn: () => fetchSettingsModelProviderModels(drawerInstance!.id),
+    enabled: Boolean(drawerInstance)
   });
 
   const readyCount = instances.filter(
@@ -269,8 +272,10 @@ export function useModelProviderData({
     instancesByProviderCode,
     providerOptionsByProviderCode,
     pricingTargets,
+    drawerInstance,
     editingInstance,
-    editingModelCatalog: editingModelsQuery.data ?? null,
+    drawerModelCatalog: drawerModelsQuery.data ?? null,
+    editingModelCatalog: drawerModelsQuery.data ?? null,
     drawerCatalogEntry,
     drawerDefaultIncludedInMain,
     modalInstances,

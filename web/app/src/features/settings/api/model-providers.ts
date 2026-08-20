@@ -4,6 +4,9 @@ import {
   createConsoleModelProviderInstance,
   deleteConsoleModelProviderInstance,
   deleteConsoleModelProviderRequestLogs,
+  consumeConsoleModelProviderResetCredit,
+  getConsoleModelProviderResetCreditCount,
+  getConsoleModelProviderUsageWindows,
   getConsoleModelProviderMainInstance,
   getConsoleModelProviderModels,
   listConsoleModelProviderCatalog,
@@ -25,7 +28,11 @@ import {
   type ConsoleModelProviderModelCatalog,
   type ConsoleModelProviderOptions,
   type ConsoleModelProviderPricingTarget,
+  type ConsoleModelProviderResetCreditCountResult,
   type ConsoleModelProviderRequestLogsFilter,
+  type ConsoleModelProviderUsageWindowsResult,
+  type ConsumeConsoleModelProviderResetCreditInput,
+  type ConsumeConsoleModelProviderResetCreditResult,
   type ClearConsoleModelProviderRequestLogsBatchInput,
   type DeleteConsoleModelProviderRequestLogsInput,
   type ConsoleValidateModelProviderResult,
@@ -55,6 +62,14 @@ export type SettingsValidateModelProviderResult =
   ConsoleValidateModelProviderResult;
 export type SettingsModelProviderMainInstance =
   ConsoleModelProviderMainInstance;
+export type SettingsModelProviderUsageWindowsResult =
+  ConsoleModelProviderUsageWindowsResult;
+export type SettingsModelProviderResetCreditCountResult =
+  ConsoleModelProviderResetCreditCountResult;
+export type ConsumeSettingsModelProviderResetCreditInput =
+  ConsumeConsoleModelProviderResetCreditInput;
+export type ConsumeSettingsModelProviderResetCreditResult =
+  ConsumeConsoleModelProviderResetCreditResult;
 export type CreateSettingsModelProviderInput = CreateConsoleModelProviderInput;
 export type PreviewSettingsModelProviderModelsInput =
   PreviewConsoleModelProviderModelsInput;
@@ -328,6 +343,22 @@ export function validateSettingsModelProviderInstance(
   csrfToken: string
 ) {
   return validateConsoleModelProviderInstance(instanceId, csrfToken);
+}
+
+export function getSettingsModelProviderUsageWindows(instanceId: string) {
+  return getConsoleModelProviderUsageWindows(instanceId);
+}
+
+export function getSettingsModelProviderResetCreditCount(instanceId: string) {
+  return getConsoleModelProviderResetCreditCount(instanceId);
+}
+
+export function consumeSettingsModelProviderResetCredit(
+  instanceId: string,
+  input: ConsumeSettingsModelProviderResetCreditInput,
+  csrfToken: string
+) {
+  return consumeConsoleModelProviderResetCredit(instanceId, input, csrfToken);
 }
 
 export function authenticateSettingsModelProviderInstance(

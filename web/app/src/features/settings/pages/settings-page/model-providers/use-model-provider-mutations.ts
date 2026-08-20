@@ -3,8 +3,11 @@ import type { Dispatch, SetStateAction } from 'react';
 
 import {
   authenticateSettingsModelProviderInstance,
+  consumeSettingsModelProviderResetCredit,
   createSettingsModelProviderInstance,
   deleteSettingsModelProviderInstance,
+  getSettingsModelProviderResetCreditCount,
+  getSettingsModelProviderUsageWindows,
   previewSettingsModelProviderModels,
   refreshSettingsModelProviderModels,
   revealSettingsModelProviderSecret,
@@ -135,10 +138,7 @@ export function useModelProviderMutations({
         csrfToken
       );
     },
-    onSuccess: async () => {
-      setDrawerState(null);
-      await invalidateModelProviderQueries();
-    }
+    onSuccess: invalidateModelProviderQueries
   });
 
   const updateMutation = useMutation({
@@ -254,6 +254,34 @@ export function useModelProviderMutations({
       return validateSettingsModelProviderInstance(instanceId, csrfToken);
     },
     onSuccess: invalidateModelProviderQueries
+  });
+
+  const usageMutation = useMutation({
+    mutationFn: (instanceId: string) =>
+      getSettingsModelProviderUsageWindows(instanceId)
+  });
+
+  const resetCreditCountMutation = useMutation({
+    mutationFn: (instanceId: string) =>
+      getSettingsModelProviderResetCreditCount(instanceId)
+  });
+
+  const consumeResetCreditMutation = useMutation({
+    mutationFn: async (input: {
+      instanceId: string;
+      idempotency_key: string;
+    }) => {
+      if (!csrfToken) {
+        throw new Error('missing csrf token');
+      }
+
+      return consumeSettingsModelProviderResetCredit(
+        input.instanceId,
+        { idempotency_key: input.idempotency_key },
+        csrfToken
+      );
+    },
+    retry: false
   });
 
   const authenticateMutation = useMutation({
@@ -487,6 +515,9 @@ export function useModelProviderMutations({
     updateMainInstanceSettingsMutation,
     previewMutation,
     validateMutation,
+    usageMutation,
+    resetCreditCountMutation,
+    consumeResetCreditMutation,
     authenticateMutation,
     refreshMutation,
     revealSecretMutation,
