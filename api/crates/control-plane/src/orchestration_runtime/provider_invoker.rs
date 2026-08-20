@@ -1668,9 +1668,10 @@ where
         else {
             return Ok(());
         };
-        if self.provider_transport_payload.is_none() && self.provider_continuation.is_none() {
-            return Ok(());
-        }
+        // A first native Responses turn can expose only the Provider response id; the opaque
+        // request payload and an already-claimed continuation are both absent on that path.
+        // Keep the id available for the later MCP approval turn instead of treating those
+        // absent inputs as proof that no continuation exists.
         let continuation = crate::ports::ProviderContinuation::new(
             response_id,
             crate::ports::ProviderTransportAffinity::new(
