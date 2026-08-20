@@ -170,7 +170,7 @@ function vectorBodies(observers, secretCanary) {
     {
       name: 'mcp-list-call-approval',
       body: {
-        model: 'fixture-model', stream: true,
+        model: 'fixture-model', stream: true, store: true,
         tools: [{
           type: 'mcp', server_label: 'fixture_mcp', server_url: observers.networkObserverUrl,
           authorization: secretCanary, headers: { 'x-mcp-canary': secretCanary },
