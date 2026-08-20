@@ -56,6 +56,11 @@ test('resolveReactDoctorDiffBase requires an explicit base or pull request base 
 
 test('runReactDoctorGate binds candidate, changed files, and diagnostics to the artifact', () => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-react-doctor-'));
+  fs.mkdirSync(path.join(repoRoot, 'web', 'app'), { recursive: true });
+  fs.writeFileSync(
+    path.join(repoRoot, 'web', 'app', 'doctor.config.json'),
+    JSON.stringify({ ignore: { overrides: [] } }),
+  );
   assert.equal(resolveReactDoctorDiffBase({
     env: { REACT_DOCTOR_DIFF_BASE: 'base-sha' },
   }), 'base-sha');
