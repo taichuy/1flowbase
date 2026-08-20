@@ -923,9 +923,11 @@ describe('SettingsPage', () => {
       await screen.findByRole('button', { name: /添加/ }, { timeout: 10_000 })
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /添加/ })).toBeInTheDocument();
-    expect(
-      personalAccessTokensApi.fetchSettingsPersonalAccessTokens
-    ).toHaveBeenCalled();
+    await waitFor(() => {
+      expect(
+        personalAccessTokensApi.fetchSettingsPersonalAccessTokens
+      ).toHaveBeenCalled();
+    });
   });
 
   test('allows root safe member edits while keeping destructive actions locked', async () => {
