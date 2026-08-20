@@ -236,6 +236,7 @@ export function SettingsModelProvidersSection({
       setUploadValidationMessage,
       setUploadResultSummary
     );
+    uploadMutation.reset();
   };
 
   const handleOfficialInstallSettled = async (status: 'success' | 'failed') => {

@@ -64,6 +64,10 @@ export function getErrorMessage(error: unknown) {
 }
 
 export function getPluginUploadErrorMessage(error: unknown) {
+  if (!error) {
+    return null;
+  }
+
   if (error instanceof ApiClientError) {
     switch (error.code) {
       case 'plugin_runtime_target_mismatch':

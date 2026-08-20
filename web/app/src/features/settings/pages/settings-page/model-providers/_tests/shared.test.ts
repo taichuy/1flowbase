@@ -4,6 +4,10 @@ import { describe, expect, test } from 'vitest';
 import { getPluginUploadErrorMessage } from '../shared';
 
 describe('getPluginUploadErrorMessage', () => {
+  test('returns no error message before an upload attempt', () => {
+    expect(getPluginUploadErrorMessage(undefined)).toBeNull();
+  });
+
   test('replaces a browser transport failure with actionable Chinese guidance', () => {
     expect(getPluginUploadErrorMessage(new TypeError('Failed to fetch'))).toBe(
       '上传请求未完成，请检查网络连接或反向代理后重试。'
