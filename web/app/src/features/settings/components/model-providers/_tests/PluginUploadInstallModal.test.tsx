@@ -5,27 +5,39 @@ import { describe, expect, test, vi } from 'vitest';
 import { PluginUploadInstallModal } from '../PluginUploadInstallModal';
 
 describe('PluginUploadInstallModal', () => {
-  test('renders a constrained filename trigger that retains the full name', () => {
-    const filename =
-      '1flowbase@chatgpt@0.1.0@linux-amd64@67246ae7b0c0df1b4dfdc4dfff2d7a67f4aa5d5837a230b528221c0b3f5aeb3d.1flowbasepkg';
+  test('keeps the controlled long package filename and upload error in the modal content', () => {
+    const filename = `${'a'.repeat(256)}.1flowbasepkg`;
+    const errorMessage =
+      'Plugin upload failed. Check the package and try again.';
     render(
       <PluginUploadInstallModal
         open
         submitting={false}
         resultSummary={null}
-        errorMessage={null}
-        fileList={[
-          { uid: 'plugin-package', name: filename, status: 'done' }
-        ] as UploadFile[]}
+        errorMessage={errorMessage}
+        fileList={
+          [
+            { uid: 'plugin-package', name: filename, status: 'done' }
+          ] as UploadFile[]
+        }
         onClose={vi.fn()}
         onChange={vi.fn()}
         onSubmit={vi.fn()}
       />
     );
 
-    expect(screen.getByText(filename)).toHaveClass(
-      'model-provider-panel__upload-file-name'
+    const modalContent = document.querySelector(
+      '.model-provider-panel__upload-modal'
     );
-    expect(screen.getByText(filename)).toHaveAttribute('title', filename);
+    const filenameTrigger = screen.getByText(filename);
+    const errorAlert = screen.getByText(errorMessage);
+
+    if (!modalContent) {
+      throw new Error('Expected the plugin upload modal content to render.');
+    }
+
+    expect(modalContent).toContainElement(filenameTrigger);
+    expect(modalContent).toContainElement(errorAlert);
+    expect(filenameTrigger).toHaveAttribute('title', filename);
   });
 });

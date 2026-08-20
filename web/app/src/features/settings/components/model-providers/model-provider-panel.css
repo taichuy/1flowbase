@@ -392,14 +392,43 @@
 
 .model-provider-panel__upload-modal {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.model-provider-panel__upload-control,
+.model-provider-panel__upload-file,
+.model-provider-panel__upload-alert,
+.model-provider-panel__upload-submit,
+.model-provider-panel__upload-control .ant-upload,
+.model-provider-panel__upload-control .ant-upload-list,
+.model-provider-panel__upload-control .ant-upload-list-item {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.model-provider-panel__upload-control,
+.model-provider-panel__upload-submit {
+  width: 100%;
+}
+
+.model-provider-panel__upload-alert .ant-alert-content,
+.model-provider-panel__upload-alert .ant-alert-message,
+.model-provider-panel__upload-alert .ant-alert-description {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .model-provider-panel__upload-file {
   align-items: center;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 8px;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
   width: 100%;
 }
 
