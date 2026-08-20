@@ -15,10 +15,10 @@ pub(crate) const DETAIL_TTL_SECONDS: i64 = 10 * 60;
 
 const CACHE_KEY_PREFIX: &str = "mcp-result";
 const PAGE_ENVELOPE_RESERVE_CHARS: usize = 768;
-// Each stored chunk is re-serialized as a JSON string when cached; escaping can
-// at most double its byte length, so keep raw chunks at half the store's
-// per-value ceiling.
-const DETAIL_CHUNK_MAX_BYTES: usize = EPHEMERAL_VALUE_MAX_BYTES / 2;
+// The chunk admission check is against the actual JSON value written to the
+// CacheStore. Raw serialized-detail bytes are not a safe proxy because the
+// chunk itself is stored as a JSON string and may add escaping overhead.
+const DETAIL_CHUNK_MAX_BYTES: usize = EPHEMERAL_VALUE_MAX_BYTES;
 // Upper bound on cached detail size (MAX_DETAIL_CHUNKS * DETAIL_CHUNK_MAX_BYTES).
 const MAX_DETAIL_CHUNKS: usize = 16;
 
@@ -258,7 +258,10 @@ async fn cache_detail(
         .await;
     }
 
-    let chunks = split_at_char_boundaries(&serialized_detail, DETAIL_CHUNK_MAX_BYTES);
+    let Some(chunks) = split_at_json_string_bytes(&serialized_detail, DETAIL_CHUNK_MAX_BYTES)
+    else {
+        return DetailCacheStatus::Unavailable("cache_capacity_exceeded");
+    };
     if chunks.len() > MAX_DETAIL_CHUNKS {
         return DetailCacheStatus::Unavailable("cache_capacity_exceeded");
     }
@@ -347,19 +350,29 @@ async fn resolve_cached_detail(
     }
 }
 
-fn split_at_char_boundaries(value: &str, max_bytes: usize) -> Vec<String> {
+fn split_at_json_string_bytes(value: &str, max_bytes: usize) -> Option<Vec<String>> {
     let mut chunks = Vec::new();
     let mut current = String::new();
+    let mut current_json_bytes = 2;
     for character in value.chars() {
-        if current.len() + character.len_utf8() > max_bytes && !current.is_empty() {
+        let character_json_bytes = serde_json::to_vec(&Value::String(character.to_string()))
+            .expect("serializing a JSON string character must succeed")
+            .len()
+            - 2;
+        if 2 + character_json_bytes > max_bytes {
+            return None;
+        }
+        if current_json_bytes + character_json_bytes > max_bytes && !current.is_empty() {
             chunks.push(std::mem::take(&mut current));
+            current_json_bytes = 2;
         }
         current.push(character);
+        current_json_bytes += character_json_bytes;
     }
     if !current.is_empty() {
         chunks.push(current);
     }
-    chunks
+    Some(chunks)
 }
 
 fn cache_key(workspace_id: Uuid, result_ref: Uuid) -> String {
@@ -621,9 +634,28 @@ mod assistant_mcp_tests {
     #[test]
     fn split_at_char_boundaries_respects_utf8_and_reassembles() {
         let value = format!("{}界{}", "a".repeat(9), "b".repeat(9));
-        let chunks = split_at_char_boundaries(&value, 10);
-        assert!(chunks.iter().all(|chunk| chunk.len() <= 10));
+        let chunks = split_at_json_string_bytes(&value, 10).unwrap();
+        assert!(chunks.iter().all(|chunk| {
+            serde_json::to_vec(&Value::String(chunk.clone()))
+                .unwrap()
+                .len()
+                <= 10
+        }));
         assert!(chunks.len() >= 2);
+        assert_eq!(chunks.concat(), value);
+    }
+
+    #[test]
+    fn split_at_json_string_bytes_accounts_for_escape_expansion() {
+        let value = "\\\"\n\r\t\u{0000}界".repeat(20);
+        let chunks = split_at_json_string_bytes(&value, 32).unwrap();
+
+        assert!(chunks.iter().all(|chunk| {
+            serde_json::to_vec(&Value::String(chunk.clone()))
+                .unwrap()
+                .len()
+                <= 32
+        }));
         assert_eq!(chunks.concat(), value);
     }
 

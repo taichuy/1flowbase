@@ -58,16 +58,18 @@ focused structural frontend debt evidence:
 
 ```yaml
 scope: repo-frontend-react-doctor
-run: npm exec --yes --package react-doctor@0.2.16 -- react-doctor web/app --diff <parent-sha> --no-score --fail-on warning --verbose --no-color
+run: REACT_DOCTOR_DIFF_BASE=<base-sha> REACT_DOCTOR_CANDIDATE_SHA=<candidate-sha> node scripts/node/react-doctor-gate.js
 ```
 
 Current React Doctor structural debt is kept in `web/app/doctor.config.json` as
 narrow per-file rule overrides for those stricter runs. The gate writes
 `tmp/test-governance/react-doctor.*` alongside the standard quality gate report
-artifact. By default the gate resolves the current commit's parent SHA and
-blocks warnings introduced by that commit. Set
-`REACT_DOCTOR_DIFF_BASE` to an older ref, such as `origin/main`, for a broader
-structural debt audit.
+artifact. The gate records an explicit base and candidate SHA, the complete
+changed-file list, unsuppressed diagnostics, and configured suppression entries
+intersecting those files. The workflow defaults the base to the target parent;
+set `REACT_DOCTOR_DIFF_BASE` to an older ref, such as `origin/main`, for a
+broader structural debt audit. A candidate that is not the checked-out commit
+fails closed.
 
 The final aggregate job downloads the component artifacts and publishes a single
 report with:

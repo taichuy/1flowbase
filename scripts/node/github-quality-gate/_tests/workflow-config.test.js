@@ -654,7 +654,7 @@ test("GitHub automation docs include React Doctor in full ci but not fast verify
   assert.match(readme, /outside the automatic PR merge blockers in `verify\.yml`/u);
   assert.match(
     readme,
-    /npm exec --yes --package react-doctor@0\.2\.16 -- react-doctor web\/app --diff <parent-sha> --no-score --fail-on warning --verbose --no-color/u,
+    /REACT_DOCTOR_DIFF_BASE=<base-sha> REACT_DOCTOR_CANDIDATE_SHA=<candidate-sha> node scripts\/node\/react-doctor-gate\.js/u,
   );
   assert.match(readme, /REACT_DOCTOR_DIFF_BASE/u);
   assert.match(readme, /scope: repo-frontend-react-doctor/u);

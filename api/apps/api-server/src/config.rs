@@ -46,6 +46,8 @@ pub struct ApiConfig {
     pub provider_secret_master_key: String,
     pub host_extension_dropin_root: String,
     pub system_backup_repository_root: String,
+    /// Optional pre-upgrade key. It is only used for fingerprint-routed reads.
+    pub legacy_system_backup_key_base64: Option<String>,
     pub system_build_identity: String,
     pub allow_unverified_filesystem_dropins: bool,
     pub allow_uploaded_host_extensions: bool,
@@ -181,6 +183,10 @@ impl ApiConfig {
             .get("API_SYSTEM_BACKUP_REPOSITORY_ROOT")
             .cloned()
             .unwrap_or_else(default_system_backup_repository_root);
+        let legacy_system_backup_key_base64 = map
+            .get("API_SYSTEM_BACKUP_KEY_BASE64")
+            .cloned()
+            .filter(|value| !value.trim().is_empty());
         let system_build_identity = map
             .get("API_SYSTEM_BUILD_IDENTITY")
             .cloned()
@@ -334,6 +340,7 @@ impl ApiConfig {
             provider_secret_master_key,
             host_extension_dropin_root,
             system_backup_repository_root,
+            legacy_system_backup_key_base64,
             system_build_identity,
             allow_unverified_filesystem_dropins,
             allow_uploaded_host_extensions,

@@ -55,6 +55,22 @@ fn upstream_error_event() -> ProviderStreamEvent {
     }
 }
 
+fn partial_upstream_error_output() -> crate::ports::ProviderRuntimeInvocationOutput {
+    crate::ports::ProviderRuntimeInvocationOutput {
+        events: vec![
+            ProviderStreamEvent::TextDelta {
+                delta: "partial answer".to_string(),
+            },
+            upstream_error_event(),
+        ],
+        result: ProviderInvocationResult {
+            final_content: Some("partial answer".to_string()),
+            finish_reason: Some(ProviderFinishReason::Error),
+            ..ProviderInvocationResult::default()
+        },
+    }
+}
+
 // AC-001 + AC-004: billing armed, transport-Ok stream carrying an upstream error
 // event and no usage must reach the caller for truthful classification instead of
 // being replaced by an opaque provider_usage_unavailable conflict.
@@ -105,6 +121,40 @@ async fn billing_no_usage_with_upstream_error_event_returns_output_for_classific
     assert_eq!(releases.len(), 1);
     assert_eq!(releases[0].1, "provider_usage_unavailable");
     assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 0);
+}
+
+// AC-001: partial content must not make a later upstream failure billable.
+// The original error remains available to executor classification and retry
+// policy after the reservation is released.
+#[tokio::test]
+async fn billing_no_usage_after_partial_content_preserves_upstream_failure() {
+    let repository = test_support::InMemoryOrchestrationRuntimeRepository::with_permissions(vec![]);
+    let (provider_instance_id, _) = repository.seed_included_provider_instances();
+    repository.enable_model_billing();
+    let runtime = test_support::InMemoryProviderRuntime::with_provider_outputs(vec![
+        partial_upstream_error_output(),
+    ]);
+    let repository_probe = repository.clone();
+    let invoker = billing_invoker(repository, runtime);
+    let runtime = compiled_llm_runtime(provider_instance_id, "fixture_provider");
+
+    let output = orchestration_runtime::execution_engine::ProviderInvoker::invoke_llm(
+        &invoker,
+        &runtime,
+        provider_user_input(provider_instance_id),
+    )
+    .await
+    .expect("mixed stream must reach executor classification");
+
+    assert!(output.events.iter().any(|event| {
+        matches!(event, ProviderStreamEvent::Error { error } if error.message.contains("429"))
+    }));
+    assert_eq!(repository_probe.model_billing_credit_releases().len(), 1);
+    assert_eq!(repository_probe.model_billing_finalize_attempt_count(), 0);
+    assert_eq!(
+        repository_probe.model_billing_credit_releases()[0].1,
+        "provider_usage_unavailable"
+    );
 }
 
 // AC-002 + AC-004: billing armed, empty stream (no events, no output, no usage)

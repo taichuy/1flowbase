@@ -293,6 +293,17 @@ jobs:
           fetch-depth: 0
       - name: Resolve quality gate target SHA
         run: echo "QUALITY_GATE_TARGET_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Resolve React Doctor base and candidate
+        run: |
+          set -euo pipefail
+          candidate_sha="${QUALITY_GATE_TARGET_SHA}"
+          base_sha="${REACT_DOCTOR_DIFF_BASE:-$(git rev-parse "${candidate_sha}^")}"
+          git rev-parse --verify "${base_sha}^{commit}" >/dev/null
+          git rev-parse --verify "${candidate_sha}^{commit}" >/dev/null
+          {
+            echo "REACT_DOCTOR_DIFF_BASE=${base_sha}"
+            echo "REACT_DOCTOR_CANDIDATE_SHA=${candidate_sha}"
+          } >> "$GITHUB_ENV"
       - uses: pnpm/action-setup@v5
         with:
           version: 11.5.0

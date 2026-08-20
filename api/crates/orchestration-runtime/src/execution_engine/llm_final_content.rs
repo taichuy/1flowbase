@@ -186,6 +186,19 @@ pub fn billable_provider_output(
     result: &ProviderInvocationResult,
     native_responses_passthrough: bool,
 ) -> bool {
+    // A stream that produced content and then terminated with an upstream or
+    // protocol failure belongs to the executor's failure path. Billing must
+    // not turn that mixed outcome into provider_usage_unavailable merely
+    // because the partial content looks valid.
+    if events.iter().any(|event| {
+        matches!(
+            event,
+            ProviderStreamEvent::Error { .. } | ProviderStreamEvent::OutputProtocolFailure { .. }
+        )
+    }) || matches!(result.finish_reason, Some(ProviderFinishReason::Error))
+    {
+        return false;
+    }
     let final_content = resolve_final_llm_content(
         result.final_content.clone(),
         collect_dify_style_deltas(events),
