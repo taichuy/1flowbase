@@ -121,7 +121,7 @@ export function ModelProviderAccountOperationsCard({
     }
 
     Modal.confirm({
-      title: i18nText('settings', 'auto.provider_reset_credit_confirm_title'),
+      title: i18nText('settings', 'auto.confirm_reset'),
       content: i18nText(
         'settings',
         'auto.provider_reset_credit_confirm_content'
@@ -231,7 +231,7 @@ export function ModelProviderAccountOperationsCard({
                 disabled={!availableCount || operation !== null}
                 onClick={confirmResetCreditConsume}
               >
-                {i18nText('settings', 'auto.provider_reset_credit_consume')}
+                {i18nText('settings', 'auto.reset')}
               </Button>
             ) : null}
           </Space>

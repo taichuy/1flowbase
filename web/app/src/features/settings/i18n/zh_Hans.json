@@ -528,8 +528,6 @@
     "provider_usage_unavailable": "暂无可用额度窗口。",
     "provider_reset_credit_count": "次数",
     "provider_reset_credit_count_value": "次数 {{value1}}",
-    "provider_reset_credit_consume": "重置",
-    "provider_reset_credit_confirm_title": "确认重置",
     "provider_reset_credit_confirm_content": "这将消耗一次可用重置机会。",
     "provider_account_operation_failed": "供应商账户操作失败。",
     "select_memory_contract": "请选择内存 contract",

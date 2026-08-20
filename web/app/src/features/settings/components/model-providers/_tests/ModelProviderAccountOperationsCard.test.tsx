@@ -62,19 +62,19 @@ describe('ModelProviderAccountOperationsCard', () => {
       />
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /查询|Refresh/ }));
+    fireEvent.click(screen.getByRole('button', { name: /查\s*询|Query/ }));
     await screen.findByText('5h');
     expect(screen.getByText(/42%/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /查询|Refresh/ }));
+    fireEvent.click(screen.getByRole('button', { name: /查\s*询|Query/ }));
     await screen.findByText('provider request timed out');
     expect(screen.getByText(/42%/)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /次数|Credits/ }));
-    await screen.findByRole('button', { name: /次数 2|Credits 2/ });
-    expect(screen.getByRole('button', { name: /重置|Reset/ })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: /次\s*数|Credits/ }));
+    await screen.findByRole('button', { name: /次\s*数\s*2|Credits 2/ });
+    expect(screen.getByRole('button', { name: /重\s*置|Reset/ })).toBeEnabled();
 
-    fireEvent.click(screen.getByRole('button', { name: /重置|Reset/ }));
+    fireEvent.click(screen.getByRole('button', { name: /重\s*置|Reset/ }));
     const confirmOptions = confirm.mock.calls[0]?.[0] as {
       onOk?: () => Promise<void>;
     };
