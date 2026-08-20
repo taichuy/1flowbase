@@ -8,8 +8,10 @@ use std::{
 };
 
 use plugin_runner::network_egress_host::{
-    NetworkEgressCleanupReason, NetworkEgressHost, NetworkEgressWorkerState,
+    NetworkEgressCleanupReason, NetworkEgressHost, NetworkEgressWorkerConfig,
+    NetworkEgressWorkerState,
 };
+use serde_json::json;
 use time::OffsetDateTime;
 
 static NEXT_TEMP_ID: AtomicU64 = AtomicU64::new(0);
@@ -43,6 +45,8 @@ impl TempNetworkEgressPackage {
         expires_at: u64,
         exit_after_acquire: bool,
         child_marker: Option<&Path>,
+        config_marker: Option<&Path>,
+        wire_marker: Option<&Path>,
     ) {
         fs::write(
             self.root.join("manifest.yaml"),
@@ -84,10 +88,26 @@ node_contributions: []
             .map(|path| format!("( sleep 30 ) & echo $! > '{}'\n", path.display()))
             .unwrap_or_default();
         let exit_after_acquire = exit_after_acquire.then_some("exit 0").unwrap_or_default();
+        let config_bootstrap = config_marker
+            .map(|path| {
+                format!(
+                    "test \"${{1:-}}\" = \"--network-egress-config-file\"\nconfig_file=\"${{2:-}}\"\ntest -f \"${{config_file}}\"\ngrep -F -- '\"token\":\"fixture-secret\"' \"${{config_file}}\" >/dev/null\nprintf '%s' \"${{config_file}}\" > '{}'\nshift 2\n",
+                    path.display()
+                )
+            })
+            .unwrap_or_default();
+        let wire_capture = wire_marker
+            .map(|path| {
+                format!(
+                    "printf '%s\\n' \"${{request}}\" >> '{}'\n  ",
+                    path.display()
+                )
+            })
+            .unwrap_or_default();
         fs::write(
             self.root.join("bin/fixture_egress"),
             format!(
-                "#!/usr/bin/env bash\nset -euo pipefail\n{child}while IFS= read -r request; do\n  case \"${{request}}\" in\n    *'\"operation\":\"sync_egresses\"'*)\n      printf '%s\\n' '{{\"operation\":\"sync_egresses\",\"result\":{{\"egresses\":[{{\"provider_egress_key\":\"egress-us-1\",\"display_name\":\"US 1\",\"availability\":\"available\"}}]}}}}'\n      ;;\n    *'\"operation\":\"acquire_http_forward_proxy\"'*)\n      printf '%s\\n' '{{\"operation\":\"acquire_http_forward_proxy\",\"result\":{{\"lease_id\":\"lease-1\",\"http_proxy_url\":\"{proxy_url}\",\"cleanup_token\":\"opaque-cleanup-capability\",\"expires_at\":{expires_at}}}}}'\n      {exit_after_acquire}\n      ;;\n    *'\"operation\":\"release_http_forward_proxy\"'*)\n      printf '%s\\n' '{{\"operation\":\"release_http_forward_proxy\",\"result\":{{\"lease_id\":\"lease-1\"}}}}'\n      ;;\n    *) exit 1 ;;\n  esac\ndone\n"
+                "#!/usr/bin/env bash\nset -euo pipefail\n{config_bootstrap}{child}while IFS= read -r request; do\n  {wire_capture}case \"${{request}}\" in\n    *'\"operation\":\"sync_egresses\"'*)\n      printf '%s\\n' '{{\"operation\":\"sync_egresses\",\"result\":{{\"egresses\":[{{\"provider_egress_key\":\"egress-us-1\",\"display_name\":\"US 1\",\"availability\":\"available\"}}]}}}}'\n      ;;\n    *'\"operation\":\"acquire_http_forward_proxy\"'*)\n      printf '%s\\n' '{{\"operation\":\"acquire_http_forward_proxy\",\"result\":{{\"lease_id\":\"lease-1\",\"http_proxy_url\":\"{proxy_url}\",\"cleanup_token\":\"opaque-cleanup-capability\",\"expires_at\":{expires_at}}}}}'\n      {exit_after_acquire}\n      ;;\n    *'\"operation\":\"release_http_forward_proxy\"'*)\n      printf '%s\\n' '{{\"operation\":\"release_http_forward_proxy\",\"result\":{{\"lease_id\":\"lease-1\"}}}}'\n      ;;\n    *) exit 1 ;;\n  esac\ndone\n"
             ),
         )
         .expect("fixture runtime must be written");
@@ -105,6 +125,10 @@ node_contributions: []
     }
 }
 
+fn worker_config() -> NetworkEgressWorkerConfig {
+    NetworkEgressWorkerConfig::from_secret_json(json!({ "token": "fixture-secret" }))
+}
+
 impl Drop for TempNetworkEgressPackage {
     fn drop(&mut self) {
         let _ = fs::remove_dir_all(&self.root);
@@ -119,12 +143,15 @@ async fn nc_02b_sync_egresses_exposes_only_the_validated_provider_catalog() {
         unix_milliseconds_now() + 300_000,
         false,
         None,
+        None,
+        None,
     );
     let mut host = NetworkEgressHost::default();
     host.load_if_needed(
         "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
+        worker_config(),
     )
     .await
     .expect("fixture worker must register");
@@ -147,6 +174,75 @@ async fn nc_02b_sync_egresses_exposes_only_the_validated_provider_catalog() {
 }
 
 #[tokio::test]
+async fn nc_02c_provisions_config_only_at_worker_start_without_stdio_leak_and_wipes_it_on_unload() {
+    let package = TempNetworkEgressPackage::new();
+    let config_marker = package.path().join("config-path");
+    let wire_marker = package.path().join("stdio-wire");
+    package.write_runtime(
+        "http://127.0.0.1:18080",
+        unix_milliseconds_now() + 300_000,
+        false,
+        None,
+        Some(&config_marker),
+        Some(&wire_marker),
+    );
+    let mut host = NetworkEgressHost::default();
+    host.load_if_needed(
+        "fixture_egress@0.1.0",
+        &package.path().display().to_string(),
+        "fixture-v1",
+        worker_config(),
+    )
+    .await
+    .expect("worker must receive its private startup configuration");
+
+    let config_path = wait_for_config_path(&config_marker);
+    assert!(config_path.is_file());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        assert_eq!(
+            fs::metadata(&config_path)
+                .expect("private config metadata must be readable")
+                .permissions()
+                .mode()
+                & 0o777,
+            0o600
+        );
+        assert_eq!(
+            fs::metadata(
+                config_path
+                    .parent()
+                    .expect("private config must have a parent directory"),
+            )
+            .expect("private config directory metadata must be readable")
+            .permissions()
+            .mode()
+                & 0o777,
+            0o700
+        );
+    }
+    host.sync_egresses("fixture_egress@0.1.0")
+        .await
+        .expect("worker must answer over the unchanged stdio wire");
+    assert!(
+        !fs::read_to_string(&wire_marker)
+            .expect("fixture must capture the typed stdio request")
+            .contains("fixture-secret"),
+        "secret material must never cross the stdio request wire"
+    );
+
+    host.unload("fixture_egress@0.1.0")
+        .await
+        .expect("worker shutdown must wipe its private configuration");
+    assert!(
+        !config_path.exists(),
+        "private configuration file must not survive worker cleanup"
+    );
+}
+
+#[tokio::test]
 async fn ac_002_ac_003_ac_005_ac_014_resolves_public_lease_and_cleans_mihomo_tree() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("fixture proxy listener must bind");
     let port = listener
@@ -163,6 +259,8 @@ async fn ac_002_ac_003_ac_005_ac_014_resolves_public_lease_and_cleans_mihomo_tre
         unix_milliseconds_now() + 300_000,
         false,
         Some(&child_marker),
+        None,
+        None,
     );
 
     let mut host = NetworkEgressHost::default();
@@ -170,6 +268,7 @@ async fn ac_002_ac_003_ac_005_ac_014_resolves_public_lease_and_cleans_mihomo_tre
         "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
+        worker_config(),
     )
     .await
     .expect("activation must register the stateful worker without acquiring a lease");
@@ -192,7 +291,7 @@ async fn ac_002_ac_003_ac_005_ac_014_resolves_public_lease_and_cleans_mihomo_tre
     assert_eq!(receipt.reason, NetworkEgressCleanupReason::Stopped);
     assert_eq!(receipt.final_state, NetworkEgressWorkerState::Inactive);
     #[cfg(target_os = "linux")]
-    assert!(!PathBuf::from(format!("/proc/{child_pid}")).exists());
+    assert!(wait_for_process_exit(child_pid));
 }
 
 #[tokio::test]
@@ -203,12 +302,15 @@ async fn ac_004_rejects_non_loopback_or_expired_leases_before_core_can_consume_t
         unix_milliseconds_now() + 300_000,
         false,
         None,
+        None,
+        None,
     );
     let mut host = NetworkEgressHost::default();
     host.load_if_needed(
         "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
+        worker_config(),
     )
     .await
     .expect("activation must not acquire the invalid lease");
@@ -231,10 +333,13 @@ async fn ac_004_revokes_the_lease_when_the_worker_crashes() {
         let _ = listener.accept();
     });
     let package = TempNetworkEgressPackage::new();
+    let config_marker = package.path().join("config-path");
     package.write_runtime(
         &format!("http://127.0.0.1:{port}"),
         unix_milliseconds_now() + 300_000,
         true,
+        None,
+        Some(&config_marker),
         None,
     );
     let mut host = NetworkEgressHost::default();
@@ -242,9 +347,12 @@ async fn ac_004_revokes_the_lease_when_the_worker_crashes() {
         "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
+        worker_config(),
     )
     .await
     .expect("activation must start the worker");
+    let config_path = wait_for_config_path(&config_marker);
+    assert!(config_path.is_file());
     host.resolve_http_forward_proxy("fixture_egress@0.1.0", "egress-us-1")
         .await
         .expect("fixture worker must first return a valid lease");
@@ -260,6 +368,10 @@ async fn ac_004_revokes_the_lease_when_the_worker_crashes() {
     assert!(receipt.lease_revoked);
     assert_eq!(receipt.reason, NetworkEgressCleanupReason::RuntimeFailure);
     assert_eq!(receipt.final_state, NetworkEgressWorkerState::Failed);
+    assert!(
+        !config_path.exists(),
+        "private configuration file must not survive a crashed worker"
+    );
 }
 
 fn unix_milliseconds_now() -> u64 {
@@ -278,4 +390,26 @@ fn wait_for_child_pid(marker: &Path) -> u32 {
         thread::sleep(Duration::from_millis(10));
     }
     panic!("fixture worker did not record its Mihomo child pid");
+}
+
+fn wait_for_config_path(marker: &Path) -> PathBuf {
+    for _ in 0..40 {
+        if let Ok(path) = fs::read_to_string(marker) {
+            return PathBuf::from(path.trim());
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    panic!("fixture worker did not record its private config handle");
+}
+
+#[cfg(target_os = "linux")]
+fn wait_for_process_exit(pid: u32) -> bool {
+    let process_path = PathBuf::from(format!("/proc/{pid}"));
+    for _ in 0..40 {
+        if !process_path.exists() {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    false
 }

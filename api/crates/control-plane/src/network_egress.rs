@@ -8,8 +8,8 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         CreateNetworkEgressProviderInput, NetworkEgressRepository, NetworkEgressRuntimePort,
-        PluginRepository, RecordNetworkEgressSyncFailureInput, ReplaceNetworkEgressProjectionInput,
-        UpdateNetworkEgressProviderLifecycleInput,
+        NetworkEgressSecretResolver, PluginRepository, RecordNetworkEgressSyncFailureInput,
+        ReplaceNetworkEgressProjectionInput, UpdateNetworkEgressProviderLifecycleInput,
     },
 };
 
@@ -32,21 +32,24 @@ pub struct NetworkEgressProviderView {
     pub egresses: Vec<domain::NetworkEgressProjectionRecord>,
 }
 
-pub struct NetworkEgressProviderService<R, H> {
+pub struct NetworkEgressProviderService<R, H, S> {
     repository: R,
     runtime: H,
+    secret_resolver: S,
     node_id: String,
 }
 
-impl<R, H> NetworkEgressProviderService<R, H>
+impl<R, H, S> NetworkEgressProviderService<R, H, S>
 where
     R: NetworkEgressRepository + PluginRepository,
     H: NetworkEgressRuntimePort,
+    S: NetworkEgressSecretResolver,
 {
-    pub fn new(repository: R, runtime: H, node_id: String) -> Self {
+    pub fn new(repository: R, runtime: H, secret_resolver: S, node_id: String) -> Self {
         Self {
             repository,
             runtime,
+            secret_resolver,
             node_id,
         }
     }
@@ -160,9 +163,17 @@ where
         if local_installation.contract_version != NETWORK_EGRESS_PROVIDER_CONTRACT {
             return Err(ControlPlaneError::InvalidInput("installation_id").into());
         }
+        let secret = self
+            .secret_resolver
+            .resolve_for_runner(&provider)
+            .await
+            .map_err(|_| ControlPlaneError::Conflict("network_egress_provider_secret_unavailable"))?
+            .ok_or(ControlPlaneError::Conflict(
+                "network_egress_provider_secret_unavailable",
+            ))?;
         let descriptors = match self
             .runtime
-            .sync_network_egresses(&local_installation)
+            .sync_network_egresses(&local_installation, secret)
             .await
         {
             Ok(descriptors) => descriptors,

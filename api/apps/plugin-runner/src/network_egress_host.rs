@@ -1,10 +1,17 @@
 use std::{
     collections::HashMap,
+    fs::{self, DirBuilder, File, OpenOptions},
+    io::Write,
     net::{IpAddr, SocketAddr},
     path::PathBuf,
     process::Stdio,
+    sync::atomic::{AtomicU64, Ordering},
     time::Duration,
+    time::{SystemTime, UNIX_EPOCH},
 };
+
+#[cfg(unix)]
+use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 
 use axum::http::Uri;
 use plugin_framework::{
@@ -23,6 +30,20 @@ use tokio::{
 
 const LEASE_VERIFICATION_TIMEOUT: Duration = Duration::from_secs(1);
 const WORKER_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
+static NEXT_CONFIG_ID: AtomicU64 = AtomicU64::new(0);
+
+/// Private startup-only material. It is deliberately non-serializable and redacts its payload
+/// so configuration can reach the worker without becoming part of a runtime protocol.
+#[derive(Clone, PartialEq)]
+pub struct NetworkEgressWorkerConfig {
+    secret_json: serde_json::Value,
+}
+
+impl NetworkEgressWorkerConfig {
+    pub fn from_secret_json(secret_json: serde_json::Value) -> Self {
+        Self { secret_json }
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -56,7 +77,7 @@ pub struct NetworkEgressCleanupReceipt {
     pub cleanup_error: Option<String>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct NetworkEgressHost {
     workers: HashMap<String, NetworkEgressWorker>,
     sources: HashMap<String, NetworkEgressSource>,
@@ -91,6 +112,7 @@ impl NetworkEgressHost {
         plugin_id: &str,
         package_root: &str,
         source_identity: &str,
+        config: NetworkEgressWorkerConfig,
     ) -> FrameworkResult<()> {
         let requested = NetworkEgressSource::resolve(package_root, source_identity)?;
         if self.sources.get(plugin_id) == Some(&requested) {
@@ -106,13 +128,16 @@ impl NetworkEgressHost {
                 package.identifier()
             )));
         }
-        let worker =
-            NetworkEgressWorker::start(package.runtime_entry(), package.manifest.runtime.limits)
-                .map_err(|error| {
-                    self.cleanup_receipts
-                        .insert(plugin_id.to_string(), startup_receipt(plugin_id));
-                    error
-                })?;
+        let worker = NetworkEgressWorker::start(
+            package.runtime_entry(),
+            package.manifest.runtime.limits,
+            config,
+        )
+        .map_err(|error| {
+            self.cleanup_receipts
+                .insert(plugin_id.to_string(), startup_receipt(plugin_id));
+            error
+        })?;
         self.sources.insert(plugin_id.to_string(), requested);
         self.workers.insert(plugin_id.to_string(), worker);
         Ok(())
@@ -213,7 +238,6 @@ impl NetworkEgressHost {
     }
 }
 
-#[derive(Debug)]
 struct NetworkEgressWorker {
     executable_path: PathBuf,
     limits: PluginRuntimeLimits,
@@ -221,6 +245,7 @@ struct NetworkEgressWorker {
     stdin: ChildStdin,
     stdout: Lines<BufReader<ChildStdout>>,
     lease: Option<VerifiedForwardProxyLease>,
+    config_file: NetworkEgressConfigFile,
 }
 
 #[derive(Debug, Clone)]
@@ -228,10 +253,142 @@ struct VerifiedForwardProxyLease {
     lease: ForwardProxyLease,
 }
 
+struct NetworkEgressConfigFile {
+    directory: PathBuf,
+    path: PathBuf,
+    cleaned: bool,
+}
+
+impl NetworkEgressConfigFile {
+    fn create(config: NetworkEgressWorkerConfig) -> FrameworkResult<Self> {
+        let directory = private_config_directory()?;
+        let path = directory.join("config.json");
+        let result = (|| -> std::io::Result<()> {
+            let payload = serde_json::to_vec(&config.secret_json).map_err(std::io::Error::other)?;
+            let mut file = private_config_file(&path)?;
+            file.write_all(&payload)?;
+            file.sync_all()
+        })();
+        if result.is_err() {
+            wipe_and_remove(&path, &directory);
+            return Err(network_runtime_error(
+                "cannot provision private network egress configuration",
+            ));
+        }
+        Ok(Self {
+            directory,
+            path,
+            cleaned: false,
+        })
+    }
+
+    fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+
+    fn cleanup(&mut self) -> bool {
+        if self.cleaned {
+            return true;
+        }
+        self.cleaned = true;
+        wipe_and_remove(&self.path, &self.directory)
+    }
+}
+
+impl Drop for NetworkEgressConfigFile {
+    fn drop(&mut self) {
+        let _ = self.cleanup();
+    }
+}
+
+fn private_config_directory() -> FrameworkResult<PathBuf> {
+    let base = std::env::temp_dir();
+    for _ in 0..16 {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_| {
+                network_runtime_error("cannot provision private network egress configuration")
+            })?
+            .as_nanos();
+        let sequence = NEXT_CONFIG_ID.fetch_add(1, Ordering::Relaxed);
+        let directory = base.join(format!(
+            "1flowbase-network-egress-{}-{timestamp}-{sequence}",
+            std::process::id()
+        ));
+        match private_directory(&directory) {
+            Ok(()) => return Ok(directory),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(_) => break,
+        }
+    }
+    Err(network_runtime_error(
+        "cannot provision private network egress configuration",
+    ))
+}
+
+#[cfg(unix)]
+fn private_directory(path: &std::path::Path) -> std::io::Result<()> {
+    let mut builder = DirBuilder::new();
+    builder.mode(0o700);
+    builder.create(path)
+}
+
+#[cfg(not(unix))]
+fn private_directory(path: &std::path::Path) -> std::io::Result<()> {
+    fs::create_dir(path)
+}
+
+#[cfg(unix)]
+fn private_config_file(path: &std::path::Path) -> std::io::Result<File> {
+    OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)
+}
+
+#[cfg(not(unix))]
+fn private_config_file(path: &std::path::Path) -> std::io::Result<File> {
+    OpenOptions::new().write(true).create_new(true).open(path)
+}
+
+fn wipe_and_remove(path: &std::path::Path, directory: &std::path::Path) -> bool {
+    let wiped = wipe_file(path);
+    let removed_file = fs::remove_file(path).is_ok() || !path.exists();
+    let removed_directory = fs::remove_dir(directory).is_ok() || !directory.exists();
+    wiped && removed_file && removed_directory
+}
+
+fn wipe_file(path: &std::path::Path) -> bool {
+    let Ok(mut file) = OpenOptions::new().write(true).open(path) else {
+        return !path.exists();
+    };
+    let Ok(length) = file.metadata().map(|metadata| metadata.len()) else {
+        return false;
+    };
+    let zeros = [0_u8; 8192];
+    let mut remaining = length;
+    while remaining > 0 {
+        let chunk = usize::try_from(remaining.min(zeros.len() as u64)).unwrap_or(zeros.len());
+        if file.write_all(&zeros[..chunk]).is_err() {
+            return false;
+        }
+        remaining -= chunk as u64;
+    }
+    file.sync_all().is_ok()
+}
+
 impl NetworkEgressWorker {
-    fn start(executable_path: PathBuf, limits: PluginRuntimeLimits) -> FrameworkResult<Self> {
+    fn start(
+        executable_path: PathBuf,
+        limits: PluginRuntimeLimits,
+        config: NetworkEgressWorkerConfig,
+    ) -> FrameworkResult<Self> {
+        let config_file = NetworkEgressConfigFile::create(config)?;
         let mut command = Command::new(&executable_path);
         command
+            .arg("--network-egress-config-file")
+            .arg(config_file.path())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
@@ -255,6 +412,7 @@ impl NetworkEgressWorker {
             stdin,
             stdout: BufReader::new(stdout).lines(),
             lease: None,
+            config_file,
         })
     }
 
@@ -421,6 +579,11 @@ impl NetworkEgressWorker {
                 false
             }
         };
+        if !self.config_file.cleanup() {
+            cleanup_error.get_or_insert_with(|| {
+                "network egress private configuration cleanup failed".to_string()
+            });
+        }
         NetworkEgressCleanupReceipt {
             plugin_id: plugin_id.to_string(),
             prior_pid,

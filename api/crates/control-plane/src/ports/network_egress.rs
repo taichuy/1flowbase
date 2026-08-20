@@ -187,5 +187,6 @@ pub trait NetworkEgressRuntimePort: Send + Sync {
     async fn sync_network_egresses(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
+        secret: NetworkEgressSecretMaterial,
     ) -> anyhow::Result<Vec<plugin_framework::EgressDescriptor>>;
 }

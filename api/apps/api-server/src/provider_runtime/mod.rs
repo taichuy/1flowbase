@@ -12,8 +12,8 @@ use control_plane::{
     plugin_lifecycle::reconcile_installation_snapshot,
     ports::{
         DataSourceCrudRuntimePort, DataSourceRepository, DataSourceRuntimePort,
-        NetworkEgressRuntimePort, PluginRepository, ProviderLiveEventSenders,
-        ProviderRuntimeInvocationOutput, ProviderRuntimePort,
+        NetworkEgressRuntimePort, NetworkEgressSecretMaterial, PluginRepository,
+        ProviderLiveEventSenders, ProviderRuntimeInvocationOutput, ProviderRuntimePort,
     },
 };
 use plugin_framework::{
@@ -34,8 +34,10 @@ use plugin_framework::{
     },
 };
 use plugin_runner::{
-    capability_host::CapabilityHost, data_source_host::DataSourceHost,
-    network_egress_host::NetworkEgressHost, provider_host::ProviderHost,
+    capability_host::CapabilityHost,
+    data_source_host::DataSourceHost,
+    network_egress_host::{NetworkEgressHost, NetworkEgressWorkerConfig},
+    provider_host::ProviderHost,
 };
 use runtime_core::runtime_engine::DataSourceRuntimeRecordBackend;
 use serde::{de::DeserializeOwned, Serialize};
@@ -283,9 +285,9 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             }
             "1flowbase.data_source/v1" => self.ensure_data_source_loaded(installation).await,
             "1flowbase.capability/v1" => self.ensure_capability_loaded(installation).await,
-            plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT => {
-                self.ensure_network_egress_loaded(installation).await
-            }
+            // Network egress workers receive their private configuration only through `sync`.
+            // Installation activation is intentionally deferred so no worker can start without it.
+            plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT => Ok(()),
             _ => Err(ControlPlaneError::InvalidInput("plugin_installation").into()),
         }
     }
@@ -636,11 +638,13 @@ impl NetworkEgressRuntimePort for ApiProviderRuntime {
     async fn sync_network_egresses(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
+        secret: NetworkEgressSecretMaterial,
     ) -> anyhow::Result<Vec<plugin_framework::EgressDescriptor>> {
         if installation.contract_version != plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT {
             return Err(ControlPlaneError::InvalidInput("plugin_installation").into());
         }
-        self.ensure_network_egress_loaded(installation).await?;
+        self.ensure_network_egress_loaded(installation, secret)
+            .await?;
         self.services
             .network_egress_host
             .write()
@@ -1311,6 +1315,7 @@ impl ApiProviderRuntime {
     async fn ensure_network_egress_loaded(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
+        secret: NetworkEgressSecretMaterial,
     ) -> anyhow::Result<()> {
         let source_identity = format!(
             "installation_id={};checksum={};manifest_fingerprint={};updated_at={}",
@@ -1331,6 +1336,7 @@ impl ApiProviderRuntime {
                 &installation.plugin_id,
                 required_local_path(installation)?,
                 &source_identity,
+                NetworkEgressWorkerConfig::from_secret_json(secret.secret_json),
             )
             .await
             .map_err(map_provider_framework_error)

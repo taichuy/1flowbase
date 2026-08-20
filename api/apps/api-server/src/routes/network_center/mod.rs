@@ -9,6 +9,7 @@ use control_plane::network_egress::{
     CreateNetworkEgressProviderCommand, NetworkEgressProviderService, NetworkEgressProviderView,
     UpdateNetworkEgressProviderLifecycleCommand,
 };
+use control_plane::network_egress_secret::ProviderRegistryNetworkEgressSecretResolver;
 use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
@@ -98,10 +99,18 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 
 fn service(
     state: &ApiState,
-) -> NetworkEgressProviderService<storage_durable::MainDurableStore, ApiProviderRuntime> {
+) -> NetworkEgressProviderService<
+    storage_durable::MainDurableStore,
+    ApiProviderRuntime,
+    ProviderRegistryNetworkEgressSecretResolver<storage_durable::MainDurableStore>,
+> {
     NetworkEgressProviderService::new(
         state.store.clone(),
         ApiProviderRuntime::new(state.provider_runtime.clone()),
+        ProviderRegistryNetworkEgressSecretResolver::new(
+            state.store.clone(),
+            state.provider_secret_master_key.clone(),
+        ),
         state.api_node_id.clone(),
     )
 }
