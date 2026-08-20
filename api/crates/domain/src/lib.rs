@@ -150,6 +150,7 @@ pub use network_egress::{
     NetworkEgressHealthStatus, NetworkEgressPool, NetworkEgressPoolMember,
     NetworkEgressPoolMemberHealth, NetworkEgressPoolSelectionStrategy,
     NetworkEgressProjectionRecord, NetworkEgressProviderLifecycle, NetworkEgressProviderRecord,
+    NetworkEgressProviderSecretRecord,
 };
 pub use node_contribution::{NodeContributionDependencyStatus, NodeContributionRegistryEntry};
 pub use orchestration::{

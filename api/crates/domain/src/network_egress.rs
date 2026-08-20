@@ -56,6 +56,30 @@ pub struct NetworkEgressProviderRecord {
     pub updated_at: OffsetDateTime,
 }
 
+/// Durable encrypted material owned by the provider registry. This storage record is deliberately
+/// not an API DTO; callers must resolve it through the typed runner-provisioning boundary.
+#[derive(Clone, PartialEq)]
+pub struct NetworkEgressProviderSecretRecord {
+    pub provider_id: Uuid,
+    pub secret_ref: String,
+    pub encrypted_secret_json: serde_json::Value,
+    pub secret_version: i32,
+    pub updated_at: OffsetDateTime,
+}
+
+impl std::fmt::Debug for NetworkEgressProviderSecretRecord {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("NetworkEgressProviderSecretRecord")
+            .field("provider_id", &self.provider_id)
+            .field("secret_ref", &self.secret_ref)
+            .field("encrypted_secret_json", &"<encrypted>")
+            .field("secret_version", &self.secret_version)
+            .field("updated_at", &self.updated_at)
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NetworkEgressProjectionRecord {
     pub provider_id: Uuid,

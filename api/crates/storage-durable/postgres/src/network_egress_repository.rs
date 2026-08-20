@@ -5,12 +5,13 @@ use control_plane::ports::{
     CreateNetworkEgressProviderInput, NetworkEgressPoolRepository, NetworkEgressRepository,
     RecordNetworkEgressSyncFailureInput, ReplaceNetworkEgressProjectionInput,
     UpdateNetworkEgressPoolInput, UpdateNetworkEgressPoolMemberInput,
-    UpdateNetworkEgressProviderLifecycleInput,
+    UpdateNetworkEgressProviderLifecycleInput, UpsertNetworkEgressProviderSecretInput,
 };
 use sqlx::Row;
 use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;
+use crate::secret_crypto::{decrypt_secret_json, encrypt_secret_json};
 
 fn lifecycle(value: &str) -> Result<domain::NetworkEgressProviderLifecycle> {
     match value {
@@ -57,6 +58,16 @@ fn projection(row: sqlx::postgres::PgRow) -> domain::NetworkEgressProjectionReco
         tags: row.get("tags"),
         availability: row.get("availability"),
         synced_at: row.get("synced_at"),
+    }
+}
+
+fn provider_secret(row: sqlx::postgres::PgRow) -> domain::NetworkEgressProviderSecretRecord {
+    domain::NetworkEgressProviderSecretRecord {
+        provider_id: row.get("provider_id"),
+        secret_ref: row.get("secret_ref"),
+        encrypted_secret_json: row.get("encrypted_secret_json"),
+        secret_version: row.get("secret_version"),
+        updated_at: row.get("updated_at"),
     }
 }
 
@@ -227,6 +238,65 @@ impl NetworkEgressRepository for PgControlPlaneStore {
                 "network_egress_provider"
             ))
         })
+    }
+
+    async fn upsert_network_egress_provider_secret(
+        &self,
+        input: &UpsertNetworkEgressProviderSecretInput,
+    ) -> Result<domain::NetworkEgressProviderSecretRecord> {
+        let encrypted_secret_json =
+            encrypt_secret_json(&input.plaintext_secret_json, &input.master_key)?;
+        let row = sqlx::query(
+            r#"
+            insert into network_egress_provider_secrets (
+                provider_id, secret_ref, encrypted_secret_json, secret_version
+            )
+            select id, $2, $3, $4
+            from network_egress_providers
+            where id = $1
+              and secret_ref = $2
+            on conflict (provider_id) do update
+            set secret_ref = excluded.secret_ref,
+                encrypted_secret_json = excluded.encrypted_secret_json,
+                secret_version = excluded.secret_version,
+                updated_at = now()
+            returning provider_id, secret_ref, encrypted_secret_json, secret_version, updated_at
+            "#,
+        )
+        .bind(input.provider_id)
+        .bind(&input.secret_ref)
+        .bind(&encrypted_secret_json)
+        .bind(input.secret_version)
+        .fetch_optional(self.pool())
+        .await?
+        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+            "network_egress_provider_secret_ref",
+        ))?;
+        Ok(provider_secret(row))
+    }
+
+    async fn resolve_network_egress_provider_secret_json(
+        &self,
+        provider_id: Uuid,
+        secret_ref: &str,
+        master_key: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        let row = sqlx::query(
+            r#"
+            select secret.encrypted_secret_json
+            from network_egress_provider_secrets secret
+            join network_egress_providers provider on provider.id = secret.provider_id
+            where secret.provider_id = $1
+              and secret.secret_ref = $2
+              and provider.secret_ref = $2
+            "#,
+        )
+        .bind(provider_id)
+        .bind(secret_ref)
+        .fetch_optional(self.pool())
+        .await?;
+        row.map(|row| decrypt_secret_json(&row.get("encrypted_secret_json"), master_key))
+            .transpose()
     }
 
     async fn append_audit_log(&self, event: &domain::AuditLogRecord) -> Result<()> {
@@ -504,6 +574,41 @@ mod tests {
         )
         .await
         .expect("provider should persist");
+        let plaintext = json!({ "token": "registry-secret-must-not-persist-in-cleartext" });
+        let secret = NetworkEgressRepository::upsert_network_egress_provider_secret(
+            &store,
+            &UpsertNetworkEgressProviderSecretInput {
+                provider_id,
+                secret_ref: "secret://system/network-egress/fixture".to_string(),
+                plaintext_secret_json: plaintext.clone(),
+                master_key: "network-egress-test-master-key".to_string(),
+                secret_version: 1,
+            },
+        )
+        .await
+        .expect("registry-owned secret should persist encrypted");
+        assert!(!secret
+            .encrypted_secret_json
+            .to_string()
+            .contains("registry-secret-must-not-persist-in-cleartext"));
+        let resolved = NetworkEgressRepository::resolve_network_egress_provider_secret_json(
+            &store,
+            provider_id,
+            "secret://system/network-egress/fixture",
+            "network-egress-test-master-key",
+        )
+        .await
+        .expect("secret should resolve with the provisioning key");
+        assert_eq!(resolved, Some(plaintext));
+        let mismatched_ref = NetworkEgressRepository::resolve_network_egress_provider_secret_json(
+            &store,
+            provider_id,
+            "secret://system/network-egress/wrong-ref",
+            "network-egress-test-master-key",
+        )
+        .await
+        .expect("mismatched reference should not decrypt any material");
+        assert!(mismatched_ref.is_none());
         let synchronized_at = OffsetDateTime::now_utc();
         NetworkEgressRepository::replace_network_egress_projection(
             &store,

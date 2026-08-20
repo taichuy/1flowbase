@@ -37,6 +37,15 @@ pub struct RecordNetworkEgressSyncFailureInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct UpsertNetworkEgressProviderSecretInput {
+    pub provider_id: Uuid,
+    pub secret_ref: String,
+    pub plaintext_secret_json: serde_json::Value,
+    pub master_key: String,
+    pub secret_version: i32,
+}
+
+#[derive(Debug, Clone)]
 pub struct CreateNetworkEgressPoolInput {
     pub pool_id: Uuid,
     pub display_name: String,
@@ -99,7 +108,43 @@ pub trait NetworkEgressRepository: Send + Sync {
         &self,
         input: &RecordNetworkEgressSyncFailureInput,
     ) -> anyhow::Result<domain::NetworkEgressProviderRecord>;
+    async fn upsert_network_egress_provider_secret(
+        &self,
+        input: &UpsertNetworkEgressProviderSecretInput,
+    ) -> anyhow::Result<domain::NetworkEgressProviderSecretRecord>;
+    async fn resolve_network_egress_provider_secret_json(
+        &self,
+        provider_id: Uuid,
+        secret_ref: &str,
+        master_key: &str,
+    ) -> anyhow::Result<Option<serde_json::Value>>;
     async fn append_audit_log(&self, event: &domain::AuditLogRecord) -> anyhow::Result<()>;
+}
+
+/// Sensitive material is intentionally only constructed at the runner-provisioning boundary.
+/// It has no serde implementation and redacts its payload in diagnostics.
+#[derive(Clone, PartialEq)]
+pub struct NetworkEgressSecretMaterial {
+    pub secret_ref: String,
+    pub secret_json: serde_json::Value,
+}
+
+impl std::fmt::Debug for NetworkEgressSecretMaterial {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("NetworkEgressSecretMaterial")
+            .field("secret_ref", &self.secret_ref)
+            .field("secret_json", &"<redacted>")
+            .finish()
+    }
+}
+
+#[async_trait]
+pub trait NetworkEgressSecretResolver: Send + Sync {
+    async fn resolve_for_runner(
+        &self,
+        provider: &domain::NetworkEgressProviderRecord,
+    ) -> anyhow::Result<Option<NetworkEgressSecretMaterial>>;
 }
 
 #[async_trait]
