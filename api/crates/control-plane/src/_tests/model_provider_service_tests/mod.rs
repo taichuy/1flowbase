@@ -14,9 +14,9 @@ use crate::{
     errors::ControlPlaneError,
     i18n::RequestedLocales,
     model_provider::{
-        AuthenticateModelProviderInstanceCommand, CreateModelProviderInstanceCommand,
-        DeleteModelProviderInstanceCommand, ModelProviderConfiguredModelInput,
-        ModelProviderService, PreviewModelProviderModelsCommand,
+        AuthenticateModelProviderInstanceCommand, ConsumeModelProviderResetCreditCommand,
+        CreateModelProviderInstanceCommand, DeleteModelProviderInstanceCommand,
+        ModelProviderConfiguredModelInput, ModelProviderService, PreviewModelProviderModelsCommand,
         UpdateModelProviderInstanceCommand, UpdateModelProviderMainInstanceCommand,
     },
     ports::{
@@ -44,6 +44,8 @@ use domain::{
 use plugin_framework::provider_contract::{
     ProviderAuthOperation, ProviderAuthResult, ProviderAuthStatus, ProviderInvocationInput,
     ProviderInvocationResult, ProviderModelDescriptor, ProviderModelSource,
+    ProviderResetCreditOperation, ProviderResetCreditResult, ProviderUsageWindow,
+    ProviderUsageWindowsResult,
 };
 use time::OffsetDateTime;
 
@@ -1134,6 +1136,7 @@ struct MemoryProviderRuntime {
     list_models_error: Arc<RwLock<Option<String>>>,
     auth_operations: Arc<RwLock<Vec<ProviderAuthOperation>>>,
     auth_results: Arc<RwLock<VecDeque<ProviderAuthResult>>>,
+    reset_credit_operations: Arc<RwLock<Vec<ProviderResetCreditOperation>>>,
 }
 
 impl MemoryProviderRuntime {
@@ -1155,6 +1158,10 @@ impl MemoryProviderRuntime {
 
     async fn validate_configs(&self) -> Vec<Value> {
         self.validate_configs.read().await.clone()
+    }
+
+    async fn reset_credit_operations(&self) -> Vec<ProviderResetCreditOperation> {
+        self.reset_credit_operations.read().await.clone()
     }
 }
 
@@ -1224,6 +1231,46 @@ impl ProviderRuntimePort for MemoryProviderRuntime {
         }])
     }
 
+    async fn get_usage_windows(
+        &self,
+        _installation: &LocalPluginInstallationRecord,
+        _provider_config: Value,
+    ) -> Result<ProviderUsageWindowsResult> {
+        Ok(ProviderUsageWindowsResult {
+            windows: vec![
+                ProviderUsageWindow {
+                    limit_window_seconds: 18_000,
+                    used_percent: 42.0,
+                    reset_at: Some("2026-08-20T10:00:00Z".to_string()),
+                },
+                ProviderUsageWindow {
+                    limit_window_seconds: 604_800,
+                    used_percent: 61.0,
+                    reset_at: None,
+                },
+            ],
+            queried_at: "2026-08-20T05:00:00Z".to_string(),
+        })
+    }
+
+    async fn reset_credit(
+        &self,
+        _installation: &LocalPluginInstallationRecord,
+        _provider_config: Value,
+        operation: ProviderResetCreditOperation,
+    ) -> Result<ProviderResetCreditResult> {
+        self.reset_credit_operations
+            .write()
+            .await
+            .push(operation.clone());
+        Ok(match operation {
+            ProviderResetCreditOperation::Count => {
+                ProviderResetCreditResult::Count { available_count: 2 }
+            }
+            ProviderResetCreditOperation::Consume { .. } => ProviderResetCreditResult::Consumed,
+        })
+    }
+
     async fn invoke_stream(
         &self,
         _installation: &LocalPluginInstallationRecord,
@@ -1277,6 +1324,7 @@ async fn ac_1281_model_provider_legacy_only_does_not_authorize() {
 }
 
 mod access_main_instance;
+mod account_operations;
 mod auth;
 mod instance_lifecycle;
 mod model_options;

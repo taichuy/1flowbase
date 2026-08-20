@@ -3,11 +3,14 @@ import * as transport from '../transport';
 import {
   authenticateConsoleModelProviderInstance,
   clearConsoleModelProviderRequestLogsBatch,
+  consumeConsoleModelProviderResetCredit,
   createConsoleModelProviderInstance,
   deleteConsoleModelProviderInstance,
   deleteConsoleModelProviderRequestLogs,
   getConsoleModelProviderMainInstance,
   getConsoleModelProviderModels,
+  getConsoleModelProviderResetCreditCount,
+  getConsoleModelProviderUsageWindows,
   listConsoleModelProviderCatalog,
   listConsoleModelProviderInstances,
   listConsoleModelProviderRequestLogs,
@@ -64,6 +67,13 @@ describe('console model provider settings route contract', () => {
         { type: 'begin', action: 'device_code' },
         csrfToken
       ),
+      getConsoleModelProviderUsageWindows('instance-1'),
+      getConsoleModelProviderResetCreditCount('instance-1'),
+      consumeConsoleModelProviderResetCredit(
+        'instance-1',
+        { idempotency_key: 'attempt-1' },
+        csrfToken
+      ),
       getConsoleModelProviderModels('instance-1'),
       refreshConsoleModelProviderModels('instance-1', csrfToken),
       revealConsoleModelProviderSecret('instance-1', 'api_key', csrfToken),
@@ -84,6 +94,9 @@ describe('console model provider settings route contract', () => {
       '/api/console/settings/model-providers/providers/provider-1/main-instance',
       '/api/console/settings/model-providers/instances/instance-1/validate',
       '/api/console/settings/model-providers/instances/instance-1/authenticate',
+      '/api/console/settings/model-providers/instances/instance-1/usage',
+      '/api/console/settings/model-providers/instances/instance-1/reset-credits',
+      '/api/console/settings/model-providers/instances/instance-1/reset-credits/consume',
       '/api/console/settings/model-providers/instances/instance-1/models',
       '/api/console/settings/model-providers/instances/instance-1/models/refresh',
       '/api/console/settings/model-providers/instances/instance-1/secrets/reveal',
@@ -97,6 +110,11 @@ describe('console model provider settings route contract', () => {
       method: 'POST',
       csrfToken,
       body: { operation: { type: 'begin', action: 'device_code' } }
+    });
+    expect(apiFetch.mock.calls[11]?.[0]).toMatchObject({
+      method: 'POST',
+      csrfToken,
+      body: { idempotency_key: 'attempt-1' }
     });
   });
 });

@@ -16,6 +16,14 @@ fn create_provider_fixture(root: &Path) {
     fs::create_dir_all(root.join("demo")).unwrap();
     fs::create_dir_all(root.join("scripts")).unwrap();
     write_provider_manifest_v2(root, "fixture_provider", "Fixture Provider", "0.1.0");
+    let manifest_path = root.join("manifest.yaml");
+    let manifest = fs::read_to_string(&manifest_path)
+        .unwrap()
+        .replace(
+            "  entry: bin/fixture_provider-provider\n",
+            "  capabilities:\n    - usage.rate_limit_windows\n    - reset_credits\n  entry: bin/fixture_provider-provider\n",
+        );
+    fs::write(manifest_path, manifest).unwrap();
     fs::write(
         root.join("provider/fixture_provider.yaml"),
         r#"provider_code: fixture_provider
@@ -208,6 +216,20 @@ switch (request.method) {
       provider_metadata: { provider: "deepseek", echoed_api_key: request.input?.api_key }
     };
     break;
+  case 'usage':
+    result = {
+      windows: [
+        { limit_window_seconds: 18000, used_percent: 42.0, reset_at: "2026-08-20T10:00:00Z" },
+        { limit_window_seconds: 604800, used_percent: 61.0, reset_at: null }
+      ],
+      queried_at: "2026-08-20T05:00:00Z"
+    };
+    break;
+  case 'reset_credit':
+    result = request.input?.operation?.type === 'count'
+      ? { type: "count", available_count: 2 }
+      : { type: "consumed" };
+    break;
   case 'invoke': {
     const query = request.input?.messages?.[0]?.content ?? "";
     const lines = [
@@ -362,6 +384,7 @@ fn schema_ref_name(schema: &Value) -> Option<String> {
         })
 }
 
+mod account_operations;
 mod auth;
 mod lifecycle;
 mod refresh_and_settings;

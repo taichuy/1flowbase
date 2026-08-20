@@ -206,6 +206,7 @@ pub struct ModelProviderCatalogEntryResponse {
     pub form_schema: Vec<ModelProviderConfigFieldResponse>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub auth: Option<ModelProviderAuthProjectionResponse>,
+    pub operational_capabilities: Vec<String>,
     pub predefined_models: Vec<ProviderModelDescriptorResponse>,
     pub catalog_refresh_status: String,
     pub catalog_last_error_message: Option<String>,
@@ -301,6 +302,35 @@ pub struct ModelProviderBalanceResponse {
     pub balance_infos: Vec<ModelProviderBalanceInfoResponse>,
     #[schema(value_type = Object)]
     pub provider_metadata: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelProviderUsageWindowResponse {
+    pub limit_window_seconds: u64,
+    pub used_percent: f64,
+    pub reset_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelProviderUsageWindowsResponse {
+    pub windows: Vec<ModelProviderUsageWindowResponse>,
+    pub queried_at: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelProviderResetCreditCountResponse {
+    pub available_count: u32,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ConsumeModelProviderResetCreditBody {
+    pub idempotency_key: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ConsumeModelProviderResetCreditResponse {
+    pub consumed: bool,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

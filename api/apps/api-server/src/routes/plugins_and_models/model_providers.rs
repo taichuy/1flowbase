@@ -12,12 +12,14 @@ use axum::{
 use control_plane::model_provider::{
     AuthenticateModelProviderInstanceCommand, AuthenticateModelProviderInstanceResult,
     ClearModelProviderRequestLogsBatchCommand, ClearModelProviderRequestLogsContinuation,
+    ConsumeModelProviderResetCreditCommand, ConsumeModelProviderResetCreditResult,
     CreateModelProviderInstanceCommand, DeleteModelProviderInstanceCommand,
     DeleteSelectedModelProviderRequestLogsCommand, ListModelProviderRequestLogsCommand,
     LocalizedProviderModelDescriptor, ModelProviderBalanceResult, ModelProviderCatalogEntry,
     ModelProviderCatalogView, ModelProviderInstanceView, ModelProviderMainInstanceView,
     ModelProviderModelCatalog, ModelProviderOptionEntry, ModelProviderOptionsView,
-    ModelProviderService, PreviewModelProviderModelsCommand, UpdateModelProviderInstanceCommand,
+    ModelProviderResetCreditCount, ModelProviderService, ModelProviderUsageWindowsResult,
+    PreviewModelProviderModelsCommand, UpdateModelProviderInstanceCommand,
     UpdateModelProviderMainInstanceCommand, ValidateModelProviderResult,
 };
 use control_plane::{
@@ -28,7 +30,7 @@ use plugin_framework::{
     provider_contract::{
         PluginFormCondition, PluginFormFieldSchema, PluginFormOption, PluginFormSchema,
         ProviderAuthOperation, ProviderAuthStatus, ProviderAuthUserActionKind,
-        ProviderModelDescriptor,
+        ProviderModelDescriptor, ProviderOperationalCapability,
     },
     provider_package::ProviderConfigField,
 };
@@ -296,6 +298,11 @@ fn to_catalog_response(entry: ModelProviderCatalogEntry) -> ModelProviderCatalog
             .map(to_config_field_response)
             .collect(),
         auth: entry.auth.map(to_auth_projection_response),
+        operational_capabilities: entry
+            .operational_capabilities
+            .into_iter()
+            .map(provider_operational_capability)
+            .collect(),
         predefined_models: entry
             .predefined_models
             .into_iter()
@@ -305,6 +312,14 @@ fn to_catalog_response(entry: ModelProviderCatalogEntry) -> ModelProviderCatalog
         catalog_last_error_message: entry.catalog_last_error_message,
         catalog_refreshed_at: format_optional_time(entry.catalog_refreshed_at),
     }
+}
+
+fn provider_operational_capability(value: ProviderOperationalCapability) -> String {
+    match value {
+        ProviderOperationalCapability::UsageWindows => "usage_windows",
+        ProviderOperationalCapability::ResetCredits => "reset_credits",
+    }
+    .to_string()
 }
 
 fn provider_auth_user_action_kind(value: ProviderAuthUserActionKind) -> String {
@@ -474,6 +489,39 @@ fn to_balance_response(result: ModelProviderBalanceResult) -> ModelProviderBalan
             })
             .collect(),
         provider_metadata: result.provider_metadata,
+    }
+}
+
+fn to_usage_windows_response(
+    result: ModelProviderUsageWindowsResult,
+) -> ModelProviderUsageWindowsResponse {
+    ModelProviderUsageWindowsResponse {
+        windows: result
+            .windows
+            .into_iter()
+            .map(|window| ModelProviderUsageWindowResponse {
+                limit_window_seconds: window.limit_window_seconds,
+                used_percent: window.used_percent,
+                reset_at: window.reset_at,
+            })
+            .collect(),
+        queried_at: result.queried_at,
+    }
+}
+
+fn to_reset_credit_count_response(
+    result: ModelProviderResetCreditCount,
+) -> ModelProviderResetCreditCountResponse {
+    ModelProviderResetCreditCountResponse {
+        available_count: result.available_count,
+    }
+}
+
+fn to_consume_reset_credit_response(
+    result: ConsumeModelProviderResetCreditResult,
+) -> ConsumeModelProviderResetCreditResponse {
+    ConsumeModelProviderResetCreditResponse {
+        consumed: result.consumed,
     }
 }
 
@@ -1071,6 +1119,83 @@ pub async fn authenticate_instance(
     })
     .await?;
     Ok(Json(ApiSuccess::new(to_authenticate_response(result))))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/settings/model-providers/instances/{id}/usage",
+    operation_id = "model_provider_get_usage_windows",
+    responses((status = 200, body = ModelProviderUsageWindowsResponse), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn get_usage_windows(
+    State(state): State<Arc<ApiState>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<ModelProviderUsageWindowsResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let result = settings_service(
+        &state,
+        &context.actor,
+        "model_providers.instances.usage.view",
+    )
+    .get_usage_windows(context.user.id, parse_uuid(&id, "id")?)
+    .await?;
+    Ok(Json(ApiSuccess::new(to_usage_windows_response(result))))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/settings/model-providers/instances/{id}/reset-credits",
+    operation_id = "model_provider_count_reset_credits",
+    responses((status = 200, body = ModelProviderResetCreditCountResponse), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn count_reset_credits(
+    State(state): State<Arc<ApiState>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<ModelProviderResetCreditCountResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let result = settings_service(
+        &state,
+        &context.actor,
+        "model_providers.instances.reset_credits.view",
+    )
+    .count_reset_credits(context.user.id, parse_uuid(&id, "id")?)
+    .await?;
+    Ok(Json(ApiSuccess::new(to_reset_credit_count_response(
+        result,
+    ))))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/settings/model-providers/instances/{id}/reset-credits/consume",
+    operation_id = "model_provider_consume_reset_credit",
+    request_body = ConsumeModelProviderResetCreditBody,
+    responses((status = 200, body = ConsumeModelProviderResetCreditResponse), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn consume_reset_credit(
+    State(state): State<Arc<ApiState>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<ConsumeModelProviderResetCreditBody>,
+) -> Result<Json<ApiSuccess<ConsumeModelProviderResetCreditResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let result = settings_service(
+        &state,
+        &context.actor,
+        "model_providers.instances.reset_credits.consume",
+    )
+    .consume_reset_credit(ConsumeModelProviderResetCreditCommand {
+        actor_user_id: context.user.id,
+        instance_id: parse_uuid(&id, "id")?,
+        idempotency_key: body.idempotency_key,
+    })
+    .await?;
+    Ok(Json(ApiSuccess::new(to_consume_reset_credit_response(
+        result,
+    ))))
 }
 
 #[utoipa::path(

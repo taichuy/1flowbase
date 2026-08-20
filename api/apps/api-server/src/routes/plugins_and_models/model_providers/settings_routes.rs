@@ -95,6 +95,27 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
+            "/settings/model-providers/instances/:id/usage",
+            console_get(
+                get_usage_windows,
+                ConsoleOperation("model_providers.instances.usage.view".to_string()),
+            ),
+        )
+        .route(
+            "/settings/model-providers/instances/:id/reset-credits",
+            console_get(
+                count_reset_credits,
+                ConsoleOperation("model_providers.instances.reset_credits.view".to_string()),
+            ),
+        )
+        .route(
+            "/settings/model-providers/instances/:id/reset-credits/consume",
+            console_post(
+                consume_reset_credit,
+                ConsoleOperation("model_providers.instances.reset_credits.consume".to_string()),
+            ),
+        )
+        .route(
             "/settings/model-providers/instances/:id/secrets/reveal",
             console_post(
                 reveal_secret,

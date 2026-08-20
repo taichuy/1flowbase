@@ -367,6 +367,14 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
         "system.model-providers",
     ),
     settings(
+        "model_providers.instances.reset_credits.consume",
+        "system.model-providers",
+    ),
+    settings(
+        "model_providers.instances.reset_credits.view",
+        "system.model-providers",
+    ),
+    settings(
         "model_providers.instances.models.refresh",
         "system.model-providers",
     ),
@@ -381,6 +389,10 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("model_providers.instances.update", "system.model-providers"),
     settings(
         "model_providers.instances.validate",
+        "system.model-providers",
+    ),
+    settings(
+        "model_providers.instances.usage.view",
         "system.model-providers",
     ),
     settings("model_providers.instances.view", "system.model-providers"),

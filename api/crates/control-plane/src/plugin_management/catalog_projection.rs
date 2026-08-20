@@ -111,6 +111,7 @@ pub(super) fn provider_catalog_snapshot(package: &ProviderPackage) -> Result<Val
             "supports_model_fetch_without_credentials": package.provider.supports_model_fetch_without_credentials,
             "form_schema": serde_json::to_value(&package.provider.form_schema)?,
             "auth": serde_json::to_value(&package.provider.auth)?,
+            "operational_capabilities": serde_json::to_value(&package.provider.operational_capabilities)?,
             "parameter_form": serde_json::to_value(&package.provider.parameter_form)?,
             "predefined_models": serde_json::to_value(&package.predefined_models)?,
         },

@@ -122,8 +122,14 @@ export interface ConsoleModelProviderCatalogEntry {
   availability_status: string;
   form_schema: ConsoleModelProviderConfigField[];
   auth?: ConsoleModelProviderAuthProjection;
+  operational_capabilities: ConsoleModelProviderOperationalCapability[];
   predefined_models: ConsoleProviderModelDescriptor[];
 }
+
+export type ConsoleModelProviderOperationalCapability =
+  | 'usage_windows'
+  | 'reset_credits'
+  | string;
 
 export interface ConsoleModelProviderAuthProjection {
   actions: ConsoleModelProviderAuthAction[];
@@ -155,6 +161,29 @@ export interface ConsoleAuthenticateModelProviderInstanceResult {
   status: 'pending' | 'authorized' | 'failed' | 'cancelled';
   message: string | null;
   user_action: ConsoleModelProviderAuthUserAction | null;
+}
+
+export interface ConsoleModelProviderUsageWindow {
+  limit_window_seconds: number;
+  used_percent: number;
+  reset_at: string | null;
+}
+
+export interface ConsoleModelProviderUsageWindowsResult {
+  windows: ConsoleModelProviderUsageWindow[];
+  queried_at: string;
+}
+
+export interface ConsoleModelProviderResetCreditCountResult {
+  available_count: number;
+}
+
+export interface ConsumeConsoleModelProviderResetCreditInput {
+  idempotency_key: string;
+}
+
+export interface ConsumeConsoleModelProviderResetCreditResult {
+  consumed: boolean;
 }
 
 export type ConsoleModelProviderRequestLogStatus =
@@ -505,6 +534,41 @@ export function authenticateConsoleModelProviderInstance(
     path: `/api/console/settings/model-providers/instances/${instanceId}/authenticate`,
     method: 'POST',
     body: { operation },
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function getConsoleModelProviderUsageWindows(
+  instanceId: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleModelProviderUsageWindowsResult>({
+    path: `/api/console/settings/model-providers/instances/${instanceId}/usage`,
+    baseUrl
+  });
+}
+
+export function getConsoleModelProviderResetCreditCount(
+  instanceId: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleModelProviderResetCreditCountResult>({
+    path: `/api/console/settings/model-providers/instances/${instanceId}/reset-credits`,
+    baseUrl
+  });
+}
+
+export function consumeConsoleModelProviderResetCredit(
+  instanceId: string,
+  input: ConsumeConsoleModelProviderResetCreditInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsumeConsoleModelProviderResetCreditResult>({
+    path: `/api/console/settings/model-providers/instances/${instanceId}/reset-credits/consume`,
+    method: 'POST',
+    body: input,
     csrfToken,
     baseUrl
   });

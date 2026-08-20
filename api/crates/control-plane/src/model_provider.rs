@@ -8,7 +8,7 @@ use anyhow::Result;
 use plugin_framework::{
     provider_contract::{
         PluginFormSchema, ProviderAuthOperation, ProviderAuthResult, ProviderBalanceResult,
-        ProviderModelDescriptor,
+        ProviderModelDescriptor, ProviderUsageWindowsResult,
     },
     provider_package::{ProviderConfigField, ProviderPackage},
 };
@@ -31,6 +31,7 @@ use crate::{
     state_transition::ensure_model_provider_instance_transition,
 };
 
+mod account;
 mod balance;
 mod catalog;
 pub mod catalog_source;
@@ -91,6 +92,24 @@ pub struct UpdateModelProviderMainInstanceCommand {
 
 pub type ModelProviderConfiguredModelInput = domain::ModelProviderConfiguredModel;
 pub type ModelProviderBalanceResult = ProviderBalanceResult;
+pub type ModelProviderUsageWindowsResult = ProviderUsageWindowsResult;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelProviderResetCreditCount {
+    pub available_count: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsumeModelProviderResetCreditCommand {
+    pub actor_user_id: Uuid,
+    pub instance_id: Uuid,
+    pub idempotency_key: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsumeModelProviderResetCreditResult {
+    pub consumed: bool,
+}
 
 pub struct DeleteModelProviderInstanceCommand {
     pub actor_user_id: Uuid,
@@ -130,6 +149,8 @@ pub struct ModelProviderCatalogEntry {
     pub availability_status: String,
     pub form_schema: Vec<ProviderConfigField>,
     pub auth: Option<plugin_framework::provider_contract::ProviderAuthManifest>,
+    pub operational_capabilities:
+        Vec<plugin_framework::provider_contract::ProviderOperationalCapability>,
     pub predefined_models: Vec<LocalizedProviderModelDescriptor>,
     pub catalog_refresh_status: String,
     pub catalog_last_error_message: Option<String>,
@@ -1177,6 +1198,55 @@ where
             &self.provider_secret_master_key,
             actor_user_id,
             instance_id,
+            self.node_artifact_context(),
+            self.use_case.clone(),
+        )
+        .await
+    }
+
+    pub async fn get_usage_windows(
+        &self,
+        actor_user_id: Uuid,
+        instance_id: Uuid,
+    ) -> Result<ModelProviderUsageWindowsResult> {
+        account::get_usage_windows(
+            &self.repository,
+            &self.runtime,
+            &self.provider_secret_master_key,
+            actor_user_id,
+            instance_id,
+            self.node_artifact_context(),
+            self.use_case.clone(),
+        )
+        .await
+    }
+
+    pub async fn count_reset_credits(
+        &self,
+        actor_user_id: Uuid,
+        instance_id: Uuid,
+    ) -> Result<ModelProviderResetCreditCount> {
+        account::count_reset_credits(
+            &self.repository,
+            &self.runtime,
+            &self.provider_secret_master_key,
+            actor_user_id,
+            instance_id,
+            self.node_artifact_context(),
+            self.use_case.clone(),
+        )
+        .await
+    }
+
+    pub async fn consume_reset_credit(
+        &self,
+        command: ConsumeModelProviderResetCreditCommand,
+    ) -> Result<ConsumeModelProviderResetCreditResult> {
+        account::consume_reset_credit(
+            &self.repository,
+            &self.runtime,
+            &self.provider_secret_master_key,
+            command,
             self.node_artifact_context(),
             self.use_case.clone(),
         )

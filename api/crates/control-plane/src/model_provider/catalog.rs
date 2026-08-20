@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use anyhow::Result;
 use plugin_framework::provider_contract::{
     ProviderAuthManifest, ProviderModelDescriptor, ProviderModelSource,
+    ProviderOperationalCapability,
 };
 use plugin_framework::provider_package::ProviderConfigField;
 use serde_json::Value;
@@ -37,6 +38,7 @@ struct ModelProviderCatalogProjectionView {
     supports_model_fetch_without_credentials: bool,
     form_schema: Vec<ProviderConfigField>,
     auth: Option<ProviderAuthManifest>,
+    operational_capabilities: Vec<ProviderOperationalCapability>,
     predefined_models: Vec<ProviderModelDescriptor>,
     i18n_bundles: BTreeMap<String, Value>,
     catalog_refresh_status: String,
@@ -122,6 +124,7 @@ where
             availability_status: artifact.availability_status.as_str().to_string(),
             form_schema: projection.form_schema,
             auth: projection.auth,
+            operational_capabilities: projection.operational_capabilities,
             predefined_models: projection
                 .predefined_models
                 .into_iter()
@@ -350,6 +353,7 @@ fn model_provider_projection_view(
             supports_model_fetch_without_credentials: false,
             form_schema: Vec::new(),
             auth: None,
+            operational_capabilities: Vec::new(),
             predefined_models: Vec::new(),
             i18n_bundles: BTreeMap::new(),
             catalog_refresh_status: domain::PluginPackageCatalogProjectionStatus::Missing
@@ -378,6 +382,7 @@ fn model_provider_projection_view(
             .and_then(|provider| provider.get("auth"))
             .cloned()
             .and_then(|value| serde_json::from_value(value).ok()),
+        operational_capabilities: projection_provider_array(snapshot, "operational_capabilities"),
         predefined_models: projection_provider_array(snapshot, "predefined_models"),
         i18n_bundles: projection_i18n_bundles(snapshot),
         catalog_refresh_status: projection.projection_status.as_str().to_string(),

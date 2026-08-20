@@ -113,6 +113,21 @@ fn ac_002_ac_013_plugins_and_models_owner_routes_have_explicit_assembly_ownershi
                 "model_providers.instances.authenticate"
             ),
             (
+                "GET",
+                "/api/console/settings/model-providers/instances/:id/usage",
+                "model_providers.instances.usage.view"
+            ),
+            (
+                "GET",
+                "/api/console/settings/model-providers/instances/:id/reset-credits",
+                "model_providers.instances.reset_credits.view"
+            ),
+            (
+                "POST",
+                "/api/console/settings/model-providers/instances/:id/reset-credits/consume",
+                "model_providers.instances.reset_credits.consume"
+            ),
+            (
                 "POST",
                 "/api/console/settings/model-providers/instances/:id/secrets/reveal",
                 "model_providers.instances.secrets.reveal"
