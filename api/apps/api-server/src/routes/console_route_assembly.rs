@@ -686,7 +686,9 @@ fn expand_core_interface_registrations(
 
 fn static_english_interface_summary(interface_id: &str) -> String {
     let owned_summary = match interface_id {
-        "extension_center.installed.delete" => Some("Delete an installed extension version"),
+        "extension_center.installed.delete" => Some(
+            "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data",
+        ),
         "extension_center.installed.disable" => Some("Disable an installed executable extension"),
         "extension_center.installed.enable" => Some("Enable an installed executable extension"),
         "extension_center.installed.select" => Some("Select an installed extension version"),

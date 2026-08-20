@@ -364,6 +364,7 @@ async fn ac_001_ac_002_upgrade_latest_installs_and_loads_existing_global_target_
         .unwrap();
 
     assert_eq!(task.status, PluginTaskStatus::Succeeded);
+    assert_eq!(task.detail_json["cleanup_pending_count"], 1);
     assert_eq!(
         repository
             .assignment_installation_id("openai_compatible")
@@ -659,6 +660,7 @@ async fn plugin_management_service_uninstalls_family_without_deleting_durable_re
         repository.audit_events().await,
         vec!["plugin.family_uninstalled"]
     );
+    assert_eq!(repository.pending_artifact_cleanup_count().await, 0);
 
     let repeated_task = service
         .delete_family(DeletePluginFamilyCommand {
@@ -723,6 +725,213 @@ async fn plugin_management_service_uninstalls_family_without_deleting_durable_re
         .await
         .contains(&current_installation));
     let _ = fs::remove_dir_all(reinstall_source);
+}
+
+#[tokio::test]
+async fn plugin_management_service_restores_family_artifacts_when_uninstall_commit_is_rejected() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.view.all", "plugin_config.configure.all"],
+    ));
+    let install_root =
+        std::env::temp_dir().join(format!("plugin-delete-rollback-{}", Uuid::now_v7()));
+    let runtime = MemoryProviderRuntime::default();
+    let service = PluginManagementService::new(
+        repository.clone(),
+        runtime.clone(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    );
+    let current_installation = seed_test_installation(
+        &repository,
+        &install_root,
+        "fixture_provider",
+        "0.1.0",
+        PluginDesiredState::ActiveRequested,
+    )
+    .await;
+    let prior_installation = seed_test_installation(
+        &repository,
+        &install_root,
+        "fixture_provider",
+        "0.0.9",
+        PluginDesiredState::Disabled,
+    )
+    .await;
+    let current_artifact = repository
+        .get_artifact_instance(
+            &format!("local:{}", install_root.display()),
+            current_installation,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    repository
+        .upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
+            node_id: current_artifact.node_id.clone(),
+            installation_id: current_artifact.installation_id,
+            local_version: current_artifact.local_version.clone(),
+            local_checksum: current_artifact.local_checksum.clone(),
+            local_path: current_artifact.local_path.clone(),
+            package_path: current_artifact.package_path.clone(),
+            manifest_fingerprint: current_artifact.manifest_fingerprint.clone(),
+            artifact_status: current_artifact.artifact_status,
+            runtime_status: PluginRuntimeStatus::Active,
+            availability_status: PluginAvailabilityStatus::Available,
+            checked_at: current_artifact.checked_at,
+            last_error: current_artifact.last_error.clone(),
+            is_current: current_artifact.is_current,
+        })
+        .await
+        .unwrap();
+    let current_artifact = repository
+        .get_artifact_instance(
+            &format!("local:{}", install_root.display()),
+            current_installation,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let prior_artifact = repository
+        .get_artifact_instance(
+            &format!("local:{}", install_root.display()),
+            prior_installation,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let current_path = PathBuf::from(current_artifact.local_path.clone().unwrap());
+    let prior_path = PathBuf::from(prior_artifact.local_path.clone().unwrap());
+    let artifact_paths = [current_path, prior_path];
+    let original_artifacts = [
+        (current_installation, current_artifact),
+        (prior_installation, prior_artifact),
+    ];
+
+    repository
+        .fail_next_family_uninstall_commit_after_first_artifact()
+        .await;
+    let error = service
+        .delete_family(DeletePluginFamilyCommand {
+            actor_user_id: repository.actor.user_id,
+            provider_code: "fixture_provider".into(),
+        })
+        .await
+        .expect_err("database rejection must not delete any family artifact");
+    assert!(error
+        .to_string()
+        .contains("injected plugin family uninstall commit failure"));
+    assert!(artifact_paths.iter().all(|path| path.exists()));
+    for (installation_id, expected) in original_artifacts {
+        let artifact = repository
+            .get_artifact_instance(
+                &format!("local:{}", install_root.display()),
+                installation_id,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(artifact, expected);
+    }
+    assert!(runtime.unloaded_installations().await.len() == 2);
+    assert_eq!(
+        runtime.loaded_installations().await,
+        vec![current_installation],
+        "only the formerly active runtime scope is restored after a rejected durable commit"
+    );
+    assert!(repository.audit_events().await.is_empty());
+    let _ = fs::remove_dir_all(install_root);
+}
+
+#[tokio::test]
+async fn plugin_management_service_keeps_committed_family_uninstall_succeeded_when_cleanup_retries()
+{
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.view.all", "plugin_config.configure.all"],
+    ));
+    let install_root =
+        std::env::temp_dir().join(format!("plugin-delete-cleanup-retry-{}", Uuid::now_v7()));
+    let runtime = MemoryProviderRuntime::default();
+    let service = PluginManagementService::new(
+        repository.clone(),
+        runtime,
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    );
+    let installation_id = seed_test_installation(
+        &repository,
+        &install_root,
+        "fixture_provider",
+        "0.1.0",
+        PluginDesiredState::ActiveRequested,
+    )
+    .await;
+    let artifact = repository
+        .get_artifact_instance(
+            &format!("local:{}", install_root.display()),
+            installation_id,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let original_path = PathBuf::from(artifact.local_path.clone().unwrap());
+    crate::plugin_management::fail_staged_artifact_removal_for(&original_path);
+
+    let task = service
+        .delete_family(DeletePluginFamilyCommand {
+            actor_user_id: repository.actor.user_id,
+            provider_code: "fixture_provider".into(),
+        })
+        .await
+        .expect(
+            "post-commit artifact cleanup failure must not fail an already committed uninstall",
+        );
+
+    assert_eq!(task.status, PluginTaskStatus::Succeeded);
+    assert_eq!(
+        repository
+            .get_artifact_instance(
+                &format!("local:{}", install_root.display()),
+                installation_id,
+            )
+            .await
+            .unwrap()
+            .unwrap()
+            .artifact_status,
+        PluginArtifactInstanceStatus::Missing
+    );
+    assert_eq!(
+        repository.audit_events().await,
+        vec!["plugin.family_uninstalled"]
+    );
+    assert_eq!(repository.pending_artifact_cleanup_count().await, 1);
+    assert!(
+        fs::read_dir(original_path.parent().unwrap())
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .any(|entry| entry
+                .file_name()
+                .to_string_lossy()
+                .contains(".uninstalling-")),
+        "the failed physical cleanup remains discoverable until reconciliation succeeds"
+    );
+
+    service
+        .reconcile_pending_artifact_removals()
+        .await
+        .expect("the persisted cleanup record must make a retry possible after restart");
+    assert_eq!(repository.pending_artifact_cleanup_count().await, 0);
+    assert!(fs::read_dir(original_path.parent().unwrap())
+        .unwrap()
+        .filter_map(|entry| entry.ok())
+        .all(|entry| !entry
+            .file_name()
+            .to_string_lossy()
+            .contains(".uninstalling-")));
+    let _ = fs::remove_dir_all(install_root);
 }
 
 #[tokio::test]

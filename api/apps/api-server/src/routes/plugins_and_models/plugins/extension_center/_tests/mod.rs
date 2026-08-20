@@ -17,7 +17,10 @@ use control_plane::{
         group_installed_extension_families, ExtensionArtifactInstallOutcome,
         ExtensionInstallationService, InstallExtensionArtifactCommand,
     },
-    ports::{AuthRepository, ExtensionInstallationRepository},
+    ports::{
+        AuthRepository, ExtensionInstallationRepository, PluginRepository,
+        UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
+    },
 };
 use ed25519_dalek::{pkcs8::EncodePublicKey, Signer, SigningKey};
 use serde_json::json;
@@ -620,6 +623,234 @@ async fn ac_002_ac_005_agent_flow_versions_select_and_delete_through_generic_rou
     .unwrap()
     .unwrap();
     assert!(remaining.is_current);
+}
+
+#[tokio::test]
+async fn ac_001_deletes_runtime_extension_as_a_preserving_family_uninstall() {
+    let (state, _database_url) = crate::_tests::support::test_api_state_with_database_url().await;
+    let _schema_guard = Arc::clone(&state);
+    let actor = AuthRepository::find_user_for_password_login(
+        &state.store,
+        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        "root",
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let installation_id = Uuid::now_v7();
+    let artifact_path = std::path::PathBuf::from(&state.provider_install_root)
+        .join("installed")
+        .join("runtime-uninstall-fixture")
+        .join("0.1.0");
+    std::fs::create_dir_all(&artifact_path).unwrap();
+    PluginRepository::upsert_installation(
+        &state.store,
+        &UpsertPluginInstallationInput {
+            installation_id,
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "taichuy".to_string(),
+            provider_code: "runtime_uninstall_fixture".to_string(),
+            plugin_id: "runtime_uninstall_fixture@0.1.0".to_string(),
+            plugin_version: "0.1.0".to_string(),
+            contract_version: plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT
+                .to_string(),
+            protocol: "stdio_json".to_string(),
+            display_name: "Runtime Uninstall Fixture".to_string(),
+            source_kind: "uploaded".to_string(),
+            trust_level: "checksum_only".to_string(),
+            verification_status: domain::PluginVerificationStatus::Valid,
+            desired_state: domain::PluginDesiredState::ActiveRequested,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
+            signature_algorithm: None,
+            signing_key_id: None,
+            metadata_json: json!({}),
+            is_system_reserved: false,
+            actor_user_id: actor.id,
+        },
+    )
+    .await
+    .unwrap();
+    PluginRepository::upsert_artifact_instance(
+        &state.store,
+        &UpsertPluginArtifactInstanceInput {
+            node_id: state.api_node_id.clone(),
+            installation_id,
+            local_version: Some("0.1.0".to_string()),
+            local_checksum: None,
+            local_path: Some(artifact_path.display().to_string()),
+            package_path: None,
+            manifest_fingerprint: None,
+            artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+            runtime_status: domain::PluginRuntimeStatus::Active,
+            availability_status: domain::PluginAvailabilityStatus::Available,
+            checked_at: OffsetDateTime::now_utc(),
+            last_error: None,
+            is_current: true,
+        },
+    )
+    .await
+    .unwrap();
+
+    let store = state.store.clone();
+    let api_node_id = state.api_node_id.clone();
+    let app = crate::app_with_state_and_config(state, &crate::_tests::support::test_config());
+    let (cookie, csrf) =
+        crate::_tests::support::login_and_capture_cookie(&app, "root", "change-me").await;
+    let uninstall = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/api/console/settings/extension-center/installed/{installation_id}"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(uninstall.status(), StatusCode::OK);
+    let payload: serde_json::Value =
+        serde_json::from_slice(&to_bytes(uninstall.into_body(), usize::MAX).await.unwrap())
+            .unwrap();
+    assert_eq!(payload["data"]["status"], "missing");
+    assert!(payload["data"]["local_path"].is_null());
+    assert!(!artifact_path.exists());
+    assert!(PluginRepository::get_installation(&store, installation_id)
+        .await
+        .unwrap()
+        .is_some());
+    let artifact = PluginRepository::get_artifact_instance(&store, &api_node_id, installation_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        artifact.availability_status,
+        domain::PluginAvailabilityStatus::ArtifactMissing
+    );
+
+    let repeated = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/api/console/settings/extension-center/installed/{installation_id}"
+                ))
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(repeated.status(), StatusCode::OK);
+}
+
+#[tokio::test]
+async fn ac_008_deletes_capability_plugin_as_a_preserving_family_uninstall() {
+    let (state, _database_url) = crate::_tests::support::test_api_state_with_database_url().await;
+    let _schema_guard = Arc::clone(&state);
+    let actor = AuthRepository::find_user_for_password_login(
+        &state.store,
+        domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        "root",
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let installation_id = Uuid::now_v7();
+    let artifact_path = std::path::PathBuf::from(&state.provider_install_root)
+        .join("installed")
+        .join("capability-uninstall-fixture")
+        .join("0.1.0");
+    std::fs::create_dir_all(&artifact_path).unwrap();
+    PluginRepository::upsert_installation(
+        &state.store,
+        &UpsertPluginInstallationInput {
+            installation_id,
+            category: domain::ExtensionCategory::CapabilityPlugins,
+            organization: "taichuy".to_string(),
+            provider_code: "capability_uninstall_fixture".to_string(),
+            plugin_id: "capability_uninstall_fixture@0.1.0".to_string(),
+            plugin_version: "0.1.0".to_string(),
+            contract_version: plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT
+                .to_string(),
+            protocol: "stdio_json".to_string(),
+            display_name: "Capability Uninstall Fixture".to_string(),
+            source_kind: "uploaded".to_string(),
+            trust_level: "checksum_only".to_string(),
+            verification_status: domain::PluginVerificationStatus::Valid,
+            desired_state: domain::PluginDesiredState::ActiveRequested,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
+            signature_algorithm: None,
+            signing_key_id: None,
+            metadata_json: json!({}),
+            is_system_reserved: false,
+            actor_user_id: actor.id,
+        },
+    )
+    .await
+    .unwrap();
+    PluginRepository::upsert_artifact_instance(
+        &state.store,
+        &UpsertPluginArtifactInstanceInput {
+            node_id: state.api_node_id.clone(),
+            installation_id,
+            local_version: Some("0.1.0".to_string()),
+            local_checksum: None,
+            local_path: Some(artifact_path.display().to_string()),
+            package_path: None,
+            manifest_fingerprint: None,
+            artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+            runtime_status: domain::PluginRuntimeStatus::Active,
+            availability_status: domain::PluginAvailabilityStatus::Available,
+            checked_at: OffsetDateTime::now_utc(),
+            last_error: None,
+            is_current: true,
+        },
+    )
+    .await
+    .unwrap();
+
+    let store = state.store.clone();
+    let api_node_id = state.api_node_id.clone();
+    let app = crate::app_with_state_and_config(state, &crate::_tests::support::test_config());
+    let (cookie, csrf) =
+        crate::_tests::support::login_and_capture_cookie(&app, "root", "change-me").await;
+    let uninstall = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri(format!(
+                    "/api/console/settings/extension-center/installed/{installation_id}"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(uninstall.status(), StatusCode::OK);
+    assert!(!artifact_path.exists());
+    assert!(PluginRepository::get_installation(&store, installation_id)
+        .await
+        .unwrap()
+        .is_some());
+    let artifact = PluginRepository::get_artifact_instance(&store, &api_node_id, installation_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        artifact.availability_status,
+        domain::PluginAvailabilityStatus::ArtifactMissing
+    );
 }
 
 #[test]

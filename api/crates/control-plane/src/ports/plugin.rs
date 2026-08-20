@@ -104,6 +104,29 @@ pub struct UpsertPluginArtifactInstanceInput {
 }
 
 #[derive(Debug, Clone)]
+pub struct CommitPluginFamilyUninstallInput {
+    pub artifact_instances: Vec<UpsertPluginArtifactInstanceInput>,
+    pub artifact_cleanups: Vec<CreatePluginArtifactCleanupInput>,
+    pub audit_log: domain::AuditLogRecord,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreatePluginArtifactCleanupInput {
+    pub cleanup_id: Uuid,
+    pub node_id: String,
+    pub provider_code: String,
+    pub tombstone_path: String,
+    pub created_at: time::OffsetDateTime,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecordPluginArtifactCleanupFailureInput {
+    pub cleanup_id: Uuid,
+    pub last_error: String,
+    pub attempted_at: time::OffsetDateTime,
+}
+
+#[derive(Debug, Clone)]
 pub struct UpsertPluginPackageCatalogProjectionInput {
     pub installation_id: Uuid,
     pub package_code: String,
@@ -267,6 +290,27 @@ pub trait PluginRepository: Send + Sync {
         &self,
         input: &UpsertPluginArtifactInstanceInput,
     ) -> anyhow::Result<domain::PluginArtifactInstanceRecord>;
+    async fn commit_plugin_family_uninstall(
+        &self,
+        _input: &CommitPluginFamilyUninstallInput,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("atomic plugin family uninstall is not supported")
+    }
+    async fn list_plugin_artifact_cleanups(
+        &self,
+        _node_id: &str,
+    ) -> anyhow::Result<Vec<domain::PluginArtifactCleanupRecord>> {
+        anyhow::bail!("plugin artifact cleanup reconciliation is not supported")
+    }
+    async fn complete_plugin_artifact_cleanup(&self, _cleanup_id: Uuid) -> anyhow::Result<()> {
+        anyhow::bail!("plugin artifact cleanup reconciliation is not supported")
+    }
+    async fn record_plugin_artifact_cleanup_failure(
+        &self,
+        _input: &RecordPluginArtifactCleanupFailureInput,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("plugin artifact cleanup reconciliation is not supported")
+    }
     async fn get_artifact_instance(
         &self,
         node_id: &str,

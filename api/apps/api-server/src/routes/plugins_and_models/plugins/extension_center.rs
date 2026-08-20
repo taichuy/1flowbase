@@ -14,11 +14,11 @@ use axum::{
     Json,
 };
 use control_plane::plugin_management::{
-    group_installed_extension_families, AssignPluginCommand, DisablePluginCommand,
-    EnablePluginCommand, ExtensionArtifactInstallOutcome, ExtensionCatalogCategory,
-    ExtensionInstallationService, ExtensionRiskOverride, InstallExtensionArtifactCommand,
-    InstallExtensionNodePluginCommand, InstalledExtensionFamily, PluginManagementService,
-    SwitchPluginVersionCommand,
+    group_installed_extension_families, AssignPluginCommand, DeletePluginFamilyCommand,
+    DisablePluginCommand, EnablePluginCommand, ExtensionArtifactInstallOutcome,
+    ExtensionCatalogCategory, ExtensionInstallationService, ExtensionRiskOverride,
+    InstallExtensionArtifactCommand, InstallExtensionNodePluginCommand, InstalledExtensionFamily,
+    PluginManagementService, SwitchPluginVersionCommand,
 };
 use plugin_framework::{intake_package_bytes, PackageIntakePolicy, PluginConsumptionKind};
 use storage_durable::MainDurableStore;
@@ -431,8 +431,8 @@ pub async fn select_local_extension_installation(
     delete,
     path = "/api/console/settings/extension-center/installed/{installation_id}",
     operation_id = "extension_center_delete_installed_version",
-    summary = "Delete an installed extension version",
-    description = "Deletes one non-current, unreferenced local artifact. Current, reserved, assigned, active, or referenced versions return a conflict.",
+    summary = "Remove a locally installed extension artifact",
+    description = "Runtime extensions and capability plugins unload their complete plugin family while preserving durable data. Other extension categories retain the legacy version deletion rules.",
     responses((status = 200, body = LocalExtensionInventoryEntryResponse), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
 )]
 pub async fn delete_local_extension_installation(
@@ -442,14 +442,37 @@ pub async fn delete_local_extension_installation(
 ) -> Result<Json<ApiSuccess<LocalExtensionInventoryEntryResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let installation_service = extension_installation_service(&state);
-    let existing = installation_service
-        .find_local_installation_by_id(&state.api_node_id, installation_id)
+    let existing =
+        control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(
+            &state.store,
+            &state.api_node_id,
+            installation_id,
+        )
         .await?
         .ok_or(control_plane::errors::ControlPlaneError::NotFound(
             "extension_installation",
         ))?;
-    let installation = if existing.identity.category == domain::ExtensionCategory::Mcp {
+    let installation_service = extension_installation_service(&state);
+    let installation = if is_runtime_uninstall_category(existing.identity.category) {
+        let plugin =
+            control_plane::ports::PluginRepository::get_installation(&state.store, installation_id)
+                .await?
+                .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                    "plugin_installation",
+                ))?;
+        service(&state, &context.actor, "extension_center.installed.delete")
+            .delete_family(DeletePluginFamilyCommand {
+                actor_user_id: context.user.id,
+                provider_code: plugin.provider_code,
+            })
+            .await?;
+        domain::ExtensionInstallationRecord {
+            local_path: None,
+            status: domain::ExtensionInstallationStatus::Missing,
+            is_current: false,
+            ..existing
+        }
+    } else if existing.identity.category == domain::ExtensionCategory::Mcp {
         state
             .official_mcp_bundle_source
             .delete_local_version(
@@ -474,6 +497,13 @@ pub async fn delete_local_extension_installation(
     Ok(Json(ApiSuccess::new(to_local_inventory_entry(
         installation,
     ))))
+}
+
+fn is_runtime_uninstall_category(category: domain::ExtensionCategory) -> bool {
+    matches!(
+        category,
+        domain::ExtensionCategory::RuntimeExtensions | domain::ExtensionCategory::CapabilityPlugins
+    )
 }
 
 #[derive(Debug, Clone)]

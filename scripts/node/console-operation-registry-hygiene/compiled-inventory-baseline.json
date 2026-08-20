@@ -208,8 +208,8 @@
           "method": "DELETE",
           "path": "/api/console/settings/extension-center/installed/:installation_id"
         },
-        "summary": "Delete an installed extension version",
-        "description": "Delete an installed extension version in the system backend.",
+        "summary": "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data",
+        "description": "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data in the system backend.",
         "authorization_operation_id": "extension_center.installed.delete"
       },
       {

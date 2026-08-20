@@ -122,7 +122,7 @@
       "extension_center.installed.delete",
       "DELETE",
       "/api/console/settings/extension-center/installed/:installation_id",
-      "Delete an installed extension version"
+      "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data"
     ],
     [
       "file_storages.delete",

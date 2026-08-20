@@ -3,10 +3,11 @@ use async_trait::async_trait;
 use control_plane::{
     errors::ControlPlaneError,
     ports::{
-        CommitPluginInstallationInput, CreatePluginAssignmentInput, CreatePluginTaskInput,
-        PluginRepository, UpdatePluginDesiredStateInput, UpdatePluginTaskStatusInput,
-        UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
-        UpsertPluginPackageCatalogProjectionInput,
+        CommitPluginFamilyUninstallInput, CommitPluginInstallationInput,
+        CreatePluginAssignmentInput, CreatePluginTaskInput, PluginRepository,
+        RecordPluginArtifactCleanupFailureInput, UpdatePluginDesiredStateInput,
+        UpdatePluginTaskStatusInput, UpsertPluginArtifactInstanceInput,
+        UpsertPluginInstallationInput, UpsertPluginPackageCatalogProjectionInput,
     },
 };
 use sqlx::Row;
@@ -14,8 +15,9 @@ use uuid::Uuid;
 
 use crate::{
     mappers::plugin_mapper::{
-        PgPluginMapper, StoredPluginArtifactInstanceRow, StoredPluginAssignmentRow,
-        StoredPluginInstallationRow, StoredPluginPackageCatalogProjectionRow, StoredPluginTaskRow,
+        PgPluginMapper, StoredPluginArtifactCleanupRow, StoredPluginArtifactInstanceRow,
+        StoredPluginAssignmentRow, StoredPluginInstallationRow,
+        StoredPluginPackageCatalogProjectionRow, StoredPluginTaskRow,
     },
     repositories::PgControlPlaneStore,
 };
@@ -80,6 +82,18 @@ fn map_artifact_instance(
         checked_at: row.get("checked_at"),
         last_error: row.get("last_error"),
         is_current: row.get("is_current"),
+    })
+}
+
+fn map_artifact_cleanup(row: sqlx::postgres::PgRow) -> domain::PluginArtifactCleanupRecord {
+    PgPluginMapper::to_artifact_cleanup_record(StoredPluginArtifactCleanupRow {
+        id: row.get("id"),
+        node_id: row.get("node_id"),
+        provider_code: row.get("provider_code"),
+        tombstone_path: row.get("tombstone_path"),
+        created_at: row.get("created_at"),
+        last_error: row.get("last_error"),
+        last_attempt_at: row.get("last_attempt_at"),
     })
 }
 
@@ -603,6 +617,170 @@ impl PluginRepository for PgControlPlaneStore {
         .await?;
 
         map_artifact_instance(row)
+    }
+
+    async fn commit_plugin_family_uninstall(
+        &self,
+        input: &CommitPluginFamilyUninstallInput,
+    ) -> Result<()> {
+        let mut transaction = self.pool().begin().await?;
+        for artifact in &input.artifact_instances {
+            sqlx::query(
+                r#"
+                insert into extension_artifact_instances (
+                    node_id,
+                    installation_id,
+                    local_version,
+                    local_checksum,
+                    local_path,
+                    package_path,
+                    manifest_fingerprint,
+                    artifact_status,
+                    runtime_status,
+                    availability_status,
+                    checked_at,
+                    last_error,
+                    is_current
+                ) values (
+                    $1, $2, $3, $4, $5, $6, $7,
+                    $8, $9, $10, $11, $12, $13
+                )
+                on conflict (node_id, installation_id) do update
+                set
+                    local_version = excluded.local_version,
+                    local_checksum = excluded.local_checksum,
+                    local_path = excluded.local_path,
+                    package_path = excluded.package_path,
+                    manifest_fingerprint = excluded.manifest_fingerprint,
+                    artifact_status = excluded.artifact_status,
+                    runtime_status = excluded.runtime_status,
+                    availability_status = excluded.availability_status,
+                    checked_at = excluded.checked_at,
+                    last_error = excluded.last_error,
+                    is_current = excluded.is_current
+                "#,
+            )
+            .bind(&artifact.node_id)
+            .bind(artifact.installation_id)
+            .bind(artifact.local_version.as_deref())
+            .bind(artifact.local_checksum.as_deref())
+            .bind(artifact.local_path.as_deref())
+            .bind(artifact.package_path.as_deref())
+            .bind(artifact.manifest_fingerprint.as_deref())
+            .bind(artifact.artifact_status.as_str())
+            .bind(artifact.runtime_status.as_str())
+            .bind(artifact.availability_status.as_str())
+            .bind(artifact.checked_at)
+            .bind(artifact.last_error.as_deref())
+            .bind(artifact.is_current)
+            .execute(&mut *transaction)
+            .await?;
+        }
+        for cleanup in &input.artifact_cleanups {
+            sqlx::query(
+                r#"
+                insert into plugin_artifact_cleanup_jobs (
+                    id,
+                    node_id,
+                    provider_code,
+                    tombstone_path,
+                    created_at
+                ) values ($1, $2, $3, $4, $5)
+                "#,
+            )
+            .bind(cleanup.cleanup_id)
+            .bind(&cleanup.node_id)
+            .bind(&cleanup.provider_code)
+            .bind(&cleanup.tombstone_path)
+            .bind(cleanup.created_at)
+            .execute(&mut *transaction)
+            .await?;
+        }
+        let event = &input.audit_log;
+        sqlx::query(
+            r#"
+            insert into audit_logs (
+                id,
+                workspace_id,
+                scope_id,
+                actor_user_id,
+                target_type,
+                target_id,
+                event_code,
+                payload,
+                created_by,
+                updated_by,
+                created_at,
+                updated_at
+            )
+            values ($1, $2, $3, $4, $5, $6, $7, $8, $4, $4, $9, $9)
+            "#,
+        )
+        .bind(event.id)
+        .bind(event.workspace_id)
+        .bind(event.workspace_id.unwrap_or(domain::SYSTEM_SCOPE_ID))
+        .bind(event.actor_user_id)
+        .bind(&event.target_type)
+        .bind(event.target_id)
+        .bind(&event.event_code)
+        .bind(&event.payload)
+        .bind(event.created_at)
+        .execute(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+        Ok(())
+    }
+
+    async fn list_plugin_artifact_cleanups(
+        &self,
+        node_id: &str,
+    ) -> Result<Vec<domain::PluginArtifactCleanupRecord>> {
+        let rows = sqlx::query(
+            r#"
+            select
+                id,
+                node_id,
+                provider_code,
+                tombstone_path,
+                created_at,
+                last_error,
+                last_attempt_at
+            from plugin_artifact_cleanup_jobs
+            where node_id = $1
+            order by created_at asc, id asc
+            "#,
+        )
+        .bind(node_id)
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows.into_iter().map(map_artifact_cleanup).collect())
+    }
+
+    async fn complete_plugin_artifact_cleanup(&self, cleanup_id: Uuid) -> Result<()> {
+        sqlx::query("delete from plugin_artifact_cleanup_jobs where id = $1")
+            .bind(cleanup_id)
+            .execute(self.pool())
+            .await?;
+        Ok(())
+    }
+
+    async fn record_plugin_artifact_cleanup_failure(
+        &self,
+        input: &RecordPluginArtifactCleanupFailureInput,
+    ) -> Result<()> {
+        sqlx::query(
+            r#"
+            update plugin_artifact_cleanup_jobs
+            set last_error = $2, last_attempt_at = $3
+            where id = $1
+            "#,
+        )
+        .bind(input.cleanup_id)
+        .bind(&input.last_error)
+        .bind(input.attempted_at)
+        .execute(self.pool())
+        .await?;
+        Ok(())
     }
 
     async fn get_artifact_instance(

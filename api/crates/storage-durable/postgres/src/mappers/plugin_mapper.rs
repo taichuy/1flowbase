@@ -1,7 +1,7 @@
 use anyhow::{anyhow, Result};
 use domain::{
-    PluginArtifactInstanceRecord, PluginArtifactInstanceStatus, PluginAssignmentRecord,
-    PluginAvailabilityStatus, PluginDesiredState, PluginInstallationRecord,
+    PluginArtifactCleanupRecord, PluginArtifactInstanceRecord, PluginArtifactInstanceStatus,
+    PluginAssignmentRecord, PluginAvailabilityStatus, PluginDesiredState, PluginInstallationRecord,
     PluginPackageCatalogProjectionRecord, PluginPackageCatalogProjectionStatus,
     PluginRuntimeStatus, PluginTaskKind, PluginTaskRecord, PluginTaskStatus,
     PluginVerificationStatus,
@@ -63,6 +63,17 @@ pub struct StoredPluginArtifactInstanceRow {
     pub checked_at: OffsetDateTime,
     pub last_error: Option<String>,
     pub is_current: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct StoredPluginArtifactCleanupRow {
+    pub id: Uuid,
+    pub node_id: String,
+    pub provider_code: String,
+    pub tombstone_path: String,
+    pub created_at: OffsetDateTime,
+    pub last_error: Option<String>,
+    pub last_attempt_at: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Clone)]
@@ -164,6 +175,20 @@ impl PgPluginMapper {
             last_error: row.last_error,
             is_current: row.is_current,
         })
+    }
+
+    pub fn to_artifact_cleanup_record(
+        row: StoredPluginArtifactCleanupRow,
+    ) -> PluginArtifactCleanupRecord {
+        PluginArtifactCleanupRecord {
+            id: row.id,
+            node_id: row.node_id,
+            provider_code: row.provider_code,
+            tombstone_path: row.tombstone_path,
+            created_at: row.created_at,
+            last_error: row.last_error,
+            last_attempt_at: row.last_attempt_at,
+        }
     }
 
     pub fn to_task_record(row: StoredPluginTaskRow) -> Result<PluginTaskRecord> {

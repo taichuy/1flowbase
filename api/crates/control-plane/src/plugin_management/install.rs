@@ -527,6 +527,7 @@ where
     }
 
     pub async fn reconcile_all_installations(&self) -> Result<()> {
+        self.reconcile_pending_artifact_removals().await?;
         let assigned_installation_ids = self
             .repository
             .list_assigned_installation_ids()

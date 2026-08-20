@@ -11,6 +11,9 @@ mod install;
 mod package_router;
 
 #[cfg(test)]
+pub(crate) use filesystem::fail_staged_artifact_removal_for;
+
+#[cfg(test)]
 mod _tests;
 
 use std::{
@@ -46,12 +49,14 @@ use crate::{
     },
     plugin_lifecycle::derive_availability_status,
     ports::{
-        AuthRepository, CacheStore, CommitPluginInstallationInput, CreatePluginAssignmentInput,
-        CreatePluginTaskInput, FrontendBlockCatalogRegistryInput, FrontendBlockCatalogRepository,
-        JsDependencyRegistryInput, JsDependencyRepository, ModelProviderRepository,
-        NodeContributionRegistryInput, NodeContributionRepository, OfficialPluginArtifact,
-        OfficialPluginSourceEntry, OfficialPluginSourcePort, PluginRepository, ProviderRuntimePort,
-        ReassignModelProviderInstancesInput, ReplaceInstallationFrontendBlocksInput,
+        AuthRepository, CacheStore, CommitPluginFamilyUninstallInput,
+        CommitPluginInstallationInput, CreatePluginArtifactCleanupInput,
+        CreatePluginAssignmentInput, CreatePluginTaskInput, FrontendBlockCatalogRegistryInput,
+        FrontendBlockCatalogRepository, JsDependencyRegistryInput, JsDependencyRepository,
+        ModelProviderRepository, NodeContributionRegistryInput, NodeContributionRepository,
+        OfficialPluginArtifact, OfficialPluginSourceEntry, OfficialPluginSourcePort,
+        PluginRepository, ProviderRuntimePort, ReassignModelProviderInstancesInput,
+        RecordPluginArtifactCleanupFailureInput, ReplaceInstallationFrontendBlocksInput,
         ReplaceInstallationJsDependenciesInput, ReplaceInstallationNodeContributionsInput,
         RoleConsolePolicyReader, UpdatePluginDesiredStateInput, UpdatePluginTaskStatusInput,
         UpsertModelProviderCatalogCacheInput, UpsertPluginArtifactInstanceInput,

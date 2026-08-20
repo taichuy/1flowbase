@@ -90,6 +90,16 @@ function isInstalledRow(row: ExtensionRow): row is SettingsInstalledExtension {
   return 'node_id' in row;
 }
 
+function supportsFamilyUninstall(category: SettingsExtensionCategory) {
+  return category === 'runtime-extensions' || category === 'capability-plugins';
+}
+
+function isFamilyUninstallRow(
+  row: ExtensionRow
+): row is SettingsInstalledExtension {
+  return isInstalledRow(row) && supportsFamilyUninstall(row.category);
+}
+
 function extensionCatalogId(row: ExtensionRow) {
   return isInstalledRow(row) ? row.catalog_id : row.id;
 }
@@ -553,7 +563,7 @@ function GenericExtensionCenterSection({
       message.error(t(extensionOperationErrorKey(error)));
     }
   });
-  const deleteVersionMutation = useMutation({
+  const deleteInstalledExtensionMutation = useMutation({
     mutationFn: async (installationId: string) => {
       if (!csrfToken) throw new Error('csrf token required');
       return deleteSettingsInstalledExtension(installationId, csrfToken);
@@ -584,6 +594,13 @@ function GenericExtensionCenterSection({
     },
     onError: () => message.error(t('auto.extension_operation_failed'))
   });
+  const deleteInstalledExtension = deleteInstalledExtensionMutation.mutate;
+  const deleteInstalledExtensionAsync =
+    deleteInstalledExtensionMutation.mutateAsync;
+  const deletingInstalledExtensionId =
+    deleteInstalledExtensionMutation.isPending
+      ? deleteInstalledExtensionMutation.variables
+      : null;
   const toggleInstalledExtensionActivation = activationMutation.mutate;
   const activatingInstallationId = activationMutation.isPending
     ? activationMutation.variables?.installationId
@@ -796,6 +813,20 @@ function GenericExtensionCenterSection({
                   </Badge>
                 </Tooltip>
               </span>
+              {isFamilyUninstallRow(row) ? (
+                <Button
+                  danger
+                  type="link"
+                  loading={deletingInstalledExtensionId === row.id}
+                  disabled={
+                    deletingInstalledExtensionId !== null &&
+                    deletingInstalledExtensionId !== row.id
+                  }
+                  onClick={() => deleteInstalledExtension(row.id)}
+                >
+                  {t('auto.uninstall_plugin')}
+                </Button>
+              ) : null}
               {row.application_action === 'configure_model_provider' ? (
                 <Button
                   type="link"
@@ -884,6 +915,8 @@ function GenericExtensionCenterSection({
       activeOperationKey,
       activeTab,
       activatingInstallationId,
+      deleteInstalledExtension,
+      deletingInstalledExtensionId,
       resolveInstalledUpdate,
       requestOperation,
       t,
@@ -1178,41 +1211,42 @@ function GenericExtensionCenterSection({
                           </Descriptions.Item>
                         </Descriptions>
                       </div>
-                      <div className="structured-list__actions">
-                        <Tooltip
-                          title={
-                            installedVersion.deletable
-                              ? undefined
-                              : installedVersion.delete_reasons.join(', ')
-                          }
-                        >
-                          <Button
-                            type="link"
-                            danger
-                            disabled={!installedVersion.deletable}
-                            loading={
-                              deleteVersionMutation.isPending &&
-                              deleteVersionMutation.variables ===
-                                installedVersion.id
-                            }
-                            onClick={() =>
-                              Modal.confirm({
-                                title: t('auto.confirm_delete'),
-                                content: installedVersion.version,
-                                okText: t('auto.delete'),
-                                cancelText: t('auto.cancel'),
-                                okButtonProps: { danger: true },
-                                onOk: () =>
-                                  deleteVersionMutation.mutateAsync(
-                                    installedVersion.id
-                                  )
-                              })
+                      {!supportsFamilyUninstall(selected.category) ? (
+                        <div className="structured-list__actions">
+                          <Tooltip
+                            title={
+                              installedVersion.deletable
+                                ? undefined
+                                : installedVersion.delete_reasons.join(', ')
                             }
                           >
-                            {t('auto.delete')}
-                          </Button>
-                        </Tooltip>
-                      </div>
+                            <Button
+                              type="link"
+                              danger
+                              disabled={!installedVersion.deletable}
+                              loading={
+                                deletingInstalledExtensionId ===
+                                installedVersion.id
+                              }
+                              onClick={() =>
+                                Modal.confirm({
+                                  title: t('auto.confirm_delete'),
+                                  content: installedVersion.version,
+                                  okText: t('auto.delete'),
+                                  cancelText: t('auto.cancel'),
+                                  okButtonProps: { danger: true },
+                                  onOk: () =>
+                                    deleteInstalledExtensionAsync(
+                                      installedVersion.id
+                                    )
+                                })
+                              }
+                            >
+                              {t('auto.delete')}
+                            </Button>
+                          </Tooltip>
+                        </div>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

@@ -154,8 +154,8 @@
           "Data sources secret rotate in the system backend.",
           "Data sources validate",
           "Data sources validate in the system backend.",
-          "Delete an installed extension version",
-          "Delete an installed extension version in the system backend.",
+          "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data",
+          "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data in the system backend.",
           "Delete applications",
           "Delete applications in the system backend.",
           "Delete auth center authenticators",
@@ -805,8 +805,8 @@
           "Data sources secret rotate in the system backend.",
           "Data sources validate",
           "Data sources validate in the system backend.",
-          "Delete an installed extension version",
-          "Delete an installed extension version in the system backend.",
+          "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data",
+          "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data in the system backend.",
           "Delete applications",
           "Delete applications in the system backend.",
           "Delete auth center authenticators",
@@ -2625,17 +2625,17 @@
       }
     },
     {
-      "key": "Delete an installed extension version",
+      "key": "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data",
       "translations": {
-        "en_US": "Delete an installed extension version",
-        "zh_Hans": "删除已安装的扩展版本"
+        "en_US": "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data",
+        "zh_Hans": "移除已安装的扩展制品；运行时扩展和能力插件将卸载整个插件族，同时保留持久化数据"
       }
     },
     {
-      "key": "Delete an installed extension version in the system backend.",
+      "key": "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data in the system backend.",
       "translations": {
-        "en_US": "Delete an installed extension version in the system backend.",
-        "zh_Hans": "删除已安装的扩展版本（系统后端）"
+        "en_US": "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data in the system backend.",
+        "zh_Hans": "移除已安装的扩展制品；运行时扩展和能力插件将卸载整个插件族，同时保留持久化数据（系统后端）"
       }
     },
     {

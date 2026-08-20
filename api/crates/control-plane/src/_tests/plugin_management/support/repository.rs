@@ -5,6 +5,7 @@ pub(crate) struct MemoryPluginManagementRepository {
     pub(crate) actor: ActorContext,
     installations: Arc<RwLock<HashMap<Uuid, PluginInstallationRecord>>>,
     artifact_instances: Arc<RwLock<HashMap<(String, Uuid), PluginArtifactInstanceRecord>>>,
+    artifact_cleanups: Arc<RwLock<HashMap<Uuid, domain::PluginArtifactCleanupRecord>>>,
     catalog_projections: Arc<RwLock<HashMap<Uuid, PluginPackageCatalogProjectionRecord>>>,
     plugin_ids: Arc<RwLock<HashMap<String, Uuid>>>,
     assignments: Arc<RwLock<Vec<PluginAssignmentRecord>>>,
@@ -21,6 +22,7 @@ pub(crate) struct MemoryPluginManagementRepository {
     artifact_snapshot_updates: Arc<RwLock<Vec<Uuid>>>,
     created_task_status_override: Arc<RwLock<Option<PluginTaskStatus>>>,
     fail_installation_catalog_commit: Arc<RwLock<bool>>,
+    fail_family_uninstall_commit_after_artifact: Arc<RwLock<Option<usize>>>,
     console_policies: Arc<RwLock<Vec<domain::RoleConsolePolicy>>>,
 }
 
@@ -34,6 +36,7 @@ impl MemoryPluginManagementRepository {
             actor,
             installations: Arc::new(RwLock::new(HashMap::new())),
             artifact_instances: Arc::new(RwLock::new(HashMap::new())),
+            artifact_cleanups: Arc::new(RwLock::new(HashMap::new())),
             catalog_projections: Arc::new(RwLock::new(HashMap::new())),
             plugin_ids: Arc::new(RwLock::new(HashMap::new())),
             assignments: Arc::new(RwLock::new(Vec::new())),
@@ -49,6 +52,7 @@ impl MemoryPluginManagementRepository {
             artifact_snapshot_updates: Arc::new(RwLock::new(Vec::new())),
             created_task_status_override: Arc::new(RwLock::new(None)),
             fail_installation_catalog_commit: Arc::new(RwLock::new(false)),
+            fail_family_uninstall_commit_after_artifact: Arc::new(RwLock::new(None)),
             console_policies: Arc::new(RwLock::new(Vec::new())),
         }
     }
@@ -75,8 +79,19 @@ impl MemoryPluginManagementRepository {
         self.audit_events.read().await.clone()
     }
 
+    pub(crate) async fn pending_artifact_cleanup_count(&self) -> usize {
+        self.artifact_cleanups.read().await.len()
+    }
+
     pub(crate) async fn fail_next_installation_catalog_commit(&self) {
         *self.fail_installation_catalog_commit.write().await = true;
+    }
+
+    pub(crate) async fn fail_next_family_uninstall_commit_after_first_artifact(&self) {
+        *self
+            .fail_family_uninstall_commit_after_artifact
+            .write()
+            .await = Some(1);
     }
 
     pub(crate) async fn mark_installation_builtin(&self, installation_id: Uuid) {
@@ -692,6 +707,101 @@ impl PluginRepository for MemoryPluginManagementRepository {
             record.clone(),
         );
         Ok(record)
+    }
+
+    async fn commit_plugin_family_uninstall(
+        &self,
+        input: &CommitPluginFamilyUninstallInput,
+    ) -> Result<()> {
+        let fail_after_artifact = self
+            .fail_family_uninstall_commit_after_artifact
+            .write()
+            .await
+            .take();
+
+        let records = input
+            .artifact_instances
+            .iter()
+            .map(|artifact| PluginArtifactInstanceRecord {
+                node_id: artifact.node_id.clone(),
+                installation_id: artifact.installation_id,
+                local_version: artifact.local_version.clone(),
+                local_checksum: artifact.local_checksum.clone(),
+                local_path: artifact.local_path.clone(),
+                package_path: artifact.package_path.clone(),
+                manifest_fingerprint: artifact.manifest_fingerprint.clone(),
+                artifact_status: artifact.artifact_status,
+                runtime_status: artifact.runtime_status,
+                availability_status: artifact.availability_status,
+                checked_at: artifact.checked_at,
+                last_error: artifact.last_error.clone(),
+                is_current: artifact.is_current,
+            })
+            .collect::<Vec<_>>();
+        let mut artifacts = self.artifact_instances.read().await.clone();
+        for (index, record) in records.into_iter().enumerate() {
+            artifacts.insert((record.node_id.clone(), record.installation_id), record);
+            if fail_after_artifact == Some(index.saturating_add(1)) {
+                anyhow::bail!("injected plugin family uninstall commit failure");
+            }
+        }
+        let mut cleanups = self.artifact_cleanups.read().await.clone();
+        for cleanup in &input.artifact_cleanups {
+            cleanups.insert(
+                cleanup.cleanup_id,
+                domain::PluginArtifactCleanupRecord {
+                    id: cleanup.cleanup_id,
+                    node_id: cleanup.node_id.clone(),
+                    provider_code: cleanup.provider_code.clone(),
+                    tombstone_path: cleanup.tombstone_path.clone(),
+                    created_at: cleanup.created_at,
+                    last_error: None,
+                    last_attempt_at: None,
+                },
+            );
+        }
+        *self.artifact_instances.write().await = artifacts;
+        *self.artifact_cleanups.write().await = cleanups;
+        self.audit_events
+            .write()
+            .await
+            .push(input.audit_log.event_code.clone());
+        Ok(())
+    }
+
+    async fn list_plugin_artifact_cleanups(
+        &self,
+        node_id: &str,
+    ) -> Result<Vec<domain::PluginArtifactCleanupRecord>> {
+        Ok(self
+            .artifact_cleanups
+            .read()
+            .await
+            .values()
+            .filter(|cleanup| cleanup.node_id == node_id)
+            .cloned()
+            .collect())
+    }
+
+    async fn complete_plugin_artifact_cleanup(&self, cleanup_id: Uuid) -> Result<()> {
+        self.artifact_cleanups.write().await.remove(&cleanup_id);
+        Ok(())
+    }
+
+    async fn record_plugin_artifact_cleanup_failure(
+        &self,
+        input: &RecordPluginArtifactCleanupFailureInput,
+    ) -> Result<()> {
+        if let Some(cleanup) = self
+            .artifact_cleanups
+            .write()
+            .await
+            .get_mut(&input.cleanup_id)
+        {
+            cleanup.last_error = Some(input.last_error.clone());
+            cleanup.last_attempt_at = Some(input.attempted_at);
+        }
+        Ok(())
     }
 
     async fn get_artifact_instance(

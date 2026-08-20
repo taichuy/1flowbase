@@ -237,6 +237,22 @@ pub struct PluginArtifactInstanceRecord {
     pub is_current: bool,
 }
 
+/// A durable cleanup obligation for an artifact that has already been made unavailable.
+///
+/// The tombstone path is intentionally separate from an artifact's executable paths: after an
+/// uninstall commits, the artifact record must remain `missing` even when physical deletion needs
+/// another attempt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PluginArtifactCleanupRecord {
+    pub id: Uuid,
+    pub node_id: String,
+    pub provider_code: String,
+    pub tombstone_path: String,
+    pub created_at: OffsetDateTime,
+    pub last_error: Option<String>,
+    pub last_attempt_at: Option<OffsetDateTime>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalPluginInstallationRecord {
     pub installation: PluginInstallationRecord,

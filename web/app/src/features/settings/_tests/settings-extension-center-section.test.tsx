@@ -681,7 +681,66 @@ describe('SettingsExtensionCenterSection', () => {
     });
   });
 
-  test('D4-AC-013 renders one family row and keeps every installed version in the view drawer', async () => {
+  test('AC-001 exposes direct uninstall for a runtime extension and hides legacy version deletion', async () => {
+    renderSection();
+
+    const row = await screen.findByRole('row', { name: /openai/ });
+    fireEvent.click(within(row).getByRole('button', { name: '卸载' }));
+    await waitFor(() => {
+      expect(
+        extensionsApi.deleteSettingsInstalledExtension
+      ).toHaveBeenCalledWith('extension-installation-1', 'csrf-123');
+    });
+
+    fireEvent.click(within(row).getByRole('button', { name: '查看' }));
+    const drawer = await screen.findByRole('dialog');
+    expect(
+      within(drawer).queryByRole('button', { name: '删除' })
+    ).not.toBeInTheDocument();
+  });
+
+  test('AC-001 exposes direct uninstall for a capability plugin', async () => {
+    extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValueOnce({
+      limit: 20,
+      total_entries: 1,
+      next_cursor: null,
+      entries: [
+        {
+          ...installedEntry,
+          id: 'capability-installation-1',
+          category: 'capability-plugins',
+          catalog_id: 'capability-plugins:taichuy/openai',
+          application_action: 'none',
+          application_status: 'not_required'
+        }
+      ]
+    });
+    renderSection('capability-plugins');
+
+    const row = await screen.findByRole('row', { name: /openai/ });
+    fireEvent.click(within(row).getByRole('button', { name: '卸载' }));
+    await waitFor(() => {
+      expect(
+        extensionsApi.deleteSettingsInstalledExtension
+      ).toHaveBeenCalledWith('capability-installation-1', 'csrf-123');
+    });
+  });
+
+  test('D4-AC-013 keeps legacy version deletion for non-runtime extension categories', async () => {
+    extensionsApi.fetchSettingsInstalledExtensions.mockResolvedValueOnce({
+      limit: 20,
+      total_entries: 1,
+      next_cursor: null,
+      entries: [
+        {
+          ...installedEntry,
+          category: 'agent-flow',
+          catalog_id: 'agent-flow:taichuy/openai',
+          application_action: 'import_agent_flow',
+          application_status: 'not_applied'
+        }
+      ]
+    });
     renderSection();
 
     const openaiRows = await screen.findAllByRole('row', { name: /openai/ });

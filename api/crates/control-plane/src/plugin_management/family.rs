@@ -1,7 +1,7 @@
 use super::*;
 use super::{
     catalog_projection::refresh_provider_package_catalog_projection,
-    filesystem::remove_path_if_exists,
+    filesystem::{remove_path_if_exists, restore_artifact_removals, stage_artifact_removals},
     install::{load_actor_context_for_user, map_catalog_source, map_model_discovery_mode},
 };
 
@@ -40,6 +40,61 @@ where
         + JsDependencyRepository,
     H: ProviderRuntimePort,
 {
+    /// Completes durable tombstone cleanup without changing the already-committed uninstall fact.
+    ///
+    /// A failed delete stays as a durable cleanup record and is retried at boot and on a later
+    /// uninstall request. It must never retroactively turn the business task into `Failed`.
+    pub async fn reconcile_pending_artifact_removals(&self) -> Result<usize> {
+        let cleanups = self
+            .repository
+            .list_plugin_artifact_cleanups(&self.node_id)
+            .await?;
+        let mut completed = 0usize;
+        for cleanup in cleanups {
+            match remove_path_if_exists(Path::new(&cleanup.tombstone_path)) {
+                Ok(()) => match self
+                    .repository
+                    .complete_plugin_artifact_cleanup(cleanup.id)
+                    .await
+                {
+                    Ok(()) => completed = completed.saturating_add(1),
+                    Err(error) => tracing::warn!(
+                        cleanup_id = %cleanup.id,
+                        tombstone_path = %cleanup.tombstone_path,
+                        error = %error,
+                        "plugin artifact was removed but its cleanup acknowledgement will be retried"
+                    ),
+                },
+                Err(error) => {
+                    tracing::warn!(
+                        cleanup_id = %cleanup.id,
+                        tombstone_path = %cleanup.tombstone_path,
+                        error = %error,
+                        "plugin artifact cleanup remains pending"
+                    );
+                    if let Err(record_error) = self
+                        .repository
+                        .record_plugin_artifact_cleanup_failure(
+                            &RecordPluginArtifactCleanupFailureInput {
+                                cleanup_id: cleanup.id,
+                                last_error: error.to_string(),
+                                attempted_at: OffsetDateTime::now_utc(),
+                            },
+                        )
+                        .await
+                    {
+                        tracing::warn!(
+                            cleanup_id = %cleanup.id,
+                            error = %record_error,
+                            "failed to record pending plugin artifact cleanup failure"
+                        );
+                    }
+                }
+            }
+        }
+        Ok(completed)
+    }
+
     pub(super) async fn transition_task(
         &self,
         task: &domain::PluginTaskRecord,
@@ -434,6 +489,12 @@ where
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
             .await?;
+        if let Err(error) = self.reconcile_pending_artifact_removals().await {
+            tracing::warn!(
+                error = %error,
+                "plugin artifact cleanup reconciliation was unavailable before family uninstall"
+            );
+        }
 
         let installations = self
             .repository
@@ -447,6 +508,15 @@ where
         }
         for installation in &installations {
             self.ensure_model_provider_target(installation)?;
+            if !matches!(
+                installation.category,
+                domain::ExtensionCategory::RuntimeExtensions
+                    | domain::ExtensionCategory::CapabilityPlugins
+            ) {
+                return Err(
+                    ControlPlaneError::Conflict("plugin_runtime_uninstall_unsupported").into(),
+                );
+            }
         }
         let current_installation_id = self
             .repository
@@ -492,14 +562,8 @@ where
                 .repository
                 .list_instances_by_provider_code(&command.provider_code)
                 .await?;
-            // Runtime scopes own their resources. Dispose all of them before removing any
-            // artifact, so an unloaded family cannot retain a callable contribution.
-            for installation in &installations {
-                self.runtime.deactivate_plugin(installation).await?;
-            }
-
             let mut artifacts = Vec::with_capacity(installations.len());
-            let mut removed_paths = HashSet::<PathBuf>::new();
+            let mut artifact_paths = Vec::with_capacity(installations.len() * 2);
             for installation in &installations {
                 let artifact = self
                     .repository
@@ -507,22 +571,51 @@ where
                     .await?;
                 if let Some(artifact) = &artifact {
                     if let Some(local_path) = &artifact.local_path {
-                        removed_paths.insert(PathBuf::from(local_path));
+                        artifact_paths.push(PathBuf::from(local_path));
                     }
                     if let Some(package_path) = &artifact.package_path {
-                        removed_paths.insert(PathBuf::from(package_path));
+                        artifact_paths.push(PathBuf::from(package_path));
                     }
                 }
-                artifacts.push((installation, artifact));
+                artifacts.push((installation.clone(), artifact));
             }
-            for path in &removed_paths {
-                remove_path_if_exists(path)?;
+            let runtime_restore = artifacts
+                .iter()
+                .filter_map(|(installation, artifact)| {
+                    artifact
+                        .as_ref()
+                        .filter(|artifact| {
+                            artifact.runtime_status == domain::PluginRuntimeStatus::Active
+                        })
+                        .cloned()
+                        .map(|artifact| domain::LocalPluginInstallationRecord {
+                            installation: installation.clone(),
+                            artifact,
+                        })
+                })
+                .collect::<Vec<_>>();
+            // Runtime scopes own their resources. Dispose all of them before staging any
+            // artifact, so an unloaded family cannot retain a callable contribution.
+            for installation in &installations {
+                self.runtime.deactivate_plugin(installation).await?;
             }
-
-            for (installation, artifact) in artifacts {
-                let artifact = artifact.as_ref();
-                self.repository
-                    .upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
+            let mut removals = match stage_artifact_removals(artifact_paths) {
+                Ok(removals) => removals,
+                Err(error) => {
+                    self.restore_runtime_scopes_after_uninstall_rejection(&runtime_restore)
+                        .await
+                        .context(
+                            "failed to restore runtime scopes after artifact staging rejection",
+                        )?;
+                    return Err(error);
+                }
+            };
+            let checked_at = OffsetDateTime::now_utc();
+            let artifact_instances = artifacts
+                .iter()
+                .map(|(installation, artifact)| {
+                    let artifact = artifact.as_ref();
+                    UpsertPluginArtifactInstanceInput {
                         node_id: self.node_id.clone(),
                         installation_id: installation.id,
                         local_version: artifact
@@ -538,35 +631,124 @@ where
                         artifact_status: domain::PluginArtifactInstanceStatus::Missing,
                         runtime_status: domain::PluginRuntimeStatus::Inactive,
                         availability_status: domain::PluginAvailabilityStatus::ArtifactMissing,
-                        checked_at: OffsetDateTime::now_utc(),
+                        checked_at,
                         last_error: Some("artifact_missing".to_string()),
                         // A family is unavailable as a unit; a sibling version must not win.
                         is_current: false,
+                    }
+                })
+                .collect::<Vec<_>>();
+            let artifact_cleanups = removals
+                .iter()
+                .filter_map(|removal| {
+                    removal.tombstone_path().map(|tombstone_path| {
+                        CreatePluginArtifactCleanupInput {
+                            cleanup_id: Uuid::now_v7(),
+                            node_id: self.node_id.clone(),
+                            provider_code: command.provider_code.clone(),
+                            tombstone_path: tombstone_path.display().to_string(),
+                            created_at: checked_at,
+                        }
                     })
-                    .await?;
+                })
+                .collect::<Vec<_>>();
+            let durable_commit = self
+                .repository
+                .commit_plugin_family_uninstall(&CommitPluginFamilyUninstallInput {
+                    artifact_instances,
+                    artifact_cleanups: artifact_cleanups.clone(),
+                    audit_log: audit_log(
+                        Some(actor.current_workspace_id),
+                        Some(command.actor_user_id),
+                        "plugin_family",
+                        None,
+                        "plugin.family_uninstalled",
+                        json!({
+                            "provider_code": command.provider_code,
+                            "retained_instance_count": instances.len(),
+                            "retained_installation_count": installations.len(),
+                        }),
+                    ),
+                })
+                .await;
+            if let Err(error) = durable_commit {
+                restore_artifact_removals(&mut removals)
+                    .context("failed to restore plugin artifacts after durable commit rejection")?;
+                self.restore_runtime_scopes_after_uninstall_rejection(&runtime_restore)
+                    .await
+                    .context("failed to restore runtime scopes after durable commit rejection")?;
+                return Err(error);
+            }
+            let mut cleanup_by_tombstone = artifact_cleanups
+                .into_iter()
+                .map(|cleanup| (cleanup.tombstone_path.clone(), cleanup))
+                .collect::<HashMap<_, _>>();
+            let mut cleanup_pending_count = 0usize;
+            for removal in removals {
+                let Some(tombstone_path) = removal.tombstone_path() else {
+                    continue;
+                };
+                let Some(cleanup) = cleanup_by_tombstone.remove(&tombstone_path.display().to_string()) else {
+                    cleanup_pending_count = cleanup_pending_count.saturating_add(1);
+                    tracing::error!(
+                        tombstone_path = %tombstone_path.display(),
+                        "committed plugin artifact cleanup record is unavailable in the local completion pass"
+                    );
+                    continue;
+                };
+                match removal.remove() {
+                    Ok(()) => {
+                        if let Err(error) = self
+                            .repository
+                            .complete_plugin_artifact_cleanup(cleanup.cleanup_id)
+                            .await
+                        {
+                            cleanup_pending_count = cleanup_pending_count.saturating_add(1);
+                            tracing::warn!(
+                                cleanup_id = %cleanup.cleanup_id,
+                                tombstone_path = %cleanup.tombstone_path,
+                                error = %error,
+                                "plugin artifact was removed but cleanup acknowledgement will be retried"
+                            );
+                        }
+                    }
+                    Err(error) => {
+                        cleanup_pending_count = cleanup_pending_count.saturating_add(1);
+                        tracing::warn!(
+                            cleanup_id = %cleanup.cleanup_id,
+                            tombstone_path = %cleanup.tombstone_path,
+                            error = %error,
+                            "plugin artifact cleanup remains pending after committed family uninstall"
+                        );
+                        if let Err(record_error) = self
+                            .repository
+                            .record_plugin_artifact_cleanup_failure(
+                                &RecordPluginArtifactCleanupFailureInput {
+                                    cleanup_id: cleanup.cleanup_id,
+                                    last_error: error.to_string(),
+                                    attempted_at: OffsetDateTime::now_utc(),
+                                },
+                            )
+                            .await
+                        {
+                            tracing::warn!(
+                                cleanup_id = %cleanup.cleanup_id,
+                                error = %record_error,
+                                "failed to record pending plugin artifact cleanup failure"
+                            );
+                        }
+                    }
+                }
             }
 
-            self.repository
-                .append_audit_log(&audit_log(
-                    Some(actor.current_workspace_id),
-                    Some(command.actor_user_id),
-                    "plugin_family",
-                    None,
-                    "plugin.family_uninstalled",
-                    json!({
-                        "provider_code": command.provider_code,
-                        "retained_instance_count": instances.len(),
-                        "retained_installation_count": installations.len(),
-                    }),
-                ))
-                .await?;
-
-            Ok::<(usize, usize), anyhow::Error>((instances.len(), installations.len()))
+            Ok::<(usize, usize, usize), anyhow::Error>(
+                (instances.len(), installations.len(), cleanup_pending_count),
+            )
         }
         .await;
 
         match uninstall_result {
-            Ok((retained_instance_count, retained_installation_count)) => {
+            Ok((retained_instance_count, retained_installation_count, cleanup_pending_count)) => {
                 self.invalidate_model_routing_catalog(actor.current_workspace_id)
                     .await;
                 self.transition_task(
@@ -577,6 +759,7 @@ where
                         "provider_code": command.provider_code,
                         "retained_instance_count": retained_instance_count,
                         "retained_installation_count": retained_installation_count,
+                        "cleanup_pending_count": cleanup_pending_count,
                     }),
                 )
                 .await
@@ -595,6 +778,16 @@ where
                 Err(error)
             }
         }
+    }
+
+    async fn restore_runtime_scopes_after_uninstall_rejection(
+        &self,
+        installations: &[domain::LocalPluginInstallationRecord],
+    ) -> Result<()> {
+        for installation in installations {
+            self.runtime.activate_plugin(installation).await?;
+        }
+        Ok(())
     }
 
     pub async fn list_tasks(&self, actor_user_id: Uuid) -> Result<Vec<domain::PluginTaskRecord>> {
