@@ -44,6 +44,7 @@ export function PluginUploadInstallModal({
         </Typography.Paragraph>
         <Upload.Dragger
           beforeUpload={() => false}
+          className="model-provider-panel__upload-control"
           maxCount={1}
           fileList={fileList}
           onChange={({ fileList: nextFiles }) => onChange(nextFiles)}
@@ -72,6 +73,7 @@ export function PluginUploadInstallModal({
         </Upload.Dragger>
         {resultSummary ? (
           <Alert
+            className="model-provider-panel__upload-alert"
             type="success"
             showIcon
             title={`${resultSummary.displayName} ${resultSummary.version}`}
@@ -86,9 +88,20 @@ export function PluginUploadInstallModal({
           />
         ) : null}
         {errorMessage ? (
-          <Alert type="error" showIcon title={errorMessage} />
+          <Alert
+            className="model-provider-panel__upload-alert"
+            type="error"
+            showIcon
+            title={errorMessage}
+          />
         ) : null}
-        <Button type="primary" block loading={submitting} onClick={onSubmit}>
+        <Button
+          className="model-provider-panel__upload-submit"
+          type="primary"
+          block
+          loading={submitting}
+          onClick={onSubmit}
+        >
           {i18nText('settings', 'auto.upload_and_install')}
         </Button>
       </div>

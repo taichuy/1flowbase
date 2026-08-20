@@ -12,6 +12,9 @@ import { EmbeddedAppsPage } from '../features/embedded-apps/pages/EmbeddedAppsPa
 import { FrontStagePage } from '../features/frontstage/pages/FrontStagePage';
 import { SchemaFormDrawer } from '../shared/schema-ui/v1/form-drawer/SchemaFormDrawer';
 import { McpTemplateLibrary } from '../features/settings/components/mcp-management/bundle/McpTemplateLibrary';
+import { PluginUploadInstallModal } from '../features/settings/components/model-providers/PluginUploadInstallModal';
+import '../features/settings/components/model-providers/model-provider-panel.css';
+import type { UploadFile } from 'antd/es/upload/interface';
 import { TemplatesPage } from '../features/templates/pages/TemplatesPage';
 import {
   createStyleBoundaryFrontstagePageContent,
@@ -82,6 +85,14 @@ const variableGroupSelectorOptions: FlowSelectorOption[] = [
     displayLabel: 'Source/text'
   }
 ];
+
+const styleBoundaryPluginUploadFile = [
+  {
+    uid: 'style-boundary-plugin-package',
+    name: `${'a'.repeat(256)}.1flowbasepkg`,
+    status: 'done'
+  }
+] as UploadFile[];
 
 function renderVariableGroupsScene(
   width: 420 | 300,
@@ -217,6 +228,18 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
         enabled: true
       }}
       onCancel={() => undefined}
+      onSubmit={() => undefined}
+    />
+  ),
+  'component.plugin-upload-install-modal': () => (
+    <PluginUploadInstallModal
+      open
+      submitting={false}
+      resultSummary={null}
+      errorMessage="Plugin upload failed. Check the package and try again."
+      fileList={styleBoundaryPluginUploadFile}
+      onClose={() => undefined}
+      onChange={() => undefined}
       onSubmit={() => undefined}
     />
   ),

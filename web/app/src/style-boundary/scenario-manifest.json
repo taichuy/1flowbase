@@ -442,6 +442,74 @@
     ]
   },
   {
+    "id": "component.plugin-upload-install-modal",
+    "kind": "component",
+    "title": "Plugin Upload Install Modal Overflow Guard",
+    "viewport": {
+      "width": 640,
+      "height": 760
+    },
+    "impactFiles": [
+      "web/app/src/features/settings/components/model-providers/PluginUploadInstallModal.tsx",
+      "web/app/src/features/settings/components/model-providers/model-provider-panel.css",
+      "web/app/src/style-boundary/renderers.tsx"
+    ],
+    "boundaryNodes": [
+      {
+        "id": "plugin-upload-modal-content",
+        "selector": ".model-provider-panel__upload-modal",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      },
+      {
+        "id": "plugin-upload-file-row",
+        "selector": ".model-provider-panel__upload-file",
+        "propertyAssertions": [
+          {
+            "property": "display",
+            "expected": "grid"
+          }
+        ]
+      }
+    ],
+    "relationshipAssertions": [
+      {
+        "id": "plugin-upload-content-within-modal-body",
+        "type": "within_container",
+        "subjectSelector": ".model-provider-panel__upload-modal",
+        "containerSelector": ".ant-modal-body"
+      },
+      {
+        "id": "plugin-upload-control-within-content",
+        "type": "within_container",
+        "subjectSelector": ".model-provider-panel__upload-control",
+        "containerSelector": ".model-provider-panel__upload-modal"
+      },
+      {
+        "id": "plugin-upload-file-within-content",
+        "type": "within_container",
+        "subjectSelector": ".model-provider-panel__upload-file",
+        "containerSelector": ".model-provider-panel__upload-modal"
+      },
+      {
+        "id": "plugin-upload-alert-within-content",
+        "type": "within_container",
+        "subjectSelector": ".model-provider-panel__upload-alert",
+        "containerSelector": ".model-provider-panel__upload-modal"
+      },
+      {
+        "id": "plugin-upload-submit-within-content",
+        "type": "within_container",
+        "subjectSelector": ".model-provider-panel__upload-submit",
+        "containerSelector": ".model-provider-panel__upload-modal"
+      }
+    ]
+  },
+  {
     "id": "component.variable-groups.regular",
     "kind": "component",
     "title": "Variable Groups Regular Inspector",
