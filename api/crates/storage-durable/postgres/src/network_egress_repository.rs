@@ -1,8 +1,11 @@
 use anyhow::{bail, Result};
 use async_trait::async_trait;
 use control_plane::ports::{
-    CreateNetworkEgressProviderInput, NetworkEgressRepository, RecordNetworkEgressSyncFailureInput,
-    ReplaceNetworkEgressProjectionInput, UpdateNetworkEgressProviderLifecycleInput,
+    CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
+    CreateNetworkEgressProviderInput, NetworkEgressPoolRepository, NetworkEgressRepository,
+    RecordNetworkEgressSyncFailureInput, ReplaceNetworkEgressProjectionInput,
+    UpdateNetworkEgressPoolInput, UpdateNetworkEgressPoolMemberInput,
+    UpdateNetworkEgressProviderLifecycleInput,
 };
 use sqlx::Row;
 use uuid::Uuid;
@@ -54,6 +57,42 @@ fn projection(row: sqlx::postgres::PgRow) -> domain::NetworkEgressProjectionReco
         tags: row.get("tags"),
         availability: row.get("availability"),
         synced_at: row.get("synced_at"),
+    }
+}
+
+fn selection_strategy(value: &str) -> Result<domain::NetworkEgressPoolSelectionStrategy> {
+    match value {
+        "healthy_first" => Ok(domain::NetworkEgressPoolSelectionStrategy::HealthyFirst),
+        _ => bail!("invalid network egress pool selection strategy"),
+    }
+}
+
+fn pool(row: sqlx::postgres::PgRow) -> Result<domain::NetworkEgressPool> {
+    Ok(domain::NetworkEgressPool {
+        id: row.get("id"),
+        display_name: row.get("display_name"),
+        selection_strategy: selection_strategy(
+            row.get::<String, _>("selection_strategy").as_str(),
+        )?,
+        created_by: row.get("created_by"),
+        updated_by: row.get("updated_by"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
+}
+
+fn pool_member(row: sqlx::postgres::PgRow) -> domain::NetworkEgressPoolMember {
+    domain::NetworkEgressPoolMember {
+        id: row.get("id"),
+        pool_id: row.get("pool_id"),
+        provider_id: row.get("provider_id"),
+        provider_egress_key: row.get("provider_egress_key"),
+        enabled: row.get("enabled"),
+        sequence: row.get("sequence"),
+        created_by: row.get("created_by"),
+        updated_by: row.get("updated_by"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
     }
 }
 
@@ -195,10 +234,188 @@ impl NetworkEgressRepository for PgControlPlaneStore {
     }
 }
 
+#[async_trait]
+impl NetworkEgressPoolRepository for PgControlPlaneStore {
+    async fn get_network_egress_pool(
+        &self,
+        pool_id: Uuid,
+    ) -> Result<Option<domain::NetworkEgressPool>> {
+        sqlx::query("select * from network_egress_pools where id = $1")
+            .bind(pool_id)
+            .fetch_optional(self.pool())
+            .await?
+            .map(pool)
+            .transpose()
+    }
+
+    async fn list_network_egress_pools(&self) -> Result<Vec<domain::NetworkEgressPool>> {
+        sqlx::query("select * from network_egress_pools order by display_name asc, id asc")
+            .fetch_all(self.pool())
+            .await?
+            .into_iter()
+            .map(pool)
+            .collect()
+    }
+
+    async fn create_network_egress_pool(
+        &self,
+        input: &CreateNetworkEgressPoolInput,
+    ) -> Result<domain::NetworkEgressPool> {
+        let row = sqlx::query(
+            r#"
+                insert into network_egress_pools (
+                    id, scope_id, display_name, selection_strategy, created_by, updated_by
+                ) values ($1, $2, $3, 'healthy_first', $4, $4)
+                returning *
+            "#,
+        )
+        .bind(input.pool_id)
+        .bind(domain::SYSTEM_SCOPE_ID)
+        .bind(&input.display_name)
+        .bind(input.actor_user_id)
+        .fetch_one(self.pool())
+        .await?;
+        pool(row)
+    }
+
+    async fn update_network_egress_pool(
+        &self,
+        input: &UpdateNetworkEgressPoolInput,
+    ) -> Result<domain::NetworkEgressPool> {
+        let row = sqlx::query(
+            r#"
+                update network_egress_pools
+                set display_name = $2, updated_by = $3, updated_at = now()
+                where id = $1
+                returning *
+            "#,
+        )
+        .bind(input.pool_id)
+        .bind(&input.display_name)
+        .bind(input.actor_user_id)
+        .fetch_optional(self.pool())
+        .await?;
+        row.map(pool).transpose()?.ok_or_else(|| {
+            anyhow::anyhow!(control_plane::errors::ControlPlaneError::NotFound(
+                "network_egress_pool"
+            ))
+        })
+    }
+
+    async fn delete_network_egress_pool(&self, pool_id: Uuid) -> Result<()> {
+        let result = sqlx::query("delete from network_egress_pools where id = $1")
+            .bind(pool_id)
+            .execute(self.pool())
+            .await?;
+        if result.rows_affected() == 0 {
+            return Err(
+                control_plane::errors::ControlPlaneError::NotFound("network_egress_pool").into(),
+            );
+        }
+        Ok(())
+    }
+
+    async fn list_network_egress_pool_members(
+        &self,
+        pool_id: Uuid,
+    ) -> Result<Vec<domain::NetworkEgressPoolMember>> {
+        Ok(sqlx::query(
+            r#"
+                select * from network_egress_pool_members
+                where pool_id = $1
+                order by sequence asc, id asc
+            "#,
+        )
+        .bind(pool_id)
+        .fetch_all(self.pool())
+        .await?
+        .into_iter()
+        .map(pool_member)
+        .collect())
+    }
+
+    async fn create_network_egress_pool_member(
+        &self,
+        input: &CreateNetworkEgressPoolMemberInput,
+    ) -> Result<domain::NetworkEgressPoolMember> {
+        let row = sqlx::query(
+            r#"
+                insert into network_egress_pool_members (
+                    id, pool_id, provider_id, provider_egress_key, enabled, sequence,
+                    created_by, updated_by
+                ) values ($1, $2, $3, $4, $5, $6, $7, $7)
+                returning *
+            "#,
+        )
+        .bind(input.member_id)
+        .bind(input.pool_id)
+        .bind(input.provider_id)
+        .bind(&input.provider_egress_key)
+        .bind(input.enabled)
+        .bind(input.sequence)
+        .bind(input.actor_user_id)
+        .fetch_one(self.pool())
+        .await?;
+        Ok(pool_member(row))
+    }
+
+    async fn update_network_egress_pool_member(
+        &self,
+        input: &UpdateNetworkEgressPoolMemberInput,
+    ) -> Result<domain::NetworkEgressPoolMember> {
+        let row = sqlx::query(
+            r#"
+                update network_egress_pool_members
+                set enabled = $3, sequence = $4, updated_by = $5, updated_at = now()
+                where pool_id = $1 and id = $2
+                returning *
+            "#,
+        )
+        .bind(input.pool_id)
+        .bind(input.member_id)
+        .bind(input.enabled)
+        .bind(input.sequence)
+        .bind(input.actor_user_id)
+        .fetch_optional(self.pool())
+        .await?;
+        row.map(pool_member).ok_or_else(|| {
+            anyhow::anyhow!(control_plane::errors::ControlPlaneError::NotFound(
+                "network_egress_pool_member"
+            ))
+        })
+    }
+
+    async fn delete_network_egress_pool_member(
+        &self,
+        pool_id: Uuid,
+        member_id: Uuid,
+    ) -> Result<()> {
+        let result =
+            sqlx::query("delete from network_egress_pool_members where pool_id = $1 and id = $2")
+                .bind(pool_id)
+                .bind(member_id)
+                .execute(self.pool())
+                .await?;
+        if result.rows_affected() == 0 {
+            return Err(control_plane::errors::ControlPlaneError::NotFound(
+                "network_egress_pool_member",
+            )
+            .into());
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use control_plane::ports::{PluginRepository, UpsertPluginInstallationInput};
+    use control_plane::{
+        network_egress_pool::NetworkEgressPoolService,
+        ports::{
+            CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
+            NetworkEgressPoolRepository, PluginRepository, UpsertPluginInstallationInput,
+        },
+    };
     use domain::{
         ExtensionCategory, ExtensionSignatureStatus, PluginDesiredState, PluginVerificationStatus,
     };
@@ -352,5 +569,84 @@ mod tests {
                 .await
                 .expect("prior projection should remain readable");
         assert_eq!(retained, initial);
+    }
+
+    #[tokio::test]
+    async fn ac_007_pool_member_preserves_missing_provider_reference_without_runtime_lease_fields()
+    {
+        let (store, actor) = store().await;
+        let pool_id = Uuid::now_v7();
+        NetworkEgressPoolRepository::create_network_egress_pool(
+            &store,
+            &CreateNetworkEgressPoolInput {
+                pool_id,
+                display_name: "Stable references".to_string(),
+                actor_user_id: actor.id,
+            },
+        )
+        .await
+        .expect("pool should persist");
+        let provider_id = Uuid::now_v7();
+        let member_id = Uuid::now_v7();
+        NetworkEgressPoolRepository::create_network_egress_pool_member(
+            &store,
+            &CreateNetworkEgressPoolMemberInput {
+                member_id,
+                pool_id,
+                provider_id,
+                provider_egress_key: "gone-egress".to_string(),
+                enabled: true,
+                sequence: 10,
+                actor_user_id: actor.id,
+            },
+        )
+        .await
+        .expect("durable reference should persist even when a provider later disappears");
+
+        let duplicate = NetworkEgressPoolRepository::create_network_egress_pool_member(
+            &store,
+            &CreateNetworkEgressPoolMemberInput {
+                member_id: Uuid::now_v7(),
+                pool_id,
+                provider_id,
+                provider_egress_key: "gone-egress".to_string(),
+                enabled: true,
+                sequence: 20,
+                actor_user_id: actor.id,
+            },
+        )
+        .await;
+        assert!(
+            duplicate.is_err(),
+            "stable pool references must be unique per pool"
+        );
+
+        let view = NetworkEgressPoolService::new(store.clone())
+            .list()
+            .await
+            .expect("missing provider should project instead of discarding the member");
+        assert_eq!(view[0].members[0].member.id, member_id);
+        assert_eq!(
+            view[0].members[0].health,
+            domain::NetworkEgressPoolMemberHealth::Invalid
+        );
+
+        let columns = sqlx::query_scalar::<_, String>(
+            r#"
+                select column_name from information_schema.columns
+                where table_schema = current_schema()
+                    and table_name = 'network_egress_pool_members'
+                order by column_name
+            "#,
+        )
+        .fetch_all(store.pool())
+        .await
+        .expect("pool member columns should be readable");
+        for forbidden in ["http_proxy_url", "port", "lease_id", "cleanup_token"] {
+            assert!(
+                !columns.iter().any(|column| column == forbidden),
+                "pool members must not persist runtime lease field {forbidden}"
+            );
+        }
     }
 }

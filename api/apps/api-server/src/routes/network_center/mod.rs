@@ -25,6 +25,8 @@ use crate::{
     },
 };
 
+pub mod pools;
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateNetworkEgressProviderBody {
     pub installation_id: String,
@@ -91,6 +93,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
                 ConsoleOperation("network_egress_providers.sync".to_string()),
             ),
         )
+        .merge(pools::route_assembly())
 }
 
 fn service(

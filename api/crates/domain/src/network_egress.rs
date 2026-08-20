@@ -66,3 +66,62 @@ pub struct NetworkEgressProjectionRecord {
     pub availability: String,
     pub synced_at: OffsetDateTime,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NetworkEgressPoolSelectionStrategy {
+    HealthyFirst,
+}
+
+impl NetworkEgressPoolSelectionStrategy {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::HealthyFirst => "healthy_first",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NetworkEgressPoolMemberHealth {
+    Healthy,
+    Unhealthy,
+    Invalid,
+}
+
+impl NetworkEgressPoolMemberHealth {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Healthy => "healthy",
+            Self::Unhealthy => "unhealthy",
+            Self::Invalid => "invalid",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkEgressPool {
+    pub id: Uuid,
+    pub display_name: String,
+    pub selection_strategy: NetworkEgressPoolSelectionStrategy,
+    pub created_by: Uuid,
+    pub updated_by: Uuid,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
+/// A durable reference to a provider descriptor. Runtime proxy leases deliberately do not cross
+/// this boundary: each consumer obtains a fresh lease only after selecting this member.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkEgressPoolMember {
+    pub id: Uuid,
+    pub pool_id: Uuid,
+    pub provider_id: Uuid,
+    pub provider_egress_key: String,
+    pub enabled: bool,
+    pub sequence: i32,
+    pub created_by: Uuid,
+    pub updated_by: Uuid,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}

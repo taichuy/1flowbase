@@ -433,6 +433,22 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     ),
     settings("network_egress_providers.list", "system.network-center"),
     settings("network_egress_providers.sync", "system.network-center"),
+    settings("network_egress_pools.create", "system.network-center"),
+    settings("network_egress_pools.delete", "system.network-center"),
+    settings("network_egress_pools.list", "system.network-center"),
+    settings("network_egress_pools.update", "system.network-center"),
+    settings(
+        "network_egress_pool_members.create",
+        "system.network-center",
+    ),
+    settings(
+        "network_egress_pool_members.delete",
+        "system.network-center",
+    ),
+    settings(
+        "network_egress_pool_members.update",
+        "system.network-center",
+    ),
     other("plugins.artifact.install", "other.plugins"),
     other("plugins.artifact.refresh", "other.plugins"),
     other("plugins.assign", "other.plugins"),

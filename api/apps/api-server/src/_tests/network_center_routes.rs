@@ -35,3 +35,33 @@ async fn network_center_provider_registry_rejects_session_without_feature_scope(
 
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
+
+/// AC-015: pool state is protected by the same backend-owned Network Center feature scope.
+#[tokio::test]
+async fn network_center_pool_registry_rejects_session_without_feature_scope() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "network-pool-without-scope",
+        "temp-pass",
+    )
+    .await;
+    let (cookie, _) =
+        login_and_capture_cookie(&app, "network-pool-without-scope", "temp-pass").await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/network-center/pools")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .expect("request should be valid"),
+        )
+        .await
+        .expect("router should return a response");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}

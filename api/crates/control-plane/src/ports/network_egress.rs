@@ -36,6 +36,40 @@ pub struct RecordNetworkEgressSyncFailureInput {
     pub actor_user_id: Uuid,
 }
 
+#[derive(Debug, Clone)]
+pub struct CreateNetworkEgressPoolInput {
+    pub pool_id: Uuid,
+    pub display_name: String,
+    pub actor_user_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateNetworkEgressPoolInput {
+    pub pool_id: Uuid,
+    pub display_name: String,
+    pub actor_user_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateNetworkEgressPoolMemberInput {
+    pub member_id: Uuid,
+    pub pool_id: Uuid,
+    pub provider_id: Uuid,
+    pub provider_egress_key: String,
+    pub enabled: bool,
+    pub sequence: i32,
+    pub actor_user_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateNetworkEgressPoolMemberInput {
+    pub pool_id: Uuid,
+    pub member_id: Uuid,
+    pub enabled: bool,
+    pub sequence: i32,
+    pub actor_user_id: Uuid,
+}
+
 #[async_trait]
 pub trait NetworkEgressRepository: Send + Sync {
     async fn get_network_egress_provider(
@@ -66,6 +100,41 @@ pub trait NetworkEgressRepository: Send + Sync {
         input: &RecordNetworkEgressSyncFailureInput,
     ) -> anyhow::Result<domain::NetworkEgressProviderRecord>;
     async fn append_audit_log(&self, event: &domain::AuditLogRecord) -> anyhow::Result<()>;
+}
+
+#[async_trait]
+pub trait NetworkEgressPoolRepository: Send + Sync {
+    async fn get_network_egress_pool(
+        &self,
+        pool_id: Uuid,
+    ) -> anyhow::Result<Option<domain::NetworkEgressPool>>;
+    async fn list_network_egress_pools(&self) -> anyhow::Result<Vec<domain::NetworkEgressPool>>;
+    async fn create_network_egress_pool(
+        &self,
+        input: &CreateNetworkEgressPoolInput,
+    ) -> anyhow::Result<domain::NetworkEgressPool>;
+    async fn update_network_egress_pool(
+        &self,
+        input: &UpdateNetworkEgressPoolInput,
+    ) -> anyhow::Result<domain::NetworkEgressPool>;
+    async fn delete_network_egress_pool(&self, pool_id: Uuid) -> anyhow::Result<()>;
+    async fn list_network_egress_pool_members(
+        &self,
+        pool_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::NetworkEgressPoolMember>>;
+    async fn create_network_egress_pool_member(
+        &self,
+        input: &CreateNetworkEgressPoolMemberInput,
+    ) -> anyhow::Result<domain::NetworkEgressPoolMember>;
+    async fn update_network_egress_pool_member(
+        &self,
+        input: &UpdateNetworkEgressPoolMemberInput,
+    ) -> anyhow::Result<domain::NetworkEgressPoolMember>;
+    async fn delete_network_egress_pool_member(
+        &self,
+        pool_id: Uuid,
+        member_id: Uuid,
+    ) -> anyhow::Result<()>;
 }
 
 #[async_trait]

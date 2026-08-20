@@ -30,6 +30,7 @@ pub mod member;
 pub mod model_definition;
 pub mod model_provider;
 pub mod network_egress;
+pub mod network_egress_pool;
 pub mod node_contribution;
 pub mod orchestration_runtime;
 pub mod plugin_isolation;

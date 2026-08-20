@@ -147,8 +147,9 @@ pub use modeling::{
     GENERAL_DATA_MODEL_TEMPLATE_CODE, GENERAL_DATA_MODEL_TEMPLATE_VERSION,
 };
 pub use network_egress::{
-    NetworkEgressHealthStatus, NetworkEgressProjectionRecord, NetworkEgressProviderLifecycle,
-    NetworkEgressProviderRecord,
+    NetworkEgressHealthStatus, NetworkEgressPool, NetworkEgressPoolMember,
+    NetworkEgressPoolMemberHealth, NetworkEgressPoolSelectionStrategy,
+    NetworkEgressProjectionRecord, NetworkEgressProviderLifecycle, NetworkEgressProviderRecord,
 };
 pub use node_contribution::{NodeContributionDependencyStatus, NodeContributionRegistryEntry};
 pub use orchestration::{

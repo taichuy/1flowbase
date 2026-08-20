@@ -142,6 +142,13 @@ use utoipa::OpenApi;
         crate::routes::network_center::create_network_egress_provider,
         crate::routes::network_center::update_network_egress_provider_lifecycle,
         crate::routes::network_center::sync_network_egress_provider,
+        crate::routes::network_center::pools::list_network_egress_pools,
+        crate::routes::network_center::pools::create_network_egress_pool,
+        crate::routes::network_center::pools::update_network_egress_pool,
+        crate::routes::network_center::pools::delete_network_egress_pool,
+        crate::routes::network_center::pools::create_network_egress_pool_member,
+        crate::routes::network_center::pools::update_network_egress_pool_member,
+        crate::routes::network_center::pools::delete_network_egress_pool_member,
     ),
     components(schemas(
         crate::routes::plugins::InstallPluginBody,
@@ -325,6 +332,12 @@ use utoipa::OpenApi;
         crate::routes::network_center::NetworkEgressProjectionResponse,
         crate::routes::network_center::NetworkEgressProviderResponse,
         crate::routes::network_center::UpdateNetworkEgressProviderLifecycleBody,
+        crate::routes::network_center::pools::CreateNetworkEgressPoolBody,
+        crate::routes::network_center::pools::UpdateNetworkEgressPoolBody,
+        crate::routes::network_center::pools::CreateNetworkEgressPoolMemberBody,
+        crate::routes::network_center::pools::UpdateNetworkEgressPoolMemberBody,
+        crate::routes::network_center::pools::NetworkEgressPoolResponse,
+        crate::routes::network_center::pools::NetworkEgressPoolMemberResponse,
     ))
 )]
 pub(super) struct ExtensionsOpenApi;

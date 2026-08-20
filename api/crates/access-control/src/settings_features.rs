@@ -679,6 +679,13 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("POST", "/api/console/settings/network-center/providers"),
                 ("PATCH", "/api/console/settings/network-center/providers/{id}"),
                 ("POST", "/api/console/settings/network-center/providers/{id}/sync"),
+                ("GET", "/api/console/network-center/pools"),
+                ("POST", "/api/console/network-center/pools"),
+                ("PATCH", "/api/console/network-center/pools/{pool_id}"),
+                ("DELETE", "/api/console/network-center/pools/{pool_id}"),
+                ("POST", "/api/console/network-center/pools/{pool_id}/members"),
+                ("PATCH", "/api/console/network-center/pools/{pool_id}/members/{member_id}"),
+                ("DELETE", "/api/console/network-center/pools/{pool_id}/members/{member_id}"),
             ]),
         },
         SettingsFeatureRegistration {
