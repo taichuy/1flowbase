@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use plugin_framework::{
     data_source_contract::{
@@ -21,6 +21,7 @@ use serde_json::Value;
 use crate::{
     data_source_stdio::call_executable,
     package_loader::{LoadedDataSourcePackage, PackageLoader},
+    plugin_scope::PluginScope,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -62,42 +63,49 @@ pub struct DataSourceHost {
     loaded_packages: HashMap<String, LoadedDataSourcePackage>,
     legacy_manifest_eligibilities:
         HashMap<String, plugin_framework::LegacyInstalledManifestEligibility>,
+    scopes: HashMap<String, Arc<PluginScope>>,
+    next_generation: HashMap<String, u64>,
 }
 
 impl DataSourceHost {
-    pub fn unload(&mut self, plugin_id: &str) {
-        self.loaded_packages.remove(plugin_id);
-        self.legacy_manifest_eligibilities.remove(plugin_id);
+    pub fn is_loaded(&self, plugin_id: &str) -> bool {
+        self.loaded_packages.contains_key(plugin_id) && self.scopes.contains_key(plugin_id)
     }
 
-    pub fn load(
+    pub async fn unload(&mut self, plugin_id: &str) -> FrameworkResult<()> {
+        let scope = self.scopes.remove(plugin_id);
+        if let Some(scope) = scope {
+            scope.dispose().await?;
+        }
+        self.loaded_packages.remove(plugin_id);
+        self.legacy_manifest_eligibilities.remove(plugin_id);
+        Ok(())
+    }
+
+    pub async fn load(
         &mut self,
         package_root: impl AsRef<std::path::Path>,
     ) -> FrameworkResult<LoadedDataSourceSummary> {
         let loaded = PackageLoader::load_data_source(package_root)?;
         let summary = LoadedDataSourceSummary::from_loaded(&loaded);
-        self.loaded_packages
-            .insert(summary.plugin_id.clone(), loaded);
-        self.legacy_manifest_eligibilities
-            .remove(&summary.plugin_id);
+        self.replace_loaded(summary.plugin_id.clone(), loaded, None)
+            .await?;
         Ok(summary)
     }
 
-    pub fn load_legacy_installed(
+    pub async fn load_legacy_installed(
         &mut self,
         package_root: impl AsRef<std::path::Path>,
         eligibility: &plugin_framework::LegacyInstalledManifestEligibility,
     ) -> FrameworkResult<LoadedDataSourceSummary> {
         let loaded = PackageLoader::load_legacy_installed_data_source(package_root, eligibility)?;
         let summary = LoadedDataSourceSummary::from_loaded(&loaded);
-        self.loaded_packages
-            .insert(summary.plugin_id.clone(), loaded);
-        self.legacy_manifest_eligibilities
-            .insert(summary.plugin_id.clone(), eligibility.clone());
+        self.replace_loaded(summary.plugin_id.clone(), loaded, Some(eligibility.clone()))
+            .await?;
         Ok(summary)
     }
 
-    pub fn reload(&mut self, plugin_id: &str) -> FrameworkResult<LoadedDataSourceSummary> {
+    pub async fn reload(&mut self, plugin_id: &str) -> FrameworkResult<LoadedDataSourceSummary> {
         let package_root = self.loaded_package(plugin_id)?.package_root.clone();
         let loaded = match self.legacy_manifest_eligibilities.get(plugin_id) {
             Some(eligibility) => {
@@ -106,9 +114,12 @@ impl DataSourceHost {
             None => PackageLoader::load_data_source(&package_root)?,
         };
         let summary = LoadedDataSourceSummary::from_loaded(&loaded);
-        self.loaded_packages.remove(plugin_id);
-        self.loaded_packages
-            .insert(summary.plugin_id.clone(), loaded);
+        self.replace_loaded(
+            summary.plugin_id.clone(),
+            loaded,
+            self.legacy_manifest_eligibilities.get(plugin_id).cloned(),
+        )
+        .await?;
         Ok(summary)
     }
 
@@ -512,8 +523,39 @@ impl DataSourceHost {
         input: Value,
     ) -> FrameworkResult<impl std::future::Future<Output = FrameworkResult<Value>> + Send + 'static>
     {
+        let lease = self.scope(plugin_id)?.admit()?;
         let loaded = self.loaded_package(plugin_id)?.clone();
-        Ok(async move { Self::call_runtime_loaded(loaded, method, input).await })
+        Ok(async move {
+            let _lease = lease;
+            Self::call_runtime_loaded(loaded, method, input).await
+        })
+    }
+
+    async fn replace_loaded(
+        &mut self,
+        plugin_id: String,
+        loaded: LoadedDataSourcePackage,
+        legacy_eligibility: Option<plugin_framework::LegacyInstalledManifestEligibility>,
+    ) -> FrameworkResult<()> {
+        self.unload(&plugin_id).await?;
+        let next_generation = self.next_generation.entry(plugin_id.clone()).or_insert(0);
+        *next_generation = next_generation.saturating_add(1);
+        self.scopes
+            .insert(plugin_id.clone(), PluginScope::mounted(*next_generation));
+        self.loaded_packages.insert(plugin_id.clone(), loaded);
+        if let Some(legacy_eligibility) = legacy_eligibility {
+            self.legacy_manifest_eligibilities
+                .insert(plugin_id, legacy_eligibility);
+        }
+        Ok(())
+    }
+
+    fn scope(&self, plugin_id: &str) -> FrameworkResult<&Arc<PluginScope>> {
+        self.scopes.get(plugin_id).ok_or_else(|| {
+            PluginFrameworkError::invalid_provider_package(format!(
+                "data source scope is not mounted: {plugin_id}"
+            ))
+        })
     }
 
     async fn call_runtime_loaded(

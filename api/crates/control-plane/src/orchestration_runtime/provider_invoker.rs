@@ -1728,7 +1728,7 @@ where
             installation.desired_state,
             domain::PluginDesiredState::Disabled
         ) {
-            return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
+            return Err(ControlPlaneError::PluginUnavailable.into());
         }
         if !instance.enabled_model_ids.is_empty()
             && !instance
@@ -1777,7 +1777,7 @@ where
             return Err(ControlPlaneError::InvalidInput("installation_id").into());
         }
         if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
-            return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
+            return Err(ControlPlaneError::PluginUnavailable.into());
         }
         let plugin_id = installation.plugin_id.clone();
         let credit_commands_allowed = installation.trust_level == "verified_official";

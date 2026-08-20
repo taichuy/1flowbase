@@ -61,4 +61,40 @@ impl RuntimeTarget {
     pub fn current_host() -> FrameworkResult<Self> {
         Self::from_host_parts(std::env::consts::OS, std::env::consts::ARCH)
     }
+
+    pub fn from_executable_bytes(bytes: &[u8]) -> FrameworkResult<Option<Self>> {
+        if !bytes.starts_with(b"\x7fELF") {
+            return Ok(None);
+        }
+        if bytes.len() < 20 {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "ELF runtime header is incomplete",
+            ));
+        }
+
+        let machine = match bytes[5] {
+            1 => u16::from_le_bytes([bytes[18], bytes[19]]),
+            2 => u16::from_be_bytes([bytes[18], bytes[19]]),
+            _ => {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "ELF runtime uses an unsupported byte order",
+                ));
+            }
+        };
+        let target = match machine {
+            0x003e => Self::from_rust_target_triple("x86_64-unknown-linux-musl"),
+            0x00b7 => Self::from_rust_target_triple("aarch64-unknown-linux-musl"),
+            _ => {
+                return Err(PluginFrameworkError::invalid_provider_package(format!(
+                    "unsupported ELF runtime architecture: {machine}"
+                )));
+            }
+        }?;
+
+        Ok(Some(target))
+    }
+
+    pub fn is_compatible_with_host(&self, host: &Self) -> bool {
+        self.os == host.os && self.arch == host.arch
+    }
 }

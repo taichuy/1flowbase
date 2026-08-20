@@ -27,6 +27,7 @@ import {
 import '../../components/model-providers/model-provider-panel.css';
 import {
   getErrorMessage,
+  getPluginUploadErrorMessage,
   MODEL_PROVIDER_MAIN_INSTANCE_QUERY_KEY_PREFIX,
   MODEL_PROVIDER_MODELS_QUERY_KEY_PREFIX,
   resetUploadState,
@@ -307,6 +308,7 @@ export function SettingsModelProvidersSection({
     refreshMutation,
     revealSecretMutation,
     deleteMutation,
+    familyDeleteMutation,
     officialInstallMutation,
     uploadMutation,
     versionMutation
@@ -337,11 +339,12 @@ export function SettingsModelProvidersSection({
     getErrorMessage(validateMutation.error) ??
     getErrorMessage(refreshMutation.error) ??
     getErrorMessage(deleteMutation.error) ??
+    getErrorMessage(familyDeleteMutation.error) ??
     getErrorMessage(officialInstallMutation.error) ??
     getErrorMessage(versionMutation.error) ??
     getErrorMessage(pluginTaskQuery.error);
   const uploadErrorMessage =
-    uploadValidationMessage ?? getErrorMessage(uploadMutation.error);
+    uploadValidationMessage ?? getPluginUploadErrorMessage(uploadMutation.error);
   const sectionStatus = useMemo(
     () =>
       errorMessage ? (
@@ -468,6 +471,11 @@ export function SettingsModelProvidersSection({
                     ? versionMutation.variables.providerCode
                     : null
                 }
+                uninstallingProviderCode={
+                  familyDeleteMutation.isPending
+                    ? familyDeleteMutation.variables
+                    : null
+                }
                 onViewInstances={(entry) => {
                   setInstanceModalState({
                     providerCode: entry.provider_code,
@@ -489,6 +497,9 @@ export function SettingsModelProvidersSection({
                     providerCode: entry.provider_code,
                     installationId
                   });
+                }}
+                onUninstall={(entry) => {
+                  familyDeleteMutation.mutate(entry.provider_code);
                 }}
               />
             </Layout.Content>

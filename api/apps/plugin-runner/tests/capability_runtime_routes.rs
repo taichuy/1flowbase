@@ -231,7 +231,7 @@ async fn request_json(app: &Router, method: Method, uri: &str, body: Value) -> (
 async fn capability_runtime_routes_cover_validate_resolve_and_execute() {
     let package = make_fixture_package();
     let mut capability_host = CapabilityHost::default();
-    capability_host.load(package.path()).unwrap();
+    capability_host.load(package.path()).await.unwrap();
     let app = app_with_state(AppState::with_capability_host(capability_host));
 
     let (status, validate_payload) = request_json(

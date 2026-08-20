@@ -339,7 +339,7 @@ async fn model_provider_service_refresh_models_blocks_when_current_node_artifact
 
     assert!(matches!(
         error.downcast_ref::<ControlPlaneError>(),
-        Some(ControlPlaneError::Conflict("plugin_artifact_missing"))
+        Some(ControlPlaneError::PluginUnavailable)
     ));
 }
 

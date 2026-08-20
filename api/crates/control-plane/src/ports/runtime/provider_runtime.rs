@@ -23,7 +23,7 @@ pub trait ProviderRuntimePort: Send + Sync {
 
     async fn deactivate_plugin(
         &self,
-        _installation: &domain::LocalPluginInstallationRecord,
+        _installation: &domain::PluginInstallationRecord,
     ) -> anyhow::Result<()> {
         Ok(())
     }

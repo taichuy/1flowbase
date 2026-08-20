@@ -802,7 +802,7 @@ where
             .ok_or(ControlPlaneError::NotFound("model_provider_instance"))?;
         let installation = self.ready_installation(instance.installation_id).await?;
         if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
-            return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
+            return Err(ControlPlaneError::PluginUnavailable.into());
         }
         let package = load_installed_provider_package(&installation)?;
         ensure_model_provider_instance_transition(
@@ -1022,9 +1022,7 @@ where
                     if installation.availability_status()
                         != domain::PluginAvailabilityStatus::Available
                     {
-                        return Err(
-                            ControlPlaneError::Conflict("plugin_installation_unavailable").into(),
-                        );
+                        return Err(ControlPlaneError::PluginUnavailable.into());
                     }
                     let package = load_installed_provider_package(&installation)?;
                     let (patch_public_config, patch_secret_config) =
@@ -1070,9 +1068,7 @@ where
                     ) || installation.availability_status()
                         != domain::PluginAvailabilityStatus::Available
                     {
-                        return Err(
-                            ControlPlaneError::Conflict("plugin_installation_unavailable").into(),
-                        );
+                        return Err(ControlPlaneError::PluginUnavailable.into());
                     }
                     let package = load_installed_provider_package(&installation)?;
                     let (public_config, secret_config) =

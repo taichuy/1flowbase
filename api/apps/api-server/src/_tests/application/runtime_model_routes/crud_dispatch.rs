@@ -947,7 +947,7 @@ async fn runtime_model_routes_external_source_runtime_blocks_unassigned_or_unava
                 ..RuntimeDataSourceSeedOptions::default()
             },
             StatusCode::CONFLICT,
-            "plugin_installation_unavailable",
+            "plugin_unavailable",
         ),
         (
             "load_failed",
@@ -960,7 +960,7 @@ async fn runtime_model_routes_external_source_runtime_blocks_unassigned_or_unava
                 ..RuntimeDataSourceSeedOptions::default()
             },
             StatusCode::CONFLICT,
-            "plugin_installation_unavailable",
+            "plugin_unavailable",
         ),
         (
             "artifact_missing",
@@ -973,7 +973,7 @@ async fn runtime_model_routes_external_source_runtime_blocks_unassigned_or_unava
                 ..RuntimeDataSourceSeedOptions::default()
             },
             StatusCode::CONFLICT,
-            "plugin_installation_unavailable",
+            "plugin_unavailable",
         ),
         (
             "contract_mismatch",

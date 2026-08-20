@@ -971,7 +971,7 @@ async fn ac_013_checked_in_template_executes_generic_model_operation_over_stdio(
     let package_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../plugins/templates/data_source_http_fixture");
     let mut host = DataSourceHost::default();
-    let loaded = host.load(package_root).unwrap();
+    let loaded = host.load(package_root).await.unwrap();
     let templates = host.data_model_templates(&loaded.plugin_id).unwrap();
     assert_eq!(templates.len(), 1);
     assert_eq!(templates[0].operations[0].code, "archive_contact");
@@ -993,7 +993,7 @@ async fn ac_013_generic_model_operation_fails_closed_for_unknown_handler_and_mal
     let package_root = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../plugins/templates/data_source_http_fixture");
     let mut host = DataSourceHost::default();
-    let loaded = host.load(package_root).unwrap();
+    let loaded = host.load(package_root).await.unwrap();
 
     let mut unknown = checked_in_model_operation_input(json!({}));
     unknown.handler_ref.code = "unknown_handler".to_string();

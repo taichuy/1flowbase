@@ -177,13 +177,13 @@ fn validate_dynamic_installation(
             domain::PluginRuntimeStatus::Inactive | domain::PluginRuntimeStatus::Active
         )
     {
-        return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
+        return Err(ControlPlaneError::PluginUnavailable.into());
     }
     let local_path = installation
         .local_path()
-        .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?;
+        .ok_or(ControlPlaneError::PluginUnavailable)?;
     if !Path::new(local_path).exists() {
-        return Err(ControlPlaneError::Conflict("plugin_artifact_path_missing").into());
+        return Err(ControlPlaneError::PluginUnavailable.into());
     }
     if installation.plugin_id.trim().is_empty() || installation.provider_code.trim().is_empty() {
         return Err(ControlPlaneError::InvalidInput("plugin_installation").into());

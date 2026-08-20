@@ -33,7 +33,9 @@ pub(crate) async fn commit_plugin_installation(
                 source_kind = excluded.source_kind,
                 trust_level = excluded.trust_level,
                 verification_status = excluded.verification_status,
-                desired_state = excluded.desired_state,
+                -- Artifact reinstallation restores the missing artifact; it must not reset the
+                -- durable intent that decides whether the retained configuration runs again.
+                desired_state = extension_installations.desired_state,
                 expected_checksum = excluded.expected_checksum,
                 signature_status = excluded.signature_status,
                 signature_algorithm = excluded.signature_algorithm,

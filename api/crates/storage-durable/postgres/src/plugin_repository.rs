@@ -171,7 +171,8 @@ impl PluginRepository for PgControlPlaneStore {
                 source_kind = excluded.source_kind,
                 trust_level = excluded.trust_level,
                 verification_status = excluded.verification_status,
-                desired_state = excluded.desired_state,
+                -- Reinstalling a stable plugin identity must preserve its durable desired state.
+                desired_state = extension_installations.desired_state,
                 expected_checksum = excluded.expected_checksum,
                 signature_status = excluded.signature_status,
                 signature_algorithm = excluded.signature_algorithm,

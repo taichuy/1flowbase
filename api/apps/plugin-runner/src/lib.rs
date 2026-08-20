@@ -51,6 +51,7 @@ pub mod capability_stdio;
 pub mod data_source_host;
 pub mod data_source_stdio;
 pub mod package_loader;
+mod plugin_scope;
 pub mod provider_host;
 pub mod stdio_runtime;
 
@@ -439,6 +440,7 @@ async fn load_data_source(
 ) -> Result<Json<LoadedDataSourceSummary>, (StatusCode, Json<ErrorResponse>)> {
     let mut host = state.data_source_host.write().await;
     host.load(&request.package_root)
+        .await
         .map(Json)
         .map_err(map_framework_error)
 }
@@ -449,6 +451,7 @@ async fn reload_data_source(
 ) -> Result<Json<LoadedDataSourceSummary>, (StatusCode, Json<ErrorResponse>)> {
     let mut host = state.data_source_host.write().await;
     host.reload(&request.plugin_id)
+        .await
         .map(Json)
         .map_err(map_framework_error)
 }

@@ -395,6 +395,19 @@
   gap: 16px;
 }
 
+.model-provider-panel__upload-file {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  width: 100%;
+}
+
+.model-provider-panel__upload-file-name {
+  flex: 1;
+  min-width: 0;
+}
+
 .model-provider-panel__drawer-note {
   margin: 12px 0 18px;
 }

@@ -496,7 +496,7 @@ async fn model_provider_service_update_instance_blocks_when_current_node_artifac
 
     assert!(matches!(
         error.downcast_ref::<ControlPlaneError>(),
-        Some(ControlPlaneError::Conflict("plugin_artifact_missing"))
+        Some(ControlPlaneError::PluginUnavailable)
     ));
 }
 
@@ -578,7 +578,7 @@ async fn model_provider_service_blocks_previously_failed_current_node_runtime_wi
 
     assert!(matches!(
         error.downcast_ref::<ControlPlaneError>(),
-        Some(ControlPlaneError::Conflict("plugin_runtime_load_failed"))
+        Some(ControlPlaneError::PluginUnavailable)
     ));
     assert_eq!(
         artifact.artifact_status,

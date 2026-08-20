@@ -54,10 +54,12 @@ export function ModelProviderCatalogPanel({
   canManage,
   switchingProviderCode,
   upgradingProviderCode,
+  uninstallingProviderCode,
   onCreate,
   onViewInstances,
   onUpgradeLatest,
-  onSwitchVersion
+  onSwitchVersion,
+  onUninstall
 }: {
   overviewRows: { key: string; label: string; value: string }[];
   entries: SettingsPluginFamilyEntry[];
@@ -69,6 +71,7 @@ export function ModelProviderCatalogPanel({
   canManage: boolean;
   switchingProviderCode?: string | null;
   upgradingProviderCode?: string | null;
+  uninstallingProviderCode?: string | null;
   onCreate: (entry: SettingsPluginFamilyEntry) => void;
   onViewInstances: (entry: SettingsPluginFamilyEntry) => void;
   onUpgradeLatest: (entry: SettingsPluginFamilyEntry) => void;
@@ -76,6 +79,7 @@ export function ModelProviderCatalogPanel({
     entry: SettingsPluginFamilyEntry,
     installationId: string
   ) => void;
+  onUninstall: (entry: SettingsPluginFamilyEntry) => void;
 }) {
   return (
     <ScrollableSurface className="model-provider-panel__catalog">
@@ -109,7 +113,7 @@ export function ModelProviderCatalogPanel({
                 {
                   title: i18nText('settings', 'auto.operation'),
                   key: 'actions',
-                  width: 220,
+                  width: 280,
                   render: (_: unknown, entry: SettingsPluginFamilyEntry) => {
                     const localArtifact = entry.current_local_artifact;
                     const artifactUnavailable = isPluginArtifactUnavailable(
@@ -117,6 +121,8 @@ export function ModelProviderCatalogPanel({
                     );
                     const upgrading =
                       upgradingProviderCode === entry.provider_code;
+                    const uninstalling =
+                      uninstallingProviderCode === entry.provider_code;
 
                     return (
                       <Space
@@ -134,7 +140,7 @@ export function ModelProviderCatalogPanel({
                         </Button>
                         <Button
                           type="link"
-                          disabled={artifactUnavailable}
+                          disabled={artifactUnavailable || uninstalling}
                           onClick={() => onCreate(entry)}
                         >
                           {i18nText('settings', 'auto.new')}
@@ -170,7 +176,7 @@ export function ModelProviderCatalogPanel({
                               <Button
                                 type="link"
                                 loading={upgrading}
-                                disabled={!entry.has_update}
+                                disabled={!entry.has_update || uninstalling}
                                 onClick={() => onUpgradeLatest(entry)}
                               >
                                 {i18nText('settings', 'auto.update')}
@@ -178,6 +184,14 @@ export function ModelProviderCatalogPanel({
                             </Badge>
                           </span>
                         </Tooltip>
+                        <Button
+                          danger
+                          type="link"
+                          loading={uninstalling}
+                          onClick={() => onUninstall(entry)}
+                        >
+                          {i18nText('settings', 'auto.uninstall_plugin')}
+                        </Button>
                       </Space>
                     );
                   }
@@ -255,6 +269,9 @@ export function ModelProviderCatalogPanel({
                           { value1: entry.display_name }
                         )}
                         loading={switchingProviderCode === entry.provider_code}
+                        disabled={
+                          uninstallingProviderCode === entry.provider_code
+                        }
                         options={versionOptions}
                         onChange={(installationId) => {
                           if (

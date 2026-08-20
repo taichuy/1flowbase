@@ -15,17 +15,61 @@ use crate::{
     },
 };
 use domain::{ExtensionSignatureStatus, NodeContributionDependencyStatus, PluginTaskStatus};
+use plugin_framework::error::PluginFrameworkError;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::support::{
     actor_with_permissions, build_capability_plugin_package_bytes,
-    build_openai_compatible_package_bytes, build_signed_openai_upload_package,
+    build_openai_compatible_package_bytes,
+    build_openai_compatible_package_bytes_with_runtime_entry, build_signed_openai_upload_package,
     create_capability_plugin_fixture, create_frontend_block_fixture,
     create_js_dependency_pack_fixture, create_provider_fixture,
     create_provider_fixture_with_node_contribution, requested_locales, seed_test_installation,
     MemoryOfficialPluginSource, MemoryPluginManagementRepository, MemoryProviderRuntime,
 };
+
+#[tokio::test]
+async fn uploaded_native_package_for_another_platform_is_rejected_before_install_side_effects() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.configure.all"],
+    ));
+    let install_root =
+        std::env::temp_dir().join(format!("plugin-platform-mismatch-{}", Uuid::now_v7()));
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    );
+    let mut arm64_elf = vec![0_u8; 64];
+    arm64_elf[..4].copy_from_slice(b"\x7fELF");
+    arm64_elf[4] = 2;
+    arm64_elf[5] = 1;
+    arm64_elf[6] = 1;
+    arm64_elf[18] = 0xb7;
+
+    let error = service
+        .install_uploaded_plugin(InstallUploadedPluginCommand {
+            actor_user_id: repository.actor.user_id,
+            file_name: "openai-compatible-linux-arm64.1flowbasepkg".into(),
+            package_bytes: build_openai_compatible_package_bytes_with_runtime_entry(
+                "0.1.0", &arm64_elf,
+            ),
+        })
+        .await
+        .expect_err("an arm64 ELF must not install on the current x86_64 Linux host");
+
+    assert!(matches!(
+        error.downcast_ref::<PluginFrameworkError>(),
+        Some(PluginFrameworkError::PackageRuntimeTargetMismatch { .. })
+    ));
+    assert!(repository.list_installations().await.unwrap().is_empty());
+    assert!(repository.list_tasks().await.unwrap().is_empty());
+    let _ = fs::remove_dir_all(install_root);
+}
 
 #[tokio::test]
 async fn root_1545_ac_3_generic_inventory_node_artifact_dual_registers_runtime_plugin() {

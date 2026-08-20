@@ -44,6 +44,9 @@ impl IntoResponse for ApiError {
             Some(ControlPlaneError::PermissionDenied(reason)) => (StatusCode::FORBIDDEN, *reason),
             Some(ControlPlaneError::NotFound(name)) => (StatusCode::NOT_FOUND, *name),
             Some(ControlPlaneError::Conflict(name)) => (StatusCode::CONFLICT, *name),
+            Some(ControlPlaneError::PluginUnavailable) => {
+                (StatusCode::CONFLICT, "plugin_unavailable")
+            }
             Some(ControlPlaneError::InvalidInput(name)) => (StatusCode::BAD_REQUEST, *name),
             Some(ControlPlaneError::InvalidStateTransition { .. }) => {
                 (StatusCode::CONFLICT, "invalid_state_transition")
@@ -83,6 +86,9 @@ impl IntoResponse for ApiError {
             None => match self.0.downcast_ref::<PluginFrameworkError>() {
                 Some(PluginFrameworkError::RuntimeContract { .. }) => {
                     (StatusCode::BAD_GATEWAY, "provider_runtime")
+                }
+                Some(PluginFrameworkError::PackageRuntimeTargetMismatch { .. }) => {
+                    (StatusCode::BAD_REQUEST, "plugin_runtime_target_mismatch")
                 }
                 Some(_) => (StatusCode::BAD_REQUEST, "provider_package"),
                 None => {

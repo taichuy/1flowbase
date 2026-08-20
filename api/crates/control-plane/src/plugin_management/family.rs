@@ -205,7 +205,7 @@ where
             .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
         self.ensure_model_provider_target(&installation)?;
         let requires_restart = is_host_extension_installation(&installation);
-        let local_installation = self
+        let _local_installation = self
             .ready_current_node_installation(command.installation_id)
             .await?;
         let task = self
@@ -240,7 +240,7 @@ where
                 })
                 .await?;
             if !requires_restart {
-                self.runtime.deactivate_plugin(&local_installation).await?;
+                self.runtime.deactivate_plugin(&updated).await?;
                 self.mark_current_node_runtime_status(
                     &updated,
                     domain::PluginRuntimeStatus::Inactive,
@@ -430,10 +430,7 @@ where
     pub async fn delete_family(
         &self,
         command: DeletePluginFamilyCommand,
-    ) -> Result<domain::PluginTaskRecord>
-    where
-        R: ExtensionInstallationRepository,
-    {
+    ) -> Result<domain::PluginTaskRecord> {
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
             .await?;
@@ -451,23 +448,6 @@ where
         for installation in &installations {
             self.ensure_model_provider_target(installation)?;
         }
-        if installations
-            .iter()
-            .any(|installation| installation.source_kind == "builtin")
-        {
-            return Err(ControlPlaneError::Conflict("builtin_plugin_immutable").into());
-        }
-        for installation in &installations {
-            let decision = self
-                .repository
-                .extension_deletion_decision(&self.node_id, installation.id)
-                .await?
-                .ok_or(ControlPlaneError::NotFound("plugin_installation"))?;
-            if !decision.deletable {
-                return Err(ControlPlaneError::Conflict("plugin_family_referenced").into());
-            }
-        }
-
         let current_installation_id = self
             .repository
             .list_assignments(actor.current_workspace_id)
@@ -507,44 +487,63 @@ where
             )
             .await?;
 
-        let delete_result = async {
+        let uninstall_result = async {
             let instances = self
                 .repository
                 .list_instances_by_provider_code(&command.provider_code)
                 .await?;
-            let mut referenced_flow_count = 0_u64;
-            for instance in &instances {
-                referenced_flow_count += self
-                    .repository
-                    .count_instance_references(instance.workspace_id, instance.id)
-                    .await?;
+            // Runtime scopes own their resources. Dispose all of them before removing any
+            // artifact, so an unloaded family cannot retain a callable contribution.
+            for installation in &installations {
+                self.runtime.deactivate_plugin(installation).await?;
             }
 
-            for instance in &instances {
-                self.repository
-                    .delete_instance(instance.workspace_id, instance.id)
-                    .await?;
-            }
-
+            let mut artifacts = Vec::with_capacity(installations.len());
             let mut removed_paths = HashSet::<PathBuf>::new();
             for installation in &installations {
-                if let Some(artifact) = self
+                let artifact = self
                     .repository
                     .get_artifact_instance(&self.node_id, installation.id)
-                    .await?
-                {
-                    if let Some(local_path) = artifact.local_path {
+                    .await?;
+                if let Some(artifact) = &artifact {
+                    if let Some(local_path) = &artifact.local_path {
                         removed_paths.insert(PathBuf::from(local_path));
                     }
-                    if let Some(package_path) = artifact.package_path {
+                    if let Some(package_path) = &artifact.package_path {
                         removed_paths.insert(PathBuf::from(package_path));
                     }
                 }
-                self.repository.delete_installation(installation.id).await?;
+                artifacts.push((installation, artifact));
             }
-
             for path in &removed_paths {
                 remove_path_if_exists(path)?;
+            }
+
+            for (installation, artifact) in artifacts {
+                let artifact = artifact.as_ref();
+                self.repository
+                    .upsert_artifact_instance(&UpsertPluginArtifactInstanceInput {
+                        node_id: self.node_id.clone(),
+                        installation_id: installation.id,
+                        local_version: artifact
+                            .and_then(|item| item.local_version.clone())
+                            .or_else(|| Some(installation.plugin_version.clone())),
+                        local_checksum: artifact
+                            .and_then(|item| item.local_checksum.clone())
+                            .or_else(|| installation.expected_checksum.clone()),
+                        local_path: None,
+                        package_path: None,
+                        manifest_fingerprint: artifact
+                            .and_then(|item| item.manifest_fingerprint.clone()),
+                        artifact_status: domain::PluginArtifactInstanceStatus::Missing,
+                        runtime_status: domain::PluginRuntimeStatus::Inactive,
+                        availability_status: domain::PluginAvailabilityStatus::ArtifactMissing,
+                        checked_at: OffsetDateTime::now_utc(),
+                        last_error: Some("artifact_missing".to_string()),
+                        // A family is unavailable as a unit; a sibling version must not win.
+                        is_current: false,
+                    })
+                    .await?;
             }
 
             self.repository
@@ -553,37 +552,31 @@ where
                     Some(command.actor_user_id),
                     "plugin_family",
                     None,
-                    "plugin.family_deleted",
+                    "plugin.family_uninstalled",
                     json!({
                         "provider_code": command.provider_code,
-                        "deleted_instance_count": instances.len(),
-                        "deleted_installation_count": installations.len(),
-                        "referenced_flow_count": referenced_flow_count,
+                        "retained_instance_count": instances.len(),
+                        "retained_installation_count": installations.len(),
                     }),
                 ))
                 .await?;
 
-            Ok::<(usize, usize, u64), anyhow::Error>((
-                instances.len(),
-                installations.len(),
-                referenced_flow_count,
-            ))
+            Ok::<(usize, usize), anyhow::Error>((instances.len(), installations.len()))
         }
         .await;
 
-        match delete_result {
-            Ok((deleted_instance_count, deleted_installation_count, referenced_flow_count)) => {
+        match uninstall_result {
+            Ok((retained_instance_count, retained_installation_count)) => {
                 self.invalidate_model_routing_catalog(actor.current_workspace_id)
                     .await;
                 self.transition_task(
                     &running_task,
                     domain::PluginTaskStatus::Succeeded,
-                    Some("deleted".into()),
+                    Some("uninstalled".into()),
                     json!({
                         "provider_code": command.provider_code,
-                        "deleted_instance_count": deleted_instance_count,
-                        "deleted_installation_count": deleted_installation_count,
-                        "referenced_flow_count": referenced_flow_count,
+                        "retained_instance_count": retained_instance_count,
+                        "retained_installation_count": retained_installation_count,
                     }),
                 )
                 .await

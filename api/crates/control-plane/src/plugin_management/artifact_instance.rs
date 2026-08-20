@@ -350,13 +350,10 @@ where
             .refresh_current_node_artifact_snapshot(&installation)
             .await?;
         if !artifact.artifact_status.is_ready() {
-            return Err(ControlPlaneError::Conflict(error_code_for_artifact_status(
-                artifact.artifact_status,
-            ))
-            .into());
+            return Err(ControlPlaneError::PluginUnavailable.into());
         }
         if artifact.local_path.is_none() {
-            return Err(ControlPlaneError::Conflict("plugin_artifact_missing").into());
+            return Err(ControlPlaneError::PluginUnavailable.into());
         }
         Ok(domain::LocalPluginInstallationRecord {
             installation,
@@ -490,18 +487,15 @@ where
     let artifact = repository
         .get_artifact_instance(node_id, installation_id)
         .await?
-        .ok_or(ControlPlaneError::Conflict("plugin_artifact_missing"))?;
+        .ok_or(ControlPlaneError::PluginUnavailable)?;
     if artifact.artifact_status == domain::PluginArtifactInstanceStatus::LoadFailed {
-        return Err(ControlPlaneError::Conflict("plugin_runtime_load_failed").into());
+        return Err(ControlPlaneError::PluginUnavailable.into());
     }
     if !artifact.artifact_status.is_ready() {
-        return Err(ControlPlaneError::Conflict(error_code_for_artifact_status(
-            artifact.artifact_status,
-        ))
-        .into());
+        return Err(ControlPlaneError::PluginUnavailable.into());
     }
     if artifact.local_path.is_none() {
-        return Err(ControlPlaneError::Conflict("plugin_artifact_missing").into());
+        return Err(ControlPlaneError::PluginUnavailable.into());
     }
     Ok(domain::LocalPluginInstallationRecord {
         installation,
@@ -794,15 +788,4 @@ fn read_artifact_marker(path: &Path) -> std::result::Result<PluginArtifactMarker
     let raw =
         fs::read_to_string(&marker_path).map_err(|_| "artifact_marker_missing".to_string())?;
     serde_json::from_str(&raw).map_err(|_| "artifact_marker_corrupted".to_string())
-}
-
-fn error_code_for_artifact_status(status: domain::PluginArtifactInstanceStatus) -> &'static str {
-    match status {
-        domain::PluginArtifactInstanceStatus::Missing => "plugin_artifact_missing",
-        domain::PluginArtifactInstanceStatus::Outdated => "plugin_artifact_outdated",
-        domain::PluginArtifactInstanceStatus::Mismatched => "plugin_artifact_mismatched",
-        domain::PluginArtifactInstanceStatus::Corrupted => "plugin_artifact_corrupted",
-        domain::PluginArtifactInstanceStatus::LoadFailed => "plugin_runtime_load_failed",
-        domain::PluginArtifactInstanceStatus::Ready => "plugin_artifact_ready",
-    }
 }

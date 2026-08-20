@@ -335,7 +335,7 @@ async fn plugin_management_service_refresh_catalog_projection_uses_current_node_
 
     assert!(matches!(
         error.downcast_ref::<ControlPlaneError>(),
-        Some(ControlPlaneError::Conflict("plugin_artifact_missing"))
+        Some(ControlPlaneError::PluginUnavailable)
     ));
 }
 

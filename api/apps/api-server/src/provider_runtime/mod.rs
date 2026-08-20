@@ -212,7 +212,7 @@ impl ApiDataSourceRuntimeRecordBackend {
         if installation.desired_state == domain::PluginDesiredState::Disabled
             || installation.availability_status() != domain::PluginAvailabilityStatus::Available
         {
-            return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
+            return Err(ControlPlaneError::PluginUnavailable.into());
         }
         if installation.contract_version != "1flowbase.data_source/v1" {
             return Err(ControlPlaneError::InvalidInput("plugin_installation").into());
@@ -265,7 +265,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
 
     async fn deactivate_plugin(
         &self,
-        installation: &domain::LocalPluginInstallationRecord,
+        installation: &domain::PluginInstallationRecord,
     ) -> anyhow::Result<()> {
         match installation.contract_version.as_str() {
             plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT => self
@@ -281,7 +281,9 @@ impl ProviderRuntimePort for ApiProviderRuntime {
                     .data_source_host
                     .write()
                     .await
-                    .unload(&installation.plugin_id);
+                    .unload(&installation.plugin_id)
+                    .await
+                    .map_err(map_provider_framework_error)?;
                 Ok(())
             }
             "1flowbase.capability/v1" => {
@@ -289,7 +291,9 @@ impl ProviderRuntimePort for ApiProviderRuntime {
                     .capability_host
                     .write()
                     .await
-                    .unload(&installation.plugin_id);
+                    .unload(&installation.plugin_id)
+                    .await
+                    .map_err(map_provider_framework_error)?;
                 Ok(())
             }
             _ => Err(ControlPlaneError::InvalidInput("plugin_installation").into()),
@@ -1160,12 +1164,16 @@ impl ApiProviderRuntime {
         installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<()> {
         let mut host = self.services.capability_host.write().await;
+        if host.is_loaded(&installation.plugin_id) {
+            return Ok(());
+        }
         let eligibility = legacy_manifest_eligibility(installation)?;
         match eligibility.as_ref() {
             Some(eligibility) => {
                 host.load_legacy_installed(required_local_path(installation)?, eligibility)
+                    .await
             }
-            None => host.load(required_local_path(installation)?),
+            None => host.load(required_local_path(installation)?).await,
         }
         .map(|_| ())
         .map_err(|error| map_framework_error(error, "capability_runtime"))
@@ -1176,20 +1184,18 @@ impl ApiProviderRuntime {
         installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<()> {
         let mut host = self.services.data_source_host.write().await;
-        match host.reload(&installation.plugin_id) {
-            Ok(_) => Ok(()),
-            Err(_) => {
-                let eligibility = legacy_manifest_eligibility(installation)?;
-                match eligibility.as_ref() {
-                    Some(eligibility) => {
-                        host.load_legacy_installed(required_local_path(installation)?, eligibility)
-                    }
-                    None => host.load(required_local_path(installation)?),
+        if !host.is_loaded(&installation.plugin_id) {
+            let eligibility = legacy_manifest_eligibility(installation)?;
+            match eligibility.as_ref() {
+                Some(eligibility) => {
+                    host.load_legacy_installed(required_local_path(installation)?, eligibility)
+                        .await
                 }
-                .map(|_| ())
-                .map_err(|error| map_framework_error(error, "data_source_runtime"))
+                None => host.load(required_local_path(installation)?).await,
             }
-        }?;
+            .map(|_| ())
+            .map_err(|error| map_framework_error(error, "data_source_runtime"))?;
+        }
         let templates = host
             .data_model_templates(&installation.plugin_id)
             .map_err(|error| map_framework_error(error, "data_source_runtime"))?;
@@ -1285,6 +1291,7 @@ fn map_framework_error(error: PluginFrameworkError, service_name: &'static str) 
         PluginFrameworkError::InvalidAssignment { .. }
         | PluginFrameworkError::InvalidProviderPackage { .. }
         | PluginFrameworkError::InvalidProviderContract { .. }
+        | PluginFrameworkError::PackageRuntimeTargetMismatch { .. }
         | PluginFrameworkError::Serialization { .. } => {
             ControlPlaneError::InvalidInput(service_name).into()
         }

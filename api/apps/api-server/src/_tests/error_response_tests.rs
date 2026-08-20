@@ -92,6 +92,12 @@ async fn error_response_http_status_matches_body_status() {
             "resource_conflict",
         ),
         (
+            ControlPlaneError::PluginUnavailable,
+            StatusCode::CONFLICT,
+            409,
+            "plugin_unavailable",
+        ),
+        (
             ControlPlaneError::InvalidInput("invalid_request"),
             StatusCode::BAD_REQUEST,
             400,
@@ -211,4 +217,21 @@ async fn provider_runtime_error_preserves_detailed_message() {
     assert!(message.contains("gpt-5"));
     assert!(message.contains("not found"));
     assert!(message.contains("available models"));
+}
+
+#[tokio::test]
+async fn package_target_mismatch_has_a_stable_api_error_code() {
+    let response = ApiError(anyhow::Error::from(
+        PluginFrameworkError::PackageRuntimeTargetMismatch {
+            package_target: "linux/arm64".to_string(),
+            host_target: "linux/amd64".to_string(),
+        },
+    ))
+    .into_response();
+
+    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(payload["code"], "plugin_runtime_target_mismatch");
+    assert!(payload["message"].as_str().unwrap().contains("linux/arm64"));
 }

@@ -1,4 +1,5 @@
 import type { UploadFile } from 'antd/es/upload/interface';
+import { ApiClientError } from '@1flowbase/api-client';
 
 import type {
   SettingsModelProviderCatalogEntry,
@@ -60,6 +61,37 @@ export const MODEL_PROVIDER_MAIN_INSTANCE_QUERY_KEY_PREFIX = [
 
 export function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : null;
+}
+
+export function getPluginUploadErrorMessage(error: unknown) {
+  if (error instanceof ApiClientError) {
+    switch (error.code) {
+      case 'plugin_runtime_target_mismatch':
+        return i18nText(
+          'settings',
+          'auto.plugin_upload_platform_incompatible'
+        );
+      case 'provider_package':
+        return i18nText('settings', 'auto.plugin_upload_package_invalid');
+      default:
+        if (error.status === 413) {
+          return i18nText('settings', 'auto.plugin_upload_too_large');
+        }
+        if (error.status >= 500) {
+          return i18nText('settings', 'auto.plugin_upload_server_unavailable');
+        }
+        return i18nText('settings', 'auto.plugin_upload_failed');
+    }
+  }
+
+  if (
+    error instanceof Error &&
+    /failed to fetch|networkerror|load failed/iu.test(error.message)
+  ) {
+    return i18nText('settings', 'auto.plugin_upload_network_unavailable');
+  }
+
+  return i18nText('settings', 'auto.plugin_upload_failed');
 }
 
 export function isTaskTerminal(status: string | null | undefined) {

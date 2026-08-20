@@ -4,11 +4,16 @@ use super::*;
 #[derive(Clone, Default)]
 pub(crate) struct MemoryProviderRuntime {
     loaded_installations: Arc<RwLock<Vec<Uuid>>>,
+    unloaded_installations: Arc<RwLock<Vec<Uuid>>>,
 }
 
 impl MemoryProviderRuntime {
     pub(crate) async fn loaded_installations(&self) -> Vec<Uuid> {
         self.loaded_installations.read().await.clone()
+    }
+
+    pub(crate) async fn unloaded_installations(&self) -> Vec<Uuid> {
+        self.unloaded_installations.read().await.clone()
     }
 }
 
@@ -151,6 +156,17 @@ impl OfficialPluginSourcePort for MemoryOfficialPluginSource {
 
 #[async_trait]
 impl ProviderRuntimePort for MemoryProviderRuntime {
+    async fn deactivate_plugin(
+        &self,
+        installation: &domain::PluginInstallationRecord,
+    ) -> Result<()> {
+        self.unloaded_installations
+            .write()
+            .await
+            .push(installation.id);
+        Ok(())
+    }
+
     async fn ensure_loaded(&self, installation: &LocalPluginInstallationRecord) -> Result<()> {
         if !installation
             .local_path()

@@ -125,7 +125,7 @@ where
             return Err(ControlPlaneError::InvalidInput("provider_code").into());
         }
         if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
-            return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
+            return Err(ControlPlaneError::PluginUnavailable.into());
         }
         let package = load_installed_provider_package(&installation)?;
         let runtime_capabilities = package

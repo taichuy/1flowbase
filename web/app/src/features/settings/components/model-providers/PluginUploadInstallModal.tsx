@@ -1,4 +1,5 @@
-import { Alert, Button, Modal, Typography, Upload } from 'antd';
+import { DeleteOutlined } from '@ant-design/icons';
+import { Alert, Button, Modal, Tooltip, Typography, Upload } from 'antd';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { i18nText } from '../../../../shared/i18n/text';
 
@@ -46,6 +47,26 @@ export function PluginUploadInstallModal({
           maxCount={1}
           fileList={fileList}
           onChange={({ fileList: nextFiles }) => onChange(nextFiles)}
+          itemRender={(_originNode, file, _fileList, actions) => (
+            <div className="model-provider-panel__upload-file">
+              <Tooltip title={file.name}>
+                <Typography.Text
+                  className="model-provider-panel__upload-file-name"
+                  ellipsis
+                  title={file.name}
+                >
+                  {file.name}
+                </Typography.Text>
+              </Tooltip>
+              <Button
+                aria-label={i18nText('settings', 'auto.remove_upload_package')}
+                icon={<DeleteOutlined />}
+                onClick={actions.remove}
+                size="small"
+                type="text"
+              />
+            </div>
+          )}
         >
           {i18nText('settings', 'auto.select_plug_package_upload_install')}
         </Upload.Dragger>

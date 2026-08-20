@@ -10,6 +10,8 @@ pub enum ControlPlaneError {
     NotFound(&'static str),
     #[error("conflict: {0}")]
     Conflict(&'static str),
+    #[error("plugin unavailable")]
+    PluginUnavailable,
     #[error("invalid input: {0}")]
     InvalidInput(&'static str),
     #[error("invalid state transition for {resource}: action={action}, from={from}, to={to}")]

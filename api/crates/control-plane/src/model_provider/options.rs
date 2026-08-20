@@ -94,7 +94,7 @@ where
     )
     .await?;
     if installation.availability_status() != domain::PluginAvailabilityStatus::Available {
-        return Err(ControlPlaneError::Conflict("plugin_installation_unavailable").into());
+        return Err(ControlPlaneError::PluginUnavailable.into());
     }
     let package = load_installed_provider_package(&installation)?;
     let provider_config = maintain_provider_runtime_config(

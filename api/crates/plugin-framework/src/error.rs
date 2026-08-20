@@ -24,6 +24,11 @@ pub enum PluginFrameworkError {
     InvalidProviderPackage { message: String },
     #[error("invalid provider contract: {message}")]
     InvalidProviderContract { message: String },
+    #[error("plugin runtime target {package_target} is incompatible with host {host_target}")]
+    PackageRuntimeTargetMismatch {
+        package_target: String,
+        host_target: String,
+    },
     #[error("provider runtime error: {error}")]
     RuntimeContract { error: Box<ProviderRuntimeError> },
     #[error("I/O error while loading provider package{path_display}: {message}")]
@@ -48,6 +53,9 @@ impl PluginFrameworkError {
             Self::InvalidProviderContract { .. } => {
                 PluginFrameworkErrorKind::InvalidProviderContract
             }
+            Self::PackageRuntimeTargetMismatch { .. } => {
+                PluginFrameworkErrorKind::InvalidProviderContract
+            }
             Self::RuntimeContract { .. } => PluginFrameworkErrorKind::RuntimeContract,
             Self::Io { .. } => PluginFrameworkErrorKind::Io,
             Self::Serialization { .. } => PluginFrameworkErrorKind::Serialization,
@@ -69,6 +77,16 @@ impl PluginFrameworkError {
     pub fn invalid_provider_contract(message: impl Into<String>) -> Self {
         Self::InvalidProviderContract {
             message: message.into(),
+        }
+    }
+
+    pub fn package_runtime_target_mismatch(
+        package_target: impl Into<String>,
+        host_target: impl Into<String>,
+    ) -> Self {
+        Self::PackageRuntimeTargetMismatch {
+            package_target: package_target.into(),
+            host_target: host_target.into(),
         }
     }
 

@@ -528,6 +528,15 @@ describe('ModelProvidersPage - catalog and family version', () => {
     expect(
       within(catalogRow).queryByText(/^检查时间：/)
     ).not.toBeInTheDocument();
+    fireEvent.click(
+      within(catalogRow).getByRole('button', { name: '卸载' })
+    );
+    await waitFor(() => {
+      expect(pluginsApi.deleteSettingsPluginFamily).toHaveBeenCalledWith(
+        'openai_compatible',
+        'csrf-123'
+      );
+    });
     fireEvent.click(updateButton);
     const confirmDialog = await screen.findByRole('dialog');
     fireEvent.click(
@@ -849,7 +858,7 @@ describe('ModelProvidersPage - catalog and family version', () => {
       within(catalogRow)
         .getAllByRole('button')
         .map((button) => button.textContent)
-    ).toEqual(['管理', '新增', '更新']);
+    ).toEqual(['管理', '新增', '更新', '卸载']);
   });
 
   test('renders catalog and instance metadata for view-only users without manage actions', async () => {

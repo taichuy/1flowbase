@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use plugin_framework::error::{FrameworkResult, PluginFrameworkError};
 use serde::Serialize;
@@ -7,6 +7,7 @@ use serde_json::{json, Value};
 use crate::{
     capability_stdio::{call_executable, CapabilityStdioMethod, CapabilityStdioRequest},
     package_loader::{LoadedCapabilityPackage, PackageLoader},
+    plugin_scope::PluginScope,
 };
 
 #[derive(Debug, Clone, Serialize)]
@@ -42,33 +43,44 @@ pub struct CapabilityExecutionOutput {
 #[derive(Debug, Default)]
 pub struct CapabilityHost {
     loaded_packages: HashMap<String, LoadedCapabilityPackage>,
+    scopes: HashMap<String, Arc<PluginScope>>,
+    next_generation: HashMap<String, u64>,
 }
 
 impl CapabilityHost {
-    pub fn unload(&mut self, plugin_id: &str) {
-        self.loaded_packages.remove(plugin_id);
+    pub fn is_loaded(&self, plugin_id: &str) -> bool {
+        self.loaded_packages.contains_key(plugin_id) && self.scopes.contains_key(plugin_id)
     }
 
-    pub fn load(
+    pub async fn unload(&mut self, plugin_id: &str) -> FrameworkResult<()> {
+        let scope = self.scopes.remove(plugin_id);
+        if let Some(scope) = scope {
+            scope.dispose().await?;
+        }
+        self.loaded_packages.remove(plugin_id);
+        Ok(())
+    }
+
+    pub async fn load(
         &mut self,
         package_root: impl AsRef<std::path::Path>,
     ) -> FrameworkResult<LoadedCapabilitySummary> {
         let loaded = PackageLoader::load_capability(package_root)?;
         let summary = LoadedCapabilitySummary::from_loaded(&loaded);
-        self.loaded_packages
-            .insert(summary.plugin_id.clone(), loaded);
+        self.replace_loaded(summary.plugin_id.clone(), loaded)
+            .await?;
         Ok(summary)
     }
 
-    pub fn load_legacy_installed(
+    pub async fn load_legacy_installed(
         &mut self,
         package_root: impl AsRef<std::path::Path>,
         eligibility: &plugin_framework::LegacyInstalledManifestEligibility,
     ) -> FrameworkResult<LoadedCapabilitySummary> {
         let loaded = PackageLoader::load_legacy_installed_capability(package_root, eligibility)?;
         let summary = LoadedCapabilitySummary::from_loaded(&loaded);
-        self.loaded_packages
-            .insert(summary.plugin_id.clone(), loaded);
+        self.replace_loaded(summary.plugin_id.clone(), loaded)
+            .await?;
         Ok(summary)
     }
 
@@ -90,12 +102,14 @@ impl CapabilityHost {
     ) -> FrameworkResult<
         impl std::future::Future<Output = FrameworkResult<CapabilityValueOutput>> + Send + 'static,
     > {
+        let lease = self.scope(plugin_id)?.admit()?;
         let loaded = self.loaded_package(plugin_id)?;
         self.ensure_contribution(loaded, contribution_code)?;
         let loaded = loaded.clone();
         let plugin_id = plugin_id.to_string();
         let contribution_code = contribution_code.to_string();
         Ok(async move {
+            let _lease = lease;
             let output = Self::call_runtime_loaded(
                 loaded,
                 CapabilityStdioMethod::ValidateConfig,
@@ -128,12 +142,14 @@ impl CapabilityHost {
     ) -> FrameworkResult<
         impl std::future::Future<Output = FrameworkResult<CapabilityValueOutput>> + Send + 'static,
     > {
+        let lease = self.scope(plugin_id)?.admit()?;
         let loaded = self.loaded_package(plugin_id)?;
         self.ensure_contribution(loaded, contribution_code)?;
         let loaded = loaded.clone();
         let plugin_id = plugin_id.to_string();
         let contribution_code = contribution_code.to_string();
         Ok(async move {
+            let _lease = lease;
             let output = Self::call_runtime_loaded(
                 loaded,
                 CapabilityStdioMethod::ResolveDynamicOptions,
@@ -166,12 +182,14 @@ impl CapabilityHost {
     ) -> FrameworkResult<
         impl std::future::Future<Output = FrameworkResult<CapabilityValueOutput>> + Send + 'static,
     > {
+        let lease = self.scope(plugin_id)?.admit()?;
         let loaded = self.loaded_package(plugin_id)?;
         self.ensure_contribution(loaded, contribution_code)?;
         let loaded = loaded.clone();
         let plugin_id = plugin_id.to_string();
         let contribution_code = contribution_code.to_string();
         Ok(async move {
+            let _lease = lease;
             let output = Self::call_runtime_loaded(
                 loaded,
                 CapabilityStdioMethod::ResolveOutputSchema,
@@ -206,12 +224,14 @@ impl CapabilityHost {
     ) -> FrameworkResult<
         impl std::future::Future<Output = FrameworkResult<CapabilityExecutionOutput>> + Send + 'static,
     > {
+        let lease = self.scope(plugin_id)?.admit()?;
         let loaded = self.loaded_package(plugin_id)?;
         self.ensure_contribution(loaded, contribution_code)?;
         let loaded = loaded.clone();
         let plugin_id = plugin_id.to_string();
         let contribution_code = contribution_code.to_string();
         Ok(async move {
+            let _lease = lease;
             let granted_credit_permissions =
                 loaded.manifest.permissions.credit.iter().cloned().collect();
             let output = Self::call_runtime_loaded(
@@ -236,6 +256,28 @@ impl CapabilityHost {
         self.loaded_packages.get(plugin_id).ok_or_else(|| {
             PluginFrameworkError::invalid_provider_package(format!(
                 "capability package is not loaded: {plugin_id}"
+            ))
+        })
+    }
+
+    async fn replace_loaded(
+        &mut self,
+        plugin_id: String,
+        loaded: LoadedCapabilityPackage,
+    ) -> FrameworkResult<()> {
+        self.unload(&plugin_id).await?;
+        let next_generation = self.next_generation.entry(plugin_id.clone()).or_insert(0);
+        *next_generation = next_generation.saturating_add(1);
+        self.scopes
+            .insert(plugin_id.clone(), PluginScope::mounted(*next_generation));
+        self.loaded_packages.insert(plugin_id, loaded);
+        Ok(())
+    }
+
+    fn scope(&self, plugin_id: &str) -> FrameworkResult<&Arc<PluginScope>> {
+        self.scopes.get(plugin_id).ok_or_else(|| {
+            PluginFrameworkError::invalid_provider_package(format!(
+                "capability scope is not mounted: {plugin_id}"
             ))
         })
     }
@@ -280,7 +322,16 @@ impl CapabilityHost {
         loaded: LoadedCapabilityPackage,
     ) -> Self {
         let mut loaded_packages = HashMap::new();
-        loaded_packages.insert(plugin_id.into(), loaded);
-        Self { loaded_packages }
+        let mut scopes = HashMap::new();
+        let mut next_generation = HashMap::new();
+        let plugin_id = plugin_id.into();
+        loaded_packages.insert(plugin_id.clone(), loaded);
+        scopes.insert(plugin_id.clone(), PluginScope::mounted(1));
+        next_generation.insert(plugin_id, 1);
+        Self {
+            loaded_packages,
+            scopes,
+            next_generation,
+        }
     }
 }

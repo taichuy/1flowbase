@@ -67,7 +67,8 @@ pub(crate) use fixtures::{
     create_js_dependency_pack_fixture, create_provider_fixture,
 };
 pub(super) use fixtures::{
-    build_openai_compatible_package_bytes, build_signed_openai_upload_package,
+    build_openai_compatible_package_bytes,
+    build_openai_compatible_package_bytes_with_runtime_entry, build_signed_openai_upload_package,
     create_provider_fixture_with_node_contribution, seed_test_installation,
 };
 pub(crate) use repository::MemoryPluginManagementRepository;

@@ -501,10 +501,11 @@ impl PluginRepository for MemoryPluginManagementRepository {
         let existing_id = self.plugin_ids.read().await.get(&input.plugin_id).copied();
         let id = existing_id.unwrap_or(input.installation_id);
         let mut installations = self.installations.write().await;
-        let created_at = installations
-            .get(&id)
-            .map(|item| item.created_at)
-            .unwrap_or(now);
+        let existing = installations.get(&id);
+        let created_at = existing.map(|item| item.created_at).unwrap_or(now);
+        let desired_state = existing
+            .map(|item| item.desired_state)
+            .unwrap_or(input.desired_state);
         let record = PluginInstallationRecord {
             id,
             scope_id: domain::SYSTEM_SCOPE_ID,
@@ -519,7 +520,7 @@ impl PluginRepository for MemoryPluginManagementRepository {
             source_kind: input.source_kind.clone(),
             trust_level: input.trust_level.clone(),
             verification_status: input.verification_status,
-            desired_state: input.desired_state,
+            desired_state,
             expected_checksum: input.expected_checksum.clone(),
             signature_status: input.signature_status,
             signature_algorithm: input.signature_algorithm.clone(),

@@ -18,6 +18,7 @@ use crate::{
     manifest_v1::{parse_plugin_manifest, PluginManifestV1},
     provider_contract::CURRENT_PROVIDER_CONTRACT,
     provider_package::ProviderPackage,
+    runtime_target::RuntimeTarget,
 };
 
 #[derive(Debug, Clone)]
@@ -87,6 +88,32 @@ pub struct PackageIntakeResult {
     pub checksum: Option<String>,
     pub signature_algorithm: Option<String>,
     pub signing_key_id: Option<String>,
+}
+
+pub fn ensure_package_runtime_target_compatible(
+    package_root: &Path,
+    manifest: &PluginManifestV1,
+) -> Result<(), PluginFrameworkError> {
+    let runtime_entry = package_root.join(&manifest.runtime.entry);
+    let runtime_bytes = fs::read(&runtime_entry).map_err(|error| {
+        PluginFrameworkError::io(
+            Some(&runtime_entry),
+            format!("failed to read package runtime entry: {error}"),
+        )
+    })?;
+    let Some(package_target) = RuntimeTarget::from_executable_bytes(&runtime_bytes)? else {
+        return Ok(());
+    };
+    let host_target = RuntimeTarget::current_host()?;
+
+    if package_target.is_compatible_with_host(&host_target) {
+        return Ok(());
+    }
+
+    Err(PluginFrameworkError::package_runtime_target_mismatch(
+        package_target.asset_suffix(),
+        host_target.asset_suffix(),
+    ))
 }
 
 #[derive(Debug)]

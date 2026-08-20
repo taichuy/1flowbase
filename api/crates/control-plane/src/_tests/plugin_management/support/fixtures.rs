@@ -565,6 +565,29 @@ pub(crate) fn build_openai_compatible_package_bytes(
     bytes
 }
 
+pub(crate) fn build_openai_compatible_package_bytes_with_runtime_entry(
+    version: &str,
+    runtime_entry: &[u8],
+) -> Vec<u8> {
+    let package_root =
+        std::env::temp_dir().join(format!("native-plugin-source-{}", Uuid::now_v7()));
+    create_openai_compatible_fixture(&package_root);
+    write_provider_manifest_v2(
+        &package_root,
+        "openai_compatible",
+        "OpenAI Compatible",
+        version,
+    );
+    fs::write(
+        package_root.join("bin/openai_compatible-provider"),
+        runtime_entry,
+    )
+    .unwrap();
+    let bytes = pack_tar_gz(&package_root);
+    let _ = fs::remove_dir_all(&package_root);
+    bytes
+}
+
 pub(crate) fn build_capability_plugin_package_bytes() -> Vec<u8> {
     let package_root =
         std::env::temp_dir().join(format!("capability-plugin-source-{}", Uuid::now_v7()));

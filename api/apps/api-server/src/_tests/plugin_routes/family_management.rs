@@ -134,7 +134,7 @@ async fn plugin_routes_list_families_and_switch_local_version() {
 }
 
 #[tokio::test]
-async fn plugin_routes_delete_family_rejects_current_and_referenced_installations() {
+async fn plugin_routes_uninstall_family_preserves_referenced_instances() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let package_root_v1 =
@@ -269,7 +269,22 @@ async fn plugin_routes_delete_family_rejects_current_and_referenced_installation
         )
         .await
         .unwrap();
-    assert_eq!(delete_response.status(), StatusCode::CONFLICT);
+    assert_eq!(delete_response.status(), StatusCode::OK);
+
+    let repeated_delete_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/console/plugins/families/fixture_provider")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(repeated_delete_response.status(), StatusCode::OK);
 
     let families_response = app
         .clone()
@@ -317,8 +332,8 @@ async fn plugin_routes_delete_family_rejects_current_and_referenced_installation
     .unwrap();
     assert_eq!(instances_payload["data"].as_array().unwrap().len(), 1);
 
-    assert!(Path::new(&install_v1_path).exists());
-    assert!(Path::new(&install_v2_path).exists());
+    assert!(!Path::new(&install_v1_path).exists());
+    assert!(!Path::new(&install_v2_path).exists());
 }
 
 #[tokio::test]

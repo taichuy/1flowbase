@@ -1046,8 +1046,12 @@ where
         detail_json: serde_json::Value,
     ) -> Result<InstallPluginResult> {
         let package_root = intake.extracted_root.clone();
-        let result = self
-            .install_plugin_with_metadata(
+        let result = async {
+            plugin_framework::ensure_package_runtime_target_compatible(
+                &package_root,
+                &intake.manifest,
+            )?;
+            self.install_plugin_with_metadata(
                 InstallPluginCommand {
                     actor_user_id,
                     package_root: package_root.display().to_string(),
@@ -1063,7 +1067,9 @@ where
                 },
                 detail_json,
             )
-            .await;
+            .await
+        }
+        .await;
         let _ = fs::remove_dir_all(&package_root);
         result
     }
@@ -1440,6 +1446,52 @@ where
                 if !artifact_committed {
                     if let Err(error) = self.record_ready_current_node_artifact(&installation).await
                     {
+                        let _ = self
+                            .transition_task(
+                                &running_task,
+                                domain::PluginTaskStatus::Failed,
+                                Some(error.to_string()),
+                                json!({
+                                    "installation_id": installation.id,
+                                    "provider_code": installation.provider_code,
+                                }),
+                            )
+                            .await;
+                        return Err(error);
+                    }
+                }
+                if matches!(
+                    installation.desired_state,
+                    domain::PluginDesiredState::ActiveRequested
+                ) && !is_host_extension_installation(&installation)
+                {
+                    let reactivation = async {
+                        let local_installation = self
+                            .ready_current_node_installation(installation.id)
+                            .await?;
+                        match self.runtime.activate_plugin(&local_installation).await {
+                            Ok(()) => {
+                                self.mark_current_node_runtime_status(
+                                    &installation,
+                                    domain::PluginRuntimeStatus::Active,
+                                    None,
+                                )
+                                .await?;
+                                Ok(())
+                            }
+                            Err(error) => {
+                                self.mark_current_node_runtime_status(
+                                    &installation,
+                                    domain::PluginRuntimeStatus::LoadFailed,
+                                    Some(error.to_string()),
+                                )
+                                .await?;
+                                Err(error)
+                            }
+                        }
+                    }
+                    .await;
+                    if let Err(error) = reactivation {
                         let _ = self
                             .transition_task(
                                 &running_task,

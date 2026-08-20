@@ -281,10 +281,7 @@ async fn orchestration_runtime_resolve_llm_instance_rejects_disabled_installatio
         .await
         .expect_err("disabled installation should fail");
 
-    assert_control_plane_error(
-        error,
-        ControlPlaneError::Conflict("plugin_installation_unavailable"),
-    );
+    assert_control_plane_error(error, ControlPlaneError::PluginUnavailable);
 }
 
 #[tokio::test]
@@ -332,10 +329,7 @@ async fn orchestration_runtime_resolve_llm_route_rejects_unavailable_installatio
         Err(error) => error,
     };
 
-    assert_control_plane_error(
-        error,
-        ControlPlaneError::Conflict("plugin_installation_unavailable"),
-    );
+    assert_control_plane_error(error, ControlPlaneError::PluginUnavailable);
 }
 
 #[tokio::test]

@@ -35,3 +35,20 @@ fn runtime_target_builds_host_targets_from_os_and_arch_pairs() {
     let windows = RuntimeTarget::from_host_parts("windows", "aarch64").unwrap();
     assert_eq!(windows.rust_target_triple, "aarch64-pc-windows-msvc");
 }
+
+#[test]
+fn runtime_target_detects_linux_elf_architecture() {
+    let mut arm64_elf = vec![0_u8; 64];
+    arm64_elf[..4].copy_from_slice(b"\x7fELF");
+    arm64_elf[4] = 2;
+    arm64_elf[5] = 1;
+    arm64_elf[6] = 1;
+    arm64_elf[18] = 0xb7;
+
+    let target = RuntimeTarget::from_executable_bytes(&arm64_elf)
+        .unwrap()
+        .expect("an ELF runtime must expose its target platform");
+
+    assert_eq!(target.os, "linux");
+    assert_eq!(target.arch, "arm64");
+}
