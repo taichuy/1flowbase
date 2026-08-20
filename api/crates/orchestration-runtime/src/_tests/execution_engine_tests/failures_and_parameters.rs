@@ -472,6 +472,36 @@ async fn d1_ac_008_partial_delta_remains_separate_from_failed_output() {
 }
 
 #[tokio::test]
+async fn event_only_finish_error_is_classified_as_terminal_provider_failure() {
+    let outcome = start_flow_debug_run(
+        &base_plan(),
+        &json!({ "node-start": { "query": "退款政策" } }),
+        &EventOnlyFinishErrorInvoker,
+    )
+    .await
+    .unwrap();
+
+    match outcome.stop_reason {
+        ExecutionStopReason::Failed(ref failure) => {
+            assert_eq!(failure.node_id, "node-llm");
+            assert_eq!(
+                failure.error_payload["error_code"],
+                json!("provider_invalid_response")
+            );
+            assert_eq!(
+                outcome.node_traces[1].error_payload.as_ref().unwrap()["error_code"],
+                json!("provider_invalid_response")
+            );
+            assert_eq!(
+                outcome.node_traces[1].output_payload["text"],
+                json!("provider invocation finished with error")
+            );
+        }
+        other => panic!("expected terminal provider failure, got {other:?}"),
+    }
+}
+
+#[tokio::test]
 async fn d1_ac_007_output_limit_has_an_incomplete_terminal_not_succeeded() {
     let (invoker, _captured_inputs) = sequential_tool_invoker(vec![ProviderInvocationResult {
         final_content: Some("partial response at output limit".to_string()),

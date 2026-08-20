@@ -7,10 +7,11 @@ const path = require('node:path');
 const {
   buildReactDoctorCommand,
   resolveReactDoctorDiffBase,
+  resolveSuppressedDiagnostics,
   runReactDoctorGate,
 } = require('../core.js');
 
-test('buildReactDoctorCommand checks only the current commit by default', () => {
+test('buildReactDoctorCommand records an explicit base while scanning JSON evidence', () => {
   assert.deepEqual(buildReactDoctorCommand({ repoRoot: '/repo', diffBase: 'abc123' }), {
     command: 'npm',
     args: [
@@ -23,6 +24,7 @@ test('buildReactDoctorCommand checks only the current commit by default', () => 
       'web/app',
       '--diff',
       'abc123',
+      '--json',
       '--no-score',
       '--fail-on',
       'warning',
@@ -39,28 +41,30 @@ test('buildReactDoctorCommand accepts an explicit debt audit baseline', () => {
     diffBase: 'origin/main',
   });
 
-  assert.deepEqual(command.args.slice(7, 10), ['--diff', 'origin/main', '--no-score']);
+  assert.deepEqual(command.args.slice(7, 11), ['--diff', 'origin/main', '--json', '--no-score']);
 });
 
-test('resolveReactDoctorDiffBase resolves the current commit parent to a SHA', () => {
-  const calls = [];
-  const diffBase = resolveReactDoctorDiffBase({
-    repoRoot: '/repo',
-    env: {},
-    spawnSyncImpl(command, args, options) {
-      calls.push({ command, args, options });
-      return { status: 0, stdout: 'abc123\n', stderr: '' };
-    },
-  });
-
-  assert.equal(diffBase, 'abc123');
-  assert.equal(calls[0].command, 'git');
-  assert.deepEqual(calls[0].args, ['rev-parse', '--verify', 'HEAD^']);
-  assert.equal(calls[0].options.cwd, '/repo');
+test('resolveReactDoctorDiffBase requires an explicit base or pull request base SHA', () => {
+  assert.throws(
+    () => resolveReactDoctorDiffBase({ env: {} }),
+    /set REACT_DOCTOR_DIFF_BASE or GITHUB_BASE_SHA/u,
+  );
+  assert.equal(
+    resolveReactDoctorDiffBase({ env: { GITHUB_BASE_SHA: 'base-sha' } }),
+    'base-sha',
+  );
 });
 
-test('runReactDoctorGate writes stable test-governance evidence', () => {
+test('runReactDoctorGate binds candidate, changed files, and diagnostics to the artifact', () => {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-react-doctor-'));
+  fs.mkdirSync(path.join(repoRoot, 'web', 'app'), { recursive: true });
+  fs.writeFileSync(
+    path.join(repoRoot, 'web', 'app', 'doctor.config.json'),
+    JSON.stringify({ ignore: { overrides: [] } }),
+  );
+  assert.equal(resolveReactDoctorDiffBase({
+    env: { REACT_DOCTOR_DIFF_BASE: 'base-sha' },
+  }), 'base-sha');
   const calls = [];
   let stdout = '';
 
@@ -68,13 +72,28 @@ test('runReactDoctorGate writes stable test-governance evidence', () => {
     repoRoot,
     env: {
       PATH: process.env.PATH,
-      REACT_DOCTOR_DIFF_BASE: 'abc123',
+      REACT_DOCTOR_DIFF_BASE: 'base-sha',
+      REACT_DOCTOR_CANDIDATE_SHA: 'candidate-sha',
     },
     spawnSyncImpl(command, args, options) {
       calls.push({ command, args, options });
+      if (command === 'git' && args[0] === 'rev-parse') {
+        return {
+          status: 0,
+          stdout: args.at(-1) === 'base-sha^{commit}' ? 'base-sha\n' : 'candidate-sha\n',
+          stderr: '',
+        };
+      }
+      if (command === 'git' && args[0] === 'diff') {
+        return {
+          status: 0,
+          stdout: 'web/app/src/features/a.tsx\0web/app/src/features/b.tsx\0',
+          stderr: '',
+        };
+      }
       return {
         status: 0,
-        stdout: '\u001b[32mreact doctor passed\u001b[0m\n',
+        stdout: JSON.stringify({ summary: { totalDiagnosticCount: 2 } }),
         stderr: '',
       };
     },
@@ -85,10 +104,10 @@ test('runReactDoctorGate writes stable test-governance evidence', () => {
   });
 
   assert.equal(status, 0);
-  assert.equal(stdout, '\u001b[32mreact doctor passed\u001b[0m\n');
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].command, 'npm');
-  assert.deepEqual(calls[0].args, [
+  assert.equal(stdout, JSON.stringify({ summary: { totalDiagnosticCount: 2 } }));
+  assert.equal(calls.length, 5);
+  assert.equal(calls.at(-1).command, 'npm');
+  assert.deepEqual(calls.at(-1).args, [
     'exec',
     '--yes',
     '--package',
@@ -97,17 +116,21 @@ test('runReactDoctorGate writes stable test-governance evidence', () => {
     'react-doctor',
     'web/app',
     '--diff',
-    'abc123',
+    'base-sha',
+    '--json',
     '--no-score',
     '--fail-on',
     'warning',
     '--verbose',
     '--no-color',
   ]);
-  assert.equal(calls[0].options.cwd, repoRoot);
+  assert.equal(calls.at(-1).options.cwd, repoRoot);
 
   const outputDir = path.join(repoRoot, 'tmp', 'test-governance');
-  assert.equal(fs.readFileSync(path.join(outputDir, 'react-doctor.log'), 'utf8'), 'react doctor passed\n');
+  assert.equal(
+    fs.readFileSync(path.join(outputDir, 'react-doctor.log'), 'utf8'),
+    JSON.stringify({ summary: { totalDiagnosticCount: 2 } }),
+  );
   assert.match(
     fs.readFileSync(path.join(outputDir, 'react-doctor.md'), 'utf8'),
     /Status: passed/u,
@@ -116,6 +139,28 @@ test('runReactDoctorGate writes stable test-governance evidence', () => {
   const report = JSON.parse(fs.readFileSync(path.join(outputDir, 'react-doctor.json'), 'utf8'));
   assert.equal(report.status, 'passed');
   assert.equal(report.exitCode, 0);
-  assert.equal(report.command, 'npm exec --yes --package react-doctor@0.2.16 -- react-doctor web/app --diff abc123 --no-score --fail-on warning --verbose --no-color');
+  assert.equal(report.baseSha, 'base-sha');
+  assert.equal(report.candidateSha, 'candidate-sha');
+  assert.deepEqual(report.changedFiles, [
+    'web/app/src/features/a.tsx',
+    'web/app/src/features/b.tsx',
+  ]);
+  assert.equal(report.changedFileCount, 2);
+  assert.equal(report.unsuppressedDiagnostics, 2);
+  assert.equal(report.suppressedDiagnostics, null);
+  assert.equal(report.configuredSuppressionEntries, 0);
+  assert.equal(report.baseSource, 'explicit-base-input');
+  assert.equal(report.candidateSource, 'checked-out-candidate');
+  assert.equal(report.command, 'npm exec --yes --package react-doctor@0.2.16 -- react-doctor web/app --diff base-sha --json --no-score --fail-on warning --verbose --no-color');
   assert.equal(report.logPath, 'tmp/test-governance/react-doctor.log');
+});
+
+test('suppressed diagnostics remain unknown when React Doctor does not report them', () => {
+  assert.equal(resolveSuppressedDiagnostics({ summary: { totalDiagnosticCount: 2 } }), null);
+  assert.equal(
+    resolveSuppressedDiagnostics({
+      summary: { totalDiagnosticCount: 2, suppressedDiagnosticCount: 1 },
+    }),
+    1,
+  );
 });

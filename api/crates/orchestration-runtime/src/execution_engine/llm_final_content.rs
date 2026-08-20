@@ -163,6 +163,16 @@ pub(super) fn finish_reason_from_events(
     })
 }
 
+pub(super) fn resolved_provider_finish_reason(
+    result: &ProviderInvocationResult,
+    events: &[ProviderStreamEvent],
+) -> Option<ProviderFinishReason> {
+    result
+        .finish_reason
+        .clone()
+        .or_else(|| finish_reason_from_events(events))
+}
+
 pub(super) fn has_valid_provider_output(
     final_content: Option<&str>,
     result: &ProviderInvocationResult,
@@ -186,6 +196,20 @@ pub fn billable_provider_output(
     result: &ProviderInvocationResult,
     native_responses_passthrough: bool,
 ) -> bool {
+    // A stream that produced content and then terminated with an upstream or
+    // protocol failure belongs to the executor's failure path. Billing must
+    // not turn that mixed outcome into provider_usage_unavailable merely
+    // because the partial content looks valid.
+    let finish_reason = resolved_provider_finish_reason(result, events);
+    if events.iter().any(|event| {
+        matches!(
+            event,
+            ProviderStreamEvent::Error { .. } | ProviderStreamEvent::OutputProtocolFailure { .. }
+        )
+    }) || matches!(finish_reason, Some(ProviderFinishReason::Error))
+    {
+        return false;
+    }
     let final_content = resolve_final_llm_content(
         result.final_content.clone(),
         collect_dify_style_deltas(events),

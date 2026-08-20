@@ -15,11 +15,13 @@ pub(crate) const DETAIL_TTL_SECONDS: i64 = 10 * 60;
 
 const CACHE_KEY_PREFIX: &str = "mcp-result";
 const PAGE_ENVELOPE_RESERVE_CHARS: usize = 768;
-// Each stored chunk is re-serialized as a JSON string when cached; escaping can
-// at most double its byte length, so keep raw chunks at half the store's
-// per-value ceiling.
-const DETAIL_CHUNK_MAX_BYTES: usize = EPHEMERAL_VALUE_MAX_BYTES / 2;
-// Upper bound on cached detail size (MAX_DETAIL_CHUNKS * DETAIL_CHUNK_MAX_BYTES).
+// The chunk admission check is against the actual JSON value written to the
+// CacheStore. Raw serialized-detail bytes are not a safe proxy because the
+// chunk itself is stored as a JSON string and may add escaping overhead.
+const DETAIL_CHUNK_MAX_BYTES: usize = EPHEMERAL_VALUE_MAX_BYTES;
+// Preserve the existing total continuation ceiling while allowing each stored
+// JSON string chunk to use the full CacheStore value budget.
+const MAX_DETAIL_TOTAL_BYTES: usize = MAX_DETAIL_CHUNKS * (EPHEMERAL_VALUE_MAX_BYTES / 2);
 const MAX_DETAIL_CHUNKS: usize = 16;
 
 #[derive(Clone, Copy)]
@@ -247,18 +249,25 @@ async fn cache_detail(
         Ok(serialized_detail) => serialized_detail,
         Err(_) => return DetailCacheStatus::Unavailable("serialization_failed"),
     };
-    if serialized_detail.len() <= DETAIL_CHUNK_MAX_BYTES {
+    let inline_value = inline_cache_value(detail);
+    if serialized(&inline_value).len() <= DETAIL_CHUNK_MAX_BYTES {
         return store_cache_value(
             state,
             workspace_id,
             result_ref,
             &cache_key(workspace_id, result_ref),
-            json!({ "format": "inline", "detail": detail }),
+            inline_value,
         )
         .await;
     }
+    if serialized_detail.len() > MAX_DETAIL_TOTAL_BYTES {
+        return DetailCacheStatus::Unavailable("cache_capacity_exceeded");
+    }
 
-    let chunks = split_at_char_boundaries(&serialized_detail, DETAIL_CHUNK_MAX_BYTES);
+    let Some(chunks) = split_at_json_string_bytes(&serialized_detail, DETAIL_CHUNK_MAX_BYTES)
+    else {
+        return DetailCacheStatus::Unavailable("cache_capacity_exceeded");
+    };
     if chunks.len() > MAX_DETAIL_CHUNKS {
         return DetailCacheStatus::Unavailable("cache_capacity_exceeded");
     }
@@ -285,6 +294,10 @@ async fn cache_detail(
         json!({ "format": "chunked", "chunk_count": chunks.len() }),
     )
     .await
+}
+
+fn inline_cache_value(detail: &Value) -> Value {
+    json!({ "format": "inline", "detail": detail })
 }
 
 async fn store_cache_value(
@@ -347,19 +360,29 @@ async fn resolve_cached_detail(
     }
 }
 
-fn split_at_char_boundaries(value: &str, max_bytes: usize) -> Vec<String> {
+fn split_at_json_string_bytes(value: &str, max_bytes: usize) -> Option<Vec<String>> {
     let mut chunks = Vec::new();
     let mut current = String::new();
+    let mut current_json_bytes = 2;
     for character in value.chars() {
-        if current.len() + character.len_utf8() > max_bytes && !current.is_empty() {
+        let character_json_bytes = serde_json::to_vec(&Value::String(character.to_string()))
+            .expect("serializing a JSON string character must succeed")
+            .len()
+            - 2;
+        if 2 + character_json_bytes > max_bytes {
+            return None;
+        }
+        if current_json_bytes + character_json_bytes > max_bytes && !current.is_empty() {
             chunks.push(std::mem::take(&mut current));
+            current_json_bytes = 2;
         }
         current.push(character);
+        current_json_bytes += character_json_bytes;
     }
     if !current.is_empty() {
         chunks.push(current);
     }
-    chunks
+    Some(chunks)
 }
 
 fn cache_key(workspace_id: Uuid, result_ref: Uuid) -> String {
@@ -621,9 +644,28 @@ mod assistant_mcp_tests {
     #[test]
     fn split_at_char_boundaries_respects_utf8_and_reassembles() {
         let value = format!("{}界{}", "a".repeat(9), "b".repeat(9));
-        let chunks = split_at_char_boundaries(&value, 10);
-        assert!(chunks.iter().all(|chunk| chunk.len() <= 10));
+        let chunks = split_at_json_string_bytes(&value, 10).unwrap();
+        assert!(chunks.iter().all(|chunk| {
+            serde_json::to_vec(&Value::String(chunk.clone()))
+                .unwrap()
+                .len()
+                <= 10
+        }));
         assert!(chunks.len() >= 2);
+        assert_eq!(chunks.concat(), value);
+    }
+
+    #[test]
+    fn split_at_json_string_bytes_accounts_for_escape_expansion() {
+        let value = "\\\"\n\r\t\u{0000}界".repeat(20);
+        let chunks = split_at_json_string_bytes(&value, 32).unwrap();
+
+        assert!(chunks.iter().all(|chunk| {
+            serde_json::to_vec(&Value::String(chunk.clone()))
+                .unwrap()
+                .len()
+                <= 32
+        }));
         assert_eq!(chunks.concat(), value);
     }
 
@@ -633,6 +675,29 @@ mod assistant_mcp_tests {
             &json!({"items": [1, 2, 3]}),
             DEFAULT_INLINE_CHARS,
         ));
+    }
+
+    #[test]
+    fn inline_cache_admission_counts_the_complete_envelope_at_the_exact_boundary() {
+        let empty = serialized(&inline_cache_value(&json!(""))).len();
+        let exact_detail = json!("a".repeat(DETAIL_CHUNK_MAX_BYTES - empty));
+        let over_detail = json!("a".repeat(DETAIL_CHUNK_MAX_BYTES - empty + 1));
+
+        assert_eq!(
+            serialized(&inline_cache_value(&exact_detail)).len(),
+            DETAIL_CHUNK_MAX_BYTES
+        );
+        assert!(serialized(&inline_cache_value(&over_detail)).len() > DETAIL_CHUNK_MAX_BYTES);
+    }
+
+    #[test]
+    fn inline_cache_admission_counts_utf8_and_escape_expansion() {
+        let detail = json!("界\\\"\n".repeat((DETAIL_CHUNK_MAX_BYTES - 12) / 9));
+        let serialized_size = serialized(&inline_cache_value(&detail)).len();
+
+        assert!(serialized_size > DETAIL_CHUNK_MAX_BYTES);
+        let raw_detail_size = serialized(&detail).len();
+        assert!(raw_detail_size <= DETAIL_CHUNK_MAX_BYTES);
     }
 
     #[test]

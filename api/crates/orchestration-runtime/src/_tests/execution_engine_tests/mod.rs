@@ -383,6 +383,9 @@ impl ProviderInvoker for FailsAfterFirstTokenInvoker {
                         provider_details: None,
                     },
                 },
+                ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::Error,
+                },
             ],
             result: ProviderInvocationResult {
                 final_content: Some("partial answer".to_string()),
@@ -392,6 +395,58 @@ impl ProviderInvoker for FailsAfterFirstTokenInvoker {
             first_token_at: None,
             time_to_first_token_ms: None,
         })
+    }
+}
+
+struct EventOnlyFinishErrorInvoker;
+
+#[async_trait]
+impl ProviderInvoker for EventOnlyFinishErrorInvoker {
+    async fn invoke_llm(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        Ok(ProviderInvocationOutput {
+            events: vec![
+                ProviderStreamEvent::TextDelta {
+                    delta: "partial answer".to_string(),
+                },
+                ProviderStreamEvent::Finish {
+                    reason: ProviderFinishReason::Error,
+                },
+            ],
+            result: ProviderInvocationResult {
+                final_content: Some("partial answer".to_string()),
+                ..ProviderInvocationResult::default()
+            },
+            first_token_at: None,
+            time_to_first_token_ms: None,
+        })
+    }
+}
+
+#[async_trait]
+impl CapabilityInvoker for EventOnlyFinishErrorInvoker {
+    async fn invoke_capability_node(
+        &self,
+        _runtime: &CompiledPluginRuntime,
+        _config_payload: serde_json::Value,
+        _input_payload: serde_json::Value,
+    ) -> Result<CapabilityInvocationOutput> {
+        unreachable!("base plan does not execute capability nodes")
+    }
+}
+
+#[async_trait]
+impl CodeInvoker for EventOnlyFinishErrorInvoker {
+    async fn invoke_code_node(
+        &self,
+        _runtime: &CompiledCodeRuntime,
+        _config_payload: serde_json::Value,
+        _input_payload: serde_json::Value,
+    ) -> Result<CodeInvocationOutput> {
+        unreachable!("base plan does not execute code nodes")
     }
 }
 

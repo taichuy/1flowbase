@@ -650,11 +650,7 @@ where
         let provider_observability = take_provider_observability_metadata(&mut output.result);
 
         let usage = collect_usage(&output.events, &output.result.usage);
-        let finish_reason = output
-            .result
-            .finish_reason
-            .clone()
-            .or_else(|| finish_reason_from_events(&output.events));
+        let finish_reason = resolved_provider_finish_reason(&output.result, &output.events);
         let final_content = resolve_final_llm_content(
             output.result.final_content.clone(),
             collect_dify_style_deltas(&output.events),

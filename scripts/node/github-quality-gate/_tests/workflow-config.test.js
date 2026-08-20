@@ -347,6 +347,15 @@ test("quality gate workflow includes React Doctor in scheduled and manual ci run
     /repo-frontend-react-doctor-gate:[\s\S]*?fetch-depth: 0/u,
   );
   assert.match(
+    workflow,
+    /react_doctor_base:\n\s+description: Protected baseline SHA for a manual React Doctor candidate run/u,
+  );
+  assert.match(jobBlock, /gh api[\s\S]*actions\/workflows\/quality-gate\.yml\/runs/u);
+  assert.match(jobBlock, /previous-successful-quality-gate-run/u);
+  assert.doesNotMatch(jobBlock, /REACT_DOCTOR_DIFF_BASE:-\$\(git rev-parse/u);
+  assert.match(jobBlock, /React Doctor manual runs require inputs\.react_doctor_base/u);
+  assert.match(jobBlock, /REACT_DOCTOR_BASE_SOURCE=/u);
+  assert.match(
     jobBlock,
     /repo-frontend-react-doctor-gate:[\s\S]*?scope: repo-frontend-react-doctor/u,
   );
@@ -654,12 +663,15 @@ test("GitHub automation docs include React Doctor in full ci but not fast verify
   assert.match(readme, /outside the automatic PR merge blockers in `verify\.yml`/u);
   assert.match(
     readme,
-    /npm exec --yes --package react-doctor@0\.2\.16 -- react-doctor web\/app --diff <parent-sha> --no-score --fail-on warning --verbose --no-color/u,
+    /REACT_DOCTOR_DIFF_BASE=<protected-baseline-sha> REACT_DOCTOR_CANDIDATE_SHA=<candidate-sha> node scripts\/node\/react-doctor-gate\.js/u,
   );
   assert.match(readme, /REACT_DOCTOR_DIFF_BASE/u);
   assert.match(readme, /scope: repo-frontend-react-doctor/u);
   assert.match(readme, /tmp\/test-governance\/react-doctor\.\*/u);
   assert.match(readme, /web\/app\/doctor\.config\.json/u);
+  assert.match(readme, /react_doctor_base/u);
+  assert.match(readme, /most recent successful `quality-gate\.yml` run/u);
+  assert.match(readme, /measured suppressed diagnostics/u);
   assert.doesNotMatch(readme, /nightly-only/u);
 });
 
@@ -689,6 +701,10 @@ test("quality gate workflow supports dispatch targets and nightly latest CI defa
   assert.match(
     workflow,
     /target_branch:\n\s+description: Target branch\n\s+type: string\n\s+default: latest/u,
+  );
+  assert.match(
+    workflow,
+    /react_doctor_base:\n\s+description: Protected baseline SHA for a manual React Doctor candidate run\n\s+type: string\n\s+required: false/u,
   );
   assert.match(
     workflow,

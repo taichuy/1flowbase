@@ -39,6 +39,7 @@ function buildReactDoctorCommand({
       'web/app',
       '--diff',
       diffBase,
+      '--json',
       '--no-score',
       '--fail-on',
       'warning',
@@ -50,27 +51,141 @@ function buildReactDoctorCommand({
 }
 
 function resolveReactDoctorDiffBase({
-  repoRoot = getRepoRoot(),
   env = process.env,
-  spawnSyncImpl = spawnSync,
 } = {}) {
   const configuredBase = env.REACT_DOCTOR_DIFF_BASE?.trim();
   if (configuredBase) {
     return configuredBase;
   }
 
-  const result = spawnSyncImpl('git', ['rev-parse', '--verify', 'HEAD^'], {
+  const pullRequestBase = env.GITHUB_BASE_SHA?.trim();
+  if (pullRequestBase) {
+    return pullRequestBase;
+  }
+  throw new Error(
+    'React Doctor range is incomplete: set REACT_DOCTOR_DIFF_BASE or GITHUB_BASE_SHA',
+  );
+}
+
+function resolveReactDoctorCandidate({ env = process.env } = {}) {
+  const candidate = env.REACT_DOCTOR_CANDIDATE_SHA?.trim() || env.GITHUB_SHA?.trim();
+  if (candidate) {
+    return candidate;
+  }
+  throw new Error('React Doctor range is incomplete: set REACT_DOCTOR_CANDIDATE_SHA or GITHUB_SHA');
+}
+
+function resolveGitRevision({ repoRoot, revision, label, env, spawnSyncImpl }) {
+  const result = spawnSyncImpl('git', ['rev-parse', '--verify', `${revision}^{commit}`], {
     cwd: repoRoot,
     env,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   });
-  const parentSha = result.stdout?.trim();
-  if (result.error || result.status !== 0 || !parentSha) {
+  const resolved = result.stdout?.trim();
+  if (result.error || result.status !== 0 || !resolved) {
     const detail = result.stderr?.trim() || result.error?.message || 'unknown git error';
-    throw new Error(`cannot resolve React Doctor parent baseline: ${detail}`);
+    throw new Error(`cannot resolve React Doctor ${label} \`${revision}\`: ${detail}`);
   }
-  return parentSha;
+  return resolved;
+}
+
+function resolveReactDoctorRange({
+  repoRoot = getRepoRoot(),
+  env = process.env,
+  spawnSyncImpl = spawnSync,
+} = {}) {
+  const base = resolveReactDoctorDiffBase({ env });
+  const candidate = resolveReactDoctorCandidate({ env });
+  const baseSha = resolveGitRevision({
+    repoRoot,
+    revision: base,
+    label: 'base',
+    env,
+    spawnSyncImpl,
+  });
+  const candidateSha = resolveGitRevision({
+    repoRoot,
+    revision: candidate,
+    label: 'candidate',
+    env,
+    spawnSyncImpl,
+  });
+  const headSha = resolveGitRevision({
+    repoRoot,
+    revision: 'HEAD',
+    label: 'checked-out candidate',
+    env,
+    spawnSyncImpl,
+  });
+  if (candidateSha !== headSha) {
+    throw new Error(
+      `React Doctor candidate ${candidateSha} is not the checked-out candidate ${headSha}`,
+    );
+  }
+  const diff = spawnSyncImpl(
+    'git',
+    ['diff', '-z', '--name-only', '--diff-filter=ACMR', baseSha, candidateSha, '--', 'web/app'],
+    {
+      cwd: repoRoot,
+      env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  );
+  if (diff.error || diff.status !== 0) {
+    const detail = diff.stderr?.trim() || diff.error?.message || 'unknown git error';
+    throw new Error(`cannot resolve React Doctor changed files: ${detail}`);
+  }
+  const changedFiles = (diff.stdout || '')
+    .split('\0')
+    .map((filePath) => filePath.trim())
+    .filter(Boolean);
+  return { baseSha, candidateSha, changedFiles };
+}
+
+function countConfiguredSuppressions({ repoRoot, changedFiles }) {
+  const configPath = path.join(repoRoot, 'web', 'app', 'doctor.config.json');
+  try {
+    const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    const changedAppFiles = new Set(
+      changedFiles
+        .filter((filePath) => filePath.startsWith('web/app/'))
+        .map((filePath) => filePath.slice('web/app/'.length)),
+    );
+    return (config.ignore?.overrides || []).reduce((count, override) => {
+      if (!override.files?.some((filePath) => changedAppFiles.has(filePath))) {
+        return count;
+      }
+      return count + (Array.isArray(override.rules) ? override.rules.length : 0);
+    }, 0);
+  } catch {
+    return null;
+  }
+}
+
+function parseDoctorJsonReport(stdout) {
+  const start = stdout.indexOf('{');
+  if (start < 0) {
+    return null;
+  }
+  try {
+    return JSON.parse(stdout.slice(start));
+  } catch {
+    return null;
+  }
+}
+
+function resolveSuppressedDiagnostics(doctorReport) {
+  return doctorReport?.summary?.suppressedDiagnosticCount ?? null;
+}
+
+function resolveBaseSource(env = process.env) {
+  return env.REACT_DOCTOR_BASE_SOURCE?.trim() || 'explicit-base-input';
+}
+
+function resolveCandidateSource(env = process.env) {
+  return env.REACT_DOCTOR_CANDIDATE_SOURCE?.trim() || 'checked-out-candidate';
 }
 
 function writeReactDoctorReports({
@@ -80,6 +195,7 @@ function writeReactDoctorReports({
   exitCode,
   stdout,
   stderr,
+  range,
 }) {
   const outputDir = resolveOutputDir(repoRoot, env);
   fs.mkdirSync(outputDir, { recursive: true });
@@ -89,9 +205,26 @@ function writeReactDoctorReports({
   const markdownPath = path.join(outputDir, 'react-doctor.md');
   const status = exitCode === 0 ? 'passed' : 'failed';
   const log = stripAnsiControlSequences(`${stdout || ''}${stderr || ''}`);
+  const doctorReport = parseDoctorJsonReport(stdout || '');
+  const configuredSuppressionEntries = countConfiguredSuppressions({
+    repoRoot,
+    changedFiles: range.changedFiles,
+  });
   const report = {
     status,
     exitCode,
+    baseSha: range.baseSha,
+    candidateSha: range.candidateSha,
+    changedFiles: range.changedFiles,
+    changedFileCount: range.changedFiles.length,
+    unsuppressedDiagnostics: doctorReport?.summary?.totalDiagnosticCount ?? null,
+    suppressedDiagnostics: resolveSuppressedDiagnostics(doctorReport),
+    configuredSuppressionEntries,
+    suppressionSource: 'react-doctor JSON report when available; otherwise unavailable',
+    configuredSuppressionSource:
+      'web/app/doctor.config.json override entries intersecting changed files',
+    baseSource: resolveBaseSource(env),
+    candidateSource: resolveCandidateSource(env),
     command: formatCommand(command),
     cwd: toRepoRelative(repoRoot, command.cwd),
     logPath: toRepoRelative(repoRoot, logPath),
@@ -106,6 +239,14 @@ function writeReactDoctorReports({
     '',
     `- Status: ${status}`,
     `- Exit code: ${exitCode}`,
+    `- Base SHA: ${report.baseSha}`,
+    `- Candidate SHA: ${report.candidateSha}`,
+    `- Base source: ${report.baseSource}`,
+    `- Candidate source: ${report.candidateSource}`,
+    `- Changed files: ${report.changedFileCount}`,
+    `- Unsuppressed diagnostics: ${report.unsuppressedDiagnostics ?? 'unavailable'}`,
+    `- Suppressed diagnostics: ${report.suppressedDiagnostics ?? 'unavailable'}`,
+    `- Configured suppression entries: ${report.configuredSuppressionEntries ?? 'unavailable'}`,
     `- Command: \`${report.command}\``,
     `- Log: ${report.logPath}`,
     `- JSON: ${report.reportPath}`,
@@ -126,8 +267,8 @@ function runReactDoctorGate({
   writeStdout = (text) => process.stdout.write(text),
   writeStderr = (text) => process.stderr.write(text),
 } = {}) {
-  const diffBase = resolveReactDoctorDiffBase({ repoRoot, env, spawnSyncImpl });
-  const command = buildReactDoctorCommand({ repoRoot, diffBase });
+  const range = resolveReactDoctorRange({ repoRoot, env, spawnSyncImpl });
+  const command = buildReactDoctorCommand({ repoRoot, diffBase: range.baseSha });
   const result = spawnSyncImpl(command.command, command.args, {
     cwd: command.cwd,
     env,
@@ -156,6 +297,7 @@ function runReactDoctorGate({
     exitCode,
     stdout,
     stderr,
+    range,
   });
 
   return exitCode;
@@ -163,7 +305,14 @@ function runReactDoctorGate({
 
 module.exports = {
   buildReactDoctorCommand,
+  countConfiguredSuppressions,
+  parseDoctorJsonReport,
+  resolveBaseSource,
+  resolveCandidateSource,
+  resolveSuppressedDiagnostics,
   resolveReactDoctorDiffBase,
+  resolveReactDoctorRange,
+  resolveReactDoctorCandidate,
   runReactDoctorGate,
   stripAnsiControlSequences,
   writeReactDoctorReports,
