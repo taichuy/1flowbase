@@ -10,8 +10,10 @@ import {
   Form,
   Grid,
   Input,
+  Modal,
   Select,
   Space,
+  Table,
   Tabs,
   Tag,
   Typography
@@ -45,6 +47,11 @@ type ComponentFilter = {
   keyword: string;
   state?: SettingsUiComponentCandidate['state'];
 };
+
+type ContractDraftEditor =
+  | { kind: 'prop'; index?: number }
+  | { kind: 'limitation'; index?: number }
+  | { kind: 'example'; index?: number };
 
 const COMPONENT_PAGE_SIZE = 20;
 
@@ -90,6 +97,13 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
   });
   const [filter, setFilter] = useState<ComponentFilter>({ keyword: '' });
   const [form] = Form.useForm<SettingsUiComponentContract>();
+  const [draftEntryForm] = Form.useForm();
+  const [draftEditor, setDraftEditor] = useState<ContractDraftEditor | null>(
+    null
+  );
+  const props = Form.useWatch('props', { form, preserve: true }) ?? [];
+  const limitations = Form.useWatch('limitations', { form, preserve: true }) ?? [];
+  const examples = Form.useWatch('examples', { form, preserve: true }) ?? [];
   const save = useMutation({
     mutationFn: async (contract: SettingsUiComponentContract) => {
       if (!selected) throw new Error('missing component');
@@ -130,10 +144,82 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
   const edit = useCallback(
     (row: SettingsUiComponentCandidate) => {
       setSelected(row);
+      setDraftEditor(null);
       form.setFieldsValue(componentContractFormValue(row));
     },
     [form]
   );
+  const openDraftEditor = (editor: ContractDraftEditor) => {
+    setDraftEditor(editor);
+    if (editor.kind === 'prop') {
+      draftEntryForm.setFieldsValue(
+        editor.index === undefined
+          ? { name: '', type: '', description: '', required: false }
+          : props[editor.index]
+      );
+      return;
+    }
+    if (editor.kind === 'limitation') {
+      draftEntryForm.setFieldsValue({
+        limitation: editor.index === undefined ? '' : limitations[editor.index]
+      });
+      return;
+    }
+    draftEntryForm.setFieldsValue(
+      editor.index === undefined ? { title: '', code: '' } : examples[editor.index]
+    );
+  };
+  const removeDraftEntry = (editor: Required<ContractDraftEditor>) => {
+    if (editor.kind === 'prop') {
+      form.setFieldValue(
+        'props',
+        props.filter((_, index) => index !== editor.index)
+      );
+      return;
+    }
+    if (editor.kind === 'limitation') {
+      form.setFieldValue(
+        'limitations',
+        limitations.filter((_, index) => index !== editor.index)
+      );
+      return;
+    }
+    form.setFieldValue(
+      'examples',
+      examples.filter((_, index) => index !== editor.index)
+    );
+  };
+  const saveDraftEntry = (values: Record<string, unknown>) => {
+    if (!draftEditor) return;
+    if (draftEditor.kind === 'prop') {
+      const next = [...props];
+      const entry = {
+        name: String(values.name ?? ''),
+        type: String(values.type ?? ''),
+        description: String(values.description ?? ''),
+        required: values.required === true
+      };
+      if (draftEditor.index === undefined) next.push(entry);
+      else next[draftEditor.index] = entry;
+      form.setFieldValue('props', next);
+    } else if (draftEditor.kind === 'limitation') {
+      const next = [...limitations];
+      const entry = String(values.limitation ?? '');
+      if (draftEditor.index === undefined) next.push(entry);
+      else next[draftEditor.index] = entry;
+      form.setFieldValue('limitations', next);
+    } else {
+      const next = [...examples];
+      const entry = {
+        title: String(values.title ?? ''),
+        code: String(values.code ?? '')
+      };
+      if (draftEditor.index === undefined) next.push(entry);
+      else next[draftEditor.index] = entry;
+      form.setFieldValue('examples', next);
+    }
+    setDraftEditor(null);
+  };
   const columns = useMemo<Array<DataTableColumn<SettingsUiComponentCandidate>>>(
     () => [
       {
@@ -381,110 +467,98 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
           >
             <Input.TextArea rows={3} />
           </Form.Item>
-          <Typography.Title level={5}>{t('props')}</Typography.Title>
-          <Form.List name="props">
-            {(fields, { add, remove }) => (
-              <Flex vertical gap={8}>
-                {fields.map((field) => (
-                  <Flex key={field.key} vertical gap={8}>
-                    <Form.Item
-                      {...field}
-                      name={[field.name, 'name']}
-                      rules={[{ required: true }]}
-                      style={{ width: '100%' }}
-                    >
-                      <Input placeholder={t('prop_name')} />
-                    </Form.Item>
-                    <Form.Item
-                      {...field}
-                      name={[field.name, 'type']}
-                      rules={[{ required: true }]}
-                      style={{ width: '100%' }}
-                    >
-                      <Input placeholder={t('prop_type')} />
-                    </Form.Item>
-                    <Form.Item
-                      {...field}
-                      name={[field.name, 'description']}
-                      rules={[{ required: true }]}
-                      style={{ width: '100%' }}
-                    >
-                      <Input placeholder={t('description')} />
-                    </Form.Item>
-                    <Form.Item
-                      {...field}
-                      name={[field.name, 'required']}
-                      style={{ width: '100%' }}
-                    >
-                      <Select
-                        options={[
-                          { value: true, label: t('required') },
-                          { value: false, label: t('optional') }
-                        ]}
-                      />
-                    </Form.Item>
-                    <Button type="link" danger onClick={() => remove(field.name)}>
+          <Flex justify="space-between" align="center">
+            <Typography.Title level={5}>{t('props')}</Typography.Title>
+            <Button onClick={() => openDraftEditor({ kind: 'prop' })}>
+              {t('new_prop')}
+            </Button>
+          </Flex>
+          <Table
+            columns={[
+              { title: t('prop_name'), dataIndex: 'name' },
+              { title: t('prop_type'), dataIndex: 'type' },
+              { title: t('description'), dataIndex: 'description' },
+              {
+                title: t('required'),
+                dataIndex: 'required',
+                render: (required) => t(required ? 'required' : 'optional')
+              },
+              {
+                title: t('actions'),
+                render: (_, __, index) => (
+                  <Space>
+                    <Button type="link" onClick={() => openDraftEditor({ kind: 'prop', index })}>
+                      {t('edit')}
+                    </Button>
+                    <Button type="link" danger onClick={() => removeDraftEntry({ kind: 'prop', index })}>
                       {t('remove')}
                     </Button>
-                  </Flex>
-                ))}
-                <Button onClick={() => add({ required: false })}>
-                  {t('add_prop')}
-                </Button>
-              </Flex>
-            )}
-          </Form.List>
-          <Typography.Title level={5}>{t('limitations')}</Typography.Title>
-          <Form.List name="limitations">
-            {(fields, { add, remove }) => (
-              <Flex vertical gap={8}>
-                {fields.map((field) => (
-                  <Flex key={field.key} vertical gap={8}>
-                    <Form.Item {...field} rules={[{ required: true }]}>
-                      <Input />
-                    </Form.Item>
-                    <Button type="link" danger onClick={() => remove(field.name)}>
+                  </Space>
+                )
+              }
+            ]}
+            dataSource={props.map((prop, index) => ({ ...prop, key: index }))}
+            pagination={false}
+            rowKey="key"
+            size="small"
+          />
+          <Flex justify="space-between" align="center">
+            <Typography.Title level={5}>{t('limitations')}</Typography.Title>
+            <Button onClick={() => openDraftEditor({ kind: 'limitation' })}>
+              {t('new_limitation')}
+            </Button>
+          </Flex>
+          <Table
+            columns={[
+              { title: t('limitations'), dataIndex: 'limitation' },
+              {
+                title: t('actions'),
+                render: (_, __, index) => (
+                  <Space>
+                    <Button type="link" onClick={() => openDraftEditor({ kind: 'limitation', index })}>
+                      {t('edit')}
+                    </Button>
+                    <Button type="link" danger onClick={() => removeDraftEntry({ kind: 'limitation', index })}>
                       {t('remove')}
                     </Button>
-                  </Flex>
-                ))}
-                <Button onClick={() => add('')}>{t('add_limitation')}</Button>
-              </Flex>
-            )}
-          </Form.List>
-          <Typography.Title level={5}>{t('examples')}</Typography.Title>
-          <Form.List name="examples">
-            {(fields, { add, remove }) => (
-              <Flex vertical gap={8}>
-                {fields.map((field) => (
-                  <Flex key={field.key} vertical gap={8}>
-                    <Form.Item
-                      {...field}
-                      name={[field.name, 'title']}
-                      rules={[{ required: true }]}
-                      style={{ width: '100%' }}
-                    >
-                      <Input placeholder={t('example_title')} />
-                    </Form.Item>
-                    <Form.Item
-                      {...field}
-                      name={[field.name, 'code']}
-                      rules={[{ required: true }]}
-                      style={{ width: '100%' }}
-                    >
-                      <Input.TextArea placeholder={t('example_code')} rows={2} />
-                    </Form.Item>
-                    <Button type="link" danger onClick={() => remove(field.name)}>
+                  </Space>
+                )
+              }
+            ]}
+            dataSource={limitations.map((limitation, index) => ({ limitation, key: index }))}
+            pagination={false}
+            rowKey="key"
+            size="small"
+          />
+          <Flex justify="space-between" align="center">
+            <Typography.Title level={5}>{t('examples')}</Typography.Title>
+            <Button onClick={() => openDraftEditor({ kind: 'example' })}>
+              {t('new_example')}
+            </Button>
+          </Flex>
+          <Table
+            columns={[
+              { title: t('example_title'), dataIndex: 'title' },
+              { title: t('example_code'), dataIndex: 'code' },
+              {
+                title: t('actions'),
+                render: (_, __, index) => (
+                  <Space>
+                    <Button type="link" onClick={() => openDraftEditor({ kind: 'example', index })}>
+                      {t('edit')}
+                    </Button>
+                    <Button type="link" danger onClick={() => removeDraftEntry({ kind: 'example', index })}>
                       {t('remove')}
                     </Button>
-                  </Flex>
-                ))}
-                <Button onClick={() => add({ title: '', code: '' })}>
-                  {t('add_example')}
-                </Button>
-              </Flex>
-            )}
-          </Form.List>
+                  </Space>
+                )
+              }
+            ]}
+            dataSource={examples.map((example, index) => ({ ...example, key: index }))}
+            pagination={false}
+            rowKey="key"
+            size="small"
+          />
           <Typography.Title level={5}>{t('upstream')}</Typography.Title>
           <Flex vertical gap={8}>
             <Form.Item name={['upstream', 'package']} style={{ width: '100%' }}>
@@ -498,6 +572,65 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
             </Form.Item>
           </Flex>
         </Form>
+        <Modal
+          open={draftEditor !== null}
+          title={
+            draftEditor?.kind === 'prop'
+              ? t(draftEditor.index === undefined ? 'new_prop' : 'edit_prop')
+              : draftEditor?.kind === 'limitation'
+                ? t(
+                    draftEditor.index === undefined
+                      ? 'new_limitation'
+                      : 'edit_limitation'
+                  )
+                : t(draftEditor?.index === undefined ? 'new_example' : 'edit_example')
+          }
+          okText={t('save')}
+          onCancel={() => setDraftEditor(null)}
+          onOk={() => draftEntryForm.submit()}
+        >
+          <Form
+            form={draftEntryForm}
+            layout="vertical"
+            name="component-contract-draft"
+            onFinish={saveDraftEntry}
+          >
+            {draftEditor?.kind === 'prop' ? (
+              <>
+                <Form.Item name="name" label={t('prop_name')} rules={[{ required: true }]}>
+                  <Input />
+                </Form.Item>
+                <Form.Item name="type" label={t('prop_type')} rules={[{ required: true }]}>
+                  <Input />
+                </Form.Item>
+                <Form.Item name="description" label={t('description')} rules={[{ required: true }]}>
+                  <Input.TextArea rows={3} />
+                </Form.Item>
+                <Form.Item name="required" label={t('required')}>
+                  <Select
+                    options={[
+                      { value: true, label: t('required') },
+                      { value: false, label: t('optional') }
+                    ]}
+                  />
+                </Form.Item>
+              </>
+            ) : draftEditor?.kind === 'limitation' ? (
+              <Form.Item name="limitation" label={t('limitations')} rules={[{ required: true }]}>
+                <Input.TextArea rows={3} />
+              </Form.Item>
+            ) : (
+              <>
+                <Form.Item name="title" label={t('example_title')} rules={[{ required: true }]}>
+                  <Input />
+                </Form.Item>
+                <Form.Item name="code" label={t('example_code')} rules={[{ required: true }]}>
+                  <Input.TextArea rows={4} />
+                </Form.Item>
+              </>
+            )}
+          </Form>
+        </Modal>
       </Drawer>
     </SettingsSectionSurface>
   );

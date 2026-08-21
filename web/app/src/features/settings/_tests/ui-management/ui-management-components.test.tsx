@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const router = vi.hoisted(() => ({
@@ -180,7 +180,7 @@ describe('UiManagementPanel components', () => {
     expect(screen.queryByLabelText('Contract JSON')).not.toBeInTheDocument();
   });
 
-  test('AC-004 stacks each structured contract entry in one column', async () => {
+  test('AC-004 presents each structured contract array as a labelled table', async () => {
     render(
       <AppProviders>
         <UiManagementPanel canManage />
@@ -191,12 +191,43 @@ describe('UiManagementPanel components', () => {
     fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]);
 
     await screen.findByLabelText('组件代码');
-    for (const input of [
-      screen.getByPlaceholderText('属性名'),
-      screen.getByPlaceholderText('示例标题'),
-      screen.getByPlaceholderText('包名')
-    ]) {
-      expect(input.closest('.ant-flex-vertical')).not.toBeNull();
-    }
+    expect(screen.getByRole('columnheader', { name: '属性名' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '限制' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '示例标题' })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('属性名')).not.toBeInTheDocument();
+  });
+
+  test('AC-004 stages new props in a labelled table before the outer revision save', async () => {
+    uiManagementApi.updateSettingsUiComponentContract.mockClear();
+    render(
+      <AppProviders>
+        <UiManagementPanel canManage />
+      </AppProviders>
+    );
+
+    await screen.findByText('DataTable');
+    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]);
+
+    expect(await screen.findByRole('columnheader', { name: '属性名' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '类型' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '新建属性' }));
+
+    await screen.findByLabelText('属性名');
+    const dialog = within(screen.getAllByRole('dialog').at(-1)!);
+    fireEvent.change(dialog.getByLabelText('属性名'), {
+      target: { value: 'columns' }
+    });
+    fireEvent.change(dialog.getByLabelText('类型'), {
+      target: { value: 'Column[]' }
+    });
+    fireEvent.change(dialog.getByLabelText('说明'), {
+      target: { value: 'Columns to render.' }
+    });
+    fireEvent.click(
+      dialog.getByRole('button', { name: /保\s*存/ })
+    );
+
+    expect(await screen.findByRole('cell', { name: 'columns' })).toBeInTheDocument();
+    expect(uiManagementApi.updateSettingsUiComponentContract).not.toHaveBeenCalled();
   });
 });
