@@ -188,7 +188,7 @@ describe('UiManagementPanel components', () => {
     await screen.findByText('DataTable');
     fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]);
 
-    expect(await screen.findByLabelText('组件代码')).toBeInTheDocument();
+    expect(await screen.findByLabelText('名称')).toBeInTheDocument();
     expect(screen.getByLabelText('导出名称')).toHaveValue('DataTable');
     expect(screen.getByLabelText('说明')).toBeInTheDocument();
     expect(screen.getByLabelText('插入代码')).toBeInTheDocument();
@@ -205,9 +205,9 @@ describe('UiManagementPanel components', () => {
     await screen.findByText('DataTable');
     fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]);
 
-    await screen.findByLabelText('组件代码');
+    await screen.findByLabelText('名称');
     expect(screen.getByRole('columnheader', { name: '属性名' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '限制' })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: '备注' })).toBeInTheDocument();
     expect(screen.getByRole('columnheader', { name: '示例标题' })).toBeInTheDocument();
     expect(screen.queryByPlaceholderText('属性名')).not.toBeInTheDocument();
   });
