@@ -11,7 +11,7 @@ export interface ConsoleNetworkEgressProjection {
 
 export interface ConsoleNetworkEgressProvider {
   id: string;
-  installation_id: string;
+  installation_id: string | null;
   provider_code: string;
   display_name: string;
   description: string;
@@ -81,6 +81,22 @@ export interface UpdateConsoleNetworkEgressPoolInput {
 export interface CreateConsoleNetworkEgressPoolMemberInput {
   provider_id: string;
   provider_egress_key: string;
+  enabled: boolean;
+  sequence: number;
+}
+
+export interface CreateConsoleNetworkEgressPoolStaticHttpMemberInput {
+  display_name: string;
+  host: string;
+  port: number;
+  username: string;
+  password: string;
+  enabled: boolean;
+  sequence: number;
+}
+
+export interface AddConsoleNetworkEgressProviderToPoolInput {
+  provider_id: string;
   enabled: boolean;
   sequence: number;
 }
@@ -224,6 +240,36 @@ export function createConsoleNetworkEgressPoolMember(
 ) {
   return apiFetch<ConsoleNetworkEgressPoolMember>({
     path: `/api/console/network-center/pools/${encodeURIComponent(poolId)}/members`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function createConsoleNetworkEgressPoolStaticHttpMember(
+  poolId: string,
+  input: CreateConsoleNetworkEgressPoolStaticHttpMemberInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleNetworkEgressPoolMember>({
+    path: `/api/console/network-center/pools/${encodeURIComponent(poolId)}/members/static-http`,
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function addConsoleNetworkEgressProviderToPool(
+  poolId: string,
+  input: AddConsoleNetworkEgressProviderToPoolInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleNetworkEgressPoolMember[]>({
+    path: `/api/console/network-center/pools/${encodeURIComponent(poolId)}/members/provider`,
     method: 'POST',
     body: input,
     csrfToken,

@@ -253,7 +253,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
         &state.store,
         &UpsertPluginArtifactInstanceInput {
             node_id: state.api_node_id.clone(),
-            installation_id,
+            installation_id: Some(installation_id),
             local_version: Some("0.1.0".into()),
             local_checksum: None,
             local_path: Some(package.path().display().to_string()),
@@ -274,7 +274,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
         &state.store,
         &CreateNetworkEgressProviderInput {
             provider_id,
-            installation_id,
+            installation_id: Some(installation_id),
             provider_code: "fixture_egress".into(),
             display_name: "Fixture Egress".into(),
             description: String::new(),

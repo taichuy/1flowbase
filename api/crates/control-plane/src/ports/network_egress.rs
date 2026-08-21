@@ -3,12 +3,27 @@ use super::*;
 #[derive(Debug, Clone)]
 pub struct CreateNetworkEgressProviderInput {
     pub provider_id: Uuid,
-    pub installation_id: Uuid,
+    pub installation_id: Option<Uuid>,
     pub provider_code: String,
     pub display_name: String,
     pub description: String,
     pub secret_ref: String,
     pub lifecycle: domain::NetworkEgressProviderLifecycle,
+    pub actor_user_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateStaticHttpProxyPoolMemberInput {
+    pub provider_id: Uuid,
+    pub member_id: Uuid,
+    pub pool_id: Uuid,
+    pub display_name: String,
+    pub secret_ref: String,
+    pub plaintext_secret_json: serde_json::Value,
+    pub master_key: String,
+    pub enabled: bool,
+    pub sequence: i32,
+    pub synchronized_at: time::OffsetDateTime,
     pub actor_user_id: Uuid,
 }
 
@@ -113,6 +128,10 @@ pub trait NetworkEgressRepository: Send + Sync {
         &self,
         input: &CreateNetworkEgressProviderInput,
     ) -> anyhow::Result<domain::NetworkEgressProviderRecord>;
+    async fn create_static_http_proxy_pool_member(
+        &self,
+        input: &CreateStaticHttpProxyPoolMemberInput,
+    ) -> anyhow::Result<domain::NetworkEgressPoolMember>;
     async fn update_network_egress_provider_lifecycle(
         &self,
         input: &UpdateNetworkEgressProviderLifecycleInput,

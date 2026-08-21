@@ -11,6 +11,7 @@ license.workspace = true
 root-1805-consumer-fixture = []
 
 [dependencies]
+url.workspace = true
 anyhow.workspace = true
 argon2.workspace = true
 async-trait.workspace = true

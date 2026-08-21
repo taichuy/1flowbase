@@ -2,6 +2,8 @@ import {
   createConsoleNetworkEgressProvider,
   createConsoleNetworkEgressPool,
   createConsoleNetworkEgressPoolMember,
+  createConsoleNetworkEgressPoolStaticHttpMember,
+  addConsoleNetworkEgressProviderToPool,
   deleteConsoleNetworkEgressPool,
   deleteConsoleNetworkEgressPoolMember,
   createConsoleNetworkEgressRoute,
@@ -22,6 +24,8 @@ import {
   type ConsoleNetworkEgressRoute,
   type CreateConsoleNetworkEgressPoolInput,
   type CreateConsoleNetworkEgressPoolMemberInput,
+  type CreateConsoleNetworkEgressPoolStaticHttpMemberInput,
+  type AddConsoleNetworkEgressProviderToPoolInput,
   type CreateConsoleNetworkEgressRouteInput,
   type CreateConsoleNetworkEgressProviderInput,
   type UpdateConsoleNetworkEgressPoolInput,
@@ -45,6 +49,10 @@ export type UpdateSettingsNetworkEgressPoolInput =
   UpdateConsoleNetworkEgressPoolInput;
 export type CreateSettingsNetworkEgressPoolMemberInput =
   CreateConsoleNetworkEgressPoolMemberInput;
+export type CreateSettingsNetworkEgressPoolStaticHttpMemberInput =
+  CreateConsoleNetworkEgressPoolStaticHttpMemberInput;
+export type AddSettingsNetworkEgressProviderToPoolInput =
+  AddConsoleNetworkEgressProviderToPoolInput;
 export type UpdateSettingsNetworkEgressPoolMemberInput =
   UpdateConsoleNetworkEgressPoolMemberInput;
 export type SettingsNetworkEgressRoute = ConsoleNetworkEgressRoute;
@@ -158,6 +166,22 @@ export function createSettingsNetworkEgressPoolMember(
   csrfToken: string
 ) {
   return createConsoleNetworkEgressPoolMember(poolId, input, csrfToken);
+}
+
+export function createSettingsNetworkEgressPoolStaticHttpMember(
+  poolId: string,
+  input: CreateSettingsNetworkEgressPoolStaticHttpMemberInput,
+  csrfToken: string
+) {
+  return createConsoleNetworkEgressPoolStaticHttpMember(poolId, input, csrfToken);
+}
+
+export function addSettingsNetworkEgressProviderToPool(
+  poolId: string,
+  input: AddSettingsNetworkEgressProviderToPoolInput,
+  csrfToken: string
+) {
+  return addConsoleNetworkEgressProviderToPool(poolId, input, csrfToken);
 }
 
 export function updateSettingsNetworkEgressPoolMember(

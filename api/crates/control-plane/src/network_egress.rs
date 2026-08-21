@@ -154,7 +154,7 @@ where
             .repository
             .create_network_egress_provider(&CreateNetworkEgressProviderInput {
                 provider_id,
-                installation_id: command.installation_id,
+                installation_id: Some(command.installation_id),
                 provider_code: package.provider.provider_code,
                 display_name,
                 description,
@@ -230,9 +230,14 @@ where
             return Err(ControlPlaneError::Conflict("network_egress_provider_not_active").into());
         }
         let sync_at = OffsetDateTime::now_utc();
+        let installation_id = provider
+            .installation_id
+            .ok_or(ControlPlaneError::InvalidInput(
+                "network_egress_provider_type",
+            ))?;
         let local_installation = self
             .repository
-            .get_local_installation(&self.node_id, provider.installation_id)
+            .get_local_installation(&self.node_id, installation_id)
             .await?
             .ok_or(ControlPlaneError::Conflict(
                 "network_egress_provider_unavailable",
@@ -310,13 +315,6 @@ where
                 actor_user_id,
             })
             .await?;
-        self.sync_derived_pool(
-            provider.id,
-            &provider.display_name,
-            &egresses,
-            actor_user_id,
-        )
-        .await?;
         self.repository
             .append_audit_log(&audit_log(
                 None,
@@ -328,59 +326,6 @@ where
             ))
             .await?;
         Ok(NetworkEgressProviderView { provider, egresses })
-    }
-
-    async fn sync_derived_pool(
-        &self,
-        provider_id: Uuid,
-        provider_name: &str,
-        egresses: &[domain::NetworkEgressProjectionRecord],
-        actor_user_id: Uuid,
-    ) -> Result<()> {
-        let pool = self
-            .repository
-            .list_network_egress_pools()
-            .await?
-            .into_iter()
-            .find(|pool| pool.owner_provider_id == Some(provider_id));
-        let pool = match pool {
-            Some(pool) => pool,
-            None => {
-                self.repository
-                    .create_network_egress_pool(&crate::ports::CreateNetworkEgressPoolInput {
-                        pool_id: Uuid::now_v7(),
-                        display_name: format!("{provider_name} exits"),
-                        owner_provider_id: Some(provider_id),
-                        actor_user_id,
-                    })
-                    .await?
-            }
-        };
-        for member in self
-            .repository
-            .list_network_egress_pool_members(pool.id)
-            .await?
-        {
-            self.repository
-                .delete_network_egress_pool_member(pool.id, member.id)
-                .await?;
-        }
-        for (sequence, egress) in egresses.iter().enumerate() {
-            self.repository
-                .create_network_egress_pool_member(
-                    &crate::ports::CreateNetworkEgressPoolMemberInput {
-                        member_id: Uuid::now_v7(),
-                        pool_id: pool.id,
-                        provider_id,
-                        provider_egress_key: egress.provider_egress_key.clone(),
-                        enabled: egress.availability == "available",
-                        sequence: sequence as i32,
-                        actor_user_id,
-                    },
-                )
-                .await?;
-        }
-        Ok(())
     }
 }
 

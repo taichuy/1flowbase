@@ -6,6 +6,7 @@ use axum::{
     Json,
 };
 use control_plane::network_egress_pool::{
+    AddProviderEgressesToPoolCommand, AddStaticHttpProxyToPoolCommand,
     CreateNetworkEgressPoolCommand, CreateNetworkEgressPoolMemberCommand,
     NetworkEgressPoolMemberView, NetworkEgressPoolService, NetworkEgressPoolView,
     UpdateNetworkEgressPoolCommand, UpdateNetworkEgressPoolMemberCommand,
@@ -38,6 +39,26 @@ pub struct UpdateNetworkEgressPoolBody {
 pub struct CreateNetworkEgressPoolMemberBody {
     pub provider_id: String,
     pub provider_egress_key: String,
+    pub enabled: bool,
+    pub sequence: i32,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AddStaticHttpProxyToPoolBody {
+    pub display_name: String,
+    pub host: String,
+    pub port: u16,
+    #[serde(default)]
+    pub username: String,
+    #[serde(default)]
+    pub password: String,
+    pub enabled: bool,
+    pub sequence: i32,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct AddProviderEgressesToPoolBody {
+    pub provider_id: String,
     pub enabled: bool,
     pub sequence: i32,
 }
@@ -102,6 +123,20 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
+            "/network-center/pools/:pool_id/members/static-http",
+            console_post(
+                add_static_http_proxy_to_pool,
+                ConsoleOperation("network_egress_pool_members.create".to_string()),
+            ),
+        )
+        .route(
+            "/network-center/pools/:pool_id/members/provider",
+            console_post(
+                add_provider_egresses_to_pool,
+                ConsoleOperation("network_egress_pool_members.create".to_string()),
+            ),
+        )
+        .route(
             "/network-center/pools/:pool_id/members/:member_id",
             console_patch(
                 update_network_egress_pool_member,
@@ -115,7 +150,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 }
 
 fn service(state: &ApiState) -> NetworkEgressPoolService<storage_durable::MainDurableStore> {
-    NetworkEgressPoolService::new(state.store.clone())
+    NetworkEgressPoolService::with_secret_master_key(
+        state.store.clone(),
+        state.provider_secret_master_key.clone(),
+    )
 }
 
 fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, ApiError> {
@@ -265,6 +303,86 @@ pub async fn create_network_egress_pool_member(
     Ok((
         StatusCode::CREATED,
         Json(ApiSuccess::new(member_response(member))),
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/network-center/pools/{pool_id}/members/static-http",
+    operation_id = "network_egress_pool_members_create_static_http",
+    params(("pool_id" = String, Path, description = "Network egress pool id")),
+    request_body = AddStaticHttpProxyToPoolBody,
+    responses((status = 201, body = NetworkEgressPoolMemberResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
+)]
+pub async fn add_static_http_proxy_to_pool(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(pool_id): Path<String>,
+    Json(body): Json<AddStaticHttpProxyToPoolBody>,
+) -> Result<
+    (
+        StatusCode,
+        Json<ApiSuccess<NetworkEgressPoolMemberResponse>>,
+    ),
+    ApiError,
+> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let member = service(&state)
+        .add_static_http_proxy(AddStaticHttpProxyToPoolCommand {
+            actor_user_id: context.user.id,
+            pool_id: parse_uuid(&pool_id, "pool_id")?,
+            display_name: body.display_name,
+            host: body.host,
+            port: body.port,
+            username: body.username,
+            password: body.password,
+            enabled: body.enabled,
+            sequence: body.sequence,
+        })
+        .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiSuccess::new(member_response(member))),
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/network-center/pools/{pool_id}/members/provider",
+    operation_id = "network_egress_pool_members_add_provider_egresses",
+    params(("pool_id" = String, Path, description = "Network egress pool id")),
+    request_body = AddProviderEgressesToPoolBody,
+    responses((status = 201, body = [NetworkEgressPoolMemberResponse]), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
+)]
+pub async fn add_provider_egresses_to_pool(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(pool_id): Path<String>,
+    Json(body): Json<AddProviderEgressesToPoolBody>,
+) -> Result<
+    (
+        StatusCode,
+        Json<ApiSuccess<Vec<NetworkEgressPoolMemberResponse>>>,
+    ),
+    ApiError,
+> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let members = service(&state)
+        .add_provider_egresses(AddProviderEgressesToPoolCommand {
+            actor_user_id: context.user.id,
+            pool_id: parse_uuid(&pool_id, "pool_id")?,
+            provider_id: parse_uuid(&body.provider_id, "provider_id")?,
+            enabled: body.enabled,
+            sequence: body.sequence,
+        })
+        .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiSuccess::new(
+            members.into_iter().map(member_response).collect(),
+        )),
     ))
 }
 

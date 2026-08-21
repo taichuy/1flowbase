@@ -75,7 +75,7 @@ pub struct NetworkEgressProjectionResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct NetworkEgressProviderResponse {
     pub id: String,
-    pub installation_id: String,
+    pub installation_id: Option<String>,
     pub provider_code: String,
     pub display_name: String,
     pub description: String,
@@ -204,7 +204,7 @@ fn format_time(value: time::OffsetDateTime) -> String {
 fn response(view: NetworkEgressProviderView) -> NetworkEgressProviderResponse {
     NetworkEgressProviderResponse {
         id: view.provider.id.to_string(),
-        installation_id: view.provider.installation_id.to_string(),
+        installation_id: view.provider.installation_id.map(|id| id.to_string()),
         provider_code: view.provider.provider_code,
         display_name: view.provider.display_name,
         description: view.provider.description,
@@ -469,7 +469,7 @@ mod tests {
     fn ac_003_secret_reference_is_not_serialized_by_provider_projection() {
         let provider = domain::NetworkEgressProviderRecord {
             id: Uuid::now_v7(),
-            installation_id: Uuid::now_v7(),
+            installation_id: Some(Uuid::now_v7()),
             provider_code: "fixture".to_string(),
             display_name: "Fixture".to_string(),
             description: "Fixture description".to_string(),

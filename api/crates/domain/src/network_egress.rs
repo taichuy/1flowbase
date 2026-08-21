@@ -41,7 +41,9 @@ impl NetworkEgressHealthStatus {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NetworkEgressProviderRecord {
     pub id: Uuid,
-    pub installation_id: Uuid,
+    /// Extension-backed providers retain their installation. Built-in providers are implemented
+    /// by Core and intentionally have no extension installation.
+    pub installation_id: Option<Uuid>,
     pub provider_code: String,
     pub display_name: String,
     pub description: String,

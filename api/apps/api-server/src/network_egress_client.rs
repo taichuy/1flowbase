@@ -7,6 +7,7 @@ use control_plane::{
 };
 use reqwest::{Client, Proxy};
 use storage_durable::MainDurableStore;
+use url::Url;
 use uuid::Uuid;
 
 use crate::provider_runtime::ApiProviderRuntime;
@@ -113,13 +114,6 @@ impl NetworkEgressHttpClientResolver {
             NetworkEgressRepository::get_network_egress_provider(&self.store, selected.provider_id)
                 .await?
                 .context("configured network egress provider is unavailable")?;
-        let installation = PluginRepository::get_local_installation(
-            &self.store,
-            &self.node_id,
-            provider.installation_id,
-        )
-        .await?
-        .context("configured network egress provider is unavailable on this node")?;
         let secret = ProviderRegistryNetworkEgressSecretResolver::new(
             self.store.clone(),
             self.provider_secret_master_key.clone(),
@@ -127,6 +121,16 @@ impl NetworkEgressHttpClientResolver {
         .resolve_for_runner(&provider)
         .await?
         .context("configured network egress provider secret is unavailable")?;
+        if provider.provider_code == "builtin_static_http" {
+            return static_http_execution_scope(secret.secret_json);
+        }
+        let installation_id = provider
+            .installation_id
+            .context("configured network egress provider is unavailable on this node")?;
+        let installation =
+            PluginRepository::get_local_installation(&self.store, &self.node_id, installation_id)
+                .await?
+                .context("configured network egress provider is unavailable on this node")?;
         let forward_proxy = self
             .runtime
             .acquire_network_egress_http_forward_proxy(
@@ -220,12 +224,53 @@ impl NetworkEgressExecutionScope {
     }
 
     pub async fn release(mut self) -> Result<()> {
-        let release = self
-            .release
-            .take()
-            .context("network egress scope was already released")?;
-        release.release().await
+        match self.release.take() {
+            Some(release) => release.release().await,
+            None => Ok(()),
+        }
     }
+}
+
+fn static_http_execution_scope(
+    secret: serde_json::Value,
+) -> Result<Option<NetworkEgressExecutionScope>> {
+    let host = secret["host"]
+        .as_str()
+        .filter(|value| !value.is_empty())
+        .context("configured static HTTP proxy is missing its host")?;
+    let port = secret["port"]
+        .as_u64()
+        .filter(|port| (1..=65535).contains(port))
+        .context("configured static HTTP proxy has an invalid port")?;
+    let mut proxy_url = Url::parse(&format!("http://{host}:{port}"))
+        .context("configured static HTTP proxy has an invalid host")?;
+    if let Some(username) = secret["username"]
+        .as_str()
+        .filter(|value| !value.is_empty())
+    {
+        proxy_url
+            .set_username(username)
+            .map_err(|_| anyhow::anyhow!("configured static HTTP proxy has an invalid username"))?;
+    }
+    if let Some(password) = secret["password"]
+        .as_str()
+        .filter(|value| !value.is_empty())
+    {
+        proxy_url
+            .set_password(Some(password))
+            .map_err(|_| anyhow::anyhow!("configured static HTTP proxy has an invalid password"))?;
+    }
+    let http_proxy_url = proxy_url.to_string();
+    let client = Client::builder()
+        .proxy(Proxy::all(&http_proxy_url).context("configured static HTTP proxy URL is invalid")?)
+        .build()
+        .context("failed to construct routed HTTP client")?;
+    Ok(Some(NetworkEgressExecutionScope {
+        client,
+        http_proxy_url,
+        expires_at: u64::MAX,
+        release: None,
+    }))
 }
 
 impl Drop for NetworkEgressExecutionScope {

@@ -1,4 +1,6 @@
 use anyhow::Result;
+use serde_json::json;
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
@@ -27,6 +29,29 @@ pub struct CreateNetworkEgressPoolMemberCommand {
     pub pool_id: Uuid,
     pub provider_id: Uuid,
     pub provider_egress_key: String,
+    pub enabled: bool,
+    pub sequence: i32,
+}
+
+/// Creates one built-in static HTTP proxy and attaches its durable egress reference to the
+/// selected pool. The pool remains the user-facing composition boundary.
+pub struct AddStaticHttpProxyToPoolCommand {
+    pub actor_user_id: Uuid,
+    pub pool_id: Uuid,
+    pub display_name: String,
+    pub host: String,
+    pub port: u16,
+    pub username: String,
+    pub password: String,
+    pub enabled: bool,
+    pub sequence: i32,
+}
+
+/// Adds all current projections from one extension provider to the selected pool.
+pub struct AddProviderEgressesToPoolCommand {
+    pub actor_user_id: Uuid,
+    pub pool_id: Uuid,
+    pub provider_id: Uuid,
     pub enabled: bool,
     pub sequence: i32,
 }
@@ -62,6 +87,7 @@ pub struct NetworkEgressPoolSelection {
 
 pub struct NetworkEgressPoolService<R> {
     repository: R,
+    secret_master_key: Option<String>,
 }
 
 impl<R> NetworkEgressPoolService<R>
@@ -69,7 +95,17 @@ where
     R: NetworkEgressPoolRepository + NetworkEgressRepository,
 {
     pub fn new(repository: R) -> Self {
-        Self { repository }
+        Self {
+            repository,
+            secret_master_key: None,
+        }
+    }
+
+    pub fn with_secret_master_key(repository: R, secret_master_key: String) -> Self {
+        Self {
+            repository,
+            secret_master_key: Some(secret_master_key),
+        }
     }
 
     pub async fn list(&self) -> Result<Vec<NetworkEgressPoolView>> {
@@ -164,6 +200,103 @@ where
         )
         .await?;
         Ok(self.member_view(member).await?)
+    }
+
+    pub async fn add_static_http_proxy(
+        &self,
+        command: AddStaticHttpProxyToPoolCommand,
+    ) -> Result<NetworkEgressPoolMemberView> {
+        self.require_user_managed_pool(command.pool_id).await?;
+        let display_name = required_text(&command.display_name, "display_name")?;
+        let host = static_http_host(&command.host)?;
+        if command.port == 0 {
+            return Err(ControlPlaneError::InvalidInput("port").into());
+        }
+        validate_sequence(command.sequence)?;
+        let secret_master_key =
+            self.secret_master_key
+                .as_deref()
+                .ok_or(ControlPlaneError::Conflict(
+                    "network_egress_static_http_unavailable",
+                ))?;
+        let provider_id = Uuid::now_v7();
+        let secret_ref = format!("secret://system/network-egress/{provider_id}");
+        let synchronized_at = OffsetDateTime::now_utc();
+        let member = self
+            .repository
+            .create_static_http_proxy_pool_member(
+                &crate::ports::CreateStaticHttpProxyPoolMemberInput {
+                    provider_id,
+                    member_id: Uuid::now_v7(),
+                    pool_id: command.pool_id,
+                    display_name,
+                    secret_ref,
+                    plaintext_secret_json: json!({
+                        "host": host,
+                        "port": command.port,
+                        "username": command.username.trim(),
+                        "password": command.password,
+                    }),
+                    master_key: secret_master_key.to_string(),
+                    enabled: command.enabled,
+                    sequence: command.sequence,
+                    synchronized_at,
+                    actor_user_id: command.actor_user_id,
+                },
+            )
+            .await?;
+        self.audit(
+            command.actor_user_id,
+            command.pool_id,
+            "network_egress_pool.member_added",
+        )
+        .await?;
+        self.member_view(member).await
+    }
+
+    pub async fn add_provider_egresses(
+        &self,
+        command: AddProviderEgressesToPoolCommand,
+    ) -> Result<Vec<NetworkEgressPoolMemberView>> {
+        self.require_user_managed_pool(command.pool_id).await?;
+        validate_sequence(command.sequence)?;
+        let provider = self
+            .repository
+            .get_network_egress_provider(command.provider_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("network_egress_provider"))?;
+        if provider.lifecycle != domain::NetworkEgressProviderLifecycle::Active {
+            return Err(ControlPlaneError::Conflict("network_egress_provider_not_active").into());
+        }
+        let members = self
+            .repository
+            .list_network_egress_pool_members(command.pool_id)
+            .await?;
+        let projections = self
+            .repository
+            .list_network_egress_projections(command.provider_id)
+            .await?;
+        let mut created = Vec::new();
+        for (offset, projection) in projections.iter().enumerate() {
+            if members.iter().any(|member| {
+                member.provider_id == command.provider_id
+                    && member.provider_egress_key == projection.provider_egress_key
+            }) {
+                continue;
+            }
+            created.push(
+                self.add_member(CreateNetworkEgressPoolMemberCommand {
+                    actor_user_id: command.actor_user_id,
+                    pool_id: command.pool_id,
+                    provider_id: command.provider_id,
+                    provider_egress_key: projection.provider_egress_key.clone(),
+                    enabled: command.enabled && projection.availability == "available",
+                    sequence: command.sequence + offset as i32,
+                })
+                .await?,
+            );
+        }
+        Ok(created)
     }
 
     pub async fn update_member(
@@ -344,6 +477,29 @@ fn required_text(value: &str, field: &'static str) -> Result<String> {
         return Err(ControlPlaneError::InvalidInput(field).into());
     }
     Ok(value.to_string())
+}
+
+fn static_http_host(value: &str) -> Result<String> {
+    let host = required_text(value, "host")?;
+    if host.contains(['/', '@', ':']) || host.chars().any(char::is_whitespace) {
+        return Err(ControlPlaneError::InvalidInput("host").into());
+    }
+    Ok(host)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::static_http_host;
+
+    /// AC-NC16: credentials and port are separate secret fields; the pool write path accepts
+    /// only a host, never a pasted URL or credential-bearing proxy string.
+    #[test]
+    fn ac_nc16_static_http_host_rejects_proxy_urls_and_credentials() {
+        assert_eq!(static_http_host("198.65.36.212").unwrap(), "198.65.36.212");
+        assert!(static_http_host("http://198.65.36.212").is_err());
+        assert!(static_http_host("user@198.65.36.212").is_err());
+        assert!(static_http_host("198.65.36.212:37867").is_err());
+    }
 }
 
 fn validate_sequence(value: i32) -> Result<()> {

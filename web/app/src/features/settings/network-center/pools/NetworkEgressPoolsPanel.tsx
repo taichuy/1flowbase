@@ -11,6 +11,7 @@ import {
   InputNumber,
   Modal,
   Popconfirm,
+  Radio,
   Select,
   Space,
   Switch,
@@ -22,16 +23,18 @@ import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
+  addSettingsNetworkEgressProviderToPool,
   createSettingsNetworkEgressPool,
-  createSettingsNetworkEgressPoolMember,
+  createSettingsNetworkEgressPoolStaticHttpMember,
   deleteSettingsNetworkEgressPool,
   deleteSettingsNetworkEgressPoolMember,
   fetchSettingsNetworkEgressPools,
   settingsNetworkEgressPoolsQueryKey,
   updateSettingsNetworkEgressPool,
   updateSettingsNetworkEgressPoolMember,
+  type AddSettingsNetworkEgressProviderToPoolInput,
   type CreateSettingsNetworkEgressPoolInput,
-  type CreateSettingsNetworkEgressPoolMemberInput,
+  type CreateSettingsNetworkEgressPoolStaticHttpMemberInput,
   type SettingsNetworkEgressPool,
   type SettingsNetworkEgressPoolMember,
   type SettingsNetworkEgressProvider,
@@ -43,8 +46,10 @@ import { useAuthStore } from '../../../../state/auth-store';
 import { i18nText } from '../../../../shared/i18n/text';
 
 type PoolFormValues = CreateSettingsNetworkEgressPoolInput;
-type MemberFormValues = CreateSettingsNetworkEgressPoolMemberInput;
 type MemberUpdateFormValues = UpdateSettingsNetworkEgressPoolMemberInput;
+type AddExitSubmission =
+  | { kind: 'static_http'; input: CreateSettingsNetworkEgressPoolStaticHttpMemberInput }
+  | { kind: 'provider'; input: AddSettingsNetworkEgressProviderToPoolInput };
 
 function healthTag(health: string) {
   const color =
@@ -124,18 +129,17 @@ function MemberModal({
   open: boolean;
   submitting: boolean;
   onClose: () => void;
-  onSubmit: (values: MemberFormValues | MemberUpdateFormValues) => void;
+  onSubmit: (values: MemberUpdateFormValues | AddExitSubmission) => void;
 }) {
   const [form] = Form.useForm();
   const isEditing = member !== null;
-  const referenceOptions = providers.flatMap((provider) =>
-    provider.egresses.map((egress) => ({
-      value: `${provider.id}:${egress.provider_egress_key}`,
-      label: `${provider.display_name} · ${egress.display_name} (${egress.provider_egress_key})`,
-      provider_id: provider.id,
-      provider_egress_key: egress.provider_egress_key
-    }))
-  );
+  const source = Form.useWatch('source', form) ?? 'static_http';
+  const providerOptions = providers
+    .filter((provider) => provider.provider_code !== 'builtin_static_http')
+    .map((provider) => ({
+      value: provider.id,
+      label: `${provider.display_name} · ${provider.egresses.length}`
+    }));
 
   return (
     <Modal
@@ -158,38 +162,83 @@ function MemberModal({
         initialValues={
           member
             ? { enabled: member.enabled, sequence: member.sequence }
-            : { enabled: true, sequence: 0 }
+            : { source: 'static_http', enabled: true, sequence: 0 }
         }
         onFinish={(values) => {
           if (isEditing) {
             onSubmit(values as MemberUpdateFormValues);
             return;
           }
-          const reference = values as MemberFormValues & {
-            provider_reference?: string;
-          };
-          const selected = referenceOptions.find(
-            (option) => option.value === reference.provider_reference
-          );
-          if (!selected) {
+          if ((values.source ?? 'static_http') === 'provider') {
+            onSubmit({
+              kind: 'provider',
+              input: {
+                provider_id: values.provider_id,
+                enabled: values.enabled,
+                sequence: values.sequence
+              }
+            });
             return;
           }
           onSubmit({
-            provider_id: selected.provider_id,
-            provider_egress_key: selected.provider_egress_key,
-            enabled: reference.enabled,
-            sequence: reference.sequence
+            kind: 'static_http',
+            input: {
+              display_name: values.display_name,
+              host: values.host,
+              port: values.port,
+              username: values.username ?? '',
+              password: values.password ?? '',
+              enabled: values.enabled,
+              sequence: values.sequence
+            }
           });
         }}
       >
         {!isEditing ? (
-          <Form.Item
-            name="provider_reference"
-            label={i18nText('settings', 'auto.network_center_member_reference')}
-            rules={[{ required: true }]}
-          >
-            <Select options={referenceOptions} />
-          </Form.Item>
+          <>
+            <Form.Item
+              name="source"
+              initialValue="static_http"
+              label={i18nText('settings', 'auto.network_center_member_source')}
+              rules={[{ required: true }]}
+            >
+              <Radio.Group>
+                <Radio value="static_http">
+                  {i18nText('settings', 'auto.network_center_member_static_http')}
+                </Radio>
+                <Radio value="provider">
+                  {i18nText('settings', 'auto.network_center_member_provider')}
+                </Radio>
+              </Radio.Group>
+            </Form.Item>
+            {source === 'static_http' ? (
+              <>
+                <Form.Item
+                  name="display_name"
+                  label={i18nText('settings', 'auto.name')}
+                  rules={[{ required: true }]}
+                >
+                  <Input />
+                </Form.Item>
+                <Form.Item name="host" label={i18nText('settings', 'auto.host')} rules={[{ required: true }]}>
+                  <Input />
+                </Form.Item>
+                <Form.Item name="port" label={i18nText('settings', 'auto.network_center_member_port')} rules={[{ required: true }]}>
+                  <InputNumber min={1} max={65535} precision={0} className="network-center-pools__sequence" />
+                </Form.Item>
+                <Form.Item name="username" label={i18nText('settings', 'auto.network_center_member_username')}>
+                  <Input autoComplete="username" />
+                </Form.Item>
+                <Form.Item name="password" label={i18nText('settings', 'auto.network_center_member_password')}>
+                  <Input.Password autoComplete="new-password" />
+                </Form.Item>
+              </>
+            ) : (
+              <Form.Item name="provider_id" label={i18nText('settings', 'auto.network_center_member_provider_instance')} rules={[{ required: true }]}>
+                <Select options={providerOptions} />
+              </Form.Item>
+            )}
+          </>
         ) : (
           <Form.Item
             label={i18nText('settings', 'auto.network_center_member_reference')}
@@ -291,16 +340,40 @@ export function NetworkEgressPoolsPanel({
         i18nText('settings', 'auto.network_center_pool_delete_failed')
       )
   });
-  const createMemberMutation = useMutation({
+  const staticHttpMemberMutation = useMutation({
     mutationFn: ({
       poolId,
       input
     }: {
       poolId: string;
-      input: MemberFormValues;
+      input: CreateSettingsNetworkEgressPoolStaticHttpMemberInput;
     }) => {
       if (!csrfToken) throw new Error('Missing CSRF token');
-      return createSettingsNetworkEgressPoolMember(poolId, input, csrfToken);
+      return createSettingsNetworkEgressPoolStaticHttpMember(
+        poolId,
+        input,
+        csrfToken
+      );
+    },
+    onSuccess: async () => {
+      await invalidatePools();
+      setMemberModal(null);
+    },
+    onError: () =>
+      message.error(
+        i18nText('settings', 'auto.network_center_member_save_failed')
+      )
+  });
+  const providerMembersMutation = useMutation({
+    mutationFn: ({
+      poolId,
+      input
+    }: {
+      poolId: string;
+      input: AddSettingsNetworkEgressProviderToPoolInput;
+    }) => {
+      if (!csrfToken) throw new Error('Missing CSRF token');
+      return addSettingsNetworkEgressProviderToPool(poolId, input, csrfToken);
     },
     onSuccess: async () => {
       await invalidatePools();
@@ -496,10 +569,7 @@ export function NetworkEgressPoolsPanel({
                         size="small"
                         onClick={() => setMemberModal({ pool, member: null })}
                       >
-                        {i18nText(
-                          'settings',
-                          'auto.network_center_member_create'
-                        )}
+                        {i18nText('settings', 'auto.network_center_member_create')}
                       </Button>
                     )}
                   </Flex>
@@ -584,7 +654,9 @@ export function NetworkEgressPoolsPanel({
         providers={providers}
         open={memberModal !== null}
         submitting={
-          createMemberMutation.isPending || updateMemberMutation.isPending
+          staticHttpMemberMutation.isPending ||
+          providerMembersMutation.isPending ||
+          updateMemberMutation.isPending
         }
         onClose={() => setMemberModal(null)}
         onSubmit={(values) => {
@@ -597,9 +669,17 @@ export function NetworkEgressPoolsPanel({
             });
             return;
           }
-          createMemberMutation.mutate({
+          const submission = values as AddExitSubmission;
+          if (submission.kind === 'static_http') {
+            staticHttpMemberMutation.mutate({
+              poolId: memberModal.pool.id,
+              input: submission.input
+            });
+            return;
+          }
+          providerMembersMutation.mutate({
             poolId: memberModal.pool.id,
-            input: values as MemberFormValues
+            input: submission.input
           });
         }}
       />

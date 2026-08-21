@@ -2,8 +2,9 @@ use anyhow::{bail, Result};
 use async_trait::async_trait;
 use control_plane::ports::{
     CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
-    CreateNetworkEgressProviderInput, CreateNetworkEgressRouteInput, NetworkEgressPoolRepository,
-    NetworkEgressRepository, NetworkEgressRouteRepository, RecordNetworkEgressSyncFailureInput,
+    CreateNetworkEgressProviderInput, CreateNetworkEgressRouteInput,
+    CreateStaticHttpProxyPoolMemberInput, NetworkEgressPoolRepository, NetworkEgressRepository,
+    NetworkEgressRouteRepository, RecordNetworkEgressSyncFailureInput,
     ReplaceNetworkEgressProjectionInput, UpdateNetworkEgressPoolInput,
     UpdateNetworkEgressPoolMemberInput, UpdateNetworkEgressProviderLifecycleInput,
     UpdateNetworkEgressRouteInput, UpsertNetworkEgressProviderSecretInput,
@@ -178,6 +179,73 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
         provider(row)
+    }
+
+    async fn create_static_http_proxy_pool_member(
+        &self,
+        input: &CreateStaticHttpProxyPoolMemberInput,
+    ) -> Result<domain::NetworkEgressPoolMember> {
+        let encrypted_secret_json =
+            encrypt_secret_json(&input.plaintext_secret_json, &input.master_key)?;
+        let mut transaction = self.pool().begin().await?;
+        sqlx::query(
+            r#"
+            insert into network_egress_providers (
+                id, scope_id, installation_id, provider_code, display_name, description, secret_ref,
+                lifecycle, health_status, created_by, updated_by
+            ) values ($1, $2, null, 'builtin_static_http', $3, '', $4, 'active', 'healthy', $5, $5)
+        "#,
+        )
+        .bind(input.provider_id)
+        .bind(domain::SYSTEM_SCOPE_ID)
+        .bind(&input.display_name)
+        .bind(&input.secret_ref)
+        .bind(input.actor_user_id)
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            r#"
+            insert into network_egress_provider_secrets (
+                provider_id, secret_ref, encrypted_secret_json, secret_version
+            ) values ($1, $2, $3, 1)
+        "#,
+        )
+        .bind(input.provider_id)
+        .bind(&input.secret_ref)
+        .bind(&encrypted_secret_json)
+        .execute(&mut *transaction)
+        .await?;
+        sqlx::query(
+            r#"
+            insert into network_egress_projections (
+                provider_id, provider_egress_key, display_name, region, tags, availability, synced_at
+            ) values ($1, 'static-http', $2, null, array['static', 'http'], 'available', $3)
+        "#,
+        )
+        .bind(input.provider_id)
+        .bind(&input.display_name)
+        .bind(input.synchronized_at)
+        .execute(&mut *transaction)
+        .await?;
+        let row = sqlx::query(
+            r#"
+            insert into network_egress_pool_members (
+                id, pool_id, provider_id, provider_egress_key, enabled, sequence,
+                created_by, updated_by
+            ) values ($1, $2, $3, 'static-http', $4, $5, $6, $6)
+            returning *
+        "#,
+        )
+        .bind(input.member_id)
+        .bind(input.pool_id)
+        .bind(input.provider_id)
+        .bind(input.enabled)
+        .bind(input.sequence)
+        .bind(input.actor_user_id)
+        .fetch_one(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+        Ok(pool_member(row))
     }
 
     async fn update_network_egress_provider_lifecycle(
@@ -618,8 +686,9 @@ mod tests {
         network_egress_pool::{CreateNetworkEgressPoolMemberCommand, NetworkEgressPoolService},
         ports::{
             CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
-            CreateNetworkEgressRouteInput, NetworkEgressPoolRepository,
-            NetworkEgressRouteRepository, PluginRepository, UpsertPluginInstallationInput,
+            CreateNetworkEgressRouteInput, CreateStaticHttpProxyPoolMemberInput,
+            NetworkEgressPoolRepository, NetworkEgressRouteRepository, PluginRepository,
+            UpsertPluginInstallationInput,
         },
     };
     use domain::{
@@ -713,7 +782,7 @@ mod tests {
             &store,
             &CreateNetworkEgressProviderInput {
                 provider_id,
-                installation_id,
+                installation_id: Some(installation_id),
                 provider_code: "fixture_egress".to_string(),
                 display_name: "Fixture egress".to_string(),
                 description: String::new(),
@@ -946,7 +1015,7 @@ mod tests {
             &store,
             &CreateNetworkEgressProviderInput {
                 provider_id,
-                installation_id,
+                installation_id: Some(installation_id),
                 provider_code: "selection_fixture".to_string(),
                 display_name: "Selection fixture".to_string(),
                 description: String::new(),
@@ -1115,6 +1184,108 @@ mod tests {
                 "durable control-plane records must not persist runtime lease field {forbidden}"
             );
         }
+    }
+
+    /// AC-NC16: direct pool additions create the static provider, encrypted secret, projection,
+    /// and pool member as one durable unit without putting proxy material in the pool table.
+    #[tokio::test]
+    async fn ac_nc16_static_http_proxy_member_is_atomic_and_keeps_credentials_out_of_pool() {
+        let (store, actor) = store().await;
+        let pool_id = Uuid::now_v7();
+        NetworkEgressPoolRepository::create_network_egress_pool(
+            &store,
+            &CreateNetworkEgressPoolInput {
+                pool_id,
+                display_name: "Manual exits".to_string(),
+                owner_provider_id: None,
+                actor_user_id: actor.id,
+            },
+        )
+        .await
+        .expect("target pool should persist");
+        let rolled_back_provider_id = Uuid::now_v7();
+        let failed = NetworkEgressRepository::create_static_http_proxy_pool_member(
+            &store,
+            &CreateStaticHttpProxyPoolMemberInput {
+                provider_id: rolled_back_provider_id,
+                member_id: Uuid::now_v7(),
+                pool_id: Uuid::now_v7(),
+                display_name: "Should roll back".to_string(),
+                secret_ref: format!("secret://system/network-egress/{rolled_back_provider_id}"),
+                plaintext_secret_json: json!({"host": "198.65.36.212", "port": 37867}),
+                master_key: "test-master-key".to_string(),
+                enabled: true,
+                sequence: 0,
+                synchronized_at: OffsetDateTime::now_utc(),
+                actor_user_id: actor.id,
+            },
+        )
+        .await;
+        assert!(
+            failed.is_err(),
+            "a nonexistent pool must reject the complete write"
+        );
+        assert!(
+            NetworkEgressRepository::get_network_egress_provider(&store, rolled_back_provider_id)
+                .await
+                .expect("provider lookup should succeed")
+                .is_none(),
+            "a failed member write must roll back its newly-created provider and secret"
+        );
+        let provider_id = Uuid::now_v7();
+        let member = NetworkEgressRepository::create_static_http_proxy_pool_member(
+            &store,
+            &CreateStaticHttpProxyPoolMemberInput {
+                provider_id,
+                member_id: Uuid::now_v7(),
+                pool_id,
+                display_name: "US proxy".to_string(),
+                secret_ref: format!("secret://system/network-egress/{provider_id}"),
+                plaintext_secret_json: json!({
+                    "host": "198.65.36.212",
+                    "port": 37867,
+                    "username": "proxy-user",
+                    "password": "proxy-password",
+                }),
+                master_key: "test-master-key".to_string(),
+                enabled: true,
+                sequence: 0,
+                synchronized_at: OffsetDateTime::now_utc(),
+                actor_user_id: actor.id,
+            },
+        )
+        .await
+        .expect("static proxy should join its target pool atomically");
+        assert_eq!(member.provider_id, provider_id);
+        assert_eq!(member.provider_egress_key, "static-http");
+        let provider = NetworkEgressRepository::get_network_egress_provider(&store, provider_id)
+            .await
+            .expect("provider lookup should succeed")
+            .expect("static provider should persist");
+        assert_eq!(provider.installation_id, None);
+        assert_eq!(provider.provider_code, "builtin_static_http");
+        let secret = NetworkEgressRepository::resolve_network_egress_provider_secret_json(
+            &store,
+            provider_id,
+            &provider.secret_ref,
+            "test-master-key",
+        )
+        .await
+        .expect("secret should decrypt")
+        .expect("secret should exist");
+        assert_eq!(secret["password"], "proxy-password");
+        let columns = sqlx::query_scalar::<_, String>(
+            r#"
+                select column_name from information_schema.columns
+                where table_schema = current_schema()
+                  and table_name = 'network_egress_pool_members'
+                order by column_name
+            "#,
+        )
+        .fetch_all(store.pool())
+        .await
+        .expect("pool member columns should be readable");
+        assert!(!columns.iter().any(|column| column == "password"));
     }
 
     #[tokio::test]
