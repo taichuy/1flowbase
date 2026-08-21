@@ -327,6 +327,30 @@ impl ProviderInvoker for HostCreatedProxyClientInvoker {
 }
 
 #[async_trait::async_trait]
+impl CapabilityInvoker for HostCreatedProxyClientInvoker {
+    async fn invoke_capability_node(
+        &self,
+        _runtime: &CompiledPluginRuntime,
+        _config_payload: Value,
+        _input_payload: Value,
+    ) -> Result<CapabilityInvocationOutput> {
+        unreachable!("the positive HTTP-node fixture contains no capability node")
+    }
+}
+
+#[async_trait::async_trait]
+impl CodeInvoker for HostCreatedProxyClientInvoker {
+    async fn invoke_code_node(
+        &self,
+        _runtime: &CompiledCodeRuntime,
+        _config_payload: Value,
+        _input_payload: Value,
+    ) -> Result<CodeInvocationOutput> {
+        unreachable!("the positive HTTP-node fixture contains no code node")
+    }
+}
+
+#[async_trait::async_trait]
 impl CapabilityInvoker for FailingNetworkEgressInvoker {
     async fn invoke_capability_node(
         &self,
