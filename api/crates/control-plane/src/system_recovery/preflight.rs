@@ -42,7 +42,6 @@ pub enum RecoveryPreflightFailure {
     BackupUnavailable,
     BackupIntegrity,
     FormatVersion,
-    ApplicationBuild,
     MigrationHead,
     MasterKeyFingerprint,
     ComponentInventory,
@@ -198,7 +197,6 @@ fn impact_preview(
 fn map_incompatibility(value: BackupIncompatibility) -> RecoveryPreflightFailure {
     match value {
         BackupIncompatibility::FormatVersion => RecoveryPreflightFailure::FormatVersion,
-        BackupIncompatibility::ApplicationBuild => RecoveryPreflightFailure::ApplicationBuild,
         BackupIncompatibility::MigrationHead => RecoveryPreflightFailure::MigrationHead,
         BackupIncompatibility::MasterKeyFingerprint => {
             RecoveryPreflightFailure::MasterKeyFingerprint

@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 系统备份与恢复 Issue Tree
-summary: 用户确认平衡方向：system.backups SettingsFeature、手动完整备份、维护期安全恢复、主库外 manifest/journal、离线恢复入口与受控 Settings UI；线上 Root #1667，Delivery #1668/#1670/#1669。
+summary: 用户确认平衡方向：system.backups SettingsFeature、手动完整备份、维护期安全恢复、主库外 manifest/journal、离线恢复入口与受控 Settings UI；BackupSet 记录 source build，target build 从当前二进制编译信息取得，恢复只接受格式、密钥、完整性和已知前向 migration path。线上 Root #1667，Delivery #1668/#1670/#1669。
 keywords:
   - system-backup
   - disaster-recovery
@@ -15,8 +15,8 @@ match_when:
   - 设计 BackupSet、RecoveryJob、maintenance fence 或离线恢复
   - 讨论 PostgreSQL、业务对象、插件/MCP 工件的一致备份
 created_at: 2026-08-11 23
-updated_at: 2026-08-11 23
-last_verified_at: 2026-08-11 23
+updated_at: 2026-08-21 12
+last_verified_at: 2026-08-21 12
 decision_policy: verify_before_decision
 scope:
   - https://github.com/taichuy/1flowbase/issues/1667
@@ -55,7 +55,8 @@ scope:
 - BackupSet/manifest 与 RecoveryJob journal 的真值位于主库外；生产仓库与 `api/storage` 分离故障域。
 - 接受备份/恢复期间 maintenance 与写暂停；无法形成完整 write inventory 时停止。
 - 备份流式、认证加密、内存有界；master key 不入包，只保存 fingerprint。
-- 恢复默认严格匹配 format/build/migration/master-key fingerprint；只开放有 fixture 的前向兼容。
+- 备份 manifest 自动记录 source build；target build 从当前二进制的 `CARGO_PKG_VERSION + Git revision` 取得，不接受用户环境变量声明。
+- 恢复 fail closed：必须匹配 format 与 master-key fingerprint、通过完整性校验，且备份 migration head 必须是当前内嵌前向迁移链的已知前缀；build 只用于审计与诊断，不做相等比较。
 - HTTP 只创建 intent/观察状态；真正恢复由主 pool 外的 recovery executor/启动期/离线入口执行。
 - UI 参考 `/settings/applications` 的 filters/table/toolbar/drawer，但无批量 restore/delete。
 - Root 固定 14 个 AC、3 个纵向 Delivery、16 个 Work Packet 和一次集中 Test Batch。

@@ -267,7 +267,6 @@ impl RecoveryScenario {
             .env("API_DATABASE_URL", &self.database_url)
             .env("API_DATABASE_POOL_MAX_CONNECTIONS", "1")
             .env("API_NODE_ID", NODE_ID)
-            .env("API_SYSTEM_BUILD_IDENTITY", SYSTEM_BUILD)
             .env("API_PROVIDER_SECRET_MASTER_KEY", PROVIDER_SECRET)
             .env("API_SYSTEM_BACKUP_REPOSITORY_ROOT", &self.roots.repository)
             .env("API_BUSINESS_FILE_LOCAL_ROOT", &self.roots.objects)
@@ -716,6 +715,11 @@ impl RecoveryScenario {
         .await
         .unwrap();
         let migration_head = storage_durable::migration_head(store.pool()).await.unwrap();
+        assert_eq!(
+            migration_head,
+            storage_durable::current_migration_head().unwrap(),
+            "the recovery fixture database must match the current embedded migration chain"
+        );
         let master_key_fingerprint =
             KeyFingerprint::try_from(format!("{:x}", Sha256::digest(PROVIDER_SECRET.as_bytes())))
                 .unwrap();

@@ -32,8 +32,8 @@ use control_plane::{
     },
 };
 use domain::{
-    ApplicationBuild, BackupJournalEvent, BackupJournalSubject, BackupSetId, KeyFingerprint,
-    RecoveryJobId, RecoveryJobState,
+    BackupJournalEvent, BackupJournalSubject, BackupSetId, KeyFingerprint, RecoveryJobId,
+    RecoveryJobState,
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -204,25 +204,29 @@ async fn preflight(
         .await
         .context("offline recovery target database is unavailable")?;
     toolchain.verify_server_compatibility(&pool).await?;
-    let migration_head = storage_durable::migration_head(&pool).await?;
     pool.close().await;
-    let application_build = ApplicationBuild::try_from(config.system_build_identity.clone())?;
+    let migration_head = storage_durable::current_migration_head()?;
+    let supported_source_migration_heads = storage_durable::supported_migration_heads()?;
     let master_key_fingerprint = KeyFingerprint::try_from(format!(
         "{:x}",
         Sha256::digest(config.provider_secret_master_key.as_bytes())
     ))?;
     let manifest = sealed.manifest();
-    if manifest.application_build() != &application_build
-        || manifest.migration_head() != &migration_head
-        || manifest.master_key_fingerprint() != &master_key_fingerprint
-    {
+    let target = domain::BackupCompatibilityTarget {
+        format_version: domain::SYSTEM_BACKUP_FORMAT_VERSION,
+        application_build: config.application_build.clone(),
+        migration_head: migration_head.clone(),
+        supported_source_migration_heads,
+        master_key_fingerprint,
+    };
+    if domain::strict_backup_compatibility(manifest, &target).is_err() {
         bail!("backup is incompatible with the offline recovery target");
     }
     Ok(json!({
         "status": "compatible",
         "backup_set_id": backup_set_id,
         "postgres_client_major": toolchain.major_version(),
-        "application_build": application_build,
+        "application_build": config.application_build,
         "migration_head": migration_head,
         "manifest_verified": true,
         "uses_primary_database_journal": false,
@@ -286,6 +290,7 @@ async fn build_recovery_runtime(
         .verify_server_compatibility(&compatibility_pool)
         .await?;
     compatibility_pool.close().await;
+    let expected_migration_head = storage_durable::current_migration_head()?;
     let postgres = Arc::new(
         PostgreSqlRecoveryTarget::try_new(&config.database_url, toolchain)
             .map_err(|_| anyhow!("offline PostgreSQL recovery target is invalid"))?,
@@ -330,6 +335,7 @@ async fn build_recovery_runtime(
         Arc::new(PostgreSqlPostRestoreHealthVerifier::new(
             &config.database_url,
             &config.api_node_id,
+            expected_migration_head,
             repository.clone(),
             database,
             object_registry,

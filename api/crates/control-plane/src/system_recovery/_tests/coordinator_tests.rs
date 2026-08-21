@@ -301,6 +301,9 @@ async fn coordinator_fixture() -> (
         format_version: target.manifest().format_version(),
         application_build: target.manifest().application_build().clone(),
         migration_head: target.manifest().migration_head().clone(),
+        supported_source_migration_heads: [target.manifest().migration_head().clone()]
+            .into_iter()
+            .collect(),
         master_key_fingerprint: target.manifest().master_key_fingerprint().clone(),
     };
     let preflight = Arc::new(RecoveryPreflightService::new(
@@ -322,6 +325,32 @@ async fn coordinator_fixture() -> (
         target.manifest().backup_set_id(),
         actor_user_id,
     )
+}
+
+#[tokio::test]
+async fn preflight_allows_a_backup_from_a_different_build_on_a_known_migration_path() {
+    let (_repository, backups, _maintenance, _coordinator, target_id, _actor_user_id) =
+        coordinator_fixture().await;
+    let target_manifest = backups.get(target_id).await.unwrap();
+    let preflight = RecoveryPreflightService::new(
+        backups,
+        Arc::new(FixedTargetProbe {
+            compatibility: BackupCompatibilityTarget {
+                format_version: target_manifest.manifest().format_version(),
+                application_build: ApplicationBuild::try_from("git.current").unwrap(),
+                migration_head: target_manifest.manifest().migration_head().clone(),
+                supported_source_migration_heads: [target_manifest
+                    .manifest()
+                    .migration_head()
+                    .clone()]
+                .into_iter()
+                .collect(),
+                master_key_fingerprint: target_manifest.manifest().master_key_fingerprint().clone(),
+            },
+        }),
+    );
+
+    assert!(preflight.plan(target_id).await.is_compatible());
 }
 
 async fn confirmed_intent(
@@ -387,6 +416,9 @@ async fn verified_safety_backup_and_journal_keep_fence_until_explicit_handoff_ab
             format_version: target_manifest.manifest().format_version(),
             application_build: target_manifest.manifest().application_build().clone(),
             migration_head: target_manifest.manifest().migration_head().clone(),
+            supported_source_migration_heads: [target_manifest.manifest().migration_head().clone()]
+                .into_iter()
+                .collect(),
             master_key_fingerprint: target_manifest.manifest().master_key_fingerprint().clone(),
         },
     });
@@ -438,6 +470,9 @@ async fn safety_backup_failure_releases_fence_without_a_ready_handoff() {
             format_version: target_manifest.manifest().format_version(),
             application_build: target_manifest.manifest().application_build().clone(),
             migration_head: target_manifest.manifest().migration_head().clone(),
+            supported_source_migration_heads: [target_manifest.manifest().migration_head().clone()]
+                .into_iter()
+                .collect(),
             master_key_fingerprint: target_manifest.manifest().master_key_fingerprint().clone(),
         },
     });

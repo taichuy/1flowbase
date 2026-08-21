@@ -52,18 +52,19 @@ fn api_config_does_not_require_ephemeral_backend_env() {
     assert!(config
         .system_backup_repository_root
         .ends_with("tmp/system-backups"));
-    assert!(config.system_build_identity.starts_with("dev."));
+    assert!(config.application_build.as_str().starts_with("v"));
+    assert!(config.application_build.as_str().contains(".git."));
 }
 
 #[test]
-fn api_config_reads_explicit_system_backup_repository() {
+fn ac_001_api_config_uses_compiled_build_identity_not_operator_input() {
     let mut env = base_env_without_ephemeral_backend();
     env.extend([
         (
             "API_SYSTEM_BACKUP_REPOSITORY_ROOT",
             "/mnt/1flowbase-backups",
         ),
-        ("API_SYSTEM_BUILD_IDENTITY", "git.5f906803"),
+        ("API_SYSTEM_BUILD_IDENTITY", "operator-declared-build"),
     ]);
 
     let config = ApiConfig::from_env_map(&env).unwrap();
@@ -72,7 +73,8 @@ fn api_config_reads_explicit_system_backup_repository() {
         config.system_backup_repository_root,
         "/mnt/1flowbase-backups"
     );
-    assert_eq!(config.system_build_identity, "git.5f906803");
+    assert_ne!(config.application_build.as_str(), "operator-declared-build");
+    assert!(config.application_build.as_str().starts_with("v"));
 }
 
 #[test]
@@ -399,7 +401,6 @@ fn api_config_accepts_production_without_optional_system_backup_settings() {
             "API_PROVIDER_SECRET_MASTER_KEY",
             "strong-provider-secret-master-key",
         ),
-        ("API_SYSTEM_BUILD_IDENTITY", "git.config-test"),
         ("BOOTSTRAP_ROOT_ACCOUNT", "root"),
         ("BOOTSTRAP_ROOT_EMAIL", "root@example.com"),
         ("BOOTSTRAP_ROOT_PASSWORD", "secret"),
@@ -430,7 +431,6 @@ fn api_config_accepts_production_with_explicit_allowed_origins() {
             "API_SYSTEM_BACKUP_REPOSITORY_ROOT",
             "/tmp/1flowbase-backups",
         ),
-        ("API_SYSTEM_BUILD_IDENTITY", "git.config-test"),
         ("BOOTSTRAP_ROOT_ACCOUNT", "root"),
         ("BOOTSTRAP_ROOT_EMAIL", "root@example.com"),
         ("BOOTSTRAP_ROOT_PASSWORD", "secret"),
@@ -496,7 +496,6 @@ fn api_config_marks_session_cookie_secure_in_production() {
             "API_SYSTEM_BACKUP_REPOSITORY_ROOT",
             "/tmp/1flowbase-backups",
         ),
-        ("API_SYSTEM_BUILD_IDENTITY", "git.config-test"),
         ("BOOTSTRAP_ROOT_ACCOUNT", "root"),
         ("BOOTSTRAP_ROOT_EMAIL", "root@example.com"),
         ("BOOTSTRAP_ROOT_PASSWORD", "secret"),
@@ -521,7 +520,6 @@ fn api_config_allows_disabling_secure_session_cookie_for_plain_http_deployments(
             "API_SYSTEM_BACKUP_REPOSITORY_ROOT",
             "/tmp/1flowbase-backups",
         ),
-        ("API_SYSTEM_BUILD_IDENTITY", "git.config-test"),
         (
             "API_PROVIDER_SECRET_MASTER_KEY",
             "strong-provider-secret-master-key",
