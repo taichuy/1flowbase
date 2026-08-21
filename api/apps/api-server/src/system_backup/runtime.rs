@@ -306,7 +306,11 @@ impl SystemBackupRuntime {
         W: AsyncWrite + Unpin + Send,
     {
         self.service
-            .download(backup_set_id, destination)
+            .download_portable(
+                backup_set_id,
+                &self.portable_source_master_key_base64,
+                destination,
+            )
             .await
             .map_err(Into::into)
     }

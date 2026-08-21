@@ -30,6 +30,7 @@ services:
       API_PROVIDER_INSTALL_ROOT: /app/api/plugins
       API_HOST_EXTENSION_DROPIN_ROOT: /app/api/plugins/host-extension/dropins
       API_PROVIDER_SECRET_MASTER_KEY: ${API_PROVIDER_SECRET_MASTER_KEY:?API_PROVIDER_SECRET_MASTER_KEY is required for production compose}
+      API_SYSTEM_BACKUP_PASSWORD: ${API_SYSTEM_BACKUP_PASSWORD:-}
       API_OFFICIAL_PLUGIN_REPOSITORY: ${API_OFFICIAL_PLUGIN_REPOSITORY:-taichuy/1flowbase-official-plugins}
       API_OFFICIAL_PLUGIN_REGISTRY_URL: ${API_OFFICIAL_PLUGIN_REGISTRY_URL:-https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/official-registry.json}
       API_OFFICIAL_PLUGIN_GITHUB_PROXY_URL: ${API_OFFICIAL_PLUGIN_GITHUB_PROXY_URL:-}

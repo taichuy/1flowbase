@@ -672,11 +672,15 @@ test('docker deploy scripts bootstrap a selected portable backup before the API 
   for (const script of [shellScript, powershellScript]) {
     assert.match(script, /RESTORE_BACKUP|RestoreBackup/u);
     assert.match(script, /RESTORE_PASSWORD|RestorePassword/u);
-    assert.match(script, /source-master/u);
     assert.match(script, /bootstrap/u);
     assert.match(script, /API_SYSTEM_BACKUP_PASSWORD/u);
     assert.match(script, /API_PROVIDER_SECRET_MASTER_KEY/u);
+    assert.match(script, /deployment\.env/u);
   }
+  assert.doesNotMatch(shellScript, /source-master/u);
+  assert.doesNotMatch(powershellScript, /source-master/u);
+  assert.match(shellScript, /--env-file/u);
+  assert.match(powershellScript, /--env-file/u);
   for (const composeFile of [compose, externalCompose]) {
     assert.match(composeFile, /\.\/recovery:\/recovery:ro/u);
   }
@@ -716,8 +720,8 @@ if [ "$1 $2" = "manifest inspect" ]; then
   printf '%s\\n' '{"os":"linux","architecture":"amd64"}'
   exit 0
 fi
-if [ "$1" = "compose" ] && printf '%s\\n' "$*" | grep -q 'source-master'; then
-  printf '%s' 'portable-source-master'
+if [ "$1" = "compose" ] && printf '%s\\n' "$*" | grep -q 'bootstrap'; then
+  sed -i 's/^API_PROVIDER_SECRET_MASTER_KEY=.*/API_PROVIDER_SECRET_MASTER_KEY=portable-source-master/' .env
 fi
 exit 0
 `,
@@ -732,6 +736,8 @@ exit 0
       '--start',
       '--restore-backup',
       backupFile,
+      '--restore-password',
+      'password-protected-backup',
     ],
     {
       cwd: tempRoot,
@@ -756,13 +762,14 @@ exit 0
   );
   const calls = fs.readFileSync(composeLog, 'utf8');
   const dependencies = calls.indexOf('compose up -d db plugin-runner');
-  const sourceMaster = calls.indexOf('source-master');
   const bootstrap = calls.indexOf('bootstrap');
   const finalStartup = calls.lastIndexOf('compose up -d');
   assert.ok(dependencies >= 0, calls);
-  assert.ok(sourceMaster > dependencies, calls);
-  assert.ok(bootstrap > sourceMaster, calls);
+  assert.ok(bootstrap > dependencies, calls);
   assert.ok(finalStartup > bootstrap, calls);
+  assert.match(calls, /--env-file \.recovery-env\./u);
+  assert.match(calls, /\/recovery\/deployment\.env/u);
+  assert.doesNotMatch(calls, /password-protected-backup/u);
 });
 
 test('container image workflow publishes linux amd64 and arm64 manifests', () => {

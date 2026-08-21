@@ -145,11 +145,21 @@ Linux/macOS:
 curl -fsSL https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/shell/docker-deploy.sh | sh
 ```
 
+迁移到新机器时，运行同一官方命令会询问是否恢复一个便携备份；也可显式指定备份文件（如备份设置过密码，再加 `--restore-password`）：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/shell/docker-deploy.sh | sh -s -- --restore-backup /safe/path/system.1fb-backup
+```
+
+恢复在首次启动前完成。请使用备份中原有的 root 登录凭据；脚本不会把新 `.env` 的初始密码误报为已恢复系统的密码。
+
 Windows PowerShell:
 
 ```powershell
 irm https://raw.githubusercontent.com/taichuy/1flowbase/main/scripts/powershell/docker-deploy.ps1 | iex
 ```
+
+PowerShell 同样会询问是否恢复备份；或先下载脚本后使用 `-RestoreBackup C:\safe\system.1fb-backup`。
 
 Windows CMD:
 

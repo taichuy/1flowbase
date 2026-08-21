@@ -135,12 +135,141 @@ impl SystemBackupService {
     pub async fn download<W>(
         &self,
         backup_set_id: BackupSetId,
-        mut destination: W,
+        destination: W,
     ) -> Result<(), SystemBackupServiceError>
     where
         W: AsyncWrite + Unpin + Send,
     {
         let sealed = self.get(backup_set_id).await?;
+        self.write_bundle(backup_set_id, &sealed, destination).await
+    }
+
+    /// Re-exports a pre-portable bundle as a v2 portable bundle while the source deployment can
+    /// still decrypt it. The temporary re-encrypted set exists only while its single-file bundle
+    /// is being streamed, so a download does not silently add a second retained backup.
+    pub async fn download_portable<W>(
+        &self,
+        backup_set_id: BackupSetId,
+        portable_source_master_key_base64: &str,
+        destination: W,
+    ) -> Result<(), SystemBackupServiceError>
+    where
+        W: AsyncWrite + Unpin + Send,
+    {
+        let sealed = self.get(backup_set_id).await?;
+        if !matches!(
+            sealed.manifest().protection(),
+            BackupProtection::LegacyEnvironmentKey
+        ) {
+            return self.write_bundle(backup_set_id, &sealed, destination).await;
+        }
+        let legacy_key = resolve_backup_key(self.key_provider.as_ref(), sealed.manifest(), None)
+            .await
+            .map_err(|_| SystemBackupServiceError::Key)?;
+        verify_backup_manifest(&sealed, &legacy_key).map_err(map_envelope_error)?;
+        let portable_key = portable_backup_key(portable_source_master_key_base64)
+            .map_err(|_| SystemBackupServiceError::Key)?;
+        let portable_backup_set_id = BackupSetId::new();
+        self.repository
+            .begin_staging(portable_backup_set_id)
+            .await
+            .map_err(|_| SystemBackupServiceError::Repository)?;
+
+        let result =
+            async {
+                let mut envelope_digests = Vec::new();
+                for component in sealed.manifest().components().iter().filter(|component| {
+                    component.disposition == BackupComponentDisposition::Embedded
+                }) {
+                    let encrypted_source = self
+                        .repository
+                        .open_component(backup_set_id, &component.component_id)
+                        .await
+                        .map_err(|_| SystemBackupServiceError::Repository)?;
+                    let encrypted_destination = self
+                        .repository
+                        .open_staging_component(portable_backup_set_id, &component.component_id)
+                        .await
+                        .map_err(|_| SystemBackupServiceError::Repository)?;
+                    let (mut plaintext_writer, plaintext_reader) =
+                        tokio::io::duplex(SYSTEM_BACKUP_CHUNK_SIZE_BYTES as usize);
+                    let component_id = component.component_id.clone();
+                    let decrypt_key = BackupKeyMaterial::new(
+                        legacy_key.fingerprint().clone(),
+                        legacy_key.expose_bytes().to_vec(),
+                    )
+                    .ok_or(SystemBackupServiceError::Key)?;
+                    let decrypt_task = tokio::spawn(async move {
+                        let result = decrypt_backup_stream(
+                            encrypted_source,
+                            &mut plaintext_writer,
+                            &decrypt_key,
+                            backup_set_id,
+                            &component_id,
+                        )
+                        .await;
+                        let _ = plaintext_writer.shutdown().await;
+                        result
+                    });
+                    let receipt = encrypt_backup_stream(
+                        plaintext_reader,
+                        encrypted_destination,
+                        &portable_key,
+                        portable_backup_set_id,
+                        &component.component_id,
+                    )
+                    .await
+                    .map_err(map_envelope_error)?;
+                    decrypt_task
+                        .await
+                        .map_err(|_| SystemBackupServiceError::Envelope)?
+                        .map_err(map_envelope_error)?;
+                    if receipt.plaintext_size_bytes != component.size_bytes
+                        || receipt.plaintext_digest != component.content_digest
+                    {
+                        return Err(SystemBackupServiceError::Verification);
+                    }
+                    envelope_digests.push(receipt.envelope_digest);
+                }
+                let manifest = BackupManifest::try_new_portable(
+                    portable_backup_set_id,
+                    OffsetDateTime::now_utc(),
+                    sealed.manifest().application_build().clone(),
+                    sealed.manifest().migration_head().clone(),
+                    sealed.manifest().master_key_fingerprint().clone(),
+                    portable_key.fingerprint().clone(),
+                    portable_source_master_key_base64.to_owned(),
+                    sealed.manifest().components().to_vec(),
+                    sealed.manifest().total_size_bytes(),
+                    combined_digest(&envelope_digests)?,
+                )
+                .map_err(|_| SystemBackupServiceError::Manifest)?;
+                let portable_sealed = authenticate_backup_manifest(manifest, &portable_key)
+                    .map_err(map_envelope_error)?;
+                self.repository
+                    .seal(&portable_sealed)
+                    .await
+                    .map_err(|_| SystemBackupServiceError::Repository)?;
+                self.write_bundle(portable_backup_set_id, &portable_sealed, destination)
+                    .await
+            }
+            .await;
+        let _ = self.repository.delete(portable_backup_set_id).await;
+        if result.is_err() {
+            let _ = self.repository.abort_staging(portable_backup_set_id).await;
+        }
+        result
+    }
+
+    async fn write_bundle<W>(
+        &self,
+        backup_set_id: BackupSetId,
+        sealed: &SealedBackupManifest,
+        mut destination: W,
+    ) -> Result<(), SystemBackupServiceError>
+    where
+        W: AsyncWrite + Unpin + Send,
+    {
         let manifest_bytes =
             serde_json::to_vec(&sealed).map_err(|_| SystemBackupServiceError::Bundle)?;
         destination
@@ -727,22 +856,13 @@ pub async fn resolve_backup_key(
         }
         BackupProtection::PortableUnprotected {
             source_master_key_base64,
-        } => {
-            let source_master_key = STANDARD
-                .decode(source_master_key_base64)
-                .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
-            let mut derivation = Sha256::new();
-            derivation.update(b"1flowbase/system-backup/key/v1\0");
-            derivation.update(source_master_key);
-            let key = derivation.finalize().to_vec();
-            let fingerprint = KeyFingerprint::try_from(format!("{:x}", Sha256::digest(&key)))
-                .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
-            if &fingerprint != manifest.backup_key_fingerprint() {
-                return Err(crate::ports::BackupKeyProviderError::NotFound);
+        } => portable_backup_key(source_master_key_base64).and_then(|key| {
+            if key.fingerprint() == manifest.backup_key_fingerprint() {
+                Ok(key)
+            } else {
+                Err(crate::ports::BackupKeyProviderError::NotFound)
             }
-            BackupKeyMaterial::new(fingerprint, key)
-                .ok_or(crate::ports::BackupKeyProviderError::Unavailable)
-        }
+        }),
         BackupProtection::PasswordEncrypted { salt_base64, .. } => {
             let password = password.ok_or(crate::ports::BackupKeyProviderError::NotFound)?;
             let salt = STANDARD
@@ -752,6 +872,22 @@ pub async fn resolve_backup_key(
                 .and_then(|key| checked_key_material(key, manifest.backup_key_fingerprint()))
         }
     }
+}
+
+fn portable_backup_key(
+    source_master_key_base64: &str,
+) -> Result<BackupKeyMaterial, crate::ports::BackupKeyProviderError> {
+    let source_master_key = STANDARD
+        .decode(source_master_key_base64)
+        .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
+    let mut derivation = Sha256::new();
+    derivation.update(b"1flowbase/system-backup/key/v1\0");
+    derivation.update(source_master_key);
+    let key = derivation.finalize().to_vec();
+    let fingerprint = KeyFingerprint::try_from(format!("{:x}", Sha256::digest(&key)))
+        .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
+    BackupKeyMaterial::new(fingerprint, key)
+        .ok_or(crate::ports::BackupKeyProviderError::Unavailable)
 }
 
 /// Obtains the source deployment secret only after the selected protection mode has been
@@ -779,10 +915,10 @@ pub async fn recover_source_master_key(
             let sealed = STANDARD
                 .decode(encrypted_source_master_key_base64)
                 .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
-            let (nonce, ciphertext) = sealed.split_at(24);
-            if nonce.len() != 24 {
+            if sealed.len() < 24 {
                 return Err(crate::ports::BackupKeyProviderError::Unavailable);
             }
+            let (nonce, ciphertext) = sealed.split_at(24);
             let cipher = XChaCha20Poly1305::new_from_slice(key.expose_bytes())
                 .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
             let plaintext = cipher

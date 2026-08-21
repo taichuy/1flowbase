@@ -26,6 +26,7 @@ RESTORE_PASSWORD="${FLOWBASE_RESTORE_PASSWORD:-}"
 PULL_IMAGES="${FLOWBASE_PULL_IMAGES:-}"
 START_CONTAINERS="${FLOWBASE_START_CONTAINERS:-}"
 INTERACTIVE=1
+FRESH_DEPLOY=0
 
 if [ "${FLOWBASE_NON_INTERACTIVE:-}" = "1" ] || [ "${FLOWBASE_NON_INTERACTIVE:-}" = "true" ]; then
   INTERACTIVE=0
@@ -923,6 +924,15 @@ else
   tar -xzf "$archive" -C "$tmpdir" "$FLOWBASE_ARCHIVE_DOCKER_DIR"
   mv "$tmpdir/$FLOWBASE_ARCHIVE_DOCKER_DIR" ./docker
   echo "Downloaded ./docker."
+  FRESH_DEPLOY=1
+fi
+
+if [ -z "$RESTORE_BACKUP" ] && [ "$FRESH_DEPLOY" -eq 1 ] && [ "$INTERACTIVE" -eq 1 ] && [ -r /dev/tty ]; then
+  if [ "$(prompt_yes_no "Restore one portable backup before the first start?" "no")" = "yes" ]; then
+    printf 'Portable backup file: ' > /dev/tty
+    RESTORE_BACKUP="$(read_from_tty)"
+    [ -n "$RESTORE_BACKUP" ] || fail "A portable backup file is required when recovery is selected."
+  fi
 fi
 
 if [ -n "$RESTORE_BACKUP" ]; then
@@ -1150,20 +1160,22 @@ if [ -n "$RESTORE_BACKUP" ] && [ "$START_CONTAINERS" = "yes" ]; then
     compose up -d db plugin-runner
   fi
 
+  recovery_env_file=".recovery-env.$$.tmp"
+  (umask 077 && cp .env "$recovery_env_file")
   if [ -n "$RESTORE_PASSWORD" ]; then
-    RECOVERY_MASTER_KEY="$(API_SYSTEM_BACKUP_PASSWORD="$RESTORE_PASSWORD" recovery_compose run --rm --no-deps --entrypoint system_recovery api source-master --backup-file /recovery/portable.1fb-backup | tr -d '\r\n')" || fail "Could not read portable backup recovery material."
-  else
-    RECOVERY_MASTER_KEY="$(recovery_compose run --rm --no-deps --entrypoint system_recovery api source-master --backup-file /recovery/portable.1fb-backup | tr -d '\r\n')" || fail "Could not read portable backup recovery material."
+    set_env_value API_SYSTEM_BACKUP_PASSWORD "$RESTORE_PASSWORD" "$recovery_env_file"
   fi
-  [ -n "$RECOVERY_MASTER_KEY" ] || fail "Portable backup recovery material was empty."
-  set_env_value API_PROVIDER_SECRET_MASTER_KEY "$RECOVERY_MASTER_KEY" .env
-  unset RECOVERY_MASTER_KEY
-
-  if [ -n "$RESTORE_PASSWORD" ]; then
-    API_SYSTEM_BACKUP_PASSWORD="$RESTORE_PASSWORD" recovery_compose run --rm --no-deps --entrypoint system_recovery api bootstrap --backup-file /recovery/portable.1fb-backup || fail "Portable backup bootstrap recovery failed. Existing target data was not started."
-  else
-    recovery_compose run --rm --no-deps --entrypoint system_recovery api bootstrap --backup-file /recovery/portable.1fb-backup || fail "Portable backup bootstrap recovery failed. Existing target data was not started."
+  # The password is passed through a 0600 compose env file and the restored master key is written
+  # atomically by the offline binary into this bind mount. Neither secret crosses stdout.
+  if ! recovery_compose --env-file "$recovery_env_file" run --rm --no-deps \
+    --volume "$PWD/.env:/recovery/deployment.env" \
+    --entrypoint system_recovery api bootstrap \
+    --backup-file /recovery/portable.1fb-backup \
+    --deployment-env-file /recovery/deployment.env; then
+    rm -f "$recovery_env_file"
+    fail "Portable backup bootstrap recovery failed. Existing target data was not started."
   fi
+  rm -f "$recovery_env_file"
   echo "Portable backup was restored before the API service started."
 fi
 
@@ -1188,5 +1200,9 @@ root_account="$(read_env_value BOOTSTRAP_ROOT_ACCOUNT .env)"
 root_password="$(read_env_value BOOTSTRAP_ROOT_PASSWORD .env)"
 
 echo "1flowbase is starting. Web: http://127.0.0.1:${web_port:-3100}"
-echo "Initial root account: ${root_account:-root}"
-echo "Initial root password: ${root_password:-1flowbase}"
+if [ -n "$RESTORE_BACKUP" ]; then
+  echo "Restored root credentials remain those from the selected backup."
+else
+  echo "Initial root account: ${root_account:-root}"
+  echo "Initial root password: ${root_password:-1flowbase}"
+fi

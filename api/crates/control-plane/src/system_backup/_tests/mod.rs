@@ -178,6 +178,45 @@ async fn password_protection_requires_the_correct_password_before_releasing_reco
     );
 }
 
+#[tokio::test]
+async fn truncated_password_recovery_material_is_a_controlled_error() {
+    let protection =
+        super::password_protection("correct-password", Some(&STANDARD.encode("source-master")))
+            .unwrap();
+    let manifest = BackupManifest::try_new_password_encrypted(
+        BackupSetId::new(),
+        OffsetDateTime::UNIX_EPOCH,
+        ApplicationBuild::try_from("v99.0.0").unwrap(),
+        MigrationHead::try_from("migration.test").unwrap(),
+        KeyFingerprint::try_from(fingerprint('b')).unwrap(),
+        protection.key.fingerprint().clone(),
+        protection.salt_base64,
+        STANDARD.encode([0_u8; 23]),
+        vec![BackupComponent {
+            component_id: BackupComponentId::try_from("postgres/main").unwrap(),
+            kind: BackupComponentKind::PostgreSql,
+            source_identity: BackupSourceIdentity::try_from("postgres/main").unwrap(),
+            content_type: "application/octet-stream".to_owned(),
+            size_bytes: 1,
+            content_digest: ContentDigest::try_from(fingerprint('d')).unwrap(),
+            disposition: BackupComponentDisposition::Embedded,
+            rebuildability: ArtifactRebuildability::NotApplicable,
+            restore_target: BackupComponentRestoreTarget::PostgreSql,
+        }],
+        1,
+        ContentDigest::try_from(fingerprint('e')).unwrap(),
+    )
+    .unwrap();
+
+    assert!(super::recover_source_master_key(
+        &RejectingKeyProvider,
+        &manifest,
+        Some("correct-password")
+    )
+    .await
+    .is_err());
+}
+
 async fn encrypt(
     plaintext: Vec<u8>,
     backup_set_id: BackupSetId,
