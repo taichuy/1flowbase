@@ -14,6 +14,8 @@ param(
   [string]$ExternalPostgresSslmode = $env:FLOWBASE_EXTERNAL_POSTGRES_SSLMODE,
   [string]$PluginGithubProxyUrl = $env:FLOWBASE_OFFICIAL_PLUGIN_GITHUB_PROXY_URL,
   [string]$OfficialPluginSignatureRequired = $env:FLOWBASE_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED,
+  [string]$RestoreBackup = $env:FLOWBASE_RESTORE_BACKUP,
+  [string]$RestorePassword = $env:FLOWBASE_RESTORE_PASSWORD,
   [switch]$Pull,
   [switch]$NoPull,
   [switch]$Start,
@@ -588,6 +590,15 @@ function Invoke-ComposeCommand([string[]]$Arguments) {
   }
 }
 
+function Invoke-RecoveryComposeCommand([string[]]$Arguments) {
+  if ($NewDatabaseMode -eq "external") {
+    $RecoveryArguments = @("-f", "docker-compose.external-db.yaml") + $Arguments
+    Invoke-ComposeCommand $RecoveryArguments
+  } else {
+    Invoke-ComposeCommand $Arguments
+  }
+}
+
 function Sync-PostgresPassword([string]$NewPassword) {
   $DbName = Read-EnvValue "POSTGRES_DB" ".\.env"
   $DbUser = Read-EnvValue "POSTGRES_USER" ".\.env"
@@ -644,6 +655,15 @@ if (Test-Path ".\docker") {
   Move-Item -Path $ExtractedDockerDir -Destination ".\docker"
   Remove-Item -Recurse -Force $TempDir
   Write-Host "Downloaded ./docker."
+}
+
+if ($RestoreBackup) {
+  if (-not (Test-Path -Path $RestoreBackup -PathType Leaf)) {
+    Fail "Portable backup file was not found: $RestoreBackup"
+  }
+  New-Item -ItemType Directory -Force -Path ".\docker\recovery" | Out-Null
+  Copy-Item -Path $RestoreBackup -Destination ".\docker\recovery\portable.1fb-backup" -Force
+  Write-Host "Selected portable backup for recovery bootstrap."
 }
 
 $PromptConfigValues = $false
@@ -847,6 +867,48 @@ if ($PullImages) {
   }
 } else {
   Write-Host "Skipping image pull."
+}
+
+if ($RestoreBackup -and $StartContainers) {
+  if ($NewDatabaseMode -eq "external") {
+    Invoke-ComposeCommand @("-f", "docker-compose.external-db.yaml", "up", "-d", "plugin-runner")
+  } else {
+    Invoke-ComposeCommand @("up", "-d", "db", "plugin-runner")
+  }
+  if ($LASTEXITCODE -ne 0) {
+    Fail "Could not start recovery dependencies."
+  }
+
+  $PreviousRecoveryPassword = $env:API_SYSTEM_BACKUP_PASSWORD
+  try {
+    if ($RestorePassword) {
+      $env:API_SYSTEM_BACKUP_PASSWORD = $RestorePassword
+    } else {
+      Remove-Item Env:API_SYSTEM_BACKUP_PASSWORD -ErrorAction SilentlyContinue
+    }
+    $RecoveryMasterKey = Invoke-RecoveryComposeCommand @("run", "--rm", "--no-deps", "--entrypoint", "system_recovery", "api", "source-master", "--backup-file", "/recovery/portable.1fb-backup")
+    if ($LASTEXITCODE -ne 0) {
+      Fail "Could not read portable backup recovery material."
+    }
+    $RecoveryMasterKey = ($RecoveryMasterKey | Out-String).Trim()
+    if (-not $RecoveryMasterKey) {
+      Fail "Portable backup recovery material was empty."
+    }
+    Set-EnvValue "API_PROVIDER_SECRET_MASTER_KEY" $RecoveryMasterKey ".\.env"
+    $RecoveryMasterKey = $null
+
+    Invoke-RecoveryComposeCommand @("run", "--rm", "--no-deps", "--entrypoint", "system_recovery", "api", "bootstrap", "--backup-file", "/recovery/portable.1fb-backup")
+    if ($LASTEXITCODE -ne 0) {
+      Fail "Portable backup bootstrap recovery failed. Existing target data was not started."
+    }
+  } finally {
+    if ($null -eq $PreviousRecoveryPassword) {
+      Remove-Item Env:API_SYSTEM_BACKUP_PASSWORD -ErrorAction SilentlyContinue
+    } else {
+      $env:API_SYSTEM_BACKUP_PASSWORD = $PreviousRecoveryPassword
+    }
+  }
+  Write-Host "Portable backup was restored before the API service started."
 }
 
 if ($StartContainers) {

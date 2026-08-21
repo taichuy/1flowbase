@@ -53,6 +53,7 @@ services:
       - ./api/plugins/packages:/app/api/plugins/packages
       - ./api/plugins/installed:/app/api/plugins/installed
       - ./api/plugins/host-extension/dropins:/app/api/plugins/host-extension/dropins
+      - ./recovery:/recovery:ro
 
   web:
     image: ghcr.io/taichuy/1flowbase-web:${FLOWBASE_WEB_VERSION:-latest}

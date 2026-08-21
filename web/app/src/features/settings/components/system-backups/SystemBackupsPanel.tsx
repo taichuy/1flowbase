@@ -79,6 +79,13 @@ export function SystemBackupsPanel() {
     useState<BackupSetSummaryResponse>();
   const [preflight, setPreflight] = useState<RecoveryPreflightResponse>();
   const [password, setPassword] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [backupPassword, setBackupPassword] = useState('');
+  const [pendingImport, setPendingImport] = useState<File>();
+  const [importPassword, setImportPassword] = useState('');
+  const [verifyTarget, setVerifyTarget] = useState<BackupSetSummaryResponse>();
+  const [verifyPassword, setVerifyPassword] = useState('');
+  const [recoveryBackupPassword, setRecoveryBackupPassword] = useState('');
   const [exactName, setExactName] = useState('');
   const [recoveryJobId, setRecoveryJobId] = useState<string>();
   const availabilityLabel = (value: string) => {
@@ -102,25 +109,38 @@ export function SystemBackupsPanel() {
   const refresh = () => queryClient.invalidateQueries({ queryKey });
   const notifyError = () => message.error(t('operation_failed'));
   const createMutation = useMutation({
-    mutationFn: () => createSystemBackup(csrfToken),
+    mutationFn: (backupPassword?: string) =>
+      createSystemBackup(
+        csrfToken,
+        undefined,
+        backupPassword ? { backup_password: backupPassword } : undefined
+      ),
     onSuccess: async () => {
       await refresh();
+      setCreateOpen(false);
+      setBackupPassword('');
       message.success(t('create_started'));
     },
     onError: notifyError
   });
   const importMutation = useMutation({
-    mutationFn: (file: File) => importSystemBackup(file, csrfToken),
+    mutationFn: ({ file, password }: { file: File; password?: string }) =>
+      importSystemBackup(file, csrfToken, undefined, password),
     onSuccess: async () => {
       await refresh();
+      setPendingImport(undefined);
+      setImportPassword('');
       message.success(t('import_succeeded'));
     },
     onError: notifyError
   });
   const verifyMutation = useMutation({
-    mutationFn: (id: string) => verifySystemBackup(id, csrfToken),
+    mutationFn: ({ id, password }: { id: string; password?: string }) =>
+      verifySystemBackup(id, csrfToken, undefined, password),
     onSuccess: async () => {
       await refresh();
+      setVerifyTarget(undefined);
+      setVerifyPassword('');
       message.success(t('verify_succeeded'));
     },
     onError: notifyError
@@ -134,7 +154,8 @@ export function SystemBackupsPanel() {
     onError: notifyError
   });
   const preflightMutation = useMutation({
-    mutationFn: (id: string) => preflightSystemRecovery(id, csrfToken),
+    mutationFn: ({ id, password }: { id: string; password?: string }) =>
+      preflightSystemRecovery(id, csrfToken, undefined, password),
     onSuccess: setPreflight,
     onError: notifyError
   });
@@ -147,7 +168,8 @@ export function SystemBackupsPanel() {
           backup_set_id: restoreTarget.backup_set_id,
           exact_backup_name: exactName,
           plan_digest: preflight.plan_digest,
-          password
+          password,
+          backup_password: recoveryBackupPassword || undefined
         },
         csrfToken
       );
@@ -156,7 +178,8 @@ export function SystemBackupsPanel() {
         {
           challenge_token: challenge.challenge_token,
           exact_backup_name: exactName,
-          plan_digest: preflight.plan_digest
+          plan_digest: preflight.plan_digest,
+          backup_password: recoveryBackupPassword || undefined
         },
         csrfToken
       );
@@ -190,6 +213,7 @@ export function SystemBackupsPanel() {
     setPreflight(undefined);
     setPassword('');
     setExactName('');
+    setRecoveryBackupPassword('');
     setRecoveryJobId(undefined);
   };
   const openRestore = (item: BackupSetSummaryResponse) => {
@@ -197,7 +221,7 @@ export function SystemBackupsPanel() {
     setExactName('');
     setPreflight(undefined);
     setRecoveryJobId(undefined);
-    preflightMutation.mutate(item.backup_set_id);
+    preflightMutation.mutate({ id: item.backup_set_id });
   };
 
   return (
@@ -228,7 +252,7 @@ export function SystemBackupsPanel() {
             <Upload
               accept=".1fb-backup,application/octet-stream"
               beforeUpload={(file) => {
-                importMutation.mutate(file);
+                setPendingImport(file);
                 return false;
               }}
               maxCount={1}
@@ -246,7 +270,7 @@ export function SystemBackupsPanel() {
               type="primary"
               icon={<PlusOutlined />}
               loading={createMutation.isPending}
-              onClick={() => createMutation.mutate()}
+              onClick={() => setCreateOpen(true)}
             >
               {t('create')}
             </Button>
@@ -313,7 +337,7 @@ export function SystemBackupsPanel() {
                       key: 'verify',
                       icon: <SafetyCertificateOutlined />,
                       label: t('verify'),
-                      onClick: () => verifyMutation.mutate(item.backup_set_id)
+                      onClick: () => setVerifyTarget(item)
                     },
                     {
                       key: 'download',
@@ -572,6 +596,83 @@ export function SystemBackupsPanel() {
       </Drawer>
 
       <Modal
+        destroyOnHidden
+        open={createOpen}
+        title={t('create')}
+        okText={t('create')}
+        confirmLoading={createMutation.isPending}
+        onCancel={() => {
+          setCreateOpen(false);
+          setBackupPassword('');
+        }}
+        onOk={() => createMutation.mutate(backupPassword || undefined)}
+      >
+        <Typography.Paragraph>{t('backup_password_help')}</Typography.Paragraph>
+        <Input.Password
+          autoComplete="new-password"
+          placeholder={t('backup_password')}
+          value={backupPassword}
+          onChange={(event) => setBackupPassword(event.target.value)}
+        />
+      </Modal>
+
+      <Modal
+        destroyOnHidden
+        open={Boolean(pendingImport)}
+        title={t('import')}
+        okText={t('import')}
+        confirmLoading={importMutation.isPending}
+        onCancel={() => {
+          setPendingImport(undefined);
+          setImportPassword('');
+        }}
+        onOk={() => {
+          if (pendingImport) {
+            importMutation.mutate({
+              file: pendingImport,
+              password: importPassword || undefined
+            });
+          }
+        }}
+      >
+        <Typography.Paragraph>{t('import_password_help')}</Typography.Paragraph>
+        <Input.Password
+          autoComplete="current-password"
+          placeholder={t('backup_password')}
+          value={importPassword}
+          onChange={(event) => setImportPassword(event.target.value)}
+        />
+      </Modal>
+
+      <Modal
+        destroyOnHidden
+        open={Boolean(verifyTarget)}
+        title={t('verify')}
+        okText={t('verify')}
+        confirmLoading={verifyMutation.isPending}
+        onCancel={() => {
+          setVerifyTarget(undefined);
+          setVerifyPassword('');
+        }}
+        onOk={() => {
+          if (verifyTarget) {
+            verifyMutation.mutate({
+              id: verifyTarget.backup_set_id,
+              password: verifyPassword || undefined
+            });
+          }
+        }}
+      >
+        <Typography.Paragraph>{t('verify_password_help')}</Typography.Paragraph>
+        <Input.Password
+          autoComplete="current-password"
+          placeholder={t('backup_password')}
+          value={verifyPassword}
+          onChange={(event) => setVerifyPassword(event.target.value)}
+        />
+      </Modal>
+
+      <Modal
         className="system-backups__restore"
         destroyOnHidden
         footer={null}
@@ -604,6 +705,25 @@ export function SystemBackupsPanel() {
                   preflight.failures.join(', ') || t('preflight_passed')
                 }
               />
+              <Input.Password
+                autoComplete="current-password"
+                placeholder={t('backup_password')}
+                value={recoveryBackupPassword}
+                onChange={(event) =>
+                  setRecoveryBackupPassword(event.target.value)
+                }
+              />
+              <Button
+                onClick={() =>
+                  restoreTarget &&
+                  preflightMutation.mutate({
+                    id: restoreTarget.backup_set_id,
+                    password: recoveryBackupPassword || undefined
+                  })
+                }
+              >
+                {t('step_preflight')}
+              </Button>
               <Descriptions
                 className="system-backups__impact"
                 column={{ xs: 1, sm: 2 }}

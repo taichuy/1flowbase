@@ -663,6 +663,25 @@ test('docker deploy scripts document the CN accelerator prompt and default proxy
   assert.match(powershellScript, /\$OfficialPluginSignatureRequired/u);
 });
 
+test('docker deploy scripts bootstrap a selected portable backup before the API starts', () => {
+  const shellScript = readRepoFile('scripts', 'shell', 'docker-deploy.sh');
+  const powershellScript = readRepoFile('scripts', 'powershell', 'docker-deploy.ps1');
+  const compose = readRepoFile('docker', 'docker-compose.yaml');
+  const externalCompose = readRepoFile('docker', 'docker-compose.external-db.yaml');
+
+  for (const script of [shellScript, powershellScript]) {
+    assert.match(script, /RESTORE_BACKUP|RestoreBackup/u);
+    assert.match(script, /RESTORE_PASSWORD|RestorePassword/u);
+    assert.match(script, /source-master/u);
+    assert.match(script, /bootstrap/u);
+    assert.match(script, /API_SYSTEM_BACKUP_PASSWORD/u);
+    assert.match(script, /API_PROVIDER_SECRET_MASTER_KEY/u);
+  }
+  for (const composeFile of [compose, externalCompose]) {
+    assert.match(composeFile, /\.\/recovery:\/recovery:ro/u);
+  }
+});
+
 test('container image workflow publishes linux amd64 and arm64 manifests', () => {
   const workflow = readRepoFile('.github', 'workflows', 'container-images.yml');
 

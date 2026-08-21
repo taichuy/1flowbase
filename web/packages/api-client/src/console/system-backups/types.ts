@@ -55,7 +55,6 @@ export interface BackupCompatibilityResponse {
   format_version: number;
   application_build: string;
   migration_head: string;
-  master_key_fingerprint: string;
 }
 
 export interface BackupVerificationDetailResponse {
@@ -82,6 +81,10 @@ export interface BackupRecoveryHistoryEntryResponse {
 export interface BackupMutationResponse {
   backup_set_id: string;
   exact_backup_name: string;
+}
+
+export interface CreateBackupRequest {
+  backup_password?: string;
 }
 
 export interface BackupVerificationResponse {
@@ -116,6 +119,7 @@ export interface RecoveryReauthRequest {
   exact_backup_name: string;
   plan_digest: string;
   password: string;
+  backup_password?: string;
 }
 
 export interface RecoveryReauthResponse {
@@ -127,6 +131,7 @@ export interface CreateRecoveryIntentRequest {
   challenge_token: string;
   exact_backup_name: string;
   plan_digest: string;
+  backup_password?: string;
 }
 
 export interface RecoveryIntentResponse {

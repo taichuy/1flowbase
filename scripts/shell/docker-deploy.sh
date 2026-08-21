@@ -21,6 +21,8 @@ EXTERNAL_POSTGRES_PASSWORD="${FLOWBASE_EXTERNAL_POSTGRES_PASSWORD:-}"
 EXTERNAL_POSTGRES_SSLMODE="${FLOWBASE_EXTERNAL_POSTGRES_SSLMODE:-}"
 PLUGIN_GITHUB_PROXY_URL="${FLOWBASE_OFFICIAL_PLUGIN_GITHUB_PROXY_URL:-${API_OFFICIAL_PLUGIN_GITHUB_PROXY_URL:-}}"
 OFFICIAL_PLUGIN_SIGNATURE_REQUIRED="${FLOWBASE_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED:-${API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED:-}}"
+RESTORE_BACKUP="${FLOWBASE_RESTORE_BACKUP:-}"
+RESTORE_PASSWORD="${FLOWBASE_RESTORE_PASSWORD:-}"
 PULL_IMAGES="${FLOWBASE_PULL_IMAGES:-}"
 START_CONTAINERS="${FLOWBASE_START_CONTAINERS:-}"
 INTERACTIVE=1
@@ -689,6 +691,8 @@ Options:
                             Pre-fill API_OFFICIAL_PLUGIN_GITHUB_PROXY_URL before the interactive prompt.
   --official-plugin-signature-required VALUE
                             Pre-fill API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED as true or false.
+  --restore-backup FILE     Select one portable backup file for recovery bootstrap.
+  --restore-password VALUE  Password for an optionally password-protected backup.
   --pull                    Pull images without asking.
   --no-pull                 Do not pull images without asking.
   --start                   Start containers without asking.
@@ -712,6 +716,8 @@ Environment variables with the same effect:
   FLOWBASE_EXTERNAL_POSTGRES_SSLMODE
   FLOWBASE_OFFICIAL_PLUGIN_GITHUB_PROXY_URL
   FLOWBASE_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED
+  FLOWBASE_RESTORE_BACKUP
+  FLOWBASE_RESTORE_PASSWORD
   FLOWBASE_PULL_IMAGES=1
   FLOWBASE_START_CONTAINERS=1
   FLOWBASE_NON_INTERACTIVE=1
@@ -841,6 +847,22 @@ while [ "$#" -gt 0 ]; do
       OFFICIAL_PLUGIN_SIGNATURE_REQUIRED="${1#*=}"
       shift
       ;;
+    --restore-backup)
+      RESTORE_BACKUP="$(require_value "$1" "${2-}")"
+      shift 2
+      ;;
+    --restore-backup=*)
+      RESTORE_BACKUP="${1#*=}"
+      shift
+      ;;
+    --restore-password)
+      RESTORE_PASSWORD="$(require_value "$1" "${2-}")"
+      shift 2
+      ;;
+    --restore-password=*)
+      RESTORE_PASSWORD="${1#*=}"
+      shift
+      ;;
     --pull)
       PULL_IMAGES=1
       shift
@@ -901,6 +923,14 @@ else
   tar -xzf "$archive" -C "$tmpdir" "$FLOWBASE_ARCHIVE_DOCKER_DIR"
   mv "$tmpdir/$FLOWBASE_ARCHIVE_DOCKER_DIR" ./docker
   echo "Downloaded ./docker."
+fi
+
+if [ -n "$RESTORE_BACKUP" ]; then
+  [ -f "$RESTORE_BACKUP" ] || fail "Portable backup file was not found: $RESTORE_BACKUP"
+  mkdir -p ./docker/recovery
+  cp "$RESTORE_BACKUP" ./docker/recovery/portable.1fb-backup
+  chmod 600 ./docker/recovery/portable.1fb-backup
+  echo "Selected portable backup for recovery bootstrap."
 fi
 
 PROMPT_CONFIG_VALUES=0
@@ -1104,6 +1134,37 @@ if [ "$PULL_IMAGES" = "yes" ]; then
   fi
 else
   echo "Skipping image pull."
+fi
+
+if [ -n "$RESTORE_BACKUP" ] && [ "$START_CONTAINERS" = "yes" ]; then
+  recovery_compose() {
+    if [ "$NEW_DATABASE_MODE" = "external" ]; then
+      compose -f docker-compose.external-db.yaml "$@"
+    else
+      compose "$@"
+    fi
+  }
+  if [ "$NEW_DATABASE_MODE" = "external" ]; then
+    compose -f docker-compose.external-db.yaml up -d plugin-runner
+  else
+    compose up -d db plugin-runner
+  fi
+
+  if [ -n "$RESTORE_PASSWORD" ]; then
+    RECOVERY_MASTER_KEY="$(API_SYSTEM_BACKUP_PASSWORD="$RESTORE_PASSWORD" recovery_compose run --rm --no-deps --entrypoint system_recovery api source-master --backup-file /recovery/portable.1fb-backup | tr -d '\r\n')" || fail "Could not read portable backup recovery material."
+  else
+    RECOVERY_MASTER_KEY="$(recovery_compose run --rm --no-deps --entrypoint system_recovery api source-master --backup-file /recovery/portable.1fb-backup | tr -d '\r\n')" || fail "Could not read portable backup recovery material."
+  fi
+  [ -n "$RECOVERY_MASTER_KEY" ] || fail "Portable backup recovery material was empty."
+  set_env_value API_PROVIDER_SECRET_MASTER_KEY "$RECOVERY_MASTER_KEY" .env
+  unset RECOVERY_MASTER_KEY
+
+  if [ -n "$RESTORE_PASSWORD" ]; then
+    API_SYSTEM_BACKUP_PASSWORD="$RESTORE_PASSWORD" recovery_compose run --rm --no-deps --entrypoint system_recovery api bootstrap --backup-file /recovery/portable.1fb-backup || fail "Portable backup bootstrap recovery failed. Existing target data was not started."
+  else
+    recovery_compose run --rm --no-deps --entrypoint system_recovery api bootstrap --backup-file /recovery/portable.1fb-backup || fail "Portable backup bootstrap recovery failed. Existing target data was not started."
+  fi
+  echo "Portable backup was restored before the API service started."
 fi
 
 if [ "$START_CONTAINERS" = "yes" ]; then

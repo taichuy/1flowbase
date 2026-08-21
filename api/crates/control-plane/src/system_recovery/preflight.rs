@@ -95,6 +95,16 @@ impl RecoveryPreflightService {
     /// Produces a deterministic, read-only plan. No maintenance lease, safety backup or recovery
     /// journal entry is created until a compatible plan is explicitly confirmed.
     pub async fn plan(&self, backup_set_id: BackupSetId) -> RecoveryPlan {
+        self.plan_with_password(backup_set_id, None).await
+    }
+
+    /// Password-protected backups require their password even for a read-only integrity check.
+    /// The password is caller-owned and is never retained by the plan or journal.
+    pub async fn plan_with_password(
+        &self,
+        backup_set_id: BackupSetId,
+        password: Option<&str>,
+    ) -> RecoveryPlan {
         let target = match self.target.snapshot().await {
             Ok(target) => target,
             Err(_) => return unavailable_plan(backup_set_id),
@@ -110,7 +120,12 @@ impl RecoveryPreflightService {
             }
         };
         let mut failures = Vec::new();
-        if self.backups.verify(backup_set_id).await.is_err() {
+        if self
+            .backups
+            .verify_with_password(backup_set_id, password)
+            .await
+            .is_err()
+        {
             failures.push(RecoveryPreflightFailure::BackupIntegrity);
         }
         if let Err(reasons) = strict_backup_compatibility(sealed.manifest(), &target.compatibility)

@@ -1,5 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use control_plane::{
     file_management::BusinessObjectBackupExporter,
     plugin_management::load_backup_artifact_sources,
@@ -46,6 +47,7 @@ pub struct SystemBackupRuntime {
     api_node_id: String,
     application_build: ApplicationBuild,
     master_key_fingerprint: KeyFingerprint,
+    portable_source_master_key_base64: String,
     postgres_toolchain: PostgreSqlToolchain,
     preflight: Arc<RecoveryPreflightService>,
     recovery: Arc<RecoveryCoordinator>,
@@ -176,6 +178,7 @@ impl SystemBackupRuntime {
             api_node_id: config.api_node_id.clone(),
             application_build,
             master_key_fingerprint,
+            portable_source_master_key_base64: STANDARD.encode(&config.provider_secret_master_key),
             postgres_toolchain,
             preflight,
             recovery,
@@ -187,6 +190,14 @@ impl SystemBackupRuntime {
     pub async fn create(
         &self,
         actor_user_id: Uuid,
+    ) -> Result<SealedBackupManifest, SystemBackupRuntimeError> {
+        self.create_with_password(actor_user_id, None).await
+    }
+
+    pub async fn create_with_password(
+        &self,
+        actor_user_id: Uuid,
+        backup_password: Option<String>,
     ) -> Result<SealedBackupManifest, SystemBackupRuntimeError> {
         let backup_job_id = BackupJobId::new();
         let lease = self
@@ -202,7 +213,7 @@ impl SystemBackupRuntime {
             .map_err(|_| SystemBackupRuntimeError::Drain)?;
 
         let result = self
-            .create_under_existing_maintenance(backup_job_id, actor_user_id)
+            .create_under_existing_maintenance(backup_job_id, actor_user_id, backup_password)
             .await;
         lease.finish();
         result
@@ -258,7 +269,18 @@ impl SystemBackupRuntime {
     }
 
     pub async fn verify(&self, backup_set_id: BackupSetId) -> Result<(), SystemBackupRuntimeError> {
-        let verification = self.service.verify(backup_set_id).await;
+        self.verify_with_password(backup_set_id, None).await
+    }
+
+    pub async fn verify_with_password(
+        &self,
+        backup_set_id: BackupSetId,
+        password: Option<&str>,
+    ) -> Result<(), SystemBackupRuntimeError> {
+        let verification = self
+            .service
+            .verify_with_password(backup_set_id, password)
+            .await;
         let verified = verification.is_ok();
         let receipt = self
             .repository
@@ -296,7 +318,18 @@ impl SystemBackupRuntime {
     where
         R: AsyncRead + Unpin + Send,
     {
-        let sealed = self.service.import(source).await?;
+        self.import_with_password(source, None).await
+    }
+
+    pub async fn import_with_password<R>(
+        &self,
+        source: R,
+        password: Option<&str>,
+    ) -> Result<SealedBackupManifest, SystemBackupRuntimeError>
+    where
+        R: AsyncRead + Unpin + Send,
+    {
+        let sealed = self.service.import_with_password(source, password).await?;
         self.repository
             .record_verification(sealed.manifest().backup_set_id(), true)
             .await
@@ -308,16 +341,28 @@ impl SystemBackupRuntime {
         self.preflight.plan(backup_set_id).await
     }
 
+    pub async fn preflight_with_password(
+        &self,
+        backup_set_id: BackupSetId,
+        password: Option<&str>,
+    ) -> RecoveryPlan {
+        self.preflight
+            .plan_with_password(backup_set_id, password)
+            .await
+    }
+
     pub async fn prepare_recovery(
         &self,
         intent: ConfirmedRecoveryIntent,
+        target_backup_password: Option<String>,
     ) -> Result<OfflineRecoveryHandoffReady, SystemBackupRuntimeError> {
         let actor_user_id = intent.actor_user_id();
         let (safety_backup_command, safety_backup_sources) =
-            self.backup_inputs(actor_user_id).await?;
+            self.backup_inputs(actor_user_id, None).await?;
         self.recovery
             .prepare_offline_handoff(PrepareRecoveryCommand {
                 intent,
+                target_backup_password,
                 safety_backup_command,
                 safety_backup_sources,
                 drain_timeout: std::time::Duration::from_secs(30),
@@ -347,6 +392,7 @@ impl SystemBackupRuntime {
     async fn backup_inputs(
         &self,
         actor_user_id: Uuid,
+        backup_password: Option<String>,
     ) -> Result<
         (
             CreateSystemBackupCommand,
@@ -386,6 +432,10 @@ impl SystemBackupRuntime {
                 application_build: self.application_build.clone(),
                 migration_head,
                 master_key_fingerprint: self.master_key_fingerprint.clone(),
+                portable_source_master_key_base64: Some(
+                    self.portable_source_master_key_base64.clone(),
+                ),
+                backup_password,
             },
             sources,
         ))
@@ -395,14 +445,20 @@ impl SystemBackupRuntime {
         &self,
         backup_job_id: BackupJobId,
         actor_user_id: Uuid,
+        backup_password: Option<String>,
     ) -> Result<SealedBackupManifest, SystemBackupRuntimeError> {
-        let (command, sources) = self.backup_inputs(actor_user_id).await?;
+        let (command, sources) = self
+            .backup_inputs(actor_user_id, backup_password.clone())
+            .await?;
         let manifest = self
             .service
             .create_under_existing_maintenance(backup_job_id, command, sources)
             .await?;
         self.service
-            .verify(manifest.manifest().backup_set_id())
+            .verify_with_password(
+                manifest.manifest().backup_set_id(),
+                backup_password.as_deref(),
+            )
             .await?;
         self.repository
             .record_verification(manifest.manifest().backup_set_id(), true)

@@ -24,7 +24,7 @@ use control_plane::{
         ArtifactRecoveryCoordinate, ArtifactRecoveryResolver, FilesystemArtifactRecoveryTarget,
     },
     ports::{BackupRepository, BackupRepositoryError},
-    system_backup::SystemBackupService,
+    system_backup::{read_backup_bundle_manifest, recover_source_master_key, SystemBackupService},
     system_recovery::{
         ExecuteOfflineRecoveryCommand, OfflineRecoveryExecutor, OfflineRecoveryTargets,
         PostRestoreRecoveryError, PostRestoreRecoveryOutcome, PostRestoreRecoveryService,
@@ -43,6 +43,9 @@ use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Command {
+    Import,
+    SourceMaster,
+    Bootstrap,
     Preflight,
     Status,
     Restore,
@@ -56,6 +59,7 @@ struct Arguments {
     command: Command,
     backup_set_id: Option<BackupSetId>,
     recovery_job_id: Option<RecoveryJobId>,
+    backup_file: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -72,6 +76,23 @@ async fn main() -> Result<()> {
     );
 
     let output = match arguments.command {
+        Command::SourceMaster => {
+            let material = source_master(key_provider, required_backup_file(&arguments)?).await?;
+            print!("{material}");
+            return Ok(());
+        }
+        Command::Import => {
+            import_backup(repository, key_provider, required_backup_file(&arguments)?).await?
+        }
+        Command::Bootstrap => {
+            bootstrap_from_file(
+                &config,
+                repository,
+                key_provider,
+                required_backup_file(&arguments)?,
+            )
+            .await?
+        }
         Command::Preflight => {
             preflight(
                 &config,
@@ -92,7 +113,11 @@ async fn main() -> Result<()> {
                 recovery_job_id: required_recovery_job_id(&arguments)?,
                 backup_set_id: required_backup_set_id(&arguments)?,
             };
-            let runtime = build_recovery_runtime(&config, repository, key_provider).await?;
+            let backup_password = std::env::var("API_SYSTEM_BACKUP_PASSWORD")
+                .ok()
+                .filter(|value| !value.is_empty());
+            let runtime =
+                build_recovery_runtime(&config, repository, key_provider, backup_password).await?;
             match arguments.command {
                 Command::Restore | Command::Resume => runtime.restore_or_resume(command).await?,
                 Command::Rollback => {
@@ -122,6 +147,9 @@ fn parse_arguments(arguments: impl IntoIterator<Item = String>) -> Result<Argume
         std::process::exit(0);
     }
     let command = match command.as_str() {
+        "import" => Command::Import,
+        "source-master" => Command::SourceMaster,
+        "bootstrap" => Command::Bootstrap,
         "preflight" => Command::Preflight,
         "status" => Command::Status,
         "restore" => Command::Restore,
@@ -133,6 +161,7 @@ fn parse_arguments(arguments: impl IntoIterator<Item = String>) -> Result<Argume
     };
     let mut backup_set_id = None;
     let mut recovery_job_id = None;
+    let mut backup_file = None;
     while let Some(flag) = arguments.next() {
         let value = arguments
             .next()
@@ -144,6 +173,7 @@ fn parse_arguments(arguments: impl IntoIterator<Item = String>) -> Result<Argume
             "--recovery-job-id" => {
                 recovery_job_id = Some(RecoveryJobId::from_uuid(parse_uuid(&value, &flag)?));
             }
+            "--backup-file" => backup_file = Some(PathBuf::from(value)),
             _ => bail!("unknown recovery option `{flag}`"),
         }
     }
@@ -151,6 +181,7 @@ fn parse_arguments(arguments: impl IntoIterator<Item = String>) -> Result<Argume
         command,
         backup_set_id,
         recovery_job_id,
+        backup_file,
     })
 }
 
@@ -170,11 +201,158 @@ fn required_recovery_job_id(arguments: &Arguments) -> Result<RecoveryJobId> {
         .context("--recovery-job-id is required for this command")
 }
 
+fn required_backup_file(arguments: &Arguments) -> Result<PathBuf> {
+    arguments
+        .backup_file
+        .clone()
+        .context("--backup-file is required")
+}
+
 fn print_usage() {
     eprintln!(
-        "usage: system_recovery <preflight|status|restore|resume|rollback|finalize|report> \
-         [--backup-set-id <uuid>] [--recovery-job-id <uuid>]"
+        "usage: system_recovery <source-master|import|bootstrap|preflight|status|restore|resume|rollback|finalize|report> \
+         [--backup-file <path>] [--backup-set-id <uuid>] [--recovery-job-id <uuid>]"
     );
+}
+
+/// Restore a backup into a deliberately fresh deployment before the API service is started.
+///
+/// Unlike an operator-initiated recovery this has no running application to fence and no target
+/// data worth a safety backup.  It is intentionally only exposed through the offline binary: the
+/// caller must provide the mounted backup file and the target database must be empty.  The normal
+/// executor and post-restore service still own journal, rollback, reconciliation and health.
+async fn bootstrap_from_file(
+    config: &ApiConfig,
+    repository: Arc<LocalBackupRepository>,
+    key_provider: Arc<EnvironmentBackupKeyProvider>,
+    backup_file: PathBuf,
+) -> Result<Value> {
+    ensure_fresh_recovery_target(config).await?;
+    let imported = import_backup(repository.clone(), key_provider.clone(), backup_file).await?;
+    let backup_set_id = imported["backup_set_id"]
+        .as_str()
+        .context("portable backup import returned no backup set")
+        .and_then(|value| Uuid::parse_str(value).context("portable backup set id is invalid"))
+        .map(BackupSetId::from_uuid)?;
+
+    // Verify compatibility before any target data is replaced.  This also makes unsupported
+    // formats and migration paths fail closed in the deployment path.
+    preflight(
+        config,
+        repository.clone(),
+        key_provider.clone(),
+        backup_set_id,
+    )
+    .await?;
+    let recovery_job_id = RecoveryJobId::new();
+    append_bootstrap_state(
+        repository.as_ref(),
+        recovery_job_id,
+        backup_set_id,
+        RecoveryJobState::Draining,
+    )
+    .await?;
+    let password = std::env::var("API_SYSTEM_BACKUP_PASSWORD")
+        .ok()
+        .filter(|value| !value.is_empty());
+    let runtime = build_recovery_runtime(config, repository, key_provider, password).await?;
+    let receipt = runtime
+        .restore_or_resume(ExecuteOfflineRecoveryCommand {
+            recovery_job_id,
+            backup_set_id,
+        })
+        .await?;
+    Ok(json!({
+        "status": receipt["status"],
+        "backup_set_id": backup_set_id,
+        "recovery_job_id": recovery_job_id,
+        "bootstrap": true,
+    }))
+}
+
+async fn ensure_fresh_recovery_target(config: &ApiConfig) -> Result<()> {
+    let pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(&config.database_url)
+        .await
+        .context("bootstrap recovery target database is unavailable")?;
+    // A 1flowbase database always has at least one application relation after normal startup.
+    // Refuse an existing target instead of silently overwriting a second deployment.
+    let existing: i64 = sqlx::query_scalar(
+        "select count(*) from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE'",
+    )
+    .fetch_one(&pool)
+    .await
+    .context("could not inspect bootstrap recovery target")?;
+    pool.close().await;
+    if existing != 0 {
+        bail!("bootstrap recovery requires a fresh target database")
+    }
+    Ok(())
+}
+
+async fn append_bootstrap_state(
+    repository: &dyn BackupRepository,
+    recovery_job_id: RecoveryJobId,
+    backup_set_id: BackupSetId,
+    state: RecoveryJobState,
+) -> Result<()> {
+    repository
+        .append_journal_event(&BackupJournalEvent {
+            event_id: Uuid::now_v7(),
+            sequence: 0,
+            subject: BackupJournalSubject::Recovery(recovery_job_id),
+            backup_set_id,
+            actor_user_id: None,
+            occurred_at: time::OffsetDateTime::now_utc(),
+            event: domain::BackupJournalEventKind::RecoveryStateChanged { state },
+        })
+        .await
+        .map_err(|_| anyhow!("could not initialize external bootstrap recovery journal"))
+}
+
+async fn import_backup(
+    repository: Arc<LocalBackupRepository>,
+    key_provider: Arc<EnvironmentBackupKeyProvider>,
+    backup_file: PathBuf,
+) -> Result<Value> {
+    let file = tokio::fs::File::open(&backup_file)
+        .await
+        .context("portable backup file is unavailable")?;
+    let password = std::env::var("API_SYSTEM_BACKUP_PASSWORD")
+        .ok()
+        .filter(|value| !value.is_empty());
+    let service = SystemBackupService::new(repository, key_provider);
+    let sealed = service
+        .import_with_password(file, password.as_deref())
+        .await
+        .context("portable backup import failed")?;
+    Ok(json!({
+        "status": "imported",
+        "backup_set_id": sealed.manifest().backup_set_id(),
+    }))
+}
+
+async fn source_master(
+    key_provider: Arc<EnvironmentBackupKeyProvider>,
+    backup_file: PathBuf,
+) -> Result<String> {
+    let file = tokio::fs::File::open(&backup_file)
+        .await
+        .context("portable backup file is unavailable")?;
+    let sealed = read_backup_bundle_manifest(file)
+        .await
+        .context("portable backup manifest is invalid")?;
+    let password = std::env::var("API_SYSTEM_BACKUP_PASSWORD")
+        .ok()
+        .filter(|value| !value.is_empty());
+    recover_source_master_key(
+        key_provider.as_ref(),
+        sealed.manifest(),
+        password.as_deref(),
+    )
+    .await
+    .context("portable recovery material is unavailable")
 }
 
 async fn open_repository(config: &ApiConfig) -> Result<Arc<LocalBackupRepository>> {
@@ -195,7 +373,12 @@ async fn preflight(
     backup_set_id: BackupSetId,
 ) -> Result<Value> {
     let service = SystemBackupService::new(repository, key_provider);
-    service.verify(backup_set_id).await?;
+    let password = std::env::var("API_SYSTEM_BACKUP_PASSWORD")
+        .ok()
+        .filter(|value| !value.is_empty());
+    service
+        .verify_with_password(backup_set_id, password.as_deref())
+        .await?;
     let sealed = service.get(backup_set_id).await?;
     let toolchain = discover_postgres_toolchain().await?;
     let pool = PgPoolOptions::new()
@@ -279,6 +462,7 @@ async fn build_recovery_runtime(
     config: &ApiConfig,
     repository: Arc<LocalBackupRepository>,
     key_provider: Arc<EnvironmentBackupKeyProvider>,
+    backup_password: Option<String>,
 ) -> Result<StoppedServerRecoveryRuntime> {
     let toolchain = discover_postgres_toolchain().await?;
     let compatibility_pool = PgPoolOptions::new()
@@ -315,7 +499,7 @@ async fn build_recovery_runtime(
     let extension_artifacts = Arc::new(FilesystemArtifactRecoveryTarget::new(
         artifact_resolver.clone(),
     ));
-    let executor = Arc::new(OfflineRecoveryExecutor::new(
+    let executor = Arc::new(OfflineRecoveryExecutor::new_with_password(
         repository.clone(),
         key_provider,
         OfflineRecoveryTargets {
@@ -323,6 +507,7 @@ async fn build_recovery_runtime(
             business_objects,
             extension_artifacts,
         },
+        backup_password,
     ));
     let post_restore = PostRestoreRecoveryService::new(
         repository.clone(),

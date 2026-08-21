@@ -1,13 +1,20 @@
 use std::{collections::BTreeSet, sync::Arc};
 
+use argon2::Argon2;
 use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
+use chacha20poly1305::{
+    aead::{Aead, Payload},
+    KeyInit, XChaCha20Poly1305, XNonce,
+};
 use domain::{
     ApplicationBuild, ArtifactRebuildability, BackupComponent, BackupComponentDisposition,
     BackupComponentId, BackupComponentKind, BackupComponentRestoreTarget, BackupJob, BackupJobId,
     BackupJobState, BackupJournalEvent, BackupJournalEventKind, BackupJournalSubject,
-    BackupManifest, BackupSetId, BackupSourceIdentity, ContentDigest, KeyFingerprint,
-    MigrationHead, SealedBackupManifest, SYSTEM_BACKUP_CHUNK_SIZE_BYTES,
+    BackupManifest, BackupProtection, BackupSetId, BackupSourceIdentity, ContentDigest,
+    KeyFingerprint, MigrationHead, SealedBackupManifest, SYSTEM_BACKUP_CHUNK_SIZE_BYTES,
 };
+use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 use time::OffsetDateTime;
@@ -15,7 +22,8 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use uuid::Uuid;
 
 use crate::ports::{
-    BackupComponentWriter, BackupKeyProvider, BackupRepository, BackupSetCatalogEntry,
+    BackupComponentWriter, BackupKeyMaterial, BackupKeyProvider, BackupRepository,
+    BackupSetCatalogEntry,
 };
 
 use super::{
@@ -23,7 +31,7 @@ use super::{
     verify_backup_manifest, BackupEnvelopeError,
 };
 
-const BACKUP_BUNDLE_MAGIC: &[u8; 8] = b"1FBKBND1";
+pub const BACKUP_BUNDLE_MAGIC: &[u8; 8] = b"1FBKBND1";
 const BACKUP_BUNDLE_IO_BUFFER_BYTES: usize = 256 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,6 +68,10 @@ pub struct CreateSystemBackupCommand {
     pub application_build: ApplicationBuild,
     pub migration_head: MigrationHead,
     pub master_key_fingerprint: KeyFingerprint,
+    /// Base64 encoded source deployment secret. New backups intentionally carry this material so
+    /// a single downloaded file can bootstrap a different deployment without a separate key.
+    pub portable_source_master_key_base64: Option<String>,
+    pub backup_password: Option<String>,
 }
 
 #[derive(Debug, Error)]
@@ -188,7 +200,18 @@ impl SystemBackupService {
 
     pub async fn import<R>(
         &self,
+        source: R,
+    ) -> Result<SealedBackupManifest, SystemBackupServiceError>
+    where
+        R: AsyncRead + Unpin + Send,
+    {
+        self.import_with_password(source, None).await
+    }
+
+    pub async fn import_with_password<R>(
+        &self,
         mut source: R,
+        password: Option<&str>,
     ) -> Result<SealedBackupManifest, SystemBackupServiceError>
     where
         R: AsyncRead + Unpin + Send,
@@ -213,9 +236,7 @@ impl SystemBackupService {
         let sealed: SealedBackupManifest = serde_json::from_slice(&manifest_bytes)
             .map_err(|_| SystemBackupServiceError::Bundle)?;
         let backup_set_id = sealed.manifest().backup_set_id();
-        let key = self
-            .key_provider
-            .key_for(sealed.manifest().backup_key_fingerprint())
+        let key = resolve_backup_key(self.key_provider.as_ref(), sealed.manifest(), password)
             .await
             .map_err(|_| SystemBackupServiceError::Key)?;
         verify_backup_manifest(&sealed, &key).map_err(map_envelope_error)?;
@@ -223,7 +244,7 @@ impl SystemBackupService {
             if existing.authentication_tag() == sealed.authentication_tag()
                 && existing.manifest().envelope_digest() == sealed.manifest().envelope_digest()
             {
-                self.verify(backup_set_id).await?;
+                self.verify_with_password(backup_set_id, password).await?;
                 return Ok(existing);
             }
             return Err(SystemBackupServiceError::Repository);
@@ -232,7 +253,7 @@ impl SystemBackupService {
             .begin_staging(backup_set_id)
             .await
             .map_err(|_| SystemBackupServiceError::Repository)?;
-        let result = self.import_in_staging(&mut source, &sealed).await;
+        let result = self.import_in_staging(&mut source, &sealed, password).await;
         if result.is_err() {
             let _ = self.repository.abort_staging(backup_set_id).await;
         }
@@ -243,6 +264,7 @@ impl SystemBackupService {
         &self,
         source: &mut R,
         sealed: &SealedBackupManifest,
+        password: Option<&str>,
     ) -> Result<SealedBackupManifest, SystemBackupServiceError>
     where
         R: AsyncRead + Unpin + Send,
@@ -323,7 +345,7 @@ impl SystemBackupService {
             .seal(sealed)
             .await
             .map_err(|_| SystemBackupServiceError::Repository)?;
-        self.verify(backup_set_id).await?;
+        self.verify_with_password(backup_set_id, password).await?;
         Ok(sealed.clone())
     }
 
@@ -385,11 +407,33 @@ impl SystemBackupService {
             .await?;
         self.transition(command, job, BackupJobState::Capturing)
             .await?;
-        let key = self
-            .key_provider
-            .active_key()
-            .await
+        let password_protection = command
+            .backup_password
+            .as_deref()
+            .map(|password| {
+                password_protection(
+                    password,
+                    command.portable_source_master_key_base64.as_deref(),
+                )
+            })
+            .transpose()
             .map_err(|_| SystemBackupServiceError::Key)?;
+        let (key, password_protection) = match password_protection {
+            Some(protection) => (
+                protection.key,
+                Some((
+                    protection.salt_base64,
+                    protection.encrypted_source_master_key_base64,
+                )),
+            ),
+            None => (
+                self.key_provider
+                    .active_key()
+                    .await
+                    .map_err(|_| SystemBackupServiceError::Key)?,
+                None,
+            ),
+        };
         let mut components = Vec::with_capacity(sources.len());
         let mut envelope_digests = Vec::new();
         for source in sources {
@@ -451,17 +495,49 @@ impl SystemBackupService {
             })
             .ok_or(SystemBackupServiceError::Manifest)?;
         let envelope_digest = combined_digest(&envelope_digests)?;
-        let manifest = BackupManifest::try_new(
-            job.backup_set_id(),
-            OffsetDateTime::now_utc(),
-            command.application_build.clone(),
-            command.migration_head.clone(),
-            command.master_key_fingerprint.clone(),
-            key.fingerprint().clone(),
-            components,
-            total_size_bytes,
-            envelope_digest,
-        )
+        let manifest = match (
+            &command.portable_source_master_key_base64,
+            password_protection,
+        ) {
+            (_, Some((salt_base64, encrypted_source_master_key_base64))) => {
+                BackupManifest::try_new_password_encrypted(
+                    job.backup_set_id(),
+                    OffsetDateTime::now_utc(),
+                    command.application_build.clone(),
+                    command.migration_head.clone(),
+                    command.master_key_fingerprint.clone(),
+                    key.fingerprint().clone(),
+                    salt_base64,
+                    encrypted_source_master_key_base64,
+                    components,
+                    total_size_bytes,
+                    envelope_digest,
+                )
+            }
+            (Some(source_master_key_base64), None) => BackupManifest::try_new_portable(
+                job.backup_set_id(),
+                OffsetDateTime::now_utc(),
+                command.application_build.clone(),
+                command.migration_head.clone(),
+                command.master_key_fingerprint.clone(),
+                key.fingerprint().clone(),
+                source_master_key_base64.clone(),
+                components,
+                total_size_bytes,
+                envelope_digest,
+            ),
+            (None, None) => BackupManifest::try_new(
+                job.backup_set_id(),
+                OffsetDateTime::now_utc(),
+                command.application_build.clone(),
+                command.migration_head.clone(),
+                command.master_key_fingerprint.clone(),
+                key.fingerprint().clone(),
+                components,
+                total_size_bytes,
+                envelope_digest,
+            ),
+        }
         .map_err(|_| SystemBackupServiceError::Manifest)?;
         let sealed = authenticate_backup_manifest(manifest, &key).map_err(map_envelope_error)?;
         self.repository
@@ -470,21 +546,28 @@ impl SystemBackupService {
             .map_err(|_| SystemBackupServiceError::Repository)?;
         self.transition(command, job, BackupJobState::Verifying)
             .await?;
-        self.verify(job.backup_set_id()).await?;
+        self.verify_with_password(job.backup_set_id(), command.backup_password.as_deref())
+            .await?;
         self.transition(command, job, BackupJobState::Succeeded)
             .await?;
         Ok(sealed)
     }
 
     pub async fn verify(&self, backup_set_id: BackupSetId) -> Result<(), SystemBackupServiceError> {
+        self.verify_with_password(backup_set_id, None).await
+    }
+
+    pub async fn verify_with_password(
+        &self,
+        backup_set_id: BackupSetId,
+        password: Option<&str>,
+    ) -> Result<(), SystemBackupServiceError> {
         let sealed = self
             .repository
             .load_manifest(backup_set_id)
             .await
             .map_err(|_| SystemBackupServiceError::Repository)?;
-        let key = self
-            .key_provider
-            .key_for(sealed.manifest().backup_key_fingerprint())
+        let key = resolve_backup_key(self.key_provider.as_ref(), sealed.manifest(), password)
             .await
             .map_err(|_| SystemBackupServiceError::Key)?;
         verify_backup_manifest(&sealed, &key).map_err(map_envelope_error)?;
@@ -572,6 +655,32 @@ impl SystemBackupService {
     }
 }
 
+pub async fn read_backup_bundle_manifest<R>(
+    mut source: R,
+) -> Result<SealedBackupManifest, SystemBackupServiceError>
+where
+    R: AsyncRead + Unpin + Send,
+{
+    let mut magic = [0_u8; 8];
+    source
+        .read_exact(&mut magic)
+        .await
+        .map_err(|_| SystemBackupServiceError::Bundle)?;
+    if &magic != BACKUP_BUNDLE_MAGIC {
+        return Err(SystemBackupServiceError::Bundle);
+    }
+    let manifest_len = read_u64(&mut source).await?;
+    if manifest_len == 0 || manifest_len > 16 * 1024 * 1024 {
+        return Err(SystemBackupServiceError::Bundle);
+    }
+    let mut manifest_bytes = vec![0_u8; manifest_len as usize];
+    source
+        .read_exact(&mut manifest_bytes)
+        .await
+        .map_err(|_| SystemBackupServiceError::Bundle)?;
+    serde_json::from_slice(&manifest_bytes).map_err(|_| SystemBackupServiceError::Bundle)
+}
+
 fn identity_only_component(
     descriptor: BackupComponentDescriptor,
 ) -> Result<BackupComponent, SystemBackupServiceError> {
@@ -600,6 +709,171 @@ fn combined_digest(digests: &[ContentDigest]) -> Result<ContentDigest, SystemBac
     }
     ContentDigest::try_from(format!("{:x}", hasher.finalize()))
         .map_err(|_| SystemBackupServiceError::Manifest)
+}
+
+/// Resolves the key required to inspect a backup without allowing a portable package to depend on
+/// the target deployment's environment. Legacy backups retain their fingerprint-routed provider
+/// lookup and therefore still fail closed when their original key is unavailable.
+pub async fn resolve_backup_key(
+    key_provider: &dyn BackupKeyProvider,
+    manifest: &BackupManifest,
+    password: Option<&str>,
+) -> Result<BackupKeyMaterial, crate::ports::BackupKeyProviderError> {
+    match manifest.protection() {
+        BackupProtection::LegacyEnvironmentKey => {
+            key_provider
+                .key_for(manifest.backup_key_fingerprint())
+                .await
+        }
+        BackupProtection::PortableUnprotected {
+            source_master_key_base64,
+        } => {
+            let source_master_key = STANDARD
+                .decode(source_master_key_base64)
+                .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
+            let mut derivation = Sha256::new();
+            derivation.update(b"1flowbase/system-backup/key/v1\0");
+            derivation.update(source_master_key);
+            let key = derivation.finalize().to_vec();
+            let fingerprint = KeyFingerprint::try_from(format!("{:x}", Sha256::digest(&key)))
+                .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
+            if &fingerprint != manifest.backup_key_fingerprint() {
+                return Err(crate::ports::BackupKeyProviderError::NotFound);
+            }
+            BackupKeyMaterial::new(fingerprint, key)
+                .ok_or(crate::ports::BackupKeyProviderError::Unavailable)
+        }
+        BackupProtection::PasswordEncrypted { salt_base64, .. } => {
+            let password = password.ok_or(crate::ports::BackupKeyProviderError::NotFound)?;
+            let salt = STANDARD
+                .decode(salt_base64)
+                .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
+            password_key(password, &salt)
+                .and_then(|key| checked_key_material(key, manifest.backup_key_fingerprint()))
+        }
+    }
+}
+
+/// Obtains the source deployment secret only after the selected protection mode has been
+/// satisfied. Callers use it during fresh-deployment bootstrap; it is never projected through
+/// the Settings API or logged.
+pub async fn recover_source_master_key(
+    key_provider: &dyn BackupKeyProvider,
+    manifest: &BackupManifest,
+    password: Option<&str>,
+) -> Result<String, crate::ports::BackupKeyProviderError> {
+    match manifest.protection() {
+        BackupProtection::PortableUnprotected {
+            source_master_key_base64,
+        } => {
+            let bytes = STANDARD
+                .decode(source_master_key_base64)
+                .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
+            String::from_utf8(bytes).map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)
+        }
+        BackupProtection::PasswordEncrypted {
+            encrypted_source_master_key_base64,
+            ..
+        } => {
+            let key = resolve_backup_key(key_provider, manifest, password).await?;
+            let sealed = STANDARD
+                .decode(encrypted_source_master_key_base64)
+                .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
+            let (nonce, ciphertext) = sealed.split_at(24);
+            if nonce.len() != 24 {
+                return Err(crate::ports::BackupKeyProviderError::Unavailable);
+            }
+            let cipher = XChaCha20Poly1305::new_from_slice(key.expose_bytes())
+                .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
+            let plaintext = cipher
+                .decrypt(
+                    XNonce::from_slice(nonce),
+                    Payload {
+                        msg: ciphertext,
+                        aad: b"1flowbase/system-backup/recovery-material/v1",
+                    },
+                )
+                .map_err(|_| crate::ports::BackupKeyProviderError::NotFound)?;
+            String::from_utf8(plaintext)
+                .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)
+        }
+        BackupProtection::LegacyEnvironmentKey => {
+            Err(crate::ports::BackupKeyProviderError::NotFound)
+        }
+    }
+}
+
+pub(crate) struct PasswordProtection {
+    pub(crate) key: BackupKeyMaterial,
+    pub(crate) salt_base64: String,
+    pub(crate) encrypted_source_master_key_base64: String,
+}
+
+pub(crate) fn password_protection(
+    password: &str,
+    source_master_key_base64: Option<&str>,
+) -> Result<PasswordProtection, crate::ports::BackupKeyProviderError> {
+    let source_master_key_base64 =
+        source_master_key_base64.ok_or(crate::ports::BackupKeyProviderError::Unavailable)?;
+    let source_master_key = STANDARD
+        .decode(source_master_key_base64)
+        .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
+    let mut salt = [0_u8; 16];
+    OsRng.fill_bytes(&mut salt);
+    let key = password_key(password, &salt)?;
+    let material = BackupKeyMaterial::new(
+        KeyFingerprint::try_from(format!("{:x}", Sha256::digest(&key)))
+            .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?,
+        key.clone(),
+    )
+    .ok_or(crate::ports::BackupKeyProviderError::Unavailable)?;
+    let cipher = XChaCha20Poly1305::new_from_slice(&key)
+        .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
+    let mut nonce = [0_u8; 24];
+    OsRng.fill_bytes(&mut nonce);
+    let encrypted = cipher
+        .encrypt(
+            XNonce::from_slice(&nonce),
+            Payload {
+                msg: &source_master_key,
+                aad: b"1flowbase/system-backup/recovery-material/v1",
+            },
+        )
+        .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
+    let mut sealed = nonce.to_vec();
+    sealed.extend(encrypted);
+    Ok(PasswordProtection {
+        key: material,
+        salt_base64: STANDARD.encode(salt),
+        encrypted_source_master_key_base64: STANDARD.encode(sealed),
+    })
+}
+
+fn password_key(
+    password: &str,
+    salt: &[u8],
+) -> Result<Vec<u8>, crate::ports::BackupKeyProviderError> {
+    if password.is_empty() {
+        return Err(crate::ports::BackupKeyProviderError::NotFound);
+    }
+    let mut key = [0_u8; 32];
+    Argon2::default()
+        .hash_password_into(password.as_bytes(), salt, &mut key)
+        .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
+    Ok(key.to_vec())
+}
+
+fn checked_key_material(
+    key: Vec<u8>,
+    expected: &KeyFingerprint,
+) -> Result<BackupKeyMaterial, crate::ports::BackupKeyProviderError> {
+    let fingerprint = KeyFingerprint::try_from(format!("{:x}", Sha256::digest(&key)))
+        .map_err(|_| crate::ports::BackupKeyProviderError::Unavailable)?;
+    if &fingerprint != expected {
+        return Err(crate::ports::BackupKeyProviderError::NotFound);
+    }
+    BackupKeyMaterial::new(fingerprint, key)
+        .ok_or(crate::ports::BackupKeyProviderError::Unavailable)
 }
 
 fn map_envelope_error(_: BackupEnvelopeError) -> SystemBackupServiceError {

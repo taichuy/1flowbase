@@ -88,8 +88,7 @@ describe('SystemBackupsPanel', () => {
         failures: [],
         format_version: 1,
         application_build: 'build-1',
-        migration_head: 'migration-1',
-        master_key_fingerprint: 'd'.repeat(64)
+        migration_head: 'migration-1'
       },
       verification: { verified: true, checked_at: backup.created_at },
       creation_journal: [
@@ -155,6 +154,29 @@ describe('SystemBackupsPanel', () => {
       backup.backup_set_id
     );
     expect(click).toHaveBeenCalledOnce();
+  });
+
+  test('collects an optional backup password before verification', async () => {
+    api.verifySystemBackup.mockResolvedValue({
+      backup_set_id: backup.backup_set_id,
+      verified: true
+    });
+    renderPanel();
+    await screen.findByText(backup.exact_backup_name);
+    await openActions();
+    fireEvent.click(await screen.findByText('Verify'));
+    fireEvent.change(screen.getByPlaceholderText('Optional backup password'), {
+      target: { value: 'backup-password' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() =>
+      expect(api.verifySystemBackup).toHaveBeenCalledWith(
+        backup.backup_set_id,
+        'csrf-token',
+        undefined,
+        'backup-password'
+      )
+    );
   });
 
   test('keeps restore dangerous and projects server preflight and journal status', async () => {

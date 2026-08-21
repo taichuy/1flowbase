@@ -31,13 +31,14 @@ fn postgres_component() -> BackupComponent {
 }
 
 fn manifest() -> BackupManifest {
-    BackupManifest::try_new(
+    BackupManifest::try_new_portable(
         BackupSetId::new(),
         OffsetDateTime::UNIX_EPOCH,
         ApplicationBuild::try_from("git.5f906803").unwrap(),
         MigrationHead::try_from("202608110001").unwrap(),
         KeyFingerprint::try_from(fingerprint('b')).unwrap(),
         KeyFingerprint::try_from(fingerprint('c')).unwrap(),
+        "c291cmNlLW1hc3Rlci1rZXk=".to_owned(),
         vec![postgres_component()],
         42,
         ContentDigest::try_from(fingerprint('d')).unwrap(),
@@ -209,6 +210,25 @@ fn compatibility_allows_a_different_source_build_on_a_supported_migration_path()
                 .into_iter()
                 .collect(),
             master_key_fingerprint: manifest.master_key_fingerprint().clone(),
+        },
+    );
+
+    assert_eq!(result, Ok(()));
+}
+
+#[test]
+fn portable_backup_compatibility_ignores_a_different_target_master_key() {
+    let manifest = manifest();
+    let result = strict_backup_compatibility(
+        &manifest,
+        &BackupCompatibilityTarget {
+            format_version: SYSTEM_BACKUP_FORMAT_VERSION,
+            application_build: ApplicationBuild::try_from("v99.0.0").unwrap(),
+            migration_head: MigrationHead::try_from("202608120001").unwrap(),
+            supported_source_migration_heads: [manifest.migration_head().clone()]
+                .into_iter()
+                .collect(),
+            master_key_fingerprint: KeyFingerprint::try_from(fingerprint('e')).unwrap(),
         },
     );
 

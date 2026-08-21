@@ -10,7 +10,8 @@ use super::{
     KeyFingerprint, ManifestAuthenticationTag, MigrationHead,
 };
 
-pub const SYSTEM_BACKUP_FORMAT_VERSION: u32 = 1;
+pub const SYSTEM_BACKUP_FORMAT_VERSION: u32 = 2;
+pub const LEGACY_SYSTEM_BACKUP_FORMAT_VERSION: u32 = 1;
 pub const SYSTEM_BACKUP_CHUNK_SIZE_BYTES: u32 = 4 * 1024 * 1024;
 pub const SYSTEM_BACKUP_MAX_PARALLEL_STREAMS: u16 = 2;
 
@@ -36,6 +37,24 @@ pub enum ArtifactRebuildability {
     Rebuildable,
     NonRebuildable,
     NotApplicable,
+}
+
+/// Protection and recovery material carried by a backup set.
+///
+/// `portable_unprotected` deliberately stores the source deployment secret in the backup. It is
+/// not encryption: possession of the file is sufficient to restore its payload and persistent
+/// application secrets. Users who need confidentiality must create a password-protected backup.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum BackupProtection {
+    LegacyEnvironmentKey,
+    PortableUnprotected {
+        source_master_key_base64: String,
+    },
+    PasswordEncrypted {
+        salt_base64: String,
+        encrypted_source_master_key_base64: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
@@ -104,6 +123,8 @@ struct BackupManifestWire {
     envelope_digest: ContentDigest,
     chunk_size_bytes: u32,
     max_parallel_streams: u16,
+    #[serde(default)]
+    protection: Option<BackupProtection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -122,6 +143,7 @@ pub struct BackupManifest {
     envelope_digest: ContentDigest,
     chunk_size_bytes: u32,
     max_parallel_streams: u16,
+    protection: BackupProtection,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,6 +156,7 @@ pub enum BackupManifestError {
     IncompleteExclusionContract,
     SizeMismatch,
     InvalidStreamingLimits,
+    InvalidProtection,
 }
 
 impl fmt::Display for BackupManifestError {
@@ -160,6 +183,7 @@ impl From<BackupManifest> for BackupManifestWire {
             envelope_digest: manifest.envelope_digest,
             chunk_size_bytes: manifest.chunk_size_bytes,
             max_parallel_streams: manifest.max_parallel_streams,
+            protection: Some(manifest.protection),
         }
     }
 }
@@ -182,6 +206,9 @@ impl TryFrom<BackupManifestWire> for BackupManifest {
             envelope_digest: wire.envelope_digest,
             chunk_size_bytes: wire.chunk_size_bytes,
             max_parallel_streams: wire.max_parallel_streams,
+            protection: wire
+                .protection
+                .unwrap_or(BackupProtection::LegacyEnvironmentKey),
         })
     }
 }
@@ -239,6 +266,10 @@ impl BackupManifest {
         self.max_parallel_streams
     }
 
+    pub fn protection(&self) -> &BackupProtection {
+        &self.protection
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn try_new(
         backup_set_id: BackupSetId,
@@ -247,6 +278,39 @@ impl BackupManifest {
         migration_head: MigrationHead,
         master_key_fingerprint: KeyFingerprint,
         backup_key_fingerprint: KeyFingerprint,
+        components: Vec<BackupComponent>,
+        total_size_bytes: u64,
+        envelope_digest: ContentDigest,
+    ) -> Result<Self, BackupManifestError> {
+        Self::try_from_parts(Self {
+            // This constructor is retained solely for reading and testing the pre-portable
+            // contract. Production exports must use one of the explicit portable constructors.
+            format_version: LEGACY_SYSTEM_BACKUP_FORMAT_VERSION,
+            backup_set_id,
+            created_at,
+            application_build,
+            migration_head,
+            master_key_fingerprint,
+            backup_key_fingerprint,
+            components,
+            excluded_domains: BackupExcludedDomain::ALL.into_iter().collect(),
+            total_size_bytes,
+            envelope_digest,
+            chunk_size_bytes: SYSTEM_BACKUP_CHUNK_SIZE_BYTES,
+            max_parallel_streams: SYSTEM_BACKUP_MAX_PARALLEL_STREAMS,
+            protection: BackupProtection::LegacyEnvironmentKey,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_new_portable(
+        backup_set_id: BackupSetId,
+        created_at: OffsetDateTime,
+        application_build: ApplicationBuild,
+        migration_head: MigrationHead,
+        master_key_fingerprint: KeyFingerprint,
+        backup_key_fingerprint: KeyFingerprint,
+        source_master_key_base64: String,
         components: Vec<BackupComponent>,
         total_size_bytes: u64,
         envelope_digest: ContentDigest,
@@ -265,12 +329,74 @@ impl BackupManifest {
             envelope_digest,
             chunk_size_bytes: SYSTEM_BACKUP_CHUNK_SIZE_BYTES,
             max_parallel_streams: SYSTEM_BACKUP_MAX_PARALLEL_STREAMS,
+            protection: BackupProtection::PortableUnprotected {
+                source_master_key_base64,
+            },
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn try_new_password_encrypted(
+        backup_set_id: BackupSetId,
+        created_at: OffsetDateTime,
+        application_build: ApplicationBuild,
+        migration_head: MigrationHead,
+        master_key_fingerprint: KeyFingerprint,
+        backup_key_fingerprint: KeyFingerprint,
+        salt_base64: String,
+        encrypted_source_master_key_base64: String,
+        components: Vec<BackupComponent>,
+        total_size_bytes: u64,
+        envelope_digest: ContentDigest,
+    ) -> Result<Self, BackupManifestError> {
+        Self::try_from_parts(Self {
+            format_version: SYSTEM_BACKUP_FORMAT_VERSION,
+            backup_set_id,
+            created_at,
+            application_build,
+            migration_head,
+            master_key_fingerprint,
+            backup_key_fingerprint,
+            components,
+            excluded_domains: BackupExcludedDomain::ALL.into_iter().collect(),
+            total_size_bytes,
+            envelope_digest,
+            chunk_size_bytes: SYSTEM_BACKUP_CHUNK_SIZE_BYTES,
+            max_parallel_streams: SYSTEM_BACKUP_MAX_PARALLEL_STREAMS,
+            protection: BackupProtection::PasswordEncrypted {
+                salt_base64,
+                encrypted_source_master_key_base64,
+            },
         })
     }
 
     pub fn try_from_parts(mut manifest: Self) -> Result<Self, BackupManifestError> {
-        if manifest.format_version != SYSTEM_BACKUP_FORMAT_VERSION {
+        if !matches!(
+            manifest.format_version,
+            LEGACY_SYSTEM_BACKUP_FORMAT_VERSION | SYSTEM_BACKUP_FORMAT_VERSION
+        ) {
             return Err(BackupManifestError::UnsupportedFormatVersion);
+        }
+        match (manifest.format_version, &manifest.protection) {
+            (
+                LEGACY_SYSTEM_BACKUP_FORMAT_VERSION | SYSTEM_BACKUP_FORMAT_VERSION,
+                BackupProtection::LegacyEnvironmentKey,
+            ) => {}
+            (
+                SYSTEM_BACKUP_FORMAT_VERSION,
+                BackupProtection::PortableUnprotected {
+                    source_master_key_base64,
+                },
+            ) if !source_master_key_base64.trim().is_empty() => {}
+            (
+                SYSTEM_BACKUP_FORMAT_VERSION,
+                BackupProtection::PasswordEncrypted {
+                    salt_base64,
+                    encrypted_source_master_key_base64,
+                },
+            ) if !salt_base64.trim().is_empty()
+                && !encrypted_source_master_key_base64.trim().is_empty() => {}
+            _ => return Err(BackupManifestError::InvalidProtection),
         }
         if manifest.chunk_size_bytes == 0 || manifest.max_parallel_streams == 0 {
             return Err(BackupManifestError::InvalidStreamingLimits);
