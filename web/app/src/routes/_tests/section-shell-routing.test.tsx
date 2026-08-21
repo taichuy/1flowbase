@@ -639,9 +639,13 @@ describe('section shell routing', () => {
 
       expect(await screen.findByTestId(shellTestId)).toBeInTheDocument();
       await waitFor(() => {
-        expect(
-          networkCenterApi.fetchSettingsNetworkEgressProviders
-        ).toHaveBeenCalled();
+        if (pathname.endsWith('/routes')) {
+          expect(
+            networkCenterApi.fetchSettingsNetworkEgressRoutes
+          ).toHaveBeenCalled();
+          return;
+        }
+        expect(networkCenterApi.fetchSettingsNetworkEgressProviders).toHaveBeenCalled();
       }, SECTION_REDIRECT_WAIT_OPTIONS);
     },
     SECTION_REDIRECT_TEST_TIMEOUT
