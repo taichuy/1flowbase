@@ -59,6 +59,7 @@
   "add_example": "Add example",
   "new_example": "New example",
   "edit_example": "Edit example",
+  "resize_contract_drawer": "Resize component contract drawer",
   "save": "Save",
   "upstream": "Upstream (optional)",
   "upstream_package": "Package",

@@ -59,6 +59,7 @@
   "add_example": "添加示例",
   "new_example": "新建示例",
   "edit_example": "编辑示例",
+  "resize_contract_drawer": "调整组件契约抽屉宽度",
   "save": "保存",
   "upstream": "上游来源（可选）",
   "upstream_package": "包名",

@@ -147,6 +147,21 @@ describe('UiManagementPanel components', () => {
     }
   });
 
+  test('AC-004 uses the shared resizable drawer shell for contract editing', async () => {
+    render(
+      <AppProviders>
+        <UiManagementPanel canManage />
+      </AppProviders>
+    );
+
+    await screen.findByText('DataTable');
+    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]);
+
+    expect(
+      await screen.findByRole('separator', { name: '调整组件契约抽屉宽度' })
+    ).toBeInTheDocument();
+  });
+
   test('AC-005 separates module source and module version into independent columns', async () => {
     render(
       <AppProviders>

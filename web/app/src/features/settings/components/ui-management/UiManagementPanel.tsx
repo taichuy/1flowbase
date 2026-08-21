@@ -5,7 +5,6 @@ import { useNavigate, useRouterState } from '@tanstack/react-router';
 import {
   App,
   Button,
-  Drawer,
   Flex,
   Form,
   Grid,
@@ -26,6 +25,7 @@ import {
   DataTableColumnSettings,
   type DataTableColumn
 } from '../../../../shared/ui/data-table/DataTable';
+import { ResizableDrawer } from '../../../../shared/ui/resizable-drawer/ResizableDrawer';
 import {
   DataTableFilterField,
   DataTableFilterForm,
@@ -416,9 +416,10 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
           onPageChange={setPage}
         />
       </DataTableLayout>
-      <Drawer
+      <ResizableDrawer
+        defaultWidth={720}
         open={!!selected}
-        width={720}
+        resizeLabel={t('resize_contract_drawer')}
         title={selected ? `${t('edit_contract')}: ${selected.export_name}` : ''}
         onClose={() => setSelected(null)}
         extra={
@@ -631,7 +632,7 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
             )}
           </Form>
         </Modal>
-      </Drawer>
+      </ResizableDrawer>
     </SettingsSectionSurface>
   );
 }
