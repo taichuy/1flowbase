@@ -665,6 +665,15 @@ if ($RestoreBackup) {
   Copy-Item -Path $RestoreBackup -Destination ".\docker\recovery\portable.1fb-backup" -Force
   Write-Host "Selected portable backup for recovery bootstrap."
 }
+elseif ($ShouldPrompt -and (Prompt-YesNo "Restore one portable backup before the first start?" $false)) {
+  $RestoreBackup = Read-Host "Portable backup file"
+  if (-not $RestoreBackup -or -not (Test-Path -Path $RestoreBackup -PathType Leaf)) {
+    Fail "Portable backup file was not found: $RestoreBackup"
+  }
+  New-Item -ItemType Directory -Force -Path ".\docker\recovery" | Out-Null
+  Copy-Item -Path $RestoreBackup -Destination ".\docker\recovery\portable.1fb-backup" -Force
+  Write-Host "Selected portable backup for recovery bootstrap."
+}
 
 $PromptConfigValues = $false
 $OldPostgresPassword = $null
@@ -879,34 +888,19 @@ if ($RestoreBackup -and $StartContainers) {
     Fail "Could not start recovery dependencies."
   }
 
-  $PreviousRecoveryPassword = $env:API_SYSTEM_BACKUP_PASSWORD
+  $RecoveryEnvFile = Join-Path (Get-Location) (".recovery-env-" + [System.Guid]::NewGuid().ToString("N") + ".tmp")
+  Copy-Item ".\.env" $RecoveryEnvFile
+  if ($RestorePassword) {
+    Set-EnvValue "API_SYSTEM_BACKUP_PASSWORD" $RestorePassword $RecoveryEnvFile
+  }
   try {
-    if ($RestorePassword) {
-      $env:API_SYSTEM_BACKUP_PASSWORD = $RestorePassword
-    } else {
-      Remove-Item Env:API_SYSTEM_BACKUP_PASSWORD -ErrorAction SilentlyContinue
-    }
-    $RecoveryMasterKey = Invoke-RecoveryComposeCommand @("run", "--rm", "--no-deps", "--entrypoint", "system_recovery", "api", "source-master", "--backup-file", "/recovery/portable.1fb-backup")
-    if ($LASTEXITCODE -ne 0) {
-      Fail "Could not read portable backup recovery material."
-    }
-    $RecoveryMasterKey = ($RecoveryMasterKey | Out-String).Trim()
-    if (-not $RecoveryMasterKey) {
-      Fail "Portable backup recovery material was empty."
-    }
-    Set-EnvValue "API_PROVIDER_SECRET_MASTER_KEY" $RecoveryMasterKey ".\.env"
-    $RecoveryMasterKey = $null
-
-    Invoke-RecoveryComposeCommand @("run", "--rm", "--no-deps", "--entrypoint", "system_recovery", "api", "bootstrap", "--backup-file", "/recovery/portable.1fb-backup")
+    $DeploymentEnvMount = "$(Join-Path (Get-Location) '.env'):/recovery/deployment.env"
+    Invoke-RecoveryComposeCommand @("--env-file", $RecoveryEnvFile, "run", "--rm", "--no-deps", "--volume", $DeploymentEnvMount, "--entrypoint", "system_recovery", "api", "bootstrap", "--backup-file", "/recovery/portable.1fb-backup", "--deployment-env-file", "/recovery/deployment.env")
     if ($LASTEXITCODE -ne 0) {
       Fail "Portable backup bootstrap recovery failed. Existing target data was not started."
     }
   } finally {
-    if ($null -eq $PreviousRecoveryPassword) {
-      Remove-Item Env:API_SYSTEM_BACKUP_PASSWORD -ErrorAction SilentlyContinue
-    } else {
-      $env:API_SYSTEM_BACKUP_PASSWORD = $PreviousRecoveryPassword
-    }
+    Remove-Item -Force $RecoveryEnvFile -ErrorAction SilentlyContinue
   }
   Write-Host "Portable backup was restored before the API service started."
 }
@@ -936,5 +930,9 @@ if (-not $RootAccount) { $RootAccount = "root" }
 if (-not $RootPassword) { $RootPassword = "1flowbase" }
 
 Write-Host "1flowbase is starting. Web: http://127.0.0.1:$WebPort"
-Write-Host "Initial root account: $RootAccount"
-Write-Host "Initial root password: $RootPassword"
+if ($RestoreBackup) {
+  Write-Host "Restored root credentials remain those from the selected backup."
+} else {
+  Write-Host "Initial root account: $RootAccount"
+  Write-Host "Initial root password: $RootPassword"
+}

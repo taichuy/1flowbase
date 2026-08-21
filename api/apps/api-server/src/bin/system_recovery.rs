@@ -44,7 +44,6 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Command {
     Import,
-    SourceMaster,
     Bootstrap,
     Preflight,
     Status,
@@ -60,6 +59,7 @@ struct Arguments {
     backup_set_id: Option<BackupSetId>,
     recovery_job_id: Option<RecoveryJobId>,
     backup_file: Option<PathBuf>,
+    deployment_env_file: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -76,11 +76,6 @@ async fn main() -> Result<()> {
     );
 
     let output = match arguments.command {
-        Command::SourceMaster => {
-            let material = source_master(key_provider, required_backup_file(&arguments)?).await?;
-            print!("{material}");
-            return Ok(());
-        }
         Command::Import => {
             import_backup(repository, key_provider, required_backup_file(&arguments)?).await?
         }
@@ -90,6 +85,7 @@ async fn main() -> Result<()> {
                 repository,
                 key_provider,
                 required_backup_file(&arguments)?,
+                required_deployment_env_file(&arguments)?,
             )
             .await?
         }
@@ -148,7 +144,6 @@ fn parse_arguments(arguments: impl IntoIterator<Item = String>) -> Result<Argume
     }
     let command = match command.as_str() {
         "import" => Command::Import,
-        "source-master" => Command::SourceMaster,
         "bootstrap" => Command::Bootstrap,
         "preflight" => Command::Preflight,
         "status" => Command::Status,
@@ -162,6 +157,7 @@ fn parse_arguments(arguments: impl IntoIterator<Item = String>) -> Result<Argume
     let mut backup_set_id = None;
     let mut recovery_job_id = None;
     let mut backup_file = None;
+    let mut deployment_env_file = None;
     while let Some(flag) = arguments.next() {
         let value = arguments
             .next()
@@ -174,6 +170,7 @@ fn parse_arguments(arguments: impl IntoIterator<Item = String>) -> Result<Argume
                 recovery_job_id = Some(RecoveryJobId::from_uuid(parse_uuid(&value, &flag)?));
             }
             "--backup-file" => backup_file = Some(PathBuf::from(value)),
+            "--deployment-env-file" => deployment_env_file = Some(PathBuf::from(value)),
             _ => bail!("unknown recovery option `{flag}`"),
         }
     }
@@ -182,6 +179,7 @@ fn parse_arguments(arguments: impl IntoIterator<Item = String>) -> Result<Argume
         backup_set_id,
         recovery_job_id,
         backup_file,
+        deployment_env_file,
     })
 }
 
@@ -208,10 +206,17 @@ fn required_backup_file(arguments: &Arguments) -> Result<PathBuf> {
         .context("--backup-file is required")
 }
 
+fn required_deployment_env_file(arguments: &Arguments) -> Result<PathBuf> {
+    arguments
+        .deployment_env_file
+        .clone()
+        .context("--deployment-env-file is required for bootstrap")
+}
+
 fn print_usage() {
     eprintln!(
-        "usage: system_recovery <source-master|import|bootstrap|preflight|status|restore|resume|rollback|finalize|report> \
-         [--backup-file <path>] [--backup-set-id <uuid>] [--recovery-job-id <uuid>]"
+        "usage: system_recovery <import|bootstrap|preflight|status|restore|resume|rollback|finalize|report> \
+         [--backup-file <path>] [--deployment-env-file <path>] [--backup-set-id <uuid>] [--recovery-job-id <uuid>]"
     );
 }
 
@@ -226,9 +231,21 @@ async fn bootstrap_from_file(
     repository: Arc<LocalBackupRepository>,
     key_provider: Arc<EnvironmentBackupKeyProvider>,
     backup_file: PathBuf,
+    deployment_env_file: PathBuf,
 ) -> Result<Value> {
     ensure_fresh_recovery_target(config).await?;
-    let imported = import_backup(repository.clone(), key_provider.clone(), backup_file).await?;
+    let source_master_key = source_master(key_provider.as_ref(), &backup_file).await?;
+    let mut recovery_config = config.clone();
+    recovery_config.provider_secret_master_key = source_master_key.clone();
+    let source_key_provider = Arc::new(
+        EnvironmentBackupKeyProvider::from_master_key_with_legacy(
+            &source_master_key,
+            recovery_config.legacy_system_backup_key_base64.as_deref(),
+        )
+        .map_err(|_| anyhow!("portable recovery key is unavailable"))?,
+    );
+    let imported =
+        import_backup(repository.clone(), source_key_provider.clone(), backup_file).await?;
     let backup_set_id = imported["backup_set_id"]
         .as_str()
         .context("portable backup import returned no backup set")
@@ -238,25 +255,27 @@ async fn bootstrap_from_file(
     // Verify compatibility before any target data is replaced.  This also makes unsupported
     // formats and migration paths fail closed in the deployment path.
     preflight(
-        config,
+        &recovery_config,
         repository.clone(),
-        key_provider.clone(),
+        source_key_provider.clone(),
         backup_set_id,
     )
     .await?;
     let recovery_job_id = RecoveryJobId::new();
     append_bootstrap_journal(repository.as_ref(), recovery_job_id, backup_set_id).await?;
+    update_deployment_master_key(&deployment_env_file, &source_master_key).await?;
     let password = std::env::var("API_SYSTEM_BACKUP_PASSWORD")
         .ok()
         .filter(|value| !value.is_empty());
-    let runtime = build_recovery_runtime(config, repository, key_provider, password).await?;
+    let runtime =
+        build_recovery_runtime(&recovery_config, repository, source_key_provider, password).await?;
     let receipt = runtime
         .restore_bootstrap(
             ExecuteOfflineRecoveryCommand {
                 recovery_job_id,
                 backup_set_id,
             },
-            &config.database_url,
+            &recovery_config.database_url,
         )
         .await?;
     Ok(json!({
@@ -368,10 +387,10 @@ async fn import_backup(
 }
 
 async fn source_master(
-    key_provider: Arc<EnvironmentBackupKeyProvider>,
-    backup_file: PathBuf,
+    key_provider: &EnvironmentBackupKeyProvider,
+    backup_file: &Path,
 ) -> Result<String> {
-    let file = tokio::fs::File::open(&backup_file)
+    let file = tokio::fs::File::open(backup_file)
         .await
         .context("portable backup file is unavailable")?;
     let sealed = read_backup_bundle_manifest(file)
@@ -380,13 +399,70 @@ async fn source_master(
     let password = std::env::var("API_SYSTEM_BACKUP_PASSWORD")
         .ok()
         .filter(|value| !value.is_empty());
-    recover_source_master_key(
-        key_provider.as_ref(),
-        sealed.manifest(),
-        password.as_deref(),
-    )
-    .await
-    .context("portable recovery material is unavailable")
+    recover_source_master_key(key_provider, sealed.manifest(), password.as_deref())
+        .await
+        .context("portable recovery material is unavailable")
+}
+
+/// Persists the restored deployment key without projecting it through process output. The caller
+/// bind-mounts this file only for the offline bootstrap container, so the running API never needs
+/// a recovery-only capability.
+async fn update_deployment_master_key(path: &Path, value: &str) -> Result<()> {
+    if value.contains(['\n', '\r']) {
+        bail!("portable recovery material is invalid");
+    }
+    let existing = tokio::fs::read_to_string(path)
+        .await
+        .context("deployment environment file is unavailable")?;
+    let key = "API_PROVIDER_SECRET_MASTER_KEY";
+    let mut replaced = false;
+    let mut updated = String::with_capacity(existing.len() + value.len());
+    for line in existing.split_inclusive('\n') {
+        let body = line.strip_suffix('\n').unwrap_or(line);
+        if body
+            .strip_suffix('\r')
+            .unwrap_or(body)
+            .starts_with(&format!("{key}="))
+        {
+            updated.push_str(key);
+            updated.push('=');
+            updated.push_str(value);
+            updated.push('\n');
+            replaced = true;
+        } else {
+            updated.push_str(line);
+        }
+    }
+    if !replaced {
+        if !updated.is_empty() && !updated.ends_with('\n') {
+            updated.push('\n');
+        }
+        updated.push_str(key);
+        updated.push('=');
+        updated.push_str(value);
+        updated.push('\n');
+    }
+    let parent = path
+        .parent()
+        .context("deployment environment file has no parent directory")?;
+    let file_name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .context("deployment environment file name is invalid")?;
+    let temporary = parent.join(format!(".{file_name}.recovery-{}.tmp", Uuid::now_v7()));
+    tokio::fs::write(&temporary, updated)
+        .await
+        .context("could not stage restored deployment configuration")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        tokio::fs::set_permissions(&temporary, std::fs::Permissions::from_mode(0o600))
+            .await
+            .context("could not protect restored deployment configuration")?;
+    }
+    tokio::fs::rename(&temporary, path)
+        .await
+        .context("could not persist restored deployment configuration")
 }
 
 async fn open_repository(config: &ApiConfig) -> Result<Arc<LocalBackupRepository>> {

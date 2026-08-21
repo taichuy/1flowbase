@@ -17,7 +17,13 @@ use control_plane::{
     bootstrap::{BootstrapConfig, BootstrapService},
     file_management::{CreateFileStorageCommand, FileStorageService},
     plugin_management::{BackupArtifactDisposition, BackupArtifactEntry, BackupArtifactKind},
-    ports::{BackupRepository, ExtensionInstallationRepository, UpsertExtensionInstallationInput},
+    ports::{
+        BackupRepository, CreateDataSourceInstanceInput, CreateMcpUpstreamConnectionInput,
+        CreateModelProviderInstanceInput, DataSourceRepository, ExtensionInstallationRepository,
+        McpManagementRepository, ModelProviderRepository, UpsertDataSourceSecretInput,
+        UpsertExtensionInstallationInput, UpsertMcpUpstreamSecretInput,
+        UpsertModelProviderSecretInput,
+    },
     system_backup::{
         BackupComponentDescriptor, BackupComponentSource, BackupSourceError,
         CreateSystemBackupCommand, SystemBackupService,
@@ -193,28 +199,12 @@ async fn portable_bundle_bootstraps_a_fresh_database_without_the_original_enviro
     let target_repository = target_root.path().join("repository");
     tokio::fs::create_dir_all(&target_repository).await.unwrap();
 
-    let source_master = source
-        .portable_command(
-            "source-master",
-            target_database.database_url(),
-            &target_repository,
-            &bundle_path,
-            "fresh-target-master-key",
-        )
-        .output()
-        .await
-        .unwrap();
-    assert!(
-        source_master.status.success(),
-        "source-master failed\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&source_master.stdout),
-        String::from_utf8_lossy(&source_master.stderr)
-    );
-    assert_eq!(
-        String::from_utf8(source_master.stdout).unwrap(),
-        PROVIDER_SECRET,
-        "the portable bundle must provide the source deployment material without the target key"
-    );
+    let deployment_env = target_root.path().join("deployment.env");
+    fs::write(
+        &deployment_env,
+        "API_PROVIDER_SECRET_MASTER_KEY=fresh-target-master-key\nBOOTSTRAP_ROOT_PASSWORD=fresh-root-password\n",
+    )
+    .unwrap();
 
     let output = source
         .portable_command(
@@ -222,8 +212,10 @@ async fn portable_bundle_bootstraps_a_fresh_database_without_the_original_enviro
             target_database.database_url(),
             &target_repository,
             &bundle_path,
-            PROVIDER_SECRET,
+            "fresh-target-master-key",
         )
+        .arg("--deployment-env-file")
+        .arg(&deployment_env)
         .output()
         .await
         .unwrap();
@@ -239,6 +231,13 @@ async fn portable_bundle_bootstraps_a_fresh_database_without_the_original_enviro
         !output_text.contains(PROVIDER_SECRET),
         "bootstrap output must not expose recovery material"
     );
+    assert_eq!(
+        fs::read_to_string(&deployment_env).unwrap(),
+        format!(
+            "API_PROVIDER_SECRET_MASTER_KEY={PROVIDER_SECRET}\nBOOTSTRAP_ROOT_PASSWORD=fresh-root-password\n"
+        ),
+        "bootstrap must atomically persist the restored master key without printing it"
+    );
 
     let target_pool = PgPoolOptions::new()
         .max_connections(1)
@@ -251,6 +250,38 @@ async fn portable_bundle_bootstraps_a_fresh_database_without_the_original_enviro
     .fetch_one(&target_pool)
     .await
     .unwrap();
+    let target_store = storage_durable::MainDurableStore::new(target_pool.clone());
+    assert_eq!(
+        DataSourceRepository::get_secret_json(
+            &target_store,
+            source.secret_inventory.data_source_instance_id,
+            PROVIDER_SECRET,
+        )
+        .await
+        .unwrap(),
+        Some(serde_json::json!({"token": "data-source-secret"}))
+    );
+    assert_eq!(
+        ModelProviderRepository::get_secret_json(
+            &target_store,
+            source.secret_inventory.model_provider_instance_id,
+            PROVIDER_SECRET,
+        )
+        .await
+        .unwrap(),
+        Some(serde_json::json!({"api_key": "provider-secret"}))
+    );
+    assert_eq!(
+        McpManagementRepository::get_mcp_upstream_secret(
+            &target_store,
+            source.secret_inventory.workspace_id,
+            source.secret_inventory.mcp_connection_id,
+            PROVIDER_SECRET,
+        )
+        .await
+        .unwrap(),
+        Some(serde_json::json!({"bearer_token": "mcp-secret"}))
+    );
     target_pool.close().await;
     assert_eq!(
         root_count, 1,
@@ -712,6 +743,7 @@ struct RecoveryScenario {
     target_backup_set_id: BackupSetId,
     safety_backup_set_id: BackupSetId,
     actor_user_id: Uuid,
+    secret_inventory: SecretInventory,
     storage_config: Value,
     object_path: String,
     roots: ScenarioRoots,
@@ -724,6 +756,13 @@ struct ScenarioRoots {
     providers: PathBuf,
     mcp: PathBuf,
     host_dropins: PathBuf,
+}
+
+struct SecretInventory {
+    workspace_id: Uuid,
+    data_source_instance_id: Uuid,
+    model_provider_instance_id: Uuid,
+    mcp_connection_id: Uuid,
 }
 
 impl RecoveryScenario {
@@ -793,10 +832,11 @@ impl RecoveryScenario {
             .await
             .unwrap();
         let artifact_checksum = format!("sha256:{:x}", Sha256::digest(artifact_bytes));
+        let installation_id = Uuid::now_v7();
         ExtensionInstallationRepository::upsert_extension_installation(
             &store,
             &UpsertExtensionInstallationInput {
-                installation_id: Uuid::now_v7(),
+                installation_id,
                 identity: ExtensionInstallationIdentity {
                     category: ExtensionCategory::Mcp,
                     organization: "acme".to_owned(),
@@ -818,6 +858,96 @@ impl RecoveryScenario {
                 status: ExtensionInstallationStatus::Installed,
                 is_current: true,
                 created_by: bootstrap.root_user_id,
+            },
+        )
+        .await
+        .unwrap();
+        let data_source_instance_id = Uuid::now_v7();
+        DataSourceRepository::create_instance(
+            &store,
+            &CreateDataSourceInstanceInput {
+                instance_id: data_source_instance_id,
+                workspace_id: bootstrap.workspace_id,
+                installation_id,
+                source_code: "recovery_fixture_source".to_owned(),
+                display_name: "Recovery fixture source".to_owned(),
+                status: domain::DataSourceInstanceStatus::Draft,
+                config_json: serde_json::json!({}),
+                metadata_json: serde_json::json!({}),
+                defaults: domain::DataSourceDefaults::default(),
+                created_by: bootstrap.root_user_id,
+            },
+        )
+        .await
+        .unwrap();
+        DataSourceRepository::upsert_secret(
+            &store,
+            &UpsertDataSourceSecretInput {
+                data_source_instance_id,
+                secret_ref: domain::data_source_secret_ref(data_source_instance_id),
+                plaintext_secret_json: serde_json::json!({"token": "data-source-secret"}),
+                master_key: PROVIDER_SECRET.to_owned(),
+                secret_version: 1,
+            },
+        )
+        .await
+        .unwrap();
+        let model_provider_instance_id = Uuid::now_v7();
+        ModelProviderRepository::create_instance(
+            &store,
+            &CreateModelProviderInstanceInput {
+                instance_id: model_provider_instance_id,
+                workspace_id: bootstrap.workspace_id,
+                installation_id,
+                provider_code: "recovery_fixture_provider".to_owned(),
+                protocol: "openai".to_owned(),
+                display_name: "Recovery fixture provider".to_owned(),
+                status: domain::ModelProviderInstanceStatus::Ready,
+                config_json: serde_json::json!({}),
+                configured_models: Vec::new(),
+                enabled_model_ids: Vec::new(),
+                included_in_main: Some(true),
+                created_by: bootstrap.root_user_id,
+            },
+        )
+        .await
+        .unwrap();
+        ModelProviderRepository::upsert_secret(
+            &store,
+            &UpsertModelProviderSecretInput {
+                provider_instance_id: model_provider_instance_id,
+                plaintext_secret_json: serde_json::json!({"api_key": "provider-secret"}),
+                secret_version: 1,
+                master_key: PROVIDER_SECRET.to_owned(),
+            },
+        )
+        .await
+        .unwrap();
+        let mcp_connection_id = Uuid::now_v7();
+        McpManagementRepository::create_mcp_upstream_connection(
+            &store,
+            &CreateMcpUpstreamConnectionInput {
+                id: mcp_connection_id,
+                actor_user_id: bootstrap.root_user_id,
+                workspace_id: bootstrap.workspace_id,
+                name: "Recovery fixture MCP".to_owned(),
+                endpoint: "https://mcp.example.test".to_owned(),
+                transport: domain::McpUpstreamTransport::StreamableHttp,
+                auth_type: domain::McpUpstreamAuthType::Bearer,
+                custom_header_name: None,
+                status: domain::McpUpstreamConnectionStatus::Enabled,
+            },
+        )
+        .await
+        .unwrap();
+        McpManagementRepository::upsert_mcp_upstream_secret(
+            &store,
+            &UpsertMcpUpstreamSecretInput {
+                actor_user_id: bootstrap.root_user_id,
+                workspace_id: bootstrap.workspace_id,
+                upstream_connection_id: mcp_connection_id,
+                plaintext_secret_json: serde_json::json!({"bearer_token": "mcp-secret"}),
+                master_key: PROVIDER_SECRET.to_owned(),
             },
         )
         .await
@@ -939,6 +1069,12 @@ impl RecoveryScenario {
             target_backup_set_id: target.manifest().backup_set_id(),
             safety_backup_set_id: safety.manifest().backup_set_id(),
             actor_user_id: bootstrap.root_user_id,
+            secret_inventory: SecretInventory {
+                workspace_id: bootstrap.workspace_id,
+                data_source_instance_id,
+                model_provider_instance_id,
+                mcp_connection_id,
+            },
             storage_config,
             object_path,
             roots,
