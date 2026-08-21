@@ -610,12 +610,13 @@ fn extension_update_status(
 
 async fn find_catalog_entry_for_requested_identity(
     state: &ApiState,
+    workspace_id: Uuid,
     category: ExtensionCatalogCategory,
     catalog_id: &str,
 ) -> Result<Option<LocatedOfficialExtensionCatalogEntry>, ApiError> {
     state
         .official_extension_catalog_source
-        .find_entry(category.as_str(), catalog_id)
+        .find_entry_for_workspace(workspace_id, category.as_str(), catalog_id)
         .await
         .map_err(Into::into)
 }
@@ -818,7 +819,13 @@ pub async fn get_extension_catalog_entry(
             .await?,
         )));
     }
-    let located = find_catalog_entry_for_requested_identity(&state, category, &catalog_id).await?;
+    let located = find_catalog_entry_for_requested_identity(
+        &state,
+        context.actor.current_workspace_id,
+        category,
+        &catalog_id,
+    )
+    .await?;
     let located = located.ok_or(control_plane::errors::ControlPlaneError::NotFound(
         "extension_catalog_entry",
     ))?;
@@ -895,10 +902,14 @@ pub async fn check_extension_catalog_updates(
     }
     let mut items = Vec::with_capacity(body.items.len());
     for item in body.items {
-        let latest_version =
-            find_catalog_entry_for_requested_identity(&state, category, &item.catalog_id)
-                .await?
-                .map(|located| located.entry.version);
+        let latest_version = find_catalog_entry_for_requested_identity(
+            &state,
+            context.actor.current_workspace_id,
+            category,
+            &item.catalog_id,
+        )
+        .await?
+        .map(|located| located.entry.version);
         let status = extension_update_status(latest_version.as_deref(), &item.installed_versions);
         items.push(ExtensionUpdateCheckItemResponse {
             catalog_id: item.catalog_id,
@@ -1334,7 +1345,11 @@ async fn install_or_update_official_extension(
 
     let located = state
         .official_extension_catalog_source
-        .find_entry(category.as_str(), &body.catalog_id)
+        .find_entry_for_workspace(
+            context.actor.current_workspace_id,
+            category.as_str(),
+            &body.catalog_id,
+        )
         .await?
         .ok_or(control_plane::errors::ControlPlaneError::NotFound(
             "extension_catalog_entry",
@@ -1384,7 +1399,7 @@ async fn install_or_update_official_extension(
     };
     let downloaded = state
         .official_extension_catalog_source
-        .download_artifact(&located.entry)
+        .download_artifact_for_workspace(context.actor.current_workspace_id, &located.entry)
         .await
         .map_err(|error| {
             if error

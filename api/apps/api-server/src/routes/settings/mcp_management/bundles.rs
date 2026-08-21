@@ -487,14 +487,14 @@ async fn list_official_bundles(
         .await?;
     let first_page = state
         .official_extension_catalog_source
-        .list_page("mcp", None)
+        .list_page_for_workspace(context.actor.current_workspace_id, "mcp", None)
         .await?;
     let mut next_cursor = first_page.metadata.next_cursor.clone();
     let mut pages = vec![first_page];
     while let Some(cursor) = next_cursor {
         let page = state
             .official_extension_catalog_source
-            .list_page("mcp", Some(&cursor))
+            .list_page_for_workspace(context.actor.current_workspace_id, "mcp", Some(&cursor))
             .await?;
         next_cursor = page.metadata.next_cursor.clone();
         pages.push(page);
@@ -586,7 +586,7 @@ async fn preview_official_bundle(
 ) -> Result<Json<ApiSuccess<McpBundlePreviewSourceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let source = load_mcp_bundle_source(&state, body).await?;
+    let source = load_mcp_bundle_source(&state, context.actor.current_workspace_id, body).await?;
     let interface_catalog =
         super::mcp_interface_catalog_entries(state.as_ref(), &context.actor).await?;
     let preview = McpManagementService::new(state.store.clone())
@@ -666,7 +666,7 @@ async fn import_official_bundle(
         McpBundleSourceBody::OfficialCatalog(_) => None,
         McpBundleSourceBody::BuiltinTemplate(_) => None,
     };
-    let source = load_mcp_bundle_source(&state, body).await?;
+    let source = load_mcp_bundle_source(&state, context.actor.current_workspace_id, body).await?;
     let service = McpManagementService::new(state.store.clone());
     if let LoadedMcpBundleSourceKind::InstalledExtension(extension_installation_id) = source.kind {
         let preview = service
@@ -764,6 +764,7 @@ async fn import_official_bundle(
 
 async fn load_mcp_bundle_source(
     state: &ApiState,
+    workspace_id: uuid::Uuid,
     body: McpBundleSourceBody,
 ) -> Result<LoadedMcpBundleSource, ApiError> {
     match body {
@@ -771,7 +772,7 @@ async fn load_mcp_bundle_source(
             let catalog_id = format!("mcp:{}/{}", selector.organization, selector.bundle_id);
             let located = state
                 .official_extension_catalog_source
-                .find_entry("mcp", &catalog_id)
+                .find_entry_for_workspace(workspace_id, "mcp", &catalog_id)
                 .await?;
             let located = located.ok_or(ControlPlaneError::NotFound("official_mcp_bundle"))?;
             if located.entry.organization != selector.organization
@@ -781,7 +782,7 @@ async fn load_mcp_bundle_source(
             }
             let downloaded = state
                 .official_extension_catalog_source
-                .download_artifact(&located.entry)
+                .download_artifact_for_workspace(workspace_id, &located.entry)
                 .await?;
             Ok(LoadedMcpBundleSource {
                 kind: LoadedMcpBundleSourceKind::OfficialCatalog,
