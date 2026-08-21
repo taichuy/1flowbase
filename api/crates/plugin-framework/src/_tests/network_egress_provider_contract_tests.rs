@@ -125,7 +125,7 @@ fn ac_004_ac_014_proxy_lease_and_cleanup_receipt_are_secret_and_config_free() {
             "lease_id": "lease-01",
             "http_proxy_url": "http://127.0.0.1:18080",
             "cleanup_token": "cleanup-opaque-token",
-            "expires_at": 1777777777000
+            "expires_at": 1_777_777_777_000i64
         }
     }))
     .unwrap();
@@ -172,7 +172,7 @@ fn ac_004_ac_014_proxy_lease_and_cleanup_receipt_are_secret_and_config_free() {
                 "lease_id": "lease-01",
                 "http_proxy_url": "http://127.0.0.1:18080",
                 "cleanup_token": "cleanup-opaque-token",
-                "expires_at": 1777777777000
+                "expires_at": 1_777_777_777_000i64
             }
         })
     );
@@ -232,7 +232,7 @@ fn ac_016_stdio_contract_rejects_unknown_operations_and_missing_or_invalid_field
             "http_proxy_host": "127.0.0.1",
             "http_proxy_port": 18080,
             "cleanup_token": "cleanup-opaque-token",
-            "expires_at": 1777777777000
+            "expires_at": 1_777_777_777_000i64
         }
     }))
     .unwrap_err();
