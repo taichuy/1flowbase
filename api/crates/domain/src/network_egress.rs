@@ -149,3 +149,71 @@ pub struct NetworkEgressPoolMember {
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }
+
+/// Closed consumer identities for Network Center routing. Persistence may project these as a
+/// `consumer_kind` plus an optional UUID, but callers never compose arbitrary strings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum NetworkEgressConsumerSelector {
+    GithubOfficialSources,
+    ModelProviderDefault,
+    ModelProviderInstance { instance_id: Uuid },
+    HttpNodeDefault,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NetworkEgressConsumerSelectorParseError;
+
+impl std::fmt::Display for NetworkEgressConsumerSelectorParseError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("invalid network egress consumer selector")
+    }
+}
+
+impl std::error::Error for NetworkEgressConsumerSelectorParseError {}
+
+impl NetworkEgressConsumerSelector {
+    pub const fn consumer_kind(&self) -> &'static str {
+        match self {
+            Self::GithubOfficialSources => "github",
+            Self::ModelProviderDefault | Self::ModelProviderInstance { .. } => "model_provider",
+            Self::HttpNodeDefault => "http_node",
+        }
+    }
+
+    pub const fn consumer_reference(&self) -> Option<Uuid> {
+        match self {
+            Self::ModelProviderInstance { instance_id } => Some(*instance_id),
+            Self::GithubOfficialSources | Self::ModelProviderDefault | Self::HttpNodeDefault => {
+                None
+            }
+        }
+    }
+
+    pub fn from_storage(
+        consumer_kind: &str,
+        consumer_reference: Option<Uuid>,
+    ) -> Result<Self, NetworkEgressConsumerSelectorParseError> {
+        match (consumer_kind, consumer_reference) {
+            ("github", None) => Ok(Self::GithubOfficialSources),
+            ("model_provider", None) => Ok(Self::ModelProviderDefault),
+            ("model_provider", Some(instance_id)) => {
+                Ok(Self::ModelProviderInstance { instance_id })
+            }
+            ("http_node", None) => Ok(Self::HttpNodeDefault),
+            _ => Err(NetworkEgressConsumerSelectorParseError),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NetworkEgressRoute {
+    pub id: Uuid,
+    pub workspace_id: Uuid,
+    pub selector: NetworkEgressConsumerSelector,
+    pub pool_id: Uuid,
+    pub enabled: bool,
+    pub created_by: Uuid,
+    pub updated_by: Uuid,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}

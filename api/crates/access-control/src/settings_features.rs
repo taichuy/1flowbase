@@ -686,6 +686,10 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("POST", "/api/console/network-center/pools/{pool_id}/members"),
                 ("PATCH", "/api/console/network-center/pools/{pool_id}/members/{member_id}"),
                 ("DELETE", "/api/console/network-center/pools/{pool_id}/members/{member_id}"),
+                ("GET", "/api/console/network-center/routes"),
+                ("POST", "/api/console/network-center/routes"),
+                ("PATCH", "/api/console/network-center/routes/{route_id}"),
+                ("DELETE", "/api/console/network-center/routes/{route_id}"),
             ]),
         },
         SettingsFeatureRegistration {

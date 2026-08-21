@@ -9,6 +9,9 @@ use control_plane::network_egress::{
     CreateNetworkEgressProviderCommand, NetworkEgressProviderService, NetworkEgressProviderView,
     UpdateNetworkEgressProviderLifecycleCommand,
 };
+use control_plane::network_egress_route::{
+    CreateNetworkEgressRouteCommand, NetworkEgressRouteService, UpdateNetworkEgressRouteCommand,
+};
 use control_plane::network_egress_secret::ProviderRegistryNetworkEgressSecretResolver;
 use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
@@ -27,6 +30,7 @@ use crate::{
 };
 
 pub mod pools;
+pub mod routes;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateNetworkEgressProviderBody {
@@ -39,6 +43,20 @@ pub struct CreateNetworkEgressProviderBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateNetworkEgressProviderLifecycleBody {
     pub lifecycle: String,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateNetworkEgressRouteBody {
+    pub consumer_kind: String,
+    pub consumer_reference: Option<String>,
+    pub pool_id: String,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateNetworkEgressRouteBody {
+    pub pool_id: String,
+    pub enabled: bool,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -63,6 +81,16 @@ pub struct NetworkEgressProviderResponse {
     pub last_sync_error: Option<String>,
     pub last_synced_at: Option<String>,
     pub egresses: Vec<NetworkEgressProjectionResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct NetworkEgressRouteResponse {
+    pub id: String,
+    pub consumer_kind: String,
+    pub consumer_reference: Option<String>,
+    pub pool_id: String,
+    pub enabled: bool,
+    pub failure_policy: String,
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
@@ -95,6 +123,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .merge(pools::route_assembly())
+        .merge(routes::route_assembly())
 }
 
 fn service(
@@ -115,6 +144,10 @@ fn service(
     )
 }
 
+fn route_service(state: &ApiState) -> NetworkEgressRouteService<storage_durable::MainDurableStore> {
+    NetworkEgressRouteService::new(state.store.clone())
+}
+
 fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(value)
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
@@ -127,6 +160,19 @@ fn lifecycle(value: &str) -> Result<domain::NetworkEgressProviderLifecycle, ApiE
         "disabled" => Ok(domain::NetworkEgressProviderLifecycle::Disabled),
         _ => Err(control_plane::errors::ControlPlaneError::InvalidInput("lifecycle").into()),
     }
+}
+
+fn consumer_selector(
+    consumer_kind: String,
+    consumer_reference: Option<String>,
+) -> Result<domain::NetworkEgressConsumerSelector, ApiError> {
+    let consumer_reference = consumer_reference
+        .as_deref()
+        .map(|value| parse_uuid(value, "consumer_reference"))
+        .transpose()?;
+    domain::NetworkEgressConsumerSelector::from_storage(&consumer_kind, consumer_reference).map_err(
+        |_| control_plane::errors::ControlPlaneError::InvalidInput("consumer_selector").into(),
+    )
 }
 
 fn format_time(value: time::OffsetDateTime) -> String {
@@ -158,6 +204,20 @@ fn response(view: NetworkEgressProviderView) -> NetworkEgressProviderResponse {
                 synced_at: format_time(egress.synced_at),
             })
             .collect(),
+    }
+}
+
+fn route_response(route: domain::NetworkEgressRoute) -> NetworkEgressRouteResponse {
+    NetworkEgressRouteResponse {
+        id: route.id.to_string(),
+        consumer_kind: route.selector.consumer_kind().to_string(),
+        consumer_reference: route
+            .selector
+            .consumer_reference()
+            .map(|value| value.to_string()),
+        pool_id: route.pool_id.to_string(),
+        enabled: route.enabled,
+        failure_policy: "block".to_string(),
     }
 }
 
@@ -250,6 +310,106 @@ pub async fn sync_network_egress_provider(
         .sync(context.user.id, parse_uuid(&id, "provider_id")?)
         .await?;
     Ok(Json(ApiSuccess::new(response(provider))))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/network-center/routes",
+    operation_id = "network_egress_routes_list",
+    responses((status = 200, body = [NetworkEgressRouteResponse]), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn list_network_egress_routes(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<Vec<NetworkEgressRouteResponse>>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let routes = route_service(&state)
+        .list(context.actor.current_workspace_id)
+        .await?;
+    Ok(Json(ApiSuccess::new(
+        routes.into_iter().map(route_response).collect(),
+    )))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/network-center/routes",
+    operation_id = "network_egress_routes_create",
+    request_body = CreateNetworkEgressRouteBody,
+    responses((status = 201, body = NetworkEgressRouteResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
+)]
+pub async fn create_network_egress_route(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<CreateNetworkEgressRouteBody>,
+) -> Result<(StatusCode, Json<ApiSuccess<NetworkEgressRouteResponse>>), ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let route = route_service(&state)
+        .create(CreateNetworkEgressRouteCommand {
+            actor_user_id: context.user.id,
+            workspace_id: context.actor.current_workspace_id,
+            selector: consumer_selector(body.consumer_kind, body.consumer_reference)?,
+            pool_id: parse_uuid(&body.pool_id, "pool_id")?,
+            enabled: body.enabled,
+        })
+        .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiSuccess::new(route_response(route))),
+    ))
+}
+
+#[utoipa::path(
+    patch,
+    path = "/api/console/network-center/routes/{route_id}",
+    operation_id = "network_egress_routes_update",
+    params(("route_id" = String, Path, description = "Network egress route id")),
+    request_body = UpdateNetworkEgressRouteBody,
+    responses((status = 200, body = NetworkEgressRouteResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
+)]
+pub async fn update_network_egress_route(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(route_id): Path<String>,
+    Json(body): Json<UpdateNetworkEgressRouteBody>,
+) -> Result<Json<ApiSuccess<NetworkEgressRouteResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let route = route_service(&state)
+        .update(UpdateNetworkEgressRouteCommand {
+            actor_user_id: context.user.id,
+            workspace_id: context.actor.current_workspace_id,
+            route_id: parse_uuid(&route_id, "route_id")?,
+            pool_id: parse_uuid(&body.pool_id, "pool_id")?,
+            enabled: body.enabled,
+        })
+        .await?;
+    Ok(Json(ApiSuccess::new(route_response(route))))
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/console/network-center/routes/{route_id}",
+    operation_id = "network_egress_routes_delete",
+    params(("route_id" = String, Path, description = "Network egress route id")),
+    responses((status = 204), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
+)]
+pub async fn delete_network_egress_route(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(route_id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    route_service(&state)
+        .delete(
+            context.user.id,
+            context.actor.current_workspace_id,
+            parse_uuid(&route_id, "route_id")?,
+        )
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]

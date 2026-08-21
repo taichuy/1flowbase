@@ -149,6 +149,10 @@ use utoipa::OpenApi;
         crate::routes::network_center::pools::create_network_egress_pool_member,
         crate::routes::network_center::pools::update_network_egress_pool_member,
         crate::routes::network_center::pools::delete_network_egress_pool_member,
+        crate::routes::network_center::list_network_egress_routes,
+        crate::routes::network_center::create_network_egress_route,
+        crate::routes::network_center::update_network_egress_route,
+        crate::routes::network_center::delete_network_egress_route,
     ),
     components(schemas(
         crate::routes::plugins::InstallPluginBody,
@@ -338,6 +342,9 @@ use utoipa::OpenApi;
         crate::routes::network_center::pools::UpdateNetworkEgressPoolMemberBody,
         crate::routes::network_center::pools::NetworkEgressPoolResponse,
         crate::routes::network_center::pools::NetworkEgressPoolMemberResponse,
+        crate::routes::network_center::CreateNetworkEgressRouteBody,
+        crate::routes::network_center::UpdateNetworkEgressRouteBody,
+        crate::routes::network_center::NetworkEgressRouteResponse,
     ))
 )]
 pub(super) struct ExtensionsOpenApi;

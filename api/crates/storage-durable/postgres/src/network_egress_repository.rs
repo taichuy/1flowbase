@@ -2,10 +2,11 @@ use anyhow::{bail, Result};
 use async_trait::async_trait;
 use control_plane::ports::{
     CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
-    CreateNetworkEgressProviderInput, NetworkEgressPoolRepository, NetworkEgressRepository,
-    RecordNetworkEgressSyncFailureInput, ReplaceNetworkEgressProjectionInput,
-    UpdateNetworkEgressPoolInput, UpdateNetworkEgressPoolMemberInput,
-    UpdateNetworkEgressProviderLifecycleInput, UpsertNetworkEgressProviderSecretInput,
+    CreateNetworkEgressProviderInput, CreateNetworkEgressRouteInput, NetworkEgressPoolRepository,
+    NetworkEgressRepository, NetworkEgressRouteRepository, RecordNetworkEgressSyncFailureInput,
+    ReplaceNetworkEgressProjectionInput, UpdateNetworkEgressPoolInput,
+    UpdateNetworkEgressPoolMemberInput, UpdateNetworkEgressProviderLifecycleInput,
+    UpdateNetworkEgressRouteInput, UpsertNetworkEgressProviderSecretInput,
 };
 use sqlx::Row;
 use uuid::Uuid;
@@ -105,6 +106,25 @@ fn pool_member(row: sqlx::postgres::PgRow) -> domain::NetworkEgressPoolMember {
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }
+}
+
+fn route(row: sqlx::postgres::PgRow) -> Result<domain::NetworkEgressRoute> {
+    let consumer_kind: String = row.get("consumer_kind");
+    let consumer_reference = row.get("consumer_reference");
+    let selector =
+        domain::NetworkEgressConsumerSelector::from_storage(&consumer_kind, consumer_reference)
+            .map_err(|error| anyhow::anyhow!(error))?;
+    Ok(domain::NetworkEgressRoute {
+        id: row.get("id"),
+        workspace_id: row.get("workspace_id"),
+        selector,
+        pool_id: row.get("pool_id"),
+        enabled: row.get("enabled"),
+        created_by: row.get("created_by"),
+        updated_by: row.get("updated_by"),
+        created_at: row.get("created_at"),
+        updated_at: row.get("updated_at"),
+    })
 }
 
 #[async_trait]
@@ -300,7 +320,7 @@ impl NetworkEgressRepository for PgControlPlaneStore {
     }
 
     async fn append_audit_log(&self, event: &domain::AuditLogRecord) -> Result<()> {
-        self.append_audit_log(event).await
+        PgControlPlaneStore::append_audit_log(self, event).await
     }
 }
 
@@ -476,6 +496,117 @@ impl NetworkEgressPoolRepository for PgControlPlaneStore {
     }
 }
 
+#[async_trait]
+impl NetworkEgressRouteRepository for PgControlPlaneStore {
+    async fn list_network_egress_routes(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<Vec<domain::NetworkEgressRoute>> {
+        sqlx::query(
+            r#"
+                select * from network_egress_routes
+                where workspace_id = $1
+                order by consumer_kind asc, consumer_reference asc nulls first, id asc
+            "#,
+        )
+        .bind(workspace_id)
+        .fetch_all(self.pool())
+        .await?
+        .into_iter()
+        .map(route)
+        .collect()
+    }
+
+    async fn create_network_egress_route(
+        &self,
+        input: &CreateNetworkEgressRouteInput,
+    ) -> Result<domain::NetworkEgressRoute> {
+        let row = sqlx::query(
+            r#"
+                insert into network_egress_routes (
+                    id, workspace_id, consumer_kind, consumer_reference, pool_id, enabled,
+                    failure_policy, created_by, updated_by
+                ) values ($1, $2, $3, $4, $5, $6, 'block', $7, $7)
+                returning *
+            "#,
+        )
+        .bind(input.route_id)
+        .bind(input.workspace_id)
+        .bind(input.selector.consumer_kind())
+        .bind(input.selector.consumer_reference())
+        .bind(input.pool_id)
+        .bind(input.enabled)
+        .bind(input.actor_user_id)
+        .fetch_one(self.pool())
+        .await?;
+        route(row)
+    }
+
+    async fn update_network_egress_route(
+        &self,
+        input: &UpdateNetworkEgressRouteInput,
+    ) -> Result<domain::NetworkEgressRoute> {
+        let row = sqlx::query(
+            r#"
+                update network_egress_routes
+                set pool_id = $3, enabled = $4, updated_by = $5, updated_at = now()
+                where workspace_id = $1 and id = $2
+                returning *
+            "#,
+        )
+        .bind(input.workspace_id)
+        .bind(input.route_id)
+        .bind(input.pool_id)
+        .bind(input.enabled)
+        .bind(input.actor_user_id)
+        .fetch_optional(self.pool())
+        .await?;
+        row.map(route).transpose()?.ok_or_else(|| {
+            anyhow::anyhow!(control_plane::errors::ControlPlaneError::NotFound(
+                "network_egress_route"
+            ))
+        })
+    }
+
+    async fn delete_network_egress_route(&self, workspace_id: Uuid, route_id: Uuid) -> Result<()> {
+        let result =
+            sqlx::query("delete from network_egress_routes where workspace_id = $1 and id = $2")
+                .bind(workspace_id)
+                .bind(route_id)
+                .execute(self.pool())
+                .await?;
+        if result.rows_affected() == 0 {
+            return Err(
+                control_plane::errors::ControlPlaneError::NotFound("network_egress_route").into(),
+            );
+        }
+        Ok(())
+    }
+
+    async fn find_enabled_network_egress_route(
+        &self,
+        workspace_id: Uuid,
+        selector: &domain::NetworkEgressConsumerSelector,
+    ) -> Result<Option<domain::NetworkEgressRoute>> {
+        sqlx::query(
+            r#"
+                select * from network_egress_routes
+                where workspace_id = $1
+                  and consumer_kind = $2
+                  and consumer_reference is not distinct from $3
+                  and enabled = true
+            "#,
+        )
+        .bind(workspace_id)
+        .bind(selector.consumer_kind())
+        .bind(selector.consumer_reference())
+        .fetch_optional(self.pool())
+        .await?
+        .map(route)
+        .transpose()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -483,7 +614,8 @@ mod tests {
         network_egress_pool::NetworkEgressPoolService,
         ports::{
             CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
-            NetworkEgressPoolRepository, PluginRepository, UpsertPluginInstallationInput,
+            CreateNetworkEgressRouteInput, NetworkEgressPoolRepository,
+            NetworkEgressRouteRepository, PluginRepository, UpsertPluginInstallationInput,
         },
     };
     use domain::{
@@ -753,5 +885,82 @@ mod tests {
                 "pool members must not persist runtime lease field {forbidden}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn nc_09_route_storage_keeps_closed_selector_identity_and_workspace_instance_boundary() {
+        let (store, actor) = store().await;
+        let workspace_id = sqlx::query_scalar::<_, Uuid>(
+            "select id from workspaces where name = 'network-egress'",
+        )
+        .fetch_one(store.pool())
+        .await
+        .expect("fixture workspace should exist");
+        let pool_id = Uuid::now_v7();
+        NetworkEgressPoolRepository::create_network_egress_pool(
+            &store,
+            &CreateNetworkEgressPoolInput {
+                pool_id,
+                display_name: "Route target".to_string(),
+                actor_user_id: actor.id,
+            },
+        )
+        .await
+        .expect("route target pool should persist");
+
+        let route = NetworkEgressRouteRepository::create_network_egress_route(
+            &store,
+            &CreateNetworkEgressRouteInput {
+                route_id: Uuid::now_v7(),
+                workspace_id,
+                selector: domain::NetworkEgressConsumerSelector::GithubOfficialSources,
+                pool_id,
+                enabled: true,
+                actor_user_id: actor.id,
+            },
+        )
+        .await
+        .expect("github selector should persist without a free reference");
+        assert_eq!(
+            route.selector,
+            domain::NetworkEgressConsumerSelector::GithubOfficialSources
+        );
+
+        let duplicate = NetworkEgressRouteRepository::create_network_egress_route(
+            &store,
+            &CreateNetworkEgressRouteInput {
+                route_id: Uuid::now_v7(),
+                workspace_id,
+                selector: domain::NetworkEgressConsumerSelector::GithubOfficialSources,
+                pool_id,
+                enabled: false,
+                actor_user_id: actor.id,
+            },
+        )
+        .await;
+        assert!(
+            duplicate.is_err(),
+            "one workspace can have only one github selector"
+        );
+
+        let unknown_instance = sqlx::query(
+            r#"
+                insert into network_egress_routes (
+                    id, workspace_id, consumer_kind, consumer_reference, pool_id, enabled,
+                    failure_policy, created_by, updated_by
+                ) values ($1, $2, 'model_provider', $3, $4, true, 'block', $5, $5)
+            "#,
+        )
+        .bind(Uuid::now_v7())
+        .bind(workspace_id)
+        .bind(Uuid::now_v7())
+        .bind(pool_id)
+        .bind(actor.id)
+        .execute(store.pool())
+        .await;
+        assert!(
+            unknown_instance.is_err(),
+            "an exact model provider selector must belong to the route workspace"
+        );
     }
 }

@@ -79,6 +79,25 @@ pub struct UpdateNetworkEgressPoolMemberInput {
     pub actor_user_id: Uuid,
 }
 
+#[derive(Debug, Clone)]
+pub struct CreateNetworkEgressRouteInput {
+    pub route_id: Uuid,
+    pub workspace_id: Uuid,
+    pub selector: domain::NetworkEgressConsumerSelector,
+    pub pool_id: Uuid,
+    pub enabled: bool,
+    pub actor_user_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateNetworkEgressRouteInput {
+    pub workspace_id: Uuid,
+    pub route_id: Uuid,
+    pub pool_id: Uuid,
+    pub enabled: bool,
+    pub actor_user_id: Uuid,
+}
+
 #[async_trait]
 pub trait NetworkEgressRepository: Send + Sync {
     async fn get_network_egress_provider(
@@ -180,6 +199,32 @@ pub trait NetworkEgressPoolRepository: Send + Sync {
         pool_id: Uuid,
         member_id: Uuid,
     ) -> anyhow::Result<()>;
+}
+
+#[async_trait]
+pub trait NetworkEgressRouteRepository: Send + Sync {
+    async fn list_network_egress_routes(
+        &self,
+        workspace_id: Uuid,
+    ) -> anyhow::Result<Vec<domain::NetworkEgressRoute>>;
+    async fn create_network_egress_route(
+        &self,
+        input: &CreateNetworkEgressRouteInput,
+    ) -> anyhow::Result<domain::NetworkEgressRoute>;
+    async fn update_network_egress_route(
+        &self,
+        input: &UpdateNetworkEgressRouteInput,
+    ) -> anyhow::Result<domain::NetworkEgressRoute>;
+    async fn delete_network_egress_route(
+        &self,
+        workspace_id: Uuid,
+        route_id: Uuid,
+    ) -> anyhow::Result<()>;
+    async fn find_enabled_network_egress_route(
+        &self,
+        workspace_id: Uuid,
+        selector: &domain::NetworkEgressConsumerSelector,
+    ) -> anyhow::Result<Option<domain::NetworkEgressRoute>>;
 }
 
 #[async_trait]
