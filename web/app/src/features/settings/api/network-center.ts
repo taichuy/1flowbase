@@ -1,4 +1,5 @@
 import {
+  createConsoleNetworkEgressProvider,
   createConsoleNetworkEgressPool,
   createConsoleNetworkEgressPoolMember,
   deleteConsoleNetworkEgressPool,
@@ -11,6 +12,8 @@ import {
   updateConsoleNetworkEgressPool,
   updateConsoleNetworkEgressPoolMember,
   updateConsoleNetworkEgressRoute,
+  updateConsoleNetworkEgressProviderLifecycle,
+  syncConsoleNetworkEgressProvider,
   type ConsoleNetworkEgressPool,
   type ConsoleNetworkEgressPoolMember,
   type ConsoleNetworkEgressProvider,
@@ -18,12 +21,18 @@ import {
   type CreateConsoleNetworkEgressPoolInput,
   type CreateConsoleNetworkEgressPoolMemberInput,
   type CreateConsoleNetworkEgressRouteInput,
+  type CreateConsoleNetworkEgressProviderInput,
   type UpdateConsoleNetworkEgressPoolInput,
   type UpdateConsoleNetworkEgressPoolMemberInput,
-  type UpdateConsoleNetworkEgressRouteInput
+  type UpdateConsoleNetworkEgressRouteInput,
+  type UpdateConsoleNetworkEgressProviderLifecycleInput
 } from '@1flowbase/api-client';
 
 export type SettingsNetworkEgressProvider = ConsoleNetworkEgressProvider;
+export type CreateSettingsNetworkEgressProviderInput =
+  CreateConsoleNetworkEgressProviderInput;
+export type UpdateSettingsNetworkEgressProviderLifecycleInput =
+  UpdateConsoleNetworkEgressProviderLifecycleInput;
 export type SettingsNetworkEgressPool = ConsoleNetworkEgressPool;
 export type SettingsNetworkEgressPoolMember = ConsoleNetworkEgressPoolMember;
 export type CreateSettingsNetworkEgressPoolInput =
@@ -59,6 +68,32 @@ export const settingsNetworkEgressRoutesQueryKey = [
 
 export function fetchSettingsNetworkEgressProviders() {
   return listConsoleNetworkEgressProviders();
+}
+
+export function createSettingsNetworkEgressProvider(
+  input: CreateSettingsNetworkEgressProviderInput,
+  csrfToken: string
+) {
+  return createConsoleNetworkEgressProvider(input, csrfToken);
+}
+
+export function updateSettingsNetworkEgressProviderLifecycle(
+  providerId: string,
+  input: UpdateSettingsNetworkEgressProviderLifecycleInput,
+  csrfToken: string
+) {
+  return updateConsoleNetworkEgressProviderLifecycle(
+    providerId,
+    input,
+    csrfToken
+  );
+}
+
+export function syncSettingsNetworkEgressProvider(
+  providerId: string,
+  csrfToken: string
+) {
+  return syncConsoleNetworkEgressProvider(providerId, csrfToken);
 }
 
 export function fetchSettingsNetworkEgressPools() {
