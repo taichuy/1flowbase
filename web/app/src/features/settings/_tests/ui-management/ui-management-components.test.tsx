@@ -253,6 +253,32 @@ describe('UiManagementPanel components', () => {
     expect(screen.queryByPlaceholderText('属性名')).not.toBeInTheDocument();
   });
 
+  test('AC-004 uses icon-only actions inside structured contract tables', async () => {
+    render(
+      <AppProviders>
+        <UiManagementPanel canManage />
+      </AppProviders>
+    );
+
+    await screen.findByText('DataTable');
+    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]);
+    await screen.findByLabelText('名称');
+
+    for (const columnName of ['属性名', '备注', '示例标题']) {
+      const table = screen
+        .getByRole('columnheader', { name: columnName })
+        .closest('table');
+      expect(table).not.toBeNull();
+
+      const actions = within(table!).getAllByRole('button');
+      expect(actions).toHaveLength(2);
+      expect(actions[0]).toHaveAccessibleName('编辑');
+      expect(actions[0]).toHaveClass('ant-btn-icon-only');
+      expect(actions[1]).toHaveAccessibleName('移除');
+      expect(actions[1]).toHaveClass('ant-btn-icon-only');
+    }
+  });
+
   test('AC-004 stages new props in a labelled table before the outer revision save', async () => {
     uiManagementApi.updateSettingsUiComponentContract.mockClear();
     render(

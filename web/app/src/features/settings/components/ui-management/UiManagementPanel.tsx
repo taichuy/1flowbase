@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 
+import { DeleteOutlined, EditOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import {
@@ -497,12 +498,19 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
                 title: t('actions'),
                 render: (_, __, index) => (
                   <Space>
-                    <Button type="link" onClick={() => openDraftEditor({ kind: 'prop', index })}>
-                      {t('edit')}
-                    </Button>
-                    <Button type="link" danger onClick={() => removeDraftEntry({ kind: 'prop', index })}>
-                      {t('remove')}
-                    </Button>
+                    <Button
+                      aria-label={t('edit')}
+                      icon={<EditOutlined />}
+                      type="link"
+                      onClick={() => openDraftEditor({ kind: 'prop', index })}
+                    />
+                    <Button
+                      aria-label={t('remove')}
+                      danger
+                      icon={<DeleteOutlined />}
+                      type="link"
+                      onClick={() => removeDraftEntry({ kind: 'prop', index })}
+                    />
                   </Space>
                 )
               }
@@ -525,12 +533,19 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
                 title: t('actions'),
                 render: (_, __, index) => (
                   <Space>
-                    <Button type="link" onClick={() => openDraftEditor({ kind: 'limitation', index })}>
-                      {t('edit')}
-                    </Button>
-                    <Button type="link" danger onClick={() => removeDraftEntry({ kind: 'limitation', index })}>
-                      {t('remove')}
-                    </Button>
+                    <Button
+                      aria-label={t('edit')}
+                      icon={<EditOutlined />}
+                      type="link"
+                      onClick={() => openDraftEditor({ kind: 'limitation', index })}
+                    />
+                    <Button
+                      aria-label={t('remove')}
+                      danger
+                      icon={<DeleteOutlined />}
+                      type="link"
+                      onClick={() => removeDraftEntry({ kind: 'limitation', index })}
+                    />
                   </Space>
                 )
               }
@@ -554,12 +569,19 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
                 title: t('actions'),
                 render: (_, __, index) => (
                   <Space>
-                    <Button type="link" onClick={() => openDraftEditor({ kind: 'example', index })}>
-                      {t('edit')}
-                    </Button>
-                    <Button type="link" danger onClick={() => removeDraftEntry({ kind: 'example', index })}>
-                      {t('remove')}
-                    </Button>
+                    <Button
+                      aria-label={t('edit')}
+                      icon={<EditOutlined />}
+                      type="link"
+                      onClick={() => openDraftEditor({ kind: 'example', index })}
+                    />
+                    <Button
+                      aria-label={t('remove')}
+                      danger
+                      icon={<DeleteOutlined />}
+                      type="link"
+                      onClick={() => removeDraftEntry({ kind: 'example', index })}
+                    />
                   </Space>
                 )
               }
