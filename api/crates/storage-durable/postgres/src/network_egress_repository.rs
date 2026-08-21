@@ -646,6 +646,19 @@ mod tests {
             .upsert_workspace(tenant.id, "network-egress")
             .await
             .expect("workspace should seed");
+        store
+            .upsert_authenticator(&domain::AuthenticatorRecord {
+                id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+                auth_type: "password-local".into(),
+                title: "Password".into(),
+                enabled: true,
+                is_builtin: true,
+                sort_order: 0,
+                public_ui_block: String::new(),
+                options: json!({}),
+            })
+            .await
+            .expect("password-local authenticator should seed before root identities");
         let actor = store
             .upsert_root_user(
                 workspace.id,
