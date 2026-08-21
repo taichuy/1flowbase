@@ -38,9 +38,15 @@ pub struct EffectiveUiCodeTemplate {
 
 #[derive(Debug, Clone)]
 pub struct UiComponentCandidate {
+    pub installation_id: Uuid,
+    pub plugin_id: String,
+    pub plugin_version: String,
     pub locator: UiComponentLocator,
     pub module_version: String,
     pub exports: Vec<String>,
+    pub binding: domain::FrontendModuleBinding,
+    pub assets: Vec<domain::FrontendModuleAsset>,
+    pub type_declarations: String,
     pub official_contract: Option<FrontendComponentContract>,
     pub effective_contract: Option<FrontendComponentContract>,
     pub override_record: Option<UiComponentOverride>,
@@ -260,9 +266,15 @@ where
                         Some(UiComponentOverrideState::Inherit) | None => official_contract.clone(),
                     };
                     candidates.push(UiComponentCandidate {
+                        installation_id: block.installation_id,
+                        plugin_id: block.plugin_id.clone(),
+                        plugin_version: block.plugin_version.clone(),
                         locator,
                         module_version: module.version.clone(),
                         exports: module.exports.clone(),
+                        binding: module.binding,
+                        assets: module.assets.clone(),
+                        type_declarations: module.type_declarations.clone(),
                         official_contract,
                         effective_contract,
                         override_record: record,

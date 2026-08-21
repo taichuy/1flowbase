@@ -185,7 +185,7 @@ export interface ConsoleFrontstageComponentCapabilitySummary {
   contribution_code: string;
   module_source: string;
   module_version: string;
-  browser_asset: ConsoleFrontendModuleBrowserAsset;
+  browser_asset: ConsoleFrontendModuleBrowserAsset | null;
   export_name: string;
   upstream: ConsoleFrontendComponentUpstream | null;
   description: string;

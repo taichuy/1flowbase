@@ -118,7 +118,7 @@ export function JsxStudioComponentsPanel({
               dataIndex: 'export_name',
               width: 92,
               render: (value: string) => (
-                <Typography.Text code>{value}</Typography.Text>
+                <Typography.Text>{value}</Typography.Text>
               )
             },
             {

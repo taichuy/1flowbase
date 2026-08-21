@@ -65,7 +65,7 @@
     "code_loading": "Code loading",
     "console_api": "Console API",
     "components": "Components",
-    "components_description": "Components come from the current workspace. Inserting one adds its import to the block source.",
+    "components_description": "Components come from system-installed modules. Inserting one adds its import to the block source.",
     "component_api_copied": "Component API copied",
     "component_catalog_load_failed": "Component API catalog loading failed",
     "configuration": "Block settings",

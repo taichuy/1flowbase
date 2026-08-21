@@ -65,7 +65,7 @@
     "code_loading": "代码加载中",
     "console_api": "Console API",
     "components": "组件",
-    "components_description": "组件清单来自当前工作区；插入时会将对应 import 写入区块代码。",
+    "components_description": "组件清单来自系统已安装模块；插入时会将对应 import 写入区块代码。",
     "component_api_copied": "组件 API 已复制",
     "component_catalog_load_failed": "组件 API 目录加载失败",
     "configuration": "区块设置",

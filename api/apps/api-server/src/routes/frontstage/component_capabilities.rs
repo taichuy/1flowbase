@@ -318,6 +318,25 @@ fn to_summary_response(
     entry: FrontendComponentCapability,
     workspace_id: Uuid,
 ) -> FrontstageComponentCapabilitySummaryResponse {
+    let (upstream, description, insert_snippet) = match entry.contract.as_ref() {
+        Some(contract) => (
+            contract
+                .upstream
+                .clone()
+                .map(|upstream| FrontendComponentUpstreamResponse {
+                    package: upstream.package,
+                    component: upstream.component,
+                    version: upstream.version,
+                }),
+            contract.description.clone(),
+            contract.insert_snippet.clone(),
+        ),
+        None => (
+            None,
+            format!("Registered export from {}.", entry.module_source),
+            entry.export_name.clone(),
+        ),
+    };
     let assets = entry
         .assets
         .iter()
@@ -352,17 +371,10 @@ fn to_summary_response(
         },
         assets,
         browser_asset,
-        export_name: entry.contract.export_name,
-        upstream: entry
-            .contract
-            .upstream
-            .map(|upstream| FrontendComponentUpstreamResponse {
-                package: upstream.package,
-                component: upstream.component,
-                version: upstream.version,
-            }),
-        description: entry.contract.description,
-        insert_snippet: entry.contract.insert_snippet,
+        export_name: entry.export_name,
+        upstream,
+        description,
+        insert_snippet,
     }
 }
 
@@ -382,20 +394,25 @@ fn to_detail_response(
     entry: FrontendComponentCapability,
     workspace_id: Uuid,
 ) -> FrontstageComponentCapabilityResponse {
-    let declaration = entry.contract.typescript_declaration(&entry.module_source);
-    let import_statement = if entry.contract.export_name == "default" {
+    let declaration = entry
+        .contract
+        .as_ref()
+        .map(|contract| contract.typescript_declaration(&entry.module_source))
+        .unwrap_or_else(|| entry.type_declarations.clone());
+    let import_statement = if entry.export_name == "default" {
         format!("import DefaultExport from '{}';", entry.module_source)
     } else {
         format!(
             "import {{ {} }} from '{}';",
-            entry.contract.export_name, entry.module_source
+            entry.export_name, entry.module_source
         )
     };
     let api_documentation = format!("{import_statement}\n\n{declaration}");
     let props = entry
         .contract
-        .props
-        .iter()
+        .as_ref()
+        .into_iter()
+        .flat_map(|contract| contract.props.iter())
         .map(|prop| FrontendComponentPropResponse {
             name: prop.name.clone(),
             r#type: prop.type_name.clone(),
@@ -403,11 +420,16 @@ fn to_detail_response(
             description: prop.description.clone(),
         })
         .collect();
-    let limitations = entry.contract.limitations.clone();
+    let limitations = entry
+        .contract
+        .as_ref()
+        .map(|contract| contract.limitations.clone())
+        .unwrap_or_default();
     let examples = entry
         .contract
-        .examples
-        .iter()
+        .as_ref()
+        .into_iter()
+        .flat_map(|contract| contract.examples.iter())
         .map(|example| FrontendComponentExampleResponse {
             title: example.title.clone(),
             code: example.code.clone(),

@@ -138,49 +138,60 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
     }))
     .bind(json!(["responsive"]))
     .bind("export default function HeroBanner() { return <section>Hero</section>; }")
-    .bind(json!([{
-        "source": "@acme/native-components",
-        "version": "1.2.3",
-        "exports": ["Button"],
-        "binding": "fetched",
-        "assets": [
-            {
-                "path": "browser-assets/native-components.js",
-                "role": "browser_module",
-                "media_type": "text/javascript; charset=utf-8",
-                "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
-            },
-            {
-                "path": "browser-assets/native-components.css",
-                "role": "shadow_style",
-                "media_type": "text/css; charset=utf-8",
-                "sha256": "adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f"
-            }
-        ],
-        "type_declarations": "declare module '@acme/native-components' {}",
-        "components": [{
-            "component_code": "button",
-            "export_name": "Button",
-            "upstream": {
-                "package": "antd",
-                "component": "Button",
-                "version": "5.x"
-            },
-            "description": "Native React Button component.",
-            "props": [{
-                "name": "actionId",
-                "type": "string",
-                "required": false,
-                "description": "点击后发送的区块 action 标识。"
-            }],
-            "limitations": ["不支持 React onClick。"],
-            "examples": [{
-                "title": "触发保存操作",
-                "code": "<Button actionId=\"save\">保存</Button>"
-            }],
-            "insert_snippet": "<Button actionId=\"save\">保存</Button>"
-        }]
-    }]))
+    .bind(json!([
+        {
+            "source": "@acme/native-components",
+            "version": "1.2.3",
+            "exports": ["Button"],
+            "binding": "fetched",
+            "assets": [
+                {
+                    "path": "browser-assets/native-components.js",
+                    "role": "browser_module",
+                    "media_type": "text/javascript; charset=utf-8",
+                    "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
+                },
+                {
+                    "path": "browser-assets/native-components.css",
+                    "role": "shadow_style",
+                    "media_type": "text/css; charset=utf-8",
+                    "sha256": "adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f"
+                }
+            ],
+            "type_declarations": "declare module '@acme/native-components' {}",
+            "components": [{
+                "component_code": "button",
+                "export_name": "Button",
+                "upstream": {
+                    "package": "antd",
+                    "component": "Button",
+                    "version": "5.x"
+                },
+                "description": "Native React Button component.",
+                "props": [{
+                    "name": "actionId",
+                    "type": "string",
+                    "required": false,
+                    "description": "点击后发送的区块 action 标识。"
+                }],
+                "limitations": ["不支持 React onClick。"],
+                "examples": [{
+                    "title": "触发保存操作",
+                    "code": "<Button actionId=\"save\">保存</Button>"
+                }],
+                "insert_snippet": "<Button actionId=\"save\">保存</Button>"
+            }]
+        },
+        {
+            "source": "@acme/runtime-utils",
+            "version": "1.2.3",
+            "exports": ["useRuntimeValue"],
+            "binding": "host",
+            "assets": [],
+            "type_declarations": "declare module '@acme/runtime-utils' { export function useRuntimeValue(): string; }",
+            "components": []
+        }
+    ]))
     .execute(&pool)
     .await
     .unwrap();
@@ -388,6 +399,74 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
         unauthenticated_asset_response.status(),
         StatusCode::UNAUTHORIZED
     );
+}
+
+#[tokio::test]
+async fn component_capabilities_route_includes_registered_exports_without_contracts() {
+    let (app, database_url) = test_frontend_block_app_with_database_url().await;
+    seed_frontend_block(&database_url, false).await;
+    let pool = PgPool::connect(&database_url).await.unwrap();
+    let workspace_id: Uuid =
+        sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/frontstage/{workspace_id}/component-capabilities?query=runtime&limit=20"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let page: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(page["data"]["total"], 1);
+    let item = &page["data"]["items"][0];
+    assert_eq!(item["export_name"], "useRuntimeValue");
+    assert_eq!(item["module_source"], "@acme/runtime-utils");
+    assert_eq!(item["browser_asset"], Value::Null);
+    assert_eq!(item["insert_snippet"], "useRuntimeValue");
+
+    let component_id = item["component_id"]
+        .as_str()
+        .expect("registered export has a stable component id");
+    let detail_response = app
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/frontstage/{workspace_id}/component-capabilities/{component_id}"
+                ))
+                .header("cookie", &cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(detail_response.status(), StatusCode::OK);
+    let detail: Value = serde_json::from_slice(
+        &to_bytes(detail_response.into_body(), usize::MAX)
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(detail["data"]["props"], json!([]));
+    assert!(detail["data"]["typescript_declaration"]
+        .as_str()
+        .unwrap()
+        .contains("useRuntimeValue"));
+    assert!(detail["data"]["api_documentation"]
+        .as_str()
+        .unwrap()
+        .contains("import { useRuntimeValue } from '@acme/runtime-utils';"));
 }
 
 #[tokio::test]

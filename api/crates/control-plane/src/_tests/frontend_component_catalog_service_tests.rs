@@ -5,12 +5,16 @@ use control_plane::{
         FrontendComponentCatalogService, GetFrontendComponentCapabilityQuery,
         ListFrontendComponentCapabilitiesQuery,
     },
-    ports::{FrontendBlockCatalogRepository, ReplaceInstallationFrontendBlocksInput},
+    ports::{
+        CreateUiCodeTemplateInput, FrontendBlockCatalogRepository,
+        ReplaceInstallationFrontendBlocksInput, ReviseUiCodeTemplateInput,
+        ReviseUiComponentContractInput, UiManagementRepository,
+    },
 };
 use domain::{
     FrontendBlockCatalogEntry, FrontendBlockCodeModule, FrontendBlockContextContract,
     FrontendBlockPermissions, FrontendComponentContract, FrontendComponentExample,
-    FrontendModuleAsset, FrontendModuleAssetRole, FrontendModuleBinding,
+    FrontendModuleAsset, FrontendModuleAssetRole, FrontendModuleBinding, UiCodeTemplate,
     UiComponentContractRevision, UiComponentLocator, UiComponentOverride, UiComponentOverrideState,
     SYSTEM_SCOPE_ID,
 };
@@ -39,8 +43,105 @@ impl FrontendBlockCatalogRepository for MemoryFrontendComponentCatalog {
         Ok(self.entries.clone())
     }
 
+    async fn list_system_frontend_blocks(
+        &self,
+        _node_id: &str,
+    ) -> Result<Vec<FrontendBlockCatalogEntry>> {
+        Ok(self.entries.clone())
+    }
+
     async fn list_ui_component_overrides_for_catalog(&self) -> Result<Vec<UiComponentOverride>> {
         Ok(self.overrides.clone())
+    }
+}
+
+#[async_trait]
+impl UiManagementRepository for MemoryFrontendComponentCatalog {
+    async fn list_ui_code_templates(&self, _include_archived: bool) -> Result<Vec<UiCodeTemplate>> {
+        Ok(Vec::new())
+    }
+
+    async fn get_ui_code_template(&self, _template_id: Uuid) -> Result<Option<UiCodeTemplate>> {
+        Ok(None)
+    }
+
+    async fn create_ui_code_template(
+        &self,
+        _input: &CreateUiCodeTemplateInput,
+    ) -> Result<UiCodeTemplate> {
+        Err(anyhow::anyhow!("not used by component catalog tests"))
+    }
+
+    async fn revise_ui_code_template(
+        &self,
+        _input: &ReviseUiCodeTemplateInput,
+    ) -> Result<UiCodeTemplate> {
+        Err(anyhow::anyhow!("not used by component catalog tests"))
+    }
+
+    async fn publish_ui_code_template_revision(
+        &self,
+        _template_id: Uuid,
+        _revision: i32,
+        _actor_user_id: Uuid,
+    ) -> Result<UiCodeTemplate> {
+        Err(anyhow::anyhow!("not used by component catalog tests"))
+    }
+
+    async fn set_ui_code_template_default(
+        &self,
+        _template_id: Uuid,
+        _actor_user_id: Uuid,
+    ) -> Result<()> {
+        Err(anyhow::anyhow!("not used by component catalog tests"))
+    }
+
+    async fn reset_ui_code_template_default(
+        &self,
+        _provider_code: &str,
+        _contribution_code: &str,
+    ) -> Result<()> {
+        Err(anyhow::anyhow!("not used by component catalog tests"))
+    }
+
+    async fn set_ui_code_template_archived(
+        &self,
+        _template_id: Uuid,
+        _archived: bool,
+        _actor_user_id: Uuid,
+    ) -> Result<UiCodeTemplate> {
+        Err(anyhow::anyhow!("not used by component catalog tests"))
+    }
+
+    async fn list_ui_component_overrides(&self) -> Result<Vec<UiComponentOverride>> {
+        Ok(self.overrides.clone())
+    }
+
+    async fn get_ui_component_override(
+        &self,
+        locator: &UiComponentLocator,
+    ) -> Result<Option<UiComponentOverride>> {
+        Ok(self
+            .overrides
+            .iter()
+            .find(|override_record| &override_record.locator == locator)
+            .cloned())
+    }
+
+    async fn revise_ui_component_contract(
+        &self,
+        _input: &ReviseUiComponentContractInput,
+    ) -> Result<UiComponentOverride> {
+        Err(anyhow::anyhow!("not used by component catalog tests"))
+    }
+
+    async fn set_ui_component_state(
+        &self,
+        _locator: &UiComponentLocator,
+        _state: UiComponentOverrideState,
+        _actor_user_id: Uuid,
+    ) -> Result<UiComponentOverride> {
+        Err(anyhow::anyhow!("not used by component catalog tests"))
     }
 }
 
@@ -57,23 +158,34 @@ fn sample_block(installation_id: Uuid) -> FrontendBlockCatalogEntry {
         code_template: None,
         code_template_version: None,
         code_template_language: None,
-        code_modules: vec![FrontendBlockCodeModule {
-            source: "@1flowbase/native-components".into(),
-            version: "1.0.0".into(),
-            exports: vec!["Button".into(), "Alert".into()],
-            binding: FrontendModuleBinding::Fetched,
-            assets: vec![FrontendModuleAsset {
-                path: "browser-assets/native-components.js".into(),
-                role: FrontendModuleAssetRole::BrowserModule,
-                media_type: "text/javascript; charset=utf-8".into(),
-                sha256: "00c568e229c81c4c18af20961ec14663efa6f7460c0134708391746d7e8ec2e0".into(),
-            }],
-            type_declarations: "declare module '@1flowbase/native-components' {}".into(),
-            components: vec![
-                sample_component("button", "Button"),
-                sample_component("alert", "Alert"),
-            ],
-        }],
+        code_modules: vec![
+            FrontendBlockCodeModule {
+                source: "@1flowbase/native-components".into(),
+                version: "1.0.0".into(),
+                exports: vec!["Button".into(), "Alert".into()],
+                binding: FrontendModuleBinding::Fetched,
+                assets: vec![FrontendModuleAsset {
+                    path: "browser-assets/native-components.js".into(),
+                    role: FrontendModuleAssetRole::BrowserModule,
+                    media_type: "text/javascript; charset=utf-8".into(),
+                    sha256: "00c568e229c81c4c18af20961ec14663efa6f7460c0134708391746d7e8ec2e0".into(),
+                }],
+                type_declarations: "declare module '@1flowbase/native-components' {}".into(),
+                components: vec![
+                    sample_component("button", "Button"),
+                    sample_component("alert", "Alert"),
+                ],
+            },
+            FrontendBlockCodeModule {
+                source: "@1flowbase/runtime-utils".into(),
+                version: "1.0.0".into(),
+                exports: vec!["useRuntimeValue".into()],
+                binding: FrontendModuleBinding::Host,
+                assets: vec![],
+                type_declarations: "declare module '@1flowbase/runtime-utils' { export function useRuntimeValue(): string; }".into(),
+                components: vec![],
+            },
+        ],
         context_contract: FrontendBlockContextContract {
             primitives: vec![],
             input_schema: serde_json::json!({ "type": "object" }),
@@ -128,11 +240,22 @@ async fn d2_ac_001_lists_filters_and_pages_registered_native_components() {
         .unwrap();
 
     assert_eq!(page.total, 1);
-    assert_eq!(page.items[0].contract.export_name, "Button");
+    assert_eq!(page.items[0].export_name, "Button");
+    assert_eq!(
+        page.items[0]
+            .contract
+            .as_ref()
+            .expect("Button has an official contract")
+            .export_name,
+        "Button"
+    );
     assert_eq!(page.items[0].exports, vec!["Button", "Alert"]);
     assert!(!page.has_more);
     assert_eq!(page.next_offset, None);
-    assert_eq!(page.module_sources, vec!["@1flowbase/native-components"]);
+    assert_eq!(
+        page.module_sources,
+        vec!["@1flowbase/native-components", "@1flowbase/runtime-utils"]
+    );
 
     let detail = service
         .get_component_capability(GetFrontendComponentCapabilityQuery {
@@ -142,7 +265,14 @@ async fn d2_ac_001_lists_filters_and_pages_registered_native_components() {
         .await
         .unwrap()
         .expect("the paged component must be addressable by id");
-    assert_eq!(detail.contract.insert_snippet, "<Button></Button>");
+    assert_eq!(
+        detail
+            .contract
+            .as_ref()
+            .expect("Button has an official contract")
+            .insert_snippet,
+        "<Button></Button>"
+    );
 }
 
 #[tokio::test]
@@ -218,7 +348,23 @@ async fn ac_005_hidden_and_published_overlays_change_discovery_without_modules()
         .await
         .unwrap();
 
-    assert_eq!(page.total, 1);
-    assert_eq!(page.items[0].contract.component_code, "button-managed");
+    assert_eq!(page.total, 2);
+    let runtime_export = page
+        .items
+        .iter()
+        .find(|item| item.export_name == "useRuntimeValue")
+        .expect("registered export without a component contract remains discoverable");
+    assert_eq!(runtime_export.module_source, "@1flowbase/runtime-utils");
+    assert!(runtime_export.contract.is_none());
+    assert!(runtime_export.type_declarations.contains("useRuntimeValue"));
+    assert_eq!(page.items[0].export_name, "Button");
+    assert_eq!(
+        page.items[0]
+            .contract
+            .as_ref()
+            .expect("published Button has an effective contract")
+            .component_code,
+        "button-managed"
+    );
     assert_eq!(page.items[0].exports, vec!["Button", "Alert"]);
 }

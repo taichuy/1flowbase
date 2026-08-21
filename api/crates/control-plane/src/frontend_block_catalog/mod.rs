@@ -1,9 +1,6 @@
 use anyhow::Result;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    path::PathBuf,
-    sync::Arc,
-};
+use sha2::{Digest, Sha256};
+use std::{collections::BTreeSet, path::PathBuf, sync::Arc};
 use uuid::Uuid;
 
 mod frontend_contribution;
@@ -23,7 +20,9 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         AuthRepository, FrontendBlockCatalogRepository, PluginRepository, RoleConsolePolicyReader,
+        UiManagementRepository,
     },
+    ui_management::{UiComponentCandidate, UiManagementService},
 };
 
 const FRONTEND_BLOCKS_VIEW_OPERATION_ID: &str = "frontend_blocks.view";
@@ -62,7 +61,9 @@ pub struct FrontendComponentCapability {
     pub exports: Vec<String>,
     pub binding: domain::FrontendModuleBinding,
     pub assets: Vec<domain::FrontendModuleAsset>,
-    pub contract: domain::FrontendComponentContract,
+    pub type_declarations: String,
+    pub export_name: String,
+    pub contract: Option<domain::FrontendComponentContract>,
 }
 
 #[derive(Debug, Clone)]
@@ -92,22 +93,24 @@ pub struct FrontendComponentCatalogService<R> {
     node_id: String,
 }
 
-impl<R> FrontendComponentCatalogService<R>
-where
-    R: FrontendBlockCatalogRepository,
-{
+impl<R> FrontendComponentCatalogService<R> {
     pub fn new(repository: R, node_id: impl Into<String>) -> Self {
         Self {
             repository,
             node_id: node_id.into(),
         }
     }
+}
 
+impl<R> FrontendComponentCatalogService<R>
+where
+    R: FrontendBlockCatalogRepository + UiManagementRepository + Clone,
+{
     pub async fn list_component_capabilities(
         &self,
         query: ListFrontendComponentCapabilitiesQuery,
     ) -> Result<FrontendComponentCapabilityPage> {
-        let mut entries = self.load_entries(query.workspace_id).await?;
+        let mut entries = self.load_entries().await?;
         let module_sources = entries
             .iter()
             .map(|entry| entry.module_source.clone())
@@ -129,9 +132,8 @@ where
         }
 
         entries.sort_by(|left, right| {
-            left.contract
-                .export_name
-                .cmp(&right.contract.export_name)
+            left.export_name
+                .cmp(&right.export_name)
                 .then_with(|| left.module_source.cmp(&right.module_source))
                 .then_with(|| left.component_id.cmp(&right.component_id))
         });
@@ -156,87 +158,65 @@ where
         query: GetFrontendComponentCapabilityQuery,
     ) -> Result<Option<FrontendComponentCapability>> {
         Ok(self
-            .load_entries(query.workspace_id)
+            .load_entries()
             .await?
             .into_iter()
             .find(|entry| entry.component_id == query.component_id))
     }
 
-    async fn load_entries(&self, _workspace_id: Uuid) -> Result<Vec<FrontendComponentCapability>> {
-        let blocks = self
-            .repository
-            .list_system_frontend_blocks(&self.node_id)
-            .await?;
-        let overrides = self
-            .repository
-            .list_ui_component_overrides_for_catalog()
-            .await?
-            .into_iter()
-            .map(|value| {
-                (
-                    (
-                        value.locator.provider_code.clone(),
-                        value.locator.contribution_code.clone(),
-                        value.locator.module_source.clone(),
-                        value.locator.export_name.clone(),
-                    ),
-                    value,
-                )
-            })
-            .collect::<BTreeMap<_, _>>();
-        let mut entries = Vec::new();
-        for block in blocks {
-            for module in block.code_modules {
-                for export_name in &module.exports {
-                    let override_record = overrides.get(&(
-                        block.provider_code.clone(),
-                        block.contribution_code.clone(),
-                        module.source.clone(),
-                        export_name.clone(),
-                    ));
-                    let contract = match override_record.map(|value| value.state) {
-                        Some(domain::UiComponentOverrideState::Hidden) => continue,
-                        Some(domain::UiComponentOverrideState::Published) => {
-                            let Some(revision) =
-                                override_record.and_then(|value| value.published_revision.as_ref())
-                            else {
-                                continue;
-                            };
-                            revision.contract.clone()
-                        }
-                        Some(domain::UiComponentOverrideState::Inherit) | None => {
-                            let Some(contract) = module
-                                .components
-                                .iter()
-                                .find(|contract| &contract.export_name == export_name)
-                            else {
-                                continue;
-                            };
-                            contract.clone()
-                        }
-                    };
-                    entries.push(FrontendComponentCapability {
-                        component_id: format!(
-                            "{}:{}:{}",
-                            block.installation_id, block.contribution_code, contract.component_code
-                        ),
-                        installation_id: block.installation_id,
-                        provider_code: block.provider_code.clone(),
-                        plugin_id: block.plugin_id.clone(),
-                        plugin_version: block.plugin_version.clone(),
-                        contribution_code: block.contribution_code.clone(),
-                        module_source: module.source.clone(),
-                        module_version: module.version.clone(),
-                        exports: module.exports.clone(),
-                        binding: module.binding,
-                        assets: module.assets.clone(),
-                        contract,
-                    });
-                }
-            }
-        }
-        Ok(entries)
+    async fn load_entries(&self) -> Result<Vec<FrontendComponentCapability>> {
+        Ok(
+            UiManagementService::new(self.repository.clone(), self.node_id.clone())
+                .list_component_candidates()
+                .await?
+                .into_iter()
+                .filter_map(frontstage_component_capability)
+                .collect(),
+        )
     }
+}
+
+fn frontstage_component_capability(
+    candidate: UiComponentCandidate,
+) -> Option<FrontendComponentCapability> {
+    if candidate
+        .override_record
+        .as_ref()
+        .is_some_and(|record| record.state == domain::UiComponentOverrideState::Hidden)
+    {
+        return None;
+    }
+    let component_id = component_capability_id(&candidate);
+    Some(FrontendComponentCapability {
+        component_id,
+        installation_id: candidate.installation_id,
+        provider_code: candidate.locator.provider_code.clone(),
+        plugin_id: candidate.plugin_id,
+        plugin_version: candidate.plugin_version,
+        contribution_code: candidate.locator.contribution_code.clone(),
+        module_source: candidate.locator.module_source.clone(),
+        module_version: candidate.module_version,
+        exports: candidate.exports,
+        binding: candidate.binding,
+        assets: candidate.assets,
+        type_declarations: candidate.type_declarations,
+        export_name: candidate.locator.export_name,
+        contract: candidate.effective_contract,
+    })
+}
+
+fn component_capability_id(candidate: &UiComponentCandidate) -> String {
+    let mut digest = Sha256::new();
+    for value in [
+        candidate.installation_id.to_string(),
+        candidate.locator.contribution_code.clone(),
+        candidate.locator.module_source.clone(),
+        candidate.locator.export_name.clone(),
+    ] {
+        digest.update(value.as_bytes());
+        digest.update([0]);
+    }
+    format!("{:x}", digest.finalize())
 }
 
 impl<R> FrontendComponentCatalogService<R>
@@ -326,18 +306,19 @@ fn non_empty(value: Option<&str>) -> Option<&str> {
 }
 
 fn component_matches(entry: &FrontendComponentCapability, search: &str) -> bool {
-    entry.contract.export_name.to_lowercase().contains(search)
-        || entry.contract.description.to_lowercase().contains(search)
-        || entry
-            .contract
-            .props
-            .iter()
-            .any(|prop| prop.name.to_lowercase().contains(search))
-        || entry
-            .contract
-            .limitations
-            .iter()
-            .any(|limitation| limitation.to_lowercase().contains(search))
+    entry.export_name.to_lowercase().contains(search)
+        || entry.module_source.to_lowercase().contains(search)
+        || entry.contract.as_ref().is_some_and(|contract| {
+            contract.description.to_lowercase().contains(search)
+                || contract
+                    .props
+                    .iter()
+                    .any(|prop| prop.name.to_lowercase().contains(search))
+                || contract
+                    .limitations
+                    .iter()
+                    .any(|limitation| limitation.to_lowercase().contains(search))
+        })
 }
 
 #[derive(Debug, Clone)]
