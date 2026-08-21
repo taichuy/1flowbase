@@ -1064,6 +1064,18 @@
     "network_center_route_consumer": "Consumer",
     "network_center_route_pool": "Pool",
     "network_center_route_status": "Status",
-    "network_center_route_failure_policy": "Failure policy"
+    "network_center_route_failure_policy": "Failure policy",
+    "network_center_route_create": "Create egress route",
+    "network_center_route_edit": "Edit egress route",
+    "network_center_route_github": "GitHub official sources",
+    "network_center_route_http_node": "HTTP nodes",
+    "network_center_route_model_default": "Default model providers",
+    "network_center_route_model_instance": "Model provider instance",
+    "network_center_route_enabled": "Route enabled",
+    "network_center_route_save_failed": "Unable to save the egress route.",
+    "network_center_route_delete_failed": "Unable to delete the egress route.",
+    "network_center_route_delete_confirm": "Delete this egress route?",
+    "network_center_routes_load_failed": "Unable to load egress routes.",
+    "network_center_no_routes": "No egress routes have been created."
   }
 }

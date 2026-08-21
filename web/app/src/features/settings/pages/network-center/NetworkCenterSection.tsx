@@ -12,6 +12,7 @@ import {
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { i18nText } from '../../../../shared/i18n/text';
 import { NetworkEgressPoolsPanel } from '../../network-center/pools/NetworkEgressPoolsPanel';
+import { NetworkEgressRoutesPanel } from '../../network-center/routes/NetworkEgressRoutesPanel';
 
 export type NetworkCenterPage = 'providers' | 'pools' | 'routes';
 
@@ -173,7 +174,7 @@ export function NetworkCenterSection({ page }: { page: NetworkCenterPage }) {
     case 'pools':
       return <NetworkEgressPoolsPanel providers={providersQuery.data ?? []} />;
     case 'routes':
-      return <NetworkCenterRoutesShell />;
+      return <NetworkEgressRoutesPanel />;
     case 'providers':
     default:
       return (

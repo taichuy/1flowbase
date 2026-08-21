@@ -1064,6 +1064,18 @@
     "network_center_route_consumer": "消费方",
     "network_center_route_pool": "出口池",
     "network_center_route_status": "状态",
-    "network_center_route_failure_policy": "失败策略"
+    "network_center_route_failure_policy": "失败策略",
+    "network_center_route_create": "创建出口路由",
+    "network_center_route_edit": "编辑出口路由",
+    "network_center_route_github": "GitHub 官方来源",
+    "network_center_route_http_node": "HTTP 节点",
+    "network_center_route_model_default": "默认模型提供方",
+    "network_center_route_model_instance": "模型提供方实例",
+    "network_center_route_enabled": "路由已启用",
+    "network_center_route_save_failed": "无法保存出口路由。",
+    "network_center_route_delete_failed": "无法删除出口路由。",
+    "network_center_route_delete_confirm": "要删除这个出口路由吗？",
+    "network_center_routes_load_failed": "无法加载出口路由。",
+    "network_center_no_routes": "尚未创建出口路由。"
   }
 }
