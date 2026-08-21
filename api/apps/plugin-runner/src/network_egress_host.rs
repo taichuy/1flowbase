@@ -181,6 +181,23 @@ impl NetworkEgressHost {
         result
     }
 
+    /// Releases the current lease after a Core consumer finishes its HTTP request. The opaque
+    /// cleanup capability remains inside the worker so callers cannot retain or replay it.
+    pub async fn release_http_forward_proxy(&mut self, plugin_id: &str) -> FrameworkResult<()> {
+        let worker = self.workers.get_mut(plugin_id).ok_or_else(|| {
+            PluginFrameworkError::invalid_provider_package(format!(
+                "network egress package is not loaded: {plugin_id}"
+            ))
+        })?;
+        if worker.release_lease().await {
+            Ok(())
+        } else {
+            Err(network_runtime_error(
+                "network egress lease release did not return a matching receipt",
+            ))
+        }
+    }
+
     pub async fn unload(&mut self, plugin_id: &str) -> FrameworkResult<()> {
         self.unload_with_reason(plugin_id, NetworkEgressCleanupReason::Stopped)
             .await

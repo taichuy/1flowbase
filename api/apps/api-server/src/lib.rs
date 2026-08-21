@@ -17,6 +17,7 @@ pub mod host_infrastructure;
 pub mod host_route_registry;
 pub mod host_worker_registry;
 pub mod middleware;
+pub mod network_egress_client;
 pub mod official_extension_catalog;
 pub mod official_i18n_catalog_seed;
 pub mod official_i18n_catalog_source;

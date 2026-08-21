@@ -32,6 +32,7 @@ use plugin_framework::{
         ProviderModelDescriptor, ProviderResetCreditOperation, ProviderResetCreditResult,
         ProviderUsageWindowsResult,
     },
+    ForwardProxyLease,
 };
 use plugin_runner::{
     capability_host::CapabilityHost,
@@ -180,6 +181,39 @@ impl ApiProviderRuntime {
     ) -> anyhow::Result<ProviderResetCreditResult> {
         <Self as ProviderRuntimePort>::reset_credit(self, installation, provider_config, operation)
             .await
+    }
+
+    pub async fn acquire_network_egress_http_forward_proxy(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        secret: NetworkEgressSecretMaterial,
+        provider_egress_key: &str,
+    ) -> anyhow::Result<ForwardProxyLease> {
+        if installation.contract_version != plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT {
+            return Err(ControlPlaneError::InvalidInput("plugin_installation").into());
+        }
+        self.ensure_network_egress_loaded(installation, secret)
+            .await?;
+        self.services
+            .network_egress_host
+            .write()
+            .await
+            .resolve_http_forward_proxy(&installation.plugin_id, provider_egress_key)
+            .await
+            .map_err(map_provider_framework_error)
+    }
+
+    pub async fn release_network_egress_http_forward_proxy(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+    ) -> anyhow::Result<()> {
+        self.services
+            .network_egress_host
+            .write()
+            .await
+            .release_http_forward_proxy(&installation.plugin_id)
+            .await
+            .map_err(map_provider_framework_error)
     }
 }
 
