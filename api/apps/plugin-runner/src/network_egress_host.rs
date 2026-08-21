@@ -15,11 +15,11 @@ use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 
 use axum::http::Uri;
 use plugin_framework::{
-    error::{FrameworkResult, PluginFrameworkError},
     AcquireHttpForwardProxyInput, EgressAvailability, EgressDescriptor, ForwardProxyLease,
     NetworkEgressProviderPackage, NetworkEgressProviderStdioRequest,
     NetworkEgressProviderStdioResponse, PluginRuntimeLimits, ReleaseHttpForwardProxyInput,
     SyncEgressesInput, SyncEgressesResult,
+    error::{FrameworkResult, PluginFrameworkError},
 };
 use serde::Serialize;
 use tokio::{
@@ -181,15 +181,19 @@ impl NetworkEgressHost {
         result
     }
 
-    /// Releases the current lease after a Core consumer finishes its HTTP request. The opaque
-    /// cleanup capability remains inside the worker so callers cannot retain or replay it.
-    pub async fn release_http_forward_proxy(&mut self, plugin_id: &str) -> FrameworkResult<()> {
+    /// Releases the exact lease acquired for one Core consumer operation. The opaque cleanup
+    /// capability remains inside the worker so callers cannot retain or replay it.
+    pub async fn release_http_forward_proxy(
+        &mut self,
+        plugin_id: &str,
+        lease_id: &str,
+    ) -> FrameworkResult<()> {
         let worker = self.workers.get_mut(plugin_id).ok_or_else(|| {
             PluginFrameworkError::invalid_provider_package(format!(
                 "network egress package is not loaded: {plugin_id}"
             ))
         })?;
-        if worker.release_lease().await {
+        if worker.release_lease(lease_id).await {
             Ok(())
         } else {
             Err(network_runtime_error(
@@ -261,7 +265,9 @@ struct NetworkEgressWorker {
     child: Child,
     stdin: ChildStdin,
     stdout: Lines<BufReader<ChildStdout>>,
-    lease: Option<VerifiedForwardProxyLease>,
+    /// Every consumer scope owns one opaque lease identity. The worker retains the complete
+    /// verified lease so that neither callers nor consumers ever see its cleanup capability.
+    leases_by_id: HashMap<String, VerifiedForwardProxyLease>,
     config_file: NetworkEgressConfigFile,
 }
 
@@ -428,7 +434,7 @@ impl NetworkEgressWorker {
             child,
             stdin,
             stdout: BufReader::new(stdout).lines(),
-            lease: None,
+            leases_by_id: HashMap::new(),
             config_file,
         })
     }
@@ -437,7 +443,7 @@ impl NetworkEgressWorker {
         &mut self,
         provider_egress_key: &str,
     ) -> FrameworkResult<ForwardProxyLease> {
-        self.ensure_lease_is_current().await?;
+        self.ensure_worker_is_live().await?;
         let egresses = self.sync_egresses().await?;
         let available = egresses.egresses.iter().any(|egress| {
             egress.provider_egress_key == provider_egress_key
@@ -457,13 +463,20 @@ impl NetworkEgressWorker {
             .await?;
         let lease = match response {
             NetworkEgressProviderStdioResponse::AcquireHttpForwardProxy(lease) => lease,
-            _ => return Err(PluginFrameworkError::invalid_provider_contract(
-                "network egress worker returned the wrong result for acquire_http_forward_proxy",
-            )),
+            _ => {
+                return Err(PluginFrameworkError::invalid_provider_contract(
+                    "network egress worker returned the wrong result for acquire_http_forward_proxy",
+                ));
+            }
         };
         let verified = VerifiedForwardProxyLease::verify(lease).await?;
         let lease = verified.lease.clone();
-        self.lease = Some(verified);
+        if self.leases_by_id.contains_key(&lease.lease_id) {
+            return Err(PluginFrameworkError::invalid_provider_contract(
+                "network egress worker reused an active lease_id",
+            ));
+        }
+        self.leases_by_id.insert(lease.lease_id.clone(), verified);
         Ok(lease)
     }
 
@@ -477,12 +490,9 @@ impl NetworkEgressWorker {
             .is_none())
     }
 
-    async fn ensure_lease_is_current(&mut self) -> FrameworkResult<()> {
+    async fn ensure_worker_is_live(&mut self) -> FrameworkResult<()> {
         if !self.is_live()? {
             return Err(network_runtime_error("network egress worker exited"));
-        }
-        if self.lease.as_ref().is_some_and(|lease| lease.is_expired()) {
-            self.lease = None;
         }
         Ok(())
     }
@@ -501,9 +511,9 @@ impl NetworkEgressWorker {
         }
     }
 
-    async fn release_lease(&mut self) -> bool {
-        let Some(lease) = self.lease.take() else {
-            return true;
+    async fn release_lease(&mut self, lease_id: &str) -> bool {
+        let Some(lease) = self.leases_by_id.get(lease_id).cloned() else {
+            return false;
         };
         let response = self
             .call(NetworkEgressProviderStdioRequest::ReleaseHttpForwardProxy(
@@ -513,11 +523,24 @@ impl NetworkEgressWorker {
                 },
             ))
             .await;
-        matches!(
+        let release_acknowledged = matches!(
             response,
             Ok(NetworkEgressProviderStdioResponse::ReleaseHttpForwardProxy(receipt))
                 if receipt.lease_id == lease.lease.lease_id
-        )
+        );
+        if release_acknowledged {
+            self.leases_by_id.remove(lease_id);
+        }
+        release_acknowledged
+    }
+
+    async fn release_all_leases(&mut self) -> bool {
+        let lease_ids = self.leases_by_id.keys().cloned().collect::<Vec<_>>();
+        let mut all_released = true;
+        for lease_id in lease_ids {
+            all_released &= self.release_lease(&lease_id).await;
+        }
+        all_released
     }
 
     async fn call(
@@ -558,8 +581,8 @@ impl NetworkEgressWorker {
         plugin_id: &str,
         reason: NetworkEgressCleanupReason,
     ) -> NetworkEgressCleanupReceipt {
-        let lease_revoked = self.lease.is_some();
-        let release_acknowledged = self.release_lease().await;
+        let lease_revoked = !self.leases_by_id.is_empty();
+        let release_acknowledged = self.release_all_leases().await;
         let prior_pid = self.child.id();
         let mut termination_signal_sent = false;
         let mut cleanup_error = (lease_revoked && !release_acknowledged).then_some(
@@ -666,10 +689,6 @@ impl VerifiedForwardProxyLease {
                 network_runtime_error("network egress proxy endpoint verification failed")
             })?;
         Ok(Self { lease })
-    }
-
-    fn is_expired(&self) -> bool {
-        self.lease.expires_at <= unix_milliseconds_now()
     }
 }
 

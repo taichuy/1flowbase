@@ -17,6 +17,7 @@ use control_plane::{
     },
 };
 use plugin_framework::{
+    ForwardProxyLease,
     data_source_contract::{
         DataSourceConfigInput, DataSourceCreateRecordInput, DataSourceCreateRecordOutput,
         DataSourceDeleteRecordInput, DataSourceDeleteRecordOutput, DataSourceDescribeResourceInput,
@@ -32,7 +33,6 @@ use plugin_framework::{
         ProviderModelDescriptor, ProviderResetCreditOperation, ProviderResetCreditResult,
         ProviderUsageWindowsResult,
     },
-    ForwardProxyLease,
 };
 use plugin_runner::{
     capability_host::CapabilityHost,
@@ -41,7 +41,7 @@ use plugin_runner::{
     provider_host::ProviderHost,
 };
 use runtime_core::runtime_engine::DataSourceRuntimeRecordBackend;
-use serde::{de::DeserializeOwned, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::collections::HashSet;
 use storage_durable::MainDurableStore;
@@ -51,8 +51,8 @@ use uuid::Uuid;
 
 use crate::network_egress_client::NetworkEgressHttpClientResolver;
 use crate::runtime_activity::{
-    current_application_id, ApplicationActivityFinish, ApplicationActivityGuard,
-    ApplicationActivityKind, ApplicationRuntimeActivityTracker,
+    ApplicationActivityFinish, ApplicationActivityGuard, ApplicationActivityKind,
+    ApplicationRuntimeActivityTracker, current_application_id,
 };
 
 mod model_provider_slot;
@@ -218,12 +218,13 @@ impl ApiProviderRuntime {
     pub async fn release_network_egress_http_forward_proxy(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
+        lease_id: &str,
     ) -> anyhow::Result<()> {
         self.services
             .network_egress_host
             .write()
             .await
-            .release_http_forward_proxy(&installation.plugin_id)
+            .release_http_forward_proxy(&installation.plugin_id, lease_id)
             .await
             .map_err(map_provider_framework_error)
     }

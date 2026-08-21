@@ -123,6 +123,35 @@ node_contributions: []
             fs::set_permissions(path, permissions).expect("fixture runtime must be executable");
         }
     }
+
+    fn write_overlapping_lease_runtime(
+        &self,
+        proxy_url: &str,
+        expires_at: u64,
+        lifecycle_marker: &Path,
+    ) {
+        self.write_runtime(proxy_url, expires_at, false, None, None, None);
+        fs::write(
+            self.root.join("bin/fixture_egress"),
+            format!(
+                "#!/usr/bin/env bash\nset -euo pipefail\nshift 2\nacquires=0\nwhile IFS= read -r request; do\n  case \"${{request}}\" in\n    *'\"operation\":\"sync_egresses\"'*)\n      printf '%s\\n' '{{\"operation\":\"sync_egresses\",\"result\":{{\"egresses\":[{{\"provider_egress_key\":\"egress-us-1\",\"display_name\":\"US 1\",\"availability\":\"available\"}}]}}}}'\n      ;;\n    *'\"operation\":\"acquire_http_forward_proxy\"'*)\n      acquires=$((acquires + 1))\n      if [ \"${{acquires}}\" -eq 1 ]; then lease_id=lease-A; else lease_id=lease-B; fi\n      printf 'acquire:%s\\n' \"${{lease_id}}\" >> '{}'\n      printf '%s\\n' \"{{\\\"operation\\\":\\\"acquire_http_forward_proxy\\\",\\\"result\\\":{{\\\"lease_id\\\":\\\"${{lease_id}}\\\",\\\"http_proxy_url\\\":\\\"{proxy_url}\\\",\\\"cleanup_token\\\":\\\"opaque-${{lease_id}}\\\",\\\"expires_at\\\":{expires_at}}}}}\"\n      ;;\n    *'\"operation\":\"release_http_forward_proxy\"'*)\n      case \"${{request}}\" in\n        *'\"lease_id\":\"lease-A\"'*) lease_id=lease-A ;;\n        *'\"lease_id\":\"lease-B\"'*) lease_id=lease-B ;;\n        *) exit 1 ;;\n      esac\n      printf 'release:%s\\n' \"${{lease_id}}\" >> '{}'\n      printf '%s\\n' \"{{\\\"operation\\\":\\\"release_http_forward_proxy\\\",\\\"result\\\":{{\\\"lease_id\\\":\\\"${{lease_id}}\\\"}}}}\"\n      ;;\n    *) exit 1 ;;\n  esac\ndone\n",
+                lifecycle_marker.display(),
+                lifecycle_marker.display(),
+            ),
+        )
+        .expect("overlapping lease fixture runtime must be written");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let path = self.root.join("bin/fixture_egress");
+            let mut permissions = fs::metadata(&path)
+                .expect("fixture runtime metadata must be readable")
+                .permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(path, permissions).expect("fixture runtime must be executable");
+        }
+    }
 }
 
 fn worker_config() -> NetworkEgressWorkerConfig {
@@ -358,10 +387,11 @@ async fn ac_004_revokes_the_lease_when_the_worker_crashes() {
         .expect("fixture worker must first return a valid lease");
     tokio::time::sleep(Duration::from_millis(25)).await;
 
-    assert!(host
-        .resolve_http_forward_proxy("fixture_egress@0.1.0", "egress-us-1")
-        .await
-        .is_err());
+    assert!(
+        host.resolve_http_forward_proxy("fixture_egress@0.1.0", "egress-us-1")
+            .await
+            .is_err()
+    );
     let receipt = host
         .cleanup_receipt("fixture_egress@0.1.0")
         .expect("crash must revoke the lease and retain cleanup evidence");
@@ -371,6 +401,71 @@ async fn ac_004_revokes_the_lease_when_the_worker_crashes() {
     assert!(
         !config_path.exists(),
         "private configuration file must not survive a crashed worker"
+    );
+}
+
+#[tokio::test]
+async fn ac_005_overlapping_leases_release_their_own_identity_without_cross_release_or_leak() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("fixture proxy listener must bind");
+    let port = listener
+        .local_addr()
+        .expect("fixture proxy address must resolve")
+        .port();
+    thread::spawn(move || {
+        for _ in 0..2 {
+            let _ = listener.accept();
+        }
+    });
+    let package = TempNetworkEgressPackage::new();
+    let lifecycle_marker = package.path().join("lease-lifecycle");
+    package.write_overlapping_lease_runtime(
+        &format!("http://127.0.0.1:{port}"),
+        unix_milliseconds_now() + 300_000,
+        &lifecycle_marker,
+    );
+    let mut host = NetworkEgressHost::default();
+    let plugin_id = "fixture_egress@0.1.0";
+    host.load_if_needed(
+        plugin_id,
+        &package.path().display().to_string(),
+        "fixture-v1",
+        worker_config(),
+    )
+    .await
+    .expect("fixture worker must register");
+
+    let lease_a = host
+        .resolve_http_forward_proxy(plugin_id, "egress-us-1")
+        .await
+        .expect("request A must acquire a lease");
+    let lease_b = host
+        .resolve_http_forward_proxy(plugin_id, "egress-us-1")
+        .await
+        .expect("request B may overlap A before either scope releases");
+    assert_eq!(lease_a.lease_id, "lease-A");
+    assert_eq!(lease_b.lease_id, "lease-B");
+
+    host.release_http_forward_proxy(plugin_id, &lease_a.lease_id)
+        .await
+        .expect("request A must release only lease A");
+    assert_eq!(
+        wait_for_lifecycle(&lifecycle_marker, 3),
+        vec!["acquire:lease-A", "acquire:lease-B", "release:lease-A"],
+        "releasing A must not release B"
+    );
+
+    host.unload(plugin_id)
+        .await
+        .expect("supervisor cleanup must release the still-active lease B");
+    assert_eq!(
+        wait_for_lifecycle(&lifecycle_marker, 4),
+        vec![
+            "acquire:lease-A",
+            "acquire:lease-B",
+            "release:lease-A",
+            "release:lease-B",
+        ],
+        "each overlapping acquisition must receive exactly its own release"
     );
 }
 
@@ -400,6 +495,19 @@ fn wait_for_config_path(marker: &Path) -> PathBuf {
         thread::sleep(Duration::from_millis(10));
     }
     panic!("fixture worker did not record its private config handle");
+}
+
+fn wait_for_lifecycle(marker: &Path, expected_entries: usize) -> Vec<String> {
+    for _ in 0..40 {
+        if let Ok(contents) = fs::read_to_string(marker) {
+            let entries = contents.lines().map(str::to_owned).collect::<Vec<_>>();
+            if entries.len() >= expected_entries {
+                return entries;
+            }
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+    panic!("fixture worker did not record {expected_entries} lifecycle entries");
 }
 
 #[cfg(target_os = "linux")]

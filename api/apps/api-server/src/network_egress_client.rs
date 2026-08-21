@@ -16,12 +16,15 @@ struct NetworkEgressHttpRequestLeaseReleaser(NetworkEgressExecutionScope);
 struct NetworkEgressScopeRelease {
     runtime: ApiProviderRuntime,
     installation: domain::LocalPluginInstallationRecord,
+    /// Host-private identity for the exact lease this scope owns. It is never exposed through
+    /// the consumer client or model-provider invocation context.
+    lease_id: String,
 }
 
 impl NetworkEgressScopeRelease {
     async fn release(self) -> Result<()> {
         self.runtime
-            .release_network_egress_http_forward_proxy(&self.installation)
+            .release_network_egress_http_forward_proxy(&self.installation, &self.lease_id)
             .await
             .context("configured network egress provider did not release its proxy lease")
     }
@@ -136,6 +139,7 @@ impl NetworkEgressHttpClientResolver {
         let release = NetworkEgressScopeRelease {
             runtime: self.runtime.clone(),
             installation,
+            lease_id: forward_proxy.lease_id.clone(),
         };
         let client = match Client::builder()
             .proxy(
