@@ -36,9 +36,18 @@ use time::OffsetDateTime;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::provider_runtime::{ApiProviderRuntime, ApiRuntimeServices};
+use crate::{
+    config::ResolvedOfficialExtensionCatalogSourceConfig,
+    official_extension_catalog::{
+        ApiOfficialExtensionCatalogSource, OfficialExtensionCatalogSourcePort,
+    },
+    provider_runtime::{ApiProviderRuntime, ApiRuntimeServices},
+};
 
-use self::network_egress_fixture::seed_network_egress_resolver;
+use self::network_egress_fixture::{
+    seed_network_egress_resolver, seed_network_egress_resolver_with_acquire_behavior,
+    NetworkEgressAcquireBehavior,
+};
 
 /// The orchestration runtime asks this bridge for a client at node execution time. It never owns
 /// the proxy URL, the lease id, cleanup material, or the egress Provider secret.
@@ -122,10 +131,15 @@ fn write_network_egress_handoff_provider_package(
     package: &TempProviderPackage,
     proxy_target: &str,
     wire_capture_path: Option<&Path>,
+    declares_network_egress_handoff: bool,
 ) {
+    let network_egress_capability = declares_network_egress_handoff
+        .then_some("  capabilities:\n    - network_egress_handoff/v1\n")
+        .unwrap_or_default();
     package.write(
         "manifest.yaml",
-        r#"manifest_version: 1
+        &format!(
+            r#"manifest_version: 1
 plugin_id: fixture_provider@0.1.0
 version: 0.1.0
 publisher_namespace: 1flowbase
@@ -153,12 +167,13 @@ permissions:
 runtime:
   protocol: stdio_json
   entry: bin/fixture_provider
-  capabilities:
-    - network_egress_handoff/v1
+{}  
   limits:
     timeout_ms: 30000
 node_contributions: []
 "#,
+            network_egress_capability
+        ),
     );
     package.write(
         "provider/fixture_provider.yaml",
@@ -316,11 +331,16 @@ async fn root_1805_model_provider_route_pool_provider_lease_reaches_fake_proxy_w
     let proxy_target = "http://model-provider-origin.invalid/route-pool-provider";
     let package = TempProviderPackage::new();
     let wire_capture = package.path().join("provider-wire.json");
-    write_network_egress_handoff_provider_package(&package, proxy_target, Some(&wire_capture));
+    write_network_egress_handoff_provider_package(
+        &package,
+        proxy_target,
+        Some(&wire_capture),
+        true,
+    );
     let (state, _) = support::test_api_state_with_database_url().await;
     let instance_id = Uuid::now_v7();
     let base_runtime = ApiProviderRuntime::new(network_egress_runtime_services());
-    let (resolver, _egress_package) = seed_network_egress_resolver(
+    let (resolver, egress_package) = seed_network_egress_resolver(
         &state,
         &proxy_url,
         domain::NetworkEgressConsumerSelector::ModelProviderInstance { instance_id },
@@ -366,6 +386,260 @@ async fn root_1805_model_provider_route_pool_provider_lease_reaches_fake_proxy_w
     }
 }
 
+/// AC-012: once a Route matched, an incompatible model worker must fail before its process can
+/// receive a legacy direct/proxy configuration. The Host still owns and releases the lease.
+#[tokio::test]
+async fn root_1805_model_provider_matched_route_rejects_missing_handoff_capability_without_fallback(
+) {
+    let (proxy_url, proxy_requests) = spawn_request_proxy(1);
+    let package = TempProviderPackage::new();
+    let wire_capture = package.path().join("provider-wire.json");
+    write_network_egress_handoff_provider_package(
+        &package,
+        "http://must-not-be-contacted.invalid/missing-capability",
+        Some(&wire_capture),
+        false,
+    );
+    let (state, _) = support::test_api_state_with_database_url().await;
+    let instance_id = Uuid::now_v7();
+    let base_runtime = ApiProviderRuntime::new(network_egress_runtime_services());
+    let (resolver, egress_package) = seed_network_egress_resolver(
+        &state,
+        &proxy_url,
+        domain::NetworkEgressConsumerSelector::ModelProviderInstance { instance_id },
+        base_runtime.clone(),
+    )
+    .await;
+    let runtime = base_runtime.with_network_egress(Arc::new(resolver));
+
+    let error = ProviderRuntimePort::invoke_stream_with_network_egress(
+        &runtime,
+        &fixture_installation(&package),
+        ProviderInvocationInput {
+            provider_instance_id: instance_id.to_string(),
+            provider_code: "fixture_provider".to_string(),
+            protocol: "openai_compatible".to_string(),
+            model: "fixture_chat".to_string(),
+            provider_config: json!({
+                "api_key": "model-provider-secret",
+                "proxy_url": "http://legacy-direct-fallback.invalid"
+            }),
+            ..ProviderInvocationInput::default()
+        },
+        None,
+        state.bootstrap_workspace_id,
+        domain::NetworkEgressConsumerSelector::ModelProviderInstance { instance_id },
+    )
+    .await
+    .expect_err("a matched route must fail closed when the worker lacks the handoff capability");
+
+    assert!(
+        error.to_string().contains("network_egress_handoff/v1"),
+        "missing capability must be explicit: {error:#}"
+    );
+    assert!(
+        !wire_capture.exists(),
+        "the incompatible worker must not run through a legacy direct/proxy fallback"
+    );
+    assert_eq!(
+        proxy_requests
+            .join()
+            .expect("Host must only probe the acquired lease")
+            .len(),
+        1
+    );
+    assert_eq!(
+        fs::read_to_string(egress_package.path().join("lease-lifecycle"))
+            .expect("failed model invocation must release its Host-owned lease"),
+        "acquire\nrelease\n"
+    );
+}
+
+#[tokio::test]
+async fn root_1805_matched_route_scope_drop_releases_the_exact_lease_after_cancellation() {
+    let (proxy_url, proxy_requests) = spawn_request_proxy(1);
+    let (state, _) = support::test_api_state_with_database_url().await;
+    let runtime = ApiProviderRuntime::new(network_egress_runtime_services());
+    let (resolver, egress_package) = seed_network_egress_resolver(
+        &state,
+        &proxy_url,
+        domain::NetworkEgressConsumerSelector::HttpNodeDefault,
+        runtime,
+    )
+    .await;
+    let scope = resolver
+        .acquire(
+            state.bootstrap_workspace_id,
+            domain::NetworkEgressConsumerSelector::HttpNodeDefault,
+        )
+        .await
+        .expect("matched route must acquire its Host-owned scope")
+        .expect("matched route must not return the no-route direct-path result");
+    drop(scope);
+    proxy_requests
+        .join()
+        .expect("Host must probe the acquired loopback lease");
+
+    tokio::time::timeout(Duration::from_secs(1), async {
+        loop {
+            if fs::read_to_string(egress_package.path().join("lease-lifecycle"))
+                .map(|lifecycle| lifecycle == "acquire\nrelease\n")
+                .unwrap_or(false)
+            {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("cancellation cleanup must release the exact acquired lease");
+}
+
+#[tokio::test]
+async fn root_1805_model_provider_matched_route_rejects_lease_failure_without_legacy_fallback() {
+    let package = TempProviderPackage::new();
+    let wire_capture = package.path().join("provider-wire.json");
+    write_network_egress_handoff_provider_package(
+        &package,
+        "http://must-not-be-contacted.invalid/lease-failure",
+        Some(&wire_capture),
+        true,
+    );
+    let (state, _) = support::test_api_state_with_database_url().await;
+    let instance_id = Uuid::now_v7();
+    let base_runtime = ApiProviderRuntime::new(network_egress_runtime_services());
+    let (resolver, _egress_package) = seed_network_egress_resolver_with_acquire_behavior(
+        &state,
+        "http://127.0.0.1:1",
+        domain::NetworkEgressConsumerSelector::ModelProviderInstance { instance_id },
+        base_runtime.clone(),
+        NetworkEgressAcquireBehavior::Fails,
+    )
+    .await;
+    let runtime = base_runtime.with_network_egress(Arc::new(resolver));
+
+    let error = ProviderRuntimePort::invoke_stream_with_network_egress(
+        &runtime,
+        &fixture_installation(&package),
+        ProviderInvocationInput {
+            provider_instance_id: instance_id.to_string(),
+            provider_code: "fixture_provider".to_string(),
+            protocol: "openai_compatible".to_string(),
+            model: "fixture_chat".to_string(),
+            provider_config: json!({
+                "api_key": "model-provider-secret",
+                "proxy_url": "http://legacy-direct-fallback.invalid"
+            }),
+            ..ProviderInvocationInput::default()
+        },
+        None,
+        state.bootstrap_workspace_id,
+        domain::NetworkEgressConsumerSelector::ModelProviderInstance { instance_id },
+    )
+    .await
+    .expect_err("a matched route must fail closed when lease acquisition fails");
+
+    assert!(error
+        .to_string()
+        .contains("could not acquire a proxy lease"));
+    assert!(
+        !wire_capture.exists(),
+        "a failed lease acquisition must not invoke the model worker through legacy settings"
+    );
+}
+
+#[tokio::test]
+async fn root_1805_model_provider_matched_route_rejects_unusable_pool_or_disabled_provider_without_fallback(
+) {
+    for behavior in [
+        NetworkEgressAcquireBehavior::PoolUnavailable,
+        NetworkEgressAcquireBehavior::ProviderDisabled,
+    ] {
+        let package = TempProviderPackage::new();
+        let wire_capture = package.path().join("provider-wire.json");
+        write_network_egress_handoff_provider_package(
+            &package,
+            "http://must-not-be-contacted.invalid/unusable-pool",
+            Some(&wire_capture),
+            true,
+        );
+        let (state, _) = support::test_api_state_with_database_url().await;
+        let instance_id = Uuid::now_v7();
+        let base_runtime = ApiProviderRuntime::new(network_egress_runtime_services());
+        let (resolver, _egress_package) = seed_network_egress_resolver_with_acquire_behavior(
+            &state,
+            "http://127.0.0.1:1",
+            domain::NetworkEgressConsumerSelector::ModelProviderInstance { instance_id },
+            base_runtime.clone(),
+            behavior,
+        )
+        .await;
+        let runtime = base_runtime.with_network_egress(Arc::new(resolver));
+
+        let error = ProviderRuntimePort::invoke_stream_with_network_egress(
+            &runtime,
+            &fixture_installation(&package),
+            ProviderInvocationInput {
+                provider_instance_id: instance_id.to_string(),
+                provider_code: "fixture_provider".to_string(),
+                protocol: "openai_compatible".to_string(),
+                model: "fixture_chat".to_string(),
+                provider_config: json!({"proxy_url": "http://legacy-direct-fallback.invalid"}),
+                ..ProviderInvocationInput::default()
+            },
+            None,
+            state.bootstrap_workspace_id,
+            domain::NetworkEgressConsumerSelector::ModelProviderInstance { instance_id },
+        )
+        .await
+        .expect_err("a matched route must fail closed when its pool cannot select a provider");
+
+        assert!(error.to_string().contains("pool has no usable member"));
+        assert!(
+            !wire_capture.exists(),
+            "unusable pool/provider must not invoke the model worker through legacy settings"
+        );
+    }
+}
+
+#[tokio::test]
+async fn root_1805_github_catalog_matched_route_rejects_lease_failure_without_direct_fallback() {
+    let (state, _) = support::test_api_state_with_database_url().await;
+    let base_runtime = ApiProviderRuntime::new(network_egress_runtime_services());
+    let (resolver, _egress_package) = seed_network_egress_resolver_with_acquire_behavior(
+        &state,
+        "http://127.0.0.1:1",
+        domain::NetworkEgressConsumerSelector::GithubOfficialSources,
+        base_runtime,
+        NetworkEgressAcquireBehavior::Fails,
+    )
+    .await;
+    let mut sources = BTreeMap::new();
+    sources.insert(
+        "runtime-extensions".to_string(),
+        ResolvedOfficialExtensionCatalogSourceConfig {
+            source_kind: "github".to_string(),
+            index_url: "http://must-not-be-contacted.invalid/catalog.json".to_string(),
+            official_index_url: "http://must-not-be-contacted.invalid/catalog.json".to_string(),
+            github_proxy_url: None,
+        },
+    );
+    let source = ApiOfficialExtensionCatalogSource::new(sources).with_network_egress(resolver);
+
+    let error = OfficialExtensionCatalogSourcePort::list_page_for_workspace(
+        &source,
+        state.bootstrap_workspace_id,
+        "runtime-extensions",
+        None,
+    )
+    .await
+    .expect_err("a matched GitHub route must not retry its direct source after lease failure");
+
+    assert!(error
+        .to_string()
+        .contains("could not acquire a proxy lease"));
+}
+
 #[tokio::test]
 async fn root_1805_model_provider_no_route_keeps_direct_behavior_without_handoff() {
     let (origin, origin_request) = spawn_request_proxy(1);
@@ -375,6 +649,7 @@ async fn root_1805_model_provider_no_route_keeps_direct_behavior_without_handoff
         &package,
         &format!("{origin}/model-direct"),
         Some(&wire_capture),
+        true,
     );
     let (state, _) = support::test_api_state_with_database_url().await;
     let base_runtime = ApiProviderRuntime::new(network_egress_runtime_services());
@@ -471,6 +746,44 @@ async fn root_1805_http_node_route_pool_provider_lease_reaches_fake_proxy_withou
     assert!(proxy_requests.iter().any(|request| {
         request.starts_with("GET http://http-node-origin.invalid/route-pool-provider HTTP/1.1")
     }));
+}
+
+#[tokio::test]
+async fn root_1805_http_node_matched_route_rejects_lease_failure_without_direct_fallback() {
+    let (state, _) = support::test_api_state_with_database_url().await;
+    let base_runtime = ApiProviderRuntime::new(network_egress_runtime_services());
+    let (resolver, _egress_package) = seed_network_egress_resolver_with_acquire_behavior(
+        &state,
+        "http://127.0.0.1:1",
+        domain::NetworkEgressConsumerSelector::HttpNodeDefault,
+        base_runtime.clone(),
+        NetworkEgressAcquireBehavior::Fails,
+    )
+    .await;
+    let invoker = ResolverBackedHttpNodeInvoker {
+        runtime: base_runtime.with_network_egress(Arc::new(resolver)),
+        workspace_id: state.bootstrap_workspace_id,
+    };
+
+    let execution =
+        orchestration_runtime::execution_engine::execute_http_request_node_with_provider_invoker(
+            &root_1805_http_node("http://must-not-be-contacted.invalid/http-node-lease-failure"),
+            &Map::new(),
+            &Map::new(),
+            None,
+            Some(&invoker),
+        )
+        .await
+        .expect(
+            "HTTP node must surface the matched-route acquisition failure in its normal envelope",
+        );
+
+    let error = execution
+        .error_payload
+        .expect("matched route must not fall back to direct HTTP");
+    assert!(error
+        .to_string()
+        .contains("could not acquire a proxy lease"));
 }
 
 #[tokio::test]

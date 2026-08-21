@@ -34,8 +34,16 @@ pub(super) struct TempNetworkEgressPackage {
     root: PathBuf,
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum NetworkEgressAcquireBehavior {
+    Succeeds,
+    Fails,
+    PoolUnavailable,
+    ProviderDisabled,
+}
+
 impl TempNetworkEgressPackage {
-    fn new(proxy_url: &str) -> Self {
+    fn new(proxy_url: &str, acquire_behavior: NetworkEgressAcquireBehavior) -> Self {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .expect("system time must be after Unix epoch")
@@ -78,10 +86,20 @@ node_contributions: []
 "#,
         )
         .expect("fixture manifest must be written");
+        let acquire_response = match acquire_behavior {
+            NetworkEgressAcquireBehavior::Fails => {
+                "printf '%s\\n' '{\"operation\":\"acquire_http_forward_proxy\",\"error\":{\"code\":\"fixture_lease_failure\",\"message\":\"fixture lease failure\"}}'".to_string()
+            }
+            _ => format!(
+                r#"printf '%s\n' '{{"operation":"acquire_http_forward_proxy","result":{{"lease_id":"fixture-lease","http_proxy_url":"{proxy_url}","cleanup_token":"host-private","expires_at":4102444800000}}}}'"#
+            ),
+        };
+        let lifecycle_marker = root.join("lease-lifecycle");
         fs::write(
             root.join("bin/fixture_egress"),
             format!(
-                "#!/usr/bin/env bash\nset -euo pipefail\nif [ \"${{1:-}}\" = \"--network-egress-config-file\" ]; then shift 2; fi\nwhile IFS= read -r request; do\n  case \"${{request}}\" in\n    *'\"operation\":\"sync_egresses\"'*) printf '%s\\n' '{{\"operation\":\"sync_egresses\",\"result\":{{\"egresses\":[{{\"provider_egress_key\":\"fixture-egress\",\"display_name\":\"Fixture Egress\",\"availability\":\"available\"}}]}}}}' ;;\n    *'\"operation\":\"acquire_http_forward_proxy\"'*) printf '%s\\n' '{{\"operation\":\"acquire_http_forward_proxy\",\"result\":{{\"lease_id\":\"fixture-lease\",\"http_proxy_url\":\"{proxy_url}\",\"cleanup_token\":\"host-private\",\"expires_at\":4102444800000}}}}' ;;\n    *'\"operation\":\"release_http_forward_proxy\"'*) printf '%s\\n' '{{\"operation\":\"release_http_forward_proxy\",\"result\":{{\"lease_id\":\"fixture-lease\"}}}}' ;;\n    *) exit 1 ;;\n  esac\ndone\n"
+                "#!/usr/bin/env bash\nset -euo pipefail\nif [ \"${{1:-}}\" = \"--network-egress-config-file\" ]; then shift 2; fi\nwhile IFS= read -r request; do\n  case \"${{request}}\" in\n    *'\"operation\":\"sync_egresses\"'*) printf '%s\\n' '{{\"operation\":\"sync_egresses\",\"result\":{{\"egresses\":[{{\"provider_egress_key\":\"fixture-egress\",\"display_name\":\"Fixture Egress\",\"availability\":\"available\"}}]}}}}' ;;\n    *'\"operation\":\"acquire_http_forward_proxy\"'*) printf 'acquire\\n' >> '{marker}'; {acquire_response} ;;\n    *'\"operation\":\"release_http_forward_proxy\"'*) printf 'release\\n' >> '{marker}'; printf '%s\\n' '{{\"operation\":\"release_http_forward_proxy\",\"result\":{{\"lease_id\":\"fixture-lease\"}}}}' ;;\n    *) exit 1 ;;\n  esac\ndone\n",
+                marker = lifecycle_marker.display(),
             ),
         )
         .expect("fixture egress worker must be written");
@@ -100,7 +118,7 @@ node_contributions: []
         Self { root }
     }
 
-    fn path(&self) -> &Path {
+    pub(super) fn path(&self) -> &Path {
         &self.root
     }
 }
@@ -120,7 +138,24 @@ pub(super) async fn seed_network_egress_resolver(
     selector: NetworkEgressConsumerSelector,
     runtime: ApiProviderRuntime,
 ) -> (NetworkEgressHttpClientResolver, TempNetworkEgressPackage) {
-    let package = TempNetworkEgressPackage::new(proxy_url);
+    seed_network_egress_resolver_with_acquire_behavior(
+        state,
+        proxy_url,
+        selector,
+        runtime,
+        NetworkEgressAcquireBehavior::Succeeds,
+    )
+    .await
+}
+
+pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
+    state: &ApiState,
+    proxy_url: &str,
+    selector: NetworkEgressConsumerSelector,
+    runtime: ApiProviderRuntime,
+    acquire_behavior: NetworkEgressAcquireBehavior,
+) -> (NetworkEgressHttpClientResolver, TempNetworkEgressPackage) {
+    let package = TempNetworkEgressPackage::new(proxy_url, acquire_behavior);
     let root = state
         .store
         .find_user_for_password_login(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID, "root")
@@ -243,7 +278,14 @@ pub(super) async fn seed_network_egress_resolver(
             provider_code: "fixture_egress".into(),
             display_name: "Fixture Egress".into(),
             secret_ref: "secret://fixture-egress".into(),
-            lifecycle: NetworkEgressProviderLifecycle::Active,
+            lifecycle: if matches!(
+                acquire_behavior,
+                NetworkEgressAcquireBehavior::ProviderDisabled
+            ) {
+                NetworkEgressProviderLifecycle::Disabled
+            } else {
+                NetworkEgressProviderLifecycle::Active
+            },
             actor_user_id: root.id,
         },
     )
@@ -300,7 +342,7 @@ pub(super) async fn seed_network_egress_resolver(
             pool_id,
             provider_id,
             provider_egress_key: "fixture-egress".into(),
-            enabled: true,
+            enabled: !matches!(acquire_behavior, NetworkEgressAcquireBehavior::PoolUnavailable),
             sequence: 0,
             actor_user_id: root.id,
         },
