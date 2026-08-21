@@ -318,25 +318,18 @@ fn to_summary_response(
     entry: FrontendComponentCapability,
     workspace_id: Uuid,
 ) -> FrontstageComponentCapabilitySummaryResponse {
-    let (upstream, description, insert_snippet) = match entry.contract.as_ref() {
-        Some(contract) => (
-            contract
-                .upstream
-                .clone()
-                .map(|upstream| FrontendComponentUpstreamResponse {
-                    package: upstream.package,
-                    component: upstream.component,
-                    version: upstream.version,
-                }),
-            contract.description.clone(),
-            contract.insert_snippet.clone(),
-        ),
-        None => (
-            None,
-            format!("Registered export from {}.", entry.module_source),
-            entry.export_name.clone(),
-        ),
-    };
+    let upstream =
+        entry
+            .contract
+            .upstream
+            .clone()
+            .map(|upstream| FrontendComponentUpstreamResponse {
+                package: upstream.package,
+                component: upstream.component,
+                version: upstream.version,
+            });
+    let description = entry.contract.description.clone();
+    let insert_snippet = entry.contract.insert_snippet.clone();
     let assets = entry
         .assets
         .iter()
@@ -394,11 +387,7 @@ fn to_detail_response(
     entry: FrontendComponentCapability,
     workspace_id: Uuid,
 ) -> FrontstageComponentCapabilityResponse {
-    let declaration = entry
-        .contract
-        .as_ref()
-        .map(|contract| contract.typescript_declaration(&entry.module_source))
-        .unwrap_or_else(|| entry.type_declarations.clone());
+    let declaration = entry.contract.typescript_declaration(&entry.module_source);
     let import_statement = if entry.export_name == "default" {
         format!("import DefaultExport from '{}';", entry.module_source)
     } else {
@@ -410,9 +399,8 @@ fn to_detail_response(
     let api_documentation = format!("{import_statement}\n\n{declaration}");
     let props = entry
         .contract
-        .as_ref()
-        .into_iter()
-        .flat_map(|contract| contract.props.iter())
+        .props
+        .iter()
         .map(|prop| FrontendComponentPropResponse {
             name: prop.name.clone(),
             r#type: prop.type_name.clone(),
@@ -420,16 +408,11 @@ fn to_detail_response(
             description: prop.description.clone(),
         })
         .collect();
-    let limitations = entry
-        .contract
-        .as_ref()
-        .map(|contract| contract.limitations.clone())
-        .unwrap_or_default();
+    let limitations = entry.contract.limitations.clone();
     let examples = entry
         .contract
-        .as_ref()
-        .into_iter()
-        .flat_map(|contract| contract.examples.iter())
+        .examples
+        .iter()
         .map(|example| FrontendComponentExampleResponse {
             title: example.title.clone(),
             code: example.code.clone(),

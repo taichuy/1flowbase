@@ -241,21 +241,11 @@ async fn d2_ac_001_lists_filters_and_pages_registered_native_components() {
 
     assert_eq!(page.total, 1);
     assert_eq!(page.items[0].export_name, "Button");
-    assert_eq!(
-        page.items[0]
-            .contract
-            .as_ref()
-            .expect("Button has an official contract")
-            .export_name,
-        "Button"
-    );
+    assert_eq!(page.items[0].contract.export_name, "Button");
     assert_eq!(page.items[0].exports, vec!["Button", "Alert"]);
     assert!(!page.has_more);
     assert_eq!(page.next_offset, None);
-    assert_eq!(
-        page.module_sources,
-        vec!["@1flowbase/native-components", "@1flowbase/runtime-utils"]
-    );
+    assert_eq!(page.module_sources, vec!["@1flowbase/native-components"]);
 
     let detail = service
         .get_component_capability(GetFrontendComponentCapabilityQuery {
@@ -265,14 +255,7 @@ async fn d2_ac_001_lists_filters_and_pages_registered_native_components() {
         .await
         .unwrap()
         .expect("the paged component must be addressable by id");
-    assert_eq!(
-        detail
-            .contract
-            .as_ref()
-            .expect("Button has an official contract")
-            .insert_snippet,
-        "<Button></Button>"
-    );
+    assert_eq!(detail.contract.insert_snippet, "<Button></Button>");
 }
 
 #[tokio::test]
@@ -348,23 +331,8 @@ async fn ac_005_hidden_and_published_overlays_change_discovery_without_modules()
         .await
         .unwrap();
 
-    assert_eq!(page.total, 2);
-    let runtime_export = page
-        .items
-        .iter()
-        .find(|item| item.export_name == "useRuntimeValue")
-        .expect("registered export without a component contract remains discoverable");
-    assert_eq!(runtime_export.module_source, "@1flowbase/runtime-utils");
-    assert!(runtime_export.contract.is_none());
-    assert!(runtime_export.type_declarations.contains("useRuntimeValue"));
+    assert_eq!(page.total, 1);
     assert_eq!(page.items[0].export_name, "Button");
-    assert_eq!(
-        page.items[0]
-            .contract
-            .as_ref()
-            .expect("published Button has an effective contract")
-            .component_code,
-        "button-managed"
-    );
+    assert_eq!(page.items[0].contract.component_code, "button-managed");
     assert_eq!(page.items[0].exports, vec!["Button", "Alert"]);
 }

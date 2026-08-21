@@ -63,7 +63,7 @@ pub struct FrontendComponentCapability {
     pub assets: Vec<domain::FrontendModuleAsset>,
     pub type_declarations: String,
     pub export_name: String,
-    pub contract: Option<domain::FrontendComponentContract>,
+    pub contract: domain::FrontendComponentContract,
 }
 
 #[derive(Debug, Clone)]
@@ -179,14 +179,8 @@ where
 fn frontstage_component_capability(
     candidate: UiComponentCandidate,
 ) -> Option<FrontendComponentCapability> {
-    if candidate
-        .override_record
-        .as_ref()
-        .is_some_and(|record| record.state == domain::UiComponentOverrideState::Hidden)
-    {
-        return None;
-    }
     let component_id = component_capability_id(&candidate);
+    let contract = candidate.effective_contract?;
     Some(FrontendComponentCapability {
         component_id,
         installation_id: candidate.installation_id,
@@ -201,7 +195,7 @@ fn frontstage_component_capability(
         assets: candidate.assets,
         type_declarations: candidate.type_declarations,
         export_name: candidate.locator.export_name,
-        contract: candidate.effective_contract,
+        contract,
     })
 }
 
@@ -308,17 +302,17 @@ fn non_empty(value: Option<&str>) -> Option<&str> {
 fn component_matches(entry: &FrontendComponentCapability, search: &str) -> bool {
     entry.export_name.to_lowercase().contains(search)
         || entry.module_source.to_lowercase().contains(search)
-        || entry.contract.as_ref().is_some_and(|contract| {
-            contract.description.to_lowercase().contains(search)
-                || contract
-                    .props
-                    .iter()
-                    .any(|prop| prop.name.to_lowercase().contains(search))
-                || contract
-                    .limitations
-                    .iter()
-                    .any(|limitation| limitation.to_lowercase().contains(search))
-        })
+        || entry.contract.description.to_lowercase().contains(search)
+        || entry
+            .contract
+            .props
+            .iter()
+            .any(|prop| prop.name.to_lowercase().contains(search))
+        || entry
+            .contract
+            .limitations
+            .iter()
+            .any(|limitation| limitation.to_lowercase().contains(search))
 }
 
 #[derive(Debug, Clone)]

@@ -91,7 +91,7 @@ pub struct ComponentContractBody {
     #[serde(flatten)]
     pub locator: ComponentLocatorBody,
     #[schema(value_type = Object)]
-    pub contract: serde_json::Value,
+    pub contract: FrontendComponentContract,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -433,12 +433,10 @@ pub async fn update_component_contract(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let locator: UiComponentLocator = body.locator.into();
-    let contract: FrontendComponentContract = serde_json::from_value(body.contract)
-        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("contract"))?;
     UiManagementService::new(state.store.clone(), state.api_node_id.clone())
         .revise_component_contract(ReviseUiComponentContractInput {
             locator: locator.clone(),
-            contract,
+            contract: body.contract,
             actor_user_id: context.user.id,
         })
         .await?;

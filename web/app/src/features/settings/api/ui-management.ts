@@ -10,6 +10,7 @@ export {
   updateConsoleUiComponentState as updateSettingsUiComponentState,
   updateConsoleUiTemplate as updateSettingsUiTemplate,
   type ConsoleUiComponentCandidate as SettingsUiComponentCandidate,
+  type ConsoleUiComponentContract as SettingsUiComponentContract,
   type ConsoleUiComponentLocator as SettingsUiComponentLocator,
   type ConsoleUiManagedTemplate as SettingsUiManagedTemplate,
   type ConsoleUiOfficialTemplate as SettingsUiOfficialTemplate,

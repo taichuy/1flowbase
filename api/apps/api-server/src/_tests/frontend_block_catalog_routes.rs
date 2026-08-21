@@ -186,8 +186,13 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
             "source": "@acme/runtime-utils",
             "version": "1.2.3",
             "exports": ["useRuntimeValue"],
-            "binding": "host",
-            "assets": [],
+            "binding": "fetched",
+            "assets": [{
+                "path": "browser-assets/native-components.js",
+                "role": "browser_module",
+                "media_type": "text/javascript; charset=utf-8",
+                "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
+            }],
             "type_declarations": "declare module '@acme/runtime-utils' { export function useRuntimeValue(): string; }",
             "components": []
         }
@@ -402,7 +407,7 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
 }
 
 #[tokio::test]
-async fn component_capabilities_route_includes_registered_exports_without_contracts() {
+async fn component_capabilities_route_excludes_registered_exports_without_contracts() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
     seed_frontend_block(&database_url, false).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
@@ -429,44 +434,10 @@ async fn component_capabilities_route_includes_registered_exports_without_contra
     assert_eq!(response.status(), StatusCode::OK);
     let page: Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert_eq!(page["data"]["total"], 1);
-    let item = &page["data"]["items"][0];
-    assert_eq!(item["export_name"], "useRuntimeValue");
-    assert_eq!(item["module_source"], "@acme/runtime-utils");
-    assert_eq!(item["browser_asset"], Value::Null);
-    assert_eq!(item["insert_snippet"], "useRuntimeValue");
-
-    let component_id = item["component_id"]
-        .as_str()
-        .expect("registered export has a stable component id");
-    let detail_response = app
-        .oneshot(
-            Request::builder()
-                .uri(format!(
-                    "/api/console/frontstage/{workspace_id}/component-capabilities/{component_id}"
-                ))
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(detail_response.status(), StatusCode::OK);
-    let detail: Value = serde_json::from_slice(
-        &to_bytes(detail_response.into_body(), usize::MAX)
-            .await
-            .unwrap(),
-    )
-    .unwrap();
-    assert_eq!(detail["data"]["props"], json!([]));
-    assert!(detail["data"]["typescript_declaration"]
-        .as_str()
-        .unwrap()
-        .contains("useRuntimeValue"));
-    assert!(detail["data"]["api_documentation"]
-        .as_str()
-        .unwrap()
-        .contains("import { useRuntimeValue } from '@acme/runtime-utils';"));
+    // AC-001 / AC-002: this export used to become a bare `useRuntimeValue`
+    // insertion even though it has no JSX component contract.
+    assert_eq!(page["data"]["total"], 0);
+    assert_eq!(page["data"]["items"], json!([]));
 }
 
 #[tokio::test]
@@ -493,7 +464,7 @@ async fn component_dependency_lock_is_derived_from_source_imports() {
                 .header("content-type", "application/json")
                 .body(Body::from(
                     json!({
-                        "source_code": "import { useState } from 'react';\nimport { Button } from '@acme/native-components';\nexport default Button;"
+                        "source_code": "import { useState } from 'react';\nimport { Button } from '@acme/native-components';\nimport { useRuntimeValue } from '@acme/runtime-utils';\nexport default Button;"
                     })
                     .to_string(),
                 ))
@@ -529,6 +500,20 @@ async fn component_dependency_lock_is_derived_from_source_imports() {
                 "integrity": "verified_sha256"
             }],
             "exports": ["Button"]
+        }, {
+            "module_source": "@acme/runtime-utils",
+            "module_version": "1.2.3",
+            "binding": "fetched",
+            "assets": [{
+                "role": "browser_module",
+                "media_type": "text/javascript; charset=utf-8",
+                "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
+                "url": format!(
+                    "/api/console/frontstage/{workspace_id}/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
+                ),
+                "integrity": "verified_sha256"
+            }],
+            "exports": ["useRuntimeValue"]
         }])
     );
 }

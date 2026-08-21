@@ -38,12 +38,37 @@ export interface ConsoleUiComponentLocator {
   module_source: string;
   export_name: string;
 }
+export interface ConsoleUiComponentUpstream {
+  package: string;
+  component: string;
+  version: string;
+}
+export interface ConsoleUiComponentProp {
+  name: string;
+  type: string;
+  required: boolean;
+  description: string;
+}
+export interface ConsoleUiComponentExample {
+  title: string;
+  code: string;
+}
+export interface ConsoleUiComponentContract {
+  component_code: string;
+  export_name: string;
+  upstream: ConsoleUiComponentUpstream | null;
+  description: string;
+  props: ConsoleUiComponentProp[];
+  limitations: string[];
+  examples: ConsoleUiComponentExample[];
+  insert_snippet: string;
+}
 export interface ConsoleUiComponentCandidate extends ConsoleUiComponentLocator {
   module_version: string;
   state: UiComponentState;
-  official_contract: Record<string, unknown> | null;
-  latest_contract: Record<string, unknown> | null;
-  published_contract: Record<string, unknown> | null;
+  official_contract: ConsoleUiComponentContract | null;
+  latest_contract: ConsoleUiComponentContract | null;
+  published_contract: ConsoleUiComponentContract | null;
   latest_revision: number | null;
   published_revision: number | null;
 }
@@ -148,7 +173,7 @@ export const fetchConsoleUiComponents = (baseUrl?: string) =>
   });
 export const updateConsoleUiComponentContract = (
   locator: ConsoleUiComponentLocator,
-  contract: Record<string, unknown>,
+  contract: ConsoleUiComponentContract,
   csrfToken: string,
   baseUrl?: string
 ) =>

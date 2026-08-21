@@ -30,26 +30,6 @@ const uiManagementApi = vi.hoisted(() => ({
 
 vi.mock('../../api/ui-management', () => uiManagementApi);
 
-vi.mock('@monaco-editor/react', () => ({
-  default: ({
-    value,
-    language,
-    onChange
-  }: {
-    value?: string;
-    language?: string;
-    onChange?: (value: string) => void;
-  }) => (
-    <textarea
-      aria-label="Contract JSON"
-      data-language={language}
-      data-testid="contract-json-editor"
-      value={value ?? ''}
-      onChange={(event) => onChange?.(event.target.value)}
-    />
-  )
-}));
-
 import { AppProviders } from '../../../../app/AppProviders';
 import { UiManagementPanel } from '../../components/ui-management/UiManagementPanel';
 
@@ -139,7 +119,7 @@ describe('UiManagementPanel components', () => {
     expect(await screen.findByText('DataTable')).toBeInTheDocument();
     expect(container.querySelector('code')).toBeNull();
 
-    for (const name of ['编辑', '发布', '隐藏', '默认']) {
+    for (const name of ['编辑', '发布', '隐藏', '恢复官方 Contract']) {
       expect(screen.getAllByRole('button', { name })[0]).toHaveClass(
         'ant-btn-link'
       );
@@ -162,7 +142,7 @@ describe('UiManagementPanel components', () => {
     ).toBeInTheDocument();
   });
 
-  test('AC-006 edits a component contract with the JSON-highlighted editor', async () => {
+  test('AC-004 edits a component contract through structured fields', async () => {
     render(
       <AppProviders>
         <UiManagementPanel canManage />
@@ -172,8 +152,10 @@ describe('UiManagementPanel components', () => {
     await screen.findByText('DataTable');
     fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]);
 
-    const editor = await screen.findByTestId('contract-json-editor');
-    expect(editor).toHaveAttribute('data-language', 'json');
-    expect(editor).toHaveValue('{}');
+    expect(await screen.findByLabelText('组件代码')).toBeInTheDocument();
+    expect(screen.getByLabelText('导出名称')).toHaveValue('DataTable');
+    expect(screen.getByLabelText('说明')).toBeInTheDocument();
+    expect(screen.getByLabelText('插入代码')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Contract JSON')).not.toBeInTheDocument();
   });
 });

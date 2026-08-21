@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
 
-import MonacoEditor from '@monaco-editor/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import {
@@ -36,7 +35,8 @@ import {
   settingsUiComponentsQueryKey,
   updateSettingsUiComponentContract,
   updateSettingsUiComponentState,
-  type SettingsUiComponentCandidate
+  type SettingsUiComponentCandidate,
+  type SettingsUiComponentContract
 } from '../../api/ui-management';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';
 import { CodeTemplatesTab } from './CodeTemplatesTab';
@@ -48,38 +48,23 @@ type ComponentFilter = {
 
 const COMPONENT_PAGE_SIZE = 20;
 
-const CONTRACT_JSON_EDITOR_OPTIONS = {
-  automaticLayout: true,
-  fontSize: 13,
-  lineNumbersMinChars: 3,
-  minimap: { enabled: false },
-  padding: { top: 12, bottom: 12 },
-  scrollBeyondLastLine: false,
-  tabSize: 2,
-  wordWrap: 'on' as const
-};
-
-function ContractJsonEditor({
-  ariaLabel,
-  value,
-  onChange
-}: {
-  ariaLabel: string;
-  value?: string;
-  onChange?: (value: string) => void;
-}) {
-  return (
-    <MonacoEditor
-      aria-label={ariaLabel}
-      defaultLanguage="json"
-      height="min(680px, calc(100vh - 280px))"
-      language="json"
-      options={{ ...CONTRACT_JSON_EDITOR_OPTIONS, ariaLabel }}
-      theme="vs"
-      value={value ?? ''}
-      onChange={(nextValue) => onChange?.(nextValue ?? '')}
-    />
-  );
+function componentContractFormValue(
+  candidate: SettingsUiComponentCandidate
+): SettingsUiComponentContract {
+  const contract =
+    candidate.latest_contract ??
+    candidate.published_contract ??
+    candidate.official_contract;
+  return {
+    component_code: contract?.component_code ?? candidate.export_name,
+    export_name: candidate.export_name,
+    upstream: contract?.upstream ?? null,
+    description: contract?.description ?? '',
+    props: contract?.props ?? [],
+    limitations: contract?.limitations ?? [''],
+    examples: contract?.examples ?? [{ title: '', code: '' }],
+    insert_snippet: contract?.insert_snippet ?? ''
+  };
 }
 
 function requireToken(token: string | null): string {
@@ -89,7 +74,7 @@ function requireToken(token: string | null): string {
 
 function ComponentsTab({ canManage }: { canManage: boolean }) {
   const { t } = useTranslation('settingsUiManagement');
-  const { message, modal } = App.useApp();
+  const { message } = App.useApp();
   const csrfToken = useAuthStore((s) => s.csrfToken);
   const client = useQueryClient();
   const query = useQuery({
@@ -104,14 +89,19 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
     keyword: ''
   });
   const [filter, setFilter] = useState<ComponentFilter>({ keyword: '' });
-  const [form] = Form.useForm<{ contract: string }>();
+  const [form] = Form.useForm<SettingsUiComponentContract>();
   const save = useMutation({
-    mutationFn: async (value: { contract: string }) => {
+    mutationFn: async (contract: SettingsUiComponentContract) => {
       if (!selected) throw new Error('missing component');
-      const contract = JSON.parse(value.contract) as Record<string, unknown>;
+      const upstream =
+        contract.upstream?.package.trim() &&
+        contract.upstream.component.trim() &&
+        contract.upstream.version.trim()
+          ? contract.upstream
+          : null;
       return updateSettingsUiComponentContract(
         selected,
-        contract,
+        { ...contract, export_name: selected.export_name, upstream },
         requireToken(csrfToken)
       );
     },
@@ -140,24 +130,7 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
   const edit = useCallback(
     (row: SettingsUiComponentCandidate) => {
       setSelected(row);
-      form.setFieldsValue({
-        contract: JSON.stringify(
-          row.latest_contract ??
-            row.published_contract ??
-            row.official_contract ?? {
-              component_code: row.export_name,
-              export_name: row.export_name,
-              upstream: null,
-              description: '',
-              props: [],
-              limitations: [''],
-              examples: [{ title: '', code: '' }],
-              insert_snippet: `<${row.export_name} />`
-            },
-          null,
-          2
-        )
-      });
+      form.setFieldsValue(componentContractFormValue(row));
     },
     [form]
   );
@@ -252,7 +225,7 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
               disabled={!canManage || row.state === 'inherit'}
               onClick={() => mutateState({ row, state: 'inherit' })}
             >
-              {t('default')}
+              {t('restore_official')}
             </Button>
           </Space>
         )
@@ -378,22 +351,148 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
         <Form
           form={form}
           layout="vertical"
-          onFinish={(v) => {
-            try {
-              JSON.parse(v.contract);
-              save.mutate(v);
-            } catch {
-              modal.error({ title: t('invalid_json') });
-            }
-          }}
+          onFinish={(value) => save.mutate(value)}
         >
           <Form.Item
-            name="contract"
-            label={t('contract_json')}
+            name="component_code"
+            label={t('component_code')}
             rules={[{ required: true }]}
           >
-            <ContractJsonEditor ariaLabel={t('contract_json')} />
+            <Input />
           </Form.Item>
+          <Form.Item label={t('export_name')}>
+            <Input
+              aria-label={t('export_name')}
+              disabled
+              value={selected?.export_name}
+            />
+          </Form.Item>
+          <Form.Item
+            name="description"
+            label={t('description')}
+            rules={[{ required: true }]}
+          >
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Form.Item
+            name="insert_snippet"
+            label={t('insert_snippet')}
+            rules={[{ required: true }]}
+          >
+            <Input.TextArea rows={3} />
+          </Form.Item>
+          <Typography.Title level={5}>{t('props')}</Typography.Title>
+          <Form.List name="props">
+            {(fields, { add, remove }) => (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                {fields.map((field) => (
+                  <Flex key={field.key} gap={8} align="start" wrap>
+                    <Form.Item
+                      {...field}
+                      name={[field.name, 'name']}
+                      rules={[{ required: true }]}
+                    >
+                      <Input placeholder={t('prop_name')} />
+                    </Form.Item>
+                    <Form.Item
+                      {...field}
+                      name={[field.name, 'type']}
+                      rules={[{ required: true }]}
+                    >
+                      <Input placeholder={t('prop_type')} />
+                    </Form.Item>
+                    <Form.Item
+                      {...field}
+                      name={[field.name, 'description']}
+                      rules={[{ required: true }]}
+                    >
+                      <Input placeholder={t('description')} />
+                    </Form.Item>
+                    <Form.Item
+                      {...field}
+                      name={[field.name, 'required']}
+                    >
+                      <Select
+                        style={{ width: 100 }}
+                        options={[
+                          { value: true, label: t('required') },
+                          { value: false, label: t('optional') }
+                        ]}
+                      />
+                    </Form.Item>
+                    <Button type="link" danger onClick={() => remove(field.name)}>
+                      {t('remove')}
+                    </Button>
+                  </Flex>
+                ))}
+                <Button onClick={() => add({ required: false })}>
+                  {t('add_prop')}
+                </Button>
+              </Space>
+            )}
+          </Form.List>
+          <Typography.Title level={5}>{t('limitations')}</Typography.Title>
+          <Form.List name="limitations">
+            {(fields, { add, remove }) => (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                {fields.map((field) => (
+                  <Flex key={field.key} gap={8}>
+                    <Form.Item {...field} rules={[{ required: true }]} style={{ flex: 1 }}>
+                      <Input />
+                    </Form.Item>
+                    <Button type="link" danger onClick={() => remove(field.name)}>
+                      {t('remove')}
+                    </Button>
+                  </Flex>
+                ))}
+                <Button onClick={() => add('')}>{t('add_limitation')}</Button>
+              </Space>
+            )}
+          </Form.List>
+          <Typography.Title level={5}>{t('examples')}</Typography.Title>
+          <Form.List name="examples">
+            {(fields, { add, remove }) => (
+              <Space direction="vertical" style={{ width: '100%' }}>
+                {fields.map((field) => (
+                  <Flex key={field.key} gap={8} align="start" wrap>
+                    <Form.Item
+                      {...field}
+                      name={[field.name, 'title']}
+                      rules={[{ required: true }]}
+                    >
+                      <Input placeholder={t('example_title')} />
+                    </Form.Item>
+                    <Form.Item
+                      {...field}
+                      name={[field.name, 'code']}
+                      rules={[{ required: true }]}
+                      style={{ flex: 1 }}
+                    >
+                      <Input.TextArea placeholder={t('example_code')} rows={2} />
+                    </Form.Item>
+                    <Button type="link" danger onClick={() => remove(field.name)}>
+                      {t('remove')}
+                    </Button>
+                  </Flex>
+                ))}
+                <Button onClick={() => add({ title: '', code: '' })}>
+                  {t('add_example')}
+                </Button>
+              </Space>
+            )}
+          </Form.List>
+          <Typography.Title level={5}>{t('upstream')}</Typography.Title>
+          <Flex gap={8} wrap>
+            <Form.Item name={['upstream', 'package']} style={{ flex: 1 }}>
+              <Input placeholder={t('upstream_package')} />
+            </Form.Item>
+            <Form.Item name={['upstream', 'component']} style={{ flex: 1 }}>
+              <Input placeholder={t('upstream_component')} />
+            </Form.Item>
+            <Form.Item name={['upstream', 'version']} style={{ flex: 1 }}>
+              <Input placeholder={t('upstream_version')} />
+            </Form.Item>
+          </Flex>
         </Form>
       </Drawer>
     </SettingsSectionSurface>
