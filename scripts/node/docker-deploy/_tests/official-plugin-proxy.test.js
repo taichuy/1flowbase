@@ -681,12 +681,15 @@ test('docker deploy scripts bootstrap a selected portable backup before the API 
   assert.doesNotMatch(powershellScript, /source-master/u);
   assert.match(shellScript, /--env-file/u);
   assert.match(powershellScript, /--env-file/u);
+  assert.match(shellScript, /recovery-output/u);
+  assert.match(powershellScript, /recovery-output/u);
+  assert.match(powershellScript, /\[System\.IO\.File\]::Replace/u);
   for (const composeFile of [compose, externalCompose]) {
     assert.match(composeFile, /\.\/recovery:\/recovery:ro/u);
   }
 });
 
-test('docker deploy shell bootstrap accepts one portable file without an existing source environment', () => {
+test('docker deploy shell bootstrap writes recovery output in a directory before atomically replacing docker env', () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-portable-bootstrap-'));
   const tempBin = path.join(tempRoot, 'bin');
   const dockerDir = path.join(tempRoot, 'docker');
@@ -721,7 +724,13 @@ if [ "$1 $2" = "manifest inspect" ]; then
   exit 0
 fi
 if [ "$1" = "compose" ] && printf '%s\\n' "$*" | grep -q 'bootstrap'; then
-  sed -i 's/^API_PROVIDER_SECRET_MASTER_KEY=.*/API_PROVIDER_SECRET_MASTER_KEY=portable-source-master/' .env
+  recovery_output=$(printf '%s\\n' "$*" | sed -n 's/.*--volume \\([^ ]*\\):\\/recovery-output.*/\\1/p')
+  if [ -z "$recovery_output" ]; then
+    printf '%s\\n' 'bootstrap must receive a writable recovery output directory' >&2
+    exit 42
+  fi
+  sed 's/^API_PROVIDER_SECRET_MASTER_KEY=.*/API_PROVIDER_SECRET_MASTER_KEY=portable-source-master/' "$recovery_output/deployment.env" > "$recovery_output/.deployment.env.tmp"
+  mv "$recovery_output/.deployment.env.tmp" "$recovery_output/deployment.env"
 fi
 exit 0
 `,
@@ -768,9 +777,70 @@ exit 0
   assert.ok(bootstrap > dependencies, calls);
   assert.ok(finalStartup > bootstrap, calls);
   assert.match(calls, /--env-file \.recovery-env\./u);
-  assert.match(calls, /\/recovery\/deployment\.env/u);
+  assert.match(calls, /\/recovery-output\/deployment\.env/u);
+  assert.match(calls, /--volume .*\.recovery-output\..*:\/recovery-output/u);
+  assert.doesNotMatch(calls, /--volume .*\.env:\/recovery\/deployment\.env/u);
   assert.doesNotMatch(calls, /password-protected-backup/u);
 });
+
+const dockerAvailable = spawnSync('docker', ['info'], { stdio: 'ignore' }).status === 0;
+const alpineImageAvailable = dockerAvailable
+  && spawnSync('docker', ['image', 'inspect', 'alpine:3.20'], { stdio: 'ignore' }).status === 0;
+
+test(
+  'real Docker directory bind mount permits recovery configuration atomic replacement',
+  { skip: !alpineImageAvailable },
+  () => {
+    const recoveryOutput = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-recovery-output-'));
+    const deploymentEnv = path.join(recoveryOutput, 'deployment.env');
+    fs.writeFileSync(deploymentEnv, 'API_PROVIDER_SECRET_MASTER_KEY=old\n', { mode: 0o600 });
+    try {
+      const singleFileResult = spawnSync(
+        'docker',
+        [
+          'run',
+          '--rm',
+          '--mount',
+          `type=bind,src=${deploymentEnv},dst=/deployment.env`,
+          'alpine:3.20',
+          'sh',
+          '-ec',
+          'printf "API_PROVIDER_SECRET_MASTER_KEY=new\\n" > /.deployment.env.tmp && mv /.deployment.env.tmp /deployment.env',
+        ],
+        { encoding: 'utf8' },
+      );
+      assert.notEqual(
+        singleFileResult.status,
+        0,
+        'Docker must reject atomic replacement of a single-file bind mount',
+      );
+
+      const result = spawnSync(
+        'docker',
+        [
+          'run',
+          '--rm',
+          '--mount',
+          `type=bind,src=${recoveryOutput},dst=/recovery-output`,
+          'alpine:3.20',
+          'sh',
+          '-ec',
+          'sed "s/=old$/=portable-source-master/" /recovery-output/deployment.env > /recovery-output/.deployment.env.tmp && mv /recovery-output/.deployment.env.tmp /recovery-output/deployment.env',
+        ],
+        { encoding: 'utf8' },
+      );
+
+      assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+      assert.equal(
+        fs.readFileSync(deploymentEnv, 'utf8'),
+        'API_PROVIDER_SECRET_MASTER_KEY=portable-source-master\n',
+      );
+      assert.equal(fs.existsSync(path.join(recoveryOutput, '.deployment.env.tmp')), false);
+    } finally {
+      fs.rmSync(recoveryOutput, { recursive: true, force: true });
+    }
+  },
+);
 
 test('container image workflow publishes linux amd64 and arm64 manifests', () => {
   const workflow = readRepoFile('.github', 'workflows', 'container-images.yml');
