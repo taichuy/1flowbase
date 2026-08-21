@@ -175,6 +175,16 @@ where
         self.runtime.pipeline_provider_input(input).await
     }
 
+    async fn acquire_http_node_client(
+        &self,
+        timeout: std::time::Duration,
+        verify_ssl: bool,
+    ) -> Result<Option<orchestration_runtime::execution_engine::HttpRequestClientLease>> {
+        self.runtime
+            .acquire_http_node_client(self.workspace_id, timeout, verify_ssl)
+            .await
+    }
+
     async fn compact(
         &self,
         runtime: &orchestration_runtime::compiled_plan::CompiledLlmRuntime,
@@ -763,7 +773,15 @@ where
         );
         let invocation_result = self
             .runtime
-            .invoke_stream_with_live_events(&installation, input, live_provider_events)
+            .invoke_stream_with_network_egress(
+                &installation,
+                input,
+                live_provider_events,
+                self.workspace_id,
+                domain::NetworkEgressConsumerSelector::ModelProviderInstance {
+                    instance_id: instance.id,
+                },
+            )
             .await;
         if let Some(handle) = billing_heartbeat {
             handle.abort();

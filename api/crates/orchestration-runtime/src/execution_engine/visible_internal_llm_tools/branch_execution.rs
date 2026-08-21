@@ -463,8 +463,14 @@ where
             )))
         }
         "http_request" => {
-            let execution =
-                execute_http_request_node(node, resolved_inputs, variable_pool, None).await?;
+            let execution = execute_http_request_node_with_provider_invoker(
+                node,
+                resolved_inputs,
+                variable_pool,
+                None,
+                Some(context.invoker),
+            )
+            .await?;
             if let Some(error_payload) = execution.error_payload {
                 return Ok(VisibleInternalLlmToolNodeExecution::Failed(error_payload));
             }

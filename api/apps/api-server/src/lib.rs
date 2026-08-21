@@ -437,15 +437,18 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     );
     let resolved_official_mcp_bundle_source = config.resolve_official_mcp_bundle_source();
     let trusted_public_keys = config.official_plugin_trusted_public_keys()?;
-    let network_egress_http_clients = network_egress_client::NetworkEgressHttpClientResolver::new(
-        store.clone(),
-        api_provider_runtime.clone(),
-        config.provider_secret_master_key.clone(),
-        config.api_node_id.clone(),
-    );
+    let network_egress_http_clients =
+        Arc::new(network_egress_client::NetworkEgressHttpClientResolver::new(
+            store.clone(),
+            api_provider_runtime.clone(),
+            config.provider_secret_master_key.clone(),
+            config.api_node_id.clone(),
+        ));
+    let api_provider_runtime =
+        api_provider_runtime.with_network_egress(Arc::clone(&network_egress_http_clients));
     let official_extension_catalog_source = Arc::new(
         official_extension_catalog::ApiOfficialExtensionCatalogSource::from_config(config)
-            .with_network_egress(network_egress_http_clients.clone()),
+            .with_network_egress(network_egress_http_clients.as_ref().clone()),
     );
     let official_plugin_source = Arc::new(
         official_extension_catalog::ApiOfficialRuntimeExtensionSource::new(

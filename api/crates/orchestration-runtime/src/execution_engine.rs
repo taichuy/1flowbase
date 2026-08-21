@@ -71,8 +71,9 @@ mod visible_internal_llm_tools;
 use branching::*;
 use compact_operation::execute_compact_consumer;
 pub use http_request::{
-    execute_http_request_node, HttpRequestNodeExecution, HttpResponseFilePersistInput,
-    HttpResponseFilePersister,
+    execute_http_request_node, execute_http_request_node_with_provider_invoker,
+    HttpRequestClientLease, HttpRequestClientLeaseReleaser, HttpRequestNodeExecution,
+    HttpResponseFilePersistInput, HttpResponseFilePersister,
 };
 pub use llm_callbacks::pending_llm_tool_callback_requires_ephemeral_provider_continuation;
 use llm_callbacks::*;
@@ -218,6 +219,14 @@ pub trait ProviderInvoker: Send + Sync {
     /// Implementations return `Ok(None)` for ordinary JSON values and must never log the resolved
     /// raw value.
     async fn resolve_protocol_context_locator(&self, _locator: &Value) -> Result<Option<Value>> {
+        Ok(None)
+    }
+
+    async fn acquire_http_node_client(
+        &self,
+        _timeout: std::time::Duration,
+        _verify_ssl: bool,
+    ) -> Result<Option<HttpRequestClientLease>> {
         Ok(None)
     }
 }
@@ -1290,11 +1299,12 @@ where
                 });
             }
             "http_request" => {
-                let execution = execute_http_request_node(
+                let execution = execute_http_request_node_with_provider_invoker(
                     node,
                     &resolved_inputs,
                     &variable_pool,
                     runtime_context.http_response_file_persister.as_deref(),
+                    Some(invoker),
                 )
                 .await?;
                 node_traces.push(NodeExecutionTrace {

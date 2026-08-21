@@ -40,6 +40,32 @@ pub trait HttpResponseFilePersister: Send + Sync {
     ) -> Result<Value>;
 }
 
+/// A short-lived host-created HTTP client. Node execution can use the client but never receives
+/// the provider lease or its cleanup capability.
+pub struct HttpRequestClientLease {
+    client: Client,
+    releaser: Box<dyn HttpRequestClientLeaseReleaser>,
+}
+
+impl HttpRequestClientLease {
+    pub fn new(client: Client, releaser: Box<dyn HttpRequestClientLeaseReleaser>) -> Self {
+        Self { client, releaser }
+    }
+
+    fn client(&self) -> &Client {
+        &self.client
+    }
+
+    async fn release(self) -> Result<()> {
+        self.releaser.release().await
+    }
+}
+
+#[async_trait]
+pub trait HttpRequestClientLeaseReleaser: Send + Sync {
+    async fn release(self: Box<Self>) -> Result<()>;
+}
+
 #[derive(Debug, Clone)]
 struct HttpFileDescriptor {
     filename: String,
@@ -91,9 +117,66 @@ pub async fn execute_http_request_node(
     variable_pool: &Map<String, Value>,
     file_persister: Option<&dyn HttpResponseFilePersister>,
 ) -> Result<HttpRequestNodeExecution> {
-    match execute_http_request_node_inner(node, resolved_inputs, variable_pool, file_persister)
-        .await
-    {
+    execute_http_request_node_with_provider_invoker::<dyn super::ProviderInvoker>(
+        node,
+        resolved_inputs,
+        variable_pool,
+        file_persister,
+        None,
+    )
+    .await
+}
+
+pub async fn execute_http_request_node_with_provider_invoker<I>(
+    node: &CompiledNode,
+    resolved_inputs: &Map<String, Value>,
+    variable_pool: &Map<String, Value>,
+    file_persister: Option<&dyn HttpResponseFilePersister>,
+    provider_invoker: Option<&I>,
+) -> Result<HttpRequestNodeExecution>
+where
+    I: super::ProviderInvoker + ?Sized,
+{
+    let timeout = Duration::from_millis(config_u64(&node.config, "timeout_ms", DEFAULT_TIMEOUT_MS));
+    let verify_ssl = node
+        .config
+        .get("verify_ssl")
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let lease = match provider_invoker {
+        Some(invoker) => {
+            match invoker
+                .acquire_http_node_client(timeout, verify_ssl)
+                .await
+            {
+                Ok(lease) => lease,
+                Err(error) => return http_request_execution_result(Err(error)),
+            }
+        }
+        None => None,
+    };
+    let result = execute_http_request_node_inner(
+        node,
+        resolved_inputs,
+        variable_pool,
+        file_persister,
+        lease.as_ref().map(HttpRequestClientLease::client),
+    )
+    .await;
+    let release = match lease {
+        Some(lease) => lease.release().await,
+        None => Ok(()),
+    };
+    match (result, release) {
+        (Err(error), _) | (Ok(_), Err(error)) => http_request_execution_result(Err(error)),
+        (Ok(execution), Ok(())) => Ok(execution),
+    }
+}
+
+fn http_request_execution_result(
+    result: Result<HttpRequestNodeExecution>,
+) -> Result<HttpRequestNodeExecution> {
+    match result {
         Ok(execution) => Ok(execution),
         Err(error) => Ok(HttpRequestNodeExecution {
             output_payload: json!({}),
@@ -112,6 +195,7 @@ async fn execute_http_request_node_inner(
     resolved_inputs: &Map<String, Value>,
     variable_pool: &Map<String, Value>,
     file_persister: Option<&dyn HttpResponseFilePersister>,
+    routed_client: Option<&Client>,
 ) -> Result<HttpRequestNodeExecution> {
     let timeout_ms = config_u64(&node.config, "timeout_ms", DEFAULT_TIMEOUT_MS);
     let max_response_bytes = config_u64(
@@ -125,11 +209,14 @@ async fn execute_http_request_node_inner(
         .get("verify_ssl")
         .and_then(Value::as_bool)
         .unwrap_or(true);
-    let client = Client::builder()
-        .timeout(Duration::from_millis(timeout_ms))
-        .danger_accept_invalid_certs(!verify_ssl)
-        .build()
-        .context("failed to build HTTP client")?;
+    let client = match routed_client {
+        Some(client) => client.clone(),
+        None => Client::builder()
+            .timeout(Duration::from_millis(timeout_ms))
+            .danger_accept_invalid_certs(!verify_ssl)
+            .build()
+            .context("failed to build HTTP client")?,
+    };
     let method_text = node
         .config
         .get("method")

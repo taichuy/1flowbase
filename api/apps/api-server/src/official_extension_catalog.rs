@@ -21,7 +21,7 @@ use uuid::Uuid;
 
 use crate::{
     config::{ApiConfig, ResolvedOfficialExtensionCatalogSourceConfig},
-    network_egress_client::{NetworkEgressHttpClientLease, NetworkEgressHttpClientResolver},
+    network_egress_client::{NetworkEgressExecutionScope, NetworkEgressHttpClientResolver},
     official_plugin_registry::rewrite_github_raw_url,
 };
 
@@ -747,12 +747,12 @@ impl ApiOfficialExtensionCatalogSource {
     async fn source_for_workspace(
         &self,
         workspace_id: Uuid,
-    ) -> Result<(Self, Option<NetworkEgressHttpClientLease>)> {
+    ) -> Result<(Self, Option<NetworkEgressExecutionScope>)> {
         let Some(resolver) = self.network_egress.as_ref() else {
             return Ok((self.clone(), None));
         };
         let lease = resolver
-            .resolve(
+            .acquire(
                 workspace_id,
                 domain::NetworkEgressConsumerSelector::GithubOfficialSources,
             )
@@ -761,14 +761,14 @@ impl ApiOfficialExtensionCatalogSource {
             return Ok((self.clone(), None));
         };
         let mut routed = self.clone();
-        routed.client = lease.client().clone();
+        routed.client = lease.http_client().clone();
         routed.network_egress = None;
         Ok((routed, Some(lease)))
     }
 
     async fn finish_workspace_request<T>(
         result: Result<T>,
-        lease: Option<NetworkEgressHttpClientLease>,
+        lease: Option<NetworkEgressExecutionScope>,
     ) -> Result<T> {
         let release = match lease {
             Some(lease) => lease.release().await,
@@ -1076,7 +1076,7 @@ impl ApiOfficialExtensionCatalogSource {
             return self.download_artifact_bytes(url).await;
         };
         let lease = resolver
-            .resolve(
+            .acquire(
                 workspace_id,
                 domain::NetworkEgressConsumerSelector::GithubOfficialSources,
             )
@@ -1090,10 +1090,10 @@ impl ApiOfficialExtensionCatalogSource {
     async fn download_artifact_with_lease(
         &self,
         url: &str,
-        lease: NetworkEgressHttpClientLease,
+        lease: NetworkEgressExecutionScope,
     ) -> Result<Vec<u8>> {
         let result = download_with_client_budget(
-            lease.client(),
+            lease.http_client(),
             url,
             MAX_EXTENSION_ARTIFACT_BYTES,
             "official extension artifact",

@@ -49,6 +49,7 @@ use tokio::sync::RwLock;
 use tracing::info;
 use uuid::Uuid;
 
+use crate::network_egress_client::NetworkEgressHttpClientResolver;
 use crate::runtime_activity::{
     current_application_id, ApplicationActivityFinish, ApplicationActivityGuard,
     ApplicationActivityKind, ApplicationRuntimeActivityTracker,
@@ -137,6 +138,7 @@ impl ApiRuntimeServices {
 pub struct ApiProviderRuntime {
     services: Arc<ApiRuntimeServices>,
     runtime_activity: Option<Arc<ApplicationRuntimeActivityTracker>>,
+    network_egress: Option<Arc<NetworkEgressHttpClientResolver>>,
 }
 
 impl ApiProviderRuntime {
@@ -144,6 +146,7 @@ impl ApiProviderRuntime {
         Self {
             services,
             runtime_activity: None,
+            network_egress: None,
         }
     }
 
@@ -154,7 +157,16 @@ impl ApiProviderRuntime {
         Self {
             services,
             runtime_activity: Some(runtime_activity),
+            network_egress: None,
         }
+    }
+
+    pub fn with_network_egress(
+        mut self,
+        network_egress: Arc<NetworkEgressHttpClientResolver>,
+    ) -> Self {
+        self.network_egress = Some(network_egress);
+        self
     }
 
     pub async fn get_balance(
@@ -664,6 +676,62 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         );
         finish_runtime_activity(activity, &result);
         result
+    }
+
+    async fn invoke_stream_with_network_egress(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        mut input: ProviderInvocationInput,
+        live_events: Option<ProviderLiveEventSenders>,
+        workspace_id: Uuid,
+        selector: domain::NetworkEgressConsumerSelector,
+    ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
+        let Some(network_egress) = self.network_egress.as_ref() else {
+            return self
+                .invoke_stream_with_live_events(installation, input, live_events)
+                .await;
+        };
+        let Some(scope) = network_egress.acquire(workspace_id, selector).await? else {
+            return self
+                .invoke_stream_with_live_events(installation, input, live_events)
+                .await;
+        };
+
+        input.set_network_egress_context(scope.provider_invocation_context());
+        let invocation = self
+            .invoke_stream_with_live_events(installation, input, live_events)
+            .await;
+        let release = scope.release().await;
+        match (invocation, release) {
+            (Err(error), _) => Err(error),
+            (Ok(_), Err(error)) => Err(error),
+            (Ok(output), Ok(())) => Ok(output),
+        }
+    }
+
+    async fn acquire_http_node_client(
+        &self,
+        workspace_id: Uuid,
+        timeout: std::time::Duration,
+        verify_ssl: bool,
+    ) -> anyhow::Result<Option<orchestration_runtime::execution_engine::HttpRequestClientLease>>
+    {
+        let Some(network_egress) = self.network_egress.as_ref() else {
+            return Ok(None);
+        };
+        let Some(scope) = network_egress
+            .acquire(
+                workspace_id,
+                domain::NetworkEgressConsumerSelector::HttpNodeDefault,
+            )
+            .await?
+        else {
+            return Ok(None);
+        };
+        scope
+            .into_http_request_client_lease(timeout, verify_ssl)
+            .await
+            .map(Some)
     }
 }
 

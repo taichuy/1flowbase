@@ -128,4 +128,32 @@ pub trait ProviderRuntimePort: Send + Sync {
         let _ = live_events;
         self.invoke_stream(installation, input).await
     }
+
+    /// Invokes a model provider through the host-owned network execution boundary.
+    ///
+    /// Runtime adapters that do not own Network Center state keep the existing behavior. The API
+    /// host overrides this operation so route selection and lease cleanup never escape to a worker.
+    async fn invoke_stream_with_network_egress(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        input: ProviderInvocationInput,
+        live_events: Option<ProviderLiveEventSenders>,
+        workspace_id: uuid::Uuid,
+        selector: domain::NetworkEgressConsumerSelector,
+    ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
+        let _ = (workspace_id, selector);
+        self.invoke_stream_with_live_events(installation, input, live_events)
+            .await
+    }
+
+    async fn acquire_http_node_client(
+        &self,
+        workspace_id: uuid::Uuid,
+        timeout: std::time::Duration,
+        verify_ssl: bool,
+    ) -> anyhow::Result<Option<orchestration_runtime::execution_engine::HttpRequestClientLease>>
+    {
+        let _ = (workspace_id, timeout, verify_ssl);
+        Ok(None)
+    }
 }

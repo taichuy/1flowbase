@@ -44,6 +44,7 @@ pub const PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_CHAT_V1_CAPABILITY: &str =
     "protocol_context.restore.openai_chat.v1";
 pub const PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_RESPONSES_V1_CAPABILITY: &str =
     "protocol_context.restore.openai_responses.v1";
+pub const PROVIDER_NETWORK_EGRESS_HANDOFF_V1_CAPABILITY: &str = "network_egress_handoff/v1";
 pub const PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY: &str =
     "1flowbase_generate_translation";
 const PROVIDER_PROJECTION_LOCATOR_LIMIT: usize = 16;
@@ -591,6 +592,8 @@ pub enum ProviderInvocationCapability {
     #[serde(rename = "message_blocks.redacted_reasoning_history.v1")]
     MessageBlocksRedactedReasoningHistoryV1,
     ProtocolContext,
+    #[serde(rename = "network_egress_handoff/v1")]
+    NetworkEgressHandoffV1,
 }
 
 impl ProviderInvocationCapability {
@@ -620,8 +623,24 @@ impl ProviderInvocationCapability {
             // Kept as an input compatibility marker for host call sites. It is stripped before
             // provider projection and is not a package manifest capability.
             Self::ProtocolContext => "protocol_context",
+            Self::NetworkEgressHandoffV1 => PROVIDER_NETWORK_EGRESS_HANDOFF_V1_CAPABILITY,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderNetworkEgressMode {
+    RequiredHttpProxy,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProviderNetworkEgressContext {
+    pub mode: ProviderNetworkEgressMode,
+    pub http_proxy_url: String,
+    pub expires_at: String,
+    pub required: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -1260,6 +1279,28 @@ pub struct ProviderWireAudit {
 }
 
 impl ProviderInvocationInput {
+    pub const NETWORK_EGRESS_CONTEXT_KEY: &'static str = "network_egress";
+
+    pub fn set_network_egress_context(&mut self, context: ProviderNetworkEgressContext) {
+        self.required_capabilities
+            .insert(ProviderInvocationCapability::NetworkEgressHandoffV1);
+        self.run_context.insert(
+            Self::NETWORK_EGRESS_CONTEXT_KEY.to_string(),
+            serde_json::to_value(context)
+                .expect("ProviderNetworkEgressContext must always serialize"),
+        );
+    }
+
+    pub fn network_egress_context(&self) -> Result<Option<ProviderNetworkEgressContext>, String> {
+        self.run_context
+            .get(Self::NETWORK_EGRESS_CONTEXT_KEY)
+            .map(|value| {
+                serde_json::from_value(value.clone())
+                    .map_err(|_| "network_egress context is invalid".to_string())
+            })
+            .transpose()
+    }
+
     pub fn system_text(&self) -> Option<String> {
         (!self.system.is_empty()).then(|| {
             self.system
