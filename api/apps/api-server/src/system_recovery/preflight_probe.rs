@@ -13,7 +13,7 @@ use domain::{
 };
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
-use storage_durable::{migration_head, PostgreSqlToolchain};
+use storage_durable::{current_migration_head, supported_migration_heads, PostgreSqlToolchain};
 use sysinfo::Disks;
 
 pub struct ApiRecoveryTargetProbe {
@@ -57,9 +57,10 @@ impl ApiRecoveryTargetProbe {
 #[async_trait]
 impl RecoveryTargetProbe for ApiRecoveryTargetProbe {
     async fn snapshot(&self) -> Result<RecoveryTargetSnapshot, RecoveryPreflightError> {
-        let migration_head = migration_head(&self.pool)
-            .await
-            .map_err(|_| RecoveryPreflightError::TargetProbe)?;
+        let migration_head =
+            current_migration_head().map_err(|_| RecoveryPreflightError::TargetProbe)?;
+        let supported_source_migration_heads =
+            supported_migration_heads().map_err(|_| RecoveryPreflightError::TargetProbe)?;
         let postgres_toolchain_compatible = self
             .postgres_toolchain
             .verify_server_compatibility(&self.pool)
@@ -78,6 +79,7 @@ impl RecoveryTargetProbe for ApiRecoveryTargetProbe {
                 format_version: SYSTEM_BACKUP_FORMAT_VERSION,
                 application_build: self.application_build.clone(),
                 migration_head,
+                supported_source_migration_heads,
                 master_key_fingerprint: self.master_key_fingerprint.clone(),
             },
             available_space_bytes: available_space(&self.repository_root)

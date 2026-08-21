@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use axum::http::HeaderValue;
+use domain::ApplicationBuild;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -48,7 +49,7 @@ pub struct ApiConfig {
     pub system_backup_repository_root: String,
     /// Optional pre-upgrade key. It is only used for fingerprint-routed reads.
     pub legacy_system_backup_key_base64: Option<String>,
-    pub system_build_identity: String,
+    pub application_build: ApplicationBuild,
     pub allow_unverified_filesystem_dropins: bool,
     pub allow_uploaded_host_extensions: bool,
     pub official_plugin_repository: String,
@@ -187,10 +188,8 @@ impl ApiConfig {
             .get("API_SYSTEM_BACKUP_KEY_BASE64")
             .cloned()
             .filter(|value| !value.trim().is_empty());
-        let system_build_identity = map
-            .get("API_SYSTEM_BUILD_IDENTITY")
-            .cloned()
-            .unwrap_or_else(|| format!("dev.{}", env!("CARGO_PKG_VERSION")));
+        let application_build = ApplicationBuild::try_from(env!("API_SERVER_BUILD_IDENTITY"))
+            .expect("api-server build script must embed a valid application build identity");
         let allow_unverified_filesystem_dropins = parse_bool_flag(
             "API_PLUGIN_ALLOW_UNVERIFIED_FILESYSTEM_DROPINS",
             map.get("API_PLUGIN_ALLOW_UNVERIFIED_FILESYSTEM_DROPINS"),
@@ -298,14 +297,6 @@ impl ApiConfig {
                 "invalid env API_PROVIDER_SECRET_MASTER_KEY when API_ENV=production"
             ));
         }
-        if env == ApiEnvironment::Production && !map.contains_key("API_SYSTEM_BUILD_IDENTITY") {
-            return Err(anyhow!(
-                "missing env API_SYSTEM_BUILD_IDENTITY when API_ENV=production"
-            ));
-        }
-        domain::ApplicationBuild::try_from(system_build_identity.clone())
-            .map_err(|_| anyhow!("invalid env API_SYSTEM_BUILD_IDENTITY"))?;
-
         Ok(Self {
             env,
             database_url: get("API_DATABASE_URL")?,
@@ -341,7 +332,7 @@ impl ApiConfig {
             host_extension_dropin_root,
             system_backup_repository_root,
             legacy_system_backup_key_base64,
-            system_build_identity,
+            application_build,
             allow_unverified_filesystem_dropins,
             allow_uploaded_host_extensions,
             official_plugin_repository,

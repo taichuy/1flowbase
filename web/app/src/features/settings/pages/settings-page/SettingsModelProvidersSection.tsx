@@ -14,10 +14,8 @@ import { useAuthStore } from '../../../../state/auth-store';
 import { ModelProviderCatalogPanel } from '../../components/model-providers/ModelProviderCatalogPanel';
 import { ModelProviderInstanceDrawer } from '../../components/model-providers/ModelProviderInstanceDrawer';
 import { ModelProviderInstancesModal } from '../../components/model-providers/ModelProviderInstancesModal';
-import {
-  confirmOfficialPluginUpgrade,
-  OfficialPluginInstallPanel
-} from '../../components/model-providers/OfficialPluginInstallPanel';
+import { OfficialPluginInstallPanel } from '../../components/model-providers/OfficialPluginInstallPanel';
+import { confirmOfficialPluginUpgrade } from '../../components/model-providers/official-plugin-upgrade-confirmation';
 import { PluginUploadInstallModal } from '../../components/model-providers/PluginUploadInstallModal';
 import {
   settingsModelProviderCatalogQueryKey,
@@ -392,9 +390,15 @@ export function SettingsModelProvidersSection({
               provider_instance_ids: group.targets.map(
                 (target) => target.source_instance_id
               ),
-              excluded_provider_instance_ids: group.targets
-                .filter((target) => !target.routing_enabled)
-                .map((target) => target.source_instance_id)
+              excluded_provider_instance_ids: group.targets.reduce<string[]>(
+                (excluded, target) => {
+                  if (!target.routing_enabled) {
+                    excluded.push(target.source_instance_id);
+                  }
+                  return excluded;
+                },
+                []
+              )
             })
           )
         }
@@ -821,8 +825,12 @@ export function SettingsModelProvidersSection({
                 excluded_provider_instance_ids:
                   modalProviderOption?.model_groups
                     .find((group) => group.model_id === modelId)
-                    ?.targets.filter((target) => !target.routing_enabled)
-                    .map((target) => target.source_instance_id) ?? []
+                    ?.targets.reduce<string[]>((excluded, target) => {
+                      if (!target.routing_enabled) {
+                        excluded.push(target.source_instance_id);
+                      }
+                      return excluded;
+                    }, []) ?? []
               };
 
           updateMainInstanceSettingsMutation.mutate({

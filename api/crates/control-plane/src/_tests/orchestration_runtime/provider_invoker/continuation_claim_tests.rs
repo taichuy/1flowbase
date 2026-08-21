@@ -132,7 +132,7 @@ fn issue_1743_affinity(provider_instance_id: Uuid) -> crate::ports::ProviderTran
 fn issue_1743_invoker(
     flow_run_id: Uuid,
     store: Arc<Issue1743ContinuationStore>,
-    continuation: crate::ports::ProviderContinuation,
+    continuation: Option<crate::ports::ProviderContinuation>,
 ) -> RuntimeProviderInvoker<
     test_support::InMemoryOrchestrationRuntimeRepository,
     test_support::InMemoryProviderRuntime,
@@ -153,7 +153,7 @@ fn issue_1743_invoker(
         answer_presentation: None,
         provider_transport_payload: None,
         provider_transport_store: Some(store),
-        provider_continuation: Some(continuation),
+        provider_continuation: continuation,
         model_pricing_cache_store: None,
     }
 }
@@ -179,7 +179,7 @@ async fn issue_1743_atomic_claim_owned_copy_survives_probe_and_actual_rebuild() 
     let claimed = crate::ports::ProviderTransportStore::consume_continuation(store.as_ref(), slot)
         .await
         .expect("execution segment must atomically own the continuation");
-    let invoker = issue_1743_invoker(flow_run_id, store.clone(), claimed);
+    let invoker = issue_1743_invoker(flow_run_id, store.clone(), Some(claimed));
     let runtime = issue_1743_runtime(provider_instance_id);
     let mut input = ProviderInvocationInput {
         messages: vec![ProviderMessage {
@@ -225,6 +225,66 @@ async fn issue_1743_atomic_claim_owned_copy_survives_probe_and_actual_rebuild() 
     );
 }
 
+#[tokio::test]
+async fn issue_1743_provider_continuation_is_staged_before_late_billing_classification() {
+    let provider_instance_id = Uuid::now_v7();
+    let flow_run_id = Uuid::now_v7();
+    let store = Arc::new(Issue1743ContinuationStore::default());
+    let invoker = issue_1743_invoker(
+        flow_run_id,
+        store.clone(),
+        Some(
+            crate::ports::ProviderContinuation::new(
+                "resp-staged",
+                issue_1743_affinity(provider_instance_id),
+            )
+            .unwrap(),
+        ),
+    );
+
+    invoker
+        .stage_provider_continuation(&issue_1743_runtime(provider_instance_id), Some("resp-next"))
+        .await
+        .expect("provider continuation must be staged before billing classification");
+
+    assert_eq!(
+        crate::ports::ProviderTransportStore::get_continuation(
+            store.as_ref(),
+            crate::ports::ProviderContinuationSlotId::for_flow_run(flow_run_id),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .response_id(),
+        "resp-next"
+    );
+}
+
+#[tokio::test]
+async fn issue_1743_provider_response_id_is_staged_without_existing_transport_state() {
+    let provider_instance_id = Uuid::now_v7();
+    let flow_run_id = Uuid::now_v7();
+    let store = Arc::new(Issue1743ContinuationStore::default());
+    let invoker = issue_1743_invoker(flow_run_id, store.clone(), None);
+
+    invoker
+        .stage_provider_continuation(&issue_1743_runtime(provider_instance_id), Some("resp-mcp"))
+        .await
+        .expect("provider response id must be staged for a later MCP approval turn");
+
+    assert_eq!(
+        crate::ports::ProviderTransportStore::get_continuation(
+            store.as_ref(),
+            crate::ports::ProviderContinuationSlotId::for_flow_run(flow_run_id),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .response_id(),
+        "resp-mcp"
+    );
+}
+
 #[test]
 fn issue_1743_continuation_route_requires_affinity_and_native_capability() {
     let provider_instance_id = Uuid::now_v7();
@@ -237,7 +297,7 @@ fn issue_1743_continuation_route_requires_affinity_and_native_capability() {
     let invoker = issue_1743_invoker(
         flow_run_id,
         Arc::new(Issue1743ContinuationStore::default()),
-        continuation,
+        Some(continuation),
     );
     let runtime = issue_1743_runtime(provider_instance_id);
     let capability = plugin_framework::provider_contract::ProviderInvocationCapability::NativeContinuationSupported

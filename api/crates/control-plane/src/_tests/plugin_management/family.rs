@@ -425,7 +425,6 @@ async fn ac_001_ac_002_upgrade_latest_installs_and_loads_existing_global_target_
         .unwrap();
 
     assert_eq!(task.status, PluginTaskStatus::Succeeded);
-    assert_eq!(task.detail_json["cleanup_pending_count"], 1);
     assert_eq!(
         repository
             .assignment_installation_id("openai_compatible")

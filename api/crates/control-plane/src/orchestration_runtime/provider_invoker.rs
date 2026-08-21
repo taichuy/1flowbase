@@ -806,6 +806,14 @@ where
             Ok(output) => (Some(output), None),
             Err(error) => (None, Some(error)),
         };
+        // A native Responses turn may already have emitted a provider-owned continuation
+        // before billing can classify the final usage. Preserve that one-shot state even when
+        // fail-closed billing must reject the turn; the client still needs the continuation to
+        // submit the provider's next approval/input turn.
+        if let Some(output) = invocation_output.as_ref() {
+            self.stage_provider_continuation(runtime, output.result.response_id.as_deref())
+                .await?;
+        }
         if let Some((rule, reservation, invocation_id, flow_run_id)) = billing {
             let usage = invocation_output.as_ref().map_or_else(
                 || {
@@ -1030,8 +1038,6 @@ where
                 "_1flowbase_upstream_provider_metadata": provider_metadata,
             });
         }
-        self.stage_provider_continuation(runtime, invocation_output.result.response_id.as_deref())
-            .await?;
         let captured_first_token_timing = first_token_timing.lock().ok().and_then(|timing| *timing);
         let mut output = orchestration_runtime::execution_engine::ProviderInvocationOutput {
             events: invocation_output.events,
@@ -1680,9 +1686,10 @@ where
         else {
             return Ok(());
         };
-        if self.provider_transport_payload.is_none() && self.provider_continuation.is_none() {
-            return Ok(());
-        }
+        // A first native Responses turn can expose only the Provider response id; the opaque
+        // request payload and an already-claimed continuation are both absent on that path.
+        // Keep the id available for the later MCP approval turn instead of treating those
+        // absent inputs as proof that no continuation exists.
         let continuation = crate::ports::ProviderContinuation::new(
             response_id,
             crate::ports::ProviderTransportAffinity::new(

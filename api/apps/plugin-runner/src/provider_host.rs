@@ -690,6 +690,8 @@ impl ProviderHost {
         })
     }
 
+    // Preserve the typed provider diagnostic at this public runtime boundary.
+    #[allow(clippy::result_large_err)]
     pub async fn count_tokens(
         &self,
         plugin_id: &str,
@@ -788,6 +790,8 @@ impl ProviderHost {
         })
     }
 
+    // Preserve the typed provider diagnostic at this public runtime boundary.
+    #[allow(clippy::result_large_err)]
     pub async fn compact(
         &self,
         plugin_id: &str,

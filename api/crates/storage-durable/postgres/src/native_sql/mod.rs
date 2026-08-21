@@ -10,6 +10,7 @@ use sqlx::{
     Column, Either, PgPool, Row, TypeInfo, ValueRef,
 };
 
+#[allow(clippy::result_large_err)]
 pub async fn execute_native_sql(
     pool: &PgPool,
     sql: &str,

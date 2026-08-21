@@ -34,6 +34,24 @@ fn required_text_delta(index: usize) -> RuntimeEventPayload {
     }
 }
 
+fn provider_output_item(event_type: &str) -> RuntimeEventPayload {
+    RuntimeEventPayload {
+        event_type: event_type.to_string(),
+        source: RuntimeEventSource::Provider,
+        durability: RuntimeEventDurability::Ephemeral,
+        persist_required: false,
+        trace_visible: true,
+        payload: json!({
+            "type": event_type,
+            "output_index": 0,
+            "item": {
+                "id": "approval_1",
+                "type": "mcp_approval_request"
+            }
+        }),
+    }
+}
+
 fn blob_event(size: usize, durability: RuntimeEventDurability) -> RuntimeEventPayload {
     RuntimeEventPayload {
         event_type: "debug_blob".to_string(),
@@ -350,6 +368,53 @@ async fn local_runtime_event_stream_required_lane_preserves_duplicates_at_capaci
     let second = subscription.live_events.recv().await.unwrap();
     assert_eq!((first.sequence, second.sequence), (1, 2));
     assert_eq!(first.payload, second.payload);
+}
+
+#[tokio::test]
+async fn provider_output_items_arrive_before_terminal_on_required_lane() {
+    let stream = LocalRuntimeEventStream::with_broadcast_capacity_for_tests(1);
+    let run_id = Uuid::now_v7();
+    stream
+        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
+        .await
+        .unwrap();
+    let mut subscription = stream.subscribe(run_id, Some(0)).await.unwrap();
+
+    stream
+        .append(run_id, provider_output_item("provider_output_item_added"))
+        .await
+        .unwrap();
+    stream
+        .append(run_id, provider_output_item("provider_output_item_done"))
+        .await
+        .unwrap();
+    stream.append(run_id, required_text_delta(1)).await.unwrap();
+
+    let event_types = [
+        tokio::time::timeout(Duration::from_secs(1), subscription.live_events.recv())
+            .await
+            .expect("added output item must be delivered before the terminal")
+            .expect("added output item lane must remain open")
+            .event_type,
+        tokio::time::timeout(Duration::from_secs(1), subscription.live_events.recv())
+            .await
+            .expect("done output item must be delivered before the terminal")
+            .expect("done output item lane must remain open")
+            .event_type,
+        tokio::time::timeout(Duration::from_secs(1), subscription.live_events.recv())
+            .await
+            .expect("terminal must follow provider output items")
+            .expect("terminal lane must remain open")
+            .event_type,
+    ];
+    assert_eq!(
+        event_types,
+        [
+            "provider_output_item_added",
+            "provider_output_item_done",
+            "text_delta"
+        ]
+    );
 }
 
 #[tokio::test]

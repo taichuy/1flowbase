@@ -89,6 +89,7 @@ enum InterfaceParameterTarget {
     Body,
 }
 
+#[allow(clippy::result_large_err)]
 pub async fn execute(
     state: Arc<ApiState>,
     headers: HeaderMap,
@@ -110,6 +111,7 @@ pub async fn execute(
     .await
 }
 
+#[allow(clippy::result_large_err)]
 pub async fn execute_with_server_bindings(
     state: Arc<ApiState>,
     headers: HeaderMap,

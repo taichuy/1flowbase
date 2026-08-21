@@ -140,8 +140,7 @@ impl SystemBackupRuntime {
             .verify_server_compatibility(store.pool())
             .await
             .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
-        let application_build = ApplicationBuild::try_from(config.system_build_identity.clone())
-            .map_err(|_| SystemBackupRuntimeError::Configuration)?;
+        let application_build = config.application_build.clone();
         let master_key_fingerprint = KeyFingerprint::try_from(format!(
             "{:x}",
             Sha256::digest(config.provider_secret_master_key.as_bytes())
@@ -225,13 +224,15 @@ impl SystemBackupRuntime {
         backup_set_id: BackupSetId,
     ) -> Result<SystemBackupDetail, SystemBackupRuntimeError> {
         let sealed = self.service.get(backup_set_id).await?;
-        let migration_head = storage_durable::migration_head(self.store.pool())
-            .await
+        let migration_head = storage_durable::current_migration_head()
+            .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
+        let supported_source_migration_heads = storage_durable::supported_migration_heads()
             .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
         let target = domain::BackupCompatibilityTarget {
             format_version: domain::SYSTEM_BACKUP_FORMAT_VERSION,
             application_build: self.application_build.clone(),
             migration_head,
+            supported_source_migration_heads,
             master_key_fingerprint: self.master_key_fingerprint.clone(),
         };
         let compatibility_failures = strict_backup_compatibility(sealed.manifest(), &target)

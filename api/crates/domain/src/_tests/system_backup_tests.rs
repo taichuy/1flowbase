@@ -197,25 +197,39 @@ fn recovery_job_requires_safety_backup_before_restoring_path() {
 }
 
 #[test]
-fn strict_compatibility_reports_every_mismatch() {
+fn compatibility_allows_a_different_source_build_on_a_supported_migration_path() {
     let manifest = manifest();
     let result = strict_backup_compatibility(
         &manifest,
         &BackupCompatibilityTarget {
-            format_version: SYSTEM_BACKUP_FORMAT_VERSION + 1,
+            format_version: SYSTEM_BACKUP_FORMAT_VERSION,
             application_build: ApplicationBuild::try_from("git.other").unwrap(),
             migration_head: MigrationHead::try_from("202608120001").unwrap(),
-            master_key_fingerprint: KeyFingerprint::try_from(fingerprint('e')).unwrap(),
+            supported_source_migration_heads: [manifest.migration_head().clone()]
+                .into_iter()
+                .collect(),
+            master_key_fingerprint: manifest.master_key_fingerprint().clone(),
         },
     );
 
-    assert_eq!(
-        result,
-        Err(vec![
-            BackupIncompatibility::FormatVersion,
-            BackupIncompatibility::ApplicationBuild,
-            BackupIncompatibility::MigrationHead,
-            BackupIncompatibility::MasterKeyFingerprint,
-        ])
+    assert_eq!(result, Ok(()));
+}
+
+#[test]
+fn compatibility_rejects_an_unknown_source_migration_path() {
+    let manifest = manifest();
+    let result = strict_backup_compatibility(
+        &manifest,
+        &BackupCompatibilityTarget {
+            format_version: SYSTEM_BACKUP_FORMAT_VERSION,
+            application_build: ApplicationBuild::try_from("git.other").unwrap(),
+            migration_head: MigrationHead::try_from("202608120001").unwrap(),
+            supported_source_migration_heads: [MigrationHead::try_from("other.path").unwrap()]
+                .into_iter()
+                .collect(),
+            master_key_fingerprint: manifest.master_key_fingerprint().clone(),
+        },
     );
+
+    assert_eq!(result, Err(vec![BackupIncompatibility::MigrationHead]));
 }

@@ -173,6 +173,7 @@ impl PostRestoreReconcileTarget for PostgreSqlPostRestoreReconciler {
 pub struct PostgreSqlPostRestoreHealthVerifier {
     database_url: String,
     node_id: String,
+    expected_migration_head: domain::MigrationHead,
     repository: Arc<dyn BackupRepository>,
     object_resolver: Arc<dyn RecoveryObjectStorageResolver>,
     object_registry: Arc<storage_object::FileStorageDriverRegistry>,
@@ -183,6 +184,7 @@ impl PostgreSqlPostRestoreHealthVerifier {
     pub fn new(
         database_url: impl Into<String>,
         node_id: impl Into<String>,
+        expected_migration_head: domain::MigrationHead,
         repository: Arc<dyn BackupRepository>,
         object_resolver: Arc<dyn RecoveryObjectStorageResolver>,
         object_registry: Arc<storage_object::FileStorageDriverRegistry>,
@@ -191,6 +193,7 @@ impl PostgreSqlPostRestoreHealthVerifier {
         Self {
             database_url: database_url.into(),
             node_id: node_id.into(),
+            expected_migration_head,
             repository,
             object_resolver,
             object_registry,
@@ -413,7 +416,7 @@ impl PostRestoreHealthVerifier for PostgreSqlPostRestoreHealthVerifier {
             .load_manifest(context.backup_set_id)
             .await
             .map_err(|_| PostRestoreDependencyError)?;
-        self.verify_database(context, sealed.manifest().migration_head())
+        self.verify_database(context, &self.expected_migration_head)
             .await?;
         for component in sealed.manifest().components() {
             match component.kind {

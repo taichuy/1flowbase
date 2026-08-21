@@ -740,6 +740,15 @@
         "managed-table-scope-time-index"
       ]
     },
+    "plugin_artifact_cleanup_jobs": {
+      "kind": "system_runtime_cleanup_queue",
+      "reason": "system-scoped artifact cleanup obligations are keyed by node and provider; retry mutations use last_attempt_at and last_error, while listing is ordered by node and creation time",
+      "skip": [
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
     "retained_frontend_module_assets": {
       "kind": "bounded_projection",
       "reason": "immutable module assets are bounded by one system extension installation and composite content identity",

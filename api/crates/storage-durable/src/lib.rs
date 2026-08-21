@@ -9,8 +9,9 @@ pub use runtime::{
     build_main_durable_postgres_with_pool_settings, MainDurableRuntime, MainDurableStore,
 };
 pub use storage_postgres::{
-    execute_native_sql, migration_head, PgPoolSettings, PostgreSqlLogicalBackup,
-    PostgreSqlRecoveryTarget, PostgreSqlToolchain, RuntimeTableNamePolicy,
+    current_migration_head, execute_native_sql, migration_head, supported_migration_heads,
+    PgPoolSettings, PostgreSqlLogicalBackup, PostgreSqlRecoveryTarget, PostgreSqlToolchain,
+    RuntimeTableNamePolicy,
 };
 
 pub fn crate_name() -> &'static str {

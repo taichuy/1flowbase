@@ -51,10 +51,10 @@ communication, CI, Docker, deploy, proxy, plugin, and runtime execution-path
 risks. Advisory findings remain warnings; focused tests still fail the repo gate.
 
 React Doctor remains outside the automatic PR merge blockers in `verify.yml`.
-It runs as a parallel component in scheduled quality gates and manual `scope: ci`
-runs, so the aggregate report includes structural frontend debt without requiring
-a second dispatch. Run `scope: repo-frontend-react-doctor` directly when you need
-focused structural frontend debt evidence:
+It runs as a non-blocking parallel component in scheduled quality gates and manual
+`scope: ci` runs, so the aggregate report includes structural frontend debt without
+requiring a second dispatch. Run `scope: repo-frontend-react-doctor` directly when
+you need focused structural frontend debt evidence:
 
 ```yaml
 scope: repo-frontend-react-doctor
