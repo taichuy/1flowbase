@@ -58,6 +58,27 @@ export interface UpdateConsoleNetworkEgressPoolMemberInput {
   sequence: number;
 }
 
+export interface ConsoleNetworkEgressRoute {
+  id: string;
+  consumer_kind: string;
+  consumer_reference: string | null;
+  pool_id: string;
+  enabled: boolean;
+  failure_policy: string;
+}
+
+export interface CreateConsoleNetworkEgressRouteInput {
+  consumer_kind: string;
+  consumer_reference: string | null;
+  pool_id: string;
+  enabled: boolean;
+}
+
+export interface UpdateConsoleNetworkEgressRouteInput {
+  pool_id: string;
+  enabled: boolean;
+}
+
 export function listConsoleNetworkEgressProviders(baseUrl?: string) {
   return apiFetch<ConsoleNetworkEgressProvider[]>({
     path: '/api/console/settings/network-center/providers',
@@ -153,6 +174,55 @@ export function deleteConsoleNetworkEgressPoolMember(
 ) {
   return apiFetchVoid({
     path: `/api/console/network-center/pools/${encodeURIComponent(poolId)}/members/${encodeURIComponent(memberId)}`,
+    method: 'DELETE',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function listConsoleNetworkEgressRoutes(baseUrl?: string) {
+  return apiFetch<ConsoleNetworkEgressRoute[]>({
+    path: '/api/console/network-center/routes',
+    baseUrl
+  });
+}
+
+export function createConsoleNetworkEgressRoute(
+  input: CreateConsoleNetworkEgressRouteInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleNetworkEgressRoute>({
+    path: '/api/console/network-center/routes',
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function updateConsoleNetworkEgressRoute(
+  routeId: string,
+  input: UpdateConsoleNetworkEgressRouteInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleNetworkEgressRoute>({
+    path: `/api/console/network-center/routes/${encodeURIComponent(routeId)}`,
+    method: 'PATCH',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function deleteConsoleNetworkEgressRoute(
+  routeId: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetchVoid({
+    path: `/api/console/network-center/routes/${encodeURIComponent(routeId)}`,
     method: 'DELETE',
     csrfToken,
     baseUrl

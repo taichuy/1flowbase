@@ -1060,6 +1060,10 @@
     "network_center_health_healthy": "Healthy",
     "network_center_health_unhealthy": "Unhealthy",
     "network_center_health_invalid": "Invalid",
-    "network_center_routes_unavailable": "Egress route management is not available yet."
+    "network_center_routes_unavailable": "Egress route management is not available yet.",
+    "network_center_route_consumer": "Consumer",
+    "network_center_route_pool": "Pool",
+    "network_center_route_status": "Status",
+    "network_center_route_failure_policy": "Failure policy"
   }
 }

@@ -1,9 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
-import { Alert, Descriptions, Empty, Flex, Result, Typography } from 'antd';
+import { Alert, Descriptions, Empty, Flex, Table, Tag, Typography } from 'antd';
 
 import {
   fetchSettingsNetworkEgressProviders,
-  settingsNetworkEgressProvidersQueryKey
+  fetchSettingsNetworkEgressPools,
+  fetchSettingsNetworkEgressRoutes,
+  settingsNetworkEgressPoolsQueryKey,
+  settingsNetworkEgressProvidersQueryKey,
+  settingsNetworkEgressRoutesQueryKey
 } from '../../api/network-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { i18nText } from '../../../../shared/i18n/text';
@@ -84,27 +88,53 @@ function NetworkCenterProvidersShell({
   );
 }
 
-function NetworkCenterRoutesShell({
-  providerCount,
-  isLoading
-}: {
-  providerCount: number;
-  isLoading: boolean;
-}) {
+function NetworkCenterRoutesShell() {
+  const routesQuery = useQuery({
+    queryKey: settingsNetworkEgressRoutesQueryKey,
+    queryFn: fetchSettingsNetworkEgressRoutes
+  });
+  const poolsQuery = useQuery({
+    queryKey: settingsNetworkEgressPoolsQueryKey,
+    queryFn: fetchSettingsNetworkEgressPools
+  });
+  const poolNames = new Map(
+    (poolsQuery.data ?? []).map((pool) => [pool.id, pool.display_name])
+  );
   return (
     <SettingsSectionSurface heightMode="fill">
       <Flex vertical gap={16}>
         <Typography.Title level={2} data-testid="network-center-routes-shell">
           {i18nText('settings', 'auto.network_center_routes')}
         </Typography.Title>
-        <ProviderRegistrySummary
-          providerCount={providerCount}
-          isLoading={isLoading}
-        />
-        <Result
-          status="info"
-          title={i18nText('settings', 'auto.network_center_routes_unavailable')}
-        />
+        {routesQuery.isError ? (
+          <Alert type="error" showIcon title={i18nText('settings', 'auto.network_center_pools_load_failed')} />
+        ) : (
+          <Table
+            rowKey="id"
+            loading={routesQuery.isLoading || poolsQuery.isLoading}
+            dataSource={routesQuery.data ?? []}
+            pagination={false}
+            locale={{ emptyText: <Empty /> }}
+            columns={[
+              { title: i18nText('settings', 'auto.network_center_route_consumer'), dataIndex: 'consumer_kind' },
+              {
+                title: i18nText('settings', 'auto.network_center_route_pool'),
+                dataIndex: 'pool_id',
+                render: (poolId: string) => poolNames.get(poolId) ?? poolId
+              },
+              {
+                title: i18nText('settings', 'auto.network_center_route_status'),
+                dataIndex: 'enabled',
+                render: (enabled: boolean) => (
+                  <Tag color={enabled ? 'green' : undefined}>
+                    {i18nText('settings', enabled ? 'auto.enabled' : 'auto.disabled')}
+                  </Tag>
+                )
+              },
+              { title: i18nText('settings', 'auto.network_center_route_failure_policy'), dataIndex: 'failure_policy' }
+            ]}
+          />
+        )}
       </Flex>
     </SettingsSectionSurface>
   );
@@ -122,10 +152,7 @@ export function NetworkCenterSection({ page }: { page: NetworkCenterPage }) {
       return <NetworkEgressPoolsPanel providers={providersQuery.data ?? []} />;
     case 'routes':
       return (
-        <NetworkCenterRoutesShell
-          providerCount={providerCount}
-          isLoading={providersQuery.isLoading}
-        />
+        <NetworkCenterRoutesShell />
       );
     case 'providers':
     default:
