@@ -4,6 +4,7 @@ import type {
   BackupSetDetailResponse,
   BackupSetListResponse,
   BackupVerificationResponse,
+  CreateBackupRequest,
   CreateRecoveryIntentRequest,
   RecoveryIntentResponse,
   RecoveryPreflightResponse,
@@ -20,34 +21,47 @@ export const listSystemBackups = (baseUrl?: string) =>
   apiFetch<BackupSetListResponse>({ path: BASE_PATH, baseUrl });
 export const getSystemBackup = (backupSetId: string, baseUrl?: string) =>
   apiFetch<BackupSetDetailResponse>({ path: backupPath(backupSetId), baseUrl });
-export const createSystemBackup = (csrfToken: string, baseUrl?: string) =>
+export const createSystemBackup = (
+  csrfToken: string,
+  baseUrl?: string,
+  request?: CreateBackupRequest
+) =>
   apiFetch<BackupMutationResponse>({
     path: BASE_PATH,
     method: 'POST',
+    body: request,
     csrfToken,
     baseUrl
   });
 export const importSystemBackup = (
   file: Blob,
   csrfToken: string,
-  baseUrl?: string
+  baseUrl?: string,
+  backupPassword?: string
 ) =>
   apiFetch<BackupMutationResponse>({
     path: `${BASE_PATH}/import`,
     method: 'POST',
     rawBody: file,
     contentType: 'application/octet-stream',
+    headers: backupPassword
+      ? { 'x-system-backup-password': backupPassword }
+      : undefined,
     csrfToken,
     baseUrl
   });
 export const verifySystemBackup = (
   backupSetId: string,
   csrfToken: string,
-  baseUrl?: string
+  baseUrl?: string,
+  backupPassword?: string
 ) =>
   apiFetch<BackupVerificationResponse>({
     path: `${backupPath(backupSetId)}/verify`,
     method: 'POST',
+    headers: backupPassword
+      ? { 'x-system-backup-password': backupPassword }
+      : undefined,
     csrfToken,
     baseUrl
   });
@@ -69,11 +83,15 @@ export const getSystemBackupDownloadUrl = (
 export const preflightSystemRecovery = (
   backupSetId: string,
   csrfToken: string,
-  baseUrl?: string
+  baseUrl?: string,
+  backupPassword?: string
 ) =>
   apiFetch<RecoveryPreflightResponse>({
     path: `${backupPath(backupSetId)}/recovery/preflight`,
     method: 'POST',
+    headers: backupPassword
+      ? { 'x-system-backup-password': backupPassword }
+      : undefined,
     csrfToken,
     baseUrl
   });

@@ -2,7 +2,7 @@
 
 - 状态：Accepted
 - 日期：2026-08-11
-- 关联 Issue：[Root #1667](https://github.com/taichuy/1flowbase/issues/1667)、[#1668](https://github.com/taichuy/1flowbase/issues/1668)、[#1670](https://github.com/taichuy/1flowbase/issues/1670)、[#1669](https://github.com/taichuy/1flowbase/issues/1669)
+- 关联 Issue：[Root #1667](https://github.com/taichuy/1flowbase/issues/1667)、[#1668](https://github.com/taichuy/1flowbase/issues/1668)、[#1670](https://github.com/taichuy/1flowbase/issues/1670)、[#1669](https://github.com/taichuy/1flowbase/issues/1669)；加密、key 与跨机器迁移条款由 [#1822](https://github.com/taichuy/1flowbase/issues/1822) 替代。
 - 任务形态：`hybrid-foundation`
 
 ## Context
@@ -14,7 +14,7 @@
 ### Canonical objects
 
 - `BackupSet` 是 seal 后不可变的成果；availability 为 `ready / corrupt / incompatible`。创建中与验证中属于独立 `BackupJob`。
-- `BackupManifest` 固定记录 format、build、migration head、master-key/backup-key fingerprint、component inventory、digest、size、流式上限和明确排除域。
+- `BackupManifest` 固定记录 format、build（仅诊断）、migration head、protection mode、component inventory、digest、size、流式上限和明确排除域。恢复所需材料只能按 protection mode 进入单文件，不得要求用户另存环境变量或恢复 key。
 - `RecoveryJob` 独立记录 `preflight → confirmation → safety backup → fence/drain → restore → reconcile → verify`，终态为 `succeeded / rolled_back / manual_recovery_required`。
 - BackupSet、BackupJob journal 与 RecoveryJob journal 的真值位于主库外的 `BackupRepository`；主库只保存恢复成功后的审计投影。
 
@@ -26,9 +26,10 @@ v1 只支持单节点、自托管、手动全量备份。每个 ready BackupSet 
 
 ### Integrity, encryption, and compatibility
 
-- envelope 使用固定 4 MiB chunk、最多 2 条并行 stream 的认证加密；实现的内存上限不得随总备份体积线性增长。
-- master key 不进入备份；manifest 只记录 fingerprint。backup key 由部署侧 `BackupKeyProvider` 提供，key material 不序列化、不打印，并在释放时清零。
-- 默认兼容策略严格比较 format version、application build、migration head 与 master-key fingerprint。只有独立 fixture 覆盖的显式前向路径可以放宽；不提供隐式 fallback。
+- 默认 BackupSet 是一个便携单文件。它不承诺机密性：文件持有人可恢复系统数据及持久化秘密，必须按高敏感资产保管。manifest 明确标注 `portable_unprotected`；摘要只检测意外损坏，不描述为敌对篡改防护。
+- 用户主动设置备份密码时，payload 与恢复材料使用认证加密；缺失或错误密码必须在任何业务写入前失败，绝不降级到无密码模式。
+- 默认便携格式携带恢复持久化 Provider、DataSource 与 MCP 秘密所需的 source deployment material；新部署在首次启动恢复前自动采用该材料，普通用户不需要理解或复制环境变量、fingerprint 或 build identity。
+- format version 与已知前向 migration path 是恢复门禁；application build 只作诊断，target master-key fingerprint 不是门禁。未知 format 或 migration path 必须 fail closed。
 - staging component 全部完成后才能 seal；seal 后重新读取并验证 component 与 envelope digest，才发布 ready BackupSet。
 
 ### Recovery safety
@@ -46,8 +47,8 @@ v1 只支持单节点、自托管、手动全量备份。每个 ready BackupSet 
 - release image 必须提供可验证的 PostgreSQL backup/restore toolchain。
 - 所有 durable/object/plugin/background write owner 必须进入有限 maintenance inventory；无法枚举即停止实现。
 - 生产 BackupRepository 必须位于与业务 storage、插件安装与 MCP library 不重叠的独立故障域。
-- schedule、incremental、PITR、多节点、跨 key/build migration、云 snapshot/KMS 与双人审批不在 v1；加入任一项都需重新对齐 #1667。
+- schedule、incremental、PITR、多节点、云 snapshot/KMS 与双人审批不在当前范围；加入任一项都需重新对齐后续 Issue。
 
 ## Verification
 
-全部开发与 fixture 进入冻结 assembly 后，由 #1667 的单一集中 Test Batch 在随机临时 PostgreSQL database 和显式临时对象/工件根目录执行。测试不得连接 `api/apps/api-server/.env` 的开发主库，也不得操作生产数据库或存储。
+全部开发与 fixture 进入冻结 assembly 后，由 #1822 的单一集中 Test Batch 在随机临时 PostgreSQL database 和显式临时对象/工件根目录执行。测试不得连接 `api/apps/api-server/.env` 的开发主库，也不得操作生产数据库或存储。

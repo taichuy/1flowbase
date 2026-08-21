@@ -29,6 +29,22 @@ docker compose up -d
 
 如果本机只有旧版 Compose，也可以把 `docker compose` 替换为 `docker-compose`。
 
+### 从单文件备份迁移到新机器
+
+在旧部署的“系统备份”中创建并下载备份文件。默认备份是高敏感文件：持有文件的人可以恢复其中的数据和已保存的连接凭据，请只通过受控渠道传输和保存。从仓库根目录在新机器只需要选择这一个文件：
+
+```bash
+sh scripts/shell/docker-deploy.sh --restore-backup /safe/path/system.1fb-backup --pull --start
+```
+
+Windows PowerShell：
+
+```powershell
+./scripts/powershell/docker-deploy.ps1 -RestoreBackup C:\safe\system.1fb-backup -Pull -Start
+```
+
+如果创建备份时设置了密码，在两条命令中额外提供 `--restore-password` / `-RestorePassword`（也可使用 `FLOWBASE_RESTORE_PASSWORD`）。部署会在 API 首次启动前预检并恢复；若预检或恢复失败，脚本会停止，不会把一个已有目标部署静默覆盖。普通迁移不需要复制旧 `.env` 或保存额外密钥。
+
 本地快速体验可以使用开发 compose，它保留本地默认密码并以 development 模式启动：
 
 ```bash

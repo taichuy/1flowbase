@@ -45,6 +45,7 @@ const RECOVERY_PREFLIGHT: &str = "system_backups.recovery.preflight";
 const RECOVERY_REAUTH: &str = "system_backups.recovery.reauth";
 const RECOVERY_STATUS: &str = "system_backups.recovery.status";
 const VERIFY: &str = "system_backups.verify";
+const BACKUP_PASSWORD_HEADER: &str = "x-system-backup-password";
 
 fn require_system_backup(
     state: &ApiState,
@@ -163,7 +164,6 @@ pub struct BackupCompatibilityResponse {
     pub format_version: u32,
     pub application_build: String,
     pub migration_head: String,
-    pub master_key_fingerprint: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -196,6 +196,12 @@ pub struct BackupMutationResponse {
     pub exact_backup_name: String,
 }
 
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateBackupRequest {
+    /// Optional user-chosen password. Omit it for the default portable, unprotected backup.
+    pub backup_password: Option<String>,
+}
+
 #[derive(Debug, Serialize, ToSchema)]
 pub struct BackupVerificationResponse {
     pub backup_set_id: BackupSetId,
@@ -220,6 +226,7 @@ pub struct RecoveryReauthRequest {
     pub exact_backup_name: String,
     pub plan_digest: String,
     pub password: String,
+    pub backup_password: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -233,6 +240,7 @@ pub struct CreateRecoveryIntentRequest {
     pub challenge_token: Uuid,
     pub exact_backup_name: String,
     pub plan_digest: String,
+    pub backup_password: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -290,11 +298,15 @@ pub async fn list_backups(
 pub async fn create_backup(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
+    request: Option<Json<CreateBackupRequest>>,
 ) -> Result<Json<ApiSuccess<BackupMutationResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let sealed = require_system_backup(&state)?
-        .create(context.actor.user_id)
+        .create_with_password(
+            context.actor.user_id,
+            request.and_then(|request| request.0.backup_password),
+        )
         .await?;
     Ok(Json(ApiSuccess::new(mutation_response(
         sealed.manifest().backup_set_id(),
@@ -336,7 +348,12 @@ pub async fn verify_backup(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let id = BackupSetId::from_uuid(backup_set_id);
-    require_system_backup(&state)?.verify(id).await?;
+    let password = headers
+        .get(BACKUP_PASSWORD_HEADER)
+        .and_then(|value| value.to_str().ok());
+    require_system_backup(&state)?
+        .verify_with_password(id, password)
+        .await?;
     Ok(Json(ApiSuccess::new(BackupVerificationResponse {
         backup_set_id: id,
         verified: true,
@@ -370,7 +387,10 @@ pub async fn import_backup(
         }
         let _ = writer.shutdown().await;
     });
-    let sealed = runtime.import(&mut reader).await?;
+    let password = headers
+        .get(BACKUP_PASSWORD_HEADER)
+        .and_then(|value| value.to_str().ok());
+    let sealed = runtime.import_with_password(&mut reader, password).await?;
     Ok(Json(ApiSuccess::new(mutation_response(
         sealed.manifest().backup_set_id(),
     ))))
@@ -428,8 +448,11 @@ pub async fn preflight_recovery(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     require_root_cookie(&context)?;
+    let password = headers
+        .get(BACKUP_PASSWORD_HEADER)
+        .and_then(|value| value.to_str().ok());
     let plan = require_system_backup(&state)?
-        .preflight(BackupSetId::from_uuid(backup_set_id))
+        .preflight_with_password(BackupSetId::from_uuid(backup_set_id), password)
         .await;
     Ok(Json(ApiSuccess::new(preflight_response(&plan)?)))
 }
@@ -445,7 +468,7 @@ pub async fn reauthenticate_recovery(
     let session = require_root_cookie(&context)?;
     validate_exact_name(body.backup_set_id, &body.exact_backup_name)?;
     let plan = require_system_backup(&state)?
-        .preflight(body.backup_set_id)
+        .preflight_with_password(body.backup_set_id, body.backup_password.as_deref())
         .await;
     require_compatible_digest(&plan, &body.plan_digest)?;
     let parsed = PasswordHash::new(&context.user.password_hash)
@@ -481,7 +504,9 @@ pub async fn create_recovery_intent(
     let backup_set_id = BackupSetId::from_uuid(backup_set_id);
     validate_exact_name(backup_set_id, &body.exact_backup_name)?;
     let runtime = require_system_backup(&state)?;
-    let plan = runtime.preflight(backup_set_id).await;
+    let plan = runtime
+        .preflight_with_password(backup_set_id, body.backup_password.as_deref())
+        .await;
     let plan_digest = require_compatible_digest(&plan, &body.plan_digest)?;
     consume_reauth_challenge(
         body.challenge_token,
@@ -507,8 +532,12 @@ pub async fn create_recovery_intent(
         expires_at,
     )
     .map_err(|_| ControlPlaneError::InvalidInput("recovery_intent"))?;
+    let target_backup_password = body.backup_password;
     tokio::spawn(async move {
-        if let Err(error) = runtime.prepare_recovery(confirmed).await {
+        if let Err(error) = runtime
+            .prepare_recovery(confirmed, target_backup_password)
+            .await
+        {
             tracing::error!(intent_id = %intent_id, recovery_job_id = %recovery_job_id.as_uuid(), error = %error, "recovery handoff preparation failed");
         }
     });
@@ -685,7 +714,6 @@ fn detail_response(
             format_version: manifest.format_version(),
             application_build: manifest.application_build().as_str().to_owned(),
             migration_head: manifest.migration_head().as_str().to_owned(),
-            master_key_fingerprint: manifest.master_key_fingerprint().as_str().to_owned(),
         },
         verification: BackupVerificationDetailResponse {
             verified: verification.as_ref().map(|receipt| receipt.verified),

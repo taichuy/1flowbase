@@ -273,6 +273,8 @@ fn backup_command(actor_user_id: Uuid) -> CreateSystemBackupCommand {
         application_build: ApplicationBuild::try_from("git.test").unwrap(),
         migration_head: MigrationHead::try_from("migration.test").unwrap(),
         master_key_fingerprint: fingerprint('b'),
+        portable_source_master_key_base64: None,
+        backup_password: None,
     }
 }
 
@@ -428,6 +430,7 @@ async fn verified_safety_backup_and_journal_keep_fence_until_explicit_handoff_ab
     let ready = coordinator
         .prepare_offline_handoff(PrepareRecoveryCommand {
             intent,
+            target_backup_password: None,
             safety_backup_command: backup_command(actor_user_id),
             safety_backup_sources: vec![Arc::new(FixedSource { fail: false })],
             drain_timeout: Duration::from_secs(1),
@@ -481,6 +484,7 @@ async fn safety_backup_failure_releases_fence_without_a_ready_handoff() {
     let result = coordinator
         .prepare_offline_handoff(PrepareRecoveryCommand {
             intent,
+            target_backup_password: None,
             safety_backup_command: backup_command(actor_user_id),
             safety_backup_sources: vec![Arc::new(FixedSource { fail: true })],
             drain_timeout: Duration::from_secs(1),

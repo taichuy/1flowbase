@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+base64.workspace = true
 anyhow.workspace = true
 argon2.workspace = true
 async-trait.workspace = true

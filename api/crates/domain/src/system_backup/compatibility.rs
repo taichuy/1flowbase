@@ -3,7 +3,10 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
-use super::{ApplicationBuild, BackupManifest, KeyFingerprint, MigrationHead};
+use super::{
+    ApplicationBuild, BackupManifest, KeyFingerprint, MigrationHead,
+    LEGACY_SYSTEM_BACKUP_FORMAT_VERSION,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BackupCompatibilityTarget {
@@ -29,7 +32,9 @@ pub fn strict_backup_compatibility(
     target: &BackupCompatibilityTarget,
 ) -> Result<(), Vec<BackupIncompatibility>> {
     let mut reasons = Vec::new();
-    if manifest.format_version() != target.format_version {
+    if manifest.format_version() != target.format_version
+        && manifest.format_version() != LEGACY_SYSTEM_BACKUP_FORMAT_VERSION
+    {
         reasons.push(BackupIncompatibility::FormatVersion);
     }
     if !target
@@ -38,9 +43,8 @@ pub fn strict_backup_compatibility(
     {
         reasons.push(BackupIncompatibility::MigrationHead);
     }
-    if manifest.master_key_fingerprint() != &target.master_key_fingerprint {
-        reasons.push(BackupIncompatibility::MasterKeyFingerprint);
-    }
+    // A portable backup carries the source deployment key material inside the backup contract.
+    // The target master key is therefore a deployment bootstrap concern, not a compatibility gate.
     if reasons.is_empty() {
         Ok(())
     } else {

@@ -12,6 +12,7 @@ use std::{
 use api_server::system_backup::{EnvironmentBackupKeyProvider, LocalBackupRepository};
 use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
 use async_trait::async_trait;
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use control_plane::{
     bootstrap::{BootstrapConfig, BootstrapService},
     file_management::{CreateFileStorageCommand, FileStorageService},
@@ -737,6 +738,8 @@ impl RecoveryScenario {
                     application_build: ApplicationBuild::try_from(SYSTEM_BUILD).unwrap(),
                     migration_head: migration_head.clone(),
                     master_key_fingerprint: master_key_fingerprint.clone(),
+                    portable_source_master_key_base64: Some(STANDARD.encode(PROVIDER_SECRET)),
+                    backup_password: None,
                 },
                 recovery_sources(
                     &database_url,
@@ -767,6 +770,8 @@ impl RecoveryScenario {
                     application_build: ApplicationBuild::try_from(SYSTEM_BUILD).unwrap(),
                     migration_head,
                     master_key_fingerprint,
+                    portable_source_master_key_base64: Some(STANDARD.encode(PROVIDER_SECRET)),
+                    backup_password: None,
                 },
                 recovery_sources(
                     &database_url,

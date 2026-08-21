@@ -83,6 +83,9 @@ impl ConfirmedRecoveryIntent {
 
 pub struct PrepareRecoveryCommand {
     pub intent: ConfirmedRecoveryIntent,
+    /// Used only for the target backup's read-only preflight. It is intentionally not journaled
+    /// or copied into the safety backup command.
+    pub target_backup_password: Option<String>,
     pub safety_backup_command: CreateSystemBackupCommand,
     pub safety_backup_sources: Vec<Arc<dyn BackupComponentSource>>,
     pub drain_timeout: Duration,
@@ -193,7 +196,13 @@ impl RecoveryCoordinator {
             return Err(RecoveryCoordinatorError::HandoffActive);
         }
 
-        let plan = self.preflight.plan(command.intent.backup_set_id).await;
+        let plan = self
+            .preflight
+            .plan_with_password(
+                command.intent.backup_set_id,
+                command.target_backup_password.as_deref(),
+            )
+            .await;
         if !plan.is_compatible() {
             return Err(RecoveryCoordinatorError::IncompatiblePlan(plan.failures));
         }

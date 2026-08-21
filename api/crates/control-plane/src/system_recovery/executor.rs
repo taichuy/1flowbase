@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::{
     ports::{BackupComponentReader, BackupKeyMaterial, BackupKeyProvider, BackupRepository},
-    system_backup::{decrypt_backup_stream, verify_backup_manifest},
+    system_backup::{decrypt_backup_stream, resolve_backup_key, verify_backup_manifest},
 };
 
 const RECOVERY_PIPE_BUFFER_BYTES: usize = 256 * 1024;
@@ -137,6 +137,7 @@ pub enum OfflineRecoveryError {
 pub struct OfflineRecoveryExecutor {
     repository: Arc<dyn BackupRepository>,
     key_provider: Arc<dyn BackupKeyProvider>,
+    backup_password: Option<String>,
     targets: OfflineRecoveryTargets,
 }
 
@@ -146,9 +147,19 @@ impl OfflineRecoveryExecutor {
         key_provider: Arc<dyn BackupKeyProvider>,
         targets: OfflineRecoveryTargets,
     ) -> Self {
+        Self::new_with_password(repository, key_provider, targets, None)
+    }
+
+    pub fn new_with_password(
+        repository: Arc<dyn BackupRepository>,
+        key_provider: Arc<dyn BackupKeyProvider>,
+        targets: OfflineRecoveryTargets,
+        backup_password: Option<String>,
+    ) -> Self {
         Self {
             repository,
             key_provider,
+            backup_password,
             targets,
         }
     }
@@ -169,11 +180,13 @@ impl OfflineRecoveryExecutor {
             .load_manifest(command.backup_set_id)
             .await
             .map_err(|_| OfflineRecoveryError::Repository)?;
-        let key = self
-            .key_provider
-            .key_for(sealed.manifest().backup_key_fingerprint())
-            .await
-            .map_err(|_| OfflineRecoveryError::Key)?;
+        let key = resolve_backup_key(
+            self.key_provider.as_ref(),
+            sealed.manifest(),
+            self.backup_password.as_deref(),
+        )
+        .await
+        .map_err(|_| OfflineRecoveryError::Key)?;
         verify_backup_manifest(&sealed, &key).map_err(|_| OfflineRecoveryError::Manifest)?;
         validate_restore_inventory(sealed.manifest())?;
         if progress.state == RecoveryJobState::Draining {
@@ -307,11 +320,13 @@ impl OfflineRecoveryExecutor {
             .load_manifest(command.backup_set_id)
             .await
             .map_err(|_| OfflineRecoveryError::Repository)?;
-        let key = self
-            .key_provider
-            .key_for(sealed.manifest().backup_key_fingerprint())
-            .await
-            .map_err(|_| OfflineRecoveryError::Key)?;
+        let key = resolve_backup_key(
+            self.key_provider.as_ref(),
+            sealed.manifest(),
+            self.backup_password.as_deref(),
+        )
+        .await
+        .map_err(|_| OfflineRecoveryError::Key)?;
         verify_backup_manifest(&sealed, &key).map_err(|_| OfflineRecoveryError::Manifest)?;
         validate_restore_inventory(sealed.manifest())?;
         let manifest = sealed.into_manifest();

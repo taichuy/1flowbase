@@ -1,19 +1,37 @@
+use base64::{engine::general_purpose::STANDARD, Engine as _};
 use domain::{
     ApplicationBuild, ArtifactRebuildability, BackupComponent, BackupComponentDisposition,
     BackupComponentId, BackupComponentKind, BackupComponentRestoreTarget, BackupManifest,
     BackupSetId, BackupSourceIdentity, ContentDigest, KeyFingerprint, MigrationHead,
     SealedBackupManifest,
 };
+use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
-    ports::BackupKeyMaterial,
+    ports::{BackupKeyMaterial, BackupKeyProvider, BackupKeyProviderError},
     system_backup::{
         authenticate_backup_manifest, decrypt_backup_stream, encrypt_backup_stream,
         verify_backup_manifest,
     },
 };
+
+struct RejectingKeyProvider;
+
+#[async_trait::async_trait]
+impl BackupKeyProvider for RejectingKeyProvider {
+    async fn active_key(&self) -> Result<BackupKeyMaterial, BackupKeyProviderError> {
+        Err(BackupKeyProviderError::NotFound)
+    }
+
+    async fn key_for(
+        &self,
+        _: &KeyFingerprint,
+    ) -> Result<BackupKeyMaterial, BackupKeyProviderError> {
+        Err(BackupKeyProviderError::NotFound)
+    }
+}
 
 fn key() -> BackupKeyMaterial {
     BackupKeyMaterial::new(
@@ -66,6 +84,98 @@ fn manifest_authentication_rejects_tampered_manifest() {
     let tampered = serde_json::from_value::<SealedBackupManifest>(value).unwrap();
 
     assert!(verify_backup_manifest(&tampered, &key).is_err());
+}
+
+#[tokio::test]
+async fn portable_manifest_resolves_without_the_target_environment_key() {
+    let source_master_key = b"source-deployment-master-key";
+    let mut derivation = Sha256::new();
+    derivation.update(b"1flowbase/system-backup/key/v1\0");
+    derivation.update(source_master_key);
+    let backup_key = derivation.finalize().to_vec();
+    let backup_fingerprint =
+        KeyFingerprint::try_from(format!("{:x}", Sha256::digest(&backup_key))).unwrap();
+    let manifest = BackupManifest::try_new_portable(
+        BackupSetId::new(),
+        OffsetDateTime::UNIX_EPOCH,
+        ApplicationBuild::try_from("v99.0.0").unwrap(),
+        MigrationHead::try_from("migration.test").unwrap(),
+        KeyFingerprint::try_from(fingerprint('b')).unwrap(),
+        backup_fingerprint,
+        STANDARD.encode(source_master_key),
+        vec![BackupComponent {
+            component_id: BackupComponentId::try_from("postgres/main").unwrap(),
+            kind: BackupComponentKind::PostgreSql,
+            source_identity: BackupSourceIdentity::try_from("postgres/main").unwrap(),
+            content_type: "application/octet-stream".to_owned(),
+            size_bytes: 1,
+            content_digest: ContentDigest::try_from(fingerprint('d')).unwrap(),
+            disposition: BackupComponentDisposition::Embedded,
+            rebuildability: ArtifactRebuildability::NotApplicable,
+            restore_target: BackupComponentRestoreTarget::PostgreSql,
+        }],
+        1,
+        ContentDigest::try_from(fingerprint('e')).unwrap(),
+    )
+    .unwrap();
+
+    let resolved = super::resolve_backup_key(&RejectingKeyProvider, &manifest, None)
+        .await
+        .unwrap();
+    assert_eq!(resolved.expose_bytes(), backup_key);
+}
+
+#[tokio::test]
+async fn password_protection_requires_the_correct_password_before_releasing_recovery_material() {
+    let protection =
+        super::password_protection("correct-password", Some(&STANDARD.encode("source-master")))
+            .unwrap();
+    let manifest = BackupManifest::try_new_password_encrypted(
+        BackupSetId::new(),
+        OffsetDateTime::UNIX_EPOCH,
+        ApplicationBuild::try_from("v99.0.0").unwrap(),
+        MigrationHead::try_from("migration.test").unwrap(),
+        KeyFingerprint::try_from(fingerprint('b')).unwrap(),
+        protection.key.fingerprint().clone(),
+        protection.salt_base64,
+        protection.encrypted_source_master_key_base64,
+        vec![BackupComponent {
+            component_id: BackupComponentId::try_from("postgres/main").unwrap(),
+            kind: BackupComponentKind::PostgreSql,
+            source_identity: BackupSourceIdentity::try_from("postgres/main").unwrap(),
+            content_type: "application/octet-stream".to_owned(),
+            size_bytes: 1,
+            content_digest: ContentDigest::try_from(fingerprint('d')).unwrap(),
+            disposition: BackupComponentDisposition::Embedded,
+            rebuildability: ArtifactRebuildability::NotApplicable,
+            restore_target: BackupComponentRestoreTarget::PostgreSql,
+        }],
+        1,
+        ContentDigest::try_from(fingerprint('e')).unwrap(),
+    )
+    .unwrap();
+    assert!(
+        super::recover_source_master_key(&RejectingKeyProvider, &manifest, None)
+            .await
+            .is_err()
+    );
+    assert!(super::recover_source_master_key(
+        &RejectingKeyProvider,
+        &manifest,
+        Some("wrong-password")
+    )
+    .await
+    .is_err());
+    assert_eq!(
+        super::recover_source_master_key(
+            &RejectingKeyProvider,
+            &manifest,
+            Some("correct-password")
+        )
+        .await
+        .unwrap(),
+        "source-master"
+    );
 }
 
 async fn encrypt(
