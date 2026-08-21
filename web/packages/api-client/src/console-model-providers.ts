@@ -127,6 +127,8 @@ export interface ConsoleModelProviderCatalogEntry {
 }
 
 export type ConsoleModelProviderOperationalCapability =
+  | 'validate_config'
+  | 'list_models'
   | 'usage_windows'
   | 'reset_credits'
   | string;

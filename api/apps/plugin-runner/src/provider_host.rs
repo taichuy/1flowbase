@@ -416,6 +416,15 @@ impl ProviderHost {
         impl std::future::Future<Output = FrameworkResult<ProviderValidationOutput>> + Send + 'static,
     > {
         let loaded = self.loaded_package(plugin_id)?.clone();
+        if !loaded
+            .package
+            .provider
+            .supports_operational_capability(ProviderOperationalCapability::ConfigurationValidation)
+        {
+            return Err(PluginFrameworkError::invalid_provider_contract(
+                "provider package does not declare configuration validation support",
+            ));
+        }
         let provider_workers = Arc::clone(&self.provider_workers);
         Ok(async move {
             let output = Self::call_runtime_loaded(
@@ -526,6 +535,15 @@ impl ProviderHost {
         impl std::future::Future<Output = FrameworkResult<ProviderModelsOutput>> + Send + 'static,
     > {
         let loaded = self.loaded_package(plugin_id)?.clone();
+        if !loaded
+            .package
+            .provider
+            .supports_operational_capability(ProviderOperationalCapability::ModelListing)
+        {
+            return Err(PluginFrameworkError::invalid_provider_contract(
+                "provider package does not declare model listing support",
+            ));
+        }
         let provider_workers = Arc::clone(&self.provider_workers);
         Ok(async move {
             let models = match loaded.package.provider.model_discovery_mode {

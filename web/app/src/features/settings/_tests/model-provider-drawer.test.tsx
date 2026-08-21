@@ -62,6 +62,80 @@ describe('model-context-window helpers', () => {
 });
 
 describe('ModelProviderInstanceDrawer', () => {
+  test('validates an existing provider without querying account usage', async () => {
+    const validate = vi.fn().mockResolvedValue(undefined);
+    const refreshUsage = vi.fn().mockResolvedValue({
+      windows: [],
+      queried_at: '2026-08-21T09:00:00Z'
+    });
+    const catalogEntry = {
+      ...modelProviderCatalogEntries[0],
+      operational_capabilities: ['validate_config']
+    };
+
+    render(
+      <ModelProviderInstanceDrawer
+        open
+        mode="edit"
+        catalogEntry={catalogEntry}
+        instance={buildSettingsModelProviderInstances()[0]}
+        cachedModelCatalog={null}
+        pricingTargets={pricingTargets}
+        defaultIncludedInMain={true}
+        submitting={false}
+        onClose={() => undefined}
+        onSubmit={async () => undefined}
+        onPreviewModels={async () => ({
+          models: [],
+          preview_token: 'preview-1',
+          expires_at: '2026-08-22T09:00:00Z'
+        })}
+        onRevealSecret={async () => 'super-secret'}
+        onAuthenticate={unsupportedAuthentication}
+        onValidate={validate}
+        onRefreshUsage={refreshUsage}
+      />
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /检\s*测/ }));
+
+    await waitFor(() => {
+      expect(validate).toHaveBeenCalledTimes(1);
+    });
+    expect(refreshUsage).not.toHaveBeenCalled();
+  });
+
+  test('hides detection when the provider does not declare the needed service', async () => {
+    render(
+      <ModelProviderInstanceDrawer
+        open
+        mode="edit"
+        catalogEntry={{
+          ...modelProviderCatalogEntries[0],
+          operational_capabilities: []
+        }}
+        instance={buildSettingsModelProviderInstances()[0]}
+        cachedModelCatalog={null}
+        pricingTargets={pricingTargets}
+        defaultIncludedInMain={true}
+        submitting={false}
+        onClose={() => undefined}
+        onSubmit={async () => undefined}
+        onPreviewModels={async () => ({
+          models: [],
+          preview_token: 'preview-1',
+          expires_at: '2026-08-22T09:00:00Z'
+        })}
+        onRevealSecret={async () => 'super-secret'}
+        onAuthenticate={unsupportedAuthentication}
+        onValidate={async () => undefined}
+      />
+    );
+
+    await screen.findByRole('dialog');
+    expect(screen.queryByRole('button', { name: /检\s*测/ })).toBeNull();
+  });
+
   test('uses the shared resizable drawer with the provider width range', async () => {
     render(
       <ModelProviderInstanceDrawer

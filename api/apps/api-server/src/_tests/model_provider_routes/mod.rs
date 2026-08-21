@@ -21,7 +21,7 @@ fn create_provider_fixture(root: &Path) {
         .unwrap()
         .replace(
             "  entry: bin/fixture_provider-provider\n",
-            "  capabilities:\n    - usage.rate_limit_windows\n    - reset_credits\n  entry: bin/fixture_provider-provider\n",
+            "  capabilities:\n    - config.validate\n    - models.list\n    - usage.rate_limit_windows\n    - reset_credits\n  entry: bin/fixture_provider-provider\n",
         );
     fs::write(manifest_path, manifest).unwrap();
     fs::write(

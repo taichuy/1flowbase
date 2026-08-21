@@ -195,6 +195,8 @@ impl ProviderPackage {
             form_schema: raw_provider.config_schema,
             auth: raw_provider.auth,
             operational_capabilities: [
+                ProviderOperationalCapability::ConfigurationValidation,
+                ProviderOperationalCapability::ModelListing,
                 ProviderOperationalCapability::UsageWindows,
                 ProviderOperationalCapability::ResetCredits,
             ]

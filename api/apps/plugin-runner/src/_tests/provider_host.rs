@@ -369,6 +369,9 @@ permissions:
 runtime:
   protocol: stdio_json_worker
   entry: bin/fixture_provider
+  capabilities:
+    - config.validate
+    - models.list
   limits:
     timeout_ms: 30000
 node_contributions: []
@@ -599,6 +602,48 @@ async fn provider_auth_rejects_an_undeclared_managed_secret_patch_from_the_runti
         .expect_err("undeclared auth secret patches must fail closed");
 
     assert!(error.to_string().contains("undeclared managed secret key"));
+}
+
+#[tokio::test]
+async fn provider_validation_requires_manifest_capability_before_runtime_execution() {
+    let package = TempProviderPackage::new();
+    let spawn_marker = package.path().join("validation-spawn-marker");
+    package.write_spawn_side_effect_runtime(&spawn_marker);
+    let mut host = ProviderHost::default();
+    let plugin_id = host
+        .load(package.path().to_str().unwrap())
+        .unwrap()
+        .plugin_id;
+
+    let error = host
+        .validate(&plugin_id, json!({}))
+        .await
+        .expect_err("validation must be hidden until the package declares it");
+    assert!(error
+        .to_string()
+        .contains("does not declare configuration validation support"));
+    assert!(
+        !spawn_marker.exists(),
+        "an undeclared validation operation must not start the provider runtime"
+    );
+}
+
+#[tokio::test]
+async fn provider_model_listing_requires_manifest_capability_before_runtime_execution() {
+    let package = TempProviderPackage::new();
+    let mut host = ProviderHost::default();
+    let plugin_id = host
+        .load(package.path().to_str().unwrap())
+        .unwrap()
+        .plugin_id;
+
+    let error = host
+        .list_models(&plugin_id, json!({}))
+        .await
+        .expect_err("model listing must be hidden until the package declares it");
+    assert!(error
+        .to_string()
+        .contains("does not declare model listing support"));
 }
 
 #[tokio::test]

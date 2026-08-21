@@ -7,6 +7,7 @@ use plugin_framework::{
     installation::ProviderCatalogEntry,
     provider_contract::{
         ModelDiscoveryMode, ProviderModelSource, ProviderOperationalCapability,
+        PROVIDER_CONFIGURATION_VALIDATION_CAPABILITY, PROVIDER_MODEL_LISTING_CAPABILITY,
         PROVIDER_RESET_CREDITS_CAPABILITY, PROVIDER_USAGE_WINDOWS_CAPABILITY,
     },
     provider_package::ProviderPackage,
@@ -255,13 +256,19 @@ fn provider_package_projects_declared_operational_capabilities() {
     let manifest = fs::read_to_string(&manifest_path).unwrap().replace(
         "  limits:\n",
         &format!(
-            "  capabilities:\n    - {PROVIDER_USAGE_WINDOWS_CAPABILITY}\n    - {PROVIDER_RESET_CREDITS_CAPABILITY}\n  limits:\n"
+            "  capabilities:\n    - {PROVIDER_CONFIGURATION_VALIDATION_CAPABILITY}\n    - {PROVIDER_MODEL_LISTING_CAPABILITY}\n    - {PROVIDER_USAGE_WINDOWS_CAPABILITY}\n    - {PROVIDER_RESET_CREDITS_CAPABILITY}\n  limits:\n"
         ),
     );
     fs::write(manifest_path, manifest).unwrap();
 
     let package = ProviderPackage::load_from_dir(fixture.path()).unwrap();
 
+    assert!(package
+        .provider
+        .supports_operational_capability(ProviderOperationalCapability::ConfigurationValidation));
+    assert!(package
+        .provider
+        .supports_operational_capability(ProviderOperationalCapability::ModelListing));
     assert!(package
         .provider
         .supports_operational_capability(ProviderOperationalCapability::UsageWindows));

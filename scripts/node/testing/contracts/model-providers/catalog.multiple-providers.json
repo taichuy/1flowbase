@@ -50,7 +50,7 @@
       "model_discovery_mode": "dynamic",
       "supports_model_fetch_without_credentials": false,
       "enabled": true,
-      "operational_capabilities": [],
+      "operational_capabilities": ["validate_config", "list_models"],
       "form_schema": [
         {
           "key": "base_url",
@@ -125,7 +125,7 @@
       "model_discovery_mode": "static",
       "supports_model_fetch_without_credentials": false,
       "enabled": true,
-      "operational_capabilities": [],
+      "operational_capabilities": ["validate_config", "list_models"],
       "form_schema": [
         {
           "key": "api_key",

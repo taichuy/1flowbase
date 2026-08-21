@@ -15,6 +15,8 @@ pub const CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY: &str = "__client_protocol_envelo
 pub const NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY: &str = "__native_model_prompt_context";
 pub const NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY: &str = "__native_model_request_context";
 pub const CURRENT_PROVIDER_CONTRACT: &str = "1flowbase.provider/v2";
+pub const PROVIDER_CONFIGURATION_VALIDATION_CAPABILITY: &str = "config.validate";
+pub const PROVIDER_MODEL_LISTING_CAPABILITY: &str = "models.list";
 pub const PROVIDER_COUNT_TOKENS_CAPABILITY: &str = "count_tokens";
 pub const PROVIDER_USAGE_WINDOWS_CAPABILITY: &str = "usage.rate_limit_windows";
 pub const PROVIDER_RESET_CREDITS_CAPABILITY: &str = "reset_credits";
@@ -125,11 +127,13 @@ pub struct ProviderStdioResponse {
     pub error: Option<ProviderStdioError>,
 }
 
-/// Provider operations that are opt-in because they expose account-level
-/// state or perform an externally visible account action.
+/// Provider services that are opt-in so the host can render and invoke only
+/// the operations a package has explicitly committed to support.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderOperationalCapability {
+    ConfigurationValidation,
+    ModelListing,
     UsageWindows,
     ResetCredits,
 }
@@ -137,6 +141,8 @@ pub enum ProviderOperationalCapability {
 impl ProviderOperationalCapability {
     pub const fn manifest_capability(self) -> &'static str {
         match self {
+            Self::ConfigurationValidation => PROVIDER_CONFIGURATION_VALIDATION_CAPABILITY,
+            Self::ModelListing => PROVIDER_MODEL_LISTING_CAPABILITY,
             Self::UsageWindows => PROVIDER_USAGE_WINDOWS_CAPABILITY,
             Self::ResetCredits => PROVIDER_RESET_CREDITS_CAPABILITY,
         }

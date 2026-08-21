@@ -316,6 +316,8 @@ fn to_catalog_response(entry: ModelProviderCatalogEntry) -> ModelProviderCatalog
 
 fn provider_operational_capability(value: ProviderOperationalCapability) -> String {
     match value {
+        ProviderOperationalCapability::ConfigurationValidation => "validate_config",
+        ProviderOperationalCapability::ModelListing => "list_models",
         ProviderOperationalCapability::UsageWindows => "usage_windows",
         ProviderOperationalCapability::ResetCredits => "reset_credits",
     }

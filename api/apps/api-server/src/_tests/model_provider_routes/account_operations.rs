@@ -59,7 +59,12 @@ async fn provider_account_routes_project_capabilities_and_protect_consume_with_c
     let catalog_payload = response_json(catalog).await;
     assert_eq!(
         catalog_payload["data"]["entries"][0]["operational_capabilities"],
-        json!(["usage_windows", "reset_credits"])
+        json!([
+            "validate_config",
+            "list_models",
+            "usage_windows",
+            "reset_credits"
+        ])
     );
 
     let usage = app

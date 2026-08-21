@@ -345,6 +345,13 @@ function ModelProviderInstanceDrawerContent({
   );
   const [authenticationRequestPending, setAuthenticationRequestPending] =
     useState(false);
+  const supportsConfigurationValidation =
+    catalogEntry?.operational_capabilities.includes('validate_config') ?? false;
+  const supportsModelListing =
+    catalogEntry?.operational_capabilities.includes('list_models') ?? false;
+  const canDetect = instance
+    ? supportsConfigurationValidation && Boolean(onValidate)
+    : supportsModelListing;
   const [callbackValue, setCallbackValue] = useState('');
   const initializedDrawerRef = useRef<string | null>(null);
   const drawerIdentity = `${mode}:${catalogEntry?.installation_id ?? ''}:${instance?.id ?? ''}`;
@@ -766,7 +773,6 @@ function ModelProviderInstanceDrawerContent({
     try {
       if (instance && onValidate) {
         await onValidate();
-        await refreshUsageSnapshot();
         return;
       }
 
@@ -1159,18 +1165,20 @@ function ModelProviderInstanceDrawerContent({
                       {i18nText('settings', 'auto.connection_configuration')}
                     </span>
                   </div>
-                  <div>
-                    <Button
-                      size="small"
-                      loading={previewingModels}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        void handlePreviewModels().catch(() => undefined);
-                      }}
-                    >
-                      {i18nText('settings', 'auto.detection')}
-                    </Button>
-                  </div>
+                  {canDetect ? (
+                    <div>
+                      <Button
+                        size="small"
+                        loading={previewingModels}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handlePreviewModels().catch(() => undefined);
+                        }}
+                      >
+                        {i18nText('settings', 'auto.detection')}
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="model-provider-drawer__card-body">
                   {primaryConfigFields.map(renderConfigField)}
