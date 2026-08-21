@@ -752,7 +752,10 @@ where
             .into_iter()
             .map(|snapshot| (snapshot.installation_id, snapshot))
             .collect::<HashMap<_, _>>();
-        let official_snapshot = self.official_source.list_official_catalog().await?;
+        let official_snapshot = self
+            .official_source
+            .list_official_catalog_for_workspace(actor.current_workspace_id)
+            .await?;
         let normalized_entries = normalize_official_entries(official_snapshot.entries);
 
         let entries = normalized_entries
@@ -865,7 +868,11 @@ where
             .await?;
         // Update truth comes from the same current official catalog used by install and upgrade.
         // A verified cached snapshot is only a resilience fallback when that source is unavailable.
-        let official_entries = match self.official_source.list_official_catalog().await {
+        let official_entries = match self
+            .official_source
+            .list_official_catalog_for_workspace(actor.current_workspace_id)
+            .await
+        {
             Ok(snapshot) => snapshot.entries,
             Err(error) => {
                 tracing::warn!(

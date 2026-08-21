@@ -33,6 +33,7 @@ use crate::official_extension_catalog::{
     DownloadedOfficialExtensionArtifact, LocatedOfficialExtensionCatalogEntry,
     OfficialExtensionArtifactDescriptor, OfficialExtensionCatalogEntry,
     OfficialExtensionCatalogEntrySource, OfficialExtensionCatalogPage,
+    OfficialExtensionCatalogSearchQuery, OfficialExtensionCatalogSearchResult,
     OfficialExtensionCatalogSourcePort,
 };
 
@@ -273,6 +274,100 @@ struct CountingCatalogSource {
 #[derive(Clone)]
 struct MixedPageCatalogSource {
     find_calls: Arc<AtomicUsize>,
+}
+
+#[derive(Clone)]
+struct WorkspaceOnlyCatalogSource {
+    workspace_id: Arc<std::sync::Mutex<Option<Uuid>>>,
+}
+
+#[async_trait]
+impl OfficialExtensionCatalogSourcePort for WorkspaceOnlyCatalogSource {
+    async fn search(
+        &self,
+        _category: &str,
+        _query: OfficialExtensionCatalogSearchQuery,
+    ) -> anyhow::Result<OfficialExtensionCatalogSearchResult> {
+        anyhow::bail!("network egress routes must resolve a workspace before catalog search")
+    }
+
+    async fn search_for_workspace(
+        &self,
+        workspace_id: Uuid,
+        category: &str,
+        _query: OfficialExtensionCatalogSearchQuery,
+    ) -> anyhow::Result<OfficialExtensionCatalogSearchResult> {
+        *self.workspace_id.lock().unwrap() = Some(workspace_id);
+        Ok(OfficialExtensionCatalogSearchResult {
+            source_kind: "official_repository".to_string(),
+            freshness: crate::official_extension_catalog::OfficialExtensionCatalogFreshness::Fresh,
+            snapshot_locator: "fixture://network-egress".to_string(),
+            snapshot_checksum: "sha256:fixture".to_string(),
+            category: category.to_string(),
+            entries: vec![runtime_entry()],
+            next_cursor: None,
+            total_entries: 1,
+        })
+    }
+
+    async fn list_page(
+        &self,
+        _category: &str,
+        _cursor: Option<&str>,
+    ) -> anyhow::Result<OfficialExtensionCatalogPage> {
+        anyhow::bail!("catalog test only permits the workspace-aware search entry point")
+    }
+
+    async fn find_entry(
+        &self,
+        _category: &str,
+        _catalog_id: &str,
+    ) -> anyhow::Result<Option<LocatedOfficialExtensionCatalogEntry>> {
+        anyhow::bail!("catalog test only permits the workspace-aware search entry point")
+    }
+
+    fn resolve_artifact(
+        &self,
+        _entry: &OfficialExtensionCatalogEntry,
+    ) -> anyhow::Result<OfficialExtensionArtifactDescriptor> {
+        anyhow::bail!("catalog test does not resolve artifacts")
+    }
+
+    async fn download_artifact(
+        &self,
+        _entry: &OfficialExtensionCatalogEntry,
+    ) -> anyhow::Result<DownloadedOfficialExtensionArtifact> {
+        anyhow::bail!("catalog test does not download artifacts")
+    }
+}
+
+#[tokio::test]
+async fn root_1805_ac_009_catalog_search_resolves_the_current_workspace_route() {
+    let (mut state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let workspace_id = Uuid::now_v7();
+    let observed_workspace_id = Arc::new(std::sync::Mutex::new(None));
+    Arc::get_mut(&mut state)
+        .unwrap()
+        .official_extension_catalog_source = Arc::new(WorkspaceOnlyCatalogSource {
+        workspace_id: Arc::clone(&observed_workspace_id),
+    });
+
+    let page = super::catalog_page::load_catalog_page(
+        &state,
+        workspace_id,
+        super::ExtensionCatalogCategory::RuntimeExtensions,
+        super::ExtensionCatalogGatewayQuery {
+            slot_code: None,
+            q: None,
+            limit: None,
+            cursor: None,
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(*observed_workspace_id.lock().unwrap(), Some(workspace_id));
+    assert_eq!(page.entries.len(), 1);
 }
 
 #[async_trait]

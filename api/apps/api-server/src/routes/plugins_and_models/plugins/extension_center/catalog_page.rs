@@ -35,7 +35,11 @@ pub(super) async fn load_catalog_page(
     let remote_has_builtin = if builtin_matches {
         state
             .official_extension_catalog_source
-            .find_entry(category.as_str(), BUILTIN_FRONTSTAGE_CATALOG_ID)
+            .find_entry_for_workspace(
+                workspace_id,
+                category.as_str(),
+                BUILTIN_FRONTSTAGE_CATALOG_ID,
+            )
             .await?
             .is_some()
     } else {
@@ -48,7 +52,8 @@ pub(super) async fn load_catalog_page(
     };
     let page = state
         .official_extension_catalog_source
-        .search(
+        .search_for_workspace(
+            workspace_id,
             category.as_str(),
             OfficialExtensionCatalogSearchQuery {
                 slot_code: query.slot_code,

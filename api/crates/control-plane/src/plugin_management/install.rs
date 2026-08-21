@@ -703,7 +703,10 @@ where
         self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
             .await?;
 
-        let snapshot = self.official_source.list_official_catalog().await?;
+        let snapshot = self
+            .official_source
+            .list_official_catalog_for_workspace(actor.current_workspace_id)
+            .await?;
         let entry = snapshot
             .entries
             .into_iter()
@@ -719,7 +722,10 @@ where
             &self.host_version,
             command.compatibility_override.as_ref(),
         )?;
-        let downloaded = self.official_source.download_plugin(&entry).await?;
+        let downloaded = self
+            .official_source
+            .download_plugin_for_workspace(actor.current_workspace_id, &entry)
+            .await?;
         let intake = intake_package_bytes(
             &downloaded.package_bytes,
             &PackageIntakePolicy {
@@ -879,7 +885,10 @@ where
         let actor = load_actor_context_for_user(&self.repository, command.actor_user_id).await?;
         self.ensure_use_case_permission(&actor, "plugin_config.configure.all")
             .await?;
-        let snapshot = self.official_source.list_official_catalog().await?;
+        let snapshot = self
+            .official_source
+            .list_official_catalog_for_workspace(actor.current_workspace_id)
+            .await?;
         let entry = snapshot
             .entries
             .into_iter()
@@ -893,7 +902,10 @@ where
             &self.host_version,
             command.compatibility_override.as_ref(),
         )?;
-        let downloaded = self.official_source.download_plugin(&entry).await?;
+        let downloaded = self
+            .official_source
+            .download_plugin_for_workspace(actor.current_workspace_id, &entry)
+            .await?;
         let intake = intake_package_bytes(
             &downloaded.package_bytes,
             &PackageIntakePolicy {
@@ -945,7 +957,11 @@ where
             .load_current_family_installation(actor.current_workspace_id, &command.provider_code)
             .await?;
         self.ensure_model_provider_target(&current)?;
-        let official_entry = self.official_source.list_official_catalog().await?.entries;
+        let official_entry = self
+            .official_source
+            .list_official_catalog_for_workspace(actor.current_workspace_id)
+            .await?
+            .entries;
         let official_entry = normalize_official_entries(official_entry)
             .into_iter()
             .find(|entry| entry.provider_code == command.provider_code)
@@ -976,9 +992,12 @@ where
             None => {
                 let downloaded = self
                     .official_source
-                    .download_plugin(&official_entry)
+                    .download_plugin_for_workspace(actor.current_workspace_id, &official_entry)
                     .await?;
-                let snapshot = self.official_source.list_official_catalog().await?;
+                let snapshot = self
+                    .official_source
+                    .list_official_catalog_for_workspace(actor.current_workspace_id)
+                    .await?;
                 let snapshot_entry = normalize_official_entries(snapshot.entries)
                     .into_iter()
                     .find(|entry| entry.provider_code == command.provider_code)

@@ -17,9 +17,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+use uuid::Uuid;
 
 use crate::{
     config::{ApiConfig, ResolvedOfficialExtensionCatalogSourceConfig},
+    network_egress_client::{NetworkEgressHttpClientLease, NetworkEgressHttpClientResolver},
     official_plugin_registry::rewrite_github_raw_url,
 };
 
@@ -244,11 +246,29 @@ pub trait OfficialExtensionCatalogSourcePort: Send + Sync {
         query: OfficialExtensionCatalogSearchQuery,
     ) -> Result<OfficialExtensionCatalogSearchResult>;
 
+    async fn search_for_workspace(
+        &self,
+        _workspace_id: Uuid,
+        category: &str,
+        query: OfficialExtensionCatalogSearchQuery,
+    ) -> Result<OfficialExtensionCatalogSearchResult> {
+        self.search(category, query).await
+    }
+
     async fn list_page(
         &self,
         category: &str,
         cursor: Option<&str>,
     ) -> Result<OfficialExtensionCatalogPage>;
+
+    async fn list_page_for_workspace(
+        &self,
+        _workspace_id: Uuid,
+        category: &str,
+        cursor: Option<&str>,
+    ) -> Result<OfficialExtensionCatalogPage> {
+        self.list_page(category, cursor).await
+    }
 
     fn cached_verified_entries(
         &self,
@@ -264,6 +284,15 @@ pub trait OfficialExtensionCatalogSourcePort: Send + Sync {
         catalog_id: &str,
     ) -> Result<Option<LocatedOfficialExtensionCatalogEntry>>;
 
+    async fn find_entry_for_workspace(
+        &self,
+        _workspace_id: Uuid,
+        category: &str,
+        catalog_id: &str,
+    ) -> Result<Option<LocatedOfficialExtensionCatalogEntry>> {
+        self.find_entry(category, catalog_id).await
+    }
+
     fn resolve_artifact(
         &self,
         entry: &OfficialExtensionCatalogEntry,
@@ -273,6 +302,14 @@ pub trait OfficialExtensionCatalogSourcePort: Send + Sync {
         &self,
         entry: &OfficialExtensionCatalogEntry,
     ) -> Result<DownloadedOfficialExtensionArtifact>;
+
+    async fn download_artifact_for_workspace(
+        &self,
+        _workspace_id: Uuid,
+        entry: &OfficialExtensionCatalogEntry,
+    ) -> Result<DownloadedOfficialExtensionArtifact> {
+        self.download_artifact(entry).await
+    }
 }
 
 #[derive(Clone)]
@@ -308,7 +345,10 @@ impl ApiOfficialRuntimeExtensionSource {
         }
     }
 
-    async fn runtime_extension_snapshot(&self) -> Result<OfficialPluginCatalogSnapshot> {
+    async fn runtime_extension_snapshot(
+        &self,
+        workspace_id: Option<Uuid>,
+    ) -> Result<OfficialPluginCatalogSnapshot> {
         let mut cursor = None;
         let mut visited_cursors = HashSet::new();
         let mut projected_entries = HashMap::new();
@@ -318,10 +358,22 @@ impl ApiOfficialRuntimeExtensionSource {
         let mut freshness = OfficialPluginCatalogFreshness::Fresh;
 
         loop {
-            let page = self
-                .catalog
-                .list_page("runtime-extensions", cursor.as_deref())
-                .await?;
+            let page = match workspace_id {
+                Some(workspace_id) => {
+                    self.catalog
+                        .list_page_for_workspace(
+                            workspace_id,
+                            "runtime-extensions",
+                            cursor.as_deref(),
+                        )
+                        .await?
+                }
+                None => {
+                    self.catalog
+                        .list_page("runtime-extensions", cursor.as_deref())
+                        .await?
+                }
+            };
             match source_kind.as_deref() {
                 Some(expected) if expected != page.source_kind => {
                     bail!("runtime extension catalog source changed while paging")
@@ -391,7 +443,14 @@ impl ApiOfficialRuntimeExtensionSource {
 #[async_trait]
 impl OfficialPluginSourcePort for ApiOfficialRuntimeExtensionSource {
     async fn list_official_catalog(&self) -> Result<OfficialPluginCatalogSnapshot> {
-        self.runtime_extension_snapshot().await
+        self.runtime_extension_snapshot(None).await
+    }
+
+    async fn list_official_catalog_for_workspace(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<OfficialPluginCatalogSnapshot> {
+        self.runtime_extension_snapshot(Some(workspace_id)).await
     }
 
     async fn cached_official_catalog(&self) -> Option<OfficialPluginCatalogSnapshot> {
@@ -433,6 +492,34 @@ impl OfficialPluginSourcePort for ApiOfficialRuntimeExtensionSource {
             projected.catalog_entry.clone()
         };
         let downloaded = self.catalog.download_artifact(&catalog_entry).await?;
+        Ok(DownloadedOfficialPluginPackage {
+            file_name: downloaded.file_name,
+            package_bytes: downloaded.artifact_bytes,
+        })
+    }
+
+    async fn download_plugin_for_workspace(
+        &self,
+        workspace_id: Uuid,
+        entry: &OfficialPluginSourceEntry,
+    ) -> Result<DownloadedOfficialPluginPackage> {
+        let catalog_entry = {
+            let cache = self
+                .projection_cache
+                .lock()
+                .map_err(|_| anyhow!("runtime extension projection cache is poisoned"))?;
+            let projected = cache.entries.get(&entry.plugin_id).ok_or_else(|| {
+                anyhow!("runtime extension entry was not projected by the catalog")
+            })?;
+            if projected.plugin_entry != *entry {
+                bail!("runtime extension entry does not match its catalog projection");
+            }
+            projected.catalog_entry.clone()
+        };
+        let downloaded = self
+            .catalog
+            .download_artifact_for_workspace(workspace_id, &catalog_entry)
+            .await?;
         Ok(DownloadedOfficialPluginPackage {
             file_name: downloaded.file_name,
             package_bytes: downloaded.artifact_bytes,
@@ -583,6 +670,7 @@ fn runtime_extension_i18n_summary(
 pub struct ApiOfficialExtensionCatalogSource {
     sources: Arc<BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>>,
     client: Client,
+    network_egress: Option<NetworkEgressHttpClientResolver>,
     last_success: Arc<Mutex<HashMap<CatalogCacheKey, OfficialExtensionCatalogPage>>>,
     search_snapshots: Arc<Mutex<HashMap<String, VerifiedSearchSnapshot>>>,
 }
@@ -621,6 +709,7 @@ impl ApiOfficialExtensionCatalogSource {
         Self {
             sources: Arc::new(config.official_extension_catalog_sources.clone()),
             client: extension_source_client(),
+            network_egress: None,
             last_success: Arc::new(Mutex::new(HashMap::new())),
             search_snapshots: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -630,6 +719,7 @@ impl ApiOfficialExtensionCatalogSource {
         Self {
             sources: Arc::new(sources),
             client: extension_source_client(),
+            network_egress: None,
             last_success: Arc::new(Mutex::new(HashMap::new())),
             search_snapshots: Arc::new(Mutex::new(HashMap::new())),
         }
@@ -643,8 +733,51 @@ impl ApiOfficialExtensionCatalogSource {
         Self {
             sources: Arc::new(sources),
             client: extension_source_client_with_timeout(request_timeout),
+            network_egress: None,
             last_success: Arc::new(Mutex::new(HashMap::new())),
             search_snapshots: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    pub fn with_network_egress(mut self, resolver: NetworkEgressHttpClientResolver) -> Self {
+        self.network_egress = Some(resolver);
+        self
+    }
+
+    async fn source_for_workspace(
+        &self,
+        workspace_id: Uuid,
+    ) -> Result<(Self, Option<NetworkEgressHttpClientLease>)> {
+        let Some(resolver) = self.network_egress.as_ref() else {
+            return Ok((self.clone(), None));
+        };
+        let lease = resolver
+            .resolve(
+                workspace_id,
+                domain::NetworkEgressConsumerSelector::GithubOfficialSources,
+            )
+            .await?;
+        let Some(lease) = lease else {
+            return Ok((self.clone(), None));
+        };
+        let mut routed = self.clone();
+        routed.client = lease.client().clone();
+        routed.network_egress = None;
+        Ok((routed, Some(lease)))
+    }
+
+    async fn finish_workspace_request<T>(
+        result: Result<T>,
+        lease: Option<NetworkEgressHttpClientLease>,
+    ) -> Result<T> {
+        let release = match lease {
+            Some(lease) => lease.release().await,
+            None => Ok(()),
+        };
+        match (result, release) {
+            (Ok(value), Ok(())) => Ok(value),
+            (Err(error), _) => Err(error),
+            (_, Err(error)) => Err(error),
         }
     }
 
@@ -934,6 +1067,46 @@ impl ApiOfficialExtensionCatalogSource {
         )))
     }
 
+    async fn download_artifact_bytes_for_workspace(
+        &self,
+        workspace_id: Uuid,
+        url: &str,
+    ) -> Result<Vec<u8>> {
+        let Some(resolver) = self.network_egress.as_ref() else {
+            return self.download_artifact_bytes(url).await;
+        };
+        let lease = resolver
+            .resolve(
+                workspace_id,
+                domain::NetworkEgressConsumerSelector::GithubOfficialSources,
+            )
+            .await?;
+        let Some(lease) = lease else {
+            return self.download_artifact_bytes(url).await;
+        };
+        self.download_artifact_with_lease(url, lease).await
+    }
+
+    async fn download_artifact_with_lease(
+        &self,
+        url: &str,
+        lease: NetworkEgressHttpClientLease,
+    ) -> Result<Vec<u8>> {
+        let result = download_with_client_budget(
+            lease.client(),
+            url,
+            MAX_EXTENSION_ARTIFACT_BYTES,
+            "official extension artifact",
+        )
+        .await;
+        let release = lease.release().await;
+        match (result, release) {
+            (Ok(bytes), Ok(())) => Ok(bytes),
+            (Err(error), _) => Err(error),
+            (_, Err(error)) => Err(error),
+        }
+    }
+
     async fn download_once_with_budget(
         &self,
         url: &str,
@@ -973,6 +1146,52 @@ impl ApiOfficialExtensionCatalogSource {
         }
         Ok(bytes)
     }
+}
+
+async fn download_with_client_budget(
+    client: &Client,
+    url: &str,
+    max_bytes: usize,
+    resource: &'static str,
+) -> Result<Vec<u8>> {
+    let response = client.get(url).send().await.map_err(|source| {
+        anyhow::Error::new(ExtensionDownloadFailure::Request {
+            resource,
+            url: url.to_string(),
+            source,
+        })
+    })?;
+    let status = response.status();
+    if !status.is_success() {
+        return Err(anyhow::Error::new(ExtensionDownloadFailure::Status {
+            resource,
+            url: url.to_string(),
+            status,
+        }));
+    }
+    let mut stream = response.bytes_stream();
+    let mut bytes = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|source| {
+            anyhow::Error::new(ExtensionDownloadFailure::Body {
+                resource,
+                url: url.to_string(),
+                source,
+            })
+        })?;
+        if bytes.len().saturating_add(chunk.len()) > max_bytes {
+            return Err(anyhow::Error::new(ExtensionDownloadFailure::Budget {
+                resource,
+            }));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    if bytes.is_empty() {
+        return Err(anyhow::Error::new(ExtensionDownloadFailure::Empty {
+            resource,
+        }));
+    }
+    Ok(bytes)
 }
 
 #[derive(Debug, Error)]
@@ -1148,6 +1367,16 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
         ))
     }
 
+    async fn search_for_workspace(
+        &self,
+        workspace_id: Uuid,
+        category: &str,
+        query: OfficialExtensionCatalogSearchQuery,
+    ) -> Result<OfficialExtensionCatalogSearchResult> {
+        let (source, lease) = self.source_for_workspace(workspace_id).await?;
+        Self::finish_workspace_request(source.search(category, query).await, lease).await
+    }
+
     async fn list_page(
         &self,
         category: &str,
@@ -1171,6 +1400,16 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
             .into_iter()
             .next()
             .unwrap_or_else(|| anyhow!("official extension catalog has no configured source")))
+    }
+
+    async fn list_page_for_workspace(
+        &self,
+        workspace_id: Uuid,
+        category: &str,
+        cursor: Option<&str>,
+    ) -> Result<OfficialExtensionCatalogPage> {
+        let (source, lease) = self.source_for_workspace(workspace_id).await?;
+        Self::finish_workspace_request(source.list_page(category, cursor).await, lease).await
     }
 
     fn cached_verified_entries(
@@ -1340,6 +1579,16 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
         Ok(None)
     }
 
+    async fn find_entry_for_workspace(
+        &self,
+        workspace_id: Uuid,
+        category: &str,
+        catalog_id: &str,
+    ) -> Result<Option<LocatedOfficialExtensionCatalogEntry>> {
+        let (source, lease) = self.source_for_workspace(workspace_id).await?;
+        Self::finish_workspace_request(source.find_entry(category, catalog_id).await, lease).await
+    }
+
     fn resolve_artifact(
         &self,
         entry: &OfficialExtensionCatalogEntry,
@@ -1354,6 +1603,37 @@ impl OfficialExtensionCatalogSourcePort for ApiOfficialExtensionCatalogSource {
     ) -> Result<DownloadedOfficialExtensionArtifact> {
         let descriptor = self.resolve_artifact(entry)?;
         let artifact_bytes = self.download_artifact_bytes(&descriptor.locator).await?;
+        if let Some(expected_checksum) = descriptor.expected_checksum.as_deref() {
+            if ensure_sha256(&artifact_bytes, expected_checksum).is_err() {
+                return Err(anyhow::Error::new(
+                    OfficialExtensionArtifactError::ChecksumMismatch,
+                ));
+            }
+        }
+        let file_name = descriptor
+            .locator
+            .split('?')
+            .next()
+            .and_then(|url| url.rsplit('/').next())
+            .filter(|value| !value.is_empty())
+            .unwrap_or("extension-artifact.bin")
+            .to_string();
+        Ok(DownloadedOfficialExtensionArtifact {
+            descriptor,
+            file_name,
+            artifact_bytes,
+        })
+    }
+
+    async fn download_artifact_for_workspace(
+        &self,
+        workspace_id: Uuid,
+        entry: &OfficialExtensionCatalogEntry,
+    ) -> Result<DownloadedOfficialExtensionArtifact> {
+        let descriptor = self.resolve_artifact(entry)?;
+        let artifact_bytes = self
+            .download_artifact_bytes_for_workspace(workspace_id, &descriptor.locator)
+            .await?;
         if let Some(expected_checksum) = descriptor.expected_checksum.as_deref() {
             if ensure_sha256(&artifact_bytes, expected_checksum).is_err() {
                 return Err(anyhow::Error::new(

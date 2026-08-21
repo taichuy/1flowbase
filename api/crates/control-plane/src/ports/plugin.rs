@@ -224,6 +224,12 @@ pub struct DownloadedOfficialPluginPackage {
 #[async_trait]
 pub trait OfficialPluginSourcePort: Send + Sync {
     async fn list_official_catalog(&self) -> anyhow::Result<OfficialPluginCatalogSnapshot>;
+    async fn list_official_catalog_for_workspace(
+        &self,
+        _workspace_id: Uuid,
+    ) -> anyhow::Result<OfficialPluginCatalogSnapshot> {
+        self.list_official_catalog().await
+    }
     async fn cached_official_catalog(&self) -> Option<OfficialPluginCatalogSnapshot> {
         None
     }
@@ -231,6 +237,13 @@ pub trait OfficialPluginSourcePort: Send + Sync {
         &self,
         entry: &OfficialPluginSourceEntry,
     ) -> anyhow::Result<DownloadedOfficialPluginPackage>;
+    async fn download_plugin_for_workspace(
+        &self,
+        _workspace_id: Uuid,
+        entry: &OfficialPluginSourceEntry,
+    ) -> anyhow::Result<DownloadedOfficialPluginPackage> {
+        self.download_plugin(entry).await
+    }
     fn trusted_public_keys(&self) -> Vec<plugin_framework::TrustedPublicKey>;
 }
 
