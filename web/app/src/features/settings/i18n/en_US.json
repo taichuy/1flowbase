@@ -829,6 +829,8 @@
     "user_api_key_security_notice": "The full key is shown only after creation; the list only keeps key prefix, status, and usage time.",
     "create_api_key": "Add",
     "api_key_prefix": "Key prefix",
+    "api_key_status_all": "All",
+    "api_key_status_active": "Active",
     "revoked": "Deleted",
     "last_used_at": "Last used",
     "not_used_yet": "Not used yet",

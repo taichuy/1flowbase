@@ -829,6 +829,8 @@
     "user_api_key_security_notice": "完整 key 只会在添加后显示一次；列表只保留 key 前缀、状态和使用时间。",
     "create_api_key": "添加",
     "api_key_prefix": "key 前缀",
+    "api_key_status_all": "全部",
+    "api_key_status_active": "活跃",
     "revoked": "已删除",
     "last_used_at": "最近使用",
     "not_used_yet": "尚未使用",

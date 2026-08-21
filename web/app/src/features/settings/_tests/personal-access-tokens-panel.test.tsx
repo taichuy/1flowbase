@@ -81,6 +81,24 @@ describe('PersonalAccessTokensPanel', () => {
           last_used_at: null,
           created_at: '2026-06-22T00:00:00Z',
           updated_at: '2026-06-22T00:00:00Z'
+        },
+        {
+          id: 'key-2',
+          name: 'Deleted automation',
+          token: null,
+          token_prefix: 'pat_deleted',
+          key_kind: 'user_api_key',
+          role_code: 'root',
+          creator_user_id: 'user-1',
+          tenant_id: 'tenant-1',
+          scope_kind: 'workspace',
+          scope_id: 'workspace-1',
+          enabled: false,
+          revoked: true,
+          expires_at: '2027-06-21T00:00:00Z',
+          last_used_at: null,
+          created_at: '2026-06-21T00:00:00Z',
+          updated_at: '2026-06-21T00:00:00Z'
         }
       ]
     );
@@ -118,6 +136,20 @@ describe('PersonalAccessTokensPanel', () => {
     expect(await screen.findByText('Existing automation')).toBeInTheDocument();
     expect(screen.getByText('pat_abc')).toBeInTheDocument();
     expect(screen.queryByText('pat_new_secret')).not.toBeInTheDocument();
+  });
+
+  test('shows active API keys by default and filters deleted keys on query', async () => {
+    renderPanel();
+
+    expect(await screen.findByText('Existing automation')).toBeInTheDocument();
+    expect(screen.queryByText('Deleted automation')).not.toBeInTheDocument();
+
+    fireEvent.mouseDown(screen.getByLabelText('状态'));
+    fireEvent.click(await screen.findByText('已删除'));
+    fireEvent.click(screen.getByRole('button', { name: /筛\s*选/ }));
+
+    expect(await screen.findByText('Deleted automation')).toBeInTheDocument();
+    expect(screen.queryByText('Existing automation')).not.toBeInTheDocument();
   });
 
   test('creates a token, shows the secret once, and refreshes the list', async () => {

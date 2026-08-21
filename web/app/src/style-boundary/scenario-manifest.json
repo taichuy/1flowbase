@@ -1195,6 +1195,8 @@
       "web/app/src/features/settings/lib/settings-sections.tsx",
       "web/app/src/features/settings/components/SettingsSectionSurface.tsx",
       "web/app/src/features/settings/components/settings-section-surface.css",
+      "web/app/src/features/settings/components/PersonalAccessTokensPanel.tsx",
+      "web/app/src/features/settings/components/personal-access-tokens-panel.css",
       "web/app/src/features/settings/api/data-models.ts",
       "web/app/src/features/settings/api/model-providers.ts",
       "web/app/src/features/settings/api/billing.ts",

@@ -3,17 +3,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
+  Flex,
   Form,
   Input,
   Modal,
   Popconfirm,
   Select,
   Space,
-  Table,
   Tag,
   Typography,
-  App,
-  type TableProps
+  App
 } from 'antd';
 import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 
@@ -31,6 +30,17 @@ import {
   type SettingsPersonalAccessToken
 } from '../api/personal-access-tokens';
 import { i18nText } from '../../../shared/i18n/text';
+import {
+  DataTable,
+  DataTableColumnSettings,
+  type DataTableColumn
+} from '../../../shared/ui/data-table/DataTable';
+import {
+  DataTableFilterField,
+  DataTableFilterForm,
+  DataTableLayout
+} from '../../../shared/ui/data-table/DataTableLayout';
+import { usePersistedDataTableConfiguration } from '../../../shared/ui/data-table/data-table-state';
 import { SettingsSectionSurface } from './SettingsSectionSurface';
 import './personal-access-tokens-panel.css';
 
@@ -38,6 +48,16 @@ interface CreatePersonalAccessTokenFormValues {
   name: string;
   role_code: CreateSettingsPersonalAccessTokenInput['role_code'];
   expiration_policy: CreateSettingsPersonalAccessTokenInput['expiration_policy'];
+}
+
+const PAGE_SIZE = 20;
+
+type PersonalAccessTokenStatusFilter = 'all' | 'active' | 'deleted';
+
+function personalAccessTokenStatus(
+  token: SettingsPersonalAccessToken
+): Exclude<PersonalAccessTokenStatusFilter, 'all'> {
+  return token.revoked || !token.enabled ? 'deleted' : 'active';
 }
 
 function formatDateTime(value: string | null) {
@@ -72,6 +92,11 @@ export function PersonalAccessTokensPanel() {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [createdToken, setCreatedToken] =
     useState<SettingsPersonalAccessToken | null>(null);
+  const [statusFilterDraft, setStatusFilterDraft] =
+    useState<PersonalAccessTokenStatusFilter>('active');
+  const [statusFilter, setStatusFilter] =
+    useState<PersonalAccessTokenStatusFilter>('active');
+  const [page, setPage] = useState(1);
 
   const tokensQuery = useQuery({
     queryKey: settingsPersonalAccessTokensQueryKey,
@@ -204,44 +229,36 @@ export function PersonalAccessTokensPanel() {
 
   const sectionStatus = useMemo(
     () => (
-      <div className="personal-access-tokens-panel__action-row">
-        <Typography.Text type="secondary">
-          {i18nText('settings', 'auto.user_api_key_security_notice')}
-        </Typography.Text>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          onClick={() => setCreateModalOpen(true)}
-        >
-          {i18nText('settings', 'auto.create_api_key')}
-        </Button>
-      </div>
+      <Typography.Text type="secondary">
+        {i18nText('settings', 'auto.user_api_key_security_notice')}
+      </Typography.Text>
     ),
     []
   );
 
-  const columns = useMemo<TableProps<SettingsPersonalAccessToken>['columns']>(
+  const columns = useMemo<Array<DataTableColumn<SettingsPersonalAccessToken>>>(
     () => [
       {
+        key: 'name',
         title: i18nText('settings', 'auto.name'),
         dataIndex: 'name',
-        key: 'name',
+        width: 200,
         render: (_: unknown, token) => (
           <Typography.Text strong>{token.name}</Typography.Text>
         )
       },
       {
+        key: 'token_prefix',
         title: i18nText('settings', 'auto.api_key_prefix'),
         dataIndex: 'token_prefix',
-        key: 'token_prefix',
         width: 160,
         render: (token_prefix: string) => (
           <Typography.Text code>{token_prefix}</Typography.Text>
         )
       },
       {
-        title: i18nText('settings', 'auto.status'),
         key: 'status',
+        title: i18nText('settings', 'auto.status'),
         width: 120,
         render: (_: unknown, token) =>
           token.revoked || !token.enabled ? (
@@ -251,26 +268,29 @@ export function PersonalAccessTokensPanel() {
           )
       },
       {
+        key: 'expires_at',
         title: i18nText('settings', 'auto.expires'),
         dataIndex: 'expires_at',
-        key: 'expires_at',
+        width: 180,
         render: (expires_at: string | null) => formatDateTime(expires_at)
       },
       {
+        key: 'last_used_at',
         title: i18nText('settings', 'auto.last_used_at'),
         dataIndex: 'last_used_at',
-        key: 'last_used_at',
+        width: 180,
         render: (last_used_at: string | null) => formatLastUsedAt(last_used_at)
       },
       {
+        key: 'created_at',
         title: i18nText('settings', 'auto.created'),
         dataIndex: 'created_at',
-        key: 'created_at',
+        width: 180,
         render: (created_at: string) => formatDateTime(created_at)
       },
       {
-        title: i18nText('settings', 'auto.operation'),
         key: 'action',
+        title: i18nText('settings', 'auto.operation'),
         width: 120,
         render: (_: unknown, token) =>
           token.revoked || !token.enabled ? null : (
@@ -298,20 +318,103 @@ export function PersonalAccessTokensPanel() {
           )
       }
     ],
-    [revokeMutation]
+    [revokeMutation.isPending, revokeMutation.mutate]
   );
+  const tableConfiguration = usePersistedDataTableConfiguration({
+    columns,
+    storageKey: 'settings.personal_access_tokens'
+  });
+  const filteredTokens = useMemo(() => {
+    const tokens = tokensQuery.data ?? [];
+    if (statusFilter === 'all') return tokens;
+
+    return tokens.filter(
+      (token) => personalAccessTokenStatus(token) === statusFilter
+    );
+  }, [statusFilter, tokensQuery.data]);
+  const pagedTokens = useMemo(
+    () => filteredTokens.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE),
+    [filteredTokens, page]
+  );
+
+  const applyFilters = useCallback(() => {
+    setStatusFilter(statusFilterDraft);
+    setPage(1);
+  }, [statusFilterDraft]);
+  const resetFilters = useCallback(() => {
+    setStatusFilterDraft('active');
+    setStatusFilter('active');
+    setPage(1);
+  }, []);
 
   return (
     <SettingsSectionSurface heightMode="fill" status={sectionStatus}>
-      <Table<SettingsPersonalAccessToken>
-        rowKey="id"
-        loading={tokensQuery.isLoading}
-        dataSource={tokensQuery.data ?? []}
-        columns={columns}
-        pagination={false}
-        size="middle"
-        locale={{ emptyText: i18nText('settings', 'auto.no_user_api_keys') }}
-      />
+      <DataTableLayout
+        filters={
+          <DataTableFilterForm
+            ariaLabel={i18nText('settings', 'auto.translation_catalog_filter')}
+            resetLabel={i18nText('settings', 'auto.reset')}
+            submitLabel={i18nText('settings', 'auto.translation_catalog_filter')}
+            onReset={resetFilters}
+            onSubmit={applyFilters}
+          >
+            <DataTableFilterField
+              label={i18nText('settings', 'auto.status')}
+            >
+              <Select<PersonalAccessTokenStatusFilter>
+                aria-label={i18nText('settings', 'auto.status')}
+                value={statusFilterDraft}
+                options={[
+                  {
+                    value: 'all',
+                    label: i18nText('settings', 'auto.api_key_status_all')
+                  },
+                  {
+                    value: 'active',
+                    label: i18nText('settings', 'auto.api_key_status_active')
+                  },
+                  {
+                    value: 'deleted',
+                    label: i18nText('settings', 'auto.revoked')
+                  }
+                ]}
+                onChange={setStatusFilterDraft}
+              />
+            </DataTableFilterField>
+          </DataTableFilterForm>
+        }
+      >
+        <DataTable<SettingsPersonalAccessToken>
+          columns={columns}
+          configuration={tableConfiguration}
+          dataSource={pagedTokens}
+          emptyText={i18nText('settings', 'auto.no_user_api_keys')}
+          loading={tokensQuery.isLoading || tokensQuery.isFetching}
+          page={page}
+          pageSize={PAGE_SIZE}
+          rowKey="id"
+          toolbar={
+            <Flex justify="flex-end" gap={8} wrap>
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={() => setCreateModalOpen(true)}
+              >
+                {i18nText('settings', 'auto.create_api_key')}
+              </Button>
+              <Button onClick={() => tokensQuery.refetch()}>
+                {i18nText('settings', 'auto.refresh')}
+              </Button>
+              <DataTableColumnSettings
+                columns={columns}
+                configuration={tableConfiguration}
+              />
+            </Flex>
+          }
+          total={filteredTokens.length}
+          onPageChange={setPage}
+        />
+      </DataTableLayout>
 
       <Modal
         title={i18nText('settings', 'auto.create_api_key')}
