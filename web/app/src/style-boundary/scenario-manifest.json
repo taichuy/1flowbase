@@ -1205,6 +1205,7 @@
       "web/app/src/features/settings/api/host-infrastructure.ts",
       "web/app/src/features/settings/api/network-center.ts",
       "web/app/src/features/settings/network-center/pools/NetworkEgressPoolsPanel.tsx",
+      "web/app/src/features/settings/network-center/providers/NetworkEgressProvidersPanel.tsx",
       "web/app/src/features/settings/network-center/routes/NetworkEgressRoutesPanel.tsx",
       "web/app/src/features/settings/components/data-models/DataModelAdvisorTab.tsx",
       "web/app/src/features/settings/components/data-models/DataModelApiTab.tsx",

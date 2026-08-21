@@ -799,5 +799,9 @@ mod tests {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "root-1805-consumer-fixture"))]
+#[path = "_tests/root_1805_consumer_fixture.rs"]
+mod _tests;
+
+#[cfg(all(test, not(feature = "root-1805-consumer-fixture")))]
 mod _tests;

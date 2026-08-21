@@ -115,6 +115,8 @@ export function ModelProviderCatalogPanel({
                       upgradingProviderCode === entry.provider_code;
                     const uninstalling =
                       uninstallingProviderCode === entry.provider_code;
+                    const currentNodeArtifactAvailable =
+                      entry.current_local_artifact.artifact_status === 'ready';
 
                     return (
                       <Space
@@ -132,7 +134,9 @@ export function ModelProviderCatalogPanel({
                         </Button>
                         <Button
                           type="link"
-                          disabled={uninstalling}
+                          disabled={
+                            uninstalling || !currentNodeArtifactAvailable
+                          }
                           onClick={() => onCreate(entry)}
                         >
                           {i18nText('settings', 'auto.new')}
@@ -210,8 +214,16 @@ export function ModelProviderCatalogPanel({
                 size={[6, 6]}
                 className="model-provider-panel__catalog-status"
               >
-                <Tag color="green">
-                  {i18nText('settings', 'auto.available')}
+                <Tag
+                  color={
+                    entry.current_local_artifact.artifact_status === 'ready'
+                      ? 'green'
+                      : 'default'
+                  }
+                >
+                  {entry.current_local_artifact.artifact_status === 'ready'
+                    ? i18nText('settings', 'auto.available')
+                    : i18nText('settings', 'auto.unavailable')}
                 </Tag>
                 <Tag>{entry.model_discovery_mode}</Tag>
               </Space>

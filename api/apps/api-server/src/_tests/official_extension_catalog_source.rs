@@ -63,7 +63,7 @@ struct MutableCatalogHttpFixture {
     requests: Arc<Mutex<Vec<String>>>,
 }
 
-struct TempNetworkEgressPackage {
+pub(super) struct TempNetworkEgressPackage {
     root: PathBuf,
 }
 
@@ -145,6 +145,24 @@ async fn seed_github_egress_resolver(
     state: &crate::app_state::ApiState,
     proxy_url: &str,
 ) -> (NetworkEgressHttpClientResolver, TempNetworkEgressPackage) {
+    seed_network_egress_resolver(
+        state,
+        proxy_url,
+        NetworkEgressConsumerSelector::GithubOfficialSources,
+        ApiProviderRuntime::new(Arc::clone(&state.provider_runtime)),
+    )
+    .await
+}
+
+/// Persists the full Route -> Pool -> Provider -> projection fixture used by all Network Center
+/// consumer tests. Callers supply the runtime so the resolver and its consumer share the same
+/// Host-owned `NetworkEgressHost`; this deliberately avoids an injected proxy client.
+pub(super) async fn seed_network_egress_resolver(
+    state: &crate::app_state::ApiState,
+    proxy_url: &str,
+    selector: NetworkEgressConsumerSelector,
+    runtime: ApiProviderRuntime,
+) -> (NetworkEgressHttpClientResolver, TempNetworkEgressPackage) {
     let package = TempNetworkEgressPackage::new(proxy_url);
     let root = state
         .store
@@ -223,7 +241,7 @@ async fn seed_github_egress_resolver(
         &UpsertNetworkEgressProviderSecretInput {
             provider_id,
             secret_ref: "secret://fixture-egress".into(),
-            plaintext_secret_json: json!({"fixture": true}),
+            plaintext_secret_json: json!({"token": "egress-provider-secret"}),
             master_key: state.provider_secret_master_key.clone(),
             secret_version: 1,
         },
@@ -281,7 +299,7 @@ async fn seed_github_egress_resolver(
         &CreateNetworkEgressRouteInput {
             route_id: uuid::Uuid::now_v7(),
             workspace_id: state.bootstrap_workspace_id,
-            selector: NetworkEgressConsumerSelector::GithubOfficialSources,
+            selector,
             pool_id,
             enabled: true,
             actor_user_id: root.id,
@@ -292,7 +310,7 @@ async fn seed_github_egress_resolver(
     (
         NetworkEgressHttpClientResolver::new(
             state.store.clone(),
-            ApiProviderRuntime::new(Arc::clone(&state.provider_runtime)),
+            runtime,
             state.provider_secret_master_key.clone(),
             state.api_node_id.clone(),
         ),

@@ -4,6 +4,12 @@ version = "0.3.7"
 edition.workspace = true
 license.workspace = true
 
+[features]
+# Builds only the Root #1805 consumer authenticity fixture. The normal lib-test target keeps
+# the complete API-server suite; this narrow target prevents a fresh QA run from compiling every
+# unrelated API test module before it can exercise the persisted egress path.
+root-1805-consumer-fixture = []
+
 [dependencies]
 anyhow.workspace = true
 argon2.workspace = true

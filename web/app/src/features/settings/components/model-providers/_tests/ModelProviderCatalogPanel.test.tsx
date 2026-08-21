@@ -58,4 +58,33 @@ describe('ModelProviderCatalogPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: '卸载' }));
     expect(onUninstall).toHaveBeenCalledWith(installedFamily);
   });
+
+  test('disables new instances when the current node artifact is unavailable', () => {
+    const unavailableFamily: SettingsPluginFamilyEntry = {
+      ...installedFamily,
+      current_local_artifact: {
+        ...installedFamily.current_local_artifact,
+        artifact_status: 'outdated',
+        runtime_status: 'inactive'
+      }
+    };
+
+    render(
+      <ModelProviderCatalogPanel
+        overviewRows={[]}
+        entries={[unavailableFamily]}
+        currentCatalogEntries={{}}
+        canManage
+        onCreate={vi.fn()}
+        onViewInstances={vi.fn()}
+        onUpgradeLatest={vi.fn()}
+        onSwitchVersion={vi.fn()}
+        onUninstall={vi.fn()}
+      />
+    );
+
+    expect(screen.getByRole('button', { name: '新增' })).toBeDisabled();
+    expect(screen.getByText('不可用')).toBeInTheDocument();
+    expect(screen.queryByText('可用')).not.toBeInTheDocument();
+  });
 });

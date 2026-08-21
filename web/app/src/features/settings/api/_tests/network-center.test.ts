@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const apiClient = vi.hoisted(() => ({
+  listConsoleNetworkEgressProviders: vi.fn(),
+  createConsoleNetworkEgressProvider: vi.fn(),
+  updateConsoleNetworkEgressProviderLifecycle: vi.fn(),
+  syncConsoleNetworkEgressProvider: vi.fn(),
   listConsoleNetworkEgressPools: vi.fn(),
   createConsoleNetworkEgressPool: vi.fn(),
   updateConsoleNetworkEgressPool: vi.fn(),
@@ -17,11 +21,13 @@ const apiClient = vi.hoisted(() => ({
 vi.mock('@1flowbase/api-client', () => apiClient);
 
 import {
+  createSettingsNetworkEgressProvider,
   createSettingsNetworkEgressPool,
   createSettingsNetworkEgressPoolMember,
   deleteSettingsNetworkEgressPool,
   deleteSettingsNetworkEgressPoolMember,
   fetchSettingsNetworkEgressPools,
+  fetchSettingsNetworkEgressProviders,
   fetchSettingsNetworkEgressRoutes,
   settingsNetworkEgressRoutesQueryKey,
   settingsNetworkEgressPoolsQueryKey,
@@ -29,8 +35,42 @@ import {
   updateSettingsNetworkEgressPoolMember,
   createSettingsNetworkEgressRoute,
   updateSettingsNetworkEgressRoute,
-  deleteSettingsNetworkEgressRoute
+  deleteSettingsNetworkEgressRoute,
+  updateSettingsNetworkEgressProviderLifecycle,
+  syncSettingsNetworkEgressProvider
 } from '../network-center';
+
+describe('settings network egress providers API', () => {
+  test('AC-002 forwards the registration, lifecycle, and sync DTOs without frontend aliases', () => {
+    const provider = {
+      installation_id: 'installation-1',
+      display_name: 'Mihomo edge',
+      secret_ref: 'secret://system/network/mihomo'
+    };
+
+    fetchSettingsNetworkEgressProviders();
+    createSettingsNetworkEgressProvider(provider, 'csrf-123');
+    updateSettingsNetworkEgressProviderLifecycle(
+      'provider-1',
+      { lifecycle: 'active' },
+      'csrf-123'
+    );
+    syncSettingsNetworkEgressProvider('provider-1', 'csrf-123');
+
+    expect(apiClient.listConsoleNetworkEgressProviders).toHaveBeenCalledWith();
+    expect(apiClient.createConsoleNetworkEgressProvider).toHaveBeenCalledWith(
+      provider,
+      'csrf-123'
+    );
+    expect(
+      apiClient.updateConsoleNetworkEgressProviderLifecycle
+    ).toHaveBeenCalledWith('provider-1', { lifecycle: 'active' }, 'csrf-123');
+    expect(apiClient.syncConsoleNetworkEgressProvider).toHaveBeenCalledWith(
+      'provider-1',
+      'csrf-123'
+    );
+  });
+});
 
 describe('settings network egress pools API', () => {
   beforeEach(() => {

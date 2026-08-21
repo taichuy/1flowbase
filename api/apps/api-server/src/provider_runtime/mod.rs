@@ -218,12 +218,13 @@ impl ApiProviderRuntime {
     pub async fn release_network_egress_http_forward_proxy(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
+        lease_id: &str,
     ) -> anyhow::Result<()> {
         self.services
             .network_egress_host
             .write()
             .await
-            .release_http_forward_proxy(&installation.plugin_id)
+            .release_http_forward_proxy(&installation.plugin_id, lease_id)
             .await
             .map_err(map_provider_framework_error)
     }

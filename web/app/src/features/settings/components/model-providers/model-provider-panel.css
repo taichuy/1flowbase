@@ -497,10 +497,7 @@
   height: 100%;
 }
 
-.model-provider-panel__instances-tabs
-  > .ant-tabs-body-holder
-  > .ant-tabs-body
-  > .ant-tabs-content-active {
+.model-provider-panel__instances-tabs > .ant-tabs-body-holder > .ant-tabs-body > .ant-tabs-content-active {
   height: 100%;
   overflow-y: auto;
   padding-right: 4px;

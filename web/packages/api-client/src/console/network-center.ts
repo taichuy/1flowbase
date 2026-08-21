@@ -22,6 +22,16 @@ export interface ConsoleNetworkEgressProvider {
   egresses: ConsoleNetworkEgressProjection[];
 }
 
+export interface CreateConsoleNetworkEgressProviderInput {
+  installation_id: string;
+  display_name: string;
+  secret_ref: string;
+}
+
+export interface UpdateConsoleNetworkEgressProviderLifecycleInput {
+  lifecycle: string;
+}
+
 export interface ConsoleNetworkEgressPoolMember {
   id: string;
   provider_id: string;
@@ -82,6 +92,48 @@ export interface UpdateConsoleNetworkEgressRouteInput {
 export function listConsoleNetworkEgressProviders(baseUrl?: string) {
   return apiFetch<ConsoleNetworkEgressProvider[]>({
     path: '/api/console/settings/network-center/providers',
+    baseUrl
+  });
+}
+
+export function createConsoleNetworkEgressProvider(
+  input: CreateConsoleNetworkEgressProviderInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleNetworkEgressProvider>({
+    path: '/api/console/settings/network-center/providers',
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function updateConsoleNetworkEgressProviderLifecycle(
+  providerId: string,
+  input: UpdateConsoleNetworkEgressProviderLifecycleInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleNetworkEgressProvider>({
+    path: `/api/console/settings/network-center/providers/${encodeURIComponent(providerId)}`,
+    method: 'PATCH',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function syncConsoleNetworkEgressProvider(
+  providerId: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleNetworkEgressProvider>({
+    path: `/api/console/settings/network-center/providers/${encodeURIComponent(providerId)}/sync`,
+    method: 'POST',
+    csrfToken,
     baseUrl
   });
 }
