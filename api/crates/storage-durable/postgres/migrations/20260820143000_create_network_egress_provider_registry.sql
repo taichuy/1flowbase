@@ -1,7 +1,7 @@
 create table network_egress_providers (
     id uuid primary key,
     scope_id uuid not null,
-    installation_id uuid not null unique references plugin_installations(id) on delete restrict,
+    installation_id uuid not null unique references extension_installations(id) on delete restrict,
     provider_code text not null,
     display_name text not null,
     secret_ref text not null check (secret_ref like 'secret://%'),
