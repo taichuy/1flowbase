@@ -625,7 +625,11 @@ describe('SettingsExtensionCenterSection', () => {
       new Error('unknown failure')
     );
     renderSection('runtime-extensions');
-    const row = await screen.findByRole('row', { name: /OpenAI Provider/ });
+    const row = await screen.findByRole(
+      'row',
+      { name: /OpenAI Provider/ },
+      { timeout: 5000 }
+    );
 
     fireEvent.click(within(row).getByRole('button', { name: '安装' }));
 

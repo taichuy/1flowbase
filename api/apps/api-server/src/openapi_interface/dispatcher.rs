@@ -54,6 +54,7 @@ impl From<anyhow::Error> for DispatchError {
     }
 }
 
+#[allow(clippy::result_large_err)]
 pub async fn dispatch(
     state: Arc<ApiState>,
     source_headers: &HeaderMap,
@@ -340,6 +341,7 @@ fn scalar_or_json(value: &Value) -> String {
     }
 }
 
+#[allow(clippy::result_large_err)]
 async fn media_response(
     response: Response,
     media_type: Option<&str>,

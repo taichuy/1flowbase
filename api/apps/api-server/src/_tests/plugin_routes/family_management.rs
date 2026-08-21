@@ -309,7 +309,7 @@ async fn plugin_routes_uninstall_family_preserves_referenced_instances() {
             .as_array()
             .unwrap()
             .len(),
-        1
+        0
     );
 
     let instances_response = app

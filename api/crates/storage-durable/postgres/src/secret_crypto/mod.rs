@@ -98,7 +98,7 @@ fn hex_decode(ciphertext: &str) -> Result<Vec<u8>> {
     }
 
     let mut decoded = Vec::with_capacity(ciphertext.len() / 2);
-    for chunk in ciphertext.as_bytes().chunks_exact(2) {
+    for chunk in ciphertext.as_bytes().as_chunks::<2>().0 {
         let pair = std::str::from_utf8(chunk)?;
         decoded.push(u8::from_str_radix(pair, 16)?);
     }

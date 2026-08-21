@@ -345,7 +345,9 @@ fn decode_hex(value: &str) -> Result<Vec<u8>, BackupEnvelopeError> {
     }
     value
         .as_bytes()
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .map(|pair| {
             std::str::from_utf8(pair)
                 .ok()

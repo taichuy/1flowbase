@@ -1460,9 +1460,12 @@ function ModelProviderInstanceDrawerContent({
         editing={Boolean(configuredModelEditor?.rowKey)}
         initialValue={configuredModelEditor?.initialValue ?? null}
         modelIds={previewModels.map((model) => model.model_id)}
-        reservedModelIds={configuredModels
-          .filter((row) => row.key !== configuredModelEditor?.rowKey)
-          .map((row) => row.model_id)}
+        reservedModelIds={configuredModels.reduce<string[]>((reserved, row) => {
+          if (row.key !== configuredModelEditor?.rowKey) {
+            reserved.push(row.model_id);
+          }
+          return reserved;
+        }, [])}
         pricingTargets={pricingTargets}
         onCancel={() => setConfiguredModelEditor(null)}
         onSave={saveConfiguredModel}

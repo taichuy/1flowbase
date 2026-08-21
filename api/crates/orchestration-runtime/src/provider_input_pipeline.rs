@@ -183,6 +183,9 @@ impl ProviderInputPipeline {
         })
     }
 
+    // The receipt is deliberately returned with the failure so callers can retain the
+    // fail-closed contribution audit trail; boxing it would weaken that boundary.
+    #[allow(clippy::result_large_err)]
     pub async fn execute(
         &self,
         mut input: ProviderInvocationInput,
