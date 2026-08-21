@@ -124,6 +124,9 @@ where
                     RoutedPluginPackageKind::HostExtension => "host_extension",
                     RoutedPluginPackageKind::ModelProviderRuntime => "model_provider",
                     RoutedPluginPackageKind::DataSourceRuntime => "data_source",
+                    RoutedPluginPackageKind::NetworkEgressProviderRuntime => {
+                        "network_egress_provider"
+                    }
                     RoutedPluginPackageKind::CapabilityPlugin => "capability_plugin",
                 };
                 let desired_state = if package_kind == RoutedPluginPackageKind::HostExtension {
@@ -144,7 +147,8 @@ where
                                 domain::ExtensionCategory::HostExtensions
                             }
                             RoutedPluginPackageKind::ModelProviderRuntime
-                            | RoutedPluginPackageKind::DataSourceRuntime => {
+                            | RoutedPluginPackageKind::DataSourceRuntime
+                            | RoutedPluginPackageKind::NetworkEgressProviderRuntime => {
                                 domain::ExtensionCategory::RuntimeExtensions
                             }
                             RoutedPluginPackageKind::CapabilityPlugin => {

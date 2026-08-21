@@ -30,6 +30,7 @@ const providers = [
     installation_id: 'installation-1',
     provider_code: 'edge',
     display_name: 'Edge provider',
+    description: '',
     lifecycle: 'active',
     health_status: 'healthy',
     secret_configured: true,

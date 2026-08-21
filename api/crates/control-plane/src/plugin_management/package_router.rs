@@ -7,6 +7,7 @@ pub enum RoutedPluginPackageKind {
     HostExtension,
     ModelProviderRuntime,
     DataSourceRuntime,
+    NetworkEgressProviderRuntime,
     CapabilityPlugin,
 }
 
@@ -26,6 +27,13 @@ pub fn route_plugin_package(
             }
             if manifest.slot_codes.iter().any(|slot| slot == "data_source") {
                 return Ok(RoutedPluginPackageKind::DataSourceRuntime);
+            }
+            if manifest
+                .slot_codes
+                .iter()
+                .any(|slot| slot == "network_egress_provider")
+            {
+                return Ok(RoutedPluginPackageKind::NetworkEgressProviderRuntime);
             }
             Err(ControlPlaneError::InvalidInput("runtime_slot").into())
         }

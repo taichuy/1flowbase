@@ -392,7 +392,17 @@ export function NetworkEgressPoolsPanel({
     {
       title: i18nText('settings', 'auto.network_center_pool_display_name'),
       dataIndex: 'display_name',
-      key: 'display_name'
+      key: 'display_name',
+      render: (displayName: string, pool) => (
+        <Space size={8}>
+          {displayName}
+          {pool.owner_provider_id ? (
+            <Tag>
+              {i18nText('settings', 'auto.network_center_pool_provider_owned')}
+            </Tag>
+          ) : null}
+        </Space>
+      )
     },
     {
       title: i18nText(
@@ -415,34 +425,37 @@ export function NetworkEgressPoolsPanel({
       title: '',
       key: 'actions',
       width: 160,
-      render: (_, pool) => (
-        <Space size={0}>
-          <Button type="link" onClick={() => setPoolModal(pool)}>
-            {i18nText('settings', 'auto.edit')}
-          </Button>
-          <Popconfirm
-            title={i18nText(
-              'settings',
-              'auto.network_center_pool_delete_confirm'
-            )}
-            onConfirm={() => deletePoolMutation.mutate(pool.id)}
-          >
-            <Button type="link" danger loading={deletePoolMutation.isPending}>
-              {i18nText('settings', 'auto.delete')}
+      render: (_, pool) =>
+        pool.owner_provider_id ? null : (
+          <Space size={0}>
+            <Button type="link" onClick={() => setPoolModal(pool)}>
+              {i18nText('settings', 'auto.edit')}
             </Button>
-          </Popconfirm>
-        </Space>
-      )
+            <Popconfirm
+              title={i18nText(
+                'settings',
+                'auto.network_center_pool_delete_confirm'
+              )}
+              onConfirm={() => deletePoolMutation.mutate(pool.id)}
+            >
+              <Button type="link" danger loading={deletePoolMutation.isPending}>
+                {i18nText('settings', 'auto.delete')}
+              </Button>
+            </Popconfirm>
+          </Space>
+        )
     }
   ];
 
   return (
     <SettingsSectionSurface heightMode="fill">
       <Flex vertical gap={16}>
-        <Flex justify="space-between" align="center" gap={16}>
-          <Typography.Title level={2} data-testid="network-center-pools-shell">
-            {i18nText('settings', 'auto.network_center_pools')}
-          </Typography.Title>
+        <Flex
+          justify="flex-end"
+          align="center"
+          gap={16}
+          data-testid="network-center-pools-shell"
+        >
           <Button type="primary" onClick={() => setPoolModal(null)}>
             {i18nText('settings', 'auto.network_center_pool_create')}
           </Button>
@@ -478,60 +491,70 @@ export function NetworkEgressPoolsPanel({
                     <Typography.Text strong>
                       {i18nText('settings', 'auto.network_center_pool_members')}
                     </Typography.Text>
-                    <Button
-                      size="small"
-                      onClick={() => setMemberModal({ pool, member: null })}
-                    >
-                      {i18nText(
-                        'settings',
-                        'auto.network_center_member_create'
-                      )}
-                    </Button>
+                    {pool.owner_provider_id ? null : (
+                      <Button
+                        size="small"
+                        onClick={() => setMemberModal({ pool, member: null })}
+                      >
+                        {i18nText(
+                          'settings',
+                          'auto.network_center_member_create'
+                        )}
+                      </Button>
+                    )}
                   </Flex>
                   <Table
                     rowKey="id"
                     size="small"
-                    columns={[
-                      ...memberColumns,
-                      {
-                        title: '',
-                        key: 'actions',
-                        width: 140,
-                        render: (
-                          _: unknown,
-                          member: SettingsNetworkEgressPoolMember
-                        ) => (
-                          <Space size={0}>
-                            <Button
-                              type="link"
-                              onClick={() => setMemberModal({ pool, member })}
-                            >
-                              {i18nText('settings', 'auto.edit')}
-                            </Button>
-                            <Popconfirm
-                              title={i18nText(
-                                'settings',
-                                'auto.network_center_member_delete_confirm'
-                              )}
-                              onConfirm={() =>
-                                deleteMemberMutation.mutate({
-                                  poolId: pool.id,
-                                  memberId: member.id
-                                })
-                              }
-                            >
-                              <Button
-                                type="link"
-                                danger
-                                loading={deleteMemberMutation.isPending}
-                              >
-                                {i18nText('settings', 'auto.delete')}
-                              </Button>
-                            </Popconfirm>
-                          </Space>
-                        )
-                      }
-                    ]}
+                    columns={
+                      [
+                        ...memberColumns,
+                        pool.owner_provider_id
+                          ? null
+                          : {
+                              title: '',
+                              key: 'actions',
+                              width: 140,
+                              render: (
+                                _: unknown,
+                                member: SettingsNetworkEgressPoolMember
+                              ) => (
+                                <Space size={0}>
+                                  <Button
+                                    type="link"
+                                    onClick={() =>
+                                      setMemberModal({ pool, member })
+                                    }
+                                  >
+                                    {i18nText('settings', 'auto.edit')}
+                                  </Button>
+                                  <Popconfirm
+                                    title={i18nText(
+                                      'settings',
+                                      'auto.network_center_member_delete_confirm'
+                                    )}
+                                    onConfirm={() =>
+                                      deleteMemberMutation.mutate({
+                                        poolId: pool.id,
+                                        memberId: member.id
+                                      })
+                                    }
+                                  >
+                                    <Button
+                                      type="link"
+                                      danger
+                                      loading={deleteMemberMutation.isPending}
+                                    >
+                                      {i18nText('settings', 'auto.delete')}
+                                    </Button>
+                                  </Popconfirm>
+                                </Space>
+                              )
+                            }
+                      ].filter(
+                        Boolean
+                      ) as ColumnsType<SettingsNetworkEgressPoolMember>
+                    }
                     dataSource={pool.members}
                     pagination={false}
                   />

@@ -63,6 +63,7 @@ pub struct NetworkEgressPoolMemberResponse {
 pub struct NetworkEgressPoolResponse {
     pub id: String,
     pub display_name: String,
+    pub owner_provider_id: Option<String>,
     pub selection_strategy: String,
     pub members: Vec<NetworkEgressPoolMemberResponse>,
 }
@@ -137,6 +138,7 @@ fn response(view: NetworkEgressPoolView) -> NetworkEgressPoolResponse {
     NetworkEgressPoolResponse {
         id: view.pool.id.to_string(),
         display_name: view.pool.display_name,
+        owner_provider_id: view.pool.owner_provider_id.map(|id| id.to_string()),
         selection_strategy: view.pool.selection_strategy.as_str().to_string(),
         members: view.members.into_iter().map(member_response).collect(),
     }

@@ -38,6 +38,7 @@ fn provider(row: sqlx::postgres::PgRow) -> Result<domain::NetworkEgressProviderR
         installation_id: row.get("installation_id"),
         provider_code: row.get("provider_code"),
         display_name: row.get("display_name"),
+        description: row.get("description"),
         secret_ref: row.get("secret_ref"),
         lifecycle: lifecycle(row.get::<String, _>("lifecycle").as_str())?,
         health_status: health(row.get::<String, _>("health_status").as_str())?,
@@ -83,6 +84,7 @@ fn pool(row: sqlx::postgres::PgRow) -> Result<domain::NetworkEgressPool> {
     Ok(domain::NetworkEgressPool {
         id: row.get("id"),
         display_name: row.get("display_name"),
+        owner_provider_id: row.get("owner_provider_id"),
         selection_strategy: selection_strategy(
             row.get::<String, _>("selection_strategy").as_str(),
         )?,
@@ -159,9 +161,9 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         let row = sqlx::query(
             r#"
             insert into network_egress_providers (
-                id, scope_id, installation_id, provider_code, display_name, secret_ref,
+                id, scope_id, installation_id, provider_code, display_name, description, secret_ref,
                 lifecycle, health_status, created_by, updated_by
-            ) values ($1, $2, $3, $4, $5, $6, $7, 'unknown', $8, $8) returning *
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, 'unknown', $9, $9) returning *
         "#,
         )
         .bind(input.provider_id)
@@ -169,6 +171,7 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         .bind(input.installation_id)
         .bind(&input.provider_code)
         .bind(&input.display_name)
+        .bind(&input.description)
         .bind(&input.secret_ref)
         .bind(input.lifecycle.as_str())
         .bind(input.actor_user_id)
@@ -354,14 +357,15 @@ impl NetworkEgressPoolRepository for PgControlPlaneStore {
         let row = sqlx::query(
             r#"
                 insert into network_egress_pools (
-                    id, scope_id, display_name, selection_strategy, created_by, updated_by
-                ) values ($1, $2, $3, 'healthy_first', $4, $4)
+                id, scope_id, display_name, owner_provider_id, selection_strategy, created_by, updated_by
+                ) values ($1, $2, $3, $4, 'healthy_first', $5, $5)
                 returning *
             "#,
         )
         .bind(input.pool_id)
         .bind(domain::SYSTEM_SCOPE_ID)
         .bind(&input.display_name)
+        .bind(input.owner_provider_id)
         .bind(input.actor_user_id)
         .fetch_one(self.pool())
         .await?;
@@ -712,6 +716,7 @@ mod tests {
                 installation_id,
                 provider_code: "fixture_egress".to_string(),
                 display_name: "Fixture egress".to_string(),
+                description: String::new(),
                 secret_ref: "secret://system/network-egress/fixture".to_string(),
                 lifecycle: domain::NetworkEgressProviderLifecycle::Active,
                 actor_user_id: actor.id,
@@ -831,6 +836,7 @@ mod tests {
             &CreateNetworkEgressPoolInput {
                 pool_id,
                 display_name: "Stable references".to_string(),
+                owner_provider_id: None,
                 actor_user_id: actor.id,
             },
         )
@@ -943,6 +949,7 @@ mod tests {
                 installation_id,
                 provider_code: "selection_fixture".to_string(),
                 display_name: "Selection fixture".to_string(),
+                description: String::new(),
                 secret_ref: "secret://system/network-egress/selection".to_string(),
                 lifecycle: domain::NetworkEgressProviderLifecycle::Draft,
                 actor_user_id: actor.id,
@@ -1125,6 +1132,7 @@ mod tests {
             &CreateNetworkEgressPoolInput {
                 pool_id,
                 display_name: "Route target".to_string(),
+                owner_provider_id: None,
                 actor_user_id: actor.id,
             },
         )

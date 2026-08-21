@@ -7,6 +7,7 @@ import {
   createConsoleNetworkEgressRoute,
   deleteConsoleNetworkEgressRoute,
   listConsoleNetworkEgressProviders,
+  listConsoleNetworkEgressProviderTypes,
   listConsoleNetworkEgressPools,
   listConsoleNetworkEgressRoutes,
   updateConsoleNetworkEgressPool,
@@ -17,6 +18,7 @@ import {
   type ConsoleNetworkEgressPool,
   type ConsoleNetworkEgressPoolMember,
   type ConsoleNetworkEgressProvider,
+  type ConsoleNetworkEgressProviderType,
   type ConsoleNetworkEgressRoute,
   type CreateConsoleNetworkEgressPoolInput,
   type CreateConsoleNetworkEgressPoolMemberInput,
@@ -29,6 +31,8 @@ import {
 } from '@1flowbase/api-client';
 
 export type SettingsNetworkEgressProvider = ConsoleNetworkEgressProvider;
+export type SettingsNetworkEgressProviderType =
+  ConsoleNetworkEgressProviderType;
 export type CreateSettingsNetworkEgressProviderInput =
   CreateConsoleNetworkEgressProviderInput;
 export type UpdateSettingsNetworkEgressProviderLifecycleInput =
@@ -68,6 +72,10 @@ export const settingsNetworkEgressRoutesQueryKey = [
 
 export function fetchSettingsNetworkEgressProviders() {
   return listConsoleNetworkEgressProviders();
+}
+
+export function fetchSettingsNetworkEgressProviderTypes() {
+  return listConsoleNetworkEgressProviderTypes();
 }
 
 export function createSettingsNetworkEgressProvider(

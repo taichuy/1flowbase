@@ -41,11 +41,12 @@ import {
 } from '../network-center';
 
 describe('settings network egress providers API', () => {
-  test('AC-002 forwards the registration, lifecycle, and sync DTOs without frontend aliases', () => {
+  test('QF-002 forwards the selected provider type and plugin configuration without frontend aliases', () => {
     const provider = {
       installation_id: 'installation-1',
       display_name: 'Mihomo edge',
-      secret_ref: 'secret://system/network/mihomo'
+      description: 'Primary subscription',
+      config: { subscription_url: 'https://example.invalid/subscription' }
     };
 
     fetchSettingsNetworkEgressProviders();

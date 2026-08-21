@@ -245,7 +245,8 @@ where
     let category = match route_plugin_package(manifest)? {
         RoutedPluginPackageKind::HostExtension => domain::ExtensionCategory::HostExtensions,
         RoutedPluginPackageKind::ModelProviderRuntime
-        | RoutedPluginPackageKind::DataSourceRuntime => {
+        | RoutedPluginPackageKind::DataSourceRuntime
+        | RoutedPluginPackageKind::NetworkEgressProviderRuntime => {
             domain::ExtensionCategory::RuntimeExtensions
         }
         RoutedPluginPackageKind::CapabilityPlugin => domain::ExtensionCategory::CapabilityPlugins,
@@ -1332,6 +1333,70 @@ where
                             contract_version: installed_package.manifest.contract_version.clone(),
                             protocol: "data_source".to_string(),
                             display_name: installed_package.definition.display_name.clone(),
+                            source_kind: source_metadata.source_kind.clone(),
+                            trust_level: source_metadata.trust_level.clone(),
+                            verification_status: domain::PluginVerificationStatus::Valid,
+                            desired_state: domain::PluginDesiredState::Disabled,
+                            runtime_status: domain::PluginRuntimeStatus::Inactive,
+                            availability_status: derive_availability_status(
+                                domain::PluginDesiredState::Disabled,
+                                domain::PluginArtifactStatus::Ready,
+                                domain::PluginRuntimeStatus::Inactive,
+                            ),
+                            package_path: source_metadata
+                                .package_bytes
+                                .as_ref()
+                                .map(|_| package_archive_path.display().to_string()),
+                            installed_path: install_path.display().to_string(),
+                            checksum: source_metadata.checksum.clone(),
+                            manifest_fingerprint: Some(manifest_fingerprint),
+                            signature_status: source_metadata.signature_status.clone(),
+                            signature_algorithm: source_metadata.signature_algorithm.clone(),
+                            signing_key_id: source_metadata.signing_key_id.clone(),
+                            last_load_error: None,
+                            metadata_json,
+                            actor_user_id: command.actor_user_id,
+                        },
+                        &manifest,
+                        None,
+                    )
+                    .await?;
+                    self.repository
+                        .append_audit_log(&audit_log(
+                            Some(actor.current_workspace_id),
+                            Some(command.actor_user_id),
+                            "plugin_installation",
+                            Some(installation.id),
+                            "plugin.installed",
+                            plugin_install_audit_detail(&installation, &detail_json, false),
+                        ))
+                        .await?;
+                    Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
+                        installation,
+                        true,
+                    ))
+                }
+                RoutedPluginPackageKind::NetworkEgressProviderRuntime => {
+                    let installed_package = plugin_framework::NetworkEgressProviderPackage::load_from_dir(
+                        &install_path,
+                    )
+                    .map_err(map_framework_error)?;
+                    let mut metadata_json = json!({
+                        "plugin_type": "network_egress_provider",
+                        "slot_code": "network_egress_provider",
+                    });
+                    merge_install_detail_metadata(&mut metadata_json, &detail_json);
+                    let installation = commit_prepared_installation(
+                        &self.repository,
+                        &self.node_id,
+                        PreparedPluginInstallationInput {
+                            installation_id: Uuid::now_v7(),
+                            provider_code: installed_package.provider.provider_code.clone(),
+                            plugin_id: installed_package.identifier(),
+                            plugin_version: installed_package.manifest.version.clone(),
+                            contract_version: installed_package.manifest.contract_version.clone(),
+                            protocol: installed_package.manifest.runtime.protocol.clone(),
+                            display_name: installed_package.provider.display_name.clone(),
                             source_kind: source_metadata.source_kind.clone(),
                             trust_level: source_metadata.trust_level.clone(),
                             verification_status: domain::PluginVerificationStatus::Valid,

@@ -3,9 +3,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use serde::Deserialize;
+
 use crate::{
     error::{FrameworkResult, PluginFrameworkError},
     manifest_v1::{parse_plugin_manifest, PluginManifestV1},
+    provider_contract::PluginFormSchema,
     PluginConsumptionKind, PluginExecutionMode,
 };
 
@@ -16,6 +19,16 @@ pub const NETWORK_EGRESS_PROVIDER_CONTRACT: &str = "1flowbase.network_egress_pro
 pub struct NetworkEgressProviderPackage {
     pub root: PathBuf,
     pub manifest: PluginManifestV1,
+    pub provider: NetworkEgressProviderDefinition,
+}
+
+/// Provider-owned instance settings.  The host owns the instance name and description; this
+/// schema declares only the plugin-specific configuration rendered by Network Center.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct NetworkEgressProviderDefinition {
+    pub provider_code: String,
+    pub display_name: String,
+    pub form_schema: PluginFormSchema,
 }
 
 impl NetworkEgressProviderPackage {
@@ -42,7 +55,18 @@ impl NetworkEgressProviderPackage {
             )));
         }
 
-        Ok(Self { root, manifest })
+        let provider_path = root.join("provider/egress-provider.yaml");
+        let provider_raw = fs::read_to_string(&provider_path)
+            .map_err(|error| PluginFrameworkError::io(Some(&provider_path), error.to_string()))?;
+        let provider: NetworkEgressProviderDefinition = serde_yaml::from_str(&provider_raw)
+            .map_err(|error| PluginFrameworkError::invalid_provider_package(error.to_string()))?;
+        validate_provider_definition(&provider)?;
+
+        Ok(Self {
+            root,
+            manifest,
+            provider,
+        })
     }
 
     pub fn identifier(&self) -> String {
@@ -58,6 +82,32 @@ impl NetworkEgressProviderPackage {
     pub fn runtime_entry(&self) -> PathBuf {
         self.root.join(&self.manifest.runtime.entry)
     }
+}
+
+fn validate_provider_definition(provider: &NetworkEgressProviderDefinition) -> FrameworkResult<()> {
+    if provider.provider_code.trim().is_empty() || provider.display_name.trim().is_empty() {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "network egress provider definition requires provider_code and display_name",
+        ));
+    }
+    if provider.form_schema.schema_version != "1flowbase.plugin.form/v1" {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "network egress provider form schema must declare schema_version=1flowbase.plugin.form/v1",
+        ));
+    }
+    if provider.form_schema.fields.is_empty() {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "network egress provider form schema must declare at least one field",
+        ));
+    }
+    if provider.form_schema.fields.iter().any(|field| {
+        field.key.trim().is_empty() || field.label.trim().is_empty() || field.field_type != "string"
+    }) {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "network egress provider form fields must be labeled string values",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_manifest(manifest: &PluginManifestV1) -> FrameworkResult<()> {

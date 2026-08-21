@@ -6,6 +6,7 @@ pub struct CreateNetworkEgressProviderInput {
     pub installation_id: Uuid,
     pub provider_code: String,
     pub display_name: String,
+    pub description: String,
     pub secret_ref: String,
     pub lifecycle: domain::NetworkEgressProviderLifecycle,
     pub actor_user_id: Uuid,
@@ -49,6 +50,7 @@ pub struct UpsertNetworkEgressProviderSecretInput {
 pub struct CreateNetworkEgressPoolInput {
     pub pool_id: Uuid,
     pub display_name: String,
+    pub owner_provider_id: Option<Uuid>,
     pub actor_user_id: Uuid,
 }
 

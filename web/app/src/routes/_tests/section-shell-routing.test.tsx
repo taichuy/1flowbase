@@ -622,12 +622,20 @@ describe('section shell routing', () => {
   );
 
   test.each([
-    ['/settings/network-center/providers', 'network-center-providers-shell'],
-    ['/settings/network-center/pools', 'network-center-pools-shell'],
-    ['/settings/network-center/routes', 'network-center-routes-shell']
+    [
+      '/settings/network-center/providers',
+      'network-center-providers-shell',
+      '出口提供方'
+    ],
+    ['/settings/network-center/pools', 'network-center-pools-shell', '出口池'],
+    [
+      '/settings/network-center/routes',
+      'network-center-routes-shell',
+      '出口路由'
+    ]
   ])(
     'AC-004 keeps %s protected and projects the network center shell',
-    async (pathname, shellTestId) => {
+    async (pathname, shellTestId, activeTab) => {
       consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
         settingsConsoleNavigation(['network-center'])
       );
@@ -638,6 +646,18 @@ describe('section shell routing', () => {
       renderApp(pathname);
 
       expect(await screen.findByTestId(shellTestId)).toBeInTheDocument();
+      expect(screen.getByRole('tablist')).toBeInTheDocument();
+      expect(
+        screen.getByRole('tab', { name: '出口提供方' })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('tab', { name: activeTab, selected: true })
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('heading', { name: activeTab, level: 2 })
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: '出口池' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: '出口路由' })).toBeInTheDocument();
       await waitFor(() => {
         if (pathname.endsWith('/routes')) {
           expect(
@@ -645,8 +665,70 @@ describe('section shell routing', () => {
           ).toHaveBeenCalled();
           return;
         }
-        expect(networkCenterApi.fetchSettingsNetworkEgressProviders).toHaveBeenCalled();
+        expect(
+          networkCenterApi.fetchSettingsNetworkEgressProviders
+        ).toHaveBeenCalled();
       }, SECTION_REDIRECT_WAIT_OPTIONS);
+    },
+    SECTION_REDIRECT_TEST_TIMEOUT
+  );
+
+  test(
+    'AC-004 restores, navigates, and refreshes the URL-driven network center tabs',
+    async () => {
+      consoleNavigationApi.fetchSettingsConsoleNavigation.mockResolvedValue(
+        settingsConsoleNavigation(['network-center'])
+      );
+      authenticateWithPermissions([
+        'settings_feature.access.system.network-center'
+      ]);
+
+      const view = renderApp('/settings/network-center/pools');
+
+      expect(await screen.findByRole('tablist')).toBeInTheDocument();
+      expect(
+        screen.getByRole('tab', { name: '出口提供方' })
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole('tab', { name: '出口池', selected: true })
+      ).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: '出口路由' })).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('tab', { name: '出口路由' }));
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/network-center/routes'
+        );
+      });
+      expect(
+        screen.getByRole('tab', { name: '出口路由', selected: true })
+      ).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole('tab', { name: '出口提供方' }));
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/network-center/providers'
+        );
+      });
+      expect(
+        screen.getByRole('tab', { name: '出口提供方', selected: true })
+      ).toBeInTheDocument();
+
+      act(() => window.history.back());
+      await waitFor(() => {
+        expect(window.location.pathname).toBe(
+          '/settings/network-center/routes'
+        );
+      });
+      expect(
+        await screen.findByRole('tab', { name: '出口路由', selected: true })
+      ).toBeInTheDocument();
+
+      view.unmount();
+      renderApp(window.location.pathname);
+      expect(
+        await screen.findByRole('tab', { name: '出口路由', selected: true })
+      ).toBeInTheDocument();
     },
     SECTION_REDIRECT_TEST_TIMEOUT
   );

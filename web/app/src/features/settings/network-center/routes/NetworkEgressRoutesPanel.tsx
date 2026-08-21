@@ -12,8 +12,7 @@ import {
   Space,
   Switch,
   Table,
-  Tag,
-  Typography
+  Tag
 } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -157,10 +156,7 @@ export function NetworkEgressRoutesPanel() {
   return (
     <SettingsSectionSurface heightMode="fill">
       <Flex vertical gap={16}>
-        <Flex justify="space-between">
-          <Typography.Title level={2} data-testid="network-center-routes-shell">
-            {i18nText('settings', 'auto.network_center_routes')}
-          </Typography.Title>
+        <Flex justify="flex-end" data-testid="network-center-routes-shell">
           <Button type="primary" onClick={() => open(null)}>
             {i18nText('settings', 'auto.network_center_route_create')}
           </Button>

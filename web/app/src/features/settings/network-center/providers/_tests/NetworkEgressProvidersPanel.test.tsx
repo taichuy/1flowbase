@@ -11,6 +11,7 @@ const networkCenterApi = vi.hoisted(() => ({
     'providers'
   ] as const,
   fetchSettingsNetworkEgressProviders: vi.fn(),
+  fetchSettingsNetworkEgressProviderTypes: vi.fn(),
   createSettingsNetworkEgressProvider: vi.fn(),
   updateSettingsNetworkEgressProviderLifecycle: vi.fn(),
   syncSettingsNetworkEgressProvider: vi.fn()
@@ -27,6 +28,7 @@ const provider = {
   installation_id: 'installation-1',
   provider_code: 'clash_proxy',
   display_name: 'Mihomo edge',
+  description: 'Primary subscription',
   lifecycle: 'active',
   health_status: 'healthy',
   secret_configured: true,
@@ -66,6 +68,26 @@ describe('NetworkEgressProvidersPanel', () => {
     networkCenterApi.fetchSettingsNetworkEgressProviders.mockResolvedValue([
       provider
     ]);
+    networkCenterApi.fetchSettingsNetworkEgressProviderTypes.mockResolvedValue([
+      {
+        installation_id: 'installation-2',
+        provider_code: 'clash-proxy',
+        display_name: 'Clash / Mihomo Proxy',
+        form_schema: {
+          schema_version: '1flowbase.plugin.form/v1',
+          fields: [
+            {
+              key: 'subscription_url',
+              label: 'Subscription URL',
+              type: 'string',
+              control: 'url',
+              required: true,
+              send_mode: 'secret'
+            }
+          ]
+        }
+      }
+    ]);
     networkCenterApi.createSettingsNetworkEgressProvider.mockResolvedValue(
       provider
     );
@@ -77,7 +99,7 @@ describe('NetworkEgressProvidersPanel', () => {
     );
   });
 
-  test('AC-002 registers a provider with only the installation, display name, and opaque secret reference', async () => {
+  test('QF-002 adds a provider from a selected installed type without exposing an installation ID or secret reference', async () => {
     renderPanel();
 
     expect(await screen.findByText('Mihomo edge')).toBeInTheDocument();
@@ -92,17 +114,18 @@ describe('NetworkEgressProvidersPanel', () => {
     expect(await screen.findByText('Germany edge')).toBeInTheDocument();
 
     fireEvent.click(
-      screen.getByRole('button', { name: /Register provider|注册提供方/ })
+      screen.getByRole('button', { name: /Add provider|添加出口提供方/ })
     );
-    fireEvent.change(
-      screen.getByLabelText(/Provider installation|提供方安装/),
-      { target: { value: 'installation-2' } }
-    );
+    expect(screen.queryByLabelText(/ID/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/secret:\/\//)).not.toBeInTheDocument();
+    expect(
+      await screen.findByLabelText('Subscription URL')
+    ).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/Provider name|提供方名称/), {
       target: { value: 'Backup edge' }
     });
-    fireEvent.change(screen.getByLabelText(/Secret reference|密钥引用/), {
-      target: { value: 'secret://system/network/mihomo' }
+    fireEvent.change(screen.getByLabelText('Subscription URL'), {
+      target: { value: 'https://example.invalid/subscription' }
     });
     fireEvent.click(screen.getByRole('button', { name: /Create|创\s*建/ }));
 
@@ -113,7 +136,8 @@ describe('NetworkEgressProvidersPanel', () => {
         {
           installation_id: 'installation-2',
           display_name: 'Backup edge',
-          secret_ref: 'secret://system/network/mihomo'
+          description: '',
+          config: { subscription_url: 'https://example.invalid/subscription' }
         },
         'csrf-123'
       )

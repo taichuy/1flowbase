@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: 系统备份与恢复 Issue Tree
-summary: 用户确认平衡方向：system.backups SettingsFeature、手动完整备份、维护期安全恢复、主库外 manifest/journal、离线恢复入口与受控 Settings UI；BackupSet 记录 source build，target build 从当前二进制编译信息取得，恢复只接受格式、密钥、完整性和已知前向 migration path。线上 Root #1667，Delivery #1668/#1670/#1669。
+summary: 系统备份基础能力已由 Root #1667 交付；用户随后确认 #1822 的迁移优先合同：默认单文件、自包含、无外部恢复密钥依赖，可选用户密码认证加密；build 仅诊断，恢复继续守住格式、完整性与已知前向 migration path。
 keywords:
   - system-backup
   - disaster-recovery
@@ -15,8 +15,8 @@ match_when:
   - 设计 BackupSet、RecoveryJob、maintenance fence 或离线恢复
   - 讨论 PostgreSQL、业务对象、插件/MCP 工件的一致备份
 created_at: 2026-08-11 23
-updated_at: 2026-08-21 16
-last_verified_at: 2026-08-21 16
+updated_at: 2026-08-21 21
+last_verified_at: 2026-08-21 21
 decision_policy: verify_before_decision
 scope:
   - https://github.com/taichuy/1flowbase/issues/1667
@@ -54,12 +54,19 @@ scope:
 - 排除 external DataSource 远端内容、ephemeral、env/TLS/image 与 BackupRepository 本身。
 - BackupSet/manifest 与 RecoveryJob journal 的真值位于主库外；生产仓库与 `api/storage` 分离故障域。
 - 接受备份/恢复期间 maintenance 与写暂停；无法形成完整 write inventory 时停止。
-- 备份流式、认证加密、内存有界；master key 不入包，只保存 fingerprint。
+- #1822 替代原有默认加密/key 条款：便携备份默认单文件、自包含、无外部恢复 key；无密码模式视为敏感明文等价文件，只承诺损坏检测。用户主动设置密码时才启用认证加密。
+- 跨机器恢复必须自动处理 Provider、DataSource、MCP 等持久化秘密所需的恢复材料，不要求普通用户复制旧 `.env` 或理解 master-key fingerprint。
 - 备份 manifest 自动记录 source build；target build 从当前二进制的 `v<CARGO_PKG_VERSION>` 取得，不接受用户环境变量声明。Git revision 不属于备份/恢复 contract，应由 CI、OCI label 与 release artifact provenance 记录。
 - 恢复 fail closed：必须匹配 format 与 master-key fingerprint、通过完整性校验，且备份 migration head 必须是当前内嵌前向迁移链的已知前缀；build 只用于审计与诊断，不做相等比较。
 - HTTP 只创建 intent/观察状态；真正恢复由主 pool 外的 recovery executor/启动期/离线入口执行。
 - UI 参考 `/settings/applications` 的 filters/table/toolbar/drawer，但无批量 restore/delete。
 - Root 固定 14 个 AC、3 个纵向 Delivery、16 个 Work Packet 和一次集中 Test Batch。
+
+## 后续合同变更
+
+- 用户在 `2026-08-21 21` 确认迁移优先的平衡方向；活动 Single Issue 为 [#1822](https://github.com/taichuy/1flowbase/issues/1822)。
+- #1822 只替代 #1667 中“默认认证加密、master key 不进入便携备份、跨 key 迁移为非目标”的条款。
+- maintenance fence、外部 journal、离线恢复、已知前向 migration path、resume/rollback/manual-recovery 等既有安全恢复合同继续有效。
 
 ## 截止日期
 

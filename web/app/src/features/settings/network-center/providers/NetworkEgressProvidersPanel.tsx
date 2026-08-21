@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import {
   App,
@@ -9,6 +9,7 @@ import {
   Form,
   Input,
   Modal,
+  Select,
   Space,
   Table,
   Tag,
@@ -19,12 +20,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
   createSettingsNetworkEgressProvider,
+  fetchSettingsNetworkEgressProviderTypes,
   fetchSettingsNetworkEgressProviders,
   settingsNetworkEgressProvidersQueryKey,
   syncSettingsNetworkEgressProvider,
   updateSettingsNetworkEgressProviderLifecycle,
   type CreateSettingsNetworkEgressProviderInput,
-  type SettingsNetworkEgressProvider
+  type SettingsNetworkEgressProvider,
+  type SettingsNetworkEgressProviderType
 } from '../../api/network-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { useAuthStore } from '../../../../state/auth-store';
@@ -80,15 +83,34 @@ function healthStatusTag(status: string) {
 function ProviderRegistrationModal({
   open,
   submitting,
+  providerTypes,
+  providerTypesLoading,
   onClose,
   onSubmit
 }: {
   open: boolean;
   submitting: boolean;
+  providerTypes: SettingsNetworkEgressProviderType[];
+  providerTypesLoading: boolean;
   onClose: () => void;
   onSubmit: (values: CreateSettingsNetworkEgressProviderInput) => void;
 }) {
-  const [form] = Form.useForm<CreateSettingsNetworkEgressProviderInput>();
+  const [form] = Form.useForm<{
+    installation_id: string;
+    display_name: string;
+    description: string;
+    config: Record<string, string>;
+  }>();
+  const installationId = Form.useWatch('installation_id', form);
+  const selectedType = providerTypes.find(
+    (providerType) => providerType.installation_id === installationId
+  );
+
+  useEffect(() => {
+    if (open && providerTypes.length === 1 && !installationId) {
+      form.setFieldValue('installation_id', providerTypes[0].installation_id);
+    }
+  }, [form, installationId, open, providerTypes]);
 
   return (
     <Modal
@@ -100,7 +122,18 @@ function ProviderRegistrationModal({
       confirmLoading={submitting}
       onOk={() => form.submit()}
     >
-      <Form form={form} layout="vertical" onFinish={onSubmit} preserve={false}>
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={(values) =>
+          onSubmit({
+            ...values,
+            description: values.description ?? '',
+            config: values.config ?? {}
+          })
+        }
+        preserve={false}
+      >
         <Form.Item
           name="installation_id"
           label={i18nText(
@@ -109,7 +142,18 @@ function ProviderRegistrationModal({
           )}
           rules={[{ required: true }]}
         >
-          <Input autoFocus />
+          <Select
+            autoFocus
+            loading={providerTypesLoading}
+            options={providerTypes.map((providerType) => ({
+              label: providerType.display_name,
+              value: providerType.installation_id
+            }))}
+            notFoundContent={i18nText(
+              'settings',
+              'auto.network_center_provider_no_types'
+            )}
+          />
         </Form.Item>
         <Form.Item
           name="display_name"
@@ -119,19 +163,38 @@ function ProviderRegistrationModal({
           <Input />
         </Form.Item>
         <Form.Item
-          name="secret_ref"
-          label={i18nText(
-            'settings',
-            'auto.network_center_provider_secret_reference'
-          )}
-          help={i18nText(
-            'settings',
-            'auto.network_center_provider_secret_reference_help'
-          )}
-          rules={[{ required: true }]}
+          name="description"
+          label={i18nText('settings', 'auto.description')}
         >
-          <Input />
+          <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} />
         </Form.Item>
+        {selectedType?.form_schema.fields.map((field) => (
+          <Form.Item
+            key={field.key}
+            name={['config', field.key]}
+            label={field.label}
+            help={field.description}
+            rules={[{ required: field.required }]}
+          >
+            <Input
+              placeholder={field.placeholder}
+              type={field.control === 'url' ? 'url' : 'text'}
+            />
+          </Form.Item>
+        ))}
+        {selectedType ? null : (
+          <Form.Item
+            label={i18nText('settings', 'auto.provider_configuration')}
+            help={i18nText(
+              'settings',
+              'auto.network_center_provider_secret_reference_help'
+            )}
+          >
+            <Typography.Text type="secondary">
+              {i18nText('settings', 'auto.network_center_provider_no_types')}
+            </Typography.Text>
+          </Form.Item>
+        )}
       </Form>
     </Modal>
   );
@@ -202,6 +265,10 @@ export function NetworkEgressProvidersPanel() {
   const providersQuery = useQuery({
     queryKey: settingsNetworkEgressProvidersQueryKey,
     queryFn: fetchSettingsNetworkEgressProviders
+  });
+  const providerTypesQuery = useQuery({
+    queryKey: ['settings', 'network-center', 'provider-types'],
+    queryFn: fetchSettingsNetworkEgressProviderTypes
   });
   const [registrationOpen, setRegistrationOpen] = useState(false);
   const invalidateProviders = () =>
@@ -351,13 +418,12 @@ export function NetworkEgressProvidersPanel() {
   return (
     <SettingsSectionSurface heightMode="fill">
       <Flex vertical gap={16}>
-        <Flex justify="space-between" align="center" gap={16}>
-          <Typography.Title
-            level={2}
-            data-testid="network-center-providers-shell"
-          >
-            {i18nText('settings', 'auto.network_center_providers')}
-          </Typography.Title>
+        <Flex
+          justify="flex-end"
+          align="center"
+          gap={16}
+          data-testid="network-center-providers-shell"
+        >
           <Button type="primary" onClick={() => setRegistrationOpen(true)}>
             {i18nText('settings', 'auto.network_center_provider_register')}
           </Button>
@@ -398,6 +464,8 @@ export function NetworkEgressProvidersPanel() {
       <ProviderRegistrationModal
         open={registrationOpen}
         submitting={createMutation.isPending}
+        providerTypes={providerTypesQuery.data ?? []}
+        providerTypesLoading={providerTypesQuery.isLoading}
         onClose={() => setRegistrationOpen(false)}
         onSubmit={(values) => createMutation.mutate(values)}
       />

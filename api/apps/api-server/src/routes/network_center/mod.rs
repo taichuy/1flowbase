@@ -6,7 +6,8 @@ use axum::{
     Json,
 };
 use control_plane::network_egress::{
-    CreateNetworkEgressProviderCommand, NetworkEgressProviderService, NetworkEgressProviderView,
+    CreateNetworkEgressProviderCommand, NetworkEgressProviderService,
+    NetworkEgressProviderTypeView, NetworkEgressProviderView,
     UpdateNetworkEgressProviderLifecycleCommand,
 };
 use control_plane::network_egress_route::{
@@ -36,8 +37,10 @@ pub mod routes;
 pub struct CreateNetworkEgressProviderBody {
     pub installation_id: String,
     pub display_name: String,
-    /// An opaque `secret://` locator; secret values are not accepted by this API.
-    pub secret_ref: String,
+    #[serde(default)]
+    pub description: String,
+    /// Plugin-defined configuration. It is encrypted before persistence and never returned.
+    pub config: serde_json::Value,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -75,12 +78,21 @@ pub struct NetworkEgressProviderResponse {
     pub installation_id: String,
     pub provider_code: String,
     pub display_name: String,
+    pub description: String,
     pub lifecycle: String,
     pub health_status: String,
     pub secret_configured: bool,
     pub last_sync_error: Option<String>,
     pub last_synced_at: Option<String>,
     pub egresses: Vec<NetworkEgressProjectionResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct NetworkEgressProviderTypeResponse {
+    pub installation_id: String,
+    pub provider_code: String,
+    pub display_name: String,
+    pub form_schema: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -106,6 +118,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             .post(
                 create_network_egress_provider,
                 ConsoleOperation("network_egress_providers.create".to_string()),
+            ),
+        )
+        .route(
+            "/settings/network-center/providers/types",
+            console_get(
+                list_network_egress_provider_types,
+                ConsoleOperation("network_egress_providers.list".to_string()),
             ),
         )
         .route(
@@ -140,6 +159,7 @@ fn service(
             state.store.clone(),
             state.provider_secret_master_key.clone(),
         ),
+        state.provider_secret_master_key.clone(),
         state.api_node_id.clone(),
     )
 }
@@ -187,6 +207,7 @@ fn response(view: NetworkEgressProviderView) -> NetworkEgressProviderResponse {
         installation_id: view.provider.installation_id.to_string(),
         provider_code: view.provider.provider_code,
         display_name: view.provider.display_name,
+        description: view.provider.description,
         lifecycle: view.provider.lifecycle.as_str().to_string(),
         health_status: view.provider.health_status.as_str().to_string(),
         secret_configured: !view.provider.secret_ref.is_empty(),
@@ -204,6 +225,16 @@ fn response(view: NetworkEgressProviderView) -> NetworkEgressProviderResponse {
                 synced_at: format_time(egress.synced_at),
             })
             .collect(),
+    }
+}
+
+fn type_response(view: NetworkEgressProviderTypeView) -> NetworkEgressProviderTypeResponse {
+    NetworkEgressProviderTypeResponse {
+        installation_id: view.installation_id.to_string(),
+        provider_code: view.provider_code,
+        display_name: view.display_name,
+        form_schema: serde_json::to_value(view.form_schema)
+            .expect("network egress provider form schema serializes"),
     }
 }
 
@@ -239,6 +270,23 @@ pub async fn list_network_egress_providers(
 }
 
 #[utoipa::path(
+    get,
+    path = "/api/console/settings/network-center/providers/types",
+    operation_id = "network_egress_provider_types_list",
+    responses((status = 200, body = [NetworkEgressProviderTypeResponse]), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn list_network_egress_provider_types(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<Vec<NetworkEgressProviderTypeResponse>>>, ApiError> {
+    require_session(&state, &headers).await?;
+    let types = service(&state).list_types().await?;
+    Ok(Json(ApiSuccess::new(
+        types.into_iter().map(type_response).collect(),
+    )))
+}
+
+#[utoipa::path(
     post,
     path = "/api/console/settings/network-center/providers",
     operation_id = "network_egress_providers_create",
@@ -257,7 +305,8 @@ pub async fn create_network_egress_provider(
             actor_user_id: context.user.id,
             installation_id: parse_uuid(&body.installation_id, "installation_id")?,
             display_name: body.display_name,
-            secret_ref: body.secret_ref,
+            description: body.description,
+            secret_json: body.config,
         })
         .await?;
     Ok((
@@ -423,6 +472,7 @@ mod tests {
             installation_id: Uuid::now_v7(),
             provider_code: "fixture".to_string(),
             display_name: "Fixture".to_string(),
+            description: "Fixture description".to_string(),
             secret_ref: "secret://system/network-egress/fixture".to_string(),
             lifecycle: domain::NetworkEgressProviderLifecycle::Draft,
             health_status: domain::NetworkEgressHealthStatus::Unknown,

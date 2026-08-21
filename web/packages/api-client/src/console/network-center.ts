@@ -14,6 +14,7 @@ export interface ConsoleNetworkEgressProvider {
   installation_id: string;
   provider_code: string;
   display_name: string;
+  description: string;
   lifecycle: string;
   health_status: string;
   secret_configured: boolean;
@@ -25,7 +26,27 @@ export interface ConsoleNetworkEgressProvider {
 export interface CreateConsoleNetworkEgressProviderInput {
   installation_id: string;
   display_name: string;
-  secret_ref: string;
+  description: string;
+  config: Record<string, string>;
+}
+
+export interface ConsoleNetworkEgressProviderType {
+  installation_id: string;
+  provider_code: string;
+  display_name: string;
+  form_schema: {
+    schema_version: string;
+    fields: Array<{
+      key: string;
+      label: string;
+      type: string;
+      control?: string;
+      required?: boolean;
+      description?: string;
+      placeholder?: string;
+      send_mode?: string;
+    }>;
+  };
 }
 
 export interface UpdateConsoleNetworkEgressProviderLifecycleInput {
@@ -44,6 +65,7 @@ export interface ConsoleNetworkEgressPoolMember {
 export interface ConsoleNetworkEgressPool {
   id: string;
   display_name: string;
+  owner_provider_id?: string | null;
   selection_strategy: string;
   members: ConsoleNetworkEgressPoolMember[];
 }
@@ -92,6 +114,13 @@ export interface UpdateConsoleNetworkEgressRouteInput {
 export function listConsoleNetworkEgressProviders(baseUrl?: string) {
   return apiFetch<ConsoleNetworkEgressProvider[]>({
     path: '/api/console/settings/network-center/providers',
+    baseUrl
+  });
+}
+
+export function listConsoleNetworkEgressProviderTypes(baseUrl?: string) {
+  return apiFetch<ConsoleNetworkEgressProviderType[]>({
+    path: '/api/console/settings/network-center/providers/types',
     baseUrl
   });
 }

@@ -277,6 +277,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
             installation_id,
             provider_code: "fixture_egress".into(),
             display_name: "Fixture Egress".into(),
+            description: String::new(),
             secret_ref: "secret://fixture-egress".into(),
             lifecycle: if matches!(
                 acquire_behavior,
@@ -330,6 +331,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
         &CreateNetworkEgressPoolInput {
             pool_id,
             display_name: "Fixture Pool".into(),
+            owner_provider_id: None,
             actor_user_id: root.id,
         },
     )

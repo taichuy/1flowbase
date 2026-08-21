@@ -90,6 +90,7 @@ where
             .create_network_egress_pool(&CreateNetworkEgressPoolInput {
                 pool_id: Uuid::now_v7(),
                 display_name: required_text(&command.display_name, "display_name")?,
+                owner_provider_id: None,
                 actor_user_id: command.actor_user_id,
             })
             .await?;
@@ -109,6 +110,7 @@ where
         &self,
         command: UpdateNetworkEgressPoolCommand,
     ) -> Result<NetworkEgressPoolView> {
+        self.require_user_managed_pool(command.pool_id).await?;
         let pool = self
             .repository
             .update_network_egress_pool(&UpdateNetworkEgressPoolInput {
@@ -127,6 +129,7 @@ where
     }
 
     pub async fn delete(&self, actor_user_id: Uuid, pool_id: Uuid) -> Result<()> {
+        self.require_user_managed_pool(pool_id).await?;
         self.repository.delete_network_egress_pool(pool_id).await?;
         self.audit(actor_user_id, pool_id, "network_egress_pool.deleted")
             .await
@@ -136,7 +139,7 @@ where
         &self,
         command: CreateNetworkEgressPoolMemberCommand,
     ) -> Result<NetworkEgressPoolMemberView> {
-        self.require_pool(command.pool_id).await?;
+        self.require_user_managed_pool(command.pool_id).await?;
         let provider_egress_key =
             required_text(&command.provider_egress_key, "provider_egress_key")?;
         validate_sequence(command.sequence)?;
@@ -167,6 +170,7 @@ where
         &self,
         command: UpdateNetworkEgressPoolMemberCommand,
     ) -> Result<NetworkEgressPoolMemberView> {
+        self.require_user_managed_pool(command.pool_id).await?;
         validate_sequence(command.sequence)?;
         let member = self
             .repository
@@ -193,6 +197,7 @@ where
         pool_id: Uuid,
         member_id: Uuid,
     ) -> Result<()> {
+        self.require_user_managed_pool(pool_id).await?;
         self.repository
             .delete_network_egress_pool_member(pool_id, member_id)
             .await?;
@@ -238,6 +243,14 @@ where
             pool,
             members: member_views,
         })
+    }
+
+    async fn require_user_managed_pool(&self, pool_id: Uuid) -> Result<()> {
+        let pool = self.require_pool(pool_id).await?;
+        if pool.owner_provider_id.is_some() {
+            return Err(ControlPlaneError::Conflict("network_egress_pool_provider_owned").into());
+        }
+        Ok(())
     }
 
     async fn member_view(

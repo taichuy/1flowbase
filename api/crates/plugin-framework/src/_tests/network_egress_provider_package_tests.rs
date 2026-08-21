@@ -80,6 +80,21 @@ fn third_party_package_fixture() -> ThirdPartyEgressPackageFixture {
     let fixture = ThirdPartyEgressPackageFixture::new();
     fixture.write("manifest.yaml", &third_party_manifest());
     fixture.write("bin/acme-network-egress", "#!/usr/bin/env bash\nexit 0\n");
+    fixture.write(
+        "provider/egress-provider.yaml",
+        r#"provider_code: acme-network-egress
+display_name: Acme Network Egress
+form_schema:
+  schema_version: 1flowbase.plugin.form/v1
+  fields:
+    - key: subscription_url
+      label: Subscription URL
+      type: string
+      control: url
+      required: true
+      send_mode: secret
+"#,
+    );
     fixture
 }
 
@@ -114,10 +129,23 @@ fn ac_003_third_party_egress_package_conforms_at_manifest_and_package_boundaries
         package.runtime_entry(),
         fixture.path().join("bin/acme-network-egress")
     );
-    assert!(
-        !fixture.path().join("provider").exists(),
-        "the third-party fixture must not depend on model-provider package files"
+    assert_eq!(package.provider.provider_code, "acme-network-egress");
+    assert_eq!(
+        package.provider.form_schema.fields[0].key,
+        "subscription_url"
     );
+}
+
+#[test]
+fn qf_002_egress_package_declares_the_plugin_specific_instance_form() {
+    let fixture = third_party_package_fixture();
+    fixture.write(
+        "provider/egress-provider.yaml",
+        "provider_code: acme\ndisplay_name: Acme\n",
+    );
+
+    let error = NetworkEgressProviderPackage::load_from_dir(fixture.path()).unwrap_err();
+    assert!(error.to_string().contains("form_schema"));
 }
 
 #[test]

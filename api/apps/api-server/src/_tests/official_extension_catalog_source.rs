@@ -229,6 +229,7 @@ pub(super) async fn seed_network_egress_resolver(
             installation_id,
             provider_code: "fixture_egress".into(),
             display_name: "Fixture Egress".into(),
+            description: String::new(),
             secret_ref: "secret://fixture-egress".into(),
             lifecycle: NetworkEgressProviderLifecycle::Active,
             actor_user_id: root.id,
@@ -275,6 +276,7 @@ pub(super) async fn seed_network_egress_resolver(
         &CreateNetworkEgressPoolInput {
             pool_id,
             display_name: "Fixture Pool".into(),
+            owner_provider_id: None,
             actor_user_id: root.id,
         },
     )

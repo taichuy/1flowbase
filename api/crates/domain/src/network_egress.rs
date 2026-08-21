@@ -44,6 +44,7 @@ pub struct NetworkEgressProviderRecord {
     pub installation_id: Uuid,
     pub provider_code: String,
     pub display_name: String,
+    pub description: String,
     /// Opaque secret-store locator. It is never an API projection.
     pub secret_ref: String,
     pub lifecycle: NetworkEgressProviderLifecycle,
@@ -127,6 +128,9 @@ impl NetworkEgressPoolMemberHealth {
 pub struct NetworkEgressPool {
     pub id: Uuid,
     pub display_name: String,
+    /// A provider-owned pool mirrors that provider's current projection and its members are not
+    /// independently editable.
+    pub owner_provider_id: Option<Uuid>,
     pub selection_strategy: NetworkEgressPoolSelectionStrategy,
     pub created_by: Uuid,
     pub updated_by: Uuid,

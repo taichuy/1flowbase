@@ -65,7 +65,7 @@ pub use manifest_v1::{
 };
 pub use network_egress_provider_contract::*;
 pub use network_egress_provider_package::{
-    NetworkEgressProviderPackage, NETWORK_EGRESS_PROVIDER_CONTRACT,
+    NetworkEgressProviderDefinition, NetworkEgressProviderPackage, NETWORK_EGRESS_PROVIDER_CONTRACT,
 };
 pub use package_intake::*;
 pub use provider_contract::*;

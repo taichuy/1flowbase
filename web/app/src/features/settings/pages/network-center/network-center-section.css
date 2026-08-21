@@ -1,0 +1,22 @@
+.network-center-section {
+  min-width: 0;
+}
+
+@media (max-width: 767px) {
+  .network-center-section > .ant-tabs-nav {
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+
+  .network-center-section > .ant-tabs-nav .ant-tabs-nav-wrap {
+    overflow: visible;
+  }
+
+  .network-center-section > .ant-tabs-nav .ant-tabs-nav-list {
+    flex: 0 0 max-content;
+  }
+
+  .network-center-section > .ant-tabs-nav .ant-tabs-nav-operations {
+    display: none;
+  }
+}

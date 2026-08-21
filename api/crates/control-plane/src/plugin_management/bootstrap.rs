@@ -209,6 +209,7 @@ impl RoutedPluginPackageKind {
             Self::HostExtension => "host_extension",
             Self::ModelProviderRuntime => "model_provider",
             Self::DataSourceRuntime => "data_source",
+            Self::NetworkEgressProviderRuntime => "network_egress_provider",
             Self::CapabilityPlugin => "capability_plugin",
         }
     }

@@ -21,8 +21,8 @@ match_when:
   - 修改 Frontstage 页面、Tab 或区块的设计态操作入口
   - 修改 JSX 区块代码编辑、配置、接口绑定或变量注入体验
 created_at: 2026-07-17 23
-updated_at: 2026-08-11 16
-last_verified_at: 2026-08-11 16
+updated_at: 2026-08-21 22
+last_verified_at: 2026-08-21 22
 decision_policy: direct_reference
 scope:
   - web/app/src/features/frontstage
@@ -40,6 +40,9 @@ scope:
 - 设计模式只改变区块的选择框与操作入口，区块内容仍只呈现代码运行后的 UI；日志、能力调用和协议拒绝属于运行诊断，不得作为“无”字段堆在画布区块内。
 - 自动生成的上下文必须作为 Monaco 源码中的注释出现，用户可以删除并保存；需要恢复或更新时提供显式重新注入，锚定区块唯一入口，不单独渲染只读上下文区块。
 - 组件目录不得再从类型声明中只推断组件名；组件注册必须携带真实 import source、实现来源（例如受控 Ant Design facade 或 1flowbase 自定义组件）、支持的 props / children / action 或 event、明确限制和可运行示例。description 的职责是压缩呈现这份 API 规范，不是只写“适合做什么”的用途文案。
+- 模块 `exports` 是“可导入符号”真值，不等于“可插入组件”；组件目录只展示带完整组件契约的条目，不能给缺少契约的 export 合成名称或简单变量作为插入代码。
+- 内置组件契约由随版本发布的代码文件承载并作为官方基线；用户组件契约或覆盖独立持久化，处于继承状态时随内置基线更新，不把初始化快照复制成第二份真值。
+- `/settings/ui-management/components` 使用结构化表单维护组件名、描述、import / 插入代码、props、限制与 API 示例；原始 JSON 只能作为高级查看或导入导出能力，不能作为默认编辑体验。
 - 不为组件文档发明 `@1flowbase-component` 等私有注释协议；组件源码、Monaco 和复制给外部 AI 的内容使用标准 TypeScript 类型声明与 JSDoc / TSDoc，展示真实 import 和 JSX 示例。编辑器组件区使用“组件 / description / 操作”三列表格，操作至少包含插入代码和复制 API 文档。
 - 组件说明、编辑器列表和未来 MCP 查询必须来自同一个后端组件目录；查询支持稳定分页。组件注册写入口与真实 runtime/module 安装绑定，不允许独立注册一条文档后宣称组件可用。
 - 接口连接允许在当前光标处插入代码，但单次插入必须是源码可见、可编辑的完整单元：实体类型、参数类型、返回类型与命名函数；不得只插入一行 `ctx.data.query(...)` / `ctx.actions.invoke(...)`，也不得用不透明虚拟模块把接口细节全部藏掉。连接器不自动改写 `main`，`main` 只保留清晰的顶层编排；变量连接可插入对应的命名只读变量。

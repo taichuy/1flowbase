@@ -183,7 +183,7 @@ fn installation_category(installation: &domain::PluginInstallationRecord) -> &st
         .and_then(serde_json::Value::as_str)
         .unwrap_or("capability_plugin")
     {
-        "data_source" | "model_provider" => "runtime-extensions",
+        "data_source" | "model_provider" | "network_egress_provider" => "runtime-extensions",
         "host_extension" => "host-extensions",
         _ => "capability-plugins",
     }
