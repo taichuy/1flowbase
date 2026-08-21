@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App, Button, Space, Table, Tag, Typography } from 'antd';
+import { App, Button, Space, Table, Tag } from 'antd';
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../../../state/auth-store';
@@ -191,11 +191,7 @@ export function CodeTemplatesTab({ canManage }: { canManage: boolean }) {
           { title: t('name'), dataIndex: 'name' },
           {
             title: t('contribution'),
-            render: (_, row) => (
-              <Typography.Text code>
-                {row.provider_code}/{row.contribution_code}
-              </Typography.Text>
-            )
+            render: (_, row) => `${row.provider_code}/${row.contribution_code}`
           },
           {
             title: t('source'),
