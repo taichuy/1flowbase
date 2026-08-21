@@ -905,7 +905,7 @@ where
             ))?;
         let modules = self
             .repository
-            .list_workspace_frontend_blocks(node_id, workspace_id)
+            .list_system_frontend_blocks(node_id)
             .await?
             .into_iter()
             .flat_map(|entry| entry.code_modules)

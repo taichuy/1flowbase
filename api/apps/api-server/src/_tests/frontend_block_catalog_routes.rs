@@ -209,7 +209,7 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
 #[tokio::test]
 async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fail_closed() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
-    let installation_id = seed_frontend_block(&database_url, true).await;
+    let installation_id = seed_frontend_block(&database_url, false).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
     let workspace_id: Uuid =
         sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
@@ -393,7 +393,7 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
 #[tokio::test]
 async fn component_dependency_lock_is_derived_from_source_imports() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
-    seed_frontend_block(&database_url, true).await;
+    seed_frontend_block(&database_url, false).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
     let workspace_id: Uuid =
         sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
