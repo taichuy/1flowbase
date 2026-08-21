@@ -13,6 +13,23 @@ vi.mock('@tanstack/react-router', async (importOriginal) => ({
     select({ location: { pathname: router.pathname } })
 }));
 
+vi.mock('@monaco-editor/react', () => ({
+  default: ({
+    options,
+    value
+  }: {
+    options?: { ariaLabel?: string; readOnly?: boolean };
+    value?: string;
+  }) => (
+    <div
+      data-aria-label={options?.ariaLabel}
+      data-read-only={options?.readOnly}
+      data-testid="block-source-editor"
+      data-value={value}
+    />
+  )
+}));
+
 const uiManagementApi = vi.hoisted(() => ({
   settingsUiComponentsQueryKey: ['settings', 'ui-management', 'components'],
   settingsUiTemplatesQueryKey: ['settings', 'ui-management', 'templates'],
@@ -193,6 +210,30 @@ describe('UiManagementPanel components', () => {
     expect(screen.getByLabelText('说明')).toBeInTheDocument();
     expect(screen.getByLabelText('插入代码')).toBeInTheDocument();
     expect(screen.queryByLabelText('Contract JSON')).not.toBeInTheDocument();
+  });
+
+  test('AC-004 edits the insert snippet with the shared block source editor', async () => {
+    render(
+      <AppProviders>
+        <UiManagementPanel canManage />
+      </AppProviders>
+    );
+
+    await screen.findByText('DataTable');
+    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]);
+
+    expect(
+      await screen.findByRole('group', { name: '插入代码' })
+    ).toBeInTheDocument();
+    expect(screen.getByTestId('block-source-editor')).toHaveAttribute(
+      'data-value',
+      '<DataTable rows={[]} />'
+    );
+    expect(screen.getByTestId('block-source-editor')).toHaveAttribute(
+      'data-read-only',
+      'false'
+    );
+    expect(screen.queryByRole('textbox', { name: '插入代码' })).toBeNull();
   });
 
   test('AC-004 presents each structured contract array as a labelled table', async () => {

@@ -19,6 +19,7 @@ import {
 } from 'antd';
 import { useTranslation } from 'react-i18next';
 
+import { BlockSourceEditor } from '../../../../shared/code-block/BlockSourceEditor';
 import { useAuthStore } from '../../../../state/auth-store';
 import {
   DataTable,
@@ -104,6 +105,8 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
   const props = Form.useWatch('props', { form, preserve: true }) ?? [];
   const limitations = Form.useWatch('limitations', { form, preserve: true }) ?? [];
   const examples = Form.useWatch('examples', { form, preserve: true }) ?? [];
+  const insertSnippet =
+    Form.useWatch('insert_snippet', { form, preserve: true }) ?? '';
   const save = useMutation({
     mutationFn: async (contract: SettingsUiComponentContract) => {
       if (!selected) throw new Error('missing component');
@@ -466,7 +469,13 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
             label={t('insert_snippet')}
             rules={[{ required: true }]}
           >
-            <Input.TextArea rows={3} />
+            <BlockSourceEditor
+              ariaLabel={t('insert_snippet')}
+              height={240}
+              path={`file:///settings/ui-management/components/${selected?.export_name ?? 'component'}.tsx`}
+              value={insertSnippet}
+              onChange={(value) => form.setFieldValue('insert_snippet', value)}
+            />
           </Form.Item>
           <Flex justify="space-between" align="center">
             <Typography.Title level={5}>{t('props')}</Typography.Title>
