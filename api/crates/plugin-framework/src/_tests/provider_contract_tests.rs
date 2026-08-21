@@ -13,6 +13,7 @@ use plugin_framework::{
         ProviderCountTokensMethod, ProviderCountTokensResult, ProviderGenerateProjectionError,
         ProviderGenerateTranslationDecision, ProviderInvocationCapability, ProviderInvocationInput,
         ProviderInvocationResult, ProviderMessage, ProviderMessageRole, ProviderNativeTransport,
+        ProviderNetworkEgressContext, ProviderNetworkEgressMode,
         ProviderOutputItemPhase, ProviderOutputProtocolFailure, ProviderProjectionErrorCode,
         ProviderProjectionFidelity, ProviderProjectionLossCode, ProviderProjectionSource,
         ProviderResetCreditOperation, ProviderResetCreditResult, ProviderResetCreditRuntimeInput,
@@ -653,6 +654,42 @@ fn wp_r14a_native_passthrough_capability_remains_fail_closed() {
         .to_current_provider_generate_wire_value(&[])
         .unwrap_err();
     assert!(error.to_string().contains("responses.native_passthrough"));
+}
+
+#[test]
+fn root_1805_network_egress_handoff_is_capability_gated_and_lease_free() {
+    let mut input = ProviderInvocationInput::default();
+    input.set_network_egress_context(ProviderNetworkEgressContext {
+        mode: ProviderNetworkEgressMode::RequiredHttpProxy,
+        http_proxy_url: "http://127.0.0.1:3128".to_string(),
+        expires_at: "1735689600".to_string(),
+        required: true,
+    });
+
+    let error = input
+        .to_current_provider_generate_wire_value(&[])
+        .unwrap_err();
+    assert!(error.to_string().contains("network_egress_handoff/v1"));
+
+    let (wire, _) = input
+        .to_current_provider_generate_wire_value(&["network_egress_handoff/v1".to_string()])
+        .expect("a Provider that declares the handoff capability must receive its proxy context");
+    assert_eq!(
+        wire["run_context"]["network_egress"],
+        json!({
+            "mode": "required_http_proxy",
+            "http_proxy_url": "http://127.0.0.1:3128",
+            "expires_at": "1735689600",
+            "required": true,
+        })
+    );
+    assert_eq!(
+        wire["required_capabilities"],
+        json!(["network_egress_handoff/v1"])
+    );
+    assert!(wire["run_context"]["network_egress"].get("cleanup_token").is_none());
+    assert!(wire["run_context"]["network_egress"].get("provider_id").is_none());
+    assert!(wire["run_context"]["network_egress"].get("pool_id").is_none());
 }
 
 #[test]
