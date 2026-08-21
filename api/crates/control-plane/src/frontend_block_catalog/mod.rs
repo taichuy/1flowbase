@@ -162,10 +162,10 @@ where
             .find(|entry| entry.component_id == query.component_id))
     }
 
-    async fn load_entries(&self, workspace_id: Uuid) -> Result<Vec<FrontendComponentCapability>> {
+    async fn load_entries(&self, _workspace_id: Uuid) -> Result<Vec<FrontendComponentCapability>> {
         let blocks = self
             .repository
-            .list_workspace_frontend_blocks(&self.node_id, workspace_id)
+            .list_system_frontend_blocks(&self.node_id)
             .await?;
         let overrides = self
             .repository
@@ -260,7 +260,7 @@ where
         }
         let blocks = self
             .repository
-            .list_workspace_frontend_blocks(&self.node_id, query.workspace_id)
+            .list_system_frontend_blocks(&self.node_id)
             .await?
             .into_iter();
         let registered = blocks

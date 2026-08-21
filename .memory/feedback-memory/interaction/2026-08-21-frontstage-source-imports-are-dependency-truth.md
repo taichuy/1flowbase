@@ -2,7 +2,7 @@
 memory_type: feedback
 feedback_category: interaction
 topic: Frontstage 区块依赖以源码 import 为唯一真值
-summary: Frontstage 区块是代码；组件目录应展示当前 workspace 已注册组件，插入时自动写入 import，运行依赖锁只能从源码静态 import 解析，不能由当前区块 Catalog 的 code_modules 限制或推断。
+summary: Frontstage 区块是代码；组件目录应展示系统已安装且可运行的全局组件，插入时自动写入 import，运行依赖锁只能从源码静态 import 解析，不能由当前区块 Catalog 的 code_modules 或 workspace 区块分配限制或推断。
 keywords:
   - frontstage
   - JSX
@@ -28,13 +28,13 @@ scope:
 
 ## 规则
 
-- 组件面板以当前 workspace 的已注册组件为范围，不按正在编辑区块的 Catalog `code_modules` 过滤。
+- 组件面板以系统已安装且当前节点可运行的全局组件为范围，不按正在编辑区块的 Catalog `code_modules` 或 workspace 区块分配过滤。
 - 插入组件时同时插入或补齐其命名 `import`，并加载该组件类型声明供编辑器使用。
 - 后端只根据保存或预览源码中的静态 `import` 解析已注册模块、资产和版本锁；没有 import 的 Catalog 模块不得进入依赖锁。
 
 ## 原因
 
-Catalog 负责区块模板和运行时身份，不是作者源码可用组件的权限或依赖真值。用 Catalog 声明推断依赖会让可用的全局组件被错误隐藏或拒绝，也会给没有实际使用的模块加锁。
+Catalog 负责区块模板和运行时身份，workspace assignment 负责区块类型可否创建；两者都不是作者源码可用组件的依赖真值。用它们推断依赖会让已安装的全局组件被错误隐藏或拒绝，也会给没有实际使用的模块加锁。
 
 ## 适用场景
 
