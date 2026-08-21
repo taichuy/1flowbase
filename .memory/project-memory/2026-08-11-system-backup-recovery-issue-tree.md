@@ -15,8 +15,8 @@ match_when:
   - 设计 BackupSet、RecoveryJob、maintenance fence 或离线恢复
   - 讨论 PostgreSQL、业务对象、插件/MCP 工件的一致备份
 created_at: 2026-08-11 23
-updated_at: 2026-08-21 12
-last_verified_at: 2026-08-21 12
+updated_at: 2026-08-21 16
+last_verified_at: 2026-08-21 16
 decision_policy: verify_before_decision
 scope:
   - https://github.com/taichuy/1flowbase/issues/1667
@@ -55,7 +55,7 @@ scope:
 - BackupSet/manifest 与 RecoveryJob journal 的真值位于主库外；生产仓库与 `api/storage` 分离故障域。
 - 接受备份/恢复期间 maintenance 与写暂停；无法形成完整 write inventory 时停止。
 - 备份流式、认证加密、内存有界；master key 不入包，只保存 fingerprint。
-- 备份 manifest 自动记录 source build；target build 从当前二进制的 `CARGO_PKG_VERSION + Git revision` 取得，不接受用户环境变量声明。
+- 备份 manifest 自动记录 source build；target build 从当前二进制的 `v<CARGO_PKG_VERSION>` 取得，不接受用户环境变量声明。Git revision 不属于备份/恢复 contract，应由 CI、OCI label 与 release artifact provenance 记录。
 - 恢复 fail closed：必须匹配 format 与 master-key fingerprint、通过完整性校验，且备份 migration head 必须是当前内嵌前向迁移链的已知前缀；build 只用于审计与诊断，不做相等比较。
 - HTTP 只创建 intent/观察状态；真正恢复由主 pool 外的 recovery executor/启动期/离线入口执行。
 - UI 参考 `/settings/applications` 的 filters/table/toolbar/drawer，但无批量 restore/delete。

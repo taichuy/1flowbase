@@ -188,8 +188,9 @@ impl ApiConfig {
             .get("API_SYSTEM_BACKUP_KEY_BASE64")
             .cloned()
             .filter(|value| !value.trim().is_empty());
-        let application_build = ApplicationBuild::try_from(env!("API_SERVER_BUILD_IDENTITY"))
-            .expect("api-server build script must embed a valid application build identity");
+        let application_build =
+            ApplicationBuild::try_from(format!("v{}", env!("CARGO_PKG_VERSION")))
+                .expect("api-server package version must be a valid application build identity");
         let allow_unverified_filesystem_dropins = parse_bool_flag(
             "API_PLUGIN_ALLOW_UNVERIFIED_FILESYSTEM_DROPINS",
             map.get("API_PLUGIN_ALLOW_UNVERIFIED_FILESYSTEM_DROPINS"),

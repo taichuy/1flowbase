@@ -52,8 +52,12 @@ fn api_config_does_not_require_ephemeral_backend_env() {
     assert!(config
         .system_backup_repository_root
         .ends_with("tmp/system-backups"));
-    assert!(config.application_build.as_str().starts_with("v"));
-    assert!(config.application_build.as_str().contains(".git."));
+    assert_eq!(
+        config.application_build.as_str(),
+        format!("v{}", env!("CARGO_PKG_VERSION"))
+    );
+    assert!(!config.application_build.as_str().contains(".git."));
+    assert!(!config.application_build.as_str().contains("unavailable"));
 }
 
 #[test]
@@ -74,7 +78,12 @@ fn ac_001_api_config_uses_compiled_build_identity_not_operator_input() {
         "/mnt/1flowbase-backups"
     );
     assert_ne!(config.application_build.as_str(), "operator-declared-build");
-    assert!(config.application_build.as_str().starts_with("v"));
+    assert_eq!(
+        config.application_build.as_str(),
+        format!("v{}", env!("CARGO_PKG_VERSION"))
+    );
+    assert!(!config.application_build.as_str().contains(".git."));
+    assert!(!config.application_build.as_str().contains("unavailable"));
 }
 
 #[test]
