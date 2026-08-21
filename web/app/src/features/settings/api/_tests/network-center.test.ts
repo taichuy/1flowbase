@@ -7,7 +7,11 @@ const apiClient = vi.hoisted(() => ({
   deleteConsoleNetworkEgressPool: vi.fn(),
   createConsoleNetworkEgressPoolMember: vi.fn(),
   updateConsoleNetworkEgressPoolMember: vi.fn(),
-  deleteConsoleNetworkEgressPoolMember: vi.fn()
+  deleteConsoleNetworkEgressPoolMember: vi.fn(),
+  listConsoleNetworkEgressRoutes: vi.fn(),
+  createConsoleNetworkEgressRoute: vi.fn(),
+  updateConsoleNetworkEgressRoute: vi.fn(),
+  deleteConsoleNetworkEgressRoute: vi.fn()
 }));
 
 vi.mock('@1flowbase/api-client', () => apiClient);
@@ -18,9 +22,14 @@ import {
   deleteSettingsNetworkEgressPool,
   deleteSettingsNetworkEgressPoolMember,
   fetchSettingsNetworkEgressPools,
+  fetchSettingsNetworkEgressRoutes,
+  settingsNetworkEgressRoutesQueryKey,
   settingsNetworkEgressPoolsQueryKey,
   updateSettingsNetworkEgressPool,
-  updateSettingsNetworkEgressPoolMember
+  updateSettingsNetworkEgressPoolMember,
+  createSettingsNetworkEgressRoute,
+  updateSettingsNetworkEgressRoute,
+  deleteSettingsNetworkEgressRoute
 } from '../network-center';
 
 describe('settings network egress pools API', () => {
@@ -88,6 +97,35 @@ describe('settings network egress pools API', () => {
     expect(apiClient.deleteConsoleNetworkEgressPoolMember).toHaveBeenCalledWith(
       'pool-1',
       'member-1',
+      'csrf-123'
+    );
+  });
+});
+
+describe('settings network egress routes API', () => {
+  test('AC-NC13 forwards the typed route DTO without frontend aliases', () => {
+    const route = {
+      consumer_kind: 'http_node',
+      consumer_reference: null,
+      pool_id: 'pool-1',
+      enabled: true
+    };
+    expect(settingsNetworkEgressRoutesQueryKey).toEqual([
+      'settings',
+      'network-center',
+      'routes'
+    ]);
+    fetchSettingsNetworkEgressRoutes();
+    createSettingsNetworkEgressRoute(route, 'csrf-123');
+    updateSettingsNetworkEgressRoute(
+      'route-1',
+      { pool_id: 'pool-2', enabled: false },
+      'csrf-123'
+    );
+    deleteSettingsNetworkEgressRoute('route-1', 'csrf-123');
+    expect(apiClient.listConsoleNetworkEgressRoutes).toHaveBeenCalledWith();
+    expect(apiClient.createConsoleNetworkEgressRoute).toHaveBeenCalledWith(
+      route,
       'csrf-123'
     );
   });

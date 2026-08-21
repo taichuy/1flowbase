@@ -171,7 +171,11 @@ const networkCenterApi = vi.hoisted(() => ({
     'network-center',
     'providers'
   ],
-  fetchSettingsNetworkEgressProviders: vi.fn()
+  settingsNetworkEgressPoolsQueryKey: ['settings', 'network-center', 'pools'],
+  settingsNetworkEgressRoutesQueryKey: ['settings', 'network-center', 'routes'],
+  fetchSettingsNetworkEgressProviders: vi.fn(),
+  fetchSettingsNetworkEgressPools: vi.fn(),
+  fetchSettingsNetworkEgressRoutes: vi.fn()
 }));
 
 const extensionsApi = vi.hoisted(() => ({
@@ -440,6 +444,8 @@ describe('section shell routing', () => {
     });
     networkCenterApi.fetchSettingsNetworkEgressProviders.mockReset();
     networkCenterApi.fetchSettingsNetworkEgressProviders.mockResolvedValue([]);
+    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([]);
+    networkCenterApi.fetchSettingsNetworkEgressRoutes.mockResolvedValue([]);
     dataModelsApi.fetchSettingsDataSourceInstances.mockResolvedValue([]);
     dataModelsApi.fetchSettingsAllDataModels.mockResolvedValue([]);
     dataModelsApi.fetchSettingsDataModels.mockResolvedValue([]);

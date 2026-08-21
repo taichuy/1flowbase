@@ -107,7 +107,14 @@ function NetworkCenterRoutesShell() {
           {i18nText('settings', 'auto.network_center_routes')}
         </Typography.Title>
         {routesQuery.isError ? (
-          <Alert type="error" showIcon title={i18nText('settings', 'auto.network_center_pools_load_failed')} />
+          <Alert
+            type="error"
+            showIcon
+            title={i18nText(
+              'settings',
+              'auto.network_center_pools_load_failed'
+            )}
+          />
         ) : (
           <Table
             rowKey="id"
@@ -116,7 +123,13 @@ function NetworkCenterRoutesShell() {
             pagination={false}
             locale={{ emptyText: <Empty /> }}
             columns={[
-              { title: i18nText('settings', 'auto.network_center_route_consumer'), dataIndex: 'consumer_kind' },
+              {
+                title: i18nText(
+                  'settings',
+                  'auto.network_center_route_consumer'
+                ),
+                dataIndex: 'consumer_kind'
+              },
               {
                 title: i18nText('settings', 'auto.network_center_route_pool'),
                 dataIndex: 'pool_id',
@@ -127,11 +140,20 @@ function NetworkCenterRoutesShell() {
                 dataIndex: 'enabled',
                 render: (enabled: boolean) => (
                   <Tag color={enabled ? 'green' : undefined}>
-                    {i18nText('settings', enabled ? 'auto.enabled' : 'auto.disabled')}
+                    {i18nText(
+                      'settings',
+                      enabled ? 'auto.enabled' : 'auto.disabled'
+                    )}
                   </Tag>
                 )
               },
-              { title: i18nText('settings', 'auto.network_center_route_failure_policy'), dataIndex: 'failure_policy' }
+              {
+                title: i18nText(
+                  'settings',
+                  'auto.network_center_route_failure_policy'
+                ),
+                dataIndex: 'failure_policy'
+              }
             ]}
           />
         )}
@@ -151,9 +173,7 @@ export function NetworkCenterSection({ page }: { page: NetworkCenterPage }) {
     case 'pools':
       return <NetworkEgressPoolsPanel providers={providersQuery.data ?? []} />;
     case 'routes':
-      return (
-        <NetworkCenterRoutesShell />
-      );
+      return <NetworkCenterRoutesShell />;
     case 'providers':
     default:
       return (
