@@ -64,7 +64,8 @@ impl orchestration_runtime::execution_engine::ProviderInvoker for ResolverBacked
         &self,
         timeout: Duration,
         verify_ssl: bool,
-    ) -> anyhow::Result<Option<orchestration_runtime::execution_engine::HttpRequestClientLease>> {
+    ) -> anyhow::Result<Option<orchestration_runtime::execution_engine::HttpRequestClientLease>>
+    {
         ProviderRuntimePort::acquire_http_node_client(
             &self.runtime,
             self.workspace_id,
@@ -1437,7 +1438,8 @@ fn root_1805_http_node(target: &str) -> orchestration_runtime::compiled_plan::Co
 /// persists the exact model-instance Route -> Pool -> Provider projection, starts the egress
 /// worker, acquires its lease through the real resolver, and then invokes the model worker.
 #[tokio::test]
-async fn root_1805_model_provider_route_pool_provider_lease_reaches_fake_proxy_without_host_secrets() {
+async fn root_1805_model_provider_route_pool_provider_lease_reaches_fake_proxy_without_host_secrets(
+) {
     let (proxy_url, proxy_request) = spawn_one_request_proxy();
     let proxy_target = "http://model-provider-origin.invalid/route-pool-provider";
     let package = TempProviderPackage::new();
@@ -1450,13 +1452,14 @@ async fn root_1805_model_provider_route_pool_provider_lease_reaches_fake_proxy_w
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let instance_id = Uuid::now_v7();
     let base_runtime = ApiProviderRuntime::new(network_egress_runtime_services());
-    let (resolver, _egress_package) = crate::_tests::official_extension_catalog_source::seed_network_egress_resolver(
-        &state,
-        &proxy_url,
-        domain::NetworkEgressConsumerSelector::ModelProviderInstance { instance_id },
-        base_runtime.clone(),
-    )
-    .await;
+    let (resolver, _egress_package) =
+        crate::_tests::official_extension_catalog_source::seed_network_egress_resolver(
+            &state,
+            &proxy_url,
+            domain::NetworkEgressConsumerSelector::ModelProviderInstance { instance_id },
+            base_runtime.clone(),
+        )
+        .await;
     let runtime = base_runtime.with_network_egress(Arc::new(resolver));
     let output = ProviderRuntimePort::invoke_stream_with_network_egress(
         &runtime,
@@ -1477,7 +1480,9 @@ async fn root_1805_model_provider_route_pool_provider_lease_reaches_fake_proxy_w
     .expect("the persisted model route must reach the fake proxy through the Host resolver");
 
     assert_eq!(output.result.final_content.as_deref(), Some("proxied"));
-    let proxy_request = proxy_request.join().expect("fake proxy must receive traffic");
+    let proxy_request = proxy_request
+        .join()
+        .expect("fake proxy must receive traffic");
     assert!(
         proxy_request.starts_with(
             "GET http://model-provider-origin.invalid/route-pool-provider HTTP/1.1"
@@ -1552,26 +1557,28 @@ async fn root_1805_http_node_route_pool_provider_lease_reaches_fake_proxy_withou
     let (proxy_url, proxy_request) = spawn_one_request_proxy();
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let base_runtime = ApiProviderRuntime::new(network_egress_runtime_services());
-    let (resolver, _egress_package) = crate::_tests::official_extension_catalog_source::seed_network_egress_resolver(
-        &state,
-        &proxy_url,
-        domain::NetworkEgressConsumerSelector::HttpNodeDefault,
-        base_runtime.clone(),
-    )
-    .await;
+    let (resolver, _egress_package) =
+        crate::_tests::official_extension_catalog_source::seed_network_egress_resolver(
+            &state,
+            &proxy_url,
+            domain::NetworkEgressConsumerSelector::HttpNodeDefault,
+            base_runtime.clone(),
+        )
+        .await;
     let invoker = ResolverBackedHttpNodeInvoker {
         runtime: base_runtime.with_network_egress(Arc::new(resolver)),
         workspace_id: state.bootstrap_workspace_id,
     };
-    let execution = orchestration_runtime::execution_engine::execute_http_request_node_with_provider_invoker(
-        &root_1805_http_node("http://http-node-origin.invalid/route-pool-provider"),
-        &Map::new(),
-        &Map::new(),
-        None,
-        Some(&invoker),
-    )
-    .await
-    .expect("HTTP execution must preserve its normal output envelope");
+    let execution =
+        orchestration_runtime::execution_engine::execute_http_request_node_with_provider_invoker(
+            &root_1805_http_node("http://http-node-origin.invalid/route-pool-provider"),
+            &Map::new(),
+            &Map::new(),
+            None,
+            Some(&invoker),
+        )
+        .await
+        .expect("HTTP execution must preserve its normal output envelope");
 
     assert_eq!(execution.error_payload, None);
     assert_eq!(execution.output_payload["status_code"], json!(200));
@@ -1586,7 +1593,9 @@ async fn root_1805_http_node_route_pool_provider_lease_reaches_fake_proxy_withou
     assert!(!observable.contains("host-private"));
     assert!(!observable.contains("fixture-lease"));
     assert!(!observable.contains("egress-provider-secret"));
-    let proxy_request = proxy_request.join().expect("fake proxy must receive traffic");
+    let proxy_request = proxy_request
+        .join()
+        .expect("fake proxy must receive traffic");
     assert!(
         proxy_request.starts_with(
             "GET http://http-node-origin.invalid/route-pool-provider HTTP/1.1"
@@ -1612,15 +1621,16 @@ async fn root_1805_http_node_no_route_keeps_direct_behavior_without_host_lease()
         runtime: base_runtime.with_network_egress(Arc::new(resolver)),
         workspace_id: state.bootstrap_workspace_id,
     };
-    let execution = orchestration_runtime::execution_engine::execute_http_request_node_with_provider_invoker(
-        &root_1805_http_node(&format!("{origin}/http-node-direct")),
-        &Map::new(),
-        &Map::new(),
-        None,
-        Some(&invoker),
-    )
-    .await
-    .expect("HTTP execution must retain its normal result envelope");
+    let execution =
+        orchestration_runtime::execution_engine::execute_http_request_node_with_provider_invoker(
+            &root_1805_http_node(&format!("{origin}/http-node-direct")),
+            &Map::new(),
+            &Map::new(),
+            None,
+            Some(&invoker),
+        )
+        .await
+        .expect("HTTP execution must retain its normal result envelope");
 
     assert_eq!(execution.error_payload, None);
     assert_eq!(execution.output_payload["status_code"], json!(200));

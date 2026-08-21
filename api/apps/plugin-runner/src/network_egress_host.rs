@@ -15,11 +15,11 @@ use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 
 use axum::http::Uri;
 use plugin_framework::{
+    error::{FrameworkResult, PluginFrameworkError},
     AcquireHttpForwardProxyInput, EgressAvailability, EgressDescriptor, ForwardProxyLease,
     NetworkEgressProviderPackage, NetworkEgressProviderStdioRequest,
     NetworkEgressProviderStdioResponse, PluginRuntimeLimits, ReleaseHttpForwardProxyInput,
     SyncEgressesInput, SyncEgressesResult,
-    error::{FrameworkResult, PluginFrameworkError},
 };
 use serde::Serialize;
 use tokio::{

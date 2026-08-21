@@ -31,7 +31,7 @@ use plugin_framework::provider_contract::ProviderInvocationInput;
 use plugin_runner::{
     capability_host::CapabilityHost, data_source_host::DataSourceHost, provider_host::ProviderHost,
 };
-use serde_json::{Map, json};
+use serde_json::{json, Map};
 use time::OffsetDateTime;
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -309,8 +309,8 @@ fn root_1805_http_node(target: &str) -> orchestration_runtime::compiled_plan::Co
 }
 
 #[tokio::test]
-async fn root_1805_model_provider_route_pool_provider_lease_reaches_fake_proxy_without_host_secrets()
- {
+async fn root_1805_model_provider_route_pool_provider_lease_reaches_fake_proxy_without_host_secrets(
+) {
     // The Host probes the acquired loopback endpoint before handing it to the model worker.
     let (proxy_url, proxy_requests) = spawn_request_proxy(2);
     let proxy_target = "http://model-provider-origin.invalid/route-pool-provider";
@@ -405,13 +405,11 @@ async fn root_1805_model_provider_no_route_keeps_direct_behavior_without_handoff
     .expect("no model route must retain ordinary provider invocation behavior");
 
     assert_eq!(output.result.final_content.as_deref(), Some("proxied"));
-    assert!(
-        origin_request
-            .join()
-            .expect("direct origin must receive the request")
-            .into_iter()
-            .any(|request| request.starts_with("GET /model-direct HTTP/1.1"))
-    );
+    assert!(origin_request
+        .join()
+        .expect("direct origin must receive the request")
+        .into_iter()
+        .any(|request| request.starts_with("GET /model-direct HTTP/1.1")));
     let wire = fs::read_to_string(&wire_capture).expect("model worker must record its input wire");
     assert!(!wire.contains("network_egress"));
     assert!(!wire.contains("http_proxy_url"));
@@ -503,13 +501,11 @@ async fn root_1805_http_node_no_route_keeps_direct_behavior_without_host_lease()
 
     assert_eq!(execution.error_payload, None);
     assert_eq!(execution.output_payload["status_code"], json!(200));
-    assert!(
-        origin_request
-            .join()
-            .expect("direct origin must receive the request")
-            .into_iter()
-            .any(|request| request.starts_with("GET /http-node-direct HTTP/1.1"))
-    );
+    assert!(origin_request
+        .join()
+        .expect("direct origin must receive the request")
+        .into_iter()
+        .any(|request| request.starts_with("GET /http-node-direct HTTP/1.1")));
     let observable = serde_json::to_string(&json!({
         "output_payload": execution.output_payload,
         "error_payload": execution.error_payload,

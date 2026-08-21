@@ -387,11 +387,10 @@ async fn ac_004_revokes_the_lease_when_the_worker_crashes() {
         .expect("fixture worker must first return a valid lease");
     tokio::time::sleep(Duration::from_millis(25)).await;
 
-    assert!(
-        host.resolve_http_forward_proxy("fixture_egress@0.1.0", "egress-us-1")
-            .await
-            .is_err()
-    );
+    assert!(host
+        .resolve_http_forward_proxy("fixture_egress@0.1.0", "egress-us-1")
+        .await
+        .is_err());
     let receipt = host
         .cleanup_receipt("fixture_egress@0.1.0")
         .expect("crash must revoke the lease and retain cleanup evidence");

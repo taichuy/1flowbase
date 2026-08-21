@@ -17,7 +17,6 @@ use control_plane::{
     },
 };
 use plugin_framework::{
-    ForwardProxyLease,
     data_source_contract::{
         DataSourceConfigInput, DataSourceCreateRecordInput, DataSourceCreateRecordOutput,
         DataSourceDeleteRecordInput, DataSourceDeleteRecordOutput, DataSourceDescribeResourceInput,
@@ -33,6 +32,7 @@ use plugin_framework::{
         ProviderModelDescriptor, ProviderResetCreditOperation, ProviderResetCreditResult,
         ProviderUsageWindowsResult,
     },
+    ForwardProxyLease,
 };
 use plugin_runner::{
     capability_host::CapabilityHost,
@@ -41,7 +41,7 @@ use plugin_runner::{
     provider_host::ProviderHost,
 };
 use runtime_core::runtime_engine::DataSourceRuntimeRecordBackend;
-use serde::{Serialize, de::DeserializeOwned};
+use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 use storage_durable::MainDurableStore;
@@ -51,8 +51,8 @@ use uuid::Uuid;
 
 use crate::network_egress_client::NetworkEgressHttpClientResolver;
 use crate::runtime_activity::{
-    ApplicationActivityFinish, ApplicationActivityGuard, ApplicationActivityKind,
-    ApplicationRuntimeActivityTracker, current_application_id,
+    current_application_id, ApplicationActivityFinish, ApplicationActivityGuard,
+    ApplicationActivityKind, ApplicationRuntimeActivityTracker,
 };
 
 mod model_provider_slot;
