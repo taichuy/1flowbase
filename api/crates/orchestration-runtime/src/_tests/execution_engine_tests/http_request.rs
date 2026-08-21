@@ -254,6 +254,71 @@ fn named_bindings(entries: Value) -> CompiledBinding {
     }
 }
 
+struct FailingNetworkEgressInvoker;
+
+#[async_trait::async_trait]
+impl ProviderInvoker for FailingNetworkEgressInvoker {
+    async fn resolve_llm_route(&self, _runtime: &CompiledLlmRuntime) -> Result<ResolvedProviderRoute> {
+        unreachable!("the controlled negative fixture contains no LLM node")
+    }
+
+    async fn invoke_llm(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        unreachable!("the controlled negative fixture contains no LLM node")
+    }
+
+    async fn acquire_http_node_client(
+        &self,
+        _timeout: std::time::Duration,
+        _verify_ssl: bool,
+    ) -> Result<Option<crate::execution_engine::HttpRequestClientLease>> {
+        anyhow::bail!("configured network egress pool has no usable member")
+    }
+}
+
+#[tokio::test]
+async fn root_1805_http_node_egress_failure_is_a_node_error_without_direct_fallback() {
+    let (base_url, captured, server) =
+        spawn_http_fixture(vec![response("/direct-target", 200, "text/plain", "unexpected")]).await;
+    let plan = http_request_plan(
+        json!({
+            "method": "GET",
+            "url": format!("{base_url}/direct-target"),
+            "body_type": "none",
+            "timeout_ms": 1000,
+            "verify_ssl": true,
+        }),
+        BTreeMap::new(),
+    );
+
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": {} }),
+        &FailingNetworkEgressInvoker,
+    )
+    .await
+    .expect("the Network Center failure must be represented as an HTTP node result");
+
+    match outcome.stop_reason {
+        ExecutionStopReason::Failed(failure) => {
+            assert_eq!(failure.node_id, "node-http");
+            assert_eq!(failure.error_payload["kind"], json!("http_request_error"));
+            assert!(failure.error_payload["message"]
+                .as_str()
+                .is_some_and(|message| message.contains("network egress pool")));
+        }
+        other => panic!("expected a failed HTTP node, got {other:?}"),
+    }
+    assert!(captured
+        .lock()
+        .expect("captured requests mutex poisoned")
+        .is_empty());
+    server.abort();
+}
+
 #[tokio::test]
 async fn http_request_node_executes_get_and_outputs_contract() {
     let (base_url, captured, server) = spawn_http_fixture(vec![FixtureResponse {
