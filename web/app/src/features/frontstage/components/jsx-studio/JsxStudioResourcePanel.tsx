@@ -55,6 +55,7 @@ export function JsxStudioResourcePanel({
   onDeletedBlock,
   onOpenBlock,
   onSaveBlock,
+  onSaveBlockTitle,
   projection,
   runPanel,
   configurationPanel,
@@ -77,6 +78,7 @@ export function JsxStudioResourcePanel({
   onDeletedBlock?: (event: FrontstageBlockDeletedEvent) => void;
   onOpenBlock?: (blockId: string) => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
+  onSaveBlockTitle?: (blockId: string, title: string) => Promise<boolean>;
   projection: FrontstageJsxEditorProjection;
   runPanel?: ReactNode;
   configurationPanel?: ReactNode;
@@ -134,7 +136,11 @@ export function JsxStudioResourcePanel({
   if (section === 'configuration') {
     return (
       configurationPanel ?? (
-        <ConfigurationPanel block={block} onSaveBlock={onSaveBlock} />
+        <ConfigurationPanel
+          block={block}
+          onSaveBlock={onSaveBlock}
+          onSaveBlockTitle={onSaveBlockTitle}
+        />
       )
     );
   }
@@ -713,13 +719,15 @@ function VariablesPanel({
 
 function ConfigurationPanel({
   block,
-  onSaveBlock
+  onSaveBlock,
+  onSaveBlockTitle
 }: {
   block: FrontstageBlockInstance;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
+  onSaveBlockTitle?: (blockId: string, title: string) => Promise<boolean>;
 }) {
   const { message } = App.useApp();
-  const [title, setTitle] = useState(readString(block.props.title));
+  const [title, setTitle] = useState(block.title ?? '');
   const [description, setDescription] = useState(
     readString(block.props.description)
   );
@@ -732,7 +740,7 @@ function ConfigurationPanel({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    setTitle(readString(block.props.title));
+    setTitle(block.title ?? '');
     setDescription(readString(block.props.description));
     setHeightMode(block.presentation.heightMode);
     setFixedHeight(block.presentation.height ?? 320);
@@ -741,15 +749,18 @@ function ConfigurationPanel({
     block.presentation.height,
     block.presentation.heightMode,
     block.props.description,
-    block.props.title
+    block.title
   ]);
 
   const saveConfiguration = async () => {
     const props = { ...block.props };
-    assignOptionalString(props, 'title', title);
     assignOptionalString(props, 'description', description);
     setSaving(true);
     try {
+      const titleSaved = onSaveBlockTitle
+        ? await onSaveBlockTitle(block.id, title)
+        : true;
+      if (!titleSaved) return;
       const saved = await onSaveBlock({
         ...block,
         props,

@@ -4,6 +4,7 @@ import { describe, expect, test, vi } from 'vitest';
 import type { FrontstagePageContent } from '../api/page-content';
 import { PageCanvas } from '../components/PageCanvas';
 import type { FrontstageBlockInstance } from '../lib/page-document';
+import { createFrontstageRootNodeBlocks } from '../lib/page-canvas/runtime-assembly';
 import {
   createFrontstagePageContentFixture,
   type FrontstagePageContentFixtureOverrides
@@ -47,6 +48,48 @@ function createRuntimeBlock(
 }
 
 describe('PageCanvas', () => {
+  test('AC-001/AC-002 preserves and displays the persisted block title in design mode', () => {
+    const [block] = createFrontstageRootNodeBlocks([
+      {
+        block_id: '018f4b32-78a1-7d5e-9b1c-a1b2c3d4e5f6',
+        workspace_id: 'workspace-1',
+        page_id: 'page-1',
+        tab_id: 'tab-1',
+        parent_block_id: null,
+        rank: '000001',
+        presentation: 'page',
+        title: 'K7M2PX9Q',
+        description: null,
+        schema_version: 1,
+        code_ref: 'frontstage.block.018f4b32-78a1-7d5e-9b1c-a1b2c3d4e5f6',
+        input_mapping: {},
+        output_mapping: {},
+        runtime_descriptor: {
+          renderer_version: 'v1',
+          runtime: { kind: 'native_react', entry: 'index.js' }
+        },
+        created_at: '2026-08-21T00:00:00Z',
+        updated_at: '2026-08-21T00:00:00Z'
+      }
+    ]);
+
+    expect((block as FrontstageBlockInstance & { title?: string | null }).title).toBe(
+      'K7M2PX9Q'
+    );
+
+    render(
+      <PageCanvas
+        content={createPageContent()}
+        isDesignMode
+        runtimeBlocks={[block!]}
+        renderBlockIds={[block!.id]}
+      />
+    );
+
+    expect(screen.getByText('K7M2PX9Q')).toBeInTheDocument();
+    expect(screen.queryByText('代码区块')).not.toBeInTheDocument();
+  });
+
   test('renders canonical runtime blocks when the embedded page document is empty', () => {
     const canonicalBlock: FrontstageBlockInstance = {
       id: 'canonical-root',

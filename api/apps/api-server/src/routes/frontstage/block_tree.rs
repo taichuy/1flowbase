@@ -47,7 +47,7 @@ pub enum FrontstageBlockPresentationDto {
 #[serde(deny_unknown_fields)]
 pub struct CreateFrontstageBlockNodeBody {
     pub tab_id: Option<String>,
-    pub title: String,
+    pub title: Option<String>,
     pub description: Option<String>,
     pub presentation: FrontstageBlockPresentationDto,
     pub parent_block_id: Option<String>,

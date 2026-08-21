@@ -12,6 +12,7 @@ mod external_agent_bridge_tests;
 mod file_management;
 mod flow;
 mod frontend_component_catalog_service_tests;
+mod frontstage_block_tree;
 mod host_extensions;
 mod host_infrastructure;
 mod i18n_catalog;

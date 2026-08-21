@@ -108,4 +108,37 @@ describe('UiManagementPanel components', () => {
     expect(await screen.findByText('DataTable')).toBeInTheDocument();
     expect(search).toHaveValue('');
   });
+
+  test('AC-004 renders unboxed module text and text-only component actions', async () => {
+    const { container } = render(
+      <AppProviders>
+        <UiManagementPanel canManage />
+      </AppProviders>
+    );
+
+    expect(await screen.findByText('DataTable')).toBeInTheDocument();
+    expect(container.querySelector('code')).toBeNull();
+
+    for (const name of ['编辑', '发布', '隐藏', '默认']) {
+      expect(screen.getAllByRole('button', { name })[0]).toHaveClass(
+        'ant-btn-link'
+      );
+    }
+  });
+
+  test('AC-005 separates module source and module version into independent columns', async () => {
+    render(
+      <AppProviders>
+        <UiManagementPanel canManage />
+      </AppProviders>
+    );
+
+    expect(await screen.findByText('DataTable')).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: '模块来源' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('columnheader', { name: '模块版' })
+    ).toBeInTheDocument();
+  });
 });

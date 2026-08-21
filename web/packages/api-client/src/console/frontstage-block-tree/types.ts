@@ -94,7 +94,7 @@ export interface ConsoleFrontstageBlockOpenTarget {
 
 export interface CreateConsoleFrontstageBlockNodeInput {
   tab_id?: string;
-  title: string;
+  title?: string;
   description?: string;
   presentation: ConsoleFrontstageBlockPresentation;
   parent_block_id: string | null;

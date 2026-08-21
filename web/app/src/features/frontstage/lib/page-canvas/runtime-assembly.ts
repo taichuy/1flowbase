@@ -32,6 +32,7 @@ export function createFrontstageRuntimeAssemblyBlocks(
 
     return {
       id: layer.block_id,
+      title: optionalString(layer.title),
       rendererVersion:
         optionalString(descriptor.renderer_version) ??
         optionalString(descriptor.rendererVersion),

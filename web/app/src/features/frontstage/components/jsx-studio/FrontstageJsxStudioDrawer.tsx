@@ -52,6 +52,7 @@ export interface FrontstageJsxStudioDrawerProps {
       }) => ReactNode);
   onClose: () => void;
   onSaveBlock: (block: FrontstageBlockInstance) => Promise<boolean | void>;
+  onSaveBlockTitle?: (blockId: string, title: string) => Promise<boolean>;
 }
 
 function blockIdFromEditorModelPath(
@@ -75,6 +76,7 @@ export function FrontstageJsxStudioDrawer({
   initialSection,
   onClose,
   onSaveBlock,
+  onSaveBlockTitle,
   open,
   pageBlocks = [],
   pageId,
@@ -321,6 +323,7 @@ export function FrontstageJsxStudioDrawer({
             onDeletedBlock={(event) => void handleDeletedBlock(event)}
             onOpenBlock={blockTabs.openBlock}
             onSaveBlock={onSaveBlock}
+            onSaveBlockTitle={onSaveBlockTitle}
             projection={projection}
             runPanel={resolvedRunPanel}
             section={section}

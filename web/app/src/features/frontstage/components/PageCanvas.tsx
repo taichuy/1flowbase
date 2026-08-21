@@ -804,7 +804,7 @@ function RenderPlanSlot({
     >
       {isDesignMode ? (
         <span style={blockLabelStyle}>
-          {i18nText('frontstage', 'auto.js_block')}
+          {item.title ?? item.blockId}
         </span>
       ) : null}
       {renderBlockContent()}

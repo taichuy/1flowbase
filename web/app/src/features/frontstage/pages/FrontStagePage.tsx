@@ -714,6 +714,22 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     },
     [blockTreeMutations.update, selectedPageId]
   );
+  const saveStudioBlockTitle = useCallback(
+    async (blockId: string, title: string) => {
+      if (!selectedPageId) return false;
+      try {
+        await blockTreeMutations.update.mutateAsync({
+          block_id: blockId,
+          input: { title }
+        });
+        return true;
+      } catch (error) {
+        setBlockSaveError(toDisplayErrorMessage(error));
+        return false;
+      }
+    },
+    [blockTreeMutations.update, selectedPageId]
+  );
   const designActions = useMemo(() => {
     if (!canEnterDesignMode || !isDesignMode) {
       return undefined;
@@ -964,7 +980,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
 
       const createdNode = await blockTreeMutations.create.mutateAsync({
         tab_id: tabId,
-        title: entry.title,
         description: '',
         presentation: 'page',
         parent_block_id: null,
@@ -1364,6 +1379,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             catalogEntries={blockCatalog.items}
             onClose={() => setIsJsxStudioOpen(false)}
             onSaveBlock={saveStudioBlock}
+            onSaveBlockTitle={saveStudioBlockTitle}
             runPanel={({ blockId, code, runRevision }) => {
               const activeStudioBlock = runtimeBlocks.find(
                 (candidate) => candidate.id === blockId

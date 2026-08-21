@@ -37,6 +37,7 @@ export interface FrontstagePageRenderPlanFallbackReason {
 
 export interface FrontstageBlockRenderPlanItem {
   blockId: string;
+  title?: string | null;
   sourceBlockId: string | null;
   codeRef: string;
   sourceCodeRef: string | null;
@@ -299,6 +300,7 @@ export function createFrontstageBlockRenderPlanItem(
 
   return {
     blockId: block.id,
+    title: block.title,
     sourceBlockId: block.sourceId,
     codeRef: block.codeRef,
     sourceCodeRef: block.sourceCodeRef,

@@ -916,6 +916,34 @@ describe('FrontstageJsxStudioDrawer', () => {
     });
   });
 
+  test('AC-003 does not save the host block title into runtime props', async () => {
+    const onSaveBlock = vi.fn().mockResolvedValue(true);
+    const onSaveBlockTitle = vi.fn().mockResolvedValue(true);
+    render(
+      <FrontstageJsxStudioDrawer
+        open
+        initialSection="configuration"
+        workspaceId="workspace-1"
+        pageId="page-1"
+        tabId="tab-1"
+        block={{ ...block, props: {} }}
+        catalogEntry={catalogEntry}
+        onClose={vi.fn()}
+        onSaveBlock={onSaveBlock}
+        onSaveBlockTitle={onSaveBlockTitle}
+      />
+    );
+
+    fireEvent.change(screen.getByRole('textbox', { name: '标题' }), {
+      target: { value: 'K7M2PX9Q' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存配置' }));
+
+    await waitFor(() => expect(onSaveBlock).toHaveBeenCalledTimes(1));
+    expect(onSaveBlock.mock.calls[0]?.[0].props).not.toHaveProperty('title');
+    expect(onSaveBlockTitle).toHaveBeenCalledWith('orders-block', 'K7M2PX9Q');
+  });
+
   test('AC-006 declares a typed output port from the variables section', async () => {
     const onSaveBlock = vi.fn().mockResolvedValue(true);
     render(

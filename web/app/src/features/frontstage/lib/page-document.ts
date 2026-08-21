@@ -46,6 +46,7 @@ export interface FrontstageBlockPresentation {
 
 export interface FrontstageBlockInstance {
   id: string;
+  title?: string | null;
   rendererVersion: string | null;
   sourceId: string | null;
   codeRef: string;

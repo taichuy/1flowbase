@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashSet};
 use anyhow::Result;
 use runtime_core::runtime_record_repository::{OrderedTreeCommandError, OrderedTreeQueryError};
 use serde_json::{Map, Value};
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
@@ -67,7 +68,7 @@ pub struct CreateFrontstageBlockNodeCommand {
     pub workspace_id: Uuid,
     pub page_id: Uuid,
     pub tab_id: Option<Uuid>,
-    pub title: String,
+    pub title: Option<String>,
     pub description: Option<String>,
     pub presentation: domain::FrontstageBlockPresentation,
     pub position: FrontstageBlockPosition,
@@ -435,9 +436,14 @@ where
             }
             tab_id
         };
-        let title = required_block_title(command.title)?;
         let description = optional_block_description(command.description);
-        let block_id = Uuid::now_v7().to_string();
+        let block_uuid = Uuid::now_v7();
+        let block_id = block_uuid.to_string();
+        let title = command
+            .title
+            .map(required_block_title)
+            .transpose()?
+            .unwrap_or_else(|| default_block_title(block_uuid));
         let code_ref = format!("frontstage.block.{block_id}");
         let runtime_descriptor = canonical_runtime_descriptor(
             &block_id,
@@ -1352,6 +1358,19 @@ fn required_block_title(title: String) -> Result<String> {
         return Err(ControlPlaneError::InvalidInput("frontstage_block_title").into());
     }
     Ok(title)
+}
+
+pub(crate) fn default_block_title(block_id: Uuid) -> String {
+    const ALPHABET: &[u8; 32] = b"ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let digest = Sha256::digest(block_id.as_bytes());
+    let bits = u64::from_be_bytes([
+        0, 0, 0, digest[0], digest[1], digest[2], digest[3], digest[4],
+    ]);
+    let mut title = String::with_capacity(8);
+    for shift in (0..8).rev() {
+        title.push(ALPHABET[((bits >> (shift * 5)) & 31) as usize] as char);
+    }
+    title
 }
 
 fn optional_block_description(description: Option<String>) -> Option<String> {

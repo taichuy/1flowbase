@@ -135,19 +135,17 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
         width: 180
       },
       {
-        key: 'module',
-        title: t('module'),
+        key: 'module_source',
+        title: t('module_source'),
         width: 280,
         sizing: 'fill',
-        render: (_, row) => (
-          <>
-            <Typography.Text code>{row.module_source}</Typography.Text>
-            <br />
-            <Typography.Text type="secondary">
-              {row.module_version}
-            </Typography.Text>
-          </>
-        )
+        dataIndex: 'module_source'
+      },
+      {
+        key: 'module_version',
+        title: t('module_version'),
+        width: 120,
+        dataIndex: 'module_version'
       },
       {
         key: 'contribution',
@@ -189,13 +187,15 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
         render: (_, row) => (
           <Space wrap>
             <Button
+              type="link"
               size="small"
               disabled={!canManage}
               onClick={() => edit(row)}
             >
-              {t('edit_contract')}
+              {t('edit')}
             </Button>
             <Button
+              type="link"
               size="small"
               disabled={!canManage || !row.latest_contract}
               onClick={() => mutateState({ row, state: 'published' })}
@@ -203,6 +203,7 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
               {t('publish')}
             </Button>
             <Button
+              type="link"
               size="small"
               danger
               disabled={!canManage || row.state === 'hidden'}
@@ -211,11 +212,12 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
               {t('hide')}
             </Button>
             <Button
+              type="link"
               size="small"
               disabled={!canManage || row.state === 'inherit'}
               onClick={() => mutateState({ row, state: 'inherit' })}
             >
-              {t('restore_official')}
+              {t('default')}
             </Button>
           </Space>
         )
