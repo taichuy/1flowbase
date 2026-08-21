@@ -14,6 +14,7 @@ use argon2::{password_hash::SaltString, Argon2, PasswordHasher};
 use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use control_plane::{
+    auth::{AuthKernel, LoginCommand, SessionIssuer},
     bootstrap::{BootstrapConfig, BootstrapService},
     file_management::{CreateFileStorageCommand, FileStorageService},
     plugin_management::{BackupArtifactDisposition, BackupArtifactEntry, BackupArtifactKind},
@@ -45,6 +46,7 @@ use sqlx::{
     postgres::{PgConnectOptions, PgPoolOptions},
     Connection, PgConnection, Row,
 };
+use storage_ephemeral::memory::MemorySessionStore;
 use time::{Duration, OffsetDateTime};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use uuid::Uuid;
@@ -251,6 +253,32 @@ async fn portable_bundle_bootstraps_a_fresh_database_without_the_original_enviro
     .await
     .unwrap();
     let target_store = storage_durable::MainDurableStore::new(target_pool.clone());
+    let restored_login = AuthKernel::new(
+        target_store.clone(),
+        SessionIssuer::new(MemorySessionStore::new("portable-restored-login"), 7),
+    )
+    .login(LoginCommand {
+        authenticator_id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+        identifier: "root".to_owned(),
+        password: "stopped-server-password".to_owned(),
+    })
+    .await
+    .expect("the restored root password must authenticate through the normal login kernel");
+    assert_eq!(restored_login.actor.user_id, source.actor_user_id);
+    assert!(
+        AuthKernel::new(
+            target_store.clone(),
+            SessionIssuer::new(MemorySessionStore::new("portable-fresh-login"), 7),
+        )
+        .login(LoginCommand {
+            authenticator_id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,
+            identifier: "root".to_owned(),
+            password: "fresh-root-password".to_owned(),
+        })
+        .await
+        .is_err(),
+        "the target deployment bootstrap password must not replace restored root credentials"
+    );
     assert_eq!(
         DataSourceRepository::get_secret_json(
             &target_store,

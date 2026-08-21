@@ -1165,17 +1165,31 @@ if [ -n "$RESTORE_BACKUP" ] && [ "$START_CONTAINERS" = "yes" ]; then
   if [ -n "$RESTORE_PASSWORD" ]; then
     set_env_value API_SYSTEM_BACKUP_PASSWORD "$RESTORE_PASSWORD" "$recovery_env_file"
   fi
-  # The password is passed through a 0600 compose env file and the restored master key is written
-  # atomically by the offline binary into this bind mount. Neither secret crosses stdout.
+  recovery_output_dir=".recovery-output.$$.tmp"
+  if ! (umask 077 && mkdir "$recovery_output_dir" && cp .env "$recovery_output_dir/deployment.env"); then
+    rm -f "$recovery_env_file" "$recovery_output_dir/deployment.env"
+    rmdir "$recovery_output_dir" 2>/dev/null || true
+    fail "Could not stage the deployment environment for portable backup recovery."
+  fi
+  # Docker cannot atomically replace a file bind-mount target. The offline binary instead writes
+  # inside this dedicated directory, and this host process atomically replaces docker/.env only
+  # after recovery succeeds. The password stays in the separate compose env file.
   if ! recovery_compose --env-file "$recovery_env_file" run --rm --no-deps \
-    --volume "$PWD/.env:/recovery/deployment.env" \
+    --volume "$PWD/$recovery_output_dir:/recovery-output" \
     --entrypoint system_recovery api bootstrap \
     --backup-file /recovery/portable.1fb-backup \
-    --deployment-env-file /recovery/deployment.env; then
+    --deployment-env-file /recovery-output/deployment.env; then
     rm -f "$recovery_env_file"
+    rm -rf "$recovery_output_dir"
     fail "Portable backup bootstrap recovery failed. Existing target data was not started."
   fi
+  if ! mv "$recovery_output_dir/deployment.env" .env; then
+    rm -f "$recovery_env_file"
+    rm -rf "$recovery_output_dir"
+    fail "Could not persist the restored deployment environment. Existing target data was not started."
+  fi
   rm -f "$recovery_env_file"
+  rmdir "$recovery_output_dir"
   echo "Portable backup was restored before the API service started."
 fi
 

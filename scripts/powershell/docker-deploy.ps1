@@ -893,14 +893,22 @@ if ($RestoreBackup -and $StartContainers) {
   if ($RestorePassword) {
     Set-EnvValue "API_SYSTEM_BACKUP_PASSWORD" $RestorePassword $RecoveryEnvFile
   }
+  $RecoveryOutputDir = Join-Path (Get-Location) (".recovery-output-" + [System.Guid]::NewGuid().ToString("N"))
+  $StagedDeploymentEnv = Join-Path $RecoveryOutputDir "deployment.env"
   try {
-    $DeploymentEnvMount = "$(Join-Path (Get-Location) '.env'):/recovery/deployment.env"
-    Invoke-RecoveryComposeCommand @("--env-file", $RecoveryEnvFile, "run", "--rm", "--no-deps", "--volume", $DeploymentEnvMount, "--entrypoint", "system_recovery", "api", "bootstrap", "--backup-file", "/recovery/portable.1fb-backup", "--deployment-env-file", "/recovery/deployment.env")
+    New-Item -ItemType Directory -Path $RecoveryOutputDir -ErrorAction Stop | Out-Null
+    Copy-Item ".\.env" $StagedDeploymentEnv -ErrorAction Stop
+    # A container cannot rename over a single-file bind mount. It writes the restored deployment
+    # environment inside this dedicated directory; only this host process replaces docker/.env.
+    $DeploymentEnvMount = "${RecoveryOutputDir}:/recovery-output"
+    Invoke-RecoveryComposeCommand @("--env-file", $RecoveryEnvFile, "run", "--rm", "--no-deps", "--volume", $DeploymentEnvMount, "--entrypoint", "system_recovery", "api", "bootstrap", "--backup-file", "/recovery/portable.1fb-backup", "--deployment-env-file", "/recovery-output/deployment.env")
     if ($LASTEXITCODE -ne 0) {
       Fail "Portable backup bootstrap recovery failed. Existing target data was not started."
     }
+    [System.IO.File]::Replace($StagedDeploymentEnv, (Join-Path (Get-Location) ".env"), $null)
   } finally {
     Remove-Item -Force $RecoveryEnvFile -ErrorAction SilentlyContinue
+    Remove-Item -Recurse -Force $RecoveryOutputDir -ErrorAction SilentlyContinue
   }
   Write-Host "Portable backup was restored before the API service started."
 }
