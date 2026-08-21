@@ -164,6 +164,101 @@ async fn real_stopped_server_recovery_covers_success_resume_rollback_and_manual(
         .await;
 }
 
+/// This is the fresh-machine half of the recovery contract. The source and target use different
+/// PostgreSQL databases and backup repositories; only the downloaded bundle is transferred.
+/// Persistent object and artifact paths intentionally use the same in-container locations that
+/// official Docker deployments mount on both machines.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn portable_bundle_bootstraps_a_fresh_database_without_the_original_environment() {
+    let harness = DockerPostgresHarness::start().await;
+    let source = RecoveryScenario::create(&harness, ScenarioHealth::Healthy).await;
+    let bundle_root = TemporaryRoot::new("portable-system-backup-bundle");
+    let bundle_path = bundle_root.path().join("portable.1fb-backup");
+    let source_service = SystemBackupService::new(
+        source.repository.clone(),
+        Arc::new(EnvironmentBackupKeyProvider::from_master_key(PROVIDER_SECRET).unwrap()),
+    );
+    source_service
+        .download(
+            source.target_backup_set_id,
+            tokio::fs::File::create(&bundle_path).await.unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let target_database = PostgresTestDatabase::create(&harness.admin_database_url)
+        .await
+        .expect("fixture must allocate a fresh target database");
+    let target_root = TemporaryRoot::new("portable-system-backup-target");
+    let target_repository = target_root.path().join("repository");
+    tokio::fs::create_dir_all(&target_repository).await.unwrap();
+
+    let source_master = source
+        .portable_command(
+            "source-master",
+            target_database.database_url(),
+            &target_repository,
+            &bundle_path,
+            "fresh-target-master-key",
+        )
+        .output()
+        .await
+        .unwrap();
+    assert!(
+        source_master.status.success(),
+        "source-master failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&source_master.stdout),
+        String::from_utf8_lossy(&source_master.stderr)
+    );
+    assert_eq!(
+        String::from_utf8(source_master.stdout).unwrap(),
+        PROVIDER_SECRET,
+        "the portable bundle must provide the source deployment material without the target key"
+    );
+
+    let output = source
+        .portable_command(
+            "bootstrap",
+            target_database.database_url(),
+            &target_repository,
+            &bundle_path,
+            PROVIDER_SECRET,
+        )
+        .output()
+        .await
+        .unwrap();
+    let report = successful_report(&output);
+    assert_eq!(report["status"], "succeeded", "bootstrap report: {report}");
+    assert_eq!(report["bootstrap"], true);
+    let output_text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !output_text.contains(PROVIDER_SECRET),
+        "bootstrap output must not expose recovery material"
+    );
+
+    let target_pool = PgPoolOptions::new()
+        .max_connections(1)
+        .connect(target_database.database_url())
+        .await
+        .unwrap();
+    let root_count: i64 = sqlx::query_scalar(
+        "select count(*) from users where default_display_role = 'root' and status = 'active'",
+    )
+    .fetch_one(&target_pool)
+    .await
+    .unwrap();
+    target_pool.close().await;
+    assert_eq!(
+        root_count, 1,
+        "restored target must be ready for normal login"
+    );
+    source.assert_target_object().await;
+}
+
 fn successful_report(output: &std::process::Output) -> Value {
     assert!(
         output.status.success(),
@@ -270,6 +365,42 @@ impl RecoveryScenario {
             .env("API_NODE_ID", NODE_ID)
             .env("API_PROVIDER_SECRET_MASTER_KEY", PROVIDER_SECRET)
             .env("API_SYSTEM_BACKUP_REPOSITORY_ROOT", &self.roots.repository)
+            .env("API_BUSINESS_FILE_LOCAL_ROOT", &self.roots.objects)
+            .env("API_PROVIDER_INSTALL_ROOT", &self.roots.providers)
+            .env("API_MCP_TEMPLATE_LIBRARY_ROOT", &self.roots.mcp)
+            .env("API_HOST_EXTENSION_DROPIN_ROOT", &self.roots.host_dropins)
+            .env("API_POSTGRES_PG_DUMP_PATH", &self.tools.pg_dump)
+            .env("API_POSTGRES_PG_RESTORE_PATH", &self.tools.pg_restore)
+            .env("PATH", &self.tools.path)
+            .env("BOOTSTRAP_WORKSPACE_NAME", "offline-recovery-fixture")
+            .env("BOOTSTRAP_ROOT_ACCOUNT", "root")
+            .env("BOOTSTRAP_ROOT_EMAIL", "root@example.com")
+            .env("BOOTSTRAP_ROOT_PASSWORD", "unused-offline")
+            .env("BOOTSTRAP_ROOT_NAME", "Root")
+            .env("BOOTSTRAP_ROOT_NICKNAME", "Root")
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .kill_on_drop(true);
+        command
+    }
+
+    fn portable_command(
+        &self,
+        action: &str,
+        database_url: &str,
+        repository: &Path,
+        bundle_path: &Path,
+        master_key: &str,
+    ) -> tokio::process::Command {
+        let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_system_recovery"));
+        command
+            .args([action, "--backup-file", &bundle_path.to_string_lossy()])
+            .env("API_ENV", "development")
+            .env("API_DATABASE_URL", database_url)
+            .env("API_DATABASE_POOL_MAX_CONNECTIONS", "1")
+            .env("API_NODE_ID", NODE_ID)
+            .env("API_PROVIDER_SECRET_MASTER_KEY", master_key)
+            .env("API_SYSTEM_BACKUP_REPOSITORY_ROOT", repository)
             .env("API_BUSINESS_FILE_LOCAL_ROOT", &self.roots.objects)
             .env("API_PROVIDER_INSTALL_ROOT", &self.roots.providers)
             .env("API_MCP_TEMPLATE_LIBRARY_ROOT", &self.roots.mcp)

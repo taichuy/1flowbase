@@ -47,6 +47,12 @@ pub enum BackupJournalEventKind {
         safety_backup_set_id: BackupSetId,
         plan_digest: ContentDigest,
     },
+    /// Fresh-deployment bootstrap learns its root actor only after the PostgreSQL restore. This
+    /// durable assignment lets post-restore health and audit use the restored identity without
+    /// putting a user identifier into the portable bundle's pre-start contract.
+    RecoveryBootstrapActorAssigned {
+        actor_user_id: Uuid,
+    },
     ComponentSealed {
         component_id: BackupComponentId,
     },

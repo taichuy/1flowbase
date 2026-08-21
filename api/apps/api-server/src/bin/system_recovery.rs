@@ -32,8 +32,8 @@ use control_plane::{
     },
 };
 use domain::{
-    BackupJournalEvent, BackupJournalSubject, BackupSetId, KeyFingerprint, RecoveryJobId,
-    RecoveryJobState,
+    BackupJournalEvent, BackupJournalEventKind, BackupJournalSubject, BackupSetId, ContentDigest,
+    KeyFingerprint, RecoveryJobId, RecoveryJobState,
 };
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -245,22 +245,19 @@ async fn bootstrap_from_file(
     )
     .await?;
     let recovery_job_id = RecoveryJobId::new();
-    append_bootstrap_state(
-        repository.as_ref(),
-        recovery_job_id,
-        backup_set_id,
-        RecoveryJobState::Draining,
-    )
-    .await?;
+    append_bootstrap_journal(repository.as_ref(), recovery_job_id, backup_set_id).await?;
     let password = std::env::var("API_SYSTEM_BACKUP_PASSWORD")
         .ok()
         .filter(|value| !value.is_empty());
     let runtime = build_recovery_runtime(config, repository, key_provider, password).await?;
     let receipt = runtime
-        .restore_or_resume(ExecuteOfflineRecoveryCommand {
-            recovery_job_id,
-            backup_set_id,
-        })
+        .restore_bootstrap(
+            ExecuteOfflineRecoveryCommand {
+                recovery_job_id,
+                backup_set_id,
+            },
+            &config.database_url,
+        )
         .await?;
     Ok(json!({
         "status": receipt["status"],
@@ -291,24 +288,61 @@ async fn ensure_fresh_recovery_target(config: &ApiConfig) -> Result<()> {
     Ok(())
 }
 
-async fn append_bootstrap_state(
+async fn append_bootstrap_journal(
     repository: &dyn BackupRepository,
     recovery_job_id: RecoveryJobId,
     backup_set_id: BackupSetId,
-    state: RecoveryJobState,
 ) -> Result<()> {
-    repository
-        .append_journal_event(&BackupJournalEvent {
-            event_id: Uuid::now_v7(),
-            sequence: 0,
-            subject: BackupJournalSubject::Recovery(recovery_job_id),
-            backup_set_id,
-            actor_user_id: None,
-            occurred_at: time::OffsetDateTime::now_utc(),
-            event: domain::BackupJournalEventKind::RecoveryStateChanged { state },
-        })
-        .await
-        .map_err(|_| anyhow!("could not initialize external bootstrap recovery journal"))
+    // A fresh deployment has no user session or pre-existing data to protect. The journal still
+    // follows the offline executor's ordered handoff contract so that resume, rollback and the
+    // post-restore checks use the same durable state machine as an operator initiated recovery.
+    // The target backup doubles as the immutable bootstrap baseline; it is never presented as a
+    // user-facing safety backup because a fresh database has no prior application state.
+    let plan_digest = ContentDigest::try_from("0".repeat(64))
+        .map_err(|_| anyhow!("could not initialize bootstrap recovery plan"))?;
+    let events = [
+        BackupJournalEventKind::RecoveryStateChanged {
+            state: RecoveryJobState::Preflight,
+        },
+        BackupJournalEventKind::RecoveryStateChanged {
+            state: RecoveryJobState::AwaitingConfirmation,
+        },
+        BackupJournalEventKind::RecoveryStateChanged {
+            state: RecoveryJobState::SafetyBackup,
+        },
+        BackupJournalEventKind::RecoverySafetyBackupVerified {
+            safety_backup_set_id: backup_set_id,
+            plan_digest: plan_digest.clone(),
+        },
+        BackupJournalEventKind::RecoveryStateChanged {
+            state: RecoveryJobState::Fencing,
+        },
+        BackupJournalEventKind::RecoveryStateChanged {
+            state: RecoveryJobState::Draining,
+        },
+        BackupJournalEventKind::RecoveryOfflineHandoffReady {
+            target_backup_set_id: backup_set_id,
+            safety_backup_set_id: backup_set_id,
+            plan_digest,
+        },
+    ];
+    for (sequence, event) in events.into_iter().enumerate() {
+        repository
+            .append_journal_event(&BackupJournalEvent {
+                event_id: Uuid::now_v7(),
+                sequence: sequence as u64,
+                subject: BackupJournalSubject::Recovery(recovery_job_id),
+                backup_set_id,
+                // The restored database may not have a root user until the PostgreSQL step has
+                // completed. A stable system actor keeps this pre-start journal self-contained.
+                actor_user_id: Some(Uuid::nil()),
+                occurred_at: time::OffsetDateTime::now_utc(),
+                event,
+            })
+            .await
+            .map_err(|_| anyhow!("could not initialize external bootstrap recovery journal"))?;
+    }
+    Ok(())
 }
 
 async fn import_backup(
@@ -546,6 +580,22 @@ struct StoppedServerRecoveryRuntime {
 
 impl StoppedServerRecoveryRuntime {
     async fn restore_or_resume(&self, command: ExecuteOfflineRecoveryCommand) -> Result<Value> {
+        self.restore(command, None).await
+    }
+
+    async fn restore_bootstrap(
+        &self,
+        command: ExecuteOfflineRecoveryCommand,
+        database_url: &str,
+    ) -> Result<Value> {
+        self.restore(command, Some(database_url)).await
+    }
+
+    async fn restore(
+        &self,
+        command: ExecuteOfflineRecoveryCommand,
+        bootstrap_database_url: Option<&str>,
+    ) -> Result<Value> {
         let events = recovery_events(self.repository.as_ref(), command.recovery_job_id).await?;
         let state = events
             .iter()
@@ -569,6 +619,12 @@ impl StoppedServerRecoveryRuntime {
             | RecoveryJobState::ManualRecoveryRequired => (Vec::new(), Vec::new(), None),
             _ => bail!("external recovery journal is not ready for offline restore"),
         };
+
+        if offline_failure.is_none() {
+            if let Some(database_url) = bootstrap_database_url {
+                self.assign_bootstrap_actor(command, database_url).await?;
+            }
+        }
 
         let lease_state = Arc::new(AtomicU8::new(LEASE_PENDING));
         let lease = Box::new(StoppedServerRecoveryLease {
@@ -610,6 +666,47 @@ impl StoppedServerRecoveryRuntime {
             })),
             Err(error) => Err(anyhow!(error)),
         }
+    }
+
+    async fn assign_bootstrap_actor(
+        &self,
+        command: ExecuteOfflineRecoveryCommand,
+        database_url: &str,
+    ) -> Result<()> {
+        let events = recovery_events(self.repository.as_ref(), command.recovery_job_id).await?;
+        if events.iter().any(|event| {
+            matches!(
+                event.event,
+                BackupJournalEventKind::RecoveryBootstrapActorAssigned { .. }
+            )
+        }) {
+            return Ok(());
+        }
+        let pool = PgPoolOptions::new()
+            .max_connections(1)
+            .connect(database_url)
+            .await
+            .context("bootstrap recovery cannot inspect the restored root actor")?;
+        let actor_user_id: Uuid = sqlx::query_scalar(
+            "select id from users where default_display_role = 'root' and status = 'active' order by created_at asc limit 1",
+        )
+        .fetch_optional(&pool)
+        .await
+        .context("bootstrap recovery cannot read the restored root actor")?
+        .context("bootstrap recovery restored no active root actor")?;
+        pool.close().await;
+        self.repository
+            .append_journal_event(&BackupJournalEvent {
+                event_id: Uuid::now_v7(),
+                sequence: events.len() as u64,
+                subject: BackupJournalSubject::Recovery(command.recovery_job_id),
+                backup_set_id: command.backup_set_id,
+                actor_user_id: Some(actor_user_id),
+                occurred_at: time::OffsetDateTime::now_utc(),
+                event: BackupJournalEventKind::RecoveryBootstrapActorAssigned { actor_user_id },
+            })
+            .await
+            .map_err(|_| anyhow!("bootstrap recovery cannot record the restored root actor"))
     }
 }
 
