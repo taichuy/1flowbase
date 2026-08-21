@@ -611,7 +611,7 @@ impl NetworkEgressRouteRepository for PgControlPlaneStore {
 mod tests {
     use super::*;
     use control_plane::{
-        network_egress_pool::NetworkEgressPoolService,
+        network_egress_pool::{CreateNetworkEgressPoolMemberCommand, NetworkEgressPoolService},
         ports::{
             CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
             CreateNetworkEgressRouteInput, NetworkEgressPoolRepository,
@@ -883,6 +883,216 @@ mod tests {
             assert!(
                 !columns.iter().any(|column| column == forbidden),
                 "pool members must not persist runtime lease field {forbidden}"
+            );
+        }
+    }
+
+    /// AC-006/007: a pool stores only durable provider/key references. Runtime proxy material is
+    /// acquired after this selection, so an unavailable member is skipped and a stale descriptor
+    /// cannot be selected after a later provider synchronization replaces the projection.
+    #[tokio::test]
+    async fn ac_006_ac_007_pool_selection_uses_current_healthy_projection_and_never_persists_lease()
+    {
+        let (store, actor) = store().await;
+        let installation_id = Uuid::now_v7();
+        PluginRepository::upsert_installation(
+            &store,
+            &UpsertPluginInstallationInput {
+                installation_id,
+                category: ExtensionCategory::RuntimeExtensions,
+                organization: "test".to_string(),
+                provider_code: "selection_fixture".to_string(),
+                plugin_id: "selection_fixture@0.1.0".to_string(),
+                plugin_version: "0.1.0".to_string(),
+                contract_version: plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT.to_string(),
+                protocol: "stdio_json_worker".to_string(),
+                display_name: "Selection fixture".to_string(),
+                source_kind: "uploaded".to_string(),
+                trust_level: "unverified".to_string(),
+                verification_status: PluginVerificationStatus::Valid,
+                desired_state: PluginDesiredState::ActiveRequested,
+                expected_checksum: None,
+                signature_status: ExtensionSignatureStatus::Missing,
+                signature_algorithm: None,
+                signing_key_id: None,
+                metadata_json: json!({}),
+                is_system_reserved: false,
+                actor_user_id: actor.id,
+            },
+        )
+        .await
+        .expect("fixture installation should persist");
+        let provider_id = Uuid::now_v7();
+        let created = NetworkEgressRepository::create_network_egress_provider(
+            &store,
+            &CreateNetworkEgressProviderInput {
+                provider_id,
+                installation_id,
+                provider_code: "selection_fixture".to_string(),
+                display_name: "Selection fixture".to_string(),
+                secret_ref: "secret://system/network-egress/selection".to_string(),
+                lifecycle: domain::NetworkEgressProviderLifecycle::Draft,
+                actor_user_id: actor.id,
+            },
+        )
+        .await
+        .expect("provider configuration should persist as draft");
+        assert_eq!(
+            created.lifecycle,
+            domain::NetworkEgressProviderLifecycle::Draft
+        );
+        let started = NetworkEgressRepository::update_network_egress_provider_lifecycle(
+            &store,
+            &UpdateNetworkEgressProviderLifecycleInput {
+                provider_id,
+                lifecycle: domain::NetworkEgressProviderLifecycle::Active,
+                actor_user_id: actor.id,
+            },
+        )
+        .await
+        .expect("provider start should persist its active lifecycle");
+        assert_eq!(
+            started.lifecycle,
+            domain::NetworkEgressProviderLifecycle::Active
+        );
+
+        let synced_at = OffsetDateTime::now_utc();
+        NetworkEgressRepository::replace_network_egress_projection(
+            &store,
+            &ReplaceNetworkEgressProjectionInput {
+                provider_id,
+                health_status: domain::NetworkEgressHealthStatus::Healthy,
+                last_sync_error: None,
+                synchronized_at: synced_at,
+                actor_user_id: actor.id,
+                egresses: vec![
+                    domain::NetworkEgressProjectionRecord {
+                        provider_id,
+                        provider_egress_key: "unavailable-first".to_string(),
+                        display_name: "Unavailable first".to_string(),
+                        region: Some("test-a".to_string()),
+                        tags: vec!["fixture".to_string()],
+                        availability: "unavailable".to_string(),
+                        synced_at,
+                    },
+                    domain::NetworkEgressProjectionRecord {
+                        provider_id,
+                        provider_egress_key: "available-second".to_string(),
+                        display_name: "Available second".to_string(),
+                        region: Some("test-b".to_string()),
+                        tags: vec!["fixture".to_string()],
+                        availability: "available".to_string(),
+                        synced_at,
+                    },
+                ],
+            },
+        )
+        .await
+        .expect("provider synchronization should persist the stable projection");
+
+        let pool = NetworkEgressPoolService::new(store.clone())
+            .create(
+                control_plane::network_egress_pool::CreateNetworkEgressPoolCommand {
+                    actor_user_id: actor.id,
+                    display_name: "Healthy first".to_string(),
+                },
+            )
+            .await
+            .expect("pool should persist");
+        assert_eq!(pool.pool.selection_strategy.as_str(), "healthy_first");
+        let pool_id = pool.pool.id;
+        let unavailable = NetworkEgressPoolService::new(store.clone())
+            .add_member(CreateNetworkEgressPoolMemberCommand {
+                actor_user_id: actor.id,
+                pool_id,
+                provider_id,
+                provider_egress_key: "unavailable-first".to_string(),
+                enabled: true,
+                sequence: 0,
+            })
+            .await
+            .expect("current but unavailable descriptor may be retained as a durable reference");
+        let available = NetworkEgressPoolService::new(store.clone())
+            .add_member(CreateNetworkEgressPoolMemberCommand {
+                actor_user_id: actor.id,
+                pool_id,
+                provider_id,
+                provider_egress_key: "available-second".to_string(),
+                enabled: true,
+                sequence: 10,
+            })
+            .await
+            .expect("current available descriptor should join the pool");
+        assert_eq!(unavailable.health.as_str(), "unhealthy");
+        assert_eq!(available.health.as_str(), "healthy");
+
+        let selection = NetworkEgressPoolService::new(store.clone())
+            .select_healthy_first(pool_id)
+            .await
+            .expect("selection should skip unhealthy members and choose the durable key");
+        assert_eq!(selection.member_id, available.member.id);
+        assert_eq!(selection.provider_id, provider_id);
+        assert_eq!(selection.provider_egress_key, "available-second");
+
+        NetworkEgressRepository::replace_network_egress_projection(
+            &store,
+            &ReplaceNetworkEgressProjectionInput {
+                provider_id,
+                health_status: domain::NetworkEgressHealthStatus::Healthy,
+                last_sync_error: None,
+                synchronized_at: OffsetDateTime::now_utc(),
+                actor_user_id: actor.id,
+                egresses: vec![],
+            },
+        )
+        .await
+        .expect("a later sync may invalidate a formerly current descriptor");
+        let views = NetworkEgressPoolService::new(store.clone())
+            .list()
+            .await
+            .expect("stale references should remain visible for correction");
+        assert!(views[0]
+            .members
+            .iter()
+            .all(|member| member.health == domain::NetworkEgressPoolMemberHealth::Invalid));
+        let unavailable_error = NetworkEgressPoolService::new(store.clone())
+            .select_healthy_first(pool_id)
+            .await
+            .expect_err("a stale projection must fail closed before any runtime lease is acquired");
+        assert!(unavailable_error
+            .to_string()
+            .contains("network_egress_pool_unavailable"));
+
+        let stopped = NetworkEgressRepository::update_network_egress_provider_lifecycle(
+            &store,
+            &UpdateNetworkEgressProviderLifecycleInput {
+                provider_id,
+                lifecycle: domain::NetworkEgressProviderLifecycle::Disabled,
+                actor_user_id: actor.id,
+            },
+        )
+        .await
+        .expect("provider stop should persist its disabled lifecycle");
+        assert_eq!(
+            stopped.lifecycle,
+            domain::NetworkEgressProviderLifecycle::Disabled
+        );
+
+        let columns = sqlx::query_scalar::<_, String>(
+            r#"
+                select column_name from information_schema.columns
+                where table_schema = current_schema()
+                    and table_name in ('network_egress_pool_members', 'network_egress_projections')
+                order by column_name
+            "#,
+        )
+        .fetch_all(store.pool())
+        .await
+        .expect("network center storage columns should be readable");
+        for forbidden in ["http_proxy_url", "port", "lease_id", "cleanup_token"] {
+            assert!(
+                !columns.iter().any(|column| column == forbidden),
+                "durable control-plane records must not persist runtime lease field {forbidden}"
             );
         }
     }
