@@ -1,7 +1,10 @@
 use std::{
     fs,
+    io::{Read, Write},
+    net::TcpListener,
     path::{Path, PathBuf},
     sync::Arc,
+    thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
@@ -18,9 +21,10 @@ use plugin_framework::{
     },
     provider_contract::{
         ProviderCompactError, ProviderCompactProfile, ProviderCompactResult,
-        ProviderCountTokensInput, ProviderInvocationInput, ProviderResetCreditOperation,
-        ProviderResetCreditResult, ProviderRuntimeErrorKind, ProviderWireOperation,
-        PROVIDER_RESET_CREDITS_CAPABILITY, PROVIDER_USAGE_WINDOWS_CAPABILITY,
+        ProviderCountTokensInput, ProviderInvocationInput, ProviderNetworkEgressContext,
+        ProviderNetworkEgressMode, ProviderResetCreditOperation, ProviderResetCreditResult,
+        ProviderRuntimeErrorKind, ProviderWireOperation, PROVIDER_RESET_CREDITS_CAPABILITY,
+        PROVIDER_USAGE_WINDOWS_CAPABILITY,
     },
     DataModelOperationHandlerRef, DataModelTemplateIdentity, DataSourceConfigInput,
     DataSourceExecuteModelOperationInput, DataSourceModelOperationActorContext,
@@ -342,6 +346,60 @@ esac
         permissions.set_mode(0o755);
         fs::set_permissions(path, permissions).unwrap();
     }
+}
+
+fn write_network_egress_handoff_provider_package(
+    package: &TempProviderPackage,
+    proxy_target: &str,
+) {
+    write_slow_invocation_provider_package(package);
+    let manifest_path = package.path().join("manifest.yaml");
+    let manifest = fs::read_to_string(&manifest_path).unwrap().replace(
+        "  limits:\n",
+        "  capabilities:\n    - network_egress_handoff/v1\n  limits:\n",
+    );
+    fs::write(manifest_path, manifest).unwrap();
+    package.write(
+        "bin/fixture_provider",
+        &format!(
+            r#"#!/usr/bin/env bash
+set -euo pipefail
+payload="$(cat)"
+proxy_url="$(printf '%s' "$payload" | sed -n 's/.*"http_proxy_url":"\([^"]*\)".*/\1/p')"
+test -n "$proxy_url"
+if printf '%s' "$payload" | grep -F '"cleanup_token"' >/dev/null; then exit 1; fi
+curl --fail --silent --show-error --proxy "$proxy_url" '{proxy_target}' >/dev/null
+printf '%s\n' '{{"type":"text_delta","delta":"proxied"}}'
+printf '%s\n' '{{"type":"result","result":{{"final_content":"proxied","finish_reason":"stop"}}}}'
+"#,
+        ),
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = package.path().join("bin/fixture_provider");
+        let mut permissions = fs::metadata(&path).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(path, permissions).unwrap();
+    }
+}
+
+fn spawn_one_request_proxy() -> (String, thread::JoinHandle<String>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("fixture proxy must bind");
+    let proxy_url = format!("http://{}", listener.local_addr().unwrap());
+    let request = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("fixture proxy must accept");
+        let mut bytes = [0_u8; 4096];
+        let read = stream
+            .read(&mut bytes)
+            .expect("fixture proxy must read request");
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok")
+            .expect("fixture proxy must respond");
+        String::from_utf8_lossy(&bytes[..read]).to_string()
+    });
+    (proxy_url, request)
 }
 
 fn write_compact_provider_package(package: &TempProviderPackage, response: &str) {
@@ -1245,6 +1303,53 @@ async fn provider_runtime_drops_host_lock_before_invoking_provider() {
     drop(write_guard);
     let output = invocation.await.unwrap();
     assert_eq!(output.result.final_content.as_deref(), Some("slow"));
+}
+
+/// Root #1805 AC-010/AC-014: a capability-declaring Provider can consume the Host's
+/// invocation context to reach a non-routable origin through a fake proxy, while the worker
+/// rejects any leaked cleanup capability on its actual stdin wire.
+#[tokio::test]
+async fn root_1805_model_provider_consumes_lease_free_egress_handoff_through_proxy() {
+    let (proxy_url, proxy_request) = spawn_one_request_proxy();
+    let proxy_target = "http://model-provider-origin.invalid/generate";
+    let package = TempProviderPackage::new();
+    write_network_egress_handoff_provider_package(&package, proxy_target);
+    let runtime = ApiProviderRuntime::new(Arc::new(
+        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
+            Arc::new(RwLock::new(ProviderHost::default())),
+            Arc::new(RwLock::new(CapabilityHost::default())),
+            Arc::new(RwLock::new(DataSourceHost::default())),
+        ),
+    ));
+    let mut input = ProviderInvocationInput {
+        provider_instance_id: "provider-1".to_string(),
+        provider_code: "fixture_provider".to_string(),
+        protocol: "openai_compatible".to_string(),
+        model: "fixture_chat".to_string(),
+        provider_config: json!({ "api_key": "provider-secret" }),
+        ..ProviderInvocationInput::default()
+    };
+    input.set_network_egress_context(ProviderNetworkEgressContext {
+        mode: ProviderNetworkEgressMode::RequiredHttpProxy,
+        http_proxy_url: proxy_url,
+        expires_at: "4102444800".to_string(),
+        required: true,
+    });
+
+    let output = runtime
+        .invoke_stream(&fixture_installation(&package), input)
+        .await
+        .expect("the capability-declaring Provider must receive the host handoff");
+
+    assert_eq!(output.result.final_content.as_deref(), Some("proxied"));
+    let request = proxy_request
+        .join()
+        .expect("proxy fixture thread must finish");
+    assert!(
+        request.starts_with("GET http://model-provider-origin.invalid/generate HTTP/1.1"),
+        "the Provider must send its request through the fake proxy: {request}"
+    );
+    assert!(!request.contains("provider-secret"));
 }
 
 #[tokio::test]

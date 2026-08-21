@@ -1,10 +1,12 @@
 use std::{
     collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicBool, Ordering},
         Arc, Mutex,
     },
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use axum::{
@@ -14,17 +16,30 @@ use axum::{
     response::{IntoResponse, Response},
     Router,
 };
-use control_plane::ports::OfficialPluginSourcePort;
+use control_plane::ports::{
+    AuthRepository, CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
+    CreateNetworkEgressProviderInput, CreateNetworkEgressRouteInput, NetworkEgressPoolRepository,
+    NetworkEgressRepository, NetworkEgressRouteRepository, PluginRepository,
+    ReplaceNetworkEgressProjectionInput, UpsertNetworkEgressProviderSecretInput,
+    UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
+};
+use domain::{
+    NetworkEgressConsumerSelector, NetworkEgressHealthStatus, NetworkEgressProviderLifecycle,
+    PluginAvailabilityStatus, PluginDesiredState, PluginRuntimeStatus, PluginVerificationStatus,
+};
+use plugin_framework::compute_manifest_fingerprint;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 
 use crate::{
     config::ResolvedOfficialExtensionCatalogSourceConfig,
+    network_egress_client::NetworkEgressHttpClientResolver,
     official_extension_catalog::{
         ApiOfficialExtensionCatalogSource, ApiOfficialRuntimeExtensionSource,
         OfficialExtensionArtifactError, OfficialExtensionCatalogSearchQuery,
         OfficialExtensionCatalogSourcePort,
     },
+    provider_runtime::ApiProviderRuntime,
 };
 
 const CATEGORIES: [&str; 6] = [
@@ -46,6 +61,243 @@ struct CatalogHttpFixture {
 struct MutableCatalogHttpFixture {
     documents: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
     requests: Arc<Mutex<Vec<String>>>,
+}
+
+struct TempNetworkEgressPackage {
+    root: PathBuf,
+}
+
+impl TempNetworkEgressPackage {
+    fn new(proxy_url: &str) -> Self {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("catalog-network-egress-{nonce}"));
+        fs::create_dir_all(root.join("bin")).unwrap();
+        fs::write(
+            root.join("manifest.yaml"),
+            r#"manifest_version: 1
+plugin_id: fixture_egress@0.1.0
+version: 0.1.0
+publisher_namespace: 1flowbase-tests
+vendor: 1flowbase tests
+display_name: Fixture Egress
+description: Fixture Egress
+source_kind: uploaded
+trust_level: unverified
+consumption_kind: runtime_extension
+execution_mode: stateful_runtime_worker
+slot_codes:
+  - network_egress_provider
+binding_targets:
+  - workspace
+selection_mode: manual_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.network_egress_provider/v1
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: none
+  secrets: none
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json_worker
+  entry: bin/fixture_egress
+  limits:
+    timeout_ms: 2000
+node_contributions: []
+"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("bin/fixture_egress"),
+            format!(
+                "#!/usr/bin/env bash\nset -euo pipefail\nif [ \"${{1:-}}\" = \"--network-egress-config-file\" ]; then shift 2; fi\nwhile IFS= read -r request; do\n  case \"${{request}}\" in\n    *'\\\"operation\\\":\\\"acquire_http_forward_proxy\\\"'*) printf '%s\\n' '{{\\\"operation\\\":\\\"acquire_http_forward_proxy\\\",\\\"result\\\":{{\\\"lease_id\\\":\\\"fixture-lease\\\",\\\"http_proxy_url\\\":\\\"{proxy_url}\\\",\\\"cleanup_token\\\":\\\"host-private\\\",\\\"expires_at\\\":4102444800000}}}}' ;;\n    *'\\\"operation\\\":\\\"release_http_forward_proxy\\\"'*) printf '%s\\n' '{{\\\"operation\\\":\\\"release_http_forward_proxy\\\",\\\"result\\\":{{\\\"lease_id\\\":\\\"fixture-lease\\\"}}}}' ;;\n    *) exit 1 ;;\n  esac\ndone\n"
+            ),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+
+            let path = root.join("bin/fixture_egress");
+            let mut permissions = fs::metadata(&path).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(path, permissions).unwrap();
+        }
+        Self { root }
+    }
+
+    fn path(&self) -> &Path {
+        &self.root
+    }
+}
+
+impl Drop for TempNetworkEgressPackage {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.root);
+    }
+}
+
+async fn seed_github_egress_resolver(
+    state: &crate::app_state::ApiState,
+    proxy_url: &str,
+) -> (NetworkEgressHttpClientResolver, TempNetworkEgressPackage) {
+    let package = TempNetworkEgressPackage::new(proxy_url);
+    let root = state
+        .store
+        .find_user_for_password_login(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID, "root")
+        .await
+        .unwrap()
+        .unwrap();
+    let installation_id = uuid::Uuid::now_v7();
+    let manifest_fingerprint = compute_manifest_fingerprint(&package.path().join("manifest.yaml"))
+        .await
+        .unwrap();
+    <storage_durable::MainDurableStore as PluginRepository>::upsert_installation(
+        &state.store,
+        &UpsertPluginInstallationInput {
+            installation_id,
+            category: domain::ExtensionCategory::RuntimeExtensions,
+            organization: "test".into(),
+            provider_code: "fixture_egress".into(),
+            plugin_id: "fixture_egress@0.1.0".into(),
+            plugin_version: "0.1.0".into(),
+            contract_version: plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT.into(),
+            protocol: "stdio_json_worker".into(),
+            display_name: "Fixture Egress".into(),
+            source_kind: "uploaded".into(),
+            trust_level: "unverified".into(),
+            verification_status: PluginVerificationStatus::Valid,
+            desired_state: PluginDesiredState::ActiveRequested,
+            expected_checksum: None,
+            signature_status: domain::ExtensionSignatureStatus::Missing,
+            signature_algorithm: None,
+            signing_key_id: None,
+            metadata_json: json!({}),
+            is_system_reserved: false,
+            actor_user_id: root.id,
+        },
+    )
+    .await
+    .unwrap();
+    <storage_durable::MainDurableStore as PluginRepository>::upsert_artifact_instance(
+        &state.store,
+        &UpsertPluginArtifactInstanceInput {
+            node_id: state.api_node_id.clone(),
+            installation_id,
+            local_version: Some("0.1.0".into()),
+            local_checksum: None,
+            local_path: Some(package.path().display().to_string()),
+            package_path: None,
+            manifest_fingerprint: Some(manifest_fingerprint),
+            artifact_status: domain::PluginArtifactInstanceStatus::Ready,
+            runtime_status: PluginRuntimeStatus::Active,
+            availability_status: PluginAvailabilityStatus::Available,
+            checked_at: time::OffsetDateTime::now_utc(),
+            last_error: None,
+            is_current: false,
+        },
+    )
+    .await
+    .unwrap();
+    let provider_id = uuid::Uuid::now_v7();
+    <storage_durable::MainDurableStore as NetworkEgressRepository>::create_network_egress_provider(
+        &state.store,
+        &CreateNetworkEgressProviderInput {
+            provider_id,
+            installation_id,
+            provider_code: "fixture_egress".into(),
+            display_name: "Fixture Egress".into(),
+            secret_ref: "secret://fixture-egress".into(),
+            lifecycle: NetworkEgressProviderLifecycle::Active,
+            actor_user_id: root.id,
+        },
+    )
+    .await
+    .unwrap();
+    <storage_durable::MainDurableStore as NetworkEgressRepository>::upsert_network_egress_provider_secret(
+        &state.store,
+        &UpsertNetworkEgressProviderSecretInput {
+            provider_id,
+            secret_ref: "secret://fixture-egress".into(),
+            plaintext_secret_json: json!({"fixture": true}),
+            master_key: state.provider_secret_master_key.clone(),
+            secret_version: 1,
+        },
+    )
+    .await
+    .unwrap();
+    <storage_durable::MainDurableStore as NetworkEgressRepository>::replace_network_egress_projection(
+        &state.store,
+        &ReplaceNetworkEgressProjectionInput {
+            provider_id,
+            health_status: NetworkEgressHealthStatus::Healthy,
+            last_sync_error: None,
+            synchronized_at: time::OffsetDateTime::now_utc(),
+            egresses: vec![domain::NetworkEgressProjectionRecord {
+                provider_id,
+                provider_egress_key: "fixture-egress".into(),
+                display_name: "Fixture Egress".into(),
+                region: None,
+                tags: Vec::new(),
+                availability: "available".into(),
+                synced_at: time::OffsetDateTime::now_utc(),
+            }],
+            actor_user_id: root.id,
+        },
+    )
+    .await
+    .unwrap();
+    let pool_id = uuid::Uuid::now_v7();
+    <storage_durable::MainDurableStore as NetworkEgressPoolRepository>::create_network_egress_pool(
+        &state.store,
+        &CreateNetworkEgressPoolInput {
+            pool_id,
+            display_name: "Fixture Pool".into(),
+            actor_user_id: root.id,
+        },
+    )
+    .await
+    .unwrap();
+    <storage_durable::MainDurableStore as NetworkEgressPoolRepository>::create_network_egress_pool_member(
+        &state.store,
+        &CreateNetworkEgressPoolMemberInput {
+            member_id: uuid::Uuid::now_v7(),
+            pool_id,
+            provider_id,
+            provider_egress_key: "fixture-egress".into(),
+            enabled: true,
+            sequence: 0,
+            actor_user_id: root.id,
+        },
+    )
+    .await
+    .unwrap();
+    <storage_durable::MainDurableStore as NetworkEgressRouteRepository>::create_network_egress_route(
+        &state.store,
+        &CreateNetworkEgressRouteInput {
+            route_id: uuid::Uuid::now_v7(),
+            workspace_id: state.bootstrap_workspace_id,
+            selector: NetworkEgressConsumerSelector::GithubOfficialSources,
+            pool_id,
+            enabled: true,
+            actor_user_id: root.id,
+        },
+    )
+    .await
+    .unwrap();
+    (
+        NetworkEgressHttpClientResolver::new(
+            state.store.clone(),
+            ApiProviderRuntime::new(Arc::clone(&state.provider_runtime)),
+            state.provider_secret_master_key.clone(),
+            state.api_node_id.clone(),
+        ),
+        package,
+    )
 }
 
 async fn mutable_catalog_response(
@@ -162,6 +414,48 @@ async fn publisher_cutover_artifact_two_body_failures_stop_after_two_requests() 
 
     assert!(source.download_artifact(&page.entries[0]).await.is_err());
     assert_eq!(artifact_requests.load(Ordering::SeqCst), 2);
+    server.abort();
+}
+
+/// Root #1805 AC-009: a matching GitHub route must acquire a Host-owned provider lease and use
+/// its derived client. The catalog origin is non-routable, so the request can only arrive at the
+/// fake proxy after the real resolver selected the persisted route/pool/provider projection.
+#[tokio::test]
+async fn root_1805_github_consumer_routes_through_host_owned_fake_proxy() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let proxy_url = format!("http://{}", listener.local_addr().unwrap());
+    let origin = "http://catalog-origin.invalid";
+    let (documents, sources) = catalog_documents(origin);
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let fixture = CatalogHttpFixture {
+        documents: Arc::new(documents),
+        requests: Arc::clone(&requests),
+    };
+    let server = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new().fallback(catalog_response).with_state(fixture),
+        )
+        .await
+        .unwrap();
+    });
+    let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
+    let (resolver, _package) = seed_github_egress_resolver(&state, &proxy_url).await;
+    let source = ApiOfficialExtensionCatalogSource::new(sources).with_network_egress(resolver);
+
+    let page = source
+        .list_page_for_workspace(state.bootstrap_workspace_id, "runtime-extensions", None)
+        .await
+        .expect("the real GitHub consumer must reach the fake proxy through Network Center");
+
+    assert_eq!(page.entries[0].id, "runtime-extensions:taichuy/openai");
+    assert_eq!(
+        requests.lock().unwrap().as_slice(),
+        &[
+            "/runtime-extensions/catalog/v1/index.json",
+            "/runtime-extensions/catalog/v1/pages/1.json"
+        ]
+    );
     server.abort();
 }
 

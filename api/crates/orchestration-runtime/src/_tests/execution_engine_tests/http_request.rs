@@ -1,4 +1,5 @@
 use super::*;
+use reqwest::{Client, Proxy};
 use std::{net::SocketAddr, sync::Arc};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -256,6 +257,19 @@ fn named_bindings(entries: Value) -> CompiledBinding {
 
 struct FailingNetworkEgressInvoker;
 
+struct HostCreatedProxyClientInvoker {
+    lease: Mutex<Option<crate::execution_engine::HttpRequestClientLease>>,
+}
+
+struct FixtureLeaseReleaser;
+
+#[async_trait::async_trait]
+impl crate::execution_engine::HttpRequestClientLeaseReleaser for FixtureLeaseReleaser {
+    async fn release(self: Box<Self>) -> Result<()> {
+        Ok(())
+    }
+}
+
 #[async_trait::async_trait]
 impl ProviderInvoker for FailingNetworkEgressInvoker {
     async fn resolve_llm_route(
@@ -279,6 +293,36 @@ impl ProviderInvoker for FailingNetworkEgressInvoker {
         _verify_ssl: bool,
     ) -> Result<Option<crate::execution_engine::HttpRequestClientLease>> {
         anyhow::bail!("configured network egress pool has no usable member")
+    }
+}
+
+#[async_trait::async_trait]
+impl ProviderInvoker for HostCreatedProxyClientInvoker {
+    async fn resolve_llm_route(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+    ) -> Result<ResolvedProviderRoute> {
+        unreachable!("the positive HTTP-node fixture contains no LLM node")
+    }
+
+    async fn invoke_llm(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+        _input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        unreachable!("the positive HTTP-node fixture contains no LLM node")
+    }
+
+    async fn acquire_http_node_client(
+        &self,
+        _timeout: std::time::Duration,
+        _verify_ssl: bool,
+    ) -> Result<Option<crate::execution_engine::HttpRequestClientLease>> {
+        Ok(self
+            .lease
+            .lock()
+            .expect("HTTP-node lease mutex poisoned")
+            .take())
     }
 }
 
@@ -348,6 +392,61 @@ async fn root_1805_http_node_egress_failure_is_a_node_error_without_direct_fallb
         .lock()
         .expect("captured requests mutex poisoned")
         .is_empty());
+    server.abort();
+}
+
+/// Root #1805 AC-011: the HTTP node receives a Host-created proxy client. The requested origin
+/// is deliberately non-routable, so a successful result proves the node used that client rather
+/// than a direct fallback.
+#[tokio::test]
+async fn root_1805_http_node_uses_host_created_proxy_client_for_positive_traffic() {
+    let (proxy_url, captured, server) = spawn_http_fixture(vec![response(
+        "/",
+        200,
+        "application/json",
+        r#"{"via":"fake-proxy"}"#,
+    )])
+    .await;
+    let client = Client::builder()
+        .proxy(Proxy::all(&proxy_url).unwrap())
+        .build()
+        .unwrap();
+    let invoker = HostCreatedProxyClientInvoker {
+        lease: Mutex::new(Some(crate::execution_engine::HttpRequestClientLease::new(
+            client,
+            Box::new(FixtureLeaseReleaser),
+        ))),
+    };
+    let plan = http_request_plan(
+        json!({
+            "method": "GET",
+            "url": "http://http-node-origin.invalid/through-proxy",
+            "body_type": "none",
+            "timeout_ms": 1000,
+            "verify_ssl": true,
+        }),
+        BTreeMap::new(),
+    );
+
+    let outcome = start_flow_debug_run(&plan, &json!({ "node-start": {} }), &invoker)
+        .await
+        .expect("the HTTP node must return its normal execution outcome");
+
+    assert!(matches!(
+        outcome.stop_reason,
+        ExecutionStopReason::Completed
+    ));
+    assert_eq!(
+        outcome.variable_pool["node-http"]["status_code"],
+        json!(200)
+    );
+    let captured = captured.lock().expect("captured requests mutex poisoned");
+    assert_eq!(captured.len(), 1);
+    assert_eq!(captured[0].method, "GET");
+    assert_eq!(
+        captured[0].path, "http://http-node-origin.invalid/through-proxy",
+        "the fake proxy must receive the absolute-form target request"
+    );
     server.abort();
 }
 
