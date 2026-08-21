@@ -667,6 +667,7 @@ impl PostRestoreJournalProgress {
     ) -> Result<Self, PostRestoreRecoveryError> {
         let subject = BackupJournalSubject::Recovery(command.recovery_job_id);
         let mut actor_user_id = None;
+        let mut bootstrap_actor_assigned = false;
         let mut safety_backup_set_id = None;
         let mut handoff_ready = false;
         let mut state = None;
@@ -684,12 +685,17 @@ impl PostRestoreJournalProgress {
             let Some(actor) = event.actor_user_id else {
                 return Err(PostRestoreRecoveryError::InvalidJournal);
             };
-            if actor_user_id
-                .replace(actor)
-                .is_some_and(|current| current != actor)
-            {
-                return Err(PostRestoreRecoveryError::InvalidJournal);
+            let assigns_bootstrap_actor = matches!(
+                &event.event,
+                BackupJournalEventKind::RecoveryBootstrapActorAssigned { actor_user_id: assigned }
+                    if *assigned == actor
+            );
+            if let Some(current) = actor_user_id.filter(|current| *current != actor) {
+                if current != Uuid::nil() || !assigns_bootstrap_actor || bootstrap_actor_assigned {
+                    return Err(PostRestoreRecoveryError::InvalidJournal);
+                }
             }
+            actor_user_id = Some(actor);
 
             if terminal_event.is_some() {
                 if matches!(
@@ -739,6 +745,14 @@ impl PostRestoreJournalProgress {
                         return Err(PostRestoreRecoveryError::InvalidJournal);
                     }
                     handoff_ready = true;
+                }
+                BackupJournalEventKind::RecoveryBootstrapActorAssigned {
+                    actor_user_id: assigned,
+                } => {
+                    if !handoff_ready || bootstrap_actor_assigned || *assigned != actor {
+                        return Err(PostRestoreRecoveryError::InvalidJournal);
+                    }
+                    bootstrap_actor_assigned = true;
                 }
                 BackupJournalEventKind::RecoveryStepCompleted { step } => {
                     let valid = match step {

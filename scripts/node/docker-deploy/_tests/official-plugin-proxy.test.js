@@ -682,6 +682,89 @@ test('docker deploy scripts bootstrap a selected portable backup before the API 
   }
 });
 
+test('docker deploy shell bootstrap accepts one portable file without an existing source environment', () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-portable-bootstrap-'));
+  const tempBin = path.join(tempRoot, 'bin');
+  const dockerDir = path.join(tempRoot, 'docker');
+  const backupFile = path.join(tempRoot, 'portable.1fb-backup');
+  const composeLog = path.join(tempRoot, 'compose.log');
+  fs.mkdirSync(tempBin);
+  fs.mkdirSync(dockerDir);
+  fs.writeFileSync(backupFile, 'portable fixture');
+  fs.writeFileSync(
+    path.join(dockerDir, '.env.example'),
+    [
+      'POSTGRES_PASSWORD=fresh-postgres-password',
+      'BOOTSTRAP_ROOT_ACCOUNT=root',
+      'BOOTSTRAP_ROOT_PASSWORD=fresh-root-password',
+      'API_PROVIDER_SECRET_MASTER_KEY=change-me-provider-secret-master-key',
+      'DATABASE_MODE=internal',
+      'WEB_PORT=3100',
+      '',
+    ].join('\n'),
+  );
+  makeExecutable(
+    path.join(tempBin, 'docker'),
+    `#!/usr/bin/env sh
+printf '%s\\n' "$*" >> "${composeLog}"
+if [ "$1 $2" = "compose version" ]; then exit 0; fi
+if [ "$1" = "info" ]; then
+  if [ "$2" = "--format" ]; then printf '%s\\n' 'linux/amd64'; fi
+  exit 0
+fi
+if [ "$1 $2" = "manifest inspect" ]; then
+  printf '%s\\n' '{"os":"linux","architecture":"amd64"}'
+  exit 0
+fi
+if [ "$1" = "compose" ] && printf '%s\\n' "$*" | grep -q 'source-master'; then
+  printf '%s' 'portable-source-master'
+fi
+exit 0
+`,
+  );
+
+  const result = spawnSync(
+    'sh',
+    [
+      path.join(repoRoot, 'scripts', 'shell', 'docker-deploy.sh'),
+      '--non-interactive',
+      '--no-pull',
+      '--start',
+      '--restore-backup',
+      backupFile,
+    ],
+    {
+      cwd: tempRoot,
+      env: {
+        ...process.env,
+        PATH: `${tempBin}${path.delimiter}${process.env.PATH || ''}`,
+      },
+      encoding: 'utf8',
+    },
+  );
+
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
+  assert.match(result.stdout, /Portable backup was restored before the API service started\./u);
+  assert.doesNotMatch(result.stdout, /portable-source-master/u);
+  assert.match(
+    fs.readFileSync(path.join(dockerDir, '.env'), 'utf8'),
+    /^API_PROVIDER_SECRET_MASTER_KEY=portable-source-master$/mu,
+  );
+  assert.equal(
+    fs.statSync(path.join(dockerDir, 'recovery', 'portable.1fb-backup')).mode & 0o777,
+    0o600,
+  );
+  const calls = fs.readFileSync(composeLog, 'utf8');
+  const dependencies = calls.indexOf('compose up -d db plugin-runner');
+  const sourceMaster = calls.indexOf('source-master');
+  const bootstrap = calls.indexOf('bootstrap');
+  const finalStartup = calls.lastIndexOf('compose up -d');
+  assert.ok(dependencies >= 0, calls);
+  assert.ok(sourceMaster > dependencies, calls);
+  assert.ok(bootstrap > sourceMaster, calls);
+  assert.ok(finalStartup > bootstrap, calls);
+});
+
 test('container image workflow publishes linux amd64 and arm64 manifests', () => {
   const workflow = readRepoFile('.github', 'workflows', 'container-images.yml');
 
