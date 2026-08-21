@@ -144,15 +144,10 @@ where
         .and_then(Value::as_bool)
         .unwrap_or(true);
     let lease = match provider_invoker {
-        Some(invoker) => {
-            match invoker
-                .acquire_http_node_client(timeout, verify_ssl)
-                .await
-            {
-                Ok(lease) => lease,
-                Err(error) => return http_request_execution_result(Err(error)),
-            }
-        }
+        Some(invoker) => match invoker.acquire_http_node_client(timeout, verify_ssl).await {
+            Ok(lease) => lease,
+            Err(error) => return http_request_execution_result(Err(error)),
+        },
         None => None,
     };
     let result = execute_http_request_node_inner(

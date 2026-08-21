@@ -258,7 +258,10 @@ struct FailingNetworkEgressInvoker;
 
 #[async_trait::async_trait]
 impl ProviderInvoker for FailingNetworkEgressInvoker {
-    async fn resolve_llm_route(&self, _runtime: &CompiledLlmRuntime) -> Result<ResolvedProviderRoute> {
+    async fn resolve_llm_route(
+        &self,
+        _runtime: &CompiledLlmRuntime,
+    ) -> Result<ResolvedProviderRoute> {
         unreachable!("the controlled negative fixture contains no LLM node")
     }
 
@@ -279,10 +282,39 @@ impl ProviderInvoker for FailingNetworkEgressInvoker {
     }
 }
 
+#[async_trait::async_trait]
+impl CapabilityInvoker for FailingNetworkEgressInvoker {
+    async fn invoke_capability_node(
+        &self,
+        _runtime: &CompiledPluginRuntime,
+        _config_payload: Value,
+        _input_payload: Value,
+    ) -> Result<CapabilityInvocationOutput> {
+        unreachable!("the controlled negative fixture contains no capability node")
+    }
+}
+
+#[async_trait::async_trait]
+impl CodeInvoker for FailingNetworkEgressInvoker {
+    async fn invoke_code_node(
+        &self,
+        _runtime: &CompiledCodeRuntime,
+        _config_payload: Value,
+        _input_payload: Value,
+    ) -> Result<CodeInvocationOutput> {
+        unreachable!("the controlled negative fixture contains no code node")
+    }
+}
+
 #[tokio::test]
 async fn root_1805_http_node_egress_failure_is_a_node_error_without_direct_fallback() {
-    let (base_url, captured, server) =
-        spawn_http_fixture(vec![response("/direct-target", 200, "text/plain", "unexpected")]).await;
+    let (base_url, captured, server) = spawn_http_fixture(vec![response(
+        "/direct-target",
+        200,
+        "text/plain",
+        "unexpected",
+    )])
+    .await;
     let plan = http_request_plan(
         json!({
             "method": "GET",

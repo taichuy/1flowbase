@@ -208,7 +208,7 @@ export function NetworkEgressRoutesPanel() {
                 render: (id) => poolName.get(id) ?? id
               },
               {
-                title: i18nText('settings', 'auto.network_center_route_status'),
+                title: i18nText('settings', 'auto.status'),
                 dataIndex: 'enabled',
                 render: (enabled) => (
                   <Tag color={enabled ? 'green' : undefined}>

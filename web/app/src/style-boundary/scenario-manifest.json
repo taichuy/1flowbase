@@ -1191,6 +1191,7 @@
       "web/app/src/features/settings/pages/settings-page/SettingsNavigation.tsx",
       "web/app/src/features/settings/pages/settings-page/SettingsRouteShell.tsx",
       "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
+      "web/app/src/features/settings/pages/network-center/NetworkCenterSection.tsx",
       "web/app/src/features/settings/pages/settings-page/use-settings-sections.ts",
       "web/app/src/features/settings/lib/settings-sections.tsx",
       "web/app/src/features/settings/components/SettingsSectionSurface.tsx",
@@ -1200,6 +1201,9 @@
       "web/app/src/features/settings/api/billing.ts",
       "web/app/src/features/settings/api/plugins.ts",
       "web/app/src/features/settings/api/host-infrastructure.ts",
+      "web/app/src/features/settings/api/network-center.ts",
+      "web/app/src/features/settings/network-center/pools/NetworkEgressPoolsPanel.tsx",
+      "web/app/src/features/settings/network-center/routes/NetworkEgressRoutesPanel.tsx",
       "web/app/src/features/settings/components/data-models/DataModelAdvisorTab.tsx",
       "web/app/src/features/settings/components/data-models/DataModelApiTab.tsx",
       "web/app/src/features/settings/components/data-models/DataModelDetail.tsx",
@@ -1231,7 +1235,10 @@
       "web/packages/api-client/src/console-data-models.ts",
       "web/packages/api-client/src/console-model-providers.ts",
       "web/packages/api-client/src/console-billing.ts",
-      "web/packages/api-client/src/console-plugins.ts"
+      "web/packages/api-client/src/console-plugins.ts",
+      "web/packages/api-client/src/console/network-center.ts",
+      "web/app/src/features/settings/i18n/zh_Hans.json",
+      "web/app/src/features/settings/i18n/en_US.json"
     ],
     "boundaryNodes": [
       {

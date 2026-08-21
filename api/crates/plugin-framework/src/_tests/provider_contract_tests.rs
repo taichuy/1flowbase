@@ -13,13 +13,13 @@ use plugin_framework::{
         ProviderCountTokensMethod, ProviderCountTokensResult, ProviderGenerateProjectionError,
         ProviderGenerateTranslationDecision, ProviderInvocationCapability, ProviderInvocationInput,
         ProviderInvocationResult, ProviderMessage, ProviderMessageRole, ProviderNativeTransport,
-        ProviderNetworkEgressContext, ProviderNetworkEgressMode,
-        ProviderOutputItemPhase, ProviderOutputProtocolFailure, ProviderProjectionErrorCode,
-        ProviderProjectionFidelity, ProviderProjectionLossCode, ProviderProjectionSource,
-        ProviderResetCreditOperation, ProviderResetCreditResult, ProviderResetCreditRuntimeInput,
-        ProviderRuntimeError, ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod,
-        ProviderStdioRequest, ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall,
-        ProviderUsage, ProviderUsageWindow, ProviderUsageWindowsResult, ProviderWireOperation,
+        ProviderNetworkEgressContext, ProviderNetworkEgressMode, ProviderOutputItemPhase,
+        ProviderOutputProtocolFailure, ProviderProjectionErrorCode, ProviderProjectionFidelity,
+        ProviderProjectionLossCode, ProviderProjectionSource, ProviderResetCreditOperation,
+        ProviderResetCreditResult, ProviderResetCreditRuntimeInput, ProviderRuntimeError,
+        ProviderRuntimeErrorKind, ProviderRuntimeLine, ProviderStdioMethod, ProviderStdioRequest,
+        ProviderStdioResponse, ProviderStreamEvent, ProviderToolCall, ProviderUsage,
+        ProviderUsageWindow, ProviderUsageWindowsResult, ProviderWireOperation,
         PROVIDER_GENERATE_TRANSLATION_RECEIPT_METADATA_KEY,
     },
 };
@@ -687,9 +687,15 @@ fn root_1805_network_egress_handoff_is_capability_gated_and_lease_free() {
         wire["required_capabilities"],
         json!(["network_egress_handoff/v1"])
     );
-    assert!(wire["run_context"]["network_egress"].get("cleanup_token").is_none());
-    assert!(wire["run_context"]["network_egress"].get("provider_id").is_none());
-    assert!(wire["run_context"]["network_egress"].get("pool_id").is_none());
+    assert!(wire["run_context"]["network_egress"]
+        .get("cleanup_token")
+        .is_none());
+    assert!(wire["run_context"]["network_egress"]
+        .get("provider_id")
+        .is_none());
+    assert!(wire["run_context"]["network_egress"]
+        .get("pool_id")
+        .is_none());
 }
 
 #[test]
