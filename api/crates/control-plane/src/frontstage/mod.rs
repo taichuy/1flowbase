@@ -18,6 +18,7 @@ use crate::{
 };
 
 mod block_tree;
+mod source_dependencies;
 
 pub use block_tree::*;
 

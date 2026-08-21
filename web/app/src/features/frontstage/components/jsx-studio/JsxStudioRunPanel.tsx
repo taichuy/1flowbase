@@ -96,6 +96,9 @@ export interface JsxStudioRunPanelProps {
   nativeCompilerWorkerFactory?: NativeReactBrowserCompilerWorkerFactory;
   nativeDependencyLock?: NativeReactCatalogDependencyLock;
   nativeDependencyLockError?: string | null;
+  resolveNativeDependencyLock?: (
+    sourceCode: string
+  ) => Promise<NativeReactCatalogDependencyLock>;
   externalNpm?: ExternalNpmPackState;
   nativeModuleRegistryFactory?: NativeReactModuleRegistryFactory;
   createBlockContext?(input: JsxStudioRunBlockContextInput): BlockContext;
@@ -109,6 +112,7 @@ export function JsxStudioRunPanel({
   nativeCompilerWorkerFactory,
   nativeDependencyLock = EMPTY_NATIVE_REACT_DEPENDENCY_LOCK,
   nativeDependencyLockError = null,
+  resolveNativeDependencyLock,
   externalNpm = AVAILABLE_EXTERNAL_NPM_PACK,
   nativeModuleRegistryFactory = createFrontstageNativeReactModuleRegistry,
   createBlockContext,
@@ -215,7 +219,7 @@ export function JsxStudioRunPanel({
       }
       if (generationRef.current !== generation) return;
 
-      if (nativeDependencyLockError) {
+      if (nativeDependencyLockError && !resolveNativeDependencyLock) {
         setSnapshot({
           status: 'failed',
           requestId,
@@ -231,10 +235,33 @@ export function JsxStudioRunPanel({
         return;
       }
 
+      let dependencyLock = nativeDependencyLock;
+      if (resolveNativeDependencyLock) {
+        try {
+          dependencyLock = await resolveNativeDependencyLock(frozenSource);
+        } catch (error) {
+          if (generationRef.current !== generation) return;
+          setSnapshot({
+            status: 'failed',
+            requestId,
+            diagnostics: [
+              {
+                phase: 'compile',
+                code: 'import_denied',
+                path: 'source.imports',
+                message: getErrorMessage(error)
+              }
+            ]
+          });
+          return;
+        }
+      }
+      if (generationRef.current !== generation) return;
+
       const prepared = await prepareNativeReactSource({
         frozenSource,
         requestId,
-        dependencyLock: nativeDependencyLock,
+        dependencyLock,
         compiler: nativeCompiler,
         ...(nativeCompilerWorkerFactory
           ? { workerFactory: nativeCompilerWorkerFactory }
@@ -292,6 +319,7 @@ export function JsxStudioRunPanel({
       consoleStore,
       nativeDependencyLock,
       nativeDependencyLockError,
+      resolveNativeDependencyLock,
       externalNpm,
       nativeModuleRegistryFactory,
       observeApiCall

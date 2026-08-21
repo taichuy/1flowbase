@@ -14,6 +14,7 @@ export type FrontstageJsxInsertion =
       name: string;
       moduleSource: string;
       source: string;
+      typescriptDeclaration?: string;
     }
   | {
       kind: 'source';

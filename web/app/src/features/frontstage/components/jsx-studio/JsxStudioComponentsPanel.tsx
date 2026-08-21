@@ -15,17 +15,14 @@ import { i18nText } from '../../../../shared/i18n/text';
 import { copyTextToClipboard } from '../../../../shared/ui/clipboard/copy-text';
 import { fetchFrontstageComponentCapability } from '../../api/component-capabilities';
 import { useFrontstageComponentCapabilities } from '../../hooks/use-frontstage-component-capabilities';
-import type { FrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
 import type { FrontstageJsxInsertion } from '../../lib/jsx-studio/source-insertion';
 
 const PAGE_SIZE = 10;
 
 export function JsxStudioComponentsPanel({
-  componentCatalogQuery,
   onInsertCode,
   workspaceId
 }: {
-  componentCatalogQuery: FrontstageJsxEditorProjection['componentCatalogQuery'];
   onInsertCode: (insertion: FrontstageJsxInsertion) => void;
   workspaceId: string;
 }) {
@@ -33,15 +30,15 @@ export function JsxStudioComponentsPanel({
   const [query, setQuery] = useState('');
   const [offset, setOffset] = useState(0);
   const [copyingId, setCopyingId] = useState<string | null>(null);
+  const [insertingId, setInsertingId] = useState<string | null>(null);
   const componentPage = useFrontstageComponentCapabilities(
     workspaceId,
     {
-      ...componentCatalogQuery,
       query: query || undefined,
       offset,
       limit: PAGE_SIZE
     },
-    componentCatalogQuery !== null
+    true
   );
 
   const copyApi = async (componentId: string) => {
@@ -57,6 +54,31 @@ export function JsxStudioComponentsPanel({
       message.warning(i18nText('frontstage', 'auto.copy_component_api_failed'));
     } finally {
       setCopyingId(null);
+    }
+  };
+
+  const insertComponent = async (
+    component: ConsoleFrontstageComponentCapabilitySummary
+  ) => {
+    setInsertingId(component.component_id);
+    try {
+      const detail = await fetchFrontstageComponentCapability(
+        workspaceId,
+        component.component_id
+      );
+      onInsertCode({
+        kind: 'component',
+        name: component.export_name,
+        moduleSource: component.module_source,
+        source: component.insert_snippet,
+        typescriptDeclaration: detail.typescript_declaration
+      });
+    } catch {
+      message.warning(
+        i18nText('frontstage', 'auto.component_catalog_load_failed')
+      );
+    } finally {
+      setInsertingId(null);
     }
   };
 
@@ -120,14 +142,8 @@ export function JsxStudioComponentsPanel({
                   <Button
                     type="link"
                     size="small"
-                    onClick={() =>
-                      onInsertCode({
-                        kind: 'component',
-                        name: component.export_name,
-                        moduleSource: component.module_source,
-                        source: component.insert_snippet
-                      })
-                    }
+                    loading={insertingId === component.component_id}
+                    onClick={() => void insertComponent(component)}
                   >
                     {i18nText('frontstage', 'auto.insert_component')}
                   </Button>

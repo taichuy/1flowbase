@@ -20,6 +20,7 @@ use crate::{
     },
 };
 
+use super::source_dependencies::dependency_lock_from_source;
 use super::{ensure_design_permission, FrontstagePageService};
 
 const MAX_BLOCK_TITLE_LEN: usize = 200;
@@ -454,7 +455,11 @@ where
             )?,
         )?;
         let (runtime_descriptor, dependency_lock) = self
-            .resolve_runtime_descriptor_and_lock(command.workspace_id, runtime_descriptor)
+            .resolve_runtime_descriptor_and_lock(
+                command.workspace_id,
+                runtime_descriptor,
+                &command.source_code,
+            )
             .await?;
         let audit_log = block_audit(
             &actor,
@@ -730,7 +735,10 @@ where
     pub async fn save_block_node_code(
         &self,
         command: SaveFrontstageBlockNodeCodeCommand,
-    ) -> Result<domain::frontstage::FrontstageBlockCodeRecord> {
+    ) -> Result<domain::frontstage::FrontstageBlockCodeRecord>
+    where
+        R: FrontendBlockCatalogRepository,
+    {
         let actor = self
             .ensure_block_designer(
                 command.scope.actor_user_id,
@@ -746,6 +754,9 @@ where
             &command.scope.block_id,
             "frontstage.block_node_code_saved",
         );
+        let dependency_lock = self
+            .resolve_component_dependency_lock(command.scope.workspace_id, &command.source_code)
+            .await?;
         self.repository
             .save_frontstage_block_node_code(&SaveFrontstageBlockNodeCodeInput {
                 workspace_id: command.scope.workspace_id,
@@ -757,6 +768,7 @@ where
                 )?,
                 source: FrontstageBlockSourceInput {
                     source_code: command.source_code,
+                    dependency_lock,
                 },
                 audit_log,
             })
@@ -767,7 +779,10 @@ where
     pub async fn patch_block_node_code(
         &self,
         command: PatchFrontstageBlockNodeCodeCommand,
-    ) -> Result<domain::frontstage::FrontstageBlockCodeRecord> {
+    ) -> Result<domain::frontstage::FrontstageBlockCodeRecord>
+    where
+        R: FrontendBlockCatalogRepository,
+    {
         let expected_source_revision =
             validate_source_revision(Some(command.expected_source_revision))?
                 .ok_or(ControlPlaneError::InvalidInput("expected_source_revision"))?;
@@ -799,6 +814,9 @@ where
             &command.scope.block_id,
             "frontstage.block_node_code_patched",
         );
+        let dependency_lock = self
+            .resolve_component_dependency_lock(command.scope.workspace_id, &source_code)
+            .await?;
         self.repository
             .save_frontstage_block_node_code(&SaveFrontstageBlockNodeCodeInput {
                 workspace_id: command.scope.workspace_id,
@@ -806,7 +824,10 @@ where
                 page_id: command.scope.page_id,
                 block_id: command.scope.block_id,
                 expected_source_revision: Some(expected_source_revision),
-                source: FrontstageBlockSourceInput { source_code },
+                source: FrontstageBlockSourceInput {
+                    source_code,
+                    dependency_lock,
+                },
                 audit_log,
             })
             .await
@@ -817,6 +838,7 @@ where
         &self,
         workspace_id: Uuid,
         mut runtime_descriptor: Value,
+        source_code: &str,
     ) -> Result<(Value, Value)>
     where
         R: FrontendBlockCatalogRepository,
@@ -861,8 +883,34 @@ where
             "frontstage_block_catalog_entry",
         ))?;
         apply_catalog_identity(&mut runtime_descriptor, &entry)?;
-        let dependency_lock = canonical_dependency_lock(workspace_id, entry.code_modules)?;
+        let dependency_lock = self
+            .resolve_component_dependency_lock(workspace_id, source_code)
+            .await?;
         Ok((runtime_descriptor, dependency_lock))
+    }
+
+    pub async fn resolve_component_dependency_lock(
+        &self,
+        workspace_id: Uuid,
+        source_code: &str,
+    ) -> Result<Value>
+    where
+        R: FrontendBlockCatalogRepository,
+    {
+        let node_id = self
+            .node_id
+            .as_deref()
+            .ok_or(ControlPlaneError::UpstreamUnavailable(
+                "frontstage_catalog_node",
+            ))?;
+        let modules = self
+            .repository
+            .list_workspace_frontend_blocks(node_id, workspace_id)
+            .await?
+            .into_iter()
+            .flat_map(|entry| entry.code_modules)
+            .collect();
+        dependency_lock_from_source(workspace_id, source_code, modules)
     }
 
     async fn ensure_block_designer(
@@ -1097,7 +1145,7 @@ pub(super) fn validate_source_revision(value: Option<String>) -> Result<Option<S
     }
 }
 
-fn is_dependency_lock(value: &Value) -> bool {
+pub(super) fn is_dependency_lock(value: &Value) -> bool {
     let Some(entries) = value.as_array() else {
         return false;
     };
@@ -1230,57 +1278,6 @@ impl FrontstageCatalogIdentity {
             && self.plugin_version == entry.plugin_version
             && self.contribution_code == entry.contribution_code
     }
-}
-
-fn canonical_dependency_lock(
-    workspace_id: Uuid,
-    modules: Vec<domain::FrontendBlockCodeModule>,
-) -> Result<Value> {
-    let entries = modules
-        .into_iter()
-        .filter(|module| module.source != "tailwindcss")
-        .map(|module| {
-            let binding = match module.binding {
-                domain::FrontendModuleBinding::Host => "host",
-                domain::FrontendModuleBinding::Fetched => "fetched",
-            };
-            let assets = module
-                .assets
-                .into_iter()
-                .map(|asset| {
-                    let sha256 = asset.sha256;
-                    let role = match asset.role {
-                        domain::FrontendModuleAssetRole::BrowserModule => "browser_module",
-                        domain::FrontendModuleAssetRole::ShadowStyle => "shadow_style",
-                        domain::FrontendModuleAssetRole::Support => "support",
-                    };
-                    serde_json::json!({
-                        "role": role,
-                        "media_type": asset.media_type,
-                        "sha256": sha256.clone(),
-                        "url": format!(
-                            "/api/console/frontstage/{workspace_id}/component-module-assets/{}",
-                            sha256
-                        ),
-                        "integrity": "verified_sha256"
-                    })
-                })
-                .collect::<Vec<_>>();
-            serde_json::json!({
-                "module_source": module.source,
-                "module_version": module.version,
-                "binding": binding,
-                "assets": assets,
-                "exports": module.exports
-            })
-        })
-        .collect::<Vec<_>>();
-    let value = Value::Array(entries);
-    validate_code(FrontstageBlockCodeInput {
-        source_code: String::new(),
-        dependency_lock: value,
-    })
-    .map(|code| code.dependency_lock)
 }
 
 fn apply_catalog_identity(
@@ -1530,6 +1527,23 @@ mod code_input_tests {
         }
     }
 
+    fn test_code_module(source: &str, export_name: &str) -> domain::FrontendBlockCodeModule {
+        domain::FrontendBlockCodeModule {
+            source: source.to_owned(),
+            version: "1.0.0".to_owned(),
+            exports: vec![export_name.to_owned()],
+            binding: domain::FrontendModuleBinding::Fetched,
+            assets: vec![domain::FrontendModuleAsset {
+                path: "module.js".to_owned(),
+                role: domain::FrontendModuleAssetRole::BrowserModule,
+                media_type: "text/javascript; charset=utf-8".to_owned(),
+                sha256: "a".repeat(64),
+            }],
+            type_declarations: String::new(),
+            components: vec![],
+        }
+    }
+
     #[test]
     fn accepts_source_and_canonical_dependency_lock() {
         let validated = validate_code(code()).expect("fixture must be valid");
@@ -1586,6 +1600,49 @@ mod code_input_tests {
             }]
         }]);
         validate_code(input).expect("complete lock must be accepted");
+    }
+
+    #[test]
+    fn source_imports_select_only_the_registered_component_module() {
+        let lock = dependency_lock_from_source(
+            Uuid::nil(),
+            "import { Chart } from '@acme/charts';\nexport default () => <Chart />;",
+            vec![
+                test_code_module("@acme/forms", "Form"),
+                test_code_module("@acme/charts", "Chart"),
+            ],
+        )
+        .expect("the imported registered module must resolve");
+
+        assert_eq!(
+            lock,
+            serde_json::json!([{
+                "module_source": "@acme/charts",
+                "module_version": "1.0.0",
+                "binding": "fetched",
+                "assets": [{
+                    "role": "browser_module",
+                    "media_type": "text/javascript; charset=utf-8",
+                    "sha256": "a".repeat(64),
+                    "url": "/api/console/frontstage/00000000-0000-0000-0000-000000000000/component-module-assets/".to_owned() + &"a".repeat(64),
+                    "integrity": "verified_sha256"
+                }],
+                "exports": ["Chart"]
+            }])
+        );
+    }
+
+    #[test]
+    fn source_imports_do_not_treat_non_runtime_host_modules_as_implicit() {
+        let lock = dependency_lock_from_source(
+            Uuid::nil(),
+            "import { Surface } from '@1flowbase/ui';\nexport default () => <Surface />;",
+            vec![test_code_module("@1flowbase/ui", "Surface")],
+        )
+        .expect("a non-host module import must be resolved from its registered module");
+
+        assert_eq!(lock[0]["module_source"], "@1flowbase/ui");
+        assert_eq!(lock[0]["binding"], "fetched");
     }
 
     #[test]

@@ -18,6 +18,7 @@ import { useAuthStore } from '../../../state/auth-store';
 import { useFrontstageDesignModeStore } from '../../../state/frontstage-design-mode-store';
 import type { FrontstagePageContent } from '../api/page-content';
 import { fetchFrontstageBlockDeleteImpact } from '../api/block-tree';
+import { resolveFrontstageComponentDependencyLock } from '../api/component-capabilities';
 import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSidebar';
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
 import {
@@ -79,8 +80,7 @@ import { getPageDisplayTitle } from '../lib/page-tree';
 import { i18nText } from '../../../shared/i18n/text';
 import {
   createCatalogBlockInput,
-  findMatchingFrontstageBlockCatalogEntry,
-  resolveFrontstageBlockNativeDependencyLock
+  findMatchingFrontstageBlockCatalogEntry
 } from './frontstage-page/block-catalog-helpers';
 import { toDisplayErrorMessage } from './frontstage-page/page-action-helpers';
 import { DESIGN_MODE_PERMISSION } from './frontstage-page/page-constants';
@@ -1384,12 +1384,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
               const activeStudioBlock = runtimeBlocks.find(
                 (candidate) => candidate.id === blockId
               );
-              const activeDependencyLockResolution =
-                resolveFrontstageBlockNativeDependencyLock(
-                  activeStudioBlock,
-                  blockCatalog.items,
-                  workspaceId
-                );
               return runRevision === null || !activeStudioBlock ? undefined : (
                 <JsxStudioRunPanel
                   block={activeStudioBlock}
@@ -1397,11 +1391,11 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                   createBlockContext={createTrialBlockContext}
                   onPrepareDraftRun={jsBlockCapabilityHandlers?.prepareDraftRun}
                   onRevokeDraftRun={jsBlockCapabilityHandlers?.revokeDraftRun}
-                  nativeDependencyLock={
-                    activeDependencyLockResolution.dependencyLock
-                  }
-                  nativeDependencyLockError={
-                    activeDependencyLockResolution.error
+                  resolveNativeDependencyLock={(sourceCode) =>
+                    resolveFrontstageComponentDependencyLock(
+                      workspaceId,
+                      sourceCode
+                    )
                   }
                   externalNpm={blockCatalog.externalNpm}
                   revision={`run:${runRevision}`}

@@ -107,10 +107,6 @@ const operations = [
 ] as ConsoleFrontstageInterfaceCapability[];
 
 const projection: FrontstageJsxEditorProjection = {
-  componentCatalogQuery: {
-    installation_id: 'installation-1',
-    contribution_code: 'frontstage.js-ui-block'
-  },
   contextComment: '',
   allowedImportSources: new Set<string>(),
   monacoExtraLibs: []
@@ -555,12 +551,15 @@ describe('TSX Studio insertion descriptors', () => {
 
     fireEvent.click(screen.getByRole('button', { name: '插入' }));
 
-    expect(onInsertCode).toHaveBeenCalledWith({
-      kind: 'component',
-      name: 'Surface',
-      moduleSource: '@1flowbase/native-components',
-      source: surfaceComponent.insert_snippet
-    });
+    await waitFor(() =>
+      expect(onInsertCode).toHaveBeenCalledWith({
+        kind: 'component',
+        name: 'Surface',
+        moduleSource: '@1flowbase/native-components',
+        source: surfaceComponent.insert_snippet,
+        typescriptDeclaration: surfaceComponent.typescript_declaration
+      })
+    );
 
     fireEvent.click(screen.getByRole('button', { name: '复制 API' }));
     await waitFor(() =>
@@ -579,7 +578,7 @@ describe('TSX Studio insertion descriptors', () => {
     );
   });
 
-  test('D2-AC-001 keeps component search and server pagination in the catalog query', async () => {
+  test('D2-AC-001 searches the global component directory without constraining it to the active block Catalog', async () => {
     componentCapabilitiesHook.useFrontstageComponentCapabilities.mockReturnValue(
       {
         data: {
@@ -620,6 +619,11 @@ describe('TSX Studio insertion descriptors', () => {
         true
       )
     );
+    const [, searchRequest] =
+      componentCapabilitiesHook.useFrontstageComponentCapabilities.mock
+        .lastCall ?? [];
+    expect(searchRequest).not.toHaveProperty('installation_id');
+    expect(searchRequest).not.toHaveProperty('contribution_code');
 
     fireEvent.click(screen.getByTitle('2'));
     await waitFor(() =>
@@ -631,5 +635,10 @@ describe('TSX Studio insertion descriptors', () => {
         true
       )
     );
+    const [, pageRequest] =
+      componentCapabilitiesHook.useFrontstageComponentCapabilities.mock
+        .lastCall ?? [];
+    expect(pageRequest).not.toHaveProperty('installation_id');
+    expect(pageRequest).not.toHaveProperty('contribution_code');
   });
 });

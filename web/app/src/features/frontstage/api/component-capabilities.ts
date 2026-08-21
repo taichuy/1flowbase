@@ -1,10 +1,15 @@
 import {
   getFrontstageComponentCapability,
   listFrontstageComponentCapabilities,
+  resolveFrontstageComponentDependencyLock as requestFrontstageComponentDependencyLock,
   type ConsoleFrontstageComponentCapability,
   type ConsoleFrontstageComponentCapabilityPage,
   type ConsoleFrontstageComponentCapabilityQuery
 } from '@1flowbase/api-client';
+import {
+  canonicalizeNativeReactCatalogDependencyLock,
+  type NativeReactCatalogDependencyLock
+} from '@1flowbase/page-runtime';
 
 import { getFrontstageApiBaseUrl } from './page-tree';
 
@@ -35,4 +40,22 @@ export function fetchFrontstageComponentCapability(
     componentId,
     getFrontstageApiBaseUrl()
   );
+}
+
+export async function resolveFrontstageComponentDependencyLock(
+  workspaceId: string,
+  sourceCode: string
+): Promise<NativeReactCatalogDependencyLock> {
+  const result = await requestFrontstageComponentDependencyLock(
+    workspaceId,
+    sourceCode,
+    getFrontstageApiBaseUrl()
+  );
+  const dependencyLock = canonicalizeNativeReactCatalogDependencyLock(
+    result.dependency_lock
+  );
+  if (!dependencyLock) {
+    throw new Error('Frontstage component dependency lock is invalid.');
+  }
+  return dependencyLock;
 }

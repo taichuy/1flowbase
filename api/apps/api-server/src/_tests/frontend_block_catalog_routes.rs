@@ -391,6 +391,70 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
 }
 
 #[tokio::test]
+async fn component_dependency_lock_is_derived_from_source_imports() {
+    let (app, database_url) = test_frontend_block_app_with_database_url().await;
+    seed_frontend_block(&database_url, true).await;
+    let pool = PgPool::connect(&database_url).await.unwrap();
+    let workspace_id: Uuid =
+        sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri(format!(
+                    "/api/console/frontstage/{workspace_id}/component-dependency-lock"
+                ))
+                .header("cookie", &cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "source_code": "import { useState } from 'react';\nimport { Button } from '@acme/native-components';\nexport default Button;"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let payload: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(
+        payload["data"]["dependency_lock"],
+        json!([{
+            "module_source": "@acme/native-components",
+            "module_version": "1.2.3",
+            "binding": "fetched",
+            "assets": [{
+                "role": "browser_module",
+                "media_type": "text/javascript; charset=utf-8",
+                "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
+                "url": format!(
+                    "/api/console/frontstage/{workspace_id}/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
+                ),
+                "integrity": "verified_sha256"
+            }, {
+                "role": "shadow_style",
+                "media_type": "text/css; charset=utf-8",
+                "sha256": "adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f",
+                "url": format!(
+                    "/api/console/frontstage/{workspace_id}/component-module-assets/adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f"
+                ),
+                "integrity": "verified_sha256"
+            }],
+            "exports": ["Button"]
+        }])
+    );
+}
+
+#[tokio::test]
 async fn ac_001_locked_asset_survives_current_catalog_digest_replacement() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
     let installation_id = seed_frontend_block(&database_url, true).await;

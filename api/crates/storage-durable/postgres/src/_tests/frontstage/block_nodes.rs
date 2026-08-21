@@ -312,6 +312,7 @@ async fn block_code_save_rejects_a_stale_source_revision_atomically() {
             expected_source_revision: Some("0".repeat(64)),
             source: FrontstageBlockSourceInput {
                 source_code: "export default 2;".to_owned(),
+                dependency_lock: json!([]),
             },
             audit_log: stale,
         })

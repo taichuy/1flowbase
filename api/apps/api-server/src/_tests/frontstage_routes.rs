@@ -35,6 +35,10 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
                 "/api/console/frontstage/:workspace_id/component-capabilities/:component_id",
             ),
             (
+                "POST",
+                "/api/console/frontstage/:workspace_id/component-dependency-lock",
+            ),
+            (
                 "GET",
                 "/api/console/frontstage/:workspace_id/component-module-assets/:sha256",
             ),

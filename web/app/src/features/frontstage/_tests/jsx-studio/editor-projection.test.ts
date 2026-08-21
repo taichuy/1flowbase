@@ -7,13 +7,19 @@ import {
 } from '../../lib/jsx-studio/editor-projection';
 
 describe('Frontstage JSX editor projection', () => {
-  test('AC-021 projects only backend catalog scope and the editable context comment', () => {
+  test('AC-021 accepts every registered component module instead of the active block Catalog scope', () => {
     const projection = createFrontstageJsxEditorProjection({
-      catalogEntry: null
+      catalogEntry: null,
+      componentModuleSources: ['@acme/charts']
     });
 
-    expect(projection.componentCatalogQuery).toBeNull();
-    expect([...projection.allowedImportSources]).toEqual(['tailwindcss']);
+    expect([...projection.allowedImportSources]).toEqual([
+      'react',
+      'react/jsx-runtime',
+      'antd',
+      'tailwindcss',
+      '@acme/charts'
+    ]);
     expect(projection.contextComment).toBe(createFrontstageContextComment());
     expect(projection.monacoExtraLibs).toEqual(
       expect.arrayContaining([
@@ -53,14 +59,14 @@ describe('Frontstage JSX editor projection', () => {
         ],
         installationId: 'installation-1',
         contributionCode: 'frontstage.js-ui-block'
-      } as NormalizedFrontstageBlockCatalogEntry
+      } as NormalizedFrontstageBlockCatalogEntry,
+      componentModuleSources: ['@1flowbase/native-components']
     });
 
-    expect(projection.componentCatalogQuery).toEqual({
-      installation_id: 'installation-1',
-      contribution_code: 'frontstage.js-ui-block'
-    });
     expect([...projection.allowedImportSources]).toEqual([
+      'react',
+      'react/jsx-runtime',
+      'antd',
       'tailwindcss',
       '@1flowbase/native-components'
     ]);

@@ -42,6 +42,9 @@ const interfaceCapabilitiesApi = vi.hoisted(() => ({
 const componentCapabilitiesHook = vi.hoisted(() => ({
   useFrontstageComponentCapabilities: vi.fn()
 }));
+const componentCapabilitiesApi = vi.hoisted(() => ({
+  fetchFrontstageComponentCapability: vi.fn()
+}));
 const uiTemplatesHook = vi.hoisted(() => ({
   useFrontstageUiTemplates: vi.fn()
 }));
@@ -94,6 +97,7 @@ vi.mock(
   '../../hooks/use-frontstage-component-capabilities',
   () => componentCapabilitiesHook
 );
+vi.mock('../../api/component-capabilities', () => componentCapabilitiesApi);
 vi.mock('../../hooks/use-frontstage-ui-templates', () => uiTemplatesHook);
 vi.mock('antd', async () => {
   const actual = await vi.importActual<typeof import('antd')>('antd');
@@ -397,6 +401,17 @@ describe('FrontstageJsxStudioDrawer', () => {
         },
         loading: false,
         error: null
+      }
+    );
+    componentCapabilitiesApi.fetchFrontstageComponentCapability.mockResolvedValue(
+      {
+        ...buttonComponent,
+        props: [],
+        limitations: [],
+        examples: [],
+        typescript_declaration:
+          "declare module '@1flowbase/native-components' { export const Button: unknown; }",
+        api_documentation: ''
       }
     );
   });
@@ -814,7 +829,7 @@ describe('FrontstageJsxStudioDrawer', () => {
     expect(screen.queryByText('代码诊断')).not.toBeInTheDocument();
   });
 
-  test('AC-005 submits snippet and import changes as one Monaco edit batch', () => {
+  test('AC-005 submits snippet and import changes as one Monaco edit batch', async () => {
     const source = `export default function Block({ ctx }: NativeReactBlockProps) {
   return <div>content</div>;
 }`;
@@ -881,7 +896,9 @@ describe('FrontstageJsxStudioDrawer', () => {
     const row = screen.getByText('Button').closest('tr');
     fireEvent.click(within(row!).getByRole('button', { name: '插入' }));
 
-    expect(monacoEditor.executeEdits).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(monacoEditor.executeEdits).toHaveBeenCalledTimes(1)
+    );
     expect(monacoEditor.executeEdits.mock.calls[0]?.[1]).toHaveLength(2);
     expect(monacoEditor.pushUndoStop).toHaveBeenCalledTimes(2);
   });

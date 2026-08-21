@@ -30,6 +30,26 @@ const uiManagementApi = vi.hoisted(() => ({
 
 vi.mock('../../api/ui-management', () => uiManagementApi);
 
+vi.mock('@monaco-editor/react', () => ({
+  default: ({
+    value,
+    language,
+    onChange
+  }: {
+    value?: string;
+    language?: string;
+    onChange?: (value: string) => void;
+  }) => (
+    <textarea
+      aria-label="Contract JSON"
+      data-language={language}
+      data-testid="contract-json-editor"
+      value={value ?? ''}
+      onChange={(event) => onChange?.(event.target.value)}
+    />
+  )
+}));
+
 import { AppProviders } from '../../../../app/AppProviders';
 import { UiManagementPanel } from '../../components/ui-management/UiManagementPanel';
 
@@ -140,5 +160,20 @@ describe('UiManagementPanel components', () => {
     expect(
       screen.getByRole('columnheader', { name: '模块版' })
     ).toBeInTheDocument();
+  });
+
+  test('AC-006 edits a component contract with the JSON-highlighted editor', async () => {
+    render(
+      <AppProviders>
+        <UiManagementPanel canManage />
+      </AppProviders>
+    );
+
+    await screen.findByText('DataTable');
+    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]);
+
+    const editor = await screen.findByTestId('contract-json-editor');
+    expect(editor).toHaveAttribute('data-language', 'json');
+    expect(editor).toHaveValue('{}');
   });
 });

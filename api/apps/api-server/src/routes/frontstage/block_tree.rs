@@ -782,6 +782,7 @@ pub async fn save_frontstage_block_node_code(
     let scope = block_scope(&context, workspace_id, page_id, block_id)?;
     let public_block_id = scope.block_id.clone();
     let code = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
+        .with_node_id(state.api_node_id.clone())
         .save_block_node_code(SaveFrontstageBlockNodeCodeCommand {
             scope,
             expected_source_revision: body.expected_source_revision,
@@ -818,6 +819,7 @@ pub async fn patch_frontstage_block_node_code(
     let scope = block_scope(&context, workspace_id, page_id, block_id)?;
     let public_block_id = scope.block_id.clone();
     let code = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
+        .with_node_id(state.api_node_id.clone())
         .patch_block_node_code(PatchFrontstageBlockNodeCodeCommand {
             scope,
             expected_source_revision: body.expected_source_revision,

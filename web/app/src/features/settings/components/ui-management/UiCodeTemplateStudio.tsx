@@ -11,9 +11,13 @@ import { useTranslation } from 'react-i18next';
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
 import { diagnoseUnsupportedTailwindUtilities } from '../../../../shared/code-block/tailwind-utility-diagnostics';
 import { useAuthStore } from '../../../../state/auth-store';
+import { resolveFrontstageComponentDependencyLock } from '../../../frontstage/api/component-capabilities';
 import { useFrontstageBlockCatalog } from '../../../frontstage/hooks/use-frontstage-block-catalog';
-import { resolveFrontstageNativeDependencyLock } from '../../../frontstage/lib/block-catalog';
-import { createFrontstageJsxEditorProjection } from '../../../frontstage/lib/jsx-studio/editor-projection';
+import { useFrontstageComponentCapabilities } from '../../../frontstage/hooks/use-frontstage-component-capabilities';
+import {
+  createFrontstageJsxEditorProjection,
+  mergeFrontstageComponentDeclarationExtraLibs
+} from '../../../frontstage/lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../../frontstage/lib/jsx-studio/context-injection';
 import {
   applyFrontstageJsxInsertionPlan,
@@ -58,6 +62,9 @@ export function UiCodeTemplateStudio({
   const actor = useAuthStore((state) => state.actor);
   const me = useAuthStore((state) => state.me);
   const [draft, setDraft] = useState(initialValue);
+  const [componentDeclarations, setComponentDeclarations] = useState<
+    Record<string, string>
+  >({});
   const [previewRequest, setPreviewRequest] = useState<{
     revision: string;
     source: string;
@@ -65,6 +72,11 @@ export function UiCodeTemplateStudio({
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const previewSequenceRef = useRef(0);
   const catalog = useFrontstageBlockCatalog({ workspaceId });
+  const componentModules = useFrontstageComponentCapabilities(
+    workspaceId,
+    { limit: 1 },
+    open
+  );
   const catalogEntry =
     catalog.items.find(
       (entry) =>
@@ -72,16 +84,20 @@ export function UiCodeTemplateStudio({
         entry.contributionCode === draft.contribution_code
     ) ?? null;
   const projection = useMemo(
-    () => createFrontstageJsxEditorProjection({ catalogEntry }),
-    [catalogEntry]
-  );
-  const nativeDependencyLockResolution = useMemo(
     () =>
-      resolveFrontstageNativeDependencyLock({
+      createFrontstageJsxEditorProjection({
         catalogEntry,
-        workspaceId: workspaceId ?? 'workspace'
+        componentModuleSources: componentModules.data.module_sources
       }),
-    [catalogEntry, workspaceId]
+    [catalogEntry, componentModules.data.module_sources]
+  );
+  const monacoExtraLibs = useMemo(
+    () =>
+      mergeFrontstageComponentDeclarationExtraLibs(
+        projection.monacoExtraLibs,
+        componentDeclarations
+      ),
+    [componentDeclarations, projection.monacoExtraLibs]
   );
   const readOnly = mode === 'view';
   const contributionIdentity = templateIdentity(
@@ -97,7 +113,7 @@ export function UiCodeTemplateStudio({
   );
   const diagnostics = useMemo(() => {
     if (draft.source.trim().length === 0) return [];
-    if (catalog.loading) return [];
+    if (catalog.loading || componentModules.loading) return [];
     const legacy = diagnoseLegacyBlockModuleSource(draft.source);
     const values = legacy
       ? [legacy]
@@ -119,6 +135,7 @@ export function UiCodeTemplateStudio({
     );
   }, [
     catalog.loading,
+    componentModules.loading,
     contributionIdentity,
     draft.source,
     projection.allowedImportSources
@@ -127,6 +144,7 @@ export function UiCodeTemplateStudio({
   useEffect(() => {
     if (!open) return;
     setDraft(initialValue);
+    setComponentDeclarations({});
     setPreviewRequest(null);
     previewSequenceRef.current = 0;
   }, [initialValue, open]);
@@ -166,6 +184,20 @@ export function UiCodeTemplateStudio({
   );
 
   const insertCode = (insertion: FrontstageJsxInsertion) => {
+    const typescriptDeclaration =
+      insertion.kind === 'component' ? insertion.typescriptDeclaration : null;
+    if (insertion.kind === 'component' && typescriptDeclaration) {
+      setComponentDeclarations((current) => {
+        const existing = current[insertion.moduleSource];
+        if (existing?.includes(typescriptDeclaration)) return current;
+        return {
+          ...current,
+          [insertion.moduleSource]: existing
+            ? `${existing}\n\n${typescriptDeclaration}`
+            : typescriptDeclaration
+        };
+      });
+    }
     const editor = editorRef.current;
     const selection = editor?.getSelection();
     const model = editor?.getModel();
@@ -299,9 +331,9 @@ export function UiCodeTemplateStudio({
       contextComment={projection.contextComment}
       dirty={dirty}
       editorDiagnostics={diagnostics}
-      extraLibs={projection.monacoExtraLibs}
+      extraLibs={monacoExtraLibs}
       initialSection="configuration"
-      loading={catalog.loading}
+      loading={catalog.loading || componentModules.loading}
       open={open}
       owner="settings:ui-management:code-templates"
       path={`file:///settings/ui-code-templates/${encodeURIComponent(contributionIdentity || 'new')}.${draft.language}`}
@@ -342,11 +374,11 @@ export function UiCodeTemplateStudio({
                 code={previewRequest.source}
                 createBlockContext={createPreviewBlockContext}
                 externalNpm={catalog.externalNpm}
-                nativeDependencyLock={
-                  nativeDependencyLockResolution.dependencyLock
-                }
-                nativeDependencyLockError={
-                  nativeDependencyLockResolution.error
+                resolveNativeDependencyLock={(sourceCode) =>
+                  resolveFrontstageComponentDependencyLock(
+                    workspaceId ?? 'workspace',
+                    sourceCode
+                  )
                 }
                 revision={previewRequest.revision}
               />

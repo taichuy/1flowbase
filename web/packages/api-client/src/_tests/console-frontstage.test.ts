@@ -13,6 +13,7 @@ import {
   type FrontstageCallableBinaryResource,
   getFrontstageInterfaceCapability,
   getFrontstageComponentCapability,
+  resolveFrontstageComponentDependencyLock,
   getFrontstagePageTabDetail,
   frontstageComponentModuleAssetPath,
   listFrontstagePageTabs,
@@ -185,6 +186,19 @@ describe('console-frontstage client', () => {
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/workspace-1/component-capabilities/installation-1%3Ablock%3Abutton',
       method: 'GET'
+    });
+  });
+
+  test('resolves a component lock from the current block source', async () => {
+    await expect(
+      resolveFrontstageComponentDependencyLock(
+        'workspace/one',
+        "import { Chart } from '@acme/charts';"
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/frontstage/workspace%2Fone/component-dependency-lock',
+      method: 'POST',
+      body: { source_code: "import { Chart } from '@acme/charts';" }
     });
   });
 

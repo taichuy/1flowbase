@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 
+import MonacoEditor from '@monaco-editor/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import {
@@ -46,6 +47,40 @@ type ComponentFilter = {
 };
 
 const COMPONENT_PAGE_SIZE = 20;
+
+const CONTRACT_JSON_EDITOR_OPTIONS = {
+  automaticLayout: true,
+  fontSize: 13,
+  lineNumbersMinChars: 3,
+  minimap: { enabled: false },
+  padding: { top: 12, bottom: 12 },
+  scrollBeyondLastLine: false,
+  tabSize: 2,
+  wordWrap: 'on' as const
+};
+
+function ContractJsonEditor({
+  ariaLabel,
+  value,
+  onChange
+}: {
+  ariaLabel: string;
+  value?: string;
+  onChange?: (value: string) => void;
+}) {
+  return (
+    <MonacoEditor
+      aria-label={ariaLabel}
+      defaultLanguage="json"
+      height="min(680px, calc(100vh - 280px))"
+      language="json"
+      options={{ ...CONTRACT_JSON_EDITOR_OPTIONS, ariaLabel }}
+      theme="vs"
+      value={value ?? ''}
+      onChange={(nextValue) => onChange?.(nextValue ?? '')}
+    />
+  );
+}
 
 function requireToken(token: string | null): string {
   if (!token) throw new Error('missing csrf token');
@@ -357,10 +392,7 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
             label={t('contract_json')}
             rules={[{ required: true }]}
           >
-            <Input.TextArea
-              autoSize={{ minRows: 22, maxRows: 36 }}
-              className="ui-management-code-editor"
-            />
+            <ContractJsonEditor ariaLabel={t('contract_json')} />
           </Form.Item>
         </Form>
       </Drawer>

@@ -126,7 +126,6 @@ export function JsxStudioResourcePanel({
   if (section === 'components') {
     return (
       <JsxStudioComponentsPanel
-        componentCatalogQuery={projection.componentCatalogQuery}
         onInsertCode={onInsertCode}
         workspaceId={workspaceId}
       />

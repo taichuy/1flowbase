@@ -13,7 +13,11 @@ import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import { isForbiddenResponseError } from '../../lib/api-errors';
-import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
+import { useFrontstageComponentCapabilities } from '../../hooks/use-frontstage-component-capabilities';
+import {
+  createFrontstageJsxEditorProjection,
+  mergeFrontstageComponentDeclarationExtraLibs
+} from '../../lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../lib/jsx-studio/context-injection';
 import {
   applyFrontstageJsxInsertionPlan,
@@ -86,6 +90,14 @@ export function FrontstageJsxStudioDrawer({
 }: FrontstageJsxStudioDrawerProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const [runRevision, setRunRevision] = useState<number | null>(null);
+  const [componentDeclarations, setComponentDeclarations] = useState<
+    Record<string, string>
+  >({});
+  const componentModules = useFrontstageComponentCapabilities(
+    workspaceId,
+    { limit: 1 },
+    open
+  );
   const blockTabs = useFrontstageBlockTabs({
     workspaceId,
     pageId,
@@ -131,8 +143,19 @@ export function FrontstageJsxStudioDrawer({
     activeTab.error.status === 404;
   const projection = useMemo(
     () =>
-      createFrontstageJsxEditorProjection({ catalogEntry: activeCatalogEntry }),
-    [activeCatalogEntry]
+      createFrontstageJsxEditorProjection({
+        catalogEntry: activeCatalogEntry,
+        componentModuleSources: componentModules.data.module_sources
+      }),
+    [activeCatalogEntry, componentModules.data.module_sources]
+  );
+  const monacoExtraLibs = useMemo(
+    () =>
+      mergeFrontstageComponentDeclarationExtraLibs(
+        projection.monacoExtraLibs,
+        componentDeclarations
+      ),
+    [componentDeclarations, projection.monacoExtraLibs]
   );
   const blockCreateDefaults = useMemo(() => {
     const template = activeCatalogEntry?.codeCapabilities?.template;
@@ -178,6 +201,20 @@ export function FrontstageJsxStudioDrawer({
   ]);
   const hasLegacySource = diagnoseLegacyBlockModuleSource(draft) !== null;
   const insertCode = (insertion: FrontstageJsxInsertion) => {
+    const typescriptDeclaration =
+      insertion.kind === 'component' ? insertion.typescriptDeclaration : null;
+    if (insertion.kind === 'component' && typescriptDeclaration) {
+      setComponentDeclarations((current) => {
+        const existing = current[insertion.moduleSource];
+        if (existing?.includes(typescriptDeclaration)) return current;
+        return {
+          ...current,
+          [insertion.moduleSource]: existing
+            ? `${existing}\n\n${typescriptDeclaration}`
+            : typescriptDeclaration
+        };
+      });
+    }
     const editor = editorRef.current;
     const selection = editor?.getSelection();
     const model = editor?.getModel();
@@ -254,7 +291,7 @@ export function FrontstageJsxStudioDrawer({
           onClose={blockTabs.closeBlock}
         />
       }
-      extraLibs={projection.monacoExtraLibs}
+      extraLibs={monacoExtraLibs}
       initialSection={initialSection}
       loading={activeTab?.loading ?? true}
       open={open}

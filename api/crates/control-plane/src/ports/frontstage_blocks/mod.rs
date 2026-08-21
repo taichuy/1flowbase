@@ -39,6 +39,7 @@ pub struct FrontstageBlockCodeInput {
 #[derive(Debug, Clone)]
 pub struct FrontstageBlockSourceInput {
     pub source_code: String,
+    pub dependency_lock: serde_json::Value,
 }
 
 #[derive(Debug, Clone)]

@@ -14,8 +14,10 @@ use control_plane::{
         GetFrontendComponentCapabilityQuery, GetFrontendModuleAssetQuery,
         ListFrontendComponentCapabilitiesQuery,
     },
+    frontstage::FrontstagePageService,
 };
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -25,6 +27,18 @@ use crate::{
 };
 
 const COMPONENT_CAPABILITY_PAGE_SIZE: usize = 20;
+
+#[derive(Debug, Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ResolveFrontstageComponentDependencyLockBody {
+    pub source_code: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FrontstageComponentDependencyLockResponse {
+    #[schema(value_type = Vec<Object>)]
+    pub dependency_lock: Value,
+}
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct FrontstageComponentCapabilityQuery {
@@ -166,6 +180,36 @@ pub async fn list_frontstage_component_capabilities(
             next_offset: page.next_offset,
             module_sources: page.module_sources,
         },
+    )))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/frontstage/{workspace_id}/component-dependency-lock",
+    params(("workspace_id" = String, Path, description = "Workspace id")),
+    request_body = ResolveFrontstageComponentDependencyLockBody,
+    responses(
+        (status = 200, body = FrontstageComponentDependencyLockResponse),
+        (status = 400, body = crate::error_response::ErrorBody),
+        (status = 401, body = crate::error_response::ErrorBody),
+        (status = 403, body = crate::error_response::ErrorBody)
+    )
+)]
+pub async fn resolve_frontstage_component_dependency_lock(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path(workspace_id): Path<String>,
+    Json(body): Json<ResolveFrontstageComponentDependencyLockBody>,
+) -> Result<Json<ApiSuccess<FrontstageComponentDependencyLockResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
+    require_design_permission(&context.actor, workspace_id)?;
+    let dependency_lock = FrontstagePageService::for_actor(state.store.clone(), context.actor)
+        .with_node_id(state.api_node_id.clone())
+        .resolve_component_dependency_lock(workspace_id, &body.source_code)
+        .await?;
+    Ok(Json(ApiSuccess::new(
+        FrontstageComponentDependencyLockResponse { dependency_lock },
     )))
 }
 
