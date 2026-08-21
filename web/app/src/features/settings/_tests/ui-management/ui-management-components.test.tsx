@@ -36,6 +36,27 @@ import { UiManagementPanel } from '../../components/ui-management/UiManagementPa
 describe('UiManagementPanel components', () => {
   beforeEach(() => {
     window.localStorage.removeItem('settings.ui_management.components');
+    const structuredContract = {
+      component_code: 'data_table',
+      export_name: 'DataTable',
+      upstream: {
+        package: '@1flowbase/native-components',
+        component: 'DataTable',
+        version: '1.0.0'
+      },
+      description: 'Displays tabular data.',
+      props: [
+        {
+          name: 'rows',
+          type: 'Row[]',
+          required: true,
+          description: 'Rows to display.'
+        }
+      ],
+      limitations: ['Use serializable data only.'],
+      examples: [{ title: 'Basic table', code: '<DataTable rows={[]} />' }],
+      insert_snippet: '<DataTable rows={[]} />'
+    };
     uiManagementApi.fetchSettingsUiComponents.mockResolvedValue([
       {
         provider_code: 'official-ui',
@@ -44,9 +65,9 @@ describe('UiManagementPanel components', () => {
         export_name: 'DataTable',
         module_version: '1.0.0',
         state: 'published',
-        official_contract: {},
-        latest_contract: {},
-        published_contract: {},
+        official_contract: structuredContract,
+        latest_contract: structuredContract,
+        published_contract: structuredContract,
         latest_revision: 2,
         published_revision: 2
       },
@@ -157,5 +178,25 @@ describe('UiManagementPanel components', () => {
     expect(screen.getByLabelText('说明')).toBeInTheDocument();
     expect(screen.getByLabelText('插入代码')).toBeInTheDocument();
     expect(screen.queryByLabelText('Contract JSON')).not.toBeInTheDocument();
+  });
+
+  test('AC-004 stacks each structured contract entry in one column', async () => {
+    render(
+      <AppProviders>
+        <UiManagementPanel canManage />
+      </AppProviders>
+    );
+
+    await screen.findByText('DataTable');
+    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]);
+
+    await screen.findByLabelText('组件代码');
+    for (const input of [
+      screen.getByPlaceholderText('属性名'),
+      screen.getByPlaceholderText('示例标题'),
+      screen.getByPlaceholderText('包名')
+    ]) {
+      expect(input.closest('.ant-flex-vertical')).not.toBeNull();
+    }
   });
 });

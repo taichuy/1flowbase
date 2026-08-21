@@ -384,13 +384,14 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
           <Typography.Title level={5}>{t('props')}</Typography.Title>
           <Form.List name="props">
             {(fields, { add, remove }) => (
-              <Space direction="vertical" style={{ width: '100%' }}>
+              <Flex vertical gap={8}>
                 {fields.map((field) => (
-                  <Flex key={field.key} gap={8} align="start" wrap>
+                  <Flex key={field.key} vertical gap={8}>
                     <Form.Item
                       {...field}
                       name={[field.name, 'name']}
                       rules={[{ required: true }]}
+                      style={{ width: '100%' }}
                     >
                       <Input placeholder={t('prop_name')} />
                     </Form.Item>
@@ -398,6 +399,7 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
                       {...field}
                       name={[field.name, 'type']}
                       rules={[{ required: true }]}
+                      style={{ width: '100%' }}
                     >
                       <Input placeholder={t('prop_type')} />
                     </Form.Item>
@@ -405,15 +407,16 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
                       {...field}
                       name={[field.name, 'description']}
                       rules={[{ required: true }]}
+                      style={{ width: '100%' }}
                     >
                       <Input placeholder={t('description')} />
                     </Form.Item>
                     <Form.Item
                       {...field}
                       name={[field.name, 'required']}
+                      style={{ width: '100%' }}
                     >
                       <Select
-                        style={{ width: 100 }}
                         options={[
                           { value: true, label: t('required') },
                           { value: false, label: t('optional') }
@@ -428,16 +431,16 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
                 <Button onClick={() => add({ required: false })}>
                   {t('add_prop')}
                 </Button>
-              </Space>
+              </Flex>
             )}
           </Form.List>
           <Typography.Title level={5}>{t('limitations')}</Typography.Title>
           <Form.List name="limitations">
             {(fields, { add, remove }) => (
-              <Space direction="vertical" style={{ width: '100%' }}>
+              <Flex vertical gap={8}>
                 {fields.map((field) => (
-                  <Flex key={field.key} gap={8}>
-                    <Form.Item {...field} rules={[{ required: true }]} style={{ flex: 1 }}>
+                  <Flex key={field.key} vertical gap={8}>
+                    <Form.Item {...field} rules={[{ required: true }]}>
                       <Input />
                     </Form.Item>
                     <Button type="link" danger onClick={() => remove(field.name)}>
@@ -446,19 +449,20 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
                   </Flex>
                 ))}
                 <Button onClick={() => add('')}>{t('add_limitation')}</Button>
-              </Space>
+              </Flex>
             )}
           </Form.List>
           <Typography.Title level={5}>{t('examples')}</Typography.Title>
           <Form.List name="examples">
             {(fields, { add, remove }) => (
-              <Space direction="vertical" style={{ width: '100%' }}>
+              <Flex vertical gap={8}>
                 {fields.map((field) => (
-                  <Flex key={field.key} gap={8} align="start" wrap>
+                  <Flex key={field.key} vertical gap={8}>
                     <Form.Item
                       {...field}
                       name={[field.name, 'title']}
                       rules={[{ required: true }]}
+                      style={{ width: '100%' }}
                     >
                       <Input placeholder={t('example_title')} />
                     </Form.Item>
@@ -466,7 +470,7 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
                       {...field}
                       name={[field.name, 'code']}
                       rules={[{ required: true }]}
-                      style={{ flex: 1 }}
+                      style={{ width: '100%' }}
                     >
                       <Input.TextArea placeholder={t('example_code')} rows={2} />
                     </Form.Item>
@@ -478,18 +482,18 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
                 <Button onClick={() => add({ title: '', code: '' })}>
                   {t('add_example')}
                 </Button>
-              </Space>
+              </Flex>
             )}
           </Form.List>
           <Typography.Title level={5}>{t('upstream')}</Typography.Title>
-          <Flex gap={8} wrap>
-            <Form.Item name={['upstream', 'package']} style={{ flex: 1 }}>
+          <Flex vertical gap={8}>
+            <Form.Item name={['upstream', 'package']} style={{ width: '100%' }}>
               <Input placeholder={t('upstream_package')} />
             </Form.Item>
-            <Form.Item name={['upstream', 'component']} style={{ flex: 1 }}>
+            <Form.Item name={['upstream', 'component']} style={{ width: '100%' }}>
               <Input placeholder={t('upstream_component')} />
             </Form.Item>
-            <Form.Item name={['upstream', 'version']} style={{ flex: 1 }}>
+            <Form.Item name={['upstream', 'version']} style={{ width: '100%' }}>
               <Input placeholder={t('upstream_version')} />
             </Form.Item>
           </Flex>
