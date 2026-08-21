@@ -17,10 +17,10 @@ use axum::{
     Router,
 };
 use control_plane::ports::{
-    AuthRepository, CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
+    CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
     CreateNetworkEgressProviderInput, CreateNetworkEgressRouteInput, NetworkEgressPoolRepository,
-    NetworkEgressRepository, NetworkEgressRouteRepository, PluginRepository,
-    ReplaceNetworkEgressProjectionInput, UpsertNetworkEgressProviderSecretInput,
+    NetworkEgressRepository, NetworkEgressRouteRepository, OfficialPluginSourcePort,
+    PluginRepository, ReplaceNetworkEgressProjectionInput, UpsertNetworkEgressProviderSecretInput,
     UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
 };
 use domain::{
