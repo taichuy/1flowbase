@@ -1,4 +1,9 @@
 import { apiFetch, apiFetchVoid } from '../transport';
+import type {
+  ConsoleOfficialPluginCatalogResponse,
+  InstallConsoleOfficialPluginInput,
+  InstallConsolePluginResult
+} from '../console-plugins';
 
 export interface ConsoleNetworkEgressProjection {
   provider_egress_key: string;
@@ -31,7 +36,7 @@ export interface CreateConsoleNetworkEgressProviderInput {
 }
 
 export interface ConsoleNetworkEgressProviderType {
-  installation_id: string;
+  installation_id: string | null;
   provider_code: string;
   display_name: string;
   form_schema: {
@@ -49,6 +54,33 @@ export interface ConsoleNetworkEgressProviderType {
   };
 }
 
+export interface ConsoleNetworkEgressOfficialPluginCatalogFilter {
+  locale?: string;
+  q?: string;
+  cursor?: string;
+  limit?: number;
+}
+
+function networkEgressPluginCatalogPath(
+  path: string,
+  filter?: ConsoleNetworkEgressOfficialPluginCatalogFilter
+) {
+  const params = new URLSearchParams();
+  if (filter?.locale) params.set('locale', filter.locale);
+  if (filter?.q) params.set('q', filter.q);
+  if (filter?.cursor) params.set('cursor', filter.cursor);
+  if (filter?.limit) params.set('limit', String(filter.limit));
+  const query = params.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+export interface CreateConsoleNetworkEgressProxyInput {
+  provider_code: string;
+  display_name: string;
+  description: string;
+  config: Record<string, string>;
+}
+
 export interface UpdateConsoleNetworkEgressProviderLifecycleInput {
   lifecycle: string;
 }
@@ -60,6 +92,18 @@ export interface ConsoleNetworkEgressPoolMember {
   enabled: boolean;
   sequence: number;
   health: string;
+  provider_code: string;
+  display_name: string;
+  address_summary: string | null;
+  region: string | null;
+  probe_status: string;
+  probe_http_status: string;
+  probe_https_status: string;
+  probe_latency_ms: number;
+  probe_exit_ip: string | null;
+  probe_exit_region: string | null;
+  probe_error_code: string | null;
+  last_probed_at: string | null;
 }
 
 export interface ConsoleNetworkEgressPool {
@@ -141,6 +185,50 @@ export function listConsoleNetworkEgressProviderTypes(baseUrl?: string) {
   });
 }
 
+export function listConsoleNetworkEgressOfficialPluginCatalog(
+  filter?: ConsoleNetworkEgressOfficialPluginCatalogFilter,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleOfficialPluginCatalogResponse>({
+    path: networkEgressPluginCatalogPath(
+      '/api/console/settings/network-center/proxy-plugins/official-catalog',
+      filter
+    ),
+    baseUrl
+  });
+}
+
+export function installConsoleNetworkEgressOfficialPlugin(
+  input: InstallConsoleOfficialPluginInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<InstallConsolePluginResult>({
+    path: '/api/console/settings/network-center/proxy-plugins/install-official',
+    method: 'POST',
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function uploadConsoleNetworkEgressPluginPackage(
+  file: File,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  const formData = new FormData();
+  formData.set('file', file);
+  return apiFetch<InstallConsolePluginResult>({
+    path: '/api/console/settings/network-center/proxy-plugins/install-upload',
+    method: 'POST',
+    rawBody: formData,
+    contentType: null,
+    csrfToken,
+    baseUrl
+  });
+}
+
 export function createConsoleNetworkEgressProvider(
   input: CreateConsoleNetworkEgressProviderInput,
   csrfToken: string,
@@ -186,6 +274,20 @@ export function syncConsoleNetworkEgressProvider(
 export function listConsoleNetworkEgressPools(baseUrl?: string) {
   return apiFetch<ConsoleNetworkEgressPool[]>({
     path: '/api/console/network-center/pools',
+    baseUrl
+  });
+}
+
+export function createConsoleNetworkEgressProxy(
+  input: CreateConsoleNetworkEgressProxyInput,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleNetworkEgressProvider>({
+    path: '/api/console/network-center/pools/proxies',
+    method: 'POST',
+    body: input,
+    csrfToken,
     baseUrl
   });
 }
@@ -242,6 +344,20 @@ export function createConsoleNetworkEgressPoolMember(
     path: `/api/console/network-center/pools/${encodeURIComponent(poolId)}/members`,
     method: 'POST',
     body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function testConsoleNetworkEgressPoolMember(
+  poolId: string,
+  memberId: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetch<ConsoleNetworkEgressPoolMember>({
+    path: `/api/console/network-center/pools/${encodeURIComponent(poolId)}/members/${encodeURIComponent(memberId)}/test-connection`,
+    method: 'POST',
     csrfToken,
     baseUrl
   });

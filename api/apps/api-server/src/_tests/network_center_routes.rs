@@ -36,6 +36,37 @@ async fn network_center_provider_registry_rejects_session_without_feature_scope(
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
+/// AC-GP04: the proxy plugin catalog is a Network Center capability, not an extension-center
+/// backdoor that happens to be rendered on the proxy types page.
+#[tokio::test]
+async fn network_center_proxy_plugin_catalog_rejects_session_without_feature_scope() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "network-plugins-without-scope",
+        "temp-pass",
+    )
+    .await;
+    let (cookie, _) =
+        login_and_capture_cookie(&app, "network-plugins-without-scope", "temp-pass").await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/settings/network-center/proxy-plugins/official-catalog")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .expect("request should be valid"),
+        )
+        .await
+        .expect("router should return a response");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
 /// AC-015: pool state is protected by the same backend-owned Network Center feature scope.
 #[tokio::test]
 async fn network_center_pool_registry_rejects_session_without_feature_scope() {
@@ -57,6 +88,75 @@ async fn network_center_pool_registry_rejects_session_without_feature_scope() {
             Request::builder()
                 .uri("/api/console/network-center/pools")
                 .header("cookie", cookie)
+                .body(Body::empty())
+                .expect("request should be valid"),
+        )
+        .await
+        .expect("router should return a response");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+/// AC-GP03: creating a proxy is a Network Center action and must not be exposed solely because
+/// the route happens to live below the pool URL.
+#[tokio::test]
+async fn network_center_proxy_creation_rejects_session_without_feature_scope() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "network-proxy-create-without-scope",
+        "temp-pass",
+    )
+    .await;
+    let (cookie, csrf) =
+        login_and_capture_cookie(&app, "network-proxy-create-without-scope", "temp-pass").await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/network-center/pools/proxies")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    r#"{"provider_code":"builtin_static_http","display_name":"Blocked","config":{"host":"198.65.36.212","port":"37867"}}"#,
+                ))
+                .expect("request should be valid"),
+        )
+        .await
+        .expect("router should return a response");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
+/// AC-OP05: connection tests remain a Network Center operation and never become a public proxy
+/// endpoint merely because the browser has a pool-member id.
+#[tokio::test]
+async fn network_center_connection_test_rejects_session_without_feature_scope() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "network-probe-without-scope",
+        "temp-pass",
+    )
+    .await;
+    let (cookie, csrf) =
+        login_and_capture_cookie(&app, "network-probe-without-scope", "temp-pass").await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/network-center/pools/00000000-0000-0000-0000-000000000001/members/00000000-0000-0000-0000-000000000002/test-connection")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
                 .body(Body::empty())
                 .expect("request should be valid"),
         )

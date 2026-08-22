@@ -61,7 +61,7 @@ pub struct InstallOfficialPluginBody {
 
 #[derive(ToSchema)]
 #[allow(dead_code)]
-pub(super) struct PluginUploadMultipartBody {
+pub(crate) struct PluginUploadMultipartBody {
     #[schema(value_type = String, format = Binary)]
     file: Vec<u8>,
 }
@@ -505,7 +505,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 pub(crate) mod extension_center;
 pub(crate) mod settings_routes;
 
-pub(super) fn base_service(
+pub(crate) fn base_service(
     state: &ApiState,
     actor: &domain::ActorContext,
 ) -> PluginManagementService<MainDurableStore, ApiProviderRuntime> {
@@ -573,7 +573,7 @@ fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
 }
 
-fn to_compatibility_override(
+pub(crate) fn to_compatibility_override(
     compatibility_override: Option<PluginCompatibilityOverrideBody>,
 ) -> Option<PluginCompatibilityOverride> {
     compatibility_override.map(|value| PluginCompatibilityOverride {
@@ -583,7 +583,7 @@ fn to_compatibility_override(
     })
 }
 
-pub(super) fn to_risk_override(
+pub(crate) fn to_risk_override(
     value: Option<PluginRiskOverrideBody>,
 ) -> Option<PluginRiskOverride> {
     value.map(|value| PluginRiskOverride {
@@ -592,7 +592,7 @@ pub(super) fn to_risk_override(
     })
 }
 
-async fn enforce_plugin_upload_limit(request: Request<Body>, next: Next) -> Response {
+pub(crate) async fn enforce_plugin_upload_limit(request: Request<Body>, next: Next) -> Response {
     let (parts, body) = request.into_parts();
     match to_bytes(body, MAX_PLUGIN_UPLOAD_BYTES).await {
         Ok(bytes) => {
@@ -603,7 +603,9 @@ async fn enforce_plugin_upload_limit(request: Request<Body>, next: Next) -> Resp
     }
 }
 
-async fn read_upload_file(multipart: &mut Multipart) -> Result<(String, Vec<u8>), ApiError> {
+pub(crate) async fn read_upload_file(
+    multipart: &mut Multipart,
+) -> Result<(String, Vec<u8>), ApiError> {
     while let Some(field) = multipart
         .next_field()
         .await
@@ -690,7 +692,7 @@ pub(crate) fn runtime_slot_for_contract(contract_version: &str) -> Option<String
     }
 }
 
-fn to_install_response(result: InstallPluginResult) -> InstallPluginResponse {
+pub(crate) fn to_install_response(result: InstallPluginResult) -> InstallPluginResponse {
     InstallPluginResponse {
         installation: to_installation_response_with_artifact(
             result.installation,
@@ -860,7 +862,7 @@ fn to_task_response(task: domain::PluginTaskRecord) -> PluginTaskResponse {
     }
 }
 
-fn resolve_locale_meta(
+pub(crate) fn resolve_locale_meta(
     headers: &HeaderMap,
     query_locale: Option<String>,
     user_preferred_locale: Option<String>,
@@ -885,7 +887,9 @@ fn resolve_locale_meta(
     .into()
 }
 
-fn requested_locales(locale_meta: &LocaleMetaResponse) -> control_plane::i18n::RequestedLocales {
+pub(crate) fn requested_locales(
+    locale_meta: &LocaleMetaResponse,
+) -> control_plane::i18n::RequestedLocales {
     control_plane::i18n::RequestedLocales::new(
         locale_meta.resolved_locale.clone(),
         locale_meta.fallback_locale.clone(),
@@ -923,7 +927,7 @@ fn official_filter_from_query(query: &OfficialPluginCatalogQuery) -> OfficialPlu
     }
 }
 
-async fn resolved_official_plugin_install_command(
+pub(crate) async fn resolved_official_plugin_install_command(
     state: &ApiState,
     actor_user_id: Uuid,
     plugin_id: String,

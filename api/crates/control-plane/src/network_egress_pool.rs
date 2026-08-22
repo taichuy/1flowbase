@@ -8,10 +8,47 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
-        NetworkEgressPoolRepository, NetworkEgressRepository, UpdateNetworkEgressPoolInput,
-        UpdateNetworkEgressPoolMemberInput,
+        NetworkEgressPoolRepository, NetworkEgressRepository,
+        RecordNetworkEgressPoolMemberProbeInput, UpdateNetworkEgressPoolMemberInput,
     },
 };
+
+/// The Network Center has one system-wide proxy pool.  Keeping its id stable lets routing
+/// retain a normal durable foreign key without exposing a pool choice in product UI.
+pub const GLOBAL_NETWORK_EGRESS_POOL_ID: Uuid =
+    Uuid::from_u128(0x1f10_0ba5_0000_4000_8000_0000_0000_1805);
+
+pub async fn ensure_global_network_egress_pool<R>(
+    repository: &R,
+    actor_user_id: Uuid,
+) -> Result<domain::NetworkEgressPool>
+where
+    R: NetworkEgressPoolRepository,
+{
+    if let Some(pool) = repository
+        .get_network_egress_pool(GLOBAL_NETWORK_EGRESS_POOL_ID)
+        .await?
+    {
+        return Ok(pool);
+    }
+    match repository
+        .create_network_egress_pool(&CreateNetworkEgressPoolInput {
+            pool_id: GLOBAL_NETWORK_EGRESS_POOL_ID,
+            display_name: "Global proxy pool".to_string(),
+            owner_provider_id: None,
+            actor_user_id,
+        })
+        .await
+    {
+        Ok(pool) => Ok(pool),
+        // A concurrent first write can win after the read above.  In that case the stable id
+        // makes a second lookup sufficient, without pretending this is a user-created pool.
+        Err(error) => repository
+            .get_network_egress_pool(GLOBAL_NETWORK_EGRESS_POOL_ID)
+            .await?
+            .ok_or(error),
+    }
+}
 
 pub struct CreateNetworkEgressPoolCommand {
     pub actor_user_id: Uuid,
@@ -68,6 +105,10 @@ pub struct UpdateNetworkEgressPoolMemberCommand {
 pub struct NetworkEgressPoolMemberView {
     pub member: domain::NetworkEgressPoolMember,
     pub health: domain::NetworkEgressPoolMemberHealth,
+    pub provider_code: String,
+    pub display_name: String,
+    pub address_summary: Option<String>,
+    pub region: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -108,6 +149,13 @@ where
         }
     }
 
+    pub async fn list_global(&self, actor_user_id: Uuid) -> Result<Vec<NetworkEgressPoolView>> {
+        Ok(vec![
+            self.view(ensure_global_network_egress_pool(&self.repository, actor_user_id).await?)
+                .await?,
+        ])
+    }
+
     pub async fn list(&self) -> Result<Vec<NetworkEgressPoolView>> {
         let pools = self.repository.list_network_egress_pools().await?;
         let mut views = Vec::with_capacity(pools.len());
@@ -119,63 +167,29 @@ where
 
     pub async fn create(
         &self,
-        command: CreateNetworkEgressPoolCommand,
+        _command: CreateNetworkEgressPoolCommand,
     ) -> Result<NetworkEgressPoolView> {
-        let pool = self
-            .repository
-            .create_network_egress_pool(&CreateNetworkEgressPoolInput {
-                pool_id: Uuid::now_v7(),
-                display_name: required_text(&command.display_name, "display_name")?,
-                owner_provider_id: None,
-                actor_user_id: command.actor_user_id,
-            })
-            .await?;
-        self.audit(
-            command.actor_user_id,
-            pool.id,
-            "network_egress_pool.created",
-        )
-        .await?;
-        Ok(NetworkEgressPoolView {
-            pool,
-            members: Vec::new(),
-        })
+        Err(ControlPlaneError::Conflict("network_egress_global_pool_only").into())
     }
 
     pub async fn update(
         &self,
         command: UpdateNetworkEgressPoolCommand,
     ) -> Result<NetworkEgressPoolView> {
-        self.require_user_managed_pool(command.pool_id).await?;
-        let pool = self
-            .repository
-            .update_network_egress_pool(&UpdateNetworkEgressPoolInput {
-                pool_id: command.pool_id,
-                display_name: required_text(&command.display_name, "display_name")?,
-                actor_user_id: command.actor_user_id,
-            })
-            .await?;
-        self.audit(
-            command.actor_user_id,
-            pool.id,
-            "network_egress_pool.updated",
-        )
-        .await?;
-        self.view(pool).await
+        let _ = command;
+        Err(ControlPlaneError::Conflict("network_egress_global_pool_only").into())
     }
 
     pub async fn delete(&self, actor_user_id: Uuid, pool_id: Uuid) -> Result<()> {
-        self.require_user_managed_pool(pool_id).await?;
-        self.repository.delete_network_egress_pool(pool_id).await?;
-        self.audit(actor_user_id, pool_id, "network_egress_pool.deleted")
-            .await
+        let _ = (actor_user_id, pool_id);
+        Err(ControlPlaneError::Conflict("network_egress_global_pool_only").into())
     }
 
     pub async fn add_member(
         &self,
         command: CreateNetworkEgressPoolMemberCommand,
     ) -> Result<NetworkEgressPoolMemberView> {
-        self.require_user_managed_pool(command.pool_id).await?;
+        self.require_global_pool(command.pool_id).await?;
         let provider_egress_key =
             required_text(&command.provider_egress_key, "provider_egress_key")?;
         validate_sequence(command.sequence)?;
@@ -206,7 +220,7 @@ where
         &self,
         command: AddStaticHttpProxyToPoolCommand,
     ) -> Result<NetworkEgressPoolMemberView> {
-        self.require_user_managed_pool(command.pool_id).await?;
+        self.require_global_pool(command.pool_id).await?;
         let display_name = required_text(&command.display_name, "display_name")?;
         let host = static_http_host(&command.host)?;
         if command.port == 0 {
@@ -230,6 +244,7 @@ where
                     member_id: Uuid::now_v7(),
                     pool_id: command.pool_id,
                     display_name,
+                    description: String::new(),
                     secret_ref,
                     plaintext_secret_json: json!({
                         "host": host,
@@ -258,7 +273,7 @@ where
         &self,
         command: AddProviderEgressesToPoolCommand,
     ) -> Result<Vec<NetworkEgressPoolMemberView>> {
-        self.require_user_managed_pool(command.pool_id).await?;
+        self.require_global_pool(command.pool_id).await?;
         validate_sequence(command.sequence)?;
         let provider = self
             .repository
@@ -303,7 +318,7 @@ where
         &self,
         command: UpdateNetworkEgressPoolMemberCommand,
     ) -> Result<NetworkEgressPoolMemberView> {
-        self.require_user_managed_pool(command.pool_id).await?;
+        self.require_global_pool(command.pool_id).await?;
         validate_sequence(command.sequence)?;
         let member = self
             .repository
@@ -330,12 +345,65 @@ where
         pool_id: Uuid,
         member_id: Uuid,
     ) -> Result<()> {
-        self.require_user_managed_pool(pool_id).await?;
+        self.require_global_pool(pool_id).await?;
         self.repository
             .delete_network_egress_pool_member(pool_id, member_id)
             .await?;
         self.audit(actor_user_id, pool_id, "network_egress_pool.member_deleted")
             .await
+    }
+
+    pub async fn record_probe(
+        &self,
+        actor_user_id: Uuid,
+        pool_id: Uuid,
+        member_id: Uuid,
+        status: domain::NetworkEgressPoolMemberProbeStatus,
+        http_status: domain::NetworkEgressPoolMemberProbeStatus,
+        https_status: domain::NetworkEgressPoolMemberProbeStatus,
+        latency_ms: i32,
+        exit_ip: Option<String>,
+        exit_region: Option<String>,
+        error_code: Option<String>,
+    ) -> Result<NetworkEgressPoolMemberView> {
+        self.require_global_pool(pool_id).await?;
+        let member = self
+            .repository
+            .record_network_egress_pool_member_probe(&RecordNetworkEgressPoolMemberProbeInput {
+                pool_id,
+                member_id,
+                status,
+                http_status,
+                https_status,
+                latency_ms,
+                exit_ip,
+                exit_region,
+                error_code,
+                probed_at: OffsetDateTime::now_utc(),
+                actor_user_id,
+            })
+            .await?;
+        self.audit(
+            actor_user_id,
+            pool_id,
+            "network_egress_pool.member_connection_tested",
+        )
+        .await?;
+        self.member_view(member).await
+    }
+
+    pub async fn member(
+        &self,
+        pool_id: Uuid,
+        member_id: Uuid,
+    ) -> Result<domain::NetworkEgressPoolMember> {
+        self.require_global_pool(pool_id).await?;
+        self.repository
+            .list_network_egress_pool_members(pool_id)
+            .await?
+            .into_iter()
+            .find(|member| member.id == member_id)
+            .ok_or_else(|| ControlPlaneError::NotFound("network_egress_pool_member").into())
     }
 
     pub async fn select_healthy_first(&self, pool_id: Uuid) -> Result<NetworkEgressPoolSelection> {
@@ -378,20 +446,75 @@ where
         })
     }
 
-    async fn require_user_managed_pool(&self, pool_id: Uuid) -> Result<()> {
-        let pool = self.require_pool(pool_id).await?;
-        if pool.owner_provider_id.is_some() {
-            return Err(ControlPlaneError::Conflict("network_egress_pool_provider_owned").into());
+    async fn require_global_pool(&self, pool_id: Uuid) -> Result<()> {
+        if pool_id != GLOBAL_NETWORK_EGRESS_POOL_ID {
+            return Err(ControlPlaneError::Conflict("network_egress_global_pool_only").into());
         }
-        Ok(())
+        self.require_pool(pool_id).await.map(|_| ())
     }
 
     async fn member_view(
         &self,
         member: domain::NetworkEgressPoolMember,
     ) -> Result<NetworkEgressPoolMemberView> {
-        let health = self.member_health(&member).await?;
-        Ok(NetworkEgressPoolMemberView { member, health })
+        let provider = self
+            .repository
+            .get_network_egress_provider(member.provider_id)
+            .await?
+            .ok_or_else(|| ControlPlaneError::NotFound("network_egress_provider"))?;
+        let projection = self
+            .repository
+            .list_network_egress_projections(member.provider_id)
+            .await?
+            .into_iter()
+            .find(|item| item.provider_egress_key == member.provider_egress_key)
+            .ok_or_else(|| ControlPlaneError::InvalidInput("provider_egress_key"))?;
+        let address_summary = self.safe_address_summary(&provider).await?;
+        let health = if provider.lifecycle == domain::NetworkEgressProviderLifecycle::Active
+            && provider.health_status == domain::NetworkEgressHealthStatus::Healthy
+            && projection.availability == "available"
+        {
+            domain::NetworkEgressPoolMemberHealth::Healthy
+        } else {
+            domain::NetworkEgressPoolMemberHealth::Unhealthy
+        };
+        let region = projection.region.or(member.probe_exit_region.clone());
+        Ok(NetworkEgressPoolMemberView {
+            member,
+            health,
+            provider_code: provider.provider_code,
+            display_name: projection.display_name,
+            address_summary,
+            region,
+        })
+    }
+
+    async fn safe_address_summary(
+        &self,
+        provider: &domain::NetworkEgressProviderRecord,
+    ) -> Result<Option<String>> {
+        if provider.provider_code != "builtin_static_http" {
+            return Ok(None);
+        }
+        let Some(master_key) = self.secret_master_key.as_deref() else {
+            return Ok(None);
+        };
+        let Some(secret) = self
+            .repository
+            .resolve_network_egress_provider_secret_json(
+                provider.id,
+                &provider.secret_ref,
+                master_key,
+            )
+            .await?
+        else {
+            return Ok(None);
+        };
+        let host = secret["host"].as_str().filter(|value| !value.is_empty());
+        let port = secret["port"]
+            .as_u64()
+            .filter(|value| (1..=65535).contains(value));
+        Ok(host.zip(port).map(|(host, port)| format!("{host}:{port}")))
     }
 
     async fn member_health(

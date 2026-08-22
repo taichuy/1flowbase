@@ -3,15 +3,19 @@ import { describe, expect, test, vi } from 'vitest';
 import * as transport from '../transport';
 import {
   createConsoleNetworkEgressProvider,
+  installConsoleNetworkEgressOfficialPlugin,
   createConsoleNetworkEgressPool,
   createConsoleNetworkEgressPoolMember,
   deleteConsoleNetworkEgressPool,
   deleteConsoleNetworkEgressPoolMember,
   listConsoleNetworkEgressPools,
+  listConsoleNetworkEgressOfficialPluginCatalog,
   syncConsoleNetworkEgressProvider,
+  testConsoleNetworkEgressPoolMember,
   updateConsoleNetworkEgressPool,
   updateConsoleNetworkEgressPoolMember,
-  updateConsoleNetworkEgressProviderLifecycle
+  updateConsoleNetworkEgressProviderLifecycle,
+  uploadConsoleNetworkEgressPluginPackage
 } from '../console/network-center';
 
 describe('console network egress providers client', () => {
@@ -55,6 +59,44 @@ describe('console network egress providers client', () => {
       syncConsoleNetworkEgressProvider('provider-1', 'csrf-123')
     ).resolves.toMatchObject({
       path: '/api/console/settings/network-center/providers/provider-1/sync',
+      method: 'POST',
+      csrfToken: 'csrf-123'
+    });
+  });
+});
+
+describe('console network egress plugin client', () => {
+  vi.spyOn(transport, 'apiFetch').mockImplementation(
+    async (input) => input as never
+  );
+
+  test('AC-GP04 uses Network Center scoped routes for catalog and installation', async () => {
+    await expect(
+      listConsoleNetworkEgressOfficialPluginCatalog({
+        locale: 'zh_Hans',
+        q: 'clash'
+      })
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/network-center/proxy-plugins/official-catalog?locale=zh_Hans&q=clash'
+    });
+    await expect(
+      installConsoleNetworkEgressOfficialPlugin(
+        { plugin_id: 'clash-proxy' },
+        'csrf-123'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/network-center/proxy-plugins/install-official',
+      method: 'POST',
+      csrfToken: 'csrf-123',
+      body: { plugin_id: 'clash-proxy' }
+    });
+    await expect(
+      uploadConsoleNetworkEgressPluginPackage(
+        new File(['plugin'], 'clash-proxy.tar.gz'),
+        'csrf-123'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/network-center/proxy-plugins/install-upload',
       method: 'POST',
       csrfToken: 'csrf-123'
     });
@@ -134,6 +176,14 @@ describe('console network egress pools client', () => {
       method: 'PATCH',
       csrfToken: 'csrf-123',
       body: { enabled: false, sequence: 20 }
+    });
+  });
+
+  test('AC-OP02 invokes the fixed server-side connection test without a user target URL', async () => {
+    await expect(testConsoleNetworkEgressPoolMember('pool-1', 'member-1', 'csrf-123')).resolves.toMatchObject({
+      path: '/api/console/network-center/pools/pool-1/members/member-1/test-connection',
+      method: 'POST',
+      csrfToken: 'csrf-123'
     });
   });
 

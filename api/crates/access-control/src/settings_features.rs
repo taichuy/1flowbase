@@ -676,10 +676,24 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             },
             api_routes: settings_api_routes(&[
                 ("GET", "/api/console/settings/network-center/providers"),
+                ("GET", "/api/console/settings/network-center/providers/types"),
+                (
+                    "GET",
+                    "/api/console/settings/network-center/proxy-plugins/official-catalog",
+                ),
                 ("POST", "/api/console/settings/network-center/providers"),
+                (
+                    "POST",
+                    "/api/console/settings/network-center/proxy-plugins/install-official",
+                ),
+                (
+                    "POST",
+                    "/api/console/settings/network-center/proxy-plugins/install-upload",
+                ),
                 ("PATCH", "/api/console/settings/network-center/providers/{id}"),
                 ("POST", "/api/console/settings/network-center/providers/{id}/sync"),
                 ("GET", "/api/console/network-center/pools"),
+                ("POST", "/api/console/network-center/pools/proxies"),
                 ("POST", "/api/console/network-center/pools"),
                 ("PATCH", "/api/console/network-center/pools/{pool_id}"),
                 ("DELETE", "/api/console/network-center/pools/{pool_id}"),

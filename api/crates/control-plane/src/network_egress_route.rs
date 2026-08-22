@@ -4,6 +4,7 @@ use uuid::Uuid;
 use crate::{
     audit::audit_log,
     errors::ControlPlaneError,
+    network_egress_pool::{ensure_global_network_egress_pool, GLOBAL_NETWORK_EGRESS_POOL_ID},
     ports::{
         CreateNetworkEgressRouteInput, NetworkEgressPoolRepository, NetworkEgressRepository,
         NetworkEgressRouteRepository, UpdateNetworkEgressRouteInput,
@@ -50,6 +51,7 @@ where
         &self,
         command: CreateNetworkEgressRouteCommand,
     ) -> Result<domain::NetworkEgressRoute> {
+        ensure_global_network_egress_pool(&self.repository, command.actor_user_id).await?;
         self.require_pool(command.pool_id).await?;
         let route = self
             .repository
@@ -76,6 +78,7 @@ where
         &self,
         command: UpdateNetworkEgressRouteCommand,
     ) -> Result<domain::NetworkEgressRoute> {
+        ensure_global_network_egress_pool(&self.repository, command.actor_user_id).await?;
         self.require_pool(command.pool_id).await?;
         let route = self
             .repository
@@ -133,6 +136,9 @@ where
     }
 
     async fn require_pool(&self, pool_id: Uuid) -> Result<()> {
+        if pool_id != GLOBAL_NETWORK_EGRESS_POOL_ID {
+            return Err(ControlPlaneError::Conflict("network_egress_global_pool_only").into());
+        }
         if self
             .repository
             .get_network_egress_pool(pool_id)

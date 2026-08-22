@@ -5,18 +5,12 @@ import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const networkCenterApi = vi.hoisted(() => ({
-  settingsNetworkEgressPoolsQueryKey: [
-    'settings',
-    'network-center',
-    'pools'
-  ] as const,
+  settingsNetworkEgressPoolsQueryKey: ['settings', 'network-center', 'pools'] as const,
   fetchSettingsNetworkEgressPools: vi.fn(),
-  createSettingsNetworkEgressPool: vi.fn(),
-  updateSettingsNetworkEgressPool: vi.fn(),
-  deleteSettingsNetworkEgressPool: vi.fn(),
-  createSettingsNetworkEgressPoolMember: vi.fn(),
-  createSettingsNetworkEgressPoolStaticHttpMember: vi.fn(),
-  addSettingsNetworkEgressProviderToPool: vi.fn(),
+  fetchSettingsNetworkEgressProviderTypes: vi.fn(),
+  fetchSettingsNetworkEgressProviders: vi.fn(),
+  createSettingsNetworkEgressProxy: vi.fn(),
+  testSettingsNetworkEgressPoolMember: vi.fn(),
   updateSettingsNetworkEgressPoolMember: vi.fn(),
   deleteSettingsNetworkEgressPoolMember: vi.fn()
 }));
@@ -27,143 +21,210 @@ import { AppI18nProvider } from '../../../../../app/AppI18nProvider';
 import { useAuthStore } from '../../../../../state/auth-store';
 import { NetworkEgressPoolsPanel } from '../NetworkEgressPoolsPanel';
 
-const providers = [
-  {
-    id: 'provider-1',
-    installation_id: 'installation-1',
-    provider_code: 'edge',
-    display_name: 'Edge provider',
-    description: '',
-    lifecycle: 'active',
-    health_status: 'healthy',
-    secret_configured: true,
-    last_sync_error: null,
-    last_synced_at: null,
-    egresses: [
-      {
-        provider_egress_key: 'egress:eu-west',
-        display_name: 'EU West',
-        region: 'eu-west',
-        tags: [],
-        availability: 'available',
-        synced_at: '2026-08-20T00:00:00Z'
-      }
-    ]
-  }
-];
-
 function renderPanel() {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
-  });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <AppI18nProvider>
-      <App>
-        <QueryClientProvider client={client}>{children}</QueryClientProvider>
-      </App>
-    </AppI18nProvider>
+    <AppI18nProvider><App><QueryClientProvider client={client}>{children}</QueryClientProvider></App></AppI18nProvider>
   );
-
-  return render(<NetworkEgressPoolsPanel providers={providers} />, { wrapper });
+  return render(<NetworkEgressPoolsPanel />, { wrapper });
 }
 
 describe('NetworkEgressPoolsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     useAuthStore.setState({ csrfToken: 'csrf-123' });
-    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([
-      {
-        id: 'pool-1',
-        display_name: 'European exits',
-        selection_strategy: 'healthy_first',
-        members: [
-          {
-            id: 'member-1',
-            provider_id: 'provider-1',
-            provider_egress_key: 'egress:eu-west',
-            enabled: true,
-            sequence: 10,
-            health: 'invalid'
-          }
-        ]
-      }
+    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([{ id: 'global-pool', display_name: 'Global proxy pool', selection_strategy: 'healthy_first', members: [] }]);
+    networkCenterApi.fetchSettingsNetworkEgressProviders.mockResolvedValue([]);
+    networkCenterApi.fetchSettingsNetworkEgressProviderTypes.mockResolvedValue([
+      { installation_id: null, provider_code: 'builtin_static_http', display_name: 'HTTP proxy', form_schema: { schema_version: '1flowbase.plugin.form/v1', fields: [{ key: 'host', label: 'Hostname or IP', type: 'string', required: true }, { key: 'port', label: 'Port', type: 'string', required: true }, { key: 'username', label: 'Username', type: 'string' }, { key: 'password', label: 'Password', type: 'string' }] } },
+      { installation_id: 'clash-installation', provider_code: 'clash-proxy', display_name: 'Clash / Mihomo Proxy', form_schema: { schema_version: '1flowbase.plugin.form/v1', fields: [{ key: 'subscription_url', label: 'Subscription URL', type: 'string', required: true }] } }
     ]);
   });
 
-  test('AC-NC08 presents the backend member reference and its invalid health without lease fields', async () => {
+  test('AC-GP01 presents proxy creation in the shared fixed-height modal shell', async () => {
     renderPanel();
 
-    expect(await screen.findByText('European exits')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /展开行|Expand row/ }));
-    expect(
-      await screen.findByText('provider-1 · egress:eu-west')
-    ).toBeInTheDocument();
-    expect(screen.getByText(/Invalid|无效/)).toBeInTheDocument();
-    expect(screen.queryByText(/lease/i)).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /添加代理|Add proxy/ }));
+
+    expect(screen.getByTestId('fixed-height-modal-scroll-body')).toBeInTheDocument();
   });
 
-  test('AC-NC16 adds a manually configured HTTP proxy from the target pool', async () => {
-    networkCenterApi.createSettingsNetworkEgressPoolStaticHttpMember.mockResolvedValue({
-      id: 'member-static'
-    });
+  test('AC-GP01 creates a manual proxy from the global pool without creating a pool', async () => {
+    networkCenterApi.createSettingsNetworkEgressProxy.mockResolvedValue({ id: 'provider-1' });
     renderPanel();
-
-    fireEvent.click(await screen.findByRole('button', { name: /展开行|Expand row/ }));
     fireEvent.click(await screen.findByRole('button', { name: /添加代理|Add proxy/ }));
-    fireEvent.click(screen.getByLabelText(/手动 HTTP 代理|Manual HTTP proxy/));
-    fireEvent.change(screen.getByLabelText(/名称|Name/), {
-      target: { value: 'US proxy' }
-    });
-    fireEvent.change(screen.getByLabelText(/主机|Host/), {
-      target: { value: '198.65.36.212' }
-    });
-    fireEvent.change(screen.getByLabelText(/端口|Port/), {
-      target: { value: '37867' }
-    });
-    fireEvent.change(screen.getByLabelText(/用户名|Username/), {
-      target: { value: 'suY8TMiTjpEb' }
-    });
-    fireEvent.change(screen.getByLabelText(/密码|Password/), {
-      target: { value: '4BJiWEi3kHXY' }
-    });
-    fireEvent.click(screen.getByRole('button', { name: /保\s*存|Save/ }));
-
-    await waitFor(() =>
-      expect(
-        networkCenterApi.createSettingsNetworkEgressPoolStaticHttpMember
-      ).toHaveBeenCalledWith(
-        'pool-1',
-        expect.objectContaining({
-          display_name: 'US proxy',
-          host: '198.65.36.212',
-          port: 37867,
-          username: 'suY8TMiTjpEb',
-          password: '4BJiWEi3kHXY'
-        }),
-        expect.any(String)
-      )
-    );
+    fireEvent.mouseDown(screen.getByLabelText(/代理类型|Proxy type/));
+    fireEvent.click(await screen.findByText('HTTP proxy'));
+    fireEvent.change(screen.getByLabelText(/名称|Name/), { target: { value: 'US proxy' } });
+    fireEvent.change(await screen.findByLabelText('Hostname or IP'), { target: { value: '198.65.36.212' } });
+    fireEvent.change(screen.getByLabelText('Port'), { target: { value: '37867' } });
+    fireEvent.click(screen.getByRole('button', { name: /确\s*定|OK|Confirm/ }));
+    await waitFor(() => expect(networkCenterApi.createSettingsNetworkEgressProxy).toHaveBeenCalledWith({
+      provider_code: 'builtin_static_http', display_name: 'US proxy', description: '', config: { host: '198.65.36.212', port: '37867' }
+    }, 'csrf-123'));
+    expect(screen.queryByText(/创建代理池|Create proxy pool/)).not.toBeInTheDocument();
   });
 
-  test('AC-NC17 adds every current proxy from the selected extension instance to the target pool', async () => {
-    networkCenterApi.addSettingsNetworkEgressProviderToPool.mockResolvedValue([]);
+  test('AC-GP02 submits an extension parser form directly from proxy creation', async () => {
+    networkCenterApi.createSettingsNetworkEgressProxy.mockResolvedValue({ id: 'provider-2' });
+    renderPanel();
+    fireEvent.click(await screen.findByRole('button', { name: /添加代理|Add proxy/ }));
+    fireEvent.mouseDown(screen.getByLabelText(/代理类型|Proxy type/));
+    fireEvent.click(await screen.findByText('Clash / Mihomo Proxy'));
+    fireEvent.change(screen.getByLabelText(/名称|Name/), { target: { value: 'Subscription' } });
+    fireEvent.change(await screen.findByLabelText('Subscription URL'), { target: { value: 'https://example.com/subscription' } });
+    fireEvent.click(screen.getByRole('button', { name: /确\s*定|OK|Confirm/ }));
+    await waitFor(() => expect(networkCenterApi.createSettingsNetworkEgressProxy).toHaveBeenCalledWith(expect.objectContaining({
+      provider_code: 'clash-proxy', config: { subscription_url: 'https://example.com/subscription' }
+    }), 'csrf-123'));
+  });
+
+  test('AC-OP02 renders safe operating fields and tests one proxy through the backend', async () => {
+    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([{
+      id: 'global-pool',
+      display_name: 'Global proxy pool',
+      selection_strategy: 'healthy_first',
+      members: [{
+        id: 'member-1',
+        provider_id: 'provider-1',
+        provider_egress_key: 'static-http',
+        provider_code: 'builtin_static_http',
+        display_name: 'US proxy',
+        address_summary: '198.65.36.212:37867',
+        region: 'United States',
+        enabled: true,
+        sequence: 0,
+        health: 'healthy',
+        probe_status: 'succeeded',
+        probe_latency_ms: 32,
+        probe_exit_ip: '198.65.36.212',
+        probe_error_code: null,
+        last_probed_at: '2026-08-22T03:00:00Z'
+      }]
+    }]);
+    networkCenterApi.testSettingsNetworkEgressPoolMember.mockResolvedValue({ probe_status: 'succeeded' });
     renderPanel();
 
-    fireEvent.click(await screen.findByRole('button', { name: /展开行|Expand row/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /添加代理|Add proxy/ }));
-    fireEvent.click(screen.getByLabelText(/扩展代理类型|Extension proxy type/));
-    fireEvent.mouseDown(
-      await screen.findByLabelText(/代理类型实例|Proxy type instance/)
-    );
-    fireEvent.click(await screen.findByText('Edge provider · 1'));
-    fireEvent.click(screen.getByRole('button', { name: /保\s*存|Save/ }));
+    expect(await screen.findByRole('columnheader', { name: /名称|Name/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /代理类型|Proxy types/ })).toBeInTheDocument();
+    expect(screen.getByRole('columnheader', { name: /延迟|Latency/ })).toBeInTheDocument();
+    expect(await screen.findByText('HTTP proxy')).toBeInTheDocument();
+    expect(screen.queryByText('builtin_static_http')).not.toBeInTheDocument();
+    expect(await screen.findByText('198.65.36.212:37867')).toBeInTheDocument();
+    expect(screen.getByText('198.65.36.212:37867').closest('code')).toBeNull();
+    expect(screen.getByText('32ms')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /测试|Test/ }));
 
-    await waitFor(() =>
-      expect(networkCenterApi.addSettingsNetworkEgressProviderToPool).toHaveBeenCalledWith(
-        'pool-1',
-        { provider_id: 'provider-1', enabled: true, sequence: 0 },
-        'csrf-123'
-      )
-    );
+    await waitFor(() => expect(networkCenterApi.testSettingsNetworkEgressPoolMember)
+      .toHaveBeenCalledWith('global-pool', 'member-1', 'csrf-123'));
+  });
+
+  test('AC-OP05 shows a persisted latency column and defaults an untested proxy to 0ms', async () => {
+    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([{
+      id: 'global-pool',
+      display_name: 'Global proxy pool',
+      selection_strategy: 'healthy_first',
+      members: [{
+        id: 'member-1',
+        provider_id: 'provider-1',
+        provider_egress_key: 'static-http',
+        provider_code: 'builtin_static_http',
+        display_name: 'Untested proxy',
+        address_summary: '198.65.36.212:37867',
+        region: null,
+        enabled: true,
+        sequence: 0,
+        health: 'healthy',
+        probe_status: 'not_tested',
+        probe_http_status: 'not_tested',
+        probe_https_status: 'not_tested',
+        probe_latency_ms: 0,
+        probe_exit_ip: null,
+        probe_exit_region: null,
+        probe_error_code: null,
+        last_probed_at: null
+      }]
+    }]);
+    renderPanel();
+
+    expect(await screen.findByRole('columnheader', { name: /延迟|Latency/ })).toBeInTheDocument();
+    expect(await screen.findByText('Untested proxy')).toBeInTheDocument();
+    expect(screen.getByText('0ms')).toBeInTheDocument();
+  });
+
+  test('AC-OP03 provides test, edit, and delete actions, and edits only the selected proxy member', async () => {
+    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([{
+      id: 'global-pool',
+      display_name: 'Global proxy pool',
+      selection_strategy: 'healthy_first',
+      members: [{
+        id: 'member-1',
+        provider_id: 'provider-1',
+        provider_egress_key: 'static-http',
+        provider_code: 'builtin_static_http',
+        display_name: 'US proxy',
+        description: 'Initial proxy',
+        address_summary: '198.65.36.212:37867',
+        region: null,
+        enabled: true,
+        sequence: 0,
+        health: 'healthy',
+        probe_status: 'not_tested',
+        probe_latency_ms: 0,
+        probe_exit_ip: null,
+        probe_error_code: null,
+        last_probed_at: null
+      }]
+    }]);
+    networkCenterApi.updateSettingsNetworkEgressPoolMember.mockResolvedValue({ id: 'member-1' });
+    renderPanel();
+
+    expect(await screen.findByRole('button', { name: '测试' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '测试连接' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+    fireEvent.change(screen.getByLabelText(/成员顺序|Member sequence/), { target: { value: '2' } });
+    fireEvent.click(screen.getByRole('button', { name: /确\s*定|OK|Confirm/ }));
+
+    await waitFor(() => expect(networkCenterApi.updateSettingsNetworkEgressPoolMember).toHaveBeenCalledWith(
+      'global-pool',
+      'member-1',
+      { enabled: true, sequence: 2 },
+      'csrf-123'
+    ));
+    expect(screen.getByRole('button', { name: /删除|Delete/ })).toBeInTheDocument();
+  });
+
+  test('AC-OP04 exposes a successful HTTP egress and failed HTTPS CONNECT separately', async () => {
+    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([{
+      id: 'global-pool',
+      display_name: 'Global proxy pool',
+      selection_strategy: 'healthy_first',
+      members: [{
+        id: 'member-1',
+        provider_id: 'provider-1',
+        provider_egress_key: 'static-http',
+        provider_code: 'builtin_static_http',
+        display_name: 'US proxy',
+        address_summary: '198.65.36.212:37867',
+        region: 'California',
+        enabled: true,
+        sequence: 0,
+        health: 'healthy',
+        probe_status: 'failed',
+        probe_http_status: 'succeeded',
+        probe_https_status: 'failed',
+        probe_latency_ms: 42,
+        probe_exit_ip: '198.65.36.212',
+        probe_exit_region: 'California',
+        probe_error_code: 'https_connect_failed',
+        last_probed_at: '2026-08-22T03:00:00Z'
+      }]
+    }]);
+    renderPanel();
+
+    expect(await screen.findByText('HTTP 可用')).toBeInTheDocument();
+    expect(screen.getByText('HTTPS 不可用')).toBeInTheDocument();
+    expect(screen.getByText('HTTPS CONNECT 被拒绝')).toBeInTheDocument();
+    expect(screen.getByText('California')).toBeInTheDocument();
   });
 });

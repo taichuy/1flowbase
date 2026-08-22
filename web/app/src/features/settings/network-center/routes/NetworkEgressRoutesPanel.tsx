@@ -1,19 +1,5 @@
 import { useState } from 'react';
-import {
-  App,
-  Alert,
-  Button,
-  Empty,
-  Flex,
-  Form,
-  Modal,
-  Popconfirm,
-  Select,
-  Space,
-  Switch,
-  Table,
-  Tag
-} from 'antd';
+import { App, Alert, Button, Empty, Flex, Form, Modal, Popconfirm, Select, Space, Switch, Table, Tag } from 'antd';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createSettingsNetworkEgressRoute,
@@ -36,7 +22,6 @@ import { useAuthStore } from '../../../../state/auth-store';
 type Values = {
   target: string;
   instance_id?: string;
-  pool_id: string;
   enabled: boolean;
 };
 
@@ -121,7 +106,6 @@ export function NetworkEgressRoutesPanel() {
             : 'model_default'
           : (value?.consumer_kind ?? 'github'),
       instance_id: value?.consumer_reference ?? undefined,
-      pool_id: value?.pool_id,
       enabled: value?.enabled ?? true
     });
   };
@@ -129,7 +113,7 @@ export function NetworkEgressRoutesPanel() {
     if (route)
       return update.mutate({
         id: route.id,
-        pool_id: values.pool_id,
+        pool_id: route.pool_id,
         enabled: values.enabled
       });
     const selector =
@@ -143,13 +127,10 @@ export function NetworkEgressRoutesPanel() {
           : { consumer_kind: values.target, consumer_reference: null };
     create.mutate({
       ...selector,
-      pool_id: values.pool_id,
+      pool_id: pools.data?.[0]?.id ?? '',
       enabled: values.enabled
     });
   };
-  const poolName = new Map(
-    (pools.data ?? []).map((item) => [item.id, item.display_name])
-  );
   const modelName = new Map(
     (models.data ?? []).map((item) => [item.id, item.display_name])
   );
@@ -199,11 +180,6 @@ export function NetworkEgressRoutesPanel() {
                     : item.consumer_kind
               },
               {
-                title: i18nText('settings', 'auto.network_center_route_pool'),
-                dataIndex: 'pool_id',
-                render: (id) => poolName.get(id) ?? id
-              },
-              {
                 title: i18nText('settings', 'auto.status'),
                 dataIndex: 'enabled',
                 render: (enabled) => (
@@ -216,7 +192,7 @@ export function NetworkEgressRoutesPanel() {
                 )
               },
               {
-                title: i18nText('settings', 'auto.actions'),
+                title: i18nText('settings', 'auto.operation'),
                 render: (_, item: SettingsNetworkEgressRoute) => (
                   <Space>
                     <Button type="link" onClick={() => open(item)}>
@@ -310,18 +286,6 @@ export function NetworkEgressRoutesPanel() {
               />
             </Form.Item>
           ) : null}
-          <Form.Item
-            name="pool_id"
-            label={i18nText('settings', 'auto.network_center_route_pool')}
-            rules={[{ required: true }]}
-          >
-            <Select
-              options={(pools.data ?? []).map((item) => ({
-                value: item.id,
-                label: item.display_name
-              }))}
-            />
-          </Form.Item>
           <Form.Item
             name="enabled"
             label={i18nText('settings', 'auto.network_center_route_enabled')}

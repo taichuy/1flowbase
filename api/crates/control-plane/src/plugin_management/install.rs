@@ -612,7 +612,7 @@ where
             },
         )
         .await?;
-        self.ensure_model_provider_package_kind(route_plugin_package(&intake.manifest)?)?;
+        self.ensure_console_package_kind(route_plugin_package(&intake.manifest)?)?;
         self.install_intake_result(
             command.actor_user_id,
             intake,
@@ -633,6 +633,13 @@ where
         let installation_id = self.install_uploaded_plugin(command).await?.installation.id;
         self.enable_and_assign_model_provider_installation(actor_user_id, installation_id)
             .await
+    }
+
+    pub async fn install_uploaded_network_egress_provider(
+        &self,
+        command: InstallUploadedPluginCommand,
+    ) -> Result<InstallPluginResult> {
+        self.install_uploaded_plugin(command).await
     }
 
     pub async fn install_extension_node_plugin(
@@ -718,6 +725,14 @@ where
                 ControlPlaneError::PermissionDenied("model_provider_plugin_required").into(),
             );
         }
+        if self.is_network_egress_provider_console_operation()
+            && entry.plugin_type != "network_egress_provider"
+        {
+            return Err(ControlPlaneError::PermissionDenied(
+                "network_egress_provider_plugin_required",
+            )
+            .into());
+        }
         let compatibility_override = validate_official_plugin_compatibility_override(
             &entry,
             &self.host_version,
@@ -745,7 +760,7 @@ where
         );
         let risk_override =
             validate_plugin_risk_override(&risk_warnings, command.risk_override.as_ref())?;
-        self.ensure_model_provider_package_kind(route_plugin_package(&intake.manifest)?)?;
+        self.ensure_console_package_kind(route_plugin_package(&intake.manifest)?)?;
         let result = async {
             let mut detail_json = json!({
                 "install_kind": "official_source",
@@ -770,11 +785,15 @@ where
             if is_host_extension_installation(&install.installation) {
                 return Ok::<InstallPluginResult, anyhow::Error>(install);
             }
-            self.enable_and_assign_model_provider_installation(
-                command.actor_user_id,
-                install.installation.id,
-            )
-            .await
+            if self.is_network_egress_provider_console_operation() {
+                Ok(install)
+            } else {
+                self.enable_and_assign_model_provider_installation(
+                    command.actor_user_id,
+                    install.installation.id,
+                )
+                .await
+            }
         }
         .await;
         result
@@ -791,6 +810,14 @@ where
             return Err(
                 ControlPlaneError::PermissionDenied("model_provider_plugin_required").into(),
             );
+        }
+        if self.is_network_egress_provider_console_operation()
+            && command.plugin_type != "network_egress_provider"
+        {
+            return Err(ControlPlaneError::PermissionDenied(
+                "network_egress_provider_plugin_required",
+            )
+            .into());
         }
         let compatibility_override = validate_plugin_compatibility_requirement(
             &command.minimum_host_version,
@@ -815,7 +842,7 @@ where
         );
         let risk_override =
             validate_plugin_risk_override(&risk_warnings, command.risk_override.as_ref())?;
-        self.ensure_model_provider_package_kind(route_plugin_package(&intake.manifest)?)?;
+        self.ensure_console_package_kind(route_plugin_package(&intake.manifest)?)?;
         let mut detail_json = json!({
             "install_kind": "official_extension_catalog",
             "plugin_id": command.plugin_id,
@@ -839,11 +866,15 @@ where
         if is_host_extension_installation(&install.installation) {
             return Ok(install);
         }
-        self.enable_and_assign_model_provider_installation(
-            command.actor_user_id,
-            install.installation.id,
-        )
-        .await
+        if self.is_network_egress_provider_console_operation() {
+            Ok(install)
+        } else {
+            self.enable_and_assign_model_provider_installation(
+                command.actor_user_id,
+                install.installation.id,
+            )
+            .await
+        }
     }
 
     async fn enable_and_assign_model_provider_installation(

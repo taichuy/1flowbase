@@ -126,6 +126,24 @@ impl NetworkEgressPoolMemberHealth {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NetworkEgressPoolMemberProbeStatus {
+    NotTested,
+    Succeeded,
+    Failed,
+}
+
+impl NetworkEgressPoolMemberProbeStatus {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::NotTested => "not_tested",
+            Self::Succeeded => "succeeded",
+            Self::Failed => "failed",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NetworkEgressPool {
     pub id: Uuid,
@@ -150,6 +168,15 @@ pub struct NetworkEgressPoolMember {
     pub provider_egress_key: String,
     pub enabled: bool,
     pub sequence: i32,
+    pub probe_status: NetworkEgressPoolMemberProbeStatus,
+    pub probe_http_status: NetworkEgressPoolMemberProbeStatus,
+    pub probe_https_status: NetworkEgressPoolMemberProbeStatus,
+    /// Latest connection-test latency. New and never-tested members start at zero.
+    pub probe_latency_ms: i32,
+    pub probe_exit_ip: Option<String>,
+    pub probe_exit_region: Option<String>,
+    pub probe_error_code: Option<String>,
+    pub last_probed_at: Option<OffsetDateTime>,
     pub created_by: Uuid,
     pub updated_by: Uuid,
     pub created_at: OffsetDateTime,

@@ -1,5 +1,6 @@
 import {
   createConsoleNetworkEgressProvider,
+  createConsoleNetworkEgressProxy,
   createConsoleNetworkEgressPool,
   createConsoleNetworkEgressPoolMember,
   createConsoleNetworkEgressPoolStaticHttpMember,
@@ -10,6 +11,7 @@ import {
   deleteConsoleNetworkEgressRoute,
   listConsoleNetworkEgressProviders,
   listConsoleNetworkEgressProviderTypes,
+  listConsoleNetworkEgressOfficialPluginCatalog,
   listConsoleNetworkEgressPools,
   listConsoleNetworkEgressRoutes,
   updateConsoleNetworkEgressPool,
@@ -17,6 +19,9 @@ import {
   updateConsoleNetworkEgressRoute,
   updateConsoleNetworkEgressProviderLifecycle,
   syncConsoleNetworkEgressProvider,
+  testConsoleNetworkEgressPoolMember,
+  installConsoleNetworkEgressOfficialPlugin,
+  uploadConsoleNetworkEgressPluginPackage,
   type ConsoleNetworkEgressPool,
   type ConsoleNetworkEgressPoolMember,
   type ConsoleNetworkEgressProvider,
@@ -28,6 +33,7 @@ import {
   type AddConsoleNetworkEgressProviderToPoolInput,
   type CreateConsoleNetworkEgressRouteInput,
   type CreateConsoleNetworkEgressProviderInput,
+  type CreateConsoleNetworkEgressProxyInput,
   type UpdateConsoleNetworkEgressPoolInput,
   type UpdateConsoleNetworkEgressPoolMemberInput,
   type UpdateConsoleNetworkEgressRouteInput,
@@ -39,6 +45,8 @@ export type SettingsNetworkEgressProviderType =
   ConsoleNetworkEgressProviderType;
 export type CreateSettingsNetworkEgressProviderInput =
   CreateConsoleNetworkEgressProviderInput;
+export type CreateSettingsNetworkEgressProxyInput =
+  CreateConsoleNetworkEgressProxyInput;
 export type UpdateSettingsNetworkEgressProviderLifecycleInput =
   UpdateConsoleNetworkEgressProviderLifecycleInput;
 export type SettingsNetworkEgressPool = ConsoleNetworkEgressPool;
@@ -77,6 +85,17 @@ export const settingsNetworkEgressRoutesQueryKey = [
   'network-center',
   'routes'
 ] as const;
+export const settingsNetworkEgressProviderTypesQueryKey = [
+  'settings',
+  'network-center',
+  'provider-types'
+] as const;
+export const settingsNetworkEgressOfficialPluginsQueryKey = [
+  'settings',
+  'network-center',
+  'proxy-plugins',
+  'official-catalog'
+] as const;
 
 export function fetchSettingsNetworkEgressProviders() {
   return listConsoleNetworkEgressProviders();
@@ -84,6 +103,26 @@ export function fetchSettingsNetworkEgressProviders() {
 
 export function fetchSettingsNetworkEgressProviderTypes() {
   return listConsoleNetworkEgressProviderTypes();
+}
+
+export function fetchSettingsNetworkEgressOfficialPluginCatalog(
+  options: { locale?: string; q?: string; cursor?: string; limit?: number } = {}
+) {
+  return listConsoleNetworkEgressOfficialPluginCatalog(options);
+}
+
+export function installSettingsNetworkEgressOfficialPlugin(
+  pluginId: string,
+  csrfToken: string
+) {
+  return installConsoleNetworkEgressOfficialPlugin({ plugin_id: pluginId }, csrfToken);
+}
+
+export function uploadSettingsNetworkEgressPluginPackage(
+  file: File,
+  csrfToken: string
+) {
+  return uploadConsoleNetworkEgressPluginPackage(file, csrfToken);
 }
 
 export function createSettingsNetworkEgressProvider(
@@ -114,6 +153,19 @@ export function syncSettingsNetworkEgressProvider(
 
 export function fetchSettingsNetworkEgressPools() {
   return listConsoleNetworkEgressPools();
+}
+export function createSettingsNetworkEgressProxy(
+  input: CreateSettingsNetworkEgressProxyInput,
+  csrfToken: string
+) {
+  return createConsoleNetworkEgressProxy(input, csrfToken);
+}
+export function testSettingsNetworkEgressPoolMember(
+  poolId: string,
+  memberId: string,
+  csrfToken: string
+) {
+  return testConsoleNetworkEgressPoolMember(poolId, memberId, csrfToken);
 }
 export function fetchSettingsNetworkEgressRoutes() {
   return listConsoleNetworkEgressRoutes();

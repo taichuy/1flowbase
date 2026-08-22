@@ -1,11 +1,6 @@
-import { useQuery } from '@tanstack/react-query';
 import { Tabs } from 'antd';
 import { useNavigate } from '@tanstack/react-router';
 
-import {
-  fetchSettingsNetworkEgressProviders,
-  settingsNetworkEgressProvidersQueryKey
-} from '../../api/network-center';
 import { NetworkEgressPoolsPanel } from '../../network-center/pools/NetworkEgressPoolsPanel';
 import { NetworkEgressProvidersPanel } from '../../network-center/providers/NetworkEgressProvidersPanel';
 import { NetworkEgressRoutesPanel } from '../../network-center/routes/NetworkEgressRoutesPanel';
@@ -19,12 +14,6 @@ export type NetworkCenterPage =
 
 export function NetworkCenterSection({ page }: { page: NetworkCenterPage }) {
   const navigate = useNavigate();
-  const providersQuery = useQuery({
-    queryKey: settingsNetworkEgressProvidersQueryKey,
-    queryFn: fetchSettingsNetworkEgressProviders,
-    enabled: page === 'proxy-pools'
-  });
-
   return (
     <Tabs
       className="network-center-section"
@@ -39,9 +28,7 @@ export function NetworkCenterSection({ page }: { page: NetworkCenterPage }) {
         {
           key: 'proxy-pools',
           label: i18nText('settings', 'auto.network_center_pools'),
-          children: (
-            <NetworkEgressPoolsPanel providers={providersQuery.data ?? []} />
-          )
+          children: <NetworkEgressPoolsPanel />
         },
         {
           key: 'routing-rules',

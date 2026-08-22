@@ -101,6 +101,11 @@ enum PluginManagementUseCase {
         group: domain::ConsolePolicyGroup,
         operation_id: domain::ConsoleOperationId,
     },
+    NetworkEgressProviderConsoleOperation {
+        policy_reader: Arc<dyn RoleConsolePolicyReader>,
+        group: domain::ConsolePolicyGroup,
+        operation_id: domain::ConsoleOperationId,
+    },
 }
 
 pub const PLUGIN_HOST_COMPATIBILITY_BELOW_MINIMUM: &str = "below_minimum_host_version";
@@ -246,6 +251,26 @@ impl<R, H> PluginManagementService<R, H> {
         self
     }
 
+    /// The Network Center owns proxy-parser installation.  It deliberately does not reuse the
+    /// model-provider use case because an egress extension is selected when creating a proxy,
+    /// rather than assigned to a workspace as a model provider.
+    pub fn for_network_egress_provider_console_operation(
+        mut self,
+        operation_id: &'static str,
+    ) -> Self
+    where
+        R: RoleConsolePolicyReader + Clone + 'static,
+    {
+        self.use_case = PluginManagementUseCase::NetworkEgressProviderConsoleOperation {
+            policy_reader: Arc::new(self.repository.clone()),
+            group: domain::ConsolePolicyGroup::settings_feature("system.network-center")
+                .expect("compiled network-center settings group must be valid"),
+            operation_id: domain::ConsoleOperationId::try_from(operation_id)
+                .expect("compiled network-egress plugin operation id must be valid"),
+        };
+        self
+    }
+
     pub fn for_extension_center_console_operation(mut self, operation_id: &'static str) -> Self
     where
         R: RoleConsolePolicyReader + Clone + 'static,
@@ -280,6 +305,11 @@ impl<R, H> PluginManagementService<R, H> {
                 policy_reader,
                 group,
                 operation_id,
+            }
+            | PluginManagementUseCase::NetworkEgressProviderConsoleOperation {
+                policy_reader,
+                group,
+                operation_id,
             } => {
                 if actor.is_root {
                     return Ok(());
@@ -300,6 +330,13 @@ impl<R, H> PluginManagementService<R, H> {
         matches!(
             &self.use_case,
             PluginManagementUseCase::ModelProviderConsoleOperation { .. }
+        )
+    }
+
+    fn is_network_egress_provider_console_operation(&self) -> bool {
+        matches!(
+            &self.use_case,
+            PluginManagementUseCase::NetworkEgressProviderConsoleOperation { .. }
         )
     }
 
@@ -326,6 +363,26 @@ impl<R, H> PluginManagementService<R, H> {
             );
         }
         Ok(())
+    }
+
+    fn ensure_network_egress_provider_package_kind(
+        &self,
+        kind: RoutedPluginPackageKind,
+    ) -> Result<()> {
+        if self.is_network_egress_provider_console_operation()
+            && kind != RoutedPluginPackageKind::NetworkEgressProviderRuntime
+        {
+            return Err(ControlPlaneError::PermissionDenied(
+                "network_egress_provider_plugin_required",
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    fn ensure_console_package_kind(&self, kind: RoutedPluginPackageKind) -> Result<()> {
+        self.ensure_model_provider_package_kind(kind)?;
+        self.ensure_network_egress_provider_package_kind(kind)
     }
 }
 

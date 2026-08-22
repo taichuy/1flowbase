@@ -1,0 +1,77 @@
+.network-egress-providers {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 360px);
+  gap: 24px;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  container-type: inline-size;
+}
+
+.network-egress-providers__types,
+.network-egress-providers__plugins {
+  min-width: 0;
+}
+
+.network-egress-providers__plugins {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.network-egress-providers__plugin-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.network-egress-providers__plugin-heading .ant-typography {
+  margin: 0;
+}
+
+.network-egress-providers__plugin-list {
+  display: grid;
+  gap: 12px;
+}
+
+.network-egress-providers__plugin {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--ant-color-border-secondary);
+  border-radius: 8px;
+  background: var(--ant-color-bg-container);
+}
+
+.network-egress-providers__plugin-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.network-egress-providers__plugin-title .ant-typography {
+  margin: 0;
+}
+
+.network-egress-providers__plugin-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+@container (max-width: 1280px) {
+  .network-egress-providers {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+
+  .network-egress-providers__plugins {
+    max-height: none;
+    overflow: visible;
+  }
+}

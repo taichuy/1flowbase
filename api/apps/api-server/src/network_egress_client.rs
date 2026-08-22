@@ -110,8 +110,19 @@ impl NetworkEgressHttpClientResolver {
             .select_healthy_first(route.pool_id)
             .await
             .context("configured network egress pool has no usable member")?;
+        self.acquire_provider_egress(selected.provider_id, &selected.provider_egress_key)
+            .await
+    }
+
+    /// Acquires one member selected by the Network Center operator. This is deliberately separate
+    /// from route resolution so connection testing cannot accept a caller-provided target URL.
+    pub async fn acquire_provider_egress(
+        &self,
+        provider_id: Uuid,
+        provider_egress_key: &str,
+    ) -> Result<Option<NetworkEgressExecutionScope>> {
         let provider =
-            NetworkEgressRepository::get_network_egress_provider(&self.store, selected.provider_id)
+            NetworkEgressRepository::get_network_egress_provider(&self.store, provider_id)
                 .await?
                 .context("configured network egress provider is unavailable")?;
         let secret = ProviderRegistryNetworkEgressSecretResolver::new(
@@ -133,11 +144,7 @@ impl NetworkEgressHttpClientResolver {
                 .context("configured network egress provider is unavailable on this node")?;
         let forward_proxy = self
             .runtime
-            .acquire_network_egress_http_forward_proxy(
-                &installation,
-                secret,
-                &selected.provider_egress_key,
-            )
+            .acquire_network_egress_http_forward_proxy(&installation, secret, provider_egress_key)
             .await
             .context("configured network egress provider could not acquire a proxy lease")?;
         let release = NetworkEgressScopeRelease {

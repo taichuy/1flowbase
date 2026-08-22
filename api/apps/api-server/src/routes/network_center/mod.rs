@@ -30,6 +30,7 @@ use crate::{
     },
 };
 
+pub mod plugins;
 pub mod pools;
 pub mod routes;
 
@@ -89,7 +90,7 @@ pub struct NetworkEgressProviderResponse {
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct NetworkEgressProviderTypeResponse {
-    pub installation_id: String,
+    pub installation_id: Option<String>,
     pub provider_code: String,
     pub display_name: String,
     pub form_schema: serde_json::Value,
@@ -124,7 +125,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/settings/network-center/providers/types",
             console_get(
                 list_network_egress_provider_types,
-                ConsoleOperation("network_egress_providers.list".to_string()),
+                ConsoleOperation("network_egress_proxy_types.list".to_string()),
             ),
         )
         .route(
@@ -141,6 +142,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
                 ConsoleOperation("network_egress_providers.sync".to_string()),
             ),
         )
+        .merge(plugins::route_assembly())
         .merge(pools::route_assembly())
         .merge(routes::route_assembly())
 }
@@ -201,7 +203,7 @@ fn format_time(value: time::OffsetDateTime) -> String {
         .expect("RFC3339 formatting is infallible")
 }
 
-fn response(view: NetworkEgressProviderView) -> NetworkEgressProviderResponse {
+pub(super) fn response(view: NetworkEgressProviderView) -> NetworkEgressProviderResponse {
     NetworkEgressProviderResponse {
         id: view.provider.id.to_string(),
         installation_id: view.provider.installation_id.map(|id| id.to_string()),
@@ -230,7 +232,7 @@ fn response(view: NetworkEgressProviderView) -> NetworkEgressProviderResponse {
 
 fn type_response(view: NetworkEgressProviderTypeView) -> NetworkEgressProviderTypeResponse {
     NetworkEgressProviderTypeResponse {
-        installation_id: view.installation_id.to_string(),
+        installation_id: view.installation_id.map(|id| id.to_string()),
         provider_code: view.provider_code,
         display_name: view.display_name,
         form_schema: serde_json::to_value(view.form_schema)

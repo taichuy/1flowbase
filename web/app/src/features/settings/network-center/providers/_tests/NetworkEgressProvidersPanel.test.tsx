@@ -1,171 +1,84 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import { App } from 'antd';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 
 const networkCenterApi = vi.hoisted(() => ({
-  settingsNetworkEgressProvidersQueryKey: [
+  fetchSettingsNetworkEgressOfficialPluginCatalog: vi.fn(),
+  fetchSettingsNetworkEgressProviderTypes: vi.fn(),
+  installSettingsNetworkEgressOfficialPlugin: vi.fn(),
+  settingsNetworkEgressOfficialPluginsQueryKey: [
     'settings',
     'network-center',
-    'providers'
-  ] as const,
-  fetchSettingsNetworkEgressProviders: vi.fn(),
-  fetchSettingsNetworkEgressProviderTypes: vi.fn(),
-  createSettingsNetworkEgressProvider: vi.fn(),
-  updateSettingsNetworkEgressProviderLifecycle: vi.fn(),
-  syncSettingsNetworkEgressProvider: vi.fn()
+    'proxy-plugins',
+    'official-catalog'
+  ],
+  settingsNetworkEgressProviderTypesQueryKey: [
+    'settings',
+    'network-center',
+    'provider-types'
+  ],
+  uploadSettingsNetworkEgressPluginPackage: vi.fn()
 }));
-
 vi.mock('../../../api/network-center', () => networkCenterApi);
 
 import { AppI18nProvider } from '../../../../../app/AppI18nProvider';
-import { useAuthStore } from '../../../../../state/auth-store';
 import { NetworkEgressProvidersPanel } from '../NetworkEgressProvidersPanel';
 
-const provider = {
-  id: 'provider-1',
-  installation_id: 'installation-1',
-  provider_code: 'clash_proxy',
-  display_name: 'Mihomo edge',
-  description: 'Primary subscription',
-  lifecycle: 'active',
-  health_status: 'healthy',
-  secret_configured: true,
-  last_sync_error: 'upstream temporarily unavailable',
-  last_synced_at: '2026-08-21T08:00:00Z',
-  egresses: [
-    {
-      provider_egress_key: 'edge:de',
-      display_name: 'Germany edge',
-      region: 'DE',
-      tags: ['eu'],
-      availability: 'available',
-      synced_at: '2026-08-21T08:00:00Z'
-    }
-  ]
-};
-
 function renderPanel() {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } }
-  });
-  const wrapper = ({ children }: { children: ReactNode }) => (
-    <AppI18nProvider>
-      <App>
-        <QueryClientProvider client={client}>{children}</QueryClientProvider>
-      </App>
-    </AppI18nProvider>
-  );
-
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const wrapper = ({ children }: { children: ReactNode }) => <AppI18nProvider><App><QueryClientProvider client={client}>{children}</QueryClientProvider></App></AppI18nProvider>;
   return render(<NetworkEgressProvidersPanel />, { wrapper });
 }
 
 describe('NetworkEgressProvidersPanel', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-    useAuthStore.setState({ csrfToken: 'csrf-123' });
-    networkCenterApi.fetchSettingsNetworkEgressProviders.mockResolvedValue([
-      provider
-    ]);
+  test('AC-GP03 is a read-only parser catalog containing built-in and installed types', async () => {
     networkCenterApi.fetchSettingsNetworkEgressProviderTypes.mockResolvedValue([
-      {
-        installation_id: 'installation-2',
-        provider_code: 'clash-proxy',
-        display_name: 'Clash / Mihomo Proxy',
-        form_schema: {
-          schema_version: '1flowbase.plugin.form/v1',
-          fields: [
-            {
-              key: 'subscription_url',
-              label: 'Subscription URL',
-              type: 'string',
-              control: 'url',
-              required: true,
-              send_mode: 'secret'
-            }
-          ]
-        }
-      }
+      { installation_id: null, provider_code: 'builtin_static_http', display_name: 'HTTP proxy', form_schema: { schema_version: '1flowbase.plugin.form/v1', fields: [{ key: 'host', label: 'Hostname or IP', type: 'string' }] } },
+      { installation_id: 'clash-installation', provider_code: 'clash-proxy', display_name: 'Clash / Mihomo Proxy', form_schema: { schema_version: '1flowbase.plugin.form/v1', fields: [{ key: 'subscription_url', label: 'Subscription URL', type: 'string' }] } }
     ]);
-    networkCenterApi.createSettingsNetworkEgressProvider.mockResolvedValue(
-      provider
-    );
-    networkCenterApi.updateSettingsNetworkEgressProviderLifecycle.mockResolvedValue(
-      provider
-    );
-    networkCenterApi.syncSettingsNetworkEgressProvider.mockResolvedValue(
-      provider
-    );
+    renderPanel();
+    expect(await screen.findByText('HTTP proxy')).toBeInTheDocument();
+    expect(screen.getByText('Clash / Mihomo Proxy')).toBeInTheDocument();
+    expect(screen.getByText('Subscription URL')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /添加代理类型|Add proxy type/ })).not.toBeInTheDocument();
   });
 
-  test('QF-002 adds a proxy type from a selected installed extension without exposing an installation ID or secret reference', async () => {
+  test('AC-GP04 pairs the available proxy type table with the filtered proxy plugin catalog', async () => {
+    networkCenterApi.fetchSettingsNetworkEgressProviderTypes.mockResolvedValue([
+      { installation_id: null, provider_code: 'builtin_static_http', display_name: 'HTTP proxy', form_schema: { schema_version: '1flowbase.plugin.form/v1', fields: [] } }
+    ]);
+    networkCenterApi.fetchSettingsNetworkEgressOfficialPluginCatalog.mockResolvedValue({
+      source_kind: 'official_registry',
+      source_label: 'official',
+      registry_url: 'https://example.com/registry.json',
+      source_freshness: 'fresh',
+      entries: [{
+        plugin_id: 'taichuy.clash-proxy',
+        provider_code: 'clash-proxy',
+        plugin_type: 'network_egress_provider',
+        display_name: 'Clash / Mihomo Proxy',
+        description: 'Parse a Clash subscription.',
+        protocol: 'clash',
+        latest_version: '0.1.0',
+        selected_artifact: {},
+        help_url: null,
+        model_discovery_mode: 'static',
+        install_status: 'not_installed',
+        minimum_host_version: '0.1.0',
+        current_host_version: '0.3.0',
+        compatibility_status: 'compatible',
+        compatibility_warning_reason: null
+      }]
+    });
+
     renderPanel();
 
-    expect(await screen.findByText('Mihomo edge')).toBeInTheDocument();
-    expect(screen.getByText(/^(Healthy|健康)$/)).toBeInTheDocument();
-    expect(
-      screen.getByText('upstream temporarily unavailable')
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText('secret://system/network/mihomo')
-    ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /展开行|Expand row/ }));
-    expect(await screen.findByText('Germany edge')).toBeInTheDocument();
-
-    fireEvent.click(
-      screen.getByRole('button', { name: /Add proxy type|添加代理类型/ })
-    );
-    expect(screen.queryByLabelText(/ID/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/secret:\/\//)).not.toBeInTheDocument();
-    expect(
-      await screen.findByLabelText('Subscription URL')
-    ).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/Proxy type name|代理类型名称/), {
-      target: { value: 'Backup edge' }
-    });
-    fireEvent.change(screen.getByLabelText('Subscription URL'), {
-      target: { value: 'https://example.invalid/subscription' }
-    });
-    fireEvent.click(screen.getByRole('button', { name: /Create|创\s*建/ }));
-
-    await waitFor(() =>
-      expect(
-        networkCenterApi.createSettingsNetworkEgressProvider
-      ).toHaveBeenCalledWith(
-        {
-          installation_id: 'installation-2',
-          display_name: 'Backup edge',
-          description: '',
-          config: { subscription_url: 'https://example.invalid/subscription' }
-        },
-        'csrf-123'
-      )
-    );
-  });
-
-  test('AC-002 controls lifecycle and sync through the proxy type APIs', async () => {
-    renderPanel();
-
-    await screen.findByText('Mihomo edge');
-    fireEvent.click(screen.getByRole('button', { name: /Disable|停用/ }));
-    await waitFor(() =>
-      expect(
-        networkCenterApi.updateSettingsNetworkEgressProviderLifecycle
-      ).toHaveBeenCalledWith(
-        'provider-1',
-        { lifecycle: 'disabled' },
-        'csrf-123'
-      )
-    );
-
-    fireEvent.click(
-      screen.getByRole('button', { name: /Sync proxies|同步代理/ })
-    );
-    await waitFor(() =>
-      expect(
-        networkCenterApi.syncSettingsNetworkEgressProvider
-      ).toHaveBeenCalledWith('provider-1', 'csrf-123')
-    );
+    expect(await screen.findByText('Clash / Mihomo Proxy')).toBeInTheDocument();
+    expect(screen.getByText(/代理插件|Proxy plugins/)).toBeInTheDocument();
+    await waitFor(() => expect(networkCenterApi.fetchSettingsNetworkEgressOfficialPluginCatalog).toHaveBeenCalledWith(
+      expect.objectContaining({ locale: 'zh_Hans' })
+    ));
   });
 });

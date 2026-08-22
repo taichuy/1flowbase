@@ -1,474 +1,142 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
-import {
-  App,
-  Alert,
-  Button,
-  Empty,
-  Flex,
-  Form,
-  Input,
-  Modal,
-  Select,
-  Space,
-  Table,
-  Tag,
-  Typography
-} from 'antd';
-import type { ColumnsType } from 'antd/es/table';
+import { Alert, Button, Empty, Input, Modal, Table, Tag, Typography, Upload } from 'antd';
+import type { UploadFile } from 'antd/es/upload/interface';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 
 import {
-  createSettingsNetworkEgressProvider,
+  fetchSettingsNetworkEgressOfficialPluginCatalog,
   fetchSettingsNetworkEgressProviderTypes,
-  fetchSettingsNetworkEgressProviders,
-  settingsNetworkEgressProvidersQueryKey,
-  syncSettingsNetworkEgressProvider,
-  updateSettingsNetworkEgressProviderLifecycle,
-  type CreateSettingsNetworkEgressProviderInput,
-  type SettingsNetworkEgressProvider,
-  type SettingsNetworkEgressProviderType
+  installSettingsNetworkEgressOfficialPlugin,
+  settingsNetworkEgressOfficialPluginsQueryKey,
+  settingsNetworkEgressProviderTypesQueryKey,
+  type SettingsNetworkEgressProviderType,
+  uploadSettingsNetworkEgressPluginPackage
 } from '../../api/network-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { useAuthStore } from '../../../../state/auth-store';
 import { i18nText } from '../../../../shared/i18n/text';
+import { FALLBACK_APP_LOCALE, toAppLocale } from '../../../../shared/i18n/locales';
+import './network-egress-providers.css';
 
-function providerStatusTag(status: string) {
-  const color =
-    status === 'active'
-      ? 'green'
-      : status === 'disabled'
-        ? 'default'
-        : status === 'draft'
-          ? 'orange'
-          : undefined;
+const OFFICIAL_PLUGIN_RELEASES_URL = 'https://github.com/taichuy/1flowbase-official-plugins/releases';
 
-  const label =
-    status === 'active'
-      ? i18nText('settings', 'auto.network_center_provider_lifecycle_active')
-      : status === 'disabled'
-        ? i18nText(
-            'settings',
-            'auto.network_center_provider_lifecycle_disabled'
-          )
-        : status === 'draft'
-          ? i18nText('settings', 'auto.network_center_provider_lifecycle_draft')
-          : status;
-
-  return <Tag color={color}>{label}</Tag>;
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : null;
 }
 
-function healthStatusTag(status: string) {
-  const color =
-    status === 'healthy'
-      ? 'green'
-      : status === 'unhealthy'
-        ? 'red'
-        : status === 'invalid'
-          ? 'orange'
-          : undefined;
-
-  const label =
-    status === 'healthy'
-      ? i18nText('settings', 'auto.network_center_health_healthy')
-      : status === 'unhealthy'
-        ? i18nText('settings', 'auto.network_center_health_unhealthy')
-        : status === 'invalid'
-          ? i18nText('settings', 'auto.network_center_health_invalid')
-          : status;
-
-  return <Tag color={color}>{label}</Tag>;
-}
-
-function ProviderRegistrationModal({
-  open,
-  submitting,
-  providerTypes,
-  providerTypesLoading,
-  onClose,
-  onSubmit
-}: {
-  open: boolean;
-  submitting: boolean;
-  providerTypes: SettingsNetworkEgressProviderType[];
-  providerTypesLoading: boolean;
-  onClose: () => void;
-  onSubmit: (values: CreateSettingsNetworkEgressProviderInput) => void;
-}) {
-  const [form] = Form.useForm<{
-    installation_id: string;
-    display_name: string;
-    description: string;
-    config: Record<string, string>;
-  }>();
-  const installationId = Form.useWatch('installation_id', form);
-  const selectedType = providerTypes.find(
-    (providerType) => providerType.installation_id === installationId
-  );
-
-  useEffect(() => {
-    if (open && providerTypes.length === 1 && !installationId) {
-      form.setFieldValue('installation_id', providerTypes[0].installation_id);
-    }
-  }, [form, installationId, open, providerTypes]);
-
-  return (
-    <Modal
-      title={i18nText('settings', 'auto.network_center_provider_register')}
-      open={open}
-      onCancel={onClose}
-      destroyOnHidden
-      okText={i18nText('settings', 'auto.create')}
-      confirmLoading={submitting}
-      onOk={() => form.submit()}
-    >
-      <Form
-        form={form}
-        layout="vertical"
-        onFinish={(values) =>
-          onSubmit({
-            ...values,
-            description: values.description ?? '',
-            config: values.config ?? {}
-          })
-        }
-        preserve={false}
-      >
-        <Form.Item
-          name="installation_id"
-          label={i18nText(
-            'settings',
-            'auto.network_center_provider_installation'
-          )}
-          rules={[{ required: true }]}
-        >
-          <Select
-            autoFocus
-            loading={providerTypesLoading}
-            options={providerTypes.map((providerType) => ({
-              label: providerType.display_name,
-              value: providerType.installation_id
-            }))}
-            notFoundContent={i18nText(
-              'settings',
-              'auto.network_center_provider_no_types'
-            )}
-          />
-        </Form.Item>
-        <Form.Item
-          name="display_name"
-          label={i18nText('settings', 'auto.network_center_provider_name')}
-          rules={[{ required: true }]}
-        >
-          <Input />
-        </Form.Item>
-        <Form.Item
-          name="description"
-          label={i18nText('settings', 'auto.description')}
-        >
-          <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} />
-        </Form.Item>
-        {selectedType?.form_schema.fields.map((field) => (
-          <Form.Item
-            key={field.key}
-            name={['config', field.key]}
-            label={field.label}
-            help={field.description}
-            rules={[{ required: field.required }]}
-          >
-            <Input
-              placeholder={field.placeholder}
-              type={field.control === 'url' ? 'url' : 'text'}
-            />
-          </Form.Item>
-        ))}
-        {selectedType ? null : (
-          <Form.Item
-            label={i18nText('settings', 'auto.provider_configuration')}
-            help={i18nText(
-              'settings',
-              'auto.network_center_provider_secret_reference_help'
-            )}
-          >
-            <Typography.Text type="secondary">
-              {i18nText('settings', 'auto.network_center_provider_no_types')}
-            </Typography.Text>
-          </Form.Item>
-        )}
-      </Form>
-    </Modal>
-  );
-}
-
-function EgressList({ provider }: { provider: SettingsNetworkEgressProvider }) {
-  if (provider.egresses.length === 0) {
-    return (
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={i18nText(
-          'settings',
-          'auto.network_center_provider_no_egresses'
-        )}
-      />
-    );
-  }
-
-  return (
-    <Table
-      rowKey="provider_egress_key"
-      size="small"
-      pagination={false}
-      dataSource={provider.egresses}
-      columns={[
-        {
-          title: i18nText(
-            'settings',
-            'auto.network_center_provider_egress_name'
-          ),
-          dataIndex: 'display_name',
-          key: 'display_name'
-        },
-        {
-          title: i18nText(
-            'settings',
-            'auto.network_center_provider_egress_key'
-          ),
-          dataIndex: 'provider_egress_key',
-          key: 'provider_egress_key'
-        },
-        {
-          title: i18nText(
-            'settings',
-            'auto.network_center_provider_egress_region'
-          ),
-          dataIndex: 'region',
-          key: 'region',
-          render: (region: string | null) => region ?? '—'
-        },
-        {
-          title: i18nText(
-            'settings',
-            'auto.network_center_provider_egress_availability'
-          ),
-          dataIndex: 'availability',
-          key: 'availability'
-        }
-      ]}
-    />
-  );
-}
-
+/** The catalog describes parsers available to proxy creation; it never owns instances. */
 export function NetworkEgressProvidersPanel() {
-  const { message } = App.useApp();
-  const csrfToken = useAuthStore((state) => state.csrfToken);
+  const { i18n } = useTranslation();
   const queryClient = useQueryClient();
-  const providersQuery = useQuery({
-    queryKey: settingsNetworkEgressProvidersQueryKey,
-    queryFn: fetchSettingsNetworkEgressProviders
-  });
-  const providerTypesQuery = useQuery({
-    queryKey: ['settings', 'network-center', 'provider-types'],
+  const csrfToken = useAuthStore((state) => state.csrfToken);
+  const [search, setSearch] = useState('');
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState<UploadFile[]>([]);
+  const appLocale =
+    toAppLocale(i18n.resolvedLanguage) ??
+    toAppLocale(i18n.language) ??
+    FALLBACK_APP_LOCALE;
+  const types = useQuery({
+    queryKey: settingsNetworkEgressProviderTypesQueryKey,
     queryFn: fetchSettingsNetworkEgressProviderTypes
   });
-  const [registrationOpen, setRegistrationOpen] = useState(false);
-  const invalidateProviders = () =>
-    queryClient.invalidateQueries({
-      queryKey: settingsNetworkEgressProvidersQueryKey
-    });
-  const createMutation = useMutation({
-    mutationFn: (input: CreateSettingsNetworkEgressProviderInput) => {
+  const plugins = useQuery({
+    queryKey: [
+      ...settingsNetworkEgressOfficialPluginsQueryKey,
+      appLocale,
+      search
+    ],
+    queryFn: () => fetchSettingsNetworkEgressOfficialPluginCatalog({
+      locale: appLocale,
+      q: search || undefined
+    })
+  });
+  const refreshTypes = () => Promise.all([
+    queryClient.invalidateQueries({ queryKey: settingsNetworkEgressProviderTypesQueryKey }),
+    queryClient.invalidateQueries({ queryKey: settingsNetworkEgressOfficialPluginsQueryKey })
+  ]);
+  const install = useMutation({
+    mutationFn: (pluginId: string) => {
       if (!csrfToken) throw new Error('Missing CSRF token');
-      return createSettingsNetworkEgressProvider(input, csrfToken);
+      return installSettingsNetworkEgressOfficialPlugin(pluginId, csrfToken);
+    },
+    onSuccess: refreshTypes
+  });
+  const upload = useMutation({
+    mutationFn: (file: File) => {
+      if (!csrfToken) throw new Error('Missing CSRF token');
+      return uploadSettingsNetworkEgressPluginPackage(file, csrfToken);
     },
     onSuccess: async () => {
-      await invalidateProviders();
-      setRegistrationOpen(false);
-    },
-    onError: () =>
-      message.error(
-        i18nText('settings', 'auto.network_center_provider_register_failed')
-      )
-  });
-  const lifecycleMutation = useMutation({
-    mutationFn: ({
-      providerId,
-      lifecycle
-    }: {
-      providerId: string;
-      lifecycle: string;
-    }) => {
-      if (!csrfToken) throw new Error('Missing CSRF token');
-      return updateSettingsNetworkEgressProviderLifecycle(
-        providerId,
-        { lifecycle },
-        csrfToken
-      );
-    },
-    onSuccess: invalidateProviders,
-    onError: () =>
-      message.error(
-        i18nText('settings', 'auto.network_center_provider_lifecycle_failed')
-      )
-  });
-  const syncMutation = useMutation({
-    mutationFn: (providerId: string) => {
-      if (!csrfToken) throw new Error('Missing CSRF token');
-      return syncSettingsNetworkEgressProvider(providerId, csrfToken);
-    },
-    onSuccess: invalidateProviders,
-    onError: () =>
-      message.error(
-        i18nText('settings', 'auto.network_center_provider_sync_failed')
-      )
+      setUploadFiles([]);
+      setUploadOpen(false);
+      await refreshTypes();
+    }
   });
 
-  const columns: ColumnsType<SettingsNetworkEgressProvider> = [
-    {
-      title: i18nText('settings', 'auto.network_center_provider_name'),
-      dataIndex: 'display_name',
-      key: 'display_name',
-      render: (displayName: string, provider) => (
-        <Space orientation="vertical" size={0}>
-          <Typography.Text>{displayName}</Typography.Text>
-          <Typography.Text type="secondary">
-            {provider.provider_code}
-          </Typography.Text>
-        </Space>
-      )
-    },
-    {
-      title: i18nText('settings', 'auto.network_center_provider_lifecycle'),
-      dataIndex: 'lifecycle',
-      key: 'lifecycle',
-      render: providerStatusTag
-    },
-    {
-      title: i18nText('settings', 'auto.network_center_provider_health'),
-      dataIndex: 'health_status',
-      key: 'health_status',
-      render: healthStatusTag
-    },
-    {
-      title: i18nText('settings', 'auto.network_center_provider_secret'),
-      dataIndex: 'secret_configured',
-      key: 'secret_configured',
-      render: (configured: boolean) =>
-        configured
-          ? i18nText('settings', 'auto.yes')
-          : i18nText('settings', 'auto.not_configured')
-    },
-    {
-      title: i18nText('settings', 'auto.network_center_provider_last_synced'),
-      dataIndex: 'last_synced_at',
-      key: 'last_synced_at',
-      render: (lastSyncedAt: string | null) => lastSyncedAt ?? '—'
-    },
-    {
-      title: i18nText('settings', 'auto.network_center_provider_sync_error'),
-      dataIndex: 'last_sync_error',
-      key: 'last_sync_error',
-      render: (lastSyncError: string | null) => lastSyncError ?? '—'
-    },
-    {
-      title: '',
-      key: 'actions',
-      width: 190,
-      render: (_, provider) => (
-        <Space size={0} wrap>
-          {provider.lifecycle === 'active' ? (
-            <Button
-              type="link"
-              loading={lifecycleMutation.isPending}
-              onClick={() =>
-                lifecycleMutation.mutate({
-                  providerId: provider.id,
-                  lifecycle: 'disabled'
-                })
-              }
-            >
-              {i18nText('settings', 'auto.network_center_provider_disable')}
-            </Button>
-          ) : (
-            <Button
-              type="link"
-              loading={lifecycleMutation.isPending}
-              onClick={() =>
-                lifecycleMutation.mutate({
-                  providerId: provider.id,
-                  lifecycle: 'active'
-                })
-              }
-            >
-              {i18nText('settings', 'auto.network_center_provider_start')}
-            </Button>
-          )}
-          <Button
-            type="link"
-            disabled={provider.lifecycle !== 'active'}
-            loading={syncMutation.isPending}
-            onClick={() => syncMutation.mutate(provider.id)}
-          >
-            {i18nText('settings', 'auto.network_center_provider_sync')}
-          </Button>
-        </Space>
-      )
-    }
-  ];
+  const pluginError = errorMessage(plugins.error) ?? errorMessage(install.error) ?? errorMessage(upload.error);
 
   return (
     <SettingsSectionSurface heightMode="fill">
-      <Flex vertical gap={16}>
-        <Flex
-          justify="flex-end"
-          align="center"
-          gap={16}
-          data-testid="network-center-providers-shell"
-        >
-          <Button type="primary" onClick={() => setRegistrationOpen(true)}>
-            {i18nText('settings', 'auto.network_center_provider_register')}
+      <div className="network-egress-providers">
+        <div className="network-egress-providers__types">
+          {types.isError ? (
+            <Alert type="error" showIcon title={i18nText('settings', 'auto.network_center_providers_load_failed')} />
+          ) : (
+            <Table<SettingsNetworkEgressProviderType>
+              data-testid="network-center-providers-shell"
+              rowKey="provider_code"
+              loading={types.isLoading}
+              dataSource={types.data ?? []}
+              pagination={false}
+              locale={{ emptyText: <Empty description={i18nText('settings', 'auto.network_center_no_providers')} /> }}
+              columns={[
+                { title: i18nText('settings', 'auto.network_center_providers'), dataIndex: 'display_name', key: 'display_name' },
+                { title: i18nText('settings', 'auto.network_center_proxy_type_fields'), key: 'fields', render: (_, item) => item.form_schema.fields.map((field) => <Tag key={field.key}>{field.label}</Tag>) }
+              ]}
+            />
+          )}
+        </div>
+        <aside className="network-egress-providers__plugins" aria-label={i18nText('settings', 'auto.network_center_proxy_plugins')}>
+          <div className="network-egress-providers__plugin-heading">
+            <Typography.Title level={5}>{i18nText('settings', 'auto.network_center_proxy_plugins')}</Typography.Title>
+            <Button onClick={() => setUploadOpen(true)}>{i18nText('settings', 'auto.upload_plugin')}</Button>
+          </div>
+          <Input.Search value={search} onChange={(event) => setSearch(event.target.value)} placeholder={i18nText('settings', 'auto.network_center_proxy_plugins_search')} />
+          {pluginError ? <Alert type="error" showIcon title={pluginError} /> : null}
+          {plugins.data?.entries.length === 0 && !plugins.isLoading ? <Empty description={i18nText('settings', 'auto.network_center_no_proxy_plugins')} /> : null}
+          <div className="network-egress-providers__plugin-list">
+            {(plugins.data?.entries ?? []).map((plugin) => (
+              <article className="network-egress-providers__plugin" key={plugin.plugin_id}>
+                <div className="network-egress-providers__plugin-title">
+                  <Typography.Text strong>{plugin.display_name}</Typography.Text>
+                  <Tag>{plugin.latest_version}</Tag>
+                </div>
+                {plugin.description ? <Typography.Text type="secondary">{plugin.description}</Typography.Text> : null}
+                <div className="network-egress-providers__plugin-actions">
+                  {plugin.help_url ? <Button onClick={() => window.open(plugin.help_url!, '_blank', 'noopener,noreferrer')}>{i18nText('settings', 'auto.documentation')}</Button> : null}
+                  <Button type="primary" loading={install.isPending && install.variables === plugin.plugin_id} disabled={plugin.install_status === 'installed'} onClick={() => install.mutate(plugin.plugin_id)}>
+                    {plugin.install_status === 'installed' ? i18nText('settings', 'auto.network_center_proxy_plugin_installed') : i18nText('settings', 'auto.install_plugin')}
+                  </Button>
+                </div>
+              </article>
+            ))}
+          </div>
+          <Button type="link" onClick={() => window.open(plugins.data?.registry_url ?? OFFICIAL_PLUGIN_RELEASES_URL, '_blank', 'noopener,noreferrer')}>
+            {i18nText('settings', 'auto.go_warehouse_download')}
           </Button>
-        </Flex>
-        {providersQuery.isError ? (
-          <Alert
-            type="error"
-            showIcon
-            title={i18nText(
-              'settings',
-              'auto.network_center_providers_load_failed'
-            )}
-          />
-        ) : providersQuery.data?.length === 0 && !providersQuery.isLoading ? (
-          <Empty
-            description={i18nText(
-              'settings',
-              'auto.network_center_no_providers'
-            )}
-          />
-        ) : (
-          <Table
-            rowKey="id"
-            columns={columns}
-            dataSource={providersQuery.data ?? []}
-            loading={providersQuery.isLoading}
-            pagination={false}
-            scroll={{ x: 1000 }}
-            expandable={{
-              expandedRowRender: (provider) => (
-                <EgressList provider={provider} />
-              ),
-              rowExpandable: (provider) => provider.egresses.length > 0
-            }}
-          />
-        )}
-      </Flex>
-      <ProviderRegistrationModal
-        open={registrationOpen}
-        submitting={createMutation.isPending}
-        providerTypes={providerTypesQuery.data ?? []}
-        providerTypesLoading={providerTypesQuery.isLoading}
-        onClose={() => setRegistrationOpen(false)}
-        onSubmit={(values) => createMutation.mutate(values)}
-      />
+        </aside>
+      </div>
+      <Modal open={uploadOpen} title={i18nText('settings', 'auto.upload_plugin')} onCancel={() => setUploadOpen(false)} onOk={() => {
+        const file = uploadFiles[0]?.originFileObj;
+        if (file instanceof File) upload.mutate(file);
+      }} confirmLoading={upload.isPending}>
+        <Upload.Dragger beforeUpload={() => false} maxCount={1} fileList={uploadFiles} onChange={({ fileList }) => setUploadFiles(fileList.slice(-1))}>
+          {i18nText('settings', 'auto.select_plug_package_upload_install')}
+        </Upload.Dragger>
+      </Modal>
     </SettingsSectionSurface>
   );
 }

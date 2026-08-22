@@ -667,6 +667,12 @@ describe('section shell routing', () => {
           ).toHaveBeenCalled();
           return;
         }
+        if (pathname.endsWith('/proxy-types')) {
+          expect(
+            networkCenterApi.fetchSettingsNetworkEgressProviderTypes
+          ).toHaveBeenCalled();
+          return;
+        }
         expect(
           networkCenterApi.fetchSettingsNetworkEgressProviders
         ).toHaveBeenCalled();

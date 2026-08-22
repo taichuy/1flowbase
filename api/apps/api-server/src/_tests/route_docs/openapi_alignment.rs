@@ -159,6 +159,21 @@ async fn openapi_registers_configurable_network_egress_routes_with_stable_operat
             "network_egress_provider_types_list",
         ),
         (
+            "/api/console/settings/network-center/proxy-plugins/official-catalog",
+            "get",
+            "network_egress_plugins_list_official_catalog",
+        ),
+        (
+            "/api/console/network-center/pools/proxies",
+            "post",
+            "network_egress_proxies_create",
+        ),
+        (
+            "/api/console/network-center/pools/{pool_id}/members/{member_id}/test-connection",
+            "post",
+            "network_egress_pool_members_test_connection",
+        ),
+        (
             "/api/console/network-center/pools/{pool_id}/members/static-http",
             "post",
             "network_egress_pool_members_create_static_http",

@@ -4,10 +4,11 @@ use control_plane::ports::{
     CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
     CreateNetworkEgressProviderInput, CreateNetworkEgressRouteInput,
     CreateStaticHttpProxyPoolMemberInput, NetworkEgressPoolRepository, NetworkEgressRepository,
-    NetworkEgressRouteRepository, RecordNetworkEgressSyncFailureInput,
-    ReplaceNetworkEgressProjectionInput, UpdateNetworkEgressPoolInput,
-    UpdateNetworkEgressPoolMemberInput, UpdateNetworkEgressProviderLifecycleInput,
-    UpdateNetworkEgressRouteInput, UpsertNetworkEgressProviderSecretInput,
+    NetworkEgressRouteRepository, RecordNetworkEgressPoolMemberProbeInput,
+    RecordNetworkEgressSyncFailureInput, ReplaceNetworkEgressProjectionInput,
+    UpdateNetworkEgressPoolInput, UpdateNetworkEgressPoolMemberInput,
+    UpdateNetworkEgressProviderLifecycleInput, UpdateNetworkEgressRouteInput,
+    UpsertNetworkEgressProviderSecretInput,
 };
 use sqlx::Row;
 use uuid::Uuid;
@@ -81,6 +82,15 @@ fn selection_strategy(value: &str) -> Result<domain::NetworkEgressPoolSelectionS
     }
 }
 
+fn pool_member_probe_status(value: &str) -> Result<domain::NetworkEgressPoolMemberProbeStatus> {
+    match value {
+        "not_tested" => Ok(domain::NetworkEgressPoolMemberProbeStatus::NotTested),
+        "succeeded" => Ok(domain::NetworkEgressPoolMemberProbeStatus::Succeeded),
+        "failed" => Ok(domain::NetworkEgressPoolMemberProbeStatus::Failed),
+        _ => bail!("invalid network egress pool member probe status"),
+    }
+}
+
 fn pool(row: sqlx::postgres::PgRow) -> Result<domain::NetworkEgressPool> {
     Ok(domain::NetworkEgressPool {
         id: row.get("id"),
@@ -96,19 +106,27 @@ fn pool(row: sqlx::postgres::PgRow) -> Result<domain::NetworkEgressPool> {
     })
 }
 
-fn pool_member(row: sqlx::postgres::PgRow) -> domain::NetworkEgressPoolMember {
-    domain::NetworkEgressPoolMember {
+fn pool_member(row: sqlx::postgres::PgRow) -> Result<domain::NetworkEgressPoolMember> {
+    Ok(domain::NetworkEgressPoolMember {
         id: row.get("id"),
         pool_id: row.get("pool_id"),
         provider_id: row.get("provider_id"),
         provider_egress_key: row.get("provider_egress_key"),
         enabled: row.get("enabled"),
         sequence: row.get("sequence"),
+        probe_status: pool_member_probe_status(row.get::<String, _>("probe_status").as_str())?,
+        probe_http_status: pool_member_probe_status(row.get::<String, _>("probe_http_status").as_str())?,
+        probe_https_status: pool_member_probe_status(row.get::<String, _>("probe_https_status").as_str())?,
+        probe_latency_ms: row.get::<i32, _>("probe_latency_ms"),
+        probe_exit_ip: row.get("probe_exit_ip"),
+        probe_exit_region: row.get("probe_exit_region"),
+        probe_error_code: row.get("probe_error_code"),
+        last_probed_at: row.get("last_probed_at"),
         created_by: row.get("created_by"),
         updated_by: row.get("updated_by"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
-    }
+    })
 }
 
 fn route(row: sqlx::postgres::PgRow) -> Result<domain::NetworkEgressRoute> {
@@ -193,12 +211,13 @@ impl NetworkEgressRepository for PgControlPlaneStore {
             insert into network_egress_providers (
                 id, scope_id, installation_id, provider_code, display_name, description, secret_ref,
                 lifecycle, health_status, created_by, updated_by
-            ) values ($1, $2, null, 'builtin_static_http', $3, '', $4, 'active', 'healthy', $5, $5)
+            ) values ($1, $2, null, 'builtin_static_http', $3, $4, $5, 'active', 'healthy', $6, $6)
         "#,
         )
         .bind(input.provider_id)
         .bind(domain::SYSTEM_SCOPE_ID)
         .bind(&input.display_name)
+        .bind(&input.description)
         .bind(&input.secret_ref)
         .bind(input.actor_user_id)
         .execute(&mut *transaction)
@@ -245,7 +264,7 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         .fetch_one(&mut *transaction)
         .await?;
         transaction.commit().await?;
-        Ok(pool_member(row))
+        pool_member(row)
     }
 
     async fn update_network_egress_provider_lifecycle(
@@ -493,7 +512,7 @@ impl NetworkEgressPoolRepository for PgControlPlaneStore {
         .await?
         .into_iter()
         .map(pool_member)
-        .collect())
+        .collect::<Result<Vec<_>>>()?)
     }
 
     async fn create_network_egress_pool_member(
@@ -518,7 +537,7 @@ impl NetworkEgressPoolRepository for PgControlPlaneStore {
         .bind(input.actor_user_id)
         .fetch_one(self.pool())
         .await?;
-        Ok(pool_member(row))
+        pool_member(row)
     }
 
     async fn update_network_egress_pool_member(
@@ -540,9 +559,43 @@ impl NetworkEgressPoolRepository for PgControlPlaneStore {
         .bind(input.actor_user_id)
         .fetch_optional(self.pool())
         .await?;
-        row.map(pool_member).ok_or_else(|| {
+        row.map(pool_member).transpose()?.ok_or_else(|| {
             anyhow::anyhow!(control_plane::errors::ControlPlaneError::NotFound(
                 "network_egress_pool_member"
+            ))
+        })
+    }
+
+    async fn record_network_egress_pool_member_probe(
+        &self,
+        input: &RecordNetworkEgressPoolMemberProbeInput,
+    ) -> Result<domain::NetworkEgressPoolMember> {
+        let row = sqlx::query(
+            r#"
+                update network_egress_pool_members
+                set probe_status = $3, probe_http_status = $4, probe_https_status = $5,
+                    probe_latency_ms = $6, probe_exit_ip = $7, probe_exit_region = $8,
+                    probe_error_code = $9, last_probed_at = $10, updated_by = $11, updated_at = now()
+                where pool_id = $1 and id = $2
+                returning *
+            "#,
+        )
+        .bind(input.pool_id)
+        .bind(input.member_id)
+        .bind(input.status.as_str())
+        .bind(input.http_status.as_str())
+        .bind(input.https_status.as_str())
+        .bind(input.latency_ms)
+        .bind(&input.exit_ip)
+        .bind(&input.exit_region)
+        .bind(&input.error_code)
+        .bind(input.probed_at)
+        .bind(input.actor_user_id)
+        .fetch_optional(self.pool())
+        .await?;
+        row.map(pool_member).transpose()?.ok_or_else(|| {
+            anyhow::anyhow!(control_plane::errors::ControlPlaneError::NotFound(
+                "network_egress_pool_member",
             ))
         })
     }
@@ -1211,6 +1264,7 @@ mod tests {
                 member_id: Uuid::now_v7(),
                 pool_id: Uuid::now_v7(),
                 display_name: "Should roll back".to_string(),
+                description: String::new(),
                 secret_ref: format!("secret://system/network-egress/{rolled_back_provider_id}"),
                 plaintext_secret_json: json!({"host": "198.65.36.212", "port": 37867}),
                 master_key: "test-master-key".to_string(),
@@ -1240,6 +1294,7 @@ mod tests {
                 member_id: Uuid::now_v7(),
                 pool_id,
                 display_name: "US proxy".to_string(),
+                description: "Manual proxy for US traffic".to_string(),
                 secret_ref: format!("secret://system/network-egress/{provider_id}"),
                 plaintext_secret_json: json!({
                     "host": "198.65.36.212",
@@ -1264,6 +1319,7 @@ mod tests {
             .expect("static provider should persist");
         assert_eq!(provider.installation_id, None);
         assert_eq!(provider.provider_code, "builtin_static_http");
+        assert_eq!(provider.description, "Manual proxy for US traffic");
         let secret = NetworkEgressRepository::resolve_network_egress_provider_secret_json(
             &store,
             provider_id,

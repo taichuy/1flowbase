@@ -149,9 +149,10 @@ pub use modeling::{
 pub use network_egress::{
     NetworkEgressConsumerSelector, NetworkEgressConsumerSelectorParseError,
     NetworkEgressHealthStatus, NetworkEgressPool, NetworkEgressPoolMember,
-    NetworkEgressPoolMemberHealth, NetworkEgressPoolSelectionStrategy,
-    NetworkEgressProjectionRecord, NetworkEgressProviderLifecycle, NetworkEgressProviderRecord,
-    NetworkEgressProviderSecretRecord, NetworkEgressRoute,
+    NetworkEgressPoolMemberHealth, NetworkEgressPoolMemberProbeStatus,
+    NetworkEgressPoolSelectionStrategy, NetworkEgressProjectionRecord,
+    NetworkEgressProviderLifecycle, NetworkEgressProviderRecord, NetworkEgressProviderSecretRecord,
+    NetworkEgressRoute,
 };
 pub use node_contribution::{NodeContributionDependencyStatus, NodeContributionRegistryEntry};
 pub use orchestration::{

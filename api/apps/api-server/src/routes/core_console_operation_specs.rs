@@ -433,6 +433,20 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     ),
     settings("network_egress_providers.list", "system.network-center"),
     settings("network_egress_providers.sync", "system.network-center"),
+    settings("network_egress_proxy_types.list", "system.network-center"),
+    settings(
+        "network_egress_plugins.official_catalog.view",
+        "system.network-center",
+    ),
+    settings(
+        "network_egress_plugins.install.official",
+        "system.network-center",
+    ),
+    settings(
+        "network_egress_plugins.install.upload",
+        "system.network-center",
+    ),
+    settings("network_egress_proxies.create", "system.network-center"),
     settings("network_egress_pools.create", "system.network-center"),
     settings("network_egress_pools.delete", "system.network-center"),
     settings("network_egress_pools.list", "system.network-center"),
@@ -447,6 +461,10 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     ),
     settings(
         "network_egress_pool_members.update",
+        "system.network-center",
+    ),
+    settings(
+        "network_egress_pool_members.test_connection",
         "system.network-center",
     ),
     settings("network_egress_routes.create", "system.network-center"),

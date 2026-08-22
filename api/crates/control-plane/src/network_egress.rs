@@ -1,6 +1,6 @@
 use anyhow::Result;
 use plugin_framework::{
-    EgressAvailability, NetworkEgressProviderPackage, PluginFormSchema,
+    EgressAvailability, NetworkEgressProviderPackage, PluginFormFieldSchema, PluginFormSchema,
     NETWORK_EGRESS_PROVIDER_CONTRACT,
 };
 use serde_json::{Map, Value};
@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::{
     audit::audit_log,
     errors::ControlPlaneError,
+    network_egress_pool::{ensure_global_network_egress_pool, GLOBAL_NETWORK_EGRESS_POOL_ID},
     ports::{
         CreateNetworkEgressProviderInput, NetworkEgressPoolRepository, NetworkEgressRepository,
         NetworkEgressRuntimePort, NetworkEgressSecretResolver, PluginRepository,
@@ -34,6 +35,17 @@ pub struct UpdateNetworkEgressProviderLifecycleCommand {
     pub lifecycle: domain::NetworkEgressProviderLifecycle,
 }
 
+/// A user-facing proxy creation.  It deliberately accepts a proxy type rather than an
+/// installation id: Core resolves the installed extension and attaches every parsed egress to
+/// the single global pool as one server-side action.
+pub struct CreateNetworkEgressProxyCommand {
+    pub actor_user_id: Uuid,
+    pub provider_code: String,
+    pub display_name: String,
+    pub description: String,
+    pub config: Value,
+}
+
 #[derive(Debug, Clone)]
 pub struct NetworkEgressProviderView {
     pub provider: domain::NetworkEgressProviderRecord,
@@ -42,7 +54,8 @@ pub struct NetworkEgressProviderView {
 
 #[derive(Debug, Clone)]
 pub struct NetworkEgressProviderTypeView {
-    pub installation_id: Uuid,
+    /// Built-in types are supplied by Core; extension types point to their installed artifact.
+    pub installation_id: Option<Uuid>,
     pub provider_code: String,
     pub display_name: String,
     pub form_schema: PluginFormSchema,
@@ -95,7 +108,7 @@ where
     /// listing. A package remains selectable even while its extension desired-state is disabled:
     /// an egress instance owns its own lifecycle.
     pub async fn list_types(&self) -> Result<Vec<NetworkEgressProviderTypeView>> {
-        let mut types = Vec::new();
+        let mut types = vec![builtin_static_http_type()];
         for installation in self.repository.list_installations().await? {
             if installation.contract_version != NETWORK_EGRESS_PROVIDER_CONTRACT
                 || installation.metadata_json["plugin_type"] != "network_egress_provider"
@@ -111,7 +124,7 @@ where
             };
             let package = load_egress_package(&local)?;
             types.push(NetworkEgressProviderTypeView {
-                installation_id: installation.id,
+                installation_id: Some(installation.id),
                 provider_code: package.provider.provider_code,
                 display_name: package.provider.display_name,
                 form_schema: package.provider.form_schema,
@@ -185,6 +198,121 @@ where
             ))
             .await?;
         self.sync(command.actor_user_id, provider.id).await
+    }
+
+    pub async fn create_proxy(
+        &self,
+        command: CreateNetworkEgressProxyCommand,
+    ) -> Result<NetworkEgressProviderView> {
+        let provider_code = required_text(&command.provider_code, "provider_code")?;
+        if provider_code == "builtin_static_http" {
+            return self.create_static_http_proxy(command).await;
+        }
+        let proxy_type = self
+            .list_types()
+            .await?
+            .into_iter()
+            .find(|proxy_type| proxy_type.provider_code == provider_code)
+            .ok_or(ControlPlaneError::InvalidInput("provider_code"))?;
+        let installation_id = proxy_type
+            .installation_id
+            .ok_or(ControlPlaneError::InvalidInput("provider_code"))?;
+        let provider = self
+            .create(CreateNetworkEgressProviderCommand {
+                actor_user_id: command.actor_user_id,
+                installation_id,
+                display_name: command.display_name,
+                description: command.description,
+                secret_json: command.config,
+            })
+            .await?;
+        if provider.provider.health_status != domain::NetworkEgressHealthStatus::Healthy {
+            return Err(ControlPlaneError::Conflict("network_egress_proxy_parse_failed").into());
+        }
+        let pool =
+            ensure_global_network_egress_pool(&self.repository, command.actor_user_id).await?;
+        for (sequence, egress) in provider.egresses.iter().enumerate() {
+            self.repository
+                .create_network_egress_pool_member(
+                    &crate::ports::CreateNetworkEgressPoolMemberInput {
+                        member_id: Uuid::now_v7(),
+                        pool_id: pool.id,
+                        provider_id: provider.provider.id,
+                        provider_egress_key: egress.provider_egress_key.clone(),
+                        enabled: egress.availability == "available",
+                        sequence: sequence as i32,
+                        actor_user_id: command.actor_user_id,
+                    },
+                )
+                .await?;
+        }
+        self.repository
+            .append_audit_log(&audit_log(
+                None,
+                Some(command.actor_user_id),
+                "network_egress_pool",
+                Some(GLOBAL_NETWORK_EGRESS_POOL_ID),
+                "network_egress_pool.members_added",
+                serde_json::json!({ "provider_id": provider.provider.id }),
+            ))
+            .await?;
+        Ok(provider)
+    }
+
+    async fn create_static_http_proxy(
+        &self,
+        command: CreateNetworkEgressProxyCommand,
+    ) -> Result<NetworkEgressProviderView> {
+        let config =
+            validate_instance_config(&builtin_static_http_type().form_schema, command.config)?;
+        let host = required_text(config["host"].as_str().unwrap_or_default(), "host")?;
+        if host.contains(['/', '@', ':']) || host.chars().any(char::is_whitespace) {
+            return Err(ControlPlaneError::InvalidInput("host").into());
+        }
+        let port = config["port"]
+            .as_str()
+            .ok_or(ControlPlaneError::InvalidInput("port"))?
+            .parse::<u16>()
+            .ok()
+            .filter(|port| *port > 0)
+            .ok_or(ControlPlaneError::InvalidInput("port"))?;
+        let display_name = required_text(&command.display_name, "display_name")?;
+        let provider_id = Uuid::now_v7();
+        let pool =
+            ensure_global_network_egress_pool(&self.repository, command.actor_user_id).await?;
+        self.repository
+            .create_static_http_proxy_pool_member(
+                &crate::ports::CreateStaticHttpProxyPoolMemberInput {
+                    provider_id,
+                    member_id: Uuid::now_v7(),
+                    pool_id: pool.id,
+                    display_name,
+                    description: command.description,
+                    secret_ref: format!("secret://system/network-egress/{provider_id}"),
+                    plaintext_secret_json: serde_json::json!({
+                        "host": host,
+                        "port": port,
+                        "username": config["username"].as_str().unwrap_or_default(),
+                        "password": config["password"].as_str().unwrap_or_default(),
+                    }),
+                    master_key: self.secret_master_key.clone(),
+                    enabled: true,
+                    sequence: 0,
+                    synchronized_at: OffsetDateTime::now_utc(),
+                    actor_user_id: command.actor_user_id,
+                },
+            )
+            .await?;
+        let provider = self
+            .repository
+            .get_network_egress_provider(provider_id)
+            .await?
+            .expect("static HTTP proxy is persisted with its provider");
+        let egresses = self
+            .repository
+            .list_network_egress_projections(provider_id)
+            .await?;
+        Ok(NetworkEgressProviderView { provider, egresses })
     }
 
     pub async fn update_lifecycle(
@@ -329,6 +457,52 @@ where
     }
 }
 
+fn builtin_static_http_type() -> NetworkEgressProviderTypeView {
+    let required_text = |key: &str, label: &str| PluginFormFieldSchema {
+        key: key.to_string(),
+        label: label.to_string(),
+        field_type: "string".to_string(),
+        control: None,
+        group: None,
+        order: None,
+        advanced: None,
+        required: Some(true),
+        send_mode: None,
+        enabled_by_default: None,
+        description: None,
+        placeholder: None,
+        default_value: None,
+        min: None,
+        max: None,
+        step: None,
+        precision: None,
+        unit: None,
+        options: Vec::new(),
+        visible_when: Vec::new(),
+        disabled_when: Vec::new(),
+    };
+    let mut username = required_text("username", "Username");
+    username.required = Some(false);
+    let mut password = required_text("password", "Password");
+    password.required = Some(false);
+    NetworkEgressProviderTypeView {
+        installation_id: None,
+        provider_code: "builtin_static_http".to_string(),
+        display_name: "HTTP proxy".to_string(),
+        form_schema: PluginFormSchema {
+            schema_version: "1flowbase.plugin.form/v1".to_string(),
+            title: None,
+            description: None,
+            fields: vec![
+                required_text("host", "Hostname or IP"),
+                required_text("port", "Port"),
+                username,
+                password,
+            ],
+        },
+    }
+}
+
 fn required_text(value: &str, field: &'static str) -> Result<String> {
     let value = value.trim();
     if value.is_empty() {
@@ -377,4 +551,25 @@ fn validate_instance_config(schema: &PluginFormSchema, value: Value) -> Result<V
         validated.insert(field.key.clone(), Value::String(text.to_string()));
     }
     Ok(Value::Object(validated))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::builtin_static_http_type;
+
+    #[test]
+    fn ac_nc_global_pool_catalog_includes_the_builtin_http_proxy_type() {
+        let proxy_type = builtin_static_http_type();
+        assert_eq!(proxy_type.provider_code, "builtin_static_http");
+        assert!(proxy_type.installation_id.is_none());
+        assert_eq!(
+            proxy_type
+                .form_schema
+                .fields
+                .iter()
+                .map(|field| field.key.as_str())
+                .collect::<Vec<_>>(),
+            vec!["host", "port", "username", "password"]
+        );
+    }
 }

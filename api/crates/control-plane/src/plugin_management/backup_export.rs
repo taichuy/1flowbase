@@ -316,6 +316,9 @@ fn classify_source(source_kind: &str) -> BackupArtifactDisposition {
         | "official"
         | "official_registry"
         | "official_repository"
+        // A configured proxy only changes the transport route to an official catalog. The
+        // verified package identity remains independently rebuildable after restore.
+        | "configured_proxy"
         | "mirror_registry" => BackupArtifactDisposition::RebuildableIdentity,
         _ => BackupArtifactDisposition::Embedded,
     }
@@ -546,6 +549,7 @@ mod tests {
             "official",
             "official_registry",
             "official_repository",
+            "configured_proxy",
             "mirror_registry",
         ] {
             assert_eq!(

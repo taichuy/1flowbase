@@ -179,3 +179,21 @@ fn pending_restart_rebuildable_plugin_is_required_without_a_local_artifact() {
         BackupArtifactDisposition::RebuildableIdentity
     );
 }
+
+#[test]
+fn configured_proxy_uses_verified_official_identity_without_a_current_artifact() {
+    let entries = build_backup_artifact_inventory(
+        "node-a",
+        vec![installation("configured_proxy")],
+        Vec::new(),
+        Vec::new(),
+    )
+    .unwrap();
+
+    assert_eq!(entries.len(), 1);
+    assert_eq!(
+        entries[0].disposition,
+        BackupArtifactDisposition::RebuildableIdentity
+    );
+    assert_eq!(entries[0].artifact_path, None);
+}

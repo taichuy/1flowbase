@@ -147,7 +147,12 @@ use utoipa::OpenApi;
         crate::routes::model_definitions::update_scope_grant,
         crate::routes::docs::get_data_model_openapi,
         crate::routes::network_center::list_network_egress_provider_types,
+        crate::routes::network_center::plugins::list_official_catalog,
+        crate::routes::network_center::plugins::install_official_plugin,
+        crate::routes::network_center::plugins::install_uploaded_plugin,
         crate::routes::network_center::pools::add_static_http_proxy_to_pool,
+        crate::routes::network_center::pools::create_network_egress_proxy,
+        crate::routes::network_center::pools::test_network_egress_pool_member_connection,
         crate::routes::network_center::pools::add_provider_egresses_to_pool,
     ),
     components(schemas(

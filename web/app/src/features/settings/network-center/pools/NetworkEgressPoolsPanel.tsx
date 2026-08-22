@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import {
   App,
@@ -9,9 +9,7 @@ import {
   Form,
   Input,
   InputNumber,
-  Modal,
   Popconfirm,
-  Radio,
   Select,
   Space,
   Switch,
@@ -19,245 +17,167 @@ import {
   Tag,
   Typography
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import {
-  addSettingsNetworkEgressProviderToPool,
-  createSettingsNetworkEgressPool,
-  createSettingsNetworkEgressPoolStaticHttpMember,
-  deleteSettingsNetworkEgressPool,
+  createSettingsNetworkEgressProxy,
   deleteSettingsNetworkEgressPoolMember,
   fetchSettingsNetworkEgressPools,
+  fetchSettingsNetworkEgressProviderTypes,
   settingsNetworkEgressPoolsQueryKey,
-  updateSettingsNetworkEgressPool,
+  testSettingsNetworkEgressPoolMember,
   updateSettingsNetworkEgressPoolMember,
-  type AddSettingsNetworkEgressProviderToPoolInput,
-  type CreateSettingsNetworkEgressPoolInput,
-  type CreateSettingsNetworkEgressPoolStaticHttpMemberInput,
-  type SettingsNetworkEgressPool,
+  type CreateSettingsNetworkEgressProxyInput,
   type SettingsNetworkEgressPoolMember,
-  type SettingsNetworkEgressProvider,
-  type UpdateSettingsNetworkEgressPoolInput,
-  type UpdateSettingsNetworkEgressPoolMemberInput
+  type SettingsNetworkEgressProviderType
 } from '../../api/network-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { useAuthStore } from '../../../../state/auth-store';
 import { i18nText } from '../../../../shared/i18n/text';
+import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/FixedHeightModal';
 
-type PoolFormValues = CreateSettingsNetworkEgressPoolInput;
-type MemberUpdateFormValues = UpdateSettingsNetworkEgressPoolMemberInput;
-type AddExitSubmission =
-  | { kind: 'static_http'; input: CreateSettingsNetworkEgressPoolStaticHttpMemberInput }
-  | { kind: 'provider'; input: AddSettingsNetworkEgressProviderToPoolInput };
+type ProxyFormValues = CreateSettingsNetworkEgressProxyInput;
+type ProxyMemberEditValues = { enabled: boolean; sequence: number };
 
 function healthTag(health: string) {
-  const color =
-    health === 'healthy'
-      ? 'green'
-      : health === 'unhealthy'
-        ? 'red'
-        : health === 'invalid'
-          ? 'orange'
-          : undefined;
-  const label =
-    health === 'healthy' || health === 'unhealthy' || health === 'invalid'
-      ? i18nText('settings', `auto.network_center_health_${health}`)
-      : health;
-
-  return <Tag color={color}>{label}</Tag>;
+  const color = health === 'healthy' ? 'green' : health === 'unhealthy' ? 'red' : 'orange';
+  return <Tag color={color}>{i18nText('settings', `auto.network_center_health_${health}`)}</Tag>;
 }
 
-function PoolNameModal({
-  pool,
+function probeCapabilityTag(protocol: 'http' | 'https', status: string) {
+  const label = protocol === 'http'
+    ? status === 'succeeded'
+      ? i18nText('settings', 'auto.network_center_probe_http_available')
+      : status === 'failed'
+        ? i18nText('settings', 'auto.network_center_probe_http_unavailable')
+        : i18nText('settings', 'auto.network_center_probe_http_not_tested')
+    : status === 'succeeded'
+      ? i18nText('settings', 'auto.network_center_probe_https_available')
+      : status === 'failed'
+        ? i18nText('settings', 'auto.network_center_probe_https_unavailable')
+        : i18nText('settings', 'auto.network_center_probe_https_not_tested');
+  return <Tag color={status === 'succeeded' ? 'green' : status === 'failed' ? 'red' : undefined}>{label}</Tag>;
+}
+
+function probeErrorText(errorCode: string | null) {
+  switch (errorCode) {
+    case 'proxy_authentication_failed': return i18nText('settings', 'auto.network_center_probe_error_authentication');
+    case 'proxy_timeout': return i18nText('settings', 'auto.network_center_probe_error_timeout');
+    case 'proxy_request_rejected': return i18nText('settings', 'auto.network_center_probe_error_rejected');
+    case 'https_connect_failed': return i18nText('settings', 'auto.network_center_probe_error_https_connect');
+    case 'proxy_unavailable': return i18nText('settings', 'auto.network_center_probe_error_unavailable');
+    case 'proxy_release_failed': return i18nText('settings', 'auto.network_center_probe_error_release');
+    default: return i18nText('settings', 'auto.network_center_probe_error_http');
+  }
+}
+
+function ProxyModal({
   open,
+  types,
+  loading,
   submitting,
   onClose,
   onSubmit
 }: {
-  pool: SettingsNetworkEgressPool | null;
   open: boolean;
+  types: SettingsNetworkEgressProviderType[];
+  loading: boolean;
   submitting: boolean;
   onClose: () => void;
-  onSubmit: (values: PoolFormValues) => void;
+  onSubmit: (values: ProxyFormValues) => void;
 }) {
-  const [form] = Form.useForm<PoolFormValues>();
-
+  const [form] = Form.useForm<ProxyFormValues>();
+  const providerCode = Form.useWatch('provider_code', form);
+  const proxyType = types.find((item) => item.provider_code === providerCode);
   return (
-    <Modal
-      title={i18nText(
-        'settings',
-        pool
-          ? 'auto.network_center_pool_edit'
-          : 'auto.network_center_pool_create'
-      )}
+    <FixedHeightModal
       open={open}
+      title={i18nText('settings', 'auto.network_center_member_create')}
       onCancel={onClose}
-      destroyOnHidden
-      okText={i18nText('settings', 'auto.save')}
-      confirmLoading={submitting}
       onOk={() => form.submit()}
+      confirmLoading={submitting}
+      destroyOnHidden
+      width={640}
     >
       <Form
         form={form}
         layout="vertical"
-        initialValues={pool ? { display_name: pool.display_name } : undefined}
+        initialValues={{ description: '', config: {} }}
         onFinish={onSubmit}
       >
         <Form.Item
-          name="display_name"
-          label={i18nText('settings', 'auto.network_center_pool_display_name')}
+          name="provider_code"
+          label={i18nText('settings', 'auto.network_center_providers')}
           rules={[{ required: true }]}
         >
-          <Input autoFocus />
+          <Select
+            loading={loading}
+            options={types.map((item) => ({ value: item.provider_code, label: item.display_name }))}
+          />
         </Form.Item>
+        <Form.Item
+          name="display_name"
+          label={i18nText('settings', 'auto.name')}
+          rules={[{ required: true }]}
+        >
+          <Input />
+        </Form.Item>
+        <Form.Item name="description" label={i18nText('settings', 'auto.description')}>
+          <Input.TextArea rows={2} />
+        </Form.Item>
+        {proxyType?.form_schema.fields.map((field) => (
+          <Form.Item
+            key={field.key}
+            name={['config', field.key]}
+            label={field.label}
+            extra={field.description}
+            rules={[{ required: field.required }]}
+          >
+            {field.key.toLowerCase().includes('password') ? <Input.Password /> : <Input />}
+          </Form.Item>
+        ))}
       </Form>
-    </Modal>
+    </FixedHeightModal>
   );
 }
 
-function MemberModal({
+function ProxyMemberEditModal({
   member,
-  providers,
-  open,
   submitting,
   onClose,
   onSubmit
 }: {
   member: SettingsNetworkEgressPoolMember | null;
-  providers: SettingsNetworkEgressProvider[];
-  open: boolean;
   submitting: boolean;
   onClose: () => void;
-  onSubmit: (values: MemberUpdateFormValues | AddExitSubmission) => void;
+  onSubmit: (values: ProxyMemberEditValues) => void;
 }) {
-  const [form] = Form.useForm();
-  const isEditing = member !== null;
-  const source = Form.useWatch('source', form) ?? 'static_http';
-  const providerOptions = providers
-    .filter((provider) => provider.provider_code !== 'builtin_static_http')
-    .map((provider) => ({
-      value: provider.id,
-      label: `${provider.display_name} · ${provider.egresses.length}`
-    }));
-
+  const [form] = Form.useForm<ProxyMemberEditValues>();
+  useEffect(() => {
+    if (member) form.setFieldsValue({ enabled: member.enabled, sequence: member.sequence });
+  }, [form, member]);
   return (
-    <Modal
-      title={i18nText(
-        'settings',
-        isEditing
-          ? 'auto.network_center_member_edit'
-          : 'auto.network_center_member_create'
-      )}
-      open={open}
+    <FixedHeightModal
+      open={member !== null}
+      title={i18nText('settings', 'auto.network_center_member_edit')}
       onCancel={onClose}
-      destroyOnHidden
-      okText={i18nText('settings', 'auto.save')}
-      confirmLoading={submitting}
       onOk={() => form.submit()}
+      confirmLoading={submitting}
+      destroyOnHidden
+      width={520}
     >
       <Form
         form={form}
         layout="vertical"
-        initialValues={
-          member
-            ? { enabled: member.enabled, sequence: member.sequence }
-            : { source: 'static_http', enabled: true, sequence: 0 }
-        }
-        onFinish={(values) => {
-          if (isEditing) {
-            onSubmit(values as MemberUpdateFormValues);
-            return;
-          }
-          if ((values.source ?? 'static_http') === 'provider') {
-            onSubmit({
-              kind: 'provider',
-              input: {
-                provider_id: values.provider_id,
-                enabled: values.enabled,
-                sequence: values.sequence
-              }
-            });
-            return;
-          }
-          onSubmit({
-            kind: 'static_http',
-            input: {
-              display_name: values.display_name,
-              host: values.host,
-              port: values.port,
-              username: values.username ?? '',
-              password: values.password ?? '',
-              enabled: values.enabled,
-              sequence: values.sequence
-            }
-          });
-        }}
+        initialValues={{ enabled: member?.enabled, sequence: member?.sequence }}
+        onFinish={onSubmit}
       >
-        {!isEditing ? (
-          <>
-            <Form.Item
-              name="source"
-              initialValue="static_http"
-              label={i18nText('settings', 'auto.network_center_member_source')}
-              rules={[{ required: true }]}
-            >
-              <Radio.Group>
-                <Radio value="static_http">
-                  {i18nText('settings', 'auto.network_center_member_static_http')}
-                </Radio>
-                <Radio value="provider">
-                  {i18nText('settings', 'auto.network_center_member_provider')}
-                </Radio>
-              </Radio.Group>
-            </Form.Item>
-            {source === 'static_http' ? (
-              <>
-                <Form.Item
-                  name="display_name"
-                  label={i18nText('settings', 'auto.name')}
-                  rules={[{ required: true }]}
-                >
-                  <Input />
-                </Form.Item>
-                <Form.Item name="host" label={i18nText('settings', 'auto.host')} rules={[{ required: true }]}>
-                  <Input />
-                </Form.Item>
-                <Form.Item name="port" label={i18nText('settings', 'auto.network_center_member_port')} rules={[{ required: true }]}>
-                  <InputNumber min={1} max={65535} precision={0} className="network-center-pools__sequence" />
-                </Form.Item>
-                <Form.Item name="username" label={i18nText('settings', 'auto.network_center_member_username')}>
-                  <Input autoComplete="username" />
-                </Form.Item>
-                <Form.Item name="password" label={i18nText('settings', 'auto.network_center_member_password')}>
-                  <Input.Password autoComplete="new-password" />
-                </Form.Item>
-              </>
-            ) : (
-              <Form.Item name="provider_id" label={i18nText('settings', 'auto.network_center_member_provider_instance')} rules={[{ required: true }]}>
-                <Select options={providerOptions} />
-              </Form.Item>
-            )}
-          </>
-        ) : (
-          <Form.Item
-            label={i18nText('settings', 'auto.network_center_member_reference')}
-          >
-            <Typography.Text>
-              {member.provider_id} · {member.provider_egress_key}
-            </Typography.Text>
-          </Form.Item>
-        )}
         <Form.Item
           name="sequence"
           label={i18nText('settings', 'auto.network_center_member_sequence')}
           rules={[{ required: true }]}
         >
-          <InputNumber
-            min={0}
-            precision={0}
-            className="network-center-pools__sequence"
-          />
+          <InputNumber min={0} precision={0} style={{ width: '100%' }} />
         </Form.Item>
         <Form.Item
           name="enabled"
@@ -267,420 +187,197 @@ function MemberModal({
           <Switch />
         </Form.Item>
       </Form>
-    </Modal>
+    </FixedHeightModal>
   );
 }
 
-export function NetworkEgressPoolsPanel({
-  providers
-}: {
-  providers: SettingsNetworkEgressProvider[];
-}) {
+export function NetworkEgressPoolsPanel() {
   const { message } = App.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const queryClient = useQueryClient();
-  const poolsQuery = useQuery({
-    queryKey: settingsNetworkEgressPoolsQueryKey,
-    queryFn: fetchSettingsNetworkEgressPools
-  });
-  const [poolModal, setPoolModal] = useState<
-    SettingsNetworkEgressPool | null | undefined
-  >(undefined);
-  const [memberModal, setMemberModal] = useState<{
-    pool: SettingsNetworkEgressPool;
-    member: SettingsNetworkEgressPoolMember | null;
-  } | null>(null);
-
-  const invalidatePools = () =>
-    queryClient.invalidateQueries({
-      queryKey: settingsNetworkEgressPoolsQueryKey
-    });
-  const createPoolMutation = useMutation({
-    mutationFn: (input: PoolFormValues) => {
+  const [createOpen, setCreateOpen] = useState(false);
+  const [search, setSearch] = useState('');
+  const [health, setHealth] = useState<string>();
+  const [providerCode, setProviderCode] = useState<string>();
+  const [editingMember, setEditingMember] = useState<SettingsNetworkEgressPoolMember | null>(null);
+  const pools = useQuery({ queryKey: settingsNetworkEgressPoolsQueryKey, queryFn: fetchSettingsNetworkEgressPools });
+  const types = useQuery({ queryKey: ['settings', 'network-center', 'provider-types'], queryFn: fetchSettingsNetworkEgressProviderTypes });
+  const pool = pools.data?.[0];
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: settingsNetworkEgressPoolsQueryKey });
+  const create = useMutation({
+    mutationFn: (input: ProxyFormValues) => {
       if (!csrfToken) throw new Error('Missing CSRF token');
-      return createSettingsNetworkEgressPool(input, csrfToken);
+      return createSettingsNetworkEgressProxy(input, csrfToken);
     },
     onSuccess: async () => {
-      await invalidatePools();
-      setPoolModal(undefined);
+      await Promise.all([
+        invalidate(),
+        queryClient.invalidateQueries({ queryKey: ['settings', 'network-center', 'providers'] })
+      ]);
+      setCreateOpen(false);
     },
-    onError: () =>
-      message.error(
-        i18nText('settings', 'auto.network_center_pool_save_failed')
-      )
+    onError: () => message.error(i18nText('settings', 'auto.network_center_proxy_create_failed'))
   });
-  const updatePoolMutation = useMutation({
-    mutationFn: ({
-      poolId,
-      input
-    }: {
-      poolId: string;
-      input: PoolFormValues;
-    }) => {
-      if (!csrfToken) throw new Error('Missing CSRF token');
-      return updateSettingsNetworkEgressPool(poolId, input, csrfToken);
+  const updateMember = useMutation({
+    mutationFn: ({ memberId, input }: { memberId: string; input: ProxyMemberEditValues }) => {
+      if (!csrfToken || !pool) throw new Error('Missing proxy pool context');
+      return updateSettingsNetworkEgressPoolMember(pool.id, memberId, input, csrfToken);
     },
     onSuccess: async () => {
-      await invalidatePools();
-      setPoolModal(undefined);
-    },
-    onError: () =>
-      message.error(
-        i18nText('settings', 'auto.network_center_pool_save_failed')
-      )
-  });
-  const deletePoolMutation = useMutation({
-    mutationFn: (poolId: string) => {
-      if (!csrfToken) throw new Error('Missing CSRF token');
-      return deleteSettingsNetworkEgressPool(poolId, csrfToken);
-    },
-    onSuccess: invalidatePools,
-    onError: () =>
-      message.error(
-        i18nText('settings', 'auto.network_center_pool_delete_failed')
-      )
-  });
-  const staticHttpMemberMutation = useMutation({
-    mutationFn: ({
-      poolId,
-      input
-    }: {
-      poolId: string;
-      input: CreateSettingsNetworkEgressPoolStaticHttpMemberInput;
-    }) => {
-      if (!csrfToken) throw new Error('Missing CSRF token');
-      return createSettingsNetworkEgressPoolStaticHttpMember(
-        poolId,
-        input,
-        csrfToken
-      );
-    },
-    onSuccess: async () => {
-      await invalidatePools();
-      setMemberModal(null);
-    },
-    onError: () =>
-      message.error(
-        i18nText('settings', 'auto.network_center_member_save_failed')
-      )
-  });
-  const providerMembersMutation = useMutation({
-    mutationFn: ({
-      poolId,
-      input
-    }: {
-      poolId: string;
-      input: AddSettingsNetworkEgressProviderToPoolInput;
-    }) => {
-      if (!csrfToken) throw new Error('Missing CSRF token');
-      return addSettingsNetworkEgressProviderToPool(poolId, input, csrfToken);
-    },
-    onSuccess: async () => {
-      await invalidatePools();
-      setMemberModal(null);
-    },
-    onError: () =>
-      message.error(
-        i18nText('settings', 'auto.network_center_member_save_failed')
-      )
-  });
-  const updateMemberMutation = useMutation({
-    mutationFn: ({
-      poolId,
-      memberId,
-      input
-    }: {
-      poolId: string;
-      memberId: string;
-      input: MemberUpdateFormValues;
-    }) => {
-      if (!csrfToken) throw new Error('Missing CSRF token');
-      return updateSettingsNetworkEgressPoolMember(
-        poolId,
-        memberId,
-        input,
-        csrfToken
-      );
-    },
-    onSuccess: async () => {
-      await invalidatePools();
-      setMemberModal(null);
-    },
-    onError: () =>
-      message.error(
-        i18nText('settings', 'auto.network_center_member_save_failed')
-      )
-  });
-  const deleteMemberMutation = useMutation({
-    mutationFn: ({
-      poolId,
-      memberId
-    }: {
-      poolId: string;
-      memberId: string;
-    }) => {
-      if (!csrfToken) throw new Error('Missing CSRF token');
-      return deleteSettingsNetworkEgressPoolMember(poolId, memberId, csrfToken);
-    },
-    onSuccess: invalidatePools,
-    onError: () =>
-      message.error(
-        i18nText('settings', 'auto.network_center_member_delete_failed')
-      )
-  });
-
-  const memberColumns: ColumnsType<SettingsNetworkEgressPoolMember> = [
-    {
-      title: i18nText('settings', 'auto.network_center_member_reference'),
-      key: 'reference',
-      render: (_, member) =>
-        `${member.provider_id} · ${member.provider_egress_key}`
-    },
-    {
-      title: i18nText('settings', 'auto.network_center_member_sequence'),
-      dataIndex: 'sequence',
-      key: 'sequence',
-      width: 100
-    },
-    {
-      title: i18nText('settings', 'auto.network_center_member_enabled'),
-      dataIndex: 'enabled',
-      key: 'enabled',
-      width: 120,
-      render: (enabled: boolean) =>
-        enabled
-          ? i18nText('settings', 'auto.enabled')
-          : i18nText('settings', 'auto.disabled')
-    },
-    {
-      title: i18nText('settings', 'auto.network_center_member_health'),
-      dataIndex: 'health',
-      key: 'health',
-      width: 120,
-      render: healthTag
+      await invalidate();
+      setEditingMember(null);
     }
-  ];
-
-  const poolColumns: ColumnsType<SettingsNetworkEgressPool> = [
-    {
-      title: i18nText('settings', 'auto.network_center_pool_display_name'),
-      dataIndex: 'display_name',
-      key: 'display_name',
-      render: (displayName: string, pool) => (
-        <Space size={8}>
-          {displayName}
-          {pool.owner_provider_id ? (
-            <Tag>
-              {i18nText('settings', 'auto.network_center_pool_provider_owned')}
-            </Tag>
-          ) : null}
-        </Space>
-      )
+  });
+  const removeMember = useMutation({
+    mutationFn: (memberId: string) => {
+      if (!csrfToken || !pool) throw new Error('Missing proxy pool context');
+      return deleteSettingsNetworkEgressPoolMember(pool.id, memberId, csrfToken);
     },
-    {
-      title: i18nText(
-        'settings',
-        'auto.network_center_pool_selection_strategy'
-      ),
-      dataIndex: 'selection_strategy',
-      key: 'selection_strategy',
-      render: (strategy: string) =>
-        strategy === 'healthy_first'
-          ? i18nText('settings', 'auto.network_center_pool_healthy_first')
-          : strategy
+    onSuccess: invalidate
+  });
+  const testMember = useMutation({
+    mutationFn: (memberId: string) => {
+      if (!csrfToken || !pool) throw new Error('Missing proxy pool context');
+      return testSettingsNetworkEgressPoolMember(pool.id, memberId, csrfToken);
     },
-    {
-      title: i18nText('settings', 'auto.network_center_pool_members'),
-      key: 'members',
-      render: (_, pool) => pool.members.length
-    },
-    {
-      title: '',
-      key: 'actions',
-      width: 160,
-      render: (_, pool) =>
-        pool.owner_provider_id ? null : (
-          <Space size={0}>
-            <Button type="link" onClick={() => setPoolModal(pool)}>
-              {i18nText('settings', 'auto.edit')}
-            </Button>
-            <Popconfirm
-              title={i18nText(
-                'settings',
-                'auto.network_center_pool_delete_confirm'
-              )}
-              onConfirm={() => deletePoolMutation.mutate(pool.id)}
-            >
-              <Button type="link" danger loading={deletePoolMutation.isPending}>
-                {i18nText('settings', 'auto.delete')}
-              </Button>
-            </Popconfirm>
-          </Space>
-        )
-    }
-  ];
+    onSuccess: invalidate,
+    onError: () => message.error(i18nText('settings', 'auto.network_center_member_test_failed'))
+  });
+  const typeDisplayNameByCode = useMemo(
+    () => new Map((types.data ?? []).map((type) => [type.provider_code, type.display_name])),
+    [types.data]
+  );
+  const members = useMemo(() => (pool?.members ?? []).filter((member) => {
+    const terms = `${member.display_name} ${typeDisplayNameByCode.get(member.provider_code) ?? member.provider_code} ${member.address_summary ?? ''}`.toLowerCase();
+    return (!search || terms.includes(search.trim().toLowerCase()))
+      && (!health || member.health === health)
+      && (!providerCode || member.provider_code === providerCode);
+  }), [health, pool?.members, providerCode, search, typeDisplayNameByCode]);
 
   return (
     <SettingsSectionSurface heightMode="fill">
-      <Flex vertical gap={16}>
-        <Flex
-          justify="flex-end"
-          align="center"
-          gap={16}
-          data-testid="network-center-pools-shell"
-        >
-          <Button type="primary" onClick={() => setPoolModal(null)}>
-            {i18nText('settings', 'auto.network_center_pool_create')}
+      <Flex vertical gap={16} data-testid="network-center-pools-shell">
+        <Flex justify="space-between" gap={12} wrap>
+          <Space wrap>
+            <Input.Search
+              allowClear
+              placeholder={i18nText('settings', 'auto.network_center_proxy_search')}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              style={{ width: 240 }}
+            />
+            <Select
+              allowClear
+              placeholder={i18nText('settings', 'auto.network_center_member_health')}
+              value={health}
+              onChange={setHealth}
+              style={{ width: 160 }}
+              options={['healthy', 'unhealthy', 'invalid'].map((value) => ({ value, label: i18nText('settings', `auto.network_center_health_${value}`) }))}
+            />
+            <Select
+              allowClear
+              placeholder={i18nText('settings', 'auto.network_center_providers')}
+              value={providerCode}
+              onChange={setProviderCode}
+              style={{ width: 180 }}
+              options={types.data?.map((type) => ({ value: type.provider_code, label: type.display_name }))}
+            />
+          </Space>
+          <Button type="primary" onClick={() => setCreateOpen(true)}>
+            {i18nText('settings', 'auto.network_center_member_create')}
           </Button>
         </Flex>
-        {poolsQuery.isError ? (
-          <Alert
-            type="error"
-            showIcon
-            title={i18nText(
-              'settings',
-              'auto.network_center_pools_load_failed'
-            )}
-          />
-        ) : poolsQuery.data?.length === 0 && !poolsQuery.isLoading ? (
-          <Empty
-            description={i18nText('settings', 'auto.network_center_no_pools')}
-          />
+        {pools.isError ? (
+          <Alert type="error" showIcon title={i18nText('settings', 'auto.network_center_pools_load_failed')} />
         ) : (
           <Table
             rowKey="id"
-            columns={poolColumns}
-            dataSource={poolsQuery.data ?? []}
-            loading={poolsQuery.isLoading}
+            loading={pools.isLoading}
+            dataSource={members}
             pagination={false}
-            expandable={{
-              expandedRowRender: (pool) => (
-                <Space
-                  orientation="vertical"
-                  size={12}
-                  className="network-center-pools__members"
-                >
-                  <Flex justify="space-between" align="center">
-                    <Typography.Text strong>
-                      {i18nText('settings', 'auto.network_center_pool_members')}
-                    </Typography.Text>
-                    {pool.owner_provider_id ? null : (
-                      <Button
-                        size="small"
-                        onClick={() => setMemberModal({ pool, member: null })}
-                      >
-                        {i18nText('settings', 'auto.network_center_member_create')}
-                      </Button>
-                    )}
-                  </Flex>
-                  <Table
-                    rowKey="id"
-                    size="small"
-                    columns={
-                      [
-                        ...memberColumns,
-                        pool.owner_provider_id
-                          ? null
-                          : {
-                              title: '',
-                              key: 'actions',
-                              width: 140,
-                              render: (
-                                _: unknown,
-                                member: SettingsNetworkEgressPoolMember
-                              ) => (
-                                <Space size={0}>
-                                  <Button
-                                    type="link"
-                                    onClick={() =>
-                                      setMemberModal({ pool, member })
-                                    }
-                                  >
-                                    {i18nText('settings', 'auto.edit')}
-                                  </Button>
-                                  <Popconfirm
-                                    title={i18nText(
-                                      'settings',
-                                      'auto.network_center_member_delete_confirm'
-                                    )}
-                                    onConfirm={() =>
-                                      deleteMemberMutation.mutate({
-                                        poolId: pool.id,
-                                        memberId: member.id
-                                      })
-                                    }
-                                  >
-                                    <Button
-                                      type="link"
-                                      danger
-                                      loading={deleteMemberMutation.isPending}
-                                    >
-                                      {i18nText('settings', 'auto.delete')}
-                                    </Button>
-                                  </Popconfirm>
-                                </Space>
-                              )
-                            }
-                      ].filter(
-                        Boolean
-                      ) as ColumnsType<SettingsNetworkEgressPoolMember>
-                    }
-                    dataSource={pool.members}
-                    pagination={false}
-                  />
+            scroll={{ x: 1160 }}
+            locale={{ emptyText: <Empty description={i18nText('settings', 'auto.network_center_no_pools')} /> }}
+            columns={[
+              {
+                title: i18nText('settings', 'auto.name'),
+                key: 'name',
+                dataIndex: 'display_name'
+              },
+              {
+                title: i18nText('settings', 'auto.network_center_providers'),
+                dataIndex: 'provider_code',
+                render: (providerCode) => <Typography.Text type="secondary">{typeDisplayNameByCode.get(providerCode) ?? providerCode}</Typography.Text>
+              },
+              {
+                title: i18nText('settings', 'auto.network_center_proxy_address'),
+                key: 'address',
+                render: (_, member) => member.address_summary
+                  ? <Typography.Text copyable={{ text: member.address_summary }} style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' }}>{member.address_summary}</Typography.Text>
+                  : <Typography.Text type="secondary">{member.provider_egress_key}</Typography.Text>
+              },
+              {
+                title: i18nText('settings', 'auto.network_center_provider_egress_region'),
+                dataIndex: 'region',
+                render: (region) => region ?? '-'
+              },
+              {
+                title: i18nText('settings', 'auto.network_center_member_health'),
+                dataIndex: 'health',
+                render: healthTag
+              },
+              {
+                title: i18nText('settings', 'auto.network_center_probe_latency'),
+                dataIndex: 'probe_latency_ms',
+                render: (latencyMs: number) => <Typography.Text>{latencyMs}ms</Typography.Text>
+              },
+              {
+                title: i18nText('settings', 'auto.network_center_member_test_result'),
+                key: 'probe',
+                render: (_, member) => member.probe_status === 'not_tested'
+                  ? <Typography.Text type="secondary">-</Typography.Text>
+                  : <Space orientation="vertical" size={0}>
+                    <Space size={4} wrap>
+                      {probeCapabilityTag('http', member.probe_http_status)}
+                      {probeCapabilityTag('https', member.probe_https_status)}
+                    </Space>
+                    {member.probe_exit_ip ? <Typography.Text type="secondary">{member.probe_exit_ip}</Typography.Text> : null}
+                    {member.probe_error_code ? <Typography.Text type="danger">{probeErrorText(member.probe_error_code)}</Typography.Text> : null}
+                    {member.last_probed_at ? <Typography.Text type="secondary">{new Date(member.last_probed_at).toLocaleString()}</Typography.Text> : null}
+                  </Space>
+              },
+              {
+                title: i18nText('settings', 'auto.status'),
+                dataIndex: 'enabled',
+                render: (enabled, member) => <Switch checked={enabled} loading={updateMember.isPending} onChange={(next) => updateMember.mutate({ memberId: member.id, input: { enabled: next, sequence: member.sequence } })} />
+              },
+              {
+                title: i18nText('settings', 'auto.operation'),
+                render: (_, member) => <Space>
+                  <Button type="link" loading={testMember.isPending} onClick={() => testMember.mutate(member.id)}>{i18nText('settings', 'auto.network_center_member_test')}</Button>
+                  <Button type="link" onClick={() => setEditingMember(member)}>{i18nText('settings', 'auto.network_center_member_edit_action')}</Button>
+                  <Popconfirm title={i18nText('settings', 'auto.network_center_member_delete_confirm')} onConfirm={() => removeMember.mutate(member.id)}>
+                    <Button type="link" danger loading={removeMember.isPending}>{i18nText('settings', 'auto.delete')}</Button>
+                  </Popconfirm>
                 </Space>
-              )
-            }}
+              }
+            ]}
           />
         )}
       </Flex>
-      <PoolNameModal
-        pool={poolModal ?? null}
-        open={poolModal !== undefined}
-        submitting={
-          createPoolMutation.isPending || updatePoolMutation.isPending
-        }
-        onClose={() => setPoolModal(undefined)}
-        onSubmit={(values) => {
-          if (poolModal) {
-            updatePoolMutation.mutate({ poolId: poolModal.id, input: values });
-            return;
-          }
-          createPoolMutation.mutate(values);
-        }}
+      <ProxyModal
+        open={createOpen}
+        types={types.data ?? []}
+        loading={types.isLoading}
+        submitting={create.isPending}
+        onClose={() => setCreateOpen(false)}
+        onSubmit={(values) => create.mutate(values)}
       />
-      <MemberModal
-        member={memberModal?.member ?? null}
-        providers={providers}
-        open={memberModal !== null}
-        submitting={
-          staticHttpMemberMutation.isPending ||
-          providerMembersMutation.isPending ||
-          updateMemberMutation.isPending
-        }
-        onClose={() => setMemberModal(null)}
-        onSubmit={(values) => {
-          if (!memberModal) return;
-          if (memberModal.member) {
-            updateMemberMutation.mutate({
-              poolId: memberModal.pool.id,
-              memberId: memberModal.member.id,
-              input: values as MemberUpdateFormValues
-            });
-            return;
-          }
-          const submission = values as AddExitSubmission;
-          if (submission.kind === 'static_http') {
-            staticHttpMemberMutation.mutate({
-              poolId: memberModal.pool.id,
-              input: submission.input
-            });
-            return;
-          }
-          providerMembersMutation.mutate({
-            poolId: memberModal.pool.id,
-            input: submission.input
-          });
+      <ProxyMemberEditModal
+        member={editingMember}
+        submitting={updateMember.isPending}
+        onClose={() => setEditingMember(null)}
+        onSubmit={(input) => {
+          if (editingMember) updateMember.mutate({ memberId: editingMember.id, input });
         }}
       />
     </SettingsSectionSurface>

@@ -18,6 +18,7 @@ pub struct CreateStaticHttpProxyPoolMemberInput {
     pub member_id: Uuid,
     pub pool_id: Uuid,
     pub display_name: String,
+    pub description: String,
     pub secret_ref: String,
     pub plaintext_secret_json: serde_json::Value,
     pub master_key: String,
@@ -93,6 +94,22 @@ pub struct UpdateNetworkEgressPoolMemberInput {
     pub member_id: Uuid,
     pub enabled: bool,
     pub sequence: i32,
+    pub actor_user_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct RecordNetworkEgressPoolMemberProbeInput {
+    pub pool_id: Uuid,
+    pub member_id: Uuid,
+    pub status: domain::NetworkEgressPoolMemberProbeStatus,
+    pub http_status: domain::NetworkEgressPoolMemberProbeStatus,
+    pub https_status: domain::NetworkEgressPoolMemberProbeStatus,
+    pub latency_ms: i32,
+    pub exit_ip: Option<String>,
+    pub exit_region: Option<String>,
+    /// A closed, operator-safe code such as `connection_failed`; never a runtime error string.
+    pub error_code: Option<String>,
+    pub probed_at: time::OffsetDateTime,
     pub actor_user_id: Uuid,
 }
 
@@ -214,6 +231,10 @@ pub trait NetworkEgressPoolRepository: Send + Sync {
     async fn update_network_egress_pool_member(
         &self,
         input: &UpdateNetworkEgressPoolMemberInput,
+    ) -> anyhow::Result<domain::NetworkEgressPoolMember>;
+    async fn record_network_egress_pool_member_probe(
+        &self,
+        input: &RecordNetworkEgressPoolMemberProbeInput,
     ) -> anyhow::Result<domain::NetworkEgressPoolMember>;
     async fn delete_network_egress_pool_member(
         &self,

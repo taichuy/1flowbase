@@ -5,12 +5,16 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json,
 };
+use control_plane::network_egress::{
+    CreateNetworkEgressProxyCommand, NetworkEgressProviderService,
+};
 use control_plane::network_egress_pool::{
     AddProviderEgressesToPoolCommand, AddStaticHttpProxyToPoolCommand,
     CreateNetworkEgressPoolCommand, CreateNetworkEgressPoolMemberCommand,
     NetworkEgressPoolMemberView, NetworkEgressPoolService, NetworkEgressPoolView,
     UpdateNetworkEgressPoolCommand, UpdateNetworkEgressPoolMemberCommand,
 };
+use control_plane::network_egress_secret::ProviderRegistryNetworkEgressSecretResolver;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -19,6 +23,8 @@ use crate::{
     app_state::ApiState,
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
+    network_egress_probe::test_network_egress_connection,
+    provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_get, console_patch, console_post, ConsoleRouteAssembly,
@@ -57,6 +63,15 @@ pub struct AddStaticHttpProxyToPoolBody {
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
+pub struct CreateNetworkEgressProxyBody {
+    pub provider_code: String,
+    pub display_name: String,
+    #[serde(default)]
+    pub description: String,
+    pub config: serde_json::Value,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct AddProviderEgressesToPoolBody {
     pub provider_id: String,
     pub enabled: bool,
@@ -78,6 +93,18 @@ pub struct NetworkEgressPoolMemberResponse {
     pub sequence: i32,
     /// Computed from the provider registry snapshot; never user-controlled pool state.
     pub health: String,
+    pub provider_code: String,
+    pub display_name: String,
+    pub address_summary: Option<String>,
+    pub region: Option<String>,
+    pub probe_status: String,
+    pub probe_http_status: String,
+    pub probe_https_status: String,
+    pub probe_latency_ms: i32,
+    pub probe_exit_ip: Option<String>,
+    pub probe_exit_region: Option<String>,
+    pub probe_error_code: Option<String>,
+    pub last_probed_at: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -102,6 +129,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             .post(
                 create_network_egress_pool,
                 ConsoleOperation("network_egress_pools.create".to_string()),
+            ),
+        )
+        .route(
+            "/network-center/pools/proxies",
+            console_post(
+                create_network_egress_proxy,
+                ConsoleOperation("network_egress_proxies.create".to_string()),
             ),
         )
         .route(
@@ -137,6 +171,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
+            "/network-center/pools/:pool_id/members/:member_id/test-connection",
+            console_post(
+                test_network_egress_pool_member_connection,
+                ConsoleOperation("network_egress_pool_members.test_connection".to_string()),
+            ),
+        )
+        .route(
             "/network-center/pools/:pool_id/members/:member_id",
             console_patch(
                 update_network_egress_pool_member,
@@ -156,6 +197,25 @@ fn service(state: &ApiState) -> NetworkEgressPoolService<storage_durable::MainDu
     )
 }
 
+fn proxy_service(
+    state: &ApiState,
+) -> NetworkEgressProviderService<
+    storage_durable::MainDurableStore,
+    ApiProviderRuntime,
+    ProviderRegistryNetworkEgressSecretResolver<storage_durable::MainDurableStore>,
+> {
+    NetworkEgressProviderService::new(
+        state.store.clone(),
+        ApiProviderRuntime::new(state.provider_runtime.clone()),
+        ProviderRegistryNetworkEgressSecretResolver::new(
+            state.store.clone(),
+            state.provider_secret_master_key.clone(),
+        ),
+        state.provider_secret_master_key.clone(),
+        state.api_node_id.clone(),
+    )
+}
+
 fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(value)
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
@@ -169,6 +229,22 @@ fn member_response(view: NetworkEgressPoolMemberView) -> NetworkEgressPoolMember
         enabled: view.member.enabled,
         sequence: view.member.sequence,
         health: view.health.as_str().to_string(),
+        provider_code: view.provider_code,
+        display_name: view.display_name,
+        address_summary: view.address_summary,
+        region: view.region,
+        probe_status: view.member.probe_status.as_str().to_string(),
+        probe_http_status: view.member.probe_http_status.as_str().to_string(),
+        probe_https_status: view.member.probe_https_status.as_str().to_string(),
+        probe_latency_ms: view.member.probe_latency_ms,
+        probe_exit_ip: view.member.probe_exit_ip,
+        probe_exit_region: view.member.probe_exit_region,
+        probe_error_code: view.member.probe_error_code,
+        last_probed_at: view.member.last_probed_at.map(|value| {
+            value
+                .format(&time::format_description::well_known::Rfc3339)
+                .expect("RFC3339 formatting must succeed")
+        }),
     }
 }
 
@@ -192,11 +268,90 @@ pub async fn list_network_egress_pools(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<NetworkEgressPoolResponse>>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let pools = service(&state).list().await?;
+    let context = require_session(&state, &headers).await?;
+    let pools = service(&state).list_global(context.user.id).await?;
     Ok(Json(ApiSuccess::new(
         pools.into_iter().map(response).collect(),
     )))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/network-center/pools/proxies",
+    operation_id = "network_egress_proxies_create",
+    request_body = CreateNetworkEgressProxyBody,
+    responses((status = 201, body = super::NetworkEgressProviderResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
+)]
+pub async fn create_network_egress_proxy(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Json(body): Json<CreateNetworkEgressProxyBody>,
+) -> Result<
+    (
+        StatusCode,
+        Json<ApiSuccess<super::NetworkEgressProviderResponse>>,
+    ),
+    ApiError,
+> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let proxy = proxy_service(&state)
+        .create_proxy(CreateNetworkEgressProxyCommand {
+            actor_user_id: context.user.id,
+            provider_code: body.provider_code,
+            display_name: body.display_name,
+            description: body.description,
+            config: body.config,
+        })
+        .await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(ApiSuccess::new(super::response(proxy))),
+    ))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/network-center/pools/{pool_id}/members/{member_id}/test-connection",
+    operation_id = "network_egress_pool_members_test_connection",
+    params(("pool_id" = String, Path, description = "Global network egress pool id"), ("member_id" = String, Path, description = "Network egress pool member id")),
+    responses((status = 200, body = NetworkEgressPoolMemberResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
+)]
+pub async fn test_network_egress_pool_member_connection(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+    Path((pool_id, member_id)): Path<(String, String)>,
+) -> Result<Json<ApiSuccess<NetworkEgressPoolMemberResponse>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let pool_id = parse_uuid(&pool_id, "pool_id")?;
+    let member_id = parse_uuid(&member_id, "member_id")?;
+    let member = service(&state).member(pool_id, member_id).await?;
+    let probe = test_network_egress_connection(
+        &state,
+        control_plane::network_egress_pool::NetworkEgressPoolSelection {
+            pool_id,
+            member_id,
+            provider_id: member.provider_id,
+            provider_egress_key: member.provider_egress_key,
+        },
+    )
+    .await;
+    let member = service(&state)
+        .record_probe(
+            context.user.id,
+            pool_id,
+            member_id,
+            probe.status,
+            probe.http_status,
+            probe.https_status,
+            probe.latency_ms,
+            probe.exit_ip,
+            probe.exit_region,
+            probe.error_code,
+        )
+        .await?;
+    Ok(Json(ApiSuccess::new(member_response(member))))
 }
 
 #[utoipa::path(
