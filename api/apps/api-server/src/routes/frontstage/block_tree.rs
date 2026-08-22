@@ -770,7 +770,7 @@ pub async fn get_frontstage_block_runtime_assembly(
     )))
 }
 
-#[utoipa::path(put, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/code", request_body = SaveFrontstageBlockNodeCodeBody, responses((status = 200, body = FrontstageBlockNodeCodeResponse), (status = 404, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(put, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/code", request_body = SaveFrontstageBlockNodeCodeBody, responses((status = 200, body = FrontstageBlockNodeCodeResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody)))]
 pub async fn save_frontstage_block_node_code(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,

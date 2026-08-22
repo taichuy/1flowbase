@@ -31,6 +31,7 @@ export {
   MoreOutlined,
   PlusOutlined,
   QuestionCircleOutlined,
+  ReloadOutlined,
   RightOutlined,
   SaveOutlined,
   SearchOutlined,

@@ -43,6 +43,7 @@ declare module '@ant-design/icons' {
   export const MoreOutlined: AntDesignIcon;
   export const PlusOutlined: AntDesignIcon;
   export const QuestionCircleOutlined: AntDesignIcon;
+  export const ReloadOutlined: AntDesignIcon;
   export const RightOutlined: AntDesignIcon;
   export const SaveOutlined: AntDesignIcon;
   export const SearchOutlined: AntDesignIcon;

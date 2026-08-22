@@ -404,6 +404,73 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
 }
 
 #[tokio::test]
+async fn block_source_creation_registers_reload_icon_and_save_rejects_an_unknown_named_export() {
+    let app = test_app().await;
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    let workspace_id = current_workspace_id(&app, &cookie).await;
+    let (page_id, tab_id) = create_block_page(&app, &cookie, &csrf, &workspace_id).await;
+    let (create_status, create_payload) = create_block(
+        &app,
+        &cookie,
+        &csrf,
+        &workspace_id,
+        &page_id,
+        Some(&tab_id),
+        "Reload icon",
+        None,
+        "import { ReloadOutlined } from '@ant-design/icons';\nexport default () => <ReloadOutlined />;",
+        None,
+    )
+    .await;
+    assert_eq!(create_status, StatusCode::CREATED, "{create_payload}");
+    let block_id = create_payload["data"]["block_id"].as_str().unwrap();
+    let code_path =
+        format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/code");
+    let (created_code_status, created_code_payload) = get_json(&app, &code_path, &cookie).await;
+    assert_eq!(created_code_status, StatusCode::OK);
+    assert!(created_code_payload["data"]["dependency_lock"]
+        .as_array()
+        .expect("created native block must have a dependency lock")
+        .iter()
+        .any(|entry| {
+            entry["module_source"] == "@ant-design/icons"
+                && entry["exports"]
+                    .as_array()
+                    .is_some_and(|exports| exports.contains(&json!("ReloadOutlined")))
+        }));
+
+    let (rejected_status, rejected_payload) = send_json(
+        &app,
+        "PUT",
+        &code_path,
+        &cookie,
+        &csrf,
+        ready_executable_payload(
+            "import { DefinitelyMissingIcon } from '@ant-design/icons';\nexport default () => <DefinitelyMissingIcon />;",
+        ),
+    )
+    .await;
+    assert_eq!(
+        rejected_status,
+        StatusCode::BAD_REQUEST,
+        "{rejected_payload}"
+    );
+    assert_error(&rejected_payload, "frontstage_component_module_export");
+    assert_eq!(
+        rejected_payload["message"],
+        json!("catalog module export is not registered: @ant-design/icons.DefinitelyMissingIcon")
+    );
+
+    let (after_rejection_status, after_rejection_payload) =
+        get_json(&app, &code_path, &cookie).await;
+    assert_eq!(after_rejection_status, StatusCode::OK);
+    assert_eq!(
+        after_rejection_payload["data"]["source_code"],
+        json!("import { ReloadOutlined } from '@ant-design/icons';\nexport default () => <ReloadOutlined />;")
+    );
+}
+
+#[tokio::test]
 async fn block_tree_writes_require_csrf_and_bulk_routes_require_design_permission() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;

@@ -905,7 +905,7 @@ where
             ))?;
         let modules = self
             .repository
-            .list_system_frontend_blocks(node_id)
+            .list_workspace_frontend_blocks(node_id, workspace_id)
             .await?
             .into_iter()
             .flat_map(|entry| entry.code_modules)
@@ -1544,6 +1544,18 @@ mod code_input_tests {
         }
     }
 
+    fn react_host_module() -> domain::FrontendBlockCodeModule {
+        domain::FrontendBlockCodeModule {
+            source: "react".to_owned(),
+            version: "1.0.0".to_owned(),
+            exports: vec!["default".to_owned()],
+            binding: domain::FrontendModuleBinding::Host,
+            assets: vec![],
+            type_declarations: String::new(),
+            components: vec![],
+        }
+    }
+
     #[test]
     fn accepts_source_and_canonical_dependency_lock() {
         let validated = validate_code(code()).expect("fixture must be valid");
@@ -1610,25 +1622,35 @@ mod code_input_tests {
             vec![
                 test_code_module("@acme/forms", "Form"),
                 test_code_module("@acme/charts", "Chart"),
+                react_host_module(),
             ],
         )
         .expect("the imported registered module must resolve");
 
         assert_eq!(
             lock,
-            serde_json::json!([{
-                "module_source": "@acme/charts",
-                "module_version": "1.0.0",
-                "binding": "fetched",
-                "assets": [{
-                    "role": "browser_module",
-                    "media_type": "text/javascript; charset=utf-8",
-                    "sha256": "a".repeat(64),
-                    "url": "/api/console/frontstage/00000000-0000-0000-0000-000000000000/component-module-assets/".to_owned() + &"a".repeat(64),
-                    "integrity": "verified_sha256"
-                }],
-                "exports": ["Chart"]
-            }])
+            serde_json::json!([
+                {
+                    "module_source": "@acme/charts",
+                    "module_version": "1.0.0",
+                    "binding": "fetched",
+                    "assets": [{
+                        "role": "browser_module",
+                        "media_type": "text/javascript; charset=utf-8",
+                        "sha256": "a".repeat(64),
+                        "url": "/api/console/frontstage/00000000-0000-0000-0000-000000000000/component-module-assets/".to_owned() + &"a".repeat(64),
+                        "integrity": "verified_sha256"
+                    }],
+                    "exports": ["Chart"]
+                },
+                {
+                    "module_source": "react",
+                    "module_version": "1.0.0",
+                    "binding": "host",
+                    "assets": [],
+                    "exports": ["default"]
+                }
+            ])
         );
     }
 
@@ -1637,12 +1659,17 @@ mod code_input_tests {
         let lock = dependency_lock_from_source(
             Uuid::nil(),
             "import { Surface } from '@1flowbase/ui';\nexport default () => <Surface />;",
-            vec![test_code_module("@1flowbase/ui", "Surface")],
+            vec![
+                test_code_module("@1flowbase/ui", "Surface"),
+                react_host_module(),
+            ],
         )
         .expect("a non-host module import must be resolved from its registered module");
 
         assert_eq!(lock[0]["module_source"], "@1flowbase/ui");
         assert_eq!(lock[0]["binding"], "fetched");
+        assert_eq!(lock[1]["module_source"], "react");
+        assert_eq!(lock[1]["binding"], "host");
     }
 
     #[test]

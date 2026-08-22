@@ -236,13 +236,13 @@ block_contributions:
             insert_snippet: "<ScrollableSurface style={{ maxHeight: 320 }}>Content</ScrollableSurface>"
       - source: "@ant-design/icons"
         version: "6.3.2"
-        exports: [ArrowDownOutlined, ArrowLeftOutlined, ArrowRightOutlined, ArrowUpOutlined, CalendarOutlined, CheckCircleOutlined, CheckOutlined, ClockCircleOutlined, CloseCircleOutlined, CloseOutlined, CopyOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, ExclamationCircleOutlined, EyeInvisibleOutlined, EyeOutlined, FileOutlined, FolderOpenOutlined, FolderOutlined, HomeOutlined, InfoCircleOutlined, LeftOutlined, LinkOutlined, LoadingOutlined, LockOutlined, MailOutlined, MenuOutlined, MinusOutlined, MoreOutlined, PlusOutlined, QuestionCircleOutlined, RightOutlined, SaveOutlined, SearchOutlined, SettingOutlined, UpOutlined, UploadOutlined, UserOutlined, WarningOutlined]
+        exports: [ArrowDownOutlined, ArrowLeftOutlined, ArrowRightOutlined, ArrowUpOutlined, CalendarOutlined, CheckCircleOutlined, CheckOutlined, ClockCircleOutlined, CloseCircleOutlined, CloseOutlined, CopyOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, ExclamationCircleOutlined, EyeInvisibleOutlined, EyeOutlined, FileOutlined, FolderOpenOutlined, FolderOutlined, HomeOutlined, InfoCircleOutlined, LeftOutlined, LinkOutlined, LoadingOutlined, LockOutlined, MailOutlined, MenuOutlined, MinusOutlined, MoreOutlined, PlusOutlined, QuestionCircleOutlined, ReloadOutlined, RightOutlined, SaveOutlined, SearchOutlined, SettingOutlined, UpOutlined, UploadOutlined, UserOutlined, WarningOutlined]
         binding: fetched
         assets:
           - path: "browser-assets/ant-design-icons-catalog.js"
             role: browser_module
             media_type: "text/javascript; charset=utf-8"
-            sha256: "59f521afa6ed40a1ad8badc1e501588316ecbd3f44ed82535df50d738031ebc6"
+            sha256: "36af27e809294e4e8de6d6393ac9ab1bcc38e5ee6372cb0bad905ac5c4ff62c3"
         type_declarations: |
           declare module '@ant-design/icons' {
             import type { ComponentType, CSSProperties } from 'react';
@@ -264,7 +264,8 @@ block_contributions:
             export const MailOutlined: AntDesignIcon; export const MenuOutlined: AntDesignIcon;
             export const MinusOutlined: AntDesignIcon; export const MoreOutlined: AntDesignIcon;
             export const PlusOutlined: AntDesignIcon; export const QuestionCircleOutlined: AntDesignIcon;
-            export const RightOutlined: AntDesignIcon; export const SaveOutlined: AntDesignIcon;
+            export const ReloadOutlined: AntDesignIcon; export const RightOutlined: AntDesignIcon;
+            export const SaveOutlined: AntDesignIcon;
             export const SearchOutlined: AntDesignIcon; export const SettingOutlined: AntDesignIcon;
             export const UpOutlined: AntDesignIcon; export const UploadOutlined: AntDesignIcon;
             export const UserOutlined: AntDesignIcon; export const WarningOutlined: AntDesignIcon;
