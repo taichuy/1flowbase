@@ -76,6 +76,7 @@ impl TempNetworkEgressPackage {
             .as_nanos();
         let root = std::env::temp_dir().join(format!("catalog-network-egress-{nonce}"));
         fs::create_dir_all(root.join("bin")).unwrap();
+        fs::create_dir_all(root.join("provider")).unwrap();
         fs::write(
             root.join("manifest.yaml"),
             r#"manifest_version: 1
@@ -117,6 +118,22 @@ node_contributions: []
             format!(
                 "#!/usr/bin/env bash\nset -euo pipefail\nif [ \"${{1:-}}\" = \"--network-egress-config-file\" ]; then shift 2; fi\nwhile IFS= read -r request; do\n  case \"${{request}}\" in\n    *'\"operation\":\"sync_egresses\"'*) printf '%s\\n' '{{\"operation\":\"sync_egresses\",\"result\":{{\"egresses\":[{{\"provider_egress_key\":\"fixture-egress\",\"display_name\":\"Fixture Egress\",\"availability\":\"available\"}}]}}}}' ;;\n    *'\"operation\":\"acquire_http_forward_proxy\"'*) printf '%s\\n' '{{\"operation\":\"acquire_http_forward_proxy\",\"result\":{{\"lease_id\":\"fixture-lease\",\"http_proxy_url\":\"{proxy_url}\",\"cleanup_token\":\"host-private\",\"expires_at\":4102444800000}}}}' ;;\n    *'\"operation\":\"release_http_forward_proxy\"'*) printf '%s\\n' '{{\"operation\":\"release_http_forward_proxy\",\"result\":{{\"lease_id\":\"fixture-lease\"}}}}' ;;\n    *) exit 1 ;;\n  esac\ndone\n"
             ),
+        )
+        .unwrap();
+        fs::write(
+            root.join("provider/egress-provider.yaml"),
+            r#"provider_code: fixture_egress
+display_name: Fixture Egress
+form_schema:
+  schema_version: 1flowbase.plugin.form/v1
+  fields:
+    - key: subscription_url
+      label: Subscription URL
+      type: string
+      control: url
+      required: true
+      send_mode: secret
+"#,
         )
         .unwrap();
         #[cfg(unix)]
@@ -499,8 +516,8 @@ async fn publisher_cutover_artifact_two_body_failures_stop_after_two_requests() 
 /// fake proxy after the real resolver selected the persisted route/pool/provider projection.
 #[tokio::test]
 async fn root_1805_github_consumer_routes_through_host_owned_fake_proxy() {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let proxy_url = format!("http://{}", listener.local_addr().unwrap());
+    let proxy_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let proxy_url = format!("http://{}", proxy_listener.local_addr().unwrap());
     let origin = "http://catalog-origin.invalid";
     let (documents, sources) = catalog_documents(origin);
     let requests = Arc::new(Mutex::new(Vec::new()));
@@ -509,8 +526,13 @@ async fn root_1805_github_consumer_routes_through_host_owned_fake_proxy() {
         requests: Arc::clone(&requests),
     };
     let server = tokio::spawn(async move {
+        let (verification_stream, _) = proxy_listener
+            .accept()
+            .await
+            .expect("fake proxy must accept lease verification");
+        drop(verification_stream);
         axum::serve(
-            listener,
+            proxy_listener,
             Router::new().fallback(catalog_response).with_state(fixture),
         )
         .await

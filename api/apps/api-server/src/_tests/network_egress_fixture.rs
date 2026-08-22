@@ -50,6 +50,8 @@ impl TempNetworkEgressPackage {
             .as_nanos();
         let root = std::env::temp_dir().join(format!("catalog-network-egress-{nonce}"));
         fs::create_dir_all(root.join("bin")).expect("fixture package directory must be created");
+        fs::create_dir_all(root.join("provider"))
+            .expect("fixture provider directory must be created");
         fs::write(
             root.join("manifest.yaml"),
             r#"manifest_version: 1
@@ -86,6 +88,22 @@ node_contributions: []
 "#,
         )
         .expect("fixture manifest must be written");
+        fs::write(
+            root.join("provider/egress-provider.yaml"),
+            r#"provider_code: fixture_egress
+display_name: Fixture Egress
+form_schema:
+  schema_version: 1flowbase.plugin.form/v1
+  fields:
+    - key: subscription_url
+      label: Subscription URL
+      type: string
+      control: url
+      required: true
+      send_mode: secret
+"#,
+        )
+        .expect("fixture provider definition must be written");
         let acquire_response = match acquire_behavior {
             NetworkEgressAcquireBehavior::Fails => {
                 "printf '%s\\n' '{\"operation\":\"acquire_http_forward_proxy\",\"error\":{\"code\":\"fixture_lease_failure\",\"message\":\"fixture lease failure\"}}'".to_string()

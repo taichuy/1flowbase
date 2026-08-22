@@ -454,8 +454,9 @@ fn write_compact_provider_fixture(root: &std::path::Path) {
     );
     let mut manifest = fs::read_to_string(root.join("manifest.yaml"))
         .expect("Compact fixture manifest should be readable");
-    manifest.push_str(
-        "  capabilities:\n    - compact.responses_compact\n    - compact.responses_compaction_v2\n    - responses.native_passthrough\n",
+    manifest = manifest.replace(
+        "  capabilities:\n    - config.validate\n",
+        "  capabilities:\n    - config.validate\n    - models.list\n    - compact.responses_compact\n    - compact.responses_compaction_v2\n    - responses.native_passthrough\n",
     );
     fs::write(root.join("manifest.yaml"), manifest)
         .expect("Compact fixture manifest should declare both Compact capabilities");

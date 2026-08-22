@@ -140,6 +140,15 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
     .bind("export default function HeroBanner() { return <section>Hero</section>; }")
     .bind(json!([
         {
+            "source": "react",
+            "version": "19.2.5",
+            "exports": ["default", "useState"],
+            "binding": "host",
+            "assets": [],
+            "type_declarations": "",
+            "components": []
+        },
+        {
             "source": "@acme/native-components",
             "version": "1.2.3",
             "exports": ["Button"],
@@ -441,7 +450,7 @@ async fn component_capabilities_route_excludes_registered_exports_without_contra
 #[tokio::test]
 async fn component_dependency_lock_is_derived_from_source_imports() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
-    seed_frontend_block(&database_url, false).await;
+    seed_frontend_block(&database_url, true).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
     let _workspace_id: Uuid =
         sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
@@ -471,9 +480,10 @@ async fn component_dependency_lock_is_derived_from_source_imports() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK);
+    let status = response.status();
     let payload: Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(status, StatusCode::OK, "{payload}");
     assert_eq!(
         payload["data"]["dependency_lock"],
         json!([{
@@ -506,6 +516,21 @@ async fn component_dependency_lock_is_derived_from_source_imports() {
                 "integrity": "verified_sha256"
             }],
             "exports": ["useRuntimeValue"]
+        }, {
+            "module_source": "react",
+            "module_version": "19.2.5",
+            "binding": "host",
+            "assets": [],
+            "exports": [
+                "Activity", "Children", "Component", "Fragment", "Profiler",
+                "PureComponent", "StrictMode", "Suspense", "cache", "cacheSignal",
+                "cloneElement", "createContext", "createElement", "createRef", "default",
+                "forwardRef", "isValidElement", "lazy", "memo", "startTransition", "use",
+                "useActionState", "useCallback", "useContext", "useDebugValue", "useDeferredValue",
+                "useEffect", "useEffectEvent", "useId", "useImperativeHandle", "useInsertionEffect",
+                "useLayoutEffect", "useMemo", "useOptimistic", "useReducer", "useRef", "useState",
+                "useSyncExternalStore", "useTransition", "version"
+            ]
         }])
     );
 }

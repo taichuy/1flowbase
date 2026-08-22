@@ -461,6 +461,29 @@ fn spawn_one_request_proxy() -> (String, thread::JoinHandle<String>) {
     (proxy_url, request)
 }
 
+fn spawn_routed_request_proxy() -> (String, thread::JoinHandle<String>) {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("fixture proxy must bind");
+    let proxy_url = format!("http://{}", listener.local_addr().unwrap());
+    let request = thread::spawn(move || {
+        let (verification_stream, _) = listener
+            .accept()
+            .expect("fixture proxy must accept lease verification");
+        drop(verification_stream);
+        let (mut stream, _) = listener
+            .accept()
+            .expect("fixture proxy must accept routed request");
+        let mut bytes = [0_u8; 4096];
+        let read = stream
+            .read(&mut bytes)
+            .expect("fixture proxy must read request");
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok")
+            .expect("fixture proxy must respond");
+        String::from_utf8_lossy(&bytes[..read]).to_string()
+    });
+    (proxy_url, request)
+}
+
 fn write_compact_provider_package(package: &TempProviderPackage, response: &str) {
     package.write(
         "manifest.yaml",
@@ -1442,7 +1465,7 @@ fn root_1805_http_node(target: &str) -> orchestration_runtime::compiled_plan::Co
 #[tokio::test]
 async fn root_1805_model_provider_route_pool_provider_lease_reaches_fake_proxy_without_host_secrets(
 ) {
-    let (proxy_url, proxy_request) = spawn_one_request_proxy();
+    let (proxy_url, proxy_request) = spawn_routed_request_proxy();
     let proxy_target = "http://model-provider-origin.invalid/route-pool-provider";
     let package = TempProviderPackage::new();
     let wire_capture = package.path().join("provider-wire.json");
@@ -1556,7 +1579,7 @@ async fn root_1805_model_provider_no_route_keeps_direct_behavior_without_handoff
 /// Pool -> Provider -> Host lease path before HTTP execution.
 #[tokio::test]
 async fn root_1805_http_node_route_pool_provider_lease_reaches_fake_proxy_without_host_secrets() {
-    let (proxy_url, proxy_request) = spawn_one_request_proxy();
+    let (proxy_url, proxy_request) = spawn_routed_request_proxy();
     let (state, _) = crate::_tests::support::test_api_state_with_database_url().await;
     let base_runtime = ApiProviderRuntime::new(network_egress_runtime_services());
     let (resolver, _egress_package) =
