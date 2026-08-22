@@ -30,6 +30,9 @@ const uiManagementApi = vi.hoisted(() => ({
 const blockCatalogHook = vi.hoisted(() => ({
   useFrontstageBlockCatalog: vi.fn()
 }));
+const componentCapabilitiesHook = vi.hoisted(() => ({
+  useFrontstageComponentCapabilities: vi.fn()
+}));
 const templateRunPanel = vi.hoisted(() => ({ render: vi.fn() }));
 const sourceStudio = vi.hoisted(() => ({ render: vi.fn() }));
 
@@ -85,13 +88,23 @@ const officialSource = previewSource.replace('Changed', 'OfficialBlock');
 const managedSource = previewSource.replace('Changed', 'ManagedLatest');
 
 vi.mock('../../api/ui-management', () => uiManagementApi);
-vi.mock('../../../frontstage/hooks/use-frontstage-block-catalog', () => blockCatalogHook);
-vi.mock('../../../frontstage/components/jsx-studio/JsxStudioResourcePanel', () => ({
-  JsxStudioResourcePanel: (props: {
-    runPanel?: React.ReactNode;
-    section: string;
-  }) => (props.section === 'run' ? props.runPanel : null)
-}));
+vi.mock(
+  '../../../frontstage/hooks/use-frontstage-block-catalog',
+  () => blockCatalogHook
+);
+vi.mock(
+  '../../../frontstage/hooks/use-frontstage-component-capabilities',
+  () => componentCapabilitiesHook
+);
+vi.mock(
+  '../../../frontstage/components/jsx-studio/JsxStudioResourcePanel',
+  () => ({
+    JsxStudioResourcePanel: (props: {
+      runPanel?: React.ReactNode;
+      section: string;
+    }) => (props.section === 'run' ? props.runPanel : null)
+  })
+);
 vi.mock('../../../frontstage/components/jsx-studio/JsxStudioRunPanel', () => ({
   JsxStudioRunPanel: (props: unknown) => {
     templateRunPanel.render(props);
@@ -125,7 +138,10 @@ vi.mock('../../../../shared/code-block/BlockSourceStudio', () => ({
         <button onClick={() => props.onChange(previewSource)}>
           change-source
         </button>
-        <button disabled={props.loading} onClick={() => props.onRun(props.source)}>
+        <button
+          disabled={props.loading}
+          onClick={() => props.onRun(props.source)}
+        >
           studio-run
         </button>
         <button onClick={props.onSave}>studio-save</button>
@@ -224,6 +240,19 @@ describe('UiManagementPanel code templates', () => {
       ],
       externalNpm: { status: 'available' }
     });
+    componentCapabilitiesHook.useFrontstageComponentCapabilities.mockReturnValue(
+      {
+        data: {
+          module_sources: [
+            '@1flowbase/block-sdk',
+            '@1flowbase/native-components'
+          ]
+        },
+        loading: false,
+        error: null,
+        refetch: vi.fn()
+      }
+    );
   });
 
   afterEach(() => {
@@ -347,9 +376,11 @@ describe('UiManagementPanel code templates', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /编\s*辑/ }));
     fireEvent.click(screen.getByRole('button', { name: 'change-source' }));
-    fireEvent.click(screen.getByRole('button', { name: 'studio-run' }));
+    const runButton = screen.getByRole('button', { name: 'studio-run' });
+    await waitFor(() => expect(runButton).toBeEnabled());
+    fireEvent.click(runButton);
 
-    expect(screen.getByText('Template preview run')).toBeInTheDocument();
+    expect(await screen.findByText('Template preview run')).toBeInTheDocument();
     expect(
       screen.queryByText(
         '当前为受限预览：可验证组件渲染与本地交互，接口调用、事件、导航和输出能力不可用。'
@@ -359,8 +390,9 @@ describe('UiManagementPanel code templates', () => {
       block: { id: string; props: Record<string, unknown> };
       code: string;
       revision: string;
-      nativeDependencyLock: Array<{ module_source: string }>;
-      nativeDependencyLockError: string | null;
+      resolveNativeDependencyLock: (
+        sourceCode: string
+      ) => Promise<Array<{ module_source: string }>>;
       externalNpm: { status: string };
       createBlockContext(input: {
         plan: {
@@ -385,15 +417,7 @@ describe('UiManagementPanel code templates', () => {
       editorDiagnostics: Array<{ message: string }>;
     };
     expect(studioProps.editorDiagnostics).toEqual([]);
-    expect(runProps.nativeDependencyLock).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ module_source: '@1flowbase/block-sdk' }),
-        expect.objectContaining({
-          module_source: '@1flowbase/native-components'
-        })
-      ])
-    );
-    expect(runProps.nativeDependencyLockError).toBeNull();
+    expect(runProps.resolveNativeDependencyLock).toEqual(expect.any(Function));
     expect(runProps.externalNpm).toEqual({ status: 'available' });
 
     const previewContext = runProps.createBlockContext({
@@ -408,7 +432,8 @@ describe('UiManagementPanel code templates', () => {
     expect(previewContext.workspace).toEqual({ id: 'workspace-1' });
     expect(previewContext.page).toEqual({
       id: runProps.block.id,
-      route: '/settings/ui-management/code-templates/1flowbase%3Afrontstage.js-ui-block',
+      route:
+        '/settings/ui-management/code-templates/1flowbase%3Afrontstage.js-ui-block',
       title: '自定义区块'
     });
     expect(previewContext.ui).toEqual({ locale: undefined });
