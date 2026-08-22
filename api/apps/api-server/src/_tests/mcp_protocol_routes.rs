@@ -377,13 +377,32 @@ async fn ac_005_builtin_frontstage_source_tools_are_discoverable_and_callable() 
     assert!(input_schema["properties"].get("block_id").is_some());
     assert!(input_schema["properties"].get("workspace_id").is_none());
 
-    let read = call_mcp_instance(
+    let patch_get = call_mcp_instance(
         &app,
         &token,
         "frontstage_browser",
         json!({
             "jsonrpc":"2.0",
             "id":203,
+            "method":"tools/call",
+            "params":{"name":"mcp_get","arguments":{"tool_id":"frontstage_patch_block_source"}}
+        }),
+    )
+    .await;
+    let patch_input_schema = &patch_get["result"]["structuredContent"]["input_schema"];
+    assert!(patch_input_schema["properties"].get("page_id").is_some());
+    assert!(patch_input_schema["properties"].get("block_id").is_some());
+    assert!(patch_input_schema["properties"]
+        .get("workspace_id")
+        .is_none());
+
+    let read = call_mcp_instance(
+        &app,
+        &token,
+        "frontstage_browser",
+        json!({
+            "jsonrpc":"2.0",
+            "id":204,
             "method":"tools/call",
             "params":{"name":"mcp_call","arguments":{"tool_id":"frontstage_read_block_source_fragment","arguments":{"page_id":page_id,"block_id":block_id,"start_line":2,"line_count":1,"max_chars":20}}}
         }),
@@ -400,7 +419,7 @@ async fn ac_005_builtin_frontstage_source_tools_are_discoverable_and_callable() 
         "frontstage_browser",
         json!({
             "jsonrpc":"2.0",
-            "id":204,
+            "id":205,
             "method":"tools/call",
             "params":{"name":"mcp_call","arguments":{"tool_id":"frontstage_patch_block_source","max_inline_chars":12000,"arguments":{"page_id":page_id,"block_id":block_id,"expected_source_revision":revision,"edits":[{"start_line":2,"start_column":1,"end_line":2,"end_column":5,"replacement":"changed"}]}}}
         }),

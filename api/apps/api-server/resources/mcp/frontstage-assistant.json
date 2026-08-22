@@ -105,7 +105,6 @@
       "result_schema_snapshot": { "type": "object" },
       "input_mapping": {
         "mappings": [
-          { "interface_param": "workspace_id", "source": { "kind": "server_binding", "binding": "workspace_id" }, "required": true },
           { "interface_param": "page_id", "mcp_param": "page_id", "description": "低代码页面的稳定 ID。", "required": true },
           { "interface_param": "block_id", "mcp_param": "block_id", "description": "需要读取源码的区块稳定 ID。", "required": true },
           { "interface_param": "start_line", "mcp_param": "start_line", "description": "1-based 起始行；省略时从第 1 行开始。", "required": false },
@@ -129,7 +128,6 @@
       "result_schema_snapshot": { "type": "object" },
       "input_mapping": {
         "mappings": [
-          { "interface_param": "workspace_id", "source": { "kind": "server_binding", "binding": "workspace_id" }, "required": true },
           { "interface_param": "page_id", "mcp_param": "page_id", "description": "低代码页面的稳定 ID。", "required": true },
           { "interface_param": "block_id", "mcp_param": "block_id", "description": "需要局部修改源码的区块稳定 ID。", "required": true },
           { "interface_param": "expected_source_revision", "mcp_param": "expected_source_revision", "description": "读取源码片段时返回的 64 位 source_revision。", "required": true },

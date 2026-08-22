@@ -910,7 +910,7 @@ where
             .into_iter()
             .flat_map(|entry| entry.code_modules)
             .collect();
-        dependency_lock_from_source(workspace_id, source_code, modules)
+        dependency_lock_from_source(source_code, modules)
     }
 
     async fn ensure_block_designer(
@@ -1617,7 +1617,6 @@ mod code_input_tests {
     #[test]
     fn source_imports_select_only_the_registered_component_module() {
         let lock = dependency_lock_from_source(
-            Uuid::nil(),
             "import { Chart } from '@acme/charts';\nexport default () => <Chart />;",
             vec![
                 test_code_module("@acme/forms", "Form"),
@@ -1657,7 +1656,6 @@ mod code_input_tests {
     #[test]
     fn source_imports_do_not_treat_non_runtime_host_modules_as_implicit() {
         let lock = dependency_lock_from_source(
-            Uuid::nil(),
             "import { Surface } from '@1flowbase/ui';\nexport default () => <Surface />;",
             vec![
                 test_code_module("@1flowbase/ui", "Surface"),

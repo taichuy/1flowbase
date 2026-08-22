@@ -54,11 +54,7 @@ where
                 modules
             }
         };
-        let dependency_lock = match dependency_lock_from_source(
-            candidate.workspace_id,
-            &candidate.source_code,
-            modules,
-        ) {
+        let dependency_lock = match dependency_lock_from_source(&candidate.source_code, modules) {
             Ok(dependency_lock) => dependency_lock,
             Err(error) => {
                 unresolved_block_count += 1;

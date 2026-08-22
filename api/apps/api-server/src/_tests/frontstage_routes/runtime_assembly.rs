@@ -313,7 +313,7 @@ async fn runtime_assembly_is_one_visible_root_to_target_public_snapshot() {
     );
     assert_error(&cross_page_payload, "block_node_not_found");
 
-    let (legacy_workspace_status, _) = get_json(
+    let (legacy_workspace_status, legacy_workspace_payload) = get_json(
         &app,
         &format!(
             "/api/console/frontstage/{}/pages/{page_id}/blocks/{target_id}/runtime-assembly",
@@ -322,7 +322,9 @@ async fn runtime_assembly_is_one_visible_root_to_target_public_snapshot() {
         &root_cookie,
     )
     .await;
-    assert_eq!(legacy_workspace_status, StatusCode::NOT_FOUND);
+    // The compiled authorization registry rejects the removed operation before route matching.
+    assert_eq!(legacy_workspace_status, StatusCode::FORBIDDEN);
+    assert_error(&legacy_workspace_payload, "console_route_unregistered");
 
     let (missing_status, missing_payload) = get_json(
         &app,
