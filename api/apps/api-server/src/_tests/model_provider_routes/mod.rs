@@ -20,8 +20,8 @@ fn create_provider_fixture(root: &Path) {
     let manifest = fs::read_to_string(&manifest_path)
         .unwrap()
         .replace(
-            "  entry: bin/fixture_provider-provider\n",
-            "  capabilities:\n    - models.list\n    - usage.rate_limit_windows\n    - reset_credits\n  entry: bin/fixture_provider-provider\n",
+            "  capabilities:\n    - config.validate\n",
+            "  capabilities:\n    - config.validate\n    - models.list\n    - usage.rate_limit_windows\n    - reset_credits\n",
         );
     fs::write(manifest_path, manifest).unwrap();
     fs::write(

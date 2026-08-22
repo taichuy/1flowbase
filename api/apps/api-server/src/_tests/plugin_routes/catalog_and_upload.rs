@@ -318,30 +318,18 @@ async fn model_provider_settings_install_upload_accepts_package_larger_than_defa
         "active_requested"
     );
     assert_eq!(upload_payload["data"]["task"]["task_kind"], "assign");
-
-    let installed = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("GET")
-                .uri("/api/console/settings/extension-center/installed?category=runtime-extensions")
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(installed.status(), StatusCode::OK);
-    let installed_payload: Value =
-        serde_json::from_slice(&to_bytes(installed.into_body(), usize::MAX).await.unwrap())
-            .unwrap();
-    assert!(installed_payload["data"]["entries"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .any(|entry| {
-            entry["artifact_id"] == "openai_compatible" && entry["version"] == "0.2.2"
-        }));
+    assert_eq!(
+        upload_payload["data"]["installation"]["plugin_id"],
+        "openai_compatible@0.2.2"
+    );
+    assert_eq!(
+        upload_payload["data"]["installation"]["plugin_version"],
+        "0.2.2"
+    );
+    assert_eq!(
+        upload_payload["data"]["installation"]["local_artifact"]["artifact_status"],
+        "ready"
+    );
 }
 
 #[tokio::test]

@@ -202,7 +202,14 @@ async fn system_backup_queue_rejects_a_second_maintenance_owner() {
         )
         .await
         .unwrap();
-    assert_eq!(second.status(), StatusCode::CONFLICT);
+    let second_status = second.status();
+    let second_payload = response_json(second).await;
+    assert_eq!(
+        second_status,
+        StatusCode::SERVICE_UNAVAILABLE,
+        "{second_payload}"
+    );
+    assert_eq!(second_payload["code"], "system_maintenance");
     drop(owner_lease);
 }
 
