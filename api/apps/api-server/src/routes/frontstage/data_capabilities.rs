@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::Json;
 use control_plane::errors::ControlPlaneError;
