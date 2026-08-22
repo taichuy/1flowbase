@@ -20,6 +20,7 @@ export function MarkdownIrEditor({
       ariaLabel={ariaLabel}
       className={className}
       height={height}
+      outline={false}
       value={value}
       onChange={onChange ?? (() => undefined)}
     />

@@ -168,6 +168,7 @@ vi.mock('@1flowbase/rich-text', async () => {
     ariaLabel?: string;
     className?: string;
     onChange: (value: string) => void;
+    outline?: boolean;
     value: string;
   };
   type EditorInstance = (typeof vditorMock.instances)[number];
@@ -182,6 +183,7 @@ vi.mock('@1flowbase/rich-text', async () => {
       ariaLabel = 'vditor_editor',
       className,
       onChange,
+      outline,
       value
     }: EditorProps) {
       const mountRef = React.useRef<HTMLDivElement>(null);
@@ -211,6 +213,7 @@ vi.mock('@1flowbase/rich-text', async () => {
           if (disposed) return;
           const editor = createEditor(mount, {
             mode: 'ir',
+            outline: { enable: outline, position: 'left' },
             value: valueRef.current,
             after: () => {
               if (disposed) return;
@@ -1025,7 +1028,7 @@ describe('McpManagementPanel', () => {
     expect(screen.queryByText('已加密保存')).not.toBeInTheDocument();
   });
 
-  test('uses Vditor instant rendering mode for full description', async () => {
+  test('AC-001 keeps the full-description Vditor outline closed by default', async () => {
     renderPanel();
 
     fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
@@ -1039,6 +1042,10 @@ describe('McpManagementPanel', () => {
       expect(vditorMock.constructor).toHaveBeenCalled();
     });
     expect(vditorMock.instances[0]?.options.mode).toBe('ir');
+    expect(vditorMock.instances[0]?.options.outline).toEqual({
+      enable: false,
+      position: 'left'
+    });
     expect(vditorMock.instances[0]?.options.value).toBe('');
 
     act(() => {
