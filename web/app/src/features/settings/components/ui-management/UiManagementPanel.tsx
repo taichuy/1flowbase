@@ -446,7 +446,7 @@ function ComponentsTab({ canManage }: { canManage: boolean }) {
         >
           <Form.Item
             name="component_code"
-            label={t('component_code')}
+            label={t('name')}
             rules={[{ required: true }]}
           >
             <Input />

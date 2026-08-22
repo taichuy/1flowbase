@@ -33,9 +33,9 @@ fn root_console_navigation_sees_all_builtin_items() {
     let navigation = accessible_console_navigation(&actor);
 
     let item_ids = item_ids(&navigation);
-    assert_eq!(navigation.route_definitions.len(), 20);
-    assert_eq!(navigation.navigation_items.len(), 20);
-    assert_eq!(navigation.permission_bindings.len(), 20);
+    assert_eq!(navigation.route_definitions.len(), 21);
+    assert_eq!(navigation.navigation_items.len(), 21);
+    assert_eq!(navigation.permission_bindings.len(), 21);
     assert!(item_ids.contains(&"home"));
     assert!(!item_ids.contains(&"embedded-apps"));
     assert!(item_ids.contains(&"templates"));
@@ -55,6 +55,7 @@ fn root_console_navigation_sees_all_builtin_items() {
     assert!(item_ids.contains(&"settings.members"));
     assert!(item_ids.contains(&"settings.roles"));
     assert!(item_ids.contains(&"settings.i18n"));
+    assert!(item_ids.contains(&"settings.network-center"));
 }
 
 #[test]

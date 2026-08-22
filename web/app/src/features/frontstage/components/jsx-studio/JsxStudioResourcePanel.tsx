@@ -56,7 +56,7 @@ export function JsxStudioResourcePanel({
   onOpenBlock,
   onSaveBlock,
   onSaveBlockTitle,
-  projection,
+  projection: _projection,
   runPanel,
   configurationPanel,
   contextVariables,

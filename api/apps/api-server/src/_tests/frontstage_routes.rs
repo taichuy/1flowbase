@@ -207,14 +207,14 @@ async fn create_group(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
-    workspace_id: &str,
+    _workspace_id: &str,
     title: Option<&str>,
     rank: &str,
 ) -> (StatusCode, Value) {
     send_json(
         app,
         "POST",
-        &format!("/api/console/frontstage/pages/groups"),
+        "/api/console/frontstage/pages/groups",
         cookie,
         csrf,
         json!({
@@ -229,7 +229,7 @@ async fn create_page(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
-    workspace_id: &str,
+    _workspace_id: &str,
     title: Option<&str>,
     parent_id: Option<&str>,
     rank: &str,
@@ -237,7 +237,7 @@ async fn create_page(
     send_json(
         app,
         "POST",
-        &format!("/api/console/frontstage/pages"),
+        "/api/console/frontstage/pages",
         cookie,
         csrf,
         json!({
@@ -286,7 +286,7 @@ async fn delete_node(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
-    workspace_id: &str,
+    _workspace_id: &str,
     page_id: &str,
 ) -> StatusCode {
     app.clone()
@@ -329,7 +329,7 @@ async fn save_page_content(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
-    workspace_id: &str,
+    _workspace_id: &str,
     page_id: &str,
     tab_id: &str,
     document_payload: Value,
@@ -350,7 +350,7 @@ async fn dispatch_capability(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
-    workspace_id: &str,
+    _workspace_id: &str,
     page_id: &str,
     tab_id: &str,
     kind: &str,

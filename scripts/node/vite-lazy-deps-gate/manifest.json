@@ -164,6 +164,15 @@
       "smokePaths": [
         "/settings/ui-management/code-templates"
       ]
+    },
+    {
+      "source": "web/app/src/features/settings/pages/settings-page/SettingsSectionBody.tsx",
+      "specifier": "../network-center/NetworkCenterSection",
+      "smokePaths": [
+        "/settings/network-center/proxy-types",
+        "/settings/network-center/proxy-pools",
+        "/settings/network-center/routing-rules"
+      ]
     }
   ]
 }

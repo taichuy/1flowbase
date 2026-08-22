@@ -26,7 +26,7 @@ pub fn supported_migration_heads() -> Result<BTreeSet<MigrationHead>, PostgreSql
         .iter()
         .filter(|migration| !migration.migration_type.is_down_migration())
         .collect::<Vec<_>>();
-    for prefix_len in 1..=migrations.iter().count() {
+    for prefix_len in 1..=migrations.len() {
         heads.insert(migration_head_from_parts(
             migrations
                 .iter()

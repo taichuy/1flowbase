@@ -30,7 +30,7 @@ export function frontstageDataCapabilitiesQueryKey({
 }
 
 export function fetchFrontstageDataCapabilities(
-  workspaceId: string
+  _workspaceId: string
 ): Promise<FrontstageDataCapabilities> {
   return listFrontstageDataCapabilities(
     getFrontstageApiBaseUrl()

@@ -1059,6 +1059,35 @@ test('default schema hygiene config declares issue 1075 system global scoped rea
     && table.findings.some((finding) => finding.rule === 'managed-table-needs-owner-review')), false);
 });
 
+test('default schema hygiene config declares network egress system and bounded tables', () => {
+  const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
+  const inventory = collectSchemaInventory({ repoRoot });
+  const report = evaluateSchemaHygiene({
+    inventory,
+    config: loadConfig(repoRoot),
+  });
+
+  for (const [tableName, expectedCategory, expectedSource] of [
+    ['network_egress_providers', 'system_global', /SYSTEM_SCOPE_ID/u],
+    ['network_egress_pools', 'system_global', /SYSTEM_SCOPE_ID/u],
+    ['network_egress_pool_members', 'bounded_child_list', /network_egress_pools\.scope_id/u],
+    ['network_egress_projections', 'bounded_projection', /network_egress_providers\.scope_id/u],
+    ['network_egress_provider_secrets', 'bounded_secret_projection', /network_egress_providers\.scope_id/u],
+    ['network_egress_routes', 'workspace_routing', /workspace_id/u],
+  ]) {
+    const table = report.tables.find((candidate) => candidate.name === tableName);
+    assert.ok(table, `${tableName} should be present in the schema inventory`);
+    assert.deepEqual(table.findings, [], `${tableName} should have no schema hygiene findings`);
+    assert.equal(table.platformReadiness.category, expectedCategory);
+    assert.equal(table.platformReadiness.severity, 'ok');
+    assert.equal(table.platformReadiness.scopeGenerationSource.status, 'declared');
+    assert.match(table.platformReadiness.scopeGenerationSource.source, expectedSource);
+    assert.equal(table.platformReadiness.recommendedActions.includes('needs_owner_review'), false);
+  }
+
+  assert.equal(report.summary.errors, 0);
+});
+
 test('default schema hygiene config declares issue 1076 identity join scoped readiness tables', () => {
   const repoRoot = path.resolve(__dirname, '..', '..', '..', '..');
   const inventory = collectSchemaInventory({ repoRoot });

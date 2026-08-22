@@ -30,7 +30,7 @@ async fn root_can_create_group_and_page_and_catalog_schema_validates_tree() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/console/frontstage/pages"))
+                .uri("/api/console/frontstage/pages")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -219,7 +219,7 @@ async fn patch_page_metadata_persists_tooltip_and_hidden_state() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/console/frontstage/pages"))
+                .uri("/api/console/frontstage/pages")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),

@@ -191,7 +191,7 @@ async fn dependency_lock_reconciliation_updates_only_native_blocks_missing_react
     assert_eq!(
         FrontstageDependencyLockReconciliationRepository::reconcile_frontstage_block_dependency_locks(
             &store,
-            &[update.clone()],
+            std::slice::from_ref(&update),
         )
         .await
         .unwrap(),

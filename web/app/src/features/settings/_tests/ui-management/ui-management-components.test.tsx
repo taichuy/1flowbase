@@ -233,7 +233,7 @@ describe('UiManagementPanel components', () => {
       'data-read-only',
       'false'
     );
-    expect(screen.queryByRole('textbox', { name: '插入代码' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: '插入代码' })).not.toBeInTheDocument();
   });
 
   test('AC-004 presents each structured contract array as a labelled table', async () => {

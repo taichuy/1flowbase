@@ -28,7 +28,9 @@ fn create_provider_fixture(root: &Path) {
     fs::create_dir_all(root.join("scripts")).unwrap();
     write_provider_manifest_v2(root, "fixture_provider", "Fixture Provider", "0.1.0");
     let mut manifest = fs::read_to_string(root.join("manifest.yaml")).unwrap();
-    manifest.push_str("  capabilities:\n    - count_tokens\n");
+    manifest.push_str(
+        "  capabilities:\n    - config.validate\n    - models.list\n    - count_tokens\n",
+    );
     fs::write(root.join("manifest.yaml"), manifest).unwrap();
     fs::write(
         root.join("provider/fixture_provider.yaml"),

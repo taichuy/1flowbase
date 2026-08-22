@@ -10,7 +10,6 @@
   "backup_password": "可选备份密码",
   "backup_password_help": "留空会创建便携备份；持有该文件的人可以恢复它。设置密码可加密备份。",
   "import_password_help": "备份创建时设置了密码才需要输入；默认便携备份请留空。",
-  "verify_password_help": "备份创建时设置了密码才需要输入；默认便携备份请留空。",
   "name": "备份名称",
   "status": "备份状态",
   "size": "大小",

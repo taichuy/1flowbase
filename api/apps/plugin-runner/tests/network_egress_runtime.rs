@@ -32,6 +32,24 @@ impl TempNetworkEgressPackage {
             std::process::id()
         ));
         fs::create_dir_all(root.join("bin")).expect("fixture package directory must be created");
+        fs::create_dir_all(root.join("provider"))
+            .expect("fixture provider directory must be created");
+        fs::write(
+            root.join("provider/egress-provider.yaml"),
+            r#"provider_code: fixture-egress
+display_name: Fixture Egress
+form_schema:
+  schema_version: 1flowbase.plugin.form/v1
+  fields:
+    - key: token
+      label: Token
+      type: string
+      control: text
+      required: true
+      send_mode: secret
+"#,
+        )
+        .expect("fixture provider definition must be written");
         Self { root }
     }
 
@@ -87,7 +105,7 @@ node_contributions: []
         let child = child_marker
             .map(|path| format!("( sleep 30 ) & echo $! > '{}'\n", path.display()))
             .unwrap_or_default();
-        let exit_after_acquire = exit_after_acquire.then_some("exit 0").unwrap_or_default();
+        let exit_after_acquire = if exit_after_acquire { "exit 0" } else { "" };
         let config_bootstrap = config_marker
             .map(|path| {
                 format!(

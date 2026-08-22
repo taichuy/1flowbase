@@ -64,6 +64,8 @@
   ],
   "systemScopeTables": [
     "model_pricing_rules",
+    "network_egress_pools",
+    "network_egress_providers",
     "retained_frontend_module_assets",
     "ui_code_template_defaults",
     "ui_code_template_revisions",
@@ -578,6 +580,42 @@
       "created_byGeneration": "mapping insert copies actor_user_id from the import job into created_by",
       "updated_byGeneration": "mapping insert copies actor_user_id from the import job into updated_by",
       "writePathSource": "archive restore mapping helper writes id and job-derived scope while preserving the job/entity/source unique key"
+    },
+    "network_egress_pools": {
+      "category": "system_global",
+      "scopeGenerationSource": "SYSTEM_SCOPE_ID fixed network egress pool routing",
+      "backfillSource": "SYSTEM_SCOPE_ID",
+      "writePathSource": "network egress pool repository writes the fixed system scope and pool ownership metadata"
+    },
+    "network_egress_pool_members": {
+      "category": "bounded_child_list",
+      "scopeGenerationSource": "pool_id -> network_egress_pools.scope_id (fixed SYSTEM_SCOPE_ID)",
+      "backfillSource": "network_egress_pools.scope_id",
+      "writePathSource": "network egress pool repository writes members under a fixed global pool and preserves provider key identity"
+    },
+    "network_egress_providers": {
+      "category": "system_global",
+      "scopeGenerationSource": "SYSTEM_SCOPE_ID fixed network egress provider registry routing",
+      "backfillSource": "SYSTEM_SCOPE_ID",
+      "writePathSource": "network egress provider repository writes the fixed system scope and provider lifecycle fields"
+    },
+    "network_egress_projections": {
+      "category": "bounded_projection",
+      "scopeGenerationSource": "provider_id -> network_egress_providers.scope_id",
+      "backfillSource": "network_egress_providers.scope_id",
+      "writePathSource": "network egress provider synchronization replaces the bounded provider projection by composite identity"
+    },
+    "network_egress_provider_secrets": {
+      "category": "bounded_secret_projection",
+      "scopeGenerationSource": "provider_id -> network_egress_providers.scope_id",
+      "backfillSource": "network_egress_providers.scope_id",
+      "writePathSource": "network egress provider repository replaces the encrypted secret by provider identity and version"
+    },
+    "network_egress_routes": {
+      "category": "workspace_routing",
+      "scopeGenerationSource": "workspace_id",
+      "backfillSource": "workspace_id",
+      "writePathSource": "network egress route repository writes workspace-owned consumer selector policy rows"
     }
   },
   "needsOwnerReviewTables": {},
@@ -593,6 +631,43 @@
       "skip": [
         "managed-table-id",
         "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "network_egress_pool_members": {
+      "kind": "bounded_child_list",
+      "reason": "pool members inherit the fixed system scope from their global pool and retain provider keys as explicit invalid references",
+      "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "network_egress_projections": {
+      "kind": "bounded_projection",
+      "reason": "provider projections are bounded catalog rows keyed by provider and provider egress key with synced_at as source freshness",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "network_egress_provider_secrets": {
+      "kind": "bounded_secret_projection",
+      "reason": "provider secrets are bounded child rows keyed by provider_id; encrypted payload identity and updated_at replace generic row history",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "network_egress_routes": {
+      "kind": "workspace_routing",
+      "reason": "egress routes are workspace-routed policy rows keyed by consumer selector; workspace_id is the owning scope",
+      "skip": [
         "managed-table-scope-column",
         "managed-table-scope-time-index"
       ]

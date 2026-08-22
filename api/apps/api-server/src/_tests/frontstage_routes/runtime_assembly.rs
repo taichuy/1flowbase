@@ -9,7 +9,7 @@ async fn create_runtime_block(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
-    workspace_id: &str,
+    _workspace_id: &str,
     page_id: &str,
     tab_id: &str,
     title: &str,

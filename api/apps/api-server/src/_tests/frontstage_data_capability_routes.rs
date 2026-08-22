@@ -71,12 +71,12 @@ async fn create_page(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
-    workspace_id: &str,
+    _workspace_id: &str,
 ) -> (String, String) {
     let (status, payload) = send_json(
         app,
         "POST",
-        &format!("/api/console/frontstage/pages"),
+        "/api/console/frontstage/pages",
         cookie,
         csrf,
         json!({ "title": "Data capability page", "rank": "a" }),
@@ -145,7 +145,7 @@ async fn dispatch(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
-    workspace_id: &str,
+    _workspace_id: &str,
     page_id: &str,
     tab_id: &str,
     kind: &str,
@@ -167,7 +167,7 @@ async fn dispatch(
 async fn callable_catalog(
     app: &axum::Router,
     cookie: &str,
-    workspace_id: &str,
+    _workspace_id: &str,
     path_query: &str,
 ) -> Value {
     let (status, payload) = get_json(
@@ -183,7 +183,7 @@ async fn callable_catalog(
 async fn callable_detail(
     app: &axum::Router,
     cookie: &str,
-    workspace_id: &str,
+    _workspace_id: &str,
     interface_id: &str,
 ) -> Value {
     let (status, payload) = get_json(
@@ -241,7 +241,7 @@ async fn callable_catalog_exposes_runtime_model_crud_and_keeps_filter_string() {
 async fn callable_catalog_requires_frontstage_design_permission() {
     let app = test_app().await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-    let workspace_id = current_workspace_id(&app, &root_cookie).await;
+    let _workspace_id = current_workspace_id(&app, &root_cookie).await;
     let member_id = create_member(
         &app,
         &root_cookie,
@@ -264,7 +264,7 @@ async fn callable_catalog_requires_frontstage_design_permission() {
     let (cookie, _) = login_and_capture_cookie(&app, "callable-viewer", "temp-pass").await;
     let (status, _) = get_json(
         &app,
-        &format!("/api/console/frontstage/interface-capabilities"),
+        "/api/console/frontstage/interface-capabilities",
         &cookie,
     )
     .await;
@@ -280,7 +280,7 @@ async fn callable_catalog_filters_one_or_many_path_prefixes_before_pagination() 
 
     let (all_status, all) = get_json(
         &app,
-        &format!("/api/console/frontstage/interface-capabilities?limit=20"),
+        "/api/console/frontstage/interface-capabilities?limit=20",
         &cookie,
     )
     .await;
@@ -288,9 +288,7 @@ async fn callable_catalog_filters_one_or_many_path_prefixes_before_pagination() 
 
     let (public_status, public) = get_json(
         &app,
-        &format!(
-            "/api/console/frontstage/interface-capabilities?path_prefixes=%2Fapi%2Fpublic%2F&limit=2"
-        ),
+        "/api/console/frontstage/interface-capabilities?path_prefixes=%2Fapi%2Fpublic%2F&limit=2",
         &cookie,
     )
     .await;
@@ -339,7 +337,7 @@ async fn callable_catalog_filters_one_or_many_path_prefixes_before_pagination() 
 
     let (invalid_status, _) = get_json(
         &app,
-        &format!("/api/console/frontstage/interface-capabilities?path_prefixes=api%2Fpublic"),
+        "/api/console/frontstage/interface-capabilities?path_prefixes=api%2Fpublic",
         &cookie,
     )
     .await;
@@ -350,15 +348,11 @@ async fn callable_catalog_filters_one_or_many_path_prefixes_before_pagination() 
 async fn data_capability_catalog_lists_descriptors_and_published_models() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-    let workspace_id = current_workspace_id(&app, &cookie).await;
+    let _workspace_id = current_workspace_id(&app, &cookie).await;
     create_published_model(&app, &cookie, &csrf, "cap_orders").await;
 
-    let (status, payload) = get_json(
-        &app,
-        &format!("/api/console/frontstage/data-capabilities"),
-        &cookie,
-    )
-    .await;
+    let (status, payload) =
+        get_json(&app, "/api/console/frontstage/data-capabilities", &cookie).await;
     assert_eq!(status, StatusCode::OK);
 
     let queries: Vec<&str> = payload["data"]["queries"]
@@ -404,10 +398,10 @@ async fn data_capability_catalog_lists_descriptors_and_published_models() {
 async fn data_capability_catalog_requires_session() {
     let app = test_app().await;
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
-    let workspace_id = current_workspace_id(&app, &cookie).await;
+    let _workspace_id = current_workspace_id(&app, &cookie).await;
     let (status, _) = get_json(
         &app,
-        &format!("/api/console/frontstage/data-capabilities"),
+        "/api/console/frontstage/data-capabilities",
         "cookie=missing",
     )
     .await;

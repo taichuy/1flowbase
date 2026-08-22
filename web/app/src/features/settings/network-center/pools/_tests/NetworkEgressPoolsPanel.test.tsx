@@ -111,7 +111,9 @@ describe('NetworkEgressPoolsPanel', () => {
     expect(await screen.findByText('HTTP proxy')).toBeInTheDocument();
     expect(screen.queryByText('builtin_static_http')).not.toBeInTheDocument();
     expect(await screen.findByText('198.65.36.212:37867')).toBeInTheDocument();
-    expect(screen.getByText('198.65.36.212:37867').closest('code')).toBeNull();
+    const address = screen.queryByText('198.65.36.212:37867');
+    expect(address).toBeInTheDocument();
+    expect(address?.closest('code')).not.toBeInTheDocument();
     expect(screen.getByText('32ms')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /测试|Test/ }));
 

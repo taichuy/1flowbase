@@ -10,7 +10,6 @@
   "backup_password": "Optional backup password",
   "backup_password_help": "Leave this empty for a portable backup. Anyone with that file can restore it; set a password to encrypt it.",
   "import_password_help": "Enter the backup password when one was set. Leave it empty for a default portable backup.",
-  "verify_password_help": "Enter the backup password when one was set. Leave it empty for a default portable backup.",
   "name": "Backup name",
   "status": "Backup status",
   "size": "Size",

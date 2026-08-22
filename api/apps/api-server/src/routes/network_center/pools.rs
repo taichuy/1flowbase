@@ -12,7 +12,8 @@ use control_plane::network_egress_pool::{
     AddProviderEgressesToPoolCommand, AddStaticHttpProxyToPoolCommand,
     CreateNetworkEgressPoolCommand, CreateNetworkEgressPoolMemberCommand,
     NetworkEgressPoolMemberView, NetworkEgressPoolService, NetworkEgressPoolView,
-    UpdateNetworkEgressPoolCommand, UpdateNetworkEgressPoolMemberCommand,
+    RecordNetworkEgressPoolMemberProbeCommand, UpdateNetworkEgressPoolCommand,
+    UpdateNetworkEgressPoolMemberCommand,
 };
 use control_plane::network_egress_secret::ProviderRegistryNetworkEgressSecretResolver;
 use serde::{Deserialize, Serialize};
@@ -338,18 +339,18 @@ pub async fn test_network_egress_pool_member_connection(
     )
     .await;
     let member = service(&state)
-        .record_probe(
-            context.user.id,
+        .record_probe(RecordNetworkEgressPoolMemberProbeCommand {
+            actor_user_id: context.user.id,
             pool_id,
             member_id,
-            probe.status,
-            probe.http_status,
-            probe.https_status,
-            probe.latency_ms,
-            probe.exit_ip,
-            probe.exit_region,
-            probe.error_code,
-        )
+            status: probe.status,
+            http_status: probe.http_status,
+            https_status: probe.https_status,
+            latency_ms: probe.latency_ms,
+            exit_ip: probe.exit_ip,
+            exit_region: probe.exit_region,
+            error_code: probe.error_code,
+        })
         .await?;
     Ok(Json(ApiSuccess::new(member_response(member))))
 }

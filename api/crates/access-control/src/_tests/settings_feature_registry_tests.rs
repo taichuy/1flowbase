@@ -7,6 +7,7 @@ use access_control::{
 const PRODUCT_DEFAULT_SETTINGS_FEATURE_ORDER: &[&str] = &[
     "system.extension-center",
     "system.model-providers",
+    "system.network-center",
     "system.applications",
     "system.mcp-management",
     "system.members",

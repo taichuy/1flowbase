@@ -354,7 +354,7 @@ export function NetworkEgressPoolsPanel() {
                 title: i18nText('settings', 'auto.operation'),
                 render: (_, member) => <Space>
                   <Button type="link" loading={testMember.isPending} onClick={() => testMember.mutate(member.id)}>{i18nText('settings', 'auto.network_center_member_test')}</Button>
-                  <Button type="link" onClick={() => setEditingMember(member)}>{i18nText('settings', 'auto.network_center_member_edit_action')}</Button>
+                  <Button type="link" onClick={() => setEditingMember(member)}>{i18nText('settings', 'auto.edit')}</Button>
                   <Popconfirm title={i18nText('settings', 'auto.network_center_member_delete_confirm')} onConfirm={() => removeMember.mutate(member.id)}>
                     <Button type="link" danger loading={removeMember.isPending}>{i18nText('settings', 'auto.delete')}</Button>
                   </Popconfirm>

@@ -5,7 +5,7 @@ async fn create_block(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
-    workspace_id: &str,
+    _workspace_id: &str,
     page_id: &str,
     tab_id: Option<&str>,
     title: &str,
@@ -46,12 +46,12 @@ async fn create_block_page(
     app: &axum::Router,
     cookie: &str,
     csrf: &str,
-    workspace_id: &str,
+    _workspace_id: &str,
 ) -> (String, String) {
     let (status, payload) = send_json(
         app,
         "POST",
-        &format!("/api/console/frontstage/pages"),
+        "/api/console/frontstage/pages",
         cookie,
         csrf,
         json!({
