@@ -174,7 +174,7 @@ describe('frontstage block catalog normalizer', () => {
           assets: [
             {
               ...browserAsset('a'),
-              url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+              url: '/api/console/frontstage/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
             }
           ],
           exports: ['Surface']
@@ -325,7 +325,7 @@ function browserAsset(digestCharacter: string) {
     role: 'browser_module' as const,
     media_type: 'text/javascript; charset=utf-8',
     sha256,
-    url: `/api/console/frontstage/workspace-1/component-module-assets/${sha256}`,
+    url: `/api/console/frontstage/component-module-assets/${sha256}`,
     integrity: 'verified_sha256' as const
   };
 }

@@ -154,9 +154,8 @@ describe('frontstage page tree feature api', () => {
       );
       await deleteFrontstageNode('workspace-1', 'page-1', 'csrf-123');
 
-      expect(listSpy).toHaveBeenCalledWith('workspace-1', expect.any(String));
+      expect(listSpy).toHaveBeenCalledWith(expect.any(String));
       expect(createGroupSpy).toHaveBeenCalledWith(
-        'workspace-1',
         {
           title: '分组 1',
           icon: 'FolderOutlined',
@@ -168,7 +167,6 @@ describe('frontstage page tree feature api', () => {
         expect.any(String)
       );
       expect(createPageSpy).toHaveBeenCalledWith(
-        'workspace-1',
         {
           title: '页面 1',
           icon: 'FileTextOutlined',
@@ -180,28 +178,24 @@ describe('frontstage page tree feature api', () => {
         expect.any(String)
       );
       expect(updateSpy).toHaveBeenCalledWith(
-        'workspace-1',
         'page-1',
         { title: '页面 新名' },
         'csrf-123',
         expect.any(String)
       );
       expect(updateSpy).toHaveBeenCalledWith(
-        'workspace-1',
         'page-1',
         { tooltip: '展示在页面树', is_hidden: true },
         'csrf-123',
         expect.any(String)
       );
       expect(moveSpy).toHaveBeenCalledWith(
-        'workspace-1',
         'page-1',
         { parent_id: null, rank: '000000' },
         'csrf-123',
         expect.any(String)
       );
       expect(deleteSpy).toHaveBeenCalledWith(
-        'workspace-1',
         'page-1',
         'csrf-123',
         expect.any(String)
@@ -293,7 +287,6 @@ describe('frontstage page content feature api', () => {
         }
       });
       expect(detailSpy).toHaveBeenCalledWith(
-        'workspace-1',
         'page-1',
         'tab-1',
         expect.any(String)
@@ -381,7 +374,6 @@ describe('frontstage page content feature api', () => {
         }
       });
       expect(saveSpy).toHaveBeenCalledWith(
-        'workspace-1',
         'page-1',
         'tab-1',
         {

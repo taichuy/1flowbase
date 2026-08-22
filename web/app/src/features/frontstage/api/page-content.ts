@@ -108,7 +108,6 @@ export async function fetchFrontstagePageContent(
   tabReference: string
 ): Promise<FrontstagePageContent> {
   const detail = await getFrontstagePageTabDetail(
-    workspaceId,
     pageId,
     tabReference,
     getFrontstageApiBaseUrl()
@@ -125,7 +124,6 @@ export async function saveFrontstagePageContent(
   csrfToken: string
 ): Promise<FrontstagePageContent> {
   const detail = await saveFrontstageTabDocument(
-    workspaceId,
     pageId,
     tabId,
     input,

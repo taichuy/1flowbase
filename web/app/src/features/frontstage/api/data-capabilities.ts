@@ -33,7 +33,6 @@ export function fetchFrontstageDataCapabilities(
   workspaceId: string
 ): Promise<FrontstageDataCapabilities> {
   return listFrontstageDataCapabilities(
-    workspaceId,
     getFrontstageApiBaseUrl()
   );
 }

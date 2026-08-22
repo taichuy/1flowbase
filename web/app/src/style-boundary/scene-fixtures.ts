@@ -259,7 +259,7 @@ function getStyleBoundaryCommonResponse(
 
   if (
     method.toUpperCase() === 'GET' &&
-    requestUrl.pathname === '/api/console/frontstage/workspace-1/pages'
+    requestUrl.pathname === '/api/console/frontstage/pages'
   ) {
     return createStyleBoundaryJsonResponse({ data: [], meta: null });
   }

@@ -186,7 +186,7 @@ export const value = runtime.require();
     ).resolves.toMatchObject({ value: 7 });
   });
 
-  test('rejects invalid Host/fetched bindings and cross-origin assets', async () => {
+  test('accepts actor-scoped assets and rejects invalid Host/fetched bindings or unregistered assets', async () => {
     const registration = await fetchedLock('export const Surface = 1;', [
       'Surface'
     ]);
@@ -198,6 +198,22 @@ export const value = runtime.require();
             assets: registration.assets.map((asset) => ({
               ...asset,
               url: `https://plugins.example/${asset.sha256}`
+            }))
+          }
+        ],
+        hostModules
+      })
+    ).toThrowError(
+      expect.objectContaining({ code: 'invalid_dependency_lock' })
+    );
+    expect(() =>
+      createNativeReactModuleRegistry({
+        dependencyLock: [
+          {
+            ...registration,
+            assets: registration.assets.map((asset) => ({
+              ...asset,
+              url: `/api/console/frontstage/workspace-1/component-module-assets/${asset.sha256}`
             }))
           }
         ],
@@ -344,7 +360,7 @@ async function assetLock(
 }
 
 function assetUrl(sha256: string) {
-  return `/api/console/frontstage/workspace-1/component-module-assets/${sha256}`;
+  return `/api/console/frontstage/component-module-assets/${sha256}`;
 }
 
 function response(

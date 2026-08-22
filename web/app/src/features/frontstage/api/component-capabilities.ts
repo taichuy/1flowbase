@@ -25,7 +25,6 @@ export function fetchFrontstageComponentCapabilities(
   query: FrontstageComponentCapabilityQuery
 ): Promise<FrontstageComponentCapabilityPage> {
   return listFrontstageComponentCapabilities(
-    workspaceId,
     query,
     getFrontstageApiBaseUrl()
   );
@@ -36,7 +35,6 @@ export function fetchFrontstageComponentCapability(
   componentId: string
 ): Promise<FrontstageComponentCapability> {
   return getFrontstageComponentCapability(
-    workspaceId,
     componentId,
     getFrontstageApiBaseUrl()
   );
@@ -47,7 +45,6 @@ export async function resolveFrontstageComponentDependencyLock(
   sourceCode: string
 ): Promise<NativeReactCatalogDependencyLock> {
   const result = await requestFrontstageComponentDependencyLock(
-    workspaceId,
     sourceCode,
     getFrontstageApiBaseUrl()
   );

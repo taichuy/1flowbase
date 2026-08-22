@@ -1638,7 +1638,7 @@ mod code_input_tests {
                         "role": "browser_module",
                         "media_type": "text/javascript; charset=utf-8",
                         "sha256": "a".repeat(64),
-                        "url": "/api/console/frontstage/00000000-0000-0000-0000-000000000000/component-module-assets/".to_owned() + &"a".repeat(64),
+                        "url": "/api/console/frontstage/component-module-assets/".to_owned() + &"a".repeat(64),
                         "integrity": "verified_sha256"
                     }],
                     "exports": ["Chart"]

@@ -101,7 +101,6 @@ export function fetchFrontstageBlockRoots(
   query: ConsoleFrontstageBlockRootListQuery
 ) {
   return listConsoleFrontstageBlockRoots(
-    workspaceId,
     pageId,
     query,
     getFrontstageApiBaseUrl()
@@ -115,7 +114,6 @@ export function createFrontstageBlockNode(
   csrfToken: string
 ) {
   return createConsoleFrontstageBlockNode(
-    workspaceId,
     pageId,
     input,
     csrfToken,
@@ -131,7 +129,6 @@ export function updateFrontstageBlockDescriptors(
   csrfToken: string
 ) {
   return updateConsoleFrontstageBlockDescriptors(
-    workspaceId,
     pageId,
     tabId,
     input,
@@ -146,7 +143,6 @@ export function searchFrontstageBlocks(
   query: ConsoleFrontstageBlockSearchQuery
 ) {
   return searchConsoleFrontstageBlocks(
-    workspaceId,
     pageId,
     query,
     getFrontstageApiBaseUrl()
@@ -159,7 +155,6 @@ export function fetchFrontstageBlockNode(
   blockId: string
 ) {
   return getConsoleFrontstageBlockNode(
-    workspaceId,
     pageId,
     blockId,
     getFrontstageApiBaseUrl()
@@ -172,7 +167,6 @@ export function openFrontstageBlock(
   blockId: string
 ) {
   return openConsoleFrontstageBlock(
-    workspaceId,
     pageId,
     blockId,
     getFrontstageApiBaseUrl()
@@ -187,7 +181,6 @@ export function updateFrontstageBlockNode(
   csrfToken: string
 ) {
   return updateConsoleFrontstageBlockNode(
-    workspaceId,
     pageId,
     blockId,
     input,
@@ -203,7 +196,6 @@ export function deleteFrontstageBlockLeaf(
   csrfToken: string
 ) {
   return deleteConsoleFrontstageBlockLeaf(
-    workspaceId,
     pageId,
     blockId,
     csrfToken,
@@ -218,7 +210,6 @@ export function fetchFrontstageBlockChildren(
   query: ConsoleFrontstageBlockListQuery = {}
 ) {
   return listConsoleFrontstageBlockChildren(
-    workspaceId,
     pageId,
     blockId,
     query,
@@ -232,7 +223,6 @@ export function fetchFrontstageBlockAncestors(
   blockId: string
 ) {
   return listConsoleFrontstageBlockAncestors(
-    workspaceId,
     pageId,
     blockId,
     getFrontstageApiBaseUrl()
@@ -246,7 +236,6 @@ export function fetchFrontstageBlockDescendants(
   query: ConsoleFrontstageBlockDescendantsQuery = {}
 ) {
   return listConsoleFrontstageBlockDescendants(
-    workspaceId,
     pageId,
     blockId,
     query,
@@ -260,7 +249,6 @@ export function fetchFrontstageBlockDeleteImpact(
   blockId: string
 ) {
   return getConsoleFrontstageBlockDeleteImpact(
-    workspaceId,
     pageId,
     blockId,
     getFrontstageApiBaseUrl()
@@ -275,7 +263,6 @@ export function moveFrontstageBlockNode(
   csrfToken: string
 ) {
   return moveConsoleFrontstageBlockNode(
-    workspaceId,
     pageId,
     blockId,
     input,
@@ -292,7 +279,6 @@ export function deleteFrontstageBlockSubtree(
   csrfToken: string
 ) {
   return deleteConsoleFrontstageBlockSubtree(
-    workspaceId,
     pageId,
     blockId,
     input,
@@ -307,7 +293,6 @@ export function fetchFrontstageBlockNodeCode(
   blockId: string
 ) {
   return getConsoleFrontstageBlockNodeCode(
-    workspaceId,
     pageId,
     blockId,
     getFrontstageApiBaseUrl()
@@ -320,7 +305,6 @@ export function fetchFrontstageBlockRuntimeAssembly(
   blockId: string
 ) {
   return getConsoleFrontstageBlockRuntimeAssembly(
-    workspaceId,
     pageId,
     blockId,
     getFrontstageApiBaseUrl()
@@ -335,7 +319,6 @@ export function saveFrontstageBlockNodeCode(
   csrfToken: string
 ) {
   return saveConsoleFrontstageBlockNodeCode(
-    workspaceId,
     pageId,
     blockId,
     input,

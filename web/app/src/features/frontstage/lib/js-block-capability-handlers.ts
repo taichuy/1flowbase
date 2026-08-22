@@ -137,7 +137,6 @@ export function createFrontstageJsBlockCapabilityHandlers(
         const input = createDispatchInput(effect, blockId);
         if (effect.operation === 'stream_open') {
           const iterable = await client.dispatchFrontstageCallableStream(
-            options.workspaceId,
             options.pageId,
             options.tabId,
             input,
@@ -155,7 +154,6 @@ export function createFrontstageJsBlockCapabilityHandlers(
           return { stream_id: streamId };
         }
         return client.dispatchFrontstageCallable(
-          options.workspaceId,
           options.pageId,
           options.tabId,
           input,
