@@ -37,6 +37,14 @@ fn installation(source_kind: &str) -> domain::PluginInstallationRecord {
     }
 }
 
+fn model_provider_installation(source_kind: &str) -> domain::PluginInstallationRecord {
+    let mut installation = installation(source_kind);
+    installation.category = domain::ExtensionCategory::RuntimeExtensions;
+    installation.contract_version = "1flowbase.provider/v2".to_owned();
+    installation.metadata_json = json!({"plugin_type": "model_provider"});
+    installation
+}
+
 fn current_ready_artifact(installation_id: Uuid) -> domain::PluginArtifactInstanceRecord {
     domain::PluginArtifactInstanceRecord {
         node_id: "node-a".to_owned(),
@@ -60,6 +68,7 @@ fn rebuildable_plugin_uses_verified_immutable_identity_without_current_artifact(
     let entries = build_backup_artifact_inventory(
         "node-a",
         vec![installation("builtin")],
+        Vec::new(),
         Vec::new(),
         Vec::new(),
     )
@@ -87,6 +96,40 @@ fn embedded_plugin_requires_a_current_retained_artifact() {
         vec![installation("uploaded")],
         Vec::new(),
         Vec::new(),
+        Vec::new(),
+    )
+    .unwrap_err();
+
+    assert_eq!(
+        error.reason,
+        BackupArtifactInventoryReason::RetainedArtifactMissing
+    );
+}
+
+#[test]
+fn backup_inventory_excludes_unassigned_active_model_provider() {
+    let entries = build_backup_artifact_inventory(
+        "node-a",
+        vec![model_provider_installation("uploaded")],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    )
+    .unwrap();
+
+    assert!(entries.is_empty());
+}
+
+#[test]
+fn backup_inventory_requires_assigned_active_model_provider_artifact() {
+    let installation = model_provider_installation("uploaded");
+
+    let error = build_backup_artifact_inventory(
+        "node-a",
+        vec![installation.clone()],
+        Vec::new(),
+        vec![installation.id],
+        Vec::new(),
     )
     .unwrap_err();
 
@@ -101,8 +144,14 @@ fn required_rebuildable_plugin_rejects_invalid_catalog_identity() {
     let mut unverified = installation("official");
     unverified.verification_status = domain::PluginVerificationStatus::Invalid;
 
-    let error = build_backup_artifact_inventory("node-a", vec![unverified], Vec::new(), Vec::new())
-        .unwrap_err();
+    let error = build_backup_artifact_inventory(
+        "node-a",
+        vec![unverified],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    )
+    .unwrap_err();
 
     assert_eq!(
         error.reason,
@@ -115,9 +164,14 @@ fn backup_inventory_excludes_historical_uploaded_installations_without_a_ready_c
     let mut historical = installation("uploaded");
     historical.desired_state = domain::PluginDesiredState::Disabled;
 
-    let entries =
-        build_backup_artifact_inventory("node-a", vec![historical], Vec::new(), Vec::new())
-            .unwrap();
+    let entries = build_backup_artifact_inventory(
+        "node-a",
+        vec![historical],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    )
+    .unwrap();
 
     assert!(entries.is_empty());
 }
@@ -129,9 +183,14 @@ fn backup_inventory_excludes_historical_invalid_registry_identity_without_a_read
     historical.desired_state = domain::PluginDesiredState::Disabled;
     historical.verification_status = domain::PluginVerificationStatus::Invalid;
 
-    let entries =
-        build_backup_artifact_inventory("node-a", vec![historical], Vec::new(), Vec::new())
-            .unwrap();
+    let entries = build_backup_artifact_inventory(
+        "node-a",
+        vec![historical],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    )
+    .unwrap();
 
     assert!(entries.is_empty());
 }
@@ -142,9 +201,14 @@ fn backup_inventory_excludes_disabled_uploaded_installations_with_a_ready_curren
     disabled.desired_state = domain::PluginDesiredState::Disabled;
     let artifact = current_ready_artifact(disabled.id);
 
-    let entries =
-        build_backup_artifact_inventory("node-a", vec![disabled], vec![artifact], Vec::new())
-            .unwrap();
+    let entries = build_backup_artifact_inventory(
+        "node-a",
+        vec![disabled],
+        vec![artifact],
+        Vec::new(),
+        Vec::new(),
+    )
+    .unwrap();
 
     assert!(entries.is_empty());
 }
@@ -156,9 +220,14 @@ fn backup_inventory_excludes_disabled_installations_with_a_non_ready_current_art
     let mut artifact = current_ready_artifact(disabled.id);
     artifact.artifact_status = domain::PluginArtifactInstanceStatus::Missing;
 
-    let entries =
-        build_backup_artifact_inventory("node-a", vec![disabled], vec![artifact], Vec::new())
-            .unwrap();
+    let entries = build_backup_artifact_inventory(
+        "node-a",
+        vec![disabled],
+        vec![artifact],
+        Vec::new(),
+        Vec::new(),
+    )
+    .unwrap();
 
     assert!(entries.is_empty());
 }
@@ -168,9 +237,14 @@ fn pending_restart_rebuildable_plugin_is_required_without_a_local_artifact() {
     let mut pending_restart = installation("official_registry");
     pending_restart.desired_state = domain::PluginDesiredState::PendingRestart;
 
-    let entries =
-        build_backup_artifact_inventory("node-a", vec![pending_restart], Vec::new(), Vec::new())
-            .unwrap();
+    let entries = build_backup_artifact_inventory(
+        "node-a",
+        vec![pending_restart],
+        Vec::new(),
+        Vec::new(),
+        Vec::new(),
+    )
+    .unwrap();
 
     assert_eq!(entries.len(), 1);
     assert_eq!(
@@ -184,6 +258,7 @@ fn configured_proxy_uses_verified_official_identity_without_a_current_artifact()
     let entries = build_backup_artifact_inventory(
         "node-a",
         vec![installation("configured_proxy")],
+        Vec::new(),
         Vec::new(),
         Vec::new(),
     )

@@ -1,4 +1,9 @@
-use std::{collections::BTreeMap, io::ErrorKind, path::PathBuf, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    io::ErrorKind,
+    path::PathBuf,
+    sync::Arc,
+};
 
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
@@ -112,8 +117,12 @@ pub fn build_backup_artifact_inventory(
     node_id: &str,
     plugin_installations: Vec<domain::PluginInstallationRecord>,
     plugin_instances: Vec<domain::PluginArtifactInstanceRecord>,
+    assigned_installation_ids: Vec<uuid::Uuid>,
     extension_installations: Vec<domain::ExtensionInstallationRecord>,
 ) -> std::result::Result<Vec<BackupArtifactEntry>, BackupArtifactInventoryError> {
+    let assigned_installation_ids = assigned_installation_ids
+        .into_iter()
+        .collect::<BTreeSet<_>>();
     let mut instances = BTreeMap::new();
     for instance in plugin_instances.into_iter().filter(|instance| {
         instance.node_id == node_id
@@ -133,7 +142,7 @@ pub fn build_backup_artifact_inventory(
     let mut inventory = BTreeMap::<String, BackupArtifactEntry>::new();
     for installation in plugin_installations {
         let instance = instances.remove(&installation.id);
-        if !requires_recovery_artifact(&installation) {
+        if !requires_recovery_artifact(&installation, &assigned_installation_ids) {
             continue;
         }
         let identity = plugin_artifact_identity(&installation);
@@ -264,6 +273,14 @@ where
             operation: "list plugin artifact backup inventory",
             source,
         })?;
+    let assigned_installation_ids =
+        repository
+            .list_assigned_installation_ids()
+            .await
+            .map_err(|source| BackupArtifactSourceLoadError::Infrastructure {
+                operation: "list assigned plugin backup inventory",
+                source,
+            })?;
     let extensions = repository
         .list_extension_installations_for_node(node_id)
         .await
@@ -271,7 +288,13 @@ where
             operation: "list extension backup inventory",
             source,
         })?;
-    let entries = build_backup_artifact_inventory(node_id, installations, instances, extensions)?;
+    let entries = build_backup_artifact_inventory(
+        node_id,
+        installations,
+        instances,
+        assigned_installation_ids,
+        extensions,
+    )?;
     for entry in &entries {
         validate_retained_artifact(entry).await?;
     }
@@ -281,11 +304,19 @@ where
         .collect())
 }
 
-fn requires_recovery_artifact(installation: &domain::PluginInstallationRecord) -> bool {
-    matches!(
+fn requires_recovery_artifact(
+    installation: &domain::PluginInstallationRecord,
+    assigned_installation_ids: &BTreeSet<uuid::Uuid>,
+) -> bool {
+    if !matches!(
         installation.desired_state,
         domain::PluginDesiredState::ActiveRequested | domain::PluginDesiredState::PendingRestart
-    )
+    ) {
+        return false;
+    }
+
+    !crate::host_extension::is_model_provider_installation(installation)
+        || assigned_installation_ids.contains(&installation.id)
 }
 
 fn plugin_artifact_identity(installation: &domain::PluginInstallationRecord) -> String {
