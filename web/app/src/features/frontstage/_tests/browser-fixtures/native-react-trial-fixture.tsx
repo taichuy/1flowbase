@@ -333,7 +333,7 @@ function CatalogIconsProbe() {
               role: 'browser_module',
               media_type: 'text/javascript; charset=utf-8',
               sha256: ICONS_BROWSER_ASSET_SHA256,
-              url: `/api/console/frontstage/fixture-workspace/component-module-assets/${ICONS_BROWSER_ASSET_SHA256}`
+              url: `/api/console/frontstage/component-module-assets/${ICONS_BROWSER_ASSET_SHA256}`
             }
           ]
         }
@@ -419,7 +419,7 @@ function CatalogRichTextProbe() {
               role: 'browser_module',
               media_type: 'text/javascript; charset=utf-8',
               sha256: RICH_TEXT_BROWSER_ASSET_SHA256,
-              url: `/api/console/frontstage/fixture-workspace/component-module-assets/${RICH_TEXT_BROWSER_ASSET_SHA256}`
+              url: `/api/console/frontstage/component-module-assets/${RICH_TEXT_BROWSER_ASSET_SHA256}`
             }
           ]
         }

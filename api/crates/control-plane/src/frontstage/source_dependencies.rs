@@ -1,11 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::errors::ControlPlaneError;
 use anyhow::Result;
 use regex::Regex;
 use serde_json::Value;
-use uuid::Uuid;
-
-use crate::errors::ControlPlaneError;
 
 use super::block_tree::is_dependency_lock;
 
@@ -24,7 +22,6 @@ struct StaticImport {
 }
 
 pub(super) fn dependency_lock_from_source(
-    workspace_id: Uuid,
     source_code: &str,
     modules: Vec<domain::FrontendBlockCodeModule>,
 ) -> Result<Value> {
@@ -91,7 +88,7 @@ pub(super) fn dependency_lock_from_source(
         }
     }
 
-    canonical_dependency_lock(workspace_id, resolved_modules.into_values().collect())
+    canonical_dependency_lock(resolved_modules.into_values().collect())
 }
 
 fn same_runtime_module(
@@ -222,10 +219,7 @@ fn source_without_comments(source: &str) -> String {
     result
 }
 
-fn canonical_dependency_lock(
-    workspace_id: Uuid,
-    modules: Vec<domain::FrontendBlockCodeModule>,
-) -> Result<Value> {
+fn canonical_dependency_lock(modules: Vec<domain::FrontendBlockCodeModule>) -> Result<Value> {
     let entries = modules
         .into_iter()
         .map(|module| {
@@ -248,7 +242,7 @@ fn canonical_dependency_lock(
                         "media_type": asset.media_type,
                         "sha256": sha256.clone(),
                         "url": format!(
-                            "/api/console/frontstage/{workspace_id}/component-module-assets/{sha256}"
+                            "/api/console/frontstage/component-module-assets/{sha256}"
                         ),
                         "integrity": "verified_sha256"
                     })
@@ -303,7 +297,6 @@ mod tests {
     #[test]
     fn resolves_host_imports_and_the_implicit_jsx_runtime_through_react() {
         let lock = dependency_lock_from_source(
-            Uuid::nil(),
             "import { Button } from 'antd';\nexport default () => <Button />;",
             vec![
                 module(
@@ -340,7 +333,6 @@ mod tests {
     #[test]
     fn rejects_a_runtime_named_import_absent_from_the_catalog_module() {
         let error = dependency_lock_from_source(
-            Uuid::nil(),
             "import { ReloadOutlined } from '@ant-design/icons';\nexport default () => null;",
             vec![module(
                 "@ant-design/icons",
@@ -362,7 +354,6 @@ mod tests {
     #[test]
     fn keeps_type_only_imports_out_of_runtime_export_validation() {
         let lock = dependency_lock_from_source(
-            Uuid::nil(),
             "import type { BlockComponentProps } from '@1flowbase/block-sdk';\nexport default () => null;",
             vec![
                 module(

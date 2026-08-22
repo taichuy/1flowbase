@@ -20,7 +20,6 @@ export function fetchFrontstageInterfaceCapabilities(
   query: FrontstageInterfaceCapabilityQuery
 ): Promise<FrontstageInterfaceCapabilityPage> {
   return listFrontstageInterfaceCapabilities(
-    workspaceId,
     query,
     getFrontstageApiBaseUrl()
   );
@@ -31,7 +30,6 @@ export function fetchFrontstageInterfaceCapability(
   interfaceId: string
 ): Promise<FrontstageInterfaceCapability> {
   return getFrontstageInterfaceCapability(
-    workspaceId,
     interfaceId,
     getFrontstageApiBaseUrl()
   );

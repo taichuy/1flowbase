@@ -344,7 +344,6 @@ async function defaultFetchSource(
 ): Promise<NativePreparationSource> {
   throwIfAborted(signal);
   const source = await getConsoleFrontstageBlockNodeCode(
-    request.workspaceId,
     request.pageId,
     request.blockId,
     getFrontstageApiBaseUrl()

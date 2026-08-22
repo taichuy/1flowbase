@@ -394,8 +394,8 @@ fn verified_assets(
         plugin_framework::load_frontend_module_asset(root?, &manifest).ok()?;
         bindings.push(FrontendContributionAssetBinding {
             url: format!(
-                "/api/console/frontstage/{}/component-module-assets/{}",
-                candidate.workspace_id, asset.sha256
+                "/api/console/frontstage/component-module-assets/{}",
+                asset.sha256
             ),
             digest: asset.sha256.clone(),
             media_type: asset.media_type.clone(),

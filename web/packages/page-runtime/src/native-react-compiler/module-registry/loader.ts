@@ -479,13 +479,12 @@ function isRegisteredAssetUrl(
       url.origin === 'https://1flowbase.invalid' &&
       url.search.length === 0 &&
       url.hash.length === 0 &&
-      segments.length === 6 &&
+      segments.length === 5 &&
       segments[0] === 'api' &&
       segments[1] === 'console' &&
       segments[2] === 'frontstage' &&
-      segments[3]!.length > 0 &&
-      segments[4] === 'component-module-assets' &&
-      segments[5] === asset.sha256;
+      segments[3] === 'component-module-assets' &&
+      segments[4] === asset.sha256;
     const externalAsset =
       url.origin === 'https://1flowbase.invalid' &&
       url.search.length === 0 &&

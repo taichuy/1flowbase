@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::Json;
 use control_plane::errors::ControlPlaneError;
@@ -508,8 +508,7 @@ fn capability_descriptors() -> (
 
 #[utoipa::path(
     get,
-    path = "/api/console/frontstage/{workspace_id}/data-capabilities",
-    params(("workspace_id" = String, Path, description = "Workspace id")),
+    path = "/api/console/frontstage/data-capabilities",
     responses(
         (status = 200, body = FrontstageDataCapabilitiesResponse),
         (status = 400, body = crate::error_response::ErrorBody),
@@ -520,13 +519,9 @@ fn capability_descriptors() -> (
 pub async fn list_frontstage_data_capabilities(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path(workspace_id): Path<String>,
 ) -> Result<Json<ApiSuccess<FrontstageDataCapabilitiesResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
-    if context.actor.current_workspace_id != workspace_id {
-        return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());
-    }
+    let workspace_id = context.actor.current_workspace_id;
     let models = state
         .runtime_engine
         .registry()

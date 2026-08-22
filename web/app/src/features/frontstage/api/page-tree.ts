@@ -64,7 +64,7 @@ export function getFrontstageApiBaseUrl(
 export function fetchFrontstagePageTree(
   workspaceId: string
 ): Promise<FrontstagePageTreeNode[]> {
-  return listFrontstagePages(workspaceId, getFrontstageApiBaseUrl()) as Promise<
+  return listFrontstagePages(getFrontstageApiBaseUrl()) as Promise<
     FrontstagePageTreeNode[]
   >;
 }
@@ -75,7 +75,6 @@ export function createFrontstagePageGroupNode(
   csrfToken: string
 ): Promise<FrontstagePageNode> {
   return createFrontstageGroup(
-    workspaceId,
     {
       title: input.title,
       icon: input.icon,
@@ -96,7 +95,6 @@ export function createFrontstagePageNode(
   csrfToken: string
 ): Promise<FrontstagePageNode> {
   return createFrontstagePage(
-    workspaceId,
     {
       title: input.title,
       icon: input.icon,
@@ -138,7 +136,6 @@ export function renameFrontstagePageNode(
   }
 
   return updateFrontstagePageNodeTitle(
-    workspaceId,
     pageNodeId,
     body,
     csrfToken,
@@ -153,7 +150,6 @@ export function updateFrontstagePageNodeMetadata(
   csrfToken: string
 ): Promise<FrontstagePageNode> {
   return updateFrontstagePageNodeTitle(
-    workspaceId,
     pageNodeId,
     {
       title: input.title,
@@ -173,7 +169,6 @@ export function moveFrontstageNode(
   csrfToken: string
 ): Promise<FrontstagePageNode> {
   return moveFrontstagePageNode(
-    workspaceId,
     pageNodeId,
     {
       parent_id: input.parentId,
@@ -190,7 +185,6 @@ export function deleteFrontstageNode(
   csrfToken: string
 ): Promise<void> {
   return deleteFrontstagePageNode(
-    workspaceId,
     pageNodeId,
     csrfToken,
     getFrontstageApiBaseUrl()

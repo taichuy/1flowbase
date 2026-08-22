@@ -118,7 +118,7 @@ describe('FrontstagePageNativeModuleRegistryCache', () => {
             role: 'browser_module' as const,
             media_type: 'text/javascript; charset=utf-8',
             sha256: sha256Text(source),
-            url: `/api/console/frontstage/workspace-a/component-module-assets/${sha256Text(source)}`
+            url: `/api/console/frontstage/component-module-assets/${sha256Text(source)}`
           }
         ],
         exports: ['Widget']

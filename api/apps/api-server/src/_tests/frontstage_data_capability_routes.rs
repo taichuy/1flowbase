@@ -76,7 +76,7 @@ async fn create_page(
     let (status, payload) = send_json(
         app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages"),
+        &format!("/api/console/frontstage/pages"),
         cookie,
         csrf,
         json!({ "title": "Data capability page", "rank": "a" }),
@@ -156,9 +156,7 @@ async fn dispatch(
     send_json(
         app,
         "POST",
-        &format!(
-            "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/{kind}/dispatch"
-        ),
+        &format!("/api/console/frontstage/pages/{page_id}/tabs/{tab_id}/{kind}/dispatch"),
         cookie,
         csrf,
         json!({ id_field: capability_id, "params": params }),
@@ -174,9 +172,7 @@ async fn callable_catalog(
 ) -> Value {
     let (status, payload) = get_json(
         app,
-        &format!(
-            "/api/console/frontstage/{workspace_id}/interface-capabilities?path_query={path_query}"
-        ),
+        &format!("/api/console/frontstage/interface-capabilities?path_query={path_query}"),
         cookie,
     )
     .await;
@@ -192,7 +188,7 @@ async fn callable_detail(
 ) -> Value {
     let (status, payload) = get_json(
         app,
-        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities/{interface_id}"),
+        &format!("/api/console/frontstage/interface-capabilities/{interface_id}"),
         cookie,
     )
     .await;
@@ -268,7 +264,7 @@ async fn callable_catalog_requires_frontstage_design_permission() {
     let (cookie, _) = login_and_capture_cookie(&app, "callable-viewer", "temp-pass").await;
     let (status, _) = get_json(
         &app,
-        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities"),
+        &format!("/api/console/frontstage/interface-capabilities"),
         &cookie,
     )
     .await;
@@ -284,7 +280,7 @@ async fn callable_catalog_filters_one_or_many_path_prefixes_before_pagination() 
 
     let (all_status, all) = get_json(
         &app,
-        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities?limit=20"),
+        &format!("/api/console/frontstage/interface-capabilities?limit=20"),
         &cookie,
     )
     .await;
@@ -293,7 +289,7 @@ async fn callable_catalog_filters_one_or_many_path_prefixes_before_pagination() 
     let (public_status, public) = get_json(
         &app,
         &format!(
-            "/api/console/frontstage/{workspace_id}/interface-capabilities?path_prefixes=%2Fapi%2Fpublic%2F&limit=2"
+            "/api/console/frontstage/interface-capabilities?path_prefixes=%2Fapi%2Fpublic%2F&limit=2"
         ),
         &cookie,
     )
@@ -323,7 +319,7 @@ async fn callable_catalog_filters_one_or_many_path_prefixes_before_pagination() 
     let (many_status, many) = get_json(
         &app,
         &format!(
-            "/api/console/frontstage/{workspace_id}/interface-capabilities?path_prefixes={prefixes}&limit=20"
+            "/api/console/frontstage/interface-capabilities?path_prefixes={prefixes}&limit=20"
         ),
         &cookie,
     )
@@ -343,9 +339,7 @@ async fn callable_catalog_filters_one_or_many_path_prefixes_before_pagination() 
 
     let (invalid_status, _) = get_json(
         &app,
-        &format!(
-            "/api/console/frontstage/{workspace_id}/interface-capabilities?path_prefixes=api%2Fpublic"
-        ),
+        &format!("/api/console/frontstage/interface-capabilities?path_prefixes=api%2Fpublic"),
         &cookie,
     )
     .await;
@@ -361,7 +355,7 @@ async fn data_capability_catalog_lists_descriptors_and_published_models() {
 
     let (status, payload) = get_json(
         &app,
-        &format!("/api/console/frontstage/{workspace_id}/data-capabilities"),
+        &format!("/api/console/frontstage/data-capabilities"),
         &cookie,
     )
     .await;
@@ -413,7 +407,7 @@ async fn data_capability_catalog_requires_session() {
     let workspace_id = current_workspace_id(&app, &cookie).await;
     let (status, _) = get_json(
         &app,
-        &format!("/api/console/frontstage/{workspace_id}/data-capabilities"),
+        &format!("/api/console/frontstage/data-capabilities"),
         "cookie=missing",
     )
     .await;

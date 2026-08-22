@@ -47,7 +47,6 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
 
     await expect(handlers.interface(effect())).resolves.toEqual({ items: [] });
     expect(client.dispatchFrontstageCallable).toHaveBeenCalledWith(
-      'workspace-1',
       'page-1',
       'tab-1',
       {
@@ -86,7 +85,6 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
     await expect(handlers.interface(writeEffect)).resolves.toEqual({ items: [] });
     expect(client.dispatchFrontstageCallable).toHaveBeenCalledTimes(1);
     expect(client.dispatchFrontstageCallable).toHaveBeenCalledWith(
-      'workspace-1',
       'page-1',
       'tab-1',
       {
@@ -150,19 +148,18 @@ describe('createFrontstageJsBlockCapabilityHandlers', () => {
     });
     const writeEffect = effect({
       method: 'PUT',
-      path: '/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document',
+      path: '/api/console/frontstage/pages/{page_id}/tabs/{tab_id}/document',
       request: { body: { payload: {} } }
     });
 
     await expect(handlers.interface(writeEffect)).resolves.toEqual({ items: [] });
     expect(client.dispatchFrontstageCallable).toHaveBeenLastCalledWith(
-      'workspace-1',
       'page-1',
       'tab-1',
       {
         block_id: 'block-1',
         method: 'PUT',
-        path: '/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document',
+        path: '/api/console/frontstage/pages/{page_id}/tabs/{tab_id}/document',
         request: { body: { payload: {} } }
       },
       'csrf-1',

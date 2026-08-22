@@ -247,101 +247,101 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 
     block_tree::route_assembly()
         .route(
-            "/frontstage/:workspace_id/pages",
+            "/frontstage/pages",
             console_get(list_frontstage_pages, Authenticated)
                 .post(create_frontstage_page, Authenticated),
         )
         .route(
-            "/frontstage/:workspace_id/pages/groups",
+            "/frontstage/pages/groups",
             console_post(create_frontstage_group, Authenticated),
         )
         .route(
-            "/frontstage/:workspace_id/pages/:page_id",
+            "/frontstage/pages/:page_id",
             console_patch(update_frontstage_page_title, Authenticated)
                 .delete(delete_frontstage_page, Authenticated),
         )
         .route(
-            "/frontstage/:workspace_id/pages/:page_id/move",
+            "/frontstage/pages/:page_id/move",
             console_post(move_frontstage_page, Authenticated),
         )
         .route(
-            "/frontstage/:workspace_id/pages/:page_id/tabs",
+            "/frontstage/pages/:page_id/tabs",
             console_get(list_frontstage_page_tabs, Authenticated)
                 .post(create_frontstage_page_tab, Authenticated),
         )
         .route(
-            "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_reference",
+            "/frontstage/pages/:page_id/tabs/:tab_reference",
             console_get(get_frontstage_page_detail, Authenticated)
                 .patch(update_frontstage_page_tab, Authenticated)
                 .delete(delete_frontstage_page_tab, Authenticated),
         )
         .route(
-            "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/document",
+            "/frontstage/pages/:page_id/tabs/:tab_id/document",
             console_put(save_frontstage_tab_document, Authenticated),
         )
         .route(
-            "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/queries/dispatch",
+            "/frontstage/pages/:page_id/tabs/:tab_id/queries/dispatch",
             console_post(dispatch_frontstage_query, Authenticated),
         )
         .route(
-            "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/actions/dispatch",
+            "/frontstage/pages/:page_id/tabs/:tab_id/actions/dispatch",
             console_post(dispatch_frontstage_action, Authenticated),
         )
         .route(
-            "/frontstage/:workspace_id/data-capabilities",
+            "/frontstage/data-capabilities",
             console_get(
                 data_capabilities::list_frontstage_data_capabilities,
                 Authenticated,
             ),
         )
         .route(
-            "/frontstage/:workspace_id/interface-capabilities",
+            "/frontstage/interface-capabilities",
             console_get(
                 callable_interfaces::list_frontstage_interface_capabilities,
                 Authenticated,
             ),
         )
         .route(
-            "/frontstage/:workspace_id/interface-capabilities/:interface_id",
+            "/frontstage/interface-capabilities/:interface_id",
             console_get(
                 callable_interfaces::get_frontstage_interface_capability,
                 Authenticated,
             ),
         )
         .route(
-            "/frontstage/:workspace_id/component-capabilities",
+            "/frontstage/component-capabilities",
             console_get(
                 component_capabilities::list_frontstage_component_capabilities,
                 Authenticated,
             ),
         )
         .route(
-            "/frontstage/:workspace_id/component-dependency-lock",
+            "/frontstage/component-dependency-lock",
             console_post(
                 component_capabilities::resolve_frontstage_component_dependency_lock,
                 Authenticated,
             ),
         )
         .route(
-            "/frontstage/:workspace_id/ui-templates",
+            "/frontstage/ui-templates",
             console_get(list_frontstage_ui_templates, Authenticated),
         )
         .route(
-            "/frontstage/:workspace_id/component-capabilities/:component_id",
+            "/frontstage/component-capabilities/:component_id",
             console_get(
                 component_capabilities::get_frontstage_component_capability,
                 Authenticated,
             ),
         )
         .route(
-            "/frontstage/:workspace_id/component-module-assets/:sha256",
+            "/frontstage/component-module-assets/:sha256",
             console_get(
                 component_capabilities::get_frontstage_component_module_asset,
                 Authenticated,
             ),
         )
         .route(
-            "/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/callable-interfaces/dispatch",
+            "/frontstage/pages/:page_id/tabs/:tab_id/callable-interfaces/dispatch",
             console_post(
                 callable_interfaces::dispatch_frontstage_callable_interface,
                 Authenticated,
@@ -463,7 +463,7 @@ fn frontstage_action_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel
 pub async fn dispatch_frontstage_query(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((workspace_id, page_id, tab_id)): Path<(String, String, String)>,
+    Path((page_id, tab_id)): Path<(String, String)>,
     Json(body): Json<DispatchFrontstageQueryBody>,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
     let context = require_session(&state, &headers).await?;
@@ -474,7 +474,7 @@ pub async fn dispatch_frontstage_query(
             serde_json::to_value(FrontstageCapabilityInput {
                 actor_user_id: context.user.id,
                 actor: context.actor.clone(),
-                workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
+                workspace_id: context.actor.current_workspace_id,
                 page_id: parse_uuid(&page_id, "page_id")?,
                 tab_id: parse_uuid(&tab_id, "tab_id")?,
                 params: body.params,
@@ -487,7 +487,7 @@ pub async fn dispatch_frontstage_query(
 pub async fn dispatch_frontstage_action(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((workspace_id, page_id, tab_id)): Path<(String, String, String)>,
+    Path((page_id, tab_id)): Path<(String, String)>,
     Json(body): Json<DispatchFrontstageActionBody>,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
     let context = require_session(&state, &headers).await?;
@@ -499,7 +499,7 @@ pub async fn dispatch_frontstage_action(
             serde_json::to_value(FrontstageCapabilityInput {
                 actor_user_id: context.user.id,
                 actor: context.actor.clone(),
-                workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
+                workspace_id: context.actor.current_workspace_id,
                 page_id: parse_uuid(&page_id, "page_id")?,
                 tab_id: parse_uuid(&tab_id, "tab_id")?,
                 params: body.params,
@@ -511,10 +511,7 @@ pub async fn dispatch_frontstage_action(
 
 #[utoipa::path(
     get,
-    path = "/api/console/frontstage/{workspace_id}/pages",
-    params(
-        ("workspace_id" = String, Path, description = "Workspace id"),
-    ),
+    path = "/api/console/frontstage/pages",
     responses(
         (status = 200, body = [FrontstagePageTreeNodeResponse]),
         (status = 400, body = crate::error_response::ErrorBody),
@@ -525,10 +522,9 @@ pub async fn dispatch_frontstage_action(
 pub async fn list_frontstage_pages(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path(workspace_id): Path<String>,
 ) -> Result<Json<ApiSuccess<Vec<FrontstagePageTreeNodeResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
+    let workspace_id = context.actor.current_workspace_id;
     let tree = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .list_page_tree(context.user.id, workspace_id)
         .await?;
@@ -540,9 +536,8 @@ pub async fn list_frontstage_pages(
 
 #[utoipa::path(
     post,
-    path = "/api/console/frontstage/{workspace_id}/pages/groups",
+    path = "/api/console/frontstage/pages/groups",
     request_body = CreateFrontstageGroupBody,
-    params(("workspace_id" = String, Path, description = "Workspace id")),
     responses(
         (status = 201, body = FrontstagePageResponse),
         (status = 400, body = crate::error_response::ErrorBody),
@@ -553,12 +548,11 @@ pub async fn list_frontstage_pages(
 pub async fn create_frontstage_group(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path(workspace_id): Path<String>,
     Json(body): Json<CreateFrontstageGroupBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<FrontstagePageResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
+    let workspace_id = context.actor.current_workspace_id;
     let parent_id = parse_optional_uuid(body.parent_id.as_deref(), "parent_id")?;
 
     let page = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
@@ -583,9 +577,8 @@ pub async fn create_frontstage_group(
 
 #[utoipa::path(
     post,
-    path = "/api/console/frontstage/{workspace_id}/pages",
+    path = "/api/console/frontstage/pages",
     request_body = CreateFrontstagePageBody,
-    params(("workspace_id" = String, Path, description = "Workspace id")),
     responses(
         (status = 201, body = FrontstagePageCreationResponse),
         (status = 400, body = crate::error_response::ErrorBody),
@@ -596,12 +589,11 @@ pub async fn create_frontstage_group(
 pub async fn create_frontstage_page(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path(workspace_id): Path<String>,
     Json(body): Json<CreateFrontstagePageBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<FrontstagePageCreationResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
+    let workspace_id = context.actor.current_workspace_id;
     let parent_id = parse_optional_uuid(body.parent_id.as_deref(), "parent_id")?;
 
     let creation = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
@@ -642,9 +634,8 @@ pub async fn create_frontstage_page(
 
 #[utoipa::path(
     get,
-    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_reference}",
+    path = "/api/console/frontstage/pages/{page_id}/tabs/{tab_reference}",
     params(
-        ("workspace_id" = String, Path, description = "Workspace id"),
         ("page_id" = String, Path, description = "Page id")
         ,("tab_reference" = String, Path, description = "Tab route segment or legacy tab id")
     ),
@@ -659,10 +650,10 @@ pub async fn create_frontstage_page(
 pub async fn get_frontstage_page_detail(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((workspace_id, page_id, tab_reference)): Path<(String, String, String)>,
+    Path((page_id, tab_reference)): Path<(String, String)>,
 ) -> Result<Json<ApiSuccess<FrontstagePageDetailResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
+    let workspace_id = context.actor.current_workspace_id;
     let page_id = parse_uuid(&page_id, "page_id")?;
 
     let mut detail = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
@@ -686,10 +677,9 @@ pub async fn get_frontstage_page_detail(
 
 #[utoipa::path(
     patch,
-    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}",
+    path = "/api/console/frontstage/pages/{page_id}",
     request_body = UpdateFrontstagePageMetadataBody,
     params(
-        ("workspace_id" = String, Path, description = "Workspace id"),
         ("page_id" = String, Path, description = "Page or group id")
     ),
     responses(
@@ -703,12 +693,12 @@ pub async fn get_frontstage_page_detail(
 pub async fn update_frontstage_page_title(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((workspace_id, page_id)): Path<(String, String)>,
+    Path(page_id): Path<String>,
     Json(body): Json<UpdateFrontstagePageMetadataBody>,
 ) -> Result<Json<ApiSuccess<FrontstagePageResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
+    let workspace_id = context.actor.current_workspace_id;
     let page_id = parse_uuid(&page_id, "page_id")?;
 
     let page = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
@@ -733,10 +723,9 @@ pub async fn update_frontstage_page_title(
 
 #[utoipa::path(
     post,
-    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/move",
+    path = "/api/console/frontstage/pages/{page_id}/move",
     request_body = MoveFrontstagePageBody,
     params(
-        ("workspace_id" = String, Path, description = "Workspace id"),
         ("page_id" = String, Path, description = "Page or group id")
     ),
     responses(
@@ -750,12 +739,12 @@ pub async fn update_frontstage_page_title(
 pub async fn move_frontstage_page(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((workspace_id, page_id)): Path<(String, String)>,
+    Path(page_id): Path<String>,
     Json(body): Json<MoveFrontstagePageBody>,
 ) -> Result<Json<ApiSuccess<FrontstagePageResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
+    let workspace_id = context.actor.current_workspace_id;
     let page_id = parse_uuid(&page_id, "page_id")?;
     let parent_id = parse_optional_uuid(body.parent_id.as_deref(), "parent_id")?;
 
@@ -774,9 +763,8 @@ pub async fn move_frontstage_page(
 
 #[utoipa::path(
     delete,
-    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}",
+    path = "/api/console/frontstage/pages/{page_id}",
     params(
-        ("workspace_id" = String, Path, description = "Workspace id"),
         ("page_id" = String, Path, description = "Page or group id")
     ),
     responses(
@@ -790,11 +778,11 @@ pub async fn move_frontstage_page(
 pub async fn delete_frontstage_page(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((workspace_id, page_id)): Path<(String, String)>,
+    Path(page_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
+    let workspace_id = context.actor.current_workspace_id;
     let page_id = parse_uuid(&page_id, "page_id")?;
 
     FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
@@ -808,14 +796,14 @@ pub async fn delete_frontstage_page(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[utoipa::path(get, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs", responses((status = 200, body = Vec<FrontstagePageTabResponse>)))]
+#[utoipa::path(get, path = "/api/console/frontstage/pages/{page_id}/tabs", responses((status = 200, body = Vec<FrontstagePageTabResponse>)))]
 pub async fn list_frontstage_page_tabs(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((workspace_id, page_id)): Path<(String, String)>,
+    Path(page_id): Path<String>,
 ) -> Result<Json<ApiSuccess<Vec<FrontstagePageTabResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
+    let workspace_id = context.actor.current_workspace_id;
     let page_id = parse_uuid(&page_id, "page_id")?;
     let mut tabs = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .list_page_tabs(context.user.id, workspace_id, page_id)
@@ -829,16 +817,16 @@ pub async fn list_frontstage_page_tabs(
     )))
 }
 
-#[utoipa::path(post, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs", request_body = CreateFrontstagePageTabBody, responses((status = 201, body = FrontstagePageTabResponse)))]
+#[utoipa::path(post, path = "/api/console/frontstage/pages/{page_id}/tabs", request_body = CreateFrontstagePageTabBody, responses((status = 201, body = FrontstagePageTabResponse)))]
 pub async fn create_frontstage_page_tab(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((workspace_id, page_id)): Path<(String, String)>,
+    Path(page_id): Path<String>,
     Json(body): Json<CreateFrontstagePageTabBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<FrontstagePageTabResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
+    let workspace_id = context.actor.current_workspace_id;
     let page_id = parse_uuid(&page_id, "page_id")?;
     let tab = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .create_page_tab(CreateFrontstagePageTabCommand {
@@ -856,11 +844,11 @@ pub async fn create_frontstage_page_tab(
     ))
 }
 
-#[utoipa::path(patch, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}", request_body = UpdateFrontstagePageTabBody, responses((status = 200, body = FrontstagePageTabResponse)))]
+#[utoipa::path(patch, path = "/api/console/frontstage/pages/{page_id}/tabs/{tab_id}", request_body = UpdateFrontstagePageTabBody, responses((status = 200, body = FrontstagePageTabResponse)))]
 pub async fn update_frontstage_page_tab(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((workspace_id, page_id, tab_id)): Path<(String, String, String)>,
+    Path((page_id, tab_id)): Path<(String, String)>,
     Json(body): Json<UpdateFrontstagePageTabBody>,
 ) -> Result<Json<ApiSuccess<FrontstagePageTabResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
@@ -868,7 +856,7 @@ pub async fn update_frontstage_page_tab(
     let tab = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .update_page_tab(UpdateFrontstagePageTabCommand {
             actor_user_id: context.user.id,
-            workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
+            workspace_id: context.actor.current_workspace_id,
             page_id: parse_uuid(&page_id, "page_id")?,
             tab_id: parse_uuid(&tab_id, "tab_id")?,
             title: body.title,
@@ -878,18 +866,18 @@ pub async fn update_frontstage_page_tab(
     Ok(Json(ApiSuccess::new(to_tab_response(tab))))
 }
 
-#[utoipa::path(delete, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}", responses((status = 204), (status = 409, body = crate::error_response::ErrorBody)))]
+#[utoipa::path(delete, path = "/api/console/frontstage/pages/{page_id}/tabs/{tab_id}", responses((status = 204), (status = 409, body = crate::error_response::ErrorBody)))]
 pub async fn delete_frontstage_page_tab(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((workspace_id, page_id, tab_id)): Path<(String, String, String)>,
+    Path((page_id, tab_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .delete_page_tab(DeleteFrontstagePageTabCommand {
             actor_user_id: context.user.id,
-            workspace_id: parse_uuid(&workspace_id, "workspace_id")?,
+            workspace_id: context.actor.current_workspace_id,
             page_id: parse_uuid(&page_id, "page_id")?,
             tab_id: parse_uuid(&tab_id, "tab_id")?,
         })
@@ -897,16 +885,16 @@ pub async fn delete_frontstage_page_tab(
     Ok(StatusCode::NO_CONTENT)
 }
 
-#[utoipa::path(put, path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document", request_body = SaveFrontstageTabDocumentBody, responses((status = 200, body = FrontstagePageDetailResponse)))]
+#[utoipa::path(put, path = "/api/console/frontstage/pages/{page_id}/tabs/{tab_id}/document", request_body = SaveFrontstageTabDocumentBody, responses((status = 200, body = FrontstagePageDetailResponse)))]
 pub async fn save_frontstage_tab_document(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((workspace_id, page_id, tab_id)): Path<(String, String, String)>,
+    Path((page_id, tab_id)): Path<(String, String)>,
     Json(body): Json<SaveFrontstageTabDocumentBody>,
 ) -> Result<Json<ApiSuccess<FrontstagePageDetailResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
+    let workspace_id = context.actor.current_workspace_id;
     let page_id = parse_uuid(&page_id, "page_id")?;
     let tab_id = parse_uuid(&tab_id, "tab_id")?;
 
@@ -925,20 +913,16 @@ pub async fn save_frontstage_tab_document(
 
 #[utoipa::path(
     get,
-    path = "/api/console/frontstage/{workspace_id}/ui-templates",
-    params(("workspace_id" = String, Path)),
+    path = "/api/console/frontstage/ui-templates",
     responses((status = 200, body = [FrontstageUiTemplateResponse]), (status = 403, body = crate::error_response::ErrorBody))
 )]
 pub async fn list_frontstage_ui_templates(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path(workspace_id): Path<String>,
 ) -> Result<Json<ApiSuccess<Vec<FrontstageUiTemplateResponse>>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let workspace_id = parse_uuid(&workspace_id, "workspace_id")?;
-    if context.actor.current_workspace_id != workspace_id
-        || !context.actor.has_permission("frontstage.page.design")
-    {
+    let workspace_id = context.actor.current_workspace_id;
+    if !context.actor.has_permission("frontstage.page.design") {
         return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
             "frontstage.page.design",
         )

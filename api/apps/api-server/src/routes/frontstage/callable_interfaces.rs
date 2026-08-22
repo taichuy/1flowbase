@@ -141,10 +141,9 @@ pub struct DispatchFrontstageCallableBody {
 
 #[utoipa::path(
     get,
-    path = "/api/console/frontstage/{workspace_id}/interface-capabilities",
+    path = "/api/console/frontstage/interface-capabilities",
     params(
         FrontstageInterfaceCapabilityQuery,
-        ("workspace_id" = String, Path, description = "Workspace id")
     ),
     responses(
         (status = 200, body = FrontstageInterfaceCapabilityPageResponse),
@@ -156,13 +155,9 @@ pub async fn list_frontstage_interface_capabilities(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Query(query): Query<FrontstageInterfaceCapabilityQuery>,
-    Path(workspace_id): Path<String>,
 ) -> Result<Json<ApiSuccess<FrontstageInterfaceCapabilityPageResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
-    if context.actor.current_workspace_id != workspace_id {
-        return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());
-    }
+    let workspace_id = context.actor.current_workspace_id;
     let actor = &context.actor;
     if !actor.has_permission("frontstage.page.design") {
         return Err(ControlPlaneError::PermissionDenied("frontstage.page.design").into());
@@ -208,9 +203,8 @@ pub async fn list_frontstage_interface_capabilities(
 
 #[utoipa::path(
     get,
-    path = "/api/console/frontstage/{workspace_id}/interface-capabilities/{interface_id}",
+    path = "/api/console/frontstage/interface-capabilities/{interface_id}",
     params(
-        ("workspace_id" = String, Path, description = "Workspace id"),
         ("interface_id" = String, Path, description = "Interface capability id")
     ),
     responses(
@@ -223,13 +217,10 @@ pub async fn list_frontstage_interface_capabilities(
 pub async fn get_frontstage_interface_capability(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((workspace_id, interface_id)): Path<(String, String)>,
+    Path(interface_id): Path<String>,
 ) -> Result<Json<ApiSuccess<FrontstageInterfaceCapabilityResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
-    if context.actor.current_workspace_id != workspace_id {
-        return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());
-    }
+    let workspace_id = context.actor.current_workspace_id;
     let actor = &context.actor;
     if !actor.has_permission("frontstage.page.design") {
         return Err(ControlPlaneError::PermissionDenied("frontstage.page.design").into());
@@ -246,10 +237,9 @@ pub async fn get_frontstage_interface_capability(
 
 #[utoipa::path(
     post,
-    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/callable-interfaces/dispatch",
+    path = "/api/console/frontstage/pages/{page_id}/tabs/{tab_id}/callable-interfaces/dispatch",
     request_body = DispatchFrontstageCallableBody,
     params(
-        ("workspace_id" = String, Path, description = "Workspace id"),
         ("page_id" = String, Path, description = "Page id"),
         ("tab_id" = String, Path, description = "Tab id")
     ),
@@ -264,12 +254,12 @@ pub async fn get_frontstage_interface_capability(
 pub async fn dispatch_frontstage_callable_interface(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((workspace_id, page_id, tab_id)): Path<(String, String, String)>,
+    Path((page_id, tab_id)): Path<(String, String)>,
     Json(body): Json<DispatchFrontstageCallableBody>,
 ) -> Result<Response, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
+    let workspace_id = context.actor.current_workspace_id;
     let page_id = super::parse_uuid(&page_id, "page_id")?;
     let tab_id = super::parse_uuid(&tab_id, "tab_id")?;
 

@@ -8,7 +8,7 @@ async fn placement_mismatch_is_rejected_by_create_move_and_group_metadata_routes
     let (group_status, group_payload) = send_json(
         &app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages/groups"),
+        &format!("/api/console/frontstage/pages/groups"),
         &cookie,
         &csrf,
         json!({"title": "Sidebar", "rank": "a", "placement": "sidebar"}),
@@ -20,7 +20,7 @@ async fn placement_mismatch_is_rejected_by_create_move_and_group_metadata_routes
     let (create_status, create_payload) = send_json(
         &app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages"),
+        &format!("/api/console/frontstage/pages"),
         &cookie,
         &csrf,
         json!({
@@ -37,7 +37,7 @@ async fn placement_mismatch_is_rejected_by_create_move_and_group_metadata_routes
     let (page_status, page_payload) = send_json(
         &app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages"),
+        &format!("/api/console/frontstage/pages"),
         &cookie,
         &csrf,
         json!({
@@ -54,7 +54,7 @@ async fn placement_mismatch_is_rejected_by_create_move_and_group_metadata_routes
     let (move_status, move_payload) = send_json(
         &app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/move"),
+        &format!("/api/console/frontstage/pages/{page_id}/move"),
         &cookie,
         &csrf,
         json!({"parent_id": group_id, "rank": "b"}),
@@ -66,7 +66,7 @@ async fn placement_mismatch_is_rejected_by_create_move_and_group_metadata_routes
     let (valid_child_status, _) = send_json(
         &app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages"),
+        &format!("/api/console/frontstage/pages"),
         &cookie,
         &csrf,
         json!({
@@ -82,7 +82,7 @@ async fn placement_mismatch_is_rejected_by_create_move_and_group_metadata_routes
     let (metadata_status, metadata_payload) = send_json(
         &app,
         "PATCH",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{group_id}"),
+        &format!("/api/console/frontstage/pages/{group_id}"),
         &cookie,
         &csrf,
         json!({"placement": "topbar", "slug": "sidebar-group"}),
@@ -108,7 +108,7 @@ async fn group_under_group_is_allowed() {
     let (nested_status, _) = send_json(
         &app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages/groups"),
+        &format!("/api/console/frontstage/pages/groups"),
         &cookie,
         &csrf,
         json!({
@@ -190,7 +190,7 @@ async fn moving_page_keeps_get_tree_order_stable() {
     let (move_status, _) = send_json(
         &app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{second_page_id}/move"),
+        &format!("/api/console/frontstage/pages/{second_page_id}/move"),
         &cookie,
         &csrf,
         json!({
@@ -206,7 +206,7 @@ async fn moving_page_keeps_get_tree_order_stable() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/console/frontstage/{workspace_id}/pages"))
+                .uri(format!("/api/console/frontstage/pages"))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -252,7 +252,7 @@ async fn deleting_group_removes_child_page_from_tree() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/console/frontstage/{workspace_id}/pages"))
+                .uri(format!("/api/console/frontstage/pages"))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),

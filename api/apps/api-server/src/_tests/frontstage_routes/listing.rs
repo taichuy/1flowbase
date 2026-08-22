@@ -4,13 +4,11 @@ use super::*;
 async fn list_frontstage_pages_route_returns_empty_tree_for_accessible_workspace() {
     let app = test_app().await;
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
-    let workspace_id = current_workspace_id(&app, &cookie).await;
-
     let response = app
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/console/frontstage/{workspace_id}/pages"))
+                .uri(format!("/api/console/frontstage/pages"))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -28,7 +26,8 @@ async fn list_frontstage_pages_route_returns_empty_tree_for_accessible_workspace
 }
 
 #[tokio::test]
-async fn list_frontstage_pages_route_rejects_inaccessible_workspace() {
+async fn list_frontstage_pages_legacy_workspace_path_is_rejected_as_unregistered_console_operation()
+{
     let (app, database_url) = test_app_with_database_url().await;
     let no_access_workspace_id = seed_workspace(&database_url, "No Access Workspace").await;
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
@@ -59,11 +58,20 @@ async fn list_frontstage_pages_route_rejects_inaccessible_workspace() {
         .await
         .unwrap();
 
+    // The compiled authorization registry rejects the removed operation before route matching.
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let payload: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(
+        payload["code"],
+        json!("console_route_unregistered"),
+        "{payload}"
+    );
 }
 
 #[tokio::test]
-async fn list_frontstage_pages_route_rejects_invalid_workspace_id() {
+async fn list_frontstage_pages_legacy_workspace_segment_is_rejected_as_unregistered_console_operation(
+) {
     let app = test_app().await;
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
 
@@ -79,7 +87,15 @@ async fn list_frontstage_pages_route_rejects_invalid_workspace_id() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    // This is an authorization-layer rejection, not evidence that a legacy route remains mounted.
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    let payload: Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(
+        payload["code"],
+        json!("console_route_unregistered"),
+        "{payload}"
+    );
 }
 
 #[tokio::test]
@@ -90,7 +106,7 @@ async fn list_frontstage_pages_route_requires_session() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri("/api/console/frontstage/00000000-0000-0000-0000-000000000001/pages")
+                .uri("/api/console/frontstage/pages")
                 .body(Body::empty())
                 .unwrap(),
         )

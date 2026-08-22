@@ -154,7 +154,7 @@ describe('Native React compiler Worker contract', () => {
             role: 'browser_module' as const,
             media_type: 'text/javascript; charset=utf-8',
             sha256: '0'.repeat(64),
-            url: `/api/console/frontstage/workspace-1/component-module-assets/${'0'.repeat(64)}`
+            url: `/api/console/frontstage/component-module-assets/${'0'.repeat(64)}`
           }
         ],
         exports: ['Surface']

@@ -32,7 +32,7 @@ async fn page_presentation_and_tab_route_segments_are_persisted_and_resolved() {
     let (presentation_status, presentation_payload) = send_json(
         &app,
         "PATCH",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}"),
+        &format!("/api/console/frontstage/pages/{page_id}"),
         &cookie,
         &csrf,
         json!({ "content_presentation": "tabs" }),
@@ -48,7 +48,7 @@ async fn page_presentation_and_tab_route_segments_are_persisted_and_resolved() {
     let (create_tab_status, tab_payload) = send_json(
         &app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs"),
+        &format!("/api/console/frontstage/pages/{page_id}/tabs"),
         &cookie,
         &csrf,
         json!({
@@ -64,7 +64,7 @@ async fn page_presentation_and_tab_route_segments_are_persisted_and_resolved() {
 
     let (resolved_status, resolved_payload) = get_json(
         &app,
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/details"),
+        &format!("/api/console/frontstage/pages/{page_id}/tabs/details"),
         &cookie,
     )
     .await;
@@ -77,7 +77,7 @@ async fn page_presentation_and_tab_route_segments_are_persisted_and_resolved() {
 
     let (legacy_status, legacy_payload) = get_json(
         &app,
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{default_tab_id}"),
+        &format!("/api/console/frontstage/pages/{page_id}/tabs/{default_tab_id}"),
         &cookie,
     )
     .await;
@@ -133,7 +133,7 @@ async fn frontstage_read_apis_require_visibility_but_writes_keep_design_permissi
         login_and_capture_cookie(&app, "frontstage-code-viewer", "temp-pass").await;
     let (detail_status, _) = get_json(
         &app,
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}"),
+        &format!("/api/console/frontstage/pages/{page_id}/tabs/{tab_id}"),
         &viewer_cookie,
     )
     .await;

@@ -190,7 +190,7 @@ function isolatedCatalogEntry(): FrontstageBlockCatalogEntry {
             role: 'browser_module',
             media_type: 'text/javascript; charset=utf-8',
             sha256: digest,
-            url: `/api/console/frontstage/workspace-1/component-module-assets/${digest}`,
+            url: `/api/console/frontstage/component-module-assets/${digest}`,
             integrity: 'verified_sha256'
           }
         ],

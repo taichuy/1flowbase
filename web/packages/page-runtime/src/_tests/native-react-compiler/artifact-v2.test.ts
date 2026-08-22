@@ -167,7 +167,7 @@ function browserAsset(digestCharacter: string) {
     role: 'browser_module' as const,
     media_type: 'text/javascript; charset=utf-8',
     sha256,
-    url: `/api/console/frontstage/workspace-1/component-module-assets/${sha256}`
+    url: `/api/console/frontstage/component-module-assets/${sha256}`
   };
 }
 
@@ -177,7 +177,7 @@ function styleAsset(digestCharacter: string) {
     role: 'shadow_style' as const,
     media_type: 'text/css; charset=utf-8',
     sha256,
-    url: `/api/console/frontstage/workspace-1/component-module-assets/${sha256}`
+    url: `/api/console/frontstage/component-module-assets/${sha256}`
   };
 }
 

@@ -131,10 +131,9 @@ pub struct FrontstageComponentCapabilityResponse {
 
 #[utoipa::path(
     get,
-    path = "/api/console/frontstage/{workspace_id}/component-capabilities",
+    path = "/api/console/frontstage/component-capabilities",
     params(
         FrontstageComponentCapabilityQuery,
-        ("workspace_id" = String, Path, description = "Workspace id")
     ),
     responses(
         (status = 200, body = FrontstageComponentCapabilityPageResponse),
@@ -146,11 +145,10 @@ pub async fn list_frontstage_component_capabilities(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Query(query): Query<FrontstageComponentCapabilityQuery>,
-    Path(workspace_id): Path<String>,
 ) -> Result<Json<ApiSuccess<FrontstageComponentCapabilityPageResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
-    require_design_permission(&context.actor, workspace_id)?;
+    let workspace_id = context.actor.current_workspace_id;
+    require_design_permission(&context.actor)?;
     let page = FrontendComponentCatalogService::new(state.store.clone(), state.api_node_id.clone())
         .list_component_capabilities(ListFrontendComponentCapabilitiesQuery {
             workspace_id,
@@ -168,11 +166,7 @@ pub async fn list_frontstage_component_capabilities(
 
     Ok(Json(ApiSuccess::new(
         FrontstageComponentCapabilityPageResponse {
-            items: page
-                .items
-                .into_iter()
-                .map(|entry| to_summary_response(entry, workspace_id))
-                .collect(),
+            items: page.items.into_iter().map(to_summary_response).collect(),
             total: page.total,
             offset: page.offset,
             limit: page.limit,
@@ -185,8 +179,7 @@ pub async fn list_frontstage_component_capabilities(
 
 #[utoipa::path(
     post,
-    path = "/api/console/frontstage/{workspace_id}/component-dependency-lock",
-    params(("workspace_id" = String, Path, description = "Workspace id")),
+    path = "/api/console/frontstage/component-dependency-lock",
     request_body = ResolveFrontstageComponentDependencyLockBody,
     responses(
         (status = 200, body = FrontstageComponentDependencyLockResponse),
@@ -198,12 +191,11 @@ pub async fn list_frontstage_component_capabilities(
 pub async fn resolve_frontstage_component_dependency_lock(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path(workspace_id): Path<String>,
     Json(body): Json<ResolveFrontstageComponentDependencyLockBody>,
 ) -> Result<Json<ApiSuccess<FrontstageComponentDependencyLockResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
-    require_design_permission(&context.actor, workspace_id)?;
+    let workspace_id = context.actor.current_workspace_id;
+    require_design_permission(&context.actor)?;
     let dependency_lock = FrontstagePageService::for_actor(state.store.clone(), context.actor)
         .with_node_id(state.api_node_id.clone())
         .resolve_component_dependency_lock(workspace_id, &body.source_code)
@@ -215,9 +207,8 @@ pub async fn resolve_frontstage_component_dependency_lock(
 
 #[utoipa::path(
     get,
-    path = "/api/console/frontstage/{workspace_id}/component-capabilities/{component_id}",
+    path = "/api/console/frontstage/component-capabilities/{component_id}",
     params(
-        ("workspace_id" = String, Path, description = "Workspace id"),
         ("component_id" = String, Path, description = "Component capability id")
     ),
     responses(
@@ -230,11 +221,11 @@ pub async fn resolve_frontstage_component_dependency_lock(
 pub async fn get_frontstage_component_capability(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((workspace_id, component_id)): Path<(String, String)>,
+    Path(component_id): Path<String>,
 ) -> Result<Json<ApiSuccess<FrontstageComponentCapabilityResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
-    require_design_permission(&context.actor, workspace_id)?;
+    let workspace_id = context.actor.current_workspace_id;
+    require_design_permission(&context.actor)?;
     let entry =
         FrontendComponentCatalogService::new(state.store.clone(), state.api_node_id.clone())
             .get_component_capability(GetFrontendComponentCapabilityQuery {
@@ -244,17 +235,13 @@ pub async fn get_frontstage_component_capability(
             .await?
             .ok_or(ControlPlaneError::NotFound("frontend_component_capability"))?;
 
-    Ok(Json(ApiSuccess::new(to_detail_response(
-        entry,
-        workspace_id,
-    ))))
+    Ok(Json(ApiSuccess::new(to_detail_response(entry))))
 }
 
 #[utoipa::path(
     get,
-    path = "/api/console/frontstage/{workspace_id}/component-module-assets/{sha256}",
+    path = "/api/console/frontstage/component-module-assets/{sha256}",
     params(
-        ("workspace_id" = String, Path, description = "Workspace id"),
         ("sha256" = String, Path, description = "Registered module asset SHA-256")
     ),
     responses(
@@ -268,11 +255,11 @@ pub async fn get_frontstage_component_capability(
 pub async fn get_frontstage_component_module_asset(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Path((workspace_id, sha256)): Path<(String, String)>,
+    Path(sha256): Path<String>,
 ) -> Result<Response<Body>, ApiError> {
     let context = require_session(&state, &headers).await?;
-    let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
-    require_design_permission(&context.actor, workspace_id)?;
+    let workspace_id = context.actor.current_workspace_id;
+    require_design_permission(&context.actor)?;
     let asset =
         FrontendComponentCatalogService::new(state.store.clone(), state.api_node_id.clone())
             .get_module_asset(GetFrontendModuleAssetQuery {
@@ -301,13 +288,7 @@ pub async fn get_frontstage_component_module_asset(
     Ok(response)
 }
 
-fn require_design_permission(
-    actor: &domain::ActorContext,
-    workspace_id: Uuid,
-) -> Result<(), ApiError> {
-    if actor.current_workspace_id != workspace_id {
-        return Err(ControlPlaneError::PermissionDenied("workspace_access_denied").into());
-    }
+fn require_design_permission(actor: &domain::ActorContext) -> Result<(), ApiError> {
     if !actor.has_permission("frontstage.page.design") {
         return Err(ControlPlaneError::PermissionDenied("frontstage.page.design").into());
     }
@@ -316,7 +297,6 @@ fn require_design_permission(
 
 fn to_summary_response(
     entry: FrontendComponentCapability,
-    workspace_id: Uuid,
 ) -> FrontstageComponentCapabilitySummaryResponse {
     let upstream =
         entry
@@ -337,7 +317,7 @@ fn to_summary_response(
             role: frontend_asset_role(asset.role).to_string(),
             media_type: asset.media_type.clone(),
             sha256: asset.sha256.clone(),
-            url: module_asset_url(workspace_id, &asset.sha256),
+            url: module_asset_url(&asset.sha256),
         })
         .collect::<Vec<_>>();
     let browser_asset = entry
@@ -346,7 +326,7 @@ fn to_summary_response(
         .find(|asset| asset.role == domain::FrontendModuleAssetRole::BrowserModule)
         .map(|asset| FrontendModuleBrowserAssetResponse {
             sha256: asset.sha256.clone(),
-            url: module_asset_url(workspace_id, &asset.sha256),
+            url: module_asset_url(&asset.sha256),
         });
     FrontstageComponentCapabilitySummaryResponse {
         component_id: entry.component_id,
@@ -371,8 +351,8 @@ fn to_summary_response(
     }
 }
 
-fn module_asset_url(workspace_id: Uuid, sha256: &str) -> String {
-    format!("/api/console/frontstage/{workspace_id}/component-module-assets/{sha256}")
+fn module_asset_url(sha256: &str) -> String {
+    format!("/api/console/frontstage/component-module-assets/{sha256}")
 }
 
 fn frontend_asset_role(role: domain::FrontendModuleAssetRole) -> &'static str {
@@ -383,10 +363,7 @@ fn frontend_asset_role(role: domain::FrontendModuleAssetRole) -> &'static str {
     }
 }
 
-fn to_detail_response(
-    entry: FrontendComponentCapability,
-    workspace_id: Uuid,
-) -> FrontstageComponentCapabilityResponse {
+fn to_detail_response(entry: FrontendComponentCapability) -> FrontstageComponentCapabilityResponse {
     let declaration = entry.contract.typescript_declaration(&entry.module_source);
     let import_statement = if entry.export_name == "default" {
         format!("import DefaultExport from '{}';", entry.module_source)
@@ -419,7 +396,7 @@ fn to_detail_response(
         })
         .collect();
     FrontstageComponentCapabilityResponse {
-        summary: to_summary_response(entry, workspace_id),
+        summary: to_summary_response(entry),
         props,
         limitations,
         examples,

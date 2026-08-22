@@ -565,48 +565,45 @@ async fn openapi_contains_workspace_detail_path_and_omits_team_path() {
 #[tokio::test]
 async fn openapi_contains_frontstage_pages_route_and_error_responses() {
     let paths = openapi_paths().await;
-    let frontstage_route = paths.get("/api/console/frontstage/{workspace_id}/pages");
-    let frontstage_groups_route = paths.get("/api/console/frontstage/{workspace_id}/pages/groups");
-    let frontstage_node_route = paths.get("/api/console/frontstage/{workspace_id}/pages/{page_id}");
-    let frontstage_move_route =
-        paths.get("/api/console/frontstage/{workspace_id}/pages/{page_id}/move");
+    let frontstage_route = paths.get("/api/console/frontstage/pages");
+    let frontstage_groups_route = paths.get("/api/console/frontstage/pages/groups");
+    let frontstage_node_route = paths.get("/api/console/frontstage/pages/{page_id}");
+    let frontstage_move_route = paths.get("/api/console/frontstage/pages/{page_id}/move");
     let frontstage_content_route =
-        paths.get("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document");
+        paths.get("/api/console/frontstage/pages/{page_id}/tabs/{tab_id}/document");
     let frontstage_interface_capabilities_route =
-        paths.get("/api/console/frontstage/{workspace_id}/interface-capabilities");
+        paths.get("/api/console/frontstage/interface-capabilities");
     let frontstage_interface_capability_detail_route =
-        paths.get("/api/console/frontstage/{workspace_id}/interface-capabilities/{interface_id}");
+        paths.get("/api/console/frontstage/interface-capabilities/{interface_id}");
 
     assert!(
         frontstage_route.is_some(),
-        "missing path /api/console/frontstage/{{workspace_id}}/pages"
+        "missing path /api/console/frontstage/pages"
     );
     assert!(
         frontstage_groups_route.is_some(),
-        "missing path /api/console/frontstage/{{workspace_id}}/pages/groups"
+        "missing path /api/console/frontstage/pages/groups"
     );
     assert!(
         frontstage_node_route.is_some(),
-        "missing path /api/console/frontstage/{{workspace_id}}/pages/{{page_id}}"
+        "missing path /api/console/frontstage/pages/{{page_id}}"
     );
     assert!(
         frontstage_move_route.is_some(),
-        "missing path /api/console/frontstage/{{workspace_id}}/pages/{{page_id}}/move"
+        "missing path /api/console/frontstage/pages/{{page_id}}/move"
     );
     assert!(
         frontstage_content_route.is_some(),
-        "missing path /api/console/frontstage/{{workspace_id}}/pages/{{page_id}}/tabs/{{tab_id}}/document"
+        "missing path /api/console/frontstage/pages/{{page_id}}/tabs/{{tab_id}}/document"
     );
-    assert!(!paths.contains_key(
-        "/api/console/frontstage/{workspace_id}/pages/{page_id}/block-codes/{code_ref}"
-    ));
+    assert!(!paths.contains_key("/api/console/frontstage/pages/{page_id}/block-codes/{code_ref}"));
     assert!(
         frontstage_interface_capabilities_route.is_some(),
-        "missing path /api/console/frontstage/{{workspace_id}}/interface-capabilities"
+        "missing path /api/console/frontstage/interface-capabilities"
     );
     assert!(
         frontstage_interface_capability_detail_route.is_some(),
-        "missing path /api/console/frontstage/{{workspace_id}}/interface-capabilities/{{interface_id}}"
+        "missing path /api/console/frontstage/interface-capabilities/{{interface_id}}"
     );
 
     let get_op = &frontstage_route.unwrap()["get"];
@@ -659,10 +656,10 @@ async fn openapi_contains_frontstage_pages_route_and_error_responses() {
 #[tokio::test]
 async fn openapi_contains_canonical_frontstage_block_tree_routes() {
     let paths = openapi_paths().await;
-    let base = "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks";
+    let base = "/api/console/frontstage/pages/{page_id}/blocks";
     let expected_methods = [
         (
-            "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/block-descriptors".to_owned(),
+            "/api/console/frontstage/pages/{page_id}/tabs/{tab_id}/block-descriptors".to_owned(),
             &["put"][..],
         ),
         (base.to_owned(), &["get", "post"][..]),

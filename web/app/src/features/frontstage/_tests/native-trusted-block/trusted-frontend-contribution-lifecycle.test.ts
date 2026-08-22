@@ -208,7 +208,7 @@ function catalogEntry(
             role: 'browser_module',
             media_type: 'text/javascript; charset=utf-8',
             sha256,
-            url: `/api/console/frontstage/workspace-1/component-module-assets/${sha256}`,
+            url: `/api/console/frontstage/component-module-assets/${sha256}`,
             integrity: 'verified_sha256'
           }
         ],

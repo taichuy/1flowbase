@@ -248,7 +248,6 @@ export interface DispatchFrontstageCallableInput {
 }
 
 export function listFrontstageInterfaceCapabilities(
-  workspaceId: string,
   query: ConsoleFrontstageInterfaceCapabilityQuery = {},
   baseUrl?: string
 ): Promise<ConsoleFrontstageInterfaceCapabilityPage> {
@@ -263,26 +262,24 @@ export function listFrontstageInterfaceCapabilities(
   if (query.limit !== undefined) params.set('limit', String(query.limit));
   const suffix = params.size > 0 ? `?${params.toString()}` : '';
   return apiFetch<ConsoleFrontstageInterfaceCapabilityPage>({
-    path: `/api/console/frontstage/${workspaceId}/interface-capabilities${suffix}`,
+    path: `/api/console/frontstage/interface-capabilities${suffix}`,
     method: 'GET',
     baseUrl
   });
 }
 
 export function getFrontstageInterfaceCapability(
-  workspaceId: string,
   interfaceId: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstageInterfaceCapability> {
   return apiFetch<ConsoleFrontstageInterfaceCapability>({
-    path: `/api/console/frontstage/${workspaceId}/interface-capabilities/${encodeURIComponent(interfaceId)}`,
+    path: `/api/console/frontstage/interface-capabilities/${encodeURIComponent(interfaceId)}`,
     method: 'GET',
     baseUrl
   });
 }
 
 export function listFrontstageComponentCapabilities(
-  workspaceId: string,
   query: ConsoleFrontstageComponentCapabilityQuery = {},
   baseUrl?: string
 ): Promise<ConsoleFrontstageComponentCapabilityPage> {
@@ -299,46 +296,40 @@ export function listFrontstageComponentCapabilities(
   if (query.limit !== undefined) params.set('limit', String(query.limit));
   const suffix = params.size > 0 ? `?${params.toString()}` : '';
   return apiFetch<ConsoleFrontstageComponentCapabilityPage>({
-    path: `/api/console/frontstage/${workspaceId}/component-capabilities${suffix}`,
+    path: `/api/console/frontstage/component-capabilities${suffix}`,
     method: 'GET',
     baseUrl
   });
 }
 
 export function getFrontstageComponentCapability(
-  workspaceId: string,
   componentId: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstageComponentCapability> {
   return apiFetch<ConsoleFrontstageComponentCapability>({
-    path: `/api/console/frontstage/${workspaceId}/component-capabilities/${encodeURIComponent(componentId)}`,
+    path: `/api/console/frontstage/component-capabilities/${encodeURIComponent(componentId)}`,
     method: 'GET',
     baseUrl
   });
 }
 
 export function resolveFrontstageComponentDependencyLock(
-  workspaceId: string,
   sourceCode: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstageComponentDependencyLock> {
   return apiFetch<ConsoleFrontstageComponentDependencyLock>({
-    path: `/api/console/frontstage/${encodeURIComponent(workspaceId)}/component-dependency-lock`,
+    path: '/api/console/frontstage/component-dependency-lock',
     method: 'POST',
     body: { source_code: sourceCode },
     baseUrl
   });
 }
 
-export function frontstageComponentModuleAssetPath(
-  workspaceId: string,
-  sha256: string
-): string {
-  return `/api/console/frontstage/${encodeURIComponent(workspaceId)}/component-module-assets/${encodeURIComponent(sha256)}`;
+export function frontstageComponentModuleAssetPath(sha256: string): string {
+  return `/api/console/frontstage/component-module-assets/${encodeURIComponent(sha256)}`;
 }
 
 export function dispatchFrontstageCallable<T = unknown>(
-  workspaceId: string,
   pageId: string,
   tabId: string,
   input: DispatchFrontstageCallableInput,
@@ -346,7 +337,7 @@ export function dispatchFrontstageCallable<T = unknown>(
   baseUrl?: string
 ): Promise<T> {
   return dispatchFrontstageCallableResource<T>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/callable-interfaces/dispatch`,
+    path: `/api/console/frontstage/pages/${pageId}/tabs/${tabId}/callable-interfaces/dispatch`,
     input,
     csrfToken,
     baseUrl
@@ -383,7 +374,6 @@ async function dispatchFrontstageCallableResource<T>({
 const MAX_SSE_BUFFER_LENGTH = 1024 * 1024;
 
 export async function dispatchFrontstageCallableStream<T = unknown>(
-  workspaceId: string,
   pageId: string,
   tabId: string,
   input: DispatchFrontstageCallableInput,
@@ -391,7 +381,7 @@ export async function dispatchFrontstageCallableStream<T = unknown>(
   baseUrl?: string
 ): Promise<FrontstageCallableEventStream<T>> {
   const response = await apiFetchStream({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/callable-interfaces/dispatch`,
+    path: `/api/console/frontstage/pages/${pageId}/tabs/${tabId}/callable-interfaces/dispatch`,
     method: 'POST',
     body: input,
     csrfToken,
@@ -477,14 +467,13 @@ function parseSseData(value: string): unknown {
 }
 
 export function dispatchFrontstageQuery<T = unknown>(
-  workspaceId: string,
   pageId: string,
   tabId: string,
   input: DispatchFrontstageQueryInput,
   baseUrl?: string
 ): Promise<T> {
   return apiFetch<T>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/queries/dispatch`,
+    path: `/api/console/frontstage/pages/${pageId}/tabs/${tabId}/queries/dispatch`,
     method: 'POST',
     body: input,
     baseUrl
@@ -492,7 +481,6 @@ export function dispatchFrontstageQuery<T = unknown>(
 }
 
 export function dispatchFrontstageAction<T = unknown>(
-  workspaceId: string,
   pageId: string,
   tabId: string,
   input: DispatchFrontstageActionInput,
@@ -500,7 +488,7 @@ export function dispatchFrontstageAction<T = unknown>(
   baseUrl?: string
 ): Promise<T> {
   return apiFetch<T>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/actions/dispatch`,
+    path: `/api/console/frontstage/pages/${pageId}/tabs/${tabId}/actions/dispatch`,
     method: 'POST',
     body: input,
     csrfToken,
@@ -509,37 +497,34 @@ export function dispatchFrontstageAction<T = unknown>(
 }
 
 export function listFrontstagePages(
-  workspaceId: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstagePageTreeNode[]> {
   return apiFetch<ConsoleFrontstagePageTreeNode[]>({
-    path: `/api/console/frontstage/${workspaceId}/pages`,
+    path: '/api/console/frontstage/pages',
     method: 'GET',
     baseUrl
   });
 }
 
 export function getFrontstagePageTabDetail(
-  workspaceId: string,
   pageId: string,
   tabReference: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstagePageDetail> {
   return apiFetch<ConsoleFrontstagePageDetail>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${encodeURIComponent(tabReference)}`,
+    path: `/api/console/frontstage/pages/${pageId}/tabs/${encodeURIComponent(tabReference)}`,
     method: 'GET',
     baseUrl
   });
 }
 
 export function createFrontstageGroup(
-  workspaceId: string,
   input: CreateFrontstagePageNodeInput,
   csrfToken: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstagePageNode> {
   return apiFetch<ConsoleFrontstagePageNode>({
-    path: `/api/console/frontstage/${workspaceId}/pages/groups`,
+    path: '/api/console/frontstage/pages/groups',
     method: 'POST',
     body: input,
     csrfToken,
@@ -548,13 +533,12 @@ export function createFrontstageGroup(
 }
 
 export function createFrontstagePage(
-  workspaceId: string,
   input: CreateFrontstagePageNodeInput,
   csrfToken: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstagePageCreationResponse> {
   return apiFetch<ConsoleFrontstagePageCreationResponse>({
-    path: `/api/console/frontstage/${workspaceId}/pages`,
+    path: '/api/console/frontstage/pages',
     method: 'POST',
     body: input,
     csrfToken,
@@ -563,14 +547,13 @@ export function createFrontstagePage(
 }
 
 export function updateFrontstagePageNodeTitle(
-  workspaceId: string,
   pageNodeId: string,
   input: UpdateFrontstagePageNodeTitleInput,
   csrfToken: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstagePageNode> {
   return apiFetch<ConsoleFrontstagePageNode>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageNodeId}`,
+    path: `/api/console/frontstage/pages/${pageNodeId}`,
     method: 'PATCH',
     body: input,
     csrfToken,
@@ -579,14 +562,13 @@ export function updateFrontstagePageNodeTitle(
 }
 
 export function moveFrontstagePageNode(
-  workspaceId: string,
   pageNodeId: string,
   input: MoveFrontstagePageNodeInput,
   csrfToken: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstagePageNode> {
   return apiFetch<ConsoleFrontstagePageNode>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageNodeId}/move`,
+    path: `/api/console/frontstage/pages/${pageNodeId}/move`,
     method: 'POST',
     body: input,
     csrfToken,
@@ -595,13 +577,12 @@ export function moveFrontstagePageNode(
 }
 
 export function deleteFrontstagePageNode(
-  workspaceId: string,
   pageNodeId: string,
   csrfToken: string,
   baseUrl?: string
 ): Promise<void> {
   return apiFetch<void>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageNodeId}`,
+    path: `/api/console/frontstage/pages/${pageNodeId}`,
     method: 'DELETE',
     csrfToken,
     baseUrl
@@ -609,26 +590,24 @@ export function deleteFrontstagePageNode(
 }
 
 export function listFrontstagePageTabs(
-  workspaceId: string,
   pageId: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstagePageTab[]> {
   return apiFetch<ConsoleFrontstagePageTab[]>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs`,
+    path: `/api/console/frontstage/pages/${pageId}/tabs`,
     method: 'GET',
     baseUrl
   });
 }
 
 export function createFrontstagePageTab(
-  workspaceId: string,
   pageId: string,
   input: CreateFrontstagePageTabInput,
   csrfToken: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstagePageTab> {
   return apiFetch<ConsoleFrontstagePageTab>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs`,
+    path: `/api/console/frontstage/pages/${pageId}/tabs`,
     method: 'POST',
     body: input,
     csrfToken,
@@ -637,7 +616,6 @@ export function createFrontstagePageTab(
 }
 
 export function updateFrontstagePageTab(
-  workspaceId: string,
   pageId: string,
   tabId: string,
   input: UpdateFrontstagePageTabInput,
@@ -645,7 +623,7 @@ export function updateFrontstagePageTab(
   baseUrl?: string
 ): Promise<ConsoleFrontstagePageTab> {
   return apiFetch<ConsoleFrontstagePageTab>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}`,
+    path: `/api/console/frontstage/pages/${pageId}/tabs/${tabId}`,
     method: 'PATCH',
     body: input,
     csrfToken,
@@ -654,14 +632,13 @@ export function updateFrontstagePageTab(
 }
 
 export function deleteFrontstagePageTab(
-  workspaceId: string,
   pageId: string,
   tabId: string,
   csrfToken: string,
   baseUrl?: string
 ): Promise<void> {
   return apiFetch<void>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}`,
+    path: `/api/console/frontstage/pages/${pageId}/tabs/${tabId}`,
     method: 'DELETE',
     csrfToken,
     baseUrl
@@ -669,7 +646,6 @@ export function deleteFrontstagePageTab(
 }
 
 export function saveFrontstageTabDocument(
-  workspaceId: string,
   pageId: string,
   tabId: string,
   input: SaveFrontstageTabDocumentInput,
@@ -677,7 +653,7 @@ export function saveFrontstageTabDocument(
   baseUrl?: string
 ): Promise<ConsoleFrontstagePageDetail> {
   return apiFetch<ConsoleFrontstagePageDetail>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/document`,
+    path: `/api/console/frontstage/pages/${pageId}/tabs/${tabId}/document`,
     method: 'PUT',
     body: input,
     csrfToken,
@@ -713,11 +689,10 @@ export interface ConsoleFrontstageDataCapabilities {
 }
 
 export function listFrontstageDataCapabilities(
-  workspaceId: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstageDataCapabilities> {
   return apiFetch<ConsoleFrontstageDataCapabilities>({
-    path: `/api/console/frontstage/${workspaceId}/data-capabilities`,
+    path: '/api/console/frontstage/data-capabilities',
     method: 'GET',
     baseUrl
   });
@@ -736,11 +711,10 @@ export interface ConsoleFrontstageUiTemplate {
 }
 
 export function listFrontstageUiTemplates(
-  workspaceId: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstageUiTemplate[]> {
   return apiFetch<ConsoleFrontstageUiTemplate[]>({
-    path: `/api/console/frontstage/${workspaceId}/ui-templates`,
+    path: '/api/console/frontstage/ui-templates',
     method: 'GET',
     baseUrl
   });

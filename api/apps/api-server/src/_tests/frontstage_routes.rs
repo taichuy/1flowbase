@@ -26,161 +26,128 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
     assert_eq!(
         routes,
         BTreeSet::from([
+            ("GET", "/api/console/frontstage/component-capabilities",),
             (
                 "GET",
-                "/api/console/frontstage/:workspace_id/component-capabilities",
+                "/api/console/frontstage/component-capabilities/:component_id",
             ),
+            ("POST", "/api/console/frontstage/component-dependency-lock",),
             (
                 "GET",
-                "/api/console/frontstage/:workspace_id/component-capabilities/:component_id",
+                "/api/console/frontstage/component-module-assets/:sha256",
             ),
-            (
-                "POST",
-                "/api/console/frontstage/:workspace_id/component-dependency-lock",
-            ),
+            ("GET", "/api/console/frontstage/data-capabilities"),
+            ("GET", "/api/console/frontstage/interface-capabilities",),
             (
                 "GET",
-                "/api/console/frontstage/:workspace_id/component-module-assets/:sha256",
+                "/api/console/frontstage/interface-capabilities/:interface_id",
             ),
-            ("GET", "/api/console/frontstage/:workspace_id/data-capabilities"),
+            ("GET", "/api/console/frontstage/ui-templates",),
+            ("GET", "/api/console/frontstage/pages"),
+            ("POST", "/api/console/frontstage/pages"),
+            ("GET", "/api/console/frontstage/pages/:page_id/blocks",),
+            ("POST", "/api/console/frontstage/pages/:page_id/blocks",),
             (
                 "GET",
-                "/api/console/frontstage/:workspace_id/interface-capabilities",
-            ),
-            (
-                "GET",
-                "/api/console/frontstage/:workspace_id/interface-capabilities/:interface_id",
-            ),
-            (
-                "GET",
-                "/api/console/frontstage/:workspace_id/ui-templates",
-            ),
-            ("GET", "/api/console/frontstage/:workspace_id/pages"),
-            ("POST", "/api/console/frontstage/:workspace_id/pages"),
-            (
-                "GET",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks",
-            ),
-            (
-                "POST",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks",
+                "/api/console/frontstage/pages/:page_id/blocks/search",
             ),
             (
                 "GET",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/search",
-            ),
-            (
-                "GET",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id",
             ),
             (
                 "PATCH",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id",
             ),
             (
                 "DELETE",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id",
             ),
             (
                 "GET",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/children",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id/children",
             ),
             (
                 "GET",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/ancestors",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id/ancestors",
             ),
             (
                 "GET",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/descendants",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id/descendants",
             ),
             (
                 "GET",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/delete-impact",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id/delete-impact",
             ),
             (
                 "POST",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/move",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id/move",
             ),
             (
                 "POST",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/delete-subtree",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id/delete-subtree",
             ),
             (
                 "GET",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/open",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id/open",
             ),
             (
                 "GET",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id/code",
             ),
             (
                 "GET",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code/fragment",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id/code/fragment",
             ),
             (
                 "GET",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/runtime-assembly",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id/runtime-assembly",
             ),
             (
                 "PATCH",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id/code",
             ),
             (
                 "PUT",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/blocks/:block_id/code",
+                "/api/console/frontstage/pages/:page_id/blocks/:block_id/code",
             ),
             (
                 "PUT",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/block-descriptors",
+                "/api/console/frontstage/pages/:page_id/tabs/:tab_id/block-descriptors",
             ),
-            ("POST", "/api/console/frontstage/:workspace_id/pages/groups",),
+            ("POST", "/api/console/frontstage/pages/groups",),
+            ("PATCH", "/api/console/frontstage/pages/:page_id",),
+            ("DELETE", "/api/console/frontstage/pages/:page_id",),
+            ("POST", "/api/console/frontstage/pages/:page_id/move",),
+            ("GET", "/api/console/frontstage/pages/:page_id/tabs",),
+            ("POST", "/api/console/frontstage/pages/:page_id/tabs",),
+            (
+                "GET",
+                "/api/console/frontstage/pages/:page_id/tabs/:tab_reference",
+            ),
             (
                 "PATCH",
-                "/api/console/frontstage/:workspace_id/pages/:page_id",
+                "/api/console/frontstage/pages/:page_id/tabs/:tab_reference",
             ),
             (
                 "DELETE",
-                "/api/console/frontstage/:workspace_id/pages/:page_id",
-            ),
-            (
-                "POST",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/move",
-            ),
-            (
-                "GET",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs",
-            ),
-            (
-                "POST",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs",
-            ),
-            (
-                "GET",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_reference",
-            ),
-            (
-                "PATCH",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_reference",
-            ),
-            (
-                "DELETE",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_reference",
+                "/api/console/frontstage/pages/:page_id/tabs/:tab_reference",
             ),
             (
                 "PUT",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/document",
+                "/api/console/frontstage/pages/:page_id/tabs/:tab_id/document",
             ),
             (
                 "POST",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/queries/dispatch",
+                "/api/console/frontstage/pages/:page_id/tabs/:tab_id/queries/dispatch",
             ),
             (
                 "POST",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/actions/dispatch",
+                "/api/console/frontstage/pages/:page_id/tabs/:tab_id/actions/dispatch",
             ),
             (
                 "POST",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/callable-interfaces/dispatch",
+                "/api/console/frontstage/pages/:page_id/tabs/:tab_id/callable-interfaces/dispatch",
             ),
         ])
     );
@@ -247,7 +214,7 @@ async fn create_group(
     send_json(
         app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages/groups"),
+        &format!("/api/console/frontstage/pages/groups"),
         cookie,
         csrf,
         json!({
@@ -270,7 +237,7 @@ async fn create_page(
     send_json(
         app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages"),
+        &format!("/api/console/frontstage/pages"),
         cookie,
         csrf,
         json!({
@@ -326,9 +293,7 @@ async fn delete_node(
         .oneshot(
             Request::builder()
                 .method("DELETE")
-                .uri(format!(
-                    "/api/console/frontstage/{workspace_id}/pages/{page_id}"
-                ))
+                .uri(format!("/api/console/frontstage/pages/{page_id}"))
                 .header("cookie", cookie)
                 .header("x-csrf-token", csrf)
                 .body(Body::empty())
@@ -372,7 +337,7 @@ async fn save_page_content(
     send_json(
         app,
         "PUT",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document"),
+        &format!("/api/console/frontstage/pages/{page_id}/tabs/{tab_id}/document"),
         cookie,
         csrf,
         json!({ "payload": document_payload }),
@@ -396,9 +361,7 @@ async fn dispatch_capability(
     send_json(
         app,
         "POST",
-        &format!(
-            "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/{kind}/dispatch"
-        ),
+        &format!("/api/console/frontstage/pages/{page_id}/tabs/{tab_id}/{kind}/dispatch"),
         cookie,
         csrf,
         json!({ capability_id_field: capability_id, "params": params }),

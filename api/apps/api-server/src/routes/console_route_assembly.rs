@@ -514,12 +514,12 @@ fn core_openapi_operation_ids() -> anyhow::Result<BTreeMap<(String, String), Str
         ),
         (
             "POST",
-            "/api/console/frontstage/{}/pages/{}/tabs/{}/actions/dispatch",
+            "/api/console/frontstage/pages/{}/tabs/{}/actions/dispatch",
             "dispatch_frontstage_tab_action",
         ),
         (
             "POST",
-            "/api/console/frontstage/{}/pages/{}/tabs/{}/queries/dispatch",
+            "/api/console/frontstage/pages/{}/tabs/{}/queries/dispatch",
             "dispatch_frontstage_tab_query",
         ),
         (

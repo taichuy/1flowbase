@@ -29,7 +29,7 @@ export function fetchFrontstagePageTabs(
   workspaceId: string,
   pageId: string
 ): Promise<FrontstagePageTab[]> {
-  return listFrontstagePageTabs(workspaceId, pageId, getFrontstageApiBaseUrl());
+  return listFrontstagePageTabs(pageId, getFrontstageApiBaseUrl());
 }
 
 export function createFrontstagePageTab(
@@ -39,7 +39,6 @@ export function createFrontstagePageTab(
   csrfToken: string
 ): Promise<FrontstagePageTab> {
   return createPageTab(
-    workspaceId,
     pageId,
     input,
     csrfToken,
@@ -55,7 +54,6 @@ export function renameFrontstagePageTab(
   csrfToken: string
 ): Promise<FrontstagePageTab> {
   return updateFrontstagePageTab(
-    workspaceId,
     pageId,
     tabId,
     input,
@@ -72,7 +70,6 @@ export function moveFrontstagePageTab(
   csrfToken: string
 ): Promise<FrontstagePageTab> {
   return updateFrontstagePageTab(
-    workspaceId,
     pageId,
     tabId,
     input,
@@ -88,7 +85,6 @@ export function deleteFrontstagePageTab(
   csrfToken: string
 ): Promise<void> {
   return deletePageTab(
-    workspaceId,
     pageId,
     tabId,
     csrfToken,

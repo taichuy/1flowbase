@@ -54,12 +54,10 @@ describe('frontstage page tab feature api', () => {
       );
 
       expect(listSpy).toHaveBeenCalledWith(
-        'workspace-1',
         'page-1',
         expect.any(String)
       );
       expect(createSpy).toHaveBeenCalledWith(
-        'workspace-1',
         'page-1',
         { title: '详情', route_segment: 'details', rank: '002000' },
         'csrf-123',
@@ -67,7 +65,6 @@ describe('frontstage page tab feature api', () => {
       );
       expect(updateSpy).toHaveBeenNthCalledWith(
         1,
-        'workspace-1',
         'page-1',
         'tab-2',
         { title: '明细' },
@@ -76,7 +73,6 @@ describe('frontstage page tab feature api', () => {
       );
       expect(updateSpy).toHaveBeenNthCalledWith(
         2,
-        'workspace-1',
         'page-1',
         'tab-2',
         { rank: '001500' },
@@ -84,7 +80,6 @@ describe('frontstage page tab feature api', () => {
         expect.any(String)
       );
       expect(deleteSpy).toHaveBeenCalledWith(
-        'workspace-1',
         'page-1',
         'tab-2',
         'csrf-123',

@@ -35,12 +35,9 @@ use tokio::sync::RwLock;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-const PAGE_TAB_GET_PATH: &str =
-    "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_reference}";
-const PAGE_TAB_SAVE_PATH: &str =
-    "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document";
-const PAGE_TAB_DELETE_PATH: &str =
-    "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}";
+const PAGE_TAB_GET_PATH: &str = "/api/console/frontstage/pages/{page_id}/tabs/{tab_reference}";
+const PAGE_TAB_SAVE_PATH: &str = "/api/console/frontstage/pages/{page_id}/tabs/{tab_id}/document";
+const PAGE_TAB_DELETE_PATH: &str = "/api/console/frontstage/pages/{page_id}/tabs/{tab_id}";
 
 #[derive(Clone)]
 struct UnreachablePluginRunner;
@@ -404,7 +401,7 @@ async fn create_page(
     let (status, payload) = json_request(
         app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages"),
+        &format!("/api/console/frontstage/pages"),
         cookie,
         csrf,
         json!({ "title": "Callable fixture", "rank": "a" }),
@@ -420,7 +417,7 @@ async fn create_page(
     let (presentation_status, presentation_payload) = json_request(
         app,
         "PATCH",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}"),
+        &format!("/api/console/frontstage/pages/{page_id}"),
         cookie,
         csrf,
         json!({ "content_presentation": "tabs" }),
@@ -444,7 +441,7 @@ async fn create_tab(
     let (status, payload) = json_request(
         app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs"),
+        &format!("/api/console/frontstage/pages/{page_id}/tabs"),
         cookie,
         csrf,
         json!({ "title": "Second", "route_segment": "second", "rank": "b" }),
@@ -463,7 +460,7 @@ async fn create_tab(
 async fn catalog_entry(app: &Router, cookie: &str, workspace_id: Uuid, operation: &str) -> Value {
     let (status, payload) = get(
         app,
-        &format!("/api/console/frontstage/{workspace_id}/interface-capabilities/{operation}"),
+        &format!("/api/console/frontstage/interface-capabilities/{operation}"),
         cookie,
     )
     .await;
@@ -487,7 +484,7 @@ async fn create_block_node(
     let (status, payload) = json_request(
         app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks"),
+        &format!("/api/console/frontstage/pages/{page_id}/blocks"),
         cookie,
         csrf,
         json!({
@@ -529,7 +526,7 @@ async fn dispatch(
         app,
         "POST",
         &format!(
-            "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/callable-interfaces/dispatch"
+            "/api/console/frontstage/pages/{page_id}/tabs/{tab_id}/callable-interfaces/dispatch"
         ),
         cookie,
         csrf,
@@ -546,7 +543,7 @@ async fn capability_catalog_pages_lightweight_path_matches_and_loads_one_detail(
     let (status, payload) = get(
         &fixture.app,
         &format!(
-            "/api/console/frontstage/{workspace_id}/interface-capabilities?path_query=application_conversations&adapter_id=runtime_data_model&method=GET&offset=0&limit=1"
+            "/api/console/frontstage/interface-capabilities?path_query=application_conversations&adapter_id=runtime_data_model&method=GET&offset=0&limit=1"
         ),
         &cookie,
     )
@@ -585,9 +582,7 @@ async fn capability_catalog_pages_lightweight_path_matches_and_loads_one_detail(
 
     let (id_search_status, id_search_payload) = get(
         &fixture.app,
-        &format!(
-            "/api/console/frontstage/{workspace_id}/interface-capabilities?path_query={interface_id}"
-        ),
+        &format!("/api/console/frontstage/interface-capabilities?path_query={interface_id}"),
         &cookie,
     )
     .await;

@@ -33,75 +33,71 @@ describe('frontstage block tree client contract', () => {
     );
   });
 
-  test('AC-001/003 uses exact page-scoped read routes and snake_case queries', async () => {
+  test('AC-001/003 uses exact auth-scoped page routes without a workspace URL segment', async () => {
     await expect(
-      listConsoleFrontstageBlockRoots('workspace 1', 'page/1', {
+      listConsoleFrontstageBlockRoots('page/1', {
         tab_id: 'tab/1',
         limit: 25
       })
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks?tab_id=tab%2F1&limit=25',
+      path: '/api/console/frontstage/pages/page%2F1/blocks?tab_id=tab%2F1&limit=25',
       method: 'GET'
     });
     await expect(
-      searchConsoleFrontstageBlocks('workspace 1', 'page/1', {
+      searchConsoleFrontstageBlocks('page/1', {
         tab_id: 'tab/1',
         query: 'sales drawer',
         limit: 10
       })
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/search?tab_id=tab%2F1&query=sales+drawer&limit=10',
+      path: '/api/console/frontstage/pages/page%2F1/blocks/search?tab_id=tab%2F1&query=sales+drawer&limit=10',
       method: 'GET'
     });
     await expect(
-      getConsoleFrontstageBlockNode('workspace 1', 'page/1', 'block/root')
+      getConsoleFrontstageBlockNode('page/1', 'block/root')
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot',
+      path: '/api/console/frontstage/pages/page%2F1/blocks/block%2Froot',
       method: 'GET'
     });
     await expect(
       listConsoleFrontstageBlockChildren(
-        'workspace 1',
         'page/1',
         'block/root',
         { limit: 30 }
       )
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/children?limit=30'
+      path: '/api/console/frontstage/pages/page%2F1/blocks/block%2Froot/children?limit=30'
     });
     await expect(
-      listConsoleFrontstageBlockAncestors('workspace 1', 'page/1', 'block/root')
+      listConsoleFrontstageBlockAncestors('page/1', 'block/root')
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/ancestors'
+      path: '/api/console/frontstage/pages/page%2F1/blocks/block%2Froot/ancestors'
     });
     await expect(
       listConsoleFrontstageBlockDescendants(
-        'workspace 1',
         'page/1',
         'block/root',
         { max_depth: 4, limit: 50 }
       )
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/descendants?max_depth=4&limit=50'
+      path: '/api/console/frontstage/pages/page%2F1/blocks/block%2Froot/descendants?max_depth=4&limit=50'
     });
     await expect(
       getConsoleFrontstageBlockDeleteImpact(
-        'workspace 1',
         'page/1',
         'block/root'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/delete-impact'
+      path: '/api/console/frontstage/pages/page%2F1/blocks/block%2Froot/delete-impact'
     });
     await expect(
-      getConsoleFrontstageBlockNodeCode('workspace 1', 'page/1', 'block/root')
+      getConsoleFrontstageBlockNodeCode('page/1', 'block/root')
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/code',
+      path: '/api/console/frontstage/pages/page%2F1/blocks/block%2Froot/code',
       method: 'GET'
     });
     await expect(
       getConsoleFrontstageBlockCodeFragment(
-        'workspace 1',
         'page/1',
         'block/root',
         {
@@ -112,23 +108,22 @@ describe('frontstage block tree client contract', () => {
         }
       )
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/code/fragment?start_line=101&start_column=3&line_count=80&max_chars=6000',
+      path: '/api/console/frontstage/pages/page%2F1/blocks/block%2Froot/code/fragment?start_line=101&start_column=3&line_count=80&max_chars=6000',
       method: 'GET'
     });
     await expect(
       getConsoleFrontstageBlockRuntimeAssembly(
-        'workspace 1',
         'page/1',
         'block/root'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/runtime-assembly',
+      path: '/api/console/frontstage/pages/page%2F1/blocks/block%2Froot/runtime-assembly',
       method: 'GET'
     });
     await expect(
-      openConsoleFrontstageBlock('workspace 1', 'page/1', 'block/root')
+      openConsoleFrontstageBlock('page/1', 'block/root')
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace%201/pages/page%2F1/blocks/block%2Froot/open',
+      path: '/api/console/frontstage/pages/page%2F1/blocks/block%2Froot/open',
       method: 'GET'
     });
   });
@@ -149,20 +144,18 @@ describe('frontstage block tree client contract', () => {
     };
     await expect(
       createConsoleFrontstageBlockNode(
-        'workspace-1',
         'page-1',
         createInput,
         'csrf'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace-1/pages/page-1/blocks',
+      path: '/api/console/frontstage/pages/page-1/blocks',
       method: 'POST',
       body: createInput,
       csrfToken: 'csrf'
     });
     await expect(
       updateConsoleFrontstageBlockNode(
-        'workspace-1',
         'page-1',
         'sales',
         {
@@ -182,7 +175,6 @@ describe('frontstage block tree client contract', () => {
     });
     await expect(
       updateConsoleFrontstageBlockDescriptors(
-        'workspace-1',
         'page-1',
         'tab-1',
         {
@@ -196,13 +188,12 @@ describe('frontstage block tree client contract', () => {
         'csrf'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/block-descriptors',
+      path: '/api/console/frontstage/pages/page-1/tabs/tab-1/block-descriptors',
       method: 'PUT',
       csrfToken: 'csrf'
     });
     await expect(
       moveConsoleFrontstageBlockNode(
-        'workspace-1',
         'page-1',
         'sales',
         {
@@ -213,7 +204,7 @@ describe('frontstage block tree client contract', () => {
         'csrf'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace-1/pages/page-1/blocks/sales/move',
+      path: '/api/console/frontstage/pages/page-1/blocks/sales/move',
       method: 'POST',
       body: {
         parent_block_id: 'reports',
@@ -222,7 +213,6 @@ describe('frontstage block tree client contract', () => {
       }
     });
     const leafDelete = await deleteConsoleFrontstageBlockLeaf(
-      'workspace-1',
       'page-1',
       'sales',
       'csrf'
@@ -231,20 +221,18 @@ describe('frontstage block tree client contract', () => {
     expect(leafDelete).not.toHaveProperty('body');
     await expect(
       deleteConsoleFrontstageBlockSubtree(
-        'workspace-1',
         'page-1',
         'reports',
         { expected_affected_count: 3 },
         'csrf'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace-1/pages/page-1/blocks/reports/delete-subtree',
+      path: '/api/console/frontstage/pages/page-1/blocks/reports/delete-subtree',
       method: 'POST',
       body: { expected_affected_count: 3 }
     });
     await expect(
       saveConsoleFrontstageBlockNodeCode(
-        'workspace-1',
         'page-1',
         'sales',
         {
@@ -253,7 +241,7 @@ describe('frontstage block tree client contract', () => {
         'csrf'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace-1/pages/page-1/blocks/sales/code',
+      path: '/api/console/frontstage/pages/page-1/blocks/sales/code',
       method: 'PUT',
       body: expect.objectContaining({
         source_code: expect.stringContaining('export default Sales')
@@ -273,14 +261,13 @@ describe('frontstage block tree client contract', () => {
     };
     await expect(
       patchConsoleFrontstageBlockNodeCode(
-        'workspace-1',
         'page-1',
         'sales',
         patchInput,
         'csrf'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace-1/pages/page-1/blocks/sales/code',
+      path: '/api/console/frontstage/pages/page-1/blocks/sales/code',
       method: 'PATCH',
       body: patchInput,
       csrfToken: 'csrf'
