@@ -663,7 +663,7 @@ export function SystemBackupsPanel() {
           }
         }}
       >
-        <Typography.Paragraph>{t('verify_password_help')}</Typography.Paragraph>
+        <Typography.Paragraph>{t('import_password_help')}</Typography.Paragraph>
         <Input.Password
           autoComplete="current-password"
           placeholder={t('backup_password')}

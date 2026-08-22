@@ -101,6 +101,19 @@ pub struct UpdateNetworkEgressPoolMemberCommand {
     pub sequence: i32,
 }
 
+pub struct RecordNetworkEgressPoolMemberProbeCommand {
+    pub actor_user_id: Uuid,
+    pub pool_id: Uuid,
+    pub member_id: Uuid,
+    pub status: domain::NetworkEgressPoolMemberProbeStatus,
+    pub http_status: domain::NetworkEgressPoolMemberProbeStatus,
+    pub https_status: domain::NetworkEgressPoolMemberProbeStatus,
+    pub latency_ms: i32,
+    pub exit_ip: Option<String>,
+    pub exit_region: Option<String>,
+    pub error_code: Option<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct NetworkEgressPoolMemberView {
     pub member: domain::NetworkEgressPoolMember,
@@ -213,7 +226,7 @@ where
             "network_egress_pool.member_added",
         )
         .await?;
-        Ok(self.member_view(member).await?)
+        self.member_view(member).await
     }
 
     pub async fn add_static_http_proxy(
@@ -336,7 +349,7 @@ where
             "network_egress_pool.member_updated",
         )
         .await?;
-        Ok(self.member_view(member).await?)
+        self.member_view(member).await
     }
 
     pub async fn delete_member(
@@ -355,37 +368,28 @@ where
 
     pub async fn record_probe(
         &self,
-        actor_user_id: Uuid,
-        pool_id: Uuid,
-        member_id: Uuid,
-        status: domain::NetworkEgressPoolMemberProbeStatus,
-        http_status: domain::NetworkEgressPoolMemberProbeStatus,
-        https_status: domain::NetworkEgressPoolMemberProbeStatus,
-        latency_ms: i32,
-        exit_ip: Option<String>,
-        exit_region: Option<String>,
-        error_code: Option<String>,
+        command: RecordNetworkEgressPoolMemberProbeCommand,
     ) -> Result<NetworkEgressPoolMemberView> {
-        self.require_global_pool(pool_id).await?;
+        self.require_global_pool(command.pool_id).await?;
         let member = self
             .repository
             .record_network_egress_pool_member_probe(&RecordNetworkEgressPoolMemberProbeInput {
-                pool_id,
-                member_id,
-                status,
-                http_status,
-                https_status,
-                latency_ms,
-                exit_ip,
-                exit_region,
-                error_code,
+                pool_id: command.pool_id,
+                member_id: command.member_id,
+                status: command.status,
+                http_status: command.http_status,
+                https_status: command.https_status,
+                latency_ms: command.latency_ms,
+                exit_ip: command.exit_ip,
+                exit_region: command.exit_region,
+                error_code: command.error_code,
                 probed_at: OffsetDateTime::now_utc(),
-                actor_user_id,
+                actor_user_id: command.actor_user_id,
             })
             .await?;
         self.audit(
-            actor_user_id,
-            pool_id,
+            command.actor_user_id,
+            command.pool_id,
             "network_egress_pool.member_connection_tested",
         )
         .await?;
@@ -460,30 +464,48 @@ where
         let provider = self
             .repository
             .get_network_egress_provider(member.provider_id)
-            .await?
-            .ok_or_else(|| ControlPlaneError::NotFound("network_egress_provider"))?;
+            .await?;
         let projection = self
             .repository
             .list_network_egress_projections(member.provider_id)
             .await?
             .into_iter()
-            .find(|item| item.provider_egress_key == member.provider_egress_key)
-            .ok_or_else(|| ControlPlaneError::InvalidInput("provider_egress_key"))?;
-        let address_summary = self.safe_address_summary(&provider).await?;
-        let health = if provider.lifecycle == domain::NetworkEgressProviderLifecycle::Active
-            && provider.health_status == domain::NetworkEgressHealthStatus::Healthy
-            && projection.availability == "available"
-        {
-            domain::NetworkEgressPoolMemberHealth::Healthy
-        } else {
-            domain::NetworkEgressPoolMemberHealth::Unhealthy
+            .find(|item| item.provider_egress_key == member.provider_egress_key);
+        let address_summary = match provider.as_ref() {
+            Some(provider) => self.safe_address_summary(provider).await?,
+            None => None,
         };
-        let region = projection.region.or(member.probe_exit_region.clone());
+        let health = match (provider.as_ref(), projection.as_ref()) {
+            (Some(provider), Some(projection))
+                if provider.lifecycle == domain::NetworkEgressProviderLifecycle::Active
+                    && provider.health_status == domain::NetworkEgressHealthStatus::Healthy
+                    && projection.availability == "available" =>
+            {
+                domain::NetworkEgressPoolMemberHealth::Healthy
+            }
+            (Some(_), Some(_)) => domain::NetworkEgressPoolMemberHealth::Unhealthy,
+            _ => domain::NetworkEgressPoolMemberHealth::Invalid,
+        };
+        let region = projection
+            .as_ref()
+            .and_then(|projection| projection.region.clone())
+            .or(member.probe_exit_region.clone());
         Ok(NetworkEgressPoolMemberView {
+            provider_code: provider
+                .as_ref()
+                .map(|provider| provider.provider_code.clone())
+                .unwrap_or_else(|| "unknown".to_string()),
+            display_name: projection
+                .as_ref()
+                .map(|projection| projection.display_name.clone())
+                .or_else(|| {
+                    provider
+                        .as_ref()
+                        .map(|provider| provider.display_name.clone())
+                })
+                .unwrap_or_else(|| member.provider_egress_key.clone()),
             member,
             health,
-            provider_code: provider.provider_code,
-            display_name: projection.display_name,
             address_summary,
             region,
         })
@@ -610,6 +632,13 @@ fn static_http_host(value: &str) -> Result<String> {
     Ok(host)
 }
 
+fn validate_sequence(value: i32) -> Result<()> {
+    if value < 0 {
+        return Err(ControlPlaneError::InvalidInput("sequence").into());
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::static_http_host;
@@ -623,11 +652,4 @@ mod tests {
         assert!(static_http_host("user@198.65.36.212").is_err());
         assert!(static_http_host("198.65.36.212:37867").is_err());
     }
-}
-
-fn validate_sequence(value: i32) -> Result<()> {
-    if value < 0 {
-        return Err(ControlPlaneError::InvalidInput("sequence").into());
-    }
-    Ok(())
 }

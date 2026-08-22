@@ -42,6 +42,30 @@ const MODEL_PROVIDER_FEATURE_SIMPLE_OPERATIONS: &[&str] = &[
     "model_providers.settings_options.view",
 ];
 
+const NETWORK_CENTER_SIMPLE_OPERATIONS: &[&str] = &[
+    "network_egress_plugins.install.official",
+    "network_egress_plugins.install.upload",
+    "network_egress_plugins.official_catalog.view",
+    "network_egress_pool_members.create",
+    "network_egress_pool_members.delete",
+    "network_egress_pool_members.test_connection",
+    "network_egress_pool_members.update",
+    "network_egress_pools.create",
+    "network_egress_pools.delete",
+    "network_egress_pools.list",
+    "network_egress_pools.update",
+    "network_egress_providers.create",
+    "network_egress_providers.lifecycle.update",
+    "network_egress_providers.list",
+    "network_egress_providers.sync",
+    "network_egress_proxy_types.list",
+    "network_egress_proxies.create",
+    "network_egress_routes.create",
+    "network_egress_routes.delete",
+    "network_egress_routes.list",
+    "network_egress_routes.update",
+];
+
 const MCP_SIMPLE_OPERATIONS: &[&str] = &[
     "mcp.bundle_library.current.switch",
     "mcp.bundle_library.import",
@@ -192,6 +216,12 @@ pub(super) const LEGACY_OPERATION_MAPPINGS: &[LegacyGrantMappingSpec] = &[
     legacy_mapping(
         "settings_feature.access.system.model-providers",
         MODEL_PROVIDER_FEATURE_SIMPLE_OPERATIONS,
+        &[],
+        &[],
+    ),
+    legacy_mapping(
+        "settings_feature.access.system.network-center",
+        NETWORK_CENTER_SIMPLE_OPERATIONS,
         &[],
         &[],
     ),

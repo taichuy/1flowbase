@@ -1051,7 +1051,6 @@
     "network_center_pool_delete_failed": "无法删除代理池。",
     "network_center_member_create": "添加代理",
     "network_center_member_edit": "编辑代理",
-    "network_center_member_edit_action": "编辑",
     "network_center_member_reference": "代理类型引用",
     "network_center_member_source": "代理来源",
     "network_center_member_static_http": "手动 HTTP 代理",

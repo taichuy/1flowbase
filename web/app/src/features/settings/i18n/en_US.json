@@ -1051,7 +1051,6 @@
     "network_center_pool_delete_failed": "Unable to delete the proxy pool.",
     "network_center_member_create": "Add proxy",
     "network_center_member_edit": "Edit proxy",
-    "network_center_member_edit_action": "Edit",
     "network_center_member_reference": "Proxy type reference",
     "network_center_member_source": "Proxy source",
     "network_center_member_static_http": "Manual HTTP proxy",

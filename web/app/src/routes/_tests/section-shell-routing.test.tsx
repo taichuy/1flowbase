@@ -173,8 +173,22 @@ const networkCenterApi = vi.hoisted(() => ({
   ],
   settingsNetworkEgressPoolsQueryKey: ['settings', 'network-center', 'pools'],
   settingsNetworkEgressRoutesQueryKey: ['settings', 'network-center', 'routes'],
+  settingsNetworkEgressProviderTypesQueryKey: [
+    'settings',
+    'network-center',
+    'provider-types'
+  ],
+  settingsNetworkEgressOfficialPluginsQueryKey: [
+    'settings',
+    'network-center',
+    'proxy-plugins',
+    'official-catalog'
+  ],
   fetchSettingsNetworkEgressProviders: vi.fn(),
   fetchSettingsNetworkEgressProviderTypes: vi.fn(),
+  fetchSettingsNetworkEgressOfficialPluginCatalog: vi.fn(),
+  installSettingsNetworkEgressOfficialPlugin: vi.fn(),
+  uploadSettingsNetworkEgressPluginPackage: vi.fn(),
   fetchSettingsNetworkEgressPools: vi.fn(),
   fetchSettingsNetworkEgressRoutes: vi.fn()
 }));
@@ -446,6 +460,10 @@ describe('section shell routing', () => {
     networkCenterApi.fetchSettingsNetworkEgressProviders.mockReset();
     networkCenterApi.fetchSettingsNetworkEgressProviders.mockResolvedValue([]);
     networkCenterApi.fetchSettingsNetworkEgressProviderTypes.mockResolvedValue([]);
+    networkCenterApi.fetchSettingsNetworkEgressOfficialPluginCatalog.mockResolvedValue({
+      entries: [],
+      registry_url: null
+    });
     networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([]);
     networkCenterApi.fetchSettingsNetworkEgressRoutes.mockResolvedValue([]);
     dataModelsApi.fetchSettingsDataSourceInstances.mockResolvedValue([]);
@@ -674,7 +692,7 @@ describe('section shell routing', () => {
           return;
         }
         expect(
-          networkCenterApi.fetchSettingsNetworkEgressProviders
+          networkCenterApi.fetchSettingsNetworkEgressProviderTypes
         ).toHaveBeenCalled();
       }, SECTION_REDIRECT_WAIT_OPTIONS);
     },

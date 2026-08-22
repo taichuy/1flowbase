@@ -115,8 +115,12 @@ fn pool_member(row: sqlx::postgres::PgRow) -> Result<domain::NetworkEgressPoolMe
         enabled: row.get("enabled"),
         sequence: row.get("sequence"),
         probe_status: pool_member_probe_status(row.get::<String, _>("probe_status").as_str())?,
-        probe_http_status: pool_member_probe_status(row.get::<String, _>("probe_http_status").as_str())?,
-        probe_https_status: pool_member_probe_status(row.get::<String, _>("probe_https_status").as_str())?,
+        probe_http_status: pool_member_probe_status(
+            row.get::<String, _>("probe_http_status").as_str(),
+        )?,
+        probe_https_status: pool_member_probe_status(
+            row.get::<String, _>("probe_https_status").as_str(),
+        )?,
         probe_latency_ms: row.get::<i32, _>("probe_latency_ms"),
         probe_exit_ip: row.get("probe_exit_ip"),
         probe_exit_region: row.get("probe_exit_region"),
@@ -736,7 +740,10 @@ impl NetworkEgressRouteRepository for PgControlPlaneStore {
 mod tests {
     use super::*;
     use control_plane::{
-        network_egress_pool::{CreateNetworkEgressPoolMemberCommand, NetworkEgressPoolService},
+        network_egress_pool::{
+            ensure_global_network_egress_pool, CreateNetworkEgressPoolMemberCommand,
+            NetworkEgressPoolService, GLOBAL_NETWORK_EGRESS_POOL_ID,
+        },
         ports::{
             CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
             CreateNetworkEgressRouteInput, CreateStaticHttpProxyPoolMemberInput,
@@ -1132,17 +1139,12 @@ mod tests {
         .await
         .expect("provider synchronization should persist the stable projection");
 
-        let pool = NetworkEgressPoolService::new(store.clone())
-            .create(
-                control_plane::network_egress_pool::CreateNetworkEgressPoolCommand {
-                    actor_user_id: actor.id,
-                    display_name: "Healthy first".to_string(),
-                },
-            )
+        let pool = ensure_global_network_egress_pool(&store, actor.id)
             .await
             .expect("pool should persist");
-        assert_eq!(pool.pool.selection_strategy.as_str(), "healthy_first");
-        let pool_id = pool.pool.id;
+        assert_eq!(pool.id, GLOBAL_NETWORK_EGRESS_POOL_ID);
+        assert_eq!(pool.selection_strategy.as_str(), "healthy_first");
+        let pool_id = pool.id;
         let unavailable = NetworkEgressPoolService::new(store.clone())
             .add_member(CreateNetworkEgressPoolMemberCommand {
                 actor_user_id: actor.id,

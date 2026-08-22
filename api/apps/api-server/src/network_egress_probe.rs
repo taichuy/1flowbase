@@ -69,12 +69,14 @@ pub async fn test_network_egress_connection(
         .await
     {
         Ok(Some(scope)) => scope,
-        Ok(None) | Err(_) => return failed_probe(
-            domain::NetworkEgressPoolMemberProbeStatus::Failed,
-            domain::NetworkEgressPoolMemberProbeStatus::NotTested,
-            None,
-            "proxy_unavailable",
-        ),
+        Ok(None) | Err(_) => {
+            return failed_probe(
+                domain::NetworkEgressPoolMemberProbeStatus::Failed,
+                domain::NetworkEgressPoolMemberProbeStatus::NotTested,
+                None,
+                "proxy_unavailable",
+            )
+        }
     };
 
     let http_probe = probe_http_egress(scope.http_client()).await;
@@ -148,7 +150,9 @@ fn failed_probe(
     }
 }
 
-fn status_for_result(result: &Result<ProbeObservation>) -> domain::NetworkEgressPoolMemberProbeStatus {
+fn status_for_result(
+    result: &Result<ProbeObservation>,
+) -> domain::NetworkEgressPoolMemberProbeStatus {
     if result.is_ok() {
         domain::NetworkEgressPoolMemberProbeStatus::Succeeded
     } else {
@@ -226,7 +230,10 @@ fn classify_probe_error(error: &anyhow::Error, fallback: &'static str) -> &'stat
         if request_error.status() == Some(reqwest::StatusCode::PROXY_AUTHENTICATION_REQUIRED) {
             return "proxy_authentication_failed";
         }
-        if request_error.status().is_some_and(|status| status.is_client_error()) {
+        if request_error
+            .status()
+            .is_some_and(|status| status.is_client_error())
+        {
             return "proxy_request_rejected";
         }
     }
@@ -263,9 +270,18 @@ mod tests {
             "https_connect_failed",
         );
 
-        assert_eq!(result.status, domain::NetworkEgressPoolMemberProbeStatus::Failed);
-        assert_eq!(result.http_status, domain::NetworkEgressPoolMemberProbeStatus::Succeeded);
-        assert_eq!(result.https_status, domain::NetworkEgressPoolMemberProbeStatus::Failed);
+        assert_eq!(
+            result.status,
+            domain::NetworkEgressPoolMemberProbeStatus::Failed
+        );
+        assert_eq!(
+            result.http_status,
+            domain::NetworkEgressPoolMemberProbeStatus::Succeeded
+        );
+        assert_eq!(
+            result.https_status,
+            domain::NetworkEgressPoolMemberProbeStatus::Failed
+        );
         assert_eq!(result.latency_ms, 42);
         assert_eq!(result.exit_region.as_deref(), Some("California"));
         assert_eq!(result.error_code.as_deref(), Some("https_connect_failed"));

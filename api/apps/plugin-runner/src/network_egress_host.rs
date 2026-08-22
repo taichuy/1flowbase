@@ -133,10 +133,9 @@ impl NetworkEgressHost {
             package.manifest.runtime.limits,
             config,
         )
-        .map_err(|error| {
+        .inspect_err(|_| {
             self.cleanup_receipts
                 .insert(plugin_id.to_string(), startup_receipt(plugin_id));
-            error
         })?;
         self.sources.insert(plugin_id.to_string(), requested);
         self.workers.insert(plugin_id.to_string(), worker);
