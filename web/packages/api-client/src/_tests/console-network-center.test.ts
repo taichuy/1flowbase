@@ -29,7 +29,8 @@ describe('console network egress providers client', () => {
         {
           installation_id: 'installation-1',
           display_name: 'Mihomo edge',
-          secret_ref: 'secret://system/network/mihomo'
+          description: 'Primary subscription',
+          config: { subscription_url: 'https://example.invalid/subscription' }
         },
         'csrf-123'
       )
@@ -40,7 +41,8 @@ describe('console network egress providers client', () => {
       body: {
         installation_id: 'installation-1',
         display_name: 'Mihomo edge',
-        secret_ref: 'secret://system/network/mihomo'
+        description: 'Primary subscription',
+        config: { subscription_url: 'https://example.invalid/subscription' }
       }
     });
     await expect(
@@ -180,7 +182,9 @@ describe('console network egress pools client', () => {
   });
 
   test('AC-OP02 invokes the fixed server-side connection test without a user target URL', async () => {
-    await expect(testConsoleNetworkEgressPoolMember('pool-1', 'member-1', 'csrf-123')).resolves.toMatchObject({
+    await expect(
+      testConsoleNetworkEgressPoolMember('pool-1', 'member-1', 'csrf-123')
+    ).resolves.toMatchObject({
       path: '/api/console/network-center/pools/pool-1/members/member-1/test-connection',
       method: 'POST',
       csrfToken: 'csrf-123'
