@@ -14,6 +14,11 @@ pub enum ControlPlaneError {
     PluginUnavailable,
     #[error("invalid input: {0}")]
     InvalidInput(&'static str),
+    #[error("catalog module export is not registered: {module_source}.{export_name}")]
+    InvalidComponentModuleExport {
+        module_source: String,
+        export_name: String,
+    },
     #[error("invalid state transition for {resource}: action={action}, from={from}, to={to}")]
     InvalidStateTransition {
         resource: &'static str,

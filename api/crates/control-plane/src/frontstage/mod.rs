@@ -18,9 +18,11 @@ use crate::{
 };
 
 mod block_tree;
+mod dependency_lock_reconciliation;
 mod source_dependencies;
 
 pub use block_tree::*;
+pub use dependency_lock_reconciliation::*;
 
 pub struct CreateFrontstageGroupCommand {
     pub actor_user_id: Uuid,

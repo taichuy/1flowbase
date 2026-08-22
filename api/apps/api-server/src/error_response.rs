@@ -83,6 +83,10 @@ impl IntoResponse for ApiError {
                 (StatusCode::CONFLICT, "plugin_unavailable")
             }
             Some(ControlPlaneError::InvalidInput(name)) => (StatusCode::BAD_REQUEST, *name),
+            Some(ControlPlaneError::InvalidComponentModuleExport { .. }) => (
+                StatusCode::BAD_REQUEST,
+                "frontstage_component_module_export",
+            ),
             Some(ControlPlaneError::InvalidStateTransition { .. }) => {
                 (StatusCode::CONFLICT, "invalid_state_transition")
             }

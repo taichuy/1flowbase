@@ -8,7 +8,9 @@ use control_plane::{
         CreateFrontstageBlockNodeInput, DeleteFrontstageBlockLeafInput,
         DeleteFrontstageBlockSubtreeInput, FrontstageBlockPosition,
         FrontstageBlockSubtreeDeleteResult, FrontstageBlockTreeRepository,
-        MoveFrontstageBlockNodeInput, SaveFrontstageBlockNodeCodeInput,
+        FrontstageDependencyLockReconciliationRepository,
+        LegacyFrontstageBlockDependencyLockCandidate, MoveFrontstageBlockNodeInput,
+        ReconcileFrontstageBlockDependencyLockInput, SaveFrontstageBlockNodeCodeInput,
         UpdateFrontstageBlockDescriptorsInput, UpdateFrontstageBlockNodeInput,
     },
 };
@@ -574,6 +576,100 @@ async fn resolve_query_node_id(
     .fetch_optional(store.pool())
     .await?
     .ok_or_else(|| anyhow::Error::new(missing))
+}
+
+#[async_trait]
+impl FrontstageDependencyLockReconciliationRepository for PgControlPlaneStore {
+    async fn list_legacy_frontstage_block_dependency_lock_candidates(
+        &self,
+    ) -> Result<Vec<LegacyFrontstageBlockDependencyLockCandidate>> {
+        let rows = sqlx::query(
+            r#"
+            select
+                code.workspace_id,
+                code.page_id,
+                node.block_id,
+                code.code_ref,
+                code.code as source_code
+            from frontstage_block_codes code
+            join frontstage_block_nodes node
+              on node.scope_id = code.workspace_id
+             and node.tree_partition_id = code.page_id
+             and node.code_ref = code.code_ref
+            where node.runtime_descriptor -> 'runtime' ->> 'kind' = 'native_react'
+              and not exists (
+                  select 1
+                  from jsonb_array_elements(
+                      case jsonb_typeof(code.dependency_lock)
+                          when 'array' then code.dependency_lock
+                          else '[]'::jsonb
+                      end
+                  ) entry
+                  where entry ->> 'module_source' = 'react'
+              )
+            order by code.workspace_id, code.page_id, code.code_ref
+            "#,
+        )
+        .fetch_all(self.pool())
+        .await?;
+        Ok(rows
+            .into_iter()
+            .map(|row| LegacyFrontstageBlockDependencyLockCandidate {
+                workspace_id: row.get("workspace_id"),
+                page_id: row.get("page_id"),
+                block_id: row.get("block_id"),
+                code_ref: row.get("code_ref"),
+                source_code: row.get("source_code"),
+            })
+            .collect())
+    }
+
+    async fn reconcile_frontstage_block_dependency_locks(
+        &self,
+        updates: &[ReconcileFrontstageBlockDependencyLockInput],
+    ) -> Result<u32> {
+        let mut transaction = self.pool().begin().await?;
+        let mut updated_block_count = 0_u32;
+        for update in updates {
+            validate_audit(update.workspace_id, &update.audit_log)?;
+            let result = sqlx::query(
+                r#"
+                update frontstage_block_codes code
+                set dependency_lock = $4,
+                    updated_by = $5,
+                    updated_at = now()
+                where code.workspace_id = $1
+                  and code.page_id = $2
+                  and code.code_ref = $3
+                  and not exists (
+                      select 1
+                      from jsonb_array_elements(
+                          case jsonb_typeof(code.dependency_lock)
+                              when 'array' then code.dependency_lock
+                              else '[]'::jsonb
+                          end
+                      ) entry
+                      where entry ->> 'module_source' = 'react'
+                  )
+                "#,
+            )
+            .bind(update.workspace_id)
+            .bind(update.page_id)
+            .bind(&update.code_ref)
+            .bind(&update.dependency_lock)
+            .bind(update.audit_log.actor_user_id)
+            .execute(&mut *transaction)
+            .await?;
+            if result.rows_affected() == 1 {
+                insert_audit(&mut transaction, &update.audit_log).await?;
+                updated_block_count = updated_block_count
+                    .checked_add(1)
+                    .ok_or_else(|| anyhow!("frontstage dependency lock reconciliation overflow"))?;
+            }
+        }
+        transaction.commit().await?;
+        Ok(updated_block_count)
+    }
 }
 
 #[async_trait]
