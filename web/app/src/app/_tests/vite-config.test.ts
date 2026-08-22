@@ -2,8 +2,17 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { describe, expect, test } from 'vitest';
+import appPackageJson from '../../../package.json';
+import richTextPackageJson from '../../../../packages/rich-text/package.json';
 
 describe('vite config', () => {
+  test('AC-001 resolves Vditor and its rich-text runtime assets from one exact version', () => {
+    expect(appPackageJson.dependencies.vditor).toBe('3.11.2');
+    expect(richTextPackageJson.dependencies.vditor).toBe(
+      appPackageJson.dependencies.vditor
+    );
+  });
+
   test('proxies backend routes to support same-origin docs requests', async () => {
     const source = await readFile(
       path.resolve(process.cwd(), 'vite.config.ts'),

@@ -217,8 +217,8 @@ importers:
         specifier: ^17.0.8
         version: 17.0.8(i18next@26.3.0(typescript@5.9.3))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(typescript@5.9.3)
       vditor:
-        specifier: ^3.11.2
-        version: 3.11.3
+        specifier: 3.11.2
+        version: 3.11.2
       zustand:
         specifier: ^5.0.3
         version: 5.0.12(@types/react@19.2.14)(react@19.2.5)(use-sync-external-store@1.6.0(react@19.2.5))
@@ -3855,9 +3855,6 @@ packages:
 
   vditor@3.11.2:
     resolution: {integrity: sha512-8QguQQUPWbBFocnfQmWjz4jiykQnvsmCuhOomGIVVK7vc+dQq2h8w9qQQuEjUTZpnZT5fEdYbj4aLr1NGdAZaA==}
-
-  vditor@3.11.3:
-    resolution: {integrity: sha512-9SXqM81fFbQJoOiRIxYj7TJmIhh1nfNyZ4fpAlicL+zc4DvGKhfppIhlVN0rN/Ks3uthjy8VaQqh2Dw1HTXUCA==}
 
   vfile-location@5.0.3:
     resolution: {integrity: sha512-5yXvWDEgqeiYiBe1lbxYF7UMAIm/IcopxMHrMQDq3nvKcjPKIhZklUKL+AE7J7uApI4kwe2snsK+eI6UTj9EHg==}
@@ -8463,10 +8460,6 @@ snapshots:
   uuid@14.0.1: {}
 
   vditor@3.11.2:
-    dependencies:
-      diff-match-patch: 1.0.5
-
-  vditor@3.11.3:
     dependencies:
       diff-match-patch: 1.0.5
 
