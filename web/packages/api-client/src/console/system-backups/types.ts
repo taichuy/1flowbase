@@ -83,6 +83,28 @@ export interface BackupMutationResponse {
   exact_backup_name: string;
 }
 
+export interface QueuedBackupResponse {
+  backup_job_id: string;
+  backup_set_id: string;
+}
+
+export type BackupJobStatus =
+  | 'queued'
+  | 'fencing'
+  | 'capturing'
+  | 'sealing'
+  | 'verifying'
+  | 'succeeded'
+  | 'failed';
+
+export interface BackupJobStatusResponse {
+  backup_job_id: string;
+  backup_set_id: string;
+  status: BackupJobStatus;
+  failure_code: string | null;
+  sealed_components: number;
+}
+
 export interface CreateBackupRequest {
   backup_password?: string;
 }

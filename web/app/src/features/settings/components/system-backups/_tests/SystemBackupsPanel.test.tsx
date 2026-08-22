@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from 'antd';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -7,6 +13,7 @@ const api = vi.hoisted(() => ({
   listSystemBackups: vi.fn(),
   getSystemBackup: vi.fn(),
   createSystemBackup: vi.fn(),
+  getSystemBackupJobStatus: vi.fn(),
   importSystemBackup: vi.fn(),
   verifySystemBackup: vi.fn(),
   deleteSystemBackup: vi.fn(),
@@ -177,6 +184,87 @@ describe('SystemBackupsPanel', () => {
         'backup-password'
       )
     );
+  });
+
+  test('tracks a queued backup job through the server status contract', async () => {
+    api.createSystemBackup.mockResolvedValue({
+      backup_job_id: 'backup-job-1',
+      backup_set_id: backup.backup_set_id
+    });
+    api.getSystemBackupJobStatus.mockResolvedValue({
+      backup_job_id: 'backup-job-1',
+      backup_set_id: backup.backup_set_id,
+      status: 'sealing',
+      failure_code: null,
+      sealed_components: 3
+    });
+
+    renderPanel();
+    await screen.findByText(backup.exact_backup_name);
+    fireEvent.click(screen.getByRole('button', { name: /Create backup/ }));
+    const createDialog = await screen.findByRole('dialog');
+    fireEvent.click(
+      within(createDialog).getByRole('button', { name: /Create backup/ })
+    );
+
+    await waitFor(() =>
+      expect(api.getSystemBackupJobStatus).toHaveBeenCalledWith('backup-job-1')
+    );
+    expect(await screen.findAllByText('Backup started')).not.toHaveLength(0);
+    expect(screen.getByText('backup-job-1')).toBeInTheDocument();
+    expect(screen.getByText('sealing')).toBeInTheDocument();
+    expect(screen.getByText('Sealed components')).toBeInTheDocument();
+    expect(screen.getByText('3')).toBeInTheDocument();
+  });
+
+  test('shows the server failure code for a failed backup job', async () => {
+    api.createSystemBackup.mockResolvedValue({
+      backup_job_id: 'backup-job-2',
+      backup_set_id: backup.backup_set_id
+    });
+    api.getSystemBackupJobStatus.mockResolvedValue({
+      backup_job_id: 'backup-job-2',
+      backup_set_id: backup.backup_set_id,
+      status: 'failed',
+      failure_code: 'backup_capture_failed',
+      sealed_components: 1
+    });
+
+    renderPanel();
+    await screen.findByText(backup.exact_backup_name);
+    fireEvent.click(screen.getByRole('button', { name: /Create backup/ }));
+    const createDialog = await screen.findByRole('dialog');
+    fireEvent.click(
+      within(createDialog).getByRole('button', { name: /Create backup/ })
+    );
+
+    expect(await screen.findByText('Backup failed')).toBeInTheDocument();
+    expect(screen.getByText('backup_capture_failed')).toBeInTheDocument();
+  });
+
+  test('refreshes the backup inventory after a backup job succeeds', async () => {
+    api.createSystemBackup.mockResolvedValue({
+      backup_job_id: 'backup-job-3',
+      backup_set_id: backup.backup_set_id
+    });
+    api.getSystemBackupJobStatus.mockResolvedValue({
+      backup_job_id: 'backup-job-3',
+      backup_set_id: backup.backup_set_id,
+      status: 'succeeded',
+      failure_code: null,
+      sealed_components: 4
+    });
+
+    renderPanel();
+    await screen.findByText(backup.exact_backup_name);
+    fireEvent.click(screen.getByRole('button', { name: /Create backup/ }));
+    const createDialog = await screen.findByRole('dialog');
+    fireEvent.click(
+      within(createDialog).getByRole('button', { name: /Create backup/ })
+    );
+
+    expect(await screen.findByText('Backup completed')).toBeInTheDocument();
+    await waitFor(() => expect(api.listSystemBackups).toHaveBeenCalledTimes(2));
   });
 
   test('keeps restore dangerous and projects server preflight and journal status', async () => {
