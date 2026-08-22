@@ -2,7 +2,9 @@ import { describe, expect, expectTypeOf, test, vi } from 'vitest';
 import * as transport from '../transport';
 import type {
   ConsoleMcpTool,
-  ConsoleMcpToolAvailabilityStatus
+  ConsoleMcpToolAvailabilityStatus,
+  SaveConsoleMcpToolBody,
+  UpdateConsoleMcpToolBody
 } from '../console-mcp-management';
 
 import {
@@ -51,6 +53,49 @@ describe('console-mcp-management client', () => {
     expectTypeOf<
       ConsoleMcpTool['availability_status']
     >().toEqualTypeOf<ConsoleMcpToolAvailabilityStatus>();
+  });
+
+  test('AC-017 accepts MCP tool requests without a full description', async () => {
+    const createBody = {
+      tool_id: 'get_runtime',
+      des_id: 'des12345',
+      name: 'Get Runtime',
+      short_description: 'Runtime profile',
+      execution_target: {
+        kind: 'interface_wrapper' as const,
+        interface_id: 'get_runtime_profile'
+      },
+      parameter_schema: {},
+      result_schema: {},
+      input_mapping: {},
+      output_mapping: {},
+      permission_code: 'system_runtime.view.all',
+      risk_level: 'high',
+      status: 'draft'
+    } satisfies SaveConsoleMcpToolBody;
+    const updateBody = {
+      des_id: 'des12345',
+      name: 'Get Runtime',
+      short_description: 'Runtime profile',
+      execution_target: {
+        kind: 'interface_wrapper' as const,
+        interface_id: 'get_runtime_profile'
+      },
+      parameter_schema: {},
+      result_schema: {},
+      input_mapping: {},
+      output_mapping: {},
+      permission_code: 'system_runtime.view.all',
+      risk_level: 'high',
+      status: 'draft'
+    } satisfies UpdateConsoleMcpToolBody;
+
+    await expect(
+      createConsoleMcpTool(createBody, 'csrf-123')
+    ).resolves.toMatchObject({ body: createBody });
+    await expect(
+      updateConsoleMcpTool('get_runtime', updateBody, 'csrf-123')
+    ).resolves.toMatchObject({ body: updateBody });
   });
 
   vi.spyOn(transport, 'apiFetch').mockImplementation(

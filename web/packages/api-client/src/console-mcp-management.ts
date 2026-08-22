@@ -366,7 +366,7 @@ interface SaveConsoleMcpToolBodyBase {
   des_id: string;
   name: string;
   short_description: string;
-  full_description: string;
+  full_description?: string;
   parameter_schema: unknown;
   result_schema: unknown;
   permission_code: string | null;

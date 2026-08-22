@@ -1054,7 +1054,6 @@ export function McpToolsTab({
             <Form.Item
               name="full_description"
               label="full_description"
-              rules={[{ required: true }]}
             >
               <MarkdownIrEditor ariaLabel="full_description" />
             </Form.Item>

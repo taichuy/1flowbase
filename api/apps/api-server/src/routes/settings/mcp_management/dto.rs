@@ -265,7 +265,8 @@ pub struct CreateMcpToolBody {
     pub des_id: Option<String>,
     pub name: String,
     pub short_description: String,
-    pub full_description: String,
+    #[serde(default)]
+    pub full_description: Option<String>,
     pub execution_target: McpToolExecutionTargetDto,
     #[schema(value_type = Object)]
     pub parameter_schema: serde_json::Value,
@@ -284,7 +285,8 @@ pub struct UpdateMcpToolBody {
     pub name: String,
     pub des_id: Option<String>,
     pub short_description: String,
-    pub full_description: String,
+    #[serde(default)]
+    pub full_description: Option<String>,
     pub execution_target: McpToolExecutionTargetDto,
     #[schema(value_type = Object)]
     pub parameter_schema: serde_json::Value,

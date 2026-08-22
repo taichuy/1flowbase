@@ -15,7 +15,7 @@ export type ToolFormValues = {
   des_id: string;
   name: string;
   short_description: string;
-  full_description: string;
+  full_description?: string;
   execution_target_kind: 'interface_wrapper' | 'mcp_proxy' | 'assistant_client';
   interface_id?: string;
   upstream_connection_id?: string;

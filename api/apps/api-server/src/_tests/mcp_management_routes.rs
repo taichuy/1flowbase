@@ -292,6 +292,82 @@ async fn mcp_tool_contract_accepts_boolean_json_result_schemas() {
     }
 }
 
+#[tokio::test]
+async fn mcp_tool_create_and_update_allow_omitting_full_description() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let create_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/tools")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "tool_id": "optional_full_description",
+                        "des_id": null,
+                        "name": "Optional full description",
+                        "short_description": "Tool with an optional full description",
+                        "execution_target": {"kind":"interface_wrapper","interface_id":"get_runtime_profile"},
+                        "parameter_schema": {},
+                        "result_schema": {},
+                        "input_mapping": {},
+                        "output_mapping": {},
+                        "permission_code": null,
+                        "risk_level": "low",
+                        "status": "enabled"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(create_response.status(), StatusCode::CREATED);
+    assert_eq!(
+        response_json(create_response).await["data"]["full_description"],
+        json!("")
+    );
+
+    let update_response = app
+        .oneshot(
+            Request::builder()
+                .method("PUT")
+                .uri("/api/console/mcp/tools/optional_full_description")
+                .header("cookie", &root_cookie)
+                .header("x-csrf-token", &root_csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "des_id": null,
+                        "name": "Optional full description updated",
+                        "short_description": "Updated without full description",
+                        "execution_target": {"kind":"interface_wrapper","interface_id":"get_runtime_profile"},
+                        "parameter_schema": {},
+                        "result_schema": {},
+                        "input_mapping": {},
+                        "output_mapping": {},
+                        "permission_code": null,
+                        "risk_level": "low",
+                        "status": "enabled"
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(update_response.status(), StatusCode::OK);
+    assert_eq!(
+        response_json(update_response).await["data"]["full_description"],
+        json!("")
+    );
+}
+
 async fn create_exposed_published_model(
     app: &axum::Router,
     cookie: &str,

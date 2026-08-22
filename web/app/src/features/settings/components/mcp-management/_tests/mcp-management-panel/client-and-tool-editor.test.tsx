@@ -455,12 +455,14 @@ function renderPanelWithMountedTool({
   includeBinding = true,
   includeGroup = false,
   operation = 'POST /api/console/apps',
-  proxy = false
+  proxy = false,
+  fullDescription = 'Search customer'
 }: {
   includeBinding?: boolean;
   includeGroup?: boolean;
   operation?: string;
   proxy?: boolean;
+  fullDescription?: string;
 } = {}) {
   return render(
     <AppProviders>
@@ -512,7 +514,7 @@ function renderPanelWithMountedTool({
               tool_id: 'search_customer',
               name: 'Search customer',
               short_description: 'Find matching customers',
-              full_description: 'Search customer',
+              full_description: fullDescription,
               managed_by: null,
               execution_target: proxy
                 ? {
@@ -1037,9 +1039,30 @@ describe('McpManagementPanel', () => {
       expect(vditorMock.constructor).toHaveBeenCalled();
     });
     expect(vditorMock.instances[0]?.options.mode).toBe('ir');
+    expect(vditorMock.instances[0]?.options.value).toBe('');
 
     act(() => {
       vditorMock.instances[0]?.options.input?.('Rendered **markdown**');
+    });
+  });
+
+  test('AC-001 saves an interface wrapper from input mapping when full description is empty', async () => {
+    renderPanelWithMountedTool({ fullDescription: '' });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Tool 配置' }));
+    const toolRow = screen.getByRole('row', { name: /Search customer/ });
+    fireEvent.click(within(toolRow).getAllByRole('button')[0]);
+
+    const dialog = await screen.findByRole('dialog');
+    clickSegmentedOption(dialog, 'input_mapping');
+    fireEvent.click(within(dialog).getByText('OK'));
+
+    await waitFor(() => {
+      expect(mcpManagementApi.updateSettingsMcpTool).toHaveBeenCalledWith(
+        'search_customer',
+        expect.objectContaining({ full_description: '' }),
+        expect.any(String)
+      );
     });
   });
 
