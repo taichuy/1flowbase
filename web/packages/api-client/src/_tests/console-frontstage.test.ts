@@ -9,7 +9,6 @@ import {
   deleteFrontstagePageNode,
   dispatchFrontstageCallable,
   dispatchFrontstageCallableStream,
-  issueFrontstageCallableWriteGrant,
   type FrontstageCallableBinaryResource,
   getFrontstageInterfaceCapability,
   getFrontstageComponentCapability,
@@ -212,8 +211,6 @@ describe('console-frontstage client', () => {
           block_id: 'block-1',
           method: 'GET',
           path: '/api/console/conversations',
-          run_id: 'run-1',
-          draft_hash: 'draft-1',
           request: { query: { filter: 'status=active' } }
         },
         'csrf-123'
@@ -225,8 +222,6 @@ describe('console-frontstage client', () => {
         block_id: 'block-1',
         method: 'GET',
         path: '/api/console/conversations',
-        run_id: 'run-1',
-        draft_hash: 'draft-1',
         request: { query: { filter: 'status=active' } }
       },
       csrfToken: 'csrf-123'
@@ -242,9 +237,7 @@ describe('console-frontstage client', () => {
         {
           block_id: 'block-1',
           method: 'GET',
-          path: '/api/console/export-logs',
-          run_id: 'run-1',
-          draft_hash: 'draft-1'
+          path: '/api/console/export-logs'
         },
         'csrf-123'
       )
@@ -270,9 +263,7 @@ describe('console-frontstage client', () => {
         {
           block_id: 'block-1',
           method: 'DELETE',
-          path: '/api/console/delete-tab',
-          run_id: 'run-1',
-          draft_hash: 'draft-1'
+          path: '/api/console/delete-tab'
         },
         'csrf-123'
       )
@@ -289,44 +280,13 @@ describe('console-frontstage client', () => {
       {
         block_id: 'block-1',
         method: 'GET',
-        path: '/api/console/watch-run',
-        run_id: 'run-1',
-        draft_hash: 'draft-1'
+        path: '/api/console/watch-run'
       },
       'csrf-123'
     );
     const events = [];
     for await (const event of iterable) events.push(event);
     expect(events).toEqual([{ progress: 1 }, 'complete']);
-  });
-
-  test('issues a server-owned single-use write grant for one draft route', async () => {
-    await expect(
-      issueFrontstageCallableWriteGrant(
-        'workspace-1',
-        'page-1',
-        'tab-1',
-        {
-          block_id: 'block-1',
-          method: 'PUT',
-          path: '/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document',
-          run_id: 'run-1',
-          draft_hash: 'draft-1'
-        },
-        'csrf-123'
-      )
-    ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/callable-interfaces/write-grants',
-      method: 'POST',
-      body: {
-        block_id: 'block-1',
-        method: 'PUT',
-        path: '/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document',
-        run_id: 'run-1',
-        draft_hash: 'draft-1'
-      },
-      csrfToken: 'csrf-123'
-    });
   });
 
   test.each([

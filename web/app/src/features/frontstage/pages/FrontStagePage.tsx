@@ -1,6 +1,5 @@
 import {
   Alert,
-  App as AntdApp,
   Button,
   Divider,
   Drawer,
@@ -130,7 +129,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   onMovePageNode,
   onDeletePageNode
 }) => {
-  const { modal } = AntdApp.useApp();
   const csrfToken = useAuthStore((state) => state.csrfToken);
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
   const actor = useAuthStore((state) => state.actor);
@@ -291,24 +289,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     () => () => pageSignalCoordinator?.dispose(),
     [pageSignalCoordinator]
   );
-  const confirmRuntimeWrite = useCallback(
-    ({ method, path }: { method: string; path: string }) =>
-      new Promise<boolean>((resolve) => {
-        modal.confirm({
-          title: i18nText('frontstage', 'auto.confirm_runtime_write'),
-          content: i18nText(
-            'frontstage',
-            'auto.confirm_runtime_write_description',
-            { value1: method.toUpperCase(), value2: path }
-          ),
-          okText: i18nText('frontstage', 'auto.confirm'),
-          cancelText: i18nText('frontstage', 'auto.cancel'),
-          onOk: () => resolve(true),
-          onCancel: () => resolve(false)
-        });
-      }),
-    [modal]
-  );
   const jsBlockCapabilityHandlers = useMemo(
     () =>
       selectedPageId && tabId
@@ -317,7 +297,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             pageId: selectedPageId,
             tabId,
             csrfToken,
-            confirmRuntimeWrite,
             resolveBlockId: (requestId) => {
               const blockId = requestId.split(':')[1];
               return (
@@ -332,7 +311,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           })
         : undefined,
     [
-      confirmRuntimeWrite,
       csrfToken,
       assemblyBlocks,
       displayedPageDocument,

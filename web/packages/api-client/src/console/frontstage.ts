@@ -244,23 +244,7 @@ export interface DispatchFrontstageCallableInput {
   block_id: string;
   method: string;
   path: string;
-  run_id: string;
-  draft_hash: string;
   request?: FrontstageCallableRequest;
-  write_grant?: string;
-}
-
-export interface IssueFrontstageCallableWriteGrantInput {
-  block_id: string;
-  method: string;
-  path: string;
-  run_id: string;
-  draft_hash: string;
-}
-
-export interface FrontstageCallableWriteGrant {
-  grant_token: string;
-  expires_at: string;
 }
 
 export function listFrontstageInterfaceCapabilities(
@@ -490,23 +474,6 @@ function parseSseData(value: string): unknown {
   } catch {
     return value;
   }
-}
-
-export function issueFrontstageCallableWriteGrant(
-  workspaceId: string,
-  pageId: string,
-  tabId: string,
-  input: IssueFrontstageCallableWriteGrantInput,
-  csrfToken: string,
-  baseUrl?: string
-): Promise<FrontstageCallableWriteGrant> {
-  return apiFetch<FrontstageCallableWriteGrant>({
-    path: `/api/console/frontstage/${workspaceId}/pages/${pageId}/tabs/${tabId}/callable-interfaces/write-grants`,
-    method: 'POST',
-    body: input,
-    csrfToken,
-    baseUrl
-  });
 }
 
 export function dispatchFrontstageQuery<T = unknown>(

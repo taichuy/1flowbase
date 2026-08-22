@@ -13,7 +13,6 @@ use control_plane::{
 use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use time::{Duration, OffsetDateTime};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -30,10 +29,6 @@ use crate::{
     response::ApiSuccess,
 };
 
-const WRITE_GRANT_TTL: Duration = Duration::minutes(5);
-const WRITE_GRANT_LOCK_TTL: Duration = Duration::seconds(10);
-const WRITE_GRANT_CACHE_PREFIX: &str = "frontstage:callable-write-grant:";
-const WRITE_GRANT_LOCK_PREFIX: &str = "frontstage:callable-write-grant-lock:";
 const INTERFACE_CAPABILITY_PAGE_SIZE: usize = 20;
 
 #[derive(Clone)]
@@ -140,41 +135,8 @@ pub struct DispatchFrontstageCallableBody {
     pub block_id: String,
     pub method: String,
     pub path: String,
-    pub run_id: String,
-    pub draft_hash: String,
     #[serde(default)]
     pub request: DispatchArguments,
-    pub write_grant: Option<String>,
-}
-
-#[derive(Debug, Deserialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct IssueFrontstageCallableWriteGrantBody {
-    pub block_id: String,
-    pub method: String,
-    pub path: String,
-    pub run_id: String,
-    pub draft_hash: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct FrontstageCallableWriteGrantResponse {
-    pub grant_token: String,
-    pub expires_at: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-struct FrontstageCallableWriteGrant {
-    actor_user_id: Uuid,
-    workspace_id: Uuid,
-    page_id: Uuid,
-    tab_id: Uuid,
-    block_id: String,
-    method: String,
-    path: String,
-    run_id: String,
-    draft_hash: String,
-    expires_at: OffsetDateTime,
 }
 
 #[utoipa::path(
@@ -311,7 +273,7 @@ pub async fn dispatch_frontstage_callable_interface(
     let page_id = super::parse_uuid(&page_id, "page_id")?;
     let tab_id = super::parse_uuid(&tab_id, "tab_id")?;
 
-    let (route, callable) = resolve_source_callable(
+    let callable = resolve_source_callable(
         &state,
         &context,
         workspace_id,
@@ -322,28 +284,6 @@ pub async fn dispatch_frontstage_callable_interface(
         &body.path,
     )
     .await?;
-    if callable.risk_level != "low" {
-        let Some(grant_token) = body.write_grant.as_deref() else {
-            return Err(ControlPlaneError::InvalidInput("write_grant").into());
-        };
-        consume_write_grant(
-            &state,
-            grant_token,
-            &FrontstageCallableWriteGrant {
-                actor_user_id: context.user.id,
-                workspace_id,
-                page_id,
-                tab_id,
-                block_id: body.block_id.clone(),
-                method: route.method.clone(),
-                path: route.path.clone(),
-                run_id: body.run_id.clone(),
-                draft_hash: body.draft_hash.clone(),
-                expires_at: OffsetDateTime::UNIX_EPOCH,
-            },
-        )
-        .await?;
-    }
 
     let injected_path = injected_path_parameters(
         &callable.host_injected_parameters,
@@ -373,90 +313,6 @@ pub async fn dispatch_frontstage_callable_interface(
     }
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/callable-interfaces/write-grants",
-    request_body = IssueFrontstageCallableWriteGrantBody,
-    params(
-        ("workspace_id" = String, Path, description = "Workspace id"),
-        ("page_id" = String, Path, description = "Page id"),
-        ("tab_id" = String, Path, description = "Tab id")
-    ),
-    responses(
-        (status = 200, body = FrontstageCallableWriteGrantResponse),
-        (status = 400, body = crate::error_response::ErrorBody),
-        (status = 401, body = crate::error_response::ErrorBody),
-        (status = 403, body = crate::error_response::ErrorBody),
-        (status = 404, body = crate::error_response::ErrorBody)
-    )
-)]
-pub async fn issue_frontstage_callable_write_grant(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Path((workspace_id, page_id, tab_id)): Path<(String, String, String)>,
-    Json(body): Json<IssueFrontstageCallableWriteGrantBody>,
-) -> Result<Json<ApiSuccess<FrontstageCallableWriteGrantResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let workspace_id = super::parse_uuid(&workspace_id, "workspace_id")?;
-    let page_id = super::parse_uuid(&page_id, "page_id")?;
-    let tab_id = super::parse_uuid(&tab_id, "tab_id")?;
-    let (route, callable) = resolve_source_callable(
-        &state,
-        &context,
-        workspace_id,
-        page_id,
-        tab_id,
-        &body.block_id,
-        &body.method,
-        &body.path,
-    )
-    .await?;
-    if callable.risk_level == "low" {
-        return Err(ControlPlaneError::InvalidInput("method_path").into());
-    }
-    if body.run_id.trim().is_empty() || body.draft_hash.trim().is_empty() {
-        return Err(ControlPlaneError::InvalidInput("draft_run").into());
-    }
-
-    let grant_token = Uuid::new_v4().to_string();
-    let expires_at = OffsetDateTime::now_utc() + WRITE_GRANT_TTL;
-    let grant = FrontstageCallableWriteGrant {
-        actor_user_id: context.user.id,
-        workspace_id,
-        page_id,
-        tab_id,
-        block_id: body.block_id,
-        method: route.method,
-        path: route.path,
-        run_id: body.run_id,
-        draft_hash: body.draft_hash,
-        expires_at,
-    };
-    state
-        .infrastructure
-        .cache_store()
-        .set_if_absent_json(
-            &write_grant_cache_key(&grant_token),
-            serde_json::to_value(grant)?,
-            Some(WRITE_GRANT_TTL),
-        )
-        .await?
-        .then_some(())
-        .ok_or(ControlPlaneError::Conflict(
-            "frontstage_callable_write_grant",
-        ))?;
-
-    Ok(Json(ApiSuccess::new(
-        FrontstageCallableWriteGrantResponse {
-            grant_token,
-            expires_at: expires_at
-                .format(&time::format_description::well_known::Rfc3339)
-                .map_err(anyhow::Error::from)?,
-        },
-    )))
-}
-
 #[allow(clippy::too_many_arguments)]
 async fn resolve_source_callable(
     state: &ApiState,
@@ -467,7 +323,7 @@ async fn resolve_source_callable(
     block_id: &str,
     method: &str,
     path: &str,
-) -> Result<(CanonicalRouteKey, RegisteredCallable), ApiError> {
+) -> Result<RegisteredCallable, ApiError> {
     let node = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
         .get_block_node(FrontstageBlockScopeCommand {
             actor_user_id: context.user.id,
@@ -484,7 +340,7 @@ async fn resolve_source_callable(
         .await?
         .map(registered_callable)
         .ok_or(ControlPlaneError::NotFound("frontstage_callable"))?;
-    Ok((route, callable))
+    Ok(callable)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -515,74 +371,6 @@ fn canonical_route_key(method: &str, path: &str) -> Result<CanonicalRouteKey, Ap
         method,
         path: path.to_string(),
     })
-}
-
-async fn consume_write_grant(
-    state: &ApiState,
-    grant_token: &str,
-    expected: &FrontstageCallableWriteGrant,
-) -> Result<(), ApiError> {
-    let lock_key = write_grant_lock_key(grant_token);
-    let lock_owner = Uuid::new_v4().to_string();
-    let lock = state.infrastructure.distributed_lock();
-    if !lock
-        .acquire(&lock_key, &lock_owner, WRITE_GRANT_LOCK_TTL)
-        .await?
-    {
-        return Err(ControlPlaneError::Conflict("frontstage_callable_write_grant").into());
-    }
-
-    let cache = state.infrastructure.cache_store();
-    let cache_key = write_grant_cache_key(grant_token);
-    let result = async {
-        let value = cache
-            .get_json(&cache_key)
-            .await?
-            .ok_or(ControlPlaneError::InvalidInput("write_grant"))?;
-        let grant: FrontstageCallableWriteGrant = serde_json::from_value(value)
-            .map_err(|_| ControlPlaneError::InvalidInput("write_grant"))?;
-        if grant.expires_at <= OffsetDateTime::now_utc() || !grant_matches(&grant, expected) {
-            return Err(ControlPlaneError::InvalidInput("write_grant").into());
-        }
-        cache.delete(&cache_key).await?;
-        Ok(())
-    }
-    .await;
-    let _ = lock.release(&lock_key, &lock_owner).await;
-    result
-}
-
-fn grant_matches(
-    grant: &FrontstageCallableWriteGrant,
-    expected: &FrontstageCallableWriteGrant,
-) -> bool {
-    grant.actor_user_id == expected.actor_user_id
-        && grant.workspace_id == expected.workspace_id
-        && grant.page_id == expected.page_id
-        && grant.tab_id == expected.tab_id
-        && grant.block_id == expected.block_id
-        && grant.method == expected.method
-        && grant.path == expected.path
-        && grant.run_id == expected.run_id
-        && grant.draft_hash == expected.draft_hash
-}
-
-fn write_grant_cache_key(grant_token: &str) -> String {
-    format!(
-        "{WRITE_GRANT_CACHE_PREFIX}{}",
-        grant_token_digest(grant_token)
-    )
-}
-
-fn write_grant_lock_key(grant_token: &str) -> String {
-    format!(
-        "{WRITE_GRANT_LOCK_PREFIX}{}",
-        grant_token_digest(grant_token)
-    )
-}
-
-fn grant_token_digest(grant_token: &str) -> String {
-    format!("{:x}", Sha256::digest(grant_token.as_bytes()))
 }
 
 fn registered_callable(entry: OpenApiCapabilityCatalogEntry) -> RegisteredCallable {
@@ -727,58 +515,6 @@ fn strip_injected_path_parameters(schema: &mut Value, injected: &[&str]) {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    type GrantMutation = Box<dyn Fn(&mut FrontstageCallableWriteGrant)>;
-
-    fn grant() -> FrontstageCallableWriteGrant {
-        FrontstageCallableWriteGrant {
-            actor_user_id: Uuid::new_v4(),
-            workspace_id: Uuid::new_v4(),
-            page_id: Uuid::new_v4(),
-            tab_id: Uuid::new_v4(),
-            block_id: "block-1".to_string(),
-            method: "PUT".to_string(),
-            path: "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document"
-                .to_string(),
-            run_id: "run-1".to_string(),
-            draft_hash: "draft-1".to_string(),
-            expires_at: OffsetDateTime::now_utc() + Duration::minutes(1),
-        }
-    }
-
-    #[test]
-    fn ac_004_write_grant_is_bound_to_the_complete_draft_call_identity() {
-        let expected = grant();
-        assert!(grant_matches(&expected, &expected));
-
-        let mutations: Vec<GrantMutation> = vec![
-            Box::new(|value| value.actor_user_id = Uuid::new_v4()),
-            Box::new(|value| value.workspace_id = Uuid::new_v4()),
-            Box::new(|value| value.page_id = Uuid::new_v4()),
-            Box::new(|value| value.tab_id = Uuid::new_v4()),
-            Box::new(|value| value.block_id = "block-2".to_string()),
-            Box::new(|value| value.method = "GET".to_string()),
-            Box::new(|value| value.path = "/api/console/other".to_string()),
-            Box::new(|value| value.run_id = "run-2".to_string()),
-            Box::new(|value| value.draft_hash = "draft-2".to_string()),
-        ];
-        for mutate in mutations {
-            let mut replay = expected.clone();
-            mutate(&mut replay);
-            assert!(!grant_matches(&replay, &expected));
-        }
-    }
-
-    #[test]
-    fn write_grant_cache_key_does_not_expose_the_bearer_token() {
-        let token = "secret-grant-token";
-        let key = write_grant_cache_key(token);
-        assert!(key.starts_with(WRITE_GRANT_CACHE_PREFIX));
-        assert!(!key.contains(token));
-        let lock_key = write_grant_lock_key(token);
-        assert!(lock_key.starts_with(WRITE_GRANT_LOCK_PREFIX));
-        assert!(!lock_key.contains(token));
-    }
 
     #[test]
     fn ac_020_route_key_requires_a_supported_method_and_canonical_relative_path() {

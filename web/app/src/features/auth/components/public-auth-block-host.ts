@@ -23,18 +23,9 @@ export function createPublicAuthInputs(
   };
 }
 
-interface PublicAuthPreviewRunAuthorization {
-  confirmWrite: () => Promise<boolean>;
-  writeConfirmed: boolean;
-  writeConfirmation: Promise<boolean> | null;
-}
-
 export interface PublicAuthPreviewCapabilityHandlers {
   interface: BlockHostEffectHandler<BlockHostInterfaceEffect>;
-  prepareDraftRun(input: {
-    runId: string;
-    confirmWrite: () => Promise<boolean>;
-  }): Promise<void>;
+  prepareDraftRun(input: { runId: string }): Promise<void>;
   revokeDraftRun(runId: string): void;
 }
 
@@ -64,39 +55,23 @@ export function createPublicAuthNativeBlockContextCapabilities(input: {
 }
 
 export function createPublicAuthPreviewCapabilityHandlers(): PublicAuthPreviewCapabilityHandlers {
-  const draftRuns = new Map<string, PublicAuthPreviewRunAuthorization>();
+  const draftRuns = new Set<string>();
 
   return {
-    async prepareDraftRun({ runId, confirmWrite }) {
-      draftRuns.set(runId, {
-        confirmWrite,
-        writeConfirmed: false,
-        writeConfirmation: null
-      });
+    async prepareDraftRun({ runId }) {
+      draftRuns.add(runId);
     },
     revokeDraftRun(runId) {
       draftRuns.delete(runId);
     },
     async interface(effect) {
-      const draftRun = draftRuns.get(effect.requestId);
-      if (!draftRun) {
+      if (!draftRuns.has(effect.requestId)) {
         throw new Error('Public authentication preview run is not registered.');
       }
       if (effect.operation && effect.operation !== 'call') {
         throw new Error(
           'Public authentication preview streaming is not supported.'
         );
-      }
-      if (isPublicAuthWriteMethod(effect.method)) {
-        const confirmed = await confirmPublicAuthPreviewWrite(draftRun);
-        if (!confirmed) {
-          throw new Error('Public authentication preview write was cancelled.');
-        }
-        if (draftRuns.get(effect.requestId) !== draftRun) {
-          throw new Error(
-            'Public authentication preview run is not registered.'
-          );
-        }
       }
       return dispatchPublicAuthApi(effect.method, effect.path, effect.request);
     }
@@ -143,19 +118,4 @@ function toStringRecord(
   return Object.fromEntries(
     Object.entries(value).map(([key, item]) => [key, String(item)])
   );
-}
-
-function isPublicAuthWriteMethod(method: string): boolean {
-  return !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
-}
-
-async function confirmPublicAuthPreviewWrite(
-  draftRun: PublicAuthPreviewRunAuthorization
-): Promise<boolean> {
-  if (draftRun.writeConfirmed) return true;
-  draftRun.writeConfirmation ??= draftRun.confirmWrite();
-  const confirmed = await draftRun.writeConfirmation;
-  draftRun.writeConfirmation = null;
-  if (confirmed) draftRun.writeConfirmed = true;
-  return confirmed;
 }

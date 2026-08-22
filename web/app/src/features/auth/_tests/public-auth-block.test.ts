@@ -93,11 +93,11 @@ describe('public Auth Block host adapter', () => {
     expect(apiFetch).toHaveBeenCalledTimes(1);
   });
 
-  test('D4-AC-002/003 keeps cancelled and revoked Native preview writes away from the network', async () => {
+  test('D4-AC-002/003 dispatches a registered Native preview write and still rejects a revoked run', async () => {
+    apiFetch.mockResolvedValue({ registered: true });
     const preview = createPublicAuthPreviewCapabilityHandlers();
-    const confirmWrite = vi.fn().mockResolvedValue(false);
     const runId = 'draft:auth-password-local:native';
-    await preview.prepareDraftRun({ runId, confirmWrite });
+    await preview.prepareDraftRun({ runId });
     const context = createPublicAuthNativeBlockContextCapabilities({
       requestId: runId,
       instanceEpoch: 'auth-preview-epoch-1',
@@ -110,21 +110,19 @@ describe('public Auth Block host adapter', () => {
       context.api.post('/api/public/auth/sign-up', {
         body: { account: 'alice' }
       })
-    ).rejects.toThrow('cancelled');
+    ).resolves.toEqual({ registered: true });
     preview.revokeDraftRun(runId);
     await expect(context.api.post('/api/public/auth/sign-up')).rejects.toThrow(
       'not registered'
     );
-    expect(confirmWrite).toHaveBeenCalledOnce();
-    expect(apiFetch).not.toHaveBeenCalled();
+    expect(apiFetch).toHaveBeenCalledOnce();
   });
 
-  test('AC-033 confirms preview writes before dispatch and cancels without side effects', async () => {
-    const confirmWrite = vi.fn().mockResolvedValue(false);
+  test('AC-033 dispatches preview writes without a confirmation callback', async () => {
+    apiFetch.mockResolvedValue({ registered: true });
     const capabilities = createPublicAuthPreviewCapabilityHandlers();
     await capabilities.prepareDraftRun({
-      runId: 'draft:auth-password-local:1',
-      confirmWrite
+      runId: 'draft:auth-password-local:1'
     });
 
     await expect(
@@ -135,19 +133,16 @@ describe('public Auth Block host adapter', () => {
         path: '/api/public/auth/sign-up',
         request: { body: { account: 'alice' } }
       })
-    ).rejects.toThrow('cancelled');
+    ).resolves.toEqual({ registered: true });
 
-    expect(confirmWrite).toHaveBeenCalledTimes(1);
-    expect(apiFetch).not.toHaveBeenCalled();
+    expect(apiFetch).toHaveBeenCalledOnce();
   });
 
-  test('AC-033 dispatches preview reads without write confirmation', async () => {
+  test('AC-033 keeps preview reads unchanged', async () => {
     apiFetch.mockResolvedValue({ state: 'ready' });
-    const confirmWrite = vi.fn().mockResolvedValue(false);
     const capabilities = createPublicAuthPreviewCapabilityHandlers();
     await capabilities.prepareDraftRun({
-      runId: 'draft:auth-password-local:read',
-      confirmWrite
+      runId: 'draft:auth-password-local:read'
     });
 
     await expect(
@@ -159,17 +154,14 @@ describe('public Auth Block host adapter', () => {
       })
     ).resolves.toEqual({ state: 'ready' });
 
-    expect(confirmWrite).not.toHaveBeenCalled();
     expect(apiFetch).toHaveBeenCalledTimes(1);
   });
 
-  test('AC-034 confirms once per preview run and revokes the run capability', async () => {
+  test('AC-034 dispatches every registered preview write and revokes the run capability', async () => {
     apiFetch.mockResolvedValue({ ok: true });
-    const confirmWrite = vi.fn().mockResolvedValue(true);
     const capabilities = createPublicAuthPreviewCapabilityHandlers();
     await capabilities.prepareDraftRun({
-      runId: 'draft:auth-password-local:write',
-      confirmWrite
+      runId: 'draft:auth-password-local:write'
     });
     const effect = {
       type: 'interface' as const,
@@ -180,7 +172,6 @@ describe('public Auth Block host adapter', () => {
 
     await capabilities.interface(effect);
     await capabilities.interface(effect);
-    expect(confirmWrite).toHaveBeenCalledTimes(1);
     expect(apiFetch).toHaveBeenCalledTimes(2);
 
     capabilities.revokeDraftRun('draft:auth-password-local:write');
