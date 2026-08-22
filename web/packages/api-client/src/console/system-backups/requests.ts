@@ -40,7 +40,7 @@ export const getSystemBackupJobStatus = (
   baseUrl?: string
 ) =>
   apiFetch<BackupJobStatusResponse>({
-    path: `${BASE_PATH}/jobs/${encodeURIComponent(backupJobId)}`,
+    path: `${BASE_PATH}/jobs/status/${encodeURIComponent(backupJobId)}`,
     baseUrl
   });
 export const importSystemBackup = (

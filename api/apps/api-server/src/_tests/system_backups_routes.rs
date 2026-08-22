@@ -45,7 +45,7 @@ async fn create_backup(app: &axum::Router, cookie: &str, csrf: &str) -> Uuid {
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/api/console/settings/system-backups/jobs/{backup_job_id}"
+                    "/api/console/settings/system-backups/jobs/status/{backup_job_id}"
                 ))
                 .header("cookie", cookie)
                 .body(Body::empty())
@@ -73,7 +73,7 @@ async fn create_backup(app: &axum::Router, cookie: &str, csrf: &str) -> Uuid {
             .oneshot(
                 Request::builder()
                     .uri(format!(
-                        "/api/console/settings/system-backups/jobs/{backup_job_id}"
+                        "/api/console/settings/system-backups/jobs/status/{backup_job_id}"
                     ))
                     .header("cookie", cookie)
                     .body(Body::empty())

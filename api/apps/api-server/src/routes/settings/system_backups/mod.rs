@@ -53,7 +53,8 @@ const RECOVERY_REAUTH: &str = "system_backups.recovery.reauth";
 const RECOVERY_STATUS: &str = "system_backups.recovery.status";
 const VERIFY: &str = "system_backups.verify";
 const BACKUP_PASSWORD_HEADER: &str = "x-system-backup-password";
-const BACKUP_JOB_STATUS_ROUTE: &str = "/api/console/settings/system-backups/jobs/:backup_job_id";
+const BACKUP_JOB_STATUS_ROUTE: &str =
+    "/api/console/settings/system-backups/jobs/status/:backup_job_id";
 
 fn require_system_backup(
     state: &ApiState,
@@ -89,7 +90,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_get(get_recovery_status, owned(RECOVERY_STATUS)),
         )
         .route(
-            "/settings/system-backups/jobs/:backup_job_id",
+            "/settings/system-backups/jobs/status/:backup_job_id",
             console_get(get_backup_job_status, owned(STATUS)),
         )
         .route(
@@ -370,7 +371,7 @@ pub async fn create_backup(
     ))
 }
 
-#[utoipa::path(get, path = "/api/console/settings/system-backups/jobs/{backup_job_id}", params(("backup_job_id" = Uuid, Path)), responses((status = 200, body = BackupJobStatusResponse)))]
+#[utoipa::path(get, path = "/api/console/settings/system-backups/jobs/status/{backup_job_id}", params(("backup_job_id" = Uuid, Path)), responses((status = 200, body = BackupJobStatusResponse)))]
 pub async fn get_backup_job_status(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,

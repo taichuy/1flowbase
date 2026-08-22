@@ -44,7 +44,7 @@ describe('system backup transport contract', () => {
     });
 
     await expect(getSystemBackupJobStatus('backup-job-1')).resolves.toMatchObject({
-      path: '/api/console/settings/system-backups/jobs/backup-job-1'
+      path: '/api/console/settings/system-backups/jobs/status/backup-job-1'
     });
   });
 });
