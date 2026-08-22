@@ -132,12 +132,12 @@ pub fn build_backup_artifact_inventory(
 
     let mut inventory = BTreeMap::<String, BackupArtifactEntry>::new();
     for installation in plugin_installations {
-        let identity = plugin_artifact_identity(&installation);
-        let disposition = classify_source(&installation.source_kind);
         let instance = instances.remove(&installation.id);
-        if !requires_recovery_artifact(&installation) && instance.is_none() {
+        if !requires_recovery_artifact(&installation) {
             continue;
         }
+        let identity = plugin_artifact_identity(&installation);
+        let disposition = classify_source(&installation.source_kind);
         if disposition == BackupArtifactDisposition::RebuildableIdentity {
             validate_rebuildable_identity(&installation, &identity)?;
         }

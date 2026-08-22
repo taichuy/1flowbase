@@ -101,6 +101,39 @@ async fn root_1545_bf1_repository_lists_newest_stable_identity_version_first() {
 }
 
 #[tokio::test]
+async fn backup_extension_inventory_excludes_plugin_installations() {
+    let (store, actor) = seed_store().await;
+    let installed =
+        ExtensionInstallationRepository::upsert_extension_installation(&store, &input(actor.id))
+            .await
+            .unwrap();
+
+    sqlx::query(
+        r#"
+        update extension_installations
+        set
+            category = 'runtime-extensions',
+            plugin_id = 'fixture-provider@1.0.0',
+            contract_version = '1flowbase.plugin/v1',
+            protocol = 'declarative',
+            desired_state = 'disabled'
+        where id = $1
+        "#,
+    )
+    .bind(installed.id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    let records =
+        ExtensionInstallationRepository::list_extension_installations_for_node(&store, "node-a")
+            .await
+            .unwrap();
+
+    assert!(records.is_empty());
+}
+
+#[tokio::test]
 async fn root_1545_extension_repository_upserts_stable_identity_and_keeps_source_trust_separate() {
     let (store, actor) = seed_store().await;
     let first =

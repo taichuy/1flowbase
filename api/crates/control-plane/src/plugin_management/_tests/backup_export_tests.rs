@@ -137,7 +137,7 @@ fn backup_inventory_excludes_historical_invalid_registry_identity_without_a_read
 }
 
 #[test]
-fn backup_inventory_retains_disabled_uploaded_installations_with_a_ready_current_artifact() {
+fn backup_inventory_excludes_disabled_uploaded_installations_with_a_ready_current_artifact() {
     let mut disabled = installation("uploaded");
     disabled.desired_state = domain::PluginDesiredState::Disabled;
     let artifact = current_ready_artifact(disabled.id);
@@ -146,8 +146,7 @@ fn backup_inventory_retains_disabled_uploaded_installations_with_a_ready_current
         build_backup_artifact_inventory("node-a", vec![disabled], vec![artifact], Vec::new())
             .unwrap();
 
-    assert_eq!(entries.len(), 1);
-    assert_eq!(entries[0].disposition, BackupArtifactDisposition::Embedded);
+    assert!(entries.is_empty());
 }
 
 #[test]
