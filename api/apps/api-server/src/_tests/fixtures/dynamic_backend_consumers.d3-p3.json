@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 322,
+  "projected_interface_count": 349,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -86,6 +86,24 @@
       "DELETE",
       "/api/console/mcp/upstream-connections/:connection_id/credentials",
       "Delete MCP upstream credentials"
+    ],
+    [
+      "network_egress_pools.delete",
+      "DELETE",
+      "/api/console/network-center/pools/:pool_id",
+      "Delete network egress pools"
+    ],
+    [
+      "network_egress_pool_members.delete",
+      "DELETE",
+      "/api/console/network-center/pools/:pool_id/members/:member_id",
+      "Delete network egress pool members"
+    ],
+    [
+      "network_egress_routes.delete",
+      "DELETE",
+      "/api/console/network-center/routes/:route_id",
+      "Delete network egress routes"
     ],
     [
       "plugins.families.delete",
@@ -556,6 +574,18 @@
       "List agent flow data model options"
     ],
     [
+      "network_egress_pools.list",
+      "GET",
+      "/api/console/network-center/pools",
+      "List network egress pools"
+    ],
+    [
+      "network_egress_routes.list",
+      "GET",
+      "/api/console/network-center/routes",
+      "List network egress routes"
+    ],
+    [
       "node_contributions.view",
       "GET",
       "/api/console/node-contributions",
@@ -820,6 +850,18 @@
       "View model providers instances models"
     ],
     [
+      "model_providers.instances.reset_credits.view",
+      "GET",
+      "/api/console/settings/model-providers/instances/:id/reset-credits",
+      "View model providers instances reset credits"
+    ],
+    [
+      "model_providers.instances.usage.view",
+      "GET",
+      "/api/console/settings/model-providers/instances/:id/usage",
+      "View model providers instances usage"
+    ],
+    [
       "model_providers.settings_options.view",
       "GET",
       "/api/console/settings/model-providers/options",
@@ -854,6 +896,24 @@
       "GET",
       "/api/console/settings/model-providers/request-logs",
       "View model providers request logs"
+    ],
+    [
+      "network_egress_providers.list",
+      "GET",
+      "/api/console/settings/network-center/providers",
+      "List network egress providers"
+    ],
+    [
+      "network_egress_proxy_types.list",
+      "GET",
+      "/api/console/settings/network-center/providers/types",
+      "List network egress proxy types"
+    ],
+    [
+      "network_egress_plugins.official_catalog.view",
+      "GET",
+      "/api/console/settings/network-center/proxy-plugins/official-catalog",
+      "View network egress plugins official catalog"
     ],
     [
       "roles.list",
@@ -908,6 +968,12 @@
       "GET",
       "/api/console/settings/system-backups",
       "List system backups"
+    ],
+    [
+      "system_backups.status",
+      "GET",
+      "/api/console/settings/system-backups/jobs/status/:backup_job_id",
+      "System backups status"
     ],
     [
       "system_backups.recovery.status",
@@ -982,6 +1048,24 @@
       "Update version"
     ],
     [
+      "network_egress_pools.update",
+      "PATCH",
+      "/api/console/network-center/pools/:pool_id",
+      "Update network egress pools"
+    ],
+    [
+      "network_egress_pool_members.update",
+      "PATCH",
+      "/api/console/network-center/pools/:pool_id/members/:member_id",
+      "Update network egress pool members"
+    ],
+    [
+      "network_egress_routes.update",
+      "PATCH",
+      "/api/console/network-center/routes/:route_id",
+      "Update network egress routes"
+    ],
+    [
       "billing.pricing_rules.update",
       "PATCH",
       "/api/console/settings/billing/pricing-rules/:id",
@@ -1022,6 +1106,12 @@
       "PATCH",
       "/api/console/settings/model-providers/instances/:id",
       "Update model providers instances"
+    ],
+    [
+      "network_egress_providers.lifecycle.update",
+      "PATCH",
+      "/api/console/settings/network-center/providers/:id",
+      "Update network egress providers lifecycle"
     ],
     [
       "roles.update",
@@ -1304,6 +1394,48 @@
       "POST",
       "/api/console/mcp/upstream-connections/:connection_id/test",
       "Test connection"
+    ],
+    [
+      "network_egress_pools.create",
+      "POST",
+      "/api/console/network-center/pools",
+      "Create network egress pools"
+    ],
+    [
+      "network_egress_proxies.create",
+      "POST",
+      "/api/console/network-center/pools/proxies",
+      "Create network egress proxies"
+    ],
+    [
+      "network_egress_pool_members_create",
+      "POST",
+      "/api/console/network-center/pools/:pool_id/members",
+      "Create network egress pool members"
+    ],
+    [
+      "network_egress_pool_members_add_provider_egresses",
+      "POST",
+      "/api/console/network-center/pools/:pool_id/members/provider",
+      "Network egress pool members add provider egresses"
+    ],
+    [
+      "network_egress_pool_members_create_static_http",
+      "POST",
+      "/api/console/network-center/pools/:pool_id/members/static-http",
+      "Network egress pool members create static http"
+    ],
+    [
+      "network_egress_pool_members.test_connection",
+      "POST",
+      "/api/console/network-center/pools/:pool_id/members/:member_id/test-connection",
+      "Network egress pool members test connection"
+    ],
+    [
+      "network_egress_routes.create",
+      "POST",
+      "/api/console/network-center/routes",
+      "Create network egress routes"
     ],
     [
       "plugins.families.switch",
@@ -1618,6 +1750,12 @@
       "Refresh model providers instances models"
     ],
     [
+      "model_providers.instances.reset_credits.consume",
+      "POST",
+      "/api/console/settings/model-providers/instances/:id/reset-credits/consume",
+      "Model providers instances reset credits consume"
+    ],
+    [
       "model_providers.instances.secrets.reveal",
       "POST",
       "/api/console/settings/model-providers/instances/:id/secrets/reveal",
@@ -1676,6 +1814,30 @@
       "POST",
       "/api/console/settings/model-providers/request-logs/clear",
       "Clear model providers request logs"
+    ],
+    [
+      "network_egress_providers.create",
+      "POST",
+      "/api/console/settings/network-center/providers",
+      "Create network egress providers"
+    ],
+    [
+      "network_egress_providers.sync",
+      "POST",
+      "/api/console/settings/network-center/providers/:id/sync",
+      "Network egress providers sync"
+    ],
+    [
+      "network_egress_plugins.install.official",
+      "POST",
+      "/api/console/settings/network-center/proxy-plugins/install-official",
+      "Network egress plugins install official"
+    ],
+    [
+      "network_egress_plugins.install.upload",
+      "POST",
+      "/api/console/settings/network-center/proxy-plugins/install-upload",
+      "Upload network egress plugins install"
     ],
     [
       "roles.create",

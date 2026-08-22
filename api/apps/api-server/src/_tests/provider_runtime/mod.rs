@@ -573,6 +573,8 @@ permissions:
 runtime:
   protocol: stdio_json_worker
   entry: bin/fixture_provider
+  capabilities:
+    - config.validate
   limits:
     timeout_ms: 30000
 node_contributions: []

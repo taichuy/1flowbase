@@ -9,6 +9,8 @@ use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
 
+use control_plane::system_recovery::SystemMaintenanceOperation;
+
 use crate::_tests::support::{
     create_member, create_role, login_and_capture_cookie, replace_member_roles,
     test_api_state_with_database_url, test_config,
@@ -178,23 +180,16 @@ async fn system_backup_routes_return_unavailable_when_postgresql_tools_are_missi
 #[tokio::test]
 async fn system_backup_queue_rejects_a_second_maintenance_owner() {
     let (state, _) = test_api_state_with_database_url().await;
-    let app = crate::app_with_state_and_config(state, &test_config());
+    let app = crate::app_with_state_and_config(state.clone(), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
 
-    let first = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/console/settings/system-backups")
-                .header("cookie", &cookie)
-                .header("x-csrf-token", &csrf)
-                .body(Body::empty())
-                .unwrap(),
+    let owner_lease = state
+        .system_maintenance
+        .begin(
+            SystemMaintenanceOperation::Backup(domain::BackupJobId::new()),
+            time::OffsetDateTime::now_utc(),
         )
-        .await
-        .unwrap();
-    assert_eq!(first.status(), StatusCode::ACCEPTED);
+        .expect("the fixture must establish the first maintenance owner");
     let second = app
         .oneshot(
             Request::builder()
@@ -208,6 +203,7 @@ async fn system_backup_queue_rejects_a_second_maintenance_owner() {
         .await
         .unwrap();
     assert_eq!(second.status(), StatusCode::CONFLICT);
+    drop(owner_lease);
 }
 
 async fn replace_backup_policy(

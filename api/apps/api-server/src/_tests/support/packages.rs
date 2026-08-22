@@ -50,6 +50,8 @@ permissions:
 runtime:
   protocol: stdio_json
   entry: bin/{provider_code}-provider
+  capabilities:
+    - config.validate
 "#
         ),
     )

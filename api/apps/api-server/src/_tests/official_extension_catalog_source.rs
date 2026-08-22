@@ -17,8 +17,9 @@ use axum::{
     Router,
 };
 use control_plane::ports::{
-    CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
-    CreateNetworkEgressProviderInput, CreateNetworkEgressRouteInput, NetworkEgressPoolRepository,
+    CreateModelProviderInstanceInput, CreateNetworkEgressPoolInput,
+    CreateNetworkEgressPoolMemberInput, CreateNetworkEgressProviderInput,
+    CreateNetworkEgressRouteInput, ModelProviderRepository, NetworkEgressPoolRepository,
     NetworkEgressRepository, NetworkEgressRouteRepository, OfficialPluginSourcePort,
     PluginRepository, ReplaceNetworkEgressProjectionInput, UpsertNetworkEgressProviderSecretInput,
     UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
@@ -201,6 +202,62 @@ pub(super) async fn seed_network_egress_resolver(
     )
     .await
     .unwrap();
+    if let NetworkEgressConsumerSelector::ModelProviderInstance { instance_id } = &selector {
+        let model_installation_id = uuid::Uuid::now_v7();
+        <storage_durable::MainDurableStore as PluginRepository>::upsert_installation(
+            &state.store,
+            &UpsertPluginInstallationInput {
+                installation_id: model_installation_id,
+                category: domain::ExtensionCategory::RuntimeExtensions,
+                organization: "test".into(),
+                provider_code: "fixture_provider".into(),
+                plugin_id: "fixture_provider@0.1.0".into(),
+                plugin_version: "0.1.0".into(),
+                contract_version: "1flowbase.provider/v2".into(),
+                protocol: "openai_compatible".into(),
+                display_name: "Fixture Provider".into(),
+                source_kind: "uploaded".into(),
+                trust_level: "unverified".into(),
+                verification_status: PluginVerificationStatus::Valid,
+                desired_state: PluginDesiredState::ActiveRequested,
+                expected_checksum: None,
+                signature_status: domain::ExtensionSignatureStatus::Missing,
+                signature_algorithm: None,
+                signing_key_id: None,
+                metadata_json: json!({}),
+                is_system_reserved: false,
+                actor_user_id: root.id,
+            },
+        )
+        .await
+        .unwrap();
+        <storage_durable::MainDurableStore as ModelProviderRepository>::create_instance(
+            &state.store,
+            &CreateModelProviderInstanceInput {
+                instance_id: *instance_id,
+                workspace_id: state.bootstrap_workspace_id,
+                installation_id: model_installation_id,
+                provider_code: "fixture_provider".into(),
+                protocol: "openai_compatible".into(),
+                display_name: "Fixture Model Provider".into(),
+                status: domain::ModelProviderInstanceStatus::Ready,
+                config_json: json!({"base_url": "https://fixture.invalid"}),
+                configured_models: vec![domain::ModelProviderConfiguredModel {
+                    model_id: "fixture_chat".into(),
+                    enabled: true,
+                    context_window_override_tokens: None,
+                    supports_multimodal: None,
+                    pricing_provider_code: domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.into(),
+                    pricing_model_id: domain::DEFAULT_MODEL_PRICING_MODEL_ID.into(),
+                }],
+                enabled_model_ids: vec!["fixture_chat".into()],
+                included_in_main: Some(false),
+                created_by: root.id,
+            },
+        )
+        .await
+        .unwrap();
+    }
     <storage_durable::MainDurableStore as PluginRepository>::upsert_artifact_instance(
         &state.store,
         &UpsertPluginArtifactInstanceInput {

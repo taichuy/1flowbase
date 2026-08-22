@@ -554,7 +554,7 @@ async fn ac_001_locked_asset_survives_current_catalog_digest_replacement() {
         .fetch_one(&pool)
         .await
         .unwrap();
-    let old_bytes = b"export function Button() {}\n";
+    let old_bytes = b"export function RetainedButton() {}\n";
     let old_sha256 = format!("{:x}", Sha256::digest(old_bytes));
     let new_sha256 = format!("{:x}", Sha256::digest(b"export function ButtonV2() {}\n"));
 
