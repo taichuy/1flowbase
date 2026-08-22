@@ -123,10 +123,15 @@ pub fn build_backup_artifact_inventory(
     let assigned_installation_ids = assigned_installation_ids
         .into_iter()
         .collect::<BTreeSet<_>>();
+    let plugin_installation_ids = plugin_installations
+        .iter()
+        .map(|installation| installation.id)
+        .collect::<BTreeSet<_>>();
     let mut current_instances = BTreeMap::new();
     let mut ready_instances = BTreeMap::new();
     for instance in plugin_instances.into_iter().filter(|instance| {
         instance.node_id == node_id
+            && plugin_installation_ids.contains(&instance.installation_id)
             && instance.artifact_status == domain::PluginArtifactInstanceStatus::Ready
     }) {
         if instance.is_current

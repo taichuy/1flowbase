@@ -837,7 +837,10 @@ impl PluginRepository for PgControlPlaneStore {
                 last_error,
                 is_current
             from extension_artifact_instances
+            join extension_installations
+              on extension_installations.id = extension_artifact_instances.installation_id
             where node_id = $1
+              and extension_installations.plugin_id is not null
             order by checked_at desc, installation_id desc
             "#,
         )

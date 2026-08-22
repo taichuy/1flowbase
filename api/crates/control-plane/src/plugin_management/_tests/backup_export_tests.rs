@@ -63,6 +63,36 @@ fn current_ready_artifact(installation_id: Uuid) -> domain::PluginArtifactInstan
     }
 }
 
+fn current_mcp_extension(installation_id: Uuid) -> domain::ExtensionInstallationRecord {
+    domain::ExtensionInstallationRecord {
+        id: installation_id,
+        identity: domain::ExtensionInstallationIdentity {
+            category: domain::ExtensionCategory::Mcp,
+            organization: "taichuy".to_owned(),
+            artifact_id: "1flowbase_zh_hans".to_owned(),
+            version: "1.1.0".to_owned(),
+        },
+        source_kind: "official_registry".to_owned(),
+        trust_level: "verified_official".to_owned(),
+        expected_checksum: Some("sha256:catalog".to_owned()),
+        signature_status: domain::ExtensionSignatureStatus::Verified,
+        signature_algorithm: None,
+        signing_key_id: None,
+        warnings: Vec::new(),
+        receipt: json!({}),
+        application_action: domain::ExtensionApplicationAction::None,
+        is_system_reserved: false,
+        node_id: "node-a".to_owned(),
+        local_path: Some("/tmp/example-mcp".to_owned()),
+        local_checksum: Some("sha256:package".to_owned()),
+        status: domain::ExtensionInstallationStatus::Installed,
+        is_current: true,
+        created_by: Uuid::from_u128(2),
+        created_at: OffsetDateTime::UNIX_EPOCH,
+        updated_at: OffsetDateTime::UNIX_EPOCH,
+    }
+}
+
 #[test]
 fn rebuildable_plugin_uses_verified_immutable_identity_without_current_artifact() {
     let entries = build_backup_artifact_inventory(
@@ -103,6 +133,25 @@ fn embedded_plugin_requires_a_current_retained_artifact() {
     assert_eq!(
         error.reason,
         BackupArtifactInventoryReason::RetainedArtifactMissing
+    );
+}
+
+#[test]
+fn backup_inventory_routes_current_mcp_artifacts_to_the_extension_inventory() {
+    let mcp_id = Uuid::from_u128(3);
+    let entries = build_backup_artifact_inventory(
+        "node-a",
+        Vec::new(),
+        vec![current_ready_artifact(mcp_id)],
+        Vec::new(),
+        vec![current_mcp_extension(mcp_id)],
+    )
+    .unwrap();
+
+    assert_eq!(entries.len(), 1);
+    assert_eq!(
+        entries[0].identity,
+        "extension:mcp/taichuy/1flowbase_zh_hans@1.1.0"
     );
 }
 
