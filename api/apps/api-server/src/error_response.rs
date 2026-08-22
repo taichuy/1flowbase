@@ -72,6 +72,23 @@ impl IntoResponse for ApiError {
                 .into_response();
         }
 
+        if self
+            .0
+            .downcast_ref::<SystemBackupRuntimeError>()
+            .is_some_and(|error| matches!(error, SystemBackupRuntimeError::MaintenanceBusy))
+        {
+            return (
+                StatusCode::CONFLICT,
+                Json(ErrorBody {
+                    status: StatusCode::CONFLICT.as_u16(),
+                    code: "system_maintenance_busy".to_owned(),
+                    message: "A system maintenance operation is already active.".to_owned(),
+                    inventory: None,
+                }),
+            )
+                .into_response();
+        }
+
         let (status, code) = match self.0.downcast_ref::<ControlPlaneError>() {
             Some(ControlPlaneError::NotAuthenticated) => {
                 (StatusCode::UNAUTHORIZED, "not_authenticated")

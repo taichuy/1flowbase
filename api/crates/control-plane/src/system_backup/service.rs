@@ -487,16 +487,100 @@ impl SystemBackupService {
             .await
     }
 
+    /// Persists the checkpoint that makes an accepted manual backup observable before its host
+    /// begins the fenced work. The host owns the maintenance lease and later calls creation.
+    pub async fn queue_manual_backup(
+        &self,
+        job_id: BackupJobId,
+        backup_set_id: BackupSetId,
+        actor_user_id: Uuid,
+    ) -> Result<(), SystemBackupServiceError> {
+        let job = BackupJob::new(job_id, backup_set_id, OffsetDateTime::now_utc());
+        self.append_event_for_actor(
+            &job,
+            actor_user_id,
+            BackupJournalEventKind::BackupStateChanged {
+                state: BackupJobState::Queued,
+            },
+        )
+        .await
+    }
+
+    /// Records a terminal result for work that could not get past the host-owned fence.
+    pub async fn fail_queued_manual_backup(
+        &self,
+        job_id: BackupJobId,
+        backup_set_id: BackupSetId,
+        actor_user_id: Uuid,
+        failure_code: &str,
+    ) -> Result<(), SystemBackupServiceError> {
+        let mut job = BackupJob::new(job_id, backup_set_id, OffsetDateTime::now_utc());
+        job.transition(
+            BackupJobState::Failed,
+            OffsetDateTime::now_utc(),
+            Some(failure_code.to_owned()),
+        )
+        .map_err(|_| SystemBackupServiceError::Manifest)?;
+        self.append_event_for_actor(
+            &job,
+            actor_user_id,
+            BackupJournalEventKind::BackupStateChanged {
+                state: BackupJobState::Failed,
+            },
+        )
+        .await?;
+        self.append_event_for_actor(
+            &job,
+            actor_user_id,
+            BackupJournalEventKind::TerminalFailure {
+                code: failure_code.to_owned(),
+            },
+        )
+        .await
+    }
+
     /// Creates a backup when the host has already acquired and drained the maintenance fence.
     /// Callers must not use this as the public manual-backup entry point.
     pub async fn create_under_existing_maintenance(
         &self,
         job_id: BackupJobId,
         command: CreateSystemBackupCommand,
+        sources: Vec<Arc<dyn BackupComponentSource>>,
+    ) -> Result<SealedBackupManifest, SystemBackupServiceError> {
+        self.create_for_backup_set_under_existing_maintenance(
+            job_id,
+            BackupSetId::new(),
+            command,
+            sources,
+        )
+        .await
+    }
+
+    /// Completes a backup after `queue_manual_backup` has reserved its observable identity.
+    pub async fn create_queued_backup_under_existing_maintenance(
+        &self,
+        job_id: BackupJobId,
+        backup_set_id: BackupSetId,
+        command: CreateSystemBackupCommand,
+        sources: Vec<Arc<dyn BackupComponentSource>>,
+    ) -> Result<SealedBackupManifest, SystemBackupServiceError> {
+        self.create_for_backup_set_under_existing_maintenance(
+            job_id,
+            backup_set_id,
+            command,
+            sources,
+        )
+        .await
+    }
+
+    async fn create_for_backup_set_under_existing_maintenance(
+        &self,
+        job_id: BackupJobId,
+        backup_set_id: BackupSetId,
+        command: CreateSystemBackupCommand,
         mut sources: Vec<Arc<dyn BackupComponentSource>>,
     ) -> Result<SealedBackupManifest, SystemBackupServiceError> {
         sources.sort_by_key(|source| source.descriptor().component_id);
-        let backup_set_id = BackupSetId::new();
         let now = OffsetDateTime::now_utc();
         let mut job = BackupJob::new(job_id, backup_set_id, now);
         self.repository
@@ -761,6 +845,16 @@ impl SystemBackupService {
         job: &BackupJob,
         event: BackupJournalEventKind,
     ) -> Result<(), SystemBackupServiceError> {
+        self.append_event_for_actor(job, command.actor_user_id, event)
+            .await
+    }
+
+    async fn append_event_for_actor(
+        &self,
+        job: &BackupJob,
+        actor_user_id: Uuid,
+        event: BackupJournalEventKind,
+    ) -> Result<(), SystemBackupServiceError> {
         let subject = BackupJournalSubject::Backup(job.job_id());
         let sequence = self
             .repository
@@ -775,7 +869,7 @@ impl SystemBackupService {
                 sequence,
                 subject,
                 backup_set_id: job.backup_set_id(),
-                actor_user_id: Some(command.actor_user_id),
+                actor_user_id: Some(actor_user_id),
                 occurred_at: OffsetDateTime::now_utc(),
                 event,
             })

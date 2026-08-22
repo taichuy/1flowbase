@@ -520,6 +520,7 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("system_backups.download", "system.backups"),
     settings("system_backups.import", "system.backups"),
     settings("system_backups.list", "system.backups"),
+    settings("system_backups.status", "system.backups"),
     settings("system_backups.recovery.intent", "system.backups"),
     settings("system_backups.recovery.preflight", "system.backups"),
     settings("system_backups.recovery.reauth", "system.backups"),

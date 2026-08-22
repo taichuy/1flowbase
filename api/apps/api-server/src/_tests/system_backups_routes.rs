@@ -34,8 +34,61 @@ async fn create_backup(app: &axum::Router, cookie: &str, csrf: &str) -> Uuid {
         .unwrap();
     let status = response.status();
     let payload = response_json(response).await;
-    assert_eq!(status, StatusCode::OK, "{payload}");
-    Uuid::parse_str(payload["data"]["backup_set_id"].as_str().unwrap()).unwrap()
+    assert_eq!(status, StatusCode::ACCEPTED, "{payload}");
+    let backup_job_id =
+        Uuid::parse_str(payload["data"]["backup_job_id"].as_str().unwrap()).unwrap();
+    let backup_set_id =
+        Uuid::parse_str(payload["data"]["backup_set_id"].as_str().unwrap()).unwrap();
+
+    let status_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .uri(format!(
+                    "/api/console/settings/system-backups/jobs/{backup_job_id}"
+                ))
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(status_response.status(), StatusCode::OK);
+    let status_payload = response_json(status_response).await;
+    assert_eq!(
+        status_payload["data"]["backup_job_id"],
+        backup_job_id.to_string()
+    );
+    assert_eq!(
+        status_payload["data"]["backup_set_id"],
+        backup_set_id.to_string()
+    );
+    assert!(status_payload["data"]["status"].is_string());
+    assert!(status_payload["data"]["sealed_components"].is_u64());
+    assert!(status_payload["data"].get("failure_code").is_some());
+
+    for _ in 0..300 {
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .uri(format!(
+                        "/api/console/settings/system-backups/jobs/{backup_job_id}"
+                    ))
+                    .header("cookie", cookie)
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        let status_payload = response_json(response).await;
+        match status_payload["data"]["status"].as_str() {
+            Some("succeeded") => return backup_set_id,
+            Some("failed") => panic!("queued backup failed: {status_payload}"),
+            _ => tokio::time::sleep(std::time::Duration::from_millis(20)).await,
+        }
+    }
+    panic!("queued backup did not complete before the route test timeout")
 }
 
 async fn preflight(app: &axum::Router, cookie: &str, csrf: &str, backup_set_id: Uuid) -> Value {
@@ -120,6 +173,41 @@ async fn system_backup_routes_return_unavailable_when_postgresql_tools_are_missi
 
     assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE, "{payload}");
     assert_eq!(payload["code"], "system_backup_unavailable");
+}
+
+#[tokio::test]
+async fn system_backup_queue_rejects_a_second_maintenance_owner() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state_and_config(state, &test_config());
+    let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    let first = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/system-backups")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(first.status(), StatusCode::ACCEPTED);
+    let second = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/system-backups")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(second.status(), StatusCode::CONFLICT);
 }
 
 async fn replace_backup_policy(
