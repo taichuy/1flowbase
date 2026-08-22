@@ -12,14 +12,17 @@ import { NetworkEgressRoutesPanel } from '../../network-center/routes/NetworkEgr
 import { i18nText } from '../../../../shared/i18n/text';
 import './network-center-section.css';
 
-export type NetworkCenterPage = 'providers' | 'pools' | 'routes';
+export type NetworkCenterPage =
+  | 'proxy-types'
+  | 'proxy-pools'
+  | 'routing-rules';
 
 export function NetworkCenterSection({ page }: { page: NetworkCenterPage }) {
   const navigate = useNavigate();
   const providersQuery = useQuery({
     queryKey: settingsNetworkEgressProvidersQueryKey,
     queryFn: fetchSettingsNetworkEgressProviders,
-    enabled: page === 'pools'
+    enabled: page === 'proxy-pools'
   });
 
   return (
@@ -29,19 +32,19 @@ export function NetworkCenterSection({ page }: { page: NetworkCenterPage }) {
       onChange={(key) => navigate({ to: `/settings/network-center/${key}` })}
       items={[
         {
-          key: 'providers',
+          key: 'proxy-types',
           label: i18nText('settings', 'auto.network_center_providers'),
           children: <NetworkEgressProvidersPanel />
         },
         {
-          key: 'pools',
+          key: 'proxy-pools',
           label: i18nText('settings', 'auto.network_center_pools'),
           children: (
             <NetworkEgressPoolsPanel providers={providersQuery.data ?? []} />
           )
         },
         {
-          key: 'routes',
+          key: 'routing-rules',
           label: i18nText('settings', 'auto.network_center_routes'),
           children: <NetworkEgressRoutesPanel />
         }

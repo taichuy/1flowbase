@@ -149,6 +149,35 @@ async fn dynamic_openapi_contains_runtime_and_model_detail_routes() {
 }
 
 #[tokio::test]
+async fn openapi_registers_configurable_network_egress_routes_with_stable_operation_ids() {
+    let paths = openapi_paths().await;
+
+    for (route, method, operation_id) in [
+        (
+            "/api/console/settings/network-center/providers/types",
+            "get",
+            "network_egress_provider_types_list",
+        ),
+        (
+            "/api/console/network-center/pools/{pool_id}/members/static-http",
+            "post",
+            "network_egress_pool_members_create_static_http",
+        ),
+        (
+            "/api/console/network-center/pools/{pool_id}/members/provider",
+            "post",
+            "network_egress_pool_members_add_provider_egresses",
+        ),
+    ] {
+        assert_eq!(
+            paths[route][method]["operationId"].as_str(),
+            Some(operation_id),
+            "expected {method} {route} to expose operationId {operation_id}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn openapi_self_describes_application_catalog_trigger_and_publication_contracts() {
     let response = app()
         .oneshot(

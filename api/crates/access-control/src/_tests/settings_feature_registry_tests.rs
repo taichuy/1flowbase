@@ -45,6 +45,19 @@ fn core_settings_features_define_the_product_default_order() {
     );
 }
 
+#[test]
+fn network_center_console_surface_opens_the_proxy_types_page() {
+    let registration = core_settings_feature_registrations()
+        .into_iter()
+        .find(|registration| registration.feature_id == "system.network-center")
+        .expect("network center Core SettingsFeature must be registered");
+
+    assert_eq!(
+        registration.console_surface.path,
+        "/settings/network-center/proxy-types"
+    );
+}
+
 fn feature(
     feature_id: &str,
     owner_kind: SettingsFeatureOwnerKind,

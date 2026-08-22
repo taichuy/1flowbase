@@ -1168,6 +1168,7 @@ fn recovery_sources(
             bytes: object_bytes.to_vec(),
         }),
         Arc::new(BackupArtifactEntry {
+            installation_id: Uuid::from_u128(1),
             identity: "extension:mcp/acme/builtin-fixture@1.0.0".to_owned(),
             kind: BackupArtifactKind::Mcp,
             category: "mcp".to_owned(),

@@ -111,7 +111,7 @@ export function SettingsSectionBody({
   access,
   modelProviderTab = 'providers',
   rolePermissionTab = 'console-policy',
-  networkCenterPage = 'providers',
+  networkCenterPage = 'proxy-types',
   extensionCenterCategory = 'installed',
   extensionCenterCursor,
   extensionCenterQ

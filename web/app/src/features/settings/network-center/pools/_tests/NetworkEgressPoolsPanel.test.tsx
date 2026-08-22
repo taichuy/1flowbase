@@ -109,7 +109,7 @@ describe('NetworkEgressPoolsPanel', () => {
     renderPanel();
 
     fireEvent.click(await screen.findByRole('button', { name: /展开行|Expand row/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /添加出口|Add egress/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /添加代理|Add proxy/ }));
     fireEvent.click(screen.getByLabelText(/手动 HTTP 代理|Manual HTTP proxy/));
     fireEvent.change(screen.getByLabelText(/名称|Name/), {
       target: { value: 'US proxy' }
@@ -145,15 +145,15 @@ describe('NetworkEgressPoolsPanel', () => {
     );
   });
 
-  test('AC-NC17 adds every current egress from the selected extension instance to the target pool', async () => {
+  test('AC-NC17 adds every current proxy from the selected extension instance to the target pool', async () => {
     networkCenterApi.addSettingsNetworkEgressProviderToPool.mockResolvedValue([]);
     renderPanel();
 
     fireEvent.click(await screen.findByRole('button', { name: /展开行|Expand row/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /添加出口|Add egress/ }));
-    fireEvent.click(screen.getByLabelText(/扩展供应方|Extension provider/));
+    fireEvent.click(await screen.findByRole('button', { name: /添加代理|Add proxy/ }));
+    fireEvent.click(screen.getByLabelText(/扩展代理类型|Extension proxy type/));
     fireEvent.mouseDown(
-      await screen.findByLabelText(/供应方实例|Provider instance/)
+      await screen.findByLabelText(/代理类型实例|Proxy type instance/)
     );
     fireEvent.click(await screen.findByText('Edge provider · 1'));
     fireEvent.click(screen.getByRole('button', { name: /保\s*存|Save/ }));

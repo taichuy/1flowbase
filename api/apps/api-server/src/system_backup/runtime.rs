@@ -3,7 +3,9 @@ use std::{path::PathBuf, sync::Arc};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use control_plane::{
     file_management::BusinessObjectBackupExporter,
-    plugin_management::load_backup_artifact_sources,
+    plugin_management::{
+        load_backup_artifact_sources, BackupArtifactInventoryError, BackupArtifactSourceLoadError,
+    },
     ports::{BackupRepository, BackupSetCatalogEntry},
     system_backup::{
         BackupComponentSource, CreateSystemBackupCommand, SystemBackupService,
@@ -77,6 +79,8 @@ pub enum SystemBackupRuntimeError {
     PostgreSqlPreflight,
     #[error("system backup source inventory is unavailable")]
     SourceInventory,
+    #[error("system backup source inventory is invalid")]
+    SourceInventoryInvalid(#[source] BackupArtifactInventoryError),
     #[error("system maintenance is already active")]
     MaintenanceBusy,
     #[error("system writes did not drain before backup")]
@@ -428,7 +432,7 @@ impl SystemBackupRuntime {
         sources.extend(
             load_backup_artifact_sources(&self.store, &self.api_node_id)
                 .await
-                .map_err(|_| SystemBackupRuntimeError::SourceInventory)?,
+                .map_err(|error| map_backup_artifact_source_error(&self.api_node_id, error))?,
         );
         Ok((
             CreateSystemBackupCommand {
@@ -469,6 +473,33 @@ impl SystemBackupRuntime {
             .await
             .map_err(|_| SystemBackupRuntimeError::Repository)?;
         Ok(manifest)
+    }
+}
+
+fn map_backup_artifact_source_error(
+    node_id: &str,
+    error: BackupArtifactSourceLoadError,
+) -> SystemBackupRuntimeError {
+    match error.into_inventory_error() {
+        Ok(error) => {
+            tracing::warn!(
+                node_id,
+                installation_id = %error.installation_id,
+                artifact_identity = %error.artifact_identity,
+                reason = error.reason.as_str(),
+                error = %error,
+                "system backup source inventory is not restorable"
+            );
+            SystemBackupRuntimeError::SourceInventoryInvalid(error)
+        }
+        Err(error) => {
+            tracing::error!(
+                node_id,
+                error_chain = %format!("{error:#}"),
+                "system backup artifact source inventory could not be loaded"
+            );
+            SystemBackupRuntimeError::SourceInventory
+        }
     }
 }
 

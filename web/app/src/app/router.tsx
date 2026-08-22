@@ -491,28 +491,28 @@ const settingsModelProviderPricingRoute = createRoute({
   component: () => renderSettingsRoute('model-providers', 'pricing')
 });
 
-const settingsNetworkCenterProvidersRoute = createRoute({
+const settingsNetworkCenterProxyTypesRoute = createRoute({
   getParentRoute: () => shellRoute,
-  path: '/settings/network-center/providers',
+  path: '/settings/network-center/proxy-types',
   notFoundComponent: NotFoundPage,
   component: () =>
-    renderSettingsRoute('network-center', undefined, undefined, 'providers')
+    renderSettingsRoute('network-center', undefined, undefined, 'proxy-types')
 });
 
-const settingsNetworkCenterPoolsRoute = createRoute({
+const settingsNetworkCenterProxyPoolsRoute = createRoute({
   getParentRoute: () => shellRoute,
-  path: '/settings/network-center/pools',
+  path: '/settings/network-center/proxy-pools',
   notFoundComponent: NotFoundPage,
   component: () =>
-    renderSettingsRoute('network-center', undefined, undefined, 'pools')
+    renderSettingsRoute('network-center', undefined, undefined, 'proxy-pools')
 });
 
-const settingsNetworkCenterRoutesRoute = createRoute({
+const settingsNetworkCenterRoutingRulesRoute = createRoute({
   getParentRoute: () => shellRoute,
-  path: '/settings/network-center/routes',
+  path: '/settings/network-center/routing-rules',
   notFoundComponent: NotFoundPage,
   component: () =>
-    renderSettingsRoute('network-center', undefined, undefined, 'routes')
+    renderSettingsRoute('network-center', undefined, undefined, 'routing-rules')
 });
 
 const settingsMcpManagementRoute = createRoute({
@@ -749,9 +749,9 @@ const routeTree = rootRoute.addChildren([
     settingsModelProviderInstancesRoute,
     settingsModelProviderRequestLogsRoute,
     settingsModelProviderPricingRoute,
-    settingsNetworkCenterProvidersRoute,
-    settingsNetworkCenterPoolsRoute,
-    settingsNetworkCenterRoutesRoute,
+    settingsNetworkCenterProxyTypesRoute,
+    settingsNetworkCenterProxyPoolsRoute,
+    settingsNetworkCenterRoutingRulesRoute,
     settingsMcpManagementRoute,
     settingsUiManagementRoute,
     settingsUiManagementTemplatesRoute,

@@ -99,7 +99,7 @@ describe('NetworkEgressProvidersPanel', () => {
     );
   });
 
-  test('QF-002 adds a provider from a selected installed type without exposing an installation ID or secret reference', async () => {
+  test('QF-002 adds a proxy type from a selected installed extension without exposing an installation ID or secret reference', async () => {
     renderPanel();
 
     expect(await screen.findByText('Mihomo edge')).toBeInTheDocument();
@@ -114,14 +114,14 @@ describe('NetworkEgressProvidersPanel', () => {
     expect(await screen.findByText('Germany edge')).toBeInTheDocument();
 
     fireEvent.click(
-      screen.getByRole('button', { name: /Add provider|添加出口提供方/ })
+      screen.getByRole('button', { name: /Add proxy type|添加代理类型/ })
     );
     expect(screen.queryByLabelText(/ID/)).not.toBeInTheDocument();
     expect(screen.queryByText(/secret:\/\//)).not.toBeInTheDocument();
     expect(
       await screen.findByLabelText('Subscription URL')
     ).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/Provider name|提供方名称/), {
+    fireEvent.change(screen.getByLabelText(/Proxy type name|代理类型名称/), {
       target: { value: 'Backup edge' }
     });
     fireEvent.change(screen.getByLabelText('Subscription URL'), {
@@ -144,7 +144,7 @@ describe('NetworkEgressProvidersPanel', () => {
     );
   });
 
-  test('AC-002 controls lifecycle and sync through the Provider APIs', async () => {
+  test('AC-002 controls lifecycle and sync through the proxy type APIs', async () => {
     renderPanel();
 
     await screen.findByText('Mihomo edge');
@@ -160,7 +160,7 @@ describe('NetworkEgressProvidersPanel', () => {
     );
 
     fireEvent.click(
-      screen.getByRole('button', { name: /Sync exits|同步出口/ })
+      screen.getByRole('button', { name: /Sync proxies|同步代理/ })
     );
     await waitFor(() =>
       expect(

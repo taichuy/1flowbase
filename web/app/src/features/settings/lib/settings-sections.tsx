@@ -191,7 +191,7 @@ export const settingsSectionDefinitions: SettingsSectionDefinition[] = [
   {
     key: 'network-center',
     label_key: 'auto.network_center',
-    to: '/settings/network-center/providers'
+    to: '/settings/network-center/proxy-types'
   },
   {
     key: 'mcp-management',

@@ -668,7 +668,7 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
             console_surface: SettingsFeatureConsoleSurface {
                 route_id: "settings.network-center".to_string(),
                 surface_key: "network-center".to_string(),
-                path: "/settings/network-center/providers".to_string(),
+                path: "/settings/network-center/proxy-types".to_string(),
                 label_key: "auto.network_center".to_string(),
                 description_key:
                     "console.policy_groups.settings.system.network-center.description".to_string(),

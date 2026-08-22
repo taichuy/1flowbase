@@ -11,6 +11,7 @@ use utoipa::ToSchema;
 use crate::official_extension_catalog::{
     OfficialExtensionArtifactError, OfficialExtensionCatalogUnavailable,
 };
+use crate::system_backup::SystemBackupRuntimeError;
 
 #[derive(Debug)]
 pub struct ApiError(pub anyhow::Error);
@@ -24,6 +25,15 @@ pub struct ErrorBody {
     pub status: u16,
     pub code: String,
     pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub inventory: Option<BackupSourceInventoryErrorDetails>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct BackupSourceInventoryErrorDetails {
+    pub reason: String,
+    pub installation_id: String,
+    pub artifact_identity: String,
 }
 
 impl<E> From<E> for ApiError
@@ -37,6 +47,31 @@ where
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
+        if let Some(SystemBackupRuntimeError::SourceInventoryInvalid(error)) =
+            self.0.downcast_ref::<SystemBackupRuntimeError>()
+        {
+            tracing::warn!(
+                installation_id = %error.installation_id,
+                artifact_identity = %error.artifact_identity,
+                reason = error.reason.as_str(),
+                "system backup request rejected by source inventory"
+            );
+            return (
+                StatusCode::CONFLICT,
+                Json(ErrorBody {
+                    status: StatusCode::CONFLICT.as_u16(),
+                    code: "system_backup_source_inventory_invalid".to_owned(),
+                    message: "A required backup artifact cannot be restored.".to_owned(),
+                    inventory: Some(BackupSourceInventoryErrorDetails {
+                        reason: error.reason.as_str().to_owned(),
+                        installation_id: error.installation_id.to_string(),
+                        artifact_identity: error.artifact_identity.clone(),
+                    }),
+                }),
+            )
+                .into_response();
+        }
+
         let (status, code) = match self.0.downcast_ref::<ControlPlaneError>() {
             Some(ControlPlaneError::NotAuthenticated) => {
                 (StatusCode::UNAUTHORIZED, "not_authenticated")
@@ -109,6 +144,7 @@ impl IntoResponse for ApiError {
                 status: status.as_u16(),
                 code: code.to_string(),
                 message,
+                inventory: None,
             }),
         )
             .into_response()

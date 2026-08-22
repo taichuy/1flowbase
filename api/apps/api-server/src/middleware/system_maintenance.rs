@@ -91,6 +91,7 @@ fn maintenance_unavailable() -> Response {
             status: StatusCode::SERVICE_UNAVAILABLE.as_u16(),
             code: "system_maintenance".to_owned(),
             message: "system writes are temporarily fenced for recovery".to_owned(),
+            inventory: None,
         }),
     )
         .into_response()

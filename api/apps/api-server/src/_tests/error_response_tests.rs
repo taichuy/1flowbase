@@ -4,7 +4,11 @@ use api_server::official_extension_catalog::{
 };
 use axum::{body::to_bytes, http::StatusCode, response::IntoResponse};
 use control_plane::errors::ControlPlaneError;
+use control_plane::plugin_management::{
+    BackupArtifactInventoryError, BackupArtifactInventoryReason,
+};
 use plugin_framework::error::PluginFrameworkError;
+use uuid::Uuid;
 
 #[tokio::test]
 async fn error_response_includes_status_field() {
@@ -34,6 +38,38 @@ async fn inconsistent_extension_catalog_is_a_retryable_service_failure() {
         payload["code"],
         "extension_catalog_temporarily_inconsistent"
     );
+}
+
+#[tokio::test]
+async fn invalid_system_backup_inventory_returns_safe_conflict_details() {
+    let installation_id = Uuid::from_u128(7);
+    let response = ApiError(anyhow::Error::new(
+        api_server::system_backup::SystemBackupRuntimeError::SourceInventoryInvalid(
+            BackupArtifactInventoryError {
+                reason: BackupArtifactInventoryReason::RetainedArtifactMissing,
+                installation_id,
+                artifact_identity: "plugin:runtime-extensions/acme/example@1.0.0".to_owned(),
+            },
+        ),
+    ))
+    .into_response();
+
+    assert_eq!(response.status(), StatusCode::CONFLICT);
+    let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+
+    assert_eq!(payload["status"], 409);
+    assert_eq!(payload["code"], "system_backup_source_inventory_invalid");
+    assert_eq!(payload["inventory"]["reason"], "retained_artifact_missing");
+    assert_eq!(
+        payload["inventory"]["installation_id"],
+        installation_id.to_string()
+    );
+    assert_eq!(
+        payload["inventory"]["artifact_identity"],
+        "plugin:runtime-extensions/acme/example@1.0.0"
+    );
+    assert!(!payload.to_string().contains("/tmp/"));
 }
 
 #[tokio::test]

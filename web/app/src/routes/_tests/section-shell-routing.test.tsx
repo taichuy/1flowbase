@@ -174,6 +174,7 @@ const networkCenterApi = vi.hoisted(() => ({
   settingsNetworkEgressPoolsQueryKey: ['settings', 'network-center', 'pools'],
   settingsNetworkEgressRoutesQueryKey: ['settings', 'network-center', 'routes'],
   fetchSettingsNetworkEgressProviders: vi.fn(),
+  fetchSettingsNetworkEgressProviderTypes: vi.fn(),
   fetchSettingsNetworkEgressPools: vi.fn(),
   fetchSettingsNetworkEgressRoutes: vi.fn()
 }));
@@ -250,7 +251,7 @@ const settingsRouteRecords = {
   },
   'network-center': {
     label_key: 'auto.network_center',
-    path: '/settings/network-center/providers'
+    path: '/settings/network-center/proxy-types'
   }
 } as const;
 
@@ -444,6 +445,7 @@ describe('section shell routing', () => {
     });
     networkCenterApi.fetchSettingsNetworkEgressProviders.mockReset();
     networkCenterApi.fetchSettingsNetworkEgressProviders.mockResolvedValue([]);
+    networkCenterApi.fetchSettingsNetworkEgressProviderTypes.mockResolvedValue([]);
     networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([]);
     networkCenterApi.fetchSettingsNetworkEgressRoutes.mockResolvedValue([]);
     dataModelsApi.fetchSettingsDataSourceInstances.mockResolvedValue([]);
@@ -623,15 +625,15 @@ describe('section shell routing', () => {
 
   test.each([
     [
-      '/settings/network-center/providers',
+      '/settings/network-center/proxy-types',
       'network-center-providers-shell',
-      '出口提供方'
+      '代理类型'
     ],
-    ['/settings/network-center/pools', 'network-center-pools-shell', '出口池'],
+    ['/settings/network-center/proxy-pools', 'network-center-pools-shell', '代理池'],
     [
-      '/settings/network-center/routes',
+      '/settings/network-center/routing-rules',
       'network-center-routes-shell',
-      '出口路由'
+      '路由规则'
     ]
   ])(
     'AC-004 keeps %s protected and projects the network center shell',
@@ -648,7 +650,7 @@ describe('section shell routing', () => {
       expect(await screen.findByTestId(shellTestId)).toBeInTheDocument();
       expect(screen.getByRole('tablist')).toBeInTheDocument();
       expect(
-        screen.getByRole('tab', { name: '出口提供方' })
+        screen.getByRole('tab', { name: '代理类型' })
       ).toBeInTheDocument();
       expect(
         screen.getByRole('tab', { name: activeTab, selected: true })
@@ -656,10 +658,10 @@ describe('section shell routing', () => {
       expect(
         screen.queryByRole('heading', { name: activeTab, level: 2 })
       ).not.toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: '出口池' })).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: '出口路由' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: '代理池' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: '路由规则' })).toBeInTheDocument();
       await waitFor(() => {
-        if (pathname.endsWith('/routes')) {
+        if (pathname.endsWith('/routing-rules')) {
           expect(
             networkCenterApi.fetchSettingsNetworkEgressRoutes
           ).toHaveBeenCalled();
@@ -683,51 +685,51 @@ describe('section shell routing', () => {
         'settings_feature.access.system.network-center'
       ]);
 
-      const view = renderApp('/settings/network-center/pools');
+      const view = renderApp('/settings/network-center/proxy-pools');
 
       expect(await screen.findByRole('tablist')).toBeInTheDocument();
       expect(
-        screen.getByRole('tab', { name: '出口提供方' })
+        screen.getByRole('tab', { name: '代理类型' })
       ).toBeInTheDocument();
       expect(
-        screen.getByRole('tab', { name: '出口池', selected: true })
+        screen.getByRole('tab', { name: '代理池', selected: true })
       ).toBeInTheDocument();
-      expect(screen.getByRole('tab', { name: '出口路由' })).toBeInTheDocument();
+      expect(screen.getByRole('tab', { name: '路由规则' })).toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole('tab', { name: '出口路由' }));
+      fireEvent.click(screen.getByRole('tab', { name: '路由规则' }));
       await waitFor(() => {
         expect(window.location.pathname).toBe(
-          '/settings/network-center/routes'
+          '/settings/network-center/routing-rules'
         );
       });
       expect(
-        screen.getByRole('tab', { name: '出口路由', selected: true })
+        screen.getByRole('tab', { name: '路由规则', selected: true })
       ).toBeInTheDocument();
 
-      fireEvent.click(screen.getByRole('tab', { name: '出口提供方' }));
+      fireEvent.click(screen.getByRole('tab', { name: '代理类型' }));
       await waitFor(() => {
         expect(window.location.pathname).toBe(
-          '/settings/network-center/providers'
+          '/settings/network-center/proxy-types'
         );
       });
       expect(
-        screen.getByRole('tab', { name: '出口提供方', selected: true })
+        screen.getByRole('tab', { name: '代理类型', selected: true })
       ).toBeInTheDocument();
 
       act(() => window.history.back());
       await waitFor(() => {
         expect(window.location.pathname).toBe(
-          '/settings/network-center/routes'
+          '/settings/network-center/routing-rules'
         );
       });
       expect(
-        await screen.findByRole('tab', { name: '出口路由', selected: true })
+        await screen.findByRole('tab', { name: '路由规则', selected: true })
       ).toBeInTheDocument();
 
       view.unmount();
       renderApp(window.location.pathname);
       expect(
-        await screen.findByRole('tab', { name: '出口路由', selected: true })
+        await screen.findByRole('tab', { name: '路由规则', selected: true })
       ).toBeInTheDocument();
     },
     SECTION_REDIRECT_TEST_TIMEOUT
@@ -741,7 +743,7 @@ describe('section shell routing', () => {
       );
       authenticateWithPermissions(['user.view.all']);
 
-      renderApp('/settings/network-center/providers');
+      renderApp('/settings/network-center/proxy-types');
 
       await waitFor(() => {
         expect(window.location.pathname).toBe(
