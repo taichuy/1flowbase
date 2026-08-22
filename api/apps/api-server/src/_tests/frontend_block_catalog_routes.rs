@@ -484,17 +484,13 @@ async fn component_dependency_lock_is_derived_from_source_imports() {
                 "role": "browser_module",
                 "media_type": "text/javascript; charset=utf-8",
                 "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
-                "url": format!(
-                    "/api/console/frontstage/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
-                ),
+                "url": "/api/console/frontstage/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
                 "integrity": "verified_sha256"
             }, {
                 "role": "shadow_style",
                 "media_type": "text/css; charset=utf-8",
                 "sha256": "adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f",
-                "url": format!(
-                    "/api/console/frontstage/component-module-assets/adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f"
-                ),
+                "url": "/api/console/frontstage/component-module-assets/adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f",
                 "integrity": "verified_sha256"
             }],
             "exports": ["Button"]
@@ -506,9 +502,7 @@ async fn component_dependency_lock_is_derived_from_source_imports() {
                 "role": "browser_module",
                 "media_type": "text/javascript; charset=utf-8",
                 "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
-                "url": format!(
-                    "/api/console/frontstage/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
-                ),
+                "url": "/api/console/frontstage/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
                 "integrity": "verified_sha256"
             }],
             "exports": ["useRuntimeValue"]
