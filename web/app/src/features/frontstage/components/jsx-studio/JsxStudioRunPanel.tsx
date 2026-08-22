@@ -1,6 +1,5 @@
 import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
 import {
-  sha256Text,
   diagnoseLegacyBlockModuleSource,
   type NativeReactRuntimeDiagnostic,
   type NativeReactCatalogDependencyLock,
@@ -9,7 +8,7 @@ import {
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
 import type { BlockContext } from '@1flowbase/page-protocol';
-import { Alert, Button, Modal, Space } from 'antd';
+import { Alert, Button, Space } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
@@ -87,8 +86,6 @@ export interface JsxStudioRunPanelProps {
   onPrepareDraftRun?: (input: {
     blockId: string;
     runId: string;
-    draftHash: string;
-    confirmWrite: () => Promise<boolean>;
   }) => Promise<void>;
   onRevokeDraftRun?: (runId: string) => void;
   revision: string;
@@ -197,9 +194,7 @@ export function JsxStudioRunPanel({
       try {
         await onPrepareDraftRunRef.current?.({
           blockId: frozenBlock.id,
-          runId: requestId,
-          draftHash: sha256Text(frozenSource),
-          confirmWrite: confirmWriteRun
+          runId: requestId
         });
       } catch (error) {
         if (generationRef.current !== generation) return;
@@ -406,17 +401,6 @@ export function JsxStudioRunPanel({
       }}
     />
   );
-}
-
-function confirmWriteRun(): Promise<boolean> {
-  return new Promise((resolve) => {
-    Modal.confirm({
-      title: i18nText('frontstage', 'auto.confirm_write_run'),
-      content: i18nText('frontstage', 'auto.confirm_write_run_description'),
-      onOk: () => resolve(true),
-      onCancel: () => resolve(false)
-    });
-  });
 }
 
 function getErrorMessage(error: unknown): string {

@@ -182,10 +182,6 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
                 "POST",
                 "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/callable-interfaces/dispatch",
             ),
-            (
-                "POST",
-                "/api/console/frontstage/:workspace_id/pages/:page_id/tabs/:tab_id/callable-interfaces/write-grants",
-            ),
         ])
     );
     assert!(assembly

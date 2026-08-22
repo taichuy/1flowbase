@@ -87,8 +87,7 @@ vi.mock('@1flowbase/api-client', () => ({
   dispatchFrontstageQuery: vi.fn(),
   dispatchFrontstageAction: vi.fn(),
   dispatchFrontstageCallable: vi.fn(),
-  dispatchFrontstageCallableStream: vi.fn(),
-  issueFrontstageCallableWriteGrant: vi.fn()
+  dispatchFrontstageCallableStream: vi.fn()
 }));
 
 vi.mock('../../features/auth/components/AuthBootstrap', () => ({

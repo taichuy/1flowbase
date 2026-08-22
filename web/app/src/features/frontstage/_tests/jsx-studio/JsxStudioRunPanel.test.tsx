@@ -336,7 +336,7 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     expect(hosts[0]!.shadowRoot).not.toBe(hosts[1]!.shadowRoot);
   });
 
-  test('D4-AC-001/003 binds context and draft authorization through the shared declarative Portal Host', async () => {
+  test('D4-AC-001/003 binds context through the shared declarative Portal Host without a write-confirmation callback', async () => {
     const apiPost = vi.fn().mockResolvedValue({ ok: true });
     const prepareDraftRun = vi.fn().mockResolvedValue(undefined);
     const revokeDraftRun = vi.fn();
@@ -371,6 +371,10 @@ describe('JsxStudioRunPanel Native React run revision', () => {
       />
     );
     await waitFor(() => expect(prepareDraftRun).toHaveBeenCalledOnce());
+    expect(prepareDraftRun).toHaveBeenCalledWith({
+      blockId: 'block-1',
+      runId: expect.stringMatching(/^draft:block-1:/u)
+    });
     await waitFor(() =>
       expect(
         view.container.querySelector<HTMLElement>(

@@ -30,21 +30,17 @@ use control_plane::{
     },
 };
 use serde_json::{json, Value};
-use sha2::{Digest, Sha256};
-use time::{Duration, OffsetDateTime};
+use time::OffsetDateTime;
 use tokio::sync::RwLock;
 use tower::ServiceExt;
 use uuid::Uuid;
 
-const PAGE_TAB_SAVE_OPERATION_ID: &str = "save_frontstage_tab_document";
 const PAGE_TAB_GET_PATH: &str =
     "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_reference}";
 const PAGE_TAB_SAVE_PATH: &str =
     "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/document";
 const PAGE_TAB_DELETE_PATH: &str =
     "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}";
-const GRANT_PREFIX: &str = "frontstage:callable-write-grant:";
-const GRANT_LOCK_PREFIX: &str = "frontstage:callable-write-grant-lock:";
 
 #[derive(Clone)]
 struct UnreachablePluginRunner;
@@ -112,7 +108,6 @@ impl OfficialMcpBundleSourcePort for NoopMcpSource {
 
 struct Fixture {
     app: Router,
-    state: Arc<ApiState>,
     _database: postgres_test_support::PostgresTestSchema,
 }
 
@@ -284,7 +279,6 @@ async fn fixture() -> Fixture {
     });
     Fixture {
         app: app_with_state_and_config(state.clone(), &config),
-        state,
         _database: database,
     }
 }
@@ -523,19 +517,13 @@ async fn dispatch(
     block_id: &str,
     method: &str,
     path: &str,
-    run_id: &str,
-    draft_hash: &str,
     request: Value,
-    write_grant: Option<&str>,
 ) -> (StatusCode, Value) {
     let body = json!({
         "block_id": block_id,
         "method": method,
         "path": path,
-        "run_id": run_id,
-        "draft_hash": draft_hash,
-        "request": request,
-        "write_grant": write_grant
+        "request": request
     });
     json_request(
         app,
@@ -548,49 +536,6 @@ async fn dispatch(
         body,
     )
     .await
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn issue_grant(
-    app: &Router,
-    cookie: &str,
-    csrf: &str,
-    workspace_id: Uuid,
-    page_id: Uuid,
-    tab_id: Uuid,
-    block_id: &str,
-    method: &str,
-    path: &str,
-    run_id: &str,
-    draft_hash: &str,
-) -> String {
-    let (status, payload) = json_request(
-        app,
-        "POST",
-        &format!(
-            "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/callable-interfaces/write-grants"
-        ),
-        cookie,
-        csrf,
-        json!({
-            "block_id": block_id,
-            "method": method,
-            "path": path,
-            "run_id": run_id,
-            "draft_hash": draft_hash
-        }),
-    )
-    .await;
-    assert_eq!(status, StatusCode::OK, "{payload}");
-    payload["data"]["grant_token"].as_str().unwrap().into()
-}
-
-fn grant_key(token: &str) -> String {
-    format!("{GRANT_PREFIX}{:x}", Sha256::digest(token.as_bytes()))
-}
-
-fn grant_lock_key(token: &str) -> String {
-    format!("{GRANT_LOCK_PREFIX}{:x}", Sha256::digest(token.as_bytes()))
 }
 
 #[tokio::test]
@@ -648,44 +593,6 @@ async fn capability_catalog_pages_lightweight_path_matches_and_loads_one_detail(
     .await;
     assert_eq!(id_search_status, StatusCode::OK, "{id_search_payload}");
     assert_eq!(id_search_payload["data"]["total"], 0);
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn seed_grant(
-    state: &ApiState,
-    token: &str,
-    actor_user_id: Uuid,
-    workspace_id: Uuid,
-    page_id: Uuid,
-    tab_id: Uuid,
-    block_id: &str,
-    method: &str,
-    path: &str,
-    run_id: &str,
-    draft_hash: &str,
-    expires_at: OffsetDateTime,
-) {
-    state
-        .infrastructure
-        .cache_store()
-        .set_if_absent_json(
-            &grant_key(token),
-            json!({
-                "actor_user_id": actor_user_id,
-                "workspace_id": workspace_id,
-                "page_id": page_id,
-                "tab_id": tab_id,
-                "block_id": block_id,
-                "method": method,
-                "path": path,
-                "run_id": run_id,
-                "draft_hash": draft_hash,
-                "expires_at": serde_json::to_value(expires_at).unwrap()
-            }),
-            Some(Duration::minutes(5)),
-        )
-        .await
-        .unwrap();
 }
 
 #[tokio::test]
@@ -768,10 +675,7 @@ async fn callable_dispatch_uses_method_path_and_current_tab_block_node() {
             block,
             method,
             path,
-            "run-read",
-            "draft-read",
             json!({}),
-            None,
         )
         .await;
         assert_eq!(status, expected, "{block}/{method}/{path}/{target_tab}");
@@ -787,10 +691,7 @@ async fn callable_dispatch_uses_method_path_and_current_tab_block_node() {
         &first_block,
         "GET",
         PAGE_TAB_GET_PATH,
-        "run-read",
-        "draft-read",
         json!({}),
-        None,
     )
     .await;
     assert_eq!(status, StatusCode::OK, "{payload}");
@@ -798,7 +699,7 @@ async fn callable_dispatch_uses_method_path_and_current_tab_block_node() {
 }
 
 #[tokio::test]
-async fn write_grant_is_consumed_once_and_old_binding_contract_is_rejected() {
+async fn ac_001_authorized_writable_dispatch_succeeds_without_write_grant() {
     let fixture = fixture().await;
     let (cookie, csrf) = login(&fixture.app, "root", "change-me").await;
     let (_, workspace_id) = session_identity(&fixture.app, &cookie).await;
@@ -815,28 +716,7 @@ async fn write_grant_is_consumed_once_and_old_binding_contract_is_rejected() {
     )
     .await;
 
-    let (legacy_status, _) = json_request(
-        &fixture.app,
-        "POST",
-        &format!(
-            "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/callable-interfaces/dispatch"
-        ),
-        &cookie,
-        &csrf,
-        json!({
-            "block_id": &block_id,
-            "interface_id": PAGE_TAB_SAVE_OPERATION_ID,
-            "binding_alias": "savePage",
-            "schema_digest": "legacy-digest",
-            "run_id": "run-write",
-            "draft_hash": "draft-write",
-            "request": { "body": { "payload": primary_document.clone() } }
-        }),
-    )
-    .await;
-    assert_eq!(legacy_status, StatusCode::UNPROCESSABLE_ENTITY);
-
-    let token = issue_grant(
+    let written = dispatch(
         &fixture.app,
         &cookie,
         &csrf,
@@ -846,97 +726,10 @@ async fn write_grant_is_consumed_once_and_old_binding_contract_is_rejected() {
         &block_id,
         "PUT",
         PAGE_TAB_SAVE_PATH,
-        "run-write",
-        "draft-write",
-    )
-    .await;
-    let competing_owner = "competing-draft-run";
-    assert!(fixture
-        .state
-        .infrastructure
-        .distributed_lock()
-        .acquire(
-            &grant_lock_key(&token),
-            competing_owner,
-            Duration::seconds(10),
-        )
-        .await
-        .unwrap());
-    let locked = dispatch(
-        &fixture.app,
-        &cookie,
-        &csrf,
-        workspace_id,
-        page_id,
-        tab_id,
-        &block_id,
-        "PUT",
-        PAGE_TAB_SAVE_PATH,
-        "run-write",
-        "draft-write",
         json!({ "body": { "payload": primary_document.clone() } }),
-        Some(&token),
     )
     .await;
-    assert_eq!(locked.0, StatusCode::CONFLICT, "{}", locked.1);
-    assert!(fixture
-        .state
-        .infrastructure
-        .cache_store()
-        .get_json(&grant_key(&token))
-        .await
-        .unwrap()
-        .is_some());
-    assert!(fixture
-        .state
-        .infrastructure
-        .distributed_lock()
-        .release(&grant_lock_key(&token), competing_owner)
-        .await
-        .unwrap());
-    let first = dispatch(
-        &fixture.app,
-        &cookie,
-        &csrf,
-        workspace_id,
-        page_id,
-        tab_id,
-        &block_id,
-        "PUT",
-        PAGE_TAB_SAVE_PATH,
-        "run-write",
-        "draft-write",
-        json!({ "body": { "payload": primary_document.clone() } }),
-        Some(&token),
-    )
-    .await;
-    assert_eq!(first.0, StatusCode::OK, "{}", first.1);
-    assert!(fixture
-        .state
-        .infrastructure
-        .cache_store()
-        .get_json(&grant_key(&token))
-        .await
-        .unwrap()
-        .is_none());
-
-    let replay = dispatch(
-        &fixture.app,
-        &cookie,
-        &csrf,
-        workspace_id,
-        page_id,
-        tab_id,
-        &block_id,
-        "PUT",
-        PAGE_TAB_SAVE_PATH,
-        "run-write",
-        "draft-write",
-        json!({ "body": { "payload": primary_document } }),
-        Some(&token),
-    )
-    .await;
-    assert_eq!(replay.0, StatusCode::BAD_REQUEST);
+    assert_eq!(written.0, StatusCode::OK, "{}", written.1);
 }
 
 #[tokio::test]
@@ -970,20 +763,6 @@ async fn callable_dispatch_preserves_no_content_and_target_conflict_status() {
     )
     .await;
 
-    let first_grant = issue_grant(
-        &fixture.app,
-        &cookie,
-        &csrf,
-        workspace_id,
-        page_id,
-        first_tab,
-        &first_block,
-        "DELETE",
-        PAGE_TAB_DELETE_PATH,
-        "run-delete-first",
-        "draft-delete-first",
-    )
-    .await;
     let deleted = dispatch(
         &fixture.app,
         &cookie,
@@ -994,28 +773,11 @@ async fn callable_dispatch_preserves_no_content_and_target_conflict_status() {
         &first_block,
         "DELETE",
         PAGE_TAB_DELETE_PATH,
-        "run-delete-first",
-        "draft-delete-first",
         json!({}),
-        Some(&first_grant),
     )
     .await;
     assert_eq!(deleted, (StatusCode::NO_CONTENT, Value::Null));
 
-    let second_grant = issue_grant(
-        &fixture.app,
-        &cookie,
-        &csrf,
-        workspace_id,
-        page_id,
-        second_tab,
-        &second_block,
-        "DELETE",
-        PAGE_TAB_DELETE_PATH,
-        "run-delete-last",
-        "draft-delete-last",
-    )
-    .await;
     let conflict = dispatch(
         &fixture.app,
         &cookie,
@@ -1026,10 +788,7 @@ async fn callable_dispatch_preserves_no_content_and_target_conflict_status() {
         &second_block,
         "DELETE",
         PAGE_TAB_DELETE_PATH,
-        "run-delete-last",
-        "draft-delete-last",
         json!({}),
-        Some(&second_grant),
     )
     .await;
     assert_eq!(conflict.0, StatusCode::CONFLICT, "{}", conflict.1);
@@ -1086,186 +845,8 @@ async fn callable_dispatch_preserves_target_permission_denial_for_the_page_visit
         &block_id,
         "GET",
         "/api/console/settings/members",
-        "run-visitor",
-        "draft-visitor",
         json!({}),
-        None,
     )
     .await;
     assert_eq!(denied.0, StatusCode::FORBIDDEN, "{}", denied.1);
-}
-
-#[tokio::test]
-async fn write_grant_rejects_expiry_and_every_source_identity_mismatch() {
-    let fixture = fixture().await;
-    let (cookie, csrf) = login(&fixture.app, "root", "change-me").await;
-    let (actor_id, workspace_id) = session_identity(&fixture.app, &cookie).await;
-    let (page_id, tab_id, root_uid) = create_page(&fixture.app, &cookie, &csrf, workspace_id).await;
-    let (second_tab, _second_root_uid) =
-        create_tab(&fixture.app, &cookie, &csrf, workspace_id, page_id).await;
-    let primary_document = document(&root_uid);
-    let primary_block = create_block_node(
-        &fixture.app,
-        &cookie,
-        &csrf,
-        workspace_id,
-        page_id,
-        tab_id,
-        "Primary write block",
-    )
-    .await;
-    let other_block = create_block_node(
-        &fixture.app,
-        &cookie,
-        &csrf,
-        workspace_id,
-        page_id,
-        tab_id,
-        "Other block",
-    )
-    .await;
-    let second_block = create_block_node(
-        &fixture.app,
-        &cookie,
-        &csrf,
-        workspace_id,
-        page_id,
-        second_tab,
-        "Second tab block",
-    )
-    .await;
-
-    struct Case {
-        name: &'static str,
-        actor: Uuid,
-        tab: Uuid,
-        block: String,
-        dispatch_block: String,
-        method: &'static str,
-        path: &'static str,
-        draft: &'static str,
-        expires: OffsetDateTime,
-        dispatch_tab: Uuid,
-    }
-    let cases = [
-        Case {
-            name: "expired",
-            actor: actor_id,
-            tab: tab_id,
-            block: primary_block.clone(),
-            dispatch_block: primary_block.clone(),
-            method: "PUT",
-            path: PAGE_TAB_SAVE_PATH,
-            draft: "draft",
-            expires: OffsetDateTime::now_utc() - Duration::seconds(1),
-            dispatch_tab: tab_id,
-        },
-        Case {
-            name: "route-method",
-            actor: actor_id,
-            tab: tab_id,
-            block: primary_block.clone(),
-            dispatch_block: primary_block.clone(),
-            method: "GET",
-            path: PAGE_TAB_SAVE_PATH,
-            draft: "draft",
-            expires: OffsetDateTime::now_utc() + Duration::minutes(1),
-            dispatch_tab: tab_id,
-        },
-        Case {
-            name: "block",
-            actor: actor_id,
-            tab: tab_id,
-            block: other_block.clone(),
-            dispatch_block: primary_block.clone(),
-            method: "PUT",
-            path: PAGE_TAB_SAVE_PATH,
-            draft: "draft",
-            expires: OffsetDateTime::now_utc() + Duration::minutes(1),
-            dispatch_tab: tab_id,
-        },
-        Case {
-            name: "route-path",
-            actor: actor_id,
-            tab: tab_id,
-            block: primary_block.clone(),
-            dispatch_block: primary_block.clone(),
-            method: "PUT",
-            path: "/api/console/frontstage/other",
-            draft: "draft",
-            expires: OffsetDateTime::now_utc() + Duration::minutes(1),
-            dispatch_tab: tab_id,
-        },
-        Case {
-            name: "tab",
-            actor: actor_id,
-            tab: tab_id,
-            block: primary_block.clone(),
-            dispatch_block: second_block.clone(),
-            method: "PUT",
-            path: PAGE_TAB_SAVE_PATH,
-            draft: "draft",
-            expires: OffsetDateTime::now_utc() + Duration::minutes(1),
-            dispatch_tab: second_tab,
-        },
-        Case {
-            name: "user",
-            actor: Uuid::new_v4(),
-            tab: tab_id,
-            block: primary_block.clone(),
-            dispatch_block: primary_block.clone(),
-            method: "PUT",
-            path: PAGE_TAB_SAVE_PATH,
-            draft: "draft",
-            expires: OffsetDateTime::now_utc() + Duration::minutes(1),
-            dispatch_tab: tab_id,
-        },
-        Case {
-            name: "draft",
-            actor: actor_id,
-            tab: tab_id,
-            block: primary_block.clone(),
-            dispatch_block: primary_block.clone(),
-            method: "PUT",
-            path: PAGE_TAB_SAVE_PATH,
-            draft: "other-draft",
-            expires: OffsetDateTime::now_utc() + Duration::minutes(1),
-            dispatch_tab: tab_id,
-        },
-    ];
-    for case in cases {
-        let token = format!("grant-{}", case.name);
-        seed_grant(
-            &fixture.state,
-            &token,
-            case.actor,
-            workspace_id,
-            page_id,
-            case.tab,
-            &case.block,
-            case.method,
-            case.path,
-            "run",
-            case.draft,
-            case.expires,
-        )
-        .await;
-        let (status, payload) = dispatch(
-            &fixture.app,
-            &cookie,
-            &csrf,
-            workspace_id,
-            page_id,
-            case.dispatch_tab,
-            &case.dispatch_block,
-            "PUT",
-            PAGE_TAB_SAVE_PATH,
-            "run",
-            "draft",
-            json!({ "body": { "payload": primary_document.clone() } }),
-            Some(&token),
-        )
-        .await;
-        assert_eq!(status, StatusCode::BAD_REQUEST, "{}: {payload}", case.name);
-    }
 }

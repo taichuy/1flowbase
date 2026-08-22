@@ -1,9 +1,7 @@
 import {
-  ApiClientError,
   dispatchFrontstageCallable,
   dispatchFrontstageCallableStream,
   getDefaultApiBaseUrl,
-  issueFrontstageCallableWriteGrant,
   type ApiBaseUrlLocation,
   type FrontstageCallableRequest
 } from '@1flowbase/api-client';
@@ -15,7 +13,6 @@ import type {
 export interface FrontstageJsBlockCapabilityClient {
   dispatchFrontstageCallable: typeof dispatchFrontstageCallable;
   dispatchFrontstageCallableStream: typeof dispatchFrontstageCallableStream;
-  issueFrontstageCallableWriteGrant: typeof issueFrontstageCallableWriteGrant;
 }
 
 export interface CreateFrontstageJsBlockCapabilityHandlersOptions {
@@ -24,12 +21,6 @@ export interface CreateFrontstageJsBlockCapabilityHandlersOptions {
   tabId: string;
   csrfToken?: string | null;
   resolveBlockId(requestId: string): string | null;
-  confirmRuntimeWrite?(input: {
-    blockId: string;
-    method: string;
-    path: string;
-    requestId: string;
-  }): Promise<boolean>;
   baseUrl?: string;
   locationLike?: ApiBaseUrlLocation;
   client?: FrontstageJsBlockCapabilityClient;
@@ -37,16 +28,11 @@ export interface CreateFrontstageJsBlockCapabilityHandlersOptions {
 
 const defaultClient: FrontstageJsBlockCapabilityClient = {
   dispatchFrontstageCallable,
-  dispatchFrontstageCallableStream,
-  issueFrontstageCallableWriteGrant
+  dispatchFrontstageCallableStream
 };
 
-interface DraftRunAuthorization {
+interface DraftRunRegistration {
   blockId: string;
-  draftHash: string;
-  confirmWrite: () => Promise<boolean>;
-  writeConfirmed: boolean;
-  writeConfirmation: Promise<boolean> | null;
 }
 
 export interface FrontstageJsBlockCapabilityHandlers {
@@ -55,8 +41,6 @@ export interface FrontstageJsBlockCapabilityHandlers {
   prepareDraftRun(input: {
     blockId: string;
     runId: string;
-    draftHash: string;
-    confirmWrite: () => Promise<boolean>;
   }): Promise<void>;
   revokeDraftRun(runId: string): void;
 }
@@ -78,7 +62,7 @@ export function createFrontstageJsBlockCapabilityHandlers(
   const baseUrl =
     options.baseUrl ??
     getFrontstageJsBlockCapabilityApiBaseUrl(options.locationLike);
-  const draftRuns = new Map<string, DraftRunAuthorization>();
+  const draftRuns = new Map<string, DraftRunRegistration>();
   const revokedDraftRuns = new Set<string>();
   const streams = new Map<
     string,
@@ -102,16 +86,10 @@ export function createFrontstageJsBlockCapabilityHandlers(
   };
 
   return {
-    async prepareDraftRun({ blockId, runId, draftHash, confirmWrite }) {
+    async prepareDraftRun({ blockId, runId }) {
       requireCsrfToken(options.csrfToken);
       revokedDraftRuns.delete(runId);
-      draftRuns.set(runId, {
-        blockId,
-        draftHash,
-        confirmWrite,
-        writeConfirmed: false,
-        writeConfirmation: null
-      });
+      draftRuns.set(runId, { blockId });
     },
     revokeDraftRun(runId) {
       draftRuns.delete(runId);
@@ -155,13 +133,8 @@ export function createFrontstageJsBlockCapabilityHandlers(
         if (item.done) streams.delete(effect.streamId as string);
         return item.done ? { done: true } : { done: false, value: item.value };
       }
-      const dispatch = async (writeGrant?: string) => {
-        const input = createDispatchInput(
-          effect,
-          blockId,
-          draftRun,
-          writeGrant
-        );
+      const dispatch = async () => {
+        const input = createDispatchInput(effect, blockId);
         if (effect.operation === 'stream_open') {
           const iterable = await client.dispatchFrontstageCallableStream(
             options.workspaceId,
@@ -190,102 +163,26 @@ export function createFrontstageJsBlockCapabilityHandlers(
           baseUrl
         );
       };
-      if (
-        draftRun &&
-        isFrontstageWriteMethod(effect.method) &&
-        !(await confirmDraftRunWrite(draftRun))
-      ) {
-        throw new Error('Write interface call was cancelled.');
-      }
       if (revokedDraftRuns.has(effect.requestId)) {
         throw new Error('Draft run capability has been revoked.');
       }
-      try {
-        return await dispatch();
-      } catch (error) {
-        if (
-          !isWriteGrantRequired(error) ||
-          !isFrontstageWriteMethod(effect.method)
-        ) {
-          throw error;
-        }
-        const writeConfirmed = draftRun
-          ? await confirmDraftRunWrite(draftRun)
-          : await options.confirmRuntimeWrite?.({
-              blockId,
-              method: effect.method,
-              path: effect.path,
-              requestId: effect.requestId
-            });
-        if (!writeConfirmed) {
-          throw new Error('Write interface call was cancelled.');
-        }
-        if (revokedDraftRuns.has(effect.requestId)) {
-          throw new Error('Draft run capability has been revoked.');
-        }
-        const draftHash =
-          draftRun?.draftHash ?? createRuntimeDraftHash(effect.requestId);
-        const grant = await client.issueFrontstageCallableWriteGrant(
-          options.workspaceId,
-          options.pageId,
-          options.tabId,
-          {
-            block_id: blockId,
-            method: effect.method,
-            path: effect.path,
-            run_id: effect.requestId,
-            draft_hash: draftHash
-          },
-          requireCsrfToken(options.csrfToken),
-          baseUrl
-        );
-        return dispatch(grant.grant_token);
-      }
+      return dispatch();
     }
   };
 }
 
-function isFrontstageWriteMethod(method: string): boolean {
-  return !['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
-}
-
 function createDispatchInput(
   effect: BlockHostInterfaceEffect,
-  blockId: string,
-  draftRun: DraftRunAuthorization | undefined,
-  writeGrant?: string
+  blockId: string
 ) {
   return {
     block_id: blockId,
     method: effect.method,
     path: effect.path,
-    run_id: effect.requestId,
-    draft_hash:
-      draftRun?.draftHash ?? createRuntimeDraftHash(effect.requestId),
     ...(effect.request === undefined
       ? {}
-      : { request: effect.request as FrontstageCallableRequest }),
-    ...(writeGrant ? { write_grant: writeGrant } : {})
+      : { request: effect.request as FrontstageCallableRequest })
   };
-}
-
-function createRuntimeDraftHash(requestId: string): string {
-  return `runtime:${requestId}`;
-}
-
-function isWriteGrantRequired(error: unknown): boolean {
-  return error instanceof ApiClientError && error.code === 'write_grant';
-}
-
-async function confirmDraftRunWrite(
-  draftRun: DraftRunAuthorization
-): Promise<boolean> {
-  if (draftRun.writeConfirmed) return true;
-  draftRun.writeConfirmation ??= draftRun.confirmWrite();
-  const confirmed = await draftRun.writeConfirmation;
-  draftRun.writeConfirmation = null;
-  if (confirmed) draftRun.writeConfirmed = true;
-  return confirmed;
 }
 
 function requireCsrfToken(csrfToken: string | null | undefined): string {
