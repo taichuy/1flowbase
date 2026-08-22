@@ -65,6 +65,34 @@ pub(crate) fn authorize_compiled_console_access(
     }
 }
 
+pub(crate) async fn require_compiled_console_route_access(
+    state: &ApiState,
+    actor: &ActorContext,
+    method: &str,
+    path: &str,
+) -> Result<(), ApiError> {
+    let access = compiled_console_route_access(&state.console_operation_registry, method, path)
+        .map_err(ControlPlaneError::PermissionDenied)?;
+
+    if matches!(access.authorization, ConsoleAuthorization::Authenticated) || actor.is_root {
+        return Ok(());
+    }
+
+    let policies = state
+        .store
+        .load_console_policy_for_bound_role(
+            actor.user_id,
+            actor.current_workspace_id,
+            &actor.effective_display_role,
+        )
+        .await?;
+    if authorize_compiled_console_access(&access, actor, &policies) {
+        return Ok(());
+    }
+
+    Err(ControlPlaneError::PermissionDenied("console_operation_permission_denied").into())
+}
+
 pub async fn require_settings_feature_permission(
     State(state): State<Arc<ApiState>>,
     request: Request<Body>,
@@ -76,31 +104,9 @@ pub async fn require_settings_feature_permission(
     }
 
     let context = require_session(&state, request.headers()).await?;
-    let access = compiled_console_route_access(
-        &state.console_operation_registry,
-        request.method().as_str(),
-        path,
-    )
-    .map_err(ControlPlaneError::PermissionDenied)?;
-
-    if matches!(access.authorization, ConsoleAuthorization::Authenticated) || context.actor.is_root
-    {
-        return Ok(next.run(request).await);
-    }
-
-    let policies = state
-        .store
-        .load_console_policy_for_bound_role(
-            context.actor.user_id,
-            context.actor.current_workspace_id,
-            &context.actor.effective_display_role,
-        )
+    require_compiled_console_route_access(&state, &context.actor, request.method().as_str(), path)
         .await?;
-    if authorize_compiled_console_access(&access, &context.actor, &policies) {
-        return Ok(next.run(request).await);
-    }
-
-    Err(ControlPlaneError::PermissionDenied("console_operation_permission_denied").into())
+    Ok(next.run(request).await)
 }
 
 #[cfg(test)]

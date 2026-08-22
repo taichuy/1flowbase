@@ -26,6 +26,7 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::{ApiError, ApiServiceUnavailable},
+    middleware::require_settings_feature_permission::require_compiled_console_route_access,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     recovery_authorization::{
         consume_reauth_challenge, issue_reauth_challenge, recovery_intent_ttl,
@@ -44,6 +45,8 @@ const RECOVERY_INTENT: &str = "system_backups.recovery.intent";
 const RECOVERY_PREFLIGHT: &str = "system_backups.recovery.preflight";
 const RECOVERY_REAUTH: &str = "system_backups.recovery.reauth";
 const RECOVERY_STATUS: &str = "system_backups.recovery.status";
+pub(crate) const RECOVERY_STATUS_ROUTE: &str =
+    "/api/console/settings/system-backups/recovery/status";
 const VERIFY: &str = "system_backups.verify";
 const BACKUP_PASSWORD_HEADER: &str = "x-system-backup-password";
 
@@ -501,6 +504,8 @@ pub async fn create_recovery_intent(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let session = require_root_cookie(&context)?;
+    require_compiled_console_route_access(&state, &context.actor, "GET", RECOVERY_STATUS_ROUTE)
+        .await?;
     let backup_set_id = BackupSetId::from_uuid(backup_set_id);
     validate_exact_name(backup_set_id, &body.exact_backup_name)?;
     let runtime = require_system_backup(&state)?;
