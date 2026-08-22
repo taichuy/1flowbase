@@ -69,7 +69,7 @@ describe('console-frontstage client', () => {
       browser_asset: {
         sha256:
           'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        url: '/api/console/frontstage/workspace-1/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        url: '/api/console/frontstage/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
       },
       export_name: 'Surface',
       upstream: null,
@@ -88,14 +88,13 @@ describe('console-frontstage client', () => {
     });
   });
 
-  test('D2-P2F builds the single same-origin component module asset route', () => {
+  test('D2-AC-001 builds the auth-scoped component module asset route without a workspace URL segment', () => {
     expect(
       frontstageComponentModuleAssetPath(
-        'workspace/one',
         'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
       )
     ).toBe(
-      '/api/console/frontstage/workspace%2Fone/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+      '/api/console/frontstage/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
     );
   });
 
@@ -103,7 +102,7 @@ describe('console-frontstage client', () => {
     {
       name: 'OpenAPI capability catalog',
       request: () =>
-        listFrontstageInterfaceCapabilities('workspace-1', {
+        listFrontstageInterfaceCapabilities({
           path_prefixes: ['/api/public/', '/api/console/settings/auth-center/'],
           path_query: '/api/console/applications',
           adapter_id: 'console_openapi',
@@ -112,14 +111,14 @@ describe('console-frontstage client', () => {
           limit: 20
         }),
       expected: {
-        path: '/api/console/frontstage/workspace-1/interface-capabilities?path_prefixes=%2Fapi%2Fpublic%2F%2C%2Fapi%2Fconsole%2Fsettings%2Fauth-center%2F&path_query=%2Fapi%2Fconsole%2Fapplications&adapter_id=console_openapi&method=GET&offset=20&limit=20',
+        path: '/api/console/frontstage/interface-capabilities?path_prefixes=%2Fapi%2Fpublic%2F%2C%2Fapi%2Fconsole%2Fsettings%2Fauth-center%2F&path_query=%2Fapi%2Fconsole%2Fapplications&adapter_id=console_openapi&method=GET&offset=20&limit=20',
         method: 'GET'
       }
     },
     {
       name: 'component capability catalog',
       request: () =>
-        listFrontstageComponentCapabilities('workspace-1', {
+        listFrontstageComponentCapabilities({
           installation_id: 'installation-1',
           contribution_code: 'frontstage.js-ui-block',
           query: 'button',
@@ -128,32 +127,32 @@ describe('console-frontstage client', () => {
           limit: 20
         }),
       expected: {
-        path: '/api/console/frontstage/workspace-1/component-capabilities?installation_id=installation-1&contribution_code=frontstage.js-ui-block&query=button&module_source=%401flowbase%2Fnative-components&offset=20&limit=20',
+        path: '/api/console/frontstage/component-capabilities?installation_id=installation-1&contribution_code=frontstage.js-ui-block&query=button&module_source=%401flowbase%2Fnative-components&offset=20&limit=20',
         method: 'GET'
       }
     },
     {
       name: 'page tree collection',
-      request: () => listFrontstagePages('workspace-1'),
+      request: () => listFrontstagePages(),
       expected: {
-        path: '/api/console/frontstage/workspace-1/pages',
+        path: '/api/console/frontstage/pages',
         method: 'GET'
       }
     },
     {
       name: 'page tab collection',
-      request: () => listFrontstagePageTabs('workspace-1', 'page-1'),
+      request: () => listFrontstagePageTabs('page-1'),
       expected: {
-        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs',
+        path: '/api/console/frontstage/pages/page-1/tabs',
         method: 'GET'
       }
     },
     {
       name: 'page tab detail by route segment',
       request: () =>
-        getFrontstagePageTabDetail('workspace-1', 'page-1', 'analytics'),
+        getFrontstagePageTabDetail('page-1', 'analytics'),
       expected: {
-        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/analytics',
+        path: '/api/console/frontstage/pages/page-1/tabs/analytics',
         method: 'GET'
       }
     }
@@ -167,11 +166,10 @@ describe('console-frontstage client', () => {
   test('loads one encoded interface capability detail on demand', async () => {
     await expect(
       getFrontstageInterfaceCapability(
-        'workspace-1',
         'published/interface:detail'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace-1/interface-capabilities/published%2Finterface%3Adetail',
+      path: '/api/console/frontstage/interface-capabilities/published%2Finterface%3Adetail',
       method: 'GET'
     });
   });
@@ -179,11 +177,10 @@ describe('console-frontstage client', () => {
   test('loads one encoded component capability detail on demand', async () => {
     await expect(
       getFrontstageComponentCapability(
-        'workspace-1',
         'installation-1:block:button'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace-1/component-capabilities/installation-1%3Ablock%3Abutton',
+      path: '/api/console/frontstage/component-capabilities/installation-1%3Ablock%3Abutton',
       method: 'GET'
     });
   });
@@ -191,11 +188,10 @@ describe('console-frontstage client', () => {
   test('resolves a component lock from the current block source', async () => {
     await expect(
       resolveFrontstageComponentDependencyLock(
-        'workspace/one',
         "import { Chart } from '@acme/charts';"
       )
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace%2Fone/component-dependency-lock',
+      path: '/api/console/frontstage/component-dependency-lock',
       method: 'POST',
       body: { source_code: "import { Chart } from '@acme/charts';" }
     });
@@ -204,7 +200,6 @@ describe('console-frontstage client', () => {
   test('dispatches a source-described callable through the page-tab scope', async () => {
     await expect(
       dispatchFrontstageCallable(
-        'workspace-1',
         'page-1',
         'tab-1',
         {
@@ -216,7 +211,7 @@ describe('console-frontstage client', () => {
         'csrf-123'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/callable-interfaces/dispatch',
+      path: '/api/console/frontstage/pages/page-1/tabs/tab-1/callable-interfaces/dispatch',
       method: 'POST',
       body: {
         block_id: 'block-1',
@@ -231,7 +226,6 @@ describe('console-frontstage client', () => {
   test('preserves controlled binary responses as a worker-safe byte resource', async () => {
     await expect(
       dispatchFrontstageCallable<FrontstageCallableBinaryResource>(
-        'workspace-1',
         'page-1',
         'tab-1',
         {
@@ -257,7 +251,6 @@ describe('console-frontstage client', () => {
   test('maps a 204 callable response to undefined', async () => {
     await expect(
       dispatchFrontstageCallable(
-        'workspace-1',
         'page-1',
         'tab-1',
         {
@@ -274,7 +267,6 @@ describe('console-frontstage client', () => {
     const iterable = await dispatchFrontstageCallableStream<
       { progress: number } | string
     >(
-      'workspace-1',
       'page-1',
       'tab-1',
       {
@@ -294,7 +286,6 @@ describe('console-frontstage client', () => {
       name: 'group creation',
       request: () =>
         createFrontstageGroup(
-          'workspace-1',
           {
             title: '分组 1',
             icon: 'FolderOutlined',
@@ -307,7 +298,7 @@ describe('console-frontstage client', () => {
           'csrf-123'
         ),
       expected: {
-        path: '/api/console/frontstage/workspace-1/pages/groups',
+        path: '/api/console/frontstage/pages/groups',
         method: 'POST',
         body: {
           title: '分组 1',
@@ -325,7 +316,6 @@ describe('console-frontstage client', () => {
       name: 'page creation',
       request: () =>
         createFrontstagePage(
-          'workspace-1',
           {
             title: '页面 新建 1',
             icon: 'FileTextOutlined',
@@ -337,7 +327,7 @@ describe('console-frontstage client', () => {
           'csrf-123'
         ),
       expected: {
-        path: '/api/console/frontstage/workspace-1/pages',
+        path: '/api/console/frontstage/pages',
         method: 'POST',
         body: {
           title: '页面 新建 1',
@@ -354,13 +344,12 @@ describe('console-frontstage client', () => {
       name: 'title patch',
       request: () =>
         updateFrontstagePageNodeTitle(
-          'workspace-1',
           'page-1',
           { title: '页面-已重命名' },
           'csrf-123'
         ),
       expected: {
-        path: '/api/console/frontstage/workspace-1/pages/page-1',
+        path: '/api/console/frontstage/pages/page-1',
         method: 'PATCH',
         body: { title: '页面-已重命名' },
         csrfToken: 'csrf-123'
@@ -370,13 +359,12 @@ describe('console-frontstage client', () => {
       name: 'metadata patch',
       request: () =>
         updateFrontstagePageNodeTitle(
-          'workspace-1',
           'page-1',
           { tooltip: '展示在页面树', is_hidden: true },
           'csrf-123'
         ),
       expected: {
-        path: '/api/console/frontstage/workspace-1/pages/page-1',
+        path: '/api/console/frontstage/pages/page-1',
         method: 'PATCH',
         body: { tooltip: '展示在页面树', is_hidden: true },
         csrfToken: 'csrf-123'
@@ -386,13 +374,12 @@ describe('console-frontstage client', () => {
       name: 'node move',
       request: () =>
         moveFrontstagePageNode(
-          'workspace-1',
           'page-1',
           { parent_id: null, rank: '000000' },
           'csrf-123'
         ),
       expected: {
-        path: '/api/console/frontstage/workspace-1/pages/page-1/move',
+        path: '/api/console/frontstage/pages/page-1/move',
         method: 'POST',
         body: { parent_id: null, rank: '000000' },
         csrfToken: 'csrf-123'
@@ -401,9 +388,9 @@ describe('console-frontstage client', () => {
     {
       name: 'node deletion',
       request: () =>
-        deleteFrontstagePageNode('workspace-1', 'page-1', 'csrf-123'),
+        deleteFrontstagePageNode('page-1', 'csrf-123'),
       expected: {
-        path: '/api/console/frontstage/workspace-1/pages/page-1',
+        path: '/api/console/frontstage/pages/page-1',
         method: 'DELETE',
         csrfToken: 'csrf-123'
       }
@@ -412,7 +399,6 @@ describe('console-frontstage client', () => {
       name: 'tab creation',
       request: () =>
         createFrontstagePageTab(
-          'workspace-1',
           'page-1',
           {
             title: 'Analytics',
@@ -422,7 +408,7 @@ describe('console-frontstage client', () => {
           'csrf-123'
         ),
       expected: {
-        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs',
+        path: '/api/console/frontstage/pages/page-1/tabs',
         method: 'POST',
         body: {
           title: 'Analytics',
@@ -436,14 +422,13 @@ describe('console-frontstage client', () => {
       name: 'tab metadata patch',
       request: () =>
         updateFrontstagePageTab(
-          'workspace-1',
           'page-1',
           'tab-1',
           { title: 'Renamed' },
           'csrf-123'
         ),
       expected: {
-        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1',
+        path: '/api/console/frontstage/pages/page-1/tabs/tab-1',
         method: 'PATCH',
         body: { title: 'Renamed' },
         csrfToken: 'csrf-123'
@@ -452,9 +437,9 @@ describe('console-frontstage client', () => {
     {
       name: 'tab deletion',
       request: () =>
-        deleteFrontstagePageTab('workspace-1', 'page-1', 'tab-1', 'csrf-123'),
+        deleteFrontstagePageTab('page-1', 'tab-1', 'csrf-123'),
       expected: {
-        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1',
+        path: '/api/console/frontstage/pages/page-1/tabs/tab-1',
         method: 'DELETE',
         csrfToken: 'csrf-123'
       }
@@ -463,14 +448,13 @@ describe('console-frontstage client', () => {
       name: 'tab document save',
       request: () =>
         saveFrontstageTabDocument(
-          'workspace-1',
           'page-1',
           'tab-1',
           { payload: { version: 1, 'x-layout-mode': 'auto' } },
           'csrf-123'
         ),
       expected: {
-        path: '/api/console/frontstage/workspace-1/pages/page-1/tabs/tab-1/document',
+        path: '/api/console/frontstage/pages/page-1/tabs/tab-1/document',
         method: 'PUT',
         body: { payload: { version: 1, 'x-layout-mode': 'auto' } },
         csrfToken: 'csrf-123'

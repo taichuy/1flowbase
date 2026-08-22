@@ -25,16 +25,12 @@ import type {
   UpdateConsoleFrontstageBlockNodeInput
 } from './types';
 
-function blockTreePath(workspaceId: string, pageId: string): string {
-  return `/api/console/frontstage/${encodeURIComponent(workspaceId)}/pages/${encodeURIComponent(pageId)}/blocks`;
+function blockTreePath(pageId: string): string {
+  return `/api/console/frontstage/pages/${encodeURIComponent(pageId)}/blocks`;
 }
 
-function blockPath(
-  workspaceId: string,
-  pageId: string,
-  blockId: string
-): string {
-  return `${blockTreePath(workspaceId, pageId)}/${encodeURIComponent(blockId)}`;
+function blockPath(pageId: string, blockId: string): string {
+  return `${blockTreePath(pageId)}/${encodeURIComponent(blockId)}`;
 }
 
 function withQuery(path: string, values: object): string {
@@ -46,27 +42,25 @@ function withQuery(path: string, values: object): string {
 }
 
 export function listConsoleFrontstageBlockRoots(
-  workspaceId: string,
   pageId: string,
   query: ConsoleFrontstageBlockRootListQuery,
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockNode[]> {
   return apiFetch({
-    path: withQuery(blockTreePath(workspaceId, pageId), query),
+    path: withQuery(blockTreePath(pageId), query),
     method: 'GET',
     baseUrl
   });
 }
 
 export function createConsoleFrontstageBlockNode(
-  workspaceId: string,
   pageId: string,
   input: CreateConsoleFrontstageBlockNodeInput,
   csrfToken: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockNode> {
   return apiFetch({
-    path: blockTreePath(workspaceId, pageId),
+    path: blockTreePath(pageId),
     method: 'POST',
     body: input,
     csrfToken,
@@ -75,33 +69,30 @@ export function createConsoleFrontstageBlockNode(
 }
 
 export function searchConsoleFrontstageBlocks(
-  workspaceId: string,
   pageId: string,
   query: ConsoleFrontstageBlockSearchQuery,
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockSearchResult[]> {
   return apiFetch({
-    path: withQuery(`${blockTreePath(workspaceId, pageId)}/search`, query),
+    path: withQuery(`${blockTreePath(pageId)}/search`, query),
     method: 'GET',
     baseUrl
   });
 }
 
 export function getConsoleFrontstageBlockNode(
-  workspaceId: string,
   pageId: string,
   blockId: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockNode> {
   return apiFetch({
-    path: blockPath(workspaceId, pageId, blockId),
+    path: blockPath(pageId, blockId),
     method: 'GET',
     baseUrl
   });
 }
 
 export function updateConsoleFrontstageBlockNode(
-  workspaceId: string,
   pageId: string,
   blockId: string,
   input: UpdateConsoleFrontstageBlockNodeInput,
@@ -109,7 +100,7 @@ export function updateConsoleFrontstageBlockNode(
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockNode> {
   return apiFetch({
-    path: blockPath(workspaceId, pageId, blockId),
+    path: blockPath(pageId, blockId),
     method: 'PATCH',
     body: input,
     csrfToken,
@@ -118,7 +109,6 @@ export function updateConsoleFrontstageBlockNode(
 }
 
 export function updateConsoleFrontstageBlockDescriptors(
-  workspaceId: string,
   pageId: string,
   tabId: string,
   input: UpdateConsoleFrontstageBlockDescriptorsInput,
@@ -126,7 +116,7 @@ export function updateConsoleFrontstageBlockDescriptors(
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockNode[]> {
   return apiFetch({
-    path: `/api/console/frontstage/${encodeURIComponent(workspaceId)}/pages/${encodeURIComponent(pageId)}/tabs/${encodeURIComponent(tabId)}/block-descriptors`,
+    path: `/api/console/frontstage/pages/${encodeURIComponent(pageId)}/tabs/${encodeURIComponent(tabId)}/block-descriptors`,
     method: 'PUT',
     body: input,
     csrfToken,
@@ -135,14 +125,13 @@ export function updateConsoleFrontstageBlockDescriptors(
 }
 
 export function deleteConsoleFrontstageBlockLeaf(
-  workspaceId: string,
   pageId: string,
   blockId: string,
   csrfToken: string,
   baseUrl?: string
 ): Promise<void> {
   return apiFetch({
-    path: blockPath(workspaceId, pageId, blockId),
+    path: blockPath(pageId, blockId),
     method: 'DELETE',
     csrfToken,
     baseUrl
@@ -150,7 +139,6 @@ export function deleteConsoleFrontstageBlockLeaf(
 }
 
 export function listConsoleFrontstageBlockChildren(
-  workspaceId: string,
   pageId: string,
   blockId: string,
   query: ConsoleFrontstageBlockListQuery = {},
@@ -158,7 +146,7 @@ export function listConsoleFrontstageBlockChildren(
 ): Promise<ConsoleFrontstageBlockNodeSummary[]> {
   return apiFetch({
     path: withQuery(
-      `${blockPath(workspaceId, pageId, blockId)}/children`,
+      `${blockPath(pageId, blockId)}/children`,
       query
     ),
     method: 'GET',
@@ -167,20 +155,18 @@ export function listConsoleFrontstageBlockChildren(
 }
 
 export function listConsoleFrontstageBlockAncestors(
-  workspaceId: string,
   pageId: string,
   blockId: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockNodeSummary[]> {
   return apiFetch({
-    path: `${blockPath(workspaceId, pageId, blockId)}/ancestors`,
+    path: `${blockPath(pageId, blockId)}/ancestors`,
     method: 'GET',
     baseUrl
   });
 }
 
 export function listConsoleFrontstageBlockDescendants(
-  workspaceId: string,
   pageId: string,
   blockId: string,
   query: ConsoleFrontstageBlockDescendantsQuery = {},
@@ -188,7 +174,7 @@ export function listConsoleFrontstageBlockDescendants(
 ): Promise<ConsoleFrontstageBlockDescendant[]> {
   return apiFetch({
     path: withQuery(
-      `${blockPath(workspaceId, pageId, blockId)}/descendants`,
+      `${blockPath(pageId, blockId)}/descendants`,
       query
     ),
     method: 'GET',
@@ -197,20 +183,18 @@ export function listConsoleFrontstageBlockDescendants(
 }
 
 export function getConsoleFrontstageBlockDeleteImpact(
-  workspaceId: string,
   pageId: string,
   blockId: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockDeleteImpact> {
   return apiFetch({
-    path: `${blockPath(workspaceId, pageId, blockId)}/delete-impact`,
+    path: `${blockPath(pageId, blockId)}/delete-impact`,
     method: 'GET',
     baseUrl
   });
 }
 
 export function moveConsoleFrontstageBlockNode(
-  workspaceId: string,
   pageId: string,
   blockId: string,
   input: MoveConsoleFrontstageBlockNodeInput,
@@ -218,7 +202,7 @@ export function moveConsoleFrontstageBlockNode(
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockNode> {
   return apiFetch({
-    path: `${blockPath(workspaceId, pageId, blockId)}/move`,
+    path: `${blockPath(pageId, blockId)}/move`,
     method: 'POST',
     body: input,
     csrfToken,
@@ -227,7 +211,6 @@ export function moveConsoleFrontstageBlockNode(
 }
 
 export function deleteConsoleFrontstageBlockSubtree(
-  workspaceId: string,
   pageId: string,
   blockId: string,
   input: DeleteConsoleFrontstageBlockSubtreeInput,
@@ -235,7 +218,7 @@ export function deleteConsoleFrontstageBlockSubtree(
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockSubtreeDeleteResult> {
   return apiFetch({
-    path: `${blockPath(workspaceId, pageId, blockId)}/delete-subtree`,
+    path: `${blockPath(pageId, blockId)}/delete-subtree`,
     method: 'POST',
     body: input,
     csrfToken,
@@ -244,20 +227,18 @@ export function deleteConsoleFrontstageBlockSubtree(
 }
 
 export function getConsoleFrontstageBlockNodeCode(
-  workspaceId: string,
   pageId: string,
   blockId: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockNodeCode> {
   return apiFetch({
-    path: `${blockPath(workspaceId, pageId, blockId)}/code`,
+    path: `${blockPath(pageId, blockId)}/code`,
     method: 'GET',
     baseUrl
   });
 }
 
 export function getConsoleFrontstageBlockCodeFragment(
-  workspaceId: string,
   pageId: string,
   blockId: string,
   query: ConsoleFrontstageBlockCodeFragmentQuery = {},
@@ -265,7 +246,7 @@ export function getConsoleFrontstageBlockCodeFragment(
 ): Promise<ConsoleFrontstageBlockCodeFragment> {
   return apiFetch({
     path: withQuery(
-      `${blockPath(workspaceId, pageId, blockId)}/code/fragment`,
+      `${blockPath(pageId, blockId)}/code/fragment`,
       query
     ),
     method: 'GET',
@@ -274,33 +255,30 @@ export function getConsoleFrontstageBlockCodeFragment(
 }
 
 export function getConsoleFrontstageBlockRuntimeAssembly(
-  workspaceId: string,
   pageId: string,
   blockId: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockRuntimeAssembly> {
   return apiFetch({
-    path: `${blockPath(workspaceId, pageId, blockId)}/runtime-assembly`,
+    path: `${blockPath(pageId, blockId)}/runtime-assembly`,
     method: 'GET',
     baseUrl
   });
 }
 
 export function openConsoleFrontstageBlock(
-  workspaceId: string,
   pageId: string,
   blockId: string,
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockOpenTarget> {
   return apiFetch<ConsoleFrontstageBlockOpenTarget>({
-    path: `${blockPath(workspaceId, pageId, blockId)}/open`,
+    path: `${blockPath(pageId, blockId)}/open`,
     method: 'GET',
     ...(baseUrl ? { baseUrl } : {})
   });
 }
 
 export function saveConsoleFrontstageBlockNodeCode(
-  workspaceId: string,
   pageId: string,
   blockId: string,
   input: SaveConsoleFrontstageBlockNodeCodeInput,
@@ -308,7 +286,7 @@ export function saveConsoleFrontstageBlockNodeCode(
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockNodeCode> {
   return apiFetch({
-    path: `${blockPath(workspaceId, pageId, blockId)}/code`,
+    path: `${blockPath(pageId, blockId)}/code`,
     method: 'PUT',
     body: input,
     csrfToken,
@@ -317,7 +295,6 @@ export function saveConsoleFrontstageBlockNodeCode(
 }
 
 export function patchConsoleFrontstageBlockNodeCode(
-  workspaceId: string,
   pageId: string,
   blockId: string,
   input: PatchConsoleFrontstageBlockNodeCodeInput,
@@ -325,7 +302,7 @@ export function patchConsoleFrontstageBlockNodeCode(
   baseUrl?: string
 ): Promise<ConsoleFrontstageBlockNodeCode> {
   return apiFetch({
-    path: `${blockPath(workspaceId, pageId, blockId)}/code`,
+    path: `${blockPath(pageId, blockId)}/code`,
     method: 'PATCH',
     body: input,
     csrfToken,
