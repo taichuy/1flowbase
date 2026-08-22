@@ -604,7 +604,8 @@ impl SystemBackupRuntime {
                 .backup_inputs(actor_user_id, backup_password.clone())
                 .await
                 .map_err(|_| "backup_input_failed")?;
-            self.service
+            let manifest = self
+                .service
                 .create_queued_backup_under_existing_maintenance(
                     queued.backup_job_id,
                     queued.backup_set_id,
@@ -613,6 +614,10 @@ impl SystemBackupRuntime {
                 )
                 .await
                 .map_err(|_| "backup_creation_failed")?;
+            self.repository
+                .record_verification(manifest.manifest().backup_set_id(), true)
+                .await
+                .map_err(|_| "backup_verification_receipt_failed")?;
             Ok::<(), &str>(())
         }
         .await;
