@@ -140,6 +140,50 @@ fn backup_inventory_requires_assigned_active_model_provider_artifact() {
 }
 
 #[test]
+fn backup_inventory_uses_ready_assigned_model_provider_artifact_when_not_current() {
+    let installation = model_provider_installation("uploaded");
+    let mut artifact = current_ready_artifact(installation.id);
+    artifact.is_current = false;
+
+    let entries = build_backup_artifact_inventory(
+        "node-a",
+        vec![installation.clone()],
+        vec![artifact],
+        vec![installation.id],
+        Vec::new(),
+    )
+    .unwrap();
+
+    assert_eq!(entries.len(), 1);
+    assert_eq!(
+        entries[0].artifact_path.as_deref(),
+        Some(std::path::Path::new("/tmp/example.1flowbasepkg"))
+    );
+}
+
+#[test]
+fn backup_inventory_requires_assigned_model_provider_artifact_when_not_current() {
+    let installation = model_provider_installation("uploaded");
+    let mut artifact = current_ready_artifact(installation.id);
+    artifact.is_current = false;
+    artifact.artifact_status = domain::PluginArtifactInstanceStatus::Missing;
+
+    let error = build_backup_artifact_inventory(
+        "node-a",
+        vec![installation.clone()],
+        vec![artifact],
+        vec![installation.id],
+        Vec::new(),
+    )
+    .unwrap_err();
+
+    assert_eq!(
+        error.reason,
+        BackupArtifactInventoryReason::RetainedArtifactMissing
+    );
+}
+
+#[test]
 fn required_rebuildable_plugin_rejects_invalid_catalog_identity() {
     let mut unverified = installation("official");
     unverified.verification_status = domain::PluginVerificationStatus::Invalid;

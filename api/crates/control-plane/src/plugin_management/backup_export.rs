@@ -123,28 +123,46 @@ pub fn build_backup_artifact_inventory(
     let assigned_installation_ids = assigned_installation_ids
         .into_iter()
         .collect::<BTreeSet<_>>();
-    let mut instances = BTreeMap::new();
+    let mut current_instances = BTreeMap::new();
+    let mut ready_instances = BTreeMap::new();
     for instance in plugin_instances.into_iter().filter(|instance| {
         instance.node_id == node_id
-            && instance.is_current
             && instance.artifact_status == domain::PluginArtifactInstanceStatus::Ready
     }) {
-        if instances.contains_key(&instance.installation_id) {
+        if instance.is_current
+            && current_instances
+                .insert(instance.installation_id, instance.clone())
+                .is_some()
+        {
             return Err(inventory_error(
                 BackupArtifactInventoryReason::DuplicateCurrentArtifact,
                 instance.installation_id,
                 "plugin:unknown",
             ));
         }
-        instances.insert(instance.installation_id, instance);
+        ready_instances
+            .entry(instance.installation_id)
+            .and_modify(|existing: &mut domain::PluginArtifactInstanceRecord| {
+                if instance.is_current {
+                    *existing = instance.clone();
+                }
+            })
+            .or_insert(instance);
     }
 
     let mut inventory = BTreeMap::<String, BackupArtifactEntry>::new();
     for installation in plugin_installations {
-        let instance = instances.remove(&installation.id);
+        let current_instance = current_instances.remove(&installation.id);
+        let ready_instance = ready_instances.remove(&installation.id);
         if !requires_recovery_artifact(&installation, &assigned_installation_ids) {
             continue;
         }
+        let instance =
+            if assigned_model_provider_installation(&installation, &assigned_installation_ids) {
+                ready_instance
+            } else {
+                current_instance
+            };
         let identity = plugin_artifact_identity(&installation);
         let disposition = classify_source(&installation.source_kind);
         if disposition == BackupArtifactDisposition::RebuildableIdentity {
@@ -204,7 +222,7 @@ pub fn build_backup_artifact_inventory(
             },
         )?;
     }
-    if let Some((installation_id, _)) = instances.into_iter().next() {
+    if let Some((installation_id, _)) = current_instances.into_iter().next() {
         return Err(inventory_error(
             BackupArtifactInventoryReason::OrphanCurrentArtifact,
             installation_id,
@@ -316,7 +334,15 @@ fn requires_recovery_artifact(
     }
 
     !crate::host_extension::is_model_provider_installation(installation)
-        || assigned_installation_ids.contains(&installation.id)
+        || assigned_model_provider_installation(installation, assigned_installation_ids)
+}
+
+fn assigned_model_provider_installation(
+    installation: &domain::PluginInstallationRecord,
+    assigned_installation_ids: &BTreeSet<uuid::Uuid>,
+) -> bool {
+    crate::host_extension::is_model_provider_installation(installation)
+        && assigned_installation_ids.contains(&installation.id)
 }
 
 fn plugin_artifact_identity(installation: &domain::PluginInstallationRecord) -> String {
