@@ -37,7 +37,7 @@ async fn create_runtime_block(
     let (status, payload) = send_json(
         app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks"),
+        &format!("/api/console/frontstage/pages/{page_id}/blocks"),
         cookie,
         csrf,
         body,
@@ -138,9 +138,8 @@ async fn runtime_assembly_is_one_visible_root_to_target_public_snapshot() {
         inline_source,
     )
     .await;
-    let assembly_path = format!(
-        "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{target_id}/runtime-assembly"
-    );
+    let assembly_path =
+        format!("/api/console/frontstage/pages/{page_id}/blocks/{target_id}/runtime-assembly");
 
     let (status, payload) = get_json(&app, &assembly_path, &root_cookie).await;
     assert_eq!(status, StatusCode::OK, "{payload}");
@@ -221,9 +220,8 @@ async fn runtime_assembly_is_one_visible_root_to_target_public_snapshot() {
         }
     }
 
-    let inline_path = format!(
-        "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{inline_id}/runtime-assembly"
-    );
+    let inline_path =
+        format!("/api/console/frontstage/pages/{page_id}/blocks/{inline_id}/runtime-assembly");
     let (inline_status, inline_payload) = get_json(&app, &inline_path, &root_cookie).await;
     assert_eq!(inline_status, StatusCode::OK, "{inline_payload}");
     assert_eq!(
@@ -303,7 +301,7 @@ async fn runtime_assembly_is_one_visible_root_to_target_public_snapshot() {
     let (cross_page_status, cross_page_payload) = get_json(
         &app,
         &format!(
-            "/api/console/frontstage/{workspace_id}/pages/{other_page_id}/blocks/{target_id}/runtime-assembly"
+            "/api/console/frontstage/pages/{other_page_id}/blocks/{target_id}/runtime-assembly"
         ),
         &root_cookie,
     )
@@ -315,22 +313,20 @@ async fn runtime_assembly_is_one_visible_root_to_target_public_snapshot() {
     );
     assert_error(&cross_page_payload, "block_node_not_found");
 
-    let wrong_workspace_id = uuid::Uuid::now_v7();
-    let (wrong_workspace_status, _) = get_json(
+    let (legacy_workspace_status, _) = get_json(
         &app,
         &format!(
-            "/api/console/frontstage/{wrong_workspace_id}/pages/{page_id}/blocks/{target_id}/runtime-assembly"
+            "/api/console/frontstage/{}/pages/{page_id}/blocks/{target_id}/runtime-assembly",
+            uuid::Uuid::now_v7()
         ),
         &root_cookie,
     )
     .await;
-    assert_eq!(wrong_workspace_status, StatusCode::FORBIDDEN);
+    assert_eq!(legacy_workspace_status, StatusCode::NOT_FOUND);
 
     let (missing_status, missing_payload) = get_json(
         &app,
-        &format!(
-            "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/missing/runtime-assembly"
-        ),
+        &format!("/api/console/frontstage/pages/{page_id}/blocks/missing/runtime-assembly"),
         &root_cookie,
     )
     .await;
@@ -340,7 +336,7 @@ async fn runtime_assembly_is_one_visible_root_to_target_public_snapshot() {
     let (delete_status, delete_payload) = send_json(
         &app,
         "DELETE",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{target_id}"),
+        &format!("/api/console/frontstage/pages/{page_id}/blocks/{target_id}"),
         &root_cookie,
         &root_csrf,
         json!({}),
@@ -353,8 +349,7 @@ async fn runtime_assembly_is_one_visible_root_to_target_public_snapshot() {
 
     let openapi = serde_json::to_value(crate::openapi::ApiDoc::openapi()).unwrap();
     let openapi_path =
-        "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/runtime-assembly"
-            .to_string();
+        "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/runtime-assembly".to_string();
     assert_eq!(
         openapi["paths"][&openapi_path]["get"]["operationId"],
         json!("get_frontstage_block_runtime_assembly")

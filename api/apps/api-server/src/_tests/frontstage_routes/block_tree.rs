@@ -34,7 +34,7 @@ async fn create_block(
     send_json(
         app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks"),
+        &format!("/api/console/frontstage/pages/{page_id}/blocks"),
         cookie,
         csrf,
         body,
@@ -51,7 +51,7 @@ async fn create_block_page(
     let (status, payload) = send_json(
         app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages"),
+        &format!("/api/console/frontstage/pages"),
         cookie,
         csrf,
         json!({
@@ -82,7 +82,7 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let workspace_id = current_workspace_id(&app, &cookie).await;
     let (page_id, tab_id) = create_block_page(&app, &cookie, &csrf, &workspace_id).await;
-    let blocks_path = format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks");
+    let blocks_path = format!("/api/console/frontstage/pages/{page_id}/blocks");
 
     let (root_status, root_payload) = create_block(
         &app,
@@ -141,9 +141,7 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
     let (descriptor_status, descriptor_payload) = send_json(
         &app,
         "PUT",
-        &format!(
-            "/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}/block-descriptors"
-        ),
+        &format!("/api/console/frontstage/pages/{page_id}/tabs/{tab_id}/block-descriptors"),
         &cookie,
         &csrf,
         json!({
@@ -424,8 +422,7 @@ async fn block_source_creation_registers_reload_icon_and_save_rejects_an_unknown
     .await;
     assert_eq!(create_status, StatusCode::CREATED, "{create_payload}");
     let block_id = create_payload["data"]["block_id"].as_str().unwrap();
-    let code_path =
-        format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/code");
+    let code_path = format!("/api/console/frontstage/pages/{page_id}/blocks/{block_id}/code");
     let (created_code_status, created_code_payload) = get_json(&app, &code_path, &cookie).await;
     assert_eq!(created_code_status, StatusCode::OK);
     assert!(created_code_payload["data"]["dependency_lock"]
@@ -476,7 +473,7 @@ async fn block_tree_writes_require_csrf_and_bulk_routes_require_design_permissio
     let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let workspace_id = current_workspace_id(&app, &root_cookie).await;
     let (page_id, tab_id) = create_block_page(&app, &root_cookie, &root_csrf, &workspace_id).await;
-    let blocks_path = format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks");
+    let blocks_path = format!("/api/console/frontstage/pages/{page_id}/blocks");
     let (_, block_payload) = create_block(
         &app,
         &root_cookie,
@@ -590,8 +587,7 @@ async fn ac_001_to_003_block_code_supports_bounded_reads_and_revision_guarded_ra
     )
     .await;
     let block_id = block_payload["data"]["block_id"].as_str().unwrap();
-    let code_path =
-        format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks/{block_id}/code");
+    let code_path = format!("/api/console/frontstage/pages/{page_id}/blocks/{block_id}/code");
     let fragment_path =
         format!("{code_path}/fragment?start_line=2&start_column=1&line_count=2&max_chars=5");
 

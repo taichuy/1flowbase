@@ -493,9 +493,7 @@ async fn switch_role_replaces_the_session_authorization_scope() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!(
-                    "/api/console/frontstage/{workspace_id}/pages/groups"
-                ))
+                .uri(format!("/api/console/frontstage/pages/groups"))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")

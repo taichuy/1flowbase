@@ -239,7 +239,7 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/api/console/frontstage/{workspace_id}/component-capabilities?installation_id={installation_id}&query=button&limit=1"
+                    "/api/console/frontstage/component-capabilities?installation_id={installation_id}&query=button&limit=1"
                 ))
                 .header("cookie", &cookie)
                 .body(Body::empty())
@@ -281,7 +281,7 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/api/console/frontstage/{workspace_id}/component-capabilities/{component_id}"
+                    "/api/console/frontstage/component-capabilities/{component_id}"
                 ))
                 .header("cookie", &cookie)
                 .body(Body::empty())
@@ -423,7 +423,7 @@ async fn component_capabilities_route_excludes_registered_exports_without_contra
         .oneshot(
             Request::builder()
                 .uri(format!(
-                    "/api/console/frontstage/{workspace_id}/component-capabilities?query=runtime&limit=20"
+                    "/api/console/frontstage/component-capabilities?query=runtime&limit=20"
                 ))
                 .header("cookie", &cookie)
                 .body(Body::empty())
@@ -457,7 +457,7 @@ async fn component_dependency_lock_is_derived_from_source_imports() {
             Request::builder()
                 .method("POST")
                 .uri(format!(
-                    "/api/console/frontstage/{workspace_id}/component-dependency-lock"
+                    "/api/console/frontstage/component-dependency-lock"
                 ))
                 .header("cookie", &cookie)
                 .header("x-csrf-token", csrf)
@@ -487,7 +487,7 @@ async fn component_dependency_lock_is_derived_from_source_imports() {
                 "media_type": "text/javascript; charset=utf-8",
                 "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
                 "url": format!(
-                    "/api/console/frontstage/{workspace_id}/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
+                    "/api/console/frontstage/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
                 ),
                 "integrity": "verified_sha256"
             }, {
@@ -495,7 +495,7 @@ async fn component_dependency_lock_is_derived_from_source_imports() {
                 "media_type": "text/css; charset=utf-8",
                 "sha256": "adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f",
                 "url": format!(
-                    "/api/console/frontstage/{workspace_id}/component-module-assets/adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f"
+                    "/api/console/frontstage/component-module-assets/adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f"
                 ),
                 "integrity": "verified_sha256"
             }],
@@ -509,7 +509,7 @@ async fn component_dependency_lock_is_derived_from_source_imports() {
                 "media_type": "text/javascript; charset=utf-8",
                 "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
                 "url": format!(
-                    "/api/console/frontstage/{workspace_id}/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
+                    "/api/console/frontstage/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
                 ),
                 "integrity": "verified_sha256"
             }],
@@ -614,7 +614,7 @@ async fn ac_001_locked_asset_survives_current_catalog_digest_replacement() {
             "role": "browser_module",
             "media_type": "text/javascript; charset=utf-8",
             "sha256": old_sha256,
-            "url": format!("/api/console/frontstage/{workspace_id}/component-module-assets/{old_sha256}")
+            "url": format!("/api/console/frontstage/component-module-assets/{old_sha256}")
         }],
         "exports": ["Button"]
     }]))
@@ -624,8 +624,7 @@ async fn ac_001_locked_asset_survives_current_catalog_digest_replacement() {
     .unwrap();
 
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
-    let asset_url =
-        format!("/api/console/frontstage/{workspace_id}/component-module-assets/{old_sha256}");
+    let asset_url = format!("/api/console/frontstage/component-module-assets/{old_sha256}");
     let retained_response = app
         .clone()
         .oneshot(

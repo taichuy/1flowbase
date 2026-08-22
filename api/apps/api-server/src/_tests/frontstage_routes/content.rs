@@ -27,7 +27,7 @@ async fn page_detail_round_trip_is_persisted_by_page_scope() {
 
     let (detail_status, detail_payload) = get_json(
         &app,
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}"),
+        &format!("/api/console/frontstage/pages/{page_id}/tabs/{tab_id}"),
         &cookie,
     )
     .await;
@@ -89,7 +89,7 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
 
     let (detail_status, detail_payload) = get_json(
         &app,
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{tab_id}"),
+        &format!("/api/console/frontstage/pages/{page_id}/tabs/{tab_id}"),
         &cookie,
     )
     .await;
@@ -115,9 +115,7 @@ async fn page_content_save_round_trip_is_persisted_by_page_scope() {
         .unwrap();
     let (sibling_detail_status, sibling_detail_payload) = get_json(
         &app,
-        &format!(
-            "/api/console/frontstage/{workspace_id}/pages/{sibling_page_id}/tabs/{sibling_tab_id}"
-        ),
+        &format!("/api/console/frontstage/pages/{sibling_page_id}/tabs/{sibling_tab_id}"),
         &cookie,
     )
     .await;
@@ -244,7 +242,7 @@ async fn page_tabs_keep_documents_isolated_and_reject_last_tab_deletion() {
     let (last_delete_status, _) = send_json(
         &app,
         "DELETE",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{default_tab_id}"),
+        &format!("/api/console/frontstage/pages/{page_id}/tabs/{default_tab_id}"),
         &cookie,
         &csrf,
         json!({}),
@@ -255,7 +253,7 @@ async fn page_tabs_keep_documents_isolated_and_reject_last_tab_deletion() {
     let (presentation_status, _) = send_json(
         &app,
         "PATCH",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}"),
+        &format!("/api/console/frontstage/pages/{page_id}"),
         &cookie,
         &csrf,
         json!({ "content_presentation": "tabs" }),
@@ -266,7 +264,7 @@ async fn page_tabs_keep_documents_isolated_and_reject_last_tab_deletion() {
     let (create_tab_status, tab_payload) = send_json(
         &app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs"),
+        &format!("/api/console/frontstage/pages/{page_id}/tabs"),
         &cookie,
         &csrf,
         json!({
@@ -299,7 +297,7 @@ async fn page_tabs_keep_documents_isolated_and_reject_last_tab_deletion() {
 
     let (_, default_detail) = get_json(
         &app,
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{default_tab_id}"),
+        &format!("/api/console/frontstage/pages/{page_id}/tabs/{default_tab_id}"),
         &cookie,
     )
     .await;
@@ -312,7 +310,7 @@ async fn page_tabs_keep_documents_isolated_and_reject_last_tab_deletion() {
         .is_none());
     let (_, second_detail) = get_json(
         &app,
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs/{second_tab_id}"),
+        &format!("/api/console/frontstage/pages/{page_id}/tabs/{second_tab_id}"),
         &cookie,
     )
     .await;

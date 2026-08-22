@@ -528,24 +528,16 @@ mod server_binding_tests {
     use serde_json::json;
 
     #[test]
-    fn assistant_mcp_server_workspace_binding_cannot_be_overridden() {
-        let trusted_workspace_id = Uuid::now_v7();
+    fn frontstage_workspace_scope_is_not_an_mcp_path_argument() {
         let interface = domain::McpInterfaceCatalogEntry {
             interface_id: "frontstage_list_pages".into(),
             source: McpInterfaceCatalogSource::StaticApi,
             method: "GET".into(),
-            path: "/api/console/frontstage/{workspace_id}/pages".into(),
+            path: "/api/console/frontstage/pages".into(),
             name: "List pages".into(),
             short_description: String::new(),
-            parameter_descriptors: vec![McpParameterDescriptor {
-                name: "workspace_id".into(),
-                field_type: "string".into(),
-                parameter_type: McpParameterType::Url,
-                description: None,
-                required: true,
-                schema: json!({"type":"string"}),
-            }],
-            parameter_schema: json!({"type":"object","properties":{"path":{"type":"object","properties":{"workspace_id":{"type":"string"}}}}}),
+            parameter_descriptors: vec![],
+            parameter_schema: json!({"type":"object","properties":{}}),
             result_schema: json!({}),
             permission_code: None,
             security: json!({}),
@@ -555,13 +547,15 @@ mod server_binding_tests {
         };
         let mapped = build_interface_arguments(
             &interface,
-            &json!({"mappings":[{"interface_param":"workspace_id","source":{"kind":"server_binding","binding":"workspace_id"},"required":true}]}),
+            &json!({"mappings":[]}),
             &json!({"workspace_id":Uuid::nil()}),
-            McpServerBoundInputs { workspace_id: trusted_workspace_id },
+            McpServerBoundInputs {
+                workspace_id: Uuid::now_v7(),
+            },
         )
         .unwrap();
 
-        assert_eq!(mapped.path["workspace_id"], json!(trusted_workspace_id));
+        assert!(mapped.path.is_empty());
     }
 
     #[test]
@@ -570,7 +564,7 @@ mod server_binding_tests {
             interface_id: "create_frontstage_block_node".into(),
             source: McpInterfaceCatalogSource::StaticApi,
             method: "POST".into(),
-            path: "/api/console/frontstage/{workspace_id}/pages/{page_id}/blocks".into(),
+            path: "/api/console/frontstage/pages/{page_id}/blocks".into(),
             name: "Create Frontstage block".into(),
             short_description: String::new(),
             parameter_descriptors: vec![McpParameterDescriptor {

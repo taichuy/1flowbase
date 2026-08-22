@@ -30,7 +30,7 @@ async fn root_can_create_group_and_page_and_catalog_schema_validates_tree() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/console/frontstage/{workspace_id}/pages"))
+                .uri(format!("/api/console/frontstage/pages"))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -53,7 +53,7 @@ async fn root_can_create_group_and_page_and_catalog_schema_validates_tree() {
     let operation = crate::openapi_docs::DocsCatalogOperation {
         id: "list_frontstage_pages".into(),
         method: "GET".into(),
-        path: "/api/console/frontstage/{workspace_id}/pages".into(),
+        path: "/api/console/frontstage/pages".into(),
         summary: None,
         description: None,
         tags: Vec::new(),
@@ -136,7 +136,7 @@ async fn workspace_member_without_design_permission_cannot_write() {
     let (tab_status, _) = send_json(
         &app,
         "POST",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}/tabs"),
+        &format!("/api/console/frontstage/pages/{page_id}/tabs"),
         &cookie,
         &csrf,
         json!({"title": "Denied"}),
@@ -166,7 +166,7 @@ async fn rename_allows_empty_title() {
     let (rename_status, rename_payload) = send_json(
         &app,
         "PATCH",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}"),
+        &format!("/api/console/frontstage/pages/{page_id}"),
         &cookie,
         &csrf,
         json!({ "title": "" }),
@@ -198,7 +198,7 @@ async fn patch_page_metadata_persists_tooltip_and_hidden_state() {
     let (patch_status, patch_payload) = send_json(
         &app,
         "PATCH",
-        &format!("/api/console/frontstage/{workspace_id}/pages/{page_id}"),
+        &format!("/api/console/frontstage/pages/{page_id}"),
         &cookie,
         &csrf,
         json!({
@@ -219,7 +219,7 @@ async fn patch_page_metadata_persists_tooltip_and_hidden_state() {
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/console/frontstage/{workspace_id}/pages"))
+                .uri(format!("/api/console/frontstage/pages"))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),

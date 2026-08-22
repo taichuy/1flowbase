@@ -248,7 +248,7 @@ fn canonical_dependency_lock(
                         "media_type": asset.media_type,
                         "sha256": sha256.clone(),
                         "url": format!(
-                            "/api/console/frontstage/{workspace_id}/component-module-assets/{sha256}"
+                            "/api/console/frontstage/component-module-assets/{sha256}"
                         ),
                         "integrity": "verified_sha256"
                     })
