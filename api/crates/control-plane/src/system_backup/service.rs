@@ -583,31 +583,55 @@ impl SystemBackupService {
         sources.sort_by_key(|source| source.descriptor().component_id);
         let now = OffsetDateTime::now_utc();
         let mut job = BackupJob::new(job_id, backup_set_id, now);
-        self.repository
-            .begin_staging(backup_set_id)
-            .await
-            .map_err(|_| SystemBackupServiceError::Repository)?;
+        if self.repository.begin_staging(backup_set_id).await.is_err() {
+            self.record_backup_creation_failure(&command, &mut job)
+                .await;
+            return Err(SystemBackupServiceError::Repository);
+        }
 
         let result = self.create_in_staging(&command, &mut job, sources).await;
         if result.is_err() {
-            let failed_at = OffsetDateTime::now_utc();
-            let _ = job.transition(
-                BackupJobState::Failed,
-                failed_at,
-                Some("backup_creation_failed".to_string()),
-            );
-            let _ = self
-                .journal_state(
-                    &command,
-                    &job,
-                    BackupJournalEventKind::TerminalFailure {
-                        code: "backup_creation_failed".to_string(),
-                    },
-                )
+            self.record_backup_creation_failure(&command, &mut job)
                 .await;
             let _ = self.repository.abort_staging(backup_set_id).await;
         }
         result
+    }
+
+    async fn record_backup_creation_failure(
+        &self,
+        command: &CreateSystemBackupCommand,
+        job: &mut BackupJob,
+    ) {
+        const FAILURE_CODE: &str = "backup_creation_failed";
+        if job
+            .transition(
+                BackupJobState::Failed,
+                OffsetDateTime::now_utc(),
+                Some(FAILURE_CODE.to_owned()),
+            )
+            .is_err()
+        {
+            return;
+        }
+        let _ = self
+            .journal_state(
+                command,
+                job,
+                BackupJournalEventKind::BackupStateChanged {
+                    state: BackupJobState::Failed,
+                },
+            )
+            .await;
+        let _ = self
+            .journal_state(
+                command,
+                job,
+                BackupJournalEventKind::TerminalFailure {
+                    code: FAILURE_CODE.to_owned(),
+                },
+            )
+            .await;
     }
 
     async fn create_in_staging(
