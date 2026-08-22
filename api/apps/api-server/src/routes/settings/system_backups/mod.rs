@@ -26,7 +26,13 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::{ApiError, ApiServiceUnavailable},
-    middleware::{require_csrf::require_csrf, require_session::require_session},
+    middleware::{
+        require_csrf::require_csrf,
+        require_session::require_session,
+        require_settings_feature_permission::{
+            authorize_compiled_console_access, compiled_console_route_access,
+        },
+    },
     recovery_authorization::{
         consume_reauth_challenge, issue_reauth_challenge, recovery_intent_ttl,
     },
@@ -47,6 +53,7 @@ const RECOVERY_REAUTH: &str = "system_backups.recovery.reauth";
 const RECOVERY_STATUS: &str = "system_backups.recovery.status";
 const VERIFY: &str = "system_backups.verify";
 const BACKUP_PASSWORD_HEADER: &str = "x-system-backup-password";
+const BACKUP_JOB_STATUS_ROUTE: &str = "/api/console/settings/system-backups/jobs/:backup_job_id";
 
 fn require_system_backup(
     state: &ApiState,
@@ -322,6 +329,32 @@ pub async fn create_backup(
 ) -> Result<(StatusCode, Json<ApiSuccess<QueuedBackupResponse>>), ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
+    let status_access = compiled_console_route_access(
+        &state.console_operation_registry,
+        "GET",
+        BACKUP_JOB_STATUS_ROUTE,
+    )
+    .map_err(ControlPlaneError::PermissionDenied)?;
+    if !context.actor.is_root
+        && !matches!(
+            status_access.authorization,
+            access_control::ConsoleAuthorization::Authenticated
+        )
+    {
+        let policies = state
+            .store
+            .load_console_policy_for_bound_role(
+                context.actor.user_id,
+                context.actor.current_workspace_id,
+                &context.actor.effective_display_role,
+            )
+            .await?;
+        if !authorize_compiled_console_access(&status_access, &context.actor, &policies) {
+            return Err(
+                ControlPlaneError::PermissionDenied("console_operation_permission_denied").into(),
+            );
+        }
+    }
     let queued = require_system_backup(&state)?
         .queue_manual_backup(
             context.actor.user_id,

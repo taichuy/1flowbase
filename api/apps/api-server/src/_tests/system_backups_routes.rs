@@ -440,6 +440,80 @@ async fn system_backups_route_enforces_cookie_csrf_detail_projection_and_chunked
 }
 
 #[tokio::test]
+async fn system_backup_create_requires_backup_job_status_access_before_queuing() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let app = crate::app_with_state_and_config(state, &test_config());
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_role(&app, &root_cookie, &root_csrf, "backup_creator").await;
+    let member_id = create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "backup-creator",
+        "temp-pass",
+    )
+    .await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &member_id,
+        &["backup_creator"],
+    )
+    .await;
+    replace_backup_policy(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "backup_creator",
+        &[("system_backups.create", true)],
+    )
+    .await;
+    let (creator_cookie, creator_csrf) =
+        login_and_capture_cookie(&app, "backup-creator", "temp-pass").await;
+
+    let denied = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/system-backups")
+                .header("cookie", &creator_cookie)
+                .header("x-csrf-token", &creator_csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+
+    replace_backup_policy(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "backup_creator",
+        &[
+            ("system_backups.create", true),
+            ("system_backups.status", true),
+        ],
+    )
+    .await;
+    let allowed = app
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/system-backups")
+                .header("cookie", creator_cookie)
+                .header("x-csrf-token", creator_csrf)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(allowed.status(), StatusCode::ACCEPTED);
+}
+
+#[tokio::test]
 async fn system_backups_operation_grants_revoke_live_and_recovery_remains_root_only() {
     let (state, _) = test_api_state_with_database_url().await;
     let app = crate::app_with_state_and_config(state, &test_config());
