@@ -91,6 +91,9 @@ const pageTabsApi = vi.hoisted(() => ({
 const trialPanel = vi.hoisted(() => ({
   render: vi.fn()
 }));
+const componentCapabilitiesApi = vi.hoisted(() => ({
+  resolveFrontstageComponentDependencyLock: vi.fn()
+}));
 
 vi.mock(
   '../../hooks/use-frontstage-page-content-save',
@@ -107,6 +110,16 @@ vi.mock(
 );
 vi.mock('../../api/block-tree', () => blockTreeApi);
 vi.mock('../../api/page-tabs', () => pageTabsApi);
+vi.mock('../../api/component-capabilities', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../api/component-capabilities')
+  >('../../api/component-capabilities');
+  return {
+    ...actual,
+    resolveFrontstageComponentDependencyLock:
+      componentCapabilitiesApi.resolveFrontstageComponentDependencyLock
+  };
+});
 vi.mock('../../components/jsx-studio/JsxStudioRunPanel', () => ({
   JsxStudioRunPanel: (props: unknown) => {
     trialPanel.render(props);
@@ -826,6 +839,26 @@ describe('FrontStagePage - design controls', () => {
 
   test('D2-P2F wires the selected block catalog lock into the production trial path', async () => {
     authenticate(['frontstage.page.design']);
+    const dependencyLock = [
+      {
+        module_source: '@1flowbase/native-components',
+        module_version: '1.0.0',
+        binding: 'fetched',
+        assets: [
+          {
+            role: 'browser_module',
+            media_type: 'text/javascript; charset=utf-8',
+            sha256:
+              'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+            url: '/fixture-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+          }
+        ],
+        exports: ['Surface']
+      }
+    ];
+    componentCapabilitiesApi.resolveFrontstageComponentDependencyLock.mockResolvedValue(
+      dependencyLock
+    );
     mockFrontstageBlockCatalog([
       createCatalogEntry({
         codeModules: [
@@ -900,28 +933,22 @@ describe('FrontStagePage - design controls', () => {
     fireEvent.click(runButton);
 
     await waitFor(() => expect(trialPanel.render).toHaveBeenCalled());
-    expect(trialPanel.render).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        nativeDependencyLock: [
-          {
-            module_source: '@1flowbase/native-components',
-            module_version: '1.0.0',
-            binding: 'fetched',
-            assets: [
-              {
-                role: 'browser_module',
-                media_type: 'text/javascript; charset=utf-8',
-                sha256:
-                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                url: '/fixture-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-              }
-            ],
-            exports: ['Surface']
-          }
-        ],
-        nativeDependencyLockError: null
-      })
-    );
+    const trialProps = trialPanel.render.mock.lastCall?.[0] as {
+      code: string;
+      resolveNativeDependencyLock?: (
+        sourceCode: string
+      ) => Promise<unknown>;
+    };
+    expect(trialProps.resolveNativeDependencyLock).toEqual(expect.any(Function));
+    if (!trialProps.resolveNativeDependencyLock) {
+      throw new Error('Expected the production trial lock resolver.');
+    }
+    await expect(
+      trialProps.resolveNativeDependencyLock(trialProps.code)
+    ).resolves.toEqual(dependencyLock);
+    expect(
+      componentCapabilitiesApi.resolveFrontstageComponentDependencyLock
+    ).toHaveBeenCalledWith('workspace-1', trialProps.code);
   });
 
   test('shows real page tree operation states without local draft wording', () => {
