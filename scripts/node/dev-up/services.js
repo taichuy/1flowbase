@@ -102,6 +102,9 @@ function getServiceDefinitions(repoRoot) {
       probeHost: '127.0.0.1',
       port: webPort,
       startupTimeoutMs: FRONTEND_COLD_STARTUP_TIMEOUT_MS,
+      readinessProbe: {
+        path: '/@vite/client',
+      },
       envFile: webAppEnvFile,
       envExampleFile: webAppEnvExampleFile,
       envSeedOverrides: {
@@ -122,6 +125,13 @@ function getServiceDefinitions(repoRoot) {
       probeHost: '127.0.0.1',
       port: apiServerAddress.port,
       startupTimeoutMs: CARGO_COLD_STARTUP_TIMEOUT_MS,
+      readinessProbe: {
+        path: '/health',
+        expectedJson: {
+          service: 'api-server',
+          status: 'ok',
+        },
+      },
       envFile: apiServerEnvFile,
       envExampleFile: apiServerEnvExampleFile,
       envOverrides: {
@@ -141,6 +151,13 @@ function getServiceDefinitions(repoRoot) {
       probeHost: '127.0.0.1',
       port: pluginRunnerAddress.port,
       startupTimeoutMs: CARGO_COLD_STARTUP_TIMEOUT_MS,
+      readinessProbe: {
+        path: '/health',
+        expectedJson: {
+          service: 'plugin-runner',
+          status: 'ok',
+        },
+      },
       envFile: apiServerEnvFile,
       logFile: path.join(paths.logDir, 'plugin-runner.log'),
       pidFile: path.join(paths.pidDir, 'plugin-runner.json'),

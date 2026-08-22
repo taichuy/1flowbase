@@ -10,9 +10,11 @@ const {
   listPortOccupantPids,
   manageServices,
   parseWindowsNetstatPortOccupants,
+  probeHttpReadiness,
   startService,
   stopService,
   waitForPortToClose,
+  waitForServiceReadiness,
   waitForServicePort,
 } = require('./process.js');
 const { runServicePrestartCommands } = require('./postgres-reset.js');
@@ -112,6 +114,7 @@ module.exports = {
   manageDocker,
   manageServices,
   parseWindowsNetstatPortOccupants,
+  probeHttpReadiness,
   parseCliArgs,
   resolveComposeCommand,
   resolvePostgresToolchain,
@@ -124,5 +127,6 @@ module.exports = {
   startService,
   stopService,
   waitForPortToClose,
+  waitForServiceReadiness,
   waitForServicePort,
 };

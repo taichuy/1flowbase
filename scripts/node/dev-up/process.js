@@ -1,4 +1,5 @@
 const fs = require('node:fs');
+const http = require('node:http');
 const net = require('node:net');
 const path = require('node:path');
 const { spawn, spawnSync } = require('node:child_process');
@@ -137,6 +138,157 @@ async function waitForPortToClose(host, port, timeoutMs = 5000, isPortOpenImpl =
 
 function waitForServicePort(service, waitForPortImpl = waitForPort) {
   return waitForPortImpl(getProbeHost(service), service.port, getStartupTimeoutMs(service));
+}
+
+function probeHttpReadiness(service) {
+  const probe = service.readinessProbe;
+  if (!probe) {
+    return Promise.resolve({ ready: true });
+  }
+
+  const pathName = probe.path || '/';
+  const timeoutMs = probe.timeoutMs || 1000;
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (!settled) {
+        settled = true;
+        resolve(value);
+      }
+    };
+    const request = http.request(
+      {
+        host: getProbeHost(service),
+        port: service.port,
+        path: pathName,
+        method: 'GET',
+        headers: {
+          accept: 'application/json',
+        },
+      },
+      (response) => {
+        let body = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk) => {
+          if (body.length < 4096) {
+            body += chunk.slice(0, 4096 - body.length);
+          }
+        });
+        response.on('end', () => {
+          if (response.statusCode < 200 || response.statusCode >= 400) {
+            finish({
+              ready: false,
+              reason: `HTTP GET ${pathName} returned status ${response.statusCode}`,
+            });
+            return;
+          }
+
+          if (!probe.expectedJson) {
+            finish({ ready: true });
+            return;
+          }
+
+          let payload;
+          try {
+            payload = JSON.parse(body);
+          } catch (_error) {
+            finish({
+              ready: false,
+              reason: `HTTP GET ${pathName} returned invalid JSON`,
+            });
+            return;
+          }
+
+          if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+            finish({
+              ready: false,
+              reason: `HTTP GET ${pathName} returned JSON that is not an object`,
+            });
+            return;
+          }
+
+          for (const [field, expectedValue] of Object.entries(probe.expectedJson)) {
+            if (payload[field] !== expectedValue) {
+              finish({
+                ready: false,
+                reason: `HTTP GET ${pathName} returned unexpected JSON field ${field}=${JSON.stringify(payload[field])}`,
+              });
+              return;
+            }
+          }
+
+          finish({ ready: true });
+        });
+      }
+    );
+
+    request.setTimeout(timeoutMs, () => {
+      request.destroy();
+      finish({
+        ready: false,
+        reason: `HTTP GET ${pathName} timed out after ${timeoutMs}ms`,
+      });
+    });
+    request.on('error', (error) => {
+      finish({
+        ready: false,
+        reason: `HTTP GET ${pathName} failed: ${error.code || error.message}`,
+      });
+    });
+    request.end();
+  });
+}
+
+async function waitForServiceReadiness(
+  service,
+  {
+    probeHttpReadinessImpl = probeHttpReadiness,
+    sleepImpl = sleep,
+  } = {}
+) {
+  if (!service.readinessProbe) {
+    return { ready: true };
+  }
+
+  const startedAt = Date.now();
+  let latestFailure = null;
+  while (Date.now() - startedAt < getStartupTimeoutMs(service)) {
+    const readiness = await probeHttpReadinessImpl(service);
+    if (readiness.ready) {
+      return readiness;
+    }
+
+    latestFailure = readiness;
+    await sleepImpl(250);
+  }
+
+  return latestFailure || {
+    ready: false,
+    reason: `HTTP GET ${service.readinessProbe.path || '/'} did not become ready`,
+  };
+}
+
+function readServiceLogTail(logFile, maxLines = 80, maxChars = 12000) {
+  try {
+    const contents = fs.readFileSync(logFile, 'utf8').trim();
+    if (!contents) {
+      return '(log is empty)';
+    }
+
+    const tail = contents.split(/\r?\n/u).slice(-maxLines).join('\n');
+    return tail.length > maxChars ? tail.slice(-maxChars) : tail;
+  } catch (error) {
+    return `(unable to read log: ${error.code || error.message})`;
+  }
+}
+
+function startupFailureMessage(service, reason, logTail) {
+  return [
+    `${service.label} readiness failed: ${reason}`,
+    `log: ${service.logFile}`,
+    'last log lines:',
+    logTail,
+  ].join('\n');
 }
 
 function runCommand(command, args, options = {}) {
@@ -375,8 +527,10 @@ async function startService(
     resolveCommandPathImpl = resolveCommandPath,
     writePidRecordImpl = writePidRecord,
     waitForServicePortImpl = waitForServicePort,
+    waitForServiceReadinessImpl = waitForServiceReadiness,
     waitForPortToCloseImpl = waitForPortToClose,
     clearPortConflictsImpl = clearPortConflicts,
+    readServiceLogTailImpl = readServiceLogTail,
     logImpl = log,
     takeOverPortOwnership = false,
   } = {}
@@ -425,7 +579,19 @@ async function startService(
   const ready = await waitForServicePortImpl(service);
   if (!ready) {
     await stopServiceImpl(service);
-    throw new Error(`${service.label} startup timed out; see log: ${service.logFile}`);
+    throw new Error(
+      startupFailureMessage(
+        service,
+        `port ${service.port} did not accept connections before startup timeout`,
+        readServiceLogTailImpl(service.logFile)
+      )
+    );
+  }
+
+  const readiness = await waitForServiceReadinessImpl(service);
+  if (!readiness.ready) {
+    await stopServiceImpl(service);
+    throw new Error(startupFailureMessage(service, readiness.reason, readServiceLogTailImpl(service.logFile)));
   }
 
   const listenerPids = listPortOccupantPidsImpl(service.port);
@@ -578,8 +744,10 @@ module.exports = {
   listPortOccupantPids,
   manageServices,
   parseWindowsNetstatPortOccupants,
+  probeHttpReadiness,
   startService,
   stopService,
   waitForPortToClose,
+  waitForServiceReadiness,
   waitForServicePort,
 };

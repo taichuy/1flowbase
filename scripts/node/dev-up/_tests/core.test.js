@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const http = require('node:http');
 const os = require('node:os');
 const path = require('path');
 
@@ -21,6 +22,7 @@ const {
   buildServiceEnv,
   getServicePrestartCommands,
   parseWindowsNetstatPortOccupants,
+  probeHttpReadiness,
   resolveCommandPath,
   runServicePrestartCommands,
   resolveComposeCommand,
@@ -107,6 +109,159 @@ test('getServiceDefinitions uses repo default ports and explicit backend binarie
   assert.deepEqual(services.web.args, ['--filter', '@1flowbase/web', 'dev']);
   assert.deepEqual(services['api-server'].args, ['run', '-p', 'api-server', '--bin', 'api-server']);
   assert.deepEqual(services['plugin-runner'].args, ['run', '-p', 'plugin-runner', '--bin', 'plugin-runner']);
+  assert.deepEqual(services.web.readinessProbe, {
+    path: '/@vite/client',
+  });
+  assert.deepEqual(services['api-server'].readinessProbe, {
+    path: '/health',
+    expectedJson: {
+      service: 'api-server',
+      status: 'ok',
+    },
+  });
+  assert.deepEqual(services['plugin-runner'].readinessProbe, {
+    path: '/health',
+    expectedJson: {
+      service: 'plugin-runner',
+      status: 'ok',
+    },
+  });
+});
+
+test('AC-001 probeHttpReadiness rejects a reachable service whose health payload is wrong', async () => {
+  const server = http.createServer((_request, response) => {
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ service: 'api-server', status: 'starting' }));
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+
+  try {
+    const readiness = await probeHttpReadiness({
+      label: 'api-server',
+      probeHost: '127.0.0.1',
+      port: address.port,
+      readinessProbe: {
+        path: '/health',
+        expectedJson: {
+          service: 'api-server',
+          status: 'ok',
+        },
+      },
+    });
+
+    assert.deepEqual(readiness, {
+      ready: false,
+      reason: 'HTTP GET /health returned unexpected JSON field status="starting"',
+    });
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  }
+});
+
+test('AC-001 probeHttpReadiness reports a non-object health payload instead of throwing', async () => {
+  const server = http.createServer((_request, response) => {
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end('null');
+  });
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+
+  try {
+    const readiness = await probeHttpReadiness({
+      label: 'api-server',
+      probeHost: '127.0.0.1',
+      port: address.port,
+      readinessProbe: {
+        path: '/health',
+        expectedJson: {
+          service: 'api-server',
+          status: 'ok',
+        },
+      },
+    });
+
+    assert.deepEqual(readiness, {
+      ready: false,
+      reason: 'HTTP GET /health returned JSON that is not an object',
+    });
+  } finally {
+    await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
+  }
+});
+
+test('AC-002 startService reports a failed readiness probe with log tail and cleans up the child', async () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-readiness-failure-'));
+  const service = {
+    key: 'api-server',
+    label: 'api-server',
+    cwd: path.join(tempRoot, 'api'),
+    command: 'cargo',
+    args: ['run', '-p', 'api-server', '--bin', 'api-server'],
+    bindHost: '0.0.0.0',
+    probeHost: '127.0.0.1',
+    port: 7800,
+    startupTimeoutMs: DEFAULT_STARTUP_TIMEOUT_MS,
+    readinessProbe: { path: '/health' },
+    logFile: path.join(tempRoot, 'api-server.log'),
+    pidFile: path.join(tempRoot, 'api-server.json'),
+  };
+  const stopped = [];
+
+  await assert.rejects(
+    startService(service, {
+      ensureServiceEnvFileImpl() {
+        return false;
+      },
+      requireCommandImpl() {},
+      runServicePrestartCommandsImpl() {},
+      readPidRecordImpl() {
+        return null;
+      },
+      isProcessAliveImpl() {
+        return false;
+      },
+      async isPortOpenImpl() {
+        return false;
+      },
+      spawnImpl() {
+        return {
+          pid: 4242,
+          unref() {},
+        };
+      },
+      buildServiceEnvImpl() {
+        return {};
+      },
+      writePidRecordImpl() {},
+      async waitForServicePortImpl() {
+        return true;
+      },
+      async waitForServiceReadinessImpl() {
+        return {
+          ready: false,
+          reason: 'HTTP GET /health timed out after 1000ms',
+        };
+      },
+      async stopServiceImpl(stoppedService) {
+        stopped.push(stoppedService.label);
+      },
+      listPortOccupantPidsImpl() {
+        return [];
+      },
+      takeOverPortOwnership: true,
+    }),
+    (error) => {
+      assert.match(error.message, /api-server readiness failed: HTTP GET \/health timed out after 1000ms/u);
+      assert.match(error.message, new RegExp(`log: ${service.logFile.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`, 'u'));
+      assert.match(error.message, /last log lines:\n\(log is empty\)/u);
+      return true;
+    }
+  );
+
+  assert.deepEqual(stopped, ['api-server']);
 });
 
 test('getServiceDefinitions reads frontend env from web app env file', () => {
