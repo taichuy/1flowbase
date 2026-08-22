@@ -281,13 +281,12 @@ async fn ac_005_builtin_frontstage_source_tools_are_discoverable_and_callable() 
         })
         .await
         .unwrap();
-    let workspace_id = workspace_id.to_string();
     let create_page = app
         .clone()
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!("/api/console/frontstage/pages"))
+                .uri("/api/console/frontstage/pages")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", &csrf)
                 .header("content-type", "application/json")

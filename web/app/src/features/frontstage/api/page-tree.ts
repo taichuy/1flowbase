@@ -62,7 +62,7 @@ export function getFrontstageApiBaseUrl(
 }
 
 export function fetchFrontstagePageTree(
-  workspaceId: string
+  _workspaceId: string
 ): Promise<FrontstagePageTreeNode[]> {
   return listFrontstagePages(getFrontstageApiBaseUrl()) as Promise<
     FrontstagePageTreeNode[]

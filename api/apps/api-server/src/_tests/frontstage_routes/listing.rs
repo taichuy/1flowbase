@@ -8,7 +8,7 @@ async fn list_frontstage_pages_route_returns_empty_tree_for_accessible_workspace
         .oneshot(
             Request::builder()
                 .method("GET")
-                .uri(format!("/api/console/frontstage/pages"))
+                .uri("/api/console/frontstage/pages")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),

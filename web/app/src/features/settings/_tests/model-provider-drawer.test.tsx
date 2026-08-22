@@ -133,7 +133,7 @@ describe('ModelProviderInstanceDrawer', () => {
     );
 
     await screen.findByRole('dialog');
-    expect(screen.queryByRole('button', { name: /检\s*测/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /检\s*测/ })).not.toBeInTheDocument();
   });
 
   test('uses the shared resizable drawer with the provider width range', async () => {

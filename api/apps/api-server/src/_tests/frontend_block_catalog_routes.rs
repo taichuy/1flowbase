@@ -227,7 +227,7 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
     let installation_id = seed_frontend_block(&database_url, false).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
-    let workspace_id: Uuid =
+    let _workspace_id: Uuid =
         sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
             .fetch_one(&pool)
             .await
@@ -411,7 +411,7 @@ async fn component_capabilities_route_excludes_registered_exports_without_contra
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
     seed_frontend_block(&database_url, false).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
-    let workspace_id: Uuid =
+    let _workspace_id: Uuid =
         sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
             .fetch_one(&pool)
             .await
@@ -422,9 +422,9 @@ async fn component_capabilities_route_excludes_registered_exports_without_contra
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!(
+                .uri(
                     "/api/console/frontstage/component-capabilities?query=runtime&limit=20"
-                ))
+                )
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -445,7 +445,7 @@ async fn component_dependency_lock_is_derived_from_source_imports() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
     seed_frontend_block(&database_url, false).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
-    let workspace_id: Uuid =
+    let _workspace_id: Uuid =
         sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
             .fetch_one(&pool)
             .await
@@ -456,9 +456,9 @@ async fn component_dependency_lock_is_derived_from_source_imports() {
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(format!(
+                .uri(
                     "/api/console/frontstage/component-dependency-lock"
-                ))
+                )
                 .header("cookie", &cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")

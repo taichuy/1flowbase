@@ -396,12 +396,12 @@ async fn create_page(
     app: &Router,
     cookie: &str,
     csrf: &str,
-    workspace_id: Uuid,
+    _workspace_id: Uuid,
 ) -> (Uuid, Uuid, String) {
     let (status, payload) = json_request(
         app,
         "POST",
-        &format!("/api/console/frontstage/pages"),
+        "/api/console/frontstage/pages",
         cookie,
         csrf,
         json!({ "title": "Callable fixture", "rank": "a" }),
@@ -435,7 +435,7 @@ async fn create_tab(
     app: &Router,
     cookie: &str,
     csrf: &str,
-    workspace_id: Uuid,
+    _workspace_id: Uuid,
     page_id: Uuid,
 ) -> (Uuid, String) {
     let (status, payload) = json_request(
@@ -457,7 +457,7 @@ async fn create_tab(
     )
 }
 
-async fn catalog_entry(app: &Router, cookie: &str, workspace_id: Uuid, operation: &str) -> Value {
+async fn catalog_entry(app: &Router, cookie: &str, _workspace_id: Uuid, operation: &str) -> Value {
     let (status, payload) = get(
         app,
         &format!("/api/console/frontstage/interface-capabilities/{operation}"),
@@ -476,7 +476,7 @@ async fn create_block_node(
     app: &Router,
     cookie: &str,
     csrf: &str,
-    workspace_id: Uuid,
+    _workspace_id: Uuid,
     page_id: Uuid,
     tab_id: Uuid,
     title: &str,
@@ -508,7 +508,7 @@ async fn dispatch(
     app: &Router,
     cookie: &str,
     csrf: &str,
-    workspace_id: Uuid,
+    _workspace_id: Uuid,
     page_id: Uuid,
     tab_id: Uuid,
     block_id: &str,
@@ -542,9 +542,7 @@ async fn capability_catalog_pages_lightweight_path_matches_and_loads_one_detail(
     let (_, workspace_id) = session_identity(&fixture.app, &cookie).await;
     let (status, payload) = get(
         &fixture.app,
-        &format!(
-            "/api/console/frontstage/interface-capabilities?path_query=application_conversations&adapter_id=runtime_data_model&method=GET&offset=0&limit=1"
-        ),
+        "/api/console/frontstage/interface-capabilities?path_query=application_conversations&adapter_id=runtime_data_model&method=GET&offset=0&limit=1",
         &cookie,
     )
     .await;

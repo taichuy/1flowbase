@@ -80,13 +80,11 @@ describe('ModelProviderAccountOperationsCard', () => {
     };
     await confirmOptions.onOk?.();
 
-    await waitFor(() => {
-      expect(consume).toHaveBeenCalledTimes(1);
-      expect(consume).toHaveBeenCalledWith({
-        idempotency_key: expect.any(String)
-      });
-      expect(usage).toHaveBeenCalledTimes(3);
-      expect(count).toHaveBeenCalledTimes(2);
+    await waitFor(() => expect(consume).toHaveBeenCalledTimes(1));
+    expect(consume).toHaveBeenCalledWith({
+      idempotency_key: expect.any(String)
     });
+    await waitFor(() => expect(usage).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(count).toHaveBeenCalledTimes(2));
   });
 });

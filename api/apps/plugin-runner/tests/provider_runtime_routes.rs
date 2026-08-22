@@ -350,6 +350,9 @@ permissions:
 runtime:
   protocol: stdio_json
   entry: bin/fixture_provider
+  capabilities:
+    - config.validate
+    - models.list
   limits:
     memory_bytes: 134217728
     timeout_ms: 5000
