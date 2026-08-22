@@ -351,12 +351,8 @@ async fn data_capability_catalog_lists_descriptors_and_published_models() {
     let _workspace_id = current_workspace_id(&app, &cookie).await;
     create_published_model(&app, &cookie, &csrf, "cap_orders").await;
 
-    let (status, payload) = get_json(
-        &app,
-        "/api/console/frontstage/data-capabilities",
-        &cookie,
-    )
-    .await;
+    let (status, payload) =
+        get_json(&app, "/api/console/frontstage/data-capabilities", &cookie).await;
     assert_eq!(status, StatusCode::OK);
 
     let queries: Vec<&str> = payload["data"]["queries"]

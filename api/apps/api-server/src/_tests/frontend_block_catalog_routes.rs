@@ -422,9 +422,7 @@ async fn component_capabilities_route_excludes_registered_exports_without_contra
         .clone()
         .oneshot(
             Request::builder()
-                .uri(
-                    "/api/console/frontstage/component-capabilities?query=runtime&limit=20"
-                )
+                .uri("/api/console/frontstage/component-capabilities?query=runtime&limit=20")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
