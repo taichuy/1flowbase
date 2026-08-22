@@ -90,6 +90,7 @@ const vditorMock = vi.hoisted(() => ({
     options: {
       mode?: string;
       value?: string;
+      outline?: { enable?: boolean; position?: string };
       after?: () => void;
       input?: (value: string) => void;
     };
@@ -103,6 +104,7 @@ const vditorMock = vi.hoisted(() => ({
     options: {
       mode?: string;
       value?: string;
+      outline?: { enable?: boolean; position?: string };
       after?: () => void;
       input?: (value: string) => void;
     }

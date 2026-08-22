@@ -252,8 +252,8 @@ export function PersonalAccessTokensPanel() {
         title: i18nText('settings', 'auto.api_key_prefix'),
         dataIndex: 'token_prefix',
         width: 160,
-        render: (token_prefix: string) => (
-          <Typography.Text code>{token_prefix}</Typography.Text>
+        render: (_value: unknown, token) => (
+          <Typography.Text code>{token.token_prefix}</Typography.Text>
         )
       },
       {
@@ -272,21 +272,21 @@ export function PersonalAccessTokensPanel() {
         title: i18nText('settings', 'auto.expires'),
         dataIndex: 'expires_at',
         width: 180,
-        render: (expires_at: string | null) => formatDateTime(expires_at)
+        render: (_value: unknown, token) => formatDateTime(token.expires_at)
       },
       {
         key: 'last_used_at',
         title: i18nText('settings', 'auto.last_used_at'),
         dataIndex: 'last_used_at',
         width: 180,
-        render: (last_used_at: string | null) => formatLastUsedAt(last_used_at)
+        render: (_value: unknown, token) => formatLastUsedAt(token.last_used_at)
       },
       {
         key: 'created_at',
         title: i18nText('settings', 'auto.created'),
         dataIndex: 'created_at',
         width: 180,
-        render: (created_at: string) => formatDateTime(created_at)
+        render: (_value: unknown, token) => formatDateTime(token.created_at)
       },
       {
         key: 'action',
