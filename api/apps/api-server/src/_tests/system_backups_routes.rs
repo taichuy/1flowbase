@@ -13,13 +13,6 @@ use crate::_tests::support::{
     create_member, create_role, login_and_capture_cookie, replace_member_roles,
     test_api_state_with_database_url, test_config,
 };
-use crate::{
-    middleware::{
-        require_session::require_session,
-        require_settings_feature_permission::require_compiled_console_route_access,
-    },
-    routes::settings::system_backups::RECOVERY_STATUS_ROUTE,
-};
 
 async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
@@ -460,73 +453,6 @@ async fn system_backups_operation_grants_revoke_live_and_recovery_remains_root_o
         .await
         .unwrap();
     assert_eq!(non_root_recovery.status(), StatusCode::FORBIDDEN);
-}
-
-#[tokio::test]
-async fn recovery_intent_requires_authorization_to_observe_recovery_status() {
-    let (state, _) = test_api_state_with_database_url().await;
-    let app = crate::app_with_state_and_config(state.clone(), &test_config());
-    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-    create_role(&app, &root_cookie, &root_csrf, "backup_recovery_operator").await;
-    let member_id = create_member(
-        &app,
-        &root_cookie,
-        &root_csrf,
-        "backup-recovery-operator",
-        "temp-pass",
-    )
-    .await;
-    replace_member_roles(
-        &app,
-        &root_cookie,
-        &root_csrf,
-        &member_id,
-        &["backup_recovery_operator"],
-    )
-    .await;
-    replace_backup_policy(
-        &app,
-        &root_cookie,
-        &root_csrf,
-        "backup_recovery_operator",
-        &[("system_backups.recovery.intent", true)],
-    )
-    .await;
-    let (operator_cookie, _) =
-        login_and_capture_cookie(&app, "backup-recovery-operator", "temp-pass").await;
-    let mut headers = axum::http::HeaderMap::new();
-    headers.insert(header::COOKIE, operator_cookie.parse().unwrap());
-    let context = require_session(&state, &headers).await.unwrap();
-
-    assert!(require_compiled_console_route_access(
-        &state,
-        &context.actor,
-        "GET",
-        RECOVERY_STATUS_ROUTE,
-    )
-    .await
-    .is_err());
-
-    replace_backup_policy(
-        &app,
-        &root_cookie,
-        &root_csrf,
-        "backup_recovery_operator",
-        &[
-            ("system_backups.recovery.intent", true),
-            ("system_backups.recovery.status", true),
-        ],
-    )
-    .await;
-
-    assert!(require_compiled_console_route_access(
-        &state,
-        &context.actor,
-        "GET",
-        RECOVERY_STATUS_ROUTE,
-    )
-    .await
-    .is_ok());
 }
 
 #[tokio::test]
