@@ -1,21 +1,99 @@
+use std::sync::{Arc, Mutex};
+
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use domain::{
     ApplicationBuild, ArtifactRebuildability, BackupComponent, BackupComponentDisposition,
-    BackupComponentId, BackupComponentKind, BackupComponentRestoreTarget, BackupManifest,
-    BackupSetId, BackupSourceIdentity, ContentDigest, KeyFingerprint, MigrationHead,
-    SealedBackupManifest,
+    BackupComponentId, BackupComponentKind, BackupComponentRestoreTarget, BackupJobId,
+    BackupJobState, BackupJournalEvent, BackupJournalEventKind, BackupJournalSubject,
+    BackupManifest, BackupSetId, BackupSourceIdentity, ContentDigest, KeyFingerprint,
+    MigrationHead, SealedBackupManifest,
 };
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::{
-    ports::{BackupKeyMaterial, BackupKeyProvider, BackupKeyProviderError},
+    ports::{
+        BackupComponentReader, BackupComponentWriter, BackupKeyMaterial, BackupKeyProvider,
+        BackupKeyProviderError, BackupRepository, BackupRepositoryError, BackupSetCatalogEntry,
+    },
     system_backup::{
         authenticate_backup_manifest, decrypt_backup_stream, encrypt_backup_stream,
-        verify_backup_manifest,
+        verify_backup_manifest, CreateSystemBackupCommand, SystemBackupService,
     },
 };
+
+#[derive(Default)]
+struct FailingStagingRepository {
+    journal: Mutex<Vec<BackupJournalEvent>>,
+}
+
+impl FailingStagingRepository {
+    fn events(&self) -> Vec<BackupJournalEvent> {
+        self.journal.lock().unwrap().clone()
+    }
+}
+
+#[async_trait::async_trait]
+impl BackupRepository for FailingStagingRepository {
+    async fn begin_staging(&self, _: BackupSetId) -> Result<(), BackupRepositoryError> {
+        Err(BackupRepositoryError::Unavailable)
+    }
+
+    async fn open_staging_component(
+        &self,
+        _: BackupSetId,
+        _: &BackupComponentId,
+    ) -> Result<BackupComponentWriter, BackupRepositoryError> {
+        Err(BackupRepositoryError::Unavailable)
+    }
+
+    async fn abort_staging(&self, _: BackupSetId) -> Result<(), BackupRepositoryError> {
+        Ok(())
+    }
+
+    async fn seal(&self, _: &SealedBackupManifest) -> Result<(), BackupRepositoryError> {
+        Err(BackupRepositoryError::Unavailable)
+    }
+
+    async fn list(&self) -> Result<Vec<BackupSetCatalogEntry>, BackupRepositoryError> {
+        Err(BackupRepositoryError::Unavailable)
+    }
+
+    async fn load_manifest(
+        &self,
+        _: BackupSetId,
+    ) -> Result<SealedBackupManifest, BackupRepositoryError> {
+        Err(BackupRepositoryError::Unavailable)
+    }
+
+    async fn open_component(
+        &self,
+        _: BackupSetId,
+        _: &BackupComponentId,
+    ) -> Result<BackupComponentReader, BackupRepositoryError> {
+        Err(BackupRepositoryError::Unavailable)
+    }
+
+    async fn delete(&self, _: BackupSetId) -> Result<(), BackupRepositoryError> {
+        Err(BackupRepositoryError::Unavailable)
+    }
+
+    async fn append_journal_event(
+        &self,
+        event: &BackupJournalEvent,
+    ) -> Result<(), BackupRepositoryError> {
+        self.journal.lock().unwrap().push(event.clone());
+        Ok(())
+    }
+
+    async fn read_journal(
+        &self,
+        _: BackupJournalSubject,
+    ) -> Result<Vec<BackupJournalEvent>, BackupRepositoryError> {
+        Ok(self.events())
+    }
+}
 
 struct RejectingKeyProvider;
 
@@ -71,6 +149,56 @@ fn manifest() -> BackupManifest {
         ContentDigest::try_from(fingerprint('e')).unwrap(),
     )
     .unwrap()
+}
+
+#[tokio::test]
+async fn queued_backup_records_failed_state_when_staging_cannot_begin() {
+    let repository = Arc::new(FailingStagingRepository::default());
+    let service = SystemBackupService::new(repository.clone(), Arc::new(RejectingKeyProvider));
+    let job_id = BackupJobId::new();
+    let backup_set_id = BackupSetId::new();
+    let actor_user_id = uuid::Uuid::now_v7();
+    service
+        .queue_manual_backup(job_id, backup_set_id, actor_user_id)
+        .await
+        .unwrap();
+
+    let error = service
+        .create_queued_backup_under_existing_maintenance(
+            job_id,
+            backup_set_id,
+            CreateSystemBackupCommand {
+                actor_user_id,
+                application_build: ApplicationBuild::try_from("test.build").unwrap(),
+                migration_head: MigrationHead::try_from("test.migration").unwrap(),
+                master_key_fingerprint: KeyFingerprint::try_from(fingerprint('a')).unwrap(),
+                portable_source_master_key_base64: None,
+                backup_password: None,
+            },
+            Vec::new(),
+        )
+        .await;
+
+    assert!(matches!(
+        error,
+        Err(super::SystemBackupServiceError::Repository)
+    ));
+    let events = repository.events();
+    assert!(events.iter().any(|event| {
+        matches!(
+            event.event,
+            BackupJournalEventKind::BackupStateChanged {
+                state: BackupJobState::Failed
+            }
+        )
+    }));
+    assert!(events.iter().any(|event| {
+        matches!(
+            event.event,
+            BackupJournalEventKind::TerminalFailure { ref code }
+                if code == "backup_creation_failed"
+        )
+    }));
 }
 
 #[test]

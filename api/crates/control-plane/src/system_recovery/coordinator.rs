@@ -181,6 +181,23 @@ impl RecoveryCoordinator {
         &self,
         command: PrepareRecoveryCommand,
     ) -> Result<OfflineRecoveryHandoffReady, RecoveryCoordinatorError> {
+        let lease = self
+            .maintenance
+            .begin(
+                SystemMaintenanceOperation::Recovery(command.intent.recovery_job_id),
+                OffsetDateTime::now_utc(),
+            )
+            .map_err(|_| RecoveryCoordinatorError::MaintenanceBusy)?;
+        self.prepare_offline_handoff_with_lease(command, lease)
+            .await
+    }
+
+    /// Continues a recovery whose host route synchronously reserved the shared maintenance owner.
+    pub async fn prepare_offline_handoff_with_lease(
+        &self,
+        command: PrepareRecoveryCommand,
+        lease: SystemMaintenanceLease,
+    ) -> Result<OfflineRecoveryHandoffReady, RecoveryCoordinatorError> {
         if command.intent.expires_at < OffsetDateTime::now_utc() {
             return Err(RecoveryCoordinatorError::IntentExpired);
         }
@@ -237,13 +254,6 @@ impl RecoveryCoordinator {
         self.append_state(&job, command.intent.actor_user_id)
             .await?;
 
-        let lease = self
-            .maintenance
-            .begin(
-                SystemMaintenanceOperation::Recovery(job.job_id()),
-                OffsetDateTime::now_utc(),
-            )
-            .map_err(|_| RecoveryCoordinatorError::MaintenanceBusy)?;
         lease
             .wait_for_drain(command.drain_timeout)
             .await

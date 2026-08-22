@@ -1,11 +1,13 @@
 import { apiFetch, getDefaultApiBaseUrl } from '../../transport';
 import type {
   BackupMutationResponse,
+  BackupJobStatusResponse,
   BackupSetDetailResponse,
   BackupSetListResponse,
   BackupVerificationResponse,
   CreateBackupRequest,
   CreateRecoveryIntentRequest,
+  QueuedBackupResponse,
   RecoveryIntentResponse,
   RecoveryPreflightResponse,
   RecoveryReauthRequest,
@@ -26,11 +28,19 @@ export const createSystemBackup = (
   baseUrl?: string,
   request?: CreateBackupRequest
 ) =>
-  apiFetch<BackupMutationResponse>({
+  apiFetch<QueuedBackupResponse>({
     path: BASE_PATH,
     method: 'POST',
     body: request,
     csrfToken,
+    baseUrl
+  });
+export const getSystemBackupJobStatus = (
+  backupJobId: string,
+  baseUrl?: string
+) =>
+  apiFetch<BackupJobStatusResponse>({
+    path: `${BASE_PATH}/jobs/${encodeURIComponent(backupJobId)}`,
     baseUrl
   });
 export const importSystemBackup = (

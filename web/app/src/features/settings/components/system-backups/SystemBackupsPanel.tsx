@@ -4,6 +4,7 @@ import {
   deleteSystemBackup,
   getSystemBackupDownloadUrl,
   getSystemBackup,
+  getSystemBackupJobStatus,
   getSystemRecoveryStatus,
   importSystemBackup,
   listSystemBackups,
@@ -42,7 +43,7 @@ import {
   Typography,
   Upload
 } from 'antd';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useAuthStore } from '../../../../state/auth-store';
@@ -87,6 +88,7 @@ export function SystemBackupsPanel() {
   const [verifyPassword, setVerifyPassword] = useState('');
   const [recoveryBackupPassword, setRecoveryBackupPassword] = useState('');
   const [exactName, setExactName] = useState('');
+  const [backupJobId, setBackupJobId] = useState<string>();
   const [recoveryJobId, setRecoveryJobId] = useState<string>();
   const availabilityLabel = (value: string) => {
     if (value === 'ready') return t('availability_ready');
@@ -100,6 +102,16 @@ export function SystemBackupsPanel() {
     queryFn: () => getSystemBackup(detailId!),
     enabled: Boolean(detailId)
   });
+  const backupJobStatus = useQuery({
+    queryKey: [...queryKey, 'job-status', backupJobId],
+    queryFn: () => getSystemBackupJobStatus(backupJobId!),
+    enabled: Boolean(backupJobId),
+    refetchInterval: (query) =>
+      query.state.data?.status === 'succeeded' ||
+      query.state.data?.status === 'failed'
+        ? false
+        : 2000
+  });
   const recoveryStatus = useQuery({
     queryKey: [...queryKey, 'recovery-status', recoveryJobId],
     queryFn: () => getSystemRecoveryStatus(recoveryJobId),
@@ -107,6 +119,11 @@ export function SystemBackupsPanel() {
     refetchInterval: 2000
   });
   const refresh = () => queryClient.invalidateQueries({ queryKey });
+  useEffect(() => {
+    if (backupJobStatus.data?.status === 'succeeded') {
+      void queryClient.invalidateQueries({ queryKey });
+    }
+  }, [backupJobStatus.data?.status, queryClient]);
   const notifyError = () => message.error(t('operation_failed'));
   const createMutation = useMutation({
     mutationFn: (backupPassword?: string) =>
@@ -115,11 +132,11 @@ export function SystemBackupsPanel() {
         undefined,
         backupPassword ? { backup_password: backupPassword } : undefined
       ),
-    onSuccess: async () => {
-      await refresh();
+    onSuccess: (queued) => {
+      setBackupJobId(queued.backup_job_id);
       setCreateOpen(false);
       setBackupPassword('');
-      message.success(t('create_started'));
+      message.success(t('backup_started'));
     },
     onError: notifyError
   });
@@ -278,6 +295,57 @@ export function SystemBackupsPanel() {
         </Flex>
       }
     >
+      {backupJobId ? (
+        <Alert
+          showIcon
+          type={
+            backupJobStatus.data?.status === 'failed'
+              ? 'error'
+              : backupJobStatus.data?.status === 'succeeded'
+                ? 'success'
+                : 'info'
+          }
+          title={
+            backupJobStatus.data?.status === 'failed'
+              ? t('backup_failed')
+              : backupJobStatus.data?.status === 'succeeded'
+                ? t('backup_succeeded')
+                : t('backup_started')
+          }
+          description={
+            <Descriptions
+              column={{ xs: 1, sm: 2 }}
+              size="small"
+              items={[
+                {
+                  key: 'backup_job_id',
+                  label: t('backup_job_id'),
+                  children: backupJobId
+                },
+                {
+                  key: 'backup_job_status',
+                  label: t('backup_job_status'),
+                  children: backupJobStatus.data?.status ?? '—'
+                },
+                {
+                  key: 'sealed_components',
+                  label: t('sealed_components'),
+                  children: backupJobStatus.data?.sealed_components ?? '—'
+                },
+                ...(backupJobStatus.data?.status === 'failed'
+                  ? [
+                      {
+                        key: 'failure_code',
+                        label: t('failure_code'),
+                        children: backupJobStatus.data.failure_code ?? '—'
+                      }
+                    ]
+                  : [])
+              ]}
+            />
+          }
+        />
+      ) : null}
       <Table<BackupSetSummaryResponse>
         className="system-backups__table"
         dataSource={filtered}

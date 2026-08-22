@@ -30,6 +30,7 @@ use utoipa::OpenApi;
         crate::routes::system::get_runtime_profile,
         crate::routes::system_backups::list_backups,
         crate::routes::system_backups::create_backup,
+        crate::routes::system_backups::get_backup_job_status,
         crate::routes::system_backups::get_backup,
         crate::routes::system_backups::delete_backup,
         crate::routes::system_backups::verify_backup,

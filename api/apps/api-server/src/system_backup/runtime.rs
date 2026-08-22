@@ -19,8 +19,8 @@ use control_plane::{
 };
 use domain::{
     strict_backup_compatibility, ApplicationBuild, BackupIncompatibility, BackupJobId,
-    BackupJournalEvent, BackupJournalSubject, BackupSetId, KeyFingerprint, RecoveryJobId,
-    SealedBackupManifest,
+    BackupJobState, BackupJournalEvent, BackupJournalEventKind, BackupJournalSubject, BackupSetId,
+    KeyFingerprint, RecoveryJobId, SealedBackupManifest,
 };
 use sha2::{Digest, Sha256};
 use storage_durable::{MainDurableStore, PostgreSqlToolchain};
@@ -63,6 +63,21 @@ pub(crate) struct SystemBackupDetail {
     pub verification: Option<BackupVerificationReceipt>,
     pub creation_journal: Vec<BackupJournalEvent>,
     pub recovery_history: Vec<BackupJournalEvent>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct QueuedSystemBackup {
+    pub backup_job_id: BackupJobId,
+    pub backup_set_id: BackupSetId,
+}
+
+#[derive(Debug, Clone)]
+pub struct SystemBackupJobStatus {
+    pub backup_job_id: BackupJobId,
+    pub backup_set_id: BackupSetId,
+    pub state: BackupJobState,
+    pub failure_code: Option<String>,
+    pub sealed_components: u64,
 }
 
 #[derive(Debug, Error)]
@@ -223,8 +238,79 @@ impl SystemBackupRuntime {
         result
     }
 
+    /// Reserves the shared maintenance owner and persists its queued journal checkpoint before
+    /// dispatching the slow fenced backup work onto the process runtime.
+    pub async fn queue_manual_backup(
+        self: &Arc<Self>,
+        actor_user_id: Uuid,
+        backup_password: Option<String>,
+    ) -> Result<QueuedSystemBackup, SystemBackupRuntimeError> {
+        let queued = QueuedSystemBackup {
+            backup_job_id: BackupJobId::new(),
+            backup_set_id: BackupSetId::new(),
+        };
+        let lease = self
+            .maintenance
+            .begin(
+                SystemMaintenanceOperation::Backup(queued.backup_job_id),
+                time::OffsetDateTime::now_utc(),
+            )
+            .map_err(|_| SystemBackupRuntimeError::MaintenanceBusy)?;
+        if let Err(error) = self
+            .service
+            .queue_manual_backup(queued.backup_job_id, queued.backup_set_id, actor_user_id)
+            .await
+        {
+            lease.finish();
+            return Err(error.into());
+        }
+
+        let runtime = self.clone();
+        tokio::spawn(async move {
+            runtime
+                .run_queued_manual_backup(lease, queued, actor_user_id, backup_password)
+                .await;
+        });
+        Ok(queued)
+    }
+
     pub async fn list(&self) -> Result<Vec<BackupSetCatalogEntry>, SystemBackupRuntimeError> {
         self.service.list().await.map_err(Into::into)
+    }
+
+    pub async fn backup_job_status(
+        &self,
+        backup_job_id: BackupJobId,
+    ) -> Result<Option<SystemBackupJobStatus>, SystemBackupRuntimeError> {
+        let events = self
+            .repository
+            .read_journal(BackupJournalSubject::Backup(backup_job_id))
+            .await
+            .map_err(|_| SystemBackupRuntimeError::Repository)?;
+        let Some(first) = events.first() else {
+            return Ok(None);
+        };
+        let backup_set_id = first.backup_set_id;
+        let mut state = BackupJobState::Queued;
+        let mut failure_code = None;
+        let mut sealed_components = 0_u64;
+        for event in events {
+            match event.event {
+                BackupJournalEventKind::BackupStateChanged { state: next } => state = next,
+                BackupJournalEventKind::TerminalFailure { code } => failure_code = Some(code),
+                BackupJournalEventKind::ComponentSealed { .. } => {
+                    sealed_components = sealed_components.saturating_add(1)
+                }
+                _ => {}
+            }
+        }
+        Ok(Some(SystemBackupJobStatus {
+            backup_job_id,
+            backup_set_id,
+            state,
+            failure_code,
+            sealed_components,
+        }))
     }
 
     pub async fn get(
@@ -364,17 +450,44 @@ impl SystemBackupRuntime {
         intent: ConfirmedRecoveryIntent,
         target_backup_password: Option<String>,
     ) -> Result<OfflineRecoveryHandoffReady, SystemBackupRuntimeError> {
+        let lease = self.reserve_recovery_maintenance(intent.recovery_job_id())?;
+        self.prepare_recovery_with_maintenance_lease(intent, target_backup_password, lease)
+            .await
+    }
+
+    pub fn reserve_recovery_maintenance(
+        &self,
+        recovery_job_id: RecoveryJobId,
+    ) -> Result<control_plane::system_recovery::SystemMaintenanceLease, SystemBackupRuntimeError>
+    {
+        self.maintenance
+            .begin(
+                SystemMaintenanceOperation::Recovery(recovery_job_id),
+                time::OffsetDateTime::now_utc(),
+            )
+            .map_err(|_| SystemBackupRuntimeError::MaintenanceBusy)
+    }
+
+    pub async fn prepare_recovery_with_maintenance_lease(
+        &self,
+        intent: ConfirmedRecoveryIntent,
+        target_backup_password: Option<String>,
+        lease: control_plane::system_recovery::SystemMaintenanceLease,
+    ) -> Result<OfflineRecoveryHandoffReady, SystemBackupRuntimeError> {
         let actor_user_id = intent.actor_user_id();
         let (safety_backup_command, safety_backup_sources) =
             self.backup_inputs(actor_user_id, None).await?;
         self.recovery
-            .prepare_offline_handoff(PrepareRecoveryCommand {
-                intent,
-                target_backup_password,
-                safety_backup_command,
-                safety_backup_sources,
-                drain_timeout: std::time::Duration::from_secs(30),
-            })
+            .prepare_offline_handoff_with_lease(
+                PrepareRecoveryCommand {
+                    intent,
+                    target_backup_password,
+                    safety_backup_command,
+                    safety_backup_sources,
+                    drain_timeout: std::time::Duration::from_secs(30),
+                },
+                lease,
+            )
             .await
             .map_err(Into::into)
     }
@@ -473,6 +586,67 @@ impl SystemBackupRuntime {
             .await
             .map_err(|_| SystemBackupRuntimeError::Repository)?;
         Ok(manifest)
+    }
+
+    async fn run_queued_manual_backup(
+        self: Arc<Self>,
+        lease: control_plane::system_recovery::SystemMaintenanceLease,
+        queued: QueuedSystemBackup,
+        actor_user_id: Uuid,
+        backup_password: Option<String>,
+    ) {
+        let result = async {
+            lease
+                .wait_for_drain(std::time::Duration::from_secs(30))
+                .await
+                .map_err(|_| "maintenance_drain_failed")?;
+            let (command, sources) = self
+                .backup_inputs(actor_user_id, backup_password.clone())
+                .await
+                .map_err(|_| "backup_input_failed")?;
+            let manifest = self
+                .service
+                .create_queued_backup_under_existing_maintenance(
+                    queued.backup_job_id,
+                    queued.backup_set_id,
+                    command,
+                    sources,
+                )
+                .await
+                .map_err(|_| "backup_creation_failed")?;
+            self.repository
+                .record_verification(manifest.manifest().backup_set_id(), true)
+                .await
+                .map_err(|_| "backup_verification_receipt_failed")?;
+            Ok::<(), &str>(())
+        }
+        .await;
+        if let Err(failure_code) = result {
+            if failure_code != "backup_creation_failed" {
+                if let Err(error) = self
+                    .service
+                    .fail_queued_manual_backup(
+                        queued.backup_job_id,
+                        queued.backup_set_id,
+                        actor_user_id,
+                        failure_code,
+                    )
+                    .await
+                {
+                    tracing::error!(
+                        backup_job_id = %queued.backup_job_id.as_uuid(),
+                        error = %error,
+                        "system backup could not record queued-job failure"
+                    );
+                }
+            }
+            tracing::warn!(
+                backup_job_id = %queued.backup_job_id.as_uuid(),
+                failure_code,
+                "queued system backup failed"
+            );
+        }
+        lease.finish();
     }
 }
 
