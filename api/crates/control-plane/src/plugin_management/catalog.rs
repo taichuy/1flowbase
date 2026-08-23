@@ -687,10 +687,17 @@ where
         let mut catalog = Vec::with_capacity(installations.len());
         let mut i18n_catalog = BTreeMap::new();
         for installation in installations {
-            if !filter.matches("model_provider") {
+            let plugin_type = if is_model_provider_installation(&installation) {
+                "model_provider"
+            } else if installation.contract_version
+                == plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT
+                && installation.metadata_json["plugin_type"] == "network_egress_provider"
+            {
+                "network_egress_provider"
+            } else {
                 continue;
-            }
-            if !is_model_provider_installation(&installation) {
+            };
+            if !filter.matches(plugin_type) {
                 continue;
             }
             let namespace = plugin_namespace(&installation.provider_code);
@@ -700,7 +707,7 @@ where
                 trim_json_bundles(&namespace, &projection.i18n_bundles, &locales),
             );
             catalog.push(PluginCatalogEntry {
-                plugin_type: "model_provider".to_string(),
+                plugin_type: plugin_type.to_string(),
                 namespace,
                 label_key: "plugin.label".to_string(),
                 description_key: Some("plugin.description".to_string()),

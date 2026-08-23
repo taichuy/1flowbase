@@ -116,6 +116,18 @@ impl MemoryPluginManagementRepository {
             .contract_version = contract_version.to_string();
     }
 
+    pub(crate) async fn mark_installation_as_network_egress_provider(&self, installation_id: Uuid) {
+        let mut installations = self.installations.write().await;
+        let installation = installations
+            .get_mut(&installation_id)
+            .expect("test installation must exist");
+        installation.contract_version =
+            plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT.to_string();
+        installation.protocol = "stdio_json_worker".to_string();
+        installation.metadata_json["plugin_type"] =
+            serde_json::Value::String("network_egress_provider".to_string());
+    }
+
     pub(crate) async fn artifact_snapshot_update_count(&self) -> usize {
         self.artifact_snapshot_updates.read().await.len()
     }

@@ -121,6 +121,57 @@ async fn ac_001_ac_003_family_fetches_current_catalog_and_reports_openai_update(
 }
 
 #[tokio::test]
+async fn ac_001_network_egress_catalog_projects_installed_versions() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.view.all"],
+    ));
+    repository
+        .set_console_operation(
+            domain::ConsolePolicyGroup::settings_feature("system.network-center").unwrap(),
+            "network_egress_plugins.families.view",
+        )
+        .await;
+    let install_root =
+        std::env::temp_dir().join(format!("network-egress-catalog-{}", Uuid::now_v7()));
+    let installation_id = seed_test_installation(
+        &repository,
+        &install_root,
+        "clash-proxy",
+        "0.2.3",
+        PluginDesiredState::Disabled,
+    )
+    .await;
+    repository
+        .mark_installation_as_network_egress_provider(installation_id)
+        .await;
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    )
+    .for_network_egress_provider_console_operation("network_egress_plugins.families.view");
+
+    let catalog = service
+        .list_catalog(
+            repository.actor.user_id,
+            PluginCatalogFilter {
+                plugin_type: Some("network_egress_provider".to_string()),
+            },
+            requested_locales(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(catalog.entries.len(), 1);
+    assert_eq!(catalog.entries[0].plugin_type, "network_egress_provider");
+    assert_eq!(catalog.entries[0].installation.id, installation_id);
+    assert_eq!(catalog.entries[0].installation.plugin_version, "0.2.3");
+}
+
+#[tokio::test]
 async fn publisher_cutover_family_reports_latest_unknown_without_verified_catalog() {
     #[derive(Clone)]
     struct UnavailableOfficialSource;
