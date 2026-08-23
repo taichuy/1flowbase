@@ -21,23 +21,53 @@ vi.mock('@tanstack/react-router', async (importOriginal) => ({
 
 vi.mock('@monaco-editor/react', () => ({
   default: ({
+    beforeMount,
+    onMount,
     options,
+    path,
     value,
     onChange
   }: {
+    beforeMount?: (monaco: unknown) => void;
+    onMount?: (editor: unknown, monaco: unknown) => void;
     options?: { ariaLabel?: string; readOnly?: boolean };
+    path?: string;
     value?: string;
     onChange?: (value: string) => void;
-  }) => (
-    <textarea
-      aria-label={options?.ariaLabel}
-      data-read-only={options?.readOnly}
-      data-testid="block-source-editor"
-      readOnly={options?.readOnly}
-      value={value}
-      onChange={(event) => onChange?.(event.target.value)}
-    />
-  )
+  }) => {
+    const monaco = {
+      MarkerSeverity: { Error: 8 },
+      editor: { setModelMarkers: vi.fn() },
+      languages: {
+        typescript: {
+          JsxEmit: { Preserve: 'preserve' },
+          ModuleResolutionKind: { NodeJs: 'node-js' },
+          ScriptTarget: { ES2022: 'es2022' },
+          typescriptDefaults: {
+            addExtraLib: vi.fn(() => ({ dispose: vi.fn() })),
+            setCompilerOptions: vi.fn()
+          }
+        }
+      }
+    };
+    const editor = {
+      getModel: () => ({
+        uri: { toString: () => path ?? 'file:///source.tsx' }
+      })
+    };
+    beforeMount?.(monaco);
+    onMount?.(editor, monaco);
+    return (
+      <textarea
+        aria-label={options?.ariaLabel}
+        data-read-only={options?.readOnly}
+        data-testid="block-source-editor"
+        readOnly={options?.readOnly}
+        value={value}
+        onChange={(event) => onChange?.(event.target.value)}
+      />
+    );
+  }
 }));
 
 const uiManagementApi = vi.hoisted(() => ({
@@ -227,7 +257,7 @@ describe('UiManagementPanel component records', () => {
     fireEvent.change(screen.getByLabelText('上游标识'), {
       target: { value: '@local/card' }
     });
-    fireEvent.change(screen.getByLabelText('上游版本'), {
+    fireEvent.change(screen.getByLabelText('版本'), {
       target: { value: '0.1.0' }
     });
     fireEvent.change(screen.getByLabelText('记录版本'), {

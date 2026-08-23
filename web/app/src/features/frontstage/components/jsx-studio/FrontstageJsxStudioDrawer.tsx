@@ -144,7 +144,7 @@ export function FrontstageJsxStudioDrawer({
       source_code: template.source,
       runtime_descriptor: createFrontstageBlockRuntimeDescriptor(activeBlock)
     };
-  }, [activeBlock, activeCatalogEntry, workspaceId]);
+  }, [activeBlock, activeCatalogEntry]);
   useEffect(() => {
     if (open) {
       setRunRevision(null);

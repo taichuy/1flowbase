@@ -5,10 +5,9 @@ import {
   Alert,
   App,
   Button,
+  Descriptions,
   Flex,
   Input,
-  List,
-  Space,
   Table,
   Tag,
   Typography,
@@ -158,6 +157,7 @@ export function RemoteCatalogDrawer({
 
   return (
     <ResizableDrawer
+      ariaLabel={t('remote_catalog')}
       defaultWidth={840}
       open={open}
       resizeLabel={t('resize_catalog_drawer')}
@@ -175,7 +175,7 @@ export function RemoteCatalogDrawer({
         </Button>
       }
     >
-      <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+      <Flex vertical gap={16} style={{ width: '100%' }}>
         {failed ? (
           <Alert type="error" showIcon message={t('catalog_request_failed')} />
         ) : null}
@@ -206,47 +206,44 @@ export function RemoteCatalogDrawer({
           ) : null}
         </Flex>
         {updateStatus.data ? (
-          <List
+          <Descriptions
             size="small"
             bordered
-            dataSource={updateStatus.data.groups}
-            renderItem={(item) => (
-              <List.Item
-                actions={
-                  canManage
-                    ? [
-                        <Button
-                          key="sync"
-                          type="link"
-                          size="small"
-                          loading={
-                            syncGroup.isPending &&
-                            syncGroup.variables?.source === item.source &&
-                            syncGroup.variables?.group === item.group
-                          }
-                          onClick={() =>
-                            syncGroup.mutate({
-                              source: item.source,
-                              group: item.group
-                            })
-                          }
-                        >
-                          {t('catalog_sync_group')}
-                        </Button>
-                      ]
-                    : []
-                }
-              >
-                <List.Item.Meta
-                  title={`${item.source} / ${item.group}`}
-                  description={t('catalog_group_status', {
-                    total: item.remote_records,
-                    updates: item.new_or_updated_records,
-                    removals: item.removed_records
-                  })}
-                />
-              </List.Item>
-            )}
+            column={1}
+            items={updateStatus.data.groups.map((item) => ({
+              key: `${item.source}/${item.group}`,
+              label: `${item.source} / ${item.group}`,
+              children: (
+                <Flex align="center" justify="space-between" gap={8} wrap>
+                  <Typography.Text type="secondary">
+                    {t('catalog_group_status', {
+                      total: item.remote_records,
+                      updates: item.new_or_updated_records,
+                      removals: item.removed_records
+                    })}
+                  </Typography.Text>
+                  {canManage ? (
+                    <Button
+                      type="link"
+                      size="small"
+                      loading={
+                        syncGroup.isPending &&
+                        syncGroup.variables?.source === item.source &&
+                        syncGroup.variables?.group === item.group
+                      }
+                      onClick={() =>
+                        syncGroup.mutate({
+                          source: item.source,
+                          group: item.group
+                        })
+                      }
+                    >
+                      {t('catalog_sync_group')}
+                    </Button>
+                  ) : null}
+                </Flex>
+              )
+            }))}
           />
         ) : null}
         <Table<CatalogRow>
@@ -263,7 +260,7 @@ export function RemoteCatalogDrawer({
           }}
           scroll={{ x: 760 }}
         />
-      </Space>
+      </Flex>
     </ResizableDrawer>
   );
 }

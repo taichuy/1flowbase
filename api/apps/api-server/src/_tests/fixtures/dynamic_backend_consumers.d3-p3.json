@@ -1018,12 +1018,6 @@
       "List UI management components"
     ],
     [
-      "ui_management.components.view",
-      "GET",
-      "/api/console/settings/ui-management/components/:id",
-      "View UI management components"
-    ],
-    [
       "ui_management.catalog.index",
       "GET",
       "/api/console/settings/ui-management/components/catalog/index",
@@ -1046,6 +1040,12 @@
       "GET",
       "/api/console/settings/ui-management/components/catalog/update-status",
       "UI management catalog update status"
+    ],
+    [
+      "ui_management.components.view",
+      "GET",
+      "/api/console/settings/ui-management/components/:id",
+      "View UI management components"
     ],
     [
       "ui_management.templates.list",
@@ -1942,16 +1942,16 @@
       "Create UI management components"
     ],
     [
-      "ui_management.catalog.download",
-      "POST",
-      "/api/console/settings/ui-management/components/catalog/:component_code/download",
-      "UI management catalog download"
-    ],
-    [
       "ui_management.catalog.sync_group",
       "POST",
       "/api/console/settings/ui-management/components/catalog/groups/:source/:group/sync",
       "UI management catalog sync group"
+    ],
+    [
+      "ui_management.catalog.download",
+      "POST",
+      "/api/console/settings/ui-management/components/catalog/:component_code/download",
+      "UI management catalog download"
     ],
     [
       "ui_management.templates.create",
