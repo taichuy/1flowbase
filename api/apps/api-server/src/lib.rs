@@ -251,11 +251,12 @@ fn console_router_with_assembly(
 }
 
 pub fn app_with_state_and_config(state: Arc<ApiState>, config: &ApiConfig) -> Router {
-    let assembly = routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations(
+    let assembly = routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations_and_plugin_upload_max_bytes(
         state
             .extension_boot_snapshot
             .as_ref()
             .and_then(|snapshot| snapshot.interface_operations()),
+        config.plugin_upload_max_bytes,
     );
     app_with_state_and_config_and_console_route_assembly(state, config, assembly)
 }

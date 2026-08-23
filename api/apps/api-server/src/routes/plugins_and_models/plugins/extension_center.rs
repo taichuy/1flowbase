@@ -43,7 +43,6 @@ use crate::{
 use super::{
     base_service, enforce_plugin_upload_limit, format_time, to_task_response,
     PluginCompatibilityOverrideBody, PluginRiskOverrideBody, PluginTaskResponse,
-    MAX_PLUGIN_UPLOAD_BYTES,
 };
 
 mod builtin_mcp;
@@ -55,7 +54,9 @@ pub(crate) use builtin_mcp::BUILTIN_FRONTSTAGE_CATALOG_ID;
 use catalog_page::load_catalog_page;
 pub use dto::*;
 
-pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+pub(super) fn route_assembly(
+    plugin_upload_max_bytes: usize,
+) -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
         .route(
             "/settings/extension-center/installed",
@@ -131,8 +132,10 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/settings/extension-center/install-upload",
             console_post(
                 install_uploaded_extension
-                    .layer(DefaultBodyLimit::max(MAX_PLUGIN_UPLOAD_BYTES))
-                    .layer(middleware::from_fn(enforce_plugin_upload_limit)),
+                    .layer(DefaultBodyLimit::max(plugin_upload_max_bytes))
+                    .layer(middleware::from_fn(move |request, next| {
+                        enforce_plugin_upload_limit(plugin_upload_max_bytes, request, next)
+                    })),
                 ConsoleOperation("extension_center.install.upload".to_string()),
             ),
         )

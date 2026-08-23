@@ -45,7 +45,6 @@ use crate::{
 
 const DEFAULT_OFFICIAL_PLUGIN_CATALOG_LIMIT: usize = 20;
 const MAX_OFFICIAL_PLUGIN_CATALOG_LIMIT: usize = 50;
-const MAX_PLUGIN_UPLOAD_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct InstallPluginBody {
@@ -315,8 +314,14 @@ pub fn router() -> Router<Arc<ApiState>> {
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    route_assembly_with_plugin_upload_max_bytes(crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES)
+}
+
+pub(crate) fn route_assembly_with_plugin_upload_max_bytes(
+    plugin_upload_max_bytes: usize,
+) -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
-        .merge(extension_center::route_assembly())
+        .merge(extension_center::route_assembly(plugin_upload_max_bytes))
         .route(
             "/plugins/catalog",
             console_get(
@@ -363,8 +368,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/plugins/install-upload",
             console_post(
                 install_uploaded_plugin
-                    .layer(DefaultBodyLimit::max(MAX_PLUGIN_UPLOAD_BYTES))
-                    .layer(middleware::from_fn(enforce_plugin_upload_limit)),
+                    .layer(DefaultBodyLimit::max(plugin_upload_max_bytes))
+                    .layer(middleware::from_fn(move |request, next| {
+                        enforce_plugin_upload_limit(plugin_upload_max_bytes, request, next)
+                    })),
                 ConsoleOperation("plugins.install.upload".to_string()),
             ),
         )
@@ -453,8 +460,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/settings/model-providers/plugins/install-upload",
             console_post(
                 settings_routes::install_uploaded_plugin
-                    .layer(DefaultBodyLimit::max(MAX_PLUGIN_UPLOAD_BYTES))
-                    .layer(middleware::from_fn(enforce_plugin_upload_limit)),
+                    .layer(DefaultBodyLimit::max(plugin_upload_max_bytes))
+                    .layer(middleware::from_fn(move |request, next| {
+                        enforce_plugin_upload_limit(plugin_upload_max_bytes, request, next)
+                    })),
                 ConsoleOperation("model_provider_plugins.install.upload".to_string()),
             ),
         )
@@ -592,9 +601,13 @@ pub(crate) fn to_risk_override(
     })
 }
 
-pub(crate) async fn enforce_plugin_upload_limit(request: Request<Body>, next: Next) -> Response {
+pub(crate) async fn enforce_plugin_upload_limit(
+    plugin_upload_max_bytes: usize,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
     let (parts, body) = request.into_parts();
-    match to_bytes(body, MAX_PLUGIN_UPLOAD_BYTES).await {
+    match to_bytes(body, plugin_upload_max_bytes).await {
         Ok(bytes) => {
             next.run(Request::from_parts(parts, Body::from(bytes)))
                 .await

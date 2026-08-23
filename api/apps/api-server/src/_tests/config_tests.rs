@@ -180,6 +180,22 @@ fn api_config_rejects_invalid_database_pool_max_connections() {
 }
 
 #[test]
+fn api_config_uses_a_shared_plugin_upload_byte_limit() {
+    let default_config = ApiConfig::from_env_map(&base_env_without_ephemeral_backend()).unwrap();
+    assert_eq!(default_config.plugin_upload_max_bytes, 8 * 1024 * 1024);
+
+    let mut configured_env = base_env_without_ephemeral_backend();
+    configured_env.push(("API_PLUGIN_UPLOAD_MAX_BYTES", "33554432"));
+    let configured = ApiConfig::from_env_map(&configured_env).unwrap();
+    assert_eq!(configured.plugin_upload_max_bytes, 33_554_432);
+
+    let mut invalid_env = base_env_without_ephemeral_backend();
+    invalid_env.push(("API_PLUGIN_UPLOAD_MAX_BYTES", "0"));
+    let error = ApiConfig::from_env_map(&invalid_env).unwrap_err();
+    assert!(error.to_string().contains("API_PLUGIN_UPLOAD_MAX_BYTES"));
+}
+
+#[test]
 fn api_config_defaults_to_development_and_unrestricted_cors() {
     let config = ApiConfig::from_env_map(&[
         (

@@ -33,9 +33,14 @@ use crate::{
 const NETWORK_EGRESS_PROVIDER_PLUGIN_TYPE: &str = "network_egress_provider";
 const DEFAULT_OFFICIAL_PLUGIN_CATALOG_LIMIT: usize = 20;
 const MAX_OFFICIAL_PLUGIN_CATALOG_LIMIT: usize = 50;
-const MAX_PLUGIN_UPLOAD_BYTES: usize = 8 * 1024 * 1024;
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    route_assembly_with_plugin_upload_max_bytes(crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES)
+}
+
+pub(crate) fn route_assembly_with_plugin_upload_max_bytes(
+    plugin_upload_max_bytes: usize,
+) -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
     ConsoleRouteAssembly::new()
@@ -57,8 +62,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/settings/network-center/proxy-plugins/install-upload",
             console_post(
                 install_uploaded_plugin
-                    .layer(DefaultBodyLimit::max(MAX_PLUGIN_UPLOAD_BYTES))
-                    .layer(middleware::from_fn(enforce_plugin_upload_limit)),
+                    .layer(DefaultBodyLimit::max(plugin_upload_max_bytes))
+                    .layer(middleware::from_fn(move |request, next| {
+                        enforce_plugin_upload_limit(plugin_upload_max_bytes, request, next)
+                    })),
                 ConsoleOperation("network_egress_plugins.install.upload".to_string()),
             ),
         )

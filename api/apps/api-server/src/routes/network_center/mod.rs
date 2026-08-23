@@ -107,6 +107,12 @@ pub struct NetworkEgressRouteResponse {
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
+    route_assembly_with_plugin_upload_max_bytes(crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES)
+}
+
+pub(crate) fn route_assembly_with_plugin_upload_max_bytes(
+    plugin_upload_max_bytes: usize,
+) -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
     ConsoleRouteAssembly::new()
@@ -142,7 +148,9 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
                 ConsoleOperation("network_egress_providers.sync".to_string()),
             ),
         )
-        .merge(plugins::route_assembly())
+        .merge(plugins::route_assembly_with_plugin_upload_max_bytes(
+            plugin_upload_max_bytes,
+        ))
         .merge(pools::route_assembly())
         .merge(routes::route_assembly())
 }

@@ -261,6 +261,18 @@ pub(crate) fn migrated_core_console_route_assembly_with_interface_operations(
         &crate::routes::host_infrastructure::interface_operation::InterfaceOperationCatalog,
     >,
 ) -> ConsoleRouteAssembly<Arc<ApiState>> {
+    migrated_core_console_route_assembly_with_interface_operations_and_plugin_upload_max_bytes(
+        interface_operations,
+        crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES,
+    )
+}
+
+pub(crate) fn migrated_core_console_route_assembly_with_interface_operations_and_plugin_upload_max_bytes(
+    interface_operations: Option<
+        &crate::routes::host_infrastructure::interface_operation::InterfaceOperationCatalog,
+    >,
+    plugin_upload_max_bytes: usize,
+) -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
         .merge(console_health_route_assembly())
         .merge(super::session::route_assembly())
@@ -292,14 +304,20 @@ pub(crate) fn migrated_core_console_route_assembly_with_interface_operations(
         .merge(super::billing::route_assembly())
         .merge(super::model_definitions::route_assembly())
         .merge(super::model_providers::route_assembly())
-        .merge(super::network_center::route_assembly())
+        .merge(
+            super::network_center::route_assembly_with_plugin_upload_max_bytes(
+                plugin_upload_max_bytes,
+            ),
+        )
         .merge(super::frontend_block_catalog::route_assembly())
         .merge(super::js_dependencies::route_assembly())
         .merge(super::node_contributions::route_assembly())
         .merge(super::roles::route_assembly())
         .merge(super::permissions::route_assembly())
         .merge(super::frontstage::route_assembly())
-        .merge(super::plugins::route_assembly())
+        .merge(super::plugins::route_assembly_with_plugin_upload_max_bytes(
+            plugin_upload_max_bytes,
+        ))
         .merge(super::auth_center::route_assembly())
         .merge(super::system::route_assembly())
         .merge(super::system_backups::route_assembly())

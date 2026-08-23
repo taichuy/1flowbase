@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { App } from 'antd';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -103,21 +103,32 @@ describe('NetworkEgressPoolsPanel', () => {
     expect(screen.getByTestId('fixed-height-modal-scroll-body')).toBeInTheDocument();
   });
 
+  test('AC-OP02 uses the shared data-table layout and field configuration', async () => {
+    renderPanel();
+
+    await screen.findByTestId('network-center-pools-shell');
+
+    expect(document.querySelector('.data-table-layout')).toBeInTheDocument();
+    expect(document.querySelector('.data-table')).toBeInTheDocument();
+    expect(document.querySelector('.data-table__column-selector')).toBeInTheDocument();
+  });
+
   test('AC-GP01 creates a manual proxy from the global pool without creating a pool', async () => {
     networkCenterApi.createSettingsNetworkEgressProxy.mockResolvedValue({
       id: 'provider-1'
     });
     renderPanel();
     fireEvent.click(await screen.findByRole('button', { name: /添加代理|Add proxy/ }));
-    fireEvent.mouseDown(screen.getByLabelText(/代理类型|Proxy type/));
+    const createModal = screen.getByTestId('fixed-height-modal-scroll-body');
+    fireEvent.mouseDown(within(createModal).getByLabelText(/代理类型|Proxy type/));
     fireEvent.click(await screen.findByText('HTTP proxy'));
-    fireEvent.change(screen.getByLabelText(/名称|Name/), {
+    fireEvent.change(within(createModal).getByLabelText(/名称|Name/), {
       target: { value: 'US proxy' }
     });
-    fireEvent.change(await screen.findByLabelText('Hostname or IP'), {
+    fireEvent.change(await within(createModal).findByLabelText('Hostname or IP'), {
       target: { value: '198.65.36.212' }
     });
-    fireEvent.change(screen.getByLabelText('Port'), {
+    fireEvent.change(within(createModal).getByLabelText('Port'), {
       target: { value: '37867' }
     });
     fireEvent.click(screen.getByRole('button', { name: /确\s*定|OK|Confirm/ }));
@@ -141,12 +152,13 @@ describe('NetworkEgressPoolsPanel', () => {
     });
     renderPanel();
     fireEvent.click(await screen.findByRole('button', { name: /添加代理|Add proxy/ }));
-    fireEvent.mouseDown(screen.getByLabelText(/代理类型|Proxy type/));
+    const createModal = screen.getByTestId('fixed-height-modal-scroll-body');
+    fireEvent.mouseDown(within(createModal).getByLabelText(/代理类型|Proxy type/));
     fireEvent.click(await screen.findByText('Clash / Mihomo Proxy'));
-    fireEvent.change(screen.getByLabelText(/名称|Name/), {
+    fireEvent.change(within(createModal).getByLabelText(/名称|Name/), {
       target: { value: 'Subscription' }
     });
-    fireEvent.change(await screen.findByLabelText('Subscription URL'), {
+    fireEvent.change(await within(createModal).findByLabelText('Subscription URL'), {
       target: { value: 'https://example.com/subscription' }
     });
     fireEvent.click(screen.getByRole('button', { name: /确\s*定|OK|Confirm/ }));

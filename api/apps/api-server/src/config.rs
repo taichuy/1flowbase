@@ -8,6 +8,8 @@ use std::{
     path::{Path, PathBuf},
 };
 
+pub const DEFAULT_PLUGIN_UPLOAD_MAX_BYTES: usize = 8 * 1024 * 1024;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApiEnvironment {
     Development,
@@ -34,6 +36,7 @@ pub struct ApiConfig {
     pub env: ApiEnvironment,
     pub database_url: String,
     pub database_pool_max_connections: u32,
+    pub plugin_upload_max_bytes: usize,
     pub runtime_table_name_policy: storage_durable::RuntimeTableNamePolicy,
     pub business_file_local_root: String,
     pub plugin_runner_internal_base_url: String,
@@ -306,6 +309,11 @@ impl ApiConfig {
                 map.get("API_DATABASE_POOL_MAX_CONNECTIONS"),
                 5,
             )?,
+            plugin_upload_max_bytes: parse_positive_usize(
+                "API_PLUGIN_UPLOAD_MAX_BYTES",
+                map.get("API_PLUGIN_UPLOAD_MAX_BYTES"),
+                DEFAULT_PLUGIN_UPLOAD_MAX_BYTES,
+            )?,
             runtime_table_name_policy,
             business_file_local_root: default_business_file_local_root(),
             plugin_runner_internal_base_url: map
@@ -563,6 +571,21 @@ fn parse_positive_u32(key: &str, value: Option<&String>, default: u32) -> Result
     };
     let parsed = value
         .parse::<u32>()
+        .map_err(|_| anyhow!("invalid env {key}: expected positive integer"))?;
+
+    if parsed == 0 {
+        return Err(anyhow!("invalid env {key}: expected positive integer"));
+    }
+
+    Ok(parsed)
+}
+
+fn parse_positive_usize(key: &str, value: Option<&String>, default: usize) -> Result<usize> {
+    let Some(value) = value else {
+        return Ok(default);
+    };
+    let parsed = value
+        .parse::<usize>()
         .map_err(|_| anyhow!("invalid env {key}: expected positive integer"))?;
 
     if parsed == 0 {
