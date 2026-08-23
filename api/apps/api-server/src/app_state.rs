@@ -221,13 +221,30 @@ pub(crate) fn compile_console_boot_plan_with_interface_operations(
         &crate::routes::host_infrastructure::interface_operation::InterfaceOperationCatalog,
     >,
 ) -> anyhow::Result<CompiledConsoleBootPlan> {
+    compile_console_boot_plan_with_interface_operations_and_plugin_upload_max_bytes(
+        host_extensions,
+        interface_operations,
+        crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES,
+    )
+}
+
+pub(crate) fn compile_console_boot_plan_with_interface_operations_and_plugin_upload_max_bytes(
+    host_extensions: impl IntoIterator<Item = ResolvedHostExtensionConsoleContribution>,
+    interface_operations: Option<
+        &crate::routes::host_infrastructure::interface_operation::InterfaceOperationCatalog,
+    >,
+    plugin_upload_max_bytes: usize,
+) -> anyhow::Result<CompiledConsoleBootPlan> {
     let host_extensions = host_extensions.into_iter().collect::<Vec<_>>();
     let host_contributions = host_extensions
         .iter()
         .map(|host| host.contribution.clone())
         .collect::<Vec<_>>();
     let settings_feature_registry = compile_settings_feature_registry(&host_contributions)?;
-    let mut route_assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations(interface_operations);
+    let mut route_assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations_and_plugin_upload_max_bytes(
+        interface_operations,
+        plugin_upload_max_bytes,
+    );
     for host in host_extensions {
         if let Some(host_assembly) = host.route_assembly {
             validate_linked_host_console_route_assembly(&host.contribution, &host_assembly)?;

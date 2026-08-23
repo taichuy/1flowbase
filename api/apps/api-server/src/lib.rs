@@ -576,10 +576,12 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     let authenticator_registry = Arc::new(
         control_plane::auth::AuthenticatorRegistry::from_host_extensions(&host_extension_registry)?,
     );
-    let compiled_console_plan = app_state::compile_console_boot_plan_with_interface_operations(
-        console_host_extensions,
-        extension_boot_snapshot.interface_operations(),
-    )?;
+    let compiled_console_plan =
+        app_state::compile_console_boot_plan_with_interface_operations_and_plugin_upload_max_bytes(
+            console_host_extensions,
+            extension_boot_snapshot.interface_operations(),
+            config.plugin_upload_max_bytes,
+        )?;
     extension_boot_snapshot
         .interface_operations()
         .ok_or_else(|| anyhow::anyhow!("interface operation catalog is absent at production boot"))?
