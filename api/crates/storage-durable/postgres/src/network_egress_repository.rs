@@ -1168,12 +1168,12 @@ mod tests {
             .await
             .expect("current available descriptor should join the pool");
         assert_eq!(unavailable.health.as_str(), "unhealthy");
-        assert_eq!(available.health.as_str(), "healthy");
+        assert_eq!(available.health.as_str(), "not_tested");
 
         let selection = NetworkEgressPoolService::new(store.clone())
             .select_healthy_first(pool_id)
             .await
-            .expect("selection should skip unhealthy members and choose the durable key");
+            .expect("an enabled untested member should remain selectable after unhealthy members");
         assert_eq!(selection.member_id, available.member.id);
         assert_eq!(selection.provider_id, provider_id);
         assert_eq!(selection.provider_egress_key, "available-second");

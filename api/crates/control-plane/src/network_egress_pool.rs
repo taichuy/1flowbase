@@ -415,24 +415,39 @@ where
         if pool.selection_strategy != domain::NetworkEgressPoolSelectionStrategy::HealthyFirst {
             return Err(ControlPlaneError::InvalidInput("selection_strategy").into());
         }
+        let mut untested_fallback = None;
         for member in self
             .repository
             .list_network_egress_pool_members(pool_id)
             .await?
         {
-            if member.enabled
-                && self.member_health(&member).await?
-                    == domain::NetworkEgressPoolMemberHealth::Healthy
-            {
-                return Ok(NetworkEgressPoolSelection {
-                    pool_id,
-                    member_id: member.id,
-                    provider_id: member.provider_id,
-                    provider_egress_key: member.provider_egress_key,
-                });
+            if !member.enabled {
+                continue;
+            }
+            match self.member_health(&member).await? {
+                domain::NetworkEgressPoolMemberHealth::Healthy => {
+                    return Ok(NetworkEgressPoolSelection {
+                        pool_id,
+                        member_id: member.id,
+                        provider_id: member.provider_id,
+                        provider_egress_key: member.provider_egress_key,
+                    });
+                }
+                domain::NetworkEgressPoolMemberHealth::NotTested => {
+                    untested_fallback.get_or_insert(member);
+                }
+                domain::NetworkEgressPoolMemberHealth::Unhealthy
+                | domain::NetworkEgressPoolMemberHealth::Invalid => {}
             }
         }
-        Err(ControlPlaneError::Conflict("network_egress_pool_unavailable").into())
+        untested_fallback
+            .map(|member| NetworkEgressPoolSelection {
+                pool_id,
+                member_id: member.id,
+                provider_id: member.provider_id,
+                provider_egress_key: member.provider_egress_key,
+            })
+            .ok_or_else(|| ControlPlaneError::Conflict("network_egress_pool_unavailable").into())
     }
 
     async fn view(&self, pool: domain::NetworkEgressPool) -> Result<NetworkEgressPoolView> {
@@ -475,17 +490,11 @@ where
             Some(provider) => self.safe_address_summary(provider).await?,
             None => None,
         };
-        let health = match (provider.as_ref(), projection.as_ref()) {
-            (Some(provider), Some(projection))
-                if provider.lifecycle == domain::NetworkEgressProviderLifecycle::Active
-                    && provider.health_status == domain::NetworkEgressHealthStatus::Healthy
-                    && projection.availability == "available" =>
-            {
-                domain::NetworkEgressPoolMemberHealth::Healthy
-            }
-            (Some(_), Some(_)) => domain::NetworkEgressPoolMemberHealth::Unhealthy,
-            _ => domain::NetworkEgressPoolMemberHealth::Invalid,
-        };
+        let health = member_health_from_snapshot(
+            provider.as_ref(),
+            projection.as_ref(),
+            member.probe_status,
+        );
         let region = projection
             .as_ref()
             .and_then(|projection| projection.region.clone())
@@ -559,14 +568,11 @@ where
         let Some(descriptor) = descriptor else {
             return Ok(domain::NetworkEgressPoolMemberHealth::Invalid);
         };
-        if provider.lifecycle == domain::NetworkEgressProviderLifecycle::Active
-            && provider.health_status == domain::NetworkEgressHealthStatus::Healthy
-            && descriptor.availability == "available"
-        {
-            Ok(domain::NetworkEgressPoolMemberHealth::Healthy)
-        } else {
-            Ok(domain::NetworkEgressPoolMemberHealth::Unhealthy)
-        }
+        Ok(member_health_from_snapshot(
+            Some(&provider),
+            Some(&descriptor),
+            member.probe_status,
+        ))
     }
 
     async fn require_pool(&self, pool_id: Uuid) -> Result<domain::NetworkEgressPool> {
@@ -613,6 +619,103 @@ where
                 serde_json::json!({}),
             ))
             .await
+    }
+}
+
+fn member_health_from_snapshot(
+    provider: Option<&domain::NetworkEgressProviderRecord>,
+    projection: Option<&domain::NetworkEgressProjectionRecord>,
+    probe_status: domain::NetworkEgressPoolMemberProbeStatus,
+) -> domain::NetworkEgressPoolMemberHealth {
+    match (provider, projection) {
+        (Some(provider), Some(projection))
+            if provider.lifecycle == domain::NetworkEgressProviderLifecycle::Active
+                && provider.health_status == domain::NetworkEgressHealthStatus::Healthy
+                && projection.availability == "available" =>
+        {
+            match probe_status {
+                domain::NetworkEgressPoolMemberProbeStatus::NotTested => {
+                    domain::NetworkEgressPoolMemberHealth::NotTested
+                }
+                domain::NetworkEgressPoolMemberProbeStatus::Succeeded => {
+                    domain::NetworkEgressPoolMemberHealth::Healthy
+                }
+                domain::NetworkEgressPoolMemberProbeStatus::Failed => {
+                    domain::NetworkEgressPoolMemberHealth::Unhealthy
+                }
+            }
+        }
+        (Some(_), Some(_)) => domain::NetworkEgressPoolMemberHealth::Unhealthy,
+        _ => domain::NetworkEgressPoolMemberHealth::Invalid,
+    }
+}
+
+#[cfg(test)]
+mod health_tests {
+    use super::member_health_from_snapshot;
+    use time::OffsetDateTime;
+    use uuid::Uuid;
+
+    fn active_provider() -> domain::NetworkEgressProviderRecord {
+        domain::NetworkEgressProviderRecord {
+            id: Uuid::now_v7(),
+            installation_id: None,
+            provider_code: "builtin_static_http".to_string(),
+            display_name: "Proxy".to_string(),
+            description: String::new(),
+            secret_ref: "secret://system/network-egress/test".to_string(),
+            lifecycle: domain::NetworkEgressProviderLifecycle::Active,
+            health_status: domain::NetworkEgressHealthStatus::Healthy,
+            last_sync_error: None,
+            last_synced_at: None,
+            created_by: Uuid::now_v7(),
+            updated_by: Uuid::now_v7(),
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
+        }
+    }
+
+    fn available_projection(provider_id: Uuid) -> domain::NetworkEgressProjectionRecord {
+        domain::NetworkEgressProjectionRecord {
+            provider_id,
+            provider_egress_key: "static-http".to_string(),
+            display_name: "Proxy".to_string(),
+            region: None,
+            tags: vec![],
+            availability: "available".to_string(),
+            synced_at: OffsetDateTime::UNIX_EPOCH,
+        }
+    }
+
+    #[test]
+    fn ac_proxy_save_reports_untested_until_a_connection_test_completes() {
+        let provider = active_provider();
+        let projection = available_projection(provider.id);
+
+        assert_eq!(
+            member_health_from_snapshot(
+                Some(&provider),
+                Some(&projection),
+                domain::NetworkEgressPoolMemberProbeStatus::NotTested,
+            ),
+            domain::NetworkEgressPoolMemberHealth::NotTested
+        );
+        assert_eq!(
+            member_health_from_snapshot(
+                Some(&provider),
+                Some(&projection),
+                domain::NetworkEgressPoolMemberProbeStatus::Succeeded,
+            ),
+            domain::NetworkEgressPoolMemberHealth::Healthy
+        );
+        assert_eq!(
+            member_health_from_snapshot(
+                Some(&provider),
+                Some(&projection),
+                domain::NetworkEgressPoolMemberProbeStatus::Failed,
+            ),
+            domain::NetworkEgressPoolMemberHealth::Unhealthy
+        );
     }
 }
 

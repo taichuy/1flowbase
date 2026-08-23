@@ -566,8 +566,13 @@ fn validate_instance_config(schema: &PluginFormSchema, value: Value) -> Result<V
         let text = value
             .as_str()
             .map(str::trim)
-            .filter(|text| !text.is_empty())
-            .ok_or(ControlPlaneError::InvalidInput("config"))?;
+            .filter(|text| !text.is_empty());
+        let Some(text) = text else {
+            if field.required.unwrap_or(false) {
+                return Err(ControlPlaneError::InvalidInput("config").into());
+            }
+            continue;
+        };
         if text.len() > 4096 {
             return Err(ControlPlaneError::InvalidInput("config").into());
         }
@@ -578,7 +583,8 @@ fn validate_instance_config(schema: &PluginFormSchema, value: Value) -> Result<V
 
 #[cfg(test)]
 mod tests {
-    use super::builtin_static_http_type;
+    use super::{builtin_static_http_type, validate_instance_config};
+    use serde_json::json;
 
     #[test]
     fn ac_nc_global_pool_catalog_includes_the_builtin_http_proxy_type() {
@@ -594,5 +600,32 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["host", "port", "username", "password"]
         );
+    }
+
+    #[test]
+    fn ac_proxy_save_normalizes_optional_blank_config_fields() {
+        let config = validate_instance_config(
+            &builtin_static_http_type().form_schema,
+            json!({
+                "host": " 198.65.36.212 ",
+                "port": " 37867 ",
+                "username": "  ",
+                "password": ""
+            }),
+        )
+        .expect("optional blank fields should be omitted before persistence");
+
+        assert_eq!(config, json!({ "host": "198.65.36.212", "port": "37867" }));
+    }
+
+    #[test]
+    fn ac_proxy_save_rejects_blank_required_config_fields() {
+        let error = validate_instance_config(
+            &builtin_static_http_type().form_schema,
+            json!({ "host": "", "port": "37867" }),
+        )
+        .expect_err("blank required fields must still reject saving");
+
+        assert_eq!(error.to_string(), "invalid input: config");
     }
 }

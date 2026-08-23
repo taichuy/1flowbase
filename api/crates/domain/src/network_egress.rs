@@ -112,6 +112,7 @@ impl NetworkEgressPoolSelectionStrategy {
 #[serde(rename_all = "snake_case")]
 pub enum NetworkEgressPoolMemberHealth {
     Healthy,
+    NotTested,
     Unhealthy,
     Invalid,
 }
@@ -120,6 +121,7 @@ impl NetworkEgressPoolMemberHealth {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Healthy => "healthy",
+            Self::NotTested => "not_tested",
             Self::Unhealthy => "unhealthy",
             Self::Invalid => "invalid",
         }
