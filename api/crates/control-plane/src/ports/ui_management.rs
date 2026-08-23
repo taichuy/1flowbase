@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use domain::{
     FrontendComponentContract, UiCodeTemplate, UiCodeTemplateLanguage, UiComponentLocator,
-    UiComponentOverride, UiComponentOverrideState,
+    UiComponentOverride, UiComponentOverrideState, UiComponentRecord, UiComponentRecordUpstream,
 };
 use uuid::Uuid;
 
@@ -29,6 +29,35 @@ pub struct ReviseUiCodeTemplateInput {
 pub struct ReviseUiComponentContractInput {
     pub locator: UiComponentLocator,
     pub contract: FrontendComponentContract,
+    pub actor_user_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateUiComponentRecordInput {
+    pub component_code: String,
+    pub name: String,
+    pub description: String,
+    pub import_code: String,
+    pub source_code: String,
+    pub source: String,
+    pub group: String,
+    pub upstream: UiComponentRecordUpstream,
+    pub version: String,
+    pub keywords: Vec<String>,
+    pub actor_user_id: Uuid,
+}
+
+#[derive(Debug, Clone)]
+pub struct UiComponentRecordPatch {
+    pub name: String,
+    pub description: String,
+    pub import_code: String,
+    pub source_code: String,
+    pub source: String,
+    pub group: String,
+    pub upstream: UiComponentRecordUpstream,
+    pub version: String,
+    pub keywords: Vec<String>,
     pub actor_user_id: Uuid,
 }
 
@@ -82,4 +111,37 @@ pub trait UiManagementRepository: Send + Sync {
         state: UiComponentOverrideState,
         actor_user_id: Uuid,
     ) -> Result<UiComponentOverride>;
+
+    async fn list_ui_component_records(&self) -> Result<Vec<UiComponentRecord>> {
+        Err(anyhow::anyhow!(
+            "ui component record repository is unavailable"
+        ))
+    }
+    async fn get_ui_component_record(&self, _id: Uuid) -> Result<Option<UiComponentRecord>> {
+        Err(anyhow::anyhow!(
+            "ui component record repository is unavailable"
+        ))
+    }
+    async fn create_ui_component_record(
+        &self,
+        _input: &CreateUiComponentRecordInput,
+    ) -> Result<UiComponentRecord> {
+        Err(anyhow::anyhow!(
+            "ui component record repository is unavailable"
+        ))
+    }
+    async fn update_ui_component_record(
+        &self,
+        _id: Uuid,
+        _patch: &UiComponentRecordPatch,
+    ) -> Result<UiComponentRecord> {
+        Err(anyhow::anyhow!(
+            "ui component record repository is unavailable"
+        ))
+    }
+    async fn delete_ui_component_record(&self, _id: Uuid) -> Result<bool> {
+        Err(anyhow::anyhow!(
+            "ui component record repository is unavailable"
+        ))
+    }
 }

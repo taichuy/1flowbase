@@ -1,10 +1,14 @@
 import { describe, expect, test, vi } from 'vitest';
 import * as transport from '../transport';
 import {
+  createConsoleUiComponent,
+  deleteConsoleUiComponent,
+  fetchConsoleUiComponent,
+  fetchConsoleUiComponents,
   fetchConsoleUiTemplates,
   publishConsoleUiTemplate,
   resetConsoleUiTemplateDefault,
-  updateConsoleUiComponentState
+  updateConsoleUiComponent
 } from '../console-ui-management';
 
 describe('console UI management client', () => {
@@ -47,22 +51,60 @@ describe('console UI management client', () => {
     });
   });
 
-  test('changes discovery state without addressing runtime assets', async () => {
+  test('uses record CRUD paths without legacy contract or state endpoints', async () => {
+    await expect(fetchConsoleUiComponents()).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components'
+    });
+    await expect(fetchConsoleUiComponent('component-1')).resolves.toMatchObject(
+      {
+        path: '/api/console/settings/ui-management/components/component-1'
+      }
+    );
     await expect(
-      updateConsoleUiComponentState(
+      createConsoleUiComponent(
         {
-          provider_code: '1flowbase',
-          contribution_code: 'frontstage.js-ui-block',
-          module_source: 'antd',
-          export_name: 'Button'
+          component_code: 'local.button',
+          name: 'Button',
+          description: 'Button example',
+          import_code: "import { Button } from 'antd';",
+          source_code: '<Button />',
+          source: 'local',
+          group: 'controls',
+          upstream: { identity: 'antd', version: '6.0.0' },
+          version: '1.0.0',
+          keywords: ['action']
         },
-        'hidden',
         'csrf'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/settings/ui-management/components/state',
-      method: 'PUT',
-      body: expect.objectContaining({ state: 'hidden' })
+      path: '/api/console/settings/ui-management/components',
+      method: 'POST'
+    });
+    await expect(
+      updateConsoleUiComponent(
+        'component-1',
+        {
+          name: 'Primary button',
+          description: 'Button example',
+          import_code: "import { Button } from 'antd';",
+          source_code: '<Button type="primary" />',
+          source: 'local',
+          group: 'controls',
+          upstream: { identity: 'antd', version: '6.0.0' },
+          version: '1.1.0',
+          keywords: ['action']
+        },
+        'csrf'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components/component-1',
+      method: 'PUT'
+    });
+    await expect(
+      deleteConsoleUiComponent('component-1', 'csrf')
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components/component-1',
+      method: 'DELETE'
     });
   });
 });

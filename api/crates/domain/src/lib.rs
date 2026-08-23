@@ -187,9 +187,10 @@ pub use system_defaults::{
     DEFAULT_CODE_ISOLATION_TIMEOUT_MS,
 };
 pub use ui_management::{
-    validate_ui_code_template, validate_ui_component_contract, UiCodeTemplate,
-    UiCodeTemplateLanguage, UiCodeTemplateRevision, UiComponentContractRevision,
-    UiComponentLocator, UiComponentOverride, UiComponentOverrideState, UiManagementInvariantError,
+    validate_ui_code_template, validate_ui_component_contract, validate_ui_component_record_fields,
+    UiCodeTemplate, UiCodeTemplateLanguage, UiCodeTemplateRevision, UiComponentContractRevision,
+    UiComponentLocator, UiComponentOverride, UiComponentOverrideState, UiComponentRecord,
+    UiComponentRecordOrigin, UiComponentRecordUpstream, UiManagementInvariantError,
     UI_CODE_TEMPLATE_SOURCE_LIMIT,
 };
 

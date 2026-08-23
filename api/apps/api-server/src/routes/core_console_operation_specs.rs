@@ -285,15 +285,11 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("members.role_options.list", "system.members"),
     settings("members.roles.replace", "system.members"),
     settings("members.update", "system.members"),
-    settings(
-        "ui_management.components.contract.update",
-        "system.ui-management",
-    ),
+    settings("ui_management.components.create", "system.ui-management"),
+    settings("ui_management.components.delete", "system.ui-management"),
     settings("ui_management.components.list", "system.ui-management"),
-    settings(
-        "ui_management.components.state.update",
-        "system.ui-management",
-    ),
+    settings("ui_management.components.update", "system.ui-management"),
+    settings("ui_management.components.view", "system.ui-management"),
     settings("ui_management.templates.archive", "system.ui-management"),
     settings("ui_management.templates.create", "system.ui-management"),
     settings(

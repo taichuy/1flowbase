@@ -1,12 +1,13 @@
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use control_plane::ports::{
-    CreateUiCodeTemplateInput, ReviseUiCodeTemplateInput, ReviseUiComponentContractInput,
-    UiManagementRepository,
+    CreateUiCodeTemplateInput, CreateUiComponentRecordInput, ReviseUiCodeTemplateInput,
+    ReviseUiComponentContractInput, UiComponentRecordPatch, UiManagementRepository,
 };
 use domain::{
-    UiCodeTemplate, UiCodeTemplateLanguage, UiCodeTemplateRevision, UiComponentContractRevision,
-    UiComponentLocator, UiComponentOverride, UiComponentOverrideState, SYSTEM_SCOPE_ID,
+    UiCodeTemplate, UiCodeTemplateLanguage, UiCodeTemplateRevision, UiComponentLocator,
+    UiComponentOverride, UiComponentOverrideState, UiComponentRecord, UiComponentRecordOrigin,
+    UiComponentRecordUpstream, SYSTEM_SCOPE_ID,
 };
 use sqlx::{Postgres, Row, Transaction};
 use uuid::Uuid;
@@ -89,50 +90,24 @@ async fn load_template(
         .transpose()
 }
 
-fn map_component(row: sqlx::postgres::PgRow) -> Result<UiComponentOverride> {
-    let id: Uuid = row.get("id");
-    let latest_revision = row
-        .get::<Option<Uuid>, _>("latest_revision_id")
-        .map(|revision_id| -> Result<_> {
-            Ok(UiComponentContractRevision {
-                id: revision_id,
-                component_override_id: id,
-                revision: row.get("latest_revision"),
-                contract: serde_json::from_value(row.get("latest_contract"))?,
-                is_latest: true,
-                is_published: row.get("latest_is_published"),
-                created_by: row.get("latest_created_by"),
-                created_at: row.get("latest_created_at"),
-            })
-        })
-        .transpose()?;
-    let published_revision = row
-        .get::<Option<Uuid>, _>("published_revision_id")
-        .map(|revision_id| -> Result<_> {
-            Ok(UiComponentContractRevision {
-                id: revision_id,
-                component_override_id: id,
-                revision: row.get("published_revision"),
-                contract: serde_json::from_value(row.get("published_contract"))?,
-                is_latest: row.get("published_is_latest"),
-                is_published: true,
-                created_by: row.get("published_created_by"),
-                created_at: row.get("published_created_at"),
-            })
-        })
-        .transpose()?;
-    Ok(UiComponentOverride {
-        id,
+fn map_component_record(row: sqlx::postgres::PgRow) -> Result<UiComponentRecord> {
+    Ok(UiComponentRecord {
+        id: row.get("id"),
         scope_id: row.get("scope_id"),
-        locator: UiComponentLocator {
-            provider_code: row.get("provider_code"),
-            contribution_code: row.get("contribution_code"),
-            module_source: row.get("module_source"),
-            export_name: row.get("export_name"),
+        component_code: row.get("component_code"),
+        name: row.get("name"),
+        description: row.get("description"),
+        import_code: row.get("import_code"),
+        source_code: row.get("source_code"),
+        origin: UiComponentRecordOrigin::try_from(row.get::<&str, _>("origin"))?,
+        source: row.get("source"),
+        group: row.get("group"),
+        upstream: UiComponentRecordUpstream {
+            identity: row.get("upstream_identity"),
+            version: row.get("upstream_version"),
         },
-        state: UiComponentOverrideState::try_from(row.get::<&str, _>("state"))?,
-        latest_revision,
-        published_revision,
+        version: row.get("version"),
+        keywords: row.get("keywords"),
         created_by: row.get("created_by"),
         updated_by: row.get("updated_by"),
         created_at: row.get("created_at"),
@@ -140,39 +115,12 @@ fn map_component(row: sqlx::postgres::PgRow) -> Result<UiComponentOverride> {
     })
 }
 
-const COMPONENT_SELECT: &str = r#"
-select o.id, o.scope_id, o.provider_code, o.contribution_code, o.module_source, o.export_name,
-    o.state, o.created_by, o.updated_by, o.created_at, o.updated_at,
-    latest.id latest_revision_id, latest.revision latest_revision, latest.contract latest_contract,
-    latest.is_published latest_is_published, latest.created_by latest_created_by,
-    latest.created_at latest_created_at, published.id published_revision_id,
-    published.revision published_revision, published.contract published_contract,
-    published.is_latest published_is_latest, published.created_by published_created_by,
-    published.created_at published_created_at
-from ui_component_overrides o
-left join ui_component_contract_revisions latest
-    on latest.component_override_id = o.id and latest.is_latest
-left join ui_component_contract_revisions published
-    on published.component_override_id = o.id and published.is_published
-"#;
+const COMPONENT_RECORD_COLUMNS: &str = r#"id, scope_id, component_code, name, description, import_code, source_code, origin,
+    source, "group", upstream_identity, upstream_version, version, keywords,
+    created_by, updated_by, created_at, updated_at"#;
 
-async fn load_component(
-    tx: &mut Transaction<'_, Postgres>,
-    locator: &UiComponentLocator,
-) -> Result<Option<UiComponentOverride>> {
-    let query = format!(
-        "{COMPONENT_SELECT} where o.scope_id = $1 and o.provider_code = $2 and o.contribution_code = $3 and o.module_source = $4 and o.export_name = $5"
-    );
-    sqlx::query(&query)
-        .bind(SYSTEM_SCOPE_ID)
-        .bind(&locator.provider_code)
-        .bind(&locator.contribution_code)
-        .bind(&locator.module_source)
-        .bind(&locator.export_name)
-        .fetch_optional(&mut **tx)
-        .await?
-        .map(map_component)
-        .transpose()
+fn component_record_select() -> String {
+    format!("select {COMPONENT_RECORD_COLUMNS} from ui_component_records")
 }
 
 #[async_trait]
@@ -332,66 +280,181 @@ impl UiManagementRepository for PgControlPlaneStore {
     }
 
     async fn list_ui_component_overrides(&self) -> Result<Vec<UiComponentOverride>> {
-        let query = format!("{COMPONENT_SELECT} order by o.module_source,o.export_name");
-        sqlx::query(&query)
-            .fetch_all(self.pool())
-            .await?
-            .into_iter()
-            .map(map_component)
-            .collect()
+        // Temporary D4 compile boundary: Frontstage still consumes the legacy projection.
+        // Its retired tables are gone, so it receives no overrides and uses official manifests.
+        Ok(Vec::new())
     }
 
     async fn get_ui_component_override(
         &self,
-        locator: &UiComponentLocator,
+        _locator: &UiComponentLocator,
     ) -> Result<Option<UiComponentOverride>> {
-        let mut tx = self.pool().begin().await?;
-        load_component(&mut tx, locator).await
+        Ok(None)
     }
 
     async fn revise_ui_component_contract(
         &self,
-        input: &ReviseUiComponentContractInput,
+        _input: &ReviseUiComponentContractInput,
     ) -> Result<UiComponentOverride> {
-        domain::validate_ui_component_contract(&input.locator, &input.contract)?;
-        let mut tx = self.pool().begin().await?;
-        let id:Uuid=sqlx::query_scalar("insert into ui_component_overrides (id,scope_id,provider_code,contribution_code,module_source,export_name,created_by,updated_by) values ($1,$2,$3,$4,$5,$6,$7,$7) on conflict (scope_id,provider_code,contribution_code,module_source,export_name) do update set updated_by=excluded.updated_by,updated_at=now() returning id")
-            .bind(Uuid::now_v7()).bind(SYSTEM_SCOPE_ID).bind(&input.locator.provider_code).bind(&input.locator.contribution_code)
-            .bind(&input.locator.module_source).bind(&input.locator.export_name).bind(input.actor_user_id).fetch_one(&mut *tx).await?;
-        let next:i32=sqlx::query_scalar("select coalesce(max(revision),0)+1 from ui_component_contract_revisions where component_override_id=$1")
-            .bind(id).fetch_one(&mut *tx).await?;
-        sqlx::query("update ui_component_contract_revisions set is_latest=false where component_override_id=$1 and is_latest").bind(id).execute(&mut *tx).await?;
-        sqlx::query("insert into ui_component_contract_revisions (id,component_override_id,revision,contract,is_latest,created_by) values ($1,$2,$3,$4,true,$5)")
-            .bind(Uuid::now_v7()).bind(id).bind(next).bind(serde_json::to_value(&input.contract)?).bind(input.actor_user_id).execute(&mut *tx).await?;
-        let value = load_component(&mut tx, &input.locator)
-            .await?
-            .context("component override missing")?;
-        tx.commit().await?;
-        Ok(value)
+        bail!("legacy ui component contract writes were removed by WP-D2")
     }
 
     async fn set_ui_component_state(
         &self,
-        locator: &UiComponentLocator,
-        state: UiComponentOverrideState,
-        actor_user_id: Uuid,
+        _locator: &UiComponentLocator,
+        _state: UiComponentOverrideState,
+        _actor_user_id: Uuid,
     ) -> Result<UiComponentOverride> {
-        let mut tx = self.pool().begin().await?;
-        let id:Uuid=sqlx::query_scalar("insert into ui_component_overrides (id,scope_id,provider_code,contribution_code,module_source,export_name,state,created_by,updated_by) values ($1,$2,$3,$4,$5,$6,$7,$8,$8) on conflict (scope_id,provider_code,contribution_code,module_source,export_name) do update set state=excluded.state,updated_by=excluded.updated_by,updated_at=now() returning id")
-            .bind(Uuid::now_v7()).bind(SYSTEM_SCOPE_ID).bind(&locator.provider_code).bind(&locator.contribution_code)
-            .bind(&locator.module_source).bind(&locator.export_name).bind(state.as_str()).bind(actor_user_id).fetch_one(&mut *tx).await?;
-        if state == UiComponentOverrideState::Published {
-            let changed=sqlx::query("update ui_component_contract_revisions set is_published=false where component_override_id=$1 and is_published").bind(id).execute(&mut *tx).await?;
-            let latest=sqlx::query("update ui_component_contract_revisions set is_published=true where component_override_id=$1 and is_latest").bind(id).execute(&mut *tx).await?;
-            let _ = changed;
-            if latest.rows_affected() == 0 {
-                bail!("component contract must be revised before publish");
-            }
-        }
-        let value = load_component(&mut tx, locator)
+        bail!("legacy ui component state writes were removed by WP-D2")
+    }
+
+    async fn list_ui_component_records(&self) -> Result<Vec<UiComponentRecord>> {
+        let query = format!(
+            "{} where scope_id = $1 order by name, component_code",
+            component_record_select()
+        );
+        sqlx::query(&query)
+            .bind(SYSTEM_SCOPE_ID)
+            .fetch_all(self.pool())
             .await?
-            .context("component override missing")?;
-        tx.commit().await?;
-        Ok(value)
+            .into_iter()
+            .map(map_component_record)
+            .collect()
+    }
+
+    async fn get_ui_component_record(&self, id: Uuid) -> Result<Option<UiComponentRecord>> {
+        let query = format!(
+            "{} where scope_id = $1 and id = $2",
+            component_record_select()
+        );
+        sqlx::query(&query)
+            .bind(SYSTEM_SCOPE_ID)
+            .bind(id)
+            .fetch_optional(self.pool())
+            .await?
+            .map(map_component_record)
+            .transpose()
+    }
+
+    async fn create_ui_component_record(
+        &self,
+        input: &CreateUiComponentRecordInput,
+    ) -> Result<UiComponentRecord> {
+        domain::validate_ui_component_record_fields(
+            &input.component_code,
+            &input.name,
+            &input.description,
+            &input.import_code,
+            &input.source_code,
+            UiComponentRecordOrigin::Custom,
+            &input.source,
+            &input.group,
+            &input.upstream,
+            &input.version,
+            &input.keywords,
+        )?;
+        let id = Uuid::now_v7();
+        let query = format!(
+            r#"insert into ui_component_records
+            (id, scope_id, component_code, name, description, import_code, source_code, origin,
+             source, "group", upstream_identity, upstream_version, version, keywords, created_by, updated_by)
+            values ($1,$2,$3,$4,$5,$6,$7,'custom',$8,$9,$10,$11,$12,$13,$14,$14)
+            returning {COMPONENT_RECORD_COLUMNS}"#
+        );
+        let row = sqlx::query(&query)
+            .bind(id)
+            .bind(SYSTEM_SCOPE_ID)
+            .bind(&input.component_code)
+            .bind(&input.name)
+            .bind(&input.description)
+            .bind(&input.import_code)
+            .bind(&input.source_code)
+            .bind(&input.source)
+            .bind(&input.group)
+            .bind(&input.upstream.identity)
+            .bind(&input.upstream.version)
+            .bind(&input.version)
+            .bind(&input.keywords)
+            .bind(input.actor_user_id)
+            .fetch_one(self.pool())
+            .await
+            .map_err(|error| {
+                if error
+                    .as_database_error()
+                    .and_then(|database| database.constraint())
+                    == Some("ui_component_records_identity_unique")
+                {
+                    anyhow::Error::new(control_plane::errors::ControlPlaneError::Conflict(
+                        "ui_component_code",
+                    ))
+                } else {
+                    error.into()
+                }
+            })?;
+        map_component_record(row)
+    }
+
+    async fn update_ui_component_record(
+        &self,
+        id: Uuid,
+        patch: &UiComponentRecordPatch,
+    ) -> Result<UiComponentRecord> {
+        let current = self
+            .get_ui_component_record(id)
+            .await?
+            .context("ui component record not found")?;
+        if current.origin != UiComponentRecordOrigin::Custom {
+            bail!("official ui component records are read-only");
+        }
+        domain::validate_ui_component_record_fields(
+            &current.component_code,
+            &patch.name,
+            &patch.description,
+            &patch.import_code,
+            &patch.source_code,
+            current.origin,
+            &patch.source,
+            &patch.group,
+            &patch.upstream,
+            &patch.version,
+            &patch.keywords,
+        )?;
+        let query = format!(
+            r#"update ui_component_records set name=$3, description=$4,
+            import_code=$5, source_code=$6, source=$7, "group"=$8, upstream_identity=$9,
+            upstream_version=$10, version=$11, keywords=$12, updated_by=$13, updated_at=now()
+            where scope_id=$1 and id=$2 and origin='custom' returning {COMPONENT_RECORD_COLUMNS}"#
+        );
+        sqlx::query(&query)
+            .bind(SYSTEM_SCOPE_ID)
+            .bind(id)
+            .bind(&patch.name)
+            .bind(&patch.description)
+            .bind(&patch.import_code)
+            .bind(&patch.source_code)
+            .bind(&patch.source)
+            .bind(&patch.group)
+            .bind(&patch.upstream.identity)
+            .bind(&patch.upstream.version)
+            .bind(&patch.version)
+            .bind(&patch.keywords)
+            .bind(patch.actor_user_id)
+            .fetch_optional(self.pool())
+            .await?
+            .map(map_component_record)
+            .transpose()?
+            .context("custom ui component record not found")
+    }
+
+    async fn delete_ui_component_record(&self, id: Uuid) -> Result<bool> {
+        Ok(sqlx::query(
+            "delete from ui_component_records where scope_id=$1 and id=$2 and origin='custom'",
+        )
+        .bind(SYSTEM_SCOPE_ID)
+        .bind(id)
+        .execute(self.pool())
+        .await?
+        .rows_affected()
+            == 1)
     }
 }

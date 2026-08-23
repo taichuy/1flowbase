@@ -172,8 +172,10 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("DELETE", "/api/console/settings/ui-management/templates/default"),
                 ("PUT", "/api/console/settings/ui-management/templates/{id}/archive"),
                 ("GET", "/api/console/settings/ui-management/components"),
-                ("PUT", "/api/console/settings/ui-management/components/contract"),
-                ("PUT", "/api/console/settings/ui-management/components/state"),
+                ("POST", "/api/console/settings/ui-management/components"),
+                ("GET", "/api/console/settings/ui-management/components/{id}"),
+                ("PUT", "/api/console/settings/ui-management/components/{id}"),
+                ("DELETE", "/api/console/settings/ui-management/components/{id}"),
             ]),
         },
         SettingsFeatureRegistration {

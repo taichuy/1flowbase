@@ -128,14 +128,24 @@ fn ac_001_ui_management_route_bindings_are_explicit_and_granular() {
                 "ui_management.components.list",
             ),
             (
-                "PUT",
-                "/api/console/settings/ui-management/components/contract",
-                "ui_management.components.contract.update",
+                "POST",
+                "/api/console/settings/ui-management/components",
+                "ui_management.components.create",
+            ),
+            (
+                "GET",
+                "/api/console/settings/ui-management/components/:id",
+                "ui_management.components.view",
             ),
             (
                 "PUT",
-                "/api/console/settings/ui-management/components/state",
-                "ui_management.components.state.update",
+                "/api/console/settings/ui-management/components/:id",
+                "ui_management.components.update",
+            ),
+            (
+                "DELETE",
+                "/api/console/settings/ui-management/components/:id",
+                "ui_management.components.delete",
             ),
         ],
     );

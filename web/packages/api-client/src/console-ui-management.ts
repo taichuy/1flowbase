@@ -1,7 +1,7 @@
 import { apiFetch } from './transport';
 
 export type UiCodeTemplateLanguage = 'jsx' | 'tsx';
-export type UiComponentState = 'inherit' | 'published' | 'hidden';
+export type UiComponentOrigin = 'official' | 'custom';
 
 export interface ConsoleUiTemplateRevision {
   revision: number;
@@ -32,49 +32,35 @@ export interface ConsoleUiTemplateList {
   official: ConsoleUiOfficialTemplate[];
   managed: ConsoleUiManagedTemplate[];
 }
-export interface ConsoleUiComponentLocator {
-  provider_code: string;
-  contribution_code: string;
-  module_source: string;
-  export_name: string;
-}
 export interface ConsoleUiComponentUpstream {
-  package: string;
-  component: string;
+  identity: string;
   version: string;
 }
-export interface ConsoleUiComponentProp {
-  name: string;
-  type: string;
-  required: boolean;
-  description: string;
-}
-export interface ConsoleUiComponentExample {
-  title: string;
-  code: string;
-}
-export interface ConsoleUiComponentContract {
+export interface ConsoleUiComponentRecord {
+  id: string;
+  scope_id: string;
   component_code: string;
-  export_name: string;
-  upstream: ConsoleUiComponentUpstream | null;
+  name: string;
   description: string;
-  props: ConsoleUiComponentProp[];
-  limitations: string[];
-  examples: ConsoleUiComponentExample[];
-  insert_snippet: string;
+  import_code: string;
+  source_code: string;
+  origin: UiComponentOrigin;
+  source: string;
+  group: string;
+  upstream: ConsoleUiComponentUpstream;
+  version: string;
+  keywords: string[];
+  created_at: string;
+  updated_at: string;
 }
-export interface ConsoleUiComponentCandidate extends ConsoleUiComponentLocator {
-  module_version: string;
-  state: UiComponentState;
-  official_contract: ConsoleUiComponentContract | null;
-  latest_contract: ConsoleUiComponentContract | null;
-  published_contract: ConsoleUiComponentContract | null;
-  latest_revision: number | null;
-  published_revision: number | null;
-}
-export interface CreateConsoleUiTemplateInput extends ConsoleUiComponentLocator {
-  name: never;
-}
+export type CreateConsoleUiComponentInput = Omit<
+  ConsoleUiComponentRecord,
+  'id' | 'scope_id' | 'origin' | 'created_at' | 'updated_at'
+>;
+export type UpdateConsoleUiComponentInput = Omit<
+  CreateConsoleUiComponentInput,
+  'component_code'
+>;
 export interface ConsoleUiTemplateInput {
   provider_code: string;
   contribution_code: string;
@@ -167,33 +153,48 @@ export const archiveConsoleUiTemplate = (
     baseUrl
   });
 export const fetchConsoleUiComponents = (baseUrl?: string) =>
-  apiFetch<ConsoleUiComponentCandidate[]>({
+  apiFetch<ConsoleUiComponentRecord[]>({
     path: `${root}/components`,
     baseUrl
   });
-export const updateConsoleUiComponentContract = (
-  locator: ConsoleUiComponentLocator,
-  contract: ConsoleUiComponentContract,
+export const fetchConsoleUiComponent = (id: string, baseUrl?: string) =>
+  apiFetch<ConsoleUiComponentRecord>({
+    path: `${root}/components/${id}`,
+    baseUrl
+  });
+export const createConsoleUiComponent = (
+  input: CreateConsoleUiComponentInput,
   csrfToken: string,
   baseUrl?: string
 ) =>
-  apiFetch<ConsoleUiComponentCandidate>({
-    path: `${root}/components/contract`,
-    method: 'PUT',
-    body: { ...locator, contract },
+  apiFetch<ConsoleUiComponentRecord>({
+    path: `${root}/components`,
+    method: 'POST',
+    body: input,
     csrfToken,
     baseUrl
   });
-export const updateConsoleUiComponentState = (
-  locator: ConsoleUiComponentLocator,
-  state: UiComponentState,
+export const updateConsoleUiComponent = (
+  id: string,
+  input: UpdateConsoleUiComponentInput,
   csrfToken: string,
   baseUrl?: string
 ) =>
-  apiFetch<ConsoleUiComponentCandidate>({
-    path: `${root}/components/state`,
+  apiFetch<ConsoleUiComponentRecord>({
+    path: `${root}/components/${id}`,
     method: 'PUT',
-    body: { ...locator, state },
+    body: input,
+    csrfToken,
+    baseUrl
+  });
+export const deleteConsoleUiComponent = (
+  id: string,
+  csrfToken: string,
+  baseUrl?: string
+) =>
+  apiFetch<void>({
+    path: `${root}/components/${id}`,
+    method: 'DELETE',
     csrfToken,
     baseUrl
   });

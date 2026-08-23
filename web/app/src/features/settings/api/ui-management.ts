@@ -1,21 +1,22 @@
 export {
   archiveConsoleUiTemplate as archiveSettingsUiTemplate,
+  createConsoleUiComponent as createSettingsUiComponent,
   createConsoleUiTemplate as createSettingsUiTemplate,
+  deleteConsoleUiComponent as deleteSettingsUiComponent,
+  fetchConsoleUiComponent as fetchSettingsUiComponent,
   fetchConsoleUiComponents as fetchSettingsUiComponents,
   fetchConsoleUiTemplates as fetchSettingsUiTemplates,
   publishConsoleUiTemplate as publishSettingsUiTemplate,
   resetConsoleUiTemplateDefault as resetSettingsUiTemplateDefault,
   setConsoleUiTemplateDefault as setSettingsUiTemplateDefault,
-  updateConsoleUiComponentContract as updateSettingsUiComponentContract,
-  updateConsoleUiComponentState as updateSettingsUiComponentState,
+  updateConsoleUiComponent as updateSettingsUiComponent,
   updateConsoleUiTemplate as updateSettingsUiTemplate,
-  type ConsoleUiComponentCandidate as SettingsUiComponentCandidate,
-  type ConsoleUiComponentContract as SettingsUiComponentContract,
-  type ConsoleUiComponentLocator as SettingsUiComponentLocator,
+  type ConsoleUiComponentRecord as SettingsUiComponentRecord,
+  type CreateConsoleUiComponentInput as CreateSettingsUiComponentInput,
+  type UpdateConsoleUiComponentInput as UpdateSettingsUiComponentInput,
   type ConsoleUiManagedTemplate as SettingsUiManagedTemplate,
   type ConsoleUiOfficialTemplate as SettingsUiOfficialTemplate,
-  type ConsoleUiTemplateInput as SettingsUiTemplateInput,
-  type UiComponentState as SettingsUiComponentState
+  type ConsoleUiTemplateInput as SettingsUiTemplateInput
 } from '@1flowbase/api-client';
 
 export const settingsUiTemplatesQueryKey = [

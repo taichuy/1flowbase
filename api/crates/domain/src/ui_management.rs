@@ -131,6 +131,61 @@ pub struct UiComponentOverride {
     pub updated_at: OffsetDateTime,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UiComponentRecordOrigin {
+    Official,
+    Custom,
+}
+
+impl UiComponentRecordOrigin {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Official => "official",
+            Self::Custom => "custom",
+        }
+    }
+}
+
+impl TryFrom<&str> for UiComponentRecordOrigin {
+    type Error = UiManagementInvariantError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "official" => Ok(Self::Official),
+            "custom" => Ok(Self::Custom),
+            _ => Err(UiManagementInvariantError::InvalidComponentOrigin),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UiComponentRecordUpstream {
+    pub identity: String,
+    pub version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UiComponentRecord {
+    pub id: Uuid,
+    pub scope_id: Uuid,
+    pub component_code: String,
+    pub name: String,
+    pub description: String,
+    pub import_code: String,
+    pub source_code: String,
+    pub origin: UiComponentRecordOrigin,
+    pub source: String,
+    pub group: String,
+    pub upstream: UiComponentRecordUpstream,
+    pub version: String,
+    pub keywords: Vec<String>,
+    pub created_by: Uuid,
+    pub updated_by: Uuid,
+    pub created_at: OffsetDateTime,
+    pub updated_at: OffsetDateTime,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UiManagementInvariantError {
     EmptyTemplateName,
@@ -145,6 +200,17 @@ pub enum UiManagementInvariantError {
     EmptyComponentLimitations,
     EmptyComponentExamples,
     EmptyComponentInsertSnippet,
+    InvalidComponentCode,
+    EmptyComponentName,
+    EmptyComponentImportCode,
+    EmptyComponentSourceCode,
+    InvalidComponentOrigin,
+    InvalidComponentSource,
+    InvalidComponentGroup,
+    EmptyComponentUpstreamIdentity,
+    EmptyComponentUpstreamVersion,
+    InvalidComponentVersion,
+    InvalidComponentKeywords,
 }
 
 impl fmt::Display for UiManagementInvariantError {
@@ -162,8 +228,96 @@ impl fmt::Display for UiManagementInvariantError {
             Self::EmptyComponentLimitations => "component limitations must not be empty",
             Self::EmptyComponentExamples => "component examples must not be empty",
             Self::EmptyComponentInsertSnippet => "component insert snippet must not be empty",
+            Self::InvalidComponentCode => "component code is invalid",
+            Self::EmptyComponentName => "component name must not be empty",
+            Self::EmptyComponentImportCode => "component import code must not be empty",
+            Self::EmptyComponentSourceCode => "component source code must not be empty",
+            Self::InvalidComponentOrigin => "component origin is invalid",
+            Self::InvalidComponentSource => "component source is invalid",
+            Self::InvalidComponentGroup => "component group is invalid",
+            Self::EmptyComponentUpstreamIdentity => "component upstream identity must not be empty",
+            Self::EmptyComponentUpstreamVersion => "component upstream version must not be empty",
+            Self::InvalidComponentVersion => "component version must be semantic x.y.z",
+            Self::InvalidComponentKeywords => "component keywords must be non-empty and unique",
         })
     }
+}
+
+fn valid_catalog_identifier(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    !bytes.is_empty()
+        && bytes
+            .first()
+            .is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        && bytes
+            .last()
+            .is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+        && bytes.iter().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-')
+        })
+}
+
+fn valid_semver(value: &str) -> bool {
+    let mut parts = value.split('.');
+    matches!(parts.next(), Some(part) if !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+        && matches!(parts.next(), Some(part) if !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+        && matches!(parts.next(), Some(part) if !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()))
+        && parts.next().is_none()
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn validate_ui_component_record_fields(
+    component_code: &str,
+    name: &str,
+    description: &str,
+    import_code: &str,
+    source_code: &str,
+    _origin: UiComponentRecordOrigin,
+    source: &str,
+    group: &str,
+    upstream: &UiComponentRecordUpstream,
+    version: &str,
+    keywords: &[String],
+) -> Result<(), UiManagementInvariantError> {
+    if !valid_catalog_identifier(component_code) {
+        return Err(UiManagementInvariantError::InvalidComponentCode);
+    }
+    if name.trim().is_empty() {
+        return Err(UiManagementInvariantError::EmptyComponentName);
+    }
+    if description.trim().is_empty() {
+        return Err(UiManagementInvariantError::EmptyComponentDescription);
+    }
+    // Code is intentionally opaque. Shape validation is limited to non-empty storage content.
+    if import_code.trim().is_empty() {
+        return Err(UiManagementInvariantError::EmptyComponentImportCode);
+    }
+    if source_code.trim().is_empty() {
+        return Err(UiManagementInvariantError::EmptyComponentSourceCode);
+    }
+    if !valid_catalog_identifier(source) {
+        return Err(UiManagementInvariantError::InvalidComponentSource);
+    }
+    if !valid_catalog_identifier(group) {
+        return Err(UiManagementInvariantError::InvalidComponentGroup);
+    }
+    if upstream.identity.trim().is_empty() {
+        return Err(UiManagementInvariantError::EmptyComponentUpstreamIdentity);
+    }
+    if upstream.version.trim().is_empty() {
+        return Err(UiManagementInvariantError::EmptyComponentUpstreamVersion);
+    }
+    if !valid_semver(version) {
+        return Err(UiManagementInvariantError::InvalidComponentVersion);
+    }
+    let mut unique = std::collections::BTreeSet::new();
+    if keywords
+        .iter()
+        .any(|keyword| keyword.trim().is_empty() || !unique.insert(keyword))
+    {
+        return Err(UiManagementInvariantError::InvalidComponentKeywords);
+    }
+    Ok(())
 }
 
 impl Error for UiManagementInvariantError {}

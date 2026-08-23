@@ -105,6 +105,10 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "model_providers.instances.usage.view"
                     | "model_providers.instances.reset_credits.consume"
                     | "system_backups.status"
+                    | "ui_management.components.create"
+                    | "ui_management.components.delete"
+                    | "ui_management.components.update"
+                    | "ui_management.components.view"
             )
         ) || interface.summary
             == "Model providers instances authenticate"

@@ -3,12 +3,14 @@ use std::collections::BTreeMap;
 use anyhow::{bail, Result};
 use domain::{
     FrontendComponentContract, UiCodeTemplate, UiCodeTemplateLanguage, UiComponentLocator,
-    UiComponentOverride, UiComponentOverrideState,
+    UiComponentOverride, UiComponentOverrideState, UiComponentRecord, UiComponentRecordOrigin,
 };
 use uuid::Uuid;
 
+use crate::errors::ControlPlaneError;
 use crate::ports::{
-    CreateUiCodeTemplateInput, ReviseUiCodeTemplateInput, ReviseUiComponentContractInput,
+    CreateUiCodeTemplateInput, CreateUiComponentRecordInput, ReviseUiCodeTemplateInput,
+    ReviseUiComponentContractInput, UiComponentRecordPatch,
 };
 use crate::ports::{FrontendBlockCatalogRepository, UiManagementRepository};
 
@@ -402,5 +404,75 @@ where
         self.repository
             .set_ui_component_state(locator, state, actor_user_id)
             .await
+    }
+
+    pub async fn list_component_records(&self) -> Result<Vec<UiComponentRecord>> {
+        self.repository.list_ui_component_records().await
+    }
+
+    pub async fn get_component_record(&self, id: Uuid) -> Result<UiComponentRecord> {
+        self.repository
+            .get_ui_component_record(id)
+            .await?
+            .ok_or_else(|| ControlPlaneError::NotFound("ui_component_record").into())
+    }
+
+    pub async fn create_component_record(
+        &self,
+        input: CreateUiComponentRecordInput,
+    ) -> Result<UiComponentRecord> {
+        domain::validate_ui_component_record_fields(
+            &input.component_code,
+            &input.name,
+            &input.description,
+            &input.import_code,
+            &input.source_code,
+            UiComponentRecordOrigin::Custom,
+            &input.source,
+            &input.group,
+            &input.upstream,
+            &input.version,
+            &input.keywords,
+        )
+        .map_err(|_| ControlPlaneError::InvalidInput("ui_component_record"))?;
+        self.repository.create_ui_component_record(&input).await
+    }
+
+    pub async fn update_component_record(
+        &self,
+        id: Uuid,
+        patch: UiComponentRecordPatch,
+    ) -> Result<UiComponentRecord> {
+        let current = self.get_component_record(id).await?;
+        if current.origin != UiComponentRecordOrigin::Custom {
+            return Err(ControlPlaneError::Conflict("official_ui_component_read_only").into());
+        }
+        domain::validate_ui_component_record_fields(
+            &current.component_code,
+            &patch.name,
+            &patch.description,
+            &patch.import_code,
+            &patch.source_code,
+            current.origin,
+            &patch.source,
+            &patch.group,
+            &patch.upstream,
+            &patch.version,
+            &patch.keywords,
+        )
+        .map_err(|_| ControlPlaneError::InvalidInput("ui_component_record"))?;
+        self.repository.update_ui_component_record(id, &patch).await
+    }
+
+    pub async fn delete_component_record(&self, id: Uuid) -> Result<()> {
+        let current = self.get_component_record(id).await?;
+        if current.origin != UiComponentRecordOrigin::Custom {
+            return Err(ControlPlaneError::Conflict("official_ui_component_read_only").into());
+        }
+        if self.repository.delete_ui_component_record(id).await? {
+            Ok(())
+        } else {
+            Err(ControlPlaneError::NotFound("ui_component_record").into())
+        }
     }
 }

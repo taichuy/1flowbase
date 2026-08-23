@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const router = vi.hoisted(() => ({
@@ -16,16 +22,20 @@ vi.mock('@tanstack/react-router', async (importOriginal) => ({
 vi.mock('@monaco-editor/react', () => ({
   default: ({
     options,
-    value
+    value,
+    onChange
   }: {
     options?: { ariaLabel?: string; readOnly?: boolean };
     value?: string;
+    onChange?: (value: string) => void;
   }) => (
-    <div
-      data-aria-label={options?.ariaLabel}
+    <textarea
+      aria-label={options?.ariaLabel}
       data-read-only={options?.readOnly}
       data-testid="block-source-editor"
-      data-value={value}
+      readOnly={options?.readOnly}
+      value={value}
+      onChange={(event) => onChange?.(event.target.value)}
     />
   )
 }));
@@ -34,9 +44,11 @@ const uiManagementApi = vi.hoisted(() => ({
   settingsUiComponentsQueryKey: ['settings', 'ui-management', 'components'],
   settingsUiTemplatesQueryKey: ['settings', 'ui-management', 'templates'],
   fetchSettingsUiComponents: vi.fn(),
+  fetchSettingsUiComponent: vi.fn(),
+  createSettingsUiComponent: vi.fn(),
+  updateSettingsUiComponent: vi.fn(),
+  deleteSettingsUiComponent: vi.fn(),
   fetchSettingsUiTemplates: vi.fn(),
-  updateSettingsUiComponentContract: vi.fn(),
-  updateSettingsUiComponentState: vi.fn(),
   archiveSettingsUiTemplate: vi.fn(),
   createSettingsUiTemplate: vi.fn(),
   publishSettingsUiTemplate: vi.fn(),
@@ -49,267 +61,178 @@ vi.mock('../../api/ui-management', () => uiManagementApi);
 
 import { AppProviders } from '../../../../app/AppProviders';
 import { UiManagementPanel } from '../../components/ui-management/UiManagementPanel';
+import { useAuthStore } from '../../../../state/auth-store';
 
-describe('UiManagementPanel components', () => {
+const official = {
+  id: '018f0000-0000-7000-8000-000000000001',
+  scope_id: '00000000-0000-0000-0000-000000000000',
+  component_code: 'taichuy.ant-design-x.bubble',
+  name: 'Bubble',
+  description: 'Conversation bubble',
+  import_code: "import { Bubble } from '@ant-design/x';",
+  source_code: '<Bubble content="Hello" />',
+  origin: 'official' as const,
+  source: 'taichuy',
+  group: 'ant-design-x',
+  upstream: { identity: '@ant-design/x', version: '2.9.0' },
+  version: '1.0.0',
+  keywords: ['chat'],
+  created_at: '2026-08-23T00:00:00Z',
+  updated_at: '2026-08-23T00:00:00Z'
+};
+
+const custom = {
+  ...official,
+  id: '018f0000-0000-7000-8000-000000000002',
+  component_code: 'local.status-panel',
+  name: 'Status panel',
+  description: 'System status summary',
+  origin: 'custom' as const,
+  source: 'local',
+  group: 'operations',
+  upstream: { identity: '@local/status-panel', version: '0.2.0' }
+};
+
+describe('UiManagementPanel component records', () => {
   beforeEach(() => {
     window.localStorage.removeItem('settings.ui_management.components');
-    const structuredContract = {
-      component_code: 'data_table',
-      export_name: 'DataTable',
-      upstream: {
-        package: '@1flowbase/native-components',
-        component: 'DataTable',
-        version: '1.0.0'
-      },
-      description: 'Displays tabular data.',
-      props: [
-        {
-          name: 'rows',
-          type: 'Row[]',
-          required: true,
-          description: 'Rows to display.'
-        }
-      ],
-      limitations: ['Use serializable data only.'],
-      examples: [{ title: 'Basic table', code: '<DataTable rows={[]} />' }],
-      insert_snippet: '<DataTable rows={[]} />'
-    };
+    useAuthStore.setState({ csrfToken: 'csrf' });
+    vi.clearAllMocks();
     uiManagementApi.fetchSettingsUiComponents.mockResolvedValue([
-      {
-        provider_code: 'official-ui',
-        contribution_code: 'native-components',
-        module_source: '@1flowbase/native-components',
-        export_name: 'DataTable',
-        module_version: '1.0.0',
-        state: 'published',
-        official_contract: structuredContract,
-        latest_contract: structuredContract,
-        published_contract: structuredContract,
-        latest_revision: 2,
-        published_revision: 2
-      },
-      {
-        provider_code: 'workspace-ui',
-        contribution_code: 'custom-components',
-        module_source: '@workspace/ui',
-        export_name: 'StatusPanel',
-        module_version: '0.4.0',
-        state: 'hidden',
-        official_contract: null,
-        latest_contract: {},
-        published_contract: null,
-        latest_revision: 1,
-        published_revision: null
-      }
+      official,
+      custom
     ]);
-  });
-
-  test('AC-001 AC-003 uses the shared management table layout and toolbar', async () => {
-    const { container } = render(
-      <AppProviders>
-        <UiManagementPanel canManage />
-      </AppProviders>
+    uiManagementApi.fetchSettingsUiComponent.mockImplementation(
+      async (id: string) => (id === official.id ? official : custom)
     );
-
-    expect(await screen.findByText('DataTable')).toBeInTheDocument();
-    expect(container.querySelector('.data-table-layout')).toBeInTheDocument();
-    expect(container.querySelector('.data-table')).toBeInTheDocument();
-    expect(container.querySelector('.data-table__scroll-area')).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: /刷\s*新/ })
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText('字段配置')).toBeInTheDocument();
+    uiManagementApi.createSettingsUiComponent.mockResolvedValue(custom);
+    uiManagementApi.updateSettingsUiComponent.mockResolvedValue(custom);
+    uiManagementApi.deleteSettingsUiComponent.mockResolvedValue(undefined);
   });
 
-  test('AC-002 applies component filters together and resets them', async () => {
+  test('WP-D2 lists and searches independent persisted records', async () => {
     render(
       <AppProviders>
         <UiManagementPanel canManage />
       </AppProviders>
     );
-
-    expect(await screen.findByText('DataTable')).toBeInTheDocument();
-    const search = screen.getByRole('searchbox', {
-      name: '搜索组件、模块或所属贡献'
+    expect(await screen.findByText('Bubble')).toBeInTheDocument();
+    expect(screen.getByText('Status panel')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('searchbox', { name: '搜索组件记录' }), {
+      target: { value: 'status' }
     });
-    fireEvent.change(search, { target: { value: 'StatusPanel' } });
-
-    expect(screen.getByText('DataTable')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /筛\s*选/ }));
-
-    await waitFor(() => {
-      expect(screen.queryByText('DataTable')).not.toBeInTheDocument();
-      expect(screen.getByText('StatusPanel')).toBeInTheDocument();
-    });
-
-    fireEvent.click(screen.getByRole('button', { name: /重\s*置/ }));
-    expect(await screen.findByText('DataTable')).toBeInTheDocument();
-    expect(search).toHaveValue('');
-  });
-
-  test('AC-004 renders unboxed module text and text-only component actions', async () => {
-    const { container } = render(
-      <AppProviders>
-        <UiManagementPanel canManage />
-      </AppProviders>
+    await waitFor(() =>
+      expect(screen.queryByText('Bubble')).not.toBeInTheDocument()
     );
-
-    expect(await screen.findByText('DataTable')).toBeInTheDocument();
-    expect(container.querySelector('code')).toBeNull();
-
-    for (const name of ['编辑', '发布', '隐藏', '恢复官方 Contract']) {
-      expect(screen.getAllByRole('button', { name })[0]).toHaveClass(
-        'ant-btn-link'
-      );
-    }
+    expect(screen.getByText('Status panel')).toBeInTheDocument();
   });
 
-  test('AC-004 uses the shared resizable drawer shell for contract editing', async () => {
+  test('WP-D2 opens official details read-only and exposes custom actions only', async () => {
     render(
       <AppProviders>
         <UiManagementPanel canManage />
       </AppProviders>
     );
-
-    await screen.findByText('DataTable');
-    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]);
-
+    await screen.findByText('Bubble');
+    fireEvent.click(screen.getByRole('button', { name: '查看 Bubble' }));
+    const drawer = await screen.findByRole('dialog');
+    expect(within(drawer).getByText('官方组件（只读）')).toBeInTheDocument();
     expect(
-      await screen.findByRole('separator', { name: '调整组件契约抽屉宽度' })
+      within(drawer).queryByRole('button', { name: /保存/ })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '编辑 Bubble' })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '编辑 Status panel' })
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: '删除 Status panel' })
     ).toBeInTheDocument();
   });
 
-  test('AC-005 separates module source and module version into independent columns', async () => {
+  test('WP-D2 creates a custom record while keeping code fields opaque', async () => {
     render(
       <AppProviders>
         <UiManagementPanel canManage />
       </AppProviders>
     );
-
-    expect(await screen.findByText('DataTable')).toBeInTheDocument();
-    expect(
-      screen.getByRole('columnheader', { name: '模块来源' })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('columnheader', { name: '模块版' })
-    ).toBeInTheDocument();
-  });
-
-  test('AC-004 edits a component contract through structured fields', async () => {
-    render(
-      <AppProviders>
-        <UiManagementPanel canManage />
-      </AppProviders>
-    );
-
-    await screen.findByText('DataTable');
-    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]);
-
-    expect(await screen.findByLabelText('名称')).toBeInTheDocument();
-    expect(screen.getByLabelText('导出名称')).toHaveValue('DataTable');
-    expect(screen.getByLabelText('说明')).toBeInTheDocument();
-    expect(screen.getByLabelText('插入代码')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Contract JSON')).not.toBeInTheDocument();
-  });
-
-  test('AC-004 edits the insert snippet with the shared block source editor', async () => {
-    render(
-      <AppProviders>
-        <UiManagementPanel canManage />
-      </AppProviders>
-    );
-
-    await screen.findByText('DataTable');
-    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]);
-
-    expect(
-      await screen.findByRole('group', { name: '插入代码' })
-    ).toBeInTheDocument();
-    expect(screen.getByTestId('block-source-editor')).toHaveAttribute(
-      'data-value',
-      '<DataTable rows={[]} />'
-    );
-    expect(screen.getByTestId('block-source-editor')).toHaveAttribute(
-      'data-read-only',
-      'false'
-    );
-    expect(screen.queryByRole('textbox', { name: '插入代码' })).not.toBeInTheDocument();
-  });
-
-  test('AC-004 presents each structured contract array as a labelled table', async () => {
-    render(
-      <AppProviders>
-        <UiManagementPanel canManage />
-      </AppProviders>
-    );
-
-    await screen.findByText('DataTable');
-    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]);
-
-    await screen.findByLabelText('名称');
-    expect(screen.getByRole('columnheader', { name: '属性名' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '备注' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '示例标题' })).toBeInTheDocument();
-    expect(screen.queryByPlaceholderText('属性名')).not.toBeInTheDocument();
-  });
-
-  test('AC-004 uses icon-only actions inside structured contract tables', async () => {
-    render(
-      <AppProviders>
-        <UiManagementPanel canManage />
-      </AppProviders>
-    );
-
-    await screen.findByText('DataTable');
-    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]);
-    await screen.findByLabelText('名称');
-
-    for (const columnName of ['属性名', '备注', '示例标题']) {
-      const table = screen
-        .getByRole('columnheader', { name: columnName })
-        .closest('table');
-      expect(table).not.toBeNull();
-
-      const actions = within(table!).getAllByRole('button');
-      expect(actions).toHaveLength(2);
-      expect(actions[0]).toHaveAccessibleName('编辑');
-      expect(actions[0]).toHaveClass('ant-btn-icon-only');
-      expect(actions[1]).toHaveAccessibleName('移除');
-      expect(actions[1]).toHaveClass('ant-btn-icon-only');
-    }
-  });
-
-  test('AC-004 stages new props in a labelled table before the outer revision save', async () => {
-    uiManagementApi.updateSettingsUiComponentContract.mockClear();
-    render(
-      <AppProviders>
-        <UiManagementPanel canManage />
-      </AppProviders>
-    );
-
-    await screen.findByText('DataTable');
-    fireEvent.click(screen.getAllByRole('button', { name: '编辑' })[0]);
-
-    expect(await screen.findByRole('columnheader', { name: '属性名' })).toBeInTheDocument();
-    expect(screen.getByRole('columnheader', { name: '类型' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: '新建属性' }));
-
-    await screen.findByLabelText('属性名');
-    const dialog = within(screen.getAllByRole('dialog').at(-1)!);
-    fireEvent.change(dialog.getByLabelText('属性名'), {
-      target: { value: 'columns' }
+    await screen.findByText('Bubble');
+    fireEvent.click(screen.getByRole('button', { name: '新建组件' }));
+    fireEvent.change(await screen.findByLabelText('组件编码'), {
+      target: { value: 'local.card' }
     });
-    fireEvent.change(dialog.getByLabelText('类型'), {
-      target: { value: 'Column[]' }
+    fireEvent.change(screen.getByLabelText('名称'), {
+      target: { value: 'Card' }
     });
-    fireEvent.change(dialog.getByLabelText('说明'), {
-      target: { value: 'Columns to render.' }
+    fireEvent.change(screen.getByLabelText('说明'), {
+      target: { value: 'Card example' }
     });
-    fireEvent.click(
-      dialog.getByRole('button', { name: /保\s*存/ })
+    fireEvent.change(screen.getByLabelText('来源'), {
+      target: { value: 'local' }
+    });
+    fireEvent.change(screen.getByLabelText('分组'), {
+      target: { value: 'layout' }
+    });
+    fireEvent.change(screen.getByLabelText('上游标识'), {
+      target: { value: '@local/card' }
+    });
+    fireEvent.change(screen.getByLabelText('上游版本'), {
+      target: { value: '0.1.0' }
+    });
+    fireEvent.change(screen.getByLabelText('记录版本'), {
+      target: { value: '1.0.0' }
+    });
+    const editors = screen.getAllByTestId('block-source-editor');
+    fireEvent.change(screen.getByRole('textbox', { name: '导入代码' }), {
+      target: { value: 'opaque import {{{' }
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: '源码' }), {
+      target: { value: 'opaque source }}}' }
+    });
+    fireEvent.change(screen.getByLabelText('关键词'), {
+      target: { value: 'layout,card' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: '保存组件' }));
+    await waitFor(() =>
+      expect(uiManagementApi.createSettingsUiComponent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          component_code: 'local.card',
+          keywords: ['layout', 'card']
+        }),
+        expect.any(String)
+      )
+    );
+    expect(editors).toHaveLength(2);
+  });
+
+  test('WP-D2 updates and deletes custom records by stable id', async () => {
+    render(
+      <AppProviders>
+        <UiManagementPanel canManage />
+      </AppProviders>
+    );
+    await screen.findByText('Status panel');
+    fireEvent.click(screen.getByRole('button', { name: '编辑 Status panel' }));
+    const name = await screen.findByLabelText('名称');
+    fireEvent.change(name, { target: { value: 'System status panel' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存组件' }));
+    await waitFor(() =>
+      expect(uiManagementApi.updateSettingsUiComponent).toHaveBeenCalledWith(
+        custom.id,
+        expect.objectContaining({ name: 'System status panel' }),
+        expect.any(String)
+      )
     );
 
-    expect(await screen.findByRole('cell', { name: 'columns' })).toBeInTheDocument();
-    expect(uiManagementApi.updateSettingsUiComponentContract).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: '删除 Status panel' }));
+    fireEvent.click(await screen.findByRole('button', { name: '确认删除' }));
+    await waitFor(() =>
+      expect(uiManagementApi.deleteSettingsUiComponent).toHaveBeenCalledWith(
+        custom.id,
+        expect.any(String)
+      )
+    );
   });
 });
