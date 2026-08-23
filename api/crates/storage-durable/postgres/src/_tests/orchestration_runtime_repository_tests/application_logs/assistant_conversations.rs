@@ -1,13 +1,239 @@
 use control_plane::{
     application_public_api::run_service::{
-        ApplicationPublishedFlowRunRepository, CreateAssistantConversationInput,
-        ListAssistantConversationsInput,
+        assistant_conversation_native_history_to_values, ApplicationPublishedFlowRunRepository,
+        CreateAssistantConversationInput, ListAssistantConversationsInput,
     },
     ports::{ApplicationRepository, CreateApplicationInput},
 };
 use domain::ApplicationType;
 
 use super::*;
+
+/// AC-001 / AC-002: a persisted user query remains Native history after the provider fails
+/// before producing any assistant token.
+#[tokio::test]
+async fn assistant_conversation_native_history_replays_failed_user_without_assistant_message() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let conversation = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::create_assistant_conversation(
+        &store,
+        &CreateAssistantConversationInput {
+            conversation_id: Uuid::now_v7(),
+            workspace_id: seeded.workspace_id,
+            application_id: seeded.application_id,
+            actor_user_id: seeded.actor_user_id,
+            seed_legacy_flow_run_id: None,
+        },
+    )
+    .await
+    .unwrap();
+    let started_at = datetime!(2026-08-23 00:00:00 UTC);
+    let failed_run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
+        &store,
+        &CreateFlowRunInput {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            flow_id: seeded.flow_id,
+            flow_draft_id: seeded.draft_id,
+            compiled_plan_id: compiled.id,
+            debug_session_id: "failed-before-first-token".to_string(),
+            flow_schema_version: compiled.schema_version.clone(),
+            document_hash: compiled.document_hash.clone(),
+            run_mode: FlowRunMode::AssistantExecution,
+            target_node_id: None,
+            title: "Retry my question".to_string(),
+            status: FlowRunStatus::Running,
+            input_payload: json!({
+                "node-start": { "query": "Retry my question" },
+                "__embedded_assistant_user_message": { "content": "Retry my question" }
+            }),
+            started_at,
+            api_key_id: None,
+            publication_version_id: None,
+            assistant_conversation_id: Some(conversation.conversation_id),
+            external_user: None,
+            external_conversation_id: None,
+            external_trace_id: None,
+            compatibility_mode: Some("embedded_assistant".to_string()),
+            idempotency_key: None,
+        },
+    )
+    .await
+    .unwrap();
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::commit_flow_run_terminal(
+        &store,
+        &CommitFlowRunTerminalInput {
+            flow_run_id: failed_run.id,
+            expected_status: FlowRunStatus::Running,
+            result: CommitFlowRunTerminalResult::Failed {
+                output_payload: json!({}),
+                error_payload: json!({ "code": "provider_timeout" }),
+            },
+            flow_run_event_payload: json!({ "code": "provider_timeout" }),
+            terminal_event_payload: json!({ "type": "flow_failed" }),
+            finished_at: started_at + Duration::seconds(1),
+        },
+    )
+    .await
+    .unwrap();
+
+    let history = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::list_assistant_conversation_native_history(
+        &store,
+        seeded.workspace_id,
+        seeded.application_id,
+        seeded.actor_user_id,
+        conversation.conversation_id,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].role, "user");
+    assert_eq!(history[0].content, "Retry my question");
+    assert!(history[0].content_blocks.is_none());
+    assert!(history[0].tool_calls.is_none());
+}
+
+/// AC-004 / AC-006: an interrupted run can replay a completed tool call only when it is closed
+/// with an error result that states it was not retried.
+#[tokio::test]
+async fn assistant_conversation_native_history_closes_failed_tool_call_without_replaying_it() {
+    let pool = isolated_database().await.connect().await.unwrap();
+    run_migrations(&pool).await.unwrap();
+    let store = PgControlPlaneStore::new(pool);
+    let seeded = seed_runtime_base(&store).await;
+    let compiled = seed_compiled_plan(&store, &seeded).await;
+    let conversation = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::create_assistant_conversation(
+        &store,
+        &CreateAssistantConversationInput {
+            conversation_id: Uuid::now_v7(),
+            workspace_id: seeded.workspace_id,
+            application_id: seeded.application_id,
+            actor_user_id: seeded.actor_user_id,
+            seed_legacy_flow_run_id: None,
+        },
+    )
+    .await
+    .unwrap();
+    let started_at = datetime!(2026-08-23 00:01:00 UTC);
+    let failed_run = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_flow_run(
+        &store,
+        &CreateFlowRunInput {
+            actor_user_id: seeded.actor_user_id,
+            application_id: seeded.application_id,
+            flow_id: seeded.flow_id,
+            flow_draft_id: seeded.draft_id,
+            compiled_plan_id: compiled.id,
+            debug_session_id: "failed-after-tool-call".to_string(),
+            flow_schema_version: compiled.schema_version.clone(),
+            document_hash: compiled.document_hash.clone(),
+            run_mode: FlowRunMode::AssistantExecution,
+            target_node_id: None,
+            title: "Find order 42".to_string(),
+            status: FlowRunStatus::Running,
+            input_payload: json!({
+                "node-start": { "query": "Find order 42" },
+                "__embedded_assistant_user_message": { "content": "Find order 42" }
+            }),
+            started_at,
+            api_key_id: None,
+            publication_version_id: None,
+            assistant_conversation_id: Some(conversation.conversation_id),
+            external_user: None,
+            external_conversation_id: None,
+            external_trace_id: None,
+            compatibility_mode: Some("embedded_assistant".to_string()),
+            idempotency_key: None,
+        },
+    )
+    .await
+    .unwrap();
+    let llm_node = <PgControlPlaneStore as OrchestrationRuntimeRepository>::create_node_run(
+        &store,
+        &CreateNodeRunInput {
+            flow_run_id: failed_run.id,
+            node_id: "node-llm".to_string(),
+            node_type: "llm".to_string(),
+            node_alias: "fixture".to_string(),
+            status: NodeRunStatus::Running,
+            input_payload: json!({}),
+            debug_payload: json!({}),
+            started_at,
+        },
+    )
+    .await
+    .unwrap();
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::complete_node_run(
+        &store,
+        &CompleteNodeRunInput {
+            node_run_id: llm_node.id,
+            status: NodeRunStatus::Succeeded,
+            output_payload: json!({}),
+            error_payload: None,
+            metrics_payload: json!({}),
+            debug_payload: json!({
+                "assistant_message": {
+                    "role": "assistant",
+                    "content": "",
+                    "tool_calls": [{
+                        "id": "call_order_42",
+                        "name": "find_order",
+                        "arguments": { "order_id": "42" }
+                    }]
+                }
+            }),
+            finished_at: started_at + Duration::milliseconds(500),
+        },
+    )
+    .await
+    .unwrap();
+    <PgControlPlaneStore as OrchestrationRuntimeRepository>::commit_flow_run_terminal(
+        &store,
+        &CommitFlowRunTerminalInput {
+            flow_run_id: failed_run.id,
+            expected_status: FlowRunStatus::Running,
+            result: CommitFlowRunTerminalResult::Failed {
+                output_payload: json!({}),
+                error_payload: json!({ "code": "provider_interrupted" }),
+            },
+            flow_run_event_payload: json!({ "code": "provider_interrupted" }),
+            terminal_event_payload: json!({ "type": "flow_failed" }),
+            finished_at: started_at + Duration::seconds(1),
+        },
+    )
+    .await
+    .unwrap();
+
+    let history = <PgControlPlaneStore as ApplicationPublishedFlowRunRepository>::list_assistant_conversation_native_history(
+        &store,
+        seeded.workspace_id,
+        seeded.application_id,
+        seeded.actor_user_id,
+        conversation.conversation_id,
+    )
+    .await
+    .unwrap();
+    assert_eq!(history.len(), 2);
+    assert_eq!(history[1].role, "assistant");
+    assert_eq!(history[1].content, "");
+    assert_eq!(
+        history[1].tool_calls.as_ref().unwrap()[0]["id"],
+        "call_order_42"
+    );
+
+    let provider_history = assistant_conversation_native_history_to_values(history);
+    assert_eq!(provider_history.len(), 3);
+    assert_eq!(provider_history[2]["role"], "tool");
+    assert_eq!(provider_history[2]["tool_call_id"], "call_order_42");
+    assert_eq!(provider_history[2]["is_error"], true);
+    assert_eq!(
+        provider_history[2]["content"],
+        "Tool call was interrupted and may have partially executed; it was not retried."
+    );
+}
 
 #[tokio::test]
 async fn assistant_conversation_keeps_an_explicit_read_only_legacy_snapshot_seed() {

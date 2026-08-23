@@ -35,6 +35,7 @@ use crate::{
     state_transition::ensure_flow_run_transition,
 };
 use conversation_history::application_public_conversation_messages_to_native_history;
+pub use conversation_history::assistant_conversation_native_history_to_values;
 pub use native_results::{
     native_result_from_flow_run, native_result_from_run_detail, native_result_from_run_stream_state,
 };

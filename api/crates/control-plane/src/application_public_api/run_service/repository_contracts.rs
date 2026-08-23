@@ -76,6 +76,9 @@ pub struct AssistantConversationMessage {
 pub struct AssistantConversationNativeMessage {
     pub role: String,
     pub content: String,
+    pub name: Option<String>,
+    pub tool_call_id: Option<String>,
+    pub is_error: Option<bool>,
     pub content_blocks: Option<Vec<Value>>,
     pub tool_calls: Option<Vec<Value>>,
 }
@@ -85,6 +88,15 @@ impl AssistantConversationNativeMessage {
         let mut message = serde_json::Map::new();
         message.insert("role".to_string(), Value::String(self.role));
         message.insert("content".to_string(), Value::String(self.content));
+        if let Some(name) = self.name {
+            message.insert("name".to_string(), Value::String(name));
+        }
+        if let Some(tool_call_id) = self.tool_call_id {
+            message.insert("tool_call_id".to_string(), Value::String(tool_call_id));
+        }
+        if let Some(is_error) = self.is_error {
+            message.insert("is_error".to_string(), Value::Bool(is_error));
+        }
         if let Some(content_blocks) = self.content_blocks {
             message.insert("content_blocks".to_string(), Value::Array(content_blocks));
         }

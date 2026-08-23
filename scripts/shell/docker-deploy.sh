@@ -26,7 +26,6 @@ RESTORE_PASSWORD="${FLOWBASE_RESTORE_PASSWORD:-}"
 PULL_IMAGES="${FLOWBASE_PULL_IMAGES:-}"
 START_CONTAINERS="${FLOWBASE_START_CONTAINERS:-}"
 INTERACTIVE=1
-FRESH_DEPLOY=0
 
 if [ "${FLOWBASE_NON_INTERACTIVE:-}" = "1" ] || [ "${FLOWBASE_NON_INTERACTIVE:-}" = "true" ]; then
   INTERACTIVE=0
@@ -924,15 +923,6 @@ else
   tar -xzf "$archive" -C "$tmpdir" "$FLOWBASE_ARCHIVE_DOCKER_DIR"
   mv "$tmpdir/$FLOWBASE_ARCHIVE_DOCKER_DIR" ./docker
   echo "Downloaded ./docker."
-  FRESH_DEPLOY=1
-fi
-
-if [ -z "$RESTORE_BACKUP" ] && [ "$FRESH_DEPLOY" -eq 1 ] && [ "$INTERACTIVE" -eq 1 ] && [ -r /dev/tty ]; then
-  if [ "$(prompt_yes_no "Restore one portable backup before the first start?" "no")" = "yes" ]; then
-    printf 'Portable backup file: ' > /dev/tty
-    RESTORE_BACKUP="$(read_from_tty)"
-    [ -n "$RESTORE_BACKUP" ] || fail "A portable backup file is required when recovery is selected."
-  fi
 fi
 
 if [ -n "$RESTORE_BACKUP" ]; then

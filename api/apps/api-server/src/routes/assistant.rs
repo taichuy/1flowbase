@@ -13,11 +13,12 @@ use control_plane::{
         native::{NativeExecution, NativeObject, NativeRequestMetadata, NativeRunRequest},
         publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
         run_service::{
-            native_result_from_run_detail, ApplicationPublishedFlowRunRepository,
-            ApplicationPublishedRunService, AssistantConversationSummary, AssistantPageReference,
-            CreateAssistantConversationInput, CreateAssistantRunCommand,
-            ListAssistantConversationsInput, ASSISTANT_PAGE_REFERENCE_MAX_BYTES,
-            ASSISTANT_PAGE_REFERENCE_MAX_COUNT, ASSISTANT_PAGE_REFERENCE_MAX_TOTAL_BYTES,
+            assistant_conversation_native_history_to_values, native_result_from_run_detail,
+            ApplicationPublishedFlowRunRepository, ApplicationPublishedRunService,
+            AssistantConversationSummary, AssistantPageReference, CreateAssistantConversationInput,
+            CreateAssistantRunCommand, ListAssistantConversationsInput,
+            ASSISTANT_PAGE_REFERENCE_MAX_BYTES, ASSISTANT_PAGE_REFERENCE_MAX_COUNT,
+            ASSISTANT_PAGE_REFERENCE_MAX_TOTAL_BYTES,
         },
     },
     mcp_management::McpManagementService,
@@ -1208,18 +1209,17 @@ async fn prepare_assistant_execution(
                 .conversation_id
         }
     };
-    let history = state
-        .store
-        .list_assistant_conversation_native_history(
-            context.actor.current_workspace_id,
-            application_id,
-            context.user.id,
-            assistant_conversation_id,
-        )
-        .await?
-        .into_iter()
-        .map(|message| message.into_value())
-        .collect();
+    let history = assistant_conversation_native_history_to_values(
+        state
+            .store
+            .list_assistant_conversation_native_history(
+                context.actor.current_workspace_id,
+                application_id,
+                context.user.id,
+                assistant_conversation_id,
+            )
+            .await?,
+    );
     let execution = assistant_execution(&preference)?;
     let inputs = NativeObject::default();
     let flow_run = ApplicationPublishedRunService::new(state.store.clone())

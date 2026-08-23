@@ -676,7 +676,10 @@ test('docker deploy scripts bootstrap a selected portable backup before the API 
     assert.match(script, /API_SYSTEM_BACKUP_PASSWORD/u);
     assert.match(script, /API_PROVIDER_SECRET_MASTER_KEY/u);
     assert.match(script, /deployment\.env/u);
+    assert.doesNotMatch(script, /Restore one portable backup before the first start\?/u);
   }
+  assert.doesNotMatch(shellScript, /printf 'Portable backup file: '/u);
+  assert.doesNotMatch(powershellScript, /Read-Host "Portable backup file"/u);
   assert.doesNotMatch(shellScript, /source-master/u);
   assert.doesNotMatch(powershellScript, /source-master/u);
   assert.match(shellScript, /--env-file/u);

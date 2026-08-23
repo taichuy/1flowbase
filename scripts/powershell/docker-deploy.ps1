@@ -665,15 +665,6 @@ if ($RestoreBackup) {
   Copy-Item -Path $RestoreBackup -Destination ".\docker\recovery\portable.1fb-backup" -Force
   Write-Host "Selected portable backup for recovery bootstrap."
 }
-elseif ($ShouldPrompt -and (Prompt-YesNo "Restore one portable backup before the first start?" $false)) {
-  $RestoreBackup = Read-Host "Portable backup file"
-  if (-not $RestoreBackup -or -not (Test-Path -Path $RestoreBackup -PathType Leaf)) {
-    Fail "Portable backup file was not found: $RestoreBackup"
-  }
-  New-Item -ItemType Directory -Force -Path ".\docker\recovery" | Out-Null
-  Copy-Item -Path $RestoreBackup -Destination ".\docker\recovery\portable.1fb-backup" -Force
-  Write-Host "Selected portable backup for recovery bootstrap."
-}
 
 $PromptConfigValues = $false
 $OldPostgresPassword = $null

@@ -406,7 +406,6 @@ impl PgControlPlaneStore {
                 from application_run_conversation_message_items items
                 join visible_runs on visible_runs.id = items.flow_run_id
                 where items.is_current
-                  and items.status = 'succeeded'
             )
             select role, content, native_message
             from (
@@ -424,14 +423,17 @@ impl PgControlPlaneStore {
                 select
                     flow_run_id,
                     'assistant'::text as role,
-                    answer as content,
+                    coalesce(answer, native_message ->> 'content', '') as content,
                     native_message,
                     coalesce(finished_at, updated_at) as created_at,
                     1 as message_order,
                     source_order
                 from message_rows
-                where nullif(btrim(answer), '') is not null
-                   or native_message is not null
+                where native_message is not null
+                   or (
+                       status = 'succeeded'
+                       and nullif(btrim(answer), '') is not null
+                   )
             ) messages
             order by created_at asc, source_order asc, flow_run_id asc, message_order asc
             "#,
@@ -626,6 +628,20 @@ fn native_assistant_message_from_row(
         control_plane::application_public_api::run_service::AssistantConversationNativeMessage {
             role,
             content,
+            name: native_message
+                .as_ref()
+                .and_then(|message| message.get("name"))
+                .and_then(serde_json::Value::as_str)
+                .map(ToOwned::to_owned),
+            tool_call_id: native_message
+                .as_ref()
+                .and_then(|message| message.get("tool_call_id"))
+                .and_then(serde_json::Value::as_str)
+                .map(ToOwned::to_owned),
+            is_error: native_message
+                .as_ref()
+                .and_then(|message| message.get("is_error"))
+                .and_then(serde_json::Value::as_bool),
             content_blocks,
             tool_calls,
         },
