@@ -6,6 +6,7 @@ import { describe, expect, test, vi } from 'vitest';
 
 const networkCenterApi = vi.hoisted(() => ({
   fetchSettingsNetworkEgressOfficialPluginCatalog: vi.fn(),
+  fetchSettingsNetworkEgressPluginFamilies: vi.fn(),
   fetchSettingsNetworkEgressProviderTypes: vi.fn(),
   installSettingsNetworkEgressOfficialPlugin: vi.fn(),
   settingsNetworkEgressOfficialPluginsQueryKey: [
@@ -13,6 +14,12 @@ const networkCenterApi = vi.hoisted(() => ({
     'network-center',
     'proxy-plugins',
     'official-catalog'
+  ],
+  settingsNetworkEgressPluginFamiliesQueryKey: [
+    'settings',
+    'network-center',
+    'proxy-plugins',
+    'families'
   ],
   settingsNetworkEgressProviderTypesQueryKey: [
     'settings',
@@ -113,5 +120,31 @@ describe('NetworkEgressProvidersPanel', () => {
     renderPanel();
 
     expect(await screen.findByRole('button', { name: /更\s*新|update/i })).toBeEnabled();
+  });
+
+  test('AC-NCP02 manages an installed proxy plugin as a version family', async () => {
+    networkCenterApi.fetchSettingsNetworkEgressProviderTypes.mockResolvedValue([]);
+    networkCenterApi.fetchSettingsNetworkEgressOfficialPluginCatalog.mockResolvedValue({
+      source_kind: 'official_registry', source_label: 'official', registry_url: 'https://example.com/registry.json', source_freshness: 'fresh', entries: [{
+        plugin_id: 'taichuy.clash-proxy', provider_code: 'clash-proxy', plugin_type: 'network_egress_provider', display_name: 'Clash / Mihomo Proxy', description: null, protocol: 'clash', current_version: '0.2.3', latest_version: '0.2.3', has_update: false, selected_artifact: {}, help_url: null, model_discovery_mode: 'static', install_status: 'installed', minimum_host_version: '0.1.0', current_host_version: '0.3.0', compatibility_status: 'compatible', compatibility_warning_reason: null
+      }]
+    });
+    networkCenterApi.fetchSettingsNetworkEgressPluginFamilies.mockResolvedValue([
+      {
+        provider_code: 'clash-proxy',
+        display_name: 'Clash / Mihomo Proxy',
+        current_installation_id: 'v023',
+        current_version: '0.2.3',
+        installed_versions: [
+          { installation_id: 'v023', plugin_version: '0.2.3', is_current: true, can_uninstall: false },
+          { installation_id: 'v022', plugin_version: '0.2.2', is_current: false, can_uninstall: true }
+        ]
+      }
+    ]);
+
+    renderPanel();
+
+    expect(await screen.findByLabelText(/Clash \/ Mihomo Proxy.*版本|Clash \/ Mihomo Proxy.*version/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /卸载.*0\.2\.2|uninstall.*0\.2\.2/i })).toBeEnabled();
   });
 });

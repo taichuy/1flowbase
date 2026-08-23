@@ -439,6 +439,18 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
         "system.network-center",
     ),
     settings(
+        "network_egress_plugins.families.view",
+        "system.network-center",
+    ),
+    settings(
+        "network_egress_plugins.families.switch",
+        "system.network-center",
+    ),
+    settings(
+        "network_egress_plugins.families.uninstall",
+        "system.network-center",
+    ),
+    settings(
         "network_egress_plugins.install.official",
         "system.network-center",
     ),

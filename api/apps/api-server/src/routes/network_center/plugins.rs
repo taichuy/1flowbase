@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use axum::{
-    extract::{DefaultBodyLimit, Multipart, Query, State},
+    extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     handler::Handler,
     http::{HeaderMap, StatusCode},
     middleware, Json,
@@ -10,6 +10,7 @@ use control_plane::plugin_management::{
     official_plugin_host_compatibility, InstallUploadedPluginCommand, PluginCatalogFilter,
     PluginManagementService,
 };
+use control_plane::ports::{NetworkEgressRepository, PluginRepository};
 use storage_durable::MainDurableStore;
 use utoipa::ToSchema;
 
@@ -20,7 +21,7 @@ use crate::{
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::{
-        console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+        console_route_assembly::{console_delete, console_get, console_post, ConsoleRouteAssembly},
         plugins::{
             enforce_plugin_upload_limit, read_upload_file, requested_locales, resolve_locale_meta,
             to_install_response, InstallOfficialPluginBody, InstallPluginResponse,
@@ -67,6 +68,28 @@ pub struct NetworkEgressOfficialPluginCatalogResponse {
     pub entries: Vec<NetworkEgressOfficialPluginCatalogEntryResponse>,
 }
 
+#[derive(Debug, Clone, serde::Serialize, ToSchema)]
+pub struct NetworkEgressPluginInstalledVersionResponse {
+    pub installation_id: String,
+    pub plugin_version: String,
+    pub is_current: bool,
+    pub can_uninstall: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize, ToSchema)]
+pub struct NetworkEgressPluginFamilyResponse {
+    pub provider_code: String,
+    pub display_name: String,
+    pub current_installation_id: String,
+    pub current_version: String,
+    pub installed_versions: Vec<NetworkEgressPluginInstalledVersionResponse>,
+}
+
+#[derive(Debug, serde::Deserialize, ToSchema)]
+pub struct SwitchNetworkEgressPluginVersionBody {
+    pub installation_id: String,
+}
+
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     route_assembly_with_plugin_upload_max_bytes(crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES)
 }
@@ -82,6 +105,27 @@ pub(crate) fn route_assembly_with_plugin_upload_max_bytes(
             console_get(
                 list_official_catalog,
                 ConsoleOperation("network_egress_plugins.official_catalog.view".to_string()),
+            ),
+        )
+        .route(
+            "/settings/network-center/proxy-plugins/families",
+            console_get(
+                list_plugin_families,
+                ConsoleOperation("network_egress_plugins.families.view".to_string()),
+            ),
+        )
+        .route(
+            "/settings/network-center/proxy-plugins/families/:provider_code/switch-version",
+            console_post(
+                switch_plugin_version,
+                ConsoleOperation("network_egress_plugins.families.switch".to_string()),
+            ),
+        )
+        .route(
+            "/settings/network-center/proxy-plugins/families/:provider_code/versions/:installation_id",
+            console_delete(
+                uninstall_plugin_version,
+                ConsoleOperation("network_egress_plugins.families.uninstall".to_string()),
             ),
         )
         .route(
@@ -144,20 +188,7 @@ pub async fn list_official_catalog(
         requested_locales(&locale_meta),
     )
     .await?;
-    let installed = local_catalog.entries.into_iter().fold(
-        HashMap::<String, (Option<String>, bool)>::new(),
-        |mut families, entry| {
-            let family = entry.installation.provider_code.clone();
-            let state = families.entry(family).or_default();
-            if entry.local_artifact.artifact_status.is_ready() {
-                state.1 = true;
-                if entry.local_artifact.is_current {
-                    state.0 = Some(entry.installation.plugin_version);
-                }
-            }
-            families
-        },
-    );
+    let installed = project_plugin_families(local_catalog.entries)?;
     let filter = official_filter(&query);
     let page = state
         .official_extension_catalog_source
@@ -205,6 +236,163 @@ pub async fn list_official_catalog(
             entries,
         },
     )))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/settings/network-center/proxy-plugins/families",
+    operation_id = "network_egress_plugins_list_families",
+    responses((status = 200, body = [NetworkEgressPluginFamilyResponse]), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn list_plugin_families(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<Vec<NetworkEgressPluginFamilyResponse>>>, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    let catalog = service(
+        &state,
+        &context.actor,
+        "network_egress_plugins.families.view",
+    )
+    .list_catalog(
+        context.user.id,
+        PluginCatalogFilter {
+            plugin_type: Some(NETWORK_EGRESS_PROVIDER_PLUGIN_TYPE.to_string()),
+        },
+        requested_locales(&resolve_locale_meta(
+            &headers,
+            None,
+            context.user.preferred_locale,
+        )),
+    )
+    .await?;
+    let mut families = project_plugin_families(catalog.entries)?;
+    mark_referenced_versions_not_uninstallable(&state, &mut families).await?;
+    Ok(Json(ApiSuccess::new(families.into_values().collect())))
+}
+
+#[utoipa::path(
+    post,
+    path = "/api/console/settings/network-center/proxy-plugins/families/{provider_code}/switch-version",
+    operation_id = "network_egress_plugins_switch_family_version",
+    request_body = SwitchNetworkEgressPluginVersionBody,
+    responses((status = 204), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn switch_plugin_version(
+    State(state): State<Arc<ApiState>>,
+    Path(provider_code): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<SwitchNetworkEgressPluginVersionBody>,
+) -> Result<StatusCode, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let installation_id: uuid::Uuid = body
+        .installation_id
+        .parse()
+        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("installation_id"))?;
+    let catalog = service(
+        &state,
+        &context.actor,
+        "network_egress_plugins.families.switch",
+    )
+    .list_catalog(
+        context.user.id,
+        PluginCatalogFilter {
+            plugin_type: Some(NETWORK_EGRESS_PROVIDER_PLUGIN_TYPE.to_string()),
+        },
+        requested_locales(&resolve_locale_meta(
+            &headers,
+            None,
+            context.user.preferred_locale,
+        )),
+    )
+    .await?;
+    let families = project_plugin_families(catalog.entries)?;
+    let family =
+        families
+            .get(&provider_code)
+            .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                "network_egress_plugin_family",
+            ))?;
+    if !family
+        .installed_versions
+        .iter()
+        .any(|version| version.installation_id == installation_id.to_string())
+    {
+        return Err(
+            control_plane::errors::ControlPlaneError::InvalidInput("installation_id").into(),
+        );
+    }
+    state
+        .store
+        .select_network_egress_current(&state.api_node_id, installation_id)
+        .await?
+        .ok_or(control_plane::errors::ControlPlaneError::Conflict(
+            "network_egress_plugin_version_unavailable",
+        ))?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
+    delete,
+    path = "/api/console/settings/network-center/proxy-plugins/families/{provider_code}/versions/{installation_id}",
+    operation_id = "network_egress_plugins_uninstall_family_version",
+    responses((status = 204), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
+)]
+pub async fn uninstall_plugin_version(
+    State(state): State<Arc<ApiState>>,
+    Path((provider_code, installation_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let installation_id: uuid::Uuid = installation_id
+        .parse()
+        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("installation_id"))?;
+    let catalog = service(
+        &state,
+        &context.actor,
+        "network_egress_plugins.families.uninstall",
+    )
+    .list_catalog(
+        context.user.id,
+        PluginCatalogFilter {
+            plugin_type: Some(NETWORK_EGRESS_PROVIDER_PLUGIN_TYPE.to_string()),
+        },
+        requested_locales(&resolve_locale_meta(
+            &headers,
+            None,
+            context.user.preferred_locale,
+        )),
+    )
+    .await?;
+    let families = project_plugin_families(catalog.entries)?;
+    let family =
+        families
+            .get(&provider_code)
+            .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                "network_egress_plugin_family",
+            ))?;
+    let version = family
+        .installed_versions
+        .iter()
+        .find(|version| version.installation_id == installation_id.to_string())
+        .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+            "installation_id",
+        ))?;
+    if !version.can_uninstall {
+        return Err(control_plane::errors::ControlPlaneError::Conflict(
+            "network_egress_plugin_version_uninstall_blocked",
+        )
+        .into());
+    }
+    control_plane::plugin_management::ExtensionInstallationService::new(
+        state.store.clone(),
+        &state.provider_install_root,
+    )
+    .delete_local_installation(&state.api_node_id, installation_id)
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[utoipa::path(
@@ -320,7 +508,7 @@ fn metadata_optional(
 fn project_catalog_entry(
     state: &ApiState,
     entry: crate::official_extension_catalog::OfficialExtensionCatalogEntry,
-    installed: &HashMap<String, (Option<String>, bool)>,
+    installed: &HashMap<String, NetworkEgressPluginFamilyResponse>,
 ) -> anyhow::Result<Option<NetworkEgressOfficialPluginCatalogEntryResponse>> {
     if metadata_optional(&entry, "plugin_type").as_deref()
         != Some(NETWORK_EGRESS_PROVIDER_PLUGIN_TYPE)
@@ -342,8 +530,9 @@ fn project_catalog_entry(
         &entry.host_version_requirement,
         &control_plane::plugin_management::current_plugin_host_version(),
     );
-    let (current_version, is_installed) =
-        installed.get(&provider_code).cloned().unwrap_or_default();
+    let installed_family = installed.get(&provider_code);
+    let current_version = installed_family.map(|family| family.current_version.clone());
+    let is_installed = installed_family.is_some();
     let icon = metadata_optional(&entry, "icon");
     let protocol = metadata_optional(&entry, "protocol")
         .unwrap_or_else(|| NETWORK_EGRESS_PROVIDER_PLUGIN_TYPE.to_string());
@@ -399,4 +588,78 @@ fn project_catalog_entry(
             "not_installed".to_string()
         },
     }))
+}
+
+fn project_plugin_families(
+    entries: Vec<control_plane::plugin_management::PluginCatalogEntry>,
+) -> anyhow::Result<HashMap<String, NetworkEgressPluginFamilyResponse>> {
+    let mut versions = HashMap::<String, Vec<NetworkEgressPluginInstalledVersionResponse>>::new();
+    let mut display_names = HashMap::<String, String>::new();
+    for entry in entries {
+        if !entry.local_artifact.artifact_status.is_ready() {
+            continue;
+        }
+        display_names
+            .entry(entry.installation.provider_code.clone())
+            .or_insert(entry.installation.display_name.clone());
+        versions
+            .entry(entry.installation.provider_code)
+            .or_default()
+            .push(NetworkEgressPluginInstalledVersionResponse {
+                installation_id: entry.installation.id.to_string(),
+                plugin_version: entry.installation.plugin_version,
+                is_current: entry.local_artifact.is_current,
+                // A current version is always retained. The storage delete guard also rejects
+                // versions still referenced by a proxy instance.
+                can_uninstall: !entry.local_artifact.is_current,
+            });
+    }
+    let mut families = HashMap::new();
+    for (provider_code, mut installed_versions) in versions {
+        installed_versions.sort_by(|left, right| {
+            semver::Version::parse(&right.plugin_version)
+                .ok()
+                .cmp(&semver::Version::parse(&left.plugin_version).ok())
+                .then_with(|| right.installation_id.cmp(&left.installation_id))
+        });
+        let current = installed_versions
+            .iter()
+            .find(|version| version.is_current)
+            .ok_or_else(|| anyhow::anyhow!("network egress family has no current ready version"))?;
+        families.insert(
+            provider_code.clone(),
+            NetworkEgressPluginFamilyResponse {
+                display_name: display_names
+                    .remove(&provider_code)
+                    .unwrap_or(provider_code.clone()),
+                provider_code,
+                current_installation_id: current.installation_id.clone(),
+                current_version: current.plugin_version.clone(),
+                installed_versions,
+            },
+        );
+    }
+    Ok(families)
+}
+
+async fn mark_referenced_versions_not_uninstallable(
+    state: &ApiState,
+    families: &mut HashMap<String, NetworkEgressPluginFamilyResponse>,
+) -> anyhow::Result<()> {
+    let referenced_installations = state
+        .store
+        .list_network_egress_providers()
+        .await?
+        .into_iter()
+        .filter_map(|provider| provider.installation_id)
+        .map(|installation_id| installation_id.to_string())
+        .collect::<std::collections::HashSet<_>>();
+    for family in families.values_mut() {
+        for version in &mut family.installed_versions {
+            if referenced_installations.contains(&version.installation_id) {
+                version.can_uninstall = false;
+            }
+        }
+    }
+    Ok(())
 }

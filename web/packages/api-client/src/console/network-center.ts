@@ -35,6 +35,21 @@ export interface ConsoleNetworkEgressOfficialPluginCatalogResponse {
   entries: ConsoleNetworkEgressOfficialPluginCatalogEntry[];
 }
 
+export interface ConsoleNetworkEgressPluginInstalledVersion {
+  installation_id: string;
+  plugin_version: string;
+  is_current: boolean;
+  can_uninstall: boolean;
+}
+
+export interface ConsoleNetworkEgressPluginFamily {
+  provider_code: string;
+  display_name: string;
+  current_installation_id: string;
+  current_version: string;
+  installed_versions: ConsoleNetworkEgressPluginInstalledVersion[];
+}
+
 export interface ConsoleNetworkEgressProjection {
   provider_egress_key: string;
   display_name: string;
@@ -237,6 +252,42 @@ export function installConsoleNetworkEgressOfficialPlugin(
     path: '/api/console/settings/network-center/proxy-plugins/install-official',
     method: 'POST',
     body: input,
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function listConsoleNetworkEgressPluginFamilies(baseUrl?: string) {
+  return apiFetch<ConsoleNetworkEgressPluginFamily[]>({
+    path: '/api/console/settings/network-center/proxy-plugins/families',
+    baseUrl
+  });
+}
+
+export function switchConsoleNetworkEgressPluginVersion(
+  providerCode: string,
+  installationId: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetchVoid({
+    path: `/api/console/settings/network-center/proxy-plugins/families/${encodeURIComponent(providerCode)}/switch-version`,
+    method: 'POST',
+    body: { installation_id: installationId },
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function uninstallConsoleNetworkEgressPluginVersion(
+  providerCode: string,
+  installationId: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetchVoid({
+    path: `/api/console/settings/network-center/proxy-plugins/families/${encodeURIComponent(providerCode)}/versions/${encodeURIComponent(installationId)}`,
+    method: 'DELETE',
     csrfToken,
     baseUrl
   });

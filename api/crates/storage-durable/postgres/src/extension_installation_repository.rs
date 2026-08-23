@@ -58,6 +58,8 @@ const DELETION_DECISION_QUERY: &str = r#"
             as has_model_provider_preview,
         exists(select 1 from data_source_instances where installation_id = installation.id)
             as has_data_source_instance,
+        exists(select 1 from network_egress_providers where installation_id = installation.id)
+            as has_network_egress_provider,
         exists(select 1 from host_infrastructure_provider_configs where installation_id = installation.id)
             as has_host_infrastructure_config,
         exists(select 1 from application_js_dependency_selections where installation_id = installation.id)
@@ -433,6 +435,10 @@ fn deletion_decision_from_row(row: &PgRow) -> Result<domain::ExtensionDeletionDe
             row.try_get::<bool, _>("has_data_source_instance")?,
         ),
         (
+            "network_egress_provider",
+            row.try_get::<bool, _>("has_network_egress_provider")?,
+        ),
+        (
             "host_infrastructure_config",
             row.try_get::<bool, _>("has_host_infrastructure_config")?,
         ),
@@ -467,6 +473,7 @@ fn deletion_conflict_code(reasons: &[String]) -> &'static str {
         Some("model_provider_instance") => "extension_model_provider_instance",
         Some("model_provider_preview") => "extension_model_provider_preview",
         Some("data_source_instance") => "extension_data_source_instance",
+        Some("network_egress_provider") => "extension_network_egress_provider",
         Some("host_infrastructure_config") => "extension_host_infrastructure_config",
         Some("application_js_selection") => "extension_application_js_selection",
         Some("application_source") => "extension_application_source",

@@ -619,6 +619,76 @@ impl PluginRepository for PgControlPlaneStore {
         map_artifact_instance(row)
     }
 
+    async fn select_network_egress_current(
+        &self,
+        node_id: &str,
+        installation_id: Uuid,
+    ) -> Result<Option<domain::PluginArtifactInstanceRecord>> {
+        let mut transaction = self.pool().begin().await?;
+        let target = sqlx::query(
+            r#"
+            select installation.category, installation.artifact_id as provider_code
+            from extension_installations installation
+            join extension_artifact_instances artifact
+              on artifact.installation_id = installation.id and artifact.node_id = $1
+            where installation.id = $2
+              and installation.contract_version = '1flowbase.network_egress_provider/v1'
+              and installation.metadata_json ->> 'plugin_type' = 'network_egress_provider'
+              and artifact.artifact_status = 'ready'
+            for update of installation, artifact
+            "#,
+        )
+        .bind(node_id)
+        .bind(installation_id)
+        .fetch_optional(&mut *transaction)
+        .await?;
+        let Some(target) = target else {
+            transaction.rollback().await?;
+            return Ok(None);
+        };
+        let category: String = target.get("category");
+        let provider_code: String = target.get("provider_code");
+        let family_lock = format!("network-egress-current:{category}:{provider_code}");
+        sqlx::query("select pg_advisory_xact_lock(hashtext($1))")
+            .bind(family_lock)
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query(
+            r#"
+            update extension_artifact_instances artifact
+            set is_current = false, checked_at = now()
+            from extension_installations installation
+            where installation.id = artifact.installation_id
+              and artifact.node_id = $1
+              and installation.category = $2
+              and installation.artifact_id = $3
+              and installation.metadata_json ->> 'plugin_type' = 'network_egress_provider'
+              and artifact.is_current
+            "#,
+        )
+        .bind(node_id)
+        .bind(&category)
+        .bind(&provider_code)
+        .execute(&mut *transaction)
+        .await?;
+        let artifact = sqlx::query(
+            r#"
+            update extension_artifact_instances
+            set is_current = true, checked_at = now()
+            where node_id = $1 and installation_id = $2
+            returning node_id, installation_id, local_version, local_checksum, local_path,
+                package_path, manifest_fingerprint, artifact_status, runtime_status,
+                availability_status, checked_at, last_error, is_current
+            "#,
+        )
+        .bind(node_id)
+        .bind(installation_id)
+        .fetch_one(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+        Ok(Some(map_artifact_instance(artifact)?))
+    }
+
     async fn commit_plugin_family_uninstall(
         &self,
         input: &CommitPluginFamilyUninstallInput,

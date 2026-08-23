@@ -64,6 +64,17 @@
   gap: 8px;
 }
 
+.network-egress-providers__plugin-versions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.network-egress-providers__plugin-versions .ant-select {
+  min-width: 112px;
+}
+
 @container (max-width: 1280px) {
   .network-egress-providers {
     grid-template-columns: minmax(0, 1fr);

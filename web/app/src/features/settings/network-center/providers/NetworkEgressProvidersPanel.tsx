@@ -1,17 +1,21 @@
 import { useState } from 'react';
 
-import { Alert, Button, Empty, Input, Modal, Table, Tag, Typography, Upload } from 'antd';
+import { Alert, Button, Empty, Input, Modal, Select, Space, Table, Tag, Typography, Upload } from 'antd';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 
 import {
   fetchSettingsNetworkEgressOfficialPluginCatalog,
+  fetchSettingsNetworkEgressPluginFamilies,
   fetchSettingsNetworkEgressProviderTypes,
   installSettingsNetworkEgressOfficialPlugin,
+  settingsNetworkEgressPluginFamiliesQueryKey,
   settingsNetworkEgressOfficialPluginsQueryKey,
   settingsNetworkEgressProviderTypesQueryKey,
   type SettingsNetworkEgressProviderType,
+  switchSettingsNetworkEgressPluginVersion,
+  uninstallSettingsNetworkEgressPluginVersion,
   uploadSettingsNetworkEgressPluginPackage
 } from '../../api/network-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
@@ -53,9 +57,14 @@ export function NetworkEgressProvidersPanel() {
       q: search || undefined
     })
   });
+  const pluginFamilies = useQuery({
+    queryKey: settingsNetworkEgressPluginFamiliesQueryKey,
+    queryFn: fetchSettingsNetworkEgressPluginFamilies
+  });
   const refreshTypes = () => Promise.all([
     queryClient.invalidateQueries({ queryKey: settingsNetworkEgressProviderTypesQueryKey }),
-    queryClient.invalidateQueries({ queryKey: settingsNetworkEgressOfficialPluginsQueryKey })
+    queryClient.invalidateQueries({ queryKey: settingsNetworkEgressOfficialPluginsQueryKey }),
+    queryClient.invalidateQueries({ queryKey: settingsNetworkEgressPluginFamiliesQueryKey })
   ]);
   const install = useMutation({
     mutationFn: (pluginId: string) => {
@@ -75,8 +84,23 @@ export function NetworkEgressProvidersPanel() {
       await refreshTypes();
     }
   });
+  const switchVersion = useMutation({
+    mutationFn: ({ providerCode, installationId }: { providerCode: string; installationId: string }) => {
+      if (!csrfToken) throw new Error('Missing CSRF token');
+      return switchSettingsNetworkEgressPluginVersion(providerCode, installationId, csrfToken);
+    },
+    onSuccess: refreshTypes
+  });
+  const uninstallVersion = useMutation({
+    mutationFn: ({ providerCode, installationId }: { providerCode: string; installationId: string }) => {
+      if (!csrfToken) throw new Error('Missing CSRF token');
+      return uninstallSettingsNetworkEgressPluginVersion(providerCode, installationId, csrfToken);
+    },
+    onSuccess: refreshTypes
+  });
 
-  const pluginError = errorMessage(plugins.error) ?? errorMessage(install.error) ?? errorMessage(upload.error);
+  const pluginError = errorMessage(plugins.error) ?? errorMessage(pluginFamilies.error) ?? errorMessage(install.error) ?? errorMessage(upload.error) ?? errorMessage(switchVersion.error) ?? errorMessage(uninstallVersion.error);
+  const familyByProviderCode = new Map((pluginFamilies.data ?? []).map((family) => [family.provider_code, family]));
 
   return (
     <SettingsSectionSurface heightMode="fill">
@@ -125,6 +149,34 @@ export function NetworkEgressProvidersPanel() {
                       : i18nText('settings', 'auto.install_plugin')}
                   </Button>
                 </div>
+                {familyByProviderCode.get(plugin.provider_code) ? (() => {
+                  const family = familyByProviderCode.get(plugin.provider_code)!;
+                  return <div className="network-egress-providers__plugin-versions">
+                    <Select
+                      size="small"
+                      aria-label={`${plugin.display_name} ${i18nText('settings', 'auto.version')}`}
+                      value={family.current_installation_id}
+                      loading={switchVersion.isPending && switchVersion.variables?.providerCode === family.provider_code}
+                      options={family.installed_versions.map((version) => ({ value: version.installation_id, label: version.plugin_version }))}
+                      onChange={(installationId) => switchVersion.mutate({ providerCode: family.provider_code, installationId })}
+                    />
+                    <Space size={4} wrap>
+                      {family.installed_versions.filter((version) => !version.is_current).map((version) => (
+                        <Button
+                          key={version.installation_id}
+                          danger
+                          type="link"
+                          size="small"
+                          disabled={!version.can_uninstall}
+                          loading={uninstallVersion.isPending && uninstallVersion.variables?.installationId === version.installation_id}
+                          onClick={() => uninstallVersion.mutate({ providerCode: family.provider_code, installationId: version.installation_id })}
+                        >
+                          {`${i18nText('settings', 'auto.uninstall_plugin')} ${version.plugin_version}`}
+                        </Button>
+                      ))}
+                    </Space>
+                  </div>;
+                })() : null}
               </article>
             ))}
           </div>

@@ -21,11 +21,13 @@ import {
   syncConsoleNetworkEgressProvider,
   testConsoleNetworkEgressPoolMember,
   installConsoleNetworkEgressOfficialPlugin,
+  listConsoleNetworkEgressPluginFamilies,
   uploadConsoleNetworkEgressPluginPackage,
   type ConsoleNetworkEgressPool,
   type ConsoleNetworkEgressPoolMember,
   type ConsoleNetworkEgressProvider,
   type ConsoleNetworkEgressProviderType,
+  type ConsoleNetworkEgressPluginFamily,
   type ConsoleNetworkEgressRoute,
   type CreateConsoleNetworkEgressPoolInput,
   type CreateConsoleNetworkEgressPoolMemberInput,
@@ -37,12 +39,15 @@ import {
   type UpdateConsoleNetworkEgressPoolInput,
   type UpdateConsoleNetworkEgressPoolMemberInput,
   type UpdateConsoleNetworkEgressRouteInput,
-  type UpdateConsoleNetworkEgressProviderLifecycleInput
+  type UpdateConsoleNetworkEgressProviderLifecycleInput,
+  switchConsoleNetworkEgressPluginVersion,
+  uninstallConsoleNetworkEgressPluginVersion
 } from '@1flowbase/api-client';
 
 export type SettingsNetworkEgressProvider = ConsoleNetworkEgressProvider;
 export type SettingsNetworkEgressProviderType =
   ConsoleNetworkEgressProviderType;
+export type SettingsNetworkEgressPluginFamily = ConsoleNetworkEgressPluginFamily;
 export type CreateSettingsNetworkEgressProviderInput =
   CreateConsoleNetworkEgressProviderInput;
 export type CreateSettingsNetworkEgressProxyInput =
@@ -96,6 +101,12 @@ export const settingsNetworkEgressOfficialPluginsQueryKey = [
   'proxy-plugins',
   'official-catalog'
 ] as const;
+export const settingsNetworkEgressPluginFamiliesQueryKey = [
+  'settings',
+  'network-center',
+  'proxy-plugins',
+  'families'
+] as const;
 
 export function fetchSettingsNetworkEgressProviders() {
   return listConsoleNetworkEgressProviders();
@@ -116,6 +127,26 @@ export function installSettingsNetworkEgressOfficialPlugin(
   csrfToken: string
 ) {
   return installConsoleNetworkEgressOfficialPlugin({ plugin_id: pluginId }, csrfToken);
+}
+
+export function fetchSettingsNetworkEgressPluginFamilies() {
+  return listConsoleNetworkEgressPluginFamilies();
+}
+
+export function switchSettingsNetworkEgressPluginVersion(
+  providerCode: string,
+  installationId: string,
+  csrfToken: string
+) {
+  return switchConsoleNetworkEgressPluginVersion(providerCode, installationId, csrfToken);
+}
+
+export function uninstallSettingsNetworkEgressPluginVersion(
+  providerCode: string,
+  installationId: string,
+  csrfToken: string
+) {
+  return uninstallConsoleNetworkEgressPluginVersion(providerCode, installationId, csrfToken);
 }
 
 export function uploadSettingsNetworkEgressPluginPackage(

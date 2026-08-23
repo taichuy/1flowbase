@@ -303,6 +303,13 @@ pub trait PluginRepository: Send + Sync {
         &self,
         input: &UpsertPluginArtifactInstanceInput,
     ) -> anyhow::Result<domain::PluginArtifactInstanceRecord>;
+    async fn select_network_egress_current(
+        &self,
+        _node_id: &str,
+        _installation_id: Uuid,
+    ) -> anyhow::Result<Option<domain::PluginArtifactInstanceRecord>> {
+        anyhow::bail!("network egress current-version selection is not supported")
+    }
     async fn commit_plugin_family_uninstall(
         &self,
         _input: &CommitPluginFamilyUninstallInput,

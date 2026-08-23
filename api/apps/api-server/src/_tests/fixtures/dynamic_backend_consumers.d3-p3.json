@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 349,
+  "projected_interface_count": 352,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -188,6 +188,12 @@
       "DELETE",
       "/api/console/settings/model-providers/request-logs",
       "Delete model providers request logs"
+    ],
+    [
+      "network_egress_plugins.families.uninstall",
+      "DELETE",
+      "/api/console/settings/network-center/proxy-plugins/families/:provider_code/versions/:installation_id",
+      "Network egress plugins families uninstall"
     ],
     [
       "roles.delete",
@@ -908,6 +914,12 @@
       "GET",
       "/api/console/settings/network-center/providers/types",
       "List network egress proxy types"
+    ],
+    [
+      "network_egress_plugins.families.view",
+      "GET",
+      "/api/console/settings/network-center/proxy-plugins/families",
+      "View network egress plugins families"
     ],
     [
       "network_egress_plugins.official_catalog.view",
@@ -1826,6 +1838,12 @@
       "POST",
       "/api/console/settings/network-center/providers/:id/sync",
       "Network egress providers sync"
+    ],
+    [
+      "network_egress_plugins.families.switch",
+      "POST",
+      "/api/console/settings/network-center/proxy-plugins/families/:provider_code/switch-version",
+      "Network egress plugins families switch"
     ],
     [
       "network_egress_plugins.install.official",

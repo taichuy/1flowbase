@@ -859,6 +859,49 @@ async fn network_egress_installation_commit_keeps_one_current_artifact_and_rolls
 }
 
 #[tokio::test]
+async fn network_egress_current_selection_switches_one_provider_family_atomically() {
+    let (store, _workspace, actor) = seed_store().await;
+    let retained_id = Uuid::now_v7();
+    let current_id = Uuid::now_v7();
+    PluginRepository::commit_plugin_installation(
+        &store,
+        &network_egress_commit_input(retained_id, actor.id, "0.2.2", "native_react"),
+    )
+    .await
+    .unwrap();
+    PluginRepository::commit_plugin_installation(
+        &store,
+        &network_egress_commit_input(current_id, actor.id, "0.2.3", "native_react"),
+    )
+    .await
+    .unwrap();
+
+    // AC-NCP03: selecting a retained version changes only the family current projection.
+    let selected =
+        PluginRepository::select_network_egress_current(&store, "test-node", retained_id)
+            .await
+            .unwrap()
+            .expect("ready retained version must be selectable");
+
+    assert_eq!(selected.installation_id, retained_id);
+    assert!(selected.is_current);
+    assert!(
+        PluginRepository::get_artifact_instance(&store, "test-node", retained_id)
+            .await
+            .unwrap()
+            .expect("selected artifact must remain")
+            .is_current
+    );
+    assert!(
+        !PluginRepository::get_artifact_instance(&store, "test-node", current_id)
+            .await
+            .unwrap()
+            .expect("previous current artifact must remain")
+            .is_current
+    );
+}
+
+#[tokio::test]
 async fn network_egress_current_repair_selects_latest_ready_version_from_legacy_artifacts() {
     let (store, _workspace, actor) = seed_store().await;
     let retained_id = Uuid::now_v7();
