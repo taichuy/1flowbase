@@ -82,9 +82,7 @@ pub use flow::{
 };
 pub use frontend_block_catalog::{
     FrontendBlockCatalogEntry, FrontendBlockCodeModule, FrontendBlockContextContract,
-    FrontendBlockPermissions, FrontendComponentContract, FrontendComponentExample,
-    FrontendComponentProp, FrontendComponentUpstream, FrontendModuleAsset, FrontendModuleAssetRole,
-    FrontendModuleBinding,
+    FrontendBlockPermissions, FrontendModuleAsset, FrontendModuleAssetRole, FrontendModuleBinding,
 };
 pub use frontstage::{
     FrontstageBlockDescendantProjection, FrontstageBlockNodeRecord, FrontstageBlockNodeSummary,
@@ -187,11 +185,9 @@ pub use system_defaults::{
     DEFAULT_CODE_ISOLATION_TIMEOUT_MS,
 };
 pub use ui_management::{
-    validate_ui_code_template, validate_ui_component_contract, validate_ui_component_record_fields,
-    UiCodeTemplate, UiCodeTemplateLanguage, UiCodeTemplateRevision, UiComponentContractRevision,
-    UiComponentLocator, UiComponentOverride, UiComponentOverrideState, UiComponentRecord,
-    UiComponentRecordOrigin, UiComponentRecordUpstream, UiManagementInvariantError,
-    UI_CODE_TEMPLATE_SOURCE_LIMIT,
+    validate_ui_code_template, validate_ui_component_record_fields, UiCodeTemplate,
+    UiCodeTemplateLanguage, UiCodeTemplateRevision, UiComponentRecord, UiComponentRecordOrigin,
+    UiComponentRecordUpstream, UiManagementInvariantError, UI_CODE_TEMPLATE_SOURCE_LIMIT,
 };
 
 pub fn crate_name() -> &'static str {

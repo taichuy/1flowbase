@@ -1,16 +1,11 @@
-use std::collections::BTreeMap;
-
 use anyhow::{bail, Result};
-use domain::{
-    FrontendComponentContract, UiCodeTemplate, UiCodeTemplateLanguage, UiComponentLocator,
-    UiComponentOverride, UiComponentOverrideState, UiComponentRecord, UiComponentRecordOrigin,
-};
+use domain::{UiCodeTemplate, UiCodeTemplateLanguage, UiComponentRecord, UiComponentRecordOrigin};
 use uuid::Uuid;
 
 use crate::errors::ControlPlaneError;
 use crate::ports::{
     CreateUiCodeTemplateInput, CreateUiComponentRecordInput, ReviseUiCodeTemplateInput,
-    ReviseUiComponentContractInput, UiComponentRecordPatch,
+    UiComponentRecordPatch,
 };
 use crate::ports::{FrontendBlockCatalogRepository, UiManagementRepository};
 
@@ -39,19 +34,20 @@ pub struct EffectiveUiCodeTemplate {
 }
 
 #[derive(Debug, Clone)]
-pub struct UiComponentCandidate {
-    pub installation_id: Uuid,
-    pub plugin_id: String,
-    pub plugin_version: String,
-    pub locator: UiComponentLocator,
-    pub module_version: String,
-    pub exports: Vec<String>,
-    pub binding: domain::FrontendModuleBinding,
-    pub assets: Vec<domain::FrontendModuleAsset>,
-    pub type_declarations: String,
-    pub official_contract: Option<FrontendComponentContract>,
-    pub effective_contract: Option<FrontendComponentContract>,
-    pub override_record: Option<UiComponentOverride>,
+pub struct ListUiComponentRecordsQuery {
+    pub query: Option<String>,
+    pub offset: usize,
+    pub limit: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct UiComponentRecordPage {
+    pub items: Vec<UiComponentRecord>,
+    pub total: usize,
+    pub offset: usize,
+    pub limit: usize,
+    pub has_more: bool,
+    pub next_offset: Option<usize>,
 }
 
 pub struct UiManagementService<R> {
@@ -193,122 +189,6 @@ where
             .ok_or_else(|| anyhow::anyhow!("no effective code template for contribution"))
     }
 
-    pub async fn list_component_candidates(&self) -> Result<Vec<UiComponentCandidate>> {
-        let blocks = self
-            .repository
-            .list_system_frontend_blocks(&self.node_id)
-            .await?;
-        self.merge_component_candidates(blocks).await
-    }
-
-    pub async fn list_effective_components_for_workspace(
-        &self,
-        workspace_id: Uuid,
-    ) -> Result<Vec<UiComponentCandidate>> {
-        let blocks = self
-            .repository
-            .list_workspace_frontend_blocks(&self.node_id, workspace_id)
-            .await?;
-        Ok(self
-            .merge_component_candidates(blocks)
-            .await?
-            .into_iter()
-            .filter(|candidate| candidate.effective_contract.is_some())
-            .collect())
-    }
-
-    async fn merge_component_candidates(
-        &self,
-        blocks: Vec<domain::FrontendBlockCatalogEntry>,
-    ) -> Result<Vec<UiComponentCandidate>> {
-        let overrides = self.repository.list_ui_component_overrides().await?;
-        let override_map = overrides
-            .into_iter()
-            .map(|value| {
-                (
-                    (
-                        value.locator.provider_code.clone(),
-                        value.locator.contribution_code.clone(),
-                        value.locator.module_source.clone(),
-                        value.locator.export_name.clone(),
-                    ),
-                    value,
-                )
-            })
-            .collect::<BTreeMap<_, _>>();
-        let mut candidates = Vec::new();
-        for block in blocks {
-            for module in block.code_modules {
-                for export_name in &module.exports {
-                    let locator = UiComponentLocator {
-                        provider_code: block.provider_code.clone(),
-                        contribution_code: block.contribution_code.clone(),
-                        module_source: module.source.clone(),
-                        export_name: export_name.clone(),
-                    };
-                    let official_contract = module
-                        .components
-                        .iter()
-                        .find(|contract| &contract.export_name == export_name)
-                        .cloned();
-                    let record = override_map
-                        .get(&(
-                            locator.provider_code.clone(),
-                            locator.contribution_code.clone(),
-                            locator.module_source.clone(),
-                            locator.export_name.clone(),
-                        ))
-                        .cloned();
-                    let effective_contract = match record.as_ref().map(|value| value.state) {
-                        Some(UiComponentOverrideState::Hidden) => None,
-                        Some(UiComponentOverrideState::Published) => record
-                            .as_ref()
-                            .and_then(|value| value.published_revision.as_ref())
-                            .map(|value| value.contract.clone()),
-                        Some(UiComponentOverrideState::Inherit) | None => official_contract.clone(),
-                    };
-                    candidates.push(UiComponentCandidate {
-                        installation_id: block.installation_id,
-                        plugin_id: block.plugin_id.clone(),
-                        plugin_version: block.plugin_version.clone(),
-                        locator,
-                        module_version: module.version.clone(),
-                        exports: module.exports.clone(),
-                        binding: module.binding,
-                        assets: module.assets.clone(),
-                        type_declarations: module.type_declarations.clone(),
-                        official_contract,
-                        effective_contract,
-                        override_record: record,
-                    });
-                }
-            }
-        }
-        candidates.sort_by(|a, b| {
-            a.locator
-                .module_source
-                .cmp(&b.locator.module_source)
-                .then_with(|| a.locator.export_name.cmp(&b.locator.export_name))
-        });
-        Ok(candidates)
-    }
-
-    pub async fn assert_component_locator_available(
-        &self,
-        locator: &UiComponentLocator,
-    ) -> Result<()> {
-        if self
-            .list_component_candidates()
-            .await?
-            .iter()
-            .any(|candidate| &candidate.locator == locator)
-        {
-            Ok(())
-        } else {
-            bail!("component module/export is not currently executable")
-        }
-    }
-
     async fn assert_contribution_available(
         &self,
         provider_code: &str,
@@ -385,29 +265,42 @@ where
             .await
     }
 
-    pub async fn revise_component_contract(
-        &self,
-        input: ReviseUiComponentContractInput,
-    ) -> Result<UiComponentOverride> {
-        self.assert_component_locator_available(&input.locator)
-            .await?;
-        self.repository.revise_ui_component_contract(&input).await
-    }
-
-    pub async fn set_component_state(
-        &self,
-        locator: &UiComponentLocator,
-        state: UiComponentOverrideState,
-        actor_user_id: Uuid,
-    ) -> Result<UiComponentOverride> {
-        self.assert_component_locator_available(locator).await?;
-        self.repository
-            .set_ui_component_state(locator, state, actor_user_id)
-            .await
-    }
-
     pub async fn list_component_records(&self) -> Result<Vec<UiComponentRecord>> {
         self.repository.list_ui_component_records().await
+    }
+
+    pub async fn list_component_records_page(
+        &self,
+        query: ListUiComponentRecordsQuery,
+    ) -> Result<UiComponentRecordPage> {
+        let mut records = self.repository.list_ui_component_records().await?;
+        if let Some(search) = query
+            .query
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            let search = search.to_lowercase();
+            records.retain(|record| component_record_matches(record, &search));
+        }
+        records.sort_by(|left, right| {
+            left.name
+                .cmp(&right.name)
+                .then_with(|| left.component_code.cmp(&right.component_code))
+        });
+        let total = records.len();
+        let offset = query.offset.min(total);
+        let limit = query.limit.max(1);
+        let end = offset.saturating_add(limit).min(total);
+        let has_more = end < total;
+        Ok(UiComponentRecordPage {
+            items: records[offset..end].to_vec(),
+            total,
+            offset,
+            limit,
+            has_more,
+            next_offset: has_more.then_some(end),
+        })
     }
 
     pub async fn get_component_record(&self, id: Uuid) -> Result<UiComponentRecord> {
@@ -475,4 +368,23 @@ where
             Err(ControlPlaneError::NotFound("ui_component_record").into())
         }
     }
+}
+
+fn component_record_matches(record: &UiComponentRecord, search: &str) -> bool {
+    [
+        record.component_code.as_str(),
+        record.name.as_str(),
+        record.description.as_str(),
+        record.source.as_str(),
+        record.group.as_str(),
+        record.upstream.identity.as_str(),
+        record.upstream.version.as_str(),
+        record.version.as_str(),
+    ]
+    .iter()
+    .any(|value| value.to_lowercase().contains(search))
+        || record
+            .keywords
+            .iter()
+            .any(|keyword| keyword.to_lowercase().contains(search))
 }

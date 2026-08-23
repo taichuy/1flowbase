@@ -162,29 +162,7 @@ async fn seed_frontend_block(
                     "sha256": "adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f"
                 }
             ],
-            "type_declarations": "declare module '@acme/native-components' {}",
-            "components": [{
-                "component_code": "button",
-                "export_name": "Button",
-                "upstream": {
-                    "package": "antd",
-                    "component": "Button",
-                    "version": "5.x"
-                },
-                "description": "Native React Button component.",
-                "props": [{
-                    "name": "actionId",
-                    "type": "string",
-                    "required": false,
-                    "description": "点击后发送的区块 action 标识。"
-                }],
-                "limitations": ["不支持 React onClick。"],
-                "examples": [{
-                    "title": "触发保存操作",
-                    "code": "<Button actionId=\"save\">保存</Button>"
-                }],
-                "insert_snippet": "<Button actionId=\"save\">保存</Button>"
-            }]
+            "type_declarations": "declare module '@acme/native-components' {}"
         },
         {
             "source": "@acme/runtime-utils",
@@ -197,8 +175,7 @@ async fn seed_frontend_block(
                 "media_type": "text/javascript; charset=utf-8",
                 "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
             }],
-            "type_declarations": "declare module '@acme/runtime-utils' { export function useRuntimeValue(): string; }",
-            "components": []
+            "type_declarations": "declare module '@acme/runtime-utils' { export function useRuntimeValue(): string; }"
         }
     ]))
     .execute(&pool)
@@ -220,8 +197,7 @@ async fn seed_frontend_block(
             "exports": ["default", "useState"],
             "binding": "host",
             "assets": [],
-            "type_declarations": "",
-            "components": []
+            "type_declarations": ""
         }))
         .execute(&pool)
         .await
@@ -249,10 +225,39 @@ async fn seed_frontend_block(
     installation_id
 }
 
+async fn seed_persisted_component(database_url: &str) -> Uuid {
+    let pool = PgPool::connect(database_url).await.unwrap();
+    let actor_id: Uuid = sqlx::query_scalar("select id from users where account = 'root' limit 1")
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    let component_id = Uuid::now_v7();
+    sqlx::query(
+        r#"
+        insert into ui_component_records (
+            id, component_code, name, description, import_code, source_code, origin,
+            source, "group", upstream_identity, upstream_version, version, keywords,
+            created_by, updated_by
+        ) values ($1, 'taichuy.opaque.widget', 'Opaque Widget',
+            'Persisted without dependency availability',
+            'import Widget from ''@definitely/not-installed'';',
+            '<Widget impossible={{ syntax: true }} />', 'official', 'taichuy', 'opaque',
+            '@definitely/not-installed', '99.0.0', '1.0.0', array['opaque'], $2, $2)
+        "#,
+    )
+    .bind(component_id)
+    .bind(actor_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+    component_id
+}
+
 #[tokio::test]
-async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fail_closed() {
+async fn wp_d4_persisted_component_and_registered_asset_routes_are_independent() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
     let installation_id = seed_frontend_block(&database_url, false, false).await;
+    let component_id = seed_persisted_component(&database_url).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
     let _workspace_id: Uuid =
         sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
@@ -265,9 +270,7 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!(
-                    "/api/console/frontstage/component-capabilities?installation_id={installation_id}&query=button&limit=1"
-                ))
+                .uri("/api/console/frontstage/components?query=not-installed&limit=1")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -279,37 +282,21 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
     let payload: Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     assert_eq!(payload["data"]["total"], 1);
-    assert_eq!(payload["data"]["items"][0]["export_name"], "Button");
+    assert_eq!(payload["data"]["items"][0]["id"], component_id.to_string());
     assert_eq!(
-        payload["data"]["items"][0]["module_source"],
-        "@acme/native-components"
+        payload["data"]["items"][0]["import_code"],
+        "import Widget from '@definitely/not-installed';"
     );
-    assert_eq!(payload["data"]["items"][0]["module_version"], "1.2.3");
-    assert_eq!(payload["data"]["items"][0]["exports"], json!(["Button"]));
     assert_eq!(
-        payload["data"]["items"][0]["browser_asset"]["sha256"],
-        "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
+        payload["data"]["items"][0]["source_code"],
+        "<Widget impossible={{ syntax: true }} />"
     );
-    assert_eq!(payload["data"]["items"][0]["binding"], "fetched");
-    assert_eq!(
-        payload["data"]["items"][0]["assets"][1]["role"],
-        "shadow_style"
-    );
-    assert!(!payload["data"]["items"][0]["browser_asset"]["url"]
-        .as_str()
-        .unwrap()
-        .contains("/tmp/"));
-    let component_id = payload["data"]["items"][0]["component_id"]
-        .as_str()
-        .unwrap();
 
     let detail_response = app
         .clone()
         .oneshot(
             Request::builder()
-                .uri(format!(
-                    "/api/console/frontstage/component-capabilities/{component_id}"
-                ))
+                .uri(format!("/api/console/frontstage/components/{component_id}"))
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -323,19 +310,13 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
             .unwrap(),
     )
     .unwrap();
-    assert_eq!(detail["data"]["props"][0]["name"], "actionId");
-    assert!(detail["data"]["typescript_declaration"]
-        .as_str()
-        .unwrap()
-        .contains("readonly actionId?: string"));
-    assert!(!detail["data"]["typescript_declaration"]
-        .as_str()
-        .unwrap()
-        .contains("@1flowbase-component"));
+    assert_eq!(detail["data"]["component_code"], "taichuy.opaque.widget");
+    assert_eq!(
+        detail["data"]["import_code"],
+        payload["data"]["items"][0]["import_code"]
+    );
 
-    let asset_url = payload["data"]["items"][0]["browser_asset"]["url"]
-        .as_str()
-        .unwrap();
+    let asset_url = "/api/console/frontstage/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0";
     let asset_response = app
         .clone()
         .oneshot(
@@ -357,9 +338,7 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
         .unwrap();
     assert_eq!(asset_bytes.as_ref(), b"export function Button() {}\n");
 
-    let style_url = payload["data"]["items"][0]["assets"][1]["url"]
-        .as_str()
-        .unwrap();
+    let style_url = "/api/console/frontstage/component-module-assets/adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f";
     let style_response = app
         .clone()
         .oneshot(
@@ -434,7 +413,7 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
 }
 
 #[tokio::test]
-async fn component_capabilities_route_excludes_registered_exports_without_contracts() {
+async fn wp_d4_empty_persistence_yields_empty_components_despite_registered_exports() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
     seed_frontend_block(&database_url, false, false).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
@@ -449,7 +428,7 @@ async fn component_capabilities_route_excludes_registered_exports_without_contra
         .clone()
         .oneshot(
             Request::builder()
-                .uri("/api/console/frontstage/component-capabilities?query=runtime&limit=20")
+                .uri("/api/console/frontstage/components?limit=20")
                 .header("cookie", &cookie)
                 .body(Body::empty())
                 .unwrap(),
@@ -459,8 +438,7 @@ async fn component_capabilities_route_excludes_registered_exports_without_contra
     assert_eq!(response.status(), StatusCode::OK);
     let page: Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    // AC-001 / AC-002: this export used to become a bare `useRuntimeValue`
-    // insertion even though it has no JSX component contract.
+    // Hooks, message/theme/version exports, and icons must never be inferred as components.
     assert_eq!(page["data"]["total"], 0);
     assert_eq!(page["data"]["items"], json!([]));
 }

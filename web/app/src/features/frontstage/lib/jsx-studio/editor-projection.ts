@@ -10,11 +10,9 @@ export interface FrontstageJsxEditorProjection {
 }
 
 export function createFrontstageJsxEditorProjection({
-  catalogEntry,
-  componentModuleSources = []
+  catalogEntry
 }: {
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
-  componentModuleSources?: readonly string[];
 }): FrontstageJsxEditorProjection {
   const codeModules = catalogEntry?.codeModules ?? [];
   const monacoExtraLibs = [
@@ -36,37 +34,11 @@ export function createFrontstageJsxEditorProjection({
       'react/jsx-runtime',
       'antd',
       'tailwindcss',
-      ...componentModuleSources
+      ...codeModules.map((codeModule) => codeModule.source)
     ]),
     contextComment: createFrontstageContextComment(),
     monacoExtraLibs
   };
-}
-
-export function mergeFrontstageComponentDeclarationExtraLibs(
-  extraLibs: readonly BlockSourceExtraLib[],
-  declarations: Readonly<Record<string, string>>
-): BlockSourceExtraLib[] {
-  const remainingDeclarations = new Map(
-    Object.entries(declarations).filter(([, declaration]) => declaration)
-  );
-  const merged = extraLibs.map((extraLib) => {
-    const declaration = remainingDeclarations.get(extraLib.source);
-    if (!declaration) return extraLib;
-    remainingDeclarations.delete(extraLib.source);
-    return {
-      ...extraLib,
-      content: `${extraLib.content}\n\n${declaration}`
-    };
-  });
-  for (const [source, content] of remainingDeclarations) {
-    merged.push({
-      source,
-      filePath: `file:///node_modules/${source}/index.d.ts`,
-      content
-    });
-  }
-  return merged;
 }
 
 export function createFrontstageContextComment(): string {

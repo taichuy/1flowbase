@@ -1,8 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use domain::{
-    FrontendComponentContract, UiCodeTemplate, UiCodeTemplateLanguage, UiComponentLocator,
-    UiComponentOverride, UiComponentOverrideState, UiComponentRecord, UiComponentRecordUpstream,
+    UiCodeTemplate, UiCodeTemplateLanguage, UiComponentRecord, UiComponentRecordUpstream,
 };
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
@@ -24,13 +23,6 @@ pub struct ReviseUiCodeTemplateInput {
     pub name: String,
     pub source: String,
     pub language: UiCodeTemplateLanguage,
-    pub actor_user_id: Uuid,
-}
-
-#[derive(Debug, Clone)]
-pub struct ReviseUiComponentContractInput {
-    pub locator: UiComponentLocator,
-    pub contract: FrontendComponentContract,
     pub actor_user_id: Uuid,
 }
 
@@ -200,52 +192,16 @@ pub trait UiManagementRepository: Send + Sync {
         actor_user_id: Uuid,
     ) -> Result<UiCodeTemplate>;
 
-    async fn list_ui_component_overrides(&self) -> Result<Vec<UiComponentOverride>>;
-    async fn get_ui_component_override(
-        &self,
-        locator: &UiComponentLocator,
-    ) -> Result<Option<UiComponentOverride>>;
-    async fn revise_ui_component_contract(
-        &self,
-        input: &ReviseUiComponentContractInput,
-    ) -> Result<UiComponentOverride>;
-    async fn set_ui_component_state(
-        &self,
-        locator: &UiComponentLocator,
-        state: UiComponentOverrideState,
-        actor_user_id: Uuid,
-    ) -> Result<UiComponentOverride>;
-
-    async fn list_ui_component_records(&self) -> Result<Vec<UiComponentRecord>> {
-        Err(anyhow::anyhow!(
-            "ui component record repository is unavailable"
-        ))
-    }
-    async fn get_ui_component_record(&self, _id: Uuid) -> Result<Option<UiComponentRecord>> {
-        Err(anyhow::anyhow!(
-            "ui component record repository is unavailable"
-        ))
-    }
+    async fn list_ui_component_records(&self) -> Result<Vec<UiComponentRecord>>;
+    async fn get_ui_component_record(&self, id: Uuid) -> Result<Option<UiComponentRecord>>;
     async fn create_ui_component_record(
         &self,
-        _input: &CreateUiComponentRecordInput,
-    ) -> Result<UiComponentRecord> {
-        Err(anyhow::anyhow!(
-            "ui component record repository is unavailable"
-        ))
-    }
+        input: &CreateUiComponentRecordInput,
+    ) -> Result<UiComponentRecord>;
     async fn update_ui_component_record(
         &self,
-        _id: Uuid,
-        _patch: &UiComponentRecordPatch,
-    ) -> Result<UiComponentRecord> {
-        Err(anyhow::anyhow!(
-            "ui component record repository is unavailable"
-        ))
-    }
-    async fn delete_ui_component_record(&self, _id: Uuid) -> Result<bool> {
-        Err(anyhow::anyhow!(
-            "ui component record repository is unavailable"
-        ))
-    }
+        id: Uuid,
+        patch: &UiComponentRecordPatch,
+    ) -> Result<UiComponentRecord>;
+    async fn delete_ui_component_record(&self, id: Uuid) -> Result<bool>;
 }

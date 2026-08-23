@@ -142,42 +142,6 @@ pub(super) fn build_frontend_block_sync_input(
                             })
                             .collect(),
                         type_declarations: code_module.type_declarations.clone(),
-                        components: code_module
-                            .components
-                            .iter()
-                            .map(|component| domain::FrontendComponentContract {
-                                component_code: component.component_code.clone(),
-                                export_name: component.export_name.clone(),
-                                upstream: component.upstream.as_ref().map(|upstream| {
-                                    domain::FrontendComponentUpstream {
-                                        package: upstream.package.clone(),
-                                        component: upstream.component.clone(),
-                                        version: upstream.version.clone(),
-                                    }
-                                }),
-                                description: component.description.clone(),
-                                props: component
-                                    .props
-                                    .iter()
-                                    .map(|prop| domain::FrontendComponentProp {
-                                        name: prop.name.clone(),
-                                        type_name: prop.type_name.clone(),
-                                        required: prop.required,
-                                        description: prop.description.clone(),
-                                    })
-                                    .collect(),
-                                limitations: component.limitations.clone(),
-                                examples: component
-                                    .examples
-                                    .iter()
-                                    .map(|example| domain::FrontendComponentExample {
-                                        title: example.title.clone(),
-                                        code: example.code.clone(),
-                                    })
-                                    .collect(),
-                                insert_snippet: component.insert_snippet.clone(),
-                            })
-                            .collect(),
                     })
                     .collect(),
                 context_contract: domain::FrontendBlockContextContract {

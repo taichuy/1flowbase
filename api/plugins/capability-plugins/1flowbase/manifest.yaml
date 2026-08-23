@@ -194,46 +194,6 @@ block_contributions:
             export const Surface: ComponentType<SurfaceProps>;
             export const ScrollableSurface: ComponentType<ScrollableSurfaceProps>;
           }
-        components:
-          - component_code: surface
-            export_name: Surface
-            description: "Native React surface that forwards standard DOM className, style, event, aria and data props."
-            props:
-              - name: as
-                type: string
-                description: "HTML element name; defaults to section."
-              - name: className
-                type: string
-                description: "Standard DOM class name scoped by the block ShadowRoot."
-              - name: style
-                type: "import('react').CSSProperties"
-                description: "Standard React inline style object."
-              - name: children
-                type: "import('react').ReactNode"
-                description: "Native React children."
-            limitations: ["The host controls the React singleton and ShadowRoot lifecycle."]
-            examples:
-              - title: "Interactive surface"
-                code: "<Surface className=\"card\" onClick={() => setOpen(true)}>Open</Surface>"
-            insert_snippet: "<Surface className=\"card\">Content</Surface>"
-          - component_code: scrollable_surface
-            export_name: ScrollableSurface
-            description: "Native React scroll surface with contained overflow inside the block ShadowRoot."
-            props:
-              - name: className
-                type: string
-                description: "Standard DOM class name scoped by the block ShadowRoot."
-              - name: style
-                type: "import('react').CSSProperties"
-                description: "Standard React inline style object."
-              - name: children
-                type: "import('react').ReactNode"
-                description: "Native React children."
-            limitations: ["Scrolling remains inside the block-owned surface."]
-            examples:
-              - title: "Scrollable content"
-                code: "<ScrollableSurface style={{ maxHeight: 320 }}>Content</ScrollableSurface>"
-            insert_snippet: "<ScrollableSurface style={{ maxHeight: 320 }}>Content</ScrollableSurface>"
       - source: "@ant-design/icons"
         version: "6.3.2"
         exports: [ArrowDownOutlined, ArrowLeftOutlined, ArrowRightOutlined, ArrowUpOutlined, CalendarOutlined, CheckCircleOutlined, CheckOutlined, ClockCircleOutlined, CloseCircleOutlined, CloseOutlined, CopyOutlined, DeleteOutlined, DownloadOutlined, EditOutlined, ExclamationCircleOutlined, EyeInvisibleOutlined, EyeOutlined, FileOutlined, FolderOpenOutlined, FolderOutlined, HomeOutlined, InfoCircleOutlined, LeftOutlined, LinkOutlined, LoadingOutlined, LockOutlined, MailOutlined, MenuOutlined, MinusOutlined, MoreOutlined, PlusOutlined, QuestionCircleOutlined, ReloadOutlined, RightOutlined, SaveOutlined, SearchOutlined, SettingOutlined, UpOutlined, UploadOutlined, UserOutlined, WarningOutlined]
@@ -288,23 +248,6 @@ block_contributions:
             export interface EChartProps { readonly ariaLabel?: string; readonly className?: string; readonly option: EChartOption; readonly style?: CSSProperties; }
             export const EChart: ComponentType<EChartProps>;
           }
-        components:
-          - component_code: echarts_report
-            export_name: EChart
-            description: "Controlled ECharts report component with serializable safe options."
-            props:
-              - name: option
-                type: EChartOption
-                required: true
-                description: "Serializable chart option without executable callbacks or unsafe HTML."
-              - name: style
-                type: "import('react').CSSProperties"
-                description: "Chart container size and inline style."
-            limitations: ["Formatter functions, custom series, HTML tooltips, external images and maps are rejected."]
-            examples:
-              - title: "Bar report"
-                code: "<EChart option={{ xAxis: { type: 'category', data: ['A', 'B'] }, yAxis: { type: 'value' }, series: [{ type: 'bar', data: [3, 7] }] }} />"
-            insert_snippet: "<EChart option={{ xAxis: { type: 'category', data: [] }, yAxis: { type: 'value' }, series: [{ type: 'bar', data: [] }] }} />"
       - source: "@1flowbase/rich-text"
         version: "1.0.0"
         exports: [VditorEditor]
@@ -330,33 +273,6 @@ block_contributions:
             export interface VditorEditorProps { readonly api?: RichTextApi; readonly ariaLabel?: string; readonly className?: string; readonly height?: number | string; readonly mode?: VditorEditorMode; readonly onChange: (value: string) => void; readonly onReady?: (editor: VditorEditorHandle | null) => void; readonly outline?: boolean; readonly placeholder?: string; readonly previewMode?: VditorPreviewMode; readonly theme?: VditorTheme; readonly value: string; }
             export const VditorEditor: ComponentType<VditorEditorProps>;
           }
-        components:
-          - component_code: vditor_editor
-            export_name: VditorEditor
-            description: "Unified Vditor editor with edit modes, split preview, outline and governed file uploads."
-            props:
-              - name: value
-                type: string
-                required: true
-                description: "Current Markdown value."
-              - name: onChange
-                type: "(value: string) => void"
-                required: true
-                description: "Receives Markdown changes."
-              - name: api
-                type: RichTextApi
-                description: "BlockContext api capability used for governed uploads to the default file table."
-              - name: mode
-                type: VditorEditorMode
-                description: "Initial IR, WYSIWYG or source editing mode."
-              - name: previewMode
-                type: VditorPreviewMode
-                description: "Initial split preview or editor-only layout."
-            limitations: ["Raw Vditor construction, arbitrary CDN or upload URLs, and browser cache ownership are not exposed."]
-            examples:
-              - title: "Full Vditor field"
-                code: "<VditorEditor api={ctx.api} value={markdown} onChange={setMarkdown} />"
-            insert_snippet: "<VditorEditor api={ctx.api} value={markdown} onChange={setMarkdown} />"
     context_contract:
       primitives: [text, image, link, button, rich_text, data_record]
       input_schema:

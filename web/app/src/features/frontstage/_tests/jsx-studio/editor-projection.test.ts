@@ -7,18 +7,16 @@ import {
 } from '../../lib/jsx-studio/editor-projection';
 
 describe('Frontstage JSX editor projection', () => {
-  test('AC-021 accepts every registered component module instead of the active block Catalog scope', () => {
+  test('WP-D4 does not infer import availability from the persisted component catalog', () => {
     const projection = createFrontstageJsxEditorProjection({
-      catalogEntry: null,
-      componentModuleSources: ['@acme/charts']
+      catalogEntry: null
     });
 
     expect([...projection.allowedImportSources]).toEqual([
       'react',
       'react/jsx-runtime',
       'antd',
-      'tailwindcss',
-      '@acme/charts'
+      'tailwindcss'
     ]);
     expect(projection.contextComment).toBe(createFrontstageContextComment());
     expect(projection.monacoExtraLibs).toEqual(
@@ -59,8 +57,7 @@ describe('Frontstage JSX editor projection', () => {
         ],
         installationId: 'installation-1',
         contributionCode: 'frontstage.js-ui-block'
-      } as NormalizedFrontstageBlockCatalogEntry,
-      componentModuleSources: ['@1flowbase/native-components']
+      } as NormalizedFrontstageBlockCatalogEntry
     });
 
     expect([...projection.allowedImportSources]).toEqual([

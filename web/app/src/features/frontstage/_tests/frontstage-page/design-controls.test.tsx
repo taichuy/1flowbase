@@ -110,10 +110,10 @@ vi.mock(
 );
 vi.mock('../../api/block-tree', () => blockTreeApi);
 vi.mock('../../api/page-tabs', () => pageTabsApi);
-vi.mock('../../api/component-capabilities', async () => {
-  const actual = await vi.importActual<
-    typeof import('../../api/component-capabilities')
-  >('../../api/component-capabilities');
+vi.mock('../../api/components', async () => {
+  const actual = await vi.importActual<typeof import('../../api/components')>(
+    '../../api/components'
+  );
   return {
     ...actual,
     resolveFrontstageComponentDependencyLock:
@@ -935,11 +935,11 @@ describe('FrontStagePage - design controls', () => {
     await waitFor(() => expect(trialPanel.render).toHaveBeenCalled());
     const trialProps = trialPanel.render.mock.lastCall?.[0] as {
       code: string;
-      resolveNativeDependencyLock?: (
-        sourceCode: string
-      ) => Promise<unknown>;
+      resolveNativeDependencyLock?: (sourceCode: string) => Promise<unknown>;
     };
-    expect(trialProps.resolveNativeDependencyLock).toEqual(expect.any(Function));
+    expect(trialProps.resolveNativeDependencyLock).toEqual(
+      expect.any(Function)
+    );
     if (!trialProps.resolveNativeDependencyLock) {
       throw new Error('Expected the production trial lock resolver.');
     }

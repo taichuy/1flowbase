@@ -2,38 +2,36 @@ import { useQuery } from '@tanstack/react-query';
 
 import { useAuthStore } from '../../../state/auth-store';
 import {
-  fetchFrontstageComponentCapabilities,
-  type FrontstageComponentCapabilityPage,
-  type FrontstageComponentCapabilityQuery
-} from '../api/component-capabilities';
+  fetchFrontstageComponents,
+  type FrontstageComponentPage,
+  type FrontstageComponentQuery
+} from '../api/components';
 
-const emptyPage: FrontstageComponentCapabilityPage = {
+const emptyPage: FrontstageComponentPage = {
   items: [],
   total: 0,
   offset: 0,
   limit: 20,
   has_more: false,
-  next_offset: null,
-  module_sources: []
+  next_offset: null
 };
 
-export function useFrontstageComponentCapabilities(
+export function useFrontstageComponents(
   workspaceId: string | null,
-  request: FrontstageComponentCapabilityQuery,
+  request: FrontstageComponentQuery,
   active = true
 ) {
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
   const actor = useAuthStore((state) => state.actor);
   const enabled = Boolean(
     active &&
-      sessionStatus === 'authenticated' &&
-      workspaceId &&
-      actor?.current_workspace_id === workspaceId
+    sessionStatus === 'authenticated' &&
+    workspaceId &&
+    actor?.current_workspace_id === workspaceId
   );
   const query = useQuery({
-    queryKey: ['frontstage', 'component-capabilities', workspaceId, request],
-    queryFn: () =>
-      fetchFrontstageComponentCapabilities(workspaceId as string, request),
+    queryKey: ['frontstage', 'components', workspaceId, request],
+    queryFn: () => fetchFrontstageComponents(workspaceId as string, request),
     enabled
   });
   return {

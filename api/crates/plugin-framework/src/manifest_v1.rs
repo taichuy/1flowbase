@@ -188,8 +188,6 @@ pub struct FrontendBlockCodeModuleManifest {
     #[serde(default)]
     pub assets: Vec<FrontendModuleAssetManifest>,
     pub type_declarations: String,
-    #[serde(default)]
-    pub components: Vec<FrontendComponentContractManifest>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
@@ -218,49 +216,6 @@ pub enum FrontendModuleAssetRoleManifest {
     ShadowStyle,
     #[serde(rename = "support")]
     Support,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct FrontendComponentUpstreamManifest {
-    pub package: String,
-    pub component: String,
-    pub version: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct FrontendComponentPropManifest {
-    pub name: String,
-    #[serde(rename = "type")]
-    pub type_name: String,
-    #[serde(default)]
-    pub required: bool,
-    pub description: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct FrontendComponentExampleManifest {
-    pub title: String,
-    pub code: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct FrontendComponentContractManifest {
-    pub component_code: String,
-    pub export_name: String,
-    #[serde(default)]
-    pub upstream: Option<FrontendComponentUpstreamManifest>,
-    pub description: String,
-    #[serde(default)]
-    pub props: Vec<FrontendComponentPropManifest>,
-    #[serde(default)]
-    pub limitations: Vec<String>,
-    #[serde(default)]
-    pub examples: Vec<FrontendComponentExampleManifest>,
-    pub insert_snippet: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
@@ -771,7 +726,6 @@ fn validate_frontend_block_contributions(
             FRONTEND_BLOCK_ALLOWED_RUNTIMES,
         )?;
         validate_isolated_frontend_block_runtime(contribution)?;
-        let mut contribution_component_codes = HashSet::new();
         for code_module in &contribution.code_modules {
             validate_non_empty(
                 &code_module.source,
@@ -786,6 +740,7 @@ fn validate_frontend_block_contributions(
                     "block_contributions[].code_modules[].source must be unique",
                 ));
             }
+            validate_frontend_module_exports(code_module)?;
             validate_frontend_module_binding(code_module)?;
             for asset in &code_module.assets {
                 if let Some(existing_media_type) =
@@ -802,14 +757,6 @@ fn validate_frontend_block_contributions(
                 &code_module.type_declarations,
                 "block_contributions[].code_modules[].type_declarations",
             )?;
-            validate_frontend_component_contracts(code_module)?;
-            for component in &code_module.components {
-                if !contribution_component_codes.insert(component.component_code.as_str()) {
-                    return Err(PluginFrameworkError::invalid_provider_package(
-                        "frontend component_code must be unique within one block contribution",
-                    ));
-                }
-            }
         }
         validate_frontend_block_permissions(&contribution.permissions)?;
         for primitive in &contribution.context_contract.primitives {
@@ -871,7 +818,7 @@ fn validate_isolated_frontend_block_runtime(
     Ok(())
 }
 
-fn validate_frontend_component_contracts(
+fn validate_frontend_module_exports(
     code_module: &FrontendBlockCodeModuleManifest,
 ) -> FrameworkResult<()> {
     if code_module.exports.is_empty() {
@@ -889,110 +836,6 @@ fn validate_frontend_component_contracts(
             return Err(PluginFrameworkError::invalid_provider_package(
                 "block_contributions[].code_modules[].exports[] must be unique",
             ));
-        }
-    }
-    let mut component_codes = HashSet::new();
-    let mut export_names = HashSet::new();
-    for component in &code_module.components {
-        validate_non_empty(
-            &component.component_code,
-            "block_contributions[].code_modules[].components[].component_code",
-        )?;
-        validate_non_empty(
-            &component.export_name,
-            "block_contributions[].code_modules[].components[].export_name",
-        )?;
-        validate_typescript_identifier(
-            &component.export_name,
-            "block_contributions[].code_modules[].components[].export_name",
-        )?;
-        if !module_exports.contains(component.export_name.as_str()) {
-            return Err(PluginFrameworkError::invalid_provider_package(
-                "block_contributions[].code_modules[].components[].export_name must be declared in module exports",
-            ));
-        }
-        validate_non_empty(
-            &component.description,
-            "block_contributions[].code_modules[].components[].description",
-        )?;
-        validate_non_empty(
-            &component.insert_snippet,
-            "block_contributions[].code_modules[].components[].insert_snippet",
-        )?;
-        if !component_codes.insert(component.component_code.as_str()) {
-            return Err(PluginFrameworkError::invalid_provider_package(
-                "block_contributions[].code_modules[].components[].component_code must be unique",
-            ));
-        }
-        if !export_names.insert(component.export_name.as_str()) {
-            return Err(PluginFrameworkError::invalid_provider_package(
-                "block_contributions[].code_modules[].components[].export_name must be unique",
-            ));
-        }
-
-        if let Some(upstream) = component.upstream.as_ref() {
-            validate_non_empty(
-                &upstream.package,
-                "block_contributions[].code_modules[].components[].upstream.package",
-            )?;
-            validate_non_empty(
-                &upstream.component,
-                "block_contributions[].code_modules[].components[].upstream.component",
-            )?;
-            validate_non_empty(
-                &upstream.version,
-                "block_contributions[].code_modules[].components[].upstream.version",
-            )?;
-        }
-
-        let mut prop_names = HashSet::new();
-        for prop in &component.props {
-            validate_non_empty(
-                &prop.name,
-                "block_contributions[].code_modules[].components[].props[].name",
-            )?;
-            validate_typescript_identifier(
-                &prop.name,
-                "block_contributions[].code_modules[].components[].props[].name",
-            )?;
-            validate_non_empty(
-                &prop.type_name,
-                "block_contributions[].code_modules[].components[].props[].type",
-            )?;
-            validate_non_empty(
-                &prop.description,
-                "block_contributions[].code_modules[].components[].props[].description",
-            )?;
-            if !prop_names.insert(prop.name.as_str()) {
-                return Err(PluginFrameworkError::invalid_provider_package(
-                    "block_contributions[].code_modules[].components[].props[].name must be unique",
-                ));
-            }
-        }
-        if component.limitations.is_empty()
-            || component
-                .limitations
-                .iter()
-                .any(|item| item.trim().is_empty())
-        {
-            return Err(PluginFrameworkError::invalid_provider_package(
-                "frontend component contract requires non-empty limitations",
-            ));
-        }
-        if component.examples.is_empty() {
-            return Err(PluginFrameworkError::invalid_provider_package(
-                "frontend component contract requires at least one example",
-            ));
-        }
-        for example in &component.examples {
-            validate_non_empty(
-                &example.title,
-                "block_contributions[].code_modules[].components[].examples[].title",
-            )?;
-            validate_non_empty(
-                &example.code,
-                "block_contributions[].code_modules[].components[].examples[].code",
-            )?;
         }
     }
     Ok(())
@@ -1356,23 +1199,6 @@ fn validate_non_empty(value: &str, field: &str) -> FrameworkResult<()> {
     if value.trim().is_empty() {
         return Err(PluginFrameworkError::invalid_provider_package(format!(
             "{field} cannot be empty"
-        )));
-    }
-    Ok(())
-}
-
-fn validate_typescript_identifier(value: &str, field: &str) -> FrameworkResult<()> {
-    let mut chars = value.chars();
-    let valid_start = chars.next().is_some_and(|character| {
-        character == '_' || character == '$' || character.is_ascii_alphabetic()
-    });
-    if !valid_start
-        || !chars.all(|character| {
-            character == '_' || character == '$' || character.is_ascii_alphanumeric()
-        })
-    {
-        return Err(PluginFrameworkError::invalid_provider_package(format!(
-            "{field} must be a TypeScript identifier"
         )));
     }
     Ok(())

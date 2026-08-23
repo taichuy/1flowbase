@@ -1540,7 +1540,6 @@ mod code_input_tests {
                 sha256: "a".repeat(64),
             }],
             type_declarations: String::new(),
-            components: vec![],
         }
     }
 
@@ -1552,7 +1551,6 @@ mod code_input_tests {
             binding: domain::FrontendModuleBinding::Host,
             assets: vec![],
             type_declarations: String::new(),
-            components: vec![],
         }
     }
 

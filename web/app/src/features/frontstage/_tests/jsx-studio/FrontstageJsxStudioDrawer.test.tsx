@@ -13,7 +13,7 @@ import { App } from 'antd';
 import type { ReactElement, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import type { ConsoleFrontstageComponentCapabilitySummary } from '@1flowbase/api-client';
+import type { ConsoleFrontstageComponent } from '@1flowbase/api-client';
 import {
   LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC,
   sha256Text
@@ -40,10 +40,7 @@ const interfaceCapabilitiesApi = vi.hoisted(() => ({
   fetchFrontstageInterfaceCapability: vi.fn()
 }));
 const componentCapabilitiesHook = vi.hoisted(() => ({
-  useFrontstageComponentCapabilities: vi.fn()
-}));
-const componentCapabilitiesApi = vi.hoisted(() => ({
-  fetchFrontstageComponentCapability: vi.fn()
+  useFrontstageComponents: vi.fn()
 }));
 const uiTemplatesHook = vi.hoisted(() => ({
   useFrontstageUiTemplates: vi.fn()
@@ -94,10 +91,9 @@ vi.mock(
 );
 vi.mock('../../api/interface-capabilities', () => interfaceCapabilitiesApi);
 vi.mock(
-  '../../hooks/use-frontstage-component-capabilities',
+  '../../hooks/use-frontstage-components',
   () => componentCapabilitiesHook
 );
-vi.mock('../../api/component-capabilities', () => componentCapabilitiesApi);
 vi.mock('../../hooks/use-frontstage-ui-templates', () => uiTemplatesHook);
 vi.mock('antd', async () => {
   const actual = await vi.importActual<typeof import('antd')>('antd');
@@ -237,23 +233,25 @@ const catalogEntry: NormalizedFrontstageBlockCatalogEntry = {
 };
 
 const buttonComponent = {
-  component_id: 'builtin-installation:frontstage.js-ui-block:button',
-  installation_id: 'builtin-installation',
-  provider_code: '1flowbase',
-  plugin_id: 'builtin-frontstage',
-  plugin_version: '1.0.0',
-  contribution_code: 'frontstage.js-ui-block',
-  module_source: '@1flowbase/native-components',
-  module_version: '1.0.0',
-  browser_asset: {
-    sha256: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-    url: '/api/console/frontstage/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-  },
-  export_name: 'Button',
-  upstream: null,
+  id: '019c0000-0000-7000-8000-000000000002',
+  scope_id: '00000000-0000-0000-0000-000000000000',
+  component_code: 'official.button',
+  name: 'Button',
   description: 'Native button component.',
-  insert_snippet: '<Button>Action</Button>'
-} satisfies ConsoleFrontstageComponentCapabilitySummary;
+  import_code: "import { Button } from '@1flowbase/native-components';",
+  source_code: '<Button>Action</Button>',
+  origin: 'official',
+  source: 'official',
+  group: 'inputs',
+  upstream: { identity: '@1flowbase/native-components', version: '1.0.0' },
+  version: '1.0.0',
+  keywords: ['button'],
+  catalog_updated_at: null,
+  source_locator: null,
+  source_checksum: null,
+  created_at: '2026-08-23T00:00:00Z',
+  updated_at: '2026-08-23T00:00:00Z'
+} satisfies ConsoleFrontstageComponent;
 
 describe('FrontstageJsxStudioDrawer', () => {
   afterEach(async () => {
@@ -388,32 +386,18 @@ describe('FrontstageJsxStudioDrawer', () => {
     interfaceCapabilitiesApi.fetchFrontstageInterfaceCapability.mockResolvedValue(
       capability
     );
-    componentCapabilitiesHook.useFrontstageComponentCapabilities.mockReturnValue(
-      {
-        data: {
-          items: [buttonComponent],
-          total: 1,
-          offset: 0,
-          limit: 10,
-          has_more: false,
-          next_offset: null,
-          module_sources: [buttonComponent.module_source]
-        },
-        loading: false,
-        error: null
-      }
-    );
-    componentCapabilitiesApi.fetchFrontstageComponentCapability.mockResolvedValue(
-      {
-        ...buttonComponent,
-        props: [],
-        limitations: [],
-        examples: [],
-        typescript_declaration:
-          "declare module '@1flowbase/native-components' { export const Button: unknown; }",
-        api_documentation: ''
-      }
-    );
+    componentCapabilitiesHook.useFrontstageComponents.mockReturnValue({
+      data: {
+        items: [buttonComponent],
+        total: 1,
+        offset: 0,
+        limit: 10,
+        has_more: false,
+        next_offset: null
+      },
+      loading: false,
+      error: null
+    });
   });
 
   test('accepts full Tailwind and custom classes without private inventory diagnostics', () => {

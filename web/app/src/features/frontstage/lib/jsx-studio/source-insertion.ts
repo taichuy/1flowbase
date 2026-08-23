@@ -11,10 +11,8 @@ export type FrontstageJsxInsertion =
     }
   | {
       kind: 'component';
-      name: string;
-      moduleSource: string;
+      importCode: string;
       source: string;
-      typescriptDeclaration?: string;
     }
   | {
       kind: 'source';
@@ -60,11 +58,6 @@ export function planFrontstageJsxInsertion({
       break;
     case 'component':
       insertedSource = insertion.source;
-      requiredImports.push({
-        kind: 'value',
-        name: insertion.name,
-        moduleSource: insertion.moduleSource
-      });
       break;
     case 'source':
       insertedSource = insertion.source;
@@ -79,6 +72,16 @@ export function planFrontstageJsxInsertion({
       text: insertedSource
     }
   ];
+  if (
+    insertion.kind === 'component' &&
+    !source.includes(insertion.importCode)
+  ) {
+    edits.push({
+      start: 0,
+      end: 0,
+      text: `${insertion.importCode}\n\n`
+    });
+  }
   const groupedImports = groupRequiredImports(requiredImports);
   for (const imports of groupedImports) {
     const importEdit = planRequiredImportEdit(source, imports);

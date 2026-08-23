@@ -55,13 +55,10 @@ pub use installation::*;
 pub use manifest_v1::{
     parse_legacy_installed_plugin_manifest, parse_plugin_manifest,
     FrontendBlockContextContractManifest, FrontendBlockContributionManifest,
-    FrontendBlockPermissionsManifest, FrontendComponentContractManifest,
-    FrontendComponentExampleManifest, FrontendComponentPropManifest,
-    FrontendComponentUpstreamManifest, FrontendModuleAssetManifest,
-    FrontendModuleAssetRoleManifest, FrontendModuleBindingManifest,
-    LegacyInstalledManifestEligibility, NodeContributionDependencyManifest,
-    NodeContributionManifest, PluginExecutionMode, PluginManifestV1, PluginPermissionManifest,
-    PluginRuntimeLimits, PluginRuntimeManifest,
+    FrontendBlockPermissionsManifest, FrontendModuleAssetManifest, FrontendModuleAssetRoleManifest,
+    FrontendModuleBindingManifest, LegacyInstalledManifestEligibility,
+    NodeContributionDependencyManifest, NodeContributionManifest, PluginExecutionMode,
+    PluginManifestV1, PluginPermissionManifest, PluginRuntimeLimits, PluginRuntimeManifest,
 };
 pub use network_egress_provider_contract::*;
 pub use network_egress_provider_package::{

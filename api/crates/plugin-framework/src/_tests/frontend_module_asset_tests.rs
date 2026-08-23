@@ -44,7 +44,7 @@ block_contributions:
     )
 }
 
-fn valid_module(source: &str, version: &str, path: &str, sha256: &str, export: &str) -> String {
+fn valid_module(source: &str, version: &str, path: &str, sha256: &str, _export: &str) -> String {
     format!(
         r#"      - source: "{source}"
         version: "{version}"
@@ -56,15 +56,6 @@ fn valid_module(source: &str, version: &str, path: &str, sha256: &str, export: &
             media_type: "text/javascript; charset=utf-8"
             sha256: "{sha256}"
         type_declarations: "declare module '{source}' {{}}"
-        components:
-          - component_code: fixture
-            export_name: "{export}"
-            description: "Native React fixture."
-            limitations: ["Host-owned React singleton."]
-            examples:
-              - title: "Native fixture"
-                code: "<Fixture />"
-            insert_snippet: "<Fixture />"
 "#
     )
 }

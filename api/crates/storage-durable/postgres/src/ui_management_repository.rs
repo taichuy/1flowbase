@@ -4,13 +4,12 @@ use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use control_plane::ports::{
     CreateUiCodeTemplateInput, CreateUiComponentRecordInput, OfficialUiComponentCatalogRecord,
-    ReviseUiCodeTemplateInput, ReviseUiComponentContractInput, UiComponentCatalogRepository,
-    UiComponentRecordPatch, UiManagementRepository,
+    ReviseUiCodeTemplateInput, UiComponentCatalogRepository, UiComponentRecordPatch,
+    UiManagementRepository,
 };
 use domain::{
-    UiCodeTemplate, UiCodeTemplateLanguage, UiCodeTemplateRevision, UiComponentLocator,
-    UiComponentOverride, UiComponentOverrideState, UiComponentRecord, UiComponentRecordOrigin,
-    UiComponentRecordUpstream, SYSTEM_SCOPE_ID,
+    UiCodeTemplate, UiCodeTemplateLanguage, UiCodeTemplateRevision, UiComponentRecord,
+    UiComponentRecordOrigin, UiComponentRecordUpstream, SYSTEM_SCOPE_ID,
 };
 use sqlx::{Postgres, Row, Transaction};
 use uuid::Uuid;
@@ -393,35 +392,6 @@ impl UiManagementRepository for PgControlPlaneStore {
             .context("template missing")?;
         tx.commit().await?;
         Ok(value)
-    }
-
-    async fn list_ui_component_overrides(&self) -> Result<Vec<UiComponentOverride>> {
-        // Temporary D4 compile boundary: Frontstage still consumes the legacy projection.
-        // Its retired tables are gone, so it receives no overrides and uses official manifests.
-        Ok(Vec::new())
-    }
-
-    async fn get_ui_component_override(
-        &self,
-        _locator: &UiComponentLocator,
-    ) -> Result<Option<UiComponentOverride>> {
-        Ok(None)
-    }
-
-    async fn revise_ui_component_contract(
-        &self,
-        _input: &ReviseUiComponentContractInput,
-    ) -> Result<UiComponentOverride> {
-        bail!("legacy ui component contract writes were removed by WP-D2")
-    }
-
-    async fn set_ui_component_state(
-        &self,
-        _locator: &UiComponentLocator,
-        _state: UiComponentOverrideState,
-        _actor_user_id: Uuid,
-    ) -> Result<UiComponentOverride> {
-        bail!("legacy ui component state writes were removed by WP-D2")
     }
 
     async fn list_ui_component_records(&self) -> Result<Vec<UiComponentRecord>> {

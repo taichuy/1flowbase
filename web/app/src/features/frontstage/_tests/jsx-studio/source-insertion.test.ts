@@ -86,7 +86,7 @@ export default function Block({ ctx: _ctx }: { ctx: BlockContext }) {
     );
   });
 
-  test('D2-AC-002 adds a standard React component import and snippet as one edit batch', () => {
+  test('WP-D4 adds the persisted raw import and source byte-for-byte as one edit batch', () => {
     const source = `import type { BlockContext } from '${sdkSource}';
 
 export default function Block({ ctx }: { ctx: BlockContext }) {
@@ -97,21 +97,26 @@ export default function Block({ ctx }: { ctx: BlockContext }) {
       selection: insertBeforeReturn(source),
       insertion: {
         kind: 'component',
-        name: 'Button',
-        moduleSource: componentSource,
+        importCode: `import DefaultWidget, { Button as RawButton } from '@definitely/not-installed';`,
         source: '<Button onClick={() => undefined}>保存</Button>'
       }
     });
     const nextSource = applyFrontstageJsxInsertionPlan(source, plan);
 
     expect(plan.edits).toHaveLength(2);
-    expect(nextSource).toContain(`import { Button } from '${componentSource}';`);
+    expect(nextSource).toContain(
+      `import DefaultWidget, { Button as RawButton } from '@definitely/not-installed';`
+    );
     expect(nextSource).toContain(
       '<Button onClick={() => undefined}>保存</Button>'
     );
   });
 
-  test('AC-002 and AC-004 merge and deduplicate an existing multiline component import', () => {
+  test('WP-D4 repeat insertion deterministically keeps one exact persisted import block', () => {
+    const rawImport = `import {
+  Button as RawButton,
+  Stack
+} from '${componentSource}';`;
     const source = `import {
   Stack
 } from '${componentSource}';
@@ -124,8 +129,7 @@ export default function Block({ ctx }: { ctx: unknown }) {
       selection: insertBeforeReturn(source),
       insertion: {
         kind: 'component',
-        name: 'Button',
-        moduleSource: componentSource,
+        importCode: rawImport,
         source: '<Button></Button>'
       }
     });
@@ -135,8 +139,7 @@ export default function Block({ ctx }: { ctx: unknown }) {
       selection: insertBeforeReturn(firstSource),
       insertion: {
         kind: 'component',
-        name: 'Button',
-        moduleSource: componentSource,
+        importCode: rawImport,
         source: '<Button></Button>'
       }
     });
@@ -145,8 +148,8 @@ export default function Block({ ctx }: { ctx: unknown }) {
       secondPlan
     );
 
-    expect(secondSource.match(new RegExp(componentSource, 'g'))).toHaveLength(1);
-    expect(secondSource.match(/\bButton\b/g)).toHaveLength(5);
+    expect(firstSource.startsWith(`${rawImport}\n\n`)).toBe(true);
+    expect(secondSource.match(/Button as RawButton/g)).toHaveLength(1);
     expect(secondPlan.edits).toHaveLength(1);
   });
 
@@ -201,8 +204,7 @@ export default function Block({ ctx: _ctx }: { ctx: BlockContext }) {
         selection: { start: viewOffset, end: viewOffset + 7 },
         insertion: {
           kind: 'component',
-          name: 'Button',
-          moduleSource: componentSource,
+          importCode: `import { Button } from '${componentSource}';`,
           source: '<Button></Button>'
         }
       })
