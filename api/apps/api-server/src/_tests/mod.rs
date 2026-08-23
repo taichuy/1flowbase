@@ -49,6 +49,7 @@ mod settings_feature_roles_routes;
 pub(crate) mod support;
 mod system_backups_routes;
 mod system_maintenance;
+mod ui_component_catalog_source;
 mod ui_management_routes;
 
 pub(crate) use application::{

@@ -176,6 +176,12 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                 ("GET", "/api/console/settings/ui-management/components/{id}"),
                 ("PUT", "/api/console/settings/ui-management/components/{id}"),
                 ("DELETE", "/api/console/settings/ui-management/components/{id}"),
+                ("GET", "/api/console/settings/ui-management/components/catalog/index"),
+                ("GET", "/api/console/settings/ui-management/components/catalog/pages/{page}"),
+                ("GET", "/api/console/settings/ui-management/components/catalog/search"),
+                ("GET", "/api/console/settings/ui-management/components/catalog/update-status"),
+                ("POST", "/api/console/settings/ui-management/components/catalog/{component_code}/download"),
+                ("POST", "/api/console/settings/ui-management/components/catalog/groups/{source}/{group}/sync"),
             ]),
         },
         SettingsFeatureRegistration {

@@ -147,6 +147,36 @@ fn ac_001_ui_management_route_bindings_are_explicit_and_granular() {
                 "/api/console/settings/ui-management/components/:id",
                 "ui_management.components.delete",
             ),
+            (
+                "GET",
+                "/api/console/settings/ui-management/components/catalog/index",
+                "ui_management.catalog.index",
+            ),
+            (
+                "GET",
+                "/api/console/settings/ui-management/components/catalog/pages/:page",
+                "ui_management.catalog.page",
+            ),
+            (
+                "GET",
+                "/api/console/settings/ui-management/components/catalog/search",
+                "ui_management.catalog.search",
+            ),
+            (
+                "GET",
+                "/api/console/settings/ui-management/components/catalog/update-status",
+                "ui_management.catalog.update_status",
+            ),
+            (
+                "POST",
+                "/api/console/settings/ui-management/components/catalog/:component_code/download",
+                "ui_management.catalog.download",
+            ),
+            (
+                "POST",
+                "/api/console/settings/ui-management/components/catalog/groups/:source/:group/sync",
+                "ui_management.catalog.sync_group",
+            ),
         ],
     );
 }

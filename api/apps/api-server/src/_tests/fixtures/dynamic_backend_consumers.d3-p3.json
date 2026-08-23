@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 354,
+  "projected_interface_count": 360,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -1024,6 +1024,30 @@
       "View UI management components"
     ],
     [
+      "ui_management.catalog.index",
+      "GET",
+      "/api/console/settings/ui-management/components/catalog/index",
+      "UI management catalog index"
+    ],
+    [
+      "ui_management.catalog.page",
+      "GET",
+      "/api/console/settings/ui-management/components/catalog/pages/:page",
+      "UI management catalog page"
+    ],
+    [
+      "ui_management.catalog.search",
+      "GET",
+      "/api/console/settings/ui-management/components/catalog/search",
+      "Search UI management catalog"
+    ],
+    [
+      "ui_management.catalog.update_status",
+      "GET",
+      "/api/console/settings/ui-management/components/catalog/update-status",
+      "UI management catalog update status"
+    ],
+    [
       "ui_management.templates.list",
       "GET",
       "/api/console/settings/ui-management/templates",
@@ -1916,6 +1940,18 @@
       "POST",
       "/api/console/settings/ui-management/components",
       "Create UI management components"
+    ],
+    [
+      "ui_management.catalog.download",
+      "POST",
+      "/api/console/settings/ui-management/components/catalog/:component_code/download",
+      "UI management catalog download"
+    ],
+    [
+      "ui_management.catalog.sync_group",
+      "POST",
+      "/api/console/settings/ui-management/components/catalog/groups/:source/:group/sync",
+      "UI management catalog sync group"
     ],
     [
       "ui_management.templates.create",

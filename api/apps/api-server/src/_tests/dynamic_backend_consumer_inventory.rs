@@ -110,8 +110,11 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
                     | "ui_management.components.update"
                     | "ui_management.components.view"
             )
-        ) || interface.summary
-            == "Model providers instances authenticate"
+        ) || interface
+            .authorization_operation_id
+            .as_deref()
+            .is_some_and(|operation_id| operation_id.starts_with("ui_management.catalog."))
+            || interface.summary == "Model providers instances authenticate"
             || interface
                 .authorization_operation_id
                 .as_deref()

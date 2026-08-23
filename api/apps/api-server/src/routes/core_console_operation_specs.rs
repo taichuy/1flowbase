@@ -290,6 +290,15 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("ui_management.components.list", "system.ui-management"),
     settings("ui_management.components.update", "system.ui-management"),
     settings("ui_management.components.view", "system.ui-management"),
+    settings("ui_management.catalog.download", "system.ui-management"),
+    settings("ui_management.catalog.index", "system.ui-management"),
+    settings("ui_management.catalog.page", "system.ui-management"),
+    settings("ui_management.catalog.search", "system.ui-management"),
+    settings("ui_management.catalog.sync_group", "system.ui-management"),
+    settings(
+        "ui_management.catalog.update_status",
+        "system.ui-management",
+    ),
     settings("ui_management.templates.archive", "system.ui-management"),
     settings("ui_management.templates.create", "system.ui-management"),
     settings(

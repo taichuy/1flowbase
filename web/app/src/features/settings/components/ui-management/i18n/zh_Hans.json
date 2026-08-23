@@ -66,5 +66,18 @@
   "delete_component": "删除组件",
   "delete_component_confirmation": "确认删除自定义组件 {{name}}？",
   "confirm_delete": "确认删除",
-  "cancel": "取消"
+  "cancel": "取消",
+  "remote_catalog": "远程组件目录",
+  "resize_catalog_drawer": "调整远程目录抽屉宽度",
+  "catalog_search": "搜索远程组件目录",
+  "catalog_search_placeholder": "按名称、编码或关键词搜索",
+  "catalog_status_loading": "正在加载目录更新状态…",
+  "catalog_version_status": "目录 {{version}} · {{count}} 个分组",
+  "catalog_update_available": "有可用更新",
+  "catalog_group_status": "远程 {{total}} 个 · 新增或更新 {{updates}} 个 · 本地待移除 {{removals}} 个",
+  "catalog_download": "下载",
+  "catalog_sync_group": "同步分组",
+  "catalog_downloaded": "组件已下载",
+  "catalog_group_synced": "组件分组已同步",
+  "catalog_request_failed": "远程目录请求失败，现有组件记录未发生变化。"
 }

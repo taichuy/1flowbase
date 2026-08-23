@@ -50,12 +50,22 @@ export interface ConsoleUiComponentRecord {
   upstream: ConsoleUiComponentUpstream;
   version: string;
   keywords: string[];
+  catalog_updated_at: string | null;
+  source_locator: string | null;
+  source_checksum: string | null;
   created_at: string;
   updated_at: string;
 }
 export type CreateConsoleUiComponentInput = Omit<
   ConsoleUiComponentRecord,
-  'id' | 'scope_id' | 'origin' | 'created_at' | 'updated_at'
+  | 'id'
+  | 'scope_id'
+  | 'origin'
+  | 'catalog_updated_at'
+  | 'source_locator'
+  | 'source_checksum'
+  | 'created_at'
+  | 'updated_at'
 >;
 export type UpdateConsoleUiComponentInput = Omit<
   CreateConsoleUiComponentInput,
@@ -67,6 +77,76 @@ export interface ConsoleUiTemplateInput {
   name: string;
   source: string;
   language: UiCodeTemplateLanguage;
+}
+
+export interface ConsoleUiCatalogComponent {
+  component_code: string;
+  name: string;
+  description: string;
+  import_code: string;
+  source_code: string;
+  source: string;
+  group: string;
+  upstream: ConsoleUiComponentUpstream;
+  version: string;
+  keywords: string[];
+  catalog_updated_at: string;
+  source_locator: string;
+  source_checksum: string;
+}
+
+export interface ConsoleUiCatalogIndex {
+  catalog_version: string;
+  generated_at: string;
+  page_size: number;
+  total_components: number;
+  source_fingerprint: string;
+}
+
+export interface ConsoleUiCatalogPage {
+  catalog_version: string;
+  total_components: number;
+  page_size: number;
+  page: number;
+  cursor: string;
+  next_cursor: string | null;
+  records: ConsoleUiCatalogComponent[];
+}
+
+export interface ConsoleUiCatalogSearchEntry {
+  component_code: string;
+  name: string;
+  description: string;
+  source: string;
+  group: string;
+  upstream: ConsoleUiComponentUpstream;
+  version: string;
+  keywords: string[];
+  catalog_page: number;
+}
+
+export interface ConsoleUiCatalogSearchResult {
+  catalog_version: string;
+  page: number;
+  page_size: number;
+  total_entries: number;
+  entries: ConsoleUiCatalogSearchEntry[];
+}
+
+export interface ConsoleUiCatalogGroupUpdate {
+  source: string;
+  group: string;
+  remote_records: number;
+  new_or_updated_records: number;
+  removed_records: number;
+  update_available: boolean;
+}
+
+export interface ConsoleUiCatalogUpdateStatus {
+  catalog_version: string;
+  source_fingerprint: string;
+  update_available: boolean;
+  groups: ConsoleUiCatalogGroupUpdate[];
 }
 
 const root = '/api/console/settings/ui-management';
@@ -195,6 +275,60 @@ export const deleteConsoleUiComponent = (
   apiFetch<void>({
     path: `${root}/components/${id}`,
     method: 'DELETE',
+    csrfToken,
+    baseUrl
+  });
+
+export const fetchConsoleUiCatalogPage = (page: number, baseUrl?: string) =>
+  apiFetch<ConsoleUiCatalogPage>({
+    path: `${root}/components/catalog/pages/${page}`,
+    baseUrl
+  });
+
+export const fetchConsoleUiCatalogIndex = (baseUrl?: string) =>
+  apiFetch<ConsoleUiCatalogIndex>({
+    path: `${root}/components/catalog/index`,
+    baseUrl
+  });
+
+export const searchConsoleUiCatalog = (
+  query: string,
+  page = 1,
+  pageSize = 20,
+  baseUrl?: string
+) =>
+  apiFetch<ConsoleUiCatalogSearchResult>({
+    path: `${root}/components/catalog/search?q=${encodeURIComponent(query)}&page=${page}&page_size=${pageSize}`,
+    baseUrl
+  });
+
+export const fetchConsoleUiCatalogUpdateStatus = (baseUrl?: string) =>
+  apiFetch<ConsoleUiCatalogUpdateStatus>({
+    path: `${root}/components/catalog/update-status`,
+    baseUrl
+  });
+
+export const downloadConsoleUiCatalogComponent = (
+  componentCode: string,
+  csrfToken: string,
+  baseUrl?: string
+) =>
+  apiFetch<ConsoleUiCatalogComponent>({
+    path: `${root}/components/catalog/${encodeURIComponent(componentCode)}/download`,
+    method: 'POST',
+    csrfToken,
+    baseUrl
+  });
+
+export const syncConsoleUiCatalogGroup = (
+  source: string,
+  group: string,
+  csrfToken: string,
+  baseUrl?: string
+) =>
+  apiFetch<{ synchronized_records: number }>({
+    path: `${root}/components/catalog/groups/${encodeURIComponent(source)}/${encodeURIComponent(group)}/sync`,
+    method: 'POST',
     csrfToken,
     baseUrl
   });

@@ -2,12 +2,18 @@ import { describe, expect, test, vi } from 'vitest';
 import * as transport from '../transport';
 import {
   createConsoleUiComponent,
+  downloadConsoleUiCatalogComponent,
   deleteConsoleUiComponent,
   fetchConsoleUiComponent,
   fetchConsoleUiComponents,
+  fetchConsoleUiCatalogPage,
+  fetchConsoleUiCatalogIndex,
+  fetchConsoleUiCatalogUpdateStatus,
+  searchConsoleUiCatalog,
   fetchConsoleUiTemplates,
   publishConsoleUiTemplate,
   resetConsoleUiTemplateDefault,
+  syncConsoleUiCatalogGroup,
   updateConsoleUiComponent
 } from '../console-ui-management';
 
@@ -105,6 +111,37 @@ describe('console UI management client', () => {
     ).resolves.toMatchObject({
       path: '/api/console/settings/ui-management/components/component-1',
       method: 'DELETE'
+    });
+  });
+
+  test('uses remote catalog browse, search, update, download and group sync contracts', async () => {
+    await expect(fetchConsoleUiCatalogIndex()).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components/catalog/index'
+    });
+    await expect(fetchConsoleUiCatalogPage(2)).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components/catalog/pages/2'
+    });
+    await expect(
+      searchConsoleUiCatalog('chat input', 3, 20)
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components/catalog/search?q=chat%20input&page=3&page_size=20'
+    });
+    await expect(fetchConsoleUiCatalogUpdateStatus()).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components/catalog/update-status'
+    });
+    await expect(
+      downloadConsoleUiCatalogComponent('taichuy.ant-design-x.sender', 'csrf')
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components/catalog/taichuy.ant-design-x.sender/download',
+      method: 'POST',
+      csrfToken: 'csrf'
+    });
+    await expect(
+      syncConsoleUiCatalogGroup('taichuy', 'ant-design-x', 'csrf')
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components/catalog/groups/taichuy/ant-design-x/sync',
+      method: 'POST',
+      csrfToken: 'csrf'
     });
   });
 });

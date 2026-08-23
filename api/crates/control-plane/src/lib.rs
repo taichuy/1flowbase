@@ -52,6 +52,7 @@ pub mod system_backup;
 pub mod system_metadata;
 pub mod system_recovery;
 pub mod system_runtime;
+pub mod ui_component_catalog;
 pub mod ui_management;
 pub mod workspace;
 pub mod workspace_session;

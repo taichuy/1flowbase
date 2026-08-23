@@ -1,6 +1,7 @@
 use control_plane::ports::{
-    CreateUiCodeTemplateInput, CreateUiComponentRecordInput, ReviseUiCodeTemplateInput,
-    UiComponentRecordPatch, UiManagementRepository,
+    CreateUiCodeTemplateInput, CreateUiComponentRecordInput, OfficialUiComponentCatalogRecord,
+    ReviseUiCodeTemplateInput, UiComponentCatalogRepository, UiComponentRecordPatch,
+    UiManagementRepository,
 };
 use domain::{UiCodeTemplateLanguage, UiComponentRecordOrigin, UiComponentRecordUpstream};
 use storage_postgres::{run_migrations, PgControlPlaneStore};
@@ -154,4 +155,133 @@ async fn wp_d2_component_records_are_system_scoped_crud_with_official_write_prot
         .await
         .is_err());
     assert!(!store.delete_ui_component_record(official_id).await.unwrap());
+}
+
+fn official_record(code: &str, group: &str, import_code: &str) -> OfficialUiComponentCatalogRecord {
+    OfficialUiComponentCatalogRecord {
+        component_code: code.into(),
+        name: code.into(),
+        description: "Official fixture".into(),
+        import_code: import_code.into(),
+        source_code: "opaque source {{{".into(),
+        source: "taichuy".into(),
+        group: group.into(),
+        upstream: UiComponentRecordUpstream {
+            identity: "@not-installed/package".into(),
+            version: "9.9.9".into(),
+        },
+        version: "1.0.0".into(),
+        keywords: vec!["fixture".into()],
+        catalog_updated_at: time::OffsetDateTime::parse(
+            "2026-08-23T00:00:00Z",
+            &time::format_description::well_known::Rfc3339,
+        )
+        .unwrap(),
+        source_locator: format!("ui_components/@taichuy/{group}/{code}.json"),
+        source_checksum: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            .into(),
+    }
+}
+
+#[tokio::test]
+async fn wp_d3_authoritative_group_replace_is_atomic_and_group_scoped() {
+    let store = store().await;
+    let actor = Uuid::now_v7();
+    store
+        .replace_official_ui_component_source_group(
+            "taichuy",
+            "group-a",
+            &[
+                official_record("taichuy.group-a.keep", "group-a", "opaque import one"),
+                official_record("taichuy.group-a.remove", "group-a", "opaque import two"),
+            ],
+            actor,
+        )
+        .await
+        .unwrap();
+    store
+        .replace_official_ui_component_source_group(
+            "taichuy",
+            "group-b",
+            &[official_record(
+                "taichuy.group-b.untouched",
+                "group-b",
+                "opaque import",
+            )],
+            actor,
+        )
+        .await
+        .unwrap();
+    let custom = store
+        .create_ui_component_record(&CreateUiComponentRecordInput {
+            component_code: "local.group-a.custom".into(),
+            name: "Custom".into(),
+            description: "Custom fixture".into(),
+            import_code: "custom opaque import".into(),
+            source_code: "custom opaque source".into(),
+            source: "taichuy".into(),
+            group: "group-a".into(),
+            upstream: UiComponentRecordUpstream {
+                identity: "@custom/package".into(),
+                version: "1.0.0".into(),
+            },
+            version: "1.0.0".into(),
+            keywords: vec![],
+            actor_user_id: actor,
+        })
+        .await
+        .unwrap();
+
+    store
+        .replace_official_ui_component_source_group(
+            "taichuy",
+            "group-a",
+            &[official_record(
+                "taichuy.group-a.keep",
+                "group-a",
+                "import Missing from '@never-installed/new-version';",
+            )],
+            actor,
+        )
+        .await
+        .unwrap();
+
+    let records = store.list_ui_component_records().await.unwrap();
+    assert!(records.iter().any(|record| record.id == custom.id));
+    assert!(records
+        .iter()
+        .any(|record| record.component_code == "taichuy.group-b.untouched"));
+    assert!(!records
+        .iter()
+        .any(|record| record.component_code == "taichuy.group-a.remove"));
+    let kept = records
+        .iter()
+        .find(|record| record.component_code == "taichuy.group-a.keep")
+        .unwrap();
+    assert_eq!(
+        kept.import_code,
+        "import Missing from '@never-installed/new-version';"
+    );
+}
+
+#[tokio::test]
+async fn wp_d3_rejects_mixed_identity_before_authoritative_replace() {
+    let store = store().await;
+    let actor = Uuid::now_v7();
+    let before = store.list_ui_component_records().await.unwrap();
+    let error = store
+        .replace_official_ui_component_source_group(
+            "taichuy",
+            "group-a",
+            &[official_record(
+                "taichuy.group-b.invalid",
+                "group-b",
+                "opaque",
+            )],
+            actor,
+        )
+        .await
+        .unwrap_err();
+    assert!(error.to_string().contains("source/group"));
+    assert_eq!(store.list_ui_component_records().await.unwrap(), before);
 }

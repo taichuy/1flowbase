@@ -42,6 +42,7 @@ import {
   type UpdateSettingsUiComponentInput
 } from '../../api/ui-management';
 import { SettingsSectionSurface } from '../SettingsSectionSurface';
+import { RemoteCatalogDrawer } from './RemoteCatalogDrawer';
 
 type DrawerMode = 'create' | 'edit' | 'detail';
 type FormValue = Omit<CreateSettingsUiComponentInput, 'keywords'> & {
@@ -95,6 +96,7 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
   const [drawerMode, setDrawerMode] = useState<DrawerMode>();
   const [selected, setSelected] = useState<SettingsUiComponentRecord>();
   const [deleteTarget, setDeleteTarget] = useState<SettingsUiComponentRecord>();
+  const [catalogOpen, setCatalogOpen] = useState(false);
   const importCode =
     Form.useWatch('import_code', { form, preserve: true }) ?? '';
   const sourceCode =
@@ -306,6 +308,9 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
           onPageChange={setPage}
           toolbar={
             <Flex justify="flex-end" gap={8} wrap>
+              <Button onClick={() => setCatalogOpen(true)}>
+                {t('remote_catalog')}
+              </Button>
               {canManage ? (
                 <Button type="primary" onClick={create}>
                   {t('new_component')}
@@ -523,6 +528,11 @@ export function ComponentRecordsTab({ canManage }: { canManage: boolean }) {
           ? t('delete_component_confirmation', { name: deleteTarget.name })
           : null}
       </Modal>
+      <RemoteCatalogDrawer
+        canManage={canManage}
+        open={catalogOpen}
+        onClose={() => setCatalogOpen(false)}
+      />
     </SettingsSectionSurface>
   );
 }

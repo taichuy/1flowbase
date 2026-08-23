@@ -48,6 +48,11 @@ const uiManagementApi = vi.hoisted(() => ({
   createSettingsUiComponent: vi.fn(),
   updateSettingsUiComponent: vi.fn(),
   deleteSettingsUiComponent: vi.fn(),
+  fetchSettingsUiCatalogPage: vi.fn(),
+  searchSettingsUiCatalog: vi.fn(),
+  fetchSettingsUiCatalogUpdateStatus: vi.fn(),
+  downloadSettingsUiCatalogComponent: vi.fn(),
+  syncSettingsUiCatalogGroup: vi.fn(),
   fetchSettingsUiTemplates: vi.fn(),
   archiveSettingsUiTemplate: vi.fn(),
   createSettingsUiTemplate: vi.fn(),
@@ -108,6 +113,50 @@ describe('UiManagementPanel component records', () => {
     uiManagementApi.createSettingsUiComponent.mockResolvedValue(custom);
     uiManagementApi.updateSettingsUiComponent.mockResolvedValue(custom);
     uiManagementApi.deleteSettingsUiComponent.mockResolvedValue(undefined);
+    uiManagementApi.fetchSettingsUiCatalogPage.mockResolvedValue({
+      catalog_version: '1.0.0',
+      total_components: 1,
+      page_size: 100,
+      page: 1,
+      cursor: 'start',
+      next_cursor: null,
+      records: [
+        {
+          ...official,
+          catalog_updated_at: official.updated_at,
+          source_locator: 'ui_components/@taichuy/ant-design-x/bubble.json',
+          source_checksum: `sha256:${'a'.repeat(64)}`
+        }
+      ]
+    });
+    uiManagementApi.searchSettingsUiCatalog.mockResolvedValue({
+      catalog_version: '1.0.0',
+      page: 1,
+      page_size: 20,
+      total_entries: 1,
+      entries: [{ ...official, catalog_page: 1 }]
+    });
+    uiManagementApi.fetchSettingsUiCatalogUpdateStatus.mockResolvedValue({
+      catalog_version: '1.0.0',
+      source_fingerprint: `sha256:${'b'.repeat(64)}`,
+      update_available: true,
+      groups: [
+        {
+          source: 'taichuy',
+          group: 'ant-design-x',
+          remote_records: 2,
+          new_or_updated_records: 1,
+          removed_records: 0,
+          update_available: true
+        }
+      ]
+    });
+    uiManagementApi.downloadSettingsUiCatalogComponent.mockResolvedValue(
+      official
+    );
+    uiManagementApi.syncSettingsUiCatalogGroup.mockResolvedValue({
+      synchronized_records: 2
+    });
   });
 
   test('WP-D2 lists and searches independent persisted records', async () => {
@@ -232,6 +281,36 @@ describe('UiManagementPanel component records', () => {
       expect(uiManagementApi.deleteSettingsUiComponent).toHaveBeenCalledWith(
         custom.id,
         expect.any(String)
+      )
+    );
+  });
+
+  test('WP-D3 browses the remote catalog and exposes download and authoritative group sync', async () => {
+    render(
+      <AppProviders>
+        <UiManagementPanel canManage />
+      </AppProviders>
+    );
+    await screen.findByText('Bubble');
+    fireEvent.click(screen.getByRole('button', { name: '远程组件目录' }));
+    const drawer = await screen.findByRole('dialog', {
+      name: '远程组件目录'
+    });
+    expect(
+      await within(drawer).findByText('taichuy / ant-design-x')
+    ).toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: '下载' }));
+    await waitFor(() =>
+      expect(
+        uiManagementApi.downloadSettingsUiCatalogComponent
+      ).toHaveBeenCalledWith('taichuy.ant-design-x.bubble', 'csrf')
+    );
+    fireEvent.click(within(drawer).getByRole('button', { name: '同步分组' }));
+    await waitFor(() =>
+      expect(uiManagementApi.syncSettingsUiCatalogGroup).toHaveBeenCalledWith(
+        'taichuy',
+        'ant-design-x',
+        'csrf'
       )
     );
   });

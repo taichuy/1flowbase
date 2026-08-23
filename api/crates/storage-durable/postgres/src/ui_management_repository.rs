@@ -1,8 +1,11 @@
+use std::collections::{BTreeMap, BTreeSet};
+
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
 use control_plane::ports::{
-    CreateUiCodeTemplateInput, CreateUiComponentRecordInput, ReviseUiCodeTemplateInput,
-    ReviseUiComponentContractInput, UiComponentRecordPatch, UiManagementRepository,
+    CreateUiCodeTemplateInput, CreateUiComponentRecordInput, OfficialUiComponentCatalogRecord,
+    ReviseUiCodeTemplateInput, ReviseUiComponentContractInput, UiComponentCatalogRepository,
+    UiComponentRecordPatch, UiManagementRepository,
 };
 use domain::{
     UiCodeTemplate, UiCodeTemplateLanguage, UiCodeTemplateRevision, UiComponentLocator,
@@ -108,6 +111,9 @@ fn map_component_record(row: sqlx::postgres::PgRow) -> Result<UiComponentRecord>
         },
         version: row.get("version"),
         keywords: row.get("keywords"),
+        catalog_updated_at: row.get("catalog_updated_at"),
+        source_locator: row.get("source_locator"),
+        source_checksum: row.get("source_checksum"),
         created_by: row.get("created_by"),
         updated_by: row.get("updated_by"),
         created_at: row.get("created_at"),
@@ -117,10 +123,120 @@ fn map_component_record(row: sqlx::postgres::PgRow) -> Result<UiComponentRecord>
 
 const COMPONENT_RECORD_COLUMNS: &str = r#"id, scope_id, component_code, name, description, import_code, source_code, origin,
     source, "group", upstream_identity, upstream_version, version, keywords,
+    catalog_updated_at, source_locator, source_checksum,
     created_by, updated_by, created_at, updated_at"#;
 
 fn component_record_select() -> String {
     format!("select {COMPONENT_RECORD_COLUMNS} from ui_component_records")
+}
+
+fn validate_official_catalog_record(record: &OfficialUiComponentCatalogRecord) -> Result<()> {
+    domain::validate_ui_component_record_fields(
+        &record.component_code,
+        &record.name,
+        &record.description,
+        &record.import_code,
+        &record.source_code,
+        UiComponentRecordOrigin::Official,
+        &record.source,
+        &record.group,
+        &record.upstream,
+        &record.version,
+        &record.keywords,
+    )?;
+    let expected_prefix = format!("ui_components/@{}/{}/", record.source, record.group);
+    if !record.source_locator.starts_with(&expected_prefix)
+        || !record.source_locator.ends_with(".json")
+    {
+        bail!("official ui component source locator does not match source/group");
+    }
+    Ok(())
+}
+
+async fn upsert_official_catalog_record(
+    tx: &mut Transaction<'_, Postgres>,
+    record: &OfficialUiComponentCatalogRecord,
+    actor_user_id: Uuid,
+) -> Result<()> {
+    let changed = sqlx::query(
+        r#"insert into ui_component_records
+        (id, scope_id, component_code, name, description, import_code, source_code, origin,
+         source, "group", upstream_identity, upstream_version, version, keywords,
+         catalog_updated_at, source_locator, source_checksum, created_by, updated_by)
+        values ($1,$2,$3,$4,$5,$6,$7,'official',$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$17)
+        on conflict (scope_id, component_code) do update set
+            name=excluded.name, description=excluded.description,
+            import_code=excluded.import_code, source_code=excluded.source_code,
+            upstream_identity=excluded.upstream_identity,
+            upstream_version=excluded.upstream_version, version=excluded.version,
+            keywords=excluded.keywords, catalog_updated_at=excluded.catalog_updated_at,
+            source_locator=excluded.source_locator, source_checksum=excluded.source_checksum,
+            updated_by=excluded.updated_by, updated_at=now()
+        where ui_component_records.origin='official'
+          and ui_component_records.source=excluded.source
+          and ui_component_records."group"=excluded."group""#,
+    )
+    .bind(Uuid::now_v7())
+    .bind(SYSTEM_SCOPE_ID)
+    .bind(&record.component_code)
+    .bind(&record.name)
+    .bind(&record.description)
+    .bind(&record.import_code)
+    .bind(&record.source_code)
+    .bind(&record.source)
+    .bind(&record.group)
+    .bind(&record.upstream.identity)
+    .bind(&record.upstream.version)
+    .bind(&record.version)
+    .bind(&record.keywords)
+    .bind(record.catalog_updated_at)
+    .bind(&record.source_locator)
+    .bind(&record.source_checksum)
+    .bind(actor_user_id)
+    .execute(&mut **tx)
+    .await?;
+    if changed.rows_affected() != 1 {
+        bail!("ui component identity is owned by a custom record or another source/group");
+    }
+    Ok(())
+}
+
+async fn replace_official_group_in_transaction(
+    tx: &mut Transaction<'_, Postgres>,
+    source: &str,
+    group: &str,
+    records: &[OfficialUiComponentCatalogRecord],
+    actor_user_id: Uuid,
+) -> Result<()> {
+    if records
+        .iter()
+        .any(|record| record.source != source || record.group != group)
+    {
+        bail!("official catalog records do not match authoritative source/group");
+    }
+    let mut codes = BTreeSet::new();
+    for record in records {
+        validate_official_catalog_record(record)?;
+        if !codes.insert(record.component_code.clone()) {
+            bail!("official catalog contains duplicate component_code");
+        }
+    }
+    for record in records {
+        upsert_official_catalog_record(tx, record, actor_user_id).await?;
+    }
+    let codes = codes.into_iter().collect::<Vec<_>>();
+    sqlx::query(
+        r#"delete from ui_component_records
+        where scope_id=$1 and origin='official' and source=$2 and "group"=$3
+          and not (component_code = any($4))"#,
+    )
+    .bind(SYSTEM_SCOPE_ID)
+    .bind(source)
+    .bind(group)
+    .bind(&codes)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
 }
 
 #[async_trait]
@@ -456,5 +572,96 @@ impl UiManagementRepository for PgControlPlaneStore {
         .await?
         .rows_affected()
             == 1)
+    }
+}
+
+#[async_trait]
+impl UiComponentCatalogRepository for PgControlPlaneStore {
+    async fn count_ui_component_records(&self) -> Result<usize> {
+        let count: i64 =
+            sqlx::query_scalar("select count(*) from ui_component_records where scope_id=$1")
+                .bind(SYSTEM_SCOPE_ID)
+                .fetch_one(self.pool())
+                .await?;
+        usize::try_from(count).context("ui component record count exceeds usize")
+    }
+
+    async fn list_official_ui_component_records(&self) -> Result<Vec<UiComponentRecord>> {
+        let query = format!(
+            "{} where scope_id=$1 and origin='official' order by source, \"group\", component_code",
+            component_record_select()
+        );
+        sqlx::query(&query)
+            .bind(SYSTEM_SCOPE_ID)
+            .fetch_all(self.pool())
+            .await?
+            .into_iter()
+            .map(map_component_record)
+            .collect()
+    }
+
+    async fn upsert_official_ui_component_record(
+        &self,
+        record: &OfficialUiComponentCatalogRecord,
+        actor_user_id: Uuid,
+    ) -> Result<()> {
+        validate_official_catalog_record(record)?;
+        let mut tx = self.pool().begin().await?;
+        upsert_official_catalog_record(&mut tx, record, actor_user_id).await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn replace_official_ui_component_source_group(
+        &self,
+        source: &str,
+        group: &str,
+        records: &[OfficialUiComponentCatalogRecord],
+        actor_user_id: Uuid,
+    ) -> Result<()> {
+        let mut tx = self.pool().begin().await?;
+        replace_official_group_in_transaction(&mut tx, source, group, records, actor_user_id)
+            .await?;
+        tx.commit().await?;
+        Ok(())
+    }
+
+    async fn replace_official_ui_component_catalog_groups(
+        &self,
+        records: &[OfficialUiComponentCatalogRecord],
+        actor_user_id: Uuid,
+    ) -> Result<bool> {
+        let mut groups = BTreeMap::<(String, String), Vec<_>>::new();
+        for record in records {
+            groups
+                .entry((record.source.clone(), record.group.clone()))
+                .or_default()
+                .push(record.clone());
+        }
+        let mut tx = self.pool().begin().await?;
+        sqlx::query("lock table ui_component_records in share row exclusive mode")
+            .execute(&mut *tx)
+            .await?;
+        let existing: i64 =
+            sqlx::query_scalar("select count(*) from ui_component_records where scope_id=$1")
+                .bind(SYSTEM_SCOPE_ID)
+                .fetch_one(&mut *tx)
+                .await?;
+        if existing != 0 {
+            tx.rollback().await?;
+            return Ok(false);
+        }
+        for ((source, group), records) in groups {
+            replace_official_group_in_transaction(
+                &mut tx,
+                &source,
+                &group,
+                &records,
+                actor_user_id,
+            )
+            .await?;
+        }
+        tx.commit().await?;
+        Ok(true)
     }
 }

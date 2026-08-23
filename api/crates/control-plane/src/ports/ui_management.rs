@@ -4,6 +4,8 @@ use domain::{
     FrontendComponentContract, UiCodeTemplate, UiCodeTemplateLanguage, UiComponentLocator,
     UiComponentOverride, UiComponentOverrideState, UiComponentRecord, UiComponentRecordUpstream,
 };
+use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 #[derive(Debug, Clone)]
@@ -59,6 +61,108 @@ pub struct UiComponentRecordPatch {
     pub version: String,
     pub keywords: Vec<String>,
     pub actor_user_id: Uuid,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OfficialUiComponentCatalogRecord {
+    pub component_code: String,
+    pub name: String,
+    pub description: String,
+    pub import_code: String,
+    pub source_code: String,
+    pub source: String,
+    pub group: String,
+    pub upstream: UiComponentRecordUpstream,
+    pub version: String,
+    pub keywords: Vec<String>,
+    pub catalog_updated_at: OffsetDateTime,
+    pub source_locator: String,
+    pub source_checksum: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UiComponentCatalogIndex {
+    pub catalog_version: String,
+    pub generated_at: OffsetDateTime,
+    pub page_size: usize,
+    pub total_components: usize,
+    pub source_fingerprint: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UiComponentCatalogPage {
+    pub catalog_version: String,
+    pub total_components: usize,
+    pub page_size: usize,
+    pub page: u32,
+    pub cursor: String,
+    pub next_cursor: Option<String>,
+    pub records: Vec<OfficialUiComponentCatalogRecord>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UiComponentCatalogSearchEntry {
+    pub component_code: String,
+    pub name: String,
+    pub description: String,
+    pub source: String,
+    pub group: String,
+    pub upstream: UiComponentRecordUpstream,
+    pub version: String,
+    pub keywords: Vec<String>,
+    pub catalog_page: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct UiComponentCatalogSearchResult {
+    pub catalog_version: String,
+    pub page: u32,
+    pub page_size: usize,
+    pub total_entries: usize,
+    pub entries: Vec<UiComponentCatalogSearchEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UiComponentCatalogSeed {
+    pub catalog_version: String,
+    pub source_fingerprint: String,
+    pub records: Vec<OfficialUiComponentCatalogRecord>,
+}
+
+#[async_trait]
+pub trait UiComponentCatalogSource: Send + Sync {
+    async fn index(&self) -> Result<UiComponentCatalogIndex>;
+    async fn page(&self, page: u32) -> Result<UiComponentCatalogPage>;
+    async fn search(
+        &self,
+        query: &str,
+        page: u32,
+        page_size: usize,
+    ) -> Result<UiComponentCatalogSearchResult>;
+    async fn seed(&self) -> Result<UiComponentCatalogSeed>;
+}
+
+#[async_trait]
+pub trait UiComponentCatalogRepository: Send + Sync {
+    async fn count_ui_component_records(&self) -> Result<usize>;
+    async fn list_official_ui_component_records(&self) -> Result<Vec<UiComponentRecord>>;
+    async fn upsert_official_ui_component_record(
+        &self,
+        record: &OfficialUiComponentCatalogRecord,
+        actor_user_id: Uuid,
+    ) -> Result<()>;
+    async fn replace_official_ui_component_source_group(
+        &self,
+        source: &str,
+        group: &str,
+        records: &[OfficialUiComponentCatalogRecord],
+        actor_user_id: Uuid,
+    ) -> Result<()>;
+    async fn replace_official_ui_component_catalog_groups(
+        &self,
+        records: &[OfficialUiComponentCatalogRecord],
+        actor_user_id: Uuid,
+    ) -> Result<bool>;
 }
 
 #[async_trait]
