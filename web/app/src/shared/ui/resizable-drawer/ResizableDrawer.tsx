@@ -1,12 +1,13 @@
 import { Drawer } from 'antd';
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 
 import './resizable-drawer.css';
 
 export interface ResizableDrawerProps {
   open: boolean;
   title: ReactNode;
+  ariaLabel?: string;
   children: ReactNode;
   onClose: () => void;
   defaultWidth?: number;
@@ -30,6 +31,7 @@ const NATIVE_DRAGGER_OFFSET = -NATIVE_DRAGGER_HIT_WIDTH / 2;
 const WIDTH_STORAGE_KEY_PREFIX = 'resizable-drawer:width:';
 
 export function ResizableDrawer({
+  ariaLabel,
   bodyClassName,
   children,
   defaultWidth = DEFAULT_WIDTH,
@@ -46,8 +48,14 @@ export function ResizableDrawer({
   viewportGutter = 0,
   zIndex
 }: ResizableDrawerProps) {
+  const titleId = useId();
   const storageKey = pageWidthStorageKey();
-  const initialWidth = resolveWidth(defaultWidth, minWidth, maxWidth, storageKey);
+  const initialWidth = resolveWidth(
+    defaultWidth,
+    minWidth,
+    maxWidth,
+    storageKey
+  );
   const [width, setWidth] = useState(() => initialWidth);
   const viewportWidth =
     viewportGutter > 0 ? `calc(100vw - ${viewportGutter}px)` : '100vw';
@@ -77,6 +85,8 @@ export function ResizableDrawer({
 
   return (
     <Drawer
+      aria-label={ariaLabel}
+      aria-labelledby={titleId}
       defaultSize={initialWidth}
       destroyOnHidden={destroyOnClose}
       extra={extra}
@@ -101,7 +111,7 @@ export function ResizableDrawer({
           ...(viewportGutter > 0 ? { maxWidth: viewportWidth } : {})
         }
       }}
-      title={title}
+      title={<span id={titleId}>{title}</span>}
       zIndex={zIndex}
       onClose={onClose}
     >

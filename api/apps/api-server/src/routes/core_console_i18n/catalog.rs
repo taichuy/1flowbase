@@ -112,7 +112,7 @@ pub(super) const TEXTS: &[CoreConsoleDisplayText] = &[
     ),
     settings_feature!(
         "console.policy_groups.settings.system.ui-management.description",
-        "Code template and component contract management operations"
+        "Code template and persisted component record management operations"
     ),
     policy!("Signed-in console"),
     policy!("Console routes available to every signed-in user"),

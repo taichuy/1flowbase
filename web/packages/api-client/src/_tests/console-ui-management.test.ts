@@ -1,10 +1,20 @@
 import { describe, expect, test, vi } from 'vitest';
 import * as transport from '../transport';
 import {
+  createConsoleUiComponent,
+  downloadConsoleUiCatalogComponent,
+  deleteConsoleUiComponent,
+  fetchConsoleUiComponent,
+  fetchConsoleUiComponents,
+  fetchConsoleUiCatalogPage,
+  fetchConsoleUiCatalogIndex,
+  fetchConsoleUiCatalogUpdateStatus,
+  searchConsoleUiCatalog,
   fetchConsoleUiTemplates,
   publishConsoleUiTemplate,
   resetConsoleUiTemplateDefault,
-  updateConsoleUiComponentState
+  syncConsoleUiCatalogGroup,
+  updateConsoleUiComponent
 } from '../console-ui-management';
 
 describe('console UI management client', () => {
@@ -47,22 +57,91 @@ describe('console UI management client', () => {
     });
   });
 
-  test('changes discovery state without addressing runtime assets', async () => {
+  test('uses record CRUD paths without legacy contract or state endpoints', async () => {
+    await expect(fetchConsoleUiComponents()).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components'
+    });
+    await expect(fetchConsoleUiComponent('component-1')).resolves.toMatchObject(
+      {
+        path: '/api/console/settings/ui-management/components/component-1'
+      }
+    );
     await expect(
-      updateConsoleUiComponentState(
+      createConsoleUiComponent(
         {
-          provider_code: '1flowbase',
-          contribution_code: 'frontstage.js-ui-block',
-          module_source: 'antd',
-          export_name: 'Button'
+          component_code: 'local.button',
+          name: 'Button',
+          description: 'Button example',
+          import_code: "import { Button } from 'antd';",
+          source_code: '<Button />',
+          source: 'local',
+          group: 'controls',
+          upstream: { identity: 'antd', version: '6.0.0' },
+          version: '1.0.0',
+          keywords: ['action']
         },
-        'hidden',
         'csrf'
       )
     ).resolves.toMatchObject({
-      path: '/api/console/settings/ui-management/components/state',
-      method: 'PUT',
-      body: expect.objectContaining({ state: 'hidden' })
+      path: '/api/console/settings/ui-management/components',
+      method: 'POST'
+    });
+    await expect(
+      updateConsoleUiComponent(
+        'component-1',
+        {
+          name: 'Primary button',
+          description: 'Button example',
+          import_code: "import { Button } from 'antd';",
+          source_code: '<Button type="primary" />',
+          source: 'local',
+          group: 'controls',
+          upstream: { identity: 'antd', version: '6.0.0' },
+          version: '1.1.0',
+          keywords: ['action']
+        },
+        'csrf'
+      )
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components/component-1',
+      method: 'PUT'
+    });
+    await expect(
+      deleteConsoleUiComponent('component-1', 'csrf')
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components/component-1',
+      method: 'DELETE'
+    });
+  });
+
+  test('uses remote catalog browse, search, update, download and group sync contracts', async () => {
+    await expect(fetchConsoleUiCatalogIndex()).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components/catalog/index'
+    });
+    await expect(fetchConsoleUiCatalogPage(2)).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components/catalog/pages/2'
+    });
+    await expect(
+      searchConsoleUiCatalog('chat input', 3, 20)
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components/catalog/search?q=chat%20input&page=3&page_size=20'
+    });
+    await expect(fetchConsoleUiCatalogUpdateStatus()).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components/catalog/update-status'
+    });
+    await expect(
+      downloadConsoleUiCatalogComponent('taichuy.ant-design-x.sender', 'csrf')
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components/catalog/taichuy.ant-design-x.sender/download',
+      method: 'POST',
+      csrfToken: 'csrf'
+    });
+    await expect(
+      syncConsoleUiCatalogGroup('taichuy', 'ant-design-x', 'csrf')
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/ui-management/components/catalog/groups/taichuy/ant-design-x/sync',
+      method: 'POST',
+      csrfToken: 'csrf'
     });
   });
 });

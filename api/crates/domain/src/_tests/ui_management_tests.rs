@@ -1,6 +1,6 @@
 use crate::{
-    validate_ui_code_template, validate_ui_component_contract, FrontendComponentContract,
-    FrontendComponentExample, UiComponentLocator, UiManagementInvariantError,
+    validate_ui_code_template, validate_ui_component_record_fields, UiComponentRecordOrigin,
+    UiComponentRecordUpstream, UiManagementInvariantError,
 };
 
 #[test]
@@ -16,29 +16,40 @@ fn ac_002_ui_code_template_rejects_empty_and_oversized_source() {
 }
 
 #[test]
-fn ac_004_managed_component_contract_must_match_real_export() {
-    let locator = UiComponentLocator {
-        provider_code: "1flowbase".to_string(),
-        contribution_code: "frontstage.js-ui-block".to_string(),
-        module_source: "antd".to_string(),
-        export_name: "Button".to_string(),
+fn wp_d2_component_record_validates_shape_without_interpreting_code() {
+    let upstream = UiComponentRecordUpstream {
+        identity: "@example/ui".into(),
+        version: "2.4.0".into(),
     };
-    let contract = FrontendComponentContract {
-        component_code: "button".to_string(),
-        export_name: "Table".to_string(),
-        upstream: None,
-        description: "Controlled button".to_string(),
-        props: Vec::new(),
-        limitations: vec!["Uses the registered host export.".to_string()],
-        examples: vec![FrontendComponentExample {
-            title: "Primary action".to_string(),
-            code: "<Button>Save</Button>".to_string(),
-        }],
-        insert_snippet: "<Button>Save</Button>".to_string(),
-    };
-
     assert_eq!(
-        validate_ui_component_contract(&locator, &contract),
-        Err(UiManagementInvariantError::ComponentExportMismatch)
+        validate_ui_component_record_fields(
+            "Example.Button",
+            "Button",
+            "A button",
+            "import { Button } from '@example/ui';",
+            "<Button>{value}</Button>",
+            UiComponentRecordOrigin::Custom,
+            "local",
+            "controls",
+            &upstream,
+            "1.0.0",
+            &["action".into()],
+        ),
+        Err(UiManagementInvariantError::InvalidComponentCode)
     );
+
+    assert!(validate_ui_component_record_fields(
+        "example.button",
+        "Button",
+        "A button",
+        "this string is stored as opaque import code {{",
+        "this string is stored as opaque source code }}",
+        UiComponentRecordOrigin::Custom,
+        "local",
+        "controls",
+        &upstream,
+        "1.0.0",
+        &["action".into()],
+    )
+    .is_ok());
 }

@@ -153,68 +153,43 @@ export interface ConsoleFrontstageInterfaceCapabilityQuery {
   limit?: number;
 }
 
-export interface ConsoleFrontendComponentUpstream {
-  package: string;
-  component: string;
+export interface ConsoleFrontstageComponentUpstream {
+  identity: string;
   version: string;
 }
 
-export interface ConsoleFrontendComponentProp {
+export interface ConsoleFrontstageComponent {
+  id: string;
+  scope_id: string;
+  component_code: string;
   name: string;
-  type: string;
-  required: boolean;
   description: string;
+  import_code: string;
+  source_code: string;
+  origin: 'official' | 'custom';
+  source: string;
+  group: string;
+  upstream: ConsoleFrontstageComponentUpstream;
+  version: string;
+  keywords: string[];
+  catalog_updated_at: string | null;
+  source_locator: string | null;
+  source_checksum: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
-export interface ConsoleFrontendComponentExample {
-  title: string;
-  code: string;
-}
-
-export interface ConsoleFrontendModuleBrowserAsset {
-  sha256: string;
-  url: string;
-}
-
-export interface ConsoleFrontstageComponentCapabilitySummary {
-  component_id: string;
-  installation_id: string;
-  provider_code: string;
-  plugin_id: string;
-  plugin_version: string;
-  contribution_code: string;
-  module_source: string;
-  module_version: string;
-  browser_asset: ConsoleFrontendModuleBrowserAsset | null;
-  export_name: string;
-  upstream: ConsoleFrontendComponentUpstream | null;
-  description: string;
-  insert_snippet: string;
-}
-
-export interface ConsoleFrontstageComponentCapability extends ConsoleFrontstageComponentCapabilitySummary {
-  props: ConsoleFrontendComponentProp[];
-  limitations: string[];
-  examples: ConsoleFrontendComponentExample[];
-  typescript_declaration: string;
-  api_documentation: string;
-}
-
-export interface ConsoleFrontstageComponentCapabilityPage {
-  items: ConsoleFrontstageComponentCapabilitySummary[];
+export interface ConsoleFrontstageComponentPage {
+  items: ConsoleFrontstageComponent[];
   total: number;
   offset: number;
   limit: number;
   has_more: boolean;
   next_offset: number | null;
-  module_sources: string[];
 }
 
-export interface ConsoleFrontstageComponentCapabilityQuery {
-  installation_id?: string;
-  contribution_code?: string;
+export interface ConsoleFrontstageComponentQuery {
   query?: string;
-  module_source?: string;
   offset?: number;
   limit?: number;
 }
@@ -279,35 +254,28 @@ export function getFrontstageInterfaceCapability(
   });
 }
 
-export function listFrontstageComponentCapabilities(
-  query: ConsoleFrontstageComponentCapabilityQuery = {},
+export function listFrontstageComponents(
+  query: ConsoleFrontstageComponentQuery = {},
   baseUrl?: string
-): Promise<ConsoleFrontstageComponentCapabilityPage> {
+): Promise<ConsoleFrontstageComponentPage> {
   const params = new URLSearchParams();
-  if (query.installation_id) {
-    params.set('installation_id', query.installation_id);
-  }
-  if (query.contribution_code) {
-    params.set('contribution_code', query.contribution_code);
-  }
   if (query.query) params.set('query', query.query);
-  if (query.module_source) params.set('module_source', query.module_source);
   if (query.offset !== undefined) params.set('offset', String(query.offset));
   if (query.limit !== undefined) params.set('limit', String(query.limit));
   const suffix = params.size > 0 ? `?${params.toString()}` : '';
-  return apiFetch<ConsoleFrontstageComponentCapabilityPage>({
-    path: `/api/console/frontstage/component-capabilities${suffix}`,
+  return apiFetch<ConsoleFrontstageComponentPage>({
+    path: `/api/console/frontstage/components${suffix}`,
     method: 'GET',
     baseUrl
   });
 }
 
-export function getFrontstageComponentCapability(
+export function getFrontstageComponent(
   componentId: string,
   baseUrl?: string
-): Promise<ConsoleFrontstageComponentCapability> {
-  return apiFetch<ConsoleFrontstageComponentCapability>({
-    path: `/api/console/frontstage/component-capabilities/${encodeURIComponent(componentId)}`,
+): Promise<ConsoleFrontstageComponent> {
+  return apiFetch<ConsoleFrontstageComponent>({
+    path: `/api/console/frontstage/components/${encodeURIComponent(componentId)}`,
     method: 'GET',
     baseUrl
   });

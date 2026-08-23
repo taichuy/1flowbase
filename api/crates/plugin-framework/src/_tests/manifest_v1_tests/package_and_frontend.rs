@@ -448,29 +448,6 @@ block_contributions:
             sha256: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
         type_declarations: |
           declare module '@acme/native-components' {}
-        components:
-          - component_code: button
-            export_name: Button
-            upstream:
-              package: antd
-              component: Button
-              version: "5.x"
-            description: "Native React Button component."
-            props:
-              - name: type
-                type: "'primary' | 'default' | 'dashed' | 'link' | 'text'"
-                required: false
-                description: "按钮视觉类型。"
-              - name: actionId
-                type: string
-                required: false
-                description: "点击后发送的区块 action 标识。"
-            limitations:
-              - "不支持 React onClick。"
-            examples:
-              - title: "触发保存操作"
-                code: '<Button type="primary" actionId="save">保存</Button>'
-            insert_snippet: '<Button type="primary" actionId="save">保存</Button>'
     context_contract:
       primitives:
         - text
@@ -501,16 +478,8 @@ block_contributions:
     assert_eq!(block.code_template_language.as_deref(), Some("tsx"));
     assert_eq!(block.code_modules[0].source, "@1flowbase/block-sdk");
     assert_eq!(block.code_modules[0].exports, vec!["defineBlock"]);
-    let button = &block.code_modules[1].components[0];
-    assert_eq!(button.component_code, "button");
-    assert_eq!(button.export_name, "Button");
-    assert_eq!(button.props[0].name, "type");
-    assert_eq!(
-        button.props[0].type_name,
-        "'primary' | 'default' | 'dashed' | 'link' | 'text'"
-    );
-    assert_eq!(button.examples[0].title, "触发保存操作");
-    assert!(button.limitations[0].contains("onClick"));
+    assert_eq!(block.code_modules[1].source, "@acme/native-components");
+    assert_eq!(block.code_modules[1].exports, vec!["Button"]);
     assert_eq!(block.context_contract.primitives, vec!["text", "image"]);
     assert_eq!(block.ui_capabilities, vec!["responsive", "configurable"]);
 }
@@ -667,7 +636,7 @@ fn d5_p3_isolated_runtime_requires_one_verified_browser_module_asset() {
 }
 
 #[test]
-fn d2_ac_001_builtin_frontend_components_publish_native_module_contract() {
+fn wp_d4_builtin_manifest_preserves_runtime_module_without_component_contracts() {
     let manifest_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../plugins/capability-plugins/1flowbase/manifest.yaml");
     let source = std::fs::read_to_string(&manifest_path).unwrap();
@@ -678,13 +647,6 @@ fn d2_ac_001_builtin_frontend_components_publish_native_module_contract() {
         .iter()
         .find(|module| module.source == "@1flowbase/native-components")
         .unwrap();
-    let exports = native_module
-        .components
-        .iter()
-        .map(|component| component.export_name.as_str())
-        .collect::<Vec<_>>();
-
-    assert_eq!(exports, vec!["Surface", "ScrollableSurface"]);
     assert_eq!(native_module.version, "1.0.0");
     assert_eq!(native_module.exports, vec!["ScrollableSurface", "Surface"]);
     assert_eq!(
@@ -692,6 +654,10 @@ fn d2_ac_001_builtin_frontend_components_publish_native_module_contract() {
         "browser-assets/native-components.js"
     );
     assert_eq!(native_module.assets[0].sha256.len(), 64);
+    assert!(native_module
+        .type_declarations
+        .contains("ScrollableSurface"));
+    assert!(!source.contains("components:"));
     assert!(!source.contains("antd_facade"));
     assert!(!source.contains("FacadeCommonProps"));
 }

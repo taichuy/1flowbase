@@ -37,6 +37,7 @@ pub mod runtime_profile_client;
 pub mod runtime_registry_sync;
 pub mod system_backup;
 pub mod system_recovery;
+pub mod ui_component_catalog_source;
 pub mod workers;
 
 use std::{net::SocketAddr, path::PathBuf, sync::Arc};
@@ -675,12 +676,45 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     crate::workers::workflow_schedule::spawn_workflow_schedule_loops(state.clone());
     crate::workers::provider_request_logs::spawn_provider_request_log_worker(state.clone());
     crate::workers::billing::spawn_billing_worker(state.clone());
+    #[cfg(not(test))]
+    spawn_default_ui_component_catalog_bootstrap(
+        state.store.clone(),
+        bootstrap_result.root_user_id,
+    );
 
     Ok(app_with_state_and_config_and_console_route_assembly(
         state,
         config,
         compiled_console_plan.route_assembly,
     ))
+}
+
+#[cfg(not(test))]
+fn spawn_default_ui_component_catalog_bootstrap(
+    store: storage_durable::MainDurableStore,
+    actor_user_id: uuid::Uuid,
+) {
+    tokio::spawn(async move {
+        let service = control_plane::ui_component_catalog::UiComponentCatalogService::new(
+            store,
+            ui_component_catalog_source::ApiUiComponentCatalogSource::default_taichuy(),
+        );
+        match service.bootstrap_empty_system(actor_user_id).await {
+            Ok(control_plane::ui_component_catalog::UiComponentBootstrapOutcome::Imported {
+                records,
+            }) => tracing::info!(
+                records,
+                "default UI component catalog bootstrapped into an empty system"
+            ),
+            Ok(
+                control_plane::ui_component_catalog::UiComponentBootstrapOutcome::SkippedNonEmpty,
+            ) => {}
+            Err(error) => tracing::warn!(
+                error = %error,
+                "default UI component catalog bootstrap failed; startup and existing records are unchanged"
+            ),
+        }
+    });
 }
 
 fn resolve_system_backup_startup(

@@ -1,4 +1,4 @@
-import type { ConsoleFrontstageComponentCapabilitySummary } from '@1flowbase/api-client';
+import type { ConsoleFrontstageComponent } from '@1flowbase/api-client';
 import {
   Alert,
   Button,
@@ -13,8 +13,7 @@ import { useState } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
 import { copyTextToClipboard } from '../../../../shared/ui/clipboard/copy-text';
-import { fetchFrontstageComponentCapability } from '../../api/component-capabilities';
-import { useFrontstageComponentCapabilities } from '../../hooks/use-frontstage-component-capabilities';
+import { useFrontstageComponents } from '../../hooks/use-frontstage-components';
 import type { FrontstageJsxInsertion } from '../../lib/jsx-studio/source-insertion';
 
 const PAGE_SIZE = 10;
@@ -31,7 +30,7 @@ export function JsxStudioComponentsPanel({
   const [offset, setOffset] = useState(0);
   const [copyingId, setCopyingId] = useState<string | null>(null);
   const [insertingId, setInsertingId] = useState<string | null>(null);
-  const componentPage = useFrontstageComponentCapabilities(
+  const componentPage = useFrontstageComponents(
     workspaceId,
     {
       query: query || undefined,
@@ -41,14 +40,12 @@ export function JsxStudioComponentsPanel({
     true
   );
 
-  const copyApi = async (componentId: string) => {
-    setCopyingId(componentId);
+  const copyApi = async (component: ConsoleFrontstageComponent) => {
+    setCopyingId(component.id);
     try {
-      const component = await fetchFrontstageComponentCapability(
-        workspaceId,
-        componentId
+      await copyTextToClipboard(
+        `${component.import_code}\n\n${component.source_code}`
       );
-      await copyTextToClipboard(component.api_documentation);
       message.success(i18nText('frontstage', 'auto.component_api_copied'));
     } catch {
       message.warning(i18nText('frontstage', 'auto.copy_component_api_failed'));
@@ -57,21 +54,13 @@ export function JsxStudioComponentsPanel({
     }
   };
 
-  const insertComponent = async (
-    component: ConsoleFrontstageComponentCapabilitySummary
-  ) => {
-    setInsertingId(component.component_id);
+  const insertComponent = async (component: ConsoleFrontstageComponent) => {
+    setInsertingId(component.id);
     try {
-      const detail = await fetchFrontstageComponentCapability(
-        workspaceId,
-        component.component_id
-      );
       onInsertCode({
         kind: 'component',
-        name: component.export_name,
-        moduleSource: component.module_source,
-        source: component.insert_snippet,
-        typescriptDeclaration: detail.typescript_declaration
+        importCode: component.import_code,
+        source: component.source_code
       });
     } catch {
       message.warning(
@@ -107,15 +96,15 @@ export function JsxStudioComponentsPanel({
             title={i18nText('frontstage', 'auto.component_catalog_load_failed')}
           />
         ) : null}
-        <Table<ConsoleFrontstageComponentCapabilitySummary>
-          rowKey="component_id"
+        <Table<ConsoleFrontstageComponent>
+          rowKey="id"
           size="small"
           loading={componentPage.loading}
           dataSource={componentPage.data.items}
           columns={[
             {
               title: i18nText('frontstage', 'auto.components'),
-              dataIndex: 'export_name',
+              dataIndex: 'name',
               width: 92,
               render: (value: string) => (
                 <Typography.Text>{value}</Typography.Text>
@@ -142,7 +131,7 @@ export function JsxStudioComponentsPanel({
                   <Button
                     type="link"
                     size="small"
-                    loading={insertingId === component.component_id}
+                    loading={insertingId === component.id}
                     onClick={() => void insertComponent(component)}
                   >
                     {i18nText('frontstage', 'auto.insert_component')}
@@ -150,8 +139,8 @@ export function JsxStudioComponentsPanel({
                   <Button
                     type="link"
                     size="small"
-                    loading={copyingId === component.component_id}
-                    onClick={() => void copyApi(component.component_id)}
+                    loading={copyingId === component.id}
+                    onClick={() => void copyApi(component)}
                   >
                     {i18nText('frontstage', 'auto.copy_api')}
                   </Button>

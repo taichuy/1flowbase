@@ -1,12 +1,4 @@
-import {
-  Alert,
-  Button,
-  Divider,
-  Drawer,
-  Empty,
-  Modal,
-  Typography
-} from 'antd';
+import { Alert, Button, Divider, Drawer, Empty, Modal, Typography } from 'antd';
 import type { CSSProperties, FC, ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createNativeBlockContextCapabilities } from '@1flowbase/page-runtime';
@@ -17,7 +9,7 @@ import { useAuthStore } from '../../../state/auth-store';
 import { useFrontstageDesignModeStore } from '../../../state/frontstage-design-mode-store';
 import type { FrontstagePageContent } from '../api/page-content';
 import { fetchFrontstageBlockDeleteImpact } from '../api/block-tree';
-import { resolveFrontstageComponentDependencyLock } from '../api/component-capabilities';
+import { resolveFrontstageComponentDependencyLock } from '../api/components';
 import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSidebar';
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
 import {

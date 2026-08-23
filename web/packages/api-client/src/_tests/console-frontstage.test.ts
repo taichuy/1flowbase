@@ -11,17 +11,17 @@ import {
   dispatchFrontstageCallableStream,
   type FrontstageCallableBinaryResource,
   getFrontstageInterfaceCapability,
-  getFrontstageComponentCapability,
+  getFrontstageComponent,
   resolveFrontstageComponentDependencyLock,
   getFrontstagePageTabDetail,
   frontstageComponentModuleAssetPath,
   listFrontstagePageTabs,
   listFrontstageInterfaceCapabilities,
-  listFrontstageComponentCapabilities,
+  listFrontstageComponents,
   listFrontstagePages,
   moveFrontstagePageNode,
   saveFrontstageTabDocument,
-  type ConsoleFrontstageComponentCapabilitySummary,
+  type ConsoleFrontstageComponent,
   updateFrontstagePageTab,
   updateFrontstagePageNodeTitle
 } from '../console/frontstage';
@@ -56,35 +56,32 @@ describe('console-frontstage client', () => {
     cancel: vi.fn()
   });
 
-  test('D2-AC-001 exposes the canonical registered React module identity', () => {
+  test('WP-D4 exposes the persisted raw component record contract', () => {
     const component = {
-      component_id: 'installation-1:frontstage.js-ui-block:surface',
-      installation_id: 'installation-1',
-      provider_code: '1flowbase',
-      plugin_id: '1flowbase',
-      plugin_version: '1.0.0',
-      contribution_code: 'frontstage.js-ui-block',
-      module_source: '@1flowbase/native-components',
-      module_version: '1.0.0',
-      browser_asset: {
-        sha256:
-          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        url: '/api/console/frontstage/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-      },
-      export_name: 'Surface',
-      upstream: null,
+      id: '019c0000-0000-7000-8000-000000000001',
+      scope_id: '00000000-0000-0000-0000-000000000000',
+      component_code: 'official.surface',
+      name: 'Surface',
       description: 'Native React surface with standard DOM props.',
-      insert_snippet: '<Surface className="card">Content</Surface>'
-    } satisfies ConsoleFrontstageComponentCapabilitySummary;
+      import_code: "import { Surface } from '@definitely/not-installed';",
+      source_code: '<Surface className="card">Content</Surface>',
+      origin: 'official',
+      source: 'official',
+      group: 'layout',
+      upstream: { identity: '@definitely/not-installed', version: '99.0.0' },
+      version: '1.0.0',
+      keywords: ['surface'],
+      catalog_updated_at: null,
+      source_locator: null,
+      source_checksum: null,
+      created_at: '2026-08-23T00:00:00Z',
+      updated_at: '2026-08-23T00:00:00Z'
+    } satisfies ConsoleFrontstageComponent;
 
     expect(component).toMatchObject({
-      module_source: '@1flowbase/native-components',
-      module_version: '1.0.0',
-      browser_asset: {
-        sha256:
-          'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-      },
-      export_name: 'Surface'
+      component_code: 'official.surface',
+      import_code: "import { Surface } from '@definitely/not-installed';",
+      source_code: '<Surface className="card">Content</Surface>'
     });
   });
 
@@ -116,18 +113,15 @@ describe('console-frontstage client', () => {
       }
     },
     {
-      name: 'component capability catalog',
+      name: 'persisted component catalog',
       request: () =>
-        listFrontstageComponentCapabilities({
-          installation_id: 'installation-1',
-          contribution_code: 'frontstage.js-ui-block',
+        listFrontstageComponents({
           query: 'button',
-          module_source: '@1flowbase/native-components',
           offset: 20,
           limit: 20
         }),
       expected: {
-        path: '/api/console/frontstage/component-capabilities?installation_id=installation-1&contribution_code=frontstage.js-ui-block&query=button&module_source=%401flowbase%2Fnative-components&offset=20&limit=20',
+        path: '/api/console/frontstage/components?query=button&offset=20&limit=20',
         method: 'GET'
       }
     },
@@ -149,8 +143,7 @@ describe('console-frontstage client', () => {
     },
     {
       name: 'page tab detail by route segment',
-      request: () =>
-        getFrontstagePageTabDetail('page-1', 'analytics'),
+      request: () => getFrontstagePageTabDetail('page-1', 'analytics'),
       expected: {
         path: '/api/console/frontstage/pages/page-1/tabs/analytics',
         method: 'GET'
@@ -165,22 +158,18 @@ describe('console-frontstage client', () => {
 
   test('loads one encoded interface capability detail on demand', async () => {
     await expect(
-      getFrontstageInterfaceCapability(
-        'published/interface:detail'
-      )
+      getFrontstageInterfaceCapability('published/interface:detail')
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/interface-capabilities/published%2Finterface%3Adetail',
       method: 'GET'
     });
   });
 
-  test('loads one encoded component capability detail on demand', async () => {
+  test('loads one persisted component record detail on demand', async () => {
     await expect(
-      getFrontstageComponentCapability(
-        'installation-1:block:button'
-      )
+      getFrontstageComponent('019c0000-0000-7000-8000-000000000001')
     ).resolves.toMatchObject({
-      path: '/api/console/frontstage/component-capabilities/installation-1%3Ablock%3Abutton',
+      path: '/api/console/frontstage/components/019c0000-0000-7000-8000-000000000001',
       method: 'GET'
     });
   });
@@ -387,8 +376,7 @@ describe('console-frontstage client', () => {
     },
     {
       name: 'node deletion',
-      request: () =>
-        deleteFrontstagePageNode('page-1', 'csrf-123'),
+      request: () => deleteFrontstagePageNode('page-1', 'csrf-123'),
       expected: {
         path: '/api/console/frontstage/pages/page-1',
         method: 'DELETE',
@@ -436,8 +424,7 @@ describe('console-frontstage client', () => {
     },
     {
       name: 'tab deletion',
-      request: () =>
-        deleteFrontstagePageTab('page-1', 'tab-1', 'csrf-123'),
+      request: () => deleteFrontstagePageTab('page-1', 'tab-1', 'csrf-123'),
       expected: {
         path: '/api/console/frontstage/pages/page-1/tabs/tab-1',
         method: 'DELETE',

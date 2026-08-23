@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 352,
+  "projected_interface_count": 360,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -206,6 +206,12 @@
       "DELETE",
       "/api/console/settings/system-backups/:backup_set_id",
       "Delete system backups"
+    ],
+    [
+      "ui_management.components.delete",
+      "DELETE",
+      "/api/console/settings/ui-management/components/:id",
+      "Delete UI management components"
     ],
     [
       "ui_management.templates.default.reset",
@@ -1010,6 +1016,36 @@
       "GET",
       "/api/console/settings/ui-management/components",
       "List UI management components"
+    ],
+    [
+      "ui_management.catalog.index",
+      "GET",
+      "/api/console/settings/ui-management/components/catalog/index",
+      "UI management catalog index"
+    ],
+    [
+      "ui_management.catalog.page",
+      "GET",
+      "/api/console/settings/ui-management/components/catalog/pages/:page",
+      "UI management catalog page"
+    ],
+    [
+      "ui_management.catalog.search",
+      "GET",
+      "/api/console/settings/ui-management/components/catalog/search",
+      "Search UI management catalog"
+    ],
+    [
+      "ui_management.catalog.update_status",
+      "GET",
+      "/api/console/settings/ui-management/components/catalog/update-status",
+      "UI management catalog update status"
+    ],
+    [
+      "ui_management.components.view",
+      "GET",
+      "/api/console/settings/ui-management/components/:id",
+      "View UI management components"
     ],
     [
       "ui_management.templates.list",
@@ -1900,6 +1936,24 @@
       "System backups verify"
     ],
     [
+      "ui_management.components.create",
+      "POST",
+      "/api/console/settings/ui-management/components",
+      "Create UI management components"
+    ],
+    [
+      "ui_management.catalog.sync_group",
+      "POST",
+      "/api/console/settings/ui-management/components/catalog/groups/:source/:group/sync",
+      "UI management catalog sync group"
+    ],
+    [
+      "ui_management.catalog.download",
+      "POST",
+      "/api/console/settings/ui-management/components/catalog/:component_code/download",
+      "UI management catalog download"
+    ],
+    [
       "ui_management.templates.create",
       "POST",
       "/api/console/settings/ui-management/templates",
@@ -2098,16 +2152,10 @@
       "Replace roles permissions"
     ],
     [
-      "ui_management.components.contract.update",
+      "ui_management.components.update",
       "PUT",
-      "/api/console/settings/ui-management/components/contract",
-      "Update UI management components contract"
-    ],
-    [
-      "ui_management.components.state.update",
-      "PUT",
-      "/api/console/settings/ui-management/components/state",
-      "Update UI management components state"
+      "/api/console/settings/ui-management/components/:id",
+      "Update UI management components"
     ],
     [
       "ui_management.templates.update",

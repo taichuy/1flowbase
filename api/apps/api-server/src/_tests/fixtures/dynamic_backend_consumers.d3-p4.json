@@ -390,7 +390,7 @@
     {
       "category": "settings_policy_group",
       "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
-      "key": "Code template and component contract management operations"
+      "key": "Code template and persisted component record management operations"
     }
   ]
 }

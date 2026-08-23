@@ -1,6 +1,5 @@
 use anyhow::Result;
-use sha2::{Digest, Sha256};
-use std::{collections::BTreeSet, path::PathBuf, sync::Arc};
+use std::{path::PathBuf, sync::Arc};
 use uuid::Uuid;
 
 mod frontend_contribution;
@@ -20,9 +19,7 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         AuthRepository, FrontendBlockCatalogRepository, PluginRepository, RoleConsolePolicyReader,
-        UiManagementRepository,
     },
-    ui_management::{UiComponentCandidate, UiManagementService},
 };
 
 const FRONTEND_BLOCKS_VIEW_OPERATION_ID: &str = "frontend_blocks.view";
@@ -31,69 +28,23 @@ pub struct ListFrontendBlockCatalogQuery {
     pub actor_user_id: Uuid,
 }
 
-#[derive(Debug, Clone)]
-pub struct ListFrontendComponentCapabilitiesQuery {
-    pub workspace_id: Uuid,
-    pub installation_id: Option<Uuid>,
-    pub contribution_code: Option<String>,
-    pub query: Option<String>,
-    pub module_source: Option<String>,
-    pub offset: usize,
-    pub limit: usize,
-}
-
-#[derive(Debug, Clone)]
-pub struct GetFrontendComponentCapabilityQuery {
-    pub workspace_id: Uuid,
-    pub component_id: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct FrontendComponentCapability {
-    pub component_id: String,
-    pub installation_id: Uuid,
-    pub provider_code: String,
-    pub plugin_id: String,
-    pub plugin_version: String,
-    pub contribution_code: String,
-    pub module_source: String,
-    pub module_version: String,
-    pub exports: Vec<String>,
-    pub binding: domain::FrontendModuleBinding,
-    pub assets: Vec<domain::FrontendModuleAsset>,
-    pub type_declarations: String,
-    pub export_name: String,
-    pub contract: domain::FrontendComponentContract,
-}
-
-#[derive(Debug, Clone)]
-pub struct FrontendComponentCapabilityPage {
-    pub items: Vec<FrontendComponentCapability>,
-    pub total: usize,
-    pub offset: usize,
-    pub limit: usize,
-    pub has_more: bool,
-    pub next_offset: Option<usize>,
-    pub module_sources: Vec<String>,
-}
-
 pub struct GetFrontendModuleAssetQuery {
     pub workspace_id: Uuid,
     pub sha256: String,
 }
 
-pub struct FrontendComponentModuleAsset {
+pub struct FrontendModuleAssetResource {
     pub sha256: String,
     pub media_type: String,
     pub bytes: Vec<u8>,
 }
 
-pub struct FrontendComponentCatalogService<R> {
+pub struct FrontendModuleAssetService<R> {
     repository: R,
     node_id: String,
 }
 
-impl<R> FrontendComponentCatalogService<R> {
+impl<R> FrontendModuleAssetService<R> {
     pub fn new(repository: R, node_id: impl Into<String>) -> Self {
         Self {
             repository,
@@ -102,131 +53,20 @@ impl<R> FrontendComponentCatalogService<R> {
     }
 }
 
-impl<R> FrontendComponentCatalogService<R>
-where
-    R: FrontendBlockCatalogRepository + UiManagementRepository + Clone,
-{
-    pub async fn list_component_capabilities(
-        &self,
-        query: ListFrontendComponentCapabilitiesQuery,
-    ) -> Result<FrontendComponentCapabilityPage> {
-        let mut entries = self.load_entries().await?;
-        let module_sources = entries
-            .iter()
-            .map(|entry| entry.module_source.clone())
-            .collect::<BTreeSet<_>>()
-            .into_iter()
-            .collect();
-        if let Some(installation_id) = query.installation_id {
-            entries.retain(|entry| entry.installation_id == installation_id);
-        }
-        if let Some(contribution_code) = non_empty(query.contribution_code.as_deref()) {
-            entries.retain(|entry| entry.contribution_code == contribution_code);
-        }
-        if let Some(module_source) = non_empty(query.module_source.as_deref()) {
-            entries.retain(|entry| entry.module_source == module_source);
-        }
-        if let Some(search) = non_empty(query.query.as_deref()) {
-            let search = search.to_lowercase();
-            entries.retain(|entry| component_matches(entry, &search));
-        }
-
-        entries.sort_by(|left, right| {
-            left.export_name
-                .cmp(&right.export_name)
-                .then_with(|| left.module_source.cmp(&right.module_source))
-                .then_with(|| left.component_id.cmp(&right.component_id))
-        });
-        let total = entries.len();
-        let offset = query.offset.min(total);
-        let limit = query.limit.max(1);
-        let end = offset.saturating_add(limit).min(total);
-        let has_more = end < total;
-        Ok(FrontendComponentCapabilityPage {
-            items: entries[offset..end].to_vec(),
-            total,
-            offset,
-            limit,
-            has_more,
-            next_offset: has_more.then_some(end),
-            module_sources,
-        })
-    }
-
-    pub async fn get_component_capability(
-        &self,
-        query: GetFrontendComponentCapabilityQuery,
-    ) -> Result<Option<FrontendComponentCapability>> {
-        Ok(self
-            .load_entries()
-            .await?
-            .into_iter()
-            .find(|entry| entry.component_id == query.component_id))
-    }
-
-    async fn load_entries(&self) -> Result<Vec<FrontendComponentCapability>> {
-        Ok(
-            UiManagementService::new(self.repository.clone(), self.node_id.clone())
-                .list_component_candidates()
-                .await?
-                .into_iter()
-                .filter_map(frontstage_component_capability)
-                .collect(),
-        )
-    }
-}
-
-fn frontstage_component_capability(
-    candidate: UiComponentCandidate,
-) -> Option<FrontendComponentCapability> {
-    let component_id = component_capability_id(&candidate);
-    let contract = candidate.effective_contract?;
-    Some(FrontendComponentCapability {
-        component_id,
-        installation_id: candidate.installation_id,
-        provider_code: candidate.locator.provider_code.clone(),
-        plugin_id: candidate.plugin_id,
-        plugin_version: candidate.plugin_version,
-        contribution_code: candidate.locator.contribution_code.clone(),
-        module_source: candidate.locator.module_source.clone(),
-        module_version: candidate.module_version,
-        exports: candidate.exports,
-        binding: candidate.binding,
-        assets: candidate.assets,
-        type_declarations: candidate.type_declarations,
-        export_name: candidate.locator.export_name,
-        contract,
-    })
-}
-
-fn component_capability_id(candidate: &UiComponentCandidate) -> String {
-    let mut digest = Sha256::new();
-    for value in [
-        candidate.installation_id.to_string(),
-        candidate.locator.contribution_code.clone(),
-        candidate.locator.module_source.clone(),
-        candidate.locator.export_name.clone(),
-    ] {
-        digest.update(value.as_bytes());
-        digest.update([0]);
-    }
-    format!("{:x}", digest.finalize())
-}
-
-impl<R> FrontendComponentCatalogService<R>
+impl<R> FrontendModuleAssetService<R>
 where
     R: FrontendBlockCatalogRepository + PluginRepository,
 {
     pub async fn get_module_asset(
         &self,
         query: GetFrontendModuleAssetQuery,
-    ) -> Result<Option<FrontendComponentModuleAsset>> {
+    ) -> Result<Option<FrontendModuleAssetResource>> {
         if let Some(asset) = self
             .repository
             .get_retained_frontend_module_asset(query.workspace_id, &query.sha256)
             .await?
         {
-            return Ok(Some(FrontendComponentModuleAsset {
+            return Ok(Some(FrontendModuleAssetResource {
                 sha256: asset.sha256,
                 media_type: asset.media_type,
                 bytes: asset.bytes,
@@ -287,32 +127,12 @@ where
         .await
         .map_err(|_| ControlPlaneError::UpstreamUnavailable("frontend_component_module_asset"))?
         .map_err(|_| ControlPlaneError::UpstreamUnavailable("frontend_component_module_asset"))?;
-        Ok(Some(FrontendComponentModuleAsset {
+        Ok(Some(FrontendModuleAssetResource {
             sha256: asset.sha256,
             media_type: asset.media_type,
             bytes,
         }))
     }
-}
-
-fn non_empty(value: Option<&str>) -> Option<&str> {
-    value.map(str::trim).filter(|value| !value.is_empty())
-}
-
-fn component_matches(entry: &FrontendComponentCapability, search: &str) -> bool {
-    entry.export_name.to_lowercase().contains(search)
-        || entry.module_source.to_lowercase().contains(search)
-        || entry.contract.description.to_lowercase().contains(search)
-        || entry
-            .contract
-            .props
-            .iter()
-            .any(|prop| prop.name.to_lowercase().contains(search))
-        || entry
-            .contract
-            .limitations
-            .iter()
-            .any(|limitation| limitation.to_lowercase().contains(search))
 }
 
 #[derive(Debug, Clone)]

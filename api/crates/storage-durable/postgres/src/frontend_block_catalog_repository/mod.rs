@@ -235,12 +235,6 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
         }))
     }
 
-    async fn list_ui_component_overrides_for_catalog(
-        &self,
-    ) -> Result<Vec<domain::UiComponentOverride>> {
-        control_plane::ports::UiManagementRepository::list_ui_component_overrides(self).await
-    }
-
     async fn list_active_ui_code_templates_for_catalog(
         &self,
     ) -> Result<Vec<domain::UiCodeTemplate>> {

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 pub mod block_tree;
 pub mod callable_interfaces;
-pub mod component_capabilities;
+pub mod components;
 pub mod data_capabilities;
 
 use axum::{
@@ -309,16 +309,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
-            "/frontstage/component-capabilities",
-            console_get(
-                component_capabilities::list_frontstage_component_capabilities,
-                Authenticated,
-            ),
+            "/frontstage/components",
+            console_get(components::list_frontstage_components, Authenticated),
         )
         .route(
             "/frontstage/component-dependency-lock",
             console_post(
-                component_capabilities::resolve_frontstage_component_dependency_lock,
+                components::resolve_frontstage_component_dependency_lock,
                 Authenticated,
             ),
         )
@@ -327,16 +324,13 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_get(list_frontstage_ui_templates, Authenticated),
         )
         .route(
-            "/frontstage/component-capabilities/:component_id",
-            console_get(
-                component_capabilities::get_frontstage_component_capability,
-                Authenticated,
-            ),
+            "/frontstage/components/:component_id",
+            console_get(components::get_frontstage_component, Authenticated),
         )
         .route(
             "/frontstage/component-module-assets/:sha256",
             console_get(
-                component_capabilities::get_frontstage_component_module_asset,
+                components::get_frontstage_component_module_asset,
                 Authenticated,
             ),
         )

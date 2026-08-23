@@ -105,7 +105,6 @@ fn candidate(workspace_id: Uuid) -> (FrontendContributionCandidate, PathBuf) {
                 sha256: digest.to_string(),
             }],
             type_declarations: "declare module '@fixture/block' {}".to_string(),
-            components: Vec::new(),
         }],
         context_contract: domain::FrontendBlockContextContract {
             primitives: vec!["text".to_string()],

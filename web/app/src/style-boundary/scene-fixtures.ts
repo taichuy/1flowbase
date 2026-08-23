@@ -604,17 +604,28 @@ export function seedStyleBoundarySettingsFetch() {
       return createStyleBoundaryJsonResponse({
         data: [
           {
-            provider_code: 'official-ui',
-            contribution_code: 'native-components',
-            module_source: '@1flowbase/native-components',
-            export_name: 'DataTable',
-            module_version: '1.0.0',
-            state: 'published',
-            official_contract: {},
-            latest_contract: {},
-            published_contract: {},
-            latest_revision: 2,
-            published_revision: 2
+            id: '019c0000-0000-7000-8000-000000000001',
+            scope_id: '00000000-0000-0000-0000-000000000000',
+            component_code: 'official.data-table',
+            name: 'DataTable',
+            description: 'Data table component',
+            import_code:
+              "import { DataTable } from '@1flowbase/native-components';",
+            source_code: '<DataTable />',
+            origin: 'official',
+            source: 'official',
+            group: 'data',
+            upstream: {
+              identity: '@1flowbase/native-components',
+              version: '1.0.0'
+            },
+            version: '1.0.0',
+            keywords: ['table'],
+            catalog_updated_at: null,
+            source_locator: null,
+            source_checksum: null,
+            created_at: '2026-08-23T00:00:00Z',
+            updated_at: '2026-08-23T00:00:00Z'
           }
         ],
         meta: null

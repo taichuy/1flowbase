@@ -183,7 +183,6 @@ mod tests {
                 }
             },
             type_declarations: String::new(),
-            components: vec![],
         }
     }
 

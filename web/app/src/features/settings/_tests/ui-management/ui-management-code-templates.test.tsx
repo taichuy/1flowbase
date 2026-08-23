@@ -17,9 +17,11 @@ const uiManagementApi = vi.hoisted(() => ({
   settingsUiComponentsQueryKey: ['settings', 'ui-management', 'components'],
   settingsUiTemplatesQueryKey: ['settings', 'ui-management', 'templates'],
   fetchSettingsUiComponents: vi.fn(),
+  fetchSettingsUiComponent: vi.fn(),
+  createSettingsUiComponent: vi.fn(),
+  updateSettingsUiComponent: vi.fn(),
+  deleteSettingsUiComponent: vi.fn(),
   fetchSettingsUiTemplates: vi.fn(),
-  updateSettingsUiComponentContract: vi.fn(),
-  updateSettingsUiComponentState: vi.fn(),
   archiveSettingsUiTemplate: vi.fn(),
   createSettingsUiTemplate: vi.fn(),
   publishSettingsUiTemplate: vi.fn(),
@@ -29,9 +31,6 @@ const uiManagementApi = vi.hoisted(() => ({
 }));
 const blockCatalogHook = vi.hoisted(() => ({
   useFrontstageBlockCatalog: vi.fn()
-}));
-const componentCapabilitiesHook = vi.hoisted(() => ({
-  useFrontstageComponentCapabilities: vi.fn()
 }));
 const templateRunPanel = vi.hoisted(() => ({ render: vi.fn() }));
 const sourceStudio = vi.hoisted(() => ({ render: vi.fn() }));
@@ -91,10 +90,6 @@ vi.mock('../../api/ui-management', () => uiManagementApi);
 vi.mock(
   '../../../frontstage/hooks/use-frontstage-block-catalog',
   () => blockCatalogHook
-);
-vi.mock(
-  '../../../frontstage/hooks/use-frontstage-component-capabilities',
-  () => componentCapabilitiesHook
 );
 vi.mock(
   '../../../frontstage/components/jsx-studio/JsxStudioResourcePanel',
@@ -240,19 +235,6 @@ describe('UiManagementPanel code templates', () => {
       ],
       externalNpm: { status: 'available' }
     });
-    componentCapabilitiesHook.useFrontstageComponentCapabilities.mockReturnValue(
-      {
-        data: {
-          module_sources: [
-            '@1flowbase/block-sdk',
-            '@1flowbase/native-components'
-          ]
-        },
-        loading: false,
-        error: null,
-        refetch: vi.fn()
-      }
-    );
   });
 
   afterEach(() => {

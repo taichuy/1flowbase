@@ -37,5 +37,6 @@ pub(crate) use support::RecordingRuntimeEventStream;
 mod system_agent_tests;
 mod system_metadata_tests;
 mod system_runtime;
+mod ui_component_catalog_tests;
 mod workspace;
 mod workspace_session;
