@@ -1,7 +1,7 @@
 ---
 memory_type: project
-topic: dev-up 会在开发态启动前重置 api root 密码
-summary: 自 `2026-04-14 09` 起，标准本地启动入口 `node scripts/node/dev-up.js` 在 `api-server` 的 `API_ENV` 非 production 时，会先执行 `reset_root_password`，把持久化开发库里的 root 密码同步回 `api/apps/api-server/.env` 中的 `BOOTSTRAP_ROOT_PASSWORD`。
+topic: dev-up root 密码重置将从 Rust 全局编译链改为脚本
+summary: `2026-08-23 18` 用户确认 `reset_root_password` 应改为不依赖 `api-server` Rust 全局编译图的脚本；当前 dev-up prestart 行为仍存在，待实现时保留开发库 root 凭据同步语义，但不得再触发巨型 Rust crate 重编译。
 keywords:
   - dev-up
   - api-server
@@ -13,8 +13,8 @@ match_when:
   - 需要确认 dev-up 是否会自动同步开发态 root 密码
   - 需要判断持久化开发库的 root 密码为何会与 `.env` 漂移
 created_at: 2026-04-14 09
-updated_at: 2026-04-14 09
-last_verified_at: 2026-04-14 09
+updated_at: 2026-08-23 18
+last_verified_at: 2026-08-23 18
 decision_policy: verify_before_decision
 scope:
   - scripts/node/dev-up/core.js
@@ -23,6 +23,12 @@ scope:
 ---
 
 # dev-up 会在开发态启动前重置 api root 密码
+
+## 2026-08-23 方向更新
+
+- 用户确认 `reset_root_password` 应改为脚本，不再依赖 `api-server` library crate 与其全局 Rust 依赖图。
+- 这一方向取代“继续复用当前 Rust `reset_root_password` 工具”的旧实现决策；尚未授权实现。
+- 实现验收边界：保留开发环境 root 密码同步效果，不运行 Cargo，不把生产环境纳入自动重置，并避免出现与后端密码哈希 / bootstrap 语义漂移的第二套规则。
 
 ## 时间
 

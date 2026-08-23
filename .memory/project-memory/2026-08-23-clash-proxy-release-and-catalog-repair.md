@@ -12,8 +12,8 @@ match_when:
   - 排查 Clash/Mihomo Proxy 未打包、未发布或未在网络中心展示
   - 修改官方 runtime extension 发布工作流或目录分类
 created_at: 2026-08-23 11
-updated_at: 2026-08-23 17
-last_verified_at: 2026-08-23 17
+updated_at: 2026-08-24 01
+last_verified_at: 2026-08-24 01
 decision_policy: verify_before_decision
 status: active
 scope:
@@ -33,3 +33,6 @@ scope:
 - 运行态注意：API 最终使用启动时编译的 console route assembly；全局上传配置必须传入 `compile_console_boot_plan_with_interface_operations_and_plugin_upload_max_bytes`，仅在后续 router factory 传值不会影响已编译的启动路由。
 - Manifest 边界：`plugin_type` 是官方目录投影字段，不是 `PluginManifestV1` 字段。目录生成器必须由标准 `slot_codes` 推导 `network_egress_provider`，包内 Manifest 不得包含该未知字段。
 - 真实订阅兼容：用户确认并在 `clash-proxy-v0.2.3` 落地“平衡”范围：以 `clash.meta` 请求标识获取原始 Clash/Mihomo YAML，仅投影 `proxies` 为独立回环 egress，保留允许的远程节点字段（含 `trojan`、`vless`、`hysteria2`）；规则、分组、DNS、监听器与递归 provider 一律不导入。发布完成时目录记录为 `0.2.3`、`network_egress_provider`、6 个平台资产。
+- Ambient proxy 修复：`ureq 3.x` 默认继承宿主 `ALL_PROXY / HTTPS_PROXY / HTTP_PROXY`；开发运行态的 `127.0.0.1:7897` 使订阅请求 `ConnectionRefused`。`clash-proxy-v0.2.5` 的订阅专用 Agent 显式使用 `proxy(None)`，避免网络出口 Provider 递归依赖宿主代理。
+- 运行态验收：`0.2.5` 六平台签名资产已发布，Linux amd64 包 SHA-256 为 `905305ed9bc58ec27b15164cc2068bb0fca3db3f269478c7fd439b98b92fb341`；开发环境安装后为 `verified_official / signature_status=verified / is_current=true`。真实订阅通过 `/api/console/network-center/pools/proxies` 创建返回 HTTP 201，Provider 为 `healthy`，投影 113 个全部可用 egress，且 `last_sync_error=null`。
+- 主仓目录修复：`PluginManagementService::list_catalog` 不再只投影 `model_provider`，同时按当前 contract 与 metadata 投影已安装的 `network_egress_provider`；开发环境 families 与 official catalog 均正确识别当前 `0.2.5`。

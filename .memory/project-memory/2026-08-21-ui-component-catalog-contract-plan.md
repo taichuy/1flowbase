@@ -1,7 +1,7 @@
 ---
 memory_type: project
-topic: UI 组件目录与模块 export 边界修复计划
-summary: 已按已批准 Single Issue #1823 合入 dev：模块 exports 只表示可 import 符号，组件目录只展示完整契约；后台使用结构化组件契约表单。AC-001～AC-008 已有集中 QA 证据，等待用户验收。
+topic: UI 组件目录从 export override 转为独立持久化记录
+summary: Root #1851 已完成 D1–D4、两轮集中 QA 与双仓合并，当前进入人工验收；官方组件来自外置 catalog，主后端只持久化与消费独立记录，不扫描 exports 或校验代码可执行性。
 keywords:
   - ui-management
   - component-catalog
@@ -9,10 +9,10 @@ keywords:
   - insert-snippet
   - structured-form
 created_at: 2026-08-21 22
-updated_at: 2026-08-21 22
-last_verified_at: 2026-08-21 22
+updated_at: 2026-08-24 02
+last_verified_at: 2026-08-24 02
 decision_policy: verify_before_decision
-source_issue: "#1823"
+source_issue: "#1851"
 scope:
   - api/crates/control-plane/src/ui_management.rs
   - api/apps/api-server/src/routes/frontstage/component_capabilities.rs
@@ -23,9 +23,41 @@ scope:
 
 # UI 组件目录契约边界交付
 
+## 2026-08-23 产品语义纠正
+
+用户明确否定“遍历已安装模块 exports，再用 override 补契约”作为组件管理主模型。新的稳定方向是：
+
+- UI 组件是后端数据库中的独立纯记录，不以 module export 为存在前提。
+- 插件仓库提供一组组件记录，平台可主动拉取并成组同步更新。
+- 用户可自行新建、编辑自己的组件记录。
+- 记录包含原始 import 代码片段和组件插入代码，区块编辑器只消费持久化组件目录。
+- 官方样板固定来自 `/home/taichuy/git/1flowbase-official-plugins/ui_components`，发布和分页 catalog 结构参考同仓 `i18n`。
+- 主后端只负责 catalog 查询、下载、持久化和消费；默认尝试拉取 `taichuy` 官方源，失败不阻断主程序。
+- 组件是否可用由仓库维护者负责；同步链路不做 import 可执行性校验，不新建“可解析/不可解析”状态。误收录时由维护者更新或删除；区块编译器已有的通用错误处理不属于组件同步职责。
+
+此纠正 supersede 下文原“已批准边界”中以官方 manifest 组件契约 + export override 为组件目录主体的部分；原交付证据仅作历史背景。
+
+## 2026-08-23 新计划真值
+
+- 旧 Single Issue #1823 已写入 superseded 评论并以 `not planned` 关闭。
+- 新 Root #1851 是唯一活动计划。
+- Delivery：#1854 官方 catalog 供应链；#1853 独立记录与 settings CRUD；#1855 默认源与成组同步；#1852 区块编辑器消费持久化记录。
+- Root 与 D1–D4 已于 2026-08-23 获用户一次性授权并进入 `phase:implementation`。
+- protected baseline：主仓 `dev` 为 `29ab278e8937b436f075a8eaa2affcb8ae5b3bc4`；官方仓 `main` 为 `107873a73f553aaf57aa9875076d6ac7fad6d7a9`。
+- 冻结 Work Packet：D1 官方 catalog；D2 独立持久化与 settings CRUD；D3 source/group 同步与 best-effort bootstrap；D4 JSX Studio 持久化目录消费；最后由一个 fresh QA 对冻结 assembly 集中验收。
+
 ## 谁在做什么
 
-实现已在隔离 worktree 完成并合入当前 `dev`，提交为 `ae838fd9ea8d0016a7e41b89bb7dc369fcdd8561`；线上 #1823 已回写集中 QA 证据，现等待用户独立验收。
+Root agent 是唯一 packetizer、assembly owner 与 Control Ledger owner。D1–D4 已完成并合入：主仓 `dev` merge commit `b7a8fdf9b`，并发接口 inventory 集成修复 `8623b0eac`；官方仓 `main` merge commit `f80332e`。当前等待用户人工验收。
+
+## 2026-08-24 最终交付证据
+
+- D1 official catalog：`f4c81be18aa58fb5bc6ae1a3111b42da85740988`。
+- 主仓冻结 assembly：`c61cf2b74a91`；第二轮 fresh QA 为 `QA_PASS`，无 blocker/high finding。
+- 自动化：official 16/16；domain 1/1；control-plane 6/6；storage-postgres 3/3；plugin-framework 1/1；api-server catalog/CRUD/ACL/Frontstage/dependency-lock/route/inventory 全部通过；api-client 244/244；focused app 38/38；i18n 0 error。
+- 运行态：隔离数据库中真实创建 page/tab/native JSX block/组件，settings 与 Frontstage JSX Studio 的桌面中文、移动英文均通过；默认 catalog 拉取失败不阻断 `/health`。
+- 合并后 `dev` 因并发网络功能新增 family uninstall 接口，exact inventory 从 360 更新为 361；真实 `dev` 上同一精确断言 1/1 通过。
+- QA 证据位于 `tmp/test-governance/ui-component-catalog-root/qa-cycle-2/`；临时服务、session、fixtures 与数据库均已清理。
 
 ## 为什么这样做
 
