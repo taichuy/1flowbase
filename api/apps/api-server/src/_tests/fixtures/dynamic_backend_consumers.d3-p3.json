@@ -1,6 +1,6 @@
 {
   "packet": "D3-P3",
-  "projected_interface_count": 360,
+  "projected_interface_count": 361,
   "description_template": "{summary} in the system backend.",
   "boundary": "Role-configurable interfaces projected by the roles console-policy catalog; authenticated-only interfaces are not DTO consumers.",
   "consumer_mapping": {
@@ -190,10 +190,16 @@
       "Delete model providers request logs"
     ],
     [
-      "network_egress_plugins.families.uninstall",
+      "network_egress_plugins_uninstall_family",
+      "DELETE",
+      "/api/console/settings/network-center/proxy-plugins/families/:provider_code",
+      "Network egress plugins uninstall family"
+    ],
+    [
+      "network_egress_plugins_uninstall_family_version",
       "DELETE",
       "/api/console/settings/network-center/proxy-plugins/families/:provider_code/versions/:installation_id",
-      "Network egress plugins families uninstall"
+      "Network egress plugins uninstall family version"
     ],
     [
       "roles.delete",
