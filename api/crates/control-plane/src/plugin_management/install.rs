@@ -242,7 +242,8 @@ async fn commit_prepared_installation<R>(
 where
     R: PluginRepository,
 {
-    let category = match route_plugin_package(manifest)? {
+    let package_kind = route_plugin_package(manifest)?;
+    let category = match &package_kind {
         RoutedPluginPackageKind::HostExtension => domain::ExtensionCategory::HostExtensions,
         RoutedPluginPackageKind::ModelProviderRuntime
         | RoutedPluginPackageKind::DataSourceRuntime
@@ -264,8 +265,12 @@ where
         availability_status: installation.availability_status,
         checked_at: OffsetDateTime::now_utc(),
         last_error: installation.last_load_error.clone(),
-        // Runtime/capability activation is workspace-scoped in plugin_assignments.
-        is_current: false,
+        // Network egress is system/node scoped: a successful install selects this version for
+        // new proxy creation while retained installations remain bound to existing providers.
+        is_current: matches!(
+            package_kind,
+            RoutedPluginPackageKind::NetworkEgressProviderRuntime
+        ),
     };
     let node_contributions = build_node_contribution_sync_input(&installation, manifest);
     let js_dependencies = build_js_dependency_sync_input(&installation, manifest);
@@ -1456,7 +1461,11 @@ where
                         None,
                     )
                     .await?;
-                    self.repository
+                    // The installation commit is the current-selection transaction. Audit is
+                    // best effort here so an audit sink outage cannot report a failed update
+                    // after the new version has already become current.
+                    let _ = self
+                        .repository
                         .append_audit_log(&audit_log(
                             Some(actor.current_workspace_id),
                             Some(command.actor_user_id),
@@ -1465,7 +1474,7 @@ where
                             "plugin.installed",
                             plugin_install_audit_detail(&installation, &detail_json, false),
                         ))
-                        .await?;
+                        .await;
                     Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
                         installation,
                         true,

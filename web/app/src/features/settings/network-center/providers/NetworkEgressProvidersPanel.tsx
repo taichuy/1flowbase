@@ -117,8 +117,12 @@ export function NetworkEgressProvidersPanel() {
                 {plugin.description ? <Typography.Text type="secondary">{plugin.description}</Typography.Text> : null}
                 <div className="network-egress-providers__plugin-actions">
                   {plugin.help_url ? <Button onClick={() => window.open(plugin.help_url!, '_blank', 'noopener,noreferrer')}>{i18nText('settings', 'auto.documentation')}</Button> : null}
-                  <Button type="primary" loading={install.isPending && install.variables === plugin.plugin_id} disabled={plugin.install_status === 'installed'} onClick={() => install.mutate(plugin.plugin_id)}>
-                    {plugin.install_status === 'installed' ? i18nText('settings', 'auto.network_center_proxy_plugin_installed') : i18nText('settings', 'auto.install_plugin')}
+                  <Button type="primary" loading={install.isPending && install.variables === plugin.plugin_id} disabled={plugin.install_status === 'installed' && !plugin.has_update} onClick={() => install.mutate(plugin.plugin_id)}>
+                    {plugin.install_status === 'installed'
+                      ? plugin.has_update
+                        ? i18nText('settings', 'auto.update')
+                        : i18nText('settings', 'auto.network_center_proxy_plugin_installed')
+                      : i18nText('settings', 'auto.install_plugin')}
                   </Button>
                 </div>
               </article>

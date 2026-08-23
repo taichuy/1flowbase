@@ -4,6 +4,7 @@ use plugin_framework::{
     NETWORK_EGRESS_PROVIDER_CONTRACT,
 };
 use serde_json::{Map, Value};
+use std::collections::HashSet;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -109,7 +110,13 @@ where
     /// an egress instance owns its own lifecycle.
     pub async fn list_types(&self) -> Result<Vec<NetworkEgressProviderTypeView>> {
         let mut types = vec![builtin_static_http_type()];
-        for installation in self.repository.list_installations().await? {
+        let mut installations = self.repository.list_installations().await?;
+        installations.sort_by(|left, right| {
+            plugin_version_order(&right.plugin_version, &left.plugin_version)
+                .then_with(|| right.id.cmp(&left.id))
+        });
+        let mut selected_provider_codes = HashSet::new();
+        for installation in installations {
             if installation.contract_version != NETWORK_EGRESS_PROVIDER_CONTRACT
                 || installation.metadata_json["plugin_type"] != "network_egress_provider"
             {
@@ -122,7 +129,13 @@ where
             else {
                 continue;
             };
+            if !local.artifact.artifact_status.is_ready() || !local.artifact.is_current {
+                continue;
+            }
             let package = load_egress_package(&local)?;
+            if !selected_provider_codes.insert(package.provider.provider_code.clone()) {
+                continue;
+            }
             types.push(NetworkEgressProviderTypeView {
                 installation_id: Some(installation.id),
                 provider_code: package.provider.provider_code,
@@ -157,6 +170,9 @@ where
             .ok_or(ControlPlaneError::Conflict(
                 "network_egress_provider_unavailable",
             ))?;
+        if !local.artifact.artifact_status.is_ready() || !local.artifact.is_current {
+            return Err(ControlPlaneError::Conflict("network_egress_provider_not_current").into());
+        }
         let package = load_egress_package(&local)?;
         let secret_json =
             validate_instance_config(&package.provider.form_schema, command.secret_json)?;
@@ -454,6 +470,13 @@ where
             ))
             .await?;
         Ok(NetworkEgressProviderView { provider, egresses })
+    }
+}
+
+fn plugin_version_order(left: &str, right: &str) -> std::cmp::Ordering {
+    match (semver::Version::parse(left), semver::Version::parse(right)) {
+        (Ok(left), Ok(right)) => left.cmp(&right),
+        _ => left.cmp(right),
     }
 }
 

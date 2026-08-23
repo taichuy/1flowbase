@@ -1,9 +1,39 @@
 import { apiFetch, apiFetchVoid } from '../transport';
 import type {
-  ConsoleOfficialPluginCatalogResponse,
   InstallConsoleOfficialPluginInput,
   InstallConsolePluginResult
 } from '../console-plugins';
+
+export interface ConsoleNetworkEgressOfficialPluginCatalogEntry {
+  plugin_id: string;
+  provider_code: string;
+  plugin_type: string;
+  display_name: string;
+  description: string | null;
+  icon?: string | null;
+  protocol: string;
+  current_version: string | null;
+  latest_version: string;
+  has_update: boolean;
+  minimum_host_version: string;
+  current_host_version: string;
+  compatibility_status: string;
+  compatibility_warning_reason: string | null;
+  selected_artifact: Record<string, unknown>;
+  help_url: string | null;
+  model_discovery_mode: string;
+  install_status: 'not_installed' | 'installed';
+}
+
+export interface ConsoleNetworkEgressOfficialPluginCatalogResponse {
+  source_kind: string;
+  source_label: string;
+  registry_url: string;
+  source_freshness: 'fresh' | 'stale';
+  locale_meta: Record<string, unknown>;
+  page: { limit: number; next_cursor: string | null };
+  entries: ConsoleNetworkEgressOfficialPluginCatalogEntry[];
+}
 
 export interface ConsoleNetworkEgressProjection {
   provider_egress_key: string;
@@ -189,7 +219,7 @@ export function listConsoleNetworkEgressOfficialPluginCatalog(
   filter?: ConsoleNetworkEgressOfficialPluginCatalogFilter,
   baseUrl?: string
 ) {
-  return apiFetch<ConsoleOfficialPluginCatalogResponse>({
+  return apiFetch<ConsoleNetworkEgressOfficialPluginCatalogResponse>({
     path: networkEgressPluginCatalogPath(
       '/api/console/settings/network-center/proxy-plugins/official-catalog',
       filter

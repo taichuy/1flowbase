@@ -81,4 +81,37 @@ describe('NetworkEgressProvidersPanel', () => {
       expect.objectContaining({ locale: 'zh_Hans' })
     ));
   });
+
+  test('AC-NCP01 renders update when the installed current version is behind the official version', async () => {
+    networkCenterApi.fetchSettingsNetworkEgressProviderTypes.mockResolvedValue([]);
+    networkCenterApi.fetchSettingsNetworkEgressOfficialPluginCatalog.mockResolvedValue({
+      source_kind: 'official_registry',
+      source_label: 'official',
+      registry_url: 'https://example.com/registry.json',
+      source_freshness: 'fresh',
+      entries: [{
+        plugin_id: 'taichuy.clash-proxy',
+        provider_code: 'clash-proxy',
+        plugin_type: 'network_egress_provider',
+        display_name: 'Clash / Mihomo Proxy',
+        description: null,
+        protocol: 'clash',
+        current_version: '0.2.2',
+        latest_version: '0.2.3',
+        has_update: true,
+        selected_artifact: {},
+        help_url: null,
+        model_discovery_mode: 'static',
+        install_status: 'installed',
+        minimum_host_version: '0.1.0',
+        current_host_version: '0.3.0',
+        compatibility_status: 'compatible',
+        compatibility_warning_reason: null
+      }]
+    });
+
+    renderPanel();
+
+    expect(await screen.findByRole('button', { name: /更\s*新|update/i })).toBeEnabled();
+  });
 });

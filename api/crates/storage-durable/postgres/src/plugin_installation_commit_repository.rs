@@ -95,6 +95,42 @@ pub(crate) async fn commit_plugin_installation(
     let installation_id = record.id;
 
     let artifact = &input.artifact_instance;
+    let selects_network_egress_current = artifact.is_current
+        && installation.category == domain::ExtensionCategory::RuntimeExtensions
+        && installation
+            .metadata_json
+            .get("plugin_type")
+            .and_then(serde_json::Value::as_str)
+            == Some("network_egress_provider");
+    if selects_network_egress_current {
+        let family_lock = format!(
+            "network-egress-current:{}:{}",
+            installation.category.as_str(),
+            installation.provider_code
+        );
+        sqlx::query("select pg_advisory_xact_lock(hashtext($1))")
+            .bind(family_lock)
+            .execute(&mut *tx)
+            .await?;
+        sqlx::query(
+            r#"
+                update extension_artifact_instances artifact
+                set is_current = false, checked_at = now()
+                from extension_installations retained
+                where retained.id = artifact.installation_id
+                  and artifact.node_id = $1
+                  and retained.category = $2
+                  and retained.artifact_id = $3
+                  and retained.metadata_json ->> 'plugin_type' = 'network_egress_provider'
+                  and artifact.is_current
+            "#,
+        )
+        .bind(&artifact.node_id)
+        .bind(installation.category.as_str())
+        .bind(&installation.provider_code)
+        .execute(&mut *tx)
+        .await?;
+    }
     sqlx::query(
         r#"
             insert into extension_artifact_instances (

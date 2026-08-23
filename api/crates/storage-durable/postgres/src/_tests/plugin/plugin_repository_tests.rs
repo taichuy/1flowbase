@@ -12,6 +12,9 @@ use serde_json::json;
 use storage_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
+const REPAIR_NETWORK_EGRESS_CURRENT_ARTIFACTS_SQL: &str =
+    include_str!("../../../migrations/20260823180000_repair_network_egress_current_artifacts.sql");
+
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".into())
@@ -768,6 +771,138 @@ fn installation_commit_input(
         },
         retained_frontend_module_assets: Vec::new(),
     }
+}
+
+fn network_egress_commit_input(
+    installation_id: Uuid,
+    actor_user_id: Uuid,
+    version: &str,
+    runtime: &str,
+) -> control_plane::ports::CommitPluginInstallationInput {
+    let mut input =
+        installation_commit_input(installation_id, actor_user_id, "Clash Proxy", runtime);
+    let plugin_id = format!("clash-proxy@{version}");
+    input.installation.category = domain::ExtensionCategory::RuntimeExtensions;
+    input.installation.organization = "taichuy".into();
+    input.installation.provider_code = "clash-proxy".into();
+    input.installation.plugin_id = plugin_id.clone();
+    input.installation.plugin_version = version.into();
+    input.installation.contract_version = plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT.into();
+    input.installation.metadata_json = json!({ "plugin_type": "network_egress_provider" });
+    input.artifact_instance.local_version = Some(version.into());
+    input.artifact_instance.local_path = Some(format!("/tmp/clash-proxy/{version}"));
+    input.artifact_instance.is_current = true;
+    input.node_contributions.provider_code = "clash-proxy".into();
+    input.node_contributions.plugin_id = plugin_id.clone();
+    input.node_contributions.plugin_version = version.into();
+    input.js_dependencies.provider_code = "clash-proxy".into();
+    input.js_dependencies.plugin_id = plugin_id.clone();
+    input.js_dependencies.plugin_version = version.into();
+    input.frontend_blocks.provider_code = "clash-proxy".into();
+    input.frontend_blocks.plugin_id = plugin_id;
+    input.frontend_blocks.plugin_version = version.into();
+    input
+}
+
+#[tokio::test]
+async fn network_egress_installation_commit_keeps_one_current_artifact_and_rolls_back_failed_update(
+) {
+    let (store, _workspace, actor) = seed_store().await;
+    let retained_id = Uuid::now_v7();
+    let current_id = Uuid::now_v7();
+    PluginRepository::commit_plugin_installation(
+        &store,
+        &network_egress_commit_input(retained_id, actor.id, "0.2.2", "native_react"),
+    )
+    .await
+    .unwrap();
+
+    PluginRepository::commit_plugin_installation(
+        &store,
+        &network_egress_commit_input(current_id, actor.id, "0.2.3", "invalid"),
+    )
+    .await
+    .unwrap_err();
+    assert!(
+        PluginRepository::get_artifact_instance(&store, "test-node", retained_id)
+            .await
+            .unwrap()
+            .expect("retained artifact must remain")
+            .is_current
+    );
+    assert!(PluginRepository::get_installation(&store, current_id)
+        .await
+        .unwrap()
+        .is_none());
+
+    PluginRepository::commit_plugin_installation(
+        &store,
+        &network_egress_commit_input(current_id, actor.id, "0.2.3", "native_react"),
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        !PluginRepository::get_artifact_instance(&store, "test-node", retained_id)
+            .await
+            .unwrap()
+            .expect("retained artifact must remain")
+            .is_current
+    );
+    assert!(
+        PluginRepository::get_artifact_instance(&store, "test-node", current_id)
+            .await
+            .unwrap()
+            .expect("new artifact must be current")
+            .is_current
+    );
+}
+
+#[tokio::test]
+async fn network_egress_current_repair_selects_latest_ready_version_from_legacy_artifacts() {
+    let (store, _workspace, actor) = seed_store().await;
+    let retained_id = Uuid::now_v7();
+    let current_id = Uuid::now_v7();
+    PluginRepository::commit_plugin_installation(
+        &store,
+        &network_egress_commit_input(retained_id, actor.id, "0.2.2", "native_react"),
+    )
+    .await
+    .unwrap();
+    PluginRepository::commit_plugin_installation(
+        &store,
+        &network_egress_commit_input(current_id, actor.id, "0.2.3", "native_react"),
+    )
+    .await
+    .unwrap();
+    sqlx::query(
+        "update extension_artifact_instances set is_current = false where installation_id in ($1, $2)",
+    )
+    .bind(retained_id)
+    .bind(current_id)
+    .execute(store.pool())
+    .await
+    .unwrap();
+
+    sqlx::raw_sql(REPAIR_NETWORK_EGRESS_CURRENT_ARTIFACTS_SQL)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+    assert!(
+        !PluginRepository::get_artifact_instance(&store, "test-node", retained_id)
+            .await
+            .unwrap()
+            .expect("retained artifact must remain")
+            .is_current
+    );
+    assert!(
+        PluginRepository::get_artifact_instance(&store, "test-node", current_id)
+            .await
+            .unwrap()
+            .expect("latest artifact must become current")
+            .is_current
+    );
 }
 
 #[tokio::test]
