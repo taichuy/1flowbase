@@ -1086,6 +1086,7 @@
     "network_center_proxy_search": "Search proxies",
     "network_center_proxy_address": "Address",
     "network_center_health_healthy": "Healthy",
+    "network_center_health_not_tested": "Not tested",
     "network_center_health_unhealthy": "Unhealthy",
     "network_center_health_invalid": "Invalid",
     "network_center_routes_unavailable": "Routing rule management is not available yet.",

@@ -19,7 +19,7 @@ type ProxyPoolFilters = { search: string; health?: string; providerCode?: string
 const PAGE_SIZE = 20;
 
 function healthTag(health: string) {
-  const color = health === 'healthy' ? 'green' : health === 'unhealthy' ? 'red' : 'orange';
+  const color = health === 'healthy' ? 'green' : health === 'unhealthy' ? 'red' : health === 'not_tested' ? 'default' : 'orange';
   return <Tag color={color}>{i18nText('settings', `auto.network_center_health_${health}`)}</Tag>;
 }
 
@@ -52,7 +52,7 @@ function ProxyModal({ open, types, loading, submitting, onClose, onSubmit }: { o
   const providerCode = Form.useWatch('provider_code', form);
   const proxyType = types.find((item) => item.provider_code === providerCode);
   return (
-    <FixedHeightModal open={open} title={i18nText('settings', 'auto.network_center_member_create')} onCancel={onClose} onOk={() => form.submit()} confirmLoading={submitting} destroyOnHidden width={640}>
+    <FixedHeightModal open={open} title={i18nText('settings', 'auto.network_center_member_create')} onCancel={onClose} onOk={() => form.submit()} confirmLoading={submitting} okText={i18nText('settings', 'auto.save')} destroyOnHidden width={640}>
       <Form form={form} layout="vertical" initialValues={{ description: '', config: {} }} onFinish={onSubmit}>
         <Form.Item name="provider_code" label={i18nText('settings', 'auto.network_center_providers')} rules={[{ required: true }]}>
           <Select
@@ -204,10 +204,10 @@ export function NetworkEgressPoolsPanel() {
       { key: 'name', title: i18nText('settings', 'auto.name'), dataIndex: 'display_name', width: 160 },
       { key: 'provider', title: i18nText('settings', 'auto.network_center_providers'), width: 150, render: (_, member) => <Typography.Text type="secondary">{typeDisplayNameByCode.get(member.provider_code) ?? member.provider_code}</Typography.Text> },
       { key: 'address', title: i18nText('settings', 'auto.network_center_proxy_address'), width: 230, render: (_, member) => member.address_summary ? <Typography.Text copyable={{ text: member.address_summary }} style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace' }}>{member.address_summary}</Typography.Text> : <Typography.Text type="secondary">{member.provider_egress_key}</Typography.Text> },
-      { key: 'region', title: i18nText('settings', 'auto.network_center_provider_egress_region'), dataIndex: 'region', width: 140, render: (region) => region ?? '-' },
-      { key: 'health', title: i18nText('settings', 'auto.network_center_member_health'), dataIndex: 'health', width: 130, render: healthTag },
+      { key: 'region', title: i18nText('settings', 'auto.network_center_provider_egress_region'), dataIndex: 'region', width: 140, render: (_, member) => member.region ?? '-' },
+      { key: 'health', title: i18nText('settings', 'auto.network_center_member_health'), dataIndex: 'health', width: 130, render: (_, member) => healthTag(member.health) },
       { key: 'latency', title: i18nText('settings', 'auto.network_center_probe_latency'), dataIndex: 'probe_latency_ms', width: 100, render: (latencyMs) => <Typography.Text>{latencyMs as number}ms</Typography.Text> },
-      { key: 'probe', title: i18nText('settings', 'auto.network_center_member_test_result'), width: 280, sizing: 'fill', render: (_, member) => member.probe_status === 'not_tested' ? <Typography.Text type="secondary">-</Typography.Text> : <Space orientation="vertical" size={0}><Space size={4} wrap>{probeCapabilityTag('http', member.probe_http_status)}{probeCapabilityTag('https', member.probe_https_status)}</Space>{member.probe_exit_ip ? <Typography.Text type="secondary">{member.probe_exit_ip}</Typography.Text> : null}{member.probe_error_code ? <Typography.Text type="danger">{probeErrorText(member.probe_error_code)}</Typography.Text> : null}{member.last_probed_at ? <Typography.Text type="secondary">{new Date(member.last_probed_at).toLocaleString()}</Typography.Text> : null}</Space> },
+      { key: 'probe', title: i18nText('settings', 'auto.network_center_member_test_result'), width: 280, sizing: 'fill', render: (_, member) => member.probe_status === 'not_tested' ? <Space size={4} wrap>{probeCapabilityTag('http', 'not_tested')}{probeCapabilityTag('https', 'not_tested')}</Space> : <Space orientation="vertical" size={0}><Space size={4} wrap>{probeCapabilityTag('http', member.probe_http_status)}{probeCapabilityTag('https', member.probe_https_status)}</Space>{member.probe_exit_ip ? <Typography.Text type="secondary">{member.probe_exit_ip}</Typography.Text> : null}{member.probe_error_code ? <Typography.Text type="danger">{probeErrorText(member.probe_error_code)}</Typography.Text> : null}{member.last_probed_at ? <Typography.Text type="secondary">{new Date(member.last_probed_at).toLocaleString()}</Typography.Text> : null}</Space> },
       { key: 'enabled', title: i18nText('settings', 'auto.status'), dataIndex: 'enabled', width: 100, align: 'center', render: (enabled, member) => <Switch checked={enabled as boolean} loading={updateMember.isPending} onChange={(next) => updateMemberAction({ memberId: member.id, input: { enabled: next, sequence: member.sequence } })} /> },
       { key: 'actions', title: i18nText('settings', 'auto.operation'), width: 180, minWidth: 180, align: 'center', render: (_, member) => <Space><Button type="link" loading={testingMemberIds.has(member.id)} onClick={() => testMemberAction(member.id)}>{i18nText('settings', 'auto.network_center_member_test')}</Button><Button type="link" onClick={() => setEditingMember(member)}>{i18nText('settings', 'auto.edit')}</Button><Popconfirm title={i18nText('settings', 'auto.network_center_member_delete_confirm')} onConfirm={() => removeMemberAction(member.id)}><Button type="link" danger loading={removeMember.isPending}>{i18nText('settings', 'auto.delete')}</Button></Popconfirm></Space> }
     ],
@@ -231,7 +231,7 @@ export function NetworkEgressPoolsPanel() {
                 <Input allowClear type="search" value={filterDraft.search} onChange={(event) => setFilterDraft((current) => ({ ...current, search: event.target.value }))} />
               </DataTableFilterField>
               <DataTableFilterField label={i18nText('settings', 'auto.network_center_member_health')}>
-                <Select allowClear value={filterDraft.health} onChange={(health) => setFilterDraft((current) => ({ ...current, health }))} options={['healthy', 'unhealthy', 'invalid'].map((value) => ({ value, label: i18nText('settings', `auto.network_center_health_${value}`) }))} />
+                <Select allowClear value={filterDraft.health} onChange={(health) => setFilterDraft((current) => ({ ...current, health }))} options={['healthy', 'not_tested', 'unhealthy', 'invalid'].map((value) => ({ value, label: i18nText('settings', `auto.network_center_health_${value}`) }))} />
               </DataTableFilterField>
               <DataTableFilterField label={i18nText('settings', 'auto.network_center_providers')}>
                 <Select allowClear value={filterDraft.providerCode} onChange={(providerCode) => setFilterDraft((current) => ({ ...current, providerCode }))} options={types.data?.map((type) => ({ value: type.provider_code, label: type.display_name }))} />

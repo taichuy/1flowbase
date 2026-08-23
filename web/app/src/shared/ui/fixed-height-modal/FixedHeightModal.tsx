@@ -16,6 +16,7 @@ export interface FixedHeightModalProps {
   scrollBodyClassName?: string;
   bodyHeader?: ReactNode;
   confirmLoading?: ModalProps['confirmLoading'];
+  okText?: ModalProps['okText'];
   destroyOnHidden?: ModalProps['destroyOnHidden'];
   onCancel: ModalProps['onCancel'];
   onOk?: ModalProps['onOk'];
@@ -38,6 +39,7 @@ export function FixedHeightModal({
   scrollBodyClassName,
   bodyHeader,
   confirmLoading,
+  okText,
   destroyOnHidden,
   onCancel,
   onOk
@@ -54,6 +56,7 @@ export function FixedHeightModal({
       destroyOnHidden={destroyOnHidden}
       footer={footer}
       open={open}
+      okText={okText}
       style={modalStyle}
       title={title}
       width={width}

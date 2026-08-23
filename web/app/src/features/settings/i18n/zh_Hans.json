@@ -1086,6 +1086,7 @@
     "network_center_proxy_search": "搜索代理",
     "network_center_proxy_address": "地址",
     "network_center_health_healthy": "健康",
+    "network_center_health_not_tested": "未测试",
     "network_center_health_unhealthy": "不健康",
     "network_center_health_invalid": "无效",
     "network_center_routes_unavailable": "路由规则管理暂未开放。",

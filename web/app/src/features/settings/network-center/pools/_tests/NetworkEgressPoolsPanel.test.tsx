@@ -131,7 +131,7 @@ describe('NetworkEgressPoolsPanel', () => {
     fireEvent.change(within(createModal).getByLabelText('Port'), {
       target: { value: '37867' }
     });
-    fireEvent.click(screen.getByRole('button', { name: /确\s*定|OK|Confirm/ }));
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存|Save/ }));
     await waitFor(() =>
       expect(networkCenterApi.createSettingsNetworkEgressProxy).toHaveBeenCalledWith(
         {
@@ -143,6 +143,7 @@ describe('NetworkEgressPoolsPanel', () => {
         'csrf-123'
       )
     );
+    expect(networkCenterApi.testSettingsNetworkEgressPoolMember).not.toHaveBeenCalled();
     expect(screen.queryByText(/创建代理池|Create proxy pool/)).not.toBeInTheDocument();
   });
 
@@ -161,7 +162,7 @@ describe('NetworkEgressPoolsPanel', () => {
     fireEvent.change(await within(createModal).findByLabelText('Subscription URL'), {
       target: { value: 'https://example.com/subscription' }
     });
-    fireEvent.click(screen.getByRole('button', { name: /确\s*定|OK|Confirm/ }));
+    fireEvent.click(screen.getByRole('button', { name: /保\s*存|Save/ }));
     await waitFor(() =>
       expect(networkCenterApi.createSettingsNetworkEgressProxy).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -365,6 +366,8 @@ describe('NetworkEgressPoolsPanel', () => {
     renderPanel();
 
     expect(await screen.findByRole('button', { name: '测试' })).toBeInTheDocument();
+    expect(screen.getByText('HTTP 未测试')).toBeInTheDocument();
+    expect(screen.getByText('HTTPS 未测试')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '测试连接' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
     fireEvent.change(screen.getByLabelText(/成员顺序|Member sequence/), {
