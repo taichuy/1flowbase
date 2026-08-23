@@ -146,6 +146,7 @@ use utoipa::OpenApi;
         crate::routes::network_center::plugins::list_plugin_families,
         crate::routes::network_center::plugins::switch_plugin_version,
         crate::routes::network_center::plugins::uninstall_plugin_version,
+        crate::routes::network_center::plugins::uninstall_plugin_family,
         crate::routes::network_center::plugins::install_official_plugin,
         crate::routes::network_center::plugins::install_uploaded_plugin,
         crate::routes::network_center::pools::list_network_egress_pools,

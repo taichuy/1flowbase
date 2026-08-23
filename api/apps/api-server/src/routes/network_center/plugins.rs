@@ -7,8 +7,8 @@ use axum::{
     middleware, Json,
 };
 use control_plane::plugin_management::{
-    official_plugin_host_compatibility, InstallUploadedPluginCommand, PluginCatalogFilter,
-    PluginManagementService,
+    official_plugin_host_compatibility, DeletePluginFamilyCommand, InstallUploadedPluginCommand,
+    PluginCatalogFilter, PluginManagementService,
 };
 use control_plane::ports::{NetworkEgressRepository, PluginRepository};
 use storage_durable::MainDurableStore;
@@ -82,6 +82,7 @@ pub struct NetworkEgressPluginFamilyResponse {
     pub display_name: String,
     pub current_installation_id: String,
     pub current_version: String,
+    pub can_uninstall: bool,
     pub installed_versions: Vec<NetworkEgressPluginInstalledVersionResponse>,
 }
 
@@ -125,6 +126,13 @@ pub(crate) fn route_assembly_with_plugin_upload_max_bytes(
             "/settings/network-center/proxy-plugins/families/:provider_code/versions/:installation_id",
             console_delete(
                 uninstall_plugin_version,
+                ConsoleOperation("network_egress_plugins.families.uninstall".to_string()),
+            ),
+        )
+        .route(
+            "/settings/network-center/proxy-plugins/families/:provider_code",
+            console_delete(
+                uninstall_plugin_family,
                 ConsoleOperation("network_egress_plugins.families.uninstall".to_string()),
             ),
         )
@@ -396,6 +404,74 @@ pub async fn uninstall_plugin_version(
 }
 
 #[utoipa::path(
+    delete,
+    path = "/api/console/settings/network-center/proxy-plugins/families/{provider_code}",
+    operation_id = "network_egress_plugins_uninstall_family",
+    responses((status = 204), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
+)]
+pub async fn uninstall_plugin_family(
+    State(state): State<Arc<ApiState>>,
+    Path(provider_code): Path<String>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    let context = require_session(&state, &headers).await?;
+    require_csrf(&headers, &context)?;
+    let catalog = service(
+        &state,
+        &context.actor,
+        "network_egress_plugins.families.uninstall",
+    )
+    .list_catalog(
+        context.user.id,
+        PluginCatalogFilter {
+            plugin_type: Some(NETWORK_EGRESS_PROVIDER_PLUGIN_TYPE.to_string()),
+        },
+        requested_locales(&resolve_locale_meta(
+            &headers,
+            None,
+            context.user.preferred_locale,
+        )),
+    )
+    .await?;
+    let families = project_plugin_families(catalog.entries)?;
+    let family =
+        families
+            .get(&provider_code)
+            .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                "network_egress_plugin_family",
+            ))?;
+    let installed_ids = family
+        .installed_versions
+        .iter()
+        .map(|version| version.installation_id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    if state
+        .store
+        .list_network_egress_providers()
+        .await?
+        .into_iter()
+        .filter_map(|provider| provider.installation_id)
+        .any(|installation_id| installed_ids.contains(installation_id.to_string().as_str()))
+    {
+        return Err(control_plane::errors::ControlPlaneError::Conflict(
+            "network_egress_plugin_family_uninstall_blocked",
+        )
+        .into());
+    }
+    service(
+        &state,
+        &context.actor,
+        "network_egress_plugins.families.uninstall",
+    )
+    .delete_family(DeletePluginFamilyCommand {
+        actor_user_id: context.user.id,
+        provider_code,
+    })
+    .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[utoipa::path(
     post,
     path = "/api/console/settings/network-center/proxy-plugins/install-official",
     operation_id = "network_egress_plugins_install_official",
@@ -635,6 +711,7 @@ fn project_plugin_families(
                 provider_code,
                 current_installation_id: current.installation_id.clone(),
                 current_version: current.plugin_version.clone(),
+                can_uninstall: true,
                 installed_versions,
             },
         );
@@ -657,6 +734,7 @@ async fn mark_referenced_versions_not_uninstallable(
     for family in families.values_mut() {
         for version in &mut family.installed_versions {
             if referenced_installations.contains(&version.installation_id) {
+                family.can_uninstall = false;
                 version.can_uninstall = false;
             }
         }

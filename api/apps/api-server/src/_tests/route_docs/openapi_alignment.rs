@@ -179,6 +179,11 @@ async fn openapi_registers_configurable_network_egress_routes_with_stable_operat
             "network_egress_plugins_uninstall_family_version",
         ),
         (
+            "/api/console/settings/network-center/proxy-plugins/families/{provider_code}",
+            "delete",
+            "network_egress_plugins_uninstall_family",
+        ),
+        (
             "/api/console/network-center/pools/proxies",
             "post",
             "network_egress_proxies_create",

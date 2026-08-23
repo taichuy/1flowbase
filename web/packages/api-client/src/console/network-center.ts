@@ -47,6 +47,7 @@ export interface ConsoleNetworkEgressPluginFamily {
   display_name: string;
   current_installation_id: string;
   current_version: string;
+  can_uninstall: boolean;
   installed_versions: ConsoleNetworkEgressPluginInstalledVersion[];
 }
 
@@ -287,6 +288,19 @@ export function uninstallConsoleNetworkEgressPluginVersion(
 ) {
   return apiFetchVoid({
     path: `/api/console/settings/network-center/proxy-plugins/families/${encodeURIComponent(providerCode)}/versions/${encodeURIComponent(installationId)}`,
+    method: 'DELETE',
+    csrfToken,
+    baseUrl
+  });
+}
+
+export function uninstallConsoleNetworkEgressPluginFamily(
+  providerCode: string,
+  csrfToken: string,
+  baseUrl?: string
+) {
+  return apiFetchVoid({
+    path: `/api/console/settings/network-center/proxy-plugins/families/${encodeURIComponent(providerCode)}`,
     method: 'DELETE',
     csrfToken,
     baseUrl

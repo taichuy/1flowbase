@@ -41,6 +41,7 @@ import {
   type UpdateConsoleNetworkEgressRouteInput,
   type UpdateConsoleNetworkEgressProviderLifecycleInput,
   switchConsoleNetworkEgressPluginVersion,
+  uninstallConsoleNetworkEgressPluginFamily,
   uninstallConsoleNetworkEgressPluginVersion
 } from '@1flowbase/api-client';
 
@@ -147,6 +148,13 @@ export function uninstallSettingsNetworkEgressPluginVersion(
   csrfToken: string
 ) {
   return uninstallConsoleNetworkEgressPluginVersion(providerCode, installationId, csrfToken);
+}
+
+export function uninstallSettingsNetworkEgressPluginFamily(
+  providerCode: string,
+  csrfToken: string
+) {
+  return uninstallConsoleNetworkEgressPluginFamily(providerCode, csrfToken);
 }
 
 export function uploadSettingsNetworkEgressPluginPackage(

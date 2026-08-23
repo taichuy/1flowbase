@@ -98,6 +98,43 @@ async fn network_center_proxy_plugin_families_reject_session_without_feature_sco
     assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
+/// AC-NCP03: removing a proxy plugin family is a Network Center action and must not be
+/// reachable by a session that lacks the Network Center SettingsFeature.
+#[tokio::test]
+async fn network_center_proxy_plugin_family_uninstall_rejects_session_without_feature_scope() {
+    let app = test_app().await;
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+    create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "network-plugin-family-uninstall-without-scope",
+        "temp-pass",
+    )
+    .await;
+    let (cookie, csrf) = login_and_capture_cookie(
+        &app,
+        "network-plugin-family-uninstall-without-scope",
+        "temp-pass",
+    )
+    .await;
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .method("DELETE")
+                .uri("/api/console/settings/network-center/proxy-plugins/families/clash-proxy")
+                .header("cookie", cookie)
+                .header("x-csrf-token", csrf)
+                .body(Body::empty())
+                .expect("request should be valid"),
+        )
+        .await
+        .expect("router should return a response");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+}
+
 /// AC-015: pool state is protected by the same backend-owned Network Center feature scope.
 #[tokio::test]
 async fn network_center_pool_registry_rejects_session_without_feature_scope() {

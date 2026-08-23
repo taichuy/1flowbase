@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { Alert, Button, Empty, Input, Modal, Select, Space, Table, Tag, Typography, Upload } from 'antd';
+import { Alert, Button, Empty, Input, Modal, Popconfirm, Select, Space, Table, Tag, Typography, Upload } from 'antd';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -15,6 +15,7 @@ import {
   settingsNetworkEgressProviderTypesQueryKey,
   type SettingsNetworkEgressProviderType,
   switchSettingsNetworkEgressPluginVersion,
+  uninstallSettingsNetworkEgressPluginFamily,
   uninstallSettingsNetworkEgressPluginVersion,
   uploadSettingsNetworkEgressPluginPackage
 } from '../../api/network-center';
@@ -98,9 +99,17 @@ export function NetworkEgressProvidersPanel() {
     },
     onSuccess: refreshTypes
   });
+  const uninstallFamily = useMutation({
+    mutationFn: (providerCode: string) => {
+      if (!csrfToken) throw new Error('Missing CSRF token');
+      return uninstallSettingsNetworkEgressPluginFamily(providerCode, csrfToken);
+    },
+    onSuccess: refreshTypes
+  });
 
-  const pluginError = errorMessage(plugins.error) ?? errorMessage(pluginFamilies.error) ?? errorMessage(install.error) ?? errorMessage(upload.error) ?? errorMessage(switchVersion.error) ?? errorMessage(uninstallVersion.error);
+  const pluginError = errorMessage(plugins.error) ?? errorMessage(pluginFamilies.error) ?? errorMessage(install.error) ?? errorMessage(upload.error) ?? errorMessage(switchVersion.error) ?? errorMessage(uninstallVersion.error) ?? errorMessage(uninstallFamily.error);
   const familyByProviderCode = new Map((pluginFamilies.data ?? []).map((family) => [family.provider_code, family]));
+  const officialPluginByProviderCode = new Map((plugins.data?.entries ?? []).map((plugin) => [plugin.provider_code, plugin]));
 
   return (
     <SettingsSectionSurface heightMode="fill">
@@ -118,7 +127,58 @@ export function NetworkEgressProvidersPanel() {
               locale={{ emptyText: <Empty description={i18nText('settings', 'auto.network_center_no_providers')} /> }}
               columns={[
                 { title: i18nText('settings', 'auto.network_center_providers'), dataIndex: 'display_name', key: 'display_name' },
-                { title: i18nText('settings', 'auto.network_center_proxy_type_fields'), key: 'fields', render: (_, item) => item.form_schema.fields.map((field) => <Tag key={field.key}>{field.label}</Tag>) }
+                { title: i18nText('settings', 'auto.network_center_proxy_type_fields'), key: 'fields', render: (_, item) => item.form_schema.fields.map((field) => <Tag key={field.key}>{field.label}</Tag>) },
+                {
+                  title: i18nText('settings', 'auto.version'),
+                  key: 'version',
+                  render: (_, item) => {
+                    const family = familyByProviderCode.get(item.provider_code);
+                    if (!family) return <Typography.Text type="secondary">—</Typography.Text>;
+                    return <Select
+                      size="small"
+                      aria-label={`${item.display_name} ${i18nText('settings', 'auto.version')}`}
+                      value={family.current_installation_id}
+                      loading={switchVersion.isPending && switchVersion.variables?.providerCode === family.provider_code}
+                      options={family.installed_versions.map((version) => ({ value: version.installation_id, label: version.plugin_version }))}
+                      onChange={(installationId) => switchVersion.mutate({ providerCode: family.provider_code, installationId })}
+                    />;
+                  }
+                },
+                {
+                  title: i18nText('settings', 'auto.network_center_proxy_type_actions'),
+                  key: 'actions',
+                  render: (_, item) => {
+                    const family = familyByProviderCode.get(item.provider_code);
+                    const officialPlugin = officialPluginByProviderCode.get(item.provider_code);
+                    if (!family) return <Typography.Text type="secondary">—</Typography.Text>;
+                    return <Space size={4} wrap>
+                      {officialPlugin?.has_update ? <Button
+                        type="link"
+                        size="small"
+                        aria-label={`${item.display_name} ${i18nText('settings', 'auto.update')}`}
+                        loading={install.isPending && install.variables === officialPlugin.plugin_id}
+                        onClick={() => install.mutate(officialPlugin.plugin_id)}
+                      >
+                        {i18nText('settings', 'auto.update')}
+                      </Button> : null}
+                      <Popconfirm
+                        title={i18nText('settings', 'auto.uninstall_plugin')}
+                        onConfirm={() => uninstallFamily.mutate(family.provider_code)}
+                        okButtonProps={{ danger: true, loading: uninstallFamily.isPending && uninstallFamily.variables === family.provider_code }}
+                      >
+                        <Button
+                          danger
+                          type="link"
+                          size="small"
+                          aria-label={`${item.display_name} ${i18nText('settings', 'auto.uninstall_plugin')}`}
+                          disabled={!family.can_uninstall}
+                        >
+                          {i18nText('settings', 'auto.uninstall_plugin')}
+                        </Button>
+                      </Popconfirm>
+                    </Space>;
+                  }
+                }
               ]}
             />
           )}
@@ -141,25 +201,15 @@ export function NetworkEgressProvidersPanel() {
                 {plugin.description ? <Typography.Text type="secondary">{plugin.description}</Typography.Text> : null}
                 <div className="network-egress-providers__plugin-actions">
                   {plugin.help_url ? <Button onClick={() => window.open(plugin.help_url!, '_blank', 'noopener,noreferrer')}>{i18nText('settings', 'auto.documentation')}</Button> : null}
-                  <Button type="primary" loading={install.isPending && install.variables === plugin.plugin_id} disabled={plugin.install_status === 'installed' && !plugin.has_update} onClick={() => install.mutate(plugin.plugin_id)}>
+                  <Button type="primary" loading={install.isPending && install.variables === plugin.plugin_id} disabled={plugin.install_status === 'installed'} onClick={() => install.mutate(plugin.plugin_id)}>
                     {plugin.install_status === 'installed'
-                      ? plugin.has_update
-                        ? i18nText('settings', 'auto.update')
-                        : i18nText('settings', 'auto.network_center_proxy_plugin_installed')
+                      ? i18nText('settings', 'auto.network_center_proxy_plugin_installed')
                       : i18nText('settings', 'auto.install_plugin')}
                   </Button>
                 </div>
                 {familyByProviderCode.get(plugin.provider_code) ? (() => {
                   const family = familyByProviderCode.get(plugin.provider_code)!;
-                  return <div className="network-egress-providers__plugin-versions">
-                    <Select
-                      size="small"
-                      aria-label={`${plugin.display_name} ${i18nText('settings', 'auto.version')}`}
-                      value={family.current_installation_id}
-                      loading={switchVersion.isPending && switchVersion.variables?.providerCode === family.provider_code}
-                      options={family.installed_versions.map((version) => ({ value: version.installation_id, label: version.plugin_version }))}
-                      onChange={(installationId) => switchVersion.mutate({ providerCode: family.provider_code, installationId })}
-                    />
+                  return family.installed_versions.filter((version) => !version.is_current).length > 0 ? <div className="network-egress-providers__plugin-versions">
                     <Space size={4} wrap>
                       {family.installed_versions.filter((version) => !version.is_current).map((version) => (
                         <Button
@@ -175,7 +225,7 @@ export function NetworkEgressProvidersPanel() {
                         </Button>
                       ))}
                     </Space>
-                  </div>;
+                  </div> : null;
                 })() : null}
               </article>
             ))}

@@ -581,6 +581,7 @@
     "role_deleted": "Role deleted",
     "resetting_password_reset_target_account_password_temporary_password_require_user": "Resetting the password will reset the target account password to the default temporary password and require the user to change it immediately after logging in.",
     "version": "version",
+    "network_center_proxy_type_actions": "Actions",
     "alibaba_cloud_oss": "Alibaba Cloud OSS",
     "role_description": "Role Description",
     "indicates_version_already_latest_official_version": "Indicates that the current version is already the latest official version.",

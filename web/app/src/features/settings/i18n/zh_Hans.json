@@ -581,6 +581,7 @@
     "role_deleted": "角色已删除",
     "resetting_password_reset_target_account_password_temporary_password_require_user": "重置密码会将目标账号密码重置为默认临时密码，并要求用户登录后立即修改。",
     "version": "版本",
+    "network_center_proxy_type_actions": "操作",
     "alibaba_cloud_oss": "阿里云 OSS",
     "role_description": "角色说明",
     "indicates_version_already_latest_official_version": "表示当前版本已经是官方最新版本。",
