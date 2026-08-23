@@ -1,7 +1,7 @@
 use anyhow::Result;
 use plugin_framework::{
     EgressAvailability, NetworkEgressProviderPackage, PluginFormFieldSchema, PluginFormSchema,
-    NETWORK_EGRESS_PROVIDER_CONTRACT,
+    PluginFrameworkError, NETWORK_EGRESS_PROVIDER_CONTRACT,
 };
 use serde_json::{Map, Value};
 use std::collections::HashSet;
@@ -213,7 +213,15 @@ where
                 serde_json::json!({ "installation_id": provider.installation_id, "lifecycle": provider.lifecycle.as_str() }),
             ))
             .await?;
-        self.sync(command.actor_user_id, provider.id).await
+        match self.sync(command.actor_user_id, provider.id).await {
+            Ok(view) => Ok(view),
+            Err(error) => {
+                self.repository
+                    .delete_network_egress_provider(provider.id)
+                    .await?;
+                Err(error)
+            }
+        }
     }
 
     pub async fn create_proxy(
@@ -403,12 +411,12 @@ where
             .await
         {
             Ok(descriptors) => descriptors,
-            Err(_) => {
-                let failed = self
-                    .repository
+            Err(error) => {
+                let failure = network_egress_sync_failure(&error);
+                self.repository
                     .record_network_egress_sync_failure(&RecordNetworkEgressSyncFailureInput {
                         provider_id,
-                        last_sync_error: "network_egress_sync_failed".to_string(),
+                        last_sync_error: failure.code.to_string(),
                         synchronized_at: sync_at,
                         actor_user_id,
                     })
@@ -420,17 +428,13 @@ where
                         "network_egress_provider",
                         Some(provider_id),
                         "network_egress_provider.sync_failed",
-                        serde_json::json!({}),
+                        serde_json::json!({ "reason": failure.code }),
                     ))
                     .await?;
-                let egresses = self
-                    .repository
-                    .list_network_egress_projections(provider_id)
-                    .await?;
-                return Ok(NetworkEgressProviderView {
-                    provider: failed,
-                    egresses,
-                });
+                return Err(anyhow::Error::new(ControlPlaneError::Conflict(
+                    "network_egress_proxy_parse_failed",
+                ))
+                .context(failure.message));
             }
         };
         let egresses = descriptors
@@ -470,6 +474,43 @@ where
             ))
             .await?;
         Ok(NetworkEgressProviderView { provider, egresses })
+    }
+}
+
+struct NetworkEgressSyncFailure {
+    code: &'static str,
+    message: &'static str,
+}
+
+fn network_egress_sync_failure(error: &anyhow::Error) -> NetworkEgressSyncFailure {
+    let provider_code =
+        error
+            .downcast_ref::<PluginFrameworkError>()
+            .and_then(|error| match error {
+                PluginFrameworkError::RuntimeContract { error } => error
+                    .provider_details
+                    .as_ref()
+                    .and_then(|details| details.get("code"))
+                    .and_then(Value::as_str),
+                _ => None,
+            });
+    match provider_code {
+        Some("network_egress_subscription_unavailable") => NetworkEgressSyncFailure {
+            code: "network_egress_subscription_unavailable",
+            message: "the proxy subscription could not be fetched or read",
+        },
+        Some("network_egress_subscription_invalid") => NetworkEgressSyncFailure {
+            code: "network_egress_subscription_invalid",
+            message: "the proxy subscription is not a supported raw Clash/Mihomo YAML document",
+        },
+        Some("network_egress_proxy_invalid") => NetworkEgressSyncFailure {
+            code: "network_egress_proxy_invalid",
+            message: "the proxy subscription contains an unsupported or invalid proxy node",
+        },
+        _ => NetworkEgressSyncFailure {
+            code: "network_egress_sync_failed",
+            message: "the proxy subscription could not be synchronized",
+        },
     }
 }
 
@@ -583,7 +624,11 @@ fn validate_instance_config(schema: &PluginFormSchema, value: Value) -> Result<V
 
 #[cfg(test)]
 mod tests {
-    use super::{builtin_static_http_type, validate_instance_config};
+    use super::{builtin_static_http_type, network_egress_sync_failure, validate_instance_config};
+    use plugin_framework::{
+        provider_contract::{ProviderRuntimeError, ProviderRuntimeErrorKind},
+        PluginFrameworkError,
+    };
     use serde_json::json;
 
     #[test]
@@ -627,5 +672,27 @@ mod tests {
         .expect_err("blank required fields must still reject saving");
 
         assert_eq!(error.to_string(), "invalid input: config");
+    }
+
+    #[test]
+    fn ac_clash_sync_preserves_only_the_safe_provider_failure_code() {
+        let error = anyhow::Error::from(PluginFrameworkError::runtime(
+            ProviderRuntimeError::new(
+                ProviderRuntimeErrorKind::ProviderInvalidResponse,
+                "provider rejected the operation",
+            )
+            .with_provider_details(json!({
+                "code": "network_egress_proxy_invalid",
+                "message": "ignored-untrusted-detail"
+            })),
+        ));
+
+        let failure = network_egress_sync_failure(&error);
+
+        assert_eq!(failure.code, "network_egress_proxy_invalid");
+        assert_eq!(
+            failure.message,
+            "the proxy subscription contains an unsupported or invalid proxy node"
+        );
     }
 }

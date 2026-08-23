@@ -145,6 +145,9 @@ pub trait NetworkEgressRepository: Send + Sync {
         &self,
         input: &CreateNetworkEgressProviderInput,
     ) -> anyhow::Result<domain::NetworkEgressProviderRecord>;
+    /// Used only to compensate an initial provider creation whose first synchronization failed.
+    /// Existing providers retain their unhealthy state so operators can inspect and retry them.
+    async fn delete_network_egress_provider(&self, provider_id: Uuid) -> anyhow::Result<()>;
     async fn create_static_http_proxy_pool_member(
         &self,
         input: &CreateStaticHttpProxyPoolMemberInput,

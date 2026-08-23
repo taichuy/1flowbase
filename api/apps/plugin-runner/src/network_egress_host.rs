@@ -21,7 +21,7 @@ use plugin_framework::{
     NetworkEgressProviderStdioResponse, PluginRuntimeLimits, ReleaseHttpForwardProxyInput,
     SyncEgressesInput, SyncEgressesResult,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines},
     net::TcpStream,
@@ -279,6 +279,49 @@ struct NetworkEgressConfigFile {
     directory: PathBuf,
     path: PathBuf,
     cleaned: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NetworkEgressWorkerErrorResponse {
+    operation: String,
+    error: NetworkEgressWorkerError,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct NetworkEgressWorkerError {
+    code: String,
+    message: String,
+}
+
+impl NetworkEgressWorkerErrorResponse {
+    fn validate(&self) -> FrameworkResult<()> {
+        if !matches!(
+            self.operation.as_str(),
+            "sync_egresses" | "acquire_http_forward_proxy" | "release_http_forward_proxy"
+        ) {
+            return Err(PluginFrameworkError::invalid_provider_contract(
+                "network egress worker error operation is invalid",
+            ));
+        }
+        if !self.error.code.starts_with("network_egress_")
+            || self.error.code.len() > 128
+            || !self
+                .error
+                .code
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+            || self.error.message.trim().is_empty()
+            || self.error.message.len() > 256
+            || self.error.message.contains(['\n', '\r'])
+        {
+            return Err(PluginFrameworkError::invalid_provider_contract(
+                "network egress worker error is invalid",
+            ));
+        }
+        Ok(())
+    }
 }
 
 impl NetworkEgressConfigFile {
@@ -546,6 +589,15 @@ impl NetworkEgressWorker {
         &mut self,
         request: NetworkEgressProviderStdioRequest,
     ) -> FrameworkResult<NetworkEgressProviderStdioResponse> {
+        let expected_operation = match &request {
+            NetworkEgressProviderStdioRequest::SyncEgresses(_) => "sync_egresses",
+            NetworkEgressProviderStdioRequest::AcquireHttpForwardProxy(_) => {
+                "acquire_http_forward_proxy"
+            }
+            NetworkEgressProviderStdioRequest::ReleaseHttpForwardProxy(_) => {
+                "release_http_forward_proxy"
+            }
+        };
         request.validate()?;
         let payload = serde_json::to_vec(&request)
             .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
@@ -565,6 +617,22 @@ impl NetworkEgressWorker {
             .ok_or_else(|| {
                 network_runtime_error("network egress worker ended without a response")
             })?;
+        if let Ok(error_response) = serde_json::from_str::<NetworkEgressWorkerErrorResponse>(&line)
+        {
+            error_response.validate()?;
+            if error_response.operation != expected_operation {
+                return Err(PluginFrameworkError::invalid_provider_contract(
+                    "network egress worker error operation does not match the request",
+                ));
+            }
+            return Err(PluginFrameworkError::runtime(
+                plugin_framework::provider_contract::ProviderRuntimeError::new(
+                    plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderInvalidResponse,
+                    "network egress provider rejected the requested operation",
+                )
+                .with_provider_details(serde_json::json!({ "code": error_response.error.code })),
+            ));
+        }
         let response =
             serde_json::from_str::<NetworkEgressProviderStdioResponse>(&line).map_err(|error| {
                 PluginFrameworkError::invalid_provider_contract(format!(
@@ -773,5 +841,27 @@ fn startup_receipt(plugin_id: &str) -> NetworkEgressCleanupReceipt {
         final_state: NetworkEgressWorkerState::Failed,
         reason: NetworkEgressCleanupReason::RuntimeFailure,
         cleanup_error: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::NetworkEgressWorkerErrorResponse;
+
+    #[test]
+    fn ac_clash_worker_error_envelope_accepts_only_safe_network_egress_codes() {
+        let response: NetworkEgressWorkerErrorResponse = serde_json::from_str(
+            r#"{"operation":"sync_egresses","error":{"code":"network_egress_proxy_invalid","message":"proxy node is invalid"}}"#,
+        )
+        .expect("safe error envelope should deserialize");
+        response
+            .validate()
+            .expect("safe error envelope should validate");
+
+        let unsafe_response: NetworkEgressWorkerErrorResponse = serde_json::from_str(
+            r#"{"operation":"sync_egresses","error":{"code":"token=secret","message":"proxy node is invalid"}}"#,
+        )
+        .expect("unsafe fixture shape should deserialize");
+        assert!(unsafe_response.validate().is_err());
     }
 }

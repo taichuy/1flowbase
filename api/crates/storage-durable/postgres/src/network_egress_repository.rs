@@ -203,6 +203,20 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         provider(row)
     }
 
+    async fn delete_network_egress_provider(&self, provider_id: Uuid) -> Result<()> {
+        let result = sqlx::query("delete from network_egress_providers where id = $1")
+            .bind(provider_id)
+            .execute(self.pool())
+            .await?;
+        if result.rows_affected() == 0 {
+            return Err(control_plane::errors::ControlPlaneError::NotFound(
+                "network_egress_provider",
+            )
+            .into());
+        }
+        Ok(())
+    }
+
     async fn create_static_http_proxy_pool_member(
         &self,
         input: &CreateStaticHttpProxyPoolMemberInput,
@@ -953,6 +967,33 @@ mod tests {
                 .await
                 .expect("prior projection should remain readable");
         assert_eq!(retained, initial);
+
+        NetworkEgressRepository::delete_network_egress_provider(&store, provider_id)
+            .await
+            .expect("an initial failed provider must be removable with its private state");
+        assert!(
+            NetworkEgressRepository::get_network_egress_provider(&store, provider_id)
+                .await
+                .expect("deleted provider lookup should succeed")
+                .is_none()
+        );
+        assert!(
+            NetworkEgressRepository::resolve_network_egress_provider_secret_json(
+                &store,
+                provider_id,
+                "secret://system/network-egress/fixture",
+                "network-egress-test-master-key",
+            )
+            .await
+            .expect("deleted provider secret lookup should succeed")
+            .is_none()
+        );
+        assert!(
+            NetworkEgressRepository::list_network_egress_projections(&store, provider_id)
+                .await
+                .expect("deleted provider projection lookup should succeed")
+                .is_empty()
+        );
     }
 
     #[tokio::test]

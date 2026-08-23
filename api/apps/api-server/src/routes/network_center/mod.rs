@@ -301,7 +301,7 @@ pub async fn list_network_egress_provider_types(
     path = "/api/console/settings/network-center/providers",
     operation_id = "network_egress_providers_create",
     request_body = CreateNetworkEgressProviderBody,
-    responses((status = 201, body = NetworkEgressProviderResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody))
+    responses((status = 201, body = NetworkEgressProviderResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
 )]
 pub async fn create_network_egress_provider(
     State(state): State<Arc<ApiState>>,
