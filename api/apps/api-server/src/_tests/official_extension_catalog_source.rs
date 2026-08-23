@@ -17,8 +17,9 @@ use axum::{
     Router,
 };
 use control_plane::ports::{
-    CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
-    CreateNetworkEgressProviderInput, CreateNetworkEgressRouteInput, NetworkEgressPoolRepository,
+    CreateModelProviderInstanceInput, CreateNetworkEgressPoolInput,
+    CreateNetworkEgressPoolMemberInput, CreateNetworkEgressProviderInput,
+    CreateNetworkEgressRouteInput, ModelProviderRepository, NetworkEgressPoolRepository,
     NetworkEgressRepository, NetworkEgressRouteRepository, OfficialPluginSourcePort,
     PluginRepository, ReplaceNetworkEgressProjectionInput, UpsertNetworkEgressProviderSecretInput,
     UpsertPluginArtifactInstanceInput, UpsertPluginInstallationInput,
@@ -75,6 +76,7 @@ impl TempNetworkEgressPackage {
             .as_nanos();
         let root = std::env::temp_dir().join(format!("catalog-network-egress-{nonce}"));
         fs::create_dir_all(root.join("bin")).unwrap();
+        fs::create_dir_all(root.join("provider")).unwrap();
         fs::write(
             root.join("manifest.yaml"),
             r#"manifest_version: 1
@@ -116,6 +118,22 @@ node_contributions: []
             format!(
                 "#!/usr/bin/env bash\nset -euo pipefail\nif [ \"${{1:-}}\" = \"--network-egress-config-file\" ]; then shift 2; fi\nwhile IFS= read -r request; do\n  case \"${{request}}\" in\n    *'\"operation\":\"sync_egresses\"'*) printf '%s\\n' '{{\"operation\":\"sync_egresses\",\"result\":{{\"egresses\":[{{\"provider_egress_key\":\"fixture-egress\",\"display_name\":\"Fixture Egress\",\"availability\":\"available\"}}]}}}}' ;;\n    *'\"operation\":\"acquire_http_forward_proxy\"'*) printf '%s\\n' '{{\"operation\":\"acquire_http_forward_proxy\",\"result\":{{\"lease_id\":\"fixture-lease\",\"http_proxy_url\":\"{proxy_url}\",\"cleanup_token\":\"host-private\",\"expires_at\":4102444800000}}}}' ;;\n    *'\"operation\":\"release_http_forward_proxy\"'*) printf '%s\\n' '{{\"operation\":\"release_http_forward_proxy\",\"result\":{{\"lease_id\":\"fixture-lease\"}}}}' ;;\n    *) exit 1 ;;\n  esac\ndone\n"
             ),
+        )
+        .unwrap();
+        fs::write(
+            root.join("provider/egress-provider.yaml"),
+            r#"provider_code: fixture_egress
+display_name: Fixture Egress
+form_schema:
+  schema_version: 1flowbase.plugin.form/v1
+  fields:
+    - key: subscription_url
+      label: Subscription URL
+      type: string
+      control: url
+      required: true
+      send_mode: secret
+"#,
         )
         .unwrap();
         #[cfg(unix)]
@@ -201,6 +219,62 @@ pub(super) async fn seed_network_egress_resolver(
     )
     .await
     .unwrap();
+    if let NetworkEgressConsumerSelector::ModelProviderInstance { instance_id } = &selector {
+        let model_installation_id = uuid::Uuid::now_v7();
+        <storage_durable::MainDurableStore as PluginRepository>::upsert_installation(
+            &state.store,
+            &UpsertPluginInstallationInput {
+                installation_id: model_installation_id,
+                category: domain::ExtensionCategory::RuntimeExtensions,
+                organization: "test".into(),
+                provider_code: "fixture_provider".into(),
+                plugin_id: "fixture_provider@0.1.0".into(),
+                plugin_version: "0.1.0".into(),
+                contract_version: "1flowbase.provider/v2".into(),
+                protocol: "openai_compatible".into(),
+                display_name: "Fixture Provider".into(),
+                source_kind: "uploaded".into(),
+                trust_level: "unverified".into(),
+                verification_status: PluginVerificationStatus::Valid,
+                desired_state: PluginDesiredState::ActiveRequested,
+                expected_checksum: None,
+                signature_status: domain::ExtensionSignatureStatus::Missing,
+                signature_algorithm: None,
+                signing_key_id: None,
+                metadata_json: json!({}),
+                is_system_reserved: false,
+                actor_user_id: root.id,
+            },
+        )
+        .await
+        .unwrap();
+        <storage_durable::MainDurableStore as ModelProviderRepository>::create_instance(
+            &state.store,
+            &CreateModelProviderInstanceInput {
+                instance_id: *instance_id,
+                workspace_id: state.bootstrap_workspace_id,
+                installation_id: model_installation_id,
+                provider_code: "fixture_provider".into(),
+                protocol: "openai_compatible".into(),
+                display_name: "Fixture Model Provider".into(),
+                status: domain::ModelProviderInstanceStatus::Ready,
+                config_json: json!({"base_url": "https://fixture.invalid"}),
+                configured_models: vec![domain::ModelProviderConfiguredModel {
+                    model_id: "fixture_chat".into(),
+                    enabled: true,
+                    context_window_override_tokens: None,
+                    supports_multimodal: None,
+                    pricing_provider_code: domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE.into(),
+                    pricing_model_id: domain::DEFAULT_MODEL_PRICING_MODEL_ID.into(),
+                }],
+                enabled_model_ids: vec!["fixture_chat".into()],
+                included_in_main: Some(false),
+                created_by: root.id,
+            },
+        )
+        .await
+        .unwrap();
+    }
     <storage_durable::MainDurableStore as PluginRepository>::upsert_artifact_instance(
         &state.store,
         &UpsertPluginArtifactInstanceInput {
@@ -442,8 +516,8 @@ async fn publisher_cutover_artifact_two_body_failures_stop_after_two_requests() 
 /// fake proxy after the real resolver selected the persisted route/pool/provider projection.
 #[tokio::test]
 async fn root_1805_github_consumer_routes_through_host_owned_fake_proxy() {
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let proxy_url = format!("http://{}", listener.local_addr().unwrap());
+    let proxy_listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let proxy_url = format!("http://{}", proxy_listener.local_addr().unwrap());
     let origin = "http://catalog-origin.invalid";
     let (documents, sources) = catalog_documents(origin);
     let requests = Arc::new(Mutex::new(Vec::new()));
@@ -452,8 +526,13 @@ async fn root_1805_github_consumer_routes_through_host_owned_fake_proxy() {
         requests: Arc::clone(&requests),
     };
     let server = tokio::spawn(async move {
+        let (verification_stream, _) = proxy_listener
+            .accept()
+            .await
+            .expect("fake proxy must accept lease verification");
+        drop(verification_stream);
         axum::serve(
-            listener,
+            proxy_listener,
             Router::new().fallback(catalog_response).with_state(fixture),
         )
         .await

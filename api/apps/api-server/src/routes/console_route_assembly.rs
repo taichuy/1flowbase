@@ -1088,6 +1088,7 @@ mod tests {
             .merge(crate::routes::members::route_assembly())
             .merge(crate::routes::model_definitions::route_assembly())
             .merge(crate::routes::model_providers::route_assembly())
+            .merge(crate::routes::network_center::route_assembly())
             .merge(crate::routes::frontend_block_catalog::route_assembly())
             .merge(crate::routes::js_dependencies::route_assembly())
             .merge(crate::routes::node_contributions::route_assembly())

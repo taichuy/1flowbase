@@ -46,7 +46,11 @@ async fn test_frontend_block_app_with_database_url() -> (axum::Router, String) {
     )
 }
 
-async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uuid {
+async fn seed_frontend_block(
+    database_url: &str,
+    workspace_assigned: bool,
+    include_react_host_module: bool,
+) -> Uuid {
     let pool = PgPool::connect(database_url).await.unwrap();
     let workspace_id: Uuid =
         sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
@@ -201,6 +205,29 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
     .await
     .unwrap();
 
+    if include_react_host_module {
+        sqlx::query(
+            r#"
+            update frontend_block_catalog
+            set code_modules = jsonb_build_array($2::jsonb) || code_modules
+            where installation_id = $1
+            "#,
+        )
+        .bind(installation_id)
+        .bind(json!({
+            "source": "react",
+            "version": "19.2.5",
+            "exports": ["default", "useState"],
+            "binding": "host",
+            "assets": [],
+            "type_declarations": "",
+            "components": []
+        }))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
     if workspace_assigned {
         sqlx::query(
             r#"
@@ -225,7 +252,7 @@ async fn seed_frontend_block(database_url: &str, workspace_assigned: bool) -> Uu
 #[tokio::test]
 async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fail_closed() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
-    let installation_id = seed_frontend_block(&database_url, false).await;
+    let installation_id = seed_frontend_block(&database_url, false, false).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
     let _workspace_id: Uuid =
         sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
@@ -409,7 +436,7 @@ async fn d2_ac_001_and_004_component_contract_and_registered_asset_route_are_fai
 #[tokio::test]
 async fn component_capabilities_route_excludes_registered_exports_without_contracts() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
-    seed_frontend_block(&database_url, false).await;
+    seed_frontend_block(&database_url, false, false).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
     let _workspace_id: Uuid =
         sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
@@ -441,7 +468,7 @@ async fn component_capabilities_route_excludes_registered_exports_without_contra
 #[tokio::test]
 async fn component_dependency_lock_is_derived_from_source_imports() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
-    seed_frontend_block(&database_url, false).await;
+    seed_frontend_block(&database_url, true, true).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
     let _workspace_id: Uuid =
         sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
@@ -471,9 +498,10 @@ async fn component_dependency_lock_is_derived_from_source_imports() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::OK);
+    let status = response.status();
     let payload: Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    assert_eq!(status, StatusCode::OK, "{payload}");
     assert_eq!(
         payload["data"]["dependency_lock"],
         json!([{
@@ -484,17 +512,13 @@ async fn component_dependency_lock_is_derived_from_source_imports() {
                 "role": "browser_module",
                 "media_type": "text/javascript; charset=utf-8",
                 "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
-                "url": format!(
-                    "/api/console/frontstage/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
-                ),
+                "url": "/api/console/frontstage/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
                 "integrity": "verified_sha256"
             }, {
                 "role": "shadow_style",
                 "media_type": "text/css; charset=utf-8",
                 "sha256": "adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f",
-                "url": format!(
-                    "/api/console/frontstage/component-module-assets/adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f"
-                ),
+                "url": "/api/console/frontstage/component-module-assets/adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f",
                 "integrity": "verified_sha256"
             }],
             "exports": ["Button"]
@@ -506,12 +530,25 @@ async fn component_dependency_lock_is_derived_from_source_imports() {
                 "role": "browser_module",
                 "media_type": "text/javascript; charset=utf-8",
                 "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
-                "url": format!(
-                    "/api/console/frontstage/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
-                ),
+                "url": "/api/console/frontstage/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
                 "integrity": "verified_sha256"
             }],
             "exports": ["useRuntimeValue"]
+        }, {
+            "module_source": "react",
+            "module_version": "19.2.5",
+            "binding": "host",
+            "assets": [],
+            "exports": [
+                "Activity", "Children", "Component", "Fragment", "Profiler",
+                "PureComponent", "StrictMode", "Suspense", "cache", "cacheSignal",
+                "cloneElement", "createContext", "createElement", "createRef", "default",
+                "forwardRef", "isValidElement", "lazy", "memo", "startTransition", "use",
+                "useActionState", "useCallback", "useContext", "useDebugValue", "useDeferredValue",
+                "useEffect", "useEffectEvent", "useId", "useImperativeHandle", "useInsertionEffect",
+                "useLayoutEffect", "useMemo", "useOptimistic", "useReducer", "useRef", "useState",
+                "useSyncExternalStore", "useTransition", "version"
+            ]
         }])
     );
 }
@@ -519,7 +556,7 @@ async fn component_dependency_lock_is_derived_from_source_imports() {
 #[tokio::test]
 async fn ac_001_locked_asset_survives_current_catalog_digest_replacement() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
-    let installation_id = seed_frontend_block(&database_url, true).await;
+    let installation_id = seed_frontend_block(&database_url, true, false).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
     let workspace_id: Uuid =
         sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
@@ -560,7 +597,7 @@ async fn ac_001_locked_asset_survives_current_catalog_digest_replacement() {
         .fetch_one(&pool)
         .await
         .unwrap();
-    let old_bytes = b"export function Button() {}\n";
+    let old_bytes = b"export function RetainedButton() {}\n";
     let old_sha256 = format!("{:x}", Sha256::digest(old_bytes));
     let new_sha256 = format!("{:x}", Sha256::digest(b"export function ButtonV2() {}\n"));
 
@@ -885,8 +922,8 @@ async fn builtin_jsx_block_bootstrap_is_idempotent() {
 async fn frontend_block_catalog_route_lists_builtin_and_assigned_workspace_blocks() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
-    seed_frontend_block(&database_url, false).await;
-    seed_frontend_block(&database_url, true).await;
+    seed_frontend_block(&database_url, false, false).await;
+    seed_frontend_block(&database_url, true, false).await;
 
     let response = app
         .clone()
@@ -959,7 +996,7 @@ async fn frontend_block_catalog_route_lists_builtin_and_assigned_workspace_block
 #[tokio::test]
 async fn d5_p3_catalog_projects_isolated_runtime_contract_without_new_dto_fields() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
-    let installation_id = seed_frontend_block(&database_url, true).await;
+    let installation_id = seed_frontend_block(&database_url, true, false).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
     sqlx::query(
         "update frontend_block_catalog set runtime = 'isolated_iframe', entry = '@acme/native-components' where installation_id = $1",

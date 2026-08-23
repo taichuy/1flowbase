@@ -17,6 +17,13 @@ fn create_split_delta_provider_fixture(root: &Path) {
     fs::create_dir_all(root.join("models/llm")).unwrap();
     fs::create_dir_all(root.join("i18n")).unwrap();
     write_provider_manifest_v2(root, "fixture_provider", "Fixture Provider", "0.1.0");
+    let manifest = fs::read_to_string(root.join("manifest.yaml"))
+        .unwrap()
+        .replace(
+            "  capabilities:\n    - config.validate\n",
+            "  capabilities:\n    - config.validate\n    - models.list\n",
+        );
+    fs::write(root.join("manifest.yaml"), manifest).unwrap();
     fs::write(
         root.join("provider/fixture_provider.yaml"),
         r#"provider_code: fixture_provider
@@ -215,7 +222,14 @@ async fn create_ready_provider_instance(app: &axum::Router, cookie: &str, csrf: 
         )
         .await
         .unwrap();
-    assert_eq!(validate.status(), StatusCode::OK);
+    let validate_status = validate.status();
+    let validate_body = to_bytes(validate.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(
+        validate_status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&validate_body)
+    );
 
     instance_id
 }

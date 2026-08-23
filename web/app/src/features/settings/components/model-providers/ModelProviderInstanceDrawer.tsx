@@ -757,9 +757,9 @@ function ModelProviderInstanceDrawerContent({
     );
   }
 
-  async function refreshUsageSnapshot() {
+  async function refreshUsageSnapshot(): Promise<SettingsModelProviderUsageWindowsResult> {
     if (!onRefreshUsage) {
-      return null;
+      throw new Error('Usage refresh is unavailable.');
     }
 
     const snapshot = await onRefreshUsage();

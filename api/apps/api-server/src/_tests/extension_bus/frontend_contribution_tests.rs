@@ -215,7 +215,13 @@ fn boot_point_and_valid_workspace_assignment_produce_one_scoped_typed_binding() 
         FrontendContributionAssetIntegrity::VerifiedSha256
     );
     assert_eq!(binding.assets[0].digest.len(), 64);
-    assert!(binding.assets[0].url.contains(&workspace_id.to_string()));
+    assert_eq!(
+        binding.assets[0].url,
+        format!(
+            "/api/console/frontstage/component-module-assets/{}",
+            binding.assets[0].digest
+        )
+    );
     std::fs::remove_dir_all(root).unwrap();
 }
 

@@ -286,6 +286,7 @@ async fn switch_role_replaces_the_session_authorization_scope() {
         vec![
             "system.extension-center",
             "system.model-providers",
+            "system.network-center",
             "system.applications",
             "system.mcp-management",
             "system.members",

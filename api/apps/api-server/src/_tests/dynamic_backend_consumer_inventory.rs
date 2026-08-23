@@ -97,8 +97,21 @@ fn console_interface_projection_inventory_is_key_only_and_exact() {
         // must remain visible verbatim until that catalog publishes matching translations.
         let backend_owned_extension_uninstall = interface.summary
             == "Remove an installed extension artifact; runtime and capability plugins unload their family while preserving durable data";
-        let pending_official_catalog_release =
-            interface.summary == "Model providers instances authenticate";
+        let pending_official_catalog_release = matches!(
+            interface.authorization_operation_id.as_deref(),
+            Some(
+                "model_providers.instances.authenticate"
+                    | "model_providers.instances.reset_credits.view"
+                    | "model_providers.instances.usage.view"
+                    | "model_providers.instances.reset_credits.consume"
+                    | "system_backups.status"
+            )
+        ) || interface.summary
+            == "Model providers instances authenticate"
+            || interface
+                .authorization_operation_id
+                .as_deref()
+                .is_some_and(|operation_id| operation_id.starts_with("network_egress_"));
         if backend_owned_extension_uninstall || pending_official_catalog_release {
             continue;
         }

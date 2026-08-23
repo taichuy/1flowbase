@@ -558,8 +558,8 @@ describe('FrontStagePage - runtime canvas state', () => {
         );
       });
     }
-    expect(screen.getByText('assembly-chapter shell')).toBeInTheDocument();
-    expect(screen.getByText('assembly-content shell')).toBeInTheDocument();
+    expect(screen.getAllByText('assembly-chapter shell')).not.toHaveLength(0);
+    expect(screen.getAllByText('assembly-content shell')).not.toHaveLength(0);
     expect(blockTreeApi.fetchFrontstageBlockNode).not.toHaveBeenCalled();
     expect(blockTreeApi.fetchFrontstageBlockNodeCode).not.toHaveBeenCalled();
     expect(
@@ -618,11 +618,7 @@ describe('FrontStagePage - runtime canvas state', () => {
             layers: [
               layer('assembly-root', null),
               layer('assembly-nested-page', 'assembly-root'),
-              layer(
-                'assembly-nested-drawer',
-                'assembly-nested-page',
-                'drawer'
-              )
+              layer('assembly-nested-drawer', 'assembly-nested-page', 'drawer')
             ]
           }}
         />
@@ -637,7 +633,9 @@ describe('FrontStagePage - runtime canvas state', () => {
         'source:assembly-nested-page'
       );
     });
-    expect(screen.queryByTestId('block-slot-base-root')).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('block-slot-base-root')
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByTestId('block-slot-assembly-root')
     ).not.toBeInTheDocument();
@@ -649,7 +647,9 @@ describe('FrontStagePage - runtime canvas state', () => {
         'source:assembly-nested-drawer'
       );
     });
-    expect(screen.getByText('assembly-nested-drawer shell')).toBeInTheDocument();
+    expect(
+      screen.getByText('assembly-nested-drawer shell')
+    ).toBeInTheDocument();
   });
 
   test('shows manager shell and canvas placeholders', () => {

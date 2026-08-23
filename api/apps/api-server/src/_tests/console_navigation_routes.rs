@@ -92,6 +92,7 @@ async fn console_navigation_route_returns_root_registry_with_separated_arrays() 
         vec![
             "settings.extension-center",
             "settings.model-providers",
+            "settings.network-center",
             "settings.applications",
             "settings.mcp-management",
             "settings.members",
