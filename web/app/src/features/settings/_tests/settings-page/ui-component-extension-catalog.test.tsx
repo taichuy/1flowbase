@@ -1,5 +1,11 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { App } from 'antd';
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
@@ -9,9 +15,7 @@ const uiManagementApi = vi.hoisted(() => ({
   settingsUiComponentsQueryKey: ['settings', 'ui-management', 'components'],
   fetchSettingsUiCatalogPage: vi.fn(),
   searchSettingsUiCatalog: vi.fn(),
-  fetchSettingsUiCatalogUpdateStatus: vi.fn(),
-  downloadSettingsUiCatalogComponent: vi.fn(),
-  syncSettingsUiCatalogGroup: vi.fn()
+  downloadSettingsUiCatalogComponent: vi.fn()
 }));
 
 vi.mock('@tanstack/react-router', () => ({
@@ -36,7 +40,14 @@ const catalogComponent = {
   keywords: ['chat'],
   catalog_updated_at: '2026-08-23T00:00:00Z',
   source_locator: 'ui_components/@taichuy/ant-design-x/bubble.json',
-  source_checksum: `sha256:${'a'.repeat(64)}`
+  source_checksum: `sha256:${'a'.repeat(64)}`,
+  local_version: '0.9.0'
+};
+const notDownloadedCatalogComponent = {
+  ...catalogComponent,
+  component_code: 'taichuy.ant-design-x.sender',
+  name: 'Sender',
+  local_version: null
 };
 
 function renderPanel() {
@@ -68,7 +79,7 @@ describe('Extension Center UI component catalog', () => {
       page: 1,
       cursor: 'start',
       next_cursor: null,
-      records: [catalogComponent]
+      records: [catalogComponent, notDownloadedCatalogComponent]
     });
     uiManagementApi.searchSettingsUiCatalog.mockResolvedValue({
       catalog_version: '1.0.0',
@@ -77,32 +88,20 @@ describe('Extension Center UI component catalog', () => {
       total_entries: 1,
       entries: [{ ...catalogComponent, catalog_page: 1 }]
     });
-    uiManagementApi.fetchSettingsUiCatalogUpdateStatus.mockResolvedValue({
-      catalog_version: '1.0.0',
-      source_fingerprint: `sha256:${'b'.repeat(64)}`,
-      update_available: true,
-      groups: [
-        {
-          source: 'taichuy',
-          group: 'ant-design-x',
-          remote_records: 2,
-          new_or_updated_records: 1,
-          removed_records: 0,
-          update_available: true
-        }
-      ]
-    });
     uiManagementApi.downloadSettingsUiCatalogComponent.mockResolvedValue({});
-    uiManagementApi.syncSettingsUiCatalogGroup.mockResolvedValue({
-      synchronized_records: 2
-    });
   });
 
-  test('discovers catalog records and uses the existing download and group sync actions', async () => {
+  test('shows one catalog table with download for missing records and update for local records', async () => {
     renderPanel();
 
     expect(await screen.findByText('Bubble')).toBeInTheDocument();
-    expect(screen.getByText('taichuy / ant-design-x')).toBeInTheDocument();
+    expect(screen.getByText('Sender')).toBeInTheDocument();
+    expect(
+      screen.queryByText('taichuy / ant-design-x')
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: '同步分组' })
+    ).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'UI 组件' })).toHaveAttribute(
       'aria-selected',
       'true'
@@ -115,20 +114,22 @@ describe('Extension Center UI component catalog', () => {
       screen.queryByRole('button', { name: /安装|启用|停用|卸载/ })
     ).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: '下载' }));
+    const bubbleRow = screen.getByText('Bubble').closest('tr');
+    const senderRow = screen.getByText('Sender').closest('tr');
+    expect(bubbleRow).not.toBeNull();
+    expect(senderRow).not.toBeNull();
+    expect(
+      within(bubbleRow!).getByRole('button', { name: '更新' })
+    ).toBeInTheDocument();
+    expect(
+      within(senderRow!).getByRole('button', { name: '下载' })
+    ).toBeInTheDocument();
+
+    fireEvent.click(within(bubbleRow!).getByRole('button', { name: '更新' }));
     await waitFor(() =>
       expect(
         uiManagementApi.downloadSettingsUiCatalogComponent
       ).toHaveBeenCalledWith('taichuy.ant-design-x.bubble', 'csrf')
-    );
-
-    fireEvent.click(screen.getByRole('button', { name: '同步分组' }));
-    await waitFor(() =>
-      expect(uiManagementApi.syncSettingsUiCatalogGroup).toHaveBeenCalledWith(
-        'taichuy',
-        'ant-design-x',
-        'csrf'
-      )
     );
   });
 

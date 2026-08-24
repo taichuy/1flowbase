@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
+use domain::{UiComponentRecord, UiComponentRecordOrigin, SYSTEM_SCOPE_ID};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -26,7 +27,16 @@ impl UiComponentCatalogSource for FixtureSource {
     }
 
     async fn page(&self, _page: u32) -> Result<UiComponentCatalogPage> {
-        Err(anyhow!("unused fixture method"))
+        let seed = self.seed.clone().map_err(|message| anyhow!(message))?;
+        Ok(UiComponentCatalogPage {
+            catalog_version: seed.catalog_version,
+            total_components: seed.records.len(),
+            page_size: 100,
+            page: 1,
+            cursor: "start".into(),
+            next_cursor: None,
+            records: seed.records,
+        })
     }
 
     async fn search(
@@ -35,7 +45,28 @@ impl UiComponentCatalogSource for FixtureSource {
         _page: u32,
         _page_size: usize,
     ) -> Result<UiComponentCatalogSearchResult> {
-        Err(anyhow!("unused fixture method"))
+        let seed = self.seed.clone().map_err(|message| anyhow!(message))?;
+        Ok(UiComponentCatalogSearchResult {
+            catalog_version: seed.catalog_version,
+            page: 1,
+            page_size: 20,
+            total_entries: seed.records.len(),
+            entries: seed
+                .records
+                .into_iter()
+                .map(|record| crate::ports::UiComponentCatalogSearchEntry {
+                    component_code: record.component_code,
+                    name: record.name,
+                    description: record.description,
+                    source: record.source,
+                    group: record.group,
+                    upstream: record.upstream,
+                    version: record.version,
+                    keywords: record.keywords,
+                    catalog_page: 1,
+                })
+                .collect(),
+        })
     }
 
     async fn seed(&self) -> Result<UiComponentCatalogSeed> {
@@ -46,6 +77,7 @@ impl UiComponentCatalogSource for FixtureSource {
 #[derive(Clone)]
 struct RecordingRepository {
     count: usize,
+    official_records: Vec<UiComponentRecord>,
     replacements: Arc<Mutex<Vec<(String, String, Vec<OfficialUiComponentCatalogRecord>)>>>,
     catalog_replacements: Arc<Mutex<Vec<Vec<OfficialUiComponentCatalogRecord>>>>,
     downloads: Arc<Mutex<Vec<OfficialUiComponentCatalogRecord>>>,
@@ -55,6 +87,17 @@ impl RecordingRepository {
     fn empty(count: usize) -> Self {
         Self {
             count,
+            official_records: Vec::new(),
+            replacements: Arc::default(),
+            catalog_replacements: Arc::default(),
+            downloads: Arc::default(),
+        }
+    }
+
+    fn with_official_records(records: Vec<UiComponentRecord>) -> Self {
+        Self {
+            count: records.len(),
+            official_records: records,
             replacements: Arc::default(),
             catalog_replacements: Arc::default(),
             downloads: Arc::default(),
@@ -69,7 +112,7 @@ impl UiComponentCatalogRepository for RecordingRepository {
     }
 
     async fn list_official_ui_component_records(&self) -> Result<Vec<domain::UiComponentRecord>> {
-        Ok(Vec::new())
+        Ok(self.official_records.clone())
     }
 
     async fn upsert_official_ui_component_record(
@@ -142,6 +185,58 @@ fn seed() -> UiComponentCatalogSeed {
             "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
         records: vec![opaque_record()],
     }
+}
+
+fn local_record(version: &str) -> UiComponentRecord {
+    let timestamp = OffsetDateTime::UNIX_EPOCH;
+    UiComponentRecord {
+        id: Uuid::now_v7(),
+        scope_id: SYSTEM_SCOPE_ID,
+        component_code: "taichuy.missing-package.widget".into(),
+        name: "Missing package widget".into(),
+        description: "Local catalog record".into(),
+        import_code: "opaque import".into(),
+        source_code: "opaque source".into(),
+        origin: UiComponentRecordOrigin::Official,
+        source: "taichuy".into(),
+        group: "missing-package".into(),
+        upstream: domain::UiComponentRecordUpstream {
+            identity: "@definitely/not-installed".into(),
+            version: "99.0.0".into(),
+        },
+        version: version.into(),
+        keywords: Vec::new(),
+        catalog_updated_at: Some(timestamp),
+        source_locator: Some("ui_components/local.json".into()),
+        source_checksum: Some("sha256:local".into()),
+        created_by: Uuid::nil(),
+        updated_by: Uuid::nil(),
+        created_at: timestamp,
+        updated_at: timestamp,
+    }
+}
+
+#[tokio::test]
+async fn catalog_page_and_search_project_local_versions_by_component_code() {
+    let service = UiComponentCatalogService::new(
+        RecordingRepository::with_official_records(vec![local_record("0.9.0")]),
+        FixtureSource { seed: Ok(seed()) },
+    );
+
+    let page = service.page(1).await.unwrap();
+    let search = service.search("widget", 1, 20).await.unwrap();
+
+    assert_eq!(page.records[0].local_version.as_deref(), Some("0.9.0"));
+    assert_eq!(search.entries[0].local_version.as_deref(), Some("0.9.0"));
+
+    let missing_service = UiComponentCatalogService::new(
+        RecordingRepository::empty(0),
+        FixtureSource { seed: Ok(seed()) },
+    );
+    assert_eq!(
+        missing_service.page(1).await.unwrap().records[0].local_version,
+        None
+    );
 }
 
 #[tokio::test]
