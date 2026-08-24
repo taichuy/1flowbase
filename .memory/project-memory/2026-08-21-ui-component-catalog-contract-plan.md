@@ -9,7 +9,7 @@ keywords:
   - insert-snippet
   - structured-form
 created_at: 2026-08-21 22
-updated_at: 2026-08-24 02
+updated_at: 2026-08-24 10
 last_verified_at: 2026-08-24 02
 decision_policy: verify_before_decision
 source_issue: "#1851"
@@ -22,6 +22,14 @@ scope:
 ---
 
 # UI 组件目录契约边界交付
+
+## 2026-08-24 扩展中心目录投影
+
+- 扩展中心新增 `/settings/extension-center/ui-components`，作为同一官方 UI Component Catalog 的发现、搜索、分页、下载、检查更新和按组同步入口。
+- 该入口复用现有 UI catalog API 与 `ui_component_records` 本地状态，不写入 `extension_installations`，不提供启用、停用、卸载或运行时安装语义。
+- `/settings/ui-management/components` 继续拥有本地记录和自定义 CRUD；扩展中心提供“前往 UI 管理”入口。
+- 前端目录主体由扩展中心页面与 UI 管理抽屉共享；主后端没有新增写死组件、存储表或接口。
+- 已以提交 `7aaf7d270` 开发，并由 merge commit `9581fc216` 合入 `dev`；聚焦测试 40/40、TypeScript、定向 ESLint 和受保护页面快照通过。
 
 ## 2026-08-23 产品语义纠正
 
