@@ -9,7 +9,6 @@
     "dev": "turbo run dev --parallel --filter=@1flowbase/web",
     "dev:app": "pnpm --filter @1flowbase/web dev",
     "build": "turbo run build",
-    "build:official-browser-assets": "node scripts/build-official-browser-assets.mjs",
     "lint": "turbo run lint",
     "test": "../scripts/node/cli/exec-with-real-node.sh ../scripts/node/cli/run-frontend-workspace-test.js",
     "test:fast": "../scripts/node/cli/exec-with-real-node.sh ../scripts/node/test-frontend.js fast",
@@ -28,7 +27,6 @@
     "@types/node": "^24.0.0",
     "@types/react": "^19.0.12",
     "@types/react-dom": "^19.0.4",
-    "@tailwindcss/vite": "4.3.3",
     "@vitejs/plugin-react": "^6.0.2",
     "eslint": "^9.24.0",
     "eslint-plugin-jest-dom": "^5.5.0",
@@ -41,7 +39,6 @@
     "prettier": "^3.5.3",
     "turbo": "^2.9.14",
     "typescript": "^5.8.3",
-    "tailwindcss": "4.3.3",
     "typescript-eslint": "^8.29.0",
     "vite": "^8.0.16",
     "vitest": "^4.1.0"

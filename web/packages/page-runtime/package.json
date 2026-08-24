@@ -8,7 +8,7 @@
       "types": "./dist/index.d.ts",
       "default": "./src/index.ts"
     },
-    "./dependency-lock": {
+    "./module-registry": {
       "types": "./dist/native-react-compiler/module-registry/contracts.d.ts",
       "default": "./src/native-react-compiler/module-registry/contracts.ts"
     }

@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@1flowbase/api-client": "workspace:*",
+    "@1flowbase/block-sdk": "workspace:*",
     "@1flowbase/block-renderer": "workspace:*",
     "@1flowbase/charts": "workspace:*",
     "@1flowbase/embed-sdk": "workspace:*",
@@ -13,7 +14,6 @@
     "@1flowbase/native-components": "workspace:*",
     "@1flowbase/rich-text": "workspace:*",
     "@1flowbase/shared-types": "workspace:*",
-    "@1flowbase/tailwindcss-catalog": "workspace:*",
     "@1flowbase/ui": "workspace:*",
     "@ant-design/cssinjs": "^2.0.1",
     "@ant-design/icons": "^6.1.0",

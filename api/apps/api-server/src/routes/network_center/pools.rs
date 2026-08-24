@@ -575,7 +575,7 @@ pub async fn update_network_egress_pool_member(
     path = "/api/console/network-center/pools/{pool_id}/members/{member_id}",
     operation_id = "network_egress_pool_members_delete",
     params(("pool_id" = String, Path, description = "Network egress pool id"), ("member_id" = String, Path, description = "Network egress pool member id")),
-    responses((status = 204), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody))
+    responses((status = 204), (status = 401, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody))
 )]
 pub async fn delete_network_egress_pool_member(
     State(state): State<Arc<ApiState>>,

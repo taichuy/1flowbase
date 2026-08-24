@@ -197,7 +197,6 @@ fn map_frontstage_block_code_row(
         code_ref: row.get("code_ref"),
         source_code: row.get("source_code"),
         source_sha256: row.get("source_sha256"),
-        dependency_lock: row.get("dependency_lock"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }
@@ -1011,7 +1010,7 @@ impl FrontstagePageRepository for PgControlPlaneStore {
         let row = sqlx::query(
             r#"
             select workspace_id, page_id, code_ref, code as source_code, source_sha256,
-                   dependency_lock, created_at, updated_at
+                   created_at, updated_at
             from frontstage_block_codes
             where workspace_id = $1 and page_id = $2 and code_ref = $3
             "#,

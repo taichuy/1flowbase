@@ -2,7 +2,6 @@ import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
 import {
   diagnoseLegacyBlockModuleSource,
   type NativeReactRuntimeDiagnostic,
-  type NativeReactCatalogDependencyLock,
   type NativeBlockContextApiCallObservation,
   type NativeReactResolvedModuleAsset,
   type NativeTrustedBlockPreparePlan
@@ -26,10 +25,6 @@ import {
   FrontstageNativeTrustedBlockPortalHost,
   type FrontstageNativeTrustedBlockReactComponent
 } from '../../lib/native-trusted-block-react-adapter';
-import {
-  describeExternalNpmImportFailure,
-  type ExternalNpmPackState
-} from '../../api/external-npm';
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-trusted-block-runtime-factory';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import { JsxStudioPreviewConsole } from './JsxStudioPreviewConsole';
@@ -41,11 +36,6 @@ import {
 type StudioRunDiagnostic =
   | NativeReactSourcePreparationDiagnostic
   | NativeReactRuntimeDiagnostic;
-const EMPTY_NATIVE_REACT_DEPENDENCY_LOCK: NativeReactCatalogDependencyLock = [];
-const AVAILABLE_EXTERNAL_NPM_PACK: ExternalNpmPackState = {
-  status: 'available'
-};
-
 interface StudioRunPendingSnapshot {
   status: 'compiling' | 'failed';
   requestId: string;
@@ -91,12 +81,6 @@ export interface JsxStudioRunPanelProps {
   revision: string;
   nativeCompiler?: typeof compileNativeReactComponentInBrowser;
   nativeCompilerWorkerFactory?: NativeReactBrowserCompilerWorkerFactory;
-  nativeDependencyLock?: NativeReactCatalogDependencyLock;
-  nativeDependencyLockError?: string | null;
-  resolveNativeDependencyLock?: (
-    sourceCode: string
-  ) => Promise<NativeReactCatalogDependencyLock>;
-  externalNpm?: ExternalNpmPackState;
   nativeModuleRegistryFactory?: NativeReactModuleRegistryFactory;
   createBlockContext?(input: JsxStudioRunBlockContextInput): BlockContext;
 }
@@ -107,10 +91,6 @@ export function JsxStudioRunPanel({
   revision,
   nativeCompiler = compileNativeReactComponentInBrowser,
   nativeCompilerWorkerFactory,
-  nativeDependencyLock = EMPTY_NATIVE_REACT_DEPENDENCY_LOCK,
-  nativeDependencyLockError = null,
-  resolveNativeDependencyLock,
-  externalNpm = AVAILABLE_EXTERNAL_NPM_PACK,
   nativeModuleRegistryFactory = createFrontstageNativeReactModuleRegistry,
   createBlockContext,
   onPrepareDraftRun,
@@ -214,49 +194,9 @@ export function JsxStudioRunPanel({
       }
       if (generationRef.current !== generation) return;
 
-      if (nativeDependencyLockError && !resolveNativeDependencyLock) {
-        setSnapshot({
-          status: 'failed',
-          requestId,
-          diagnostics: [
-            {
-              phase: 'compile',
-              code: 'import_denied',
-              path: 'catalog.code_modules',
-              message: nativeDependencyLockError
-            }
-          ]
-        });
-        return;
-      }
-
-      let dependencyLock = nativeDependencyLock;
-      if (resolveNativeDependencyLock) {
-        try {
-          dependencyLock = await resolveNativeDependencyLock(frozenSource);
-        } catch (error) {
-          if (generationRef.current !== generation) return;
-          setSnapshot({
-            status: 'failed',
-            requestId,
-            diagnostics: [
-              {
-                phase: 'compile',
-                code: 'import_denied',
-                path: 'source.imports',
-                message: getErrorMessage(error)
-              }
-            ]
-          });
-          return;
-        }
-      }
-      if (generationRef.current !== generation) return;
-
       const prepared = await prepareNativeReactSource({
         frozenSource,
         requestId,
-        dependencyLock,
         compiler: nativeCompiler,
         ...(nativeCompilerWorkerFactory
           ? { workerFactory: nativeCompilerWorkerFactory }
@@ -274,13 +214,7 @@ export function JsxStudioRunPanel({
         setSnapshot({
           status: 'failed',
           requestId,
-          diagnostics: prepared.diagnostics.map((diagnostic) => ({
-            ...diagnostic,
-            message: describeExternalNpmImportFailure(
-              diagnostic.message,
-              externalNpm
-            )
-          }))
+          diagnostics: prepared.diagnostics
         });
         return;
       }
@@ -312,10 +246,6 @@ export function JsxStudioRunPanel({
       nativeCompiler,
       nativeCompilerWorkerFactory,
       consoleStore,
-      nativeDependencyLock,
-      nativeDependencyLockError,
-      resolveNativeDependencyLock,
-      externalNpm,
       nativeModuleRegistryFactory,
       observeApiCall
     ]

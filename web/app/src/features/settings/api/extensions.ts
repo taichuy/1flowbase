@@ -29,6 +29,7 @@ export type SettingsExtensionApplicationAction =
 export type SettingsExtensionCenterCategory =
   | 'installed'
   | 'model-pricing'
+  | 'ui-components'
   | SettingsExtensionCategory;
 export type SettingsInstalledExtension = ConsoleInstalledExtension;
 export type SettingsExtensionCatalogEntry = ConsoleExtensionCatalogEntry;

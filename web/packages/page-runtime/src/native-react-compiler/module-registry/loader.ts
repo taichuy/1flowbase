@@ -1,26 +1,14 @@
-import { transform } from 'sucrase';
-
-import { tokenizeSource } from '../../native-trusted-block/source-evaluator-transform';
+import { sha256Text } from '../../sha256';
 import type { NativeTrustedBlockInjectedModuleMap } from '../../native-trusted-block/source-evaluator-types';
 import {
-  canonicalizeNativeReactCatalogDependencyLock,
-  nativeReactBrowserModuleAsset,
-  nativeReactCatalogModuleIdentity,
-  type NativeReactCatalogDependencyLock,
-  type NativeReactCatalogModuleLock,
-  type NativeReactModuleAssetLock
+  canonicalizeNativeReactModuleDefinitions,
+  type NativeReactModuleDefinition
 } from './contracts';
 
 export type NativeReactModuleRegistryErrorCode =
-  | 'invalid_dependency_lock'
+  | 'invalid_module_registry'
   | 'module_not_registered'
-  | 'module_fetch_failed'
-  | 'module_digest_mismatch'
-  | 'module_media_type_mismatch'
-  | 'module_invalid'
-  | 'module_dependency_invalid'
-  | 'module_dependency_denied'
-  | 'module_dependency_cycle'
+  | 'module_load_failed'
   | 'module_export_missing';
 
 export class NativeReactModuleRegistryError extends Error {
@@ -39,20 +27,22 @@ export class NativeReactModuleRegistryError extends Error {
   }
 }
 
-export interface NativeReactModuleRegistryOptions {
-  dependencyLock: NativeReactCatalogDependencyLock;
-  hostModules: NativeTrustedBlockInjectedModuleMap;
-  fetchAsset?: typeof fetch;
-  crypto?: Pick<Crypto, 'subtle'>;
+export interface NativeReactFrontendModuleStyle {
+  css: string;
+  media_type?: 'text/css' | 'text/css; charset=utf-8';
 }
 
-interface PreparedModule {
-  registration: NativeReactCatalogModuleLock;
-  code: string;
-  dependencies: string[];
+export interface NativeReactFrontendModuleLoadResult {
+  module: Record<string, unknown>;
+  styles?: readonly NativeReactFrontendModuleStyle[];
+}
+
+export interface NativeReactFrontendModuleRegistration extends NativeReactModuleDefinition {
+  load(): Promise<NativeReactFrontendModuleLoadResult>;
 }
 
 export interface NativeReactModuleRegistry {
+  definitions: readonly NativeReactModuleDefinition[];
   load(moduleSource: string): Promise<Record<string, unknown>>;
   resolveModuleMap(
     moduleSources: readonly string[]
@@ -71,528 +61,148 @@ export interface NativeReactResolvedModuleAsset {
   bytes: ArrayBuffer;
 }
 
-export function createNativeReactModuleRegistry({
-  dependencyLock: dependencyLockValue,
-  hostModules,
-  fetchAsset = globalThis.fetch,
-  crypto = globalThis.crypto
-}: NativeReactModuleRegistryOptions): NativeReactModuleRegistry {
-  const dependencyLock =
-    canonicalizeNativeReactCatalogDependencyLock(dependencyLockValue);
-  if (!dependencyLock) {
-    throw registryError(
-      'invalid_dependency_lock',
-      'dependencyLock',
-      'Native React Catalog dependency lock is invalid.'
-    );
-  }
-  if (typeof fetchAsset !== 'function' || !crypto?.subtle) {
-    throw registryError(
-      'module_fetch_failed',
-      'moduleRegistry.host',
-      'Native React module loading is unavailable.'
-    );
-  }
-
-  const registrations = new Map(
-    dependencyLock.map((entry) => [entry.module_source, entry])
+export function createNativeReactModuleRegistry(
+  registrationsValue: readonly NativeReactFrontendModuleRegistration[]
+): NativeReactModuleRegistry {
+  const definitions = canonicalizeNativeReactModuleDefinitions(
+    registrationsValue
   );
-  for (const registration of registrations.values()) {
-    if (
-      registration.binding === 'host' &&
-      !hostModules[registration.module_source]
-    ) {
-      throw registryError(
-        'invalid_dependency_lock',
-        `dependencyLock.${registration.module_source}`,
-        `Host component contract module is unavailable: ${registration.module_source}.`
-      );
-    }
-    if (
-      registration.binding === 'host' &&
-      registration.exports.some(
-        (exportName) =>
-          !(exportName in hostModules[registration.module_source]!)
-      )
-    ) {
-      throw registryError(
-        'invalid_dependency_lock',
-        `dependencyLock.${registration.module_source}.exports`,
-        `Host component contract exports do not match: ${registration.module_source}.`
-      );
-    }
-    if (
-      registration.binding === 'fetched' &&
-      !registration.assets.every((asset) =>
-        isRegisteredAssetUrl(registration, asset)
-      )
-    ) {
-      throw registryError(
-        'invalid_dependency_lock',
-        `dependencyLock.${registration.module_source}.assets`,
-        `Catalog module asset URL is invalid: ${registration.module_source}.`
-      );
-    }
+  if (!definitions || definitions.length !== registrationsValue.length) {
+    throw registryError(
+      'invalid_module_registry',
+      'moduleRegistry',
+      'Native React frontend module registry is invalid.'
+    );
+  }
+  const registrations = new Map(
+    registrationsValue.map((registration) => [
+      registration.module_source,
+      registration
+    ])
+  );
+  if (
+    registrations.size !== registrationsValue.length ||
+    registrationsValue.some(
+      (registration) => typeof registration.load !== 'function'
+    )
+  ) {
+    throw registryError(
+      'invalid_module_registry',
+      'moduleRegistry',
+      'Native React frontend module registry registrations are invalid.'
+    );
   }
 
-  const preparationFlights = new Map<string, Promise<PreparedModule>>();
-  const evaluationFlights = new Map<string, Promise<Record<string, unknown>>>();
-  const assetFlights = new Map<string, Promise<ArrayBuffer>>();
-  const dependencyGraph = new Map<string, Set<string>>();
-
-  const prepare = (registration: NativeReactCatalogModuleLock) => {
-    const identity = nativeReactCatalogModuleIdentity(registration);
-    let flight = preparationFlights.get(identity);
-    if (!flight) {
-      flight = fetchAndPrepare(registration, fetchAsset, crypto);
-      preparationFlights.set(identity, flight);
-    }
-    return flight;
-  };
-
-  const load = (moduleSource: string): Promise<Record<string, unknown>> => {
+  const flights = new Map<
+    string,
+    Promise<NativeReactFrontendModuleLoadResult>
+  >();
+  const loadRegistration = (
+    moduleSource: string
+  ): Promise<NativeReactFrontendModuleLoadResult> => {
     const registration = registrations.get(moduleSource);
     if (!registration) {
       return Promise.reject(
         registryError(
           'module_not_registered',
           `modules.${moduleSource}`,
-          `Catalog module is not registered: ${moduleSource}.`
+          `Frontend module is not registered: ${moduleSource}.`
         )
       );
     }
-    if (registration.binding === 'host') {
-      return validateHostModule(registration, hostModules);
-    }
-    const identity = nativeReactCatalogModuleIdentity(registration);
-    let flight = evaluationFlights.get(identity);
+    let flight = flights.get(moduleSource);
     if (!flight) {
-      flight = evaluateRegisteredModule(
-        registration,
-        prepare,
-        load,
-        registrations,
-        hostModules,
-        dependencyGraph
-      );
-      evaluationFlights.set(identity, flight);
+      flight = Promise.resolve()
+        .then(() => registration.load())
+        .then((loaded) => validateLoadedModule(registration, loaded))
+        .catch((error) => {
+          flights.delete(moduleSource);
+          if (error instanceof NativeReactModuleRegistryError) throw error;
+          throw registryError(
+            'module_load_failed',
+            `modules.${moduleSource}`,
+            error instanceof Error && error.message
+              ? error.message
+              : `Frontend module failed to load: ${moduleSource}.`
+          );
+        });
+      flights.set(moduleSource, flight);
     }
     return flight;
   };
 
   return {
-    load,
+    definitions,
+    async load(moduleSource) {
+      return (await loadRegistration(moduleSource)).module;
+    },
     async resolveModuleMap(moduleSources) {
-      const moduleMap: NativeTrustedBlockInjectedModuleMap = {
-        ...hostModules
-      };
-      const uniqueSources = [...new Set(moduleSources)].filter(
-        (source) => !hostModules[source]
+      const uniqueSources = [...new Set(moduleSources)];
+      const loaded = await Promise.all(uniqueSources.map(loadRegistration));
+      return Object.fromEntries(
+        uniqueSources.map((source, index) => [source, loaded[index]!.module])
       );
-      const namespaces = await Promise.all(uniqueSources.map(load));
-      uniqueSources.forEach((source, index) => {
-        moduleMap[source] = namespaces[index];
-      });
-      return moduleMap;
     },
     async resolveModuleAssets(moduleSources) {
-      const resolvedSources = new Set<string>();
-      const pendingSources = [...new Set(moduleSources)];
-      while (pendingSources.length > 0) {
-        const source = pendingSources.shift()!;
-        if (resolvedSources.has(source)) continue;
-        resolvedSources.add(source);
-        for (const dependency of dependencyGraph.get(source) ?? []) {
-          pendingSources.push(dependency);
-        }
-      }
-      const assets = [...resolvedSources].flatMap((source) => {
-        const registration = registrations.get(source);
-        if (!registration) {
-          if (hostModules[source]) return [];
-          throw registryError(
-            'module_not_registered',
-            `modules.${source}`,
-            `Catalog module is not registered: ${source}.`
-          );
-        }
-        return registration.assets
-          .filter((asset) => asset.role !== 'browser_module')
-          .map((asset) => ({ registration, asset }));
-      });
-      return Promise.all(
-        assets.map(async ({ registration, asset }) => ({
-          module_source: registration.module_source,
-          role: asset.role as 'shadow_style' | 'support',
-          media_type: asset.media_type,
-          sha256: asset.sha256,
-          url: asset.url,
-          bytes: await fetchVerifiedAsset(
-            registration,
-            asset,
-            fetchAsset,
-            crypto,
-            assetFlights
-          )
-        }))
+      const uniqueSources = [...new Set(moduleSources)];
+      const loaded = await Promise.all(uniqueSources.map(loadRegistration));
+      return uniqueSources.flatMap((moduleSource, index) =>
+        (loaded[index]!.styles ?? []).map((style) => {
+          const bytes = new TextEncoder().encode(style.css);
+          const sha256 = sha256Text(style.css);
+          return {
+            module_source: moduleSource,
+            role: 'shadow_style' as const,
+            media_type: style.media_type ?? 'text/css; charset=utf-8',
+            sha256,
+            url: `frontend-module-style:${sha256}`,
+            bytes: bytes.buffer
+          };
+        })
       );
     }
   };
 }
 
-async function fetchAndPrepare(
-  registration: NativeReactCatalogModuleLock,
-  fetchAsset: typeof fetch,
-  crypto: Pick<Crypto, 'subtle'>
-): Promise<PreparedModule> {
-  const browserAsset = nativeReactBrowserModuleAsset(registration);
-  if (!browserAsset)
-    throw new Error('Fetched module browser asset is missing.');
-  const bytes = await fetchVerifiedAsset(
-    registration,
-    browserAsset,
-    fetchAsset,
-    crypto
-  );
-
-  let source: string;
-  let code: string;
-  try {
-    source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    code = transform(source, {
-      transforms: ['imports'],
-      filePath: `${registration.module_source}.js`
-    }).code;
-  } catch {
+function validateLoadedModule(
+  registration: NativeReactFrontendModuleRegistration,
+  value: NativeReactFrontendModuleLoadResult
+): NativeReactFrontendModuleLoadResult {
+  if (!isRecord(value) || !isRecord(value.module)) {
     throw registryError(
-      'module_invalid',
-      `modules.${registration.module_source}.assets.browser_module`,
-      `Catalog module asset is not a valid ESM module: ${registration.module_source}.`
-    );
-  }
-  let dependencies: string[];
-  try {
-    dependencies = collectTransformedDependencies(code);
-  } catch {
-    throw registryError(
-      'module_dependency_invalid',
-      `modules.${registration.module_source}.imports`,
-      `Catalog module dependency syntax is invalid: ${registration.module_source}.`
-    );
-  }
-  return { registration, code, dependencies };
-}
-
-async function evaluateRegisteredModule(
-  registration: NativeReactCatalogModuleLock,
-  prepare: (
-    registration: NativeReactCatalogModuleLock
-  ) => Promise<PreparedModule>,
-  load: (moduleSource: string) => Promise<Record<string, unknown>>,
-  registrations: ReadonlyMap<string, NativeReactCatalogModuleLock>,
-  hostModules: NativeTrustedBlockInjectedModuleMap,
-  dependencyGraph: Map<string, Set<string>>
-): Promise<Record<string, unknown>> {
-  const prepared = await prepare(registration);
-  dependencyGraph.set(
-    registration.module_source,
-    new Set(prepared.dependencies.filter((source) => registrations.has(source)))
-  );
-  if (hasDependencyCycle(registration.module_source, dependencyGraph)) {
-    throw registryError(
-      'module_dependency_cycle',
-      `modules.${registration.module_source}.imports`,
-      `Catalog module dependency cycle is not allowed: ${registration.module_source}.`
-    );
-  }
-  const dependencyNamespaces = new Map<string, Record<string, unknown>>();
-  await Promise.all(
-    prepared.dependencies.map(async (source) => {
-      const hostModule = hostModules[source];
-      if (hostModule) {
-        const hostRegistration =
-          registrations.get(source) ??
-          (source === 'react/jsx-runtime'
-            ? registrations.get('react')
-            : undefined);
-        if (hostRegistration?.binding !== 'host') {
-          throw registryError(
-            'module_dependency_denied',
-            `modules.${registration.module_source}.imports.${source}`,
-            `Host module dependency is not registered: ${source}.`
-          );
-        }
-        dependencyNamespaces.set(source, hostModule);
-        return;
-      }
-      if (!registrations.has(source)) {
-        throw registryError(
-          'module_dependency_denied',
-          `modules.${registration.module_source}.imports.${source}`,
-          `Catalog module dependency is not registered: ${source}.`
-        );
-      }
-      dependencyNamespaces.set(source, await load(source));
-    })
-  );
-
-  const exports: Record<string, unknown> = {};
-  const module = { exports };
-  const requireRegistered = (source: string): Record<string, unknown> => {
-    const dependency = dependencyNamespaces.get(source);
-    if (!dependency) {
-      throw registryError(
-        'module_dependency_denied',
-        `modules.${registration.module_source}.imports.${source}`,
-        `Catalog module dependency is not registered: ${source}.`
-      );
-    }
-    return dependency;
-  };
-
-  try {
-    const evaluator = new Function(
-      'require',
-      'exports',
-      'module',
-      `"use strict";\n${prepared.code}\nreturn module.exports;`
-    ) as (
-      require: (source: string) => Record<string, unknown>,
-      exports: Record<string, unknown>,
-      module: { exports: Record<string, unknown> }
-    ) => unknown;
-    const evaluated = evaluator(requireRegistered, exports, module);
-    if (!isRecord(evaluated)) throw new Error('Module namespace is invalid.');
-    for (const exportName of registration.exports) {
-      if (!(exportName in evaluated)) {
-        throw registryError(
-          'module_export_missing',
-          `modules.${registration.module_source}.exports.${exportName}`,
-          `Catalog module export is missing: ${registration.module_source}.${exportName}.`
-        );
-      }
-    }
-    return evaluated;
-  } catch (error) {
-    if (error instanceof NativeReactModuleRegistryError) throw error;
-    throw registryError(
-      'module_invalid',
-      `modules.${registration.module_source}.evaluate`,
-      `Catalog module evaluation failed: ${registration.module_source}.`
-    );
-  }
-}
-
-function hasDependencyCycle(
-  start: string,
-  graph: ReadonlyMap<string, ReadonlySet<string>>
-): boolean {
-  const visiting = new Set<string>();
-  const visited = new Set<string>();
-  const visit = (source: string): boolean => {
-    if (visiting.has(source)) return true;
-    if (visited.has(source)) return false;
-    visiting.add(source);
-    for (const dependency of graph.get(source) ?? []) {
-      if (visit(dependency)) return true;
-    }
-    visiting.delete(source);
-    visited.add(source);
-    return false;
-  };
-  return visit(start);
-}
-
-function collectTransformedDependencies(source: string): string[] {
-  const dependencies = new Set<string>();
-  const tokens = tokenizeSource(source);
-  for (const token of tokens) {
-    if (token.value === 'import') {
-      throw new Error('Dynamic import is not allowed.');
-    }
-    if (token.value !== 'require') continue;
-    if (isMemberProperty(source, token.start)) continue;
-    const dependency = readGeneratedRequire(source, token.end);
-    if (!dependency) throw new Error('Transformed require is invalid.');
-    dependencies.add(dependency);
-  }
-  return [...dependencies];
-}
-
-function isMemberProperty(source: string, start: number): boolean {
-  let index = start - 1;
-  while (/\s/.test(source[index] ?? '')) index -= 1;
-  return source[index] === '.';
-}
-
-function readGeneratedRequire(source: string, start: number): string | null {
-  let index = skipWhitespace(source, start);
-  if (source[index] !== '(') return null;
-  index = skipWhitespace(source, index + 1);
-  const quote = source[index];
-  if (quote !== '"' && quote !== "'") return null;
-  let value = '';
-  for (index += 1; index < source.length; index += 1) {
-    const char = source[index];
-    if (char === '\\') {
-      const escaped = source[index + 1];
-      if (escaped !== quote && escaped !== '\\') return null;
-      value += escaped;
-      index += 1;
-      continue;
-    }
-    if (char === quote) {
-      index = skipWhitespace(source, index + 1);
-      return source[index] === ')' && value.length > 0 ? value : null;
-    }
-    value += char;
-  }
-  return null;
-}
-
-function skipWhitespace(source: string, start: number): number {
-  let index = start;
-  while (/\s/.test(source[index] ?? '')) index += 1;
-  return index;
-}
-
-async function sha256Hex(
-  bytes: ArrayBuffer,
-  crypto: Pick<Crypto, 'subtle'>
-): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', bytes);
-  return [...new Uint8Array(digest)]
-    .map((byte) => byte.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-function isRegisteredAssetUrl(
-  registration: NativeReactCatalogModuleLock,
-  asset: NativeReactModuleAssetLock
-): boolean {
-  const value = asset.url;
-  if (!value.startsWith('/') || value.startsWith('//')) return false;
-  try {
-    const url = new URL(value, 'https://1flowbase.invalid');
-    const segments = url.pathname.split('/').filter(Boolean);
-    const backendAsset =
-      url.origin === 'https://1flowbase.invalid' &&
-      url.search.length === 0 &&
-      url.hash.length === 0 &&
-      segments.length === 5 &&
-      segments[0] === 'api' &&
-      segments[1] === 'console' &&
-      segments[2] === 'frontstage' &&
-      segments[3] === 'component-module-assets' &&
-      segments[4] === asset.sha256;
-    const externalAsset =
-      url.origin === 'https://1flowbase.invalid' &&
-      url.search.length === 0 &&
-      url.hash.length === 0 &&
-      segments.length === 3 &&
-      segments[0] === 'external-npm' &&
-      segments[1] === 'assets' &&
-      new RegExp(`^[A-Za-z0-9._-]+-${asset.sha256}\\.[A-Za-z0-9]+$`, 'u').test(
-        segments[2] ?? ''
-      );
-    return backendAsset || externalAsset;
-  } catch {
-    return false;
-  }
-}
-
-async function validateHostModule(
-  registration: NativeReactCatalogModuleLock,
-  hostModules: NativeTrustedBlockInjectedModuleMap
-): Promise<Record<string, unknown>> {
-  const namespace = hostModules[registration.module_source];
-  if (!namespace) {
-    throw registryError(
-      'module_not_registered',
+      'module_load_failed',
       `modules.${registration.module_source}`,
-      `Host component contract module is unavailable: ${registration.module_source}.`
+      `Frontend module returned an invalid namespace: ${registration.module_source}.`
     );
   }
   for (const exportName of registration.exports) {
-    if (!(exportName in namespace)) {
+    if (!(exportName in value.module)) {
       throw registryError(
         'module_export_missing',
-        `modules.${registration.module_source}.exports.${exportName}`,
-        `Host component contract export is missing: ${registration.module_source}.${exportName}.`
+        `modules.${registration.module_source}.${exportName}`,
+        `Frontend module export is unavailable: ${registration.module_source}.${exportName}.`
       );
     }
   }
-  return namespace;
-}
-
-async function fetchVerifiedAsset(
-  registration: NativeReactCatalogModuleLock,
-  asset: NativeReactModuleAssetLock,
-  fetchAsset: typeof fetch,
-  crypto: Pick<Crypto, 'subtle'>,
-  flights?: Map<string, Promise<ArrayBuffer>>
-): Promise<ArrayBuffer> {
-  const identity = `${registration.module_source}:${asset.role}:${asset.sha256}`;
-  const existing = flights?.get(identity);
-  if (existing) return existing;
-  const flight = (async () => {
-    let response: Response;
-    try {
-      response = await fetchAsset(asset.url, { credentials: 'same-origin' });
-    } catch {
-      throw registryError(
-        'module_fetch_failed',
-        `modules.${registration.module_source}.assets.${asset.role}`,
-        `Catalog module asset request failed: ${registration.module_source}.`
-      );
-    }
-    if (!response.ok) {
-      throw registryError(
-        'module_fetch_failed',
-        `modules.${registration.module_source}.assets.${asset.role}`,
-        `Catalog module asset request failed: ${registration.module_source}.`
-      );
-    }
-    if (
-      normalizeMediaType(response.headers.get('content-type')) !==
-      normalizeMediaType(asset.media_type)
-    ) {
-      throw registryError(
-        'module_media_type_mismatch',
-        `modules.${registration.module_source}.assets.${asset.role}.media_type`,
-        `Catalog module asset media type mismatch: ${registration.module_source}.`
-      );
-    }
-    let bytes: ArrayBuffer;
-    try {
-      bytes = await response.arrayBuffer();
-    } catch {
-      throw registryError(
-        'module_fetch_failed',
-        `modules.${registration.module_source}.assets.${asset.role}`,
-        `Catalog module asset response failed: ${registration.module_source}.`
-      );
-    }
-    if ((await sha256Hex(bytes, crypto)) !== asset.sha256) {
-      throw registryError(
-        'module_digest_mismatch',
-        `modules.${registration.module_source}.assets.${asset.role}.sha256`,
-        `Catalog module asset digest mismatch: ${registration.module_source}.`
-      );
-    }
-    return bytes;
-  })();
-  flights?.set(identity, flight);
-  return flight;
-}
-
-function normalizeMediaType(value: string | null): string {
-  return (value ?? '')
-    .split(';')
-    .map((part) => part.trim().toLowerCase())
-    .filter(Boolean)
-    .sort()
-    .join(';');
+  if (
+    value.styles !== undefined &&
+    (!Array.isArray(value.styles) ||
+      value.styles.some(
+        (style) =>
+          !isRecord(style) ||
+          typeof style.css !== 'string' ||
+          (style.media_type !== undefined &&
+            style.media_type !== 'text/css' &&
+            style.media_type !== 'text/css; charset=utf-8')
+      ))
+  ) {
+    throw registryError(
+      'module_load_failed',
+      `modules.${registration.module_source}.styles`,
+      `Frontend module styles are invalid: ${registration.module_source}.`
+    );
+  }
+  return value;
 }
 
 function registryError(

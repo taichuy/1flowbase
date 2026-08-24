@@ -35,9 +35,28 @@ fn health(value: &str) -> Result<domain::NetworkEgressHealthStatus> {
 }
 
 fn provider(row: sqlx::postgres::PgRow) -> Result<domain::NetworkEgressProviderRecord> {
+    let extension_category: Option<String> = row.get("extension_category");
+    let extension_organization: Option<String> = row.get("extension_organization");
+    let extension_artifact_id: Option<String> = row.get("extension_artifact_id");
+    let extension_family = match (
+        extension_category,
+        extension_organization,
+        extension_artifact_id,
+    ) {
+        (None, None, None) => None,
+        (Some(category), Some(organization), Some(artifact_id)) => {
+            let category = domain::ExtensionCategory::parse(&category)
+                .ok_or_else(|| anyhow::anyhow!("invalid network egress extension category"))?;
+            Some(
+                domain::ExtensionCatalogIdentity::new(category, organization, artifact_id)
+                    .ok_or_else(|| anyhow::anyhow!("invalid network egress extension family"))?,
+            )
+        }
+        _ => bail!("incomplete network egress extension family"),
+    };
     Ok(domain::NetworkEgressProviderRecord {
         id: row.get("id"),
-        installation_id: row.get("installation_id"),
+        extension_family,
         provider_code: row.get("provider_code"),
         display_name: row.get("display_name"),
         description: row.get("description"),
@@ -144,6 +163,7 @@ fn route(row: sqlx::postgres::PgRow) -> Result<domain::NetworkEgressRoute> {
         workspace_id: row.get("workspace_id"),
         selector,
         pool_id: row.get("pool_id"),
+        pool_member_ids: row.get("pool_member_ids"),
         enabled: row.get("enabled"),
         created_by: row.get("created_by"),
         updated_by: row.get("updated_by"),
@@ -184,14 +204,33 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         let row = sqlx::query(
             r#"
             insert into network_egress_providers (
-                id, scope_id, installation_id, provider_code, display_name, description, secret_ref,
+                id, scope_id, extension_category, extension_organization, extension_artifact_id,
+                provider_code, display_name, description, secret_ref,
                 lifecycle, health_status, created_by, updated_by
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, 'unknown', $9, $9) returning *
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'unknown', $11, $11)
+            returning *
         "#,
         )
         .bind(input.provider_id)
         .bind(domain::SYSTEM_SCOPE_ID)
-        .bind(input.installation_id)
+        .bind(
+            input
+                .extension_family
+                .as_ref()
+                .map(|family| family.category().as_str()),
+        )
+        .bind(
+            input
+                .extension_family
+                .as_ref()
+                .map(domain::ExtensionCatalogIdentity::organization),
+        )
+        .bind(
+            input
+                .extension_family
+                .as_ref()
+                .map(domain::ExtensionCatalogIdentity::artifact_id),
+        )
         .bind(&input.provider_code)
         .bind(&input.display_name)
         .bind(&input.description)
@@ -227,9 +266,13 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         sqlx::query(
             r#"
             insert into network_egress_providers (
-                id, scope_id, installation_id, provider_code, display_name, description, secret_ref,
+                id, scope_id, extension_category, extension_organization, extension_artifact_id,
+                provider_code, display_name, description, secret_ref,
                 lifecycle, health_status, created_by, updated_by
-            ) values ($1, $2, null, 'builtin_static_http', $3, $4, $5, 'active', 'healthy', $6, $6)
+            ) values (
+                $1, $2, null, null, null, 'builtin_static_http', $3, $4, $5,
+                'active', 'healthy', $6, $6
+            )
         "#,
         )
         .bind(input.provider_id)
@@ -628,7 +671,18 @@ impl NetworkEgressPoolRepository for PgControlPlaneStore {
                 .bind(pool_id)
                 .bind(member_id)
                 .execute(self.pool())
-                .await?;
+                .await
+                .map_err(|error| match &error {
+                    sqlx::Error::Database(database_error)
+                        if database_error.constraint()
+                            == Some("network_egress_route_pool_members_member_fk") =>
+                    {
+                        anyhow::Error::new(control_plane::errors::ControlPlaneError::Conflict(
+                            "network_egress_pool_member_in_use",
+                        ))
+                    }
+                    _ => error.into(),
+                })?;
         if result.rows_affected() == 0 {
             return Err(control_plane::errors::ControlPlaneError::NotFound(
                 "network_egress_pool_member",
@@ -647,9 +701,18 @@ impl NetworkEgressRouteRepository for PgControlPlaneStore {
     ) -> Result<Vec<domain::NetworkEgressRoute>> {
         sqlx::query(
             r#"
-                select * from network_egress_routes
-                where workspace_id = $1
-                order by consumer_kind asc, consumer_reference asc nulls first, id asc
+                select routes.*,
+                    array(
+                        select mapping.pool_member_id
+                        from network_egress_route_pool_members mapping
+                        where mapping.route_id = routes.id
+                        order by mapping.sequence asc
+                    ) as pool_member_ids
+                from network_egress_routes routes
+                where routes.workspace_id = $1
+                order by routes.consumer_kind asc,
+                    routes.consumer_reference asc nulls first,
+                    routes.id asc
             "#,
         )
         .bind(workspace_id)
@@ -664,13 +727,13 @@ impl NetworkEgressRouteRepository for PgControlPlaneStore {
         &self,
         input: &CreateNetworkEgressRouteInput,
     ) -> Result<domain::NetworkEgressRoute> {
-        let row = sqlx::query(
+        let mut transaction = self.pool().begin().await?;
+        sqlx::query(
             r#"
                 insert into network_egress_routes (
                     id, workspace_id, consumer_kind, consumer_reference, pool_id, enabled,
                     failure_policy, created_by, updated_by
                 ) values ($1, $2, $3, $4, $5, $6, 'block', $7, $7)
-                returning *
             "#,
         )
         .bind(input.route_id)
@@ -680,8 +743,39 @@ impl NetworkEgressRouteRepository for PgControlPlaneStore {
         .bind(input.pool_id)
         .bind(input.enabled)
         .bind(input.actor_user_id)
-        .fetch_one(self.pool())
+        .execute(&mut *transaction)
         .await?;
+        sqlx::query(
+            r#"
+                insert into network_egress_route_pool_members (
+                    route_id, pool_member_id, sequence
+                )
+                select $1, mapping.pool_member_id, mapping.ordinality::integer - 1
+                from unnest($2::uuid[]) with ordinality
+                    as mapping(pool_member_id, ordinality)
+            "#,
+        )
+        .bind(input.route_id)
+        .bind(&input.pool_member_ids)
+        .execute(&mut *transaction)
+        .await?;
+        let row = sqlx::query(
+            r#"
+                select routes.*,
+                    array(
+                        select mapping.pool_member_id
+                        from network_egress_route_pool_members mapping
+                        where mapping.route_id = routes.id
+                        order by mapping.sequence asc
+                    ) as pool_member_ids
+                from network_egress_routes routes
+                where routes.id = $1
+            "#,
+        )
+        .bind(input.route_id)
+        .fetch_one(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
         route(row)
     }
 
@@ -689,26 +783,61 @@ impl NetworkEgressRouteRepository for PgControlPlaneStore {
         &self,
         input: &UpdateNetworkEgressRouteInput,
     ) -> Result<domain::NetworkEgressRoute> {
-        let row = sqlx::query(
+        let mut transaction = self.pool().begin().await?;
+        let updated = sqlx::query(
             r#"
                 update network_egress_routes
-                set pool_id = $3, enabled = $4, updated_by = $5, updated_at = now()
+                set enabled = $3, updated_by = $4, updated_at = now()
                 where workspace_id = $1 and id = $2
-                returning *
             "#,
         )
         .bind(input.workspace_id)
         .bind(input.route_id)
-        .bind(input.pool_id)
         .bind(input.enabled)
         .bind(input.actor_user_id)
-        .fetch_optional(self.pool())
+        .execute(&mut *transaction)
         .await?;
-        row.map(route).transpose()?.ok_or_else(|| {
-            anyhow::anyhow!(control_plane::errors::ControlPlaneError::NotFound(
-                "network_egress_route"
-            ))
-        })
+        if updated.rows_affected() == 0 {
+            return Err(anyhow::anyhow!(
+                control_plane::errors::ControlPlaneError::NotFound("network_egress_route")
+            ));
+        }
+        sqlx::query("delete from network_egress_route_pool_members where route_id = $1")
+            .bind(input.route_id)
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query(
+            r#"
+                insert into network_egress_route_pool_members (
+                    route_id, pool_member_id, sequence
+                )
+                select $1, mapping.pool_member_id, mapping.ordinality::integer - 1
+                from unnest($2::uuid[]) with ordinality
+                    as mapping(pool_member_id, ordinality)
+            "#,
+        )
+        .bind(input.route_id)
+        .bind(&input.pool_member_ids)
+        .execute(&mut *transaction)
+        .await?;
+        let row = sqlx::query(
+            r#"
+                select routes.*,
+                    array(
+                        select mapping.pool_member_id
+                        from network_egress_route_pool_members mapping
+                        where mapping.route_id = routes.id
+                        order by mapping.sequence asc
+                    ) as pool_member_ids
+                from network_egress_routes routes
+                where routes.id = $1
+            "#,
+        )
+        .bind(input.route_id)
+        .fetch_one(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+        route(row)
     }
 
     async fn delete_network_egress_route(&self, workspace_id: Uuid, route_id: Uuid) -> Result<()> {
@@ -733,11 +862,18 @@ impl NetworkEgressRouteRepository for PgControlPlaneStore {
     ) -> Result<Option<domain::NetworkEgressRoute>> {
         sqlx::query(
             r#"
-                select * from network_egress_routes
-                where workspace_id = $1
-                  and consumer_kind = $2
-                  and consumer_reference is not distinct from $3
-                  and enabled = true
+                select routes.*,
+                    array(
+                        select mapping.pool_member_id
+                        from network_egress_route_pool_members mapping
+                        where mapping.route_id = routes.id
+                        order by mapping.sequence asc
+                    ) as pool_member_ids
+                from network_egress_routes routes
+                where routes.workspace_id = $1
+                  and routes.consumer_kind = $2
+                  and routes.consumer_reference is not distinct from $3
+                  and routes.enabled = true
             "#,
         )
         .bind(workspace_id)
@@ -747,6 +883,16 @@ impl NetworkEgressRouteRepository for PgControlPlaneStore {
         .await?
         .map(route)
         .transpose()
+    }
+
+    async fn is_network_egress_pool_member_referenced(&self, member_id: Uuid) -> Result<bool> {
+        sqlx::query_scalar(
+            "select exists(select 1 from network_egress_route_pool_members where pool_member_id = $1)",
+        )
+        .bind(member_id)
+        .fetch_one(self.pool())
+        .await
+        .map_err(Into::into)
     }
 }
 
@@ -758,6 +904,7 @@ mod tests {
             ensure_global_network_egress_pool, CreateNetworkEgressPoolMemberCommand,
             NetworkEgressPoolService, GLOBAL_NETWORK_EGRESS_POOL_ID,
         },
+        network_egress_route::{CreateNetworkEgressRouteCommand, NetworkEgressRouteService},
         ports::{
             CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
             CreateNetworkEgressRouteInput, CreateStaticHttpProxyPoolMemberInput,
@@ -856,7 +1003,11 @@ mod tests {
             &store,
             &CreateNetworkEgressProviderInput {
                 provider_id,
-                installation_id: Some(installation_id),
+                extension_family: domain::ExtensionCatalogIdentity::new(
+                    ExtensionCategory::RuntimeExtensions,
+                    "test",
+                    "fixture_egress",
+                ),
                 provider_code: "fixture_egress".to_string(),
                 display_name: "Fixture egress".to_string(),
                 description: String::new(),
@@ -1116,7 +1267,11 @@ mod tests {
             &store,
             &CreateNetworkEgressProviderInput {
                 provider_id,
-                installation_id: Some(installation_id),
+                extension_family: domain::ExtensionCatalogIdentity::new(
+                    ExtensionCategory::RuntimeExtensions,
+                    "test",
+                    "selection_fixture",
+                ),
                 provider_code: "selection_fixture".to_string(),
                 display_name: "Selection fixture".to_string(),
                 description: String::new(),
@@ -1218,6 +1373,66 @@ mod tests {
         assert_eq!(selection.member_id, available.member.id);
         assert_eq!(selection.provider_id, provider_id);
         assert_eq!(selection.provider_egress_key, "available-second");
+
+        let route_selection = NetworkEgressPoolService::new(store.clone())
+            .select_healthy_first_from(pool_id, &[available.member.id])
+            .await
+            .expect("route selection must stay inside its explicit proxy mapping");
+        assert_eq!(route_selection.member_id, available.member.id);
+        let unavailable_route = NetworkEgressPoolService::new(store.clone())
+            .select_healthy_first_from(pool_id, &[unavailable.member.id])
+            .await
+            .expect_err("a route must not fall through to an unbound healthy proxy");
+        assert!(unavailable_route
+            .to_string()
+            .contains("network_egress_pool_unavailable"));
+
+        let workspace_id = sqlx::query_scalar::<_, Uuid>(
+            "select id from workspaces where name = 'network-egress'",
+        )
+        .fetch_one(store.pool())
+        .await
+        .expect("fixture workspace should exist");
+        let invalid_mapping = NetworkEgressRouteService::new(store.clone())
+            .create(CreateNetworkEgressRouteCommand {
+                actor_user_id: actor.id,
+                workspace_id,
+                selector: domain::NetworkEgressConsumerSelector::ModelProviderDefault,
+                pool_member_ids: vec![available.member.id, available.member.id],
+                enabled: true,
+            })
+            .await
+            .expect_err("route mappings must be non-empty and unique");
+        assert!(invalid_mapping.to_string().contains("pool_member_ids"));
+        let route = NetworkEgressRouteService::new(store.clone())
+            .create(CreateNetworkEgressRouteCommand {
+                actor_user_id: actor.id,
+                workspace_id,
+                selector: domain::NetworkEgressConsumerSelector::HttpNodeDefault,
+                pool_member_ids: vec![available.member.id, unavailable.member.id],
+                enabled: true,
+            })
+            .await
+            .expect("ordered route proxy mapping should persist");
+        assert_eq!(
+            route.pool_member_ids,
+            vec![available.member.id, unavailable.member.id]
+        );
+        assert!(
+            NetworkEgressRouteRepository::is_network_egress_pool_member_referenced(
+                &store,
+                available.member.id
+            )
+            .await
+            .expect("route reference lookup should succeed")
+        );
+        let delete_referenced = NetworkEgressPoolService::new(store.clone())
+            .delete_member(actor.id, pool_id, available.member.id)
+            .await
+            .expect_err("a proxy referenced by a route must not be deleted");
+        assert!(delete_referenced
+            .to_string()
+            .contains("network_egress_pool_member_in_use"));
 
         NetworkEgressRepository::replace_network_egress_projection(
             &store,
@@ -1360,7 +1575,7 @@ mod tests {
             .await
             .expect("provider lookup should succeed")
             .expect("static provider should persist");
-        assert_eq!(provider.installation_id, None);
+        assert_eq!(provider.extension_family, None);
         assert_eq!(provider.provider_code, "builtin_static_http");
         assert_eq!(provider.description, "Manual proxy for US traffic");
         let secret = NetworkEgressRepository::resolve_network_egress_provider_secret_json(
@@ -1416,6 +1631,7 @@ mod tests {
                 workspace_id,
                 selector: domain::NetworkEgressConsumerSelector::GithubOfficialSources,
                 pool_id,
+                pool_member_ids: vec![],
                 enabled: true,
                 actor_user_id: actor.id,
             },
@@ -1434,6 +1650,7 @@ mod tests {
                 workspace_id,
                 selector: domain::NetworkEgressConsumerSelector::GithubOfficialSources,
                 pool_id,
+                pool_member_ids: vec![],
                 enabled: false,
                 actor_user_id: actor.id,
             },

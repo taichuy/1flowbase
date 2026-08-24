@@ -63,3 +63,4 @@ use crate::{
 pub(crate) use applications::*;
 pub(crate) use auth::*;
 pub(crate) use packages::*;
+pub(crate) use plugins::InMemoryOfficialExtensionCatalogSource;

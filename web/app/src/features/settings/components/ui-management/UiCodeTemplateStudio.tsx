@@ -9,9 +9,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
-import { diagnoseUnsupportedTailwindUtilities } from '../../../../shared/code-block/tailwind-utility-diagnostics';
 import { useAuthStore } from '../../../../state/auth-store';
-import { resolveFrontstageComponentDependencyLock } from '../../../frontstage/api/components';
 import { useFrontstageBlockCatalog } from '../../../frontstage/hooks/use-frontstage-block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../../frontstage/lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../../frontstage/lib/jsx-studio/context-injection';
@@ -98,9 +96,7 @@ export function UiCodeTemplateStudio({
           const validation = validateNativeTrustedBlockSource(draft.source, {
             allowedImportSources: projection.allowedImportSources
           });
-          return validation.ok
-            ? diagnoseUnsupportedTailwindUtilities(draft.source)
-            : validation.errors;
+          return validation.ok ? [] : validation.errors;
         })();
     return createJsBlockDiagnostics(
       {
@@ -334,13 +330,6 @@ export function UiCodeTemplateStudio({
                 block={authoringBlock}
                 code={previewRequest.source}
                 createBlockContext={createPreviewBlockContext}
-                externalNpm={catalog.externalNpm}
-                resolveNativeDependencyLock={(sourceCode) =>
-                  resolveFrontstageComponentDependencyLock(
-                    workspaceId ?? 'workspace',
-                    sourceCode
-                  )
-                }
                 revision={previewRequest.revision}
               />
             </div>

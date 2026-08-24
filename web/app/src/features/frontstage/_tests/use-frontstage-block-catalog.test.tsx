@@ -204,7 +204,6 @@ describe('useFrontstageBlockCatalog', () => {
         title: 'Hero Banner',
         runtime: 'native_react',
         entry: 'blocks/hero/index.html',
-        code_modules: [],
         context_contract: {
           primitives: ['text'],
           input_schema: { type: 'object' }
@@ -272,8 +271,7 @@ describe('useFrontstageBlockCatalog', () => {
     ] satisfies FrontstageBlockCatalogDiagnostic[];
 
     frontstageApi.fetchFrontstageBlockCatalog.mockResolvedValue({
-      entries: rawEntries,
-      externalNpm: { status: 'available' }
+      entries: rawEntries
     });
     blockCatalogLib.normalizeFrontstageBlockCatalog.mockReturnValue({
       items,
@@ -291,7 +289,6 @@ describe('useFrontstageBlockCatalog', () => {
       blockCatalogLib.normalizeFrontstageBlockCatalog
     ).toHaveBeenCalledWith(rawEntries);
     expect(result.current.diagnostics).toBe(diagnostics);
-    expect(result.current.externalNpm).toEqual({ status: 'available' });
     expect(result.current.loading).toBe(false);
     expect(result.current.error).toBeNull();
     expect(result.current.status).toBe('success');

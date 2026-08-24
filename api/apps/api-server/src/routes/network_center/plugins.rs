@@ -10,7 +10,7 @@ use control_plane::plugin_management::{
     official_plugin_host_compatibility, DeletePluginFamilyCommand, InstallUploadedPluginCommand,
     PluginCatalogFilter, PluginManagementService,
 };
-use control_plane::ports::{NetworkEgressRepository, PluginRepository};
+use control_plane::ports::NetworkEgressRepository;
 use storage_durable::MainDurableStore;
 use utoipa::ToSchema;
 
@@ -84,6 +84,14 @@ pub struct NetworkEgressPluginFamilyResponse {
     pub current_version: String,
     pub can_uninstall: bool,
     pub installed_versions: Vec<NetworkEgressPluginInstalledVersionResponse>,
+}
+
+impl NetworkEgressPluginFamilyResponse {
+    fn contains_installed_version(&self, target_version: &str) -> bool {
+        self.installed_versions
+            .iter()
+            .any(|version| version.plugin_version == target_version)
+    }
 }
 
 #[derive(Debug, serde::Deserialize, ToSchema)]
@@ -200,7 +208,8 @@ pub async fn list_official_catalog(
     let filter = official_filter(&query);
     let page = state
         .official_extension_catalog_source
-        .search(
+        .search_for_workspace(
+            context.actor.current_workspace_id,
             "runtime-extensions",
             crate::official_extension_catalog::OfficialExtensionCatalogSearchQuery {
                 slot_code: Some(NETWORK_EGRESS_PROVIDER_PLUGIN_TYPE.to_string()),
@@ -331,13 +340,9 @@ pub async fn switch_plugin_version(
             control_plane::errors::ControlPlaneError::InvalidInput("installation_id").into(),
         );
     }
-    state
-        .store
-        .select_network_egress_current(&state.api_node_id, installation_id)
-        .await?
-        .ok_or(control_plane::errors::ControlPlaneError::Conflict(
-            "network_egress_plugin_version_unavailable",
-        ))?;
+    super::service(&state)
+        .activate_version(installation_id)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -440,18 +445,13 @@ pub async fn uninstall_plugin_family(
             .ok_or(control_plane::errors::ControlPlaneError::NotFound(
                 "network_egress_plugin_family",
             ))?;
-    let installed_ids = family
-        .installed_versions
-        .iter()
-        .map(|version| version.installation_id.as_str())
-        .collect::<std::collections::HashSet<_>>();
     if state
         .store
         .list_network_egress_providers()
         .await?
         .into_iter()
-        .filter_map(|provider| provider.installation_id)
-        .any(|installation_id| installed_ids.contains(installation_id.to_string().as_str()))
+        .filter_map(|provider| provider.extension_family)
+        .any(|provider_family| provider_family.artifact_id() == family.provider_code)
     {
         return Err(control_plane::errors::ControlPlaneError::Conflict(
             "network_egress_plugin_family_uninstall_blocked",
@@ -488,6 +488,7 @@ pub async fn install_official_plugin(
     let command = crate::routes::plugins::resolved_official_plugin_install_command(
         &state,
         context.user.id,
+        context.actor.current_workspace_id,
         body.plugin_id,
         crate::routes::plugins::to_compatibility_override(body.compatibility_override),
         crate::routes::plugins::to_risk_override(body.risk_override),
@@ -608,7 +609,8 @@ fn project_catalog_entry(
     );
     let installed_family = installed.get(&provider_code);
     let current_version = installed_family.map(|family| family.current_version.clone());
-    let is_installed = installed_family.is_some();
+    let is_installed =
+        installed_family.is_some_and(|family| family.contains_installed_version(&entry.version));
     let icon = metadata_optional(&entry, "icon");
     let protocol = metadata_optional(&entry, "protocol")
         .unwrap_or_else(|| NETWORK_EGRESS_PROVIDER_PLUGIN_TYPE.to_string());
@@ -723,21 +725,22 @@ async fn mark_referenced_versions_not_uninstallable(
     state: &ApiState,
     families: &mut HashMap<String, NetworkEgressPluginFamilyResponse>,
 ) -> anyhow::Result<()> {
-    let referenced_installations = state
+    let referenced_families = state
         .store
         .list_network_egress_providers()
         .await?
         .into_iter()
-        .filter_map(|provider| provider.installation_id)
-        .map(|installation_id| installation_id.to_string())
+        .filter_map(|provider| provider.extension_family)
+        .map(|family| family.artifact_id().to_string())
         .collect::<std::collections::HashSet<_>>();
     for family in families.values_mut() {
-        for version in &mut family.installed_versions {
-            if referenced_installations.contains(&version.installation_id) {
-                family.can_uninstall = false;
-                version.can_uninstall = false;
-            }
+        if referenced_families.contains(&family.provider_code) {
+            family.can_uninstall = false;
         }
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "_tests/plugins.rs"]
+mod tests;

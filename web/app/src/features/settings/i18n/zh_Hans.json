@@ -1092,6 +1092,7 @@
     "network_center_routes_unavailable": "路由规则管理暂未开放。",
     "network_center_route_consumer": "消费方",
     "network_center_route_pool": "目标代理池",
+    "network_center_route_proxy_mapping": "代理映射",
     "network_center_route_failure_policy": "失败策略",
     "network_center_route_create": "创建路由规则",
     "network_center_route_edit": "编辑路由规则",
@@ -1135,6 +1136,7 @@
     "network_center_proxy_plugins": "代理插件",
     "network_center_proxy_plugins_search": "搜索代理插件",
     "network_center_no_proxy_plugins": "暂无可用代理插件。",
-    "network_center_proxy_plugin_installed": "已安装"
+    "network_center_proxy_plugin_installed": "已安装",
+    "ui_components": "UI 组件"
   }
 }

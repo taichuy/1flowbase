@@ -470,8 +470,8 @@ describe('FrontStagePage - runtime canvas state', () => {
         (assembly?.layers ?? []).map((layer, slotIndex) => {
           const identityInput = {
             sourceSha256: `digest:${layer.block_id}`,
-            runtimeFingerprint: 'test-runtime',
-            dependencyLockIdentity: '[]'
+            compilerAbi: 'test-compiler',
+            runtimeAbi: 'test-runtime'
           };
           return {
             blockId: layer.block_id,
@@ -672,7 +672,7 @@ describe('FrontStagePage - runtime canvas state', () => {
     expect(screen.getAllByText('页面 page-1').length).toBeGreaterThan(0);
   });
 
-  test('connects the page read plan and catalog lock into Native preparation', async () => {
+  test('connects the page read plan into Native preparation', async () => {
     authenticate([]);
     mockFrontstageBlockCatalog([createCatalogEntry()]);
 
@@ -708,8 +708,7 @@ describe('FrontStagePage - runtime canvas state', () => {
               codeRef: 'frontstage-js-block-1-code'
             })
           ]
-        }),
-        externalNpm: undefined
+        })
       })
     );
   });

@@ -1,4 +1,6 @@
 import { VditorEditor } from '@1flowbase/rich-text';
+import '@1flowbase/rich-text/styles.css';
+import 'vditor/dist/index.css';
 
 type MarkdownIrEditorProps = {
   ariaLabel?: string;

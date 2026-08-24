@@ -1,7 +1,6 @@
 import { fileURLToPath, URL } from 'node:url';
 
 import react from '@vitejs/plugin-react';
-import tailwindcss from '@tailwindcss/vite';
 import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite';
 
 const reactDraggableBrowserDefines = {
@@ -78,7 +77,7 @@ export default defineConfig(({ mode }) => {
   ).replace(/\/$/, '');
 
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react()],
     define: reactDraggableBrowserDefines,
     optimizeDeps: {
       include: [
@@ -187,7 +186,7 @@ export default defineConfig(({ mode }) => {
         '@1flowbase/page-protocol': fileURLToPath(
           new URL('../packages/page-protocol/src/index.ts', import.meta.url)
         ),
-        '@1flowbase/page-runtime/dependency-lock': fileURLToPath(
+        '@1flowbase/page-runtime/module-registry': fileURLToPath(
           new URL(
             '../packages/page-runtime/src/native-react-compiler/module-registry/contracts.ts',
             import.meta.url

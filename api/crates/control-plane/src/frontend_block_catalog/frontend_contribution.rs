@@ -352,6 +352,9 @@ fn runtime_contract(
 fn verified_assets(
     candidate: &FrontendContributionCandidate,
 ) -> Option<Vec<FrontendContributionAssetBinding>> {
+    if candidate.catalog_entry.runtime != "isolated_iframe" {
+        return Some(Vec::new());
+    }
     let asset_count = candidate
         .catalog_entry
         .code_modules

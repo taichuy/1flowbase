@@ -7,7 +7,6 @@ import {
   compileNativeReactComponentInBrowser,
   createNativeReactBrowserCompilerWorkerFactory,
   getNativeReactCompilerWorkerUrl,
-  getNativeReactRuntimeFingerprint,
   type NativeReactBrowserCompilerWorker
 } from '../native-react-compiler-browser';
 
@@ -33,12 +32,6 @@ class FakeBrowserWorker implements NativeReactBrowserCompilerWorker {
 }
 
 describe('Native React browser compiler adapter', () => {
-  test('keeps the JavaScript runtime identity independent from CSS candidates', () => {
-    expect(getNativeReactRuntimeFingerprint([])).toBe(
-      getNativeReactRuntimeFingerprint([])
-    );
-  });
-
   test('D1-AC-001 uses the real bundled Worker URL and module Worker contract', async () => {
     FakeBrowserWorker.instances = [];
     const workerFactory = createNativeReactBrowserCompilerWorkerFactory({
@@ -47,6 +40,12 @@ describe('Native React browser compiler adapter', () => {
     const result = await compileNativeReactComponentInBrowser({
       requestId: 'browser-compile-1',
       source: 'export default function Block() { return <div>Ready</div>; }',
+      moduleDefinitions: [
+        {
+          module_source: 'react/jsx-runtime',
+          exports: ['Fragment', 'jsx', 'jsxs']
+        }
+      ],
       workerFactory
     });
 
@@ -57,7 +56,7 @@ describe('Native React browser compiler adapter', () => {
         name: NATIVE_REACT_COMPILER_WORKER_NAME
       }
     });
-    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
     expect(FakeBrowserWorker.instances[0]?.terminate).toHaveBeenCalledTimes(1);
   });
 });

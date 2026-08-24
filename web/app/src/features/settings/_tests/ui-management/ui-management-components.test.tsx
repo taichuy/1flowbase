@@ -80,9 +80,7 @@ const uiManagementApi = vi.hoisted(() => ({
   deleteSettingsUiComponent: vi.fn(),
   fetchSettingsUiCatalogPage: vi.fn(),
   searchSettingsUiCatalog: vi.fn(),
-  fetchSettingsUiCatalogUpdateStatus: vi.fn(),
   downloadSettingsUiCatalogComponent: vi.fn(),
-  syncSettingsUiCatalogGroup: vi.fn(),
   fetchSettingsUiTemplates: vi.fn(),
   archiveSettingsUiTemplate: vi.fn(),
   createSettingsUiTemplate: vi.fn(),
@@ -155,7 +153,8 @@ describe('UiManagementPanel component records', () => {
           ...official,
           catalog_updated_at: official.updated_at,
           source_locator: 'ui_components/@taichuy/ant-design-x/bubble.json',
-          source_checksum: `sha256:${'a'.repeat(64)}`
+          source_checksum: `sha256:${'a'.repeat(64)}`,
+          local_version: official.version
         }
       ]
     });
@@ -164,29 +163,13 @@ describe('UiManagementPanel component records', () => {
       page: 1,
       page_size: 20,
       total_entries: 1,
-      entries: [{ ...official, catalog_page: 1 }]
-    });
-    uiManagementApi.fetchSettingsUiCatalogUpdateStatus.mockResolvedValue({
-      catalog_version: '1.0.0',
-      source_fingerprint: `sha256:${'b'.repeat(64)}`,
-      update_available: true,
-      groups: [
-        {
-          source: 'taichuy',
-          group: 'ant-design-x',
-          remote_records: 2,
-          new_or_updated_records: 1,
-          removed_records: 0,
-          update_available: true
-        }
+      entries: [
+        { ...official, catalog_page: 1, local_version: official.version }
       ]
     });
     uiManagementApi.downloadSettingsUiCatalogComponent.mockResolvedValue(
       official
     );
-    uiManagementApi.syncSettingsUiCatalogGroup.mockResolvedValue({
-      synchronized_records: 2
-    });
   });
 
   test('WP-D2 lists and searches independent persisted records', async () => {
@@ -315,7 +298,7 @@ describe('UiManagementPanel component records', () => {
     );
   });
 
-  test('WP-D3 browses the remote catalog and exposes download and authoritative group sync', async () => {
+  test('WP-D3 browses the remote catalog as one table and updates a local record', async () => {
     render(
       <AppProviders>
         <UiManagementPanel canManage />
@@ -326,22 +309,18 @@ describe('UiManagementPanel component records', () => {
     const drawer = await screen.findByRole('dialog', {
       name: '远程组件目录'
     });
+    expect(await within(drawer).findByText('Bubble')).toBeInTheDocument();
     expect(
-      await within(drawer).findByText('taichuy / ant-design-x')
-    ).toBeInTheDocument();
-    fireEvent.click(within(drawer).getByRole('button', { name: '下载' }));
+      within(drawer).queryByText('taichuy / ant-design-x')
+    ).not.toBeInTheDocument();
+    expect(
+      within(drawer).queryByRole('button', { name: '同步分组' })
+    ).not.toBeInTheDocument();
+    fireEvent.click(within(drawer).getByRole('button', { name: '更新' }));
     await waitFor(() =>
       expect(
         uiManagementApi.downloadSettingsUiCatalogComponent
       ).toHaveBeenCalledWith('taichuy.ant-design-x.bubble', 'csrf')
-    );
-    fireEvent.click(within(drawer).getByRole('button', { name: '同步分组' }));
-    await waitFor(() =>
-      expect(uiManagementApi.syncSettingsUiCatalogGroup).toHaveBeenCalledWith(
-        'taichuy',
-        'ant-design-x',
-        'csrf'
-      )
     );
   });
 });

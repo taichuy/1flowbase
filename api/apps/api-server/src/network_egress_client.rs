@@ -16,7 +16,7 @@ struct NetworkEgressHttpRequestLeaseReleaser(NetworkEgressExecutionScope);
 
 struct NetworkEgressScopeRelease {
     runtime: ApiProviderRuntime,
-    installation: domain::LocalPluginInstallationRecord,
+    provider_id: Uuid,
     /// Host-private identity for the exact lease this scope owns. It is never exposed through
     /// the consumer client or model-provider invocation context.
     lease_id: String,
@@ -25,26 +25,26 @@ struct NetworkEgressScopeRelease {
 impl NetworkEgressScopeRelease {
     async fn release(self) -> Result<()> {
         self.runtime
-            .release_network_egress_http_forward_proxy(&self.installation, &self.lease_id)
+            .release_network_egress_http_forward_proxy(self.provider_id, &self.lease_id)
             .await
             .context("configured network egress provider did not release its proxy lease")
     }
 
     fn release_after_cancellation(self) {
-        let installation_id = self.installation.id;
+        let provider_id = self.provider_id;
         match tokio::runtime::Handle::try_current() {
             Ok(handle) => {
                 handle.spawn(async move {
                     if self.release().await.is_err() {
                         tracing::warn!(
-                            %installation_id,
+                            %provider_id,
                             "network egress lease release after cancellation failed"
                         );
                     }
                 });
             }
             Err(_) => tracing::warn!(
-                %installation_id,
+                %provider_id,
                 "network egress lease was dropped outside a Tokio runtime"
             ),
         }
@@ -107,7 +107,7 @@ impl NetworkEgressHttpClientResolver {
         };
 
         let selected = NetworkEgressPoolService::new(self.store.clone())
-            .select_healthy_first(route.pool_id)
+            .select_healthy_first_from(route.pool_id, &route.pool_member_ids)
             .await
             .context("configured network egress pool has no usable member")?;
         self.acquire_provider_egress(selected.provider_id, &selected.provider_egress_key)
@@ -135,21 +135,30 @@ impl NetworkEgressHttpClientResolver {
         if provider.provider_code == "builtin_static_http" {
             return static_http_execution_scope(secret.secret_json);
         }
-        let installation_id = provider
-            .installation_id
+        let extension_family = provider
+            .extension_family
+            .as_ref()
             .context("configured network egress provider is unavailable on this node")?;
-        let installation =
-            PluginRepository::get_local_installation(&self.store, &self.node_id, installation_id)
-                .await?
-                .context("configured network egress provider is unavailable on this node")?;
+        let installation = PluginRepository::get_current_local_installation(
+            &self.store,
+            &self.node_id,
+            extension_family,
+        )
+        .await?
+        .context("configured network egress provider is unavailable on this node")?;
         let forward_proxy = self
             .runtime
-            .acquire_network_egress_http_forward_proxy(&installation, secret, provider_egress_key)
+            .acquire_network_egress_http_forward_proxy(
+                provider_id,
+                &installation,
+                secret,
+                provider_egress_key,
+            )
             .await
             .context("configured network egress provider could not acquire a proxy lease")?;
         let release = NetworkEgressScopeRelease {
             runtime: self.runtime.clone(),
-            installation,
+            provider_id,
             lease_id: forward_proxy.lease_id.clone(),
         };
         let client = match Client::builder()
@@ -183,6 +192,23 @@ impl NetworkEgressHttpClientResolver {
 impl NetworkEgressExecutionScope {
     pub fn http_client(&self) -> &Client {
         &self.client
+    }
+
+    pub(crate) fn http_client_with_timeouts(
+        &self,
+        connect_timeout: std::time::Duration,
+        request_timeout: std::time::Duration,
+    ) -> Result<Client> {
+        Client::builder()
+            .connect_timeout(connect_timeout)
+            .timeout(request_timeout)
+            .proxy(
+                Proxy::all(&self.http_proxy_url).context(
+                    "configured network egress provider returned an invalid HTTP proxy URL",
+                )?,
+            )
+            .build()
+            .context("failed to construct routed HTTP client")
     }
 
     pub fn provider_invocation_context(

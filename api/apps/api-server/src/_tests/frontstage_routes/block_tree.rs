@@ -306,20 +306,9 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
     );
     assert!(initial_code_payload["data"].get("code_ref").is_none());
     let initial_hash = initial_code_payload["data"]["source_sha256"].clone();
-    let initial_lock = initial_code_payload["data"]["dependency_lock"].clone();
-    let lock_entries = initial_lock
-        .as_array()
-        .expect("created native block must have a canonical dependency lock");
-    assert!(!lock_entries.is_empty());
-    for asset in lock_entries
-        .iter()
-        .flat_map(|entry| entry["assets"].as_array().unwrap())
-    {
-        assert!(asset["media_type"]
-            .as_str()
-            .is_some_and(|value| !value.is_empty()));
-        assert_eq!(asset["integrity"], json!("verified_sha256"));
-    }
+    assert!(initial_code_payload["data"]
+        .get("dependency_lock")
+        .is_none());
 
     let (legacy_lock_status, _) = send_json(
         &app,
@@ -350,7 +339,7 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
         json!("export default 'changed';")
     );
     assert_ne!(save_code_payload["data"]["source_sha256"], initial_hash);
-    assert_eq!(save_code_payload["data"]["dependency_lock"], initial_lock);
+    assert!(save_code_payload["data"].get("dependency_lock").is_none());
     let (update_status, update_payload) = send_json(
         &app,
         "PATCH",
@@ -402,7 +391,7 @@ async fn canonical_block_tree_supports_public_projection_traversal_code_and_guar
 }
 
 #[tokio::test]
-async fn block_source_creation_registers_reload_icon_and_save_rejects_an_unknown_named_export() {
+async fn block_source_create_and_save_do_not_resolve_frontend_modules_or_exports() {
     let app = test_app().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let workspace_id = current_workspace_id(&app, &cookie).await;
@@ -425,18 +414,11 @@ async fn block_source_creation_registers_reload_icon_and_save_rejects_an_unknown
     let code_path = format!("/api/console/frontstage/pages/{page_id}/blocks/{block_id}/code");
     let (created_code_status, created_code_payload) = get_json(&app, &code_path, &cookie).await;
     assert_eq!(created_code_status, StatusCode::OK);
-    assert!(created_code_payload["data"]["dependency_lock"]
-        .as_array()
-        .expect("created native block must have a dependency lock")
-        .iter()
-        .any(|entry| {
-            entry["module_source"] == "@ant-design/icons"
-                && entry["exports"]
-                    .as_array()
-                    .is_some_and(|exports| exports.contains(&json!("ReloadOutlined")))
-        }));
+    assert!(created_code_payload["data"]
+        .get("dependency_lock")
+        .is_none());
 
-    let (rejected_status, rejected_payload) = send_json(
+    let (save_status, save_payload) = send_json(
         &app,
         "PUT",
         &code_path,
@@ -447,23 +429,14 @@ async fn block_source_creation_registers_reload_icon_and_save_rejects_an_unknown
         ),
     )
     .await;
-    assert_eq!(
-        rejected_status,
-        StatusCode::BAD_REQUEST,
-        "{rejected_payload}"
-    );
-    assert_error(&rejected_payload, "frontstage_component_module_export");
-    assert_eq!(
-        rejected_payload["message"],
-        json!("catalog module export is not registered: @ant-design/icons.DefinitelyMissingIcon")
-    );
+    assert_eq!(save_status, StatusCode::OK, "{save_payload}");
 
     let (after_rejection_status, after_rejection_payload) =
         get_json(&app, &code_path, &cookie).await;
     assert_eq!(after_rejection_status, StatusCode::OK);
     assert_eq!(
         after_rejection_payload["data"]["source_code"],
-        json!("import { ReloadOutlined } from '@ant-design/icons';\nexport default () => <ReloadOutlined />;")
+        json!("import { DefinitelyMissingIcon } from '@ant-design/icons';\nexport default () => <DefinitelyMissingIcon />;")
     );
 }
 

@@ -290,59 +290,6 @@ describe('useFrontstageBlockTabs', () => {
     expect(legacy.useFrontstageBlockCode).not.toHaveBeenCalled();
   });
 
-  test('source save removes the compile-only Tailwind module from runtime dependencies', async () => {
-    const persistedDependencyLock = [
-      {
-        module_source: 'react',
-        module_version: '18.3.1',
-        binding: 'host' as const,
-        assets: [],
-        exports: ['default']
-      },
-      {
-        module_source: 'tailwindcss',
-        module_version: '4.3.3',
-        binding: 'fetched' as const,
-        assets: [
-          {
-            role: 'browser_module' as const,
-            media_type: 'text/javascript',
-            sha256: 'a'.repeat(64),
-            url: `/locked-tailwind-${'a'.repeat(64)}`
-          }
-        ],
-        exports: ['default']
-      }
-    ];
-    api.fetchFrontstageBlockNodeCode.mockResolvedValueOnce({
-      ...executableCode('root'),
-      dependency_lock: persistedDependencyLock
-    });
-    const view = setup();
-    await waitFor(() =>
-      expect(view.result.current.activeTab?.loading).toBe(false)
-    );
-    act(() =>
-      view.result.current.setActiveDraft(
-        'import \'tailwindcss\'; export default () => <div className="p-4" />;'
-      )
-    );
-    await act(async () => {
-      await view.result.current.saveActiveDraft();
-    });
-    expect(api.saveFrontstageBlockNodeCode).toHaveBeenCalledWith(
-      'workspace-1',
-      'page-1',
-      'root',
-      expect.objectContaining({
-        source_code:
-          'import \'tailwindcss\'; export default () => <div className="p-4" />;',
-        expected_source_revision: sha256Text('source:root')
-      }),
-      'csrf-123'
-    );
-  });
-
   test.each([
     ['malformed dependency lock', { dependency_lock: [{ bad: true }] }]
   ])('saves source without resubmitting %s', async (_label, override) => {

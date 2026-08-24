@@ -3,7 +3,7 @@ use super::*;
 #[derive(Debug, Clone)]
 pub struct CreateNetworkEgressProviderInput {
     pub provider_id: Uuid,
-    pub installation_id: Option<Uuid>,
+    pub extension_family: Option<domain::ExtensionCatalogIdentity>,
     pub provider_code: String,
     pub display_name: String,
     pub description: String,
@@ -119,6 +119,7 @@ pub struct CreateNetworkEgressRouteInput {
     pub workspace_id: Uuid,
     pub selector: domain::NetworkEgressConsumerSelector,
     pub pool_id: Uuid,
+    pub pool_member_ids: Vec<Uuid>,
     pub enabled: bool,
     pub actor_user_id: Uuid,
 }
@@ -127,7 +128,7 @@ pub struct CreateNetworkEgressRouteInput {
 pub struct UpdateNetworkEgressRouteInput {
     pub workspace_id: Uuid,
     pub route_id: Uuid,
-    pub pool_id: Uuid,
+    pub pool_member_ids: Vec<Uuid>,
     pub enabled: bool,
     pub actor_user_id: Uuid,
 }
@@ -270,12 +271,26 @@ pub trait NetworkEgressRouteRepository: Send + Sync {
         workspace_id: Uuid,
         selector: &domain::NetworkEgressConsumerSelector,
     ) -> anyhow::Result<Option<domain::NetworkEgressRoute>>;
+    async fn is_network_egress_pool_member_referenced(
+        &self,
+        member_id: Uuid,
+    ) -> anyhow::Result<bool>;
 }
 
 #[async_trait]
 pub trait NetworkEgressRuntimePort: Send + Sync {
+    async fn unload_network_egress_provider(&self, provider_id: Uuid) -> anyhow::Result<()>;
+
+    async fn preflight_network_egresses(
+        &self,
+        provider_id: Uuid,
+        installation: &domain::LocalPluginInstallationRecord,
+        secret: NetworkEgressSecretMaterial,
+    ) -> anyhow::Result<()>;
+
     async fn sync_network_egresses(
         &self,
+        provider_id: Uuid,
         installation: &domain::LocalPluginInstallationRecord,
         secret: NetworkEgressSecretMaterial,
     ) -> anyhow::Result<Vec<plugin_framework::EgressDescriptor>>;

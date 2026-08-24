@@ -214,31 +214,12 @@ function prepareDiscoveredTrustedFrontendContribution(
     reject('graph provenance mismatch');
   }
 
-  let projectedAssetCount = 0;
-  for (const asset of entry.code_modules.flatMap((module) => module.assets)) {
-    if (!('integrity' in asset)) continue;
-    projectedAssetCount += 1;
-    if (
-      asset.integrity !== 'verified_sha256' ||
-      !asset.url ||
-      !asset.sha256 ||
-      !asset.url.endsWith(`/${asset.sha256}`)
-    ) {
-      reject('asset integrity mismatch');
-    }
-  }
-
   const contribution: PreparedTrustedFrontendContribution = Object.freeze({
     state: 'prepared' as const,
     contributionId: entry.frontend_contribution_id,
     blockId: entry.frontend_block_id,
     blockVersion: entry.frontend_block_version,
-    assetIntegrity: Object.freeze(
-      Array.from(
-        { length: projectedAssetCount },
-        () => 'verified_sha256' as const
-      )
-    ),
+    assetIntegrity: Object.freeze([]),
     grantedPermissions: Object.freeze([...entry.granted_permissions]),
     graphFingerprint: entry.graph_fingerprint,
     runtimeKind: 'trusted_native' as const,

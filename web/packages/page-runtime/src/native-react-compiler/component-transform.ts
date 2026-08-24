@@ -18,13 +18,6 @@ import type {
 } from '../native-trusted-block/source-evaluator-types';
 import { transformNativeReactTsx } from './tsx-transform';
 
-const NATIVE_REACT_HOST_ABI_IMPORTS = new Set([
-  'react',
-  'react/jsx-runtime',
-  'antd',
-  'tailwindcss'
-]);
-
 export type NativeReactComponentTransformResult =
   | {
       ok: true;
@@ -43,12 +36,9 @@ export type NativeReactComponentTransformResult =
 
 export function transformNativeReactComponentSource(
   source: unknown,
-  catalogModuleSources: ReadonlySet<string> = new Set()
+  moduleSources: ReadonlySet<string> = new Set()
 ): NativeReactComponentTransformResult {
-  const acceptedImportSources = new Set([
-    ...NATIVE_REACT_HOST_ABI_IMPORTS,
-    ...catalogModuleSources
-  ]);
+  const acceptedImportSources = new Set(moduleSources);
   const policy = validateNativeTrustedBlockSource(source, {
     allowedImportSources: acceptedImportSources
   });
@@ -73,9 +63,7 @@ export function transformNativeReactComponentSource(
     acceptedImportSources
   );
   if (!parsed.ok) return { ok: false, errors: [parsed.error] };
-  const bindings = collectInjectedModules(
-    parsed.value.imports.filter(({ source }) => source !== 'tailwindcss')
-  );
+  const bindings = collectInjectedModules(parsed.value.imports);
   if (!bindings.ok) return { ok: false, errors: [bindings.error] };
 
   const executableSource = applyEdits(tsx.code, [

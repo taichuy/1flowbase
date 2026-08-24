@@ -1,19 +1,63 @@
 use control_plane::ports::{
-    CreatePluginAssignmentInput, CreatePluginTaskInput, JsDependencyRegistryInput,
-    JsDependencyRepository, PluginRepository, ReplaceInstallationJsDependenciesInput,
-    UpdatePluginTaskStatusInput, UpsertPluginInstallationInput,
-    UpsertPluginPackageCatalogProjectionInput,
+    CreateNetworkEgressProviderInput, CreatePluginAssignmentInput, CreatePluginTaskInput,
+    JsDependencyRegistryInput, JsDependencyRepository, NetworkEgressRepository,
+    NetworkEgressRuntimePort, NetworkEgressSecretMaterial, NetworkEgressSecretResolver,
+    PluginRepository, ReplaceInstallationJsDependenciesInput, UpdatePluginTaskStatusInput,
+    UpsertPluginInstallationInput, UpsertPluginPackageCatalogProjectionInput,
 };
 use domain::{
     PluginDesiredState, PluginPackageCatalogProjectionStatus, PluginRuntimeStatus, PluginTaskKind,
     PluginTaskStatus, PluginVerificationStatus,
 };
 use serde_json::json;
+use sqlx::Row;
 use storage_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
 const REPAIR_NETWORK_EGRESS_CURRENT_ARTIFACTS_SQL: &str =
     include_str!("../../../migrations/20260823180000_repair_network_egress_current_artifacts.sql");
+
+struct RejectNetworkEgressPreflight;
+
+#[async_trait::async_trait]
+impl NetworkEgressRuntimePort for RejectNetworkEgressPreflight {
+    async fn unload_network_egress_provider(&self, _provider_id: Uuid) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    async fn preflight_network_egresses(
+        &self,
+        _provider_id: Uuid,
+        _installation: &domain::LocalPluginInstallationRecord,
+        _secret: NetworkEgressSecretMaterial,
+    ) -> anyhow::Result<()> {
+        anyhow::bail!("controlled preflight rejection")
+    }
+
+    async fn sync_network_egresses(
+        &self,
+        _provider_id: Uuid,
+        _installation: &domain::LocalPluginInstallationRecord,
+        _secret: NetworkEgressSecretMaterial,
+    ) -> anyhow::Result<Vec<plugin_framework::EgressDescriptor>> {
+        unreachable!("activation preflight must not synchronize the active runtime")
+    }
+}
+
+struct StaticNetworkEgressSecret;
+
+#[async_trait::async_trait]
+impl NetworkEgressSecretResolver for StaticNetworkEgressSecret {
+    async fn resolve_for_runner(
+        &self,
+        provider: &domain::NetworkEgressProviderRecord,
+    ) -> anyhow::Result<Option<NetworkEgressSecretMaterial>> {
+        Ok(Some(NetworkEgressSecretMaterial {
+            secret_ref: provider.secret_ref.clone(),
+            secret_json: json!({"subscription_url": "https://fixture.invalid/subscription"}),
+        }))
+    }
+}
 
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
@@ -804,6 +848,23 @@ fn network_egress_commit_input(
     input
 }
 
+fn network_egress_commit_input_for_organization(
+    installation_id: Uuid,
+    actor_user_id: Uuid,
+    organization: &str,
+    version: &str,
+) -> control_plane::ports::CommitPluginInstallationInput {
+    let mut input =
+        network_egress_commit_input(installation_id, actor_user_id, version, "native_react");
+    let plugin_id = format!("{organization}-clash-proxy@{version}");
+    input.installation.organization = organization.to_string();
+    input.installation.plugin_id = plugin_id.clone();
+    input.node_contributions.plugin_id = plugin_id.clone();
+    input.js_dependencies.plugin_id = plugin_id.clone();
+    input.frontend_blocks.plugin_id = plugin_id;
+    input
+}
+
 #[tokio::test]
 async fn network_egress_installation_commit_keeps_one_current_artifact_and_rolls_back_failed_update(
 ) {
@@ -863,6 +924,7 @@ async fn network_egress_current_selection_switches_one_provider_family_atomicall
     let (store, _workspace, actor) = seed_store().await;
     let retained_id = Uuid::now_v7();
     let current_id = Uuid::now_v7();
+    let other_publisher_id = Uuid::now_v7();
     PluginRepository::commit_plugin_installation(
         &store,
         &network_egress_commit_input(retained_id, actor.id, "0.2.2", "native_react"),
@@ -872,6 +934,17 @@ async fn network_egress_current_selection_switches_one_provider_family_atomicall
     PluginRepository::commit_plugin_installation(
         &store,
         &network_egress_commit_input(current_id, actor.id, "0.2.3", "native_react"),
+    )
+    .await
+    .unwrap();
+    PluginRepository::commit_plugin_installation(
+        &store,
+        &network_egress_commit_input_for_organization(
+            other_publisher_id,
+            actor.id,
+            "other-publisher",
+            "0.3.0",
+        ),
     )
     .await
     .unwrap();
@@ -897,6 +970,157 @@ async fn network_egress_current_selection_switches_one_provider_family_atomicall
             .await
             .unwrap()
             .expect("previous current artifact must remain")
+            .is_current
+    );
+    assert!(
+        PluginRepository::get_artifact_instance(&store, "test-node", other_publisher_id)
+            .await
+            .unwrap()
+            .expect("another publisher's same-named artifact must remain")
+            .is_current,
+        "current selection must be scoped by category, organization, and artifact_id"
+    );
+}
+
+#[tokio::test]
+async fn ac_001_network_egress_provider_persists_stable_family_identity_across_version_switches() {
+    let (store, _workspace, actor) = seed_store().await;
+    let old_installation_id = Uuid::now_v7();
+    let current_installation_id = Uuid::now_v7();
+    PluginRepository::commit_plugin_installation(
+        &store,
+        &network_egress_commit_input(old_installation_id, actor.id, "0.2.5", "native_react"),
+    )
+    .await
+    .unwrap();
+
+    let provider_id = Uuid::now_v7();
+    NetworkEgressRepository::create_network_egress_provider(
+        &store,
+        &CreateNetworkEgressProviderInput {
+            provider_id,
+            extension_family: domain::ExtensionCatalogIdentity::new(
+                domain::ExtensionCategory::RuntimeExtensions,
+                "taichuy",
+                "clash-proxy",
+            ),
+            provider_code: "clash-proxy".into(),
+            display_name: "Clash subscription".into(),
+            description: String::new(),
+            secret_ref: format!("secret://system/network-egress/{provider_id}"),
+            lifecycle: domain::NetworkEgressProviderLifecycle::Active,
+            actor_user_id: actor.id,
+        },
+    )
+    .await
+    .unwrap();
+
+    PluginRepository::commit_plugin_installation(
+        &store,
+        &network_egress_commit_input(current_installation_id, actor.id, "0.2.8", "native_react"),
+    )
+    .await
+    .unwrap();
+
+    let row = sqlx::query(
+        "select extension_category, extension_organization, extension_artifact_id \
+         from network_egress_providers where id = $1",
+    )
+    .bind(provider_id)
+    .fetch_one(store.pool())
+    .await
+    .expect("provider must persist a version-independent extension family");
+
+    assert_eq!(
+        row.get::<String, _>("extension_category"),
+        "runtime-extensions"
+    );
+    assert_eq!(row.get::<String, _>("extension_organization"), "taichuy");
+    assert_eq!(row.get::<String, _>("extension_artifact_id"), "clash-proxy");
+
+    let provider = NetworkEgressRepository::get_network_egress_provider(&store, provider_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let resolved = PluginRepository::get_current_local_installation(
+        &store,
+        "test-node",
+        provider.extension_family.as_ref().unwrap(),
+    )
+    .await
+    .unwrap()
+    .expect("provider family must resolve the current artifact on the executing node");
+    assert_eq!(resolved.id, current_installation_id);
+}
+
+#[tokio::test]
+async fn ac_005_failed_provider_preflight_preserves_the_previous_current_artifact() {
+    let (store, _workspace, actor) = seed_store().await;
+    let old_installation_id = Uuid::now_v7();
+    let target_installation_id = Uuid::now_v7();
+    PluginRepository::commit_plugin_installation(
+        &store,
+        &network_egress_commit_input(old_installation_id, actor.id, "0.2.5", "native_react"),
+    )
+    .await
+    .unwrap();
+    PluginRepository::commit_plugin_installation(
+        &store,
+        &network_egress_commit_input(target_installation_id, actor.id, "0.2.8", "native_react"),
+    )
+    .await
+    .unwrap();
+    PluginRepository::select_network_egress_current(&store, "test-node", old_installation_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let provider_id = Uuid::now_v7();
+    NetworkEgressRepository::create_network_egress_provider(
+        &store,
+        &CreateNetworkEgressProviderInput {
+            provider_id,
+            extension_family: domain::ExtensionCatalogIdentity::new(
+                domain::ExtensionCategory::RuntimeExtensions,
+                "taichuy",
+                "clash-proxy",
+            ),
+            provider_code: "clash-proxy".into(),
+            display_name: "Clash subscription".into(),
+            description: String::new(),
+            secret_ref: format!("secret://system/network-egress/{provider_id}"),
+            lifecycle: domain::NetworkEgressProviderLifecycle::Active,
+            actor_user_id: actor.id,
+        },
+    )
+    .await
+    .unwrap();
+
+    let service = control_plane::network_egress::NetworkEgressProviderService::new(
+        store.clone(),
+        RejectNetworkEgressPreflight,
+        StaticNetworkEgressSecret,
+        "unused-test-key".into(),
+        "test-node".into(),
+    );
+    let error = service
+        .activate_version(target_installation_id)
+        .await
+        .expect_err("a rejected provider config must abort activation");
+    assert!(error
+        .to_string()
+        .contains("network_egress_plugin_version_preflight_failed"));
+    assert!(
+        PluginRepository::get_artifact_instance(&store, "test-node", old_installation_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .is_current
+    );
+    assert!(
+        !PluginRepository::get_artifact_instance(&store, "test-node", target_installation_id)
+            .await
+            .unwrap()
+            .unwrap()
             .is_current
     );
 }

@@ -185,28 +185,6 @@ async fn fixture() -> Fixture {
             )),
         ),
     );
-    // Frontstage native_react blocks resolve their catalog identity from the
-    // builtin JSX block plugin, so the harness must seed it like production
-    // startup and the in-crate test_app do.
-    let builtin_jsx_package_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../plugins/capability-plugins/1flowbase")
-        .canonicalize()
-        .expect("builtin JSX block package root");
-    control_plane::plugin_management::PluginManagementService::new(
-        store.clone(),
-        ApiProviderRuntime::new(provider_runtime.clone()),
-        Arc::new(NoopPluginSource),
-        config.provider_install_root.clone(),
-    )
-    .with_node_id(config.api_node_id.clone())
-    .ensure_builtin_plugin(
-        control_plane::plugin_management::EnsureBuiltinPluginCommand {
-            actor_user_id: bootstrap.root_user_id,
-            package_root: builtin_jsx_package_root.display().to_string(),
-        },
-    )
-    .await
-    .unwrap();
     let infrastructure = Arc::new(build_local_host_infrastructure());
     let session_store = infrastructure.session_store().unwrap();
     let runtime_event_stream = infrastructure.runtime_event_stream().unwrap();

@@ -2,7 +2,7 @@ use api_server::{
     config::{ApiConfig, ApiEnvironment},
     parse_bind_addr, DEFAULT_API_SERVER_ADDR,
 };
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 fn current_workspace_root() -> PathBuf {
     std::env::current_dir()
@@ -193,6 +193,77 @@ fn api_config_uses_a_shared_plugin_upload_byte_limit() {
     invalid_env.push(("API_PLUGIN_UPLOAD_MAX_BYTES", "0"));
     let error = ApiConfig::from_env_map(&invalid_env).unwrap_err();
     assert!(error.to_string().contains("API_PLUGIN_UPLOAD_MAX_BYTES"));
+}
+
+#[test]
+fn ac_001_official_extension_http_timeouts_use_safe_defaults() {
+    let config = ApiConfig::from_env_map(&base_env_without_ephemeral_backend()).unwrap();
+
+    assert_eq!(
+        config.official_extension_source_connect_timeout,
+        Duration::from_secs(2)
+    );
+    assert_eq!(
+        config.official_extension_catalog_request_timeout,
+        Duration::from_secs(8)
+    );
+    assert_eq!(
+        config.official_extension_artifact_download_timeout,
+        Duration::from_secs(300)
+    );
+}
+
+#[test]
+fn ac_002_official_extension_http_timeouts_accept_env_overrides() {
+    let mut env = base_env_without_ephemeral_backend();
+    env.extend([
+        ("API_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT_SECONDS", "4"),
+        (
+            "API_OFFICIAL_EXTENSION_CATALOG_REQUEST_TIMEOUT_SECONDS",
+            "12",
+        ),
+        (
+            "API_OFFICIAL_EXTENSION_ARTIFACT_DOWNLOAD_TIMEOUT_SECONDS",
+            "180",
+        ),
+    ]);
+
+    let config = ApiConfig::from_env_map(&env).unwrap();
+
+    assert_eq!(
+        config.official_extension_source_connect_timeout,
+        Duration::from_secs(4)
+    );
+    assert_eq!(
+        config.official_extension_catalog_request_timeout,
+        Duration::from_secs(12)
+    );
+    assert_eq!(
+        config.official_extension_artifact_download_timeout,
+        Duration::from_secs(180)
+    );
+}
+
+#[test]
+fn ac_003_official_extension_http_timeouts_reject_invalid_values() {
+    for (key, value) in [
+        ("API_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT_SECONDS", "0"),
+        (
+            "API_OFFICIAL_EXTENSION_CATALOG_REQUEST_TIMEOUT_SECONDS",
+            "invalid",
+        ),
+        (
+            "API_OFFICIAL_EXTENSION_ARTIFACT_DOWNLOAD_TIMEOUT_SECONDS",
+            "0",
+        ),
+    ] {
+        let mut env = base_env_without_ephemeral_backend();
+        env.push((key, value));
+
+        let error = ApiConfig::from_env_map(&env).unwrap_err();
+
+        assert!(error.to_string().contains(key));
+    }
 }
 
 #[test]

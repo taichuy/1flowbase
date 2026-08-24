@@ -6,7 +6,13 @@ import {
 } from '../../index';
 
 function compile(source: string) {
-  const result = compileNativeReactComponent(source);
+  const result = compileNativeReactComponent(source, [
+    { module_source: 'react', exports: ['useState'] },
+    {
+      module_source: 'react/jsx-runtime',
+      exports: ['Fragment', 'jsx', 'jsxs']
+    }
+  ]);
   if (!result.ok) throw new Error('Expected compiler fixture to succeed.');
   return result.artifact;
 }

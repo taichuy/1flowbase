@@ -49,6 +49,23 @@ pub struct ExtensionCatalogIdentity {
 }
 
 impl ExtensionCatalogIdentity {
+    pub fn new(
+        category: ExtensionCategory,
+        organization: impl Into<String>,
+        artifact_id: impl Into<String>,
+    ) -> Option<Self> {
+        let organization = organization.into();
+        let artifact_id = artifact_id.into();
+        if !valid_catalog_segment(&organization) || !valid_catalog_segment(&artifact_id) {
+            return None;
+        }
+        Some(Self {
+            category,
+            organization,
+            artifact_id,
+        })
+    }
+
     pub fn parse(category: ExtensionCategory, catalog_id: &str) -> Option<Self> {
         let (catalog_category, artifact_path) = catalog_id.split_once(':')?;
         let (organization, artifact_id) = artifact_path.split_once('/')?;
@@ -74,6 +91,10 @@ impl ExtensionCatalogIdentity {
             self.organization,
             self.artifact_id
         )
+    }
+
+    pub const fn category(&self) -> ExtensionCategory {
+        self.category
     }
 
     pub fn organization(&self) -> &str {

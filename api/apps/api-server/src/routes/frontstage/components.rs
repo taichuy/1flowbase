@@ -10,12 +10,10 @@ use axum::{
 use control_plane::{
     errors::ControlPlaneError,
     frontend_block_catalog::{FrontendModuleAssetService, GetFrontendModuleAssetQuery},
-    frontstage::FrontstagePageService,
     ui_management::{ListUiComponentRecordsQuery, UiManagementService},
 };
 use domain::{UiComponentRecord, UiComponentRecordOrigin};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -25,18 +23,6 @@ use crate::{
 };
 
 const COMPONENT_PAGE_SIZE: usize = 20;
-
-#[derive(Debug, Deserialize, ToSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ResolveFrontstageComponentDependencyLockBody {
-    pub source_code: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct FrontstageComponentDependencyLockResponse {
-    #[schema(value_type = Vec<Object>)]
-    pub dependency_lock: Value,
-}
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct FrontstageComponentQuery {
@@ -150,34 +136,6 @@ pub async fn get_frontstage_component(
         .get_component_record(component_id)
         .await?;
     Ok(Json(ApiSuccess::new(component_response(record)?)))
-}
-
-#[utoipa::path(
-    post,
-    path = "/api/console/frontstage/component-dependency-lock",
-    request_body = ResolveFrontstageComponentDependencyLockBody,
-    responses(
-        (status = 200, body = FrontstageComponentDependencyLockResponse),
-        (status = 400, body = crate::error_response::ErrorBody),
-        (status = 401, body = crate::error_response::ErrorBody),
-        (status = 403, body = crate::error_response::ErrorBody)
-    )
-)]
-pub async fn resolve_frontstage_component_dependency_lock(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Json(body): Json<ResolveFrontstageComponentDependencyLockBody>,
-) -> Result<Json<ApiSuccess<FrontstageComponentDependencyLockResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let workspace_id = context.actor.current_workspace_id;
-    require_design_permission(&context.actor)?;
-    let dependency_lock = FrontstagePageService::for_actor(state.store.clone(), context.actor)
-        .with_node_id(state.api_node_id.clone())
-        .resolve_component_dependency_lock(workspace_id, &body.source_code)
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        FrontstageComponentDependencyLockResponse { dependency_lock },
-    )))
 }
 
 #[utoipa::path(

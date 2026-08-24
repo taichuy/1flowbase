@@ -51,7 +51,6 @@ export interface ConsoleFrontstageBlockNodeCode {
   page_id: string;
   source_code: string;
   source_sha256: string | null;
-  dependency_lock: unknown[] | null;
 }
 
 export interface ConsoleFrontstageBlockCodeFragment {

@@ -1,5 +1,20 @@
 import { useState } from 'react';
-import { App, Alert, Button, Empty, Flex, Form, Modal, Popconfirm, Select, Space, Switch, Table, Tag } from 'antd';
+import {
+  App,
+  Alert,
+  Button,
+  Empty,
+  Flex,
+  Form,
+  Modal,
+  Popconfirm,
+  Select,
+  Space,
+  Switch,
+  Table,
+  Tag
+} from 'antd';
+import { ArrowDownOutlined, ArrowUpOutlined } from '@ant-design/icons';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createSettingsNetworkEgressRoute,
@@ -22,6 +37,7 @@ import { useAuthStore } from '../../../../state/auth-store';
 type Values = {
   target: string;
   instance_id?: string;
+  pool_member_ids: string[];
   enabled: boolean;
 };
 
@@ -34,6 +50,7 @@ export function NetworkEgressRoutesPanel() {
   >();
   const [form] = Form.useForm<Values>();
   const target = Form.useWatch('target', form);
+  const selectedPoolMemberIds = Form.useWatch('pool_member_ids', form) ?? [];
   const routes = useQuery({
     queryKey: settingsNetworkEgressRoutesQueryKey,
     queryFn: fetchSettingsNetworkEgressRoutes
@@ -58,7 +75,7 @@ export function NetworkEgressRoutesPanel() {
     mutationFn: (input: {
       consumer_kind: string;
       consumer_reference: string | null;
-      pool_id: string;
+      pool_member_ids: string[];
       enabled: boolean;
     }) => {
       if (!csrfToken) throw new Error('Missing CSRF token');
@@ -71,11 +88,15 @@ export function NetworkEgressRoutesPanel() {
     onError: fail
   });
   const update = useMutation({
-    mutationFn: (input: { id: string; pool_id: string; enabled: boolean }) => {
+    mutationFn: (input: {
+      id: string;
+      pool_member_ids: string[];
+      enabled: boolean;
+    }) => {
       if (!csrfToken) throw new Error('Missing CSRF token');
       return updateSettingsNetworkEgressRoute(
         input.id,
-        { pool_id: input.pool_id, enabled: input.enabled },
+        { pool_member_ids: input.pool_member_ids, enabled: input.enabled },
         csrfToken
       );
     },
@@ -106,6 +127,7 @@ export function NetworkEgressRoutesPanel() {
             : 'model_default'
           : (value?.consumer_kind ?? 'github'),
       instance_id: value?.consumer_reference ?? undefined,
+      pool_member_ids: value?.pool_member_ids ?? [],
       enabled: value?.enabled ?? true
     });
   };
@@ -113,7 +135,7 @@ export function NetworkEgressRoutesPanel() {
     if (route)
       return update.mutate({
         id: route.id,
-        pool_id: route.pool_id,
+        pool_member_ids: values.pool_member_ids,
         enabled: values.enabled
       });
     const selector =
@@ -127,13 +149,24 @@ export function NetworkEgressRoutesPanel() {
           : { consumer_kind: values.target, consumer_reference: null };
     create.mutate({
       ...selector,
-      pool_id: pools.data?.[0]?.id ?? '',
+      pool_member_ids: values.pool_member_ids,
       enabled: values.enabled
     });
   };
+  const poolMembers = (pools.data ?? []).flatMap((pool) => pool.members);
+  const proxyName = new Map(
+    poolMembers.map((member) => [member.id, member.display_name])
+  );
   const modelName = new Map(
     (models.data ?? []).map((item) => [item.id, item.display_name])
   );
+  const movePoolMember = (index: number, offset: -1 | 1) => {
+    const nextIndex = index + offset;
+    if (nextIndex < 0 || nextIndex >= selectedPoolMemberIds.length) return;
+    const next = [...selectedPoolMemberIds];
+    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+    form.setFieldValue('pool_member_ids', next);
+  };
   return (
     <SettingsSectionSurface heightMode="fill">
       <Flex vertical gap={16}>
@@ -178,6 +211,22 @@ export function NetworkEgressRoutesPanel() {
                     ? (modelName.get(item.consumer_reference) ??
                       item.consumer_reference)
                     : item.consumer_kind
+              },
+              {
+                title: i18nText(
+                  'settings',
+                  'auto.network_center_route_proxy_mapping'
+                ),
+                dataIndex: 'pool_member_ids',
+                render: (memberIds: string[]) => (
+                  <Space size={[4, 4]} wrap>
+                    {memberIds.map((memberId) => (
+                      <Tag key={memberId}>
+                        {proxyName.get(memberId) ?? memberId}
+                      </Tag>
+                    ))}
+                  </Space>
+                )
               },
               {
                 title: i18nText('settings', 'auto.status'),
@@ -285,6 +334,55 @@ export function NetworkEgressRoutesPanel() {
                 }))}
               />
             </Form.Item>
+          ) : null}
+          <Form.Item
+            name="pool_member_ids"
+            label={i18nText(
+              'settings',
+              'auto.network_center_route_proxy_mapping'
+            )}
+            rules={[{ required: true, type: 'array', min: 1 }]}
+          >
+            <Select
+              mode="multiple"
+              optionFilterProp="label"
+              options={poolMembers.map((member) => ({
+                value: member.id,
+                label: member.display_name
+              }))}
+            />
+          </Form.Item>
+          {selectedPoolMemberIds.length > 0 ? (
+            <Flex vertical gap={8} style={{ marginBlock: '-12px 24px' }}>
+              {selectedPoolMemberIds.map((memberId, index) => {
+                const displayName = proxyName.get(memberId) ?? memberId;
+                return (
+                  <Flex key={memberId} align="center" justify="space-between">
+                    <span>
+                      {index + 1}. {displayName}
+                    </span>
+                    <Space size={4}>
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<ArrowUpOutlined />}
+                        disabled={index === 0}
+                        aria-label={`${i18nText('settings', 'auto.move_up')}：${displayName}`}
+                        onClick={() => movePoolMember(index, -1)}
+                      />
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<ArrowDownOutlined />}
+                        disabled={index === selectedPoolMemberIds.length - 1}
+                        aria-label={`${i18nText('settings', 'auto.move_down')}：${displayName}`}
+                        onClick={() => movePoolMember(index, 1)}
+                      />
+                    </Space>
+                  </Flex>
+                );
+              })}
+            </Flex>
           ) : null}
           <Form.Item
             name="enabled"

@@ -279,6 +279,30 @@ pub trait PluginRepository: Send + Sync {
             artifact,
         }))
     }
+    async fn get_current_local_installation(
+        &self,
+        node_id: &str,
+        family: &domain::ExtensionCatalogIdentity,
+    ) -> anyhow::Result<Option<domain::LocalPluginInstallationRecord>> {
+        for installation in self.list_installations().await? {
+            if installation.category != family.category()
+                || installation.organization != family.organization()
+                || installation.provider_code != family.artifact_id()
+            {
+                continue;
+            }
+            let Some(local) = self
+                .get_local_installation(node_id, installation.id)
+                .await?
+            else {
+                continue;
+            };
+            if local.artifact.is_current && local.artifact.artifact_status.is_ready() {
+                return Ok(Some(local));
+            }
+        }
+        Ok(None)
+    }
     async fn list_installations(&self) -> anyhow::Result<Vec<domain::PluginInstallationRecord>>;
     async fn upsert_plugin_package_catalog_projection(
         &self,

@@ -1092,6 +1092,7 @@
     "network_center_routes_unavailable": "Routing rule management is not available yet.",
     "network_center_route_consumer": "Consumer",
     "network_center_route_pool": "Target proxy pool",
+    "network_center_route_proxy_mapping": "Proxy mapping",
     "network_center_route_failure_policy": "Failure policy",
     "network_center_route_create": "Create routing rule",
     "network_center_route_edit": "Edit routing rule",
@@ -1135,6 +1136,7 @@
     "network_center_proxy_plugins": "Proxy plugins",
     "network_center_proxy_plugins_search": "Search proxy plugins",
     "network_center_no_proxy_plugins": "No proxy plugins are available.",
-    "network_center_proxy_plugin_installed": "Installed"
+    "network_center_proxy_plugin_installed": "Installed",
+    "ui_components": "UI components"
   }
 }

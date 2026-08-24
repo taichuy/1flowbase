@@ -147,6 +147,7 @@ export function SettingsSectionBody({
             category={extensionCenterCategory}
             cursor={extensionCenterCursor}
             q={extensionCenterQ}
+            canManageUiComponents={access.canManageUiManagement}
           />
         </SettingsSectionBoundary>
       );

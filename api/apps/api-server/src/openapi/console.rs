@@ -115,7 +115,6 @@ use utoipa::OpenApi;
         crate::routes::frontstage::callable_interfaces::list_frontstage_interface_capabilities,
         crate::routes::frontstage::callable_interfaces::get_frontstage_interface_capability,
         crate::routes::frontstage::components::list_frontstage_components,
-        crate::routes::frontstage::components::resolve_frontstage_component_dependency_lock,
         crate::routes::frontstage::components::get_frontstage_component,
         crate::routes::frontstage::components::get_frontstage_component_module_asset,
         crate::routes::frontstage::callable_interfaces::dispatch_frontstage_callable_interface,

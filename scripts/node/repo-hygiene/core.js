@@ -66,8 +66,6 @@ const LOCAL_ENV_ARTIFACT_PATTERN =
   /(?:^|\/)(?![^/]+\.env\.example$|[^/]+\.env\.template$)[^/]+\.env$/u;
 const BUILD_ARTIFACT_PATTERN = /(?:^|\/)[^/]+\.tsbuildinfo$/u;
 const ROOT_SCRATCH_ARTIFACT_PATTERN = /^[^/]*(?:test|tmp|scratch)[^/]*\.txt$/iu;
-const OFFICIAL_BROWSER_ASSET_BUNDLE_PATTERN =
-  /^api\/plugins\/capability-plugins\/1flowbase\/browser-assets\/[^/]+\.(?:css|js)$/u;
 const INSTALLED_PLUGIN_COPY_PATTERN = /^api\/plugins\/installed\//u;
 const JSX_KEY_TEMPLATE_PATTERN = /\bkey\s*=\s*\{\s*`[^`]*`\s*\}/u;
 const JSX_KEY_MUTABLE_MEMBER_PATTERN =
@@ -611,13 +609,10 @@ function countLines(content) {
 }
 
 function isFileSizePressureExempt(relativePath) {
-  // File-size pressure measures hand-maintained code. Deterministic official browser bundles and
-  // installed plugin copies have separate provenance evidence; ordinary plugin source stays covered.
+  // File-size pressure measures hand-maintained code. Installed plugin copies have separate
+  // provenance evidence; ordinary plugin source stays covered.
   // Do not add an exemption when an exact generated or installation-copy boundary cannot be proven.
-  return (
-    OFFICIAL_BROWSER_ASSET_BUNDLE_PATTERN.test(relativePath) ||
-    INSTALLED_PLUGIN_COPY_PATTERN.test(relativePath)
-  );
+  return INSTALLED_PLUGIN_COPY_PATTERN.test(relativePath);
 }
 
 function collectLinePressureFindings({ relativePath, content }) {

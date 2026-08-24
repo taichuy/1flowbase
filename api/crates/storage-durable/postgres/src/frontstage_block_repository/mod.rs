@@ -8,9 +8,7 @@ use control_plane::{
         CreateFrontstageBlockNodeInput, DeleteFrontstageBlockLeafInput,
         DeleteFrontstageBlockSubtreeInput, FrontstageBlockPosition,
         FrontstageBlockSubtreeDeleteResult, FrontstageBlockTreeRepository,
-        FrontstageDependencyLockReconciliationRepository,
-        LegacyFrontstageBlockDependencyLockCandidate, MoveFrontstageBlockNodeInput,
-        ReconcileFrontstageBlockDependencyLockInput, SaveFrontstageBlockNodeCodeInput,
+        MoveFrontstageBlockNodeInput, SaveFrontstageBlockNodeCodeInput,
         UpdateFrontstageBlockDescriptorsInput, UpdateFrontstageBlockNodeInput,
     },
 };
@@ -579,100 +577,6 @@ async fn resolve_query_node_id(
 }
 
 #[async_trait]
-impl FrontstageDependencyLockReconciliationRepository for PgControlPlaneStore {
-    async fn list_legacy_frontstage_block_dependency_lock_candidates(
-        &self,
-    ) -> Result<Vec<LegacyFrontstageBlockDependencyLockCandidate>> {
-        let rows = sqlx::query(
-            r#"
-            select
-                code.workspace_id,
-                code.page_id,
-                node.block_id,
-                code.code_ref,
-                code.code as source_code
-            from frontstage_block_codes code
-            join frontstage_block_nodes node
-              on node.scope_id = code.workspace_id
-             and node.tree_partition_id = code.page_id
-             and node.code_ref = code.code_ref
-            where node.runtime_descriptor -> 'runtime' ->> 'kind' = 'native_react'
-              and not exists (
-                  select 1
-                  from jsonb_array_elements(
-                      case jsonb_typeof(code.dependency_lock)
-                          when 'array' then code.dependency_lock
-                          else '[]'::jsonb
-                      end
-                  ) entry
-                  where entry ->> 'module_source' = 'react'
-              )
-            order by code.workspace_id, code.page_id, code.code_ref
-            "#,
-        )
-        .fetch_all(self.pool())
-        .await?;
-        Ok(rows
-            .into_iter()
-            .map(|row| LegacyFrontstageBlockDependencyLockCandidate {
-                workspace_id: row.get("workspace_id"),
-                page_id: row.get("page_id"),
-                block_id: row.get("block_id"),
-                code_ref: row.get("code_ref"),
-                source_code: row.get("source_code"),
-            })
-            .collect())
-    }
-
-    async fn reconcile_frontstage_block_dependency_locks(
-        &self,
-        updates: &[ReconcileFrontstageBlockDependencyLockInput],
-    ) -> Result<u32> {
-        let mut transaction = self.pool().begin().await?;
-        let mut updated_block_count = 0_u32;
-        for update in updates {
-            validate_audit(update.workspace_id, &update.audit_log)?;
-            let result = sqlx::query(
-                r#"
-                update frontstage_block_codes code
-                set dependency_lock = $4,
-                    updated_by = $5,
-                    updated_at = now()
-                where code.workspace_id = $1
-                  and code.page_id = $2
-                  and code.code_ref = $3
-                  and not exists (
-                      select 1
-                      from jsonb_array_elements(
-                          case jsonb_typeof(code.dependency_lock)
-                              when 'array' then code.dependency_lock
-                              else '[]'::jsonb
-                          end
-                      ) entry
-                      where entry ->> 'module_source' = 'react'
-                  )
-                "#,
-            )
-            .bind(update.workspace_id)
-            .bind(update.page_id)
-            .bind(&update.code_ref)
-            .bind(&update.dependency_lock)
-            .bind(update.audit_log.actor_user_id)
-            .execute(&mut *transaction)
-            .await?;
-            if result.rows_affected() == 1 {
-                insert_audit(&mut transaction, &update.audit_log).await?;
-                updated_block_count = updated_block_count
-                    .checked_add(1)
-                    .ok_or_else(|| anyhow!("frontstage dependency lock reconciliation overflow"))?;
-            }
-        }
-        transaction.commit().await?;
-        Ok(updated_block_count)
-    }
-}
-
-#[async_trait]
 impl FrontstageBlockTreeRepository for PgControlPlaneStore {
     async fn create_frontstage_block_node(
         &self,
@@ -693,9 +597,8 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         let inserted_code = sqlx::query_scalar::<_, Uuid>(
             r#"
             insert into frontstage_block_codes (
-                id, workspace_id, page_id, code_ref, code, source_sha256,
-                dependency_lock, created_by, updated_by
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+                id, workspace_id, page_id, code_ref, code, source_sha256, created_by, updated_by
+            ) values ($1, $2, $3, $4, $5, $6, $7, $7)
             on conflict (workspace_id, page_id, code_ref) do nothing
             returning id
             "#,
@@ -709,7 +612,6 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
             "{:x}",
             Sha256::digest(input.code.source_code.as_bytes())
         ))
-        .bind(&input.code.dependency_lock)
         .bind(input.actor_user_id)
         .fetch_optional(&mut *tx)
         .await?;
@@ -1284,12 +1186,12 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
         let row = sqlx::query(
             r#"
             update frontstage_block_codes
-            set code = $4, source_sha256 = $5, dependency_lock = $6,
-                updated_by = $8, updated_at = now()
+            set code = $4, source_sha256 = $5,
+                updated_by = $7, updated_at = now()
             where workspace_id = $1 and page_id = $2 and code_ref = $3
-              and ($7::text is null or source_sha256 = $7)
+              and ($6::text is null or source_sha256 = $6)
             returning workspace_id, page_id, code_ref, code as source_code, source_sha256,
-                      dependency_lock, created_at, updated_at
+                      created_at, updated_at
             "#,
         )
         .bind(input.workspace_id)
@@ -1300,7 +1202,6 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
             "{:x}",
             Sha256::digest(input.source.source_code.as_bytes())
         ))
-        .bind(&input.source.dependency_lock)
         .bind(&input.expected_source_revision)
         .bind(input.actor_user_id)
         .fetch_optional(&mut *tx)
@@ -1316,7 +1217,6 @@ impl FrontstageBlockTreeRepository for PgControlPlaneStore {
             code_ref: row.get("code_ref"),
             source_code: row.get("source_code"),
             source_sha256: row.get("source_sha256"),
-            dependency_lock: row.get("dependency_lock"),
             created_at: row.get("created_at"),
             updated_at: row.get("updated_at"),
         })

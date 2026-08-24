@@ -127,7 +127,6 @@ export function PublicAuthBlock({
           const prepared = await prepareNativeReactSource({
             frozenSource: instance.public_ui_block,
             requestId,
-            dependencyLock: [],
             compiler: nativeCompiler,
             ...(nativeCompilerWorkerFactory
               ? { workerFactory: nativeCompilerWorkerFactory }

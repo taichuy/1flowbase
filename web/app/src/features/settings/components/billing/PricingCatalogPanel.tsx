@@ -183,6 +183,10 @@ export function PricingCatalogPanel() {
             { key: 'mcp', label: 'mcp' },
             { key: 'runtime-extensions', label: 'runtime-extensions' },
             {
+              key: 'ui-components',
+              label: i18nText('settings', 'auto.ui_components')
+            },
+            {
               key: 'model-pricing',
               label: i18nText('settings', 'auto.billing_vendor_model_pricing')
             }

@@ -13,7 +13,6 @@ export interface FrontstageRuntimeCacheLifecycleOptions {
     FrontstageNativeReactArtifactCache,
     'deleteActor' | 'pruneWorkspace'
   >;
-  nativeReactRuntimeFingerprint?: string;
 }
 
 export function useFrontstageRuntimeCacheLifecycle(
@@ -29,7 +28,6 @@ export function useFrontstageRuntimeCacheLifecycle(
   const previousActorIdRef = useRef<string | null>(null);
   const nativeReactArtifactCache =
     options.nativeReactArtifactCache ?? frontstageNativeReactArtifactCache;
-  const nativeReactRuntimeFingerprint = options.nativeReactRuntimeFingerprint;
 
   useLayoutEffect(() => {
     if (previousIdentityRef.current === lifecycleIdentity) {
@@ -52,10 +50,7 @@ export function useFrontstageRuntimeCacheLifecycle(
       void nativeReactArtifactCache
         .pruneWorkspace({
           actorId: actor.id,
-          workspaceId: actor.current_workspace_id,
-          ...(nativeReactRuntimeFingerprint
-            ? { runtimeFingerprint: nativeReactRuntimeFingerprint }
-            : {})
+          workspaceId: actor.current_workspace_id
         })
         .catch(() => undefined);
     }
@@ -63,7 +58,6 @@ export function useFrontstageRuntimeCacheLifecycle(
     actor,
     lifecycleIdentity,
     nativeReactArtifactCache,
-    nativeReactRuntimeFingerprint,
     queryClient
   ]);
 }

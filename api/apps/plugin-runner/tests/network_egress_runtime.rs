@@ -196,6 +196,7 @@ async fn nc_02b_sync_egresses_exposes_only_the_validated_provider_catalog() {
     let mut host = NetworkEgressHost::default();
     host.load_if_needed(
         "fixture_egress@0.1.0",
+        "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
         worker_config(),
@@ -235,6 +236,7 @@ async fn nc_02c_provisions_config_only_at_worker_start_without_stdio_leak_and_wi
     );
     let mut host = NetworkEgressHost::default();
     host.load_if_needed(
+        "fixture_egress@0.1.0",
         "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
@@ -313,6 +315,7 @@ async fn ac_002_ac_003_ac_005_ac_014_resolves_public_lease_and_cleans_mihomo_tre
     let mut host = NetworkEgressHost::default();
     host.load_if_needed(
         "fixture_egress@0.1.0",
+        "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
         worker_config(),
@@ -355,6 +358,7 @@ async fn ac_004_rejects_non_loopback_or_expired_leases_before_core_can_consume_t
     let mut host = NetworkEgressHost::default();
     host.load_if_needed(
         "fixture_egress@0.1.0",
+        "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
         worker_config(),
@@ -381,16 +385,18 @@ async fn ac_004_revokes_the_lease_when_the_worker_crashes() {
     });
     let package = TempNetworkEgressPackage::new();
     let config_marker = package.path().join("config-path");
+    let child_marker = package.path().join("mihomo-child.pid");
     package.write_runtime(
         &format!("http://127.0.0.1:{port}"),
         unix_milliseconds_now() + 300_000,
         true,
-        None,
+        Some(&child_marker),
         Some(&config_marker),
         None,
     );
     let mut host = NetworkEgressHost::default();
     host.load_if_needed(
+        "fixture_egress@0.1.0",
         "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
@@ -399,6 +405,7 @@ async fn ac_004_revokes_the_lease_when_the_worker_crashes() {
     .await
     .expect("activation must start the worker");
     let config_path = wait_for_config_path(&config_marker);
+    let child_pid = wait_for_child_pid(&child_marker);
     assert!(config_path.is_file());
     host.resolve_http_forward_proxy("fixture_egress@0.1.0", "egress-us-1")
         .await
@@ -413,11 +420,18 @@ async fn ac_004_revokes_the_lease_when_the_worker_crashes() {
         .cleanup_receipt("fixture_egress@0.1.0")
         .expect("crash must revoke the lease and retain cleanup evidence");
     assert!(receipt.lease_revoked);
+    assert!(receipt.termination_signal_sent);
+    assert!(receipt.process_tree_exited);
     assert_eq!(receipt.reason, NetworkEgressCleanupReason::RuntimeFailure);
     assert_eq!(receipt.final_state, NetworkEgressWorkerState::Failed);
     assert!(
         !config_path.exists(),
         "private configuration file must not survive a crashed worker"
+    );
+    #[cfg(target_os = "linux")]
+    assert!(
+        wait_for_process_exit(child_pid),
+        "the worker process-group owner must reap an orphaned Mihomo descendant"
     );
 }
 
@@ -444,6 +458,7 @@ async fn ac_005_overlapping_leases_release_their_own_identity_without_cross_rele
     let plugin_id = "fixture_egress@0.1.0";
     host.load_if_needed(
         plugin_id,
+        plugin_id,
         &package.path().display().to_string(),
         "fixture-v1",
         worker_config(),
@@ -459,8 +474,9 @@ async fn ac_005_overlapping_leases_release_their_own_identity_without_cross_rele
         .resolve_http_forward_proxy(plugin_id, "egress-us-1")
         .await
         .expect("request B may overlap A before either scope releases");
-    assert_eq!(lease_a.lease_id, "lease-A");
-    assert_eq!(lease_b.lease_id, "lease-B");
+    assert_ne!(lease_a.lease_id, lease_b.lease_id);
+    assert_ne!(lease_a.lease_id, "lease-A");
+    assert_ne!(lease_b.lease_id, "lease-B");
 
     host.release_http_forward_proxy(plugin_id, &lease_a.lease_id)
         .await

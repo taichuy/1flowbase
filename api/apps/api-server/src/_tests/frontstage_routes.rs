@@ -28,7 +28,6 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
         BTreeSet::from([
             ("GET", "/api/console/frontstage/components",),
             ("GET", "/api/console/frontstage/components/:component_id",),
-            ("POST", "/api/console/frontstage/component-dependency-lock",),
             (
                 "GET",
                 "/api/console/frontstage/component-module-assets/:sha256",

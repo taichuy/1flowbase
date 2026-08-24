@@ -3,7 +3,6 @@ import {
   createNativeReactComponentArtifactIdentity,
   nativeReactComponentArtifactMatchesIdentity,
   sha256Text,
-  type NativeReactCatalogDependencyLock,
   type NativeReactComponentArtifact,
   type NativeReactComponentArtifactIdentity
 } from '@1flowbase/page-runtime';
@@ -11,7 +10,7 @@ import {
 import type { FrontstageIndexedDbRecordStore } from './indexeddb-store';
 import type { NativeReactBrowserCompileResult } from '../../../../shared/code-block/native-react-compiler-browser';
 
-export const FRONTSTAGE_NATIVE_REACT_ARTIFACT_CACHE_SCHEMA_VERSION = 1 as const;
+export const FRONTSTAGE_NATIVE_REACT_ARTIFACT_CACHE_SCHEMA_VERSION = 2 as const;
 export const DEFAULT_FRONTSTAGE_NATIVE_REACT_ARTIFACT_CACHE_BYTE_BUDGET =
   16 * 1024 * 1024;
 
@@ -200,12 +199,10 @@ export class FrontstageNativeReactArtifactCache {
 
   async pruneWorkspace({
     actorId,
-    workspaceId,
-    runtimeFingerprint
+    workspaceId
   }: {
     actorId: string;
     workspaceId: string;
-    runtimeFingerprint?: string;
   }): Promise<FrontstageNativeReactArtifactCacheMaintenanceResult> {
     try {
       const values = await this.options.store.list();
@@ -230,8 +227,6 @@ export class FrontstageNativeReactArtifactCache {
           canonicalizeFrontstageNativeReactArtifactCacheRecord(value);
         if (
           !record ||
-          (runtimeFingerprint !== undefined &&
-            record.runtime_fingerprint !== runtimeFingerprint) ||
           !recordMatchesIdentity(record, identity)
         ) {
           deleted.add(identity.key);
@@ -299,23 +294,17 @@ export async function resolveFrontstageNativeReactArtifact({
 export function createFrontstageNativeReactArtifactCacheIdentity({
   actorId,
   workspaceId,
-  source,
-  dependencyLock,
-  runtimeFingerprint
+  source
 }: {
   actorId: string;
   workspaceId: string;
   source: string;
-  dependencyLock: NativeReactCatalogDependencyLock;
-  runtimeFingerprint: string;
 }): FrontstageNativeReactArtifactCacheIdentity {
   return {
     actorId,
     workspaceId,
     ...createNativeReactComponentArtifactIdentity({
-      sourceSha256: sha256Text(source),
-      dependencyLock,
-      runtimeFingerprint
+      sourceSha256: sha256Text(source)
     })
   };
 }
@@ -326,10 +315,8 @@ export function createFrontstageNativeReactArtifactCacheKey(
   return [
     identity.actorId,
     identity.workspaceId,
-    identity.runtime_fingerprint,
     identity.compiler_abi,
     identity.runtime_abi,
-    identity.dependency_lock_sha256,
     identity.source_sha256
   ]
     .map(encodeURIComponent)
@@ -372,8 +359,6 @@ function createCanonicalRecord(
     source_sha256: identity.source_sha256,
     compiler_abi: identity.compiler_abi,
     runtime_abi: identity.runtime_abi,
-    runtime_fingerprint: identity.runtime_fingerprint,
-    dependency_lock_sha256: identity.dependency_lock_sha256,
     lastAccessedAt,
     artifact
   };
@@ -395,9 +380,7 @@ function readRecordIdentity(
     !isNonEmptyString(value.workspaceId) ||
     !isSha256(value.source_sha256) ||
     !isNonEmptyString(value.compiler_abi) ||
-    !isNonEmptyString(value.runtime_abi) ||
-    !isNonEmptyString(value.runtime_fingerprint) ||
-    !isSha256(value.dependency_lock_sha256)
+    !isNonEmptyString(value.runtime_abi)
   ) {
     return null;
   }
@@ -409,9 +392,7 @@ function readRecordIdentity(
     compiler_abi:
       value.compiler_abi as NativeReactComponentArtifactIdentity['compiler_abi'],
     runtime_abi:
-      value.runtime_abi as NativeReactComponentArtifactIdentity['runtime_abi'],
-    runtime_fingerprint: value.runtime_fingerprint,
-    dependency_lock_sha256: value.dependency_lock_sha256
+      value.runtime_abi as NativeReactComponentArtifactIdentity['runtime_abi']
   };
 }
 
@@ -426,8 +407,6 @@ function recordMatchesIdentity(
     record.source_sha256 === identity.source_sha256 &&
     record.compiler_abi === identity.compiler_abi &&
     record.runtime_abi === identity.runtime_abi &&
-    record.runtime_fingerprint === identity.runtime_fingerprint &&
-    record.dependency_lock_sha256 === identity.dependency_lock_sha256 &&
     recordArtifactMatchesIdentity(record.artifact, identity)
   );
 }

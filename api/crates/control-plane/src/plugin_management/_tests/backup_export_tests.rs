@@ -156,6 +156,30 @@ fn backup_inventory_routes_current_mcp_artifacts_to_the_extension_inventory() {
 }
 
 #[test]
+fn ac_002_backup_inventory_ignores_the_extension_projection_of_a_plugin() {
+    let plugin = installation("builtin");
+    let mut extension_projection = current_mcp_extension(plugin.id);
+    extension_projection.identity = domain::ExtensionInstallationIdentity {
+        category: plugin.category,
+        organization: plugin.organization.clone(),
+        artifact_id: plugin.provider_code.clone(),
+        version: plugin.plugin_version.clone(),
+    };
+
+    let entries = build_backup_artifact_inventory(
+        "node-a",
+        vec![plugin],
+        Vec::new(),
+        Vec::new(),
+        vec![extension_projection],
+    )
+    .unwrap();
+
+    assert_eq!(entries.len(), 1);
+    assert!(entries[0].identity.starts_with("plugin:"));
+}
+
+#[test]
 fn backup_inventory_excludes_unassigned_active_model_provider() {
     let entries = build_backup_artifact_inventory(
         "node-a",

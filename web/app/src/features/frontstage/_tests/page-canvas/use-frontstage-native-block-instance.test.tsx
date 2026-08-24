@@ -126,7 +126,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         runtimeContext={runtimeContext('dark')}
         runtimePreparations={[
           preparation('source-b', 1, StatefulBlock, true, {
-            runtimeFingerprint: 'runtime-b'
+            runtimeAbi: 'runtime-b'
           })
         ]}
       />
@@ -141,8 +141,8 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         runtimeContext={runtimeContext('dark')}
         runtimePreparations={[
           preparation('source-b', 1, StatefulBlock, true, {
-            runtimeFingerprint: 'runtime-b',
-            dependencyLockIdentity: 'lock-b'
+            runtimeAbi: 'runtime-b',
+            compilerAbi: 'compiler-b'
           })
         ]}
       />
@@ -276,14 +276,14 @@ function preparation(
   }>,
   present = true,
   identityOverrides: Partial<{
-    runtimeFingerprint: string;
-    dependencyLockIdentity: string;
+    compilerAbi: string;
+    runtimeAbi: string;
   }> = {}
 ): Extract<FrontstageNativePreparationSnapshot, { status: 'ready' }> {
   const identityInput = {
     sourceSha256: sourceSha256.padEnd(64, '0'),
-    runtimeFingerprint: identityOverrides.runtimeFingerprint ?? 'runtime-a',
-    dependencyLockIdentity: identityOverrides.dependencyLockIdentity ?? 'lock-a'
+    compilerAbi: identityOverrides.compilerAbi ?? 'compiler-a',
+    runtimeAbi: identityOverrides.runtimeAbi ?? 'runtime-a'
   };
   return {
     status: 'ready',

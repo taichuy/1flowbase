@@ -32,25 +32,7 @@ describe('console-frontend-blocks client', () => {
         'export default function HeroBanner() { return <section>Hero</section>; }',
       code_template_version: '1.0.0',
       code_template_language: 'tsx',
-      code_modules: [
-        {
-          source: '@1flowbase/block-sdk',
-          version: '1.0.0',
-          binding: 'fetched',
-          assets: [
-            {
-              role: 'browser_module',
-              media_type: 'text/javascript; charset=utf-8',
-              sha256:
-                'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-              url: '/api/console/frontstage/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-              integrity: 'verified_sha256'
-            }
-          ],
-          exports: ['blockSdkVersion'],
-          type_declarations: 'export declare function defineBlock(): unknown;'
-        }
-      ],
+      isolated_entry_asset: null,
       context_contract: { primitives: ['text'], input_schema: {} },
       permissions: { network: 'none', storage: 'none', secrets: 'none' },
       ui_capabilities: ['responsive'],
@@ -73,21 +55,7 @@ describe('console-frontend-blocks client', () => {
       disable_reason: null
     } satisfies ConsoleFrontendBlockCatalogEntry;
 
-    expect(entry.code_modules?.[0]).toMatchObject({
-      source: '@1flowbase/block-sdk',
-      version: '1.0.0',
-      binding: 'fetched',
-      assets: [
-        {
-          role: 'browser_module',
-          media_type: 'text/javascript; charset=utf-8',
-          sha256:
-            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-          url: '/api/console/frontstage/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-          integrity: 'verified_sha256'
-        }
-      ],
-      exports: ['blockSdkVersion']
-    });
+    expect(entry).not.toHaveProperty('code_modules');
+    expect(entry.isolated_entry_asset).toBeNull();
   });
 });

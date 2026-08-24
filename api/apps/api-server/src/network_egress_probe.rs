@@ -69,13 +69,35 @@ pub async fn test_network_egress_connection(
         .await
     {
         Ok(Some(scope)) => scope,
-        Ok(None) | Err(_) => {
+        Ok(None) => {
+            tracing::warn!(
+                provider_id = %selected.provider_id,
+                provider_egress_key = %selected.provider_egress_key,
+                error_code = "proxy_unavailable",
+                "network egress provider did not return a proxy scope"
+            );
             return failed_probe(
                 domain::NetworkEgressPoolMemberProbeStatus::Failed,
                 domain::NetworkEgressPoolMemberProbeStatus::NotTested,
                 None,
                 "proxy_unavailable",
-            )
+            );
+        }
+        Err(error) => {
+            let error_code = classify_acquire_error(&error);
+            tracing::warn!(
+                error = %error,
+                provider_id = %selected.provider_id,
+                provider_egress_key = %selected.provider_egress_key,
+                error_code,
+                "network egress provider could not acquire a proxy scope"
+            );
+            return failed_probe(
+                domain::NetworkEgressPoolMemberProbeStatus::Failed,
+                domain::NetworkEgressPoolMemberProbeStatus::NotTested,
+                None,
+                error_code,
+            );
         }
     };
 
@@ -240,6 +262,28 @@ fn classify_probe_error(error: &anyhow::Error, fallback: &'static str) -> &'stat
     fallback
 }
 
+fn classify_acquire_error(error: &anyhow::Error) -> &'static str {
+    let provider_code = error.chain().find_map(|cause| {
+        let framework_error = cause.downcast_ref::<plugin_framework::PluginFrameworkError>()?;
+        let plugin_framework::PluginFrameworkError::RuntimeContract { error } = framework_error
+        else {
+            return None;
+        };
+        error
+            .provider_details
+            .as_ref()
+            .and_then(|details| details.get("code"))
+            .and_then(serde_json::Value::as_str)
+    });
+    match provider_code {
+        Some("network_egress_runtime_start_failed") => "proxy_runtime_start_failed",
+        Some("network_egress_runtime_resource_exhausted") => "proxy_runtime_resource_exhausted",
+        Some("network_egress_runtime_capacity_exhausted") => "proxy_runtime_capacity_exhausted",
+        Some("network_egress_runtime_backoff") => "proxy_runtime_backoff",
+        _ => "proxy_unavailable",
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -297,5 +341,39 @@ mod tests {
         );
 
         assert_eq!(result.latency_ms, 0);
+    }
+
+    #[test]
+    fn ac_008_classifies_validated_network_runtime_acquire_errors() {
+        for (provider_code, expected_code) in [
+            (
+                "network_egress_runtime_start_failed",
+                "proxy_runtime_start_failed",
+            ),
+            (
+                "network_egress_runtime_capacity_exhausted",
+                "proxy_runtime_capacity_exhausted",
+            ),
+            (
+                "network_egress_runtime_resource_exhausted",
+                "proxy_runtime_resource_exhausted",
+            ),
+            ("network_egress_runtime_backoff", "proxy_runtime_backoff"),
+        ] {
+            let error = anyhow::Error::new(plugin_framework::PluginFrameworkError::runtime(
+                plugin_framework::provider_contract::ProviderRuntimeError::new(
+                    plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderInvalidResponse,
+                    "network egress provider rejected the requested operation",
+                )
+                .with_provider_details(serde_json::json!({ "code": provider_code })),
+            ));
+            assert_eq!(classify_acquire_error(&error), expected_code);
+        }
+    }
+
+    #[test]
+    fn ac_008_keeps_unknown_or_untrusted_acquire_errors_generic() {
+        let error = anyhow!("internal path /tmp/private-config must not become an API code");
+        assert_eq!(classify_acquire_error(&error), "proxy_unavailable");
     }
 }

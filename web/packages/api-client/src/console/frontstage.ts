@@ -194,10 +194,6 @@ export interface ConsoleFrontstageComponentQuery {
   limit?: number;
 }
 
-export interface ConsoleFrontstageComponentDependencyLock {
-  dependency_lock: unknown;
-}
-
 export interface FrontstageCallableBinaryResource {
   bytes: Uint8Array;
   file_name: string | null;
@@ -277,18 +273,6 @@ export function getFrontstageComponent(
   return apiFetch<ConsoleFrontstageComponent>({
     path: `/api/console/frontstage/components/${encodeURIComponent(componentId)}`,
     method: 'GET',
-    baseUrl
-  });
-}
-
-export function resolveFrontstageComponentDependencyLock(
-  sourceCode: string,
-  baseUrl?: string
-): Promise<ConsoleFrontstageComponentDependencyLock> {
-  return apiFetch<ConsoleFrontstageComponentDependencyLock>({
-    path: '/api/console/frontstage/component-dependency-lock',
-    method: 'POST',
-    body: { source_code: sourceCode },
     baseUrl
   });
 }

@@ -10,14 +10,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
   LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC,
-  compileNativeReactComponent,
-  type NativeReactCatalogDependencyLock
+  compileNativeReactComponent
 } from '@1flowbase/page-runtime';
 
 import { appI18n } from '../../../../shared/i18n/app-i18n';
 import type { NativeReactBrowserCompileResult } from '../../../../shared/code-block/native-react-compiler-browser';
 import { JsxStudioRunPanel } from '../../components/jsx-studio/JsxStudioRunPanel';
-import type { ExternalNpmPackState } from '../../api/external-npm';
 import { createFrontstageUnavailableBlockContext } from '../../lib/native-trusted-block-react-adapter';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 
@@ -48,8 +46,14 @@ function source(label: string): string {
 }
 
 function createCompiler() {
-  return vi.fn(async ({ source: currentSource }: { source: string }) => {
-    const result = compileNativeReactComponent(currentSource);
+  return vi.fn(async ({
+    source: currentSource,
+    moduleDefinitions = []
+  }: {
+    source: string;
+    moduleDefinitions?: Parameters<typeof compileNativeReactComponent>[1];
+  }) => {
+    const result = compileNativeReactComponent(currentSource, moduleDefinitions);
     return result as NativeReactBrowserCompileResult;
   });
 }
@@ -58,17 +62,11 @@ function renderPanel({
   code,
   revision,
   nativeCompiler = createCompiler(),
-  nativeDependencyLock,
-  nativeDependencyLockError,
-  externalNpm,
   currentBlock = block
 }: {
   code: string;
   revision: string;
   nativeCompiler?: ReturnType<typeof createCompiler>;
-  nativeDependencyLock?: NativeReactCatalogDependencyLock;
-  nativeDependencyLockError?: string | null;
-  externalNpm?: ExternalNpmPackState;
   currentBlock?: FrontstageBlockInstance;
 }) {
   return render(
@@ -77,9 +75,6 @@ function renderPanel({
       code={code}
       revision={revision}
       nativeCompiler={nativeCompiler}
-      nativeDependencyLock={nativeDependencyLock}
-      nativeDependencyLockError={nativeDependencyLockError}
-      externalNpm={externalNpm}
     />
   );
 }
@@ -158,59 +153,33 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     ).toHaveTextContent('second');
   });
 
-  test('D2-P2F sends the catalog dependency lock through the production compiler input', async () => {
+  test('AC-002 sends frontend registry definitions through the production compiler input', async () => {
     const compiler = createCompiler();
-    const dependencyLock: NativeReactCatalogDependencyLock = [
-      {
-        module_source: '@1flowbase/native-components',
-        module_version: '1.0.0',
-        binding: 'fetched',
-        assets: [
-          {
-            role: 'browser_module',
-            media_type: 'text/javascript; charset=utf-8',
-            sha256:
-              'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-            url: '/api/console/frontstage/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-          }
-        ],
-        exports: ['Surface']
-      }
-    ];
     renderPanel({
       code: "import { Surface } from '@1flowbase/native-components'; export default () => <Surface />;",
       revision: 'run:catalog-lock',
-      nativeCompiler: compiler,
-      nativeDependencyLock: dependencyLock
+      nativeCompiler: compiler
     });
 
     await waitFor(() => expect(compiler).toHaveBeenCalledTimes(1));
     expect(compiler).toHaveBeenCalledWith(
-      expect.objectContaining({ dependencyLock })
+      expect.objectContaining({
+        moduleDefinitions: expect.arrayContaining([
+          expect.objectContaining({
+            module_source: '@1flowbase/native-components'
+          })
+        ])
+      })
     );
   });
 
-  test('D2-P2F fails visibly before compilation when catalog metadata is incomplete', async () => {
-    const compiler = createCompiler();
-    renderPanel({
-      code: "import { Surface } from '@1flowbase/native-components'; export default () => <Surface />;",
-      revision: 'run:invalid-catalog-lock',
-      nativeCompiler: compiler,
-      nativeDependencyLockError:
-        'Frontend block catalog dependency metadata is incomplete for this block.'
-    });
-
-    expect(await screen.findByText('运行失败')).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        /Frontend block catalog dependency metadata is incomplete for this block\./u
-      )
-    ).toBeInTheDocument();
-    expect(compiler).not.toHaveBeenCalled();
-  });
-
   test('D1-AC-004 shows stable compile diagnostics and retries only the frozen source', async () => {
-    const successful = compileNativeReactComponent(source('recovered'));
+    const successful = compileNativeReactComponent(source('recovered'), [
+      {
+        module_source: 'react/jsx-runtime',
+        exports: ['Fragment', 'jsx', 'jsxs']
+      }
+    ]);
     if (!successful.ok)
       throw new Error('Expected successful compiler fixture.');
     const compiler = vi
@@ -270,7 +239,7 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     expect(revokeDraftRun).toHaveBeenCalledTimes(2);
   });
 
-  test('AC-002 fails closed before an unavailable optional pack can allow the import', async () => {
+  test('AC-002 fails closed for a module absent from the frontend registry', async () => {
     const compiler = vi.fn().mockResolvedValue({
       ok: false,
       diagnostics: [
@@ -286,18 +255,17 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     renderPanel({
       code: "import dayjs from 'dayjs'; export default () => <div />;",
       revision: 'run:external-npm-unavailable',
-      nativeCompiler: compiler,
-      externalNpm: { status: 'unavailable' }
+      nativeCompiler: compiler
     });
 
     expect(await screen.findByText('运行失败')).toBeInTheDocument();
     expect(
       screen.getByText(
-        /Import source 'dayjs' is not allowed\. Optional External npm Pack is unavailable\./u
+        /Import source 'dayjs' is not allowed\./u
       )
     ).toBeInTheDocument();
     expect(compiler).toHaveBeenCalledWith(
-      expect.objectContaining({ dependencyLock: [] })
+      expect.objectContaining({ moduleDefinitions: expect.any(Array) })
     );
   });
 

@@ -9,7 +9,6 @@ import { useAuthStore } from '../../../state/auth-store';
 import { useFrontstageDesignModeStore } from '../../../state/frontstage-design-mode-store';
 import type { FrontstagePageContent } from '../api/page-content';
 import { fetchFrontstageBlockDeleteImpact } from '../api/block-tree';
-import { resolveFrontstageComponentDependencyLock } from '../api/components';
 import { FrontStagePageTreeSidebar } from '../components/FrontStagePageTreeSidebar';
 import { FrontstagePageTabs } from '../components/FrontstagePageTabs';
 import {
@@ -406,7 +405,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       actorWorkspaceId: actor?.current_workspace_id,
       readPlan: pageCanvasCodeReadPlan,
       catalogEntries: blockCatalog.isSuccess ? blockCatalog.items : null,
-      externalNpm: blockCatalog.externalNpm,
       demandsByBlockId: runtimeDemandsByBlockId
     });
   const pageCanvasIsolatedPreparations =
@@ -420,8 +418,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   const assemblyPreparations = useFrontstageRuntimeAssembly({
     workspaceId,
     pageId: selectedPageId,
-    assembly: blockRuntimeAssembly,
-    externalNpm: blockCatalog.externalNpm
+    assembly: blockRuntimeAssembly
   });
   const nativeBlockRuntimeContext = useMemo<FrontstagePageCanvasRuntimeContext>(
     () => ({
@@ -1361,13 +1358,6 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                   createBlockContext={createTrialBlockContext}
                   onPrepareDraftRun={jsBlockCapabilityHandlers?.prepareDraftRun}
                   onRevokeDraftRun={jsBlockCapabilityHandlers?.revokeDraftRun}
-                  resolveNativeDependencyLock={(sourceCode) =>
-                    resolveFrontstageComponentDependencyLock(
-                      workspaceId,
-                      sourceCode
-                    )
-                  }
-                  externalNpm={blockCatalog.externalNpm}
                   revision={`run:${runRevision}`}
                 />
               );

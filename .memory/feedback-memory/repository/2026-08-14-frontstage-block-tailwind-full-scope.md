@@ -2,7 +2,7 @@
 memory_type: feedback
 feedback_category: repository
 topic: 前台区块 Tailwind 按需编译与样式隔离
-summary: 用户确认区块代码按需读取和有界编译；Tailwind 是前端编译期能力，按有限候选集合生成内容寻址 CSS，以 ShadowRoot 隔离；后端仅持久化源码与依赖声明。
+summary: 该 Tailwind 编译边界已被用户于 2026-08-25 明确废止；前端区块不再提供 Tailwind import、候选编译、样式资产或兼容入口。
 keywords:
   - frontstage
   - JS Block
@@ -14,8 +14,8 @@ keywords:
 match_when:
   - 设计或修改前台 JS Block 的 Tailwind 导入、编译、运行时样式与能力边界时
 created_at: 2026-08-14 11
-updated_at: 2026-08-14 21
-last_verified_at: 2026-08-14 21
+updated_at: 2026-08-25 00
+last_verified_at: 2026-08-25 00
 decision_policy: direct_reference
 scope:
   - web/packages/tailwindcss-catalog
@@ -24,6 +24,10 @@ scope:
 ---
 
 # 前台区块 Tailwind 按需编译边界
+
+## Superseded
+
+`2026-08-25 00` 用户确认该能力没有实际使用并要求删除。当前规则是：Native React 前端 module registry 不注册 `tailwindcss`，源码导入该包按未注册模块处理；不保留编译 Worker、catalog、CSS cache identity、诊断或兼容分支。下文只保留为历史动机，不再作为实现决策。
 
 ## 时间
 

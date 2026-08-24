@@ -11,6 +11,7 @@ import { FixedHeightModal } from '../../../../shared/ui/fixed-height-modal/Fixed
 import { DataTable, DataTableColumnSettings, type DataTableColumn } from '../../../../shared/ui/data-table/DataTable';
 import { DataTableFilterField, DataTableFilterForm, DataTableLayout } from '../../../../shared/ui/data-table/DataTableLayout';
 import { usePersistedDataTableConfiguration } from '../../../../shared/ui/data-table/data-table-state';
+import './network-egress-pools.css';
 
 type ProxyFormValues = CreateSettingsNetworkEgressProxyInput;
 type ProxyMemberEditValues = { enabled: boolean; sequence: number };
@@ -158,11 +159,12 @@ export function NetworkEgressPoolsPanel() {
     },
     onSuccess: invalidate
   });
+  const runMemberTest = (memberId: string) => {
+    if (!csrfToken || !pool) throw new Error('Missing proxy pool context');
+    return testSettingsNetworkEgressPoolMember(pool.id, memberId, csrfToken);
+  };
   const testMember = useMutation({
-    mutationFn: (memberId: string) => {
-      if (!csrfToken || !pool) throw new Error('Missing proxy pool context');
-      return testSettingsNetworkEgressPoolMember(pool.id, memberId, csrfToken);
-    },
+    mutationFn: runMemberTest,
     onMutate: (memberId) => {
       setTestingMemberIds((current) => new Set(current).add(memberId));
     },
@@ -174,7 +176,35 @@ export function NetworkEgressPoolsPanel() {
         return next;
       });
     },
-    onError: () => message.error(i18nText('settings', 'auto.network_center_member_test_failed'))
+    onError: () => {
+      message.error(i18nText('settings', 'auto.network_center_member_test_failed'));
+    }
+  });
+  const testCurrentPage = useMutation({
+    mutationFn: async (memberIds: string[]) => {
+      const results = await Promise.allSettled(memberIds.map(runMemberTest));
+      if (results.some((result) => result.status === 'rejected')) {
+        throw new Error('One or more proxy member tests failed');
+      }
+    },
+    onMutate: (memberIds) => {
+      setTestingMemberIds((current) => {
+        const next = new Set(current);
+        memberIds.forEach((memberId) => next.add(memberId));
+        return next;
+      });
+    },
+    onSettled: async (_, __, memberIds) => {
+      setTestingMemberIds((current) => {
+        const next = new Set(current);
+        memberIds.forEach((memberId) => next.delete(memberId));
+        return next;
+      });
+      await invalidate();
+    },
+    onError: () => {
+      message.error(i18nText('settings', 'auto.network_center_member_test_failed'));
+    }
   });
   const updateMemberAction = updateMember.mutate;
   const removeMemberAction = removeMember.mutate;
@@ -217,7 +247,7 @@ export function NetworkEgressPoolsPanel() {
 
   return (
     <SettingsSectionSurface heightMode="fill">
-      <div data-testid="network-center-pools-shell">
+      <div className="network-center-pools-shell" data-testid="network-center-pools-shell">
         <DataTableLayout
           filters={
             <DataTableFilterForm
@@ -239,7 +269,7 @@ export function NetworkEgressPoolsPanel() {
             </DataTableFilterForm>
           }
         >
-          {pools.isError ? <Alert type="error" showIcon title={i18nText('settings', 'auto.network_center_pools_load_failed')} /> : <DataTable<SettingsNetworkEgressPoolMember> columns={columns} configuration={tableConfiguration} dataSource={pagedMembers} emptyText={<Empty description={i18nText('settings', 'auto.network_center_no_pools')} />} loading={pools.isLoading || pools.isFetching} page={page} pageSize={PAGE_SIZE} rowKey="id" total={members.length} onPageChange={setPage} toolbar={<Flex justify="flex-end" gap={8} wrap><Button type="primary" onClick={() => setCreateOpen(true)}>{i18nText('settings', 'auto.network_center_member_create')}</Button><Button onClick={() => pools.refetch()}>{i18nText('settings', 'auto.refresh')}</Button><DataTableColumnSettings columns={columns} configuration={tableConfiguration} /></Flex>} />}
+          {pools.isError ? <Alert type="error" showIcon title={i18nText('settings', 'auto.network_center_pools_load_failed')} /> : <DataTable<SettingsNetworkEgressPoolMember> columns={columns} configuration={tableConfiguration} dataSource={pagedMembers} emptyText={<Empty description={i18nText('settings', 'auto.network_center_no_pools')} />} loading={pools.isLoading || pools.isFetching} page={page} pageSize={PAGE_SIZE} rowKey="id" total={members.length} onPageChange={setPage} toolbar={<Flex justify="flex-end" gap={8} wrap><Button disabled={pagedMembers.length === 0 || testCurrentPage.isPending} loading={testCurrentPage.isPending} onClick={() => testCurrentPage.mutate(pagedMembers.map((member) => member.id))}>{i18nText('settings', 'auto.network_center_member_test')}</Button><Button type="primary" onClick={() => setCreateOpen(true)}>{i18nText('settings', 'auto.network_center_member_create')}</Button><Button onClick={() => pools.refetch()}>{i18nText('settings', 'auto.refresh')}</Button><DataTableColumnSettings columns={columns} configuration={tableConfiguration} /></Flex>} />}
         </DataTableLayout>
       </div>
       <ProxyModal open={createOpen} types={types.data ?? []} loading={types.isLoading} submitting={create.isPending} onClose={() => setCreateOpen(false)} onSubmit={(values) => create.mutate(values)} />

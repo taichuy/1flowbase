@@ -180,7 +180,6 @@ pub struct FrontstageBlockCodeRecord {
     pub code_ref: String,
     pub source_code: String,
     pub source_sha256: Option<String>,
-    pub dependency_lock: Option<serde_json::Value>,
     pub created_at: OffsetDateTime,
     pub updated_at: OffsetDateTime,
 }
@@ -325,7 +324,6 @@ mod tests {
             code_ref: "legacy".to_owned(),
             source_code: "export default null".to_owned(),
             source_sha256: None,
-            dependency_lock: None,
             created_at: OffsetDateTime::UNIX_EPOCH,
             updated_at: OffsetDateTime::UNIX_EPOCH,
         };

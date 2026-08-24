@@ -636,33 +636,6 @@ fn d5_p3_isolated_runtime_requires_one_verified_browser_module_asset() {
 }
 
 #[test]
-fn wp_d4_builtin_manifest_preserves_runtime_module_without_component_contracts() {
-    let manifest_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../plugins/capability-plugins/1flowbase/manifest.yaml");
-    let source = std::fs::read_to_string(&manifest_path).unwrap();
-    let manifest = parse_plugin_manifest(&source).unwrap();
-    crate::validate_frontend_module_assets(manifest_path.parent().unwrap(), &manifest).unwrap();
-    let native_module = manifest.block_contributions[0]
-        .code_modules
-        .iter()
-        .find(|module| module.source == "@1flowbase/native-components")
-        .unwrap();
-    assert_eq!(native_module.version, "1.0.0");
-    assert_eq!(native_module.exports, vec!["ScrollableSurface", "Surface"]);
-    assert_eq!(
-        native_module.assets[0].path,
-        "browser-assets/native-components.js"
-    );
-    assert_eq!(native_module.assets[0].sha256.len(), 64);
-    assert!(native_module
-        .type_declarations
-        .contains("ScrollableSurface"));
-    assert!(!source.contains("components:"));
-    assert!(!source.contains("antd_facade"));
-    assert!(!source.contains("FacadeCommonProps"));
-}
-
-#[test]
 fn plugin_manifest_v1_keeps_missing_frontend_block_code_template_null() {
     let manifest = parse_plugin_manifest(
         r#"

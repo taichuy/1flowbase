@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::ports::{
-    OfficialUiComponentCatalogRecord, UiComponentCatalogIndex, UiComponentCatalogPage,
-    UiComponentCatalogRepository, UiComponentCatalogSearchResult, UiComponentCatalogSource,
+    OfficialUiComponentCatalogRecord, UiComponentCatalogIndex, UiComponentCatalogRepository,
+    UiComponentCatalogSource,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -30,6 +30,38 @@ pub struct UiComponentCatalogUpdateStatus {
     pub source_fingerprint: String,
     pub update_available: bool,
     pub groups: Vec<UiComponentCatalogGroupUpdate>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UiComponentCatalogRecordProjection {
+    pub catalog: OfficialUiComponentCatalogRecord,
+    pub local_version: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UiComponentCatalogPageProjection {
+    pub catalog_version: String,
+    pub total_components: usize,
+    pub page_size: usize,
+    pub page: u32,
+    pub cursor: String,
+    pub next_cursor: Option<String>,
+    pub records: Vec<UiComponentCatalogRecordProjection>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UiComponentCatalogSearchEntryProjection {
+    pub catalog: crate::ports::UiComponentCatalogSearchEntry,
+    pub local_version: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UiComponentCatalogSearchProjection {
+    pub catalog_version: String,
+    pub page: u32,
+    pub page_size: usize,
+    pub total_entries: usize,
+    pub entries: Vec<UiComponentCatalogSearchEntryProjection>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -56,8 +88,25 @@ where
         self.source.index().await
     }
 
-    pub async fn page(&self, page: u32) -> Result<UiComponentCatalogPage> {
-        self.source.page(page).await
+    pub async fn page(&self, page: u32) -> Result<UiComponentCatalogPageProjection> {
+        let value = self.source.page(page).await?;
+        let local_versions = self.local_versions_by_component_code().await?;
+        Ok(UiComponentCatalogPageProjection {
+            catalog_version: value.catalog_version,
+            total_components: value.total_components,
+            page_size: value.page_size,
+            page: value.page,
+            cursor: value.cursor,
+            next_cursor: value.next_cursor,
+            records: value
+                .records
+                .into_iter()
+                .map(|catalog| UiComponentCatalogRecordProjection {
+                    local_version: local_versions.get(&catalog.component_code).cloned(),
+                    catalog,
+                })
+                .collect(),
+        })
     }
 
     pub async fn search(
@@ -65,11 +114,36 @@ where
         query: &str,
         page: u32,
         page_size: usize,
-    ) -> Result<UiComponentCatalogSearchResult> {
+    ) -> Result<UiComponentCatalogSearchProjection> {
         if page == 0 || !(1..=100).contains(&page_size) {
             bail!("catalog search page and page_size are invalid");
         }
-        self.source.search(query, page, page_size).await
+        let value = self.source.search(query, page, page_size).await?;
+        let local_versions = self.local_versions_by_component_code().await?;
+        Ok(UiComponentCatalogSearchProjection {
+            catalog_version: value.catalog_version,
+            page: value.page,
+            page_size: value.page_size,
+            total_entries: value.total_entries,
+            entries: value
+                .entries
+                .into_iter()
+                .map(|catalog| UiComponentCatalogSearchEntryProjection {
+                    local_version: local_versions.get(&catalog.component_code).cloned(),
+                    catalog,
+                })
+                .collect(),
+        })
+    }
+
+    async fn local_versions_by_component_code(&self) -> Result<BTreeMap<String, String>> {
+        Ok(self
+            .repository
+            .list_official_ui_component_records()
+            .await?
+            .into_iter()
+            .map(|record| (record.component_code, record.version))
+            .collect())
     }
 
     pub async fn update_status(&self) -> Result<UiComponentCatalogUpdateStatus> {

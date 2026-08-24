@@ -60,11 +60,7 @@ describe('frontstage block tree client contract', () => {
       method: 'GET'
     });
     await expect(
-      listConsoleFrontstageBlockChildren(
-        'page/1',
-        'block/root',
-        { limit: 30 }
-      )
+      listConsoleFrontstageBlockChildren('page/1', 'block/root', { limit: 30 })
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/pages/page%2F1/blocks/block%2Froot/children?limit=30'
     });
@@ -74,19 +70,15 @@ describe('frontstage block tree client contract', () => {
       path: '/api/console/frontstage/pages/page%2F1/blocks/block%2Froot/ancestors'
     });
     await expect(
-      listConsoleFrontstageBlockDescendants(
-        'page/1',
-        'block/root',
-        { max_depth: 4, limit: 50 }
-      )
+      listConsoleFrontstageBlockDescendants('page/1', 'block/root', {
+        max_depth: 4,
+        limit: 50
+      })
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/pages/page%2F1/blocks/block%2Froot/descendants?max_depth=4&limit=50'
     });
     await expect(
-      getConsoleFrontstageBlockDeleteImpact(
-        'page/1',
-        'block/root'
-      )
+      getConsoleFrontstageBlockDeleteImpact('page/1', 'block/root')
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/pages/page%2F1/blocks/block%2Froot/delete-impact'
     });
@@ -97,25 +89,18 @@ describe('frontstage block tree client contract', () => {
       method: 'GET'
     });
     await expect(
-      getConsoleFrontstageBlockCodeFragment(
-        'page/1',
-        'block/root',
-        {
-          start_line: 101,
-          start_column: 3,
-          line_count: 80,
-          max_chars: 6000
-        }
-      )
+      getConsoleFrontstageBlockCodeFragment('page/1', 'block/root', {
+        start_line: 101,
+        start_column: 3,
+        line_count: 80,
+        max_chars: 6000
+      })
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/pages/page%2F1/blocks/block%2Froot/code/fragment?start_line=101&start_column=3&line_count=80&max_chars=6000',
       method: 'GET'
     });
     await expect(
-      getConsoleFrontstageBlockRuntimeAssembly(
-        'page/1',
-        'block/root'
-      )
+      getConsoleFrontstageBlockRuntimeAssembly('page/1', 'block/root')
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/pages/page%2F1/blocks/block%2Froot/runtime-assembly',
       method: 'GET'
@@ -137,17 +122,13 @@ describe('frontstage block tree client contract', () => {
       parent_block_id: null,
       before_block_id: null,
       after_block_id: 'summary',
-      source_code: "import 'tailwindcss'; export default function Sales() {}",
+      source_code: 'export default function Sales() {}',
       input_mapping: { customer: 'page.customer' },
       output_mapping: { result: 'page.result' },
       runtime_descriptor: { kind: 'native_react' }
     };
     await expect(
-      createConsoleFrontstageBlockNode(
-        'page-1',
-        createInput,
-        'csrf'
-      )
+      createConsoleFrontstageBlockNode('page-1', createInput, 'csrf')
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/pages/page-1/blocks',
       method: 'POST',
@@ -236,7 +217,7 @@ describe('frontstage block tree client contract', () => {
         'page-1',
         'sales',
         {
-          source_code: "import 'tailwindcss'; export default Sales"
+          source_code: 'export default Sales'
         },
         'csrf'
       )
@@ -260,12 +241,7 @@ describe('frontstage block tree client contract', () => {
       ]
     };
     await expect(
-      patchConsoleFrontstageBlockNodeCode(
-        'page-1',
-        'sales',
-        patchInput,
-        'csrf'
-      )
+      patchConsoleFrontstageBlockNodeCode('page-1', 'sales', patchInput, 'csrf')
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/pages/page-1/blocks/sales/code',
       method: 'PATCH',

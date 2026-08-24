@@ -176,6 +176,12 @@ where
         let package = load_egress_package(&local)?;
         let secret_json =
             validate_instance_config(&package.provider.form_schema, command.secret_json)?;
+        let extension_family = domain::ExtensionCatalogIdentity::new(
+            installation.category,
+            installation.organization.clone(),
+            installation.provider_code.clone(),
+        )
+        .ok_or(ControlPlaneError::InvalidInput("installation_id"))?;
         let provider_id = Uuid::now_v7();
         let secret_ref = format!("secret://system/network-egress/{provider_id}");
 
@@ -183,7 +189,7 @@ where
             .repository
             .create_network_egress_provider(&CreateNetworkEgressProviderInput {
                 provider_id,
-                installation_id: Some(command.installation_id),
+                extension_family: Some(extension_family),
                 provider_code: package.provider.provider_code,
                 display_name,
                 description,
@@ -210,16 +216,31 @@ where
                 "network_egress_provider",
                 Some(provider.id),
                 "network_egress_provider.created",
-                serde_json::json!({ "installation_id": provider.installation_id, "lifecycle": provider.lifecycle.as_str() }),
+                serde_json::json!({
+                    "extension_family": provider
+                        .extension_family
+                        .as_ref()
+                        .map(domain::ExtensionCatalogIdentity::catalog_id),
+                    "lifecycle": provider.lifecycle.as_str()
+                }),
             ))
             .await?;
         match self.sync(command.actor_user_id, provider.id).await {
             Ok(view) => Ok(view),
             Err(error) => {
+                let cleanup = self
+                    .runtime
+                    .unload_network_egress_provider(provider.id)
+                    .await;
                 self.repository
                     .delete_network_egress_provider(provider.id)
                     .await?;
-                Err(error)
+                match cleanup {
+                    Ok(()) => Err(error),
+                    Err(cleanup_error) => Err(error.context(format!(
+                        "network egress provider cleanup also failed: {cleanup_error}"
+                    ))),
+                }
             }
         }
     }
@@ -368,6 +389,74 @@ where
         Ok(NetworkEgressProviderView { provider, egresses })
     }
 
+    pub async fn activate_version(&self, installation_id: Uuid) -> Result<()> {
+        let target = self
+            .repository
+            .get_local_installation(&self.node_id, installation_id)
+            .await?
+            .filter(|installation| {
+                installation.artifact.artifact_status.is_ready()
+                    && installation.contract_version == NETWORK_EGRESS_PROVIDER_CONTRACT
+            })
+            .ok_or(ControlPlaneError::Conflict(
+                "network_egress_plugin_version_unavailable",
+            ))?;
+        let target_family = domain::ExtensionCatalogIdentity::new(
+            target.category,
+            target.organization.clone(),
+            target.provider_code.clone(),
+        )
+        .ok_or(ControlPlaneError::InvalidInput("installation_id"))?;
+        let mut preflighted_provider_count = 0usize;
+        for provider in self
+            .repository
+            .list_network_egress_providers()
+            .await?
+            .into_iter()
+            .filter(|provider| provider.extension_family.as_ref() == Some(&target_family))
+        {
+            let secret = self
+                .secret_resolver
+                .resolve_for_runner(&provider)
+                .await?
+                .ok_or(ControlPlaneError::Conflict(
+                    "network_egress_provider_secret_unavailable",
+                ))?;
+            if let Err(error) = self
+                .runtime
+                .preflight_network_egresses(provider.id, &target, secret)
+                .await
+            {
+                tracing::warn!(
+                    provider_id = %provider.id,
+                    installation_id = %installation_id,
+                    plugin_version = %target.plugin_version,
+                    error = %error,
+                    "network egress plugin version preflight failed"
+                );
+                return Err(ControlPlaneError::Conflict(
+                    "network_egress_plugin_version_preflight_failed",
+                )
+                .into());
+            }
+            preflighted_provider_count += 1;
+        }
+        self.repository
+            .select_network_egress_current(&self.node_id, installation_id)
+            .await?
+            .ok_or(ControlPlaneError::Conflict(
+                "network_egress_plugin_version_unavailable",
+            ))?;
+        tracing::info!(
+            installation_id = %installation_id,
+            plugin_version = %target.plugin_version,
+            extension_family = %target_family.catalog_id(),
+            preflighted_provider_count,
+            "network egress plugin version activated"
+        );
+        Ok(())
+    }
+
     pub async fn sync(
         &self,
         actor_user_id: Uuid,
@@ -382,14 +471,16 @@ where
             return Err(ControlPlaneError::Conflict("network_egress_provider_not_active").into());
         }
         let sync_at = OffsetDateTime::now_utc();
-        let installation_id = provider
-            .installation_id
-            .ok_or(ControlPlaneError::InvalidInput(
-                "network_egress_provider_type",
-            ))?;
+        let extension_family =
+            provider
+                .extension_family
+                .as_ref()
+                .ok_or(ControlPlaneError::InvalidInput(
+                    "network_egress_provider_type",
+                ))?;
         let local_installation = self
             .repository
-            .get_local_installation(&self.node_id, installation_id)
+            .get_current_local_installation(&self.node_id, extension_family)
             .await?
             .ok_or(ControlPlaneError::Conflict(
                 "network_egress_provider_unavailable",
@@ -407,7 +498,7 @@ where
             ))?;
         let descriptors = match self
             .runtime
-            .sync_network_egresses(&local_installation, secret)
+            .sync_network_egresses(provider_id, &local_installation, secret)
             .await
         {
             Ok(descriptors) => descriptors,

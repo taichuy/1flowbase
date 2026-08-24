@@ -211,15 +211,6 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
                         and assignment.workspace_id = $1
                   )
               )
-              and exists (
-                  select 1
-                  from frontstage_block_codes block_code
-                  cross join lateral jsonb_array_elements(block_code.dependency_lock) module
-                  cross join lateral jsonb_array_elements(module->'assets') asset
-                  where block_code.workspace_id = $1
-                    and module->>'module_source' = retained.module_source
-                    and asset->>'sha256' = retained.sha256
-              )
             limit 1
             "#,
         )

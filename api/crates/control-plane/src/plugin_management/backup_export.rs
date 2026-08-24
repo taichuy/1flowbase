@@ -237,6 +237,7 @@ pub fn build_backup_artifact_inventory(
 
     for installation in extension_installations.into_iter().filter(|record| {
         record.node_id == node_id
+            && !plugin_installation_ids.contains(&record.id)
             && record.is_current
             && record.status == domain::ExtensionInstallationStatus::Installed
     }) {

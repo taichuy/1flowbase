@@ -239,24 +239,6 @@ async fn test_state_with_runtime_profile_state(
             data_model_template_catalog,
         ),
     );
-    control_plane::plugin_management::PluginManagementService::new(
-        store.clone(),
-        api_provider_runtime,
-        Arc::new(InMemoryOfficialPluginSource),
-        config.provider_install_root.clone(),
-    )
-    .with_node_id(config.api_node_id.clone())
-    .ensure_builtin_plugin(
-        control_plane::plugin_management::EnsureBuiltinPluginCommand {
-            actor_user_id: bootstrap.root_user_id,
-            package_root: crate::builtin_jsx_block_package_root()
-                .unwrap()
-                .display()
-                .to_string(),
-        },
-    )
-    .await
-    .unwrap();
     let api_docs = std::sync::Arc::new(
         crate::openapi_docs::build_default_api_docs_registry_with_cookie_name(&config.cookie_name)
             .unwrap(),

@@ -1,36 +1,6 @@
 use super::*;
 
 #[derive(Debug, Clone)]
-pub struct LegacyFrontstageBlockDependencyLockCandidate {
-    pub workspace_id: Uuid,
-    pub page_id: Uuid,
-    pub block_id: String,
-    pub code_ref: String,
-    pub source_code: String,
-}
-
-#[derive(Debug, Clone)]
-pub struct ReconcileFrontstageBlockDependencyLockInput {
-    pub workspace_id: Uuid,
-    pub page_id: Uuid,
-    pub code_ref: String,
-    pub dependency_lock: serde_json::Value,
-    pub audit_log: domain::AuditLogRecord,
-}
-
-#[async_trait]
-pub trait FrontstageDependencyLockReconciliationRepository: Send + Sync {
-    async fn list_legacy_frontstage_block_dependency_lock_candidates(
-        &self,
-    ) -> anyhow::Result<Vec<LegacyFrontstageBlockDependencyLockCandidate>>;
-
-    async fn reconcile_frontstage_block_dependency_locks(
-        &self,
-        updates: &[ReconcileFrontstageBlockDependencyLockInput],
-    ) -> anyhow::Result<u32>;
-}
-
-#[derive(Debug, Clone)]
 pub struct CreateFrontstagePageInput {
     pub id: Uuid,
     pub workspace_id: Uuid,

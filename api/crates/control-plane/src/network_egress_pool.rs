@@ -1,5 +1,6 @@
 use anyhow::Result;
 use serde_json::json;
+use std::collections::HashMap;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
@@ -8,7 +9,7 @@ use crate::{
     errors::ControlPlaneError,
     ports::{
         CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
-        NetworkEgressPoolRepository, NetworkEgressRepository,
+        NetworkEgressPoolRepository, NetworkEgressRepository, NetworkEgressRouteRepository,
         RecordNetworkEgressPoolMemberProbeInput, UpdateNetworkEgressPoolMemberInput,
     },
 };
@@ -146,7 +147,7 @@ pub struct NetworkEgressPoolService<R> {
 
 impl<R> NetworkEgressPoolService<R>
 where
-    R: NetworkEgressPoolRepository + NetworkEgressRepository,
+    R: NetworkEgressPoolRepository + NetworkEgressRepository + NetworkEgressRouteRepository,
 {
     pub fn new(repository: R) -> Self {
         Self {
@@ -359,6 +360,13 @@ where
         member_id: Uuid,
     ) -> Result<()> {
         self.require_global_pool(pool_id).await?;
+        if self
+            .repository
+            .is_network_egress_pool_member_referenced(member_id)
+            .await?
+        {
+            return Err(ControlPlaneError::Conflict("network_egress_pool_member_in_use").into());
+        }
         self.repository
             .delete_network_egress_pool_member(pool_id, member_id)
             .await?;
@@ -411,16 +419,37 @@ where
     }
 
     pub async fn select_healthy_first(&self, pool_id: Uuid) -> Result<NetworkEgressPoolSelection> {
+        let member_ids = self
+            .repository
+            .list_network_egress_pool_members(pool_id)
+            .await?
+            .into_iter()
+            .map(|member| member.id)
+            .collect::<Vec<_>>();
+        self.select_healthy_first_from(pool_id, &member_ids).await
+    }
+
+    pub async fn select_healthy_first_from(
+        &self,
+        pool_id: Uuid,
+        member_ids: &[Uuid],
+    ) -> Result<NetworkEgressPoolSelection> {
         let pool = self.require_pool(pool_id).await?;
         if pool.selection_strategy != domain::NetworkEgressPoolSelectionStrategy::HealthyFirst {
             return Err(ControlPlaneError::InvalidInput("selection_strategy").into());
         }
-        let mut untested_fallback = None;
-        for member in self
+        let mut members = self
             .repository
             .list_network_egress_pool_members(pool_id)
             .await?
-        {
+            .into_iter()
+            .map(|member| (member.id, member))
+            .collect::<HashMap<_, _>>();
+        let mut untested_fallback = None;
+        for member_id in member_ids {
+            let Some(member) = members.remove(member_id) else {
+                return Err(ControlPlaneError::InvalidInput("pool_member_ids").into());
+            };
             if !member.enabled {
                 continue;
             }
@@ -659,7 +688,7 @@ mod health_tests {
     fn active_provider() -> domain::NetworkEgressProviderRecord {
         domain::NetworkEgressProviderRecord {
             id: Uuid::now_v7(),
-            installation_id: None,
+            extension_family: None,
             provider_code: "builtin_static_http".to_string(),
             display_name: "Proxy".to_string(),
             description: String::new(),

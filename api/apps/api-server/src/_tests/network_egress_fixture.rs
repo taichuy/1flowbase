@@ -271,7 +271,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
         &state.store,
         &UpsertPluginArtifactInstanceInput {
             node_id: state.api_node_id.clone(),
-            installation_id: Some(installation_id),
+            installation_id,
             local_version: Some("0.1.0".into()),
             local_checksum: None,
             local_path: Some(package.path().display().to_string()),
@@ -282,7 +282,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
             availability_status: PluginAvailabilityStatus::Available,
             checked_at: time::OffsetDateTime::now_utc(),
             last_error: None,
-            is_current: false,
+            is_current: true,
         },
     )
     .await
@@ -292,7 +292,11 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
         &state.store,
         &CreateNetworkEgressProviderInput {
             provider_id,
-            installation_id: Some(installation_id),
+            extension_family: domain::ExtensionCatalogIdentity::new(
+                domain::ExtensionCategory::RuntimeExtensions,
+                "test",
+                "fixture_egress",
+            ),
             provider_code: "fixture_egress".into(),
             display_name: "Fixture Egress".into(),
             description: String::new(),
@@ -355,10 +359,11 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
     )
     .await
     .expect("fixture pool must persist");
+    let member_id = uuid::Uuid::now_v7();
     <storage_durable::MainDurableStore as NetworkEgressPoolRepository>::create_network_egress_pool_member(
         &state.store,
         &CreateNetworkEgressPoolMemberInput {
-            member_id: uuid::Uuid::now_v7(),
+            member_id,
             pool_id,
             provider_id,
             provider_egress_key: "fixture-egress".into(),
@@ -376,6 +381,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
             workspace_id: state.bootstrap_workspace_id,
             selector,
             pool_id,
+            pool_member_ids: vec![member_id],
             enabled: true,
             actor_user_id: root.id,
         },

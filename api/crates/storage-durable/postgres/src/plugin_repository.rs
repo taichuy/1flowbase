@@ -296,6 +296,39 @@ impl PluginRepository for PgControlPlaneStore {
         row.map(map_installation).transpose()
     }
 
+    async fn get_current_local_installation(
+        &self,
+        node_id: &str,
+        family: &domain::ExtensionCatalogIdentity,
+    ) -> Result<Option<domain::LocalPluginInstallationRecord>> {
+        let installation_id = sqlx::query_scalar::<_, Uuid>(
+            r#"
+            select installation.id
+            from extension_installations installation
+            join extension_artifact_instances artifact
+              on artifact.installation_id = installation.id
+             and artifact.node_id = $1
+            where installation.category = $2
+              and installation.organization = $3
+              and installation.artifact_id = $4
+              and installation.contract_version = '1flowbase.network_egress_provider/v1'
+              and installation.metadata_json ->> 'plugin_type' = 'network_egress_provider'
+              and artifact.artifact_status = 'ready'
+              and artifact.is_current
+            "#,
+        )
+        .bind(node_id)
+        .bind(family.category().as_str())
+        .bind(family.organization())
+        .bind(family.artifact_id())
+        .fetch_optional(self.pool())
+        .await?;
+        match installation_id {
+            Some(installation_id) => self.get_local_installation(node_id, installation_id).await,
+            None => Ok(None),
+        }
+    }
+
     async fn list_installations(&self) -> Result<Vec<domain::PluginInstallationRecord>> {
         let rows = sqlx::query(
             r#"
@@ -627,7 +660,8 @@ impl PluginRepository for PgControlPlaneStore {
         let mut transaction = self.pool().begin().await?;
         let target = sqlx::query(
             r#"
-            select installation.category, installation.artifact_id as provider_code
+            select installation.category, installation.organization,
+                   installation.artifact_id as provider_code
             from extension_installations installation
             join extension_artifact_instances artifact
               on artifact.installation_id = installation.id and artifact.node_id = $1
@@ -647,8 +681,10 @@ impl PluginRepository for PgControlPlaneStore {
             return Ok(None);
         };
         let category: String = target.get("category");
+        let organization: String = target.get("organization");
         let provider_code: String = target.get("provider_code");
-        let family_lock = format!("network-egress-current:{category}:{provider_code}");
+        let family_lock =
+            format!("network-egress-current:{category}:{organization}:{provider_code}");
         sqlx::query("select pg_advisory_xact_lock(hashtext($1))")
             .bind(family_lock)
             .execute(&mut *transaction)
@@ -661,13 +697,15 @@ impl PluginRepository for PgControlPlaneStore {
             where installation.id = artifact.installation_id
               and artifact.node_id = $1
               and installation.category = $2
-              and installation.artifact_id = $3
+              and installation.organization = $3
+              and installation.artifact_id = $4
               and installation.metadata_json ->> 'plugin_type' = 'network_egress_provider'
               and artifact.is_current
             "#,
         )
         .bind(node_id)
         .bind(&category)
+        .bind(&organization)
         .bind(&provider_code)
         .execute(&mut *transaction)
         .await?;

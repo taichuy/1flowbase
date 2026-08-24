@@ -290,7 +290,7 @@ pub(super) async fn seed_network_egress_resolver(
             availability_status: PluginAvailabilityStatus::Available,
             checked_at: time::OffsetDateTime::now_utc(),
             last_error: None,
-            is_current: false,
+            is_current: true,
         },
     )
     .await
@@ -300,7 +300,11 @@ pub(super) async fn seed_network_egress_resolver(
         &state.store,
         &CreateNetworkEgressProviderInput {
             provider_id,
-            installation_id: Some(installation_id),
+            extension_family: domain::ExtensionCatalogIdentity::new(
+                domain::ExtensionCategory::RuntimeExtensions,
+                "test",
+                "fixture_egress",
+            ),
             provider_code: "fixture_egress".into(),
             display_name: "Fixture Egress".into(),
             description: String::new(),
@@ -356,10 +360,11 @@ pub(super) async fn seed_network_egress_resolver(
     )
     .await
     .unwrap();
+    let member_id = uuid::Uuid::now_v7();
     <storage_durable::MainDurableStore as NetworkEgressPoolRepository>::create_network_egress_pool_member(
         &state.store,
         &CreateNetworkEgressPoolMemberInput {
-            member_id: uuid::Uuid::now_v7(),
+            member_id,
             pool_id,
             provider_id,
             provider_egress_key: "fixture-egress".into(),
@@ -377,6 +382,7 @@ pub(super) async fn seed_network_egress_resolver(
             workspace_id: state.bootstrap_workspace_id,
             selector,
             pool_id,
+            pool_member_ids: vec![member_id],
             enabled: true,
             actor_user_id: root.id,
         },
@@ -1143,7 +1149,7 @@ async fn delivery_1560_d5_ac_003_no_stale_timeout_returns_a_bounded_clear_failur
             .await
             .unwrap();
     });
-    let source = ApiOfficialExtensionCatalogSource::new_with_request_timeout(
+    let source = ApiOfficialExtensionCatalogSource::new_with_request_timeouts(
         BTreeMap::from([(
             "mcp".to_string(),
             ResolvedOfficialExtensionCatalogSourceConfig {
@@ -1154,6 +1160,7 @@ async fn delivery_1560_d5_ac_003_no_stale_timeout_returns_a_bounded_clear_failur
             },
         )]),
         Duration::from_millis(40),
+        Duration::from_millis(500),
     );
     let started = Instant::now();
     let error = source.list_page("mcp", None).await.unwrap_err();
@@ -1161,6 +1168,48 @@ async fn delivery_1560_d5_ac_003_no_stale_timeout_returns_a_bounded_clear_failur
     assert!(error
         .to_string()
         .contains("failed to request official extension catalog document"));
+    server.abort();
+}
+
+async fn delayed_artifact_response() -> Response {
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    Body::from(artifact_bytes("i18n", "i18n-fixture")).into_response()
+}
+
+#[tokio::test]
+async fn ac_004_artifact_download_can_outlast_the_catalog_request_timeout() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move {
+        axum::serve(listener, Router::new().fallback(delayed_artifact_response))
+            .await
+            .unwrap();
+    });
+    let entry = serde_json::from_value(catalog_entry(
+        &base_url,
+        "i18n",
+        1,
+        "i18n:taichuy/i18n-fixture",
+        "i18n-fixture",
+    ))
+    .unwrap();
+    let source = ApiOfficialExtensionCatalogSource::new_with_request_timeouts(
+        BTreeMap::from([(
+            "i18n".to_string(),
+            ResolvedOfficialExtensionCatalogSourceConfig {
+                source_kind: "official_repository".to_string(),
+                index_url: format!("{base_url}/index.json"),
+                official_index_url: format!("{base_url}/index.json"),
+                github_proxy_url: None,
+            },
+        )]),
+        Duration::from_millis(20),
+        Duration::from_millis(250),
+    );
+
+    let downloaded = source.download_artifact(&entry).await.unwrap();
+
+    assert_eq!(downloaded.artifact_bytes, b"i18n-artifact");
     server.abort();
 }
 

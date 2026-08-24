@@ -417,7 +417,8 @@ const extensionCenterCategories = new Set<SettingsExtensionCenterCategory>([
   'i18n',
   'mcp',
   'model-pricing',
-  'runtime-extensions'
+  'runtime-extensions',
+  'ui-components'
 ]);
 
 const settingsExtensionCenterCategoryRoute = createRoute({

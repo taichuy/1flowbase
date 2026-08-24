@@ -148,7 +148,7 @@ describe('settings network egress routes API', () => {
     const route = {
       consumer_kind: 'http_node',
       consumer_reference: null,
-      pool_id: 'pool-1',
+      pool_member_ids: ['member-1', 'member-2'],
       enabled: true
     };
     expect(settingsNetworkEgressRoutesQueryKey).toEqual([
@@ -160,7 +160,7 @@ describe('settings network egress routes API', () => {
     createSettingsNetworkEgressRoute(route, 'csrf-123');
     updateSettingsNetworkEgressRoute(
       'route-1',
-      { pool_id: 'pool-2', enabled: false },
+      { pool_member_ids: ['member-2'], enabled: false },
       'csrf-123'
     );
     deleteSettingsNetworkEgressRoute('route-1', 'csrf-123');

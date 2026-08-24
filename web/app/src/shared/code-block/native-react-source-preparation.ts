@@ -1,7 +1,6 @@
 import {
   evaluateNativeReactComponentArtifactWithRegistry,
   NativeReactModuleRegistryError,
-  type NativeReactCatalogDependencyLock,
   type NativeReactComponentArtifact,
   type NativeReactArtifactEvaluationBindings,
   type NativeReactCompileDiagnostic,
@@ -15,7 +14,6 @@ import {
   compileNativeReactComponentInBrowser,
   type NativeReactBrowserCompilerWorkerFactory
 } from './native-react-compiler-browser';
-import { compileNativeReactExecutableStyle } from './native-react-executable-style';
 
 export type NativeReactSourcePreparationDiagnostic =
   | NativeReactCompileDiagnostic
@@ -27,25 +25,17 @@ export type NativeReactSourcePreparationResult =
       artifact: NativeReactComponentArtifact;
       component: NativeTrustedBlockComponent;
       moduleAssets: NativeReactResolvedModuleAsset[];
-      executableStyle: Awaited<
-        ReturnType<typeof compileNativeReactExecutableStyle>
-      >;
     }
   | {
       ok: false;
       diagnostics: NativeReactSourcePreparationDiagnostic[];
     };
 
-export type NativeReactModuleRegistryFactory = (
-  dependencyLock: NativeReactCatalogDependencyLock
-) => NativeReactModuleRegistry;
+export type NativeReactModuleRegistryFactory = () => NativeReactModuleRegistry;
 
 export async function prepareNativeReactSource({
   frozenSource,
   requestId,
-  dependencyLock,
-  runtimeFingerprint,
-  executableStyle,
   compiler = compileNativeReactComponentInBrowser,
   workerFactory,
   registryFactory,
@@ -53,54 +43,24 @@ export async function prepareNativeReactSource({
 }: {
   frozenSource: string;
   requestId: string;
-  dependencyLock: NativeReactCatalogDependencyLock;
-  runtimeFingerprint?: string;
-  executableStyle?: Awaited<
-    ReturnType<typeof compileNativeReactExecutableStyle>
-  >;
   compiler?: typeof compileNativeReactComponentInBrowser;
   workerFactory?: NativeReactBrowserCompilerWorkerFactory;
   registryFactory: NativeReactModuleRegistryFactory;
   evaluationBindings?: NativeReactArtifactEvaluationBindings;
 }): Promise<NativeReactSourcePreparationResult> {
-  let preparedExecutableStyle: Awaited<
-    ReturnType<typeof compileNativeReactExecutableStyle>
-  >;
+  let registry: NativeReactModuleRegistry;
   try {
-    preparedExecutableStyle =
-      executableStyle ??
-      (await compileNativeReactExecutableStyle(frozenSource, dependencyLock));
+    registry = registryFactory();
   } catch (error) {
-    return {
-      ok: false,
-      diagnostics: [
-        {
-          phase: 'compile',
-          code: 'transform_failed',
-          path: 'tailwind',
-          message:
-            error instanceof Error
-              ? error.message
-              : 'Tailwind compilation failed.'
-        }
-      ]
-    };
+    return registryFailure(error);
   }
   const compiled = await compiler({
     source: frozenSource,
     requestId,
-    dependencyLock,
-    ...(runtimeFingerprint ? { runtimeFingerprint } : {}),
+    moduleDefinitions: registry.definitions,
     ...(workerFactory ? { workerFactory } : {})
   });
   if (!compiled.ok) return compiled;
-
-  let registry: NativeReactModuleRegistry;
-  try {
-    registry = registryFactory(compiled.artifact.dependencyLock);
-  } catch (error) {
-    return registryFailure(error);
-  }
 
   const evaluated = await evaluateNativeReactComponentArtifactWithRegistry(
     compiled.artifact,
@@ -117,8 +77,7 @@ export async function prepareNativeReactSource({
       ok: true,
       artifact: evaluated.artifact,
       component: evaluated.component,
-      moduleAssets: [...moduleAssets, ...preparedExecutableStyle.assets],
-      executableStyle: preparedExecutableStyle
+      moduleAssets
     };
   } catch (error) {
     return registryFailure(error);

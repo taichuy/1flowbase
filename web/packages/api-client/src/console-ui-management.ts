@@ -93,6 +93,7 @@ export interface ConsoleUiCatalogComponent {
   catalog_updated_at: string;
   source_locator: string;
   source_checksum: string;
+  local_version: string | null;
 }
 
 export interface ConsoleUiCatalogIndex {
@@ -123,6 +124,7 @@ export interface ConsoleUiCatalogSearchEntry {
   version: string;
   keywords: string[];
   catalog_page: number;
+  local_version: string | null;
 }
 
 export interface ConsoleUiCatalogSearchResult {

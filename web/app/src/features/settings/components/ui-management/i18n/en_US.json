@@ -70,13 +70,11 @@
   "resize_catalog_drawer": "Resize remote catalog drawer",
   "catalog_search": "Search remote component catalog",
   "catalog_search_placeholder": "Search by name, code, or keyword",
-  "catalog_status_loading": "Loading catalog update status…",
-  "catalog_version_status": "Catalog {{version}} · {{count}} groups",
-  "catalog_update_available": "Updates available",
-  "catalog_group_status": "{{total}} remote · {{updates}} new or updated · {{removals}} removed locally",
   "catalog_download": "Download",
-  "catalog_sync_group": "Sync group",
+  "catalog_update": "Update",
   "catalog_downloaded": "Component downloaded",
-  "catalog_group_synced": "Component group synchronized",
-  "catalog_request_failed": "The remote catalog request failed. Existing component records were not changed."
+  "catalog_updated": "Component updated",
+  "catalog_request_failed": "The remote catalog request failed. Existing component records were not changed.",
+  "extension_center_tab": "UI components",
+  "go_to_ui_management": "Go to UI management"
 }

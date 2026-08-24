@@ -183,7 +183,7 @@ test("collectRepoHygieneFindings reports duplicate test titles and oversized fil
   );
 });
 
-test("file size pressure excludes only official browser bundles and installed plugin copies", () => {
+test("file size pressure excludes installed plugin copies", () => {
   const repoRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), "oneflowbase-repo-hygiene-size-boundary-"),
   );
@@ -219,6 +219,7 @@ test("file size pressure excludes only official browser bundles and installed pl
     .sort();
 
   assert.deepEqual(pressureFiles, [
+    "api/plugins/capability-plugins/1flowbase/browser-assets/charts.js",
     "api/plugins/capability-plugins/1flowbase/src/runtime.js",
     "api/plugins/capability-plugins/vendor/browser-assets/custom.js",
   ]);
