@@ -184,9 +184,16 @@ const networkCenterApi = vi.hoisted(() => ({
     'proxy-plugins',
     'official-catalog'
   ],
+  settingsNetworkEgressPluginFamiliesQueryKey: [
+    'settings',
+    'network-center',
+    'proxy-plugins',
+    'families'
+  ],
   fetchSettingsNetworkEgressProviders: vi.fn(),
   fetchSettingsNetworkEgressProviderTypes: vi.fn(),
   fetchSettingsNetworkEgressOfficialPluginCatalog: vi.fn(),
+  fetchSettingsNetworkEgressPluginFamilies: vi.fn(),
   installSettingsNetworkEgressOfficialPlugin: vi.fn(),
   uploadSettingsNetworkEgressPluginPackage: vi.fn(),
   fetchSettingsNetworkEgressPools: vi.fn(),

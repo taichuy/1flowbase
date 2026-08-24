@@ -145,7 +145,7 @@ export function NetworkEgressProvidersPanel() {
                   }
                 },
                 {
-                  title: i18nText('settings', 'auto.network_center_proxy_type_actions'),
+                  title: i18nText('settings', 'auto.operation'),
                   key: 'actions',
                   render: (_, item) => {
                     const family = familyByProviderCode.get(item.provider_code);
