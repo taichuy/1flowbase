@@ -107,7 +107,7 @@ impl NetworkEgressHttpClientResolver {
         };
 
         let selected = NetworkEgressPoolService::new(self.store.clone())
-            .select_healthy_first(route.pool_id)
+            .select_healthy_first_from(route.pool_id, &route.pool_member_ids)
             .await
             .context("configured network egress pool has no usable member")?;
         self.acquire_provider_egress(selected.provider_id, &selected.provider_egress_key)

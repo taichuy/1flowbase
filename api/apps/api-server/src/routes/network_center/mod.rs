@@ -53,13 +53,13 @@ pub struct UpdateNetworkEgressProviderLifecycleBody {
 pub struct CreateNetworkEgressRouteBody {
     pub consumer_kind: String,
     pub consumer_reference: Option<String>,
-    pub pool_id: String,
+    pub pool_member_ids: Vec<String>,
     pub enabled: bool,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpdateNetworkEgressRouteBody {
-    pub pool_id: String,
+    pub pool_member_ids: Vec<String>,
     pub enabled: bool,
 }
 
@@ -101,7 +101,7 @@ pub struct NetworkEgressRouteResponse {
     pub id: String,
     pub consumer_kind: String,
     pub consumer_reference: Option<String>,
-    pub pool_id: String,
+    pub pool_member_ids: Vec<String>,
     pub enabled: bool,
     pub failure_policy: String,
 }
@@ -183,6 +183,13 @@ fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, ApiError> {
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
 }
 
+fn parse_uuids(values: Vec<String>, field: &'static str) -> Result<Vec<Uuid>, ApiError> {
+    values
+        .into_iter()
+        .map(|value| parse_uuid(&value, field))
+        .collect()
+}
+
 fn lifecycle(value: &str) -> Result<domain::NetworkEgressProviderLifecycle, ApiError> {
     match value {
         "draft" => Ok(domain::NetworkEgressProviderLifecycle::Draft),
@@ -256,7 +263,11 @@ fn route_response(route: domain::NetworkEgressRoute) -> NetworkEgressRouteRespon
             .selector
             .consumer_reference()
             .map(|value| value.to_string()),
-        pool_id: route.pool_id.to_string(),
+        pool_member_ids: route
+            .pool_member_ids
+            .into_iter()
+            .map(|value| value.to_string())
+            .collect(),
         enabled: route.enabled,
         failure_policy: "block".to_string(),
     }
@@ -409,7 +420,7 @@ pub async fn create_network_egress_route(
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
             selector: consumer_selector(body.consumer_kind, body.consumer_reference)?,
-            pool_id: parse_uuid(&body.pool_id, "pool_id")?,
+            pool_member_ids: parse_uuids(body.pool_member_ids, "pool_member_ids")?,
             enabled: body.enabled,
         })
         .await?;
@@ -440,7 +451,7 @@ pub async fn update_network_egress_route(
             actor_user_id: context.user.id,
             workspace_id: context.actor.current_workspace_id,
             route_id: parse_uuid(&route_id, "route_id")?,
-            pool_id: parse_uuid(&body.pool_id, "pool_id")?,
+            pool_member_ids: parse_uuids(body.pool_member_ids, "pool_member_ids")?,
             enabled: body.enabled,
         })
         .await?;
@@ -474,6 +485,43 @@ pub async fn delete_network_egress_route(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ac_001_ac_002_route_contract_uses_explicit_pool_member_mapping() {
+        let first_member_id = Uuid::now_v7();
+        let second_member_id = Uuid::now_v7();
+        let body: CreateNetworkEgressRouteBody = serde_json::from_value(serde_json::json!({
+            "consumer_kind": "github",
+            "consumer_reference": null,
+            "pool_member_ids": [first_member_id, second_member_id],
+            "enabled": true
+        }))
+        .expect("route request should accept the backend-owned mapping field");
+        assert_eq!(
+            body.pool_member_ids,
+            vec![first_member_id.to_string(), second_member_id.to_string()]
+        );
+
+        let now = time::OffsetDateTime::now_utc();
+        let response = route_response(domain::NetworkEgressRoute {
+            id: Uuid::now_v7(),
+            workspace_id: Uuid::now_v7(),
+            selector: domain::NetworkEgressConsumerSelector::GithubOfficialSources,
+            pool_id: Uuid::now_v7(),
+            pool_member_ids: vec![first_member_id, second_member_id],
+            enabled: true,
+            created_by: Uuid::now_v7(),
+            updated_by: Uuid::now_v7(),
+            created_at: now,
+            updated_at: now,
+        });
+        let json = serde_json::to_value(response).expect("route response should serialize");
+        assert_eq!(
+            json["pool_member_ids"],
+            serde_json::json!([first_member_id, second_member_id])
+        );
+        assert!(json.get("pool_id").is_none());
+    }
 
     #[test]
     fn ac_003_secret_reference_is_not_serialized_by_provider_projection() {

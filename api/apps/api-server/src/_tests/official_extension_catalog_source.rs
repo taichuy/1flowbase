@@ -356,10 +356,11 @@ pub(super) async fn seed_network_egress_resolver(
     )
     .await
     .unwrap();
+    let member_id = uuid::Uuid::now_v7();
     <storage_durable::MainDurableStore as NetworkEgressPoolRepository>::create_network_egress_pool_member(
         &state.store,
         &CreateNetworkEgressPoolMemberInput {
-            member_id: uuid::Uuid::now_v7(),
+            member_id,
             pool_id,
             provider_id,
             provider_egress_key: "fixture-egress".into(),
@@ -377,6 +378,7 @@ pub(super) async fn seed_network_egress_resolver(
             workspace_id: state.bootstrap_workspace_id,
             selector,
             pool_id,
+            pool_member_ids: vec![member_id],
             enabled: true,
             actor_user_id: root.id,
         },

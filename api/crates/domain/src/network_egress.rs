@@ -246,6 +246,8 @@ pub struct NetworkEgressRoute {
     pub workspace_id: Uuid,
     pub selector: NetworkEgressConsumerSelector,
     pub pool_id: Uuid,
+    /// Ordered subset of the global proxy pool eligible for this consumer route.
+    pub pool_member_ids: Vec<Uuid>,
     pub enabled: bool,
     pub created_by: Uuid,
     pub updated_by: Uuid,

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use std::collections::HashSet;
 use uuid::Uuid;
 
 use crate::{
@@ -15,7 +16,7 @@ pub struct CreateNetworkEgressRouteCommand {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub selector: domain::NetworkEgressConsumerSelector,
-    pub pool_id: Uuid,
+    pub pool_member_ids: Vec<Uuid>,
     pub enabled: bool,
 }
 
@@ -23,7 +24,7 @@ pub struct UpdateNetworkEgressRouteCommand {
     pub actor_user_id: Uuid,
     pub workspace_id: Uuid,
     pub route_id: Uuid,
-    pub pool_id: Uuid,
+    pub pool_member_ids: Vec<Uuid>,
     pub enabled: bool,
 }
 
@@ -52,14 +53,15 @@ where
         command: CreateNetworkEgressRouteCommand,
     ) -> Result<domain::NetworkEgressRoute> {
         ensure_global_network_egress_pool(&self.repository, command.actor_user_id).await?;
-        self.require_pool(command.pool_id).await?;
+        self.require_pool_members(&command.pool_member_ids).await?;
         let route = self
             .repository
             .create_network_egress_route(&CreateNetworkEgressRouteInput {
                 route_id: Uuid::now_v7(),
                 workspace_id: command.workspace_id,
                 selector: command.selector,
-                pool_id: command.pool_id,
+                pool_id: GLOBAL_NETWORK_EGRESS_POOL_ID,
+                pool_member_ids: command.pool_member_ids,
                 enabled: command.enabled,
                 actor_user_id: command.actor_user_id,
             })
@@ -79,13 +81,13 @@ where
         command: UpdateNetworkEgressRouteCommand,
     ) -> Result<domain::NetworkEgressRoute> {
         ensure_global_network_egress_pool(&self.repository, command.actor_user_id).await?;
-        self.require_pool(command.pool_id).await?;
+        self.require_pool_members(&command.pool_member_ids).await?;
         let route = self
             .repository
             .update_network_egress_route(&UpdateNetworkEgressRouteInput {
                 workspace_id: command.workspace_id,
                 route_id: command.route_id,
-                pool_id: command.pool_id,
+                pool_member_ids: command.pool_member_ids,
                 enabled: command.enabled,
                 actor_user_id: command.actor_user_id,
             })
@@ -135,19 +137,34 @@ where
         Ok(None)
     }
 
-    async fn require_pool(&self, pool_id: Uuid) -> Result<()> {
-        if pool_id != GLOBAL_NETWORK_EGRESS_POOL_ID {
-            return Err(ControlPlaneError::Conflict("network_egress_global_pool_only").into());
+    async fn require_pool_members(&self, member_ids: &[Uuid]) -> Result<()> {
+        if member_ids.is_empty()
+            || member_ids.iter().collect::<HashSet<_>>().len() != member_ids.len()
+        {
+            return Err(ControlPlaneError::InvalidInput("pool_member_ids").into());
         }
         if self
             .repository
-            .get_network_egress_pool(pool_id)
+            .get_network_egress_pool(GLOBAL_NETWORK_EGRESS_POOL_ID)
             .await?
-            .is_some()
+            .is_none()
+        {
+            return Err(ControlPlaneError::NotFound("network_egress_pool").into());
+        }
+        let available = self
+            .repository
+            .list_network_egress_pool_members(GLOBAL_NETWORK_EGRESS_POOL_ID)
+            .await?
+            .into_iter()
+            .map(|member| member.id)
+            .collect::<HashSet<_>>();
+        if member_ids
+            .iter()
+            .all(|member_id| available.contains(member_id))
         {
             Ok(())
         } else {
-            Err(ControlPlaneError::NotFound("network_egress_pool").into())
+            Err(ControlPlaneError::InvalidInput("pool_member_ids").into())
         }
     }
 

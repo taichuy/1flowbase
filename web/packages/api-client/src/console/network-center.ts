@@ -200,7 +200,7 @@ export interface ConsoleNetworkEgressRoute {
   id: string;
   consumer_kind: string;
   consumer_reference: string | null;
-  pool_id: string;
+  pool_member_ids: string[];
   enabled: boolean;
   failure_policy: string;
 }
@@ -208,12 +208,12 @@ export interface ConsoleNetworkEgressRoute {
 export interface CreateConsoleNetworkEgressRouteInput {
   consumer_kind: string;
   consumer_reference: string | null;
-  pool_id: string;
+  pool_member_ids: string[];
   enabled: boolean;
 }
 
 export interface UpdateConsoleNetworkEgressRouteInput {
-  pool_id: string;
+  pool_member_ids: string[];
   enabled: boolean;
 }
 

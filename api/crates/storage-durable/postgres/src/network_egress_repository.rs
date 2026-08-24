@@ -144,6 +144,7 @@ fn route(row: sqlx::postgres::PgRow) -> Result<domain::NetworkEgressRoute> {
         workspace_id: row.get("workspace_id"),
         selector,
         pool_id: row.get("pool_id"),
+        pool_member_ids: row.get("pool_member_ids"),
         enabled: row.get("enabled"),
         created_by: row.get("created_by"),
         updated_by: row.get("updated_by"),
@@ -628,7 +629,18 @@ impl NetworkEgressPoolRepository for PgControlPlaneStore {
                 .bind(pool_id)
                 .bind(member_id)
                 .execute(self.pool())
-                .await?;
+                .await
+                .map_err(|error| match &error {
+                    sqlx::Error::Database(database_error)
+                        if database_error.constraint()
+                            == Some("network_egress_route_pool_members_member_fk") =>
+                    {
+                        anyhow::Error::new(control_plane::errors::ControlPlaneError::Conflict(
+                            "network_egress_pool_member_in_use",
+                        ))
+                    }
+                    _ => error.into(),
+                })?;
         if result.rows_affected() == 0 {
             return Err(control_plane::errors::ControlPlaneError::NotFound(
                 "network_egress_pool_member",
@@ -647,9 +659,18 @@ impl NetworkEgressRouteRepository for PgControlPlaneStore {
     ) -> Result<Vec<domain::NetworkEgressRoute>> {
         sqlx::query(
             r#"
-                select * from network_egress_routes
-                where workspace_id = $1
-                order by consumer_kind asc, consumer_reference asc nulls first, id asc
+                select routes.*,
+                    array(
+                        select mapping.pool_member_id
+                        from network_egress_route_pool_members mapping
+                        where mapping.route_id = routes.id
+                        order by mapping.sequence asc
+                    ) as pool_member_ids
+                from network_egress_routes routes
+                where routes.workspace_id = $1
+                order by routes.consumer_kind asc,
+                    routes.consumer_reference asc nulls first,
+                    routes.id asc
             "#,
         )
         .bind(workspace_id)
@@ -664,13 +685,13 @@ impl NetworkEgressRouteRepository for PgControlPlaneStore {
         &self,
         input: &CreateNetworkEgressRouteInput,
     ) -> Result<domain::NetworkEgressRoute> {
-        let row = sqlx::query(
+        let mut transaction = self.pool().begin().await?;
+        sqlx::query(
             r#"
                 insert into network_egress_routes (
                     id, workspace_id, consumer_kind, consumer_reference, pool_id, enabled,
                     failure_policy, created_by, updated_by
                 ) values ($1, $2, $3, $4, $5, $6, 'block', $7, $7)
-                returning *
             "#,
         )
         .bind(input.route_id)
@@ -680,8 +701,39 @@ impl NetworkEgressRouteRepository for PgControlPlaneStore {
         .bind(input.pool_id)
         .bind(input.enabled)
         .bind(input.actor_user_id)
-        .fetch_one(self.pool())
+        .execute(&mut *transaction)
         .await?;
+        sqlx::query(
+            r#"
+                insert into network_egress_route_pool_members (
+                    route_id, pool_member_id, sequence
+                )
+                select $1, mapping.pool_member_id, mapping.ordinality::integer - 1
+                from unnest($2::uuid[]) with ordinality
+                    as mapping(pool_member_id, ordinality)
+            "#,
+        )
+        .bind(input.route_id)
+        .bind(&input.pool_member_ids)
+        .execute(&mut *transaction)
+        .await?;
+        let row = sqlx::query(
+            r#"
+                select routes.*,
+                    array(
+                        select mapping.pool_member_id
+                        from network_egress_route_pool_members mapping
+                        where mapping.route_id = routes.id
+                        order by mapping.sequence asc
+                    ) as pool_member_ids
+                from network_egress_routes routes
+                where routes.id = $1
+            "#,
+        )
+        .bind(input.route_id)
+        .fetch_one(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
         route(row)
     }
 
@@ -689,26 +741,61 @@ impl NetworkEgressRouteRepository for PgControlPlaneStore {
         &self,
         input: &UpdateNetworkEgressRouteInput,
     ) -> Result<domain::NetworkEgressRoute> {
-        let row = sqlx::query(
+        let mut transaction = self.pool().begin().await?;
+        let updated = sqlx::query(
             r#"
                 update network_egress_routes
-                set pool_id = $3, enabled = $4, updated_by = $5, updated_at = now()
+                set enabled = $3, updated_by = $4, updated_at = now()
                 where workspace_id = $1 and id = $2
-                returning *
             "#,
         )
         .bind(input.workspace_id)
         .bind(input.route_id)
-        .bind(input.pool_id)
         .bind(input.enabled)
         .bind(input.actor_user_id)
-        .fetch_optional(self.pool())
+        .execute(&mut *transaction)
         .await?;
-        row.map(route).transpose()?.ok_or_else(|| {
-            anyhow::anyhow!(control_plane::errors::ControlPlaneError::NotFound(
-                "network_egress_route"
-            ))
-        })
+        if updated.rows_affected() == 0 {
+            return Err(anyhow::anyhow!(
+                control_plane::errors::ControlPlaneError::NotFound("network_egress_route")
+            ));
+        }
+        sqlx::query("delete from network_egress_route_pool_members where route_id = $1")
+            .bind(input.route_id)
+            .execute(&mut *transaction)
+            .await?;
+        sqlx::query(
+            r#"
+                insert into network_egress_route_pool_members (
+                    route_id, pool_member_id, sequence
+                )
+                select $1, mapping.pool_member_id, mapping.ordinality::integer - 1
+                from unnest($2::uuid[]) with ordinality
+                    as mapping(pool_member_id, ordinality)
+            "#,
+        )
+        .bind(input.route_id)
+        .bind(&input.pool_member_ids)
+        .execute(&mut *transaction)
+        .await?;
+        let row = sqlx::query(
+            r#"
+                select routes.*,
+                    array(
+                        select mapping.pool_member_id
+                        from network_egress_route_pool_members mapping
+                        where mapping.route_id = routes.id
+                        order by mapping.sequence asc
+                    ) as pool_member_ids
+                from network_egress_routes routes
+                where routes.id = $1
+            "#,
+        )
+        .bind(input.route_id)
+        .fetch_one(&mut *transaction)
+        .await?;
+        transaction.commit().await?;
+        route(row)
     }
 
     async fn delete_network_egress_route(&self, workspace_id: Uuid, route_id: Uuid) -> Result<()> {
@@ -733,11 +820,18 @@ impl NetworkEgressRouteRepository for PgControlPlaneStore {
     ) -> Result<Option<domain::NetworkEgressRoute>> {
         sqlx::query(
             r#"
-                select * from network_egress_routes
-                where workspace_id = $1
-                  and consumer_kind = $2
-                  and consumer_reference is not distinct from $3
-                  and enabled = true
+                select routes.*,
+                    array(
+                        select mapping.pool_member_id
+                        from network_egress_route_pool_members mapping
+                        where mapping.route_id = routes.id
+                        order by mapping.sequence asc
+                    ) as pool_member_ids
+                from network_egress_routes routes
+                where routes.workspace_id = $1
+                  and routes.consumer_kind = $2
+                  and routes.consumer_reference is not distinct from $3
+                  and routes.enabled = true
             "#,
         )
         .bind(workspace_id)
@@ -747,6 +841,16 @@ impl NetworkEgressRouteRepository for PgControlPlaneStore {
         .await?
         .map(route)
         .transpose()
+    }
+
+    async fn is_network_egress_pool_member_referenced(&self, member_id: Uuid) -> Result<bool> {
+        sqlx::query_scalar(
+            "select exists(select 1 from network_egress_route_pool_members where pool_member_id = $1)",
+        )
+        .bind(member_id)
+        .fetch_one(self.pool())
+        .await
+        .map_err(Into::into)
     }
 }
 
@@ -758,6 +862,7 @@ mod tests {
             ensure_global_network_egress_pool, CreateNetworkEgressPoolMemberCommand,
             NetworkEgressPoolService, GLOBAL_NETWORK_EGRESS_POOL_ID,
         },
+        network_egress_route::{CreateNetworkEgressRouteCommand, NetworkEgressRouteService},
         ports::{
             CreateNetworkEgressPoolInput, CreateNetworkEgressPoolMemberInput,
             CreateNetworkEgressRouteInput, CreateStaticHttpProxyPoolMemberInput,
@@ -1219,6 +1324,66 @@ mod tests {
         assert_eq!(selection.provider_id, provider_id);
         assert_eq!(selection.provider_egress_key, "available-second");
 
+        let route_selection = NetworkEgressPoolService::new(store.clone())
+            .select_healthy_first_from(pool_id, &[available.member.id])
+            .await
+            .expect("route selection must stay inside its explicit proxy mapping");
+        assert_eq!(route_selection.member_id, available.member.id);
+        let unavailable_route = NetworkEgressPoolService::new(store.clone())
+            .select_healthy_first_from(pool_id, &[unavailable.member.id])
+            .await
+            .expect_err("a route must not fall through to an unbound healthy proxy");
+        assert!(unavailable_route
+            .to_string()
+            .contains("network_egress_pool_unavailable"));
+
+        let workspace_id = sqlx::query_scalar::<_, Uuid>(
+            "select id from workspaces where name = 'network-egress'",
+        )
+        .fetch_one(store.pool())
+        .await
+        .expect("fixture workspace should exist");
+        let invalid_mapping = NetworkEgressRouteService::new(store.clone())
+            .create(CreateNetworkEgressRouteCommand {
+                actor_user_id: actor.id,
+                workspace_id,
+                selector: domain::NetworkEgressConsumerSelector::ModelProviderDefault,
+                pool_member_ids: vec![available.member.id, available.member.id],
+                enabled: true,
+            })
+            .await
+            .expect_err("route mappings must be non-empty and unique");
+        assert!(invalid_mapping.to_string().contains("pool_member_ids"));
+        let route = NetworkEgressRouteService::new(store.clone())
+            .create(CreateNetworkEgressRouteCommand {
+                actor_user_id: actor.id,
+                workspace_id,
+                selector: domain::NetworkEgressConsumerSelector::HttpNodeDefault,
+                pool_member_ids: vec![available.member.id, unavailable.member.id],
+                enabled: true,
+            })
+            .await
+            .expect("ordered route proxy mapping should persist");
+        assert_eq!(
+            route.pool_member_ids,
+            vec![available.member.id, unavailable.member.id]
+        );
+        assert!(
+            NetworkEgressRouteRepository::is_network_egress_pool_member_referenced(
+                &store,
+                available.member.id
+            )
+            .await
+            .expect("route reference lookup should succeed")
+        );
+        let delete_referenced = NetworkEgressPoolService::new(store.clone())
+            .delete_member(actor.id, pool_id, available.member.id)
+            .await
+            .expect_err("a proxy referenced by a route must not be deleted");
+        assert!(delete_referenced
+            .to_string()
+            .contains("network_egress_pool_member_in_use"));
+
         NetworkEgressRepository::replace_network_egress_projection(
             &store,
             &ReplaceNetworkEgressProjectionInput {
@@ -1416,6 +1581,7 @@ mod tests {
                 workspace_id,
                 selector: domain::NetworkEgressConsumerSelector::GithubOfficialSources,
                 pool_id,
+                pool_member_ids: vec![],
                 enabled: true,
                 actor_user_id: actor.id,
             },
@@ -1434,6 +1600,7 @@ mod tests {
                 workspace_id,
                 selector: domain::NetworkEgressConsumerSelector::GithubOfficialSources,
                 pool_id,
+                pool_member_ids: vec![],
                 enabled: false,
                 actor_user_id: actor.id,
             },

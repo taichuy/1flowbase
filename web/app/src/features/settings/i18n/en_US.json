@@ -1093,6 +1093,7 @@
     "network_center_routes_unavailable": "Routing rule management is not available yet.",
     "network_center_route_consumer": "Consumer",
     "network_center_route_pool": "Target proxy pool",
+    "network_center_route_proxy_mapping": "Proxy mapping",
     "network_center_route_failure_policy": "Failure policy",
     "network_center_route_create": "Create routing rule",
     "network_center_route_edit": "Edit routing rule",

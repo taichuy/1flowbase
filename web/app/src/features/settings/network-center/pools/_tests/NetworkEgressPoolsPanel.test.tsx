@@ -43,6 +43,29 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+function proxyPoolMember(index: number) {
+  return {
+    id: `member-${index}`,
+    provider_id: `provider-${index}`,
+    provider_egress_key: `egress-${index}`,
+    provider_code: 'builtin_static_http',
+    display_name: `Proxy ${index}`,
+    address_summary: `203.0.113.${index}:3128`,
+    region: null,
+    enabled: index !== 20,
+    sequence: index,
+    health: 'healthy',
+    probe_status: 'not_tested',
+    probe_http_status: 'not_tested',
+    probe_https_status: 'not_tested',
+    probe_latency_ms: 0,
+    probe_exit_ip: null,
+    probe_exit_region: null,
+    probe_error_code: null,
+    last_probed_at: null
+  };
+}
+
 describe('NetworkEgressPoolsPanel', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -106,11 +129,63 @@ describe('NetworkEgressPoolsPanel', () => {
   test('AC-OP02 uses the shared data-table layout and field configuration', async () => {
     renderPanel();
 
-    await screen.findByTestId('network-center-pools-shell');
+    const shell = await screen.findByTestId('network-center-pools-shell');
 
+    expect(shell).toHaveClass('network-center-pools-shell');
     expect(document.querySelector('.data-table-layout')).toBeInTheDocument();
     expect(document.querySelector('.data-table')).toBeInTheDocument();
     expect(document.querySelector('.data-table__column-selector')).toBeInTheDocument();
+  });
+
+  test('AC-006 tests every proxy on the current page without testing the next page', async () => {
+    const pendingFirstProbe = deferred<{ probe_status: string }>();
+    networkCenterApi.fetchSettingsNetworkEgressPools.mockResolvedValue([
+      {
+        id: 'global-pool',
+        display_name: 'Global proxy pool',
+        selection_strategy: 'healthy_first',
+        members: Array.from({ length: 21 }, (_, index) =>
+          proxyPoolMember(index + 1)
+        )
+      }
+    ]);
+    networkCenterApi.testSettingsNetworkEgressPoolMember.mockImplementation(
+      (_, memberId) => {
+        if (memberId === 'member-1') return pendingFirstProbe.promise;
+        if (memberId === 'member-2') {
+          return Promise.reject(new Error('probe request failed'));
+        }
+        return Promise.resolve({ probe_status: 'succeeded' });
+      }
+    );
+    renderPanel();
+
+    await screen.findByText('Proxy 1');
+    const toolbar = document.querySelector('.data-table__toolbar');
+    expect(toolbar).not.toBeNull();
+    const testCurrentPageButton = within(toolbar as HTMLElement).getByRole(
+      'button',
+      { name: /^(测\s*试|Test)$/ }
+    );
+    fireEvent.click(testCurrentPageButton);
+
+    await waitFor(() =>
+      expect(
+        networkCenterApi.testSettingsNetworkEgressPoolMember
+      ).toHaveBeenCalledTimes(20)
+    );
+    expect(testCurrentPageButton).toHaveClass('ant-btn-loading');
+    expect(
+      networkCenterApi.testSettingsNetworkEgressPoolMember
+    ).toHaveBeenCalledWith('global-pool', 'member-20', 'csrf-123');
+    expect(
+      networkCenterApi.testSettingsNetworkEgressPoolMember
+    ).not.toHaveBeenCalledWith('global-pool', 'member-21', 'csrf-123');
+
+    pendingFirstProbe.resolve({ probe_status: 'succeeded' });
+    await waitFor(() =>
+      expect(testCurrentPageButton).not.toHaveClass('ant-btn-loading')
+    );
   });
 
   test('AC-GP01 creates a manual proxy from the global pool without creating a pool', async () => {
@@ -216,7 +291,13 @@ describe('NetworkEgressPoolsPanel', () => {
     expect(address).toBeInTheDocument();
     expect(address?.closest('code')).not.toBeInTheDocument();
     expect(screen.getByText('32ms')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /测试|Test/ }));
+    const tableBody = document.querySelector('.ant-table-tbody');
+    expect(tableBody).not.toBeNull();
+    fireEvent.click(
+      within(tableBody as HTMLElement).getByRole('button', {
+        name: /测试|Test/
+      })
+    );
 
     await waitFor(() => expect(networkCenterApi.testSettingsNetworkEgressPoolMember).toHaveBeenCalledWith('global-pool', 'member-1', 'csrf-123'));
   });
@@ -276,7 +357,10 @@ describe('NetworkEgressPoolsPanel', () => {
     networkCenterApi.testSettingsNetworkEgressPoolMember.mockImplementation((_, memberId) => (memberId === 'member-1' ? pendingFirstProbe.promise : pendingSecondProbe.promise));
     renderPanel();
 
-    const testButtons = await screen.findAllByRole('button', {
+    await screen.findByText('US proxy');
+    const tableBody = document.querySelector('.ant-table-tbody');
+    expect(tableBody).not.toBeNull();
+    const testButtons = within(tableBody as HTMLElement).getAllByRole('button', {
       name: /测试|Test/
     });
     fireEvent.click(testButtons[0]);
@@ -365,7 +449,12 @@ describe('NetworkEgressPoolsPanel', () => {
     });
     renderPanel();
 
-    expect(await screen.findByRole('button', { name: '测试' })).toBeInTheDocument();
+    await screen.findByText('US proxy');
+    const tableBody = document.querySelector('.ant-table-tbody');
+    expect(tableBody).not.toBeNull();
+    expect(
+      within(tableBody as HTMLElement).getByRole('button', { name: '测试' })
+    ).toBeInTheDocument();
     expect(screen.getByText('HTTP 未测试')).toBeInTheDocument();
     expect(screen.getByText('HTTPS 未测试')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: '测试连接' })).not.toBeInTheDocument();

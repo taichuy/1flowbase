@@ -119,6 +119,7 @@ pub struct CreateNetworkEgressRouteInput {
     pub workspace_id: Uuid,
     pub selector: domain::NetworkEgressConsumerSelector,
     pub pool_id: Uuid,
+    pub pool_member_ids: Vec<Uuid>,
     pub enabled: bool,
     pub actor_user_id: Uuid,
 }
@@ -127,7 +128,7 @@ pub struct CreateNetworkEgressRouteInput {
 pub struct UpdateNetworkEgressRouteInput {
     pub workspace_id: Uuid,
     pub route_id: Uuid,
-    pub pool_id: Uuid,
+    pub pool_member_ids: Vec<Uuid>,
     pub enabled: bool,
     pub actor_user_id: Uuid,
 }
@@ -270,6 +271,10 @@ pub trait NetworkEgressRouteRepository: Send + Sync {
         workspace_id: Uuid,
         selector: &domain::NetworkEgressConsumerSelector,
     ) -> anyhow::Result<Option<domain::NetworkEgressRoute>>;
+    async fn is_network_egress_pool_member_referenced(
+        &self,
+        member_id: Uuid,
+    ) -> anyhow::Result<bool>;
 }
 
 #[async_trait]
