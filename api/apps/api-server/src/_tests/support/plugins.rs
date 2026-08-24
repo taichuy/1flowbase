@@ -8,7 +8,7 @@ pub(super) struct InMemoryOfficialPluginSource;
 pub(super) struct InMemoryOfficialMcpBundleSource;
 
 #[derive(Clone, Default)]
-pub(super) struct InMemoryOfficialExtensionCatalogSource;
+pub(crate) struct InMemoryOfficialExtensionCatalogSource;
 
 fn runtime_extension_catalog_entry() -> OfficialExtensionCatalogEntry {
     OfficialExtensionCatalogEntry {

@@ -943,6 +943,7 @@ fn official_filter_from_query(query: &OfficialPluginCatalogQuery) -> OfficialPlu
 pub(crate) async fn resolved_official_plugin_install_command(
     state: &ApiState,
     actor_user_id: Uuid,
+    workspace_id: Uuid,
     plugin_id: String,
     compatibility_override: Option<PluginCompatibilityOverride>,
     risk_override: Option<PluginRiskOverride>,
@@ -951,7 +952,7 @@ pub(crate) async fn resolved_official_plugin_install_command(
     let (entry, source_kind) = loop {
         let page = state
             .official_extension_catalog_source
-            .list_page("runtime-extensions", cursor.as_deref())
+            .list_page_for_workspace(workspace_id, "runtime-extensions", cursor.as_deref())
             .await?;
         if let Some(entry) = page.entries.into_iter().find(|entry| {
             entry
@@ -981,7 +982,7 @@ pub(crate) async fn resolved_official_plugin_install_command(
         .to_string();
     let downloaded = state
         .official_extension_catalog_source
-        .download_artifact(&entry)
+        .download_artifact_for_workspace(workspace_id, &entry)
         .await?;
     let expected_checksum = downloaded.descriptor.expected_checksum.clone().ok_or(
         control_plane::errors::ControlPlaneError::InvalidInput("official_plugin_checksum"),
@@ -1180,6 +1181,7 @@ pub async fn install_official_plugin(
     let command = resolved_official_plugin_install_command(
         &state,
         context.user.id,
+        context.actor.current_workspace_id,
         body.plugin_id,
         to_compatibility_override(body.compatibility_override),
         to_risk_override(body.risk_override),

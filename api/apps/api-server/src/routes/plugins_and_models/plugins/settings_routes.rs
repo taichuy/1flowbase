@@ -88,7 +88,8 @@ pub async fn list_official_catalog(
     let filter = official_filter_from_query(&query);
     let page = state
         .official_extension_catalog_source
-        .search(
+        .search_for_workspace(
+            context.actor.current_workspace_id,
             "runtime-extensions",
             crate::official_extension_catalog::OfficialExtensionCatalogSearchQuery {
                 slot_code: Some(MODEL_PROVIDER_PLUGIN_TYPE.to_string()),
@@ -346,6 +347,7 @@ pub async fn install_official_plugin(
     let command = resolved_official_plugin_install_command(
         &state,
         context.user.id,
+        context.actor.current_workspace_id,
         body.plugin_id,
         to_compatibility_override(body.compatibility_override),
         to_risk_override(body.risk_override),

@@ -20,7 +20,12 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    config::{ApiConfig, ResolvedOfficialExtensionCatalogSourceConfig},
+    config::{
+        ApiConfig, ResolvedOfficialExtensionCatalogSourceConfig,
+        DEFAULT_OFFICIAL_EXTENSION_ARTIFACT_DOWNLOAD_TIMEOUT,
+        DEFAULT_OFFICIAL_EXTENSION_CATALOG_REQUEST_TIMEOUT,
+        DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT,
+    },
     network_egress_client::{NetworkEgressExecutionScope, NetworkEgressHttpClientResolver},
     official_plugin_registry::rewrite_github_raw_url,
 };
@@ -29,8 +34,6 @@ const EXTENSION_CATALOG_SCHEMA_VERSION: &str = "1flowbase.extension-catalog/v1";
 const EXTENSION_CATALOG_SEARCH_SCHEMA_VERSION: &str = "1flowbase.extension-catalog-search/v1";
 const MAX_EXTENSION_CATALOG_DOCUMENT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_EXTENSION_ARTIFACT_BYTES: usize = 64 * 1024 * 1024;
-const EXTENSION_SOURCE_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
-const EXTENSION_SOURCE_REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OfficialExtensionCatalogFreshness {
@@ -669,7 +672,11 @@ fn runtime_extension_i18n_summary(
 #[derive(Clone)]
 pub struct ApiOfficialExtensionCatalogSource {
     sources: Arc<BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>>,
-    client: Client,
+    catalog_client: Client,
+    artifact_client: Client,
+    source_connect_timeout: Duration,
+    catalog_request_timeout: Duration,
+    artifact_download_timeout: Duration,
     network_egress: Option<NetworkEgressHttpClientResolver>,
     last_success: Arc<Mutex<HashMap<CatalogCacheKey, OfficialExtensionCatalogPage>>>,
     search_snapshots: Arc<Mutex<HashMap<String, VerifiedSearchSnapshot>>>,
@@ -708,7 +715,17 @@ impl ApiOfficialExtensionCatalogSource {
     pub fn from_config(config: &ApiConfig) -> Self {
         Self {
             sources: Arc::new(config.official_extension_catalog_sources.clone()),
-            client: extension_source_client(),
+            catalog_client: extension_source_client(
+                config.official_extension_source_connect_timeout,
+                config.official_extension_catalog_request_timeout,
+            ),
+            artifact_client: extension_source_client(
+                config.official_extension_source_connect_timeout,
+                config.official_extension_artifact_download_timeout,
+            ),
+            source_connect_timeout: config.official_extension_source_connect_timeout,
+            catalog_request_timeout: config.official_extension_catalog_request_timeout,
+            artifact_download_timeout: config.official_extension_artifact_download_timeout,
             network_egress: None,
             last_success: Arc::new(Mutex::new(HashMap::new())),
             search_snapshots: Arc::new(Mutex::new(HashMap::new())),
@@ -718,7 +735,17 @@ impl ApiOfficialExtensionCatalogSource {
     pub fn new(sources: BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>) -> Self {
         Self {
             sources: Arc::new(sources),
-            client: extension_source_client(),
+            catalog_client: extension_source_client(
+                DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT,
+                DEFAULT_OFFICIAL_EXTENSION_CATALOG_REQUEST_TIMEOUT,
+            ),
+            artifact_client: extension_source_client(
+                DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT,
+                DEFAULT_OFFICIAL_EXTENSION_ARTIFACT_DOWNLOAD_TIMEOUT,
+            ),
+            source_connect_timeout: DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT,
+            catalog_request_timeout: DEFAULT_OFFICIAL_EXTENSION_CATALOG_REQUEST_TIMEOUT,
+            artifact_download_timeout: DEFAULT_OFFICIAL_EXTENSION_ARTIFACT_DOWNLOAD_TIMEOUT,
             network_egress: None,
             last_success: Arc::new(Mutex::new(HashMap::new())),
             search_snapshots: Arc::new(Mutex::new(HashMap::new())),
@@ -726,13 +753,24 @@ impl ApiOfficialExtensionCatalogSource {
     }
 
     #[cfg(test)]
-    pub(crate) fn new_with_request_timeout(
+    pub(crate) fn new_with_request_timeouts(
         sources: BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>,
-        request_timeout: Duration,
+        catalog_request_timeout: Duration,
+        artifact_download_timeout: Duration,
     ) -> Self {
         Self {
             sources: Arc::new(sources),
-            client: extension_source_client_with_timeout(request_timeout),
+            catalog_client: extension_source_client(
+                DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT,
+                catalog_request_timeout,
+            ),
+            artifact_client: extension_source_client(
+                DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT,
+                artifact_download_timeout,
+            ),
+            source_connect_timeout: DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT,
+            catalog_request_timeout,
+            artifact_download_timeout,
             network_egress: None,
             last_success: Arc::new(Mutex::new(HashMap::new())),
             search_snapshots: Arc::new(Mutex::new(HashMap::new())),
@@ -761,7 +799,8 @@ impl ApiOfficialExtensionCatalogSource {
             return Ok((self.clone(), None));
         };
         let mut routed = self.clone();
-        routed.client = lease.http_client().clone();
+        routed.catalog_client = lease
+            .http_client_with_timeouts(self.source_connect_timeout, self.catalog_request_timeout)?;
         routed.network_egress = None;
         Ok((routed, Some(lease)))
     }
@@ -1033,6 +1072,7 @@ impl ApiOfficialExtensionCatalogSource {
 
     async fn download_document(&self, url: &str) -> Result<Vec<u8>> {
         self.download_once_with_budget(
+            &self.catalog_client,
             url,
             MAX_EXTENSION_CATALOG_DOCUMENT_BYTES,
             "official extension catalog document",
@@ -1046,6 +1086,7 @@ impl ApiOfficialExtensionCatalogSource {
         for attempt in 0..2 {
             match self
                 .download_once_with_budget(
+                    &self.artifact_client,
                     url,
                     MAX_EXTENSION_ARTIFACT_BYTES,
                     "official extension artifact",
@@ -1092,8 +1133,12 @@ impl ApiOfficialExtensionCatalogSource {
         url: &str,
         lease: NetworkEgressExecutionScope,
     ) -> Result<Vec<u8>> {
+        let client = lease.http_client_with_timeouts(
+            self.source_connect_timeout,
+            self.artifact_download_timeout,
+        )?;
         let result = download_with_client_budget(
-            lease.http_client(),
+            &client,
             url,
             MAX_EXTENSION_ARTIFACT_BYTES,
             "official extension artifact",
@@ -1109,17 +1154,21 @@ impl ApiOfficialExtensionCatalogSource {
 
     async fn download_once_with_budget(
         &self,
+        client: &Client,
         url: &str,
         max_bytes: usize,
         resource: &'static str,
     ) -> std::result::Result<Vec<u8>, ExtensionDownloadFailure> {
-        let response = self.client.get(url).send().await.map_err(|source| {
-            ExtensionDownloadFailure::Request {
-                resource,
-                url: url.to_string(),
-                source,
-            }
-        })?;
+        let response =
+            client
+                .get(url)
+                .send()
+                .await
+                .map_err(|source| ExtensionDownloadFailure::Request {
+                    resource,
+                    url: url.to_string(),
+                    source,
+                })?;
         let status = response.status();
         if !status.is_success() {
             return Err(ExtensionDownloadFailure::Status {
@@ -1279,13 +1328,9 @@ impl ExtensionDownloadFailure {
     }
 }
 
-fn extension_source_client() -> Client {
-    extension_source_client_with_timeout(EXTENSION_SOURCE_REQUEST_TIMEOUT)
-}
-
-fn extension_source_client_with_timeout(request_timeout: Duration) -> Client {
+fn extension_source_client(connect_timeout: Duration, request_timeout: Duration) -> Client {
     Client::builder()
-        .connect_timeout(EXTENSION_SOURCE_CONNECT_TIMEOUT)
+        .connect_timeout(connect_timeout)
         .timeout(request_timeout)
         .build()
         .expect("extension source HTTP client configuration must be valid")

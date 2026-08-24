@@ -185,6 +185,23 @@ impl NetworkEgressExecutionScope {
         &self.client
     }
 
+    pub(crate) fn http_client_with_timeouts(
+        &self,
+        connect_timeout: std::time::Duration,
+        request_timeout: std::time::Duration,
+    ) -> Result<Client> {
+        Client::builder()
+            .connect_timeout(connect_timeout)
+            .timeout(request_timeout)
+            .proxy(
+                Proxy::all(&self.http_proxy_url).context(
+                    "configured network egress provider returned an invalid HTTP proxy URL",
+                )?,
+            )
+            .build()
+            .context("failed to construct routed HTTP client")
+    }
+
     pub fn provider_invocation_context(
         &self,
     ) -> plugin_framework::provider_contract::ProviderNetworkEgressContext {

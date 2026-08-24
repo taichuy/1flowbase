@@ -6,9 +6,13 @@ use sha2::{Digest, Sha256};
 use std::{
     collections::BTreeMap,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 pub const DEFAULT_PLUGIN_UPLOAD_MAX_BYTES: usize = 8 * 1024 * 1024;
+pub const DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT: Duration = Duration::from_secs(2);
+pub const DEFAULT_OFFICIAL_EXTENSION_CATALOG_REQUEST_TIMEOUT: Duration = Duration::from_secs(8);
+pub const DEFAULT_OFFICIAL_EXTENSION_ARTIFACT_DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(300);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApiEnvironment {
@@ -63,6 +67,9 @@ pub struct ApiConfig {
     pub official_plugin_trusted_public_keys_json: String,
     pub official_extension_catalog_sources:
         BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>,
+    pub official_extension_source_connect_timeout: Duration,
+    pub official_extension_catalog_request_timeout: Duration,
+    pub official_extension_artifact_download_timeout: Duration,
     pub official_mcp_bundle_default_catalog_url: String,
     pub official_mcp_bundle_mirror_catalog_url: Option<String>,
     pub official_i18n_catalog_repository: String,
@@ -351,6 +358,21 @@ impl ApiConfig {
             official_plugin_signature_required,
             official_plugin_trusted_public_keys_json,
             official_extension_catalog_sources,
+            official_extension_source_connect_timeout: parse_positive_duration_seconds(
+                "API_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT_SECONDS",
+                map.get("API_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT_SECONDS"),
+                DEFAULT_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT,
+            )?,
+            official_extension_catalog_request_timeout: parse_positive_duration_seconds(
+                "API_OFFICIAL_EXTENSION_CATALOG_REQUEST_TIMEOUT_SECONDS",
+                map.get("API_OFFICIAL_EXTENSION_CATALOG_REQUEST_TIMEOUT_SECONDS"),
+                DEFAULT_OFFICIAL_EXTENSION_CATALOG_REQUEST_TIMEOUT,
+            )?,
+            official_extension_artifact_download_timeout: parse_positive_duration_seconds(
+                "API_OFFICIAL_EXTENSION_ARTIFACT_DOWNLOAD_TIMEOUT_SECONDS",
+                map.get("API_OFFICIAL_EXTENSION_ARTIFACT_DOWNLOAD_TIMEOUT_SECONDS"),
+                DEFAULT_OFFICIAL_EXTENSION_ARTIFACT_DOWNLOAD_TIMEOUT,
+            )?,
             official_mcp_bundle_default_catalog_url,
             official_mcp_bundle_mirror_catalog_url,
             official_i18n_catalog_repository,
@@ -593,6 +615,25 @@ fn parse_positive_usize(key: &str, value: Option<&String>, default: usize) -> Re
     }
 
     Ok(parsed)
+}
+
+fn parse_positive_duration_seconds(
+    key: &str,
+    value: Option<&String>,
+    default: Duration,
+) -> Result<Duration> {
+    let Some(value) = value else {
+        return Ok(default);
+    };
+    let seconds = value
+        .parse::<u64>()
+        .map_err(|_| anyhow!("invalid env {key}: expected positive integer seconds"))?;
+    if seconds == 0 {
+        return Err(anyhow!(
+            "invalid env {key}: expected positive integer seconds"
+        ));
+    }
+    Ok(Duration::from_secs(seconds))
 }
 
 fn default_provider_install_root() -> String {
