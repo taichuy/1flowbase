@@ -14,7 +14,8 @@ use control_plane::{
     system_recovery::{
         ConfirmedRecoveryIntent, OfflineRecoveryHandoffReady, PrepareRecoveryCommand,
         RecoveryCoordinator, RecoveryCoordinatorError, RecoveryPlan, RecoveryPreflightService,
-        SystemMaintenance, SystemMaintenanceOperation, SystemMaintenanceSnapshot,
+        SystemMaintenance, SystemMaintenanceOperation, SystemMaintenancePhase,
+        SystemMaintenanceSnapshot,
     },
 };
 use domain::{
@@ -304,6 +305,7 @@ impl SystemBackupRuntime {
                 _ => {}
             }
         }
+        state = observed_backup_job_state(state, backup_job_id, &self.maintenance.snapshot());
         Ok(Some(SystemBackupJobStatus {
             backup_job_id,
             backup_set_id,
@@ -694,6 +696,58 @@ fn protected_data_roots(config: &ApiConfig) -> Vec<PathBuf> {
         }
         protected
     })
+}
+
+fn observed_backup_job_state(
+    state: BackupJobState,
+    backup_job_id: BackupJobId,
+    maintenance: &SystemMaintenanceSnapshot,
+) -> BackupJobState {
+    if state == BackupJobState::Succeeded
+        && maintenance.phase != SystemMaintenancePhase::Online
+        && maintenance.operation == Some(SystemMaintenanceOperation::Backup(backup_job_id))
+    {
+        BackupJobState::Verifying
+    } else {
+        state
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::observed_backup_job_state;
+    use control_plane::system_recovery::{
+        SystemMaintenance, SystemMaintenanceOperation, SystemMaintenancePhase,
+    };
+    use domain::{BackupJobId, BackupJobState};
+    use std::sync::Arc;
+    use time::OffsetDateTime;
+
+    #[test]
+    fn queued_backup_is_not_observed_as_succeeded_until_its_maintenance_fence_is_released() {
+        let maintenance = Arc::new(SystemMaintenance::default());
+        let backup_job_id = BackupJobId::new();
+        let lease = maintenance
+            .begin(
+                SystemMaintenanceOperation::Backup(backup_job_id),
+                OffsetDateTime::now_utc(),
+            )
+            .unwrap();
+        let active = maintenance.snapshot();
+
+        assert_eq!(
+            observed_backup_job_state(BackupJobState::Succeeded, backup_job_id, &active),
+            BackupJobState::Verifying
+        );
+
+        lease.finish();
+        let online = maintenance.snapshot();
+        assert_eq!(
+            observed_backup_job_state(BackupJobState::Succeeded, backup_job_id, &online),
+            BackupJobState::Succeeded
+        );
+        assert_eq!(online.phase, SystemMaintenancePhase::Online);
+    }
 }
 
 fn paths_overlap(left: &std::path::Path, right: &std::path::Path) -> bool {
