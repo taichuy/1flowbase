@@ -16,7 +16,6 @@ import {
   type SettingsNetworkEgressProviderType,
   switchSettingsNetworkEgressPluginVersion,
   uninstallSettingsNetworkEgressPluginFamily,
-  uninstallSettingsNetworkEgressPluginVersion,
   uploadSettingsNetworkEgressPluginPackage
 } from '../../api/network-center';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
@@ -92,13 +91,6 @@ export function NetworkEgressProvidersPanel() {
     },
     onSuccess: refreshTypes
   });
-  const uninstallVersion = useMutation({
-    mutationFn: ({ providerCode, installationId }: { providerCode: string; installationId: string }) => {
-      if (!csrfToken) throw new Error('Missing CSRF token');
-      return uninstallSettingsNetworkEgressPluginVersion(providerCode, installationId, csrfToken);
-    },
-    onSuccess: refreshTypes
-  });
   const uninstallFamily = useMutation({
     mutationFn: (providerCode: string) => {
       if (!csrfToken) throw new Error('Missing CSRF token');
@@ -107,7 +99,7 @@ export function NetworkEgressProvidersPanel() {
     onSuccess: refreshTypes
   });
 
-  const pluginError = errorMessage(plugins.error) ?? errorMessage(pluginFamilies.error) ?? errorMessage(install.error) ?? errorMessage(upload.error) ?? errorMessage(switchVersion.error) ?? errorMessage(uninstallVersion.error) ?? errorMessage(uninstallFamily.error);
+  const pluginError = errorMessage(plugins.error) ?? errorMessage(pluginFamilies.error) ?? errorMessage(install.error) ?? errorMessage(upload.error) ?? errorMessage(switchVersion.error) ?? errorMessage(uninstallFamily.error);
   const familyByProviderCode = new Map((pluginFamilies.data ?? []).map((family) => [family.provider_code, family]));
   const officialPluginByProviderCode = new Map((plugins.data?.entries ?? []).map((plugin) => [plugin.provider_code, plugin]));
 
@@ -207,26 +199,6 @@ export function NetworkEgressProvidersPanel() {
                       : i18nText('settings', 'auto.install_plugin')}
                   </Button>
                 </div>
-                {familyByProviderCode.get(plugin.provider_code) ? (() => {
-                  const family = familyByProviderCode.get(plugin.provider_code)!;
-                  return family.installed_versions.filter((version) => !version.is_current).length > 0 ? <div className="network-egress-providers__plugin-versions">
-                    <Space size={4} wrap>
-                      {family.installed_versions.filter((version) => !version.is_current).map((version) => (
-                        <Button
-                          key={version.installation_id}
-                          danger
-                          type="link"
-                          size="small"
-                          disabled={!version.can_uninstall}
-                          loading={uninstallVersion.isPending && uninstallVersion.variables?.installationId === version.installation_id}
-                          onClick={() => uninstallVersion.mutate({ providerCode: family.provider_code, installationId: version.installation_id })}
-                        >
-                          {`${i18nText('settings', 'auto.uninstall_plugin')} ${version.plugin_version}`}
-                        </Button>
-                      ))}
-                    </Space>
-                  </div> : null;
-                })() : null}
               </article>
             ))}
           </div>

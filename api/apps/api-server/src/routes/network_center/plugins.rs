@@ -86,6 +86,14 @@ pub struct NetworkEgressPluginFamilyResponse {
     pub installed_versions: Vec<NetworkEgressPluginInstalledVersionResponse>,
 }
 
+impl NetworkEgressPluginFamilyResponse {
+    fn contains_installed_version(&self, target_version: &str) -> bool {
+        self.installed_versions
+            .iter()
+            .any(|version| version.plugin_version == target_version)
+    }
+}
+
 #[derive(Debug, serde::Deserialize, ToSchema)]
 pub struct SwitchNetworkEgressPluginVersionBody {
     pub installation_id: String,
@@ -608,7 +616,8 @@ fn project_catalog_entry(
     );
     let installed_family = installed.get(&provider_code);
     let current_version = installed_family.map(|family| family.current_version.clone());
-    let is_installed = installed_family.is_some();
+    let is_installed =
+        installed_family.is_some_and(|family| family.contains_installed_version(&entry.version));
     let icon = metadata_optional(&entry, "icon");
     let protocol = metadata_optional(&entry, "protocol")
         .unwrap_or_else(|| NETWORK_EGRESS_PROVIDER_PLUGIN_TYPE.to_string());
@@ -741,3 +750,7 @@ async fn mark_referenced_versions_not_uninstallable(
     }
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "_tests/plugins.rs"]
+mod tests;
