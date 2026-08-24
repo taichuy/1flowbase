@@ -660,37 +660,55 @@ impl NetworkEgressWorker {
         let mut cleanup_error = (lease_revoked && !release_acknowledged).then_some(
             "network egress lease release did not return a matching receipt".to_string(),
         );
-        let process_tree_exited = match self.child.try_wait() {
+        let leader_already_exited = match self.child.try_wait() {
             Ok(Some(_)) => true,
-            Ok(None) => {
-                match terminate_process_group(prior_pid, libc::SIGTERM) {
-                    Ok(sent) => termination_signal_sent = sent,
-                    Err(error) => {
-                        cleanup_error.get_or_insert_with(|| error.to_string());
-                    }
-                }
-                match tokio::time::timeout(WORKER_SHUTDOWN_TIMEOUT, self.child.wait()).await {
-                    Ok(Ok(_)) => true,
-                    Ok(Err(error)) => {
-                        cleanup_error.get_or_insert_with(|| error.to_string());
-                        false
-                    }
-                    Err(_) => {
-                        match terminate_process_group(prior_pid, libc::SIGKILL) {
-                            Ok(sent) => termination_signal_sent |= sent,
-                            Err(error) => {
-                                cleanup_error.get_or_insert_with(|| error.to_string());
-                            }
-                        }
-                        self.child.wait().await.is_ok()
-                    }
-                }
-            }
+            Ok(None) => false,
             Err(error) => {
-                cleanup_error = Some(error.to_string());
+                cleanup_error.get_or_insert_with(|| error.to_string());
                 false
             }
         };
+        // The worker is the process-group/session leader, but its descendants can outlive it.
+        // Always address the retained PGID even when `try_wait` has already reaped the leader.
+        match terminate_process_group(prior_pid, libc::SIGTERM) {
+            Ok(sent) => termination_signal_sent |= sent,
+            Err(error) => {
+                cleanup_error.get_or_insert_with(|| error.to_string());
+            }
+        }
+        let leader_exited = if leader_already_exited {
+            true
+        } else {
+            match tokio::time::timeout(WORKER_SHUTDOWN_TIMEOUT, self.child.wait()).await {
+                Ok(Ok(_)) => true,
+                Ok(Err(error)) => {
+                    cleanup_error.get_or_insert_with(|| error.to_string());
+                    false
+                }
+                Err(_) => false,
+            }
+        };
+        let mut process_group_exited = wait_for_process_group_exit(prior_pid).await;
+        if !leader_exited || !process_group_exited {
+            match terminate_process_group(prior_pid, libc::SIGKILL) {
+                Ok(sent) => termination_signal_sent |= sent,
+                Err(error) => {
+                    cleanup_error.get_or_insert_with(|| error.to_string());
+                }
+            }
+            if !leader_exited {
+                if let Err(error) = self.child.wait().await {
+                    cleanup_error.get_or_insert_with(|| error.to_string());
+                }
+            }
+            process_group_exited = wait_for_process_group_exit(prior_pid).await;
+        }
+        let process_tree_exited = leader_exited && process_group_exited;
+        if !process_tree_exited {
+            cleanup_error.get_or_insert_with(|| {
+                "network egress worker process group did not exit".to_string()
+            });
+        }
         if !self.config_file.cleanup() {
             cleanup_error.get_or_insert_with(|| {
                 "network egress private configuration cleanup failed".to_string()
@@ -817,8 +835,11 @@ fn terminate_process_group(pid: Option<u32>, signal: libc::c_int) -> std::io::Re
         return Ok(false);
     };
     let result = unsafe { libc::kill(-(pid as libc::pid_t), signal) };
-    if result == 0 || std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
+    if result == 0 {
         return Ok(true);
+    }
+    if std::io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
+        return Ok(false);
     }
     Err(std::io::Error::last_os_error())
 }
@@ -826,6 +847,39 @@ fn terminate_process_group(pid: Option<u32>, signal: libc::c_int) -> std::io::Re
 #[cfg(not(unix))]
 fn terminate_process_group(_pid: Option<u32>, _signal: libc::c_int) -> std::io::Result<bool> {
     Ok(false)
+}
+
+#[cfg(unix)]
+fn process_group_exists(pid: Option<u32>) -> std::io::Result<bool> {
+    let Some(pid) = pid else {
+        return Ok(false);
+    };
+    let result = unsafe { libc::kill(-(pid as libc::pid_t), 0) };
+    if result == 0 {
+        return Ok(true);
+    }
+    match std::io::Error::last_os_error().raw_os_error() {
+        Some(libc::ESRCH) => Ok(false),
+        Some(libc::EPERM) => Ok(true),
+        _ => Err(std::io::Error::last_os_error()),
+    }
+}
+
+#[cfg(not(unix))]
+fn process_group_exists(_pid: Option<u32>) -> std::io::Result<bool> {
+    Ok(false)
+}
+
+async fn wait_for_process_group_exit(pid: Option<u32>) -> bool {
+    let deadline = tokio::time::Instant::now() + WORKER_SHUTDOWN_TIMEOUT;
+    loop {
+        match process_group_exists(pid) {
+            Ok(false) => return true,
+            Err(_) => return false,
+            Ok(true) if tokio::time::Instant::now() >= deadline => return false,
+            Ok(true) => tokio::time::sleep(Duration::from_millis(10)).await,
+        }
+    }
 }
 
 fn network_runtime_error(message: impl Into<String>) -> PluginFrameworkError {
