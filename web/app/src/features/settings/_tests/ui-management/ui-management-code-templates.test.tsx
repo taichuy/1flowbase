@@ -232,8 +232,7 @@ describe('UiManagementPanel code templates', () => {
           entry: 'index.js',
           codeModules: templateCodeModules
         }
-      ],
-      externalNpm: { status: 'available' }
+      ]
     });
   });
 
@@ -372,10 +371,6 @@ describe('UiManagementPanel code templates', () => {
       block: { id: string; props: Record<string, unknown> };
       code: string;
       revision: string;
-      resolveNativeDependencyLock: (
-        sourceCode: string
-      ) => Promise<Array<{ module_source: string }>>;
-      externalNpm: { status: string };
       createBlockContext(input: {
         plan: {
           blockId: string;
@@ -399,8 +394,6 @@ describe('UiManagementPanel code templates', () => {
       editorDiagnostics: Array<{ message: string }>;
     };
     expect(studioProps.editorDiagnostics).toEqual([]);
-    expect(runProps.resolveNativeDependencyLock).toEqual(expect.any(Function));
-    expect(runProps.externalNpm).toEqual({ status: 'available' });
 
     const previewContext = runProps.createBlockContext({
       plan: {
@@ -426,8 +419,7 @@ describe('UiManagementPanel code templates', () => {
   test('AC-007 waits for the contribution catalog before validating registered imports', async () => {
     blockCatalogHook.useFrontstageBlockCatalog.mockReturnValue({
       items: [],
-      loading: true,
-      externalNpm: { status: 'pending' }
+      loading: true
     });
     renderPanel();
     await screen.findByText('自定义区块');

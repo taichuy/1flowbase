@@ -1,18 +1,14 @@
 import {
   canonicalizeNativeReactComponentArtifact,
   createNativeReactComponentArtifactIdentity,
-  createNativeReactRuntimeFingerprint,
-  nativeReactHostAbiIdentity,
   nativeReactComponentArtifactMatchesIdentity,
   sha256Text,
   type NativeReactCompileDiagnostic,
   type NativeReactCompilerRequest,
   type NativeReactCompilerResponse,
   type NativeReactComponentArtifact,
-  type NativeReactCatalogDependencyLock
+  type NativeReactModuleDefinition
 } from '@1flowbase/page-runtime';
-import antdPackageJson from 'antd/package.json';
-import reactPackageJson from 'react/package.json';
 
 import nativeReactCompilerWorkerUrl from './native-react-compiler.worker?worker&url';
 
@@ -42,20 +38,6 @@ export function getNativeReactCompilerWorkerUrl(): string {
   return nativeReactCompilerWorkerUrl;
 }
 
-export function getNativeReactRuntimeFingerprint(
-  dependencyLock: NativeReactCatalogDependencyLock = []
-): string {
-  return createNativeReactRuntimeFingerprint(
-    getNativeReactCompilerWorkerUrl(),
-    JSON.stringify({
-      react: reactPackageJson.version,
-      react_jsx_runtime: reactPackageJson.version,
-      antd: antdPackageJson.version,
-      catalog: nativeReactHostAbiIdentity(dependencyLock)
-    })
-  );
-}
-
 export function createNativeReactBrowserCompilerWorkerFactory({
   workerConstructor = globalThis.Worker as NativeReactBrowserCompilerWorkerConstructor,
   workerUrl = getNativeReactCompilerWorkerUrl()
@@ -76,14 +58,12 @@ export function createNativeReactBrowserCompilerWorkerFactory({
 export function compileNativeReactComponentInBrowser({
   source,
   requestId,
-  dependencyLock = [],
-  runtimeFingerprint = getNativeReactRuntimeFingerprint(dependencyLock),
+  moduleDefinitions,
   workerFactory = createNativeReactBrowserCompilerWorkerFactory()
 }: {
   source: string;
   requestId: string;
-  dependencyLock?: NativeReactCatalogDependencyLock;
-  runtimeFingerprint?: string;
+  moduleDefinitions: readonly NativeReactModuleDefinition[];
   workerFactory?: NativeReactBrowserCompilerWorkerFactory;
 }): Promise<NativeReactBrowserCompileResult> {
   return new Promise((resolve) => {
@@ -106,9 +86,7 @@ export function compileNativeReactComponentInBrowser({
         readCompilerResponse(
           event.data,
           requestId,
-          source,
-          dependencyLock,
-          runtimeFingerprint
+          source
         )
       );
     };
@@ -123,8 +101,7 @@ export function compileNativeReactComponentInBrowser({
         type: 'compile_native_react_component',
         requestId,
         source,
-        dependencyLock,
-        runtimeFingerprint
+        moduleDefinitions: [...moduleDefinitions]
       });
     } catch (error) {
       finish(compilerFailure(errorMessage(error)));
@@ -135,9 +112,7 @@ export function compileNativeReactComponentInBrowser({
 function readCompilerResponse(
   value: unknown,
   requestId: string,
-  source: string,
-  dependencyLock: NativeReactCatalogDependencyLock,
-  runtimeFingerprint: string
+  source: string
 ): NativeReactBrowserCompileResult {
   if (!isCompilerResponse(value) || value.requestId !== requestId) {
     return compilerFailure('Native React compiler response is invalid.');
@@ -147,9 +122,7 @@ function readCompilerResponse(
   }
   const artifact = canonicalizeNativeReactComponentArtifact(value.artifact);
   const expectedIdentity = createNativeReactComponentArtifactIdentity({
-    sourceSha256: sha256Text(source),
-    dependencyLock,
-    runtimeFingerprint
+    sourceSha256: sha256Text(source)
   });
   return artifact &&
     nativeReactComponentArtifactMatchesIdentity(artifact, expectedIdentity)

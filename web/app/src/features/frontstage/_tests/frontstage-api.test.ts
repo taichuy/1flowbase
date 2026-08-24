@@ -464,7 +464,6 @@ describe('frontstage block catalog feature api', () => {
           title: 'Hero',
           runtime: 'native_react',
           entry: 'blocks/hero.html',
-          code_modules: [],
           context_contract: {
             primitives: ['record'],
             input_schema: {
@@ -499,7 +498,6 @@ describe('frontstage block catalog feature api', () => {
             title: 'Hero',
             runtime: 'native_react',
             entry: 'blocks/hero.html',
-            code_modules: [],
             context_contract: {
               primitives: ['record'],
               input_schema: {
@@ -517,8 +515,7 @@ describe('frontstage block catalog feature api', () => {
             ui_capabilities: ['resizable', 'configure'],
             ...frontendContributionFields()
           }
-        ],
-        externalNpm: { status: 'absent' }
+        ]
       });
       expect(listSpy).toHaveBeenCalledWith(expect.any(String));
     } finally {
@@ -527,7 +524,7 @@ describe('frontstage block catalog feature api', () => {
     }
   });
 
-  test('AC-001 keeps the backend block catalog when the optional External npm Pack is unavailable', async () => {
+  test('AC-011 does not request a secondary module manifest', async () => {
     const entry = {
       installation_id: 'installation-1',
       provider_code: 'official',
@@ -537,7 +534,6 @@ describe('frontstage block catalog feature api', () => {
       title: 'Hero',
       runtime: 'native_react',
       entry: 'blocks/hero.html',
-      code_modules: [],
       context_contract: {
         primitives: ['record'],
         input_schema: { type: 'object' }
@@ -559,9 +555,9 @@ describe('frontstage block catalog feature api', () => {
 
     try {
       await expect(fetchFrontstageBlockCatalog()).resolves.toEqual({
-        entries: [entry],
-        externalNpm: { status: 'unavailable' }
+        entries: [entry]
       });
+      expect(fetchSpy).not.toHaveBeenCalled();
     } finally {
       listSpy.mockRestore();
       fetchSpy.mockRestore();
@@ -573,16 +569,8 @@ describe('frontstage block catalog feature api', () => {
     const listSpy = vi
       .spyOn(apiClient, 'listConsoleFrontendBlocks')
       .mockRejectedValue(backendError);
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response('', { status: 404 }));
-
-    try {
-      await expect(fetchFrontstageBlockCatalog()).rejects.toBe(backendError);
-    } finally {
-      listSpy.mockRestore();
-      fetchSpy.mockRestore();
-    }
+    await expect(fetchFrontstageBlockCatalog()).rejects.toBe(backendError);
+    listSpy.mockRestore();
   });
 });
 

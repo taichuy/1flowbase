@@ -5,16 +5,18 @@ import * as uiModule from '@1flowbase/ui';
 
 import {
   evaluateNativeTrustedBlockSource,
-  createNativeReactModuleRegistry,
-  nativeReactCatalogDependencyLockIdentity,
   type NativeTrustedBlockRunError,
-  type NativeReactCatalogDependencyLock,
-  type NativeReactModuleRegistry,
   type NativeTrustedBlockInjectedModuleMap,
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
 
 import type { FrontstageNativeTrustedBlockReactComponent } from './native-trusted-block-react-adapter';
+
+export {
+  createFrontstageNativeReactModuleRegistry,
+  getFrontstageNativeReactModuleRegistry
+} from './native-modules/registry';
+export { FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS } from './native-modules/registry';
 
 export {
   FRONTSTAGE_NATIVE_TRUSTED_BLOCK_COMPATIBILITY_CONTRACT_VERSION,
@@ -24,10 +26,6 @@ export {
 } from './native-trusted-block-runtime-compatibility';
 
 type InjectedModule = Record<string, unknown>;
-const sharedNativeReactModuleRegistries = new Map<
-  string,
-  NativeReactModuleRegistry
->();
 
 export interface FrontstageNativeTrustedBlockRuntimeFactoryOptions {
   modules?: NativeTrustedBlockInjectedModuleMap;
@@ -78,26 +76,6 @@ export function createFrontstageNativeTrustedBlockModuleMap(
     antd: mergeInjectedModule(antdModule, overrides.antd),
     '@1flowbase/ui': mergeInjectedModule(uiModule, overrides['@1flowbase/ui'])
   };
-}
-
-export function createFrontstageNativeReactModuleRegistry(
-  dependencyLock: NativeReactCatalogDependencyLock,
-  options: { fetchAsset?: typeof fetch } = {}
-): NativeReactModuleRegistry {
-  const sharedKey = options.fetchAsset
-    ? null
-    : nativeReactCatalogDependencyLockIdentity(dependencyLock);
-  const shared = sharedKey
-    ? sharedNativeReactModuleRegistries.get(sharedKey)
-    : undefined;
-  if (shared) return shared;
-  const registry = createNativeReactModuleRegistry({
-    dependencyLock,
-    hostModules: createFrontstageNativeTrustedBlockModuleMap(),
-    ...(options.fetchAsset ? { fetchAsset: options.fetchAsset } : {})
-  });
-  if (sharedKey) sharedNativeReactModuleRegistries.set(sharedKey, registry);
-  return registry;
 }
 
 function createReactModule(): InjectedModule {

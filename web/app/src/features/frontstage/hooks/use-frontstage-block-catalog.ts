@@ -8,7 +8,6 @@ import {
   frontstageBlockCatalogQueryKeyPrefix,
   type FrontstageBlockCatalogSnapshot
 } from '../api/block-catalog';
-import type { ExternalNpmPackState } from '../api/external-npm';
 import {
   normalizeFrontstageBlockCatalog,
   type FrontstageBlockCatalogDiagnostic,
@@ -17,8 +16,7 @@ import {
 
 const emptyCatalog = {
   items: [] as NormalizedFrontstageBlockCatalogEntry[],
-  diagnostics: [] as FrontstageBlockCatalogDiagnostic[],
-  externalNpm: { status: 'pending' } as ExternalNpmPackState
+  diagnostics: [] as FrontstageBlockCatalogDiagnostic[]
 };
 
 function toError(error: unknown): Error {
@@ -27,14 +25,8 @@ function toError(error: unknown): Error {
     : new Error('frontstage block catalog request failed');
 }
 
-function selectFrontstageBlockCatalog({
-  entries,
-  externalNpm
-}: FrontstageBlockCatalogSnapshot) {
-  return {
-    ...normalizeFrontstageBlockCatalog(entries),
-    externalNpm
-  };
+function selectFrontstageBlockCatalog({ entries }: FrontstageBlockCatalogSnapshot) {
+  return normalizeFrontstageBlockCatalog(entries);
 }
 
 export function useFrontstageBlockCatalog({
@@ -88,7 +80,6 @@ export function useFrontstageBlockCatalog({
   return {
     items: catalog.items,
     diagnostics: catalog.diagnostics,
-    externalNpm: catalog.externalNpm,
     loading: blockCatalogQuery.isLoading,
     error: blockCatalogQuery.error ? toError(blockCatalogQuery.error) : null,
     refetch: blockCatalogQuery.refetch,

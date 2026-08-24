@@ -21,46 +21,20 @@ import {
 } from '../index';
 
 describe('frontend block contract vocabulary', () => {
-  test('projects catalog modules into Native editor and import capabilities', () => {
+  test('projects only the backend-owned code template metadata', () => {
     expect(
       createFrontendBlockCodeCapabilities({
         code_template: 'export default {}',
         code_template_version: '1.0.0',
-        code_template_language: 'tsx',
-        code_modules: [
-          {
-            source: '@1flowbase/block-sdk',
-            type_declarations: 'export declare function defineBlock(): unknown;'
-          }
-        ]
+        code_template_language: 'tsx'
       })
     ).toEqual({
       template: {
         source: 'export default {}',
         version: '1.0.0',
         language: 'tsx'
-      },
-      allowedImports: ['@1flowbase/block-sdk'],
-      monacoExtraLibs: [
-        {
-          source: '@1flowbase/block-sdk',
-          filePath: 'file:///node_modules/@1flowbase/block-sdk/index.d.ts',
-          content: 'export declare function defineBlock(): unknown;'
-        }
-      ]
+      }
     });
-  });
-  test('projects every backend-registered module without a second frontend whitelist', () => {
-    expect(
-      createFrontendBlockCodeCapabilities({
-        code_modules: [
-          {
-            source: '@1flowbase/charts',
-            type_declarations: "declare module '@1flowbase/charts' {}"
-          }
-        ]
-      }).allowedImports
-    ).toEqual(['@1flowbase/charts']);
   });
   test('exports the backend-aligned manifest and catalog vocabularies', () => {
     expect(FRONTEND_BLOCK_RUNTIMES).toEqual([

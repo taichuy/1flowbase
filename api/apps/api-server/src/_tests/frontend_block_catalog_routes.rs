@@ -444,137 +444,32 @@ async fn wp_d4_empty_persistence_yields_empty_components_despite_registered_expo
 }
 
 #[tokio::test]
-async fn component_dependency_lock_is_derived_from_source_imports() {
-    let (app, database_url) = test_frontend_block_app_with_database_url().await;
-    seed_frontend_block(&database_url, true, true).await;
-    let pool = PgPool::connect(&database_url).await.unwrap();
-    let _workspace_id: Uuid =
-        sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+async fn dependency_lock_resolver_route_is_not_exposed() {
+    let (app, _) = test_frontend_block_app_with_database_url().await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
-
     let response = app
         .oneshot(
             Request::builder()
                 .method("POST")
-                .uri(
-                    "/api/console/frontstage/component-dependency-lock"
-                )
+                .uri("/api/console/frontstage/component-dependency-lock")
                 .header("cookie", &cookie)
                 .header("x-csrf-token", csrf)
                 .header("content-type", "application/json")
                 .body(Body::from(
-                    json!({
-                        "source_code": "import { useState } from 'react';\nimport { Button } from '@acme/native-components';\nimport { useRuntimeValue } from '@acme/runtime-utils';\nexport default Button;"
-                    })
-                    .to_string(),
+                    json!({ "source_code": "export default 1;" }).to_string(),
                 ))
                 .unwrap(),
         )
         .await
         .unwrap();
-
-    let status = response.status();
-    let payload: Value =
-        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
-    assert_eq!(status, StatusCode::OK, "{payload}");
-    assert_eq!(
-        payload["data"]["dependency_lock"],
-        json!([{
-            "module_source": "@acme/native-components",
-            "module_version": "1.2.3",
-            "binding": "fetched",
-            "assets": [{
-                "role": "browser_module",
-                "media_type": "text/javascript; charset=utf-8",
-                "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
-                "url": "/api/console/frontstage/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
-                "integrity": "verified_sha256"
-            }, {
-                "role": "shadow_style",
-                "media_type": "text/css; charset=utf-8",
-                "sha256": "adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f",
-                "url": "/api/console/frontstage/component-module-assets/adcff41acf67a64cfedd858a969fee27e6ae7ae328cd3b7afe5ff1263fe2a34f",
-                "integrity": "verified_sha256"
-            }],
-            "exports": ["Button"]
-        }, {
-            "module_source": "@acme/runtime-utils",
-            "module_version": "1.2.3",
-            "binding": "fetched",
-            "assets": [{
-                "role": "browser_module",
-                "media_type": "text/javascript; charset=utf-8",
-                "sha256": "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
-                "url": "/api/console/frontstage/component-module-assets/b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0",
-                "integrity": "verified_sha256"
-            }],
-            "exports": ["useRuntimeValue"]
-        }, {
-            "module_source": "react",
-            "module_version": "19.2.5",
-            "binding": "host",
-            "assets": [],
-            "exports": [
-                "Activity", "Children", "Component", "Fragment", "Profiler",
-                "PureComponent", "StrictMode", "Suspense", "cache", "cacheSignal",
-                "cloneElement", "createContext", "createElement", "createRef", "default",
-                "forwardRef", "isValidElement", "lazy", "memo", "startTransition", "use",
-                "useActionState", "useCallback", "useContext", "useDebugValue", "useDeferredValue",
-                "useEffect", "useEffectEvent", "useId", "useImperativeHandle", "useInsertionEffect",
-                "useLayoutEffect", "useMemo", "useOptimistic", "useReducer", "useRef", "useState",
-                "useSyncExternalStore", "useTransition", "version"
-            ]
-        }])
-    );
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]
-async fn ac_001_locked_asset_survives_current_catalog_digest_replacement() {
+async fn retained_asset_authorization_does_not_read_block_dependency_lock() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
     let installation_id = seed_frontend_block(&database_url, true, false).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
-    let workspace_id: Uuid =
-        sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    let page_id = Uuid::now_v7();
-    let tab_id = Uuid::now_v7();
-    let mut transaction = pool.begin().await.unwrap();
-    sqlx::query(
-        r#"
-        insert into frontstage_pages (
-            id, workspace_id, kind, title, rank
-        ) values ($1, $2, 'page', 'Retained asset fixture', 'a')
-        "#,
-    )
-    .bind(page_id)
-    .bind(workspace_id)
-    .execute(&mut *transaction)
-    .await
-    .unwrap();
-    sqlx::query(
-        r#"
-        insert into frontstage_page_tabs (
-            id, workspace_id, page_id, title, rank, is_default, document_root_uid
-        ) values ($1, $2, $3, 'Default', 'a', true, $4)
-        "#,
-    )
-    .bind(tab_id)
-    .bind(workspace_id)
-    .bind(page_id)
-    .bind(format!("frontstage.tab.{tab_id}.root"))
-    .execute(&mut *transaction)
-    .await
-    .unwrap();
-    transaction.commit().await.unwrap();
-    let actor_id: Uuid = sqlx::query_scalar("select id from users where account = 'root' limit 1")
-        .fetch_one(&pool)
-        .await
-        .unwrap();
     let old_bytes = b"export function RetainedButton() {}\n";
     let old_sha256 = format!("{:x}", Sha256::digest(old_bytes));
     let new_sha256 = format!("{:x}", Sha256::digest(b"export function ButtonV2() {}\n"));
@@ -605,37 +500,6 @@ async fn ac_001_locked_asset_survives_current_catalog_digest_replacement() {
     .await
     .unwrap();
 
-    let source_code = "import { Button } from '@acme/native-components';\nexport default Button;";
-    sqlx::query(
-        r#"
-        insert into frontstage_block_codes (
-            id, workspace_id, page_id, code_ref, code, source_sha256,
-            dependency_lock, created_by, updated_by
-        ) values ($1, $2, $3, 'retained-asset-fixture', $4, $5, $6, $7, $7)
-        "#,
-    )
-    .bind(Uuid::now_v7())
-    .bind(workspace_id)
-    .bind(page_id)
-    .bind(source_code)
-    .bind(format!("{:x}", Sha256::digest(source_code.as_bytes())))
-    .bind(json!([{
-        "module_source": "@acme/native-components",
-        "module_version": "1.2.3",
-        "binding": "fetched",
-        "assets": [{
-            "role": "browser_module",
-            "media_type": "text/javascript; charset=utf-8",
-            "sha256": old_sha256,
-            "url": format!("/api/console/frontstage/component-module-assets/{old_sha256}")
-        }],
-        "exports": ["Button"]
-    }]))
-    .bind(actor_id)
-    .execute(&pool)
-    .await
-    .unwrap();
-
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
     let asset_url = format!("/api/console/frontstage/component-module-assets/{old_sha256}");
     let retained_response = app
@@ -657,22 +521,6 @@ async fn ac_001_locked_asset_survives_current_catalog_digest_replacement() {
             .as_ref(),
         old_bytes
     );
-
-    sqlx::query("delete from frontstage_block_codes where code_ref = 'retained-asset-fixture'")
-        .execute(&pool)
-        .await
-        .unwrap();
-    let unreferenced_response = app
-        .oneshot(
-            Request::builder()
-                .uri(&asset_url)
-                .header("cookie", &cookie)
-                .body(Body::empty())
-                .unwrap(),
-        )
-        .await
-        .unwrap();
-    assert_eq!(unreferenced_response.status(), StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -719,104 +567,8 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
     assert!(code_template.contains("import 'tailwindcss'"));
     assert!(code_template.contains("className=\"grid gap-4 p-4\""));
     assert!(!code_template.contains("BlockModule"));
-    let sdk_declarations = jsx_block["code_modules"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|module| module["source"] == "@1flowbase/block-sdk")
-        .and_then(|module| module["type_declarations"].as_str())
-        .unwrap();
-    assert!(sdk_declarations.contains("interface BlockComponentProps"));
-    assert!(sdk_declarations.contains("readonly inputs"));
-    assert!(sdk_declarations.contains("readonly application: BlockContextEntity | null"));
-    assert!(sdk_declarations.contains("readonly api"));
-    assert!(!sdk_declarations.contains("interfaceId"));
-    assert!(!sdk_declarations.contains("schemaDigest"));
-    assert!(!sdk_declarations.contains("defineBlock"));
-    let native_declarations = jsx_block["code_modules"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|module| module["source"] == "@1flowbase/native-components")
-        .and_then(|module| module["type_declarations"].as_str())
-        .unwrap();
-    assert!(native_declarations.contains("interface SurfaceProps"));
-    let sdk_module = jsx_block["code_modules"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|module| module["source"] == "@1flowbase/block-sdk")
-        .unwrap();
-    assert_eq!(sdk_module["version"], "1.0.0");
-    assert_eq!(sdk_module["exports"], json!(["blockSdkVersion"]));
-    assert_eq!(sdk_module["binding"], "fetched");
-    assert_eq!(
-        sdk_module["assets"][0]["sha256"],
-        "89d33c09ed7013cf4f60f07b5b4b511686e57e011867ec7656f8bc3538c0298f"
-    );
-    assert_eq!(sdk_module["assets"][0]["role"], "browser_module");
-    let native_module = jsx_block["code_modules"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|module| module["source"] == "@1flowbase/native-components")
-        .unwrap();
-    assert_eq!(native_module["version"], "1.0.0");
-    assert_eq!(
-        native_module["exports"],
-        json!(["ScrollableSurface", "Surface"])
-    );
-    assert_eq!(
-        native_module["assets"][0]["sha256"],
-        "4b0132d6bf899d0016ec4c94f9dd665b41d6b75b413fc66037706c80965af388"
-    );
-    assert_eq!(native_module["assets"][1]["role"], "shadow_style");
-    assert_eq!(
-        jsx_block["code_modules"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|module| module["source"].as_str().unwrap())
-            .collect::<Vec<_>>(),
-        vec![
-            "react",
-            "antd",
-            "@1flowbase/block-sdk",
-            "@1flowbase/native-components",
-            "@ant-design/icons",
-            "@1flowbase/charts",
-            "@1flowbase/rich-text"
-        ]
-    );
-    let rich_text_module = jsx_block["code_modules"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .find(|module| module["source"] == "@1flowbase/rich-text")
-        .unwrap();
-    assert_eq!(rich_text_module["exports"], json!(["VditorEditor"]));
-    assert!(rich_text_module["type_declarations"]
-        .as_str()
-        .unwrap()
-        .contains("interface VditorEditorProps"));
-    for module in jsx_block["code_modules"].as_array().unwrap() {
-        let source = module["source"].as_str().unwrap();
-        if matches!(source, "react" | "antd") {
-            assert_eq!(module["binding"], "host");
-            assert_eq!(module["assets"], json!([]));
-        } else {
-            assert_eq!(module["binding"], "fetched");
-            assert_eq!(
-                module["assets"]
-                    .as_array()
-                    .unwrap()
-                    .iter()
-                    .filter(|asset| asset["role"] == "browser_module")
-                    .count(),
-                1
-            );
-        }
-    }
+    assert!(jsx_block.get("code_modules").is_none());
+    assert_eq!(jsx_block["isolated_entry_asset"], Value::Null);
 }
 
 #[tokio::test]
@@ -936,25 +688,8 @@ async fn frontend_block_catalog_route_lists_builtin_and_assigned_workspace_block
     );
     assert_eq!(entry["code_template_version"].as_str(), Some("1.0.0"));
     assert_eq!(entry["code_template_language"].as_str(), Some("tsx"));
-    assert_eq!(
-        entry["code_modules"][0]["source"].as_str(),
-        Some("@acme/native-components")
-    );
-    assert_eq!(entry["code_modules"][0]["version"], "1.2.3");
-    assert_eq!(entry["code_modules"][0]["exports"], json!(["Button"]));
-    assert_eq!(
-        entry["code_modules"][0]["assets"][0]["sha256"],
-        "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
-    );
-    assert_eq!(entry["code_modules"][0]["binding"], "fetched");
-    assert_eq!(
-        entry["code_modules"][0]["assets"][0]["integrity"],
-        "verified_sha256"
-    );
-    assert!(entry["code_modules"][0]["assets"][0]["url"]
-        .as_str()
-        .unwrap()
-        .contains("/component-module-assets/"));
+    assert!(entry.get("code_modules").is_none());
+    assert_eq!(entry["isolated_entry_asset"], Value::Null);
     assert_eq!(entry["runtime_kind"], "trusted_native");
     assert_eq!(entry["execution_kind"], "ui_mount");
     assert_eq!(entry["isolation_requirement"], "trusted_host_realm");
@@ -972,7 +707,7 @@ async fn frontend_block_catalog_route_lists_builtin_and_assigned_workspace_block
 }
 
 #[tokio::test]
-async fn d5_p3_catalog_projects_isolated_runtime_contract_without_new_dto_fields() {
+async fn isolated_catalog_projects_its_entry_asset_without_module_dependencies() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
     let installation_id = seed_frontend_block(&database_url, true, false).await;
     let pool = PgPool::connect(&database_url).await.unwrap();
@@ -1017,5 +752,10 @@ async fn d5_p3_catalog_projects_isolated_runtime_contract_without_new_dto_fields
     assert_eq!(
         isolated["requested_permissions"],
         isolated["granted_permissions"]
+    );
+    assert!(isolated.get("code_modules").is_none());
+    assert_eq!(
+        isolated["isolated_entry_asset"]["sha256"],
+        "b5e317e6a0049e9af18eae918c3347af3626f7f3a1bbf0d32567d005260480e0"
     );
 }

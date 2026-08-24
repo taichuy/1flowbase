@@ -1,6 +1,5 @@
 import { describe, expect, test } from 'vitest';
 
-import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
 import {
   createFrontstageContextComment,
   createFrontstageJsxEditorProjection
@@ -16,7 +15,15 @@ describe('Frontstage JSX editor projection', () => {
       'react',
       'react/jsx-runtime',
       'antd',
-      'tailwindcss'
+      '@1flowbase/ui',
+      'tailwindcss',
+      '@1flowbase/block-sdk',
+      '@1flowbase/native-components',
+      '@ant-design/icons',
+      '@1flowbase/charts',
+      '@1flowbase/rich-text',
+      '@ant-design/x',
+      '@ant-design/x-markdown'
     ]);
     expect(projection.contextComment).toBe(createFrontstageContextComment());
     expect(projection.monacoExtraLibs).toEqual(
@@ -26,7 +33,7 @@ describe('Frontstage JSX editor projection', () => {
         expect.objectContaining({ source: 'tailwindcss' })
       ])
     );
-    expect(projection.monacoExtraLibs).not.toEqual(
+    expect(projection.monacoExtraLibs).toEqual(
       expect.arrayContaining([expect.objectContaining({ source: 'react' })])
     );
     expect(projection.contextComment).toContain('@1flowbase-context');
@@ -34,45 +41,17 @@ describe('Frontstage JSX editor projection', () => {
     expect(projection.contextComment).not.toContain('ctx.data');
   });
 
-  test('D2-AC-002 projects registered standard React declarations into Monaco', () => {
+  test('AC-002 projects frontend-owned module declarations into Monaco', () => {
     const projection = createFrontstageJsxEditorProjection({
-      catalogEntry: {
-        codeModules: [
-          {
-            source: '@1flowbase/native-components',
-            version: '1.0.0',
-            binding: 'fetched',
-            assets: [
-              {
-                role: 'browser_module',
-                media_type: 'text/javascript; charset=utf-8',
-                sha256:
-                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-              }
-            ],
-            exports: ['Surface'],
-            type_declarations:
-              "declare module '@1flowbase/native-components' { export interface SurfaceProps extends import('react').HTMLAttributes<HTMLElement> {} export const Surface: import('react').ComponentType<SurfaceProps>; }"
-          }
-        ],
-        installationId: 'installation-1',
-        contributionCode: 'frontstage.js-ui-block'
-      } as NormalizedFrontstageBlockCatalogEntry
+      catalogEntry: null
     });
 
-    expect([...projection.allowedImportSources]).toEqual([
-      'react',
-      'react/jsx-runtime',
-      'antd',
-      'tailwindcss',
-      '@1flowbase/native-components'
-    ]);
-    expect(projection.monacoExtraLibs.at(-1)?.content).toContain(
-      "import('react').ComponentType<SurfaceProps>"
-    );
-    expect(projection.monacoExtraLibs.at(-1)).toMatchObject({
+    expect(projection.monacoExtraLibs).toContainEqual(expect.objectContaining({
       source: '@1flowbase/native-components',
       filePath: 'file:///node_modules/@1flowbase/native-components/index.d.ts'
-    });
+    }));
+    expect(projection.monacoExtraLibs).toContainEqual(expect.objectContaining({
+      source: '@ant-design/x-markdown'
+    }));
   });
 });

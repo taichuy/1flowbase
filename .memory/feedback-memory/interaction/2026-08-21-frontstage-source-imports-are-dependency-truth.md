@@ -2,7 +2,7 @@
 memory_type: feedback
 feedback_category: interaction
 topic: Frontstage 区块依赖以源码 import 为唯一真值
-summary: Frontstage 区块是代码；组件目录应展示系统已安装且可运行的全局组件，插入时自动写入 import，运行依赖锁只能从源码静态 import 解析，不能由当前区块 Catalog 的 code_modules 或 workspace 区块分配限制或推断。
+summary: Frontstage 区块依赖仍以源码 import 触发，但解析、module/export 校验和加载全部归前端 registry；后端不得再从 import 生成 dependency lock。组件目录只是记录副本，不按运行时可用性隐藏。
 keywords:
   - frontstage
   - JSX
@@ -15,8 +15,8 @@ match_when:
   - 调整 Native React 区块的依赖锁、保存、预览或运行时模块解析
   - 排查全局组件目录中组件可见但当前区块不能使用的情况
 created_at: 2026-08-21 18
-updated_at: 2026-08-21 19
-last_verified_at: 2026-08-21 19
+updated_at: 2026-08-24 21
+last_verified_at: 2026-08-24 21
 decision_policy: direct_reference
 scope:
   - web/app/src/features/frontstage
@@ -28,14 +28,16 @@ scope:
 
 ## 规则
 
-- 组件面板以系统已安装且当前节点可运行的全局组件为范围，不按正在编辑区块的 Catalog `code_modules` 或 workspace 区块分配过滤。
-- 组件目录必须复用后台 UI 管理的同一候选查询；编辑器的 API 只做该候选集的权限约束、展示投影、搜索和分页，不能在另一个 service 中再次遍历模块清单。
+- 组件目录是人工维护的持久化记录副本；记录存在就展示，不按 module/export 当前是否可运行隐藏，也不按 Catalog `code_modules` 或 workspace 区块分配过滤。
+- 区块编辑器消费后台 UI 管理的同一持久化组件目录；目录不承担 module registry 或可执行性真值。
 - 插入组件时同时插入或补齐其命名 `import`，并加载该组件类型声明供编辑器使用。
-- 后端只根据保存或预览源码中的静态 `import` 解析已注册模块、资产和版本锁；没有 import 的 Catalog 模块不得进入依赖锁。
+- 前端 compiler/preview 根据源码 `import` 查询当前前端 module registry，校验 module/export 并加载实现、类型和 Shadow DOM 样式。
+- 后端只保存源码、源码摘要/修订与业务状态，不解析 import、不校验 module/export，也不生成依赖锁；MCP/API 可以保存当前前端无法编译的源码，错误延迟到前端编译/预览。
+- artifact cache identity 使用 `source_sha256 + compiler_abi + runtime_abi`；依赖升级通过 Vite/browser 内容哈希 chunk 换版，不绑定后端版本号。
 
 ## 原因
 
-Catalog 负责区块模板和运行时身份，workspace assignment 负责区块类型可否创建；两者都不是作者源码可用组件的依赖真值。用它们推断依赖会让已安装的全局组件被错误隐藏或拒绝，也会给没有实际使用的模块加锁。候选集有两个构建入口会让后台和编辑器再次漂移。
+组件目录负责可插入记录，workspace assignment 负责区块类型可否创建，前端 module registry 负责当前构建真正可加载的模块；三者是不同对象。后端从源码复制依赖版本会制造第二真值，并让前端包升级与历史 lock 漂移。
 
 ## 适用场景
 

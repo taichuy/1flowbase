@@ -6,9 +6,6 @@ import { VditorEditor } from '@1flowbase/rich-text';
 import nativeComponentsCss from '@1flowbase/native-components/styles.css?raw';
 import richTextCss from '@1flowbase/rich-text/styles.css?raw';
 import vditorCss from 'vditor/dist/index.css?raw';
-import iconsBrowserModule from '../../../../../../../api/plugins/capability-plugins/1flowbase/browser-assets/ant-design-icons-catalog.js?raw';
-import officialBrowserAssets from '../../../../../../../api/plugins/capability-plugins/1flowbase/browser-assets/official-browser-assets.digest-input.json';
-import richTextBrowserModule from '../../../../../../../api/plugins/capability-plugins/1flowbase/browser-assets/rich-text.js?raw';
 import tailwindPresetCss from '../../../../../../../api/plugins/capability-plugins/1flowbase/browser-assets/tailwindcss-catalog.css?raw';
 import type { BlockContext } from '@1flowbase/page-protocol';
 import type { IsolatedFrontendBlockCapabilityHandlers } from '@1flowbase/page-runtime';
@@ -279,26 +276,6 @@ const tailwindModuleAsset = fixtureModuleStyle(
   tailwindPresetCss
 );
 
-const richTextModule = officialBrowserAssets.modules.find(
-  (module) => module.module_source === '@1flowbase/rich-text'
-);
-const richTextBrowserAsset = richTextModule?.assets.find(
-  (asset) => asset.role === 'browser_module'
-);
-if (!richTextModule || !richTextBrowserAsset)
-  throw new Error('Official rich text browser asset is unavailable.');
-const RICH_TEXT_BROWSER_ASSET_SHA256 = richTextBrowserAsset.sha256;
-const iconsModule = officialBrowserAssets.modules.find(
-  (module) => module.module_source === '@ant-design/icons'
-);
-const iconsBrowserAsset = iconsModule?.assets.find(
-  (asset) => asset.role === 'browser_module'
-);
-if (!iconsModule || !iconsBrowserAsset)
-  throw new Error('Official Ant Design icons browser asset is unavailable.');
-const ICONS_MODULE_VERSION = iconsModule.module_version;
-const ICONS_BROWSER_ASSET_SHA256 = iconsBrowserAsset.sha256;
-
 function CatalogIconsProbe() {
   const [Icon, setIcon] = useState<ComponentType<{
     'aria-label': string;
@@ -307,45 +284,7 @@ function CatalogIconsProbe() {
 
   useEffect(() => {
     let disposed = false;
-    const registry = createFrontstageNativeReactModuleRegistry(
-      [
-        {
-          module_source: 'react',
-          module_version: '19.2.5',
-          binding: 'host',
-          assets: [],
-          exports: [
-            'default',
-            'createContext',
-            'createElement',
-            'forwardRef',
-            'useContext',
-            'useEffect'
-          ]
-        },
-        {
-          module_source: '@ant-design/icons',
-          module_version: ICONS_MODULE_VERSION,
-          binding: 'fetched',
-          exports: ['CheckCircleOutlined'],
-          assets: [
-            {
-              role: 'browser_module',
-              media_type: 'text/javascript; charset=utf-8',
-              sha256: ICONS_BROWSER_ASSET_SHA256,
-              url: `/api/console/frontstage/component-module-assets/${ICONS_BROWSER_ASSET_SHA256}`
-            }
-          ]
-        }
-      ],
-      {
-        fetchAsset: async () =>
-          new Response(iconsBrowserModule, {
-            status: 200,
-            headers: { 'content-type': 'text/javascript; charset=utf-8' }
-          })
-      }
-    );
+    const registry = createFrontstageNativeReactModuleRegistry();
 
     void registry.load('@ant-design/icons').then(
       (module) => {
@@ -400,38 +339,7 @@ function CatalogRichTextProbe() {
 
   useEffect(() => {
     let disposed = false;
-    const registry = createFrontstageNativeReactModuleRegistry(
-      [
-        {
-          module_source: 'react',
-          module_version: '19.2.5',
-          binding: 'host',
-          assets: [],
-          exports: ['default', 'useEffect', 'useRef']
-        },
-        {
-          module_source: '@1flowbase/rich-text',
-          module_version: '1.0.0',
-          binding: 'fetched',
-          exports: ['VditorEditor'],
-          assets: [
-            {
-              role: 'browser_module',
-              media_type: 'text/javascript; charset=utf-8',
-              sha256: RICH_TEXT_BROWSER_ASSET_SHA256,
-              url: `/api/console/frontstage/component-module-assets/${RICH_TEXT_BROWSER_ASSET_SHA256}`
-            }
-          ]
-        }
-      ],
-      {
-        fetchAsset: async () =>
-          new Response(richTextBrowserModule, {
-            status: 200,
-            headers: { 'content-type': 'text/javascript; charset=utf-8' }
-          })
-      }
-    );
+    const registry = createFrontstageNativeReactModuleRegistry();
 
     void registry.load('@1flowbase/rich-text').then(
       (module) => {
@@ -828,8 +736,8 @@ function preparation(
   if (priority === 3) return { ...base, status: 'idle' };
   const identityInput = {
     sourceSha256: `${blockId}-${sourceRevision}`.padEnd(64, '0'),
-    runtimeFingerprint: 'native-fixture-runtime',
-    dependencyLockIdentity: 'fixture-lock'
+    compilerAbi: 'native-fixture-compiler',
+    runtimeAbi: 'native-fixture-runtime'
   };
   const prepared: FrontstageNativePreparedRuntime = {
     artifact: {} as FrontstageNativePreparedRuntime['artifact'],

@@ -121,15 +121,13 @@ describe('frontstage runtime cache lifecycle', () => {
     renderHook(
       () =>
         useFrontstageRuntimeCacheLifecycle({
-          nativeReactArtifactCache,
-          nativeReactRuntimeFingerprint: 'native-runtime-a'
+          nativeReactArtifactCache
         }),
       { wrapper }
     );
     expect(nativeReactArtifactCache.pruneWorkspace).toHaveBeenCalledWith({
       actorId: 'actor-a',
-      workspaceId: 'workspace-1',
-      runtimeFingerprint: 'native-runtime-a'
+      workspaceId: 'workspace-1'
     });
 
     act(() => authenticate('actor-b'));
@@ -139,8 +137,7 @@ describe('frontstage runtime cache lifecycle', () => {
       );
       expect(nativeReactArtifactCache.pruneWorkspace).toHaveBeenLastCalledWith({
         actorId: 'actor-b',
-        workspaceId: 'workspace-1',
-        runtimeFingerprint: 'native-runtime-a'
+        workspaceId: 'workspace-1'
       });
     });
     act(() => useAuthStore.getState().setAnonymous());

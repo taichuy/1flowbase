@@ -11,21 +11,6 @@ export interface ConsoleFrontendBlockPermissions {
   secrets: string;
 }
 
-export interface ConsoleFrontendBlockCodeModule {
-  source: string;
-  version: string;
-  binding: 'host' | 'fetched';
-  assets: Array<{
-    role: 'browser_module' | 'shadow_style' | 'support';
-    media_type: string;
-    sha256: string;
-    url: string;
-    integrity: 'verified_sha256';
-  }>;
-  exports: string[];
-  type_declarations: string;
-}
-
 export interface ConsoleFrontendContributionProvenance {
   module_id: string;
   module_version: string;
@@ -57,7 +42,12 @@ export interface ConsoleFrontendBlockCatalogEntry {
   code_template?: string | null;
   code_template_version?: string | null;
   code_template_language?: 'jsx' | 'tsx' | null;
-  code_modules: ConsoleFrontendBlockCodeModule[];
+  isolated_entry_asset?: {
+    media_type: string;
+    sha256: string;
+    url: string;
+    integrity: 'verified_sha256';
+  } | null;
   context_contract: ConsoleFrontendBlockContextContract;
   permissions: ConsoleFrontendBlockPermissions;
   ui_capabilities: string[];

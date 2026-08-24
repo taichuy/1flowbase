@@ -313,13 +313,6 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             console_get(components::list_frontstage_components, Authenticated),
         )
         .route(
-            "/frontstage/component-dependency-lock",
-            console_post(
-                components::resolve_frontstage_component_dependency_lock,
-                Authenticated,
-            ),
-        )
-        .route(
             "/frontstage/ui-templates",
             console_get(list_frontstage_ui_templates, Authenticated),
         )

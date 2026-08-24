@@ -172,22 +172,22 @@ describe('AuthenticatorUiBlockStudio', () => {
     );
 
     await waitFor(() =>
-      expect(monacoHook.addExtraLib).toHaveBeenCalledTimes(3)
-    );
-    expect(monacoHook.addExtraLib).toHaveBeenNthCalledWith(
-      1,
+      expect(monacoHook.addExtraLib).toHaveBeenCalledWith(
       expect.stringContaining('declare namespace JSX'),
       'file:///1flowbase/native-react-jsx.d.ts'
+      )
     );
-    expect(monacoHook.addExtraLib).toHaveBeenNthCalledWith(
-      2,
+    expect(monacoHook.addExtraLib).toHaveBeenCalledWith(
       expect.stringContaining('interface NativeReactBlockContext'),
       'file:///1flowbase/native-react-context.d.ts'
     );
-    expect(monacoHook.addExtraLib).toHaveBeenNthCalledWith(
-      3,
+    expect(monacoHook.addExtraLib).toHaveBeenCalledWith(
       expect.stringContaining("declare module 'tailwindcss'"),
       'file:///node_modules/tailwindcss/index.d.ts'
+    );
+    expect(monacoHook.addExtraLib).toHaveBeenCalledWith(
+      expect.stringContaining("declare module '@1flowbase/block-sdk'"),
+      'file:///node_modules/@1flowbase/block-sdk/index.d.ts'
     );
     fireEvent.click(screen.getByRole('button', { name: '变量' }));
     expect(resourcePanelHook.render).toHaveBeenCalledWith(

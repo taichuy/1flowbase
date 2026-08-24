@@ -1,9 +1,6 @@
 import {
-  nativeReactCatalogDependencyLockIdentity,
   type NativeReactArtifactEvaluationResult,
   type NativeReactComponentArtifact,
-  type NativeReactCatalogDependencyLock,
-  type NativeReactModuleRegistry,
   type NativeReactResolvedModuleAsset
 } from '@1flowbase/page-runtime';
 
@@ -42,8 +39,8 @@ export type FrontstageNativePreparationActiveStage = Exclude<
 
 export interface FrontstageNativeInstanceIdentityInput {
   sourceSha256: string;
-  runtimeFingerprint: string;
-  dependencyLockIdentity: string;
+  compilerAbi: string;
+  runtimeAbi: string;
   executableStyleIdentity?: string;
 }
 
@@ -148,25 +145,6 @@ interface ScheduledPreparation {
 }
 
 export const DEFAULT_FRONTSTAGE_NATIVE_PREPARATION_CONCURRENCY = 2;
-
-export class FrontstagePageNativeModuleRegistryCache {
-  private readonly registries = new Map<string, NativeReactModuleRegistry>();
-
-  get(
-    dependencyLock: NativeReactCatalogDependencyLock,
-    createRegistry: (
-      lock: NativeReactCatalogDependencyLock
-    ) => NativeReactModuleRegistry
-  ): NativeReactModuleRegistry {
-    const identity = nativeReactCatalogDependencyLockIdentity(dependencyLock);
-    let registry = this.registries.get(identity);
-    if (!registry) {
-      registry = createRegistry(dependencyLock);
-      this.registries.set(identity, registry);
-    }
-    return registry;
-  }
-}
 
 /** Owns one page's bounded Native React preparation queue; React roots belong to P2. */
 export class FrontstageNativePreparationScheduler {

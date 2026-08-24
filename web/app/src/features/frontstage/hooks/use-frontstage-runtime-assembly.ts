@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 
 import { useAuthStore } from '../../../state/auth-store';
 import type { FrontstageBlockRuntimeAssembly } from '../api/block-tree';
-import type { ExternalNpmPackState } from '../api/external-npm';
 import type { FrontstageRuntimeDemandByBlockId } from '../lib/page-canvas/runtime-demand';
 import type { FrontstagePageCanvasBlockCodeReadPlan } from '../lib/page-canvas/runtime-source';
 import type { FrontstageNativePreparationSnapshot } from '../lib/page-canvas/native-runtime-preparation';
@@ -11,13 +10,11 @@ import { useFrontstagePageCanvasNativePreparations } from './use-frontstage-page
 export function useFrontstageRuntimeAssembly({
   workspaceId,
   pageId,
-  assembly,
-  externalNpm
+  assembly
 }: {
   workspaceId: string;
   pageId: string | null;
   assembly: FrontstageBlockRuntimeAssembly | undefined;
-  externalNpm: ExternalNpmPackState;
 }): FrontstageNativePreparationSnapshot[] {
   const actor = useAuthStore((state) => state.actor);
   const readPlan = useMemo<FrontstagePageCanvasBlockCodeReadPlan | null>(() => {
@@ -59,7 +56,6 @@ export function useFrontstageRuntimeAssembly({
     actorId: actor?.id,
     actorWorkspaceId: actor?.current_workspace_id,
     readPlan,
-    externalNpm,
     demandsByBlockId: demands
   }).preparations;
 }

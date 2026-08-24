@@ -81,20 +81,10 @@ export async function prepareFrontstageIsolatedContribution(
     'graph provenance mismatch'
   );
 
-  rejectUnless(entry.code_modules.length === 1, 'module allowlist mismatch');
-  const codeModule = entry.code_modules[0];
-  rejectUnless(
-    codeModule?.source === entry.entry && codeModule.binding === 'fetched',
-    'entry module mismatch'
-  );
-  const browserAssets = codeModule.assets.filter(
-    (asset) => asset.role === 'browser_module'
-  );
-  rejectUnless(browserAssets.length === 1, 'entry asset mismatch');
-  const asset = browserAssets[0];
+  const asset = entry.isolated_entry_asset;
   rejectUnless(
     asset !== undefined &&
-      'integrity' in asset &&
+      asset !== null &&
       asset.integrity === 'verified_sha256' &&
       asset.media_type.startsWith('text/javascript') &&
       asset.url.endsWith(`/${asset.sha256}`),

@@ -30,22 +30,11 @@ pub struct FrontendBlockContextContractResponse {
 }
 
 #[derive(Debug, Serialize, ToSchema)]
-pub struct FrontendBlockModuleAssetResponse {
-    pub role: String,
+pub struct IsolatedFrontendBlockEntryAssetResponse {
     pub media_type: String,
     pub sha256: String,
     pub url: String,
     pub integrity: String,
-}
-
-#[derive(Debug, Serialize, ToSchema)]
-pub struct FrontendBlockCodeModuleResponse {
-    pub source: String,
-    pub version: String,
-    pub exports: Vec<String>,
-    pub binding: String,
-    pub assets: Vec<FrontendBlockModuleAssetResponse>,
-    pub type_declarations: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -61,7 +50,7 @@ pub struct FrontendBlockCatalogResponse {
     pub code_template: Option<String>,
     pub code_template_version: Option<String>,
     pub code_template_language: Option<String>,
-    pub code_modules: Vec<FrontendBlockCodeModuleResponse>,
+    pub isolated_entry_asset: Option<IsolatedFrontendBlockEntryAssetResponse>,
     pub context_contract: FrontendBlockContextContractResponse,
     pub permissions: FrontendBlockPermissionsResponse,
     pub ui_capabilities: Vec<String>,
@@ -108,10 +97,29 @@ fn to_response(
 ) -> Result<FrontendBlockCatalogResponse, ApiError> {
     let asset_bindings = binding
         .assets
-        .into_iter()
-        .map(|asset| (asset.digest.clone(), asset))
+        .iter()
+        .map(|asset| (asset.digest.as_str(), asset))
         .collect::<BTreeMap<_, _>>();
     let entry = binding.catalog_entry;
+    let isolated_entry_asset = if entry.runtime == "isolated_iframe" {
+        entry
+            .code_modules
+            .iter()
+            .flat_map(|module| module.assets.iter())
+            .find(|asset| asset.role == domain::FrontendModuleAssetRole::BrowserModule)
+            .and_then(|asset| {
+                asset_bindings.get(asset.sha256.as_str()).map(|projected| {
+                    IsolatedFrontendBlockEntryAssetResponse {
+                        media_type: asset.media_type.clone(),
+                        sha256: asset.sha256.clone(),
+                        url: projected.url.clone(),
+                        integrity: projected.integrity.as_str().to_string(),
+                    }
+                })
+            })
+    } else {
+        None
+    };
     Ok(FrontendBlockCatalogResponse {
         installation_id: entry.installation_id.to_string(),
         provider_code: entry.provider_code,
@@ -124,51 +132,7 @@ fn to_response(
         code_template: entry.code_template,
         code_template_version: entry.code_template_version,
         code_template_language: entry.code_template_language,
-        code_modules: entry
-            .code_modules
-            .into_iter()
-            .map(|code_module| {
-                let type_declarations = code_module.resolved_type_declarations();
-                Ok(FrontendBlockCodeModuleResponse {
-                    source: code_module.source,
-                    version: code_module.version,
-                    exports: code_module.exports,
-                    binding: match code_module.binding {
-                        domain::FrontendModuleBinding::Host => "host".to_string(),
-                        domain::FrontendModuleBinding::Fetched => "fetched".to_string(),
-                    },
-                    assets: code_module
-                        .assets
-                        .into_iter()
-                        .map(|asset| {
-                            let projected = asset_bindings.get(&asset.sha256).ok_or(
-                                control_plane::errors::ControlPlaneError::UpstreamUnavailable(
-                                    "frontend_contribution_asset_binding",
-                                ),
-                            )?;
-                            Ok(FrontendBlockModuleAssetResponse {
-                                role: match asset.role {
-                                    domain::FrontendModuleAssetRole::BrowserModule => {
-                                        "browser_module".to_string()
-                                    }
-                                    domain::FrontendModuleAssetRole::ShadowStyle => {
-                                        "shadow_style".to_string()
-                                    }
-                                    domain::FrontendModuleAssetRole::Support => {
-                                        "support".to_string()
-                                    }
-                                },
-                                media_type: asset.media_type,
-                                sha256: asset.sha256,
-                                url: projected.url.clone(),
-                                integrity: projected.integrity.as_str().to_string(),
-                            })
-                        })
-                        .collect::<Result<Vec<_>, ApiError>>()?,
-                    type_declarations,
-                })
-            })
-            .collect::<Result<Vec<_>, ApiError>>()?,
+        isolated_entry_asset,
         context_contract: FrontendBlockContextContractResponse {
             primitives: entry.context_contract.primitives,
             input_schema: entry.context_contract.input_schema,

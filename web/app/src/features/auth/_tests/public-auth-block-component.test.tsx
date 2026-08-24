@@ -8,10 +8,7 @@ import {
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import {
-  compileNativeReactComponent,
-  createNativeReactRuntimeFingerprint
-} from '@1flowbase/page-runtime';
+import { compileNativeReactComponent } from '@1flowbase/page-runtime';
 
 const { apiFetch, passwordSignIn } = vi.hoisted(() => ({
   apiFetch: vi.fn(),
@@ -31,6 +28,7 @@ vi.mock('../api/session', async () => {
 
 import { PublicAuthBlock } from '../components/PublicAuthBlock';
 import { appI18n } from '../../../shared/i18n/app-i18n';
+import { FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS } from '../../frontstage/lib/native-trusted-block-runtime-factory';
 
 describe('PublicAuthBlock Native Host composition', () => {
   beforeEach(async () => {
@@ -448,8 +446,7 @@ function compiler(source: string) {
 function compiledResult(source: string) {
   const compiled = compileNativeReactComponent(
     source,
-    [],
-    createNativeReactRuntimeFingerprint('/auth-test-worker.js')
+    FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS
   );
   if (!compiled.ok) throw new Error(compiled.diagnostics[0]?.message);
   return {

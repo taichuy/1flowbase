@@ -2,7 +2,7 @@
 memory_type: feedback
 feedback_category: repository
 topic: 外部 npm 使用本地预构建的 Nginx 静态 Module Pack
-summary: 外部 npm 不做后台在线安装、数据库管理或浏览器构建；开发者在本地生成一个完整扩展包并整体部署到唯一 Nginx 挂载目录。服务器只保留当前包，不维护历史版本；包内 manifest 自动描述其中多个 npm 模块。
+summary: 本文原“后端/Nginx manifest 提供运行时 module lock”结论已被 #1871 supersede；当前 Frontstage 模块、exports、实现和内容哈希资产全部归前端构建，后端不再声明或解析 dependency lock。
 keywords:
   - frontend-dependency
   - npm
@@ -15,9 +15,11 @@ match_when:
   - 决定包版本属于源码、发布快照还是后台运行时
   - 设计依赖安装权限、构建制品与浏览器加载链路
 created_at: 2026-08-11 16
-updated_at: 2026-08-11 16
+updated_at: 2026-08-24 21
 last_verified_at: 2026-08-11 16
 decision_policy: direct_reference
+status: superseded
+superseded_by: "#1871"
 scope:
   - web/app/src/features/settings
   - web/app/src/shared/code-block
@@ -26,6 +28,8 @@ scope:
 ---
 
 # 外部 npm 由本地预构建并通过 Nginx 静态交付
+
+> 2026-08-24 superseded：用户已确认 #1871。Frontstage 当前允许模块、exports、实现、类型和 Shadow DOM 样式改由前端构建的显式 module registry 统一拥有；依赖 JS/CSS 使用 Vite/browser 内容哈希资产。后端不再读取静态 manifest、声明 `code_modules`、生成 `dependencyLock` 或分发新的 frontend assets。本文仅保留历史决策背景，不再直接指导实现。
 
 ## 规则
 

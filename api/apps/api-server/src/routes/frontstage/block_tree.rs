@@ -227,8 +227,6 @@ pub struct FrontstageBlockNodeCodeResponse {
     pub page_id: String,
     pub source_code: String,
     pub source_sha256: Option<String>,
-    #[schema(value_type = Option<Vec<Object>>)]
-    pub dependency_lock: Option<Value>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -963,7 +961,6 @@ fn to_code_response(
         page_id: code.page_id.to_string(),
         source_code: code.source_code,
         source_sha256: code.source_sha256,
-        dependency_lock: code.dependency_lock,
     }
 }
 

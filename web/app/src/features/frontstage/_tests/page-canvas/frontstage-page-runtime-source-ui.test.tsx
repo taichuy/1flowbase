@@ -248,8 +248,8 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
           slotIndex: 0,
           identityInput: {
             sourceSha256: 'a'.repeat(64),
-            runtimeFingerprint: 'runtime-a',
-            dependencyLockIdentity: 'lock-a'
+            compilerAbi: 'compiler-a',
+            runtimeAbi: 'runtime-a'
           }
         },
         prepared: {
@@ -259,8 +259,8 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
           moduleAssets: [],
           identityInput: {
             sourceSha256: 'a'.repeat(64),
-            runtimeFingerprint: 'runtime-a',
-            dependencyLockIdentity: 'lock-a'
+            compilerAbi: 'compiler-a',
+            runtimeAbi: 'runtime-a'
           }
         }
       }
@@ -301,9 +301,7 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
       expect(
         nativePreparationsHook.useFrontstagePageCanvasNativePreparations
       ).toHaveBeenCalledWith(
-        expect.objectContaining({
-          externalNpm: undefined
-        })
+        expect.any(Object)
       );
     });
   });

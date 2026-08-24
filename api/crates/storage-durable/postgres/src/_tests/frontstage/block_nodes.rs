@@ -1,15 +1,11 @@
 use std::collections::BTreeMap;
 
-use control_plane::{
-    audit::audit_log,
-    ports::{
-        CreateFrontstageBlockNodeInput, CreateFrontstagePageInput, CreateFrontstagePageTabInput,
-        DeleteFrontstageBlockSubtreeInput, FrontstageBlockCodeInput,
-        FrontstageBlockDescriptorUpdate, FrontstageBlockPosition, FrontstageBlockSourceInput,
-        FrontstageBlockTreeRepository, FrontstageDependencyLockReconciliationRepository,
-        FrontstagePageRepository, ReconcileFrontstageBlockDependencyLockInput,
-        SaveFrontstageBlockNodeCodeInput, UpdateFrontstageBlockDescriptorsInput,
-    },
+use control_plane::ports::{
+    CreateFrontstageBlockNodeInput, CreateFrontstagePageInput, CreateFrontstagePageTabInput,
+    DeleteFrontstageBlockSubtreeInput, FrontstageBlockCodeInput, FrontstageBlockDescriptorUpdate,
+    FrontstageBlockPosition, FrontstageBlockSourceInput, FrontstageBlockTreeRepository,
+    FrontstagePageRepository, SaveFrontstageBlockNodeCodeInput,
+    UpdateFrontstageBlockDescriptorsInput,
 };
 use domain::FrontstageBlockPresentation;
 use runtime_core::runtime_record_repository::{OrderedTreeCommandError, OrderedTreeQueryError};
@@ -104,7 +100,6 @@ fn create_input(
         }),
         code: FrontstageBlockCodeInput {
             source_code: format!("export default function {block_id}() {{ return null; }}"),
-            dependency_lock: json!([]),
         },
         audit_log: audit,
     }
@@ -134,90 +129,6 @@ async fn block_fixture() -> (PgPool, PgControlPlaneStore, Uuid, Uuid) {
     .unwrap();
     let store = PgControlPlaneStore::new(pool.clone());
     (pool, store, workspace_id, actor_user_id)
-}
-
-#[tokio::test]
-async fn dependency_lock_reconciliation_updates_only_native_blocks_missing_react_and_audits_once() {
-    let (pool, store, workspace_id, actor_user_id) = block_fixture().await;
-    let (page_id, tab_id) = create_page_and_tab(
-        &store,
-        workspace_id,
-        actor_user_id,
-        "dependency-lock-repair",
-    )
-    .await;
-    store
-        .create_frontstage_block_node(&create_input(
-            workspace_id,
-            actor_user_id,
-            page_id,
-            tab_id,
-            "legacy-block",
-            "legacy-code",
-            FrontstageBlockPosition::default(),
-            Uuid::now_v7(),
-        ))
-        .await
-        .unwrap();
-
-    let candidates = FrontstageDependencyLockReconciliationRepository::list_legacy_frontstage_block_dependency_lock_candidates(&store)
-        .await
-        .unwrap();
-    assert_eq!(candidates.len(), 1);
-    assert_eq!(candidates[0].block_id, "legacy-block");
-    assert_eq!(candidates[0].code_ref, "legacy-code");
-
-    let audit = audit_log(
-        Some(workspace_id),
-        Some(actor_user_id),
-        "frontstage_block",
-        Some(page_id),
-        "frontstage.block_node_dependency_lock_reconciled",
-        json!({ "block_id": "legacy-block" }),
-    );
-    let update = ReconcileFrontstageBlockDependencyLockInput {
-        workspace_id,
-        page_id,
-        code_ref: "legacy-code".to_owned(),
-        dependency_lock: json!([{
-            "module_source": "react",
-            "module_version": "1.0.0",
-            "binding": "host",
-            "assets": [],
-            "exports": ["default"]
-        }]),
-        audit_log: audit.clone(),
-    };
-    assert_eq!(
-        FrontstageDependencyLockReconciliationRepository::reconcile_frontstage_block_dependency_locks(
-            &store,
-            std::slice::from_ref(&update),
-        )
-        .await
-        .unwrap(),
-        1
-    );
-    assert_eq!(
-        FrontstageDependencyLockReconciliationRepository::reconcile_frontstage_block_dependency_locks(
-            &store,
-            &[update],
-        )
-        .await
-        .unwrap(),
-        0
-    );
-
-    let (dependency_lock, audit_count): (Value, i64) = sqlx::query_as(
-        "select (select dependency_lock from frontstage_block_codes where workspace_id = $1 and page_id = $2 and code_ref = 'legacy-code'), (select count(*) from audit_logs where id = $3)",
-    )
-    .bind(workspace_id)
-    .bind(page_id)
-    .bind(audit.id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(dependency_lock[0]["module_source"], "react");
-    assert_eq!(audit_count, 1);
 }
 
 #[tokio::test]
@@ -397,7 +308,6 @@ async fn block_code_save_rejects_a_stale_source_revision_atomically() {
             expected_source_revision: Some("0".repeat(64)),
             source: FrontstageBlockSourceInput {
                 source_code: "export default 2;".to_owned(),
-                dependency_lock: json!([]),
             },
             audit_log: stale,
         })

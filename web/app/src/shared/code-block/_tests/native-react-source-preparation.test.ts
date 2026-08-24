@@ -3,7 +3,6 @@ import { describe, expect, test, vi } from 'vitest';
 import {
   NativeReactModuleRegistryError,
   compileNativeReactComponent,
-  createNativeReactRuntimeFingerprint,
   type NativeReactCompileDiagnostic,
   type NativeReactModuleRegistry,
   type NativeReactResolvedModuleAsset
@@ -13,29 +12,8 @@ import { prepareNativeReactSource } from '../native-react-source-preparation';
 import type { NativeReactBrowserCompileResult } from '../native-react-compiler-browser';
 
 const frozenSource = 'export default function Block() { return null; }';
-const tailwindDependencyLock = [
-  {
-    module_source: 'tailwindcss',
-    module_version: '4.3.3',
-    binding: 'fetched' as const,
-    assets: [
-      {
-        role: 'browser_module' as const,
-        media_type: 'text/javascript',
-        sha256: 'a'.repeat(64),
-        url: `/tailwindcss-${'a'.repeat(64)}`
-      }
-    ],
-    exports: ['default']
-  }
-];
-
 function compiledArtifact() {
-  const compiled = compileNativeReactComponent(
-    frozenSource,
-    [],
-    createNativeReactRuntimeFingerprint('source-preparation-test')
-  );
+  const compiled = compileNativeReactComponent(frozenSource, []);
   if (!compiled.ok) throw new Error('Native React test artifact failed.');
   return compiled.artifact;
 }
@@ -50,6 +28,7 @@ function registry(
   overrides: Partial<NativeReactModuleRegistry> = {}
 ): NativeReactModuleRegistry {
   return {
+    definitions: [],
     load: vi.fn(async () => ({})),
     resolveModuleMap: vi.fn(async () => ({})),
     resolveModuleAssets: vi.fn(async () => []),
@@ -64,12 +43,15 @@ describe('Native React source preparation', () => {
       artifact: compiledArtifact(),
       diagnostics: []
     });
-    const registryFactory = vi.fn(() => registry());
+    const registryFactory = vi.fn(() =>
+      registry({
+        definitions: [{ module_source: 'tailwindcss', exports: [] }]
+      })
+    );
     const result = await prepareNativeReactSource({
       frozenSource:
         'import \'tailwindcss\'; export default () => <div className="grid unknown-layout" />;',
       requestId: 'unsupported-tailwind',
-      dependencyLock: tailwindDependencyLock,
       compiler,
       registryFactory
     });
@@ -87,7 +69,6 @@ describe('Native React source preparation', () => {
     const result = await prepareNativeReactSource({
       frozenSource: source,
       requestId: 'runtime-console',
-      dependencyLock: [],
       compiler: compilerReturning({
         ok: true,
         artifact: compiled.artifact,
@@ -111,25 +92,24 @@ describe('Native React source preparation', () => {
     expect(runtimeLog).toHaveBeenCalledWith('prepared');
   });
 
-  test('R6-P1 preserves compile diagnostics without creating a registry', async () => {
+  test('R6-P1 preserves compile diagnostics after reading frontend definitions', async () => {
     const diagnostic: NativeReactCompileDiagnostic = {
       phase: 'compile',
       code: 'transform_failed',
       path: 'source',
       message: 'fixture compile failure'
     };
-    const registryFactory = vi.fn();
+    const registryFactory = vi.fn(() => registry());
 
     const result = await prepareNativeReactSource({
       frozenSource,
       requestId: 'compile-failure',
-      dependencyLock: [],
       compiler: compilerReturning({ ok: false, diagnostics: [diagnostic] }),
       registryFactory
     });
 
     expect(result).toEqual({ ok: false, diagnostics: [diagnostic] });
-    expect(registryFactory).not.toHaveBeenCalled();
+    expect(registryFactory).toHaveBeenCalledOnce();
   });
 
   test('R6-P1 returns typed runtime diagnostics from registry evaluation', async () => {
@@ -146,7 +126,6 @@ describe('Native React source preparation', () => {
     const result = await prepareNativeReactSource({
       frozenSource,
       requestId: 'registry-failure',
-      dependencyLock: [],
       compiler: compilerReturning({
         ok: true,
         artifact: compiledArtifact(),
@@ -186,7 +165,6 @@ describe('Native React source preparation', () => {
     const result = await prepareNativeReactSource({
       frozenSource,
       requestId: 'success',
-      dependencyLock: [],
       compiler: compilerReturning({ ok: true, artifact, diagnostics: [] }),
       registryFactory
     });
@@ -195,7 +173,7 @@ describe('Native React source preparation', () => {
     if (!result.ok) return;
     expect(result.component).toBeTypeOf('function');
     expect(result.moduleAssets).toEqual([moduleAsset]);
-    expect(registryFactory).toHaveBeenCalledWith(artifact.dependencyLock);
+    expect(registryFactory).toHaveBeenCalledWith();
     expect(moduleRegistry.resolveModuleAssets).toHaveBeenCalledWith(
       artifact.program.injectedModules.map(({ source }) => source)
     );
@@ -205,7 +183,7 @@ describe('Native React source preparation', () => {
     const moduleRegistry = registry({
       resolveModuleAssets: vi.fn(async () => {
         throw new NativeReactModuleRegistryError(
-          'module_fetch_failed',
+          'module_load_failed',
           'modules.catalog/widget.assets.shadow_style',
           'fixture asset failure'
         );
@@ -215,7 +193,6 @@ describe('Native React source preparation', () => {
     const result = await prepareNativeReactSource({
       frozenSource,
       requestId: 'asset-failure',
-      dependencyLock: [],
       compiler: compilerReturning({
         ok: true,
         artifact: compiledArtifact(),

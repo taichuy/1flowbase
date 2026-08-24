@@ -1,6 +1,7 @@
 import type { BlockSourceExtraLib } from '../../../../shared/code-block/extra-lib';
 
 import type { NormalizedFrontstageBlockCatalogEntry } from '../block-catalog';
+import { FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS } from '../native-modules/registry';
 import { FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS } from './native-react-editor-contract';
 
 export interface FrontstageJsxEditorProjection {
@@ -14,28 +15,14 @@ export function createFrontstageJsxEditorProjection({
 }: {
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
 }): FrontstageJsxEditorProjection {
-  const codeModules = catalogEntry?.codeModules ?? [];
   const monacoExtraLibs = [
     ...FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS,
-    {
-      source: 'tailwindcss',
-      filePath: 'file:///node_modules/tailwindcss/index.d.ts',
-      content: "declare module 'tailwindcss' {}\n"
-    },
-    ...codeModules.map((codeModule) => ({
-      source: codeModule.source,
-      filePath: `file:///node_modules/${codeModule.source}/index.d.ts`,
-      content: codeModule.type_declarations
-    }))
+    ...FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS
   ];
   return {
-    allowedImportSources: new Set([
-      'react',
-      'react/jsx-runtime',
-      'antd',
-      'tailwindcss',
-      ...codeModules.map((codeModule) => codeModule.source)
-    ]),
+    allowedImportSources: new Set(
+      FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS.map(({ source }) => source)
+    ),
     contextComment: createFrontstageContextComment(),
     monacoExtraLibs
   };

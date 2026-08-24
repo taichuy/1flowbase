@@ -50,7 +50,6 @@ use argon2::{
 use axum::{middleware as axum_middleware, routing::get, Json, Router};
 use control_plane::{
     bootstrap::{BootstrapConfig, BootstrapService},
-    frontstage::reconcile_legacy_frontstage_block_dependency_locks,
     plugin_management::ready_current_node_plugin_installation,
     ports::{DataSourceRuntimePort, PluginRepository},
 };
@@ -524,24 +523,6 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         )
         .await?;
     plugin_management.reconcile_all_installations().await?;
-    let dependency_lock_reconciliation = reconcile_legacy_frontstage_block_dependency_locks(
-        &store,
-        &config.api_node_id,
-        bootstrap_result.root_user_id,
-    )
-    .await?;
-    if dependency_lock_reconciliation.updated_block_count > 0 {
-        tracing::info!(
-            updated_block_count = dependency_lock_reconciliation.updated_block_count,
-            "legacy frontstage block dependency locks reconciled"
-        );
-    }
-    if dependency_lock_reconciliation.unresolved_block_count > 0 {
-        tracing::warn!(
-            unresolved_block_count = dependency_lock_reconciliation.unresolved_block_count,
-            "some legacy frontstage block dependency locks remain unresolved"
-        );
-    }
     intake_active_data_source_templates_at_startup(
         &store,
         &api_provider_runtime,

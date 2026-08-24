@@ -2,7 +2,6 @@ import { IDBFactory } from 'fake-indexeddb';
 import { describe, expect, test, vi } from 'vitest';
 import {
   compileNativeReactComponent,
-  createNativeReactRuntimeFingerprint,
   type NativeReactComponentArtifact
 } from '@1flowbase/page-runtime';
 
@@ -16,8 +15,6 @@ import {
   type FrontstageNativeReactArtifactCacheStore
 } from '../../lib/runtime-cache/native-react-artifact-cache';
 import { createIndexedDbRecordStore } from '../../lib/runtime-cache/indexeddb-store';
-
-const runtimeFingerprint = createNativeReactRuntimeFingerprint('/worker-a.js');
 
 describe('Native React Artifact V2 IndexedDB cache', () => {
   test('D3R-AC-006 reopens a full-identity L2 hit without invoking the compiler', async () => {
@@ -71,20 +68,6 @@ describe('Native React Artifact V2 IndexedDB cache', () => {
           ...currentIdentity,
           runtime_abi: '1flowbase/native-react-runtime@previous'
         } as unknown as FrontstageNativeReactArtifactCacheIdentity
-      },
-      {
-        field: 'runtime_fingerprint',
-        identity: identity(
-          'same-source',
-          createNativeReactRuntimeFingerprint('/worker-b.js')
-        )
-      },
-      {
-        field: 'dependency_lock_sha256',
-        identity: {
-          ...currentIdentity,
-          dependency_lock_sha256: 'f'.repeat(64)
-        } as unknown as FrontstageNativeReactArtifactCacheIdentity
       }
     ];
 
@@ -128,11 +111,9 @@ describe('Native React Artifact V2 IndexedDB cache', () => {
       'artifact',
       'byteSize',
       'compiler_abi',
-      'dependency_lock_sha256',
       'key',
       'lastAccessedAt',
       'runtime_abi',
-      'runtime_fingerprint',
       'schemaVersion',
       'source_sha256',
       'workspaceId'
@@ -209,50 +190,20 @@ describe('Native React Artifact V2 IndexedDB cache', () => {
     expect(corruptCompile).toHaveBeenCalledOnce();
   });
 
-  test('D2-AC-006 removes old-fingerprint records for cold recovery', async () => {
-    const { cache } = subject('native-old-fingerprint-recovery');
-
-    const oldRuntimeFingerprint =
-      createNativeReactRuntimeFingerprint('/worker-old.js');
-    await cache.put(
-      identity('source-old', oldRuntimeFingerprint),
-      artifact('source-old', oldRuntimeFingerprint)
-    );
+  test('AC-007 removes records with an obsolete ABI during workspace pruning', async () => {
+    const { cache, store } = subject('native-old-abi-recovery');
+    await cache.put(identity('source-old'), artifact('source-old'));
+    const record = (await store.list())[0] as FrontstageNativeReactArtifactCacheRecord;
+    await store.put({
+      ...record,
+      compiler_abi: '1flowbase/native-react-compiler@previous'
+    } as unknown as FrontstageNativeReactArtifactCacheRecord);
     await expect(
       cache.pruneWorkspace({
         actorId: 'actor-a',
-        workspaceId: 'workspace-a',
-        runtimeFingerprint
+        workspaceId: 'workspace-a'
       })
     ).resolves.toMatchObject({ status: 'completed', deleted: 1 });
-  });
-
-  test('AC-006 workspace pruning preserves concurrently locked executable styles', async () => {
-    const { cache } = subject('native-locked-style-retention');
-    const styleA = identity(
-      'same-source',
-      createNativeReactRuntimeFingerprint('/worker.js', 'style-a')
-    );
-    const styleB = identity(
-      'same-source',
-      createNativeReactRuntimeFingerprint('/worker.js', 'style-b')
-    );
-    await cache.put(
-      styleA,
-      artifact('same-source', styleA.runtime_fingerprint)
-    );
-    await cache.put(
-      styleB,
-      artifact('same-source', styleB.runtime_fingerprint)
-    );
-
-    await cache.pruneWorkspace({
-      actorId: styleA.actorId,
-      workspaceId: styleA.workspaceId
-    });
-
-    await expect(cache.get(styleA)).resolves.toMatchObject({ status: 'hit' });
-    await expect(cache.get(styleB)).resolves.toMatchObject({ status: 'hit' });
   });
 
   test('D2-AC-006 enforces byte LRU and retries once after quota eviction', async () => {
@@ -347,28 +298,16 @@ describe('Native React Artifact V2 IndexedDB cache', () => {
   });
 });
 
-function identity(
-  source: string,
-  fingerprint = runtimeFingerprint
-): FrontstageNativeReactArtifactCacheIdentity {
+function identity(source: string): FrontstageNativeReactArtifactCacheIdentity {
   return createFrontstageNativeReactArtifactCacheIdentity({
     actorId: 'actor-a',
     workspaceId: 'workspace-a',
-    source: componentSource(source),
-    dependencyLock: [],
-    runtimeFingerprint: fingerprint
+    source: componentSource(source)
   });
 }
 
-function artifact(
-  source: string,
-  fingerprint = runtimeFingerprint
-): NativeReactComponentArtifact {
-  const result = compileNativeReactComponent(
-    componentSource(source),
-    [],
-    fingerprint
-  );
+function artifact(source: string): NativeReactComponentArtifact {
+  const result = compileNativeReactComponent(componentSource(source), []);
   if (!result.ok)
     throw new Error('Expected cache artifact fixture to compile.');
   return result.artifact;

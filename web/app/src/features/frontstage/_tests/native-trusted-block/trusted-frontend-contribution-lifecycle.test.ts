@@ -36,7 +36,7 @@ describe('trusted frontend contribution lifecycle', () => {
     expect(contribution).toMatchObject({
       contributionId: 'frontend-block.installation-1.hero_banner',
       blockVersion: '1.0.0',
-      assetIntegrity: ['verified_sha256'],
+      assetIntegrity: [],
       grantedPermissions: ['frontend-block.ui-mount.trusted-host'],
       graphFingerprint: 'graph-fingerprint',
       runtimeKind: 'trusted_native',
@@ -137,18 +137,6 @@ describe('trusted frontend contribution lifecycle', () => {
     ).toThrow(TrustedFrontendContributionLifecycleError);
   });
 
-  test('D5-P2 rejects an asset without the verified D5-P1 integrity receipt', () => {
-    const invalid = catalogEntry();
-    invalid.code_modules[0]!.assets[0] = {
-      ...invalid.code_modules[0]!.assets[0]!,
-      integrity: 'invalid' as 'verified_sha256'
-    };
-
-    expect(() =>
-      prepareTrustedFrontendContribution(invalid, expectation())
-    ).toThrowError(/asset integrity mismatch/u);
-  });
-
   test('D5-P2 source states instance disposal without claiming Shadow DOM security isolation', () => {
     const lifecycleSource = readFileSync(
       join(
@@ -188,7 +176,6 @@ function expectation() {
 function catalogEntry(
   overrides: Partial<FrontstageBlockCatalogEntry> = {}
 ): FrontstageBlockCatalogEntry {
-  const sha256 = 'a'.repeat(64);
   return {
     installation_id: 'installation-1',
     provider_code: 'official',
@@ -198,24 +185,6 @@ function catalogEntry(
     title: 'Hero Banner',
     runtime: 'native_react',
     entry: 'blocks/hero/index.js',
-    code_modules: [
-      {
-        source: '@1flowbase/native-components',
-        version: '1.0.0',
-        binding: 'fetched',
-        assets: [
-          {
-            role: 'browser_module',
-            media_type: 'text/javascript; charset=utf-8',
-            sha256,
-            url: `/api/console/frontstage/component-module-assets/${sha256}`,
-            integrity: 'verified_sha256'
-          }
-        ],
-        exports: ['Surface'],
-        type_declarations: 'export declare const Surface: unknown;'
-      }
-    ],
     context_contract: { primitives: ['text'], input_schema: {} },
     permissions: { network: 'none', storage: 'none', secrets: 'none' },
     ui_capabilities: ['responsive'],

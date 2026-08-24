@@ -1,10 +1,8 @@
 import { useEffect, useRef } from 'react';
 
 import Vditor from 'vditor';
-import 'vditor/dist/index.css';
 
 import { acquireBundledVditorRuntime } from './runtime-assets';
-import './styles.css';
 
 const NO_REMOTE_ASSET_BASE = '/__1flowbase_bundled_vditor__';
 

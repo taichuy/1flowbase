@@ -45,24 +45,10 @@ export interface FrontendBlockPermissions {
   secrets: string;
 }
 
-export type FrontendBlockCodeModuleSource = string;
-
-export interface FrontendBlockCodeModule {
-  source: FrontendBlockCodeModuleSource;
-  type_declarations: string;
-}
-
 export interface FrontendBlockCodeContribution {
   code_template?: string | null;
   code_template_version?: string | null;
   code_template_language?: 'jsx' | 'tsx' | null;
-  code_modules?: FrontendBlockCodeModule[];
-}
-
-export interface FrontendBlockMonacoExtraLib {
-  source: FrontendBlockCodeModuleSource;
-  filePath: string;
-  content: string;
 }
 
 export interface FrontendBlockCodeCapabilities {
@@ -71,8 +57,6 @@ export interface FrontendBlockCodeCapabilities {
     version: string;
     language: 'jsx' | 'tsx';
   } | null;
-  allowedImports: FrontendBlockCodeModuleSource[];
-  monacoExtraLibs: FrontendBlockMonacoExtraLib[];
 }
 
 export interface FrontendBlockCatalogEntry extends FrontendBlockCodeContribution {
@@ -102,7 +86,6 @@ export interface FrontendBlockManifestContribution extends FrontendBlockCodeCont
 export function createFrontendBlockCodeCapabilities(
   contribution: FrontendBlockCodeContribution
 ): FrontendBlockCodeCapabilities {
-  const modules = contribution.code_modules ?? [];
   return {
     template:
       contribution.code_template &&
@@ -113,13 +96,7 @@ export function createFrontendBlockCodeCapabilities(
             version: contribution.code_template_version,
             language: contribution.code_template_language
           }
-        : null,
-    allowedImports: modules.map((codeModule) => codeModule.source),
-    monacoExtraLibs: modules.map((codeModule) => ({
-      source: codeModule.source,
-      filePath: `file:///node_modules/${codeModule.source}/index.d.ts`,
-      content: codeModule.type_declarations
-    }))
+        : null
   };
 }
 

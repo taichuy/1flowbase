@@ -8,6 +8,15 @@ import {
   type NativeReactCompilerWorkerScope
 } from '../../index';
 
+const coreModuleDefinitions = [
+  { module_source: 'react', exports: ['Fragment', 'useState'] },
+  {
+    module_source: 'react/jsx-runtime',
+    exports: ['Fragment', 'jsx', 'jsxs']
+  },
+  { module_source: 'tailwindcss', exports: [] }
+];
+
 const standardReactComponentFixture = `
 import { Fragment, useState, type CSSProperties } from 'react';
 
@@ -45,7 +54,8 @@ describe('Native React compiler Worker contract', () => {
       direction: 'host_to_worker',
       type: 'compile_native_react_component',
       requestId: 'compile-tailwind',
-      source: `import 'tailwindcss'; export default () => <div className="p-4" />;`
+      source: `import 'tailwindcss'; export default () => <div className="p-4" />;`,
+      moduleDefinitions: coreModuleDefinitions
     });
     expect(response.type).toBe('native_react_component_compiled');
     if (response.type !== 'native_react_component_compiled') return;
@@ -59,7 +69,8 @@ describe('Native React compiler Worker contract', () => {
       direction: 'host_to_worker',
       type: 'compile_native_react_component',
       requestId: 'compile-1',
-      source: standardReactComponentFixture
+      source: standardReactComponentFixture,
+      moduleDefinitions: coreModuleDefinitions
     });
 
     expect(response.type).toBe('native_react_component_compiled');
@@ -108,7 +119,8 @@ describe('Native React compiler Worker contract', () => {
         direction: 'host_to_worker',
         type: 'compile_native_react_component',
         requestId: 'compile-2',
-        source: standardReactComponentFixture
+        source: standardReactComponentFixture,
+        moduleDefinitions: coreModuleDefinitions
       }
     });
 
@@ -126,7 +138,8 @@ describe('Native React compiler Worker contract', () => {
       direction: 'host_to_worker',
       type: 'compile_native_react_component',
       requestId: 'compile-invalid',
-      source: 'export default function Block() { return <div>; }'
+      source: 'export default function Block() { return <div>; }',
+      moduleDefinitions: coreModuleDefinitions
     });
 
     expect(response).toMatchObject({
@@ -143,20 +156,11 @@ describe('Native React compiler Worker contract', () => {
     });
   });
 
-  test('D2-AC-003 records the exact Catalog dependency lock and rejects an unlocked export', () => {
-    const dependencyLock = [
+  test('AC-002/008 validates imports against frontend module definitions without storing them', () => {
+    const moduleDefinitions = [
+      ...coreModuleDefinitions,
       {
         module_source: '@1flowbase/native-components',
-        module_version: '1.0.0',
-        binding: 'fetched' as const,
-        assets: [
-          {
-            role: 'browser_module' as const,
-            media_type: 'text/javascript; charset=utf-8',
-            sha256: '0'.repeat(64),
-            url: `/api/console/frontstage/component-module-assets/${'0'.repeat(64)}`
-          }
-        ],
         exports: ['Surface']
       }
     ];
@@ -166,12 +170,12 @@ describe('Native React compiler Worker contract', () => {
       requestId: 'compile-catalog',
       source:
         "import { Surface } from '@1flowbase/native-components'; export default function Block() { return <Surface />; }",
-      dependencyLock
+      moduleDefinitions
     });
 
     expect(response.type).toBe('native_react_component_compiled');
     if (response.type === 'native_react_component_compiled') {
-      expect(response.artifact.dependencyLock).toEqual(dependencyLock);
+      expect(response.artifact).not.toHaveProperty('dependencyLock');
     }
 
     expect(
@@ -181,7 +185,7 @@ describe('Native React compiler Worker contract', () => {
         requestId: 'compile-missing-export',
         source:
           "import { Missing } from '@1flowbase/native-components'; export default Missing;",
-        dependencyLock
+        moduleDefinitions
       })
     ).toMatchObject({
       type: 'native_react_component_compile_failed',

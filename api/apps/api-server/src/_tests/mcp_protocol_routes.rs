@@ -1744,8 +1744,7 @@ async fn issue_1733_ac_001_through_ac_004_large_source_code_uses_string_continua
             "page_id": "019f51cf-4423-7ff0-93aa-6b0b1b8020bf",
             "code_ref": "frontstage-js-block-a3f0ffb2-ee70-4d48-88ac-23f0f810c0d7-code",
             "source_code": &source_code,
-            "source_sha256": &source_sha256,
-            "dependency_lock": [{"name": "react", "version": "19"}]
+            "source_sha256": &source_sha256
         }),
     )
     .await;

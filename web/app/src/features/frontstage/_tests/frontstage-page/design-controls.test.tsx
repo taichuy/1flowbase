@@ -440,15 +440,12 @@ function createCatalogEntry(
       inputSchema: {}
     },
     uiCapabilities: [],
-    codeModules: [],
     codeCapabilities: {
       template: {
         source: PLUGIN_CODE_TEMPLATE,
         version: '2.4.0',
         language: 'tsx'
-      },
-      allowedImports: [],
-      monacoExtraLibs: []
+      }
     },
     raw: {} as NormalizedFrontstageBlockCatalogEntry['raw'],
     ...overrides
@@ -837,119 +834,6 @@ describe('FrontStagePage - design controls', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('D2-P2F wires the selected block catalog lock into the production trial path', async () => {
-    authenticate(['frontstage.page.design']);
-    const dependencyLock = [
-      {
-        module_source: '@1flowbase/native-components',
-        module_version: '1.0.0',
-        binding: 'fetched',
-        assets: [
-          {
-            role: 'browser_module',
-            media_type: 'text/javascript; charset=utf-8',
-            sha256:
-              'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-            url: '/fixture-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-          }
-        ],
-        exports: ['Surface']
-      }
-    ];
-    componentCapabilitiesApi.resolveFrontstageComponentDependencyLock.mockResolvedValue(
-      dependencyLock
-    );
-    mockFrontstageBlockCatalog([
-      createCatalogEntry({
-        codeModules: [
-          {
-            source: '@1flowbase/native-components',
-            version: '1.0.0',
-            binding: 'fetched',
-            assets: [
-              {
-                role: 'browser_module',
-                media_type: 'text/javascript; charset=utf-8',
-                sha256:
-                  'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-                url: '/fixture-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-              }
-            ],
-            exports: ['Surface'],
-            type_declarations:
-              "declare module '@1flowbase/native-components' { export const Surface: unknown; }"
-          }
-        ]
-      })
-    ]);
-    const blockPayload = {
-      id: 'surface-block',
-      renderer_version: 'v1',
-      codeRef: 'surface-code',
-      catalog: {
-        providerCode: '1flowbase',
-        installationId: 'builtin-installation'
-      },
-      contribution: {
-        pluginId: 'builtin-frontstage',
-        pluginVersion: '1.0.0',
-        code: 'frontstage.js-ui-block'
-      },
-      props: {},
-      'x-layout': { order: 0, region: 'main' },
-      runtime: { kind: 'native_react', entry: 'index.js', hint: 'native_react' }
-    };
-
-    render(
-      <AppProviders>
-        <FrontStagePageHarness
-          pageId="page-1"
-          tabId="tab-1"
-          onNavigateTab={vi.fn()}
-          initialPageTree={[createBackendPage('page-1')]}
-          pageContent={createPageContent({
-            schema: {
-              rootUid: 'root-1',
-              payload: { blocks: [blockPayload] }
-            },
-            root: {
-              uid: 'root-1',
-              payload: { blocks: [blockPayload] }
-            }
-          })}
-        />
-      </AppProviders>
-    );
-
-    activateDesignMode();
-    const blockSlot = await screen.findByTestId('block-slot-surface-block');
-    fireEvent.mouseEnter(blockSlot);
-    fireEvent.click(
-      within(blockSlot).getByRole('button', { name: '编辑区块' })
-    );
-    const studio = await screen.findByRole('dialog', { name: 'TSX 编辑器' });
-    const runButton = within(studio).getByRole('button', { name: /运\s*行/ });
-    await waitFor(() => expect(runButton).toBeEnabled());
-    fireEvent.click(runButton);
-
-    await waitFor(() => expect(trialPanel.render).toHaveBeenCalled());
-    const trialProps = trialPanel.render.mock.lastCall?.[0] as {
-      code: string;
-      resolveNativeDependencyLock?: (sourceCode: string) => Promise<unknown>;
-    };
-    expect(trialProps.resolveNativeDependencyLock).toEqual(
-      expect.any(Function)
-    );
-    if (!trialProps.resolveNativeDependencyLock) {
-      throw new Error('Expected the production trial lock resolver.');
-    }
-    await expect(
-      trialProps.resolveNativeDependencyLock(trialProps.code)
-    ).resolves.toEqual(dependencyLock);
-    expect(
-      componentCapabilitiesApi.resolveFrontstageComponentDependencyLock
-    ).toHaveBeenCalledWith('workspace-1', trialProps.code);
-  });
 
   test('shows real page tree operation states without local draft wording', () => {
     authenticate(['frontstage.page.design']);
@@ -1027,9 +911,7 @@ describe('FrontStagePage - design controls', () => {
             source: selectedTemplate,
             version: '3.1.0',
             language: 'tsx'
-          },
-          allowedImports: [],
-          monacoExtraLibs: []
+          }
         }
       })
     ]);

@@ -1,7 +1,6 @@
 import {
   evaluateNativeReactComponentArtifactWithRegistry,
   NativeReactModuleRegistryError,
-  type NativeReactCatalogDependencyLock,
   type NativeReactComponentArtifact,
   type NativeReactArtifactEvaluationBindings,
   type NativeReactCompileDiagnostic,
@@ -36,15 +35,11 @@ export type NativeReactSourcePreparationResult =
       diagnostics: NativeReactSourcePreparationDiagnostic[];
     };
 
-export type NativeReactModuleRegistryFactory = (
-  dependencyLock: NativeReactCatalogDependencyLock
-) => NativeReactModuleRegistry;
+export type NativeReactModuleRegistryFactory = () => NativeReactModuleRegistry;
 
 export async function prepareNativeReactSource({
   frozenSource,
   requestId,
-  dependencyLock,
-  runtimeFingerprint,
   executableStyle,
   compiler = compileNativeReactComponentInBrowser,
   workerFactory,
@@ -53,8 +48,6 @@ export async function prepareNativeReactSource({
 }: {
   frozenSource: string;
   requestId: string;
-  dependencyLock: NativeReactCatalogDependencyLock;
-  runtimeFingerprint?: string;
   executableStyle?: Awaited<
     ReturnType<typeof compileNativeReactExecutableStyle>
   >;
@@ -69,7 +62,7 @@ export async function prepareNativeReactSource({
   try {
     preparedExecutableStyle =
       executableStyle ??
-      (await compileNativeReactExecutableStyle(frozenSource, dependencyLock));
+      (await compileNativeReactExecutableStyle(frozenSource));
   } catch (error) {
     return {
       ok: false,
@@ -86,21 +79,19 @@ export async function prepareNativeReactSource({
       ]
     };
   }
-  const compiled = await compiler({
-    source: frozenSource,
-    requestId,
-    dependencyLock,
-    ...(runtimeFingerprint ? { runtimeFingerprint } : {}),
-    ...(workerFactory ? { workerFactory } : {})
-  });
-  if (!compiled.ok) return compiled;
-
   let registry: NativeReactModuleRegistry;
   try {
-    registry = registryFactory(compiled.artifact.dependencyLock);
+    registry = registryFactory();
   } catch (error) {
     return registryFailure(error);
   }
+  const compiled = await compiler({
+    source: frozenSource,
+    requestId,
+    moduleDefinitions: registry.definitions,
+    ...(workerFactory ? { workerFactory } : {})
+  });
+  if (!compiled.ok) return compiled;
 
   const evaluated = await evaluateNativeReactComponentArtifactWithRegistry(
     compiled.artifact,

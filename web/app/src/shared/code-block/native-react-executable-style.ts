@@ -1,7 +1,4 @@
-import type {
-  NativeReactCatalogDependencyLock,
-  NativeReactResolvedModuleAsset
-} from '@1flowbase/page-runtime';
+import type { NativeReactResolvedModuleAsset } from '@1flowbase/page-runtime';
 import { sha256Text } from '@1flowbase/page-runtime';
 import {
   compileTailwindBase,
@@ -44,8 +41,7 @@ const flights = new Map<
 const STYLE_CACHE_BUDGET = 8 * 1024 * 1024;
 
 export async function compileNativeReactExecutableStyle(
-  sourceCode: string,
-  _dependencyLock: NativeReactCatalogDependencyLock = []
+  sourceCode: string
 ): Promise<NativeReactExecutableStyleCompilation> {
   if (!sourceImportsTailwind(sourceCode)) return emptyStyle();
   if (findUnboundedTailwindClassExpressions(sourceCode).length > 0) {

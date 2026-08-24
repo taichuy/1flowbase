@@ -9,7 +9,6 @@ import {
   hasFrontstageBlockEventPermission,
   isFrontstageBlockNativeRuntime,
   normalizeFrontstageBlockCatalog,
-  resolveFrontstageNativeDependencyLock,
   supportsFrontstageBlockCapability,
   supportsFrontstageBlockPrimitive
 } from '../lib/block-catalog';
@@ -26,7 +25,7 @@ function createCatalogEntry(
     title: 'Hero Banner',
     runtime: 'native_react',
     entry: 'blocks/hero/index.html',
-    code_modules: [],
+    isolated_entry_asset: null,
     context_contract: {
       primitives: ['text'],
       input_schema: { type: 'object' }
@@ -98,7 +97,6 @@ describe('frontstage block catalog normalizer', () => {
           }
         },
         uiCapabilities: ['responsive', 'data_binding'],
-        codeModules: [],
         raw: expect.any(Object)
       }
     ]);
@@ -112,136 +110,6 @@ describe('frontstage block catalog normalizer', () => {
     expect(hasFrontstageBlockEventPermission(block)).toBe(false);
   });
 
-  test('D2-AC-001 retains canonical module version, digest, and declarations', () => {
-    const { items } = normalizeFrontstageBlockCatalog([
-      createCatalogEntry({
-        code_modules: [
-          {
-            source: '@1flowbase/native-components',
-            version: '1.0.0',
-            binding: 'fetched',
-            assets: [browserAsset('a')],
-            exports: ['Surface'],
-            type_declarations:
-              "declare module '@1flowbase/native-components' { export const Surface: import('react').ComponentType<SurfaceProps>; }"
-          }
-        ]
-      })
-    ]);
-
-    expect(items[0]?.codeModules).toEqual([
-      {
-        source: '@1flowbase/native-components',
-        version: '1.0.0',
-        binding: 'fetched',
-        assets: [browserAsset('a')],
-        exports: ['Surface'],
-        type_declarations: expect.stringContaining(
-          "import('react').ComponentType<SurfaceProps>"
-        )
-      }
-    ]);
-  });
-
-  test('D2-P2F builds the runtime dependency lock from canonical catalog modules only', () => {
-    const { items } = normalizeFrontstageBlockCatalog([
-      createCatalogEntry({
-        code_modules: [
-          {
-            source: '@1flowbase/native-components',
-            version: '1.0.0',
-            binding: 'fetched',
-            assets: [browserAsset('a')],
-            exports: ['Surface'],
-            type_declarations:
-              "declare module '@1flowbase/native-components' { export const Surface: unknown; }"
-          }
-        ]
-      })
-    ]);
-
-    expect(
-      resolveFrontstageNativeDependencyLock({
-        catalogEntry: items[0] ?? null,
-        workspaceId: 'workspace-1'
-      })
-    ).toEqual({
-      dependencyLock: [
-        {
-          module_source: '@1flowbase/native-components',
-          module_version: '1.0.0',
-          binding: 'fetched',
-          assets: [
-            {
-              ...browserAsset('a'),
-              url: '/api/console/frontstage/component-module-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-            }
-          ],
-          exports: ['Surface']
-        }
-      ],
-      error: null
-    });
-  });
-
-  test('AC-003 preserves a manifest-owned external npm asset URL', () => {
-    const externalUrl = `/external-npm/assets/dayjs-${'b'.repeat(64)}.js`;
-    const { items } = normalizeFrontstageBlockCatalog([
-      createCatalogEntry({
-        code_modules: [
-          {
-            source: 'dayjs',
-            version: '1.11.21',
-            binding: 'fetched',
-            assets: [{ ...browserAsset('b'), url: externalUrl }],
-            exports: ['default'],
-            type_declarations:
-              'declare module "dayjs" { const value: unknown; export default value; }'
-          }
-        ]
-      })
-    ]);
-
-    expect(
-      resolveFrontstageNativeDependencyLock({
-        catalogEntry: items[0] ?? null,
-        workspaceId: 'workspace-1'
-      }).dependencyLock[0]?.assets[0]?.url
-    ).toBe(externalUrl);
-  });
-
-  test('D2-P2F exposes incomplete catalog module metadata as a contract error', () => {
-    const result = normalizeFrontstageBlockCatalog([
-      createCatalogEntry({
-        code_modules: [
-          {
-            source: '@1flowbase/native-components',
-            version: '1.0.0',
-            binding: 'fetched',
-            assets: [browserAsset('a')],
-            type_declarations: ''
-          }
-        ] as unknown as FrontstageBlockCatalogEntry['code_modules']
-      })
-    ]);
-
-    expect(result.diagnostics).toContainEqual(
-      expect.objectContaining({
-        severity: 'error',
-        code: 'invalid_code_module',
-        field: 'code_modules'
-      })
-    );
-    expect(
-      resolveFrontstageNativeDependencyLock({
-        catalogEntry: result.items[0] ?? null,
-        workspaceId: 'workspace-1'
-      })
-    ).toMatchObject({
-      dependencyLock: [],
-      error: expect.stringContaining('incomplete')
-    });
-  });
 
   test('filters unknown runtime entries and reports diagnostics', () => {
     const result = normalizeFrontstageBlockCatalog([
@@ -318,14 +186,3 @@ describe('frontstage block catalog normalizer', () => {
     ).toEqual(['product_grid']);
   });
 });
-
-function browserAsset(digestCharacter: string) {
-  const sha256 = digestCharacter.repeat(64);
-  return {
-    role: 'browser_module' as const,
-    media_type: 'text/javascript; charset=utf-8',
-    sha256,
-    url: `/api/console/frontstage/component-module-assets/${sha256}`,
-    integrity: 'verified_sha256' as const
-  };
-}

@@ -5,6 +5,7 @@
   "type": "module",
   "dependencies": {
     "@1flowbase/api-client": "workspace:*",
+    "@1flowbase/block-sdk": "workspace:*",
     "@1flowbase/block-renderer": "workspace:*",
     "@1flowbase/charts": "workspace:*",
     "@1flowbase/embed-sdk": "workspace:*",

@@ -122,24 +122,12 @@ function createCatalogEntry(
     title: 'Isolated chart',
     runtime: 'isolated_iframe',
     entry: '@1flowbase/isolated-chart',
-    code_modules: [
-      {
-        source: '@1flowbase/isolated-chart',
-        version: '1.0.0',
-        binding: 'fetched',
-        assets: [
-          {
-            role: 'browser_module',
-            media_type: 'text/javascript; charset=utf-8',
-            sha256: digest,
-            url: `/api/console/frontstage/component-module-assets/${digest}`,
-            integrity: 'verified_sha256'
-          }
-        ],
-        exports: [],
-        type_declarations: ''
-      }
-    ],
+    isolated_entry_asset: {
+      media_type: 'text/javascript; charset=utf-8',
+      sha256: digest,
+      url: `/api/console/frontstage/component-module-assets/${digest}`,
+      integrity: 'verified_sha256'
+    },
     context_contract: { primitives: [], input_schema: { type: 'object' } },
     permissions: { network: 'none', storage: 'none', secrets: 'none' },
     ui_capabilities: [],

@@ -1,7 +1,5 @@
 import type { ElementType, HTMLAttributes, ReactNode } from 'react';
 
-import './styles.css';
-
 export interface SurfaceProps extends HTMLAttributes<HTMLElement> {
   readonly as?: ElementType;
   readonly children?: ReactNode;

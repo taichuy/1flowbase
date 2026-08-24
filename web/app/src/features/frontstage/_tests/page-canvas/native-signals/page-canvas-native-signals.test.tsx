@@ -269,8 +269,8 @@ function preparation(
 ): Extract<FrontstageNativePreparationSnapshot, { status: 'ready' }> {
   const identityInput = {
     sourceSha256: blockId.padEnd(64, '0'),
-    runtimeFingerprint: 'runtime-a',
-    dependencyLockIdentity: 'lock-a'
+    compilerAbi: 'compiler-a',
+    runtimeAbi: 'runtime-a'
   };
   return {
     status: 'ready',

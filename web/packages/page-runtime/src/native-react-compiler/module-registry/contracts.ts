@@ -1,172 +1,32 @@
-export type NativeReactModuleBinding = 'host' | 'fetched';
-export type NativeReactModuleAssetRole =
-  | 'browser_module'
-  | 'shadow_style'
-  | 'support';
-
-export interface NativeReactModuleAssetLock {
-  role: NativeReactModuleAssetRole;
-  media_type: string;
-  sha256: string;
-  url: string;
-  integrity?: 'verified_sha256';
-}
-
-export interface NativeReactCatalogModuleLock {
+export interface NativeReactModuleDefinition {
   module_source: string;
-  module_version: string;
-  binding: NativeReactModuleBinding;
-  assets: NativeReactModuleAssetLock[];
   exports: string[];
 }
 
-export type NativeReactCatalogDependencyLock = NativeReactCatalogModuleLock[];
-
-const HOST_ABI_MODULE_SOURCES = new Set(['react', 'react/jsx-runtime', 'antd']);
-
-export function canonicalizeNativeReactCatalogDependencyLock(
+export function canonicalizeNativeReactModuleDefinitions(
   value: unknown
-): NativeReactCatalogDependencyLock | null {
+): NativeReactModuleDefinition[] | null {
   if (!Array.isArray(value)) return null;
-  const seenSources = new Set<string>();
-  const entries: NativeReactCatalogModuleLock[] = [];
-
+  const sources = new Set<string>();
+  const definitions: NativeReactModuleDefinition[] = [];
   for (const item of value) {
-    if (!isRecord(item)) return null;
-    const moduleSource = item.module_source;
-    const moduleVersion = item.module_version;
-    const binding = item.binding;
     if (
-      !isNonEmptyString(moduleSource) ||
-      !isNonEmptyString(moduleVersion) ||
-      (binding !== 'host' && binding !== 'fetched') ||
-      !Array.isArray(item.assets) ||
+      !isRecord(item) ||
+      !isNonEmptyString(item.module_source) ||
       !Array.isArray(item.exports) ||
-      item.exports.length === 0 ||
       !item.exports.every(isNonEmptyString) ||
       new Set(item.exports).size !== item.exports.length ||
-      seenSources.has(moduleSource) ||
-      (binding === 'host') !== HOST_ABI_MODULE_SOURCES.has(moduleSource)
+      sources.has(item.module_source)
     ) {
       return null;
     }
-
-    const assets = readAssets(item.assets);
-    if (!assets || !hasValidAssetShape(binding, assets)) return null;
-    seenSources.add(moduleSource);
-    entries.push({
-      module_source: moduleSource,
-      module_version: moduleVersion,
-      binding,
-      assets,
+    sources.add(item.module_source);
+    definitions.push({
+      module_source: item.module_source,
       exports: [...item.exports]
     });
   }
-
-  return entries;
-}
-
-export function nativeReactCatalogModuleIdentity(
-  module: NativeReactCatalogModuleLock
-): string {
-  return JSON.stringify(canonicalIdentityEntry(module));
-}
-
-/** Stable, order-independent input for the Artifact V2 dependency fingerprint. */
-export function nativeReactCatalogDependencyLockIdentity(
-  dependencyLock: NativeReactCatalogDependencyLock
-): string {
-  return JSON.stringify(
-    [...dependencyLock]
-      .sort((left, right) =>
-        left.module_source.localeCompare(right.module_source)
-      )
-      .map(canonicalIdentityEntry)
-  );
-}
-
-export function nativeReactHostAbiIdentity(
-  dependencyLock: NativeReactCatalogDependencyLock
-): string {
-  return nativeReactCatalogDependencyLockIdentity(
-    dependencyLock.filter((entry) => entry.binding === 'host')
-  );
-}
-
-export function nativeReactBrowserModuleAsset(
-  module: NativeReactCatalogModuleLock
-): NativeReactModuleAssetLock | null {
-  return module.assets.find((asset) => asset.role === 'browser_module') ?? null;
-}
-
-function canonicalIdentityEntry(module: NativeReactCatalogModuleLock) {
-  return {
-    module_source: module.module_source,
-    module_version: module.module_version,
-    binding: module.binding,
-    exports: [...module.exports].sort(),
-    assets: [...module.assets]
-      .sort((left, right) =>
-        `${left.role}:${left.sha256}`.localeCompare(
-          `${right.role}:${right.sha256}`
-        )
-      )
-      .map((asset) => ({
-        role: asset.role,
-        media_type: asset.media_type,
-        sha256: asset.sha256,
-        ...(asset.integrity === 'verified_sha256'
-          ? { integrity: asset.integrity }
-          : {})
-      }))
-  };
-}
-
-function readAssets(value: unknown[]): NativeReactModuleAssetLock[] | null {
-  const assets: NativeReactModuleAssetLock[] = [];
-  const identities = new Set<string>();
-  for (const item of value) {
-    if (!isRecord(item)) return null;
-    const { role, media_type: mediaType, sha256, url, integrity } = item;
-    if (
-      (role !== 'browser_module' &&
-        role !== 'shadow_style' &&
-        role !== 'support') ||
-      !isNonEmptyString(mediaType) ||
-      !isSha256(sha256) ||
-      !isNonEmptyString(url) ||
-      (integrity !== undefined && integrity !== 'verified_sha256')
-    ) {
-      return null;
-    }
-    const identity = `${role}:${sha256}`;
-    if (identities.has(identity)) return null;
-    identities.add(identity);
-    assets.push({
-      role,
-      media_type: mediaType,
-      sha256,
-      url,
-      ...(integrity === 'verified_sha256' ? { integrity } : {})
-    });
-  }
-  return assets;
-}
-
-function hasValidAssetShape(
-  binding: NativeReactModuleBinding,
-  assets: NativeReactModuleAssetLock[]
-): boolean {
-  const browserModules = assets.filter(
-    (asset) => asset.role === 'browser_module'
-  ).length;
-  return binding === 'host'
-    ? assets.length === 0
-    : browserModules === 1 && assets.length > 0;
-}
-
-function isSha256(value: unknown): value is string {
-  return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+  return definitions;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

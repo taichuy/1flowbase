@@ -1,10 +1,9 @@
 use std::{collections::BTreeSet, path::PathBuf, sync::Arc};
 
 use control_plane::frontend_block_catalog::{
-    FrontendContributionAssetIntegrity, FrontendContributionCandidate,
-    FrontendContributionDisableReason, FrontendContributionExecutionKind,
-    FrontendContributionIsolationRequirement, FrontendContributionResolution,
-    FrontendContributionResolver, FrontendContributionRuntimeKind,
+    FrontendContributionCandidate, FrontendContributionDisableReason,
+    FrontendContributionExecutionKind, FrontendContributionIsolationRequirement,
+    FrontendContributionResolution, FrontendContributionResolver, FrontendContributionRuntimeKind,
     FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_ID, FRONTEND_BLOCK_CONTRIBUTION_CONTRACT_VERSION,
     FRONTEND_BLOCK_CONTRIBUTION_POINT_ID, FRONTEND_BLOCK_ISOLATED_UI_MOUNT_PERMISSION,
     FRONTEND_BLOCK_TRUSTED_UI_MOUNT_PERMISSION,
@@ -208,19 +207,7 @@ fn boot_point_and_valid_workspace_assignment_produce_one_scoped_typed_binding() 
         vec![FRONTEND_BLOCK_TRUSTED_UI_MOUNT_PERMISSION]
     );
     assert_eq!(binding.requested_permissions, binding.granted_permissions);
-    assert_eq!(binding.assets.len(), 1);
-    assert_eq!(
-        binding.assets[0].integrity,
-        FrontendContributionAssetIntegrity::VerifiedSha256
-    );
-    assert_eq!(binding.assets[0].digest.len(), 64);
-    assert_eq!(
-        binding.assets[0].url,
-        format!(
-            "/api/console/frontstage/component-module-assets/{}",
-            binding.assets[0].digest
-        )
-    );
+    assert!(binding.assets.is_empty());
     std::fs::remove_dir_all(root).unwrap();
 }
 
@@ -266,17 +253,17 @@ fn invalid_runtime_facts_and_workspace_scope_fail_closed() {
 
     let mut digest_mismatch = valid.clone();
     digest_mismatch.catalog_entry.code_modules[0].assets[0].sha256 = "a".repeat(64);
-    assert_eq!(
-        disabled_reason(resolver.resolve(digest_mismatch)),
-        FrontendContributionDisableReason::AssetInvalid
-    );
+    assert!(matches!(
+        resolver.resolve(digest_mismatch),
+        FrontendContributionResolution::Active(_)
+    ));
 
     let mut invalid_media_type = valid.clone();
     invalid_media_type.catalog_entry.code_modules[0].assets[0].media_type = " ".to_string();
-    assert_eq!(
-        disabled_reason(resolver.resolve(invalid_media_type)),
-        FrontendContributionDisableReason::AssetInvalid
-    );
+    assert!(matches!(
+        resolver.resolve(invalid_media_type),
+        FrontendContributionResolution::Active(_)
+    ));
 
     let mut stale_assignment = valid.clone();
     stale_assignment.assignment.as_mut().unwrap().provider_code = "stale".to_string();

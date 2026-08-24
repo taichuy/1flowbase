@@ -197,38 +197,7 @@ const catalogEntry: NormalizedFrontstageBlockCatalogEntry = {
   permissions: { network: 'none', storage: 'none', secrets: 'none' },
   contextContract: { primitives: [], inputSchema: {} },
   uiCapabilities: ['configurable', 'data_binding'],
-  codeModules: [
-    {
-      source: '@1flowbase/native-components',
-      version: '1.0.0',
-      binding: 'fetched',
-      assets: [
-        {
-          role: 'browser_module',
-          media_type: 'text/javascript; charset=utf-8',
-          sha256:
-            'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-          url: '/fixture-assets/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
-        }
-      ],
-      exports: ['Button'],
-      type_declarations:
-        "declare module '@1flowbase/native-components' { export const Button: unknown; }"
-    }
-  ],
-  codeCapabilities: {
-    template: null,
-    allowedImports: ['@1flowbase/native-components'],
-    monacoExtraLibs: [
-      {
-        source: '@1flowbase/native-components',
-        filePath:
-          'file:///node_modules/@1flowbase/native-components/index.d.ts',
-        content:
-          "declare module '@1flowbase/native-components' { export const Button: unknown; }"
-      }
-    ]
-  },
+  codeCapabilities: { template: null },
   raw: {} as NormalizedFrontstageBlockCatalogEntry['raw']
 };
 
@@ -403,21 +372,7 @@ describe('FrontstageJsxStudioDrawer', () => {
   test('accepts full Tailwind and custom classes without private inventory diagnostics', () => {
     const activeSource =
       'import \'tailwindcss\'; export default function ActiveBlock() { return <div className="grid grid-cols-[200px_1fr] bg-[#00ab73] md:grid-cols-2 custom-layout" />; }';
-    const tailwindCatalogEntry: NormalizedFrontstageBlockCatalogEntry = {
-      ...catalogEntry,
-      codeModules: [
-        ...(catalogEntry.codeModules ?? []),
-        {
-          source: 'tailwindcss',
-          version: '4.3.3',
-          binding: 'fetched',
-          assets: [],
-          exports: ['default'],
-          type_declarations:
-            'declare module "tailwindcss" { const value: unknown; export default value; }'
-        }
-      ]
-    };
+    const tailwindCatalogEntry = catalogEntry;
     const activeTab = {
       block_id: 'active-block',
       detail: {

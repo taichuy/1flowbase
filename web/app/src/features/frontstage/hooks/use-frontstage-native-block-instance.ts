@@ -109,8 +109,8 @@ export function frontstageNativeInstanceRenderKey(
   const { identityInput } = mountIntent;
   return JSON.stringify({
     sourceSha256: identityInput.sourceSha256,
-    runtimeFingerprint: identityInput.runtimeFingerprint,
-    dependencyLockIdentity: identityInput.dependencyLockIdentity,
+    compilerAbi: identityInput.compilerAbi,
+    runtimeAbi: identityInput.runtimeAbi,
     executableStyleIdentity: identityInput.executableStyleIdentity
   });
 }

@@ -2,9 +2,7 @@ import {
   evaluateNativeReactComponentArtifactWithRegistry,
   diagnoseLegacyBlockModuleSource,
   NativeReactSourceContractError,
-  canonicalizeNativeReactCatalogDependencyLock,
-  nativeReactCatalogDependencyLockIdentity,
-  type NativeReactCatalogDependencyLock,
+  type NativeReactModuleDefinition,
   type NativeReactModuleRegistry
 } from '@1flowbase/page-runtime';
 import {
@@ -16,7 +14,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { getFrontstageApiBaseUrl } from '../api/page-tree';
 import {
   compileNativeReactComponentInBrowser,
-  getNativeReactRuntimeFingerprint,
   type NativeReactBrowserCompileResult
 } from '../../../shared/code-block/native-react-compiler-browser';
 import { compileNativeReactExecutableStyle } from '../../../shared/code-block/native-react-executable-style';
@@ -28,7 +25,6 @@ import {
 } from '../lib/runtime-cache';
 import {
   FrontstageNativePreparationScheduler,
-  FrontstagePageNativeModuleRegistryCache,
   prepareFrontstageNativeContribution,
   type FrontstageNativePreparationSnapshot,
   type FrontstageNativePreparationTask
@@ -36,10 +32,6 @@ import {
 import type { FrontstagePageCanvasBlockCodeReadPlan } from '../lib/page-canvas/runtime-source';
 import type { FrontstageRuntimeDemandByBlockId } from '../lib/page-canvas/runtime-demand';
 import { recordFrontstageRuntimeObservation } from '../lib/page-canvas/runtime-observation';
-import {
-  describeExternalNpmImportFailure,
-  type ExternalNpmPackState
-} from '../api/external-npm';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../lib/block-catalog';
 
 type NativePreparationSource = ConsoleFrontstageBlockNodeCode;
@@ -49,11 +41,9 @@ export interface UseFrontstagePageCanvasNativePreparationsInput {
   actorWorkspaceId: string | null | undefined;
   readPlan: FrontstagePageCanvasBlockCodeReadPlan | null | undefined;
   catalogEntries?: readonly NormalizedFrontstageBlockCatalogEntry[] | null;
-  externalNpm: ExternalNpmPackState;
   demandsByBlockId?: FrontstageRuntimeDemandByBlockId;
   maxConcurrent?: number;
   artifactCache?: Pick<FrontstageNativeReactArtifactCache, 'get' | 'put'>;
-  runtimeFingerprint?: string;
   fetchSource?: (
     request: FrontstagePageCanvasBlockCodeReadPlan['requests'][number],
     signal: AbortSignal
@@ -61,12 +51,9 @@ export interface UseFrontstagePageCanvasNativePreparationsInput {
   compile?: (input: {
     source: string;
     requestId: string;
-    dependencyLock: NativeReactCatalogDependencyLock;
-    runtimeFingerprint: string;
+    moduleDefinitions: readonly NativeReactModuleDefinition[];
   }) => Promise<NativeReactBrowserCompileResult>;
-  moduleRegistryFactory?: (
-    dependencyLock: NativeReactCatalogDependencyLock
-  ) => NativeReactModuleRegistry;
+  moduleRegistryFactory?: () => NativeReactModuleRegistry;
 }
 
 export interface UseFrontstagePageCanvasNativePreparationsResult {
@@ -79,11 +66,9 @@ export function useFrontstagePageCanvasNativePreparations({
   actorWorkspaceId,
   readPlan,
   catalogEntries,
-  externalNpm,
   demandsByBlockId,
   maxConcurrent = 2,
   artifactCache = frontstageNativeReactArtifactCache,
-  runtimeFingerprint,
   fetchSource = defaultFetchSource,
   compile = compileNativeReactComponentInBrowser,
   moduleRegistryFactory = createFrontstageNativeReactModuleRegistry
@@ -101,10 +86,6 @@ export function useFrontstagePageCanvasNativePreparations({
         string,
         ReturnType<typeof evaluateNativeReactComponentArtifactWithRegistry>
       >(),
-    []
-  );
-  const moduleRegistryCache = useMemo(
-    () => new FrontstagePageNativeModuleRegistryCache(),
     []
   );
   useEffect(
@@ -137,7 +118,6 @@ export function useFrontstagePageCanvasNativePreparations({
           actorId,
           readPlan.workspaceId,
           request.codeRef,
-          externalNpm.status,
           catalogEntries === undefined
             ? 'legacy-fixture'
             : catalogEntry
@@ -145,15 +125,7 @@ export function useFrontstagePageCanvasNativePreparations({
                   contributionId: catalogEntry.raw.frontend_contribution_id,
                   blockVersion: catalogEntry.raw.frontend_block_version,
                   graphFingerprint: catalogEntry.raw.graph_fingerprint,
-                  grantedPermissions: catalogEntry.raw.granted_permissions,
-                  assets: catalogEntry.raw.code_modules.flatMap((module) =>
-                    module.assets.map((asset) => ({
-                      sha256: asset.sha256,
-                      url: asset.url,
-                      integrity:
-                        'integrity' in asset ? asset.integrity : 'external'
-                    }))
-                  )
+                  grantedPermissions: catalogEntry.raw.granted_permissions
                 })
               : 'binding-missing'
         ].join('/'),
@@ -185,25 +157,10 @@ export function useFrontstagePageCanvasNativePreparations({
                 );
           const source = await fetchSource(request, signal);
           throwIfAborted(signal);
-          const canonicalDependencyLock =
-            canonicalizeNativeReactCatalogDependencyLock(
-              source.dependency_lock ?? []
-            );
-          if (!canonicalDependencyLock)
-            throw new Error('Frontstage dependency_lock is invalid.');
-          const dependencyLock = canonicalDependencyLock.filter(
-            ({ module_source }) => module_source !== 'tailwindcss'
-          );
           const executableStyle = await compileNativeReactExecutableStyle(
-            source.source_code,
-            dependencyLock
+            source.source_code
           );
           throwIfAborted(signal);
-          const currentRuntimeFingerprint =
-            runtimeFingerprint ??
-            getNativeReactRuntimeFingerprint(dependencyLock);
-          const dependencyLockIdentity =
-            nativeReactCatalogDependencyLockIdentity(dependencyLock);
           const legacyDiagnostic = diagnoseLegacyBlockModuleSource(
             source.source_code
           );
@@ -214,9 +171,7 @@ export function useFrontstagePageCanvasNativePreparations({
           const identity = createFrontstageNativeReactArtifactCacheIdentity({
             actorId,
             workspaceId: readPlan.workspaceId,
-            source: source.source_code,
-            dependencyLock,
-            runtimeFingerprint: currentRuntimeFingerprint
+            source: source.source_code
           });
           const cached = await artifactCache.get(identity);
           throwIfAborted(signal);
@@ -227,20 +182,17 @@ export function useFrontstagePageCanvasNativePreparations({
             artifactCacheTier = 'l2';
           } else {
             enterStage('compile', 'miss');
+            const moduleRegistry = moduleRegistryFactory();
             const compiled = await compile({
               source: source.source_code,
               requestId: `${request.requestId}:${identity.source_sha256}`,
-              dependencyLock,
-              runtimeFingerprint: currentRuntimeFingerprint
+              moduleDefinitions: moduleRegistry.definitions
             });
             throwIfAborted(signal);
             if (!compiled.ok) {
               throw new Error(
-                describeExternalNpmImportFailure(
-                  compiled.diagnostics[0]?.message ??
-                    'Native React component compilation failed.',
-                  externalNpm
-                )
+                compiled.diagnostics[0]?.message ??
+                  'Native React component compilation failed.'
               );
             }
             artifact = compiled.artifact;
@@ -251,10 +203,7 @@ export function useFrontstagePageCanvasNativePreparations({
 
           enterStage('module_resolve', artifactCacheTier);
           const componentFactoryKey = JSON.stringify(artifact.identity);
-          const moduleRegistry = moduleRegistryCache.get(
-            dependencyLock,
-            moduleRegistryFactory
-          );
+          const moduleRegistry = moduleRegistryFactory();
           let componentFactoryFlight =
             componentFactoryFlights.get(componentFactoryKey);
           if (!componentFactoryFlight) {
@@ -292,8 +241,8 @@ export function useFrontstagePageCanvasNativePreparations({
             ...(contribution ? { contribution } : {}),
             identityInput: {
               sourceSha256: evaluated.artifact.identity.source_sha256,
-              runtimeFingerprint: currentRuntimeFingerprint,
-              dependencyLockIdentity,
+              compilerAbi: evaluated.artifact.identity.compiler_abi,
+              runtimeAbi: evaluated.artifact.identity.runtime_abi,
               executableStyleIdentity: executableStyle.candidate_identity
             }
           };
@@ -307,12 +256,9 @@ export function useFrontstagePageCanvasNativePreparations({
     compile,
     catalogEntries,
     componentFactoryFlights,
-    externalNpm,
     fetchSource,
     moduleRegistryFactory,
-    moduleRegistryCache,
-    readPlan,
-    runtimeFingerprint
+    readPlan
   ]);
 
   useEffect(() => {

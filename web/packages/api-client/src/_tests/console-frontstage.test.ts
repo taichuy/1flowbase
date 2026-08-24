@@ -12,7 +12,6 @@ import {
   type FrontstageCallableBinaryResource,
   getFrontstageInterfaceCapability,
   getFrontstageComponent,
-  resolveFrontstageComponentDependencyLock,
   getFrontstagePageTabDetail,
   frontstageComponentModuleAssetPath,
   listFrontstagePageTabs,
@@ -171,18 +170,6 @@ describe('console-frontstage client', () => {
     ).resolves.toMatchObject({
       path: '/api/console/frontstage/components/019c0000-0000-7000-8000-000000000001',
       method: 'GET'
-    });
-  });
-
-  test('resolves a component lock from the current block source', async () => {
-    await expect(
-      resolveFrontstageComponentDependencyLock(
-        "import { Chart } from '@acme/charts';"
-      )
-    ).resolves.toMatchObject({
-      path: '/api/console/frontstage/component-dependency-lock',
-      method: 'POST',
-      body: { source_code: "import { Chart } from '@acme/charts';" }
     });
   });
 

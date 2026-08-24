@@ -2,7 +2,6 @@ import type { BlockProtocolError } from '@1flowbase/page-protocol';
 import {
   validateNativeTrustedBlockSource,
   type NativeBlockContextApiCallObservation,
-  type NativeReactCatalogDependencyLock,
   type NativeReactCompileDiagnostic,
   type NativeReactRuntimeDiagnostic
 } from '@1flowbase/page-runtime';
@@ -15,10 +14,8 @@ import { compileNativeReactComponentInBrowser } from '../../../../shared/code-bl
 import { JsxStudioPreviewConsole } from '../../components/jsx-studio/JsxStudioPreviewConsole';
 import { JsxStudioRunPanel } from '../../components/jsx-studio/JsxStudioRunPanel';
 import { createStudioRunConsoleStore } from '../../components/jsx-studio/studio-run-console';
-import type {
-  NormalizedFrontstageBlockCatalogEntry,
-  NormalizedFrontstageBlockCodeModule
-} from '../../lib/block-catalog';
+import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
+import { FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS } from '../../lib/native-trusted-block-runtime-factory';
 import { createFrontstageJsxEditorProjection } from '../../lib/jsx-studio/editor-projection';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 
@@ -44,39 +41,6 @@ const DENIED_SOURCE = `import dayjs from 'dayjs';
 export default function FixtureBlock() {
   return <div>{String(dayjs)}</div>;
 }`;
-
-const codeModules = CATALOG_MODULE_SOURCES.map(
-  (source, index): NormalizedFrontstageBlockCodeModule => ({
-    source,
-    version: `fixture-${index + 1}.0.0`,
-    binding: source === 'react' || source === 'antd' ? 'host' : 'fetched',
-    assets:
-      source === 'react' || source === 'antd'
-        ? []
-        : [
-            {
-              role: 'browser_module',
-              media_type: 'text/javascript; charset=utf-8',
-              sha256: (index + 1).toString(16).repeat(64),
-              url: `/fixture-assets/${(index + 1).toString(16).repeat(64)}`
-            }
-          ],
-    exports: ['default'],
-    type_declarations: `declare module '${source}' { const value: unknown; export default value; }`
-  })
-);
-const dependencyLock: NativeReactCatalogDependencyLock = codeModules.map(
-  (codeModule) => ({
-    module_source: codeModule.source,
-    module_version: codeModule.version,
-    binding: codeModule.binding,
-    assets: codeModule.assets.map((asset) => ({
-      ...asset,
-      url: `/fixture-assets/${encodeURIComponent(codeModule.source)}/${asset.sha256}`
-    })),
-    exports: [...codeModule.exports]
-  })
-);
 
 const builtinEntry = createCatalogEntry({
   id: '1flowbase:frontstage.js-ui-block',
@@ -156,10 +120,7 @@ function R5StudioCatalogFixture() {
   const projection = useMemo(
     () =>
       createFrontstageJsxEditorProjection({
-        catalogEntry: {
-          ...builtinEntry,
-          codeModules
-        }
+        catalogEntry: builtinEntry
       }),
     []
   );
@@ -187,7 +148,7 @@ function R5StudioCatalogFixture() {
     const result = await compileNativeReactComponentInBrowser({
       source,
       requestId: `r5-fixture:${source === APPROVED_SOURCE ? 'approved' : 'denied'}`,
-      dependencyLock
+      moduleDefinitions: FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS
     });
     setCompilerStatus(result.ok ? 'passed' : 'failed');
     setCompilerDiagnostics(result.diagnostics);
@@ -308,9 +269,7 @@ function createCatalogEntry(input: {
         source: input.templateSource,
         version: input.pluginVersion,
         language: 'tsx'
-      },
-      allowedImports: [],
-      monacoExtraLibs: []
+      }
     },
     raw: {} as NormalizedFrontstageBlockCatalogEntry['raw']
   };

@@ -99,6 +99,9 @@ importers:
       '@1flowbase/block-renderer':
         specifier: workspace:*
         version: link:../packages/block-renderer
+      '@1flowbase/block-sdk':
+        specifier: workspace:*
+        version: link:../packages/block-sdk
       '@1flowbase/charts':
         specifier: workspace:*
         version: link:../packages/charts
