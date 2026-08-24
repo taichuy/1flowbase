@@ -43,14 +43,14 @@ test('repository and CI gates use the resolved real Node command for nested scri
   assert.deepEqual(new Set(ciCommandPaths), new Set([nodePath]));
 });
 
-test('frontend uses pnpm while script-test and runtime gates use the resolved real Node command', () => {
+test('frontend, script-test, and runtime gates use the resolved real Node command', () => {
   const nodePath = createNodeOverride();
   const env = { PATH: '', ONEFLOWBASE_NODE: nodePath };
 
   assert.equal(
     buildFrontendCommands({ layer: 'full', repoRoot: '/repo-root', env })[3]
       .command,
-    'pnpm'
+    nodePath
   );
   assert.equal(
     buildScriptTestCommand({

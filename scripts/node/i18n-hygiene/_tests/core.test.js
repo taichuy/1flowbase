@@ -200,7 +200,7 @@ test('collectI18nHygieneFindings fails duplicated values inside one owner locale
   assert.deepEqual(duplicateValue?.keys, ['actions.save', 'actions.submit']);
 });
 
-test('collectI18nHygieneFindings warns for a locale-specific translation collision', () => {
+test('collectI18nHygieneFindings fails a locale-specific translation collision', () => {
   const repoRoot = fs.mkdtempSync(
     path.join(os.tmpdir(), 'oneflowbase-i18n-locale-collision-')
   );
@@ -225,7 +225,7 @@ test('collectI18nHygieneFindings warns for a locale-specific translation collisi
     (finding) => finding.rule === 'duplicate-value-in-owner'
   );
 
-  assert.equal(duplicateValue?.severity, 'warning');
+  assert.equal(duplicateValue?.severity, 'error');
   assert.equal(duplicateValue?.locale, 'zh_Hans');
   assert.equal(duplicateValue?.value, '操作');
   assert.deepEqual(duplicateValue?.keys, [
