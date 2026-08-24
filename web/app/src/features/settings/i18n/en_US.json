@@ -1136,6 +1136,7 @@
     "network_center_proxy_plugins": "Proxy plugins",
     "network_center_proxy_plugins_search": "Search proxy plugins",
     "network_center_no_proxy_plugins": "No proxy plugins are available.",
-    "network_center_proxy_plugin_installed": "Installed"
+    "network_center_proxy_plugin_installed": "Installed",
+    "ui_components": "UI components"
   }
 }

@@ -1136,6 +1136,7 @@
     "network_center_proxy_plugins": "代理插件",
     "network_center_proxy_plugins_search": "搜索代理插件",
     "network_center_no_proxy_plugins": "暂无可用代理插件。",
-    "network_center_proxy_plugin_installed": "已安装"
+    "network_center_proxy_plugin_installed": "已安装",
+    "ui_components": "UI 组件"
   }
 }
