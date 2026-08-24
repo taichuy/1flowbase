@@ -209,6 +209,7 @@ pub struct CatalogComponentResponse {
     pub catalog_updated_at: String,
     pub source_locator: String,
     pub source_checksum: String,
+    pub local_version: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -233,6 +234,7 @@ pub struct CatalogSearchEntryResponse {
     pub version: String,
     pub keywords: Vec<String>,
     pub catalog_page: u32,
+    pub local_version: Option<String>,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -334,6 +336,7 @@ fn component_response(value: UiComponentRecord) -> Result<ComponentRecordRespons
 
 fn catalog_component_response(
     value: control_plane::ports::OfficialUiComponentCatalogRecord,
+    local_version: Option<String>,
 ) -> Result<CatalogComponentResponse, ApiError> {
     use time::format_description::well_known::Rfc3339;
     Ok(CatalogComponentResponse {
@@ -353,6 +356,7 @@ fn catalog_component_response(
         catalog_updated_at: value.catalog_updated_at.format(&Rfc3339)?,
         source_locator: value.source_locator,
         source_checksum: value.source_checksum,
+        local_version,
     })
 }
 
@@ -738,7 +742,7 @@ pub async fn catalog_page(
         records: value
             .records
             .into_iter()
-            .map(catalog_component_response)
+            .map(|record| catalog_component_response(record.catalog, record.local_version))
             .collect::<Result<Vec<_>, _>>()?,
     })))
 }
@@ -761,19 +765,23 @@ pub async fn catalog_search(
         entries: value
             .entries
             .into_iter()
-            .map(|entry| CatalogSearchEntryResponse {
-                component_code: entry.component_code,
-                name: entry.name,
-                description: entry.description,
-                source: entry.source,
-                group: entry.group,
-                upstream: ComponentUpstreamBody {
-                    identity: entry.upstream.identity,
-                    version: entry.upstream.version,
-                },
-                version: entry.version,
-                keywords: entry.keywords,
-                catalog_page: entry.catalog_page,
+            .map(|projection| {
+                let entry = projection.catalog;
+                CatalogSearchEntryResponse {
+                    component_code: entry.component_code,
+                    name: entry.name,
+                    description: entry.description,
+                    source: entry.source,
+                    group: entry.group,
+                    upstream: ComponentUpstreamBody {
+                        identity: entry.upstream.identity,
+                        version: entry.upstream.version,
+                    },
+                    version: entry.version,
+                    keywords: entry.keywords,
+                    catalog_page: entry.catalog_page,
+                    local_version: projection.local_version,
+                }
             })
             .collect(),
     })))
@@ -800,7 +808,11 @@ pub async fn catalog_download(
     let value = catalog_service(&state)
         .download_component(&component_code, context.user.id)
         .await?;
-    Ok(Json(ApiSuccess::new(catalog_component_response(value)?)))
+    let local_version = Some(value.version.clone());
+    Ok(Json(ApiSuccess::new(catalog_component_response(
+        value,
+        local_version,
+    )?)))
 }
 
 #[utoipa::path(post, path = "/api/console/settings/ui-management/components/catalog/groups/{source}/{group}/sync", params(("source" = String, Path), ("group" = String, Path)), responses((status = 200, body = CatalogSyncResponse)))]

@@ -5,12 +5,9 @@ import {
   Alert,
   App,
   Button,
-  Descriptions,
   Flex,
   Input,
   Table,
-  Tag,
-  Typography,
   type TableColumnsType
 } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -19,10 +16,8 @@ import { useAuthStore } from '../../../../state/auth-store';
 import {
   downloadSettingsUiCatalogComponent,
   fetchSettingsUiCatalogPage,
-  fetchSettingsUiCatalogUpdateStatus,
   searchSettingsUiCatalog,
   settingsUiComponentsQueryKey,
-  syncSettingsUiCatalogGroup,
   type SettingsUiCatalogComponent
 } from '../../api/ui-management';
 
@@ -36,6 +31,7 @@ type CatalogRow = Pick<
   | 'upstream'
   | 'version'
   | 'keywords'
+  | 'local_version'
 >;
 
 const SEARCH_PAGE_SIZE = 20;
@@ -68,37 +64,22 @@ export function UiComponentCatalogContent({
     queryFn: () => searchSettingsUiCatalog(search, page, SEARCH_PAGE_SIZE),
     enabled: !browsing
   });
-  const updateStatus = useQuery({
-    queryKey: ['settings', 'ui-management', 'catalog', 'update-status'],
-    queryFn: () => fetchSettingsUiCatalogUpdateStatus()
-  });
   const download = useMutation({
-    mutationFn: (componentCode: string) =>
+    mutationFn: (record: CatalogRow) =>
       downloadSettingsUiCatalogComponent(
-        componentCode,
+        record.component_code,
         tokenOrThrow(csrfToken)
       ),
-    onSuccess: async () => {
+    onSuccess: async (_, record) => {
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: settingsUiComponentsQueryKey
         }),
-        updateStatus.refetch()
+        browsing ? catalogPage.refetch() : searchResult.refetch()
       ]);
-      message.success(t('catalog_downloaded'));
-    }
-  });
-  const syncGroup = useMutation({
-    mutationFn: ({ source, group }: { source: string; group: string }) =>
-      syncSettingsUiCatalogGroup(source, group, tokenOrThrow(csrfToken)),
-    onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: settingsUiComponentsQueryKey
-        }),
-        updateStatus.refetch()
-      ]);
-      message.success(t('catalog_group_synced'));
+      message.success(
+        t(record.local_version ? 'catalog_updated' : 'catalog_downloaded')
+      );
     }
   });
   const rows: CatalogRow[] = browsing
@@ -111,11 +92,7 @@ export function UiComponentCatalogContent({
     ? (catalogPage.data?.page_size ?? SEARCH_PAGE_SIZE)
     : SEARCH_PAGE_SIZE;
   const failed =
-    catalogPage.isError ||
-    searchResult.isError ||
-    updateStatus.isError ||
-    download.isError ||
-    syncGroup.isError;
+    catalogPage.isError || searchResult.isError || download.isError;
   const columns = useMemo<TableColumnsType<CatalogRow>>(
     () => [
       { title: t('name'), dataIndex: 'name', key: 'name', width: 160 },
@@ -137,11 +114,11 @@ export function UiComponentCatalogContent({
               size="small"
               loading={
                 download.isPending &&
-                download.variables === record.component_code
+                download.variables?.component_code === record.component_code
               }
-              onClick={() => download.mutate(record.component_code)}
+              onClick={() => download.mutate(record)}
             >
-              {t('catalog_download')}
+              {t(record.local_version ? 'catalog_update' : 'catalog_download')}
             </Button>
           ) : null
       }
@@ -169,7 +146,6 @@ export function UiComponentCatalogContent({
         />
         <Button
           onClick={() => {
-            void updateStatus.refetch();
             if (browsing) void catalogPage.refetch();
             else void searchResult.refetch();
           }}
@@ -177,60 +153,6 @@ export function UiComponentCatalogContent({
           {t('component_refresh')}
         </Button>
       </Flex>
-      <Flex align="center" justify="space-between" gap={8} wrap>
-        <Typography.Text>
-          {updateStatus.data
-            ? t('catalog_version_status', {
-                version: updateStatus.data.catalog_version,
-                count: updateStatus.data.groups.length
-              })
-            : t('catalog_status_loading')}
-        </Typography.Text>
-        {updateStatus.data?.update_available ? (
-          <Tag color="processing">{t('catalog_update_available')}</Tag>
-        ) : null}
-      </Flex>
-      {updateStatus.data ? (
-        <Descriptions
-          size="small"
-          bordered
-          column={1}
-          items={updateStatus.data.groups.map((item) => ({
-            key: `${item.source}/${item.group}`,
-            label: `${item.source} / ${item.group}`,
-            children: (
-              <Flex align="center" justify="space-between" gap={8} wrap>
-                <Typography.Text type="secondary">
-                  {t('catalog_group_status', {
-                    total: item.remote_records,
-                    updates: item.new_or_updated_records,
-                    removals: item.removed_records
-                  })}
-                </Typography.Text>
-                {canManage ? (
-                  <Button
-                    type="link"
-                    size="small"
-                    loading={
-                      syncGroup.isPending &&
-                      syncGroup.variables?.source === item.source &&
-                      syncGroup.variables?.group === item.group
-                    }
-                    onClick={() =>
-                      syncGroup.mutate({
-                        source: item.source,
-                        group: item.group
-                      })
-                    }
-                  >
-                    {t('catalog_sync_group')}
-                  </Button>
-                ) : null}
-              </Flex>
-            )
-          }))}
-        />
-      ) : null}
       <Table<CatalogRow>
         columns={columns}
         dataSource={rows}
