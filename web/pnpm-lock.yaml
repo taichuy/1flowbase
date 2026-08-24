@@ -239,15 +239,6 @@ importers:
         specifier: ^4.1.8
         version: 4.1.8(@opentelemetry/api@1.9.0)(@types/node@24.13.3)(@vitest/coverage-v8@4.1.8)(jsdom@26.1.0)(vite@8.0.16(@types/node@24.13.3)(jiti@2.7.0)(yaml@2.8.4))
 
-  packages/ant-design-icons-catalog:
-    dependencies:
-      '@ant-design/icons':
-        specifier: '*'
-        version: 6.3.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
-      react:
-        specifier: ^19.0.0
-        version: 19.2.5
-
   packages/api-client:
     dependencies:
       '@1flowbase/flow-schema':

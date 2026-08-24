@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: Frontstage 区块依赖收敛为前端 module registry
-summary: 用户已批准 #1871：后端只保存源码与摘要/修订，前端拥有模块、exports、实现、样式和内容哈希资产；artifact identity 为 source_sha256 + compiler_abi + runtime_abi，旧 dependency lock/assets 先停止参与执行但暂不删除。
+summary: 用户已批准并实现 #1871：后端只保存源码与摘要/修订，前端拥有模块、exports、实现、样式和内容哈希资产；artifact identity 为 source_sha256 + compiler_abi + runtime_abi；保留内置区块 manifest，删除已退出执行链路的官方 browser assets。
 keywords:
   - frontstage
   - module registry
@@ -11,8 +11,8 @@ keywords:
   - runtime_abi
   - MCP
 created_at: 2026-08-24 21
-updated_at: 2026-08-24 21
-last_verified_at: 2026-08-24 21
+updated_at: 2026-08-24 23
+last_verified_at: 2026-08-24 23
 decision_policy: verify_before_decision
 source_issue: "#1871"
 scope:
@@ -43,7 +43,8 @@ scope:
 - MCP/API 可以保存当前前端无法编译的源码；错误统一在前端编译/预览暴露。
 - artifact identity 为 `source_sha256 + compiler_abi + runtime_abi`，不包含依赖版本或后端 lock。
 - 依赖 JS/CSS 使用 Vite/browser 内容哈希 URL；依赖升级不要求源码变化或重新发布区块。
-- 旧 dependency-lock 字段、数据和 fetched assets 先保留但变为 execution-inert；历史 fixture 验证后才另行批准不可逆删除。
+- 旧 dependency-lock 字段与数据继续保留但 execution-inert。
+- `api/plugins/capability-plugins/1flowbase/manifest.yaml` 与 declarative package 入口继续负责注册内置代码区块；不再保留该包下的 `browser-assets/`，也不再生成官方后端 JS/CSS bundle。
 
 ## 截止日期与动机
 

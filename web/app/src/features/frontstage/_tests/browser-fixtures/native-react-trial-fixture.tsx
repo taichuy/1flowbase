@@ -6,7 +6,7 @@ import { VditorEditor } from '@1flowbase/rich-text';
 import nativeComponentsCss from '@1flowbase/native-components/styles.css?raw';
 import richTextCss from '@1flowbase/rich-text/styles.css?raw';
 import vditorCss from 'vditor/dist/index.css?raw';
-import tailwindPresetCss from '../../../../../../../api/plugins/capability-plugins/1flowbase/browser-assets/tailwindcss-catalog.css?raw';
+import tailwindPresetCss from '@1flowbase/tailwindcss-catalog/legacy-inventory.css?raw';
 import type { BlockContext } from '@1flowbase/page-protocol';
 import type { IsolatedFrontendBlockCapabilityHandlers } from '@1flowbase/page-runtime';
 import type { ComponentProps, ComponentType } from 'react';
