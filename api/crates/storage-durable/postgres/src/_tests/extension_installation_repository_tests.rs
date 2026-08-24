@@ -101,7 +101,7 @@ async fn root_1545_bf1_repository_lists_newest_stable_identity_version_first() {
 }
 
 #[tokio::test]
-async fn backup_extension_inventory_excludes_plugin_installations() {
+async fn ac_001_extension_inventory_includes_plugin_installations() {
     let (store, actor) = seed_store().await;
     let installed =
         ExtensionInstallationRepository::upsert_extension_installation(&store, &input(actor.id))
@@ -130,7 +130,16 @@ async fn backup_extension_inventory_excludes_plugin_installations() {
             .await
             .unwrap();
 
-    assert!(records.is_empty());
+    assert_eq!(records.len(), 1);
+    assert_eq!(
+        records[0].identity.category,
+        domain::ExtensionCategory::RuntimeExtensions
+    );
+    assert_eq!(records[0].identity.artifact_id, "fixture-provider");
+    assert_eq!(
+        records[0].status,
+        domain::ExtensionInstallationStatus::Installed
+    );
 }
 
 #[tokio::test]

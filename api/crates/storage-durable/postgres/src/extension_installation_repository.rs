@@ -263,7 +263,6 @@ impl ExtensionInstallationRepository for PgControlPlaneStore {
             join extension_artifact_instances artifact
               on artifact.installation_id = installation.id
             where artifact.node_id = $1
-              and installation.plugin_id is null
             order by installation.updated_at desc, installation.id desc
             "#
         );
