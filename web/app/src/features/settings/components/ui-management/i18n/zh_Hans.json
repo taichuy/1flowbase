@@ -78,5 +78,7 @@
   "catalog_sync_group": "同步分组",
   "catalog_downloaded": "组件已下载",
   "catalog_group_synced": "组件分组已同步",
-  "catalog_request_failed": "远程目录请求失败，现有组件记录未发生变化。"
+  "catalog_request_failed": "远程目录请求失败，现有组件记录未发生变化。",
+  "extension_center_tab": "UI 组件",
+  "go_to_ui_management": "前往 UI 管理"
 }

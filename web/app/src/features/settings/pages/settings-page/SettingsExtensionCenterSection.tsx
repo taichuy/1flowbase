@@ -61,6 +61,7 @@ import {
 } from '../../components/extension-center/ExtensionApplicationFlow';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
 import { PricingCatalogPanel } from '../../components/billing/PricingCatalogPanel';
+import { UiComponentCatalogPanel } from '../../components/extension-center/UiComponentCatalogPanel';
 
 type ExtensionRow = SettingsInstalledExtension | SettingsExtensionCatalogEntry;
 type UpdateState =
@@ -216,9 +217,17 @@ export function SettingsExtensionCenterSection(props: {
   category: SettingsExtensionCenterCategory;
   cursor?: string;
   q?: string;
+  canManageUiComponents?: boolean;
 }) {
   if (props.category === 'model-pricing') {
     return <PricingCatalogPanel />;
+  }
+  if (props.category === 'ui-components') {
+    return (
+      <UiComponentCatalogPanel
+        canManage={props.canManageUiComponents ?? false}
+      />
+    );
   }
   return (
     <GenericExtensionCenterSection
@@ -234,7 +243,10 @@ function GenericExtensionCenterSection({
   cursor,
   q
 }: {
-  category: Exclude<SettingsExtensionCenterCategory, 'model-pricing'>;
+  category: Exclude<
+    SettingsExtensionCenterCategory,
+    'model-pricing' | 'ui-components'
+  >;
   cursor?: string;
   q?: string;
 }) {
@@ -1024,6 +1036,10 @@ function GenericExtensionCenterSection({
               key: category,
               label: category
             })),
+            {
+              key: 'ui-components',
+              label: t('auto.ui_components')
+            },
             {
               key: 'model-pricing',
               label: t('auto.billing_vendor_model_pricing')
