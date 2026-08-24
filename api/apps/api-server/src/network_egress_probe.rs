@@ -277,6 +277,7 @@ fn classify_acquire_error(error: &anyhow::Error) -> &'static str {
     });
     match provider_code {
         Some("network_egress_runtime_start_failed") => "proxy_runtime_start_failed",
+        Some("network_egress_runtime_resource_exhausted") => "proxy_runtime_resource_exhausted",
         Some("network_egress_runtime_capacity_exhausted") => "proxy_runtime_capacity_exhausted",
         Some("network_egress_runtime_backoff") => "proxy_runtime_backoff",
         _ => "proxy_unavailable",
@@ -352,6 +353,10 @@ mod tests {
             (
                 "network_egress_runtime_capacity_exhausted",
                 "proxy_runtime_capacity_exhausted",
+            ),
+            (
+                "network_egress_runtime_resource_exhausted",
+                "proxy_runtime_resource_exhausted",
             ),
             ("network_egress_runtime_backoff", "proxy_runtime_backoff"),
         ] {

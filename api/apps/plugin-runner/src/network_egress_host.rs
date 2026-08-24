@@ -874,25 +874,32 @@ mod tests {
 
     #[test]
     fn ac_008_preserves_the_validated_provider_code_and_safe_summary() {
-        let response: NetworkEgressWorkerErrorResponse = serde_json::from_str(
-            r#"{"operation":"acquire_http_forward_proxy","error":{"code":"network_egress_runtime_capacity_exhausted","message":"Proxy runtime capacity is exhausted."}}"#,
-        )
-        .expect("safe runtime error envelope should deserialize");
-        response
-            .validate()
-            .expect("safe runtime error should validate");
+        for (code, summary) in [
+            (
+                "network_egress_runtime_capacity_exhausted",
+                "Proxy runtime capacity is exhausted.",
+            ),
+            (
+                "network_egress_runtime_resource_exhausted",
+                "Proxy runtime could not reserve required memory.",
+            ),
+        ] {
+            let response: NetworkEgressWorkerErrorResponse =
+                serde_json::from_value(serde_json::json!({
+                    "operation": "acquire_http_forward_proxy",
+                    "error": {"code": code, "message": summary}
+                }))
+                .expect("safe runtime error envelope should deserialize");
+            response
+                .validate()
+                .expect("safe runtime error should validate");
 
-        let PluginFrameworkError::RuntimeContract { error } = response.into_framework_error()
-        else {
-            panic!("provider runtime errors must retain the runtime contract variant");
-        };
-        assert_eq!(
-            error.provider_summary.as_deref(),
-            Some("Proxy runtime capacity is exhausted.")
-        );
-        assert_eq!(
-            error.provider_details.as_ref().unwrap()["code"],
-            "network_egress_runtime_capacity_exhausted"
-        );
+            let PluginFrameworkError::RuntimeContract { error } = response.into_framework_error()
+            else {
+                panic!("provider runtime errors must retain the runtime contract variant");
+            };
+            assert_eq!(error.provider_summary.as_deref(), Some(summary));
+            assert_eq!(error.provider_details.as_ref().unwrap()["code"], code);
+        }
     }
 }

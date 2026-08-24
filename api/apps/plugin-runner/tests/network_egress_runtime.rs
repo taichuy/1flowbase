@@ -381,11 +381,12 @@ async fn ac_004_revokes_the_lease_when_the_worker_crashes() {
     });
     let package = TempNetworkEgressPackage::new();
     let config_marker = package.path().join("config-path");
+    let child_marker = package.path().join("mihomo-child.pid");
     package.write_runtime(
         &format!("http://127.0.0.1:{port}"),
         unix_milliseconds_now() + 300_000,
         true,
-        None,
+        Some(&child_marker),
         Some(&config_marker),
         None,
     );
@@ -399,6 +400,7 @@ async fn ac_004_revokes_the_lease_when_the_worker_crashes() {
     .await
     .expect("activation must start the worker");
     let config_path = wait_for_config_path(&config_marker);
+    let child_pid = wait_for_child_pid(&child_marker);
     assert!(config_path.is_file());
     host.resolve_http_forward_proxy("fixture_egress@0.1.0", "egress-us-1")
         .await
@@ -413,11 +415,18 @@ async fn ac_004_revokes_the_lease_when_the_worker_crashes() {
         .cleanup_receipt("fixture_egress@0.1.0")
         .expect("crash must revoke the lease and retain cleanup evidence");
     assert!(receipt.lease_revoked);
+    assert!(receipt.termination_signal_sent);
+    assert!(receipt.process_tree_exited);
     assert_eq!(receipt.reason, NetworkEgressCleanupReason::RuntimeFailure);
     assert_eq!(receipt.final_state, NetworkEgressWorkerState::Failed);
     assert!(
         !config_path.exists(),
         "private configuration file must not survive a crashed worker"
+    );
+    #[cfg(target_os = "linux")]
+    assert!(
+        wait_for_process_exit(child_pid),
+        "the worker process-group owner must reap an orphaned Mihomo descendant"
     );
 }
 
