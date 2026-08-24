@@ -7,11 +7,32 @@ use control_plane::ports::{
     FrontstagePageRepository, SaveFrontstageBlockNodeCodeInput,
     UpdateFrontstageBlockDescriptorsInput,
 };
-use domain::FrontstageBlockPresentation;
+use domain::{AuditLogRecord, FrontstageBlockPresentation};
 use runtime_core::runtime_record_repository::{OrderedTreeCommandError, OrderedTreeQueryError};
+use time::OffsetDateTime;
 
 use super::*;
 use crate::PgControlPlaneStore;
+
+fn audit_log(
+    workspace_id: Option<Uuid>,
+    actor_user_id: Option<Uuid>,
+    target_type: &str,
+    target_id: Option<Uuid>,
+    event_code: &str,
+    payload: serde_json::Value,
+) -> AuditLogRecord {
+    AuditLogRecord {
+        id: Uuid::now_v7(),
+        workspace_id,
+        actor_user_id,
+        target_type: target_type.to_owned(),
+        target_id,
+        event_code: event_code.to_owned(),
+        payload,
+        created_at: OffsetDateTime::now_utc(),
+    }
+}
 
 async fn create_page_and_tab(
     store: &PgControlPlaneStore,

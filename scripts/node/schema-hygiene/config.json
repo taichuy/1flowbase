@@ -15,31 +15,174 @@
   ],
   "registeredSystemTableTemplates": {
     "users": {
-      "requiredColumns": ["id", "account", "email", "phone", "password_hash", "name", "nickname", "avatar_url", "introduction", "default_display_role", "email_login_enabled", "phone_login_enabled", "status", "session_version", "created_by", "created_at", "updated_by", "updated_at", "preferred_locale", "meta"]
+      "requiredColumns": [
+        "id",
+        "account",
+        "email",
+        "phone",
+        "password_hash",
+        "name",
+        "nickname",
+        "avatar_url",
+        "introduction",
+        "default_display_role",
+        "email_login_enabled",
+        "phone_login_enabled",
+        "status",
+        "session_version",
+        "created_by",
+        "created_at",
+        "updated_by",
+        "updated_at",
+        "preferred_locale",
+        "meta"
+      ]
     },
     "roles": {
-      "requiredColumns": ["id", "scope_id", "scope_kind", "workspace_id", "code", "name", "introduction", "is_builtin", "is_editable", "system_kind", "created_by", "created_at", "updated_by", "updated_at", "auto_grant_new_permissions", "is_default_member_role"]
+      "requiredColumns": [
+        "id",
+        "scope_id",
+        "scope_kind",
+        "workspace_id",
+        "code",
+        "name",
+        "introduction",
+        "is_builtin",
+        "is_editable",
+        "system_kind",
+        "created_by",
+        "created_at",
+        "updated_by",
+        "updated_at",
+        "auto_grant_new_permissions",
+        "is_default_member_role"
+      ]
     },
     "application_run_log_summaries": {
-      "requiredColumns": ["flow_run_id", "application_id", "run_mode", "status", "target_node_id", "title", "input_payload", "external_user", "authorized_account", "api_key_id", "publication_version_id", "external_conversation_id", "external_trace_id", "compatibility_mode", "idempotency_key", "total_tokens", "unique_node_count", "tool_callback_count", "started_at", "finished_at", "created_at", "updated_at", "log_created_at", "log_updated_at", "api_key_name_snapshot", "scope_id", "id", "input_tokens", "output_tokens", "input_cache_hit_tokens"]
+      "requiredColumns": [
+        "flow_run_id",
+        "application_id",
+        "run_mode",
+        "status",
+        "target_node_id",
+        "title",
+        "input_payload",
+        "external_user",
+        "authorized_account",
+        "api_key_id",
+        "publication_version_id",
+        "external_conversation_id",
+        "external_trace_id",
+        "compatibility_mode",
+        "idempotency_key",
+        "total_tokens",
+        "unique_node_count",
+        "tool_callback_count",
+        "started_at",
+        "finished_at",
+        "created_at",
+        "updated_at",
+        "log_created_at",
+        "log_updated_at",
+        "api_key_name_snapshot",
+        "scope_id",
+        "id",
+        "input_tokens",
+        "output_tokens",
+        "input_cache_hit_tokens"
+      ]
     },
     "application_conversations": {
-      "requiredColumns": ["id", "scope_id", "application_id", "external_conversation_id", "external_user", "api_key_id", "title", "created_at", "updated_at"]
+      "requiredColumns": [
+        "id",
+        "scope_id",
+        "application_id",
+        "external_conversation_id",
+        "external_user",
+        "api_key_id",
+        "title",
+        "created_at",
+        "updated_at"
+      ]
     },
     "application_conversation_messages": {
-      "requiredColumns": ["id", "scope_id", "conversation_id", "application_id", "flow_run_id", "node_run_id", "role", "content", "sequence", "status", "started_at", "finished_at", "created_at", "updated_at"]
+      "requiredColumns": [
+        "id",
+        "scope_id",
+        "conversation_id",
+        "application_id",
+        "flow_run_id",
+        "node_run_id",
+        "role",
+        "content",
+        "sequence",
+        "status",
+        "started_at",
+        "finished_at",
+        "created_at",
+        "updated_at"
+      ]
     },
     "node_runs": {
-      "requiredColumns": ["id", "flow_run_id", "node_id", "node_type", "node_alias", "status", "input_payload", "output_payload", "error_payload", "metrics_payload", "started_at", "finished_at", "debug_payload", "scope_id", "node_run_id", "created_at"]
+      "requiredColumns": [
+        "id",
+        "flow_run_id",
+        "node_id",
+        "node_type",
+        "node_alias",
+        "status",
+        "input_payload",
+        "output_payload",
+        "error_payload",
+        "metrics_payload",
+        "started_at",
+        "finished_at",
+        "debug_payload",
+        "scope_id",
+        "node_run_id",
+        "created_at"
+      ]
     },
     "flow_run_events": {
-      "requiredColumns": ["id", "flow_run_id", "node_run_id", "sequence", "event_type", "payload", "created_at", "scope_id"]
+      "requiredColumns": [
+        "id",
+        "flow_run_id",
+        "node_run_id",
+        "sequence",
+        "event_type",
+        "payload",
+        "created_at",
+        "scope_id"
+      ]
     },
     "flow_run_checkpoints": {
-      "requiredColumns": ["id", "flow_run_id", "node_run_id", "status", "reason", "locator_payload", "variable_snapshot", "external_ref_payload", "created_at", "scope_id"]
+      "requiredColumns": [
+        "id",
+        "flow_run_id",
+        "node_run_id",
+        "status",
+        "reason",
+        "locator_payload",
+        "variable_snapshot",
+        "external_ref_payload",
+        "created_at",
+        "scope_id"
+      ]
     },
     "flow_run_callback_tasks": {
-      "requiredColumns": ["id", "flow_run_id", "node_run_id", "callback_kind", "status", "request_payload", "response_payload", "external_ref_payload", "created_at", "completed_at", "scope_id"]
+      "requiredColumns": [
+        "id",
+        "flow_run_id",
+        "node_run_id",
+        "callback_kind",
+        "status",
+        "request_payload",
+        "response_payload",
+        "external_ref_payload",
+        "created_at",
+        "completed_at",
+        "scope_id"
+      ]
     }
   },
   "appendOnlyTables": [
@@ -639,7 +782,15 @@
     "network_egress_pool_members": {
       "kind": "bounded_child_list",
       "reason": "pool members inherit the fixed system scope from their global pool and retain provider keys as explicit invalid references",
+      "skip": ["managed-table-scope-column", "managed-table-scope-time-index"]
+    },
+    "network_egress_route_pool_members": {
+      "kind": "ordered_route_member_relation",
+      "reason": "route-member association rows use the composite route and member identity, sequence defines order, and workspace ownership derives from the route",
       "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
         "managed-table-scope-column",
         "managed-table-scope-time-index"
       ]
@@ -668,18 +819,12 @@
     "network_egress_routes": {
       "kind": "workspace_routing",
       "reason": "egress routes are workspace-routed policy rows keyed by consumer selector; workspace_id is the owning scope",
-      "skip": [
-        "managed-table-scope-column",
-        "managed-table-scope-time-index"
-      ]
+      "skip": ["managed-table-scope-column", "managed-table-scope-time-index"]
     },
     "user_credit_accounts": {
       "kind": "workspace_routed_account",
       "reason": "credit accounts are routed by (workspace_id, user_id, credit_unit) with a workspace_id + updated_at listing index; scope_id expansion is deferred to a dedicated billing scope migration",
-      "skip": [
-        "managed-table-scope-column",
-        "managed-table-scope-time-index"
-      ]
+      "skip": ["managed-table-scope-column", "managed-table-scope-time-index"]
     },
     "workspace_billing_settings": {
       "kind": "bounded_workspace_singleton",
@@ -693,10 +838,7 @@
     "assistant_conversations": {
       "kind": "bounded_conversation_projection",
       "reason": "assistant conversations use conversation_id as their stable identity and the scoped user application updated index matches the bounded listing contract",
-      "skip": [
-        "managed-table-id",
-        "managed-table-scope-time-index"
-      ]
+      "skip": ["managed-table-id", "managed-table-scope-time-index"]
     },
     "application_extension_sources": {
       "kind": "bounded_application_source",
@@ -854,18 +996,12 @@
     "role_console_group_policies": {
       "kind": "bounded_role_policy_child",
       "reason": "console group policies are bounded by the owning role and compiled console group catalog",
-      "skip": [
-        "managed-table-scope-column",
-        "managed-table-scope-time-index"
-      ]
+      "skip": ["managed-table-scope-column", "managed-table-scope-time-index"]
     },
     "role_console_operation_policies": {
       "kind": "bounded_role_policy_child",
       "reason": "console operation overrides are bounded by the owning role and compiled operation catalog",
-      "skip": [
-        "managed-table-scope-column",
-        "managed-table-scope-time-index"
-      ]
+      "skip": ["managed-table-scope-column", "managed-table-scope-time-index"]
     },
     "role_console_group_policy_snapshots": {
       "kind": "bounded_migration_snapshot",
@@ -969,26 +1105,17 @@
     "role_data_model_policies": {
       "kind": "bounded_role_policy_child",
       "reason": "data model policy overrides are bounded by the owning role and registered data model set",
-      "skip": [
-        "managed-table-scope-column",
-        "managed-table-scope-time-index"
-      ]
+      "skip": ["managed-table-scope-column", "managed-table-scope-time-index"]
     },
     "role_data_policies": {
       "kind": "bounded_role_policy_child",
       "reason": "default data policies are one bounded policy row per owning role",
-      "skip": [
-        "managed-table-scope-column",
-        "managed-table-scope-time-index"
-      ]
+      "skip": ["managed-table-scope-column", "managed-table-scope-time-index"]
     },
     "ui_code_template_defaults": {
       "kind": "bounded_system_default_projection",
       "reason": "UI code template defaults are one bounded system-scoped mapping per provider contribution and use the composite primary key as stable identity",
-      "skip": [
-        "managed-table-id",
-        "managed-table-created-at"
-      ]
+      "skip": ["managed-table-id", "managed-table-created-at"]
     },
     "tenants": {
       "kind": "routing_root_reference",
@@ -1053,12 +1180,21 @@
     },
     "schema_migrations": {
       "reason": "sqlx internal migration ledger, not application-managed user data",
-      "skip": ["id", "created_at", "updated_at", "managed-table-scope-column", "managed-table-scope-time-index"]
+      "skip": [
+        "id",
+        "created_at",
+        "updated_at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
     },
     "flow_run_recovery_history": {
       "kind": "immutable_flow_recovery_history",
       "reason": "immutable recovery history is addressed by flow run sequence and never by a scope chronology scan",
-      "skip": ["managed-table-updated-at-or-append-only", "managed-table-scope-time-index"]
+      "skip": [
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-time-index"
+      ]
     },
     "flow_run_resume_claims": {
       "kind": "flow_owned_resume_claims",
@@ -1068,32 +1204,56 @@
     "frontstage_executable_upgrade_markers": {
       "kind": "system_upgrade_marker",
       "reason": "global executable upgrade markers use the marker as identity and are not workspace routed application data",
-      "skip": ["managed-table-id", "managed-table-scope-column", "managed-table-scope-time-index"]
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
     },
     "frontstage_executable_upgrade_runs": {
       "kind": "global_upgrade_attempt_history",
       "reason": "global upgrade attempts are bounded by their marker and run id instead of workspace row routing",
-      "skip": ["managed-table-id", "managed-table-created-at", "managed-table-scope-column", "managed-table-scope-time-index"]
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
     },
     "runtime_canonical_contents": {
       "kind": "immutable_application_content",
       "reason": "canonical content is immutable and addressed by application plus content hash rather than a scope chronology scan",
-      "skip": ["managed-table-updated-at-or-append-only", "managed-table-scope-time-index"]
+      "skip": [
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-time-index"
+      ]
     },
     "runtime_invocation_context_bindings": {
       "kind": "immutable_invocation_binding",
       "reason": "one immutable binding uses invocation span as identity and is read through the owning flow runtime",
-      "skip": ["managed-table-id", "managed-table-updated-at-or-append-only", "managed-table-scope-time-index"]
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-time-index"
+      ]
     },
     "runtime_legacy_shadow_batches": {
       "kind": "global_migration_operation",
       "reason": "conversion shadow batches are global operational migration state rather than workspace owned application data",
-      "skip": ["managed-table-created-at", "managed-table-updated-at-or-append-only", "managed-table-scope-column", "managed-table-scope-time-index"]
+      "skip": [
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
     },
     "runtime_legacy_shadow_rows": {
       "kind": "immutable_conversion_evidence",
       "reason": "conversion shadow rows are immutable evidence addressed by batch or flow rather than a scope chronology scan",
-      "skip": ["managed-table-updated-at-or-append-only", "managed-table-scope-time-index"]
+      "skip": [
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-time-index"
+      ]
     }
   }
 }
