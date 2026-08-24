@@ -6,7 +6,6 @@ import { VditorEditor } from '@1flowbase/rich-text';
 import nativeComponentsCss from '@1flowbase/native-components/styles.css?raw';
 import richTextCss from '@1flowbase/rich-text/styles.css?raw';
 import vditorCss from 'vditor/dist/index.css?raw';
-import tailwindPresetCss from '@1flowbase/tailwindcss-catalog/legacy-inventory.css?raw';
 import type { BlockContext } from '@1flowbase/page-protocol';
 import type { IsolatedFrontendBlockCapabilityHandlers } from '@1flowbase/page-runtime';
 import type { ComponentProps, ComponentType } from 'react';
@@ -229,7 +228,6 @@ function PublicModulesBlock({
     <Surface
       aria-label={`public-modules-${props.label}`}
       data-testid={`public-modules-${props.label}`}
-      className="grid grid-cols-2 gap-4 bg-emerald-500 p-4 hover:opacity-80 md:grid-cols-3"
     >
       <h3>
         <UserOutlined /> {props.label}
@@ -269,12 +267,6 @@ const publicModuleAssets = [
     `${vditorCss}\n${richTextCss}`
   )
 ];
-
-const tailwindModuleAsset = fixtureModuleStyle(
-  'tailwindcss',
-  'e',
-  tailwindPresetCss
-);
 
 function CatalogIconsProbe() {
   const [Icon, setIcon] = useState<ComponentType<{
@@ -486,10 +478,16 @@ function NativeReactTrialFixture() {
         false,
         'miss'
       ),
-      preparation('public-a', 2, components.publicA, 1, 1, false, 'l2', [
-        ...publicModuleAssets,
-        tailwindModuleAsset
-      ]),
+      preparation(
+        'public-a',
+        2,
+        components.publicA,
+        1,
+        1,
+        false,
+        'l2',
+        publicModuleAssets
+      ),
       preparation(
         'public-b',
         3,
@@ -643,9 +641,6 @@ function NativeReactTrialFixture() {
             demand {priority}
           </button>
         ))}
-      </div>
-      <div data-testid="tailwind-host-fixture-probe" className="grid gap-4 p-4">
-        Host Tailwind isolation probe
       </div>
       {pageMounted ? (
         <>

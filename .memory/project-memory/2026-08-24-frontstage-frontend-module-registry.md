@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: Frontstage 区块依赖收敛为前端 module registry
-summary: 用户已批准并实现 #1871：后端只保存源码与摘要/修订，前端拥有模块、exports、实现、样式和内容哈希资产；artifact identity 为 source_sha256 + compiler_abi + runtime_abi；保留内置区块 manifest，删除已退出执行链路的官方 browser assets。
+summary: 用户已批准并实现 #1871：后端只保存源码与摘要/修订，前端拥有模块、exports、实现、样式和内容哈希资产；artifact identity 为 source_sha256 + compiler_abi + runtime_abi。2026-08-25 又确认删除内置代码区块 manifest 与 Tailwind module capability。
 keywords:
   - frontstage
   - module registry
@@ -11,8 +11,8 @@ keywords:
   - runtime_abi
   - MCP
 created_at: 2026-08-24 21
-updated_at: 2026-08-24 23
-last_verified_at: 2026-08-24 23
+updated_at: 2026-08-25 00
+last_verified_at: 2026-08-25 00
 decision_policy: verify_before_decision
 source_issue: "#1871"
 scope:
@@ -44,7 +44,8 @@ scope:
 - artifact identity 为 `source_sha256 + compiler_abi + runtime_abi`，不包含依赖版本或后端 lock。
 - 依赖 JS/CSS 使用 Vite/browser 内容哈希 URL；依赖升级不要求源码变化或重新发布区块。
 - 旧 dependency-lock 字段与数据继续保留但 execution-inert。
-- `api/plugins/capability-plugins/1flowbase/manifest.yaml` 与 declarative package 入口继续负责注册内置代码区块；不再保留该包下的 `browser-assets/`，也不再生成官方后端 JS/CSS bundle。
+- 2026-08-25 起不再注册内置代码区块：`api/plugins/capability-plugins/1flowbase`、默认 deployment set 引用和 Boot Core 自动安装入口均已删除。
+- 前端 module registry 不再注册 `tailwindcss`；Tailwind 编译、样式资产和相关缓存 identity 已退出 Native React contract。
 
 ## 截止日期与动机
 

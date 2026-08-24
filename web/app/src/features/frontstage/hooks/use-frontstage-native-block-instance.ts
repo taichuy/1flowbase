@@ -110,7 +110,6 @@ export function frontstageNativeInstanceRenderKey(
   return JSON.stringify({
     sourceSha256: identityInput.sourceSha256,
     compilerAbi: identityInput.compilerAbi,
-    runtimeAbi: identityInput.runtimeAbi,
-    executableStyleIdentity: identityInput.executableStyleIdentity
+    runtimeAbi: identityInput.runtimeAbi
   });
 }

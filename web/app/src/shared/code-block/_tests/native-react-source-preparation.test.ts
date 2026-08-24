@@ -37,29 +37,6 @@ function registry(
 }
 
 describe('Native React source preparation', () => {
-  test('AC-001 compiles Tailwind candidates without an inventory admission gate', async () => {
-    const compiler = compilerReturning({
-      ok: true,
-      artifact: compiledArtifact(),
-      diagnostics: []
-    });
-    const registryFactory = vi.fn(() =>
-      registry({
-        definitions: [{ module_source: 'tailwindcss', exports: [] }]
-      })
-    );
-    const result = await prepareNativeReactSource({
-      frozenSource:
-        'import \'tailwindcss\'; export default () => <div className="grid unknown-layout" />;',
-      requestId: 'unsupported-tailwind',
-      compiler,
-      registryFactory
-    });
-
-    expect(result.ok).toBe(true);
-    expect(compiler).toHaveBeenCalledOnce();
-  });
-
   test('R7-AC-001 passes Host evaluation bindings without changing the artifact', async () => {
     const runtimeLog = vi.fn();
     const source =

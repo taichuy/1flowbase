@@ -117,46 +117,6 @@ async function verifyFixture(browserInstance, fixture) {
           );
           return first.filter((sheet) => second.includes(sheet)).length;
         })(),
-        tailwindPresetSafety: publicHosts.map((host) => {
-          const css = [...(host.shadowRoot?.adoptedStyleSheets ?? [])]
-            .map((sheet) => [...sheet.cssRules].map((rule) => rule.cssText).join('\n'))
-            .find((value) => value.includes('.bg-red-500')) ?? '';
-          return {
-            hasPreflight:
-              /@layer base|(?:^|\})\s*(?:button|input|h[1-6])(?:,|\{)/u.test(
-                css
-              ),
-            hasAntSelector: /\.ant-/u.test(css),
-            hasSourceIndependentUtility: css.includes('.rotate-45'),
-            hasResponsiveVariant: css.includes('@media'),
-            hasHoverVariant: css.includes(':hover')
-          };
-        }),
-        publicLayout: publicHosts.map((host) => {
-          const element = host.shadowRoot?.querySelector(
-            '[data-testid^=public-modules-]'
-          );
-          if (!element) return null;
-          const style = getComputedStyle(element);
-          return {
-            display: style.display,
-            gap: style.gap,
-            padding: style.padding,
-            backgroundColor: style.backgroundColor
-          };
-        }),
-        hostLayout: (() => {
-          const element = document.querySelector(
-            '[data-testid=tailwind-host-fixture-probe]'
-          );
-          if (!element) return null;
-          const style = getComputedStyle(element);
-          return {
-            display: style.display,
-            gap: style.gap,
-            padding: style.padding
-          };
-        })(),
         leakedModuleStyles: document.head.querySelectorAll(
           'style[data-module-source]'
         ).length,
@@ -435,25 +395,9 @@ function assertNativeEvidence(name, evidence) {
   if (
     evidence.publicHostCount !== 2 ||
     evidence.canvases.some((count) => count < 1) ||
-    evidence.adoptedStyleCounts[0] !== 3 ||
+    evidence.adoptedStyleCounts[0] !== 2 ||
     evidence.adoptedStyleCounts[1] !== 2 ||
     evidence.sharedStyleSheetCount !== 2 ||
-    evidence.tailwindPresetSafety[0]?.hasPreflight !== true ||
-    evidence.tailwindPresetSafety[0]?.hasAntSelector !== false ||
-    evidence.tailwindPresetSafety[0]?.hasSourceIndependentUtility !== true ||
-    evidence.tailwindPresetSafety[0]?.hasResponsiveVariant !== true ||
-    evidence.tailwindPresetSafety[0]?.hasHoverVariant !== true ||
-    evidence.tailwindPresetSafety[1]?.hasSourceIndependentUtility !== false ||
-    evidence.publicLayout[0]?.display !== 'grid' ||
-    evidence.publicLayout[0]?.gap !== '16px' ||
-    evidence.publicLayout[0]?.padding !== '16px' ||
-    evidence.publicLayout[0]?.backgroundColor === 'rgba(0, 0, 0, 0)' ||
-    evidence.publicLayout[1]?.display !== 'block' ||
-    evidence.publicLayout[1]?.gap !== 'normal' ||
-    evidence.publicLayout[1]?.padding !== '0px' ||
-    evidence.hostLayout?.display !== 'block' ||
-    evidence.hostLayout?.gap !== 'normal' ||
-    evidence.hostLayout?.padding !== '0px' ||
     evidence.leakedModuleStyles !== 0 ||
     evidence.richTextIcons.length !== 3 ||
     evidence.richTextIcons.some(

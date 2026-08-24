@@ -173,17 +173,13 @@ describe('AuthenticatorUiBlockStudio', () => {
 
     await waitFor(() =>
       expect(monacoHook.addExtraLib).toHaveBeenCalledWith(
-      expect.stringContaining('declare namespace JSX'),
-      'file:///1flowbase/native-react-jsx.d.ts'
+        expect.stringContaining('declare namespace JSX'),
+        'file:///1flowbase/native-react-jsx.d.ts'
       )
     );
     expect(monacoHook.addExtraLib).toHaveBeenCalledWith(
       expect.stringContaining('interface NativeReactBlockContext'),
       'file:///1flowbase/native-react-context.d.ts'
-    );
-    expect(monacoHook.addExtraLib).toHaveBeenCalledWith(
-      expect.stringContaining("declare module 'tailwindcss'"),
-      'file:///node_modules/tailwindcss/index.d.ts'
     );
     expect(monacoHook.addExtraLib).toHaveBeenCalledWith(
       expect.stringContaining("declare module '@1flowbase/block-sdk'"),
@@ -302,13 +298,13 @@ describe('AuthenticatorUiBlockStudio', () => {
     const trialProps = trialPanelHook.render.mock.calls.at(-1)?.[0];
     expect(trialProps.block).toMatchObject({
       catalog: {
-        providerCode: '1flowbase',
-        installationId: 'builtin-installation'
+        providerCode: 'public-auth',
+        installationId: 'public-auth-authoring'
       },
       contribution: {
-        pluginId: 'builtin-frontstage',
+        pluginId: 'public-auth',
         pluginVersion: '1.0.0',
-        code: 'frontstage.js-ui-block'
+        code: 'authenticator-ui'
       },
       runtime: {
         kind: 'native_trusted_block',

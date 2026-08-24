@@ -636,29 +636,6 @@ fn d5_p3_isolated_runtime_requires_one_verified_browser_module_asset() {
 }
 
 #[test]
-fn builtin_frontstage_manifest_keeps_the_block_without_backend_module_assets() {
-    let manifest_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../plugins/capability-plugins/1flowbase/manifest.yaml");
-    let source = std::fs::read_to_string(&manifest_path).unwrap();
-    let manifest = parse_plugin_manifest(&source).unwrap();
-    crate::validate_frontend_module_assets(manifest_path.parent().unwrap(), &manifest).unwrap();
-    assert_eq!(manifest.block_contributions.len(), 1);
-    assert_eq!(
-        manifest.block_contributions[0].contribution_code,
-        "frontstage.js-ui-block"
-    );
-    assert!(manifest.block_contributions[0].code_modules.is_empty());
-    assert!(!manifest_path
-        .parent()
-        .unwrap()
-        .join("browser-assets")
-        .exists());
-    assert!(!source.contains("components:"));
-    assert!(!source.contains("antd_facade"));
-    assert!(!source.contains("FacadeCommonProps"));
-}
-
-#[test]
 fn plugin_manifest_v1_keeps_missing_frontend_block_code_template_null() {
     let manifest = parse_plugin_manifest(
         r#"

@@ -97,7 +97,6 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   registration('@1flowbase/ui', Object.keys(uiModule), async () => ({
     module: uiModule
   })),
-  registration('tailwindcss', [], async () => ({ module: {} })),
   registration('@1flowbase/block-sdk', ['blockSdkVersion'], async () => ({
     module: await import('@1flowbase/block-sdk')
   })),

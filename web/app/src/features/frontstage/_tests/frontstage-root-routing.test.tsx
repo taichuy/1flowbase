@@ -438,13 +438,7 @@ describe('frontstage topbar root routing', () => {
           runtime_descriptor: {},
           source_code: 'export default function Parent() { return null; }',
           source_sha256: 'a'.repeat(64),
-          dependency_lock: [],
-          tailwind_toolchain_lock: { package: 'tailwindcss' },
-          generated_css: '',
-          generated_css_sha256:
-            'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-          compiler_identity: { name: 'tailwindcss' },
-          executable_state: 'ready'
+          dependency_lock: []
         },
         {
           block_id: 'block-child',
@@ -458,13 +452,7 @@ describe('frontstage topbar root routing', () => {
           runtime_descriptor: {},
           source_code: 'export default function Child() { return null; }',
           source_sha256: 'b'.repeat(64),
-          dependency_lock: [],
-          tailwind_toolchain_lock: { package: 'tailwindcss' },
-          generated_css: '',
-          generated_css_sha256:
-            'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-          compiler_identity: { name: 'tailwindcss' },
-          executable_state: 'ready'
+          dependency_lock: []
         }
       ]
     });

@@ -1,6 +1,5 @@
-use crate::{
-    _tests::support::{login_and_capture_cookie, test_api_state_with_database_url, test_config},
-    provider_runtime::ApiProviderRuntime,
+use crate::_tests::support::{
+    login_and_capture_cookie, test_api_state_with_database_url, test_config,
 };
 use axum::{
     body::{to_bytes, Body},
@@ -524,7 +523,7 @@ async fn retained_asset_authorization_does_not_read_block_dependency_lock() {
 }
 
 #[tokio::test]
-async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
+async fn frontend_block_catalog_route_has_no_system_builtin_jsx_block() {
     let (app, _) = test_frontend_block_app_with_database_url().await;
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
 
@@ -544,112 +543,14 @@ async fn frontend_block_catalog_route_includes_system_builtin_jsx_block() {
     let payload: Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     let entries = payload["data"].as_array().unwrap();
-    let jsx_block = entries
-        .iter()
-        .find(|entry| {
-            entry["provider_code"] == "1flowbase"
-                && entry["contribution_code"] == "frontstage.js-ui-block"
-        })
-        .expect("system bootstrap must register the built-in JSX block");
-
-    assert_eq!(jsx_block["code_template_language"], "tsx");
-    assert_eq!(jsx_block["code_template_version"], "6.0.0");
-    assert_eq!(jsx_block["runtime_kind"], "trusted_native");
-    assert_eq!(jsx_block["execution_kind"], "ui_mount");
-    assert_eq!(jsx_block["isolation_requirement"], "trusted_host_realm");
-    assert_eq!(jsx_block["lifecycle_kind"], "workspace_assignment");
-    assert_eq!(jsx_block["provenance"]["module_kind"], "boot_core");
-    assert!(jsx_block["graph_fingerprint"].as_str().is_some());
-    let code_template = jsx_block["code_template"].as_str().unwrap();
-    assert!(code_template.contains("export default function ExampleBlock"));
-    assert!(code_template.contains("useState"));
-    assert!(code_template.contains("onClick"));
-    assert!(code_template.contains("import 'tailwindcss'"));
-    assert!(code_template.contains("className=\"grid gap-4 p-4\""));
-    assert!(!code_template.contains("BlockModule"));
-    assert!(jsx_block.get("code_modules").is_none());
-    assert_eq!(jsx_block["isolated_entry_asset"], Value::Null);
+    assert!(entries.iter().all(|entry| {
+        entry["provider_code"] != "1flowbase"
+            || entry["contribution_code"] != "frontstage.js-ui-block"
+    }));
 }
 
 #[tokio::test]
-async fn builtin_jsx_block_bootstrap_is_idempotent() {
-    let (state, database_url) = test_api_state_with_database_url().await;
-    let pool = PgPool::connect(&database_url).await.unwrap();
-    let actor_user_id: Uuid =
-        sqlx::query_scalar("select id from users where account = 'root' limit 1")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    let workspace_id: Uuid =
-        sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-
-    control_plane::plugin_management::PluginManagementService::new(
-        state.store.clone(),
-        ApiProviderRuntime::new(state.provider_runtime.clone()),
-        state.official_plugin_source.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_node_id(state.api_node_id.clone())
-    .ensure_builtin_plugin(
-        control_plane::plugin_management::EnsureBuiltinPluginCommand {
-            actor_user_id,
-            package_root: crate::builtin_jsx_block_package_root()
-                .unwrap()
-                .display()
-                .to_string(),
-        },
-    )
-    .await
-    .unwrap();
-
-    let installation_count: i64 = sqlx::query_scalar(
-        "select count(*) from extension_installations where artifact_id = '1flowbase'",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    let catalog_count: i64 = sqlx::query_scalar(
-        "select count(*) from frontend_block_catalog where provider_code = '1flowbase' and contribution_code = 'frontstage.js-ui-block'",
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    let assignment_count: i64 = sqlx::query_scalar(
-        "select count(*) from plugin_assignments where workspace_id = $1 and provider_code = '1flowbase'",
-    )
-    .bind(workspace_id)
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-
-    assert_eq!(installation_count, 1);
-    assert_eq!(catalog_count, 1);
-    assert_eq!(assignment_count, 0);
-    let retained_charts_bytes: Vec<u8> = sqlx::query_scalar(
-        r#"
-        select bytes
-        from retained_frontend_module_assets
-        where installation_id in (
-            select id from extension_installations where artifact_id = '1flowbase'
-        )
-          and module_source = '@1flowbase/charts'
-          and sha256 = 'b4df3cc6116a254e1dd7451e99c5d01a48cd23bd4a6f35df10f97dba2e888338'
-        "#,
-    )
-    .fetch_one(&pool)
-    .await
-    .unwrap();
-    assert_eq!(
-        format!("{:x}", Sha256::digest(&retained_charts_bytes)),
-        "b4df3cc6116a254e1dd7451e99c5d01a48cd23bd4a6f35df10f97dba2e888338"
-    );
-}
-
-#[tokio::test]
-async fn frontend_block_catalog_route_lists_builtin_and_assigned_workspace_blocks() {
+async fn frontend_block_catalog_route_lists_assigned_workspace_blocks() {
     let (app, database_url) = test_frontend_block_app_with_database_url().await;
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
     seed_frontend_block(&database_url, false, false).await;
@@ -672,7 +573,7 @@ async fn frontend_block_catalog_route_lists_builtin_and_assigned_workspace_block
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     let entries = payload["data"].as_array().unwrap();
 
-    assert_eq!(entries.len(), 2);
+    assert_eq!(entries.len(), 1);
     let entry = entries
         .iter()
         .find(|entry| entry["contribution_code"] == "hero_banner")

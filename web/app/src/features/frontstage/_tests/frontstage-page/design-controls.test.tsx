@@ -540,21 +540,7 @@ describe('FrontStagePage - design controls', () => {
       page_id: 'page-1',
       source_code: 'export default function Orders() { return null; }',
       source_sha256: 'source-sha',
-      dependency_lock: [],
-      tailwind_toolchain_lock: {
-        package: 'tailwindcss',
-        version: '4.3.3',
-        mode: 'theme-and-utilities'
-      },
-      generated_css: '',
-      generated_css_sha256:
-        'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
-      compiler_identity: {
-        name: '@1flowbase/tailwindcss-catalog',
-        tailwind_version: '4.3.3',
-        contract: 'source-driven-utilities-v1'
-      },
-      executable_state: 'ready'
+      dependency_lock: []
     });
   });
 
@@ -833,7 +819,6 @@ describe('FrontStagePage - design controls', () => {
       screen.queryByRole('dialog', { name: '区块配置' })
     ).not.toBeInTheDocument();
   });
-
 
   test('shows real page tree operation states without local draft wording', () => {
     authenticate(['frontstage.page.design']);

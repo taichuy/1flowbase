@@ -514,14 +514,6 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
             "default extension bootstrap manifest unavailable; core startup continues"
         ),
     }
-    plugin_management
-        .ensure_builtin_plugin(
-            control_plane::plugin_management::EnsureBuiltinPluginCommand {
-                actor_user_id: bootstrap_result.root_user_id,
-                package_root: builtin_jsx_block_package_root()?.display().to_string(),
-            },
-        )
-        .await?;
     plugin_management.reconcile_all_installations().await?;
     intake_active_data_source_templates_at_startup(
         &store,
@@ -738,18 +730,6 @@ fn api_workspace_root() -> Result<PathBuf> {
     ))
 }
 
-fn builtin_jsx_block_package_root() -> Result<PathBuf> {
-    let package_root = api_workspace_root()?.join("plugins/capability-plugins/1flowbase");
-    if package_root.join("manifest.yaml").is_file() {
-        return Ok(package_root);
-    }
-
-    Err(anyhow!(
-        "builtin JSX block package manifest was not found at {}",
-        package_root.join("manifest.yaml").display()
-    ))
-}
-
 pub async fn shutdown_signal() {
     let ctrl_c = async {
         tokio::signal::ctrl_c()
@@ -784,8 +764,7 @@ pub fn init_tracing() {
 #[cfg(test)]
 mod tests {
     use super::{
-        api_workspace_root, builtin_jsx_block_package_root, parse_bind_addr,
-        resolve_system_backup_startup, DEFAULT_API_SERVER_ADDR,
+        api_workspace_root, parse_bind_addr, resolve_system_backup_startup, DEFAULT_API_SERVER_ADDR,
     };
 
     #[test]
@@ -807,13 +786,6 @@ mod tests {
         let root = api_workspace_root().unwrap();
 
         assert!(root.join("plugins/host-extensions").is_dir());
-    }
-
-    #[test]
-    fn api_workspace_root_contains_builtin_jsx_block_package() {
-        let package_root = builtin_jsx_block_package_root().unwrap();
-
-        assert!(package_root.join("manifest.yaml").is_file());
     }
 
     #[test]

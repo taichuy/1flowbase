@@ -63,9 +63,7 @@ export function transformNativeReactComponentSource(
     acceptedImportSources
   );
   if (!parsed.ok) return { ok: false, errors: [parsed.error] };
-  const bindings = collectInjectedModules(
-    parsed.value.imports.filter(({ source }) => source !== 'tailwindcss')
-  );
+  const bindings = collectInjectedModules(parsed.value.imports);
   if (!bindings.ok) return { ok: false, errors: [bindings.error] };
 
   const executableSource = applyEdits(tsx.code, [

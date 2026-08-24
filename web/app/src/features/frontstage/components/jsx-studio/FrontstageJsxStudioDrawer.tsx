@@ -8,7 +8,6 @@ import type { ReactNode } from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
-import { diagnoseUnsupportedTailwindUtilities } from '../../../../shared/code-block/tailwind-utility-diagnostics';
 import { i18nText } from '../../../../shared/i18n/text';
 import { PermissionDeniedState } from '../../../../shared/ui/PermissionDeniedState';
 import type { NormalizedFrontstageBlockCatalogEntry } from '../../lib/block-catalog';
@@ -164,10 +163,7 @@ export function FrontstageJsxStudioDrawer({
       allowedImportSources: projection.allowedImportSources
     });
     return validation.ok
-      ? createJsBlockDiagnostics(
-          { pageId, tabId: activeTabId, blockId: activeBlockId },
-          diagnoseUnsupportedTailwindUtilities(draft)
-        )
+      ? []
       : createJsBlockDiagnostics(
           { pageId, tabId: activeTabId, blockId: activeBlockId },
           validation.errors

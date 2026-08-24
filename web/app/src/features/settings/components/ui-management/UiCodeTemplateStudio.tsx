@@ -9,7 +9,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
-import { diagnoseUnsupportedTailwindUtilities } from '../../../../shared/code-block/tailwind-utility-diagnostics';
 import { useAuthStore } from '../../../../state/auth-store';
 import { useFrontstageBlockCatalog } from '../../../frontstage/hooks/use-frontstage-block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../../frontstage/lib/jsx-studio/editor-projection';
@@ -97,9 +96,7 @@ export function UiCodeTemplateStudio({
           const validation = validateNativeTrustedBlockSource(draft.source, {
             allowedImportSources: projection.allowedImportSources
           });
-          return validation.ok
-            ? diagnoseUnsupportedTailwindUtilities(draft.source)
-            : validation.errors;
+          return validation.ok ? [] : validation.errors;
         })();
     return createJsBlockDiagnostics(
       {

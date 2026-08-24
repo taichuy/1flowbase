@@ -2,7 +2,7 @@
 memory_type: project
 title: 代码区块完整 Tailwind 与可复现工具链锁定
 created_at: 2026-08-13 18
-updated_at: 2026-08-14 18
+updated_at: 2026-08-25 00
 decision_policy: verify_before_decision
 scope:
   - web/packages/page-runtime
@@ -11,7 +11,7 @@ scope:
   - web/app/src/shared/code-block
   - api/crates/control-plane
   - api/crates/storage-durable
-status: implemented
+status: superseded
 keywords:
   - native-react
   - tailwindcss
@@ -22,6 +22,8 @@ keywords:
 ---
 
 # 代码区块完整 Tailwind 与可复现工具链锁定
+
+> Superseded at 2026-08-25 00：用户确认前端区块未实际采用 Tailwind，并授权完整移除 Tailwind 编译能力、依赖、治理设施与内置默认代码区块。后续不得再把 `import 'tailwindcss'`、Tailwind preset、编译 Worker 或内置 `frontstage.js-ui-block` 当作有效 contract。
 
 ## 谁在做什么？
 

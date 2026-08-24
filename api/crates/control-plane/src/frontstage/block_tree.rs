@@ -828,7 +828,11 @@ where
             return Ok(runtime_descriptor);
         }
 
-        let requested_identity = FrontstageCatalogIdentity::from_descriptor(&runtime_descriptor)?;
+        let Some(requested_identity) =
+            FrontstageCatalogIdentity::from_descriptor(&runtime_descriptor)?
+        else {
+            return Ok(runtime_descriptor);
+        };
         let node_id = self
             .node_id
             .as_deref()
@@ -839,26 +843,12 @@ where
             .repository
             .list_workspace_frontend_blocks(node_id, workspace_id)
             .await?;
-        let entry = match requested_identity {
-            Some(identity) => entries.into_iter().find(|entry| identity.matches(entry)),
-            None => {
-                let mut defaults = entries.into_iter().filter(|entry| {
-                    entry.provider_code == "1flowbase"
-                        && entry.contribution_code == "frontstage.js-ui-block"
-                });
-                let entry = defaults.next();
-                if defaults.next().is_some() {
-                    return Err(ControlPlaneError::InvalidInput(
-                        "frontstage_block_catalog_identity",
-                    )
-                    .into());
-                }
-                entry
-            }
-        }
-        .ok_or(ControlPlaneError::NotFound(
-            "frontstage_block_catalog_entry",
-        ))?;
+        let entry = entries
+            .into_iter()
+            .find(|entry| requested_identity.matches(entry))
+            .ok_or(ControlPlaneError::NotFound(
+                "frontstage_block_catalog_entry",
+            ))?;
         apply_catalog_identity(&mut runtime_descriptor, &entry)?;
         Ok(runtime_descriptor)
     }
@@ -1378,14 +1368,14 @@ mod code_input_tests {
 
     fn code() -> FrontstageBlockCodeInput {
         FrontstageBlockCodeInput {
-            source_code: "import 'tailwindcss'; export default () => null;".to_owned(),
+            source_code: "export default () => null;".to_owned(),
         }
     }
 
     #[test]
     fn ac_001_accepts_source_without_backend_dependency_resolution() {
         let validated = validate_code(code()).expect("fixture must be valid");
-        assert!(validated.source_code.contains("tailwindcss"));
+        assert_eq!(validated.source_code, "export default () => null;");
         validate_code(FrontstageBlockCodeInput {
             source_code: "import { Missing } from '@not-installed/module'; export default Missing;"
                 .to_owned(),

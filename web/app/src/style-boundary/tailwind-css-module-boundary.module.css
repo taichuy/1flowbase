@@ -1,5 +1,0 @@
-@reference 'tailwindcss/theme.css';
-
-.root {
-  @apply flex gap-4 p-4;
-}

@@ -13,8 +13,7 @@ const coreModuleDefinitions = [
   {
     module_source: 'react/jsx-runtime',
     exports: ['Fragment', 'jsx', 'jsxs']
-  },
-  { module_source: 'tailwindcss', exports: [] }
+  }
 ];
 
 const standardReactComponentFixture = `
@@ -49,21 +48,6 @@ export default function Block({ ctx }: BlockProps) {
 `;
 
 describe('Native React compiler Worker contract', () => {
-  test('treats tailwindcss as a compile-only capability import', () => {
-    const response = handleNativeReactCompilerRequest({
-      direction: 'host_to_worker',
-      type: 'compile_native_react_component',
-      requestId: 'compile-tailwind',
-      source: `import 'tailwindcss'; export default () => <div className="p-4" />;`,
-      moduleDefinitions: coreModuleDefinitions
-    });
-    expect(response.type).toBe('native_react_component_compiled');
-    if (response.type !== 'native_react_component_compiled') return;
-    expect(
-      response.artifact.program.injectedModules.map(({ source }) => source)
-    ).not.toContain('tailwindcss');
-  });
-
   test('D1-AC-001 compiles a standard default-export TSX component into a serializable artifact', () => {
     const response = handleNativeReactCompilerRequest({
       direction: 'host_to_worker',
@@ -190,6 +174,20 @@ describe('Native React compiler Worker contract', () => {
     ).toMatchObject({
       type: 'native_react_component_compile_failed',
       diagnostics: [{ path: expect.stringContaining('Missing') }]
+    });
+
+    expect(
+      handleNativeReactCompilerRequest({
+        direction: 'host_to_worker',
+        type: 'compile_native_react_component',
+        requestId: 'compile-removed-tailwind',
+        source:
+          "import 'tailwindcss'; export default function Block() { return <div />; }",
+        moduleDefinitions
+      })
+    ).toMatchObject({
+      type: 'native_react_component_compile_failed',
+      diagnostics: [{ path: 'source.imports[0]' }]
     });
   });
 });

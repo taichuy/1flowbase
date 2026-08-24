@@ -80,13 +80,14 @@ fn default_set_places_local_infra_before_optional_boot_hosts() {
 }
 
 #[test]
-fn deployment_sets_include_the_system_builtin_jsx_block() {
+fn deployment_sets_do_not_include_a_system_builtin_jsx_block() {
     for set_name in ["minimal", "default"] {
         let plugin_set =
             fs::read_to_string(api_workspace_root().join(format!("plugins/sets/{set_name}.yaml")))
                 .expect("plugin set should be readable");
 
-        assert!(plugin_set.contains("capability_plugins:\n  - 1flowbase"));
+        assert!(plugin_set.contains("capability_plugins: []"));
+        assert!(!plugin_set.contains("\n  - 1flowbase"));
     }
 }
 

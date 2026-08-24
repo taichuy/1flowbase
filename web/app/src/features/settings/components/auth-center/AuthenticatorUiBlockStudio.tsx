@@ -18,7 +18,6 @@ import {
   type JsxStudioContextVariable
 } from '../../../frontstage/components/jsx-studio/JsxStudioResourcePanel';
 import { JsxStudioConfigurationPanel } from '../../../frontstage/components/jsx-studio/JsxStudioConfigurationPanel';
-import { useFrontstageBlockCatalog } from '../../../frontstage/hooks/use-frontstage-block-catalog';
 import { createFrontstageJsxEditorProjection } from '../../../frontstage/lib/jsx-studio/editor-projection';
 import { injectFrontstageContextComment } from '../../../frontstage/lib/jsx-studio/context-injection';
 import {
@@ -26,7 +25,6 @@ import {
   planFrontstageJsxInsertion,
   type FrontstageJsxInsertion
 } from '../../../frontstage/lib/jsx-studio/source-insertion';
-import type { NormalizedFrontstageBlockCatalogEntry } from '../../../frontstage/lib/block-catalog';
 import type { FrontstageBlockInstance } from '../../../frontstage/lib/page-document';
 import { createFrontstageUnavailableBlockContext } from '../../../frontstage/lib/native-trusted-block-react-adapter';
 
@@ -77,21 +75,14 @@ export function AuthenticatorUiBlockStudio({
   source,
   workspaceId
 }: AuthenticatorUiBlockStudioProps) {
-  const blockCatalog = useFrontstageBlockCatalog({ workspaceId });
-  const authoringCatalogEntry =
-    blockCatalog.items.find(
-      (entry) =>
-        entry.providerCode === '1flowbase' &&
-        entry.contributionCode === 'frontstage.js-ui-block'
-    ) ?? null;
   const editorProjection = useMemo(
     () => ({
       ...createFrontstageJsxEditorProjection({
-        catalogEntry: authoringCatalogEntry
+        catalogEntry: null
       }),
       contextComment: AUTH_CONTEXT_COMMENT
     }),
-    [authoringCatalogEntry]
+    []
   );
   const [draft, setDraft] = useState(source);
   const legacyDiagnostic = useMemo(
@@ -104,7 +95,7 @@ export function AuthenticatorUiBlockStudio({
   } | null>(null);
   const previewSequenceRef = useRef(0);
   const [authoringBlock, setAuthoringBlock] = useState<FrontstageBlockInstance>(
-    () => createAuthoringBlock(authenticatorId, authoringCatalogEntry)
+    () => createAuthoringBlock(authenticatorId)
   );
   const previewCapabilities = useMemo(
     () => createPublicAuthPreviewCapabilityHandlers(),
@@ -141,10 +132,8 @@ export function AuthenticatorUiBlockStudio({
   useEffect(() => {
     if (!open) return;
     setDraft(source);
-    setAuthoringBlock(
-      createAuthoringBlock(authenticatorId, authoringCatalogEntry)
-    );
-  }, [authenticatorId, authoringCatalogEntry, open, source]);
+    setAuthoringBlock(createAuthoringBlock(authenticatorId));
+  }, [authenticatorId, open, source]);
 
   useEffect(() => {
     if (!open) return;
@@ -248,7 +237,7 @@ export function AuthenticatorUiBlockStudio({
           pageBlocks={[authoringBlock]}
           projection={editorProjection}
           runPanel={
-            publicVariables && authoringCatalogEntry && previewRequest ? (
+            publicVariables && previewRequest ? (
               <JsxStudioRunPanel
                 key={authenticatorId}
                 block={authoringBlock}
@@ -314,8 +303,7 @@ export function AuthenticatorUiBlockStudio({
 }
 
 function createAuthoringBlock(
-  authenticatorId: string,
-  catalogEntry: NormalizedFrontstageBlockCatalogEntry | null
+  authenticatorId: string
 ): FrontstageBlockInstance {
   return {
     id: `public-auth:${authenticatorId}`,
@@ -324,13 +312,13 @@ function createAuthoringBlock(
     codeRef: `public-auth:${authenticatorId}`,
     sourceCodeRef: `public-auth:${authenticatorId}`,
     catalog: {
-      providerCode: catalogEntry?.providerCode ?? '1flowbase',
-      installationId: catalogEntry?.installationId ?? 'builtin-installation'
+      providerCode: 'public-auth',
+      installationId: 'public-auth-authoring'
     },
     contribution: {
-      pluginId: catalogEntry?.pluginId ?? 'builtin-frontstage',
-      pluginVersion: catalogEntry?.pluginVersion ?? '1.0.0',
-      code: catalogEntry?.contributionCode ?? 'frontstage.js-ui-block'
+      pluginId: 'public-auth',
+      pluginVersion: '1.0.0',
+      code: 'authenticator-ui'
     },
     props: {},
     presentation: { heightMode: 'auto', height: null },
@@ -338,7 +326,7 @@ function createAuthoringBlock(
     order: 0,
     runtime: {
       kind: 'native_trusted_block',
-      entry: catalogEntry?.entry ?? 'index.js',
+      entry: 'index.js',
       hint: 'native_trusted_block'
     }
   };

@@ -369,62 +369,6 @@ describe('FrontstageJsxStudioDrawer', () => {
     });
   });
 
-  test('accepts full Tailwind and custom classes without private inventory diagnostics', () => {
-    const activeSource =
-      'import \'tailwindcss\'; export default function ActiveBlock() { return <div className="grid grid-cols-[200px_1fr] bg-[#00ab73] md:grid-cols-2 custom-layout" />; }';
-    const tailwindCatalogEntry = catalogEntry;
-    const activeTab = {
-      block_id: 'active-block',
-      detail: {
-        block_id: 'active-block',
-        tab_id: 'active-tab',
-        title: 'Active block'
-      },
-      base_source: activeSource,
-      draft: activeSource,
-      source_sha256: 'active-sha256',
-      loading: false,
-      saving: false,
-      error: null
-    };
-    blockTabsHook.useFrontstageBlockTabs.mockReturnValue({
-      tabs: [activeTab],
-      activeBlockId: activeTab.block_id,
-      activeTab,
-      anyDirty: false,
-      openBlock: vi.fn(),
-      activateBlock: vi.fn(),
-      closeBlock: vi.fn(),
-      setActiveDraft: vi.fn(),
-      resetActive: vi.fn(),
-      saveActiveDraft: vi.fn().mockResolvedValue(undefined),
-      handleDeletedBlock: vi.fn().mockResolvedValue('converged')
-    });
-
-    render(
-      <FrontstageJsxStudioDrawer
-        open
-        initialSection="code"
-        workspaceId="workspace-1"
-        pageId="page-1"
-        tabId="initial-tab"
-        block={block}
-        catalogEntry={tailwindCatalogEntry}
-        onClose={vi.fn()}
-        onSaveBlock={vi.fn()}
-      />
-    );
-
-    expect(pageRuntimeMocks.createJsBlockDiagnostics).toHaveBeenCalledWith(
-      {
-        pageId: 'page-1',
-        tabId: 'active-tab',
-        blockId: 'active-block'
-      },
-      []
-    );
-  });
-
   test('AC-004/009 exposes block tree without the legacy child-container write rail', () => {
     render(
       <FrontstageJsxStudioDrawer
@@ -1015,12 +959,7 @@ describe('FrontstageJsxStudioDrawer', () => {
         page_id: 'page-1',
         source_code: source,
         source_sha256: null,
-        dependency_lock: null,
-        tailwind_toolchain_lock: null,
-        generated_css: null,
-        generated_css_sha256: null,
-        compiler_identity: null,
-        executable_state: 'legacy' as const
+        dependency_lock: null
       },
       loading: false,
       saving: false,

@@ -16,7 +16,6 @@ describe('Frontstage JSX editor projection', () => {
       'react/jsx-runtime',
       'antd',
       '@1flowbase/ui',
-      'tailwindcss',
       '@1flowbase/block-sdk',
       '@1flowbase/native-components',
       '@ant-design/icons',
@@ -29,8 +28,7 @@ describe('Frontstage JSX editor projection', () => {
     expect(projection.monacoExtraLibs).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ source: '@1flowbase/native-react-jsx' }),
-        expect.objectContaining({ source: '@1flowbase/native-react-context' }),
-        expect.objectContaining({ source: 'tailwindcss' })
+        expect.objectContaining({ source: '@1flowbase/native-react-context' })
       ])
     );
     expect(projection.monacoExtraLibs).toEqual(
@@ -46,12 +44,16 @@ describe('Frontstage JSX editor projection', () => {
       catalogEntry: null
     });
 
-    expect(projection.monacoExtraLibs).toContainEqual(expect.objectContaining({
-      source: '@1flowbase/native-components',
-      filePath: 'file:///node_modules/@1flowbase/native-components/index.d.ts'
-    }));
-    expect(projection.monacoExtraLibs).toContainEqual(expect.objectContaining({
-      source: '@ant-design/x-markdown'
-    }));
+    expect(projection.monacoExtraLibs).toContainEqual(
+      expect.objectContaining({
+        source: '@1flowbase/native-components',
+        filePath: 'file:///node_modules/@1flowbase/native-components/index.d.ts'
+      })
+    );
+    expect(projection.monacoExtraLibs).toContainEqual(
+      expect.objectContaining({
+        source: '@ant-design/x-markdown'
+      })
+    );
   });
 });

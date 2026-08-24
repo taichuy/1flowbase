@@ -16,7 +16,6 @@ import {
   compileNativeReactComponentInBrowser,
   type NativeReactBrowserCompileResult
 } from '../../../shared/code-block/native-react-compiler-browser';
-import { compileNativeReactExecutableStyle } from '../../../shared/code-block/native-react-executable-style';
 import { createFrontstageNativeReactModuleRegistry } from '../lib/native-trusted-block-runtime-factory';
 import {
   createFrontstageNativeReactArtifactCacheIdentity,
@@ -157,10 +156,6 @@ export function useFrontstagePageCanvasNativePreparations({
                 );
           const source = await fetchSource(request, signal);
           throwIfAborted(signal);
-          const executableStyle = await compileNativeReactExecutableStyle(
-            source.source_code
-          );
-          throwIfAborted(signal);
           const legacyDiagnostic = diagnoseLegacyBlockModuleSource(
             source.source_code
           );
@@ -236,14 +231,12 @@ export function useFrontstagePageCanvasNativePreparations({
             artifact: evaluated.artifact,
             component: evaluated.component,
             artifactCacheTier,
-            moduleAssets: [...moduleAssets, ...executableStyle.assets],
-            generatedCssSha256: executableStyle.utility_css_sha256,
+            moduleAssets,
             ...(contribution ? { contribution } : {}),
             identityInput: {
               sourceSha256: evaluated.artifact.identity.source_sha256,
               compilerAbi: evaluated.artifact.identity.compiler_abi,
-              runtimeAbi: evaluated.artifact.identity.runtime_abi,
-              executableStyleIdentity: executableStyle.candidate_identity
+              runtimeAbi: evaluated.artifact.identity.runtime_abi
             }
           };
         }

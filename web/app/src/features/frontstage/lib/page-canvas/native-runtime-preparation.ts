@@ -41,7 +41,6 @@ export interface FrontstageNativeInstanceIdentityInput {
   sourceSha256: string;
   compilerAbi: string;
   runtimeAbi: string;
-  executableStyleIdentity?: string;
 }
 
 export interface FrontstageNativeInstanceMountIntent {
@@ -59,7 +58,6 @@ export interface FrontstageNativePreparedRuntime {
   identityInput: FrontstageNativeInstanceIdentityInput;
   artifactCacheTier: 'l2' | 'miss';
   moduleAssets: NativeReactResolvedModuleAsset[];
-  generatedCssSha256?: string;
   contribution?: PreparedTrustedFrontendContribution;
 }
 
