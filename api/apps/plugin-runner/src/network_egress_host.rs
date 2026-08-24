@@ -322,6 +322,17 @@ impl NetworkEgressWorkerErrorResponse {
         }
         Ok(())
     }
+
+    fn into_framework_error(self) -> PluginFrameworkError {
+        PluginFrameworkError::runtime(
+            plugin_framework::provider_contract::ProviderRuntimeError::new(
+                plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderInvalidResponse,
+                "network egress provider rejected the requested operation",
+            )
+            .with_provider_summary(self.error.message)
+            .with_provider_details(serde_json::json!({ "code": self.error.code })),
+        )
+    }
 }
 
 impl NetworkEgressConfigFile {
@@ -625,13 +636,7 @@ impl NetworkEgressWorker {
                     "network egress worker error operation does not match the request",
                 ));
             }
-            return Err(PluginFrameworkError::runtime(
-                plugin_framework::provider_contract::ProviderRuntimeError::new(
-                    plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderInvalidResponse,
-                    "network egress provider rejected the requested operation",
-                )
-                .with_provider_details(serde_json::json!({ "code": error_response.error.code })),
-            ));
+            return Err(error_response.into_framework_error());
         }
         let response =
             serde_json::from_str::<NetworkEgressProviderStdioResponse>(&line).map_err(|error| {
@@ -846,6 +851,8 @@ fn startup_receipt(plugin_id: &str) -> NetworkEgressCleanupReceipt {
 
 #[cfg(test)]
 mod tests {
+    use plugin_framework::error::PluginFrameworkError;
+
     use super::NetworkEgressWorkerErrorResponse;
 
     #[test]
@@ -863,5 +870,29 @@ mod tests {
         )
         .expect("unsafe fixture shape should deserialize");
         assert!(unsafe_response.validate().is_err());
+    }
+
+    #[test]
+    fn ac_008_preserves_the_validated_provider_code_and_safe_summary() {
+        let response: NetworkEgressWorkerErrorResponse = serde_json::from_str(
+            r#"{"operation":"acquire_http_forward_proxy","error":{"code":"network_egress_runtime_capacity_exhausted","message":"Proxy runtime capacity is exhausted."}}"#,
+        )
+        .expect("safe runtime error envelope should deserialize");
+        response
+            .validate()
+            .expect("safe runtime error should validate");
+
+        let PluginFrameworkError::RuntimeContract { error } = response.into_framework_error()
+        else {
+            panic!("provider runtime errors must retain the runtime contract variant");
+        };
+        assert_eq!(
+            error.provider_summary.as_deref(),
+            Some("Proxy runtime capacity is exhausted.")
+        );
+        assert_eq!(
+            error.provider_details.as_ref().unwrap()["code"],
+            "network_egress_runtime_capacity_exhausted"
+        );
     }
 }
