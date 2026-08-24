@@ -261,6 +261,7 @@ impl NetworkEgressHost {
 struct NetworkEgressWorker {
     executable_path: PathBuf,
     limits: PluginRuntimeLimits,
+    process_group_id: u32,
     child: Child,
     stdin: ChildStdin,
     stdout: Lines<BufReader<ChildStdout>>,
@@ -474,6 +475,9 @@ impl NetworkEgressWorker {
         let mut child = command
             .spawn()
             .map_err(|error| PluginFrameworkError::io(Some(&executable_path), error.to_string()))?;
+        let process_group_id = child.id().ok_or_else(|| {
+            network_runtime_error("network egress worker process identity is unavailable")
+        })?;
         let stdin = child
             .stdin
             .take()
@@ -484,6 +488,7 @@ impl NetworkEgressWorker {
         Ok(Self {
             executable_path,
             limits,
+            process_group_id,
             child,
             stdin,
             stdout: BufReader::new(stdout).lines(),
@@ -655,7 +660,8 @@ impl NetworkEgressWorker {
     ) -> NetworkEgressCleanupReceipt {
         let lease_revoked = !self.leases_by_id.is_empty();
         let release_acknowledged = self.release_all_leases().await;
-        let prior_pid = self.child.id();
+        let prior_pid = Some(self.process_group_id);
+        let process_group_id = Some(self.process_group_id);
         let mut termination_signal_sent = false;
         let mut cleanup_error = (lease_revoked && !release_acknowledged).then_some(
             "network egress lease release did not return a matching receipt".to_string(),
@@ -670,7 +676,7 @@ impl NetworkEgressWorker {
         };
         // The worker is the process-group/session leader, but its descendants can outlive it.
         // Always address the retained PGID even when `try_wait` has already reaped the leader.
-        match terminate_process_group(prior_pid, libc::SIGTERM) {
+        match terminate_process_group(process_group_id, libc::SIGTERM) {
             Ok(sent) => termination_signal_sent |= sent,
             Err(error) => {
                 cleanup_error.get_or_insert_with(|| error.to_string());
@@ -688,9 +694,9 @@ impl NetworkEgressWorker {
                 Err(_) => false,
             }
         };
-        let mut process_group_exited = wait_for_process_group_exit(prior_pid).await;
+        let mut process_group_exited = wait_for_process_group_exit(process_group_id).await;
         if !leader_exited || !process_group_exited {
-            match terminate_process_group(prior_pid, libc::SIGKILL) {
+            match terminate_process_group(process_group_id, libc::SIGKILL) {
                 Ok(sent) => termination_signal_sent |= sent,
                 Err(error) => {
                     cleanup_error.get_or_insert_with(|| error.to_string());
@@ -701,7 +707,7 @@ impl NetworkEgressWorker {
                     cleanup_error.get_or_insert_with(|| error.to_string());
                 }
             }
-            process_group_exited = wait_for_process_group_exit(prior_pid).await;
+            process_group_exited = wait_for_process_group_exit(process_group_id).await;
         }
         let process_tree_exited = leader_exited && process_group_exited;
         if !process_tree_exited {
@@ -717,7 +723,7 @@ impl NetworkEgressWorker {
         NetworkEgressCleanupReceipt {
             plugin_id: plugin_id.to_string(),
             prior_pid,
-            process_group_id: prior_pid,
+            process_group_id,
             termination_signal_sent,
             process_tree_exited,
             lease_revoked,
