@@ -197,6 +197,7 @@ impl ApiProviderRuntime {
 
     pub async fn acquire_network_egress_http_forward_proxy(
         &self,
+        provider_id: Uuid,
         installation: &domain::LocalPluginInstallationRecord,
         secret: NetworkEgressSecretMaterial,
         provider_egress_key: &str,
@@ -204,27 +205,56 @@ impl ApiProviderRuntime {
         if installation.contract_version != plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT {
             return Err(ControlPlaneError::InvalidInput("plugin_installation").into());
         }
-        self.ensure_network_egress_loaded(installation, secret)
+        self.ensure_network_egress_loaded(provider_id, installation, secret)
             .await?;
-        self.services
+        let lease = self
+            .services
             .network_egress_host
             .write()
             .await
-            .resolve_http_forward_proxy(&installation.plugin_id, provider_egress_key)
+            .resolve_http_forward_proxy(&provider_id.to_string(), provider_egress_key)
             .await
-            .map_err(map_provider_framework_error)
+            .map_err(map_provider_framework_error)?;
+        info!(
+            provider_id = %provider_id,
+            installation_id = %installation.id,
+            plugin_id = %installation.plugin_id,
+            plugin_version = %installation.plugin_version,
+            "network egress provider resolved active artifact"
+        );
+        Ok(lease)
+    }
+
+    async fn validate_network_egress_provider_artifact(
+        &self,
+        provider_id: Uuid,
+        installation: &domain::LocalPluginInstallationRecord,
+        secret: NetworkEgressSecretMaterial,
+    ) -> anyhow::Result<()> {
+        if installation.contract_version != plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT {
+            return Err(ControlPlaneError::InvalidInput("plugin_installation").into());
+        }
+        NetworkEgressHost::preflight(
+            &provider_id.to_string(),
+            &installation.plugin_id,
+            required_local_path(installation)?,
+            NetworkEgressWorkerConfig::from_secret_json(secret.secret_json),
+        )
+        .await
+        .map(|_| ())
+        .map_err(map_provider_framework_error)
     }
 
     pub async fn release_network_egress_http_forward_proxy(
         &self,
-        installation: &domain::LocalPluginInstallationRecord,
+        provider_id: Uuid,
         lease_id: &str,
     ) -> anyhow::Result<()> {
         self.services
             .network_egress_host
             .write()
             .await
-            .release_http_forward_proxy(&installation.plugin_id, lease_id)
+            .release_http_forward_proxy(&provider_id.to_string(), lease_id)
             .await
             .map_err(map_provider_framework_error)
     }
@@ -372,14 +402,9 @@ impl ProviderRuntimePort for ApiProviderRuntime {
                     .map_err(map_provider_framework_error)?;
                 Ok(())
             }
-            plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT => self
-                .services
-                .network_egress_host
-                .write()
-                .await
-                .unload(&installation.plugin_id)
-                .await
-                .map_err(map_provider_framework_error),
+            // Network egress workers are provider-instance scoped. Artifact deactivation does not
+            // identify an instance and therefore cannot own its worker lifecycle.
+            plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT => Ok(()),
             _ => Err(ControlPlaneError::InvalidInput("plugin_installation").into()),
         }
     }
@@ -738,21 +763,42 @@ impl ProviderRuntimePort for ApiProviderRuntime {
 
 #[async_trait]
 impl NetworkEgressRuntimePort for ApiProviderRuntime {
+    async fn unload_network_egress_provider(&self, provider_id: Uuid) -> anyhow::Result<()> {
+        self.services
+            .network_egress_host
+            .write()
+            .await
+            .unload(&provider_id.to_string())
+            .await
+            .map_err(map_provider_framework_error)
+    }
+
+    async fn preflight_network_egresses(
+        &self,
+        provider_id: Uuid,
+        installation: &domain::LocalPluginInstallationRecord,
+        secret: NetworkEgressSecretMaterial,
+    ) -> anyhow::Result<()> {
+        self.validate_network_egress_provider_artifact(provider_id, installation, secret)
+            .await
+    }
+
     async fn sync_network_egresses(
         &self,
+        provider_id: Uuid,
         installation: &domain::LocalPluginInstallationRecord,
         secret: NetworkEgressSecretMaterial,
     ) -> anyhow::Result<Vec<plugin_framework::EgressDescriptor>> {
         if installation.contract_version != plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT {
             return Err(ControlPlaneError::InvalidInput("plugin_installation").into());
         }
-        self.ensure_network_egress_loaded(installation, secret)
+        self.ensure_network_egress_loaded(provider_id, installation, secret)
             .await?;
         self.services
             .network_egress_host
             .write()
             .await
-            .sync_egresses(&installation.plugin_id)
+            .sync_egresses(&provider_id.to_string())
             .await
             .map_err(map_provider_framework_error)
     }
@@ -1417,6 +1463,7 @@ impl ApiProviderRuntime {
 
     async fn ensure_network_egress_loaded(
         &self,
+        provider_id: Uuid,
         installation: &domain::LocalPluginInstallationRecord,
         secret: NetworkEgressSecretMaterial,
     ) -> anyhow::Result<()> {
@@ -1436,6 +1483,7 @@ impl ApiProviderRuntime {
             .write()
             .await
             .load_if_needed(
+                &provider_id.to_string(),
                 &installation.plugin_id,
                 required_local_path(installation)?,
                 &source_identity,

@@ -10,7 +10,7 @@ use control_plane::plugin_management::{
     official_plugin_host_compatibility, DeletePluginFamilyCommand, InstallUploadedPluginCommand,
     PluginCatalogFilter, PluginManagementService,
 };
-use control_plane::ports::{NetworkEgressRepository, PluginRepository};
+use control_plane::ports::NetworkEgressRepository;
 use storage_durable::MainDurableStore;
 use utoipa::ToSchema;
 
@@ -340,13 +340,9 @@ pub async fn switch_plugin_version(
             control_plane::errors::ControlPlaneError::InvalidInput("installation_id").into(),
         );
     }
-    state
-        .store
-        .select_network_egress_current(&state.api_node_id, installation_id)
-        .await?
-        .ok_or(control_plane::errors::ControlPlaneError::Conflict(
-            "network_egress_plugin_version_unavailable",
-        ))?;
+    super::service(&state)
+        .activate_version(installation_id)
+        .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -449,18 +445,13 @@ pub async fn uninstall_plugin_family(
             .ok_or(control_plane::errors::ControlPlaneError::NotFound(
                 "network_egress_plugin_family",
             ))?;
-    let installed_ids = family
-        .installed_versions
-        .iter()
-        .map(|version| version.installation_id.as_str())
-        .collect::<std::collections::HashSet<_>>();
     if state
         .store
         .list_network_egress_providers()
         .await?
         .into_iter()
-        .filter_map(|provider| provider.installation_id)
-        .any(|installation_id| installed_ids.contains(installation_id.to_string().as_str()))
+        .filter_map(|provider| provider.extension_family)
+        .any(|provider_family| provider_family.artifact_id() == family.provider_code)
     {
         return Err(control_plane::errors::ControlPlaneError::Conflict(
             "network_egress_plugin_family_uninstall_blocked",
@@ -734,20 +725,17 @@ async fn mark_referenced_versions_not_uninstallable(
     state: &ApiState,
     families: &mut HashMap<String, NetworkEgressPluginFamilyResponse>,
 ) -> anyhow::Result<()> {
-    let referenced_installations = state
+    let referenced_families = state
         .store
         .list_network_egress_providers()
         .await?
         .into_iter()
-        .filter_map(|provider| provider.installation_id)
-        .map(|installation_id| installation_id.to_string())
+        .filter_map(|provider| provider.extension_family)
+        .map(|family| family.artifact_id().to_string())
         .collect::<std::collections::HashSet<_>>();
     for family in families.values_mut() {
-        for version in &mut family.installed_versions {
-            if referenced_installations.contains(&version.installation_id) {
-                family.can_uninstall = false;
-                version.can_uninstall = false;
-            }
+        if referenced_families.contains(&family.provider_code) {
+            family.can_uninstall = false;
         }
     }
     Ok(())

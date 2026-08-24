@@ -196,6 +196,7 @@ async fn nc_02b_sync_egresses_exposes_only_the_validated_provider_catalog() {
     let mut host = NetworkEgressHost::default();
     host.load_if_needed(
         "fixture_egress@0.1.0",
+        "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
         worker_config(),
@@ -235,6 +236,7 @@ async fn nc_02c_provisions_config_only_at_worker_start_without_stdio_leak_and_wi
     );
     let mut host = NetworkEgressHost::default();
     host.load_if_needed(
+        "fixture_egress@0.1.0",
         "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
@@ -313,6 +315,7 @@ async fn ac_002_ac_003_ac_005_ac_014_resolves_public_lease_and_cleans_mihomo_tre
     let mut host = NetworkEgressHost::default();
     host.load_if_needed(
         "fixture_egress@0.1.0",
+        "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
         worker_config(),
@@ -355,6 +358,7 @@ async fn ac_004_rejects_non_loopback_or_expired_leases_before_core_can_consume_t
     let mut host = NetworkEgressHost::default();
     host.load_if_needed(
         "fixture_egress@0.1.0",
+        "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
         worker_config(),
@@ -392,6 +396,7 @@ async fn ac_004_revokes_the_lease_when_the_worker_crashes() {
     );
     let mut host = NetworkEgressHost::default();
     host.load_if_needed(
+        "fixture_egress@0.1.0",
         "fixture_egress@0.1.0",
         &package.path().display().to_string(),
         "fixture-v1",
@@ -453,6 +458,7 @@ async fn ac_005_overlapping_leases_release_their_own_identity_without_cross_rele
     let plugin_id = "fixture_egress@0.1.0";
     host.load_if_needed(
         plugin_id,
+        plugin_id,
         &package.path().display().to_string(),
         "fixture-v1",
         worker_config(),
@@ -468,8 +474,9 @@ async fn ac_005_overlapping_leases_release_their_own_identity_without_cross_rele
         .resolve_http_forward_proxy(plugin_id, "egress-us-1")
         .await
         .expect("request B may overlap A before either scope releases");
-    assert_eq!(lease_a.lease_id, "lease-A");
-    assert_eq!(lease_b.lease_id, "lease-B");
+    assert_ne!(lease_a.lease_id, lease_b.lease_id);
+    assert_ne!(lease_a.lease_id, "lease-A");
+    assert_ne!(lease_b.lease_id, "lease-B");
 
     host.release_http_forward_proxy(plugin_id, &lease_a.lease_id)
         .await

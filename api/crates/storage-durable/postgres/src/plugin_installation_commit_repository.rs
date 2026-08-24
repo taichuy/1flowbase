@@ -104,8 +104,9 @@ pub(crate) async fn commit_plugin_installation(
             == Some("network_egress_provider");
     if selects_network_egress_current {
         let family_lock = format!(
-            "network-egress-current:{}:{}",
+            "network-egress-current:{}:{}:{}",
             installation.category.as_str(),
+            installation.organization,
             installation.provider_code
         );
         sqlx::query("select pg_advisory_xact_lock(hashtext($1))")
@@ -120,13 +121,15 @@ pub(crate) async fn commit_plugin_installation(
                 where retained.id = artifact.installation_id
                   and artifact.node_id = $1
                   and retained.category = $2
-                  and retained.artifact_id = $3
+                  and retained.organization = $3
+                  and retained.artifact_id = $4
                   and retained.metadata_json ->> 'plugin_type' = 'network_egress_provider'
                   and artifact.is_current
             "#,
         )
         .bind(&artifact.node_id)
         .bind(installation.category.as_str())
+        .bind(&installation.organization)
         .bind(&installation.provider_code)
         .execute(&mut *tx)
         .await?;

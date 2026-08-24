@@ -16,7 +16,7 @@ struct NetworkEgressHttpRequestLeaseReleaser(NetworkEgressExecutionScope);
 
 struct NetworkEgressScopeRelease {
     runtime: ApiProviderRuntime,
-    installation: domain::LocalPluginInstallationRecord,
+    provider_id: Uuid,
     /// Host-private identity for the exact lease this scope owns. It is never exposed through
     /// the consumer client or model-provider invocation context.
     lease_id: String,
@@ -25,26 +25,26 @@ struct NetworkEgressScopeRelease {
 impl NetworkEgressScopeRelease {
     async fn release(self) -> Result<()> {
         self.runtime
-            .release_network_egress_http_forward_proxy(&self.installation, &self.lease_id)
+            .release_network_egress_http_forward_proxy(self.provider_id, &self.lease_id)
             .await
             .context("configured network egress provider did not release its proxy lease")
     }
 
     fn release_after_cancellation(self) {
-        let installation_id = self.installation.id;
+        let provider_id = self.provider_id;
         match tokio::runtime::Handle::try_current() {
             Ok(handle) => {
                 handle.spawn(async move {
                     if self.release().await.is_err() {
                         tracing::warn!(
-                            %installation_id,
+                            %provider_id,
                             "network egress lease release after cancellation failed"
                         );
                     }
                 });
             }
             Err(_) => tracing::warn!(
-                %installation_id,
+                %provider_id,
                 "network egress lease was dropped outside a Tokio runtime"
             ),
         }
@@ -135,21 +135,30 @@ impl NetworkEgressHttpClientResolver {
         if provider.provider_code == "builtin_static_http" {
             return static_http_execution_scope(secret.secret_json);
         }
-        let installation_id = provider
-            .installation_id
+        let extension_family = provider
+            .extension_family
+            .as_ref()
             .context("configured network egress provider is unavailable on this node")?;
-        let installation =
-            PluginRepository::get_local_installation(&self.store, &self.node_id, installation_id)
-                .await?
-                .context("configured network egress provider is unavailable on this node")?;
+        let installation = PluginRepository::get_current_local_installation(
+            &self.store,
+            &self.node_id,
+            extension_family,
+        )
+        .await?
+        .context("configured network egress provider is unavailable on this node")?;
         let forward_proxy = self
             .runtime
-            .acquire_network_egress_http_forward_proxy(&installation, secret, provider_egress_key)
+            .acquire_network_egress_http_forward_proxy(
+                provider_id,
+                &installation,
+                secret,
+                provider_egress_key,
+            )
             .await
             .context("configured network egress provider could not acquire a proxy lease")?;
         let release = NetworkEgressScopeRelease {
             runtime: self.runtime.clone(),
-            installation,
+            provider_id,
             lease_id: forward_proxy.lease_id.clone(),
         };
         let client = match Client::builder()

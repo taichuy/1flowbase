@@ -3,7 +3,7 @@ use super::*;
 #[derive(Debug, Clone)]
 pub struct CreateNetworkEgressProviderInput {
     pub provider_id: Uuid,
-    pub installation_id: Option<Uuid>,
+    pub extension_family: Option<domain::ExtensionCatalogIdentity>,
     pub provider_code: String,
     pub display_name: String,
     pub description: String,
@@ -279,8 +279,18 @@ pub trait NetworkEgressRouteRepository: Send + Sync {
 
 #[async_trait]
 pub trait NetworkEgressRuntimePort: Send + Sync {
+    async fn unload_network_egress_provider(&self, provider_id: Uuid) -> anyhow::Result<()>;
+
+    async fn preflight_network_egresses(
+        &self,
+        provider_id: Uuid,
+        installation: &domain::LocalPluginInstallationRecord,
+        secret: NetworkEgressSecretMaterial,
+    ) -> anyhow::Result<()>;
+
     async fn sync_network_egresses(
         &self,
+        provider_id: Uuid,
         installation: &domain::LocalPluginInstallationRecord,
         secret: NetworkEgressSecretMaterial,
     ) -> anyhow::Result<Vec<plugin_framework::EgressDescriptor>>;

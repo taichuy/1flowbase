@@ -62,7 +62,9 @@ export interface ConsoleNetworkEgressProjection {
 
 export interface ConsoleNetworkEgressProvider {
   id: string;
-  installation_id: string | null;
+  extension_category: string | null;
+  extension_organization: string | null;
+  extension_artifact_id: string | null;
   provider_code: string;
   display_name: string;
   description: string;

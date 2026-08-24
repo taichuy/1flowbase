@@ -282,7 +282,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
             availability_status: PluginAvailabilityStatus::Available,
             checked_at: time::OffsetDateTime::now_utc(),
             last_error: None,
-            is_current: false,
+            is_current: true,
         },
     )
     .await
@@ -292,7 +292,11 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
         &state.store,
         &CreateNetworkEgressProviderInput {
             provider_id,
-            installation_id: Some(installation_id),
+            extension_family: domain::ExtensionCatalogIdentity::new(
+                domain::ExtensionCategory::RuntimeExtensions,
+                "test",
+                "fixture_egress",
+            ),
             provider_code: "fixture_egress".into(),
             display_name: "Fixture Egress".into(),
             description: String::new(),

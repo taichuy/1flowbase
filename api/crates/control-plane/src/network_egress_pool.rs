@@ -688,7 +688,7 @@ mod health_tests {
     fn active_provider() -> domain::NetworkEgressProviderRecord {
         domain::NetworkEgressProviderRecord {
             id: Uuid::now_v7(),
-            installation_id: None,
+            extension_family: None,
             provider_code: "builtin_static_http".to_string(),
             display_name: "Proxy".to_string(),
             description: String::new(),

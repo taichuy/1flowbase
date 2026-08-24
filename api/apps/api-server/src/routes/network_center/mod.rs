@@ -76,7 +76,9 @@ pub struct NetworkEgressProjectionResponse {
 #[derive(Debug, Serialize, ToSchema)]
 pub struct NetworkEgressProviderResponse {
     pub id: String,
-    pub installation_id: Option<String>,
+    pub extension_category: Option<String>,
+    pub extension_organization: Option<String>,
+    pub extension_artifact_id: Option<String>,
     pub provider_code: String,
     pub display_name: String,
     pub description: String,
@@ -219,9 +221,12 @@ fn format_time(value: time::OffsetDateTime) -> String {
 }
 
 pub(super) fn response(view: NetworkEgressProviderView) -> NetworkEgressProviderResponse {
+    let extension_family = view.provider.extension_family.as_ref();
     NetworkEgressProviderResponse {
         id: view.provider.id.to_string(),
-        installation_id: view.provider.installation_id.map(|id| id.to_string()),
+        extension_category: extension_family.map(|family| family.category().as_str().to_string()),
+        extension_organization: extension_family.map(|family| family.organization().to_string()),
+        extension_artifact_id: extension_family.map(|family| family.artifact_id().to_string()),
         provider_code: view.provider.provider_code,
         display_name: view.provider.display_name,
         description: view.provider.description,
@@ -527,7 +532,11 @@ mod tests {
     fn ac_003_secret_reference_is_not_serialized_by_provider_projection() {
         let provider = domain::NetworkEgressProviderRecord {
             id: Uuid::now_v7(),
-            installation_id: Some(Uuid::now_v7()),
+            extension_family: domain::ExtensionCatalogIdentity::new(
+                domain::ExtensionCategory::RuntimeExtensions,
+                "test",
+                "fixture",
+            ),
             provider_code: "fixture".to_string(),
             display_name: "Fixture".to_string(),
             description: "Fixture description".to_string(),
@@ -548,6 +557,10 @@ mod tests {
         .expect("response should serialize");
 
         assert_eq!(serialized["secret_configured"], true);
+        assert!(serialized.get("installation_id").is_none());
+        assert_eq!(serialized["extension_category"], "runtime-extensions");
+        assert_eq!(serialized["extension_organization"], "test");
+        assert_eq!(serialized["extension_artifact_id"], "fixture");
         assert!(serialized.get("secret_ref").is_none());
         assert!(!serialized.to_string().contains("secret://"));
     }

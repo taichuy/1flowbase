@@ -35,9 +35,28 @@ fn health(value: &str) -> Result<domain::NetworkEgressHealthStatus> {
 }
 
 fn provider(row: sqlx::postgres::PgRow) -> Result<domain::NetworkEgressProviderRecord> {
+    let extension_category: Option<String> = row.get("extension_category");
+    let extension_organization: Option<String> = row.get("extension_organization");
+    let extension_artifact_id: Option<String> = row.get("extension_artifact_id");
+    let extension_family = match (
+        extension_category,
+        extension_organization,
+        extension_artifact_id,
+    ) {
+        (None, None, None) => None,
+        (Some(category), Some(organization), Some(artifact_id)) => {
+            let category = domain::ExtensionCategory::parse(&category)
+                .ok_or_else(|| anyhow::anyhow!("invalid network egress extension category"))?;
+            Some(
+                domain::ExtensionCatalogIdentity::new(category, organization, artifact_id)
+                    .ok_or_else(|| anyhow::anyhow!("invalid network egress extension family"))?,
+            )
+        }
+        _ => bail!("incomplete network egress extension family"),
+    };
     Ok(domain::NetworkEgressProviderRecord {
         id: row.get("id"),
-        installation_id: row.get("installation_id"),
+        extension_family,
         provider_code: row.get("provider_code"),
         display_name: row.get("display_name"),
         description: row.get("description"),
@@ -185,14 +204,33 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         let row = sqlx::query(
             r#"
             insert into network_egress_providers (
-                id, scope_id, installation_id, provider_code, display_name, description, secret_ref,
+                id, scope_id, extension_category, extension_organization, extension_artifact_id,
+                provider_code, display_name, description, secret_ref,
                 lifecycle, health_status, created_by, updated_by
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, 'unknown', $9, $9) returning *
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'unknown', $11, $11)
+            returning *
         "#,
         )
         .bind(input.provider_id)
         .bind(domain::SYSTEM_SCOPE_ID)
-        .bind(input.installation_id)
+        .bind(
+            input
+                .extension_family
+                .as_ref()
+                .map(|family| family.category().as_str()),
+        )
+        .bind(
+            input
+                .extension_family
+                .as_ref()
+                .map(domain::ExtensionCatalogIdentity::organization),
+        )
+        .bind(
+            input
+                .extension_family
+                .as_ref()
+                .map(domain::ExtensionCatalogIdentity::artifact_id),
+        )
         .bind(&input.provider_code)
         .bind(&input.display_name)
         .bind(&input.description)
@@ -228,9 +266,13 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         sqlx::query(
             r#"
             insert into network_egress_providers (
-                id, scope_id, installation_id, provider_code, display_name, description, secret_ref,
+                id, scope_id, extension_category, extension_organization, extension_artifact_id,
+                provider_code, display_name, description, secret_ref,
                 lifecycle, health_status, created_by, updated_by
-            ) values ($1, $2, null, 'builtin_static_http', $3, $4, $5, 'active', 'healthy', $6, $6)
+            ) values (
+                $1, $2, null, null, null, 'builtin_static_http', $3, $4, $5,
+                'active', 'healthy', $6, $6
+            )
         "#,
         )
         .bind(input.provider_id)
@@ -961,7 +1003,11 @@ mod tests {
             &store,
             &CreateNetworkEgressProviderInput {
                 provider_id,
-                installation_id: Some(installation_id),
+                extension_family: domain::ExtensionCatalogIdentity::new(
+                    ExtensionCategory::RuntimeExtensions,
+                    "test",
+                    "fixture_egress",
+                ),
                 provider_code: "fixture_egress".to_string(),
                 display_name: "Fixture egress".to_string(),
                 description: String::new(),
@@ -1221,7 +1267,11 @@ mod tests {
             &store,
             &CreateNetworkEgressProviderInput {
                 provider_id,
-                installation_id: Some(installation_id),
+                extension_family: domain::ExtensionCatalogIdentity::new(
+                    ExtensionCategory::RuntimeExtensions,
+                    "test",
+                    "selection_fixture",
+                ),
                 provider_code: "selection_fixture".to_string(),
                 display_name: "Selection fixture".to_string(),
                 description: String::new(),
@@ -1525,7 +1575,7 @@ mod tests {
             .await
             .expect("provider lookup should succeed")
             .expect("static provider should persist");
-        assert_eq!(provider.installation_id, None);
+        assert_eq!(provider.extension_family, None);
         assert_eq!(provider.provider_code, "builtin_static_http");
         assert_eq!(provider.description, "Manual proxy for US traffic");
         let secret = NetworkEgressRepository::resolve_network_egress_provider_secret_json(
