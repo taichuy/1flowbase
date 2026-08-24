@@ -71,7 +71,8 @@
     "ui_code_template_revisions",
     "ui_code_templates",
     "ui_component_contract_revisions",
-    "ui_component_overrides"
+    "ui_component_overrides",
+    "ui_component_records"
   ],
   "defaultTableReadiness": {
     "idGeneration": "repository write path supplies Uuid::now_v7 ids before insert",
