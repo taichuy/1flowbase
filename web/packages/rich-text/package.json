@@ -1,6 +1,6 @@
 {
   "name": "@1flowbase/rich-text",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "private": true,
   "type": "module",
   "main": "./src/index.tsx",
