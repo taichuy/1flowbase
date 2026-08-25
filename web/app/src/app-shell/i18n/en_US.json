@@ -52,6 +52,8 @@
     "help": "help",
     "license_agreement": "License Agreement",
     "logout": "Log out",
+    "mobile_navigation": "Navigation",
+    "mobile_navigation_open": "Open navigation",
     "current_role": "Current role",
     "switch_role_failed": "Failed to switch role",
     "official_source": "official source",

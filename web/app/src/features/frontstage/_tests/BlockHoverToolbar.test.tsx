@@ -13,6 +13,7 @@ describe('BlockHoverToolbar', () => {
         isVisible
         onEditCode={onEditCode}
         onDelete={vi.fn()}
+        onRefresh={vi.fn()}
       />
     );
 
@@ -45,5 +46,27 @@ describe('BlockHoverToolbar', () => {
     expect(await screen.findByText('复制 UID')).toBeInTheDocument();
     expect(screen.queryByText('上移区块')).not.toBeInTheDocument();
     expect(screen.queryByText('下移区块')).not.toBeInTheDocument();
+  });
+
+  test('AC-001 exposes refresh in more actions and closes the menu after refreshing', async () => {
+    const onRefresh = vi.fn();
+
+    render(
+      <BlockHoverToolbar
+        blockId="orders-block"
+        isVisible
+        onEditCode={vi.fn()}
+        onDelete={vi.fn()}
+        onRefresh={onRefresh}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole('button', { name: '更多区块操作' })
+    );
+    fireEvent.click(await screen.findByRole('menuitem', { name: /刷新/ }));
+
+    expect(onRefresh).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 });

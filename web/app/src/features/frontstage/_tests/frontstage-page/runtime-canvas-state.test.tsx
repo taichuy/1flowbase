@@ -1,5 +1,5 @@
 import type { ConsoleFrontstageBlockNode } from '@1flowbase/api-client';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { useState } from 'react';
 import { afterEach, expect, vi } from 'vitest';
 
@@ -42,7 +42,7 @@ const runtimeAssemblyHook = vi.hoisted(() => ({
   useFrontstageRuntimeAssembly: vi.fn(
     (_input?: {
       assembly?: { layers: Array<{ block_id: string }> };
-    }): unknown[] => []
+    }) => ({ preparations: [], retryBlock: vi.fn(), refreshBlock: vi.fn() })
   )
 }));
 const blockTreeMutationsHook = vi.hoisted(() => ({
@@ -466,8 +466,8 @@ describe('FrontStagePage - runtime canvas state', () => {
     runtimeAssemblyHook.useFrontstageRuntimeAssembly.mockImplementation(
       ({
         assembly
-      }: { assembly?: { layers: Array<{ block_id: string }> } } = {}) =>
-        (assembly?.layers ?? []).map((layer, slotIndex) => {
+      }: { assembly?: { layers: Array<{ block_id: string }> } } = {}) => ({
+        preparations: (assembly?.layers ?? []).map((layer, slotIndex) => {
           const identityInput = {
             sourceSha256: `digest:${layer.block_id}`,
             compilerAbi: 'test-compiler',
@@ -488,7 +488,10 @@ describe('FrontStagePage - runtime canvas state', () => {
             },
             mountIntent: { blockId: layer.block_id, slotIndex, identityInput }
           };
-        })
+        }),
+        retryBlock: vi.fn(),
+        refreshBlock: vi.fn()
+      })
     );
   });
 
@@ -570,11 +573,22 @@ describe('FrontStagePage - runtime canvas state', () => {
     expect(
       runtimeAssemblyHook.useFrontstageRuntimeAssembly
     ).toHaveBeenCalledWith(expect.objectContaining({ assembly }));
-    fireEvent.click(screen.getByTestId('block-slot-assembly-content'));
+    const assemblyContentSlot = screen.getByTestId(
+      'block-slot-assembly-content'
+    );
+    fireEvent.click(assemblyContentSlot);
     fireEvent.click(screen.getByRole('button', { name: '编辑区块' }));
     expect(screen.getByTestId('jsx-studio-drawer')).toHaveTextContent(
       'studio:assembly-content'
     );
+    fireEvent.click(
+      within(assemblyContentSlot).getByRole('button', {
+        name: '更多区块操作'
+      })
+    );
+    expect(
+      await screen.findByRole('menuitem', { name: /刷新/ })
+    ).toBeInTheDocument();
   });
 
   test('AC-001 renders the last nested page layer as the primary canvas', async () => {

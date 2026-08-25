@@ -77,6 +77,7 @@
     "copy_component_api_failed": "Failed to copy component API",
     "copy_uid": "Copy UID",
     "copy_uid_failed": "Copy failed, please copy UID manually",
+    "refresh_block": "Refresh",
     "create": "Create",
     "create_block": "Create block",
     "create_page_tab": "Create tab",

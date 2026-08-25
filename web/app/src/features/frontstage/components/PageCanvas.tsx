@@ -137,6 +137,7 @@ type PageCanvasProps = {
     priority: FrontstageRuntimeDemandPriority
   ) => void;
   onRuntimeRetry?: (blockId: string) => void;
+  onRuntimeRefresh?: (blockId: string) => void;
 };
 
 const FRONTSTAGE_CANVAS_INITIAL_WIDTH = 1280;
@@ -217,6 +218,7 @@ type RenderPlanSlotProps = {
     priority: FrontstageRuntimeDemandPriority
   ) => void;
   onRuntimeRetry?: (blockId: string) => void;
+  onRuntimeRefresh?: (blockId: string) => void;
 };
 
 const blockFrameBaseStyle: CSSProperties = {
@@ -453,7 +455,7 @@ function NativeRuntimeSlotSurface({
       />
       {root ? (
         <FrontstageNativeRuntimeInstance
-          key={`${renderIdentity}:${retryGeneration}`}
+          key={`${renderIdentity}:${preparation.generation}:${retryGeneration}`}
           root={root}
           item={item}
           plan={plan}
@@ -599,7 +601,8 @@ function RenderPlanSlot({
   toolbarDisabled,
   onAutoHeightChange,
   onRuntimeDemandChange,
-  onRuntimeRetry
+  onRuntimeRetry,
+  onRuntimeRefresh
 }: RenderPlanSlotProps) {
   const [isHovered, setIsHovered] = useState(false);
   const blockRef = useRef<HTMLDivElement>(null);
@@ -814,6 +817,11 @@ function RenderPlanSlot({
           blockId={item.blockId}
           onEditCode={() => designActions.onEditCode(item.blockId)}
           onDelete={() => designActions.onDelete(item.blockId)}
+          onRefresh={
+            item.renderMode === 'native_react' && onRuntimeRefresh
+              ? () => onRuntimeRefresh(item.blockId)
+              : undefined
+          }
           isVisible={isToolbarVisible}
           disabled={toolbarDisabled}
         />
@@ -848,7 +856,8 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   showTitle = true,
   onResponsiveLayoutSave,
   onRuntimeDemandChange,
-  onRuntimeRetry
+  onRuntimeRetry,
+  onRuntimeRefresh
 }) => {
   useEffect(() => {
     if (!onRuntimeRetry) return;
@@ -1169,6 +1178,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                   onAutoHeightChange={updateAutoHeight}
                   onRuntimeDemandChange={onRuntimeDemandChange}
                   onRuntimeRetry={onRuntimeRetry}
+                  onRuntimeRefresh={onRuntimeRefresh}
                 />
               </div>
             ))}
