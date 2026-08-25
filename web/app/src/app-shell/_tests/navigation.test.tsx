@@ -154,6 +154,99 @@ describe('Navigation', () => {
     expect(within(nav).getByRole('link', { name: '模板' })).toBeInTheDocument();
   });
 
+  test('AC-001 and AC-002 nest each topbar page tree under its matching mobile topbar item', async () => {
+    resetAuthStore();
+    useAuthStore.getState().setAuthenticated({
+      csrfToken: 'csrf-123',
+      actor: {
+        id: 'actor-1',
+        account: 'normal-user',
+        effective_display_role: 'developer',
+        current_workspace_id: 'workspace-123'
+      },
+      me: null
+    });
+    frontstageNavigationApi.fetchFrontstagePageTree.mockResolvedValue([
+      {
+        id: 'topbar-teacher',
+        title: '教师',
+        kind: 'group',
+        placement: 'topbar',
+        slug: 'teacher',
+        children: [
+          {
+            id: 'group-materials',
+            title: '教学材料',
+            kind: 'group',
+            placement: 'sidebar',
+            children: [
+              {
+                id: 'page-lesson-one',
+                title: '第一课',
+                kind: 'page',
+                placement: 'sidebar',
+                children: []
+              }
+            ]
+          }
+        ]
+      }
+    ]);
+
+    renderNavigation('/teacher/pages/page-lesson-one');
+
+    const trigger = await screen.findByRole('button', { name: '打开导航' });
+    fireEvent.click(trigger);
+
+    const drawer = await screen.findByRole('dialog', { name: '1flowbase' });
+    expect(within(drawer).getByText('1flowbase')).toBeInTheDocument();
+    expect(within(drawer).queryByText('顶部栏目')).not.toBeInTheDocument();
+    expect(within(drawer).getByRole('link', { name: '教师' })).toHaveAttribute(
+      'href',
+      '/teacher'
+    );
+    expect(within(drawer).queryByText('页面和分组')).not.toBeInTheDocument();
+    const teacherSubmenu = within(drawer)
+      .getByRole('link', { name: '教师' })
+      .closest('.ant-menu-submenu') as HTMLElement | null;
+    expect(teacherSubmenu).not.toBeNull();
+    expect(within(teacherSubmenu!).getByText('教学材料')).toBeInTheDocument();
+    const lessonLink = within(drawer).getByRole('link', { name: '第一课' });
+    expect(lessonLink).toBeInTheDocument();
+    expect(lessonLink.closest('.ant-menu-item')).toHaveClass(
+      'ant-menu-item-selected'
+    );
+    lessonLink.addEventListener('click', (event) => event.preventDefault());
+    fireEvent.click(lessonLink);
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: '1flowbase' })).not.toBeInTheDocument();
+    });
+  });
+
+  test('AC-004 collects the topbar create action inside the mobile drawer', async () => {
+    resetAuthStore();
+    useAuthStore.getState().setAuthenticated({
+      csrfToken: 'csrf-123',
+      actor: {
+        id: 'actor-1',
+        account: 'developer',
+        effective_display_role: 'root',
+        current_workspace_id: 'workspace-123'
+      },
+      me: null
+    });
+    useFrontstageDesignModeStore.getState().setDesignMode(true);
+    frontstageNavigationApi.fetchFrontstagePageTree.mockResolvedValue([]);
+
+    renderNavigation('/templates');
+
+    fireEvent.click(await screen.findByRole('button', { name: '打开导航' }));
+    const drawer = await screen.findByRole('dialog', { name: '1flowbase' });
+    expect(
+      within(drawer).getByRole('button', { name: '添加菜单' })
+    ).toBeInTheDocument();
+  });
+
   test('AC-001 and AC-002 reuse the sidebar add action and let navigation fill remaining width', async () => {
     resetAuthStore();
     useAuthStore.getState().setAuthenticated({

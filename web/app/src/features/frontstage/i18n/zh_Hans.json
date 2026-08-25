@@ -77,6 +77,7 @@
     "copy_component_api_failed": "复制组件 API 失败",
     "copy_uid": "复制 UID",
     "copy_uid_failed": "复制失败，请手动复制 UID",
+    "refresh_block": "刷新",
     "create": "创建",
     "create_block": "创建区块",
     "create_page_tab": "新建标签页",

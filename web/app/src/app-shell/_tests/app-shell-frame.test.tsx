@@ -302,7 +302,7 @@ describe('AppShellFrame', () => {
     });
   });
 
-  test('keeps the top header to a single horizontally scrollable row', () => {
+  test('AC-003 keeps the compact top actions in the horizontal mobile header', () => {
     const appShellCss = fs.readFileSync(
       path.resolve(import.meta.dirname, '../app-shell.css'),
       'utf8'
@@ -325,6 +325,9 @@ describe('AppShellFrame', () => {
     const mobileMenuRule = appShellCss.match(
       /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-menu\.ant-menu-horizontal \{([\s\S]*?)\n {2}\}/
     )?.[1];
+    const mobileTriggerRule = appShellCss.match(
+      /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-mobile-navigation-trigger\.ant-btn \{([\s\S]*?)\n {2}\}/
+    )?.[1];
 
     expect(headerRule).toContain('flex-wrap: nowrap;');
     expect(headerRule).toContain('overflow-x: auto;');
@@ -332,15 +335,31 @@ describe('AppShellFrame', () => {
     expect(headerRule).toContain('white-space: nowrap;');
     expect(actionRowRule).toContain('flex-wrap: nowrap;');
     expect(headerRule).not.toContain('flex-direction: column;');
-    expect(appShellCss).not.toContain('height: auto;');
+    expect(headerRule).toContain('height: 56px;');
     expect(mobileActionsRule).toContain('align-self: center;');
     expect(mobileActionsRule).toContain('width: auto;');
     expect(mobileActionsRule).toContain('max-width: none;');
     expect(mobileHeaderMainRule).toContain('flex: none;');
+    expect(mobileHeaderMainRule).toContain('min-width: max-content;');
+    expect(appShellCss).toMatch(
+      /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-brand \{[\s\S]*?display: none;/
+    );
     expect(mobileNavigationRule).toContain('flex: none;');
-    expect(mobileNavigationRule).toContain('min-width: max-content;');
-    expect(mobileMenuRule).toContain('flex: none;');
-    expect(mobileMenuRule).toContain('min-width: max-content;');
+    expect(mobileNavigationRule).toContain('min-width: 0;');
+    expect(mobileMenuRule).toContain('display: none;');
+    expect(mobileTriggerRule).toContain('display: inline-flex;');
+    expect(appShellCss).not.toContain(
+      '.app-shell-actions .app-shell-design-menu.ant-menu-horizontal'
+    );
+    expect(appShellCss).toMatch(
+      /\.app-shell-language-label,\n  \.app-shell-account-label,[\s\S]*?display: none;/
+    );
+    expect(appShellCss).toMatch(
+      /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-header\.ant-layout-header \{[\s\S]*?overflow-x: auto;/
+    );
+    expect(appShellCss).toMatch(
+      /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-nav \{[\s\S]*?order: -1;/
+    );
   });
 
   test('AC-001 lets the primary menu collect overflow before it reaches fixed header actions', () => {

@@ -4,8 +4,10 @@ import { useAuthStore } from '../../../state/auth-store';
 import type { FrontstageBlockRuntimeAssembly } from '../api/block-tree';
 import type { FrontstageRuntimeDemandByBlockId } from '../lib/page-canvas/runtime-demand';
 import type { FrontstagePageCanvasBlockCodeReadPlan } from '../lib/page-canvas/runtime-source';
-import type { FrontstageNativePreparationSnapshot } from '../lib/page-canvas/native-runtime-preparation';
-import { useFrontstagePageCanvasNativePreparations } from './use-frontstage-page-canvas-native-preparations';
+import {
+  useFrontstagePageCanvasNativePreparations,
+  type UseFrontstagePageCanvasNativePreparationsResult
+} from './use-frontstage-page-canvas-native-preparations';
 
 export function useFrontstageRuntimeAssembly({
   workspaceId,
@@ -15,7 +17,7 @@ export function useFrontstageRuntimeAssembly({
   workspaceId: string;
   pageId: string | null;
   assembly: FrontstageBlockRuntimeAssembly | undefined;
-}): FrontstageNativePreparationSnapshot[] {
+}): UseFrontstagePageCanvasNativePreparationsResult {
   const actor = useAuthStore((state) => state.actor);
   const readPlan = useMemo<FrontstagePageCanvasBlockCodeReadPlan | null>(() => {
     if (!assembly || !pageId) return null;

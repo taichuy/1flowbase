@@ -18,7 +18,8 @@ export function createAccountMenuItems(
     {
       key: 'account',
       label: (
-        <span className="app-shell-account-block">
+        <span aria-label={accountLabel} className="app-shell-account-block">
+          <UserOutlined className="app-shell-account-icon" />
           <span className="app-shell-account-label">{accountLabel}</span>
         </span>
       ),

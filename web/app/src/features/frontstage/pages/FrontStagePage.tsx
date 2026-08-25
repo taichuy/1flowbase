@@ -415,7 +415,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
       renderPlan: activePageRenderPlan,
       catalogEntries: blockCatalog.isSuccess ? blockCatalog.items : null
     });
-  const assemblyPreparations = useFrontstageRuntimeAssembly({
+  const assemblyRuntime = useFrontstageRuntimeAssembly({
     workspaceId,
     pageId: selectedPageId,
     assembly: blockRuntimeAssembly
@@ -1036,11 +1036,12 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             }
           : undefined
       }
-      runtimePreparations={assemblyPreparations}
+      runtimePreparations={assemblyRuntime.preparations}
       runtimeContext={nativeBlockRuntimeContext}
       nativeContextHost={nativeContextHost}
       renderBlockIds={[layer.block_id]}
       sharedSignalCoordinator={undefined}
+      onRuntimeRefresh={assemblyRuntime.refreshBlock}
       isDesignMode={canEnterDesignMode && isDesignMode}
       designActions={designActions}
       toolbarDisabled={isPageContentSavePending}
@@ -1186,6 +1187,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           sharedSignalCoordinator={pageSignalCoordinator}
           onRuntimeDemandChange={handleRuntimeDemandChange}
           onRuntimeRetry={pageCanvasNativePreparations.retryBlock}
+          onRuntimeRefresh={pageCanvasNativePreparations.refreshBlock}
           isDesignMode={canEnterDesignMode && isDesignMode}
           designActions={designActions}
           toolbarDisabled={isPageContentSavePending}

@@ -259,3 +259,9 @@
     padding-inline: 0;
   }
 }
+
+@media (max-width: 767px) {
+  .frontstage-page-tree-sidebar {
+    display: none;
+  }
+}

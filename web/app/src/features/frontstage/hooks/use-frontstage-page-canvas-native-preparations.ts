@@ -58,6 +58,7 @@ export interface UseFrontstagePageCanvasNativePreparationsInput {
 export interface UseFrontstagePageCanvasNativePreparationsResult {
   preparations: FrontstageNativePreparationSnapshot[];
   retryBlock(blockId: string): void;
+  refreshBlock(blockId: string): void;
 }
 
 export function useFrontstagePageCanvasNativePreparations({
@@ -79,6 +80,8 @@ export function useFrontstagePageCanvasNativePreparations({
   const [preparations, setPreparations] = useState<
     FrontstageNativePreparationSnapshot[]
   >([]);
+  const [refreshGenerationsByRequestId, setRefreshGenerationsByRequestId] =
+    useState<Record<string, number>>({});
   const componentFactoryFlights = useMemo(
     () =>
       new Map<
@@ -102,6 +105,9 @@ export function useFrontstagePageCanvasNativePreparations({
       return [];
     }
     return readPlan.requests.map((request) => {
+      const refreshGeneration =
+        refreshGenerationsByRequestId[request.requestId] ?? 0;
+      const forceCompile = refreshGeneration > 0;
       const catalogEntry = catalogEntries?.find(
         (entry) =>
           entry.installationId === request.installationId &&
@@ -117,6 +123,7 @@ export function useFrontstagePageCanvasNativePreparations({
           actorId,
           readPlan.workspaceId,
           request.codeRef,
+          `refresh:${refreshGeneration}`,
           catalogEntries === undefined
             ? 'legacy-fixture'
             : catalogEntry
@@ -162,20 +169,23 @@ export function useFrontstagePageCanvasNativePreparations({
           if (legacyDiagnostic) {
             throw new NativeReactSourceContractError(legacyDiagnostic);
           }
-          enterStage('artifact_lookup');
           const identity = createFrontstageNativeReactArtifactCacheIdentity({
             actorId,
             workspaceId: readPlan.workspaceId,
             source: source.source_code
           });
-          const cached = await artifactCache.get(identity);
-          throwIfAborted(signal);
           let artifact;
-          let artifactCacheTier: 'l2' | 'miss';
-          if (cached.status === 'hit') {
-            artifact = cached.artifact;
-            artifactCacheTier = 'l2';
-          } else {
+          let artifactCacheTier: 'l2' | 'miss' = 'miss';
+          if (!forceCompile) {
+            enterStage('artifact_lookup');
+            const cached = await artifactCache.get(identity);
+            throwIfAborted(signal);
+            if (cached.status === 'hit') {
+              artifact = cached.artifact;
+              artifactCacheTier = 'l2';
+            }
+          }
+          if (!artifact) {
             enterStage('compile', 'miss');
             const moduleRegistry = moduleRegistryFactory();
             const compiled = await compile({
@@ -198,6 +208,7 @@ export function useFrontstagePageCanvasNativePreparations({
 
           enterStage('module_resolve', artifactCacheTier);
           const componentFactoryKey = JSON.stringify(artifact.identity);
+          if (forceCompile) componentFactoryFlights.delete(componentFactoryKey);
           const moduleRegistry = moduleRegistryFactory();
           let componentFactoryFlight =
             componentFactoryFlights.get(componentFactoryKey);
@@ -251,7 +262,8 @@ export function useFrontstagePageCanvasNativePreparations({
     componentFactoryFlights,
     fetchSource,
     moduleRegistryFactory,
-    readPlan
+    readPlan,
+    refreshGenerationsByRequestId
   ]);
 
   useEffect(() => {
@@ -274,7 +286,20 @@ export function useFrontstagePageCanvasNativePreparations({
     (blockId: string) => scheduler.retry(blockId),
     [scheduler]
   );
-  return { preparations, retryBlock };
+  const refreshBlock = useCallback(
+    (blockId: string) => {
+      const request = readPlan?.requests.find(
+        (candidate) => candidate.blockId === blockId
+      );
+      if (!request) return;
+      setRefreshGenerationsByRequestId((current) => ({
+        ...current,
+        [request.requestId]: (current[request.requestId] ?? 0) + 1
+      }));
+    },
+    [readPlan]
+  );
+  return { preparations, retryBlock, refreshBlock };
 }
 
 async function defaultFetchSource(

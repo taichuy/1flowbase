@@ -73,6 +73,10 @@
   min-width: 0;
 }
 
+.app-shell-mobile-navigation-trigger.ant-btn {
+  display: none;
+}
+
 .app-shell-menu.ant-menu-horizontal {
   display: flex;
   flex-wrap: nowrap;
@@ -585,6 +589,10 @@
   line-height: 1.1;
 }
 
+.app-shell-account-icon {
+  display: none;
+}
+
 .app-shell-account-popup .ant-menu {
   min-width: clamp(12rem, 13vw, 14.5rem);
   border-radius: 18px;
@@ -619,21 +627,24 @@
 @media (max-width: 767px) {
   .app-shell-header.ant-layout-header {
     align-items: center;
-    gap: 14px;
+    gap: 8px;
     height: 56px;
     min-height: 56px;
     padding: 0 14px;
+    overflow-x: auto;
+    overflow-y: hidden;
   }
 
   .app-shell-header-main {
     align-items: center;
-    gap: 16px;
+    gap: 8px;
     flex: none;
+    min-width: max-content;
     width: auto;
   }
 
   .app-shell-brand {
-    gap: 10px;
+    display: none;
   }
 
   .app-shell-title.ant-typography {
@@ -641,21 +652,36 @@
   }
 
   .app-shell-nav {
+    order: -1;
     flex: none;
-    min-width: max-content;
+    min-width: 0;
     width: auto;
     overflow: visible;
   }
 
   .app-shell-navigation {
     flex: none;
-    min-width: max-content;
+    min-width: 0;
     width: auto;
   }
 
   .app-shell-menu.ant-menu-horizontal {
-    flex: none;
-    min-width: max-content;
+    display: none;
+  }
+
+  .app-shell-navigation > .app-shell-topbar-designer.ant-space {
+    display: none;
+  }
+
+  .app-shell-mobile-navigation-trigger.ant-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    color: var(--text-primary);
+    font-size: 18px;
   }
 
   .app-shell-actions {
@@ -665,11 +691,92 @@
     max-width: none;
   }
 
+  .app-shell-mode-actions .app-shell-design-menu.ant-menu-horizontal
+    > .ant-menu-item {
+    width: 42px;
+  }
+
+  .app-shell-language-block {
+    gap: 0;
+    min-width: 32px;
+    padding-inline: 7px;
+  }
+
+  .app-shell-language-label,
+  .app-shell-account-label,
+  .app-shell-language-menu .ant-menu-submenu-arrow,
+  .app-shell-account-menu .ant-menu-submenu-arrow {
+    display: none;
+  }
+
+  .app-shell-account-block {
+    min-width: 32px;
+    padding-inline: 7px;
+  }
+
+  .app-shell-account-icon {
+    display: inline-flex;
+    font-size: 18px;
+  }
+
   .app-shell-content.ant-layout-content {
     width: 100%;
     padding: 0;
     box-sizing: border-box;
   }
+}
+
+.app-shell-mobile-navigation-drawer .ant-drawer-body {
+  padding: 16px;
+}
+
+.app-shell-mobile-navigation-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-shell-mobile-navigation-brand img {
+  width: 20px;
+  height: 20px;
+}
+
+.app-shell-mobile-navigation-brand .ant-typography {
+  color: var(--text-primary);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.app-shell-mobile-navigation-drawer section + section {
+  margin-top: 20px;
+}
+
+.app-shell-mobile-navigation-menu.ant-menu {
+  border-inline-end: 0;
+  background: transparent;
+}
+
+.app-shell-mobile-navigation-menu.ant-menu .ant-menu-item,
+.app-shell-mobile-navigation-menu.ant-menu .ant-menu-submenu-title {
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  margin: 2px 0;
+  border-radius: 6px;
+}
+
+.app-shell-mobile-navigation-menu.ant-menu .ant-menu-item-selected {
+  background: #e6f7f2;
+  color: #00a86b;
+}
+
+.app-shell-mobile-navigation-menu .app-shell-menu-link {
+  justify-content: flex-start;
+}
+
+.app-shell-mobile-navigation-drawer .app-shell-topbar-designer.ant-space {
+  height: auto;
+  padding: 8px 12px 0;
 }
 
 .app-shell-topbar-designer.ant-space {

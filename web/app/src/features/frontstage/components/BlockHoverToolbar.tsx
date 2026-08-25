@@ -2,7 +2,8 @@ import {
   CodeOutlined,
   DeleteOutlined,
   DragOutlined,
-  MenuOutlined
+  MenuOutlined,
+  ReloadOutlined
 } from '@ant-design/icons';
 import { App as AntdApp, Button, Divider, Tooltip } from 'antd';
 import type { FC, MouseEvent } from 'react';
@@ -16,6 +17,7 @@ type BlockHoverToolbarProps = {
   blockId: string;
   onEditCode: () => void;
   onDelete: () => void;
+  onRefresh?: () => void;
   isVisible: boolean;
   disabled?: boolean;
 };
@@ -24,6 +26,7 @@ export const BlockHoverToolbar: FC<BlockHoverToolbarProps> = ({
   blockId,
   onEditCode,
   onDelete,
+  onRefresh,
   isVisible,
   disabled = false
 }) => {
@@ -93,6 +96,18 @@ export const BlockHoverToolbar: FC<BlockHoverToolbarProps> = ({
             >
               {i18nText('frontstage', 'auto.copy_uid')}
             </Button>
+            {onRefresh ? (
+              <Button
+                block
+                type="text"
+                role="menuitem"
+                icon={<ReloadOutlined />}
+                disabled={disabled}
+                onClick={menuAction(onRefresh)}
+              >
+                {i18nText('frontstage', 'auto.refresh_block')}
+              </Button>
+            ) : null}
             <Divider />
             <Button
               block

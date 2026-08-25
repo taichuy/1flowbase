@@ -1,8 +1,9 @@
 import { Link } from '@tanstack/react-router';
-import { Menu } from 'antd';
+import { MenuOutlined } from '@ant-design/icons';
+import { Button, Drawer, Menu, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import type { ConsoleNavigation } from '@1flowbase/api-client';
@@ -126,7 +127,8 @@ function renderNavigationLink(
   pathname: string,
   label: string,
   useRouterLinks: boolean,
-  isCurrent: boolean
+  isCurrent: boolean,
+  onNavigate?: () => void
 ) {
   if (useRouterLinks) {
     return (
@@ -134,6 +136,7 @@ function renderNavigationLink(
         to={pathname}
         className="app-shell-menu-link"
         aria-current={isCurrent ? 'page' : undefined}
+        onClick={onNavigate}
       >
         {label}
       </Link>
@@ -145,10 +148,85 @@ function renderNavigationLink(
       href={pathname}
       className="app-shell-menu-link"
       aria-current={isCurrent ? 'page' : undefined}
+      onClick={onNavigate}
     >
       {label}
     </a>
   );
+}
+
+function frontstagePageItems({
+  nodes,
+  slug,
+  pathname,
+  useRouterLinks,
+  onNavigate
+}: {
+  nodes: FrontstagePageTreeNode[];
+  slug: string;
+  pathname: string;
+  useRouterLinks: boolean;
+  onNavigate: () => void;
+}): ItemType[] {
+  return nodes.map((node) => {
+    const title = node.title?.trim() || '未命名页面';
+    if (node.kind === 'group') {
+      return {
+        key: node.id,
+        label: title,
+        children: frontstagePageItems({
+          nodes: node.children ?? [],
+          slug,
+          pathname,
+          useRouterLinks,
+          onNavigate
+        })
+      };
+    }
+
+    const path = `/${slug}/pages/${node.id}`;
+    return {
+      key: node.id,
+      label: renderNavigationLink(
+        path,
+        title,
+        useRouterLinks,
+        pathname === path || pathname.startsWith(`${path}/`),
+        onNavigate
+      )
+    };
+  });
+}
+
+function selectedFrontstagePageId(
+  nodes: FrontstagePageTreeNode[],
+  slug: string,
+  pathname: string
+): string | undefined {
+  for (const node of nodes) {
+    if (node.kind === 'page') {
+      const path = `/${slug}/pages/${node.id}`;
+      if (pathname === path || pathname.startsWith(`${path}/`)) {
+        return node.id;
+      }
+    }
+
+    const selectedChildId = selectedFrontstagePageId(
+      node.children ?? [],
+      slug,
+      pathname
+    );
+    if (selectedChildId) return selectedChildId;
+  }
+
+  return undefined;
+}
+
+function frontstageGroupIds(nodes: FrontstagePageTreeNode[]): string[] {
+  return nodes.flatMap((node) => [
+    ...(node.kind === 'group' ? [node.id] : []),
+    ...frontstageGroupIds(node.children ?? [])
+  ]);
 }
 
 export function Navigation({
@@ -159,6 +237,7 @@ export function Navigation({
   useRouterLinks: boolean;
 }) {
   const { t } = useTranslation('appShell');
+  const [isMobileNavigationOpen, setIsMobileNavigationOpen] = useState(false);
   const workspaceId = useAuthStore(
     (state) => state.actor?.current_workspace_id
   );
@@ -192,6 +271,10 @@ export function Navigation({
       pathname === candidate.path || pathname.startsWith(`${candidate.path}/`)
   );
   const hasSelectedDynamicPage = Boolean(selectedDynamicRoute);
+  const selectedTopbarNode = (frontstageNavigationQuery.data ?? []).find(
+    (node) => node.id === selectedDynamicRoute?.id
+  );
+  const closeMobileNavigation = () => setIsMobileNavigationOpen(false);
   const items: MenuProps['items'] =
     consoleNavigationQuery.data === undefined
       ? [
@@ -225,9 +308,64 @@ export function Navigation({
             isDesignMode
           })
         ];
+  const mobilePrimaryItems: MenuProps['items'] =
+    consoleNavigationQuery.data === undefined
+      ? items
+      : [
+          ...primaryRoutesFromConsoleNavigation(
+            consoleNavigationQuery.data
+          ).map((route) => ({
+            key: route.id,
+            label: renderNavigationLink(
+              route.path,
+              t(route.label_key),
+              useRouterLinks,
+              route.id === selectedKey && !hasSelectedDynamicPage,
+              closeMobileNavigation
+            )
+          })),
+          ...(frontstageNavigationQuery.data ?? []).flatMap((node) => {
+            if (node.placement !== 'topbar' || !node.slug) return [];
+            const path = `/${node.slug}`;
+            const childItems = frontstagePageItems({
+              nodes: node.children ?? [],
+              slug: node.slug,
+              pathname,
+              useRouterLinks,
+              onNavigate: closeMobileNavigation
+            });
+            return [
+              {
+                key: node.id,
+                label: renderNavigationLink(
+                  path,
+                  node.title?.trim() || '未命名页面',
+                  useRouterLinks,
+                  pathname === path || pathname.startsWith(`${path}/`),
+                  closeMobileNavigation
+                ),
+                children: childItems.length > 0 ? childItems : undefined
+              }
+            ];
+          })
+        ];
+  const mobileSelectedFrontstagePageId = selectedTopbarNode?.slug
+    ? selectedFrontstagePageId(
+        selectedTopbarNode.children ?? [],
+        selectedTopbarNode.slug,
+        pathname
+      )
+    : undefined;
 
   return (
     <nav className="app-shell-navigation" aria-label="Primary">
+      <Button
+        aria-label={t('auto.mobile_navigation_open')}
+        className="app-shell-mobile-navigation-trigger"
+        icon={<MenuOutlined />}
+        onClick={() => setIsMobileNavigationOpen(true)}
+        type="text"
+      />
       <Menu
         className="app-shell-menu"
         mode="horizontal"
@@ -240,6 +378,50 @@ export function Navigation({
         }
         items={items}
       />
+      <Drawer
+        className="app-shell-mobile-navigation-drawer"
+        destroyOnHidden
+        open={isMobileNavigationOpen}
+        placement="left"
+        title={
+          <span className="app-shell-mobile-navigation-brand">
+            <img alt="" aria-hidden="true" src="/icon.svg" />
+            <Typography.Text>1flowbase</Typography.Text>
+          </span>
+        }
+        onClose={closeMobileNavigation}
+      >
+        <section aria-label={t('auto.mobile_navigation')}>
+          <Menu
+            className="app-shell-mobile-navigation-menu"
+            mode="inline"
+            selectedKeys={
+              mobileSelectedFrontstagePageId
+                ? [mobileSelectedFrontstagePageId]
+                : selectedDynamicRoute
+                  ? [selectedDynamicRoute.id]
+                : routes.some((route) => route.id === selectedKey)
+                  ? [selectedKey]
+                  : []
+            }
+            defaultOpenKeys={
+              selectedTopbarNode
+                ? [
+                    selectedTopbarNode.id,
+                    ...frontstageGroupIds(selectedTopbarNode.children ?? [])
+                  ]
+                : undefined
+            }
+            items={mobilePrimaryItems}
+          />
+          {isDesignMode && workspaceId ? (
+            <TopbarNavigationDesigner
+              workspaceId={workspaceId}
+              nodes={frontstageNavigationQuery.data ?? []}
+            />
+          ) : null}
+        </section>
+      </Drawer>
       {isDesignMode && workspaceId ? (
         <TopbarNavigationDesigner
           workspaceId={workspaceId}
