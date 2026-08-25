@@ -42,7 +42,11 @@ const runtimeAssemblyHook = vi.hoisted(() => ({
   useFrontstageRuntimeAssembly: vi.fn(
     (_input?: {
       assembly?: { layers: Array<{ block_id: string }> };
-    }) => ({ preparations: [], retryBlock: vi.fn(), refreshBlock: vi.fn() })
+    }) => ({
+      preparations: [] as unknown[],
+      retryBlock: vi.fn(),
+      refreshBlock: vi.fn()
+    })
   )
 }));
 const blockTreeMutationsHook = vi.hoisted(() => ({

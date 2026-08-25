@@ -59,5 +59,5 @@ export function useFrontstageRuntimeAssembly({
     actorWorkspaceId: actor?.current_workspace_id,
     readPlan,
     demandsByBlockId: demands
-  }).preparations;
+  });
 }
