@@ -1,6 +1,7 @@
 use crate::_tests::support::{
     login_and_capture_cookie, test_api_state_with_database_url, test_config,
 };
+use crate::provider_runtime::ApiProviderRuntime;
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
@@ -523,8 +524,56 @@ async fn retained_asset_authorization_does_not_read_block_dependency_lock() {
 }
 
 #[tokio::test]
-async fn frontend_block_catalog_route_has_no_system_builtin_jsx_block() {
-    let (app, _) = test_frontend_block_app_with_database_url().await;
+async fn ac_001_ac_002_ac_003_frontend_block_catalog_exposes_one_lightweight_system_jsx_block() {
+    let (mut state, database_url) = test_api_state_with_database_url().await;
+    let root_user_id: Uuid = sqlx::query_scalar("select id from users where account = 'root'")
+        .fetch_one(&PgPool::connect(&database_url).await.unwrap())
+        .await
+        .unwrap();
+    let package_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("plugins/capability-plugins/1flowbase");
+    let plugin_management = control_plane::plugin_management::PluginManagementService::new(
+        state.store.clone(),
+        ApiProviderRuntime::new(state.provider_runtime.clone()),
+        state.official_plugin_source.clone(),
+        state.provider_install_root.clone(),
+    )
+    .with_node_id(state.api_node_id.clone());
+    plugin_management
+        .ensure_builtin_plugin(
+            control_plane::plugin_management::EnsureBuiltinPluginCommand {
+                actor_user_id: root_user_id,
+                package_root: package_root.display().to_string(),
+            },
+        )
+        .await
+        .unwrap();
+    plugin_management
+        .ensure_builtin_plugin(
+            control_plane::plugin_management::EnsureBuiltinPluginCommand {
+                actor_user_id: root_user_id,
+                package_root: package_root.display().to_string(),
+            },
+        )
+        .await
+        .unwrap();
+
+    let assembly = crate::extension_bus::assemble_extension_graph_input(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."),
+        crate::extension_bus::DEFAULT_PLUGIN_SET_PATH,
+        Vec::new(),
+    )
+    .unwrap();
+    let snapshot = Arc::new(
+        crate::extension_bus::ExtensionBootSnapshot::compile(
+            Arc::new(assembly.compile_graph().unwrap()),
+            assembly.interface_operations(),
+        )
+        .unwrap(),
+    );
+    Arc::get_mut(&mut state).unwrap().extension_boot_snapshot = Some(snapshot);
+    let app = crate::app_with_state_and_config(state, &test_config());
     let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
 
     let response = app
@@ -543,10 +592,31 @@ async fn frontend_block_catalog_route_has_no_system_builtin_jsx_block() {
     let payload: Value =
         serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
     let entries = payload["data"].as_array().unwrap();
-    assert!(entries.iter().all(|entry| {
-        entry["provider_code"] != "1flowbase"
-            || entry["contribution_code"] != "frontstage.js-ui-block"
-    }));
+    assert_eq!(entries.len(), 1);
+    let entry = &entries[0];
+    assert_eq!(entry["provider_code"], "1flowbase");
+    assert_eq!(entry["contribution_code"], "frontstage.js-ui-block");
+    assert_eq!(entry["runtime"], "native_react");
+    assert_eq!(entry["code_template_language"], "tsx");
+    let template = entry["code_template"].as_str().unwrap();
+    assert!(!template.contains("tailwindcss"));
+    assert!(!template.contains("@1flowbase/native-components"));
+
+    let pool = PgPool::connect(&database_url).await.unwrap();
+    let installation_count: i64 = sqlx::query_scalar(
+        "select count(*) from extension_installations where plugin_id = '1flowbase@2.0.0'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let catalog_count: i64 = sqlx::query_scalar(
+        "select count(*) from frontend_block_catalog where provider_code = '1flowbase' and contribution_code = 'frontstage.js-ui-block'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(installation_count, 1);
+    assert_eq!(catalog_count, 1);
 }
 
 #[tokio::test]

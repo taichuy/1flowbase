@@ -1,0 +1,62 @@
+manifest_version: 1
+plugin_id: 1flowbase@2.0.0
+version: 2.0.0
+publisher_namespace: 1flowbase
+vendor: 1flowbase
+display_name: 1flowbase Built-in Frontstage Block
+description: System-owned generic Native React block type available in every workspace.
+source_kind: builtin
+trust_level: verified_official
+consumption_kind: capability_plugin
+execution_mode: declarative_only
+slot_codes: [frontend_block]
+binding_targets: [workspace]
+selection_mode: auto_activate
+minimum_host_version: 0.2.6
+contract_version: 1flowbase.capability/v1
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: none
+  secrets: none
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json
+  entry: index.js
+block_contributions:
+  - contribution_code: frontstage.js-ui-block
+    title: 代码区块
+    runtime: native_react
+    entry: index.js
+    code_template: |
+      import { useState } from 'react';
+      import { Button, Typography } from 'antd';
+      import type { BlockComponentProps } from '@1flowbase/block-sdk';
+
+      export default function ExampleBlock({ ctx }: BlockComponentProps) {
+        const [count, setCount] = useState(0);
+        return (
+          <div style={{ display: 'grid', gap: 16, padding: 24 }}>
+            <Typography.Title level={3}>代码示例区块</Typography.Title>
+            <Typography.Text>
+              Workspace: {ctx.workspace.name ?? ctx.workspace.id}
+            </Typography.Text>
+            <Button type="primary" onClick={() => setCount((value) => value + 1)}>
+              Clicked {count} times
+            </Button>
+          </div>
+        );
+      }
+    code_template_version: 7.0.0
+    code_template_language: tsx
+    context_contract:
+      primitives: [text, image, link, button, rich_text, data_record]
+      input_schema:
+        type: object
+        additionalProperties: true
+    permissions:
+      network: none
+      storage: none
+      secrets: none
+    ui_capabilities: [responsive, configurable, theming, data_binding]

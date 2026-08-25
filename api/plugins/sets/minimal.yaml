@@ -6,4 +6,5 @@ host_extensions:
   - official.plugin-host
   - official.local-infra-host
 runtime_extensions: []
-capability_plugins: []
+capability_plugins:
+  - 1flowbase

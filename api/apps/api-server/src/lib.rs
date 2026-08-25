@@ -514,6 +514,16 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
             "default extension bootstrap manifest unavailable; core startup continues"
         ),
     }
+    plugin_management
+        .ensure_builtin_plugin(
+            control_plane::plugin_management::EnsureBuiltinPluginCommand {
+                actor_user_id: bootstrap_result.root_user_id,
+                package_root: builtin_frontstage_code_block_package_root()?
+                    .display()
+                    .to_string(),
+            },
+        )
+        .await?;
     plugin_management.reconcile_all_installations().await?;
     intake_active_data_source_templates_at_startup(
         &store,
@@ -727,6 +737,18 @@ fn api_workspace_root() -> Result<PathBuf> {
 
     Err(anyhow!(
         "api workspace root with plugins/host-extensions was not found"
+    ))
+}
+
+fn builtin_frontstage_code_block_package_root() -> Result<PathBuf> {
+    let package_root = api_workspace_root()?.join("plugins/capability-plugins/1flowbase");
+    if package_root.join("manifest.yaml").is_file() {
+        return Ok(package_root);
+    }
+
+    Err(anyhow!(
+        "builtin Frontstage code block package manifest was not found at {}",
+        package_root.join("manifest.yaml").display()
     ))
 }
 
