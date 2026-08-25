@@ -176,7 +176,6 @@ async fn issue_1566_ac_003_all_installation_references_target_the_unified_root()
         "mcp_extension_bundle_imports",
         "model_provider_instances",
         "model_provider_preview_sessions",
-        "network_egress_providers",
         "node_contribution_registry",
         "plugin_assignments",
         "plugin_package_catalog_projection",
