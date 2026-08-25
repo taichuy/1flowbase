@@ -1,6 +1,6 @@
 {
   "name": "@1flowbase/charts",
-  "version": "0.3.9",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "main": "./src/index.tsx",
