@@ -204,7 +204,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
             signature_status: domain::ExtensionSignatureStatus::Missing,
             signature_algorithm: None,
             signing_key_id: None,
-            metadata_json: json!({}),
+            metadata_json: json!({"plugin_type": "network_egress_provider"}),
             is_system_reserved: false,
             actor_user_id: root.id,
         },
