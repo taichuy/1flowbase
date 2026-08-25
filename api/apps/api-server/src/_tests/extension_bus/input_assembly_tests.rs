@@ -313,8 +313,11 @@ fn activation_facts_become_typed_inactive_receipts() {
                 ModuleDisableReason::DesiredState,
             )
             .unwrap(),
-            ModuleActivationFact::disabled("1flowbase", ModuleDisableReason::WorkspaceAssignment)
-                .unwrap(),
+            ModuleActivationFact::disabled(
+                "official.plugin-host",
+                ModuleDisableReason::WorkspaceAssignment,
+            )
+            .unwrap(),
         ],
     )
     .unwrap();
@@ -326,7 +329,10 @@ fn activation_facts_become_typed_inactive_receipts() {
             ModuleDisableReason::DeploymentPolicy,
         ),
         ("official.workspace-host", ModuleDisableReason::DesiredState),
-        ("1flowbase", ModuleDisableReason::WorkspaceAssignment),
+        (
+            "official.plugin-host",
+            ModuleDisableReason::WorkspaceAssignment,
+        ),
     ] {
         let receipt = graph
             .module_receipts()
