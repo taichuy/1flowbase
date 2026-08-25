@@ -28,7 +28,7 @@ test('AC-001/006 routes four foundations and ignores legal non-contract changes'
   for (const nativeReactHostContractFile of [
     'web/app/package.json',
     'web/pnpm-lock.yaml',
-    'api/plugins/capability-plugins/1flowbase/manifest.yaml',
+    'web/app/src/features/frontstage/lib/native-modules/registry.ts',
   ]) {
     const plan = buildFoundationPlan({ changedFiles: [nativeReactHostContractFile] });
     assert.deepEqual(plan.selectedFoundations, ['native-react']);

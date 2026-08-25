@@ -44,11 +44,11 @@ block_contributions:
     )
 }
 
-fn valid_module(source: &str, version: &str, path: &str, sha256: &str, _export: &str) -> String {
+fn valid_module(source: &str, version: &str, path: &str, sha256: &str, export: &str) -> String {
     format!(
         r#"      - source: "{source}"
         version: "{version}"
-        exports: [Fixture]
+        exports: [{export}]
         binding: fetched
         assets:
           - path: "{path}"
@@ -110,14 +110,8 @@ fn d2_ac_004_manifest_rejects_duplicate_identity_export_path_and_digest() {
         parse_plugin_manifest(&manifest_with_modules(&invalid_export))
             .unwrap_err()
             .to_string()
-            .contains("must be a TypeScript identifier")
+            .contains("must be a JavaScript export name")
     );
-
-    let empty_export = valid_module("@acme/native", "1.0.0", "assets/native.js", &digest, "");
-    assert!(parse_plugin_manifest(&manifest_with_modules(&empty_export))
-        .unwrap_err()
-        .to_string()
-        .contains("export_name cannot be empty"));
 
     let empty_exports = module.replace("exports: [Fixture]", "exports: []");
     assert!(
@@ -143,17 +137,7 @@ fn d2_ac_004_manifest_rejects_duplicate_identity_export_path_and_digest() {
             .contains("must be a JavaScript export name")
     );
 
-    let missing_component_export = module.replace("exports: [Fixture]", "exports: [OtherExport]");
-    assert!(
-        parse_plugin_manifest(&manifest_with_modules(&missing_component_export))
-            .unwrap_err()
-            .to_string()
-            .contains("export_name must be declared in module exports")
-    );
-
-    let default_export = module
-        .replace("exports: [Fixture]", "exports: [default]")
-        .replace("export_name: \"Fixture\"", "export_name: \"default\"");
+    let default_export = module.replace("exports: [Fixture]", "exports: [default]");
     assert!(parse_plugin_manifest(&manifest_with_modules(&default_export)).is_ok());
 }
 

@@ -20,6 +20,9 @@ struct FixtureSource {
     seed: Result<UiComponentCatalogSeed, String>,
 }
 
+type RecordedSourceGroupReplacements =
+    Arc<Mutex<Vec<(String, String, Vec<OfficialUiComponentCatalogRecord>)>>>;
+
 #[async_trait]
 impl UiComponentCatalogSource for FixtureSource {
     async fn index(&self) -> Result<UiComponentCatalogIndex> {
@@ -78,7 +81,7 @@ impl UiComponentCatalogSource for FixtureSource {
 struct RecordingRepository {
     count: usize,
     official_records: Vec<UiComponentRecord>,
-    replacements: Arc<Mutex<Vec<(String, String, Vec<OfficialUiComponentCatalogRecord>)>>>,
+    replacements: RecordedSourceGroupReplacements,
     catalog_replacements: Arc<Mutex<Vec<Vec<OfficialUiComponentCatalogRecord>>>>,
     downloads: Arc<Mutex<Vec<OfficialUiComponentCatalogRecord>>>,
 }

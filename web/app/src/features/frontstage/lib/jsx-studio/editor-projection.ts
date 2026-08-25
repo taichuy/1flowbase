@@ -11,7 +11,7 @@ export interface FrontstageJsxEditorProjection {
 }
 
 export function createFrontstageJsxEditorProjection({
-  catalogEntry
+  catalogEntry: _catalogEntry
 }: {
   catalogEntry: NormalizedFrontstageBlockCatalogEntry | null;
 }): FrontstageJsxEditorProjection {

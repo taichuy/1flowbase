@@ -71,7 +71,8 @@
     "ui_code_template_revisions",
     "ui_code_templates",
     "ui_component_contract_revisions",
-    "ui_component_overrides"
+    "ui_component_overrides",
+    "ui_component_records"
   ],
   "defaultTableReadiness": {
     "idGeneration": "repository write path supplies Uuid::now_v7 ids before insert",
@@ -639,6 +640,17 @@
       "kind": "bounded_child_list",
       "reason": "pool members inherit the fixed system scope from their global pool and retain provider keys as explicit invalid references",
       "skip": [
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "network_egress_route_pool_members": {
+      "kind": "ordered_route_member_relation",
+      "reason": "route-member association rows use the composite route and member identity, sequence defines order, and workspace ownership derives from the route",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
         "managed-table-scope-column",
         "managed-table-scope-time-index"
       ]

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
 import { FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS } from '../../lib/jsx-studio/native-react-editor-contract';
+import { FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS } from '../../lib/native-modules/registry';
 
 const legacyAuthorFragments = [
   'function main',
@@ -19,25 +20,23 @@ const repoRoot = resolve(
 );
 
 describe('Native React author contract inventory', () => {
-  test('R5-AC-005 teaches standard React source from the backend catalog manifest', () => {
-    const manifest = readFileSync(
-      resolve(
-        repoRoot,
-        'api/plugins/capability-plugins/1flowbase/manifest.yaml'
-      ),
-      'utf8'
-    );
+  test('R5-AC-005 teaches standard React source from the frontend-owned module registry', () => {
     const monacoDeclarations = FRONTSTAGE_NATIVE_REACT_MONACO_EXTRA_LIBS.map(
       ({ content }) => content
     ).join('\n');
+    const registeredModuleSources =
+      FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS.map(
+        ({ module_source }) => module_source
+      ).join('\n');
 
-    for (const authorSurface of [manifest, monacoDeclarations]) {
-      expect(authorSurface).toContain('React');
+    for (const authorSurface of [registeredModuleSources, monacoDeclarations]) {
       for (const legacyFragment of legacyAuthorFragments) {
         expect(authorSurface).not.toContain(legacyFragment);
       }
     }
-    expect(manifest).toContain('export default function ExampleBlock');
+    expect(registeredModuleSources).toContain('react');
+    expect(registeredModuleSources).toContain('antd');
+    expect(monacoDeclarations).toContain('React');
     expect(monacoDeclarations).toContain('interface NativeReactBlockProps');
   });
 

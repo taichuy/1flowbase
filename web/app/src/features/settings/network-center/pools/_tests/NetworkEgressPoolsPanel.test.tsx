@@ -368,7 +368,7 @@ describe('NetworkEgressPoolsPanel', () => {
     await waitFor(() => expect(networkCenterApi.testSettingsNetworkEgressPoolMember).toHaveBeenCalledWith('global-pool', 'member-1', 'csrf-123'));
     expect(testButtons[0]).toHaveClass('ant-btn-loading');
     expect(testButtons[1]).not.toHaveClass('ant-btn-loading');
-    expect(testButtons[1]).not.toBeDisabled();
+    expect(testButtons[1]).toBeEnabled();
 
     fireEvent.click(testButtons[1]);
     await waitFor(() => expect(networkCenterApi.testSettingsNetworkEgressPoolMember).toHaveBeenCalledWith('global-pool', 'member-2', 'csrf-123'));
