@@ -81,7 +81,7 @@ impl UiComponentCatalogSource for FixtureSource {
 struct RecordingRepository {
     count: usize,
     official_records: Vec<UiComponentRecord>,
-    replacements: Arc<Mutex<Vec<(String, String, Vec<OfficialUiComponentCatalogRecord>)>>>,
+    replacements: RecordedSourceGroupReplacements,
     catalog_replacements: Arc<Mutex<Vec<Vec<OfficialUiComponentCatalogRecord>>>>,
     downloads: Arc<Mutex<Vec<OfficialUiComponentCatalogRecord>>>,
 }
