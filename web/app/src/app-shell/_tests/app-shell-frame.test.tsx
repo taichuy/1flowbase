@@ -352,7 +352,7 @@ describe('AppShellFrame', () => {
       '.app-shell-actions .app-shell-design-menu.ant-menu-horizontal'
     );
     expect(appShellCss).toMatch(
-      /\.app-shell-language-label,\n  \.app-shell-account-label,[\s\S]*?display: none;/
+      /\.app-shell-language-label,\n {2}\.app-shell-account-label,[\s\S]*?display: none;/
     );
     expect(appShellCss).toMatch(
       /@media \(max-width: 767px\) \{[\s\S]*?\.app-shell-header\.ant-layout-header \{[\s\S]*?overflow-x: auto;/
