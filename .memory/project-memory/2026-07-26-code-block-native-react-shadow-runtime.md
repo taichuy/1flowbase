@@ -15,8 +15,8 @@ match_when:
   - 修改 Worker 执行边界、渐进加载、artifact cache 或运行状态机
   - 调整 Frontstage/Auth 共享代码区块 host
 created_at: 2026-07-26 22
-updated_at: 2026-08-05 10
-last_verified_at: 2026-08-05 10
+updated_at: 2026-08-25 10
+last_verified_at: 2026-08-25 10
 decision_policy: verify_before_decision
 status: user_acceptance
 source_issue: "#1466"
@@ -69,6 +69,12 @@ scope:
 - 新架构不为旧 `BlockUiSchema`、`antd-facade` 或 `BlockModule.main(ctx)` UI 路径保留兼容分支。
 - 现有浏览器渐进加载、缓存、Signal 与状态机必须按新生命周期重新判断，不能机械照搬或全部推倒。
 - React Component 在主线程运行；正常生命周期、CSS 与普通 render error 必须区块级隔离，但不承诺同步死循环的 Worker 级硬终止。
+
+## 2026-08-25 Monaco 作者类型声明边界
+
+用户确认按“受控的作者类型契约”修复 Demo 的假红：运行时模块的 `Object.keys()` 只表达可注入值，不能推断 TypeScript 的 type-only export。`react` 声明需显式支持 `React.FC`，`antd` 声明需显式支持 `TableProps<T>` 与其表格列类型；不因此扩大运行时模块白名单，也不注入完整 Ant Design 类型依赖图。
+
+该边界由 `web/app/src/features/frontstage/lib/native-modules/declarations.ts` 持有；回归测试以官方示例同构的 `React.FC + TableProps<T>['columns']` 编译为零诊断作为证据。目标是让 Studio 的红线反映真实运行/作者问题，而非把可运行 TSX 的类型信息缺失误报给作者；无独立截止日期。
 
 ## 当前线上结果
 
