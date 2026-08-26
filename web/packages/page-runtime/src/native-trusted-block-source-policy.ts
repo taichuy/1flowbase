@@ -6,7 +6,6 @@ import {
   deniedAntdStaticModalMethods,
   deniedCallForwarders,
   deniedCallIdentifiers,
-  deniedConstructorIdentifiers,
   deniedEscapeIdentifiers,
   deniedGlobalIdentifiers,
   deniedPortalIdentifiers
@@ -57,6 +56,10 @@ interface PropertyAccess {
 interface ScanResult {
   tokens: SourceToken[];
   error?: BlockProtocolError;
+}
+
+interface ScanContext {
+  deferSyntaxErrorToTsxCompiler: boolean;
 }
 
 export function validateNativeTrustedBlockSource(
@@ -112,9 +115,10 @@ export function validateNativeTrustedBlockSource(
 
 function scanSource(source: string): ScanResult {
   const tokens: SourceToken[] = [];
-  const result = scanCode(source, 0, tokens);
+  const context: ScanContext = { deferSyntaxErrorToTsxCompiler: false };
+  const result = scanCode(source, 0, tokens, undefined, context);
 
-  if (result.error) {
+  if (result.error && !context.deferSyntaxErrorToTsxCompiler) {
     return { tokens, error: result.error };
   }
 
@@ -131,7 +135,8 @@ function scanCode(
   source: string,
   start: number,
   tokens: SourceToken[],
-  stopChar?: string
+  stopChar?: string,
+  context: ScanContext = { deferSyntaxErrorToTsxCompiler: false }
 ): ScanCodeResult {
   const delimiterStack: Array<{ expected: string; index: number }> = [];
   let index = start;
@@ -173,11 +178,20 @@ function scanCode(
     }
 
     if (char === '`') {
-      const templateEnd = consumeTemplate(source, index, tokens);
+      const templateEnd = consumeTemplate(source, index, tokens, context);
       if (templateEnd.error) {
         return templateEnd;
       }
       index = templateEnd.index;
+      continue;
+    }
+
+    if (isJsxStart(source, index)) {
+      const jsxEnd = scanJsxElement(source, index, tokens, context);
+      if (jsxEnd.error) {
+        return jsxEnd;
+      }
+      index = jsxEnd.index;
       continue;
     }
 
@@ -283,7 +297,8 @@ function consumeQuotedString(
 function consumeTemplate(
   source: string,
   start: number,
-  tokens: SourceToken[]
+  tokens: SourceToken[],
+  context: ScanContext
 ): ScanCodeResult {
   let index = start + 1;
 
@@ -301,7 +316,7 @@ function consumeTemplate(
     }
 
     if (char === '$' && next === '{') {
-      const expression = scanCode(source, index + 2, tokens, '}');
+      const expression = scanCode(source, index + 2, tokens, '}', context);
       if (expression.error) {
         return expression;
       }
@@ -313,6 +328,94 @@ function consumeTemplate(
   }
 
   return syntaxError(start, 'Unterminated template literal.');
+}
+
+function scanJsxElement(
+  source: string,
+  start: number,
+  tokens: SourceToken[],
+  context: ScanContext
+): ScanCodeResult {
+  let index = start + 1;
+
+  while (index < source.length) {
+    const char = source[index];
+
+    if (char === '"' || char === "'") {
+      const stringEnd = consumeQuotedString(source, index, char);
+      if (stringEnd.error) return stringEnd;
+      index = stringEnd.index;
+      continue;
+    }
+
+    if (char === '{') {
+      const expression = scanCode(source, index + 1, tokens, '}', context);
+      if (expression.error) {
+        context.deferSyntaxErrorToTsxCompiler = true;
+        return expression;
+      }
+      index = expression.index;
+      continue;
+    }
+
+    if (isIdentifierStart(char)) {
+      const tokenStart = index;
+      index += 1;
+      while (index < source.length && isIdentifierPart(source[index])) {
+        index += 1;
+      }
+      tokens.push({
+        value: source.slice(tokenStart, index),
+        start: tokenStart,
+        end: index
+      });
+      continue;
+    }
+
+    if (char === '/' && source[index + 1] === '>') {
+      return { index: index + 2, closedByStop: true };
+    }
+
+    if (char === '>') {
+      index += 1;
+      break;
+    }
+
+    index += 1;
+  }
+
+  while (index < source.length) {
+    if (source.startsWith('</', index)) {
+      const close = source.indexOf('>', index + 2);
+      if (close === -1) {
+        context.deferSyntaxErrorToTsxCompiler = true;
+        return { index: source.length, closedByStop: false };
+      }
+      return { index: close + 1, closedByStop: true };
+    }
+
+    if (isJsxStart(source, index)) {
+      const child = scanJsxElement(source, index, tokens, context);
+      if (child.error) return child;
+      index = child.index;
+      continue;
+    }
+
+    if (source[index] === '{') {
+      const expression = scanCode(source, index + 1, tokens, '}', context);
+      if (expression.error) {
+        context.deferSyntaxErrorToTsxCompiler = true;
+        return expression;
+      }
+      index = expression.index;
+      continue;
+    }
+
+    index += 1;
+  }
+
+  context.deferSyntaxErrorToTsxCompiler = true;
+  return { index: source.length, closedByStop: false };
 }
 
 function validateImports(
@@ -585,16 +688,6 @@ function validateDeniedCapabilities(
         )
       );
       return;
-    }
-
-    if (deniedConstructorIdentifiers.has(token.value)) {
-      addError(
-        failureError(
-          'transform_failed',
-          `source.identifiers.${token.value}`,
-          `Constructor '${token.value}' is not allowed in native trusted block source.`
-        )
-      );
     }
   });
 
@@ -949,14 +1042,6 @@ function readDeniedPropertyAccess(
     };
   }
 
-  if (deniedConstructorIdentifiers.has(access.property)) {
-    return {
-      identifier: access.property,
-      code: 'transform_failed',
-      message: `Constructor '${access.property}' is not allowed in native trusted block source.`
-    };
-  }
-
   return undefined;
 }
 
@@ -964,7 +1049,6 @@ function isDeniedComputedProperty(property: string): boolean {
   return (
     deniedEscapeIdentifiers.has(property) ||
     deniedCallIdentifiers.has(property) ||
-    deniedConstructorIdentifiers.has(property) ||
     deniedAntdStaticModalMethods.has(property)
   );
 }
@@ -1168,6 +1252,24 @@ function matchingDelimiter(char: string): string {
 
 function isWhitespace(char: string): boolean {
   return char === ' ' || char === '\t' || char === '\n' || char === '\r';
+}
+
+function isJsxStart(source: string, index: number): boolean {
+  if (source[index] !== '<') return false;
+  const next = source[index + 1];
+  if (next !== '>' && !isIdentifierStart(next)) return false;
+
+  const previousIndex = previousNonWhitespaceIndex(source, index);
+  if (previousIndex < 0 || !isIdentifierPart(source[previousIndex])) {
+    return true;
+  }
+
+  let wordStart = previousIndex;
+  while (wordStart > 0 && isIdentifierPart(source[wordStart - 1])) {
+    wordStart -= 1;
+  }
+  const previousWord = source.slice(wordStart, previousIndex + 1);
+  return previousWord === 'return' || previousWord === 'yield';
 }
 
 function isIdentifierStart(char: string): boolean {

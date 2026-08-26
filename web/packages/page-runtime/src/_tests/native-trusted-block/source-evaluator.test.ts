@@ -38,6 +38,25 @@ function createModules(
 }
 
 describe('Native trusted block source evaluator', () => {
+  test('AC-001/AC-002 evaluates runtime JavaScript with explicit imported dependencies', () => {
+    const result = evaluateNativeTrustedBlockSource({
+      source: `
+import { Button } from 'antd';
+
+const createValue = new Function('Component', 'return { Component, value: 2 + 2 };');
+
+export default function Block() {
+  return createValue(Button);
+}
+`,
+      modules: createModules()
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.component({})).toEqual({ Component: Button, value: 4 });
+  });
+
   test('evaluates non-JSX source through injected React, AntD, and UI modules', () => {
     const result = evaluateNativeTrustedBlockSource({
       source: `
@@ -253,20 +272,18 @@ export default function Block() {
       'document.cookie'
     ],
     ['window reads', 'const denied = w\\u0069ndow.location;', 'window'],
-    [
-      'document reads',
-      'const denied = d\\u006fcument.body;',
-      'document'
-    ],
+    ['document reads', 'const denied = d\\u006fcument.body;', 'document'],
     [
       'globalThis reads',
       'const denied = g\\u006cobalThis.location;',
       'globalThis'
     ],
     ['self reads', 'const denied = s\\u0065lf.location;', 'self']
-  ])('returns runtime_error for guarded %s', (_label, statement, capability) => {
-    const result = evaluateNativeTrustedBlockSource({
-      source: `
+  ])(
+    'returns runtime_error for guarded %s',
+    (_label, statement, capability) => {
+      const result = evaluateNativeTrustedBlockSource({
+        source: `
 import React from 'react';
 
 ${statement}
@@ -275,23 +292,24 @@ export default function Block() {
   return React.createElement('div');
 }
 `,
-      modules: createModules()
-    });
+        modules: createModules()
+      });
 
-    expect(result).toMatchObject({
-      ok: false,
-      error: {
-        kind: 'runtime_error',
-        errors: [
-          {
-            code: 'runtime_error',
-            path: `runtime.capability.${capability}`
-          }
-        ]
-      }
-    });
-    expect(result.ok ? '' : result.error.message).toContain(capability);
-  });
+      expect(result).toMatchObject({
+        ok: false,
+        error: {
+          kind: 'runtime_error',
+          errors: [
+            {
+              code: 'runtime_error',
+              path: `runtime.capability.${capability}`
+            }
+          ]
+        }
+      });
+      expect(result.ok ? '' : result.error.message).toContain(capability);
+    }
+  );
 
   test('maps document.cookie writes to a structured runtime_error', () => {
     const result = evaluateNativeTrustedBlockSource({

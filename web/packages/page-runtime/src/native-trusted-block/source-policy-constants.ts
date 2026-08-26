@@ -37,12 +37,7 @@ export const deniedAntdStaticModalMethods = new Set([
   'warn'
 ]);
 
-export const deniedCallIdentifiers = new Set([
-  'require',
-  'eval'
-]);
-
-export const deniedConstructorIdentifiers = new Set(['Function']);
+export const deniedCallIdentifiers = new Set(['require', 'eval']);
 
 export const deniedEscapeIdentifiers = new Set([
   'constructor',

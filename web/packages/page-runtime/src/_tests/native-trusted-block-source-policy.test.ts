@@ -127,18 +127,57 @@ describe('Native trusted block source static policy', () => {
 
   test.each([
     ['require', "const antd = require('antd');", 'import_denied'],
-    ['eval', "eval('2 + 2');", 'transform_failed'],
-    [
-      'Function constructor',
-      "const fn = new Function('return 1');",
-      'transform_failed'
-    ]
+    ['eval', "eval('2 + 2');", 'transform_failed']
   ] as const)('rejects executable escape hatch: %s', (_label, source, code) => {
     const result = validateNativeTrustedBlockSource(source);
 
     expect(result.ok).toBe(false);
     expect(result.errors[0]).toMatchObject({
       code
+    });
+  });
+
+  test.each([
+    ['Function call', "const fn = Function('return 1');"],
+    ['Function constructor', "const fn = new Function('return 1');"]
+  ])('AC-001 accepts runtime JavaScript construction: %s', (_label, source) => {
+    expect(validateNativeTrustedBlockSource(source)).toMatchObject({
+      ok: true,
+      normalizedSource: source
+    });
+  });
+
+  test('AC-004 ignores denied capability words inside JSX text', () => {
+    const source = `
+export default function Block() {
+  return <div>classNames Function eval require</div>;
+}
+`;
+
+    expect(validateNativeTrustedBlockSource(source)).toMatchObject({
+      ok: true,
+      normalizedSource: source.trim()
+    });
+  });
+
+  test('AC-004 keeps TypeScript generic syntax in code context', () => {
+    const source = 'const values: Array<Function> = [];';
+
+    expect(validateNativeTrustedBlockSource(source)).toMatchObject({
+      ok: true,
+      normalizedSource: source
+    });
+  });
+
+  test('preserves syntax errors after a complete JSX element', () => {
+    const result = validateNativeTrustedBlockSource(`
+const node = <div>Ready</div>;
+const label = "unterminated;
+`);
+
+    expect(result).toMatchObject({
+      ok: false,
+      errors: [{ code: 'syntax_invalid', path: 'source' }]
     });
   });
 
@@ -161,11 +200,14 @@ describe('Native trusted block source static policy', () => {
     ['document', 'document.querySelector("#root");'],
     ['globalThis', 'globalThis.crypto;'],
     ['self', 'self.postMessage({});']
-  ])('AC-005 accepts browser DOM or storage capability: %s', (_label, source) => {
-    const result = validateNativeTrustedBlockSource(source);
+  ])(
+    'AC-005 accepts browser DOM or storage capability: %s',
+    (_label, source) => {
+      const result = validateNativeTrustedBlockSource(source);
 
-    expect(result.ok).toBe(true);
-  });
+      expect(result.ok).toBe(true);
+    }
+  );
 
   test.each([
     ['ReactDOM.createPortal', 'ReactDOM.createPortal(node, target);'],
