@@ -25,6 +25,76 @@ function expectValidLayout(layout: Layout, columns: number) {
 }
 
 describe('frontstage block interaction solver', () => {
+  test('AC-001 moves the trailing block into the first slot after crossing the leading block', () => {
+    const committed: Layout = [
+      { i: 'first', x: 0, y: 0, w: 12, h: 6 },
+      { i: 'second', x: 12, y: 0, w: 12, h: 6 }
+    ];
+
+    const result = solveFrontstageBlockInteraction({
+      committedLayout: committed,
+      activeId: 'second',
+      proposedPosition: { x: 0, y: 0 },
+      columns: 24
+    });
+
+    expect(result.previewLayout.map(({ i, x }) => ({ i, x }))).toEqual([
+      { i: 'first', x: 12 },
+      { i: 'second', x: 0 }
+    ]);
+  });
+
+  test('AC-002 reaches the first, middle, and last insertion indices across rows', () => {
+    const committed: Layout = [
+      { i: 'first', x: 0, y: 0, w: 12, h: 6 },
+      { i: 'second', x: 12, y: 0, w: 12, h: 6 },
+      { i: 'active', x: 0, y: 8, w: 24, h: 6 }
+    ];
+    const projectedOrder = (pointerColumn: number) =>
+      solveFrontstageBlockInteraction({
+        committedLayout: committed,
+        activeId: 'active',
+        proposedPosition: { x: 0, y: 0 },
+        columns: 24,
+        dragIntent: {
+          pointerColumn,
+          previousInsertion: null,
+          deadbandColumns: 0.5
+        }
+      })
+        .previewLayout.filter((item) => item.y === 0)
+        .sort((left, right) => left.x - right.x)
+        .map((item) => item.i);
+
+    expect(projectedOrder(1)).toEqual(['active', 'first', 'second']);
+    expect(projectedOrder(8)).toEqual(['first', 'active', 'second']);
+    expect(projectedOrder(23)).toEqual(['first', 'second', 'active']);
+  });
+
+  test('AC-003 keeps the stable insertion index inside the midpoint deadband', () => {
+    const committed: Layout = [
+      { i: 'first', x: 0, y: 0, w: 12, h: 6 },
+      { i: 'second', x: 12, y: 0, w: 12, h: 6 }
+    ];
+    const compactor = createFrontstageInteractionCompactor('auto');
+    compactor.begin(committed, 'second');
+    compactor.updateDragPointer(1);
+    const insertedFirst = compactor.compact(
+      [committed[0]!, { ...committed[1]!, x: 0 }],
+      24
+    );
+    compactor.updateDragPointer(6.2);
+    const heldInsideDeadband = compactor.compact(insertedFirst, 24);
+
+    expect(
+      heldInsideDeadband
+        .filter((item) => item.y === 0)
+        .sort((left, right) => left.x - right.x)
+        .map((item) => item.i)
+    ).toEqual(['second', 'first']);
+    compactor.end();
+  });
+
   test('AC-003 identifies a restored drag as a no-op commit', () => {
     const committed: Layout = [
       { i: 'first', x: 0, y: 0, w: 12, h: 6 },

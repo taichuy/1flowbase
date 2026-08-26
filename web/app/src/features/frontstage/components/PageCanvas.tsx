@@ -1246,6 +1246,21 @@ export const PageCanvas: FC<PageCanvasProps> = ({
         ref={containerRef}
         className="frontstage-page-canvas-grid"
         data-testid="page-canvas-render-slots"
+        onPointerMoveCapture={(event) => {
+          if (!isDesignMode || toolbarDisabled) return;
+          const bounds = event.currentTarget.getBoundingClientRect();
+          if (bounds.width <= 0) return;
+          const columns = FRONTSTAGE_GRID_COLUMNS[activeBreakpoint.current];
+          interactionCompactor.updateDragPointer(
+            Math.max(
+              0,
+              Math.min(
+                columns,
+                ((event.clientX - bounds.left) / bounds.width) * columns
+              )
+            )
+          );
+        }}
       >
         {isRenderEmpty && isDesignMode ? (
           <div data-testid="page-canvas-design-empty-state" />

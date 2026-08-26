@@ -13,11 +13,21 @@ export type FrontstageBlockInteractionInput = {
   activeId: string;
   proposedPosition: { x: number; y: number };
   columns: number;
+  dragIntent?: FrontstageDragInsertionIntent;
+};
+
+export type FrontstageStableInsertion = { rowY: number; index: number };
+
+export type FrontstageDragInsertionIntent = {
+  pointerColumn: number;
+  previousInsertion: FrontstageStableInsertion | null;
+  deadbandColumns: number;
 };
 
 export type FrontstageBlockInteractionResult = {
   previewLayout: Layout;
   contacts: string[];
+  insertion: FrontstageStableInsertion | null;
 };
 
 export type FrontstageInteractionCompactor = Compactor & {
@@ -26,8 +36,11 @@ export type FrontstageInteractionCompactor = Compactor & {
     activeId: string,
     interactionKind?: 'drag' | 'resize'
   ) => void;
+  updateDragPointer: (pointerColumn: number) => void;
   end: () => void;
 };
+
+export const FRONTSTAGE_DRAG_INSERTION_DEADBAND_COLUMNS = 0.5;
 
 export function frontstageLayoutsCollide(
   left: LayoutItem,
@@ -78,6 +91,50 @@ function clampHorizontalPosition(item: LayoutItem, columns: number): number {
     0,
     Math.min(Math.round(item.x), Math.max(0, columns - item.w))
   );
+}
+
+function resolveFrontstageInsertionIndex({
+  active,
+  destinationMembers,
+  dragIntent,
+  proposedActive,
+  targetY
+}: {
+  active: LayoutItem;
+  destinationMembers: LayoutItem[];
+  dragIntent?: FrontstageDragInsertionIntent;
+  proposedActive: LayoutItem;
+  targetY: number;
+}): number {
+  const proposedCenter = proposedActive.x + proposedActive.w / 2;
+  const horizontalDirection = Math.sign(proposedActive.x - active.x);
+
+  for (let index = 0; index < destinationMembers.length; index += 1) {
+    const item = destinationMembers[index]!;
+    const midpoint = item.x + item.w / 2;
+    if (dragIntent && Number.isFinite(dragIntent.pointerColumn)) {
+      if (
+        Math.abs(dragIntent.pointerColumn - midpoint) <=
+        dragIntent.deadbandColumns
+      ) {
+        const previous = dragIntent.previousInsertion;
+        if (previous?.rowY === targetY) {
+          return Math.max(
+            0,
+            Math.min(destinationMembers.length, previous.index)
+          );
+        }
+        return horizontalDirection < 0 || active.x < item.x ? index : index + 1;
+      }
+      if (dragIntent.pointerColumn < midpoint) return index;
+      continue;
+    }
+
+    if (proposedCenter < midpoint) return index;
+    if (proposedCenter === midpoint && horizontalDirection < 0) return index;
+  }
+
+  return destinationMembers.length;
 }
 
 function solveFrontstageAutomaticResize(
@@ -145,11 +202,12 @@ export function solveFrontstageBlockInteraction({
   activeId,
   columns,
   committedLayout,
+  dragIntent,
   proposedPosition
 }: FrontstageBlockInteractionInput): FrontstageBlockInteractionResult {
   const active = committedLayout.find((item) => item.i === activeId);
   if (!active) {
-    return { previewLayout: committedLayout, contacts: [] };
+    return { previewLayout: committedLayout, contacts: [], insertion: null };
   }
 
   const proposedActive: LayoutItem = {
@@ -160,7 +218,8 @@ export function solveFrontstageBlockInteraction({
   if (proposedActive.x === active.x && proposedActive.y === active.y) {
     return {
       previewLayout: committedLayout.map((item) => ({ ...item, moved: false })),
-      contacts: []
+      contacts: [],
+      insertion: null
     };
   }
   const contacts = committedLayout
@@ -179,14 +238,14 @@ export function solveFrontstageBlockInteraction({
   const destinationMembers = committedLayout
     .filter((item) => item.i !== activeId && item.y === targetY)
     .sort((left, right) => left.x - right.x || left.i.localeCompare(right.i));
-  const insertionIndex = destinationMembers.findIndex(
-    (item) => proposedActive.x + proposedActive.w / 2 < item.x + item.w / 2
-  );
-  destinationMembers.splice(
-    insertionIndex < 0 ? destinationMembers.length : insertionIndex,
-    0,
-    proposedActive
-  );
+  const insertionIndex = resolveFrontstageInsertionIndex({
+    active,
+    destinationMembers,
+    dragIntent,
+    proposedActive,
+    targetY
+  });
+  destinationMembers.splice(insertionIndex, 0, proposedActive);
 
   const destinationProjection = projectFrontstageAutomaticRow(
     destinationMembers,
@@ -217,7 +276,8 @@ export function solveFrontstageBlockInteraction({
             }
           : { ...item, moved: false }
       ),
-      contacts: contacts.map((item) => item.i)
+      contacts: contacts.map((item) => item.i),
+      insertion: { rowY: targetY, index: insertionIndex }
     };
   }
 
@@ -233,7 +293,8 @@ export function solveFrontstageBlockInteraction({
         ? { ...item, ...projection, moved: false }
         : { ...item, moved: false };
     }),
-    contacts: contacts.map((item) => item.i)
+    contacts: contacts.map((item) => item.i),
+    insertion: { rowY: targetY, index: insertionIndex }
   };
 }
 
@@ -243,6 +304,8 @@ export function createFrontstageInteractionCompactor(
   let committedLayout: Layout | null = null;
   let activeId: string | null = null;
   let interactionKind: 'drag' | 'resize' = 'drag';
+  let pointerColumn: number | null = null;
+  let stableInsertion: FrontstageStableInsertion | null = null;
 
   return {
     // `null` keeps RGL from pre-emptively pushing colliding items. The custom
@@ -253,6 +316,13 @@ export function createFrontstageInteractionCompactor(
       committedLayout = layout.map((item) => ({ ...item, moved: false }));
       activeId = nextActiveId;
       interactionKind = nextInteractionKind;
+      pointerColumn = null;
+      stableInsertion = null;
+    },
+    updateDragPointer(nextPointerColumn) {
+      if (activeId && Number.isFinite(nextPointerColumn)) {
+        pointerColumn = nextPointerColumn;
+      }
     },
     compact(layout, columns) {
       if (layoutMode === 'free') {
@@ -275,17 +345,29 @@ export function createFrontstageInteractionCompactor(
         );
       }
 
-      return solveFrontstageBlockInteraction({
+      const result = solveFrontstageBlockInteraction({
         committedLayout,
         activeId,
         proposedPosition: { x: proposedActive.x, y: proposedActive.y },
-        columns
-      }).previewLayout;
+        columns,
+        dragIntent:
+          pointerColumn === null
+            ? undefined
+            : {
+                pointerColumn,
+                previousInsertion: stableInsertion,
+                deadbandColumns: FRONTSTAGE_DRAG_INSERTION_DEADBAND_COLUMNS
+              }
+      });
+      stableInsertion = result.insertion;
+      return result.previewLayout;
     },
     end() {
       committedLayout = null;
       activeId = null;
       interactionKind = 'drag';
+      pointerColumn = null;
+      stableInsertion = null;
     }
   };
 }
