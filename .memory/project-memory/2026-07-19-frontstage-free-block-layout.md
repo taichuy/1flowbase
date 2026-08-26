@@ -22,6 +22,7 @@ scope:
   - web/app/src/features/frontstage/lib/page-document.ts
   - web/app/src/features/frontstage/components/PageCanvas.tsx
   - web/app/src/features/frontstage/components/jsx-studio/JsxStudioResourcePanel.tsx
+  - web/patches/react-grid-layout@2.2.3.patch
 ---
 
 # Frontstage 区块自由组合与高度 contract
@@ -51,7 +52,7 @@ scope:
 
 - 在线 Single Issue：[#1376 建立 Frontstage 可演进区块布局内核与连续碰撞交互](https://github.com/taichuy/1flowbase/issues/1376)
 - 首位插入修复：[#1897 修复自动布局拖拽首位插入不可达](https://github.com/taichuy/1flowbase/issues/1897)，commit `d7d8e3288` 已推送 `dev`，用户于 2026-08-26 验收并关闭。
-- 当前活动 Issue：[#1899 支持区块拖拽边缘自动滚动](https://github.com/taichuy/1flowbase/issues/1899) 已于 2026-08-27 触发停止条件并返回 `phase:discussion`：外层 rAF 可把 scrollTop 从 992 滚到 0，但 RGL 2.2.3 的 dragged item 相对指针漂移 992px。官方 #2232 / PR #2280 的 edge-scroll 修复已合入 master 但尚未发布，且现有上游实现没有结算 dragged item / placeholder scroll compensation；不在 PageCanvas 使用合成事件或 DOM monkey patch。
+- 当前活动 Issue：[#1899 支持区块拖拽边缘自动滚动](https://github.com/taichuy/1flowbase/issues/1899) 已于 2026-08-27 完成实现并进入 `phase:user-acceptance`。1flowbase 通过精确绑定 `react-grid-layout@2.2.3` 的 pnpm dependency patch，在 `GridItem` 私有坐标 owner 内用 smoothstep rAF、6px 单帧上限、drag-start 最大滚动快照和实际 scroll delta 补偿保持 dragged item / placeholder 同步；双向 Playwright 最大漂移 6px、一次拖拽一次保存、刷新持久化与 #1897 回归均通过。
 - 当前阶段：`phase:user-acceptance`；自动/自由策略、RGL v2 public API、确定性行接触 solver、边缘 resize、no-op save 与桌面/移动端真实指针验收已完成。
-- 只修改 1flowbase；`/home/taichuy/git/react-grid-layout` 仅作 `2.2.3` 参考源码，不修改、fork、patch 或本地链接。
+- 只修改 1flowbase；`/home/taichuy/git/react-grid-layout` 仅作 `2.2.3` 参考源码，不修改、fork 或本地链接。仓库内 patch 绑定精确版本并由 preinstall receipt 守住；升级时先移除 patch 运行 #1899 浏览器 contract，官方版本通过即删除 patch，失败才迁移。
 - 后续交互采用连续像素 preview 与响应式网格 commit 双态模型；24 列是 Frontstage desktop profile，不是通用布局内核常量。
