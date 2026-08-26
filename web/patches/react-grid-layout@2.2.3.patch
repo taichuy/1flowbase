@@ -1,0 +1,380 @@
+diff --git a/dist/chunk-BPZQUJ7Y.js b/dist/chunk-BPZQUJ7Y.js
+index d76630a81e0ff36473aa4b8435498b8e6aaab95b..0bfe1ba8322f00035fc277bbcbf73e1c47ae63d9 100644
+--- a/dist/chunk-BPZQUJ7Y.js
++++ b/dist/chunk-BPZQUJ7Y.js
+@@ -14,6 +14,38 @@ function _interopDefault (e) { return e && e.__esModule ? e : { default: e }; }
+ var React2__default = /*#__PURE__*/_interopDefault(React2);
+ var clsx__default = /*#__PURE__*/_interopDefault(clsx);
+ 
++const EDGE_SCROLL_MAX_SPEED = 360;
++const EDGE_SCROLL_MAX_FRAME_STEP = 6;
++const EDGE_SCROLL_THRESHOLD = 72;
++function getVerticalScrollOwner(node) {
++  const view = node.ownerDocument?.defaultView;
++  let ancestor = node.parentElement;
++  while (ancestor) {
++    const overflowY = view?.getComputedStyle(ancestor).overflowY;
++    if ((overflowY === "auto" || overflowY === "scroll") && ancestor.scrollHeight > ancestor.clientHeight) {
++      return ancestor;
++    }
++    ancestor = ancestor.parentElement;
++  }
++  return null;
++}
++function getEdgeScrollVelocity(scrollOwner, clientY) {
++  const rect = scrollOwner.getBoundingClientRect();
++  const threshold = Math.min(EDGE_SCROLL_THRESHOLD, rect.height / 3);
++  let proximity = 0;
++  let direction = 0;
++  if (clientY < rect.top + threshold) {
++    proximity = (rect.top + threshold - clientY) / threshold;
++    direction = -1;
++  } else if (clientY > rect.bottom - threshold) {
++    proximity = (clientY - (rect.bottom - threshold)) / threshold;
++    direction = 1;
++  }
++  proximity = chunkA5WIFECI_js.clamp(proximity, 0, 1);
++  const smoothstep = proximity * proximity * (3 - 2 * proximity);
++  return direction * EDGE_SCROLL_MAX_SPEED * smoothstep;
++}
++
+ function GridItem(props) {
+   const {
+     children,
+@@ -78,6 +110,15 @@ function GridItem(props) {
+   const dragPendingRef = React2.useRef(false);
+   const initialDragClientRef = React2.useRef({ x: 0, y: 0 });
+   const thresholdExceededRef = React2.useRef(false);
++  const edgeScrollRef = React2.useRef({
++    frame: null,
++    scrollOwner: null,
++    maxScrollTop: 0,
++    pointerY: 0,
++    lastTimestamp: 0,
++    e: null,
++    node: null
++  });
+   const positionParams = React2.useMemo(
+     () => ({
+       cols,
+@@ -145,6 +186,86 @@ function GridItem(props) {
+     },
+     [positionStrategy, useCSSTransforms, usePercentages, containerWidth]
+   );
++  const stopEdgeScroll = React2.useCallback(() => {
++    const edgeScroll = edgeScrollRef.current;
++    if (edgeScroll.frame !== null) {
++      cancelAnimationFrame(edgeScroll.frame);
++    }
++    edgeScroll.frame = null;
++    edgeScroll.lastTimestamp = 0;
++  }, []);
++  const edgeScrollTickRef = React2.useRef(null);
++  edgeScrollTickRef.current = (timestamp) => {
++    const edgeScroll = edgeScrollRef.current;
++    edgeScroll.frame = null;
++    const { scrollOwner, pointerY, e, node } = edgeScroll;
++    if (!scrollOwner || !e || !node || dragPendingRef.current) {
++      edgeScroll.lastTimestamp = 0;
++      return;
++    }
++    const velocity = getEdgeScrollVelocity(scrollOwner, pointerY);
++    if (velocity === 0) {
++      edgeScroll.lastTimestamp = 0;
++      return;
++    }
++    const elapsed = edgeScroll.lastTimestamp === 0 ? 1000 / 60 : Math.min(timestamp - edgeScroll.lastTimestamp, 32);
++    edgeScroll.lastTimestamp = timestamp;
++    const previousScrollTop = scrollOwner.scrollTop;
++    const scrollStep = chunkA5WIFECI_js.clamp(
++      velocity * elapsed / 1000,
++      -EDGE_SCROLL_MAX_FRAME_STEP,
++      EDGE_SCROLL_MAX_FRAME_STEP
++    );
++    scrollOwner.scrollTop = chunkA5WIFECI_js.clamp(
++      previousScrollTop + scrollStep,
++      0,
++      edgeScroll.maxScrollTop
++    );
++    const scrollDelta = scrollOwner.scrollTop - previousScrollTop;
++    if (scrollDelta === 0) {
++      edgeScroll.lastTimestamp = 0;
++      return;
++    }
++    let top = dragPositionRef.current.top + scrollDelta / transformScale;
++    const left = dragPositionRef.current.left;
++    if (isBounded) {
++      const { offsetParent } = node;
++      if (offsetParent) {
++        const bottomBoundary = offsetParent.clientHeight - chunkA5WIFECI_js.calcGridItemWHPx(h, rowHeight, margin[1]);
++        top = chunkA5WIFECI_js.clamp(top, 0, bottomBoundary);
++      }
++    }
++    const newPosition = { top, left };
++    dragPositionRef.current = newPosition;
++    const rawPos = chunkA5WIFECI_js.calcXYRaw(positionParams, top, left);
++    const { x: newX, y: newY } = chunk55DQUWLA_js.applyPositionConstraints(
++      constraints,
++      effectiveLayoutItem,
++      rawPos.x,
++      rawPos.y,
++      getConstraintContext()
++    );
++    onDragProp?.(i, newX, newY, { e, node, newPosition });
++    edgeScroll.frame = requestAnimationFrame((nextTimestamp) => edgeScrollTickRef.current?.(nextTimestamp));
++  };
++  const scheduleEdgeScroll = React2.useCallback((e, node) => {
++    const edgeScroll = edgeScrollRef.current;
++    if (edgeScroll.node !== node) {
++      edgeScroll.scrollOwner = getVerticalScrollOwner(node);
++      edgeScroll.node = node;
++      edgeScroll.maxScrollTop = edgeScroll.scrollOwner ? edgeScroll.scrollOwner.scrollHeight - edgeScroll.scrollOwner.clientHeight : 0;
++    }
++    edgeScroll.pointerY = e.clientY;
++    edgeScroll.e = e;
++    if (!edgeScroll.scrollOwner || getEdgeScrollVelocity(edgeScroll.scrollOwner, edgeScroll.pointerY) === 0) {
++      stopEdgeScroll();
++      return;
++    }
++    if (edgeScroll.frame === null) {
++      edgeScroll.frame = requestAnimationFrame((timestamp) => edgeScrollTickRef.current?.(timestamp));
++    }
++  }, [stopEdgeScroll]);
++  React2.useEffect(() => stopEdgeScroll, [stopEdgeScroll]);
+   const onDragStart = React2.useCallback(
+     (e, { node }) => {
+       if (!onDragStartProp) return;
+@@ -172,6 +293,10 @@ function GridItem(props) {
+         };
+       }
+       dragPositionRef.current = newPosition;
++      const scrollOwner = getVerticalScrollOwner(node);
++      edgeScrollRef.current.scrollOwner = scrollOwner;
++      edgeScrollRef.current.maxScrollTop = scrollOwner ? scrollOwner.scrollHeight - scrollOwner.clientHeight : 0;
++      edgeScrollRef.current.node = node;
+       if (dragThreshold > 0) {
+         const mouseEvent = e;
+         initialDragClientRef.current = {
+@@ -274,6 +399,7 @@ function GridItem(props) {
+         node,
+         newPosition
+       });
++      scheduleEdgeScroll(mouseEvent, node);
+     },
+     [
+       onDragProp,
+@@ -290,11 +416,13 @@ function GridItem(props) {
+       i,
+       constraints,
+       effectiveLayoutItem,
+-      getConstraintContext
++      getConstraintContext,
++      scheduleEdgeScroll
+     ]
+   );
+   const onDragStop = React2.useCallback(
+     (e, { node }) => {
++      stopEdgeScroll();
+       if (!onDragStopProp || !dragging) return;
+       const wasPending = dragPendingRef.current;
+       dragPendingRef.current = false;
+@@ -330,7 +458,8 @@ function GridItem(props) {
+       constraints,
+       effectiveLayoutItem,
+       getConstraintContext,
+-      i
++      i,
++      stopEdgeScroll
+     ]
+   );
+   onDragStartRef.current = onDragStart;
+diff --git a/dist/chunk-WGL5FSZH.mjs b/dist/chunk-WGL5FSZH.mjs
+index 3002eb1f78fbea0b007c186aa084e490495c3a9f..ae6d27a6dcc6ed3f105c2b69e0567fa1485964cc 100644
+--- a/dist/chunk-WGL5FSZH.mjs
++++ b/dist/chunk-WGL5FSZH.mjs
+@@ -7,6 +7,38 @@ import clsx from 'clsx';
+ import { jsx, jsxs } from 'react/jsx-runtime';
+ import { deepEqual } from 'fast-equals';
+ 
++const EDGE_SCROLL_MAX_SPEED = 360;
++const EDGE_SCROLL_MAX_FRAME_STEP = 6;
++const EDGE_SCROLL_THRESHOLD = 72;
++function getVerticalScrollOwner(node) {
++  const view = node.ownerDocument?.defaultView;
++  let ancestor = node.parentElement;
++  while (ancestor) {
++    const overflowY = view?.getComputedStyle(ancestor).overflowY;
++    if ((overflowY === "auto" || overflowY === "scroll") && ancestor.scrollHeight > ancestor.clientHeight) {
++      return ancestor;
++    }
++    ancestor = ancestor.parentElement;
++  }
++  return null;
++}
++function getEdgeScrollVelocity(scrollOwner, clientY) {
++  const rect = scrollOwner.getBoundingClientRect();
++  const threshold = Math.min(EDGE_SCROLL_THRESHOLD, rect.height / 3);
++  let proximity = 0;
++  let direction = 0;
++  if (clientY < rect.top + threshold) {
++    proximity = (rect.top + threshold - clientY) / threshold;
++    direction = -1;
++  } else if (clientY > rect.bottom - threshold) {
++    proximity = (clientY - (rect.bottom - threshold)) / threshold;
++    direction = 1;
++  }
++  proximity = clamp(proximity, 0, 1);
++  const smoothstep = proximity * proximity * (3 - 2 * proximity);
++  return direction * EDGE_SCROLL_MAX_SPEED * smoothstep;
++}
++
+ function GridItem(props) {
+   const {
+     children,
+@@ -71,6 +103,15 @@ function GridItem(props) {
+   const dragPendingRef = useRef(false);
+   const initialDragClientRef = useRef({ x: 0, y: 0 });
+   const thresholdExceededRef = useRef(false);
++  const edgeScrollRef = useRef({
++    frame: null,
++    scrollOwner: null,
++    maxScrollTop: 0,
++    pointerY: 0,
++    lastTimestamp: 0,
++    e: null,
++    node: null
++  });
+   const positionParams = useMemo(
+     () => ({
+       cols,
+@@ -138,6 +179,86 @@ function GridItem(props) {
+     },
+     [positionStrategy, useCSSTransforms, usePercentages, containerWidth]
+   );
++  const stopEdgeScroll = useCallback(() => {
++    const edgeScroll = edgeScrollRef.current;
++    if (edgeScroll.frame !== null) {
++      cancelAnimationFrame(edgeScroll.frame);
++    }
++    edgeScroll.frame = null;
++    edgeScroll.lastTimestamp = 0;
++  }, []);
++  const edgeScrollTickRef = useRef(null);
++  edgeScrollTickRef.current = (timestamp) => {
++    const edgeScroll = edgeScrollRef.current;
++    edgeScroll.frame = null;
++    const { scrollOwner, pointerY, e, node } = edgeScroll;
++    if (!scrollOwner || !e || !node || dragPendingRef.current) {
++      edgeScroll.lastTimestamp = 0;
++      return;
++    }
++    const velocity = getEdgeScrollVelocity(scrollOwner, pointerY);
++    if (velocity === 0) {
++      edgeScroll.lastTimestamp = 0;
++      return;
++    }
++    const elapsed = edgeScroll.lastTimestamp === 0 ? 1000 / 60 : Math.min(timestamp - edgeScroll.lastTimestamp, 32);
++    edgeScroll.lastTimestamp = timestamp;
++    const previousScrollTop = scrollOwner.scrollTop;
++    const scrollStep = clamp(
++      velocity * elapsed / 1000,
++      -EDGE_SCROLL_MAX_FRAME_STEP,
++      EDGE_SCROLL_MAX_FRAME_STEP
++    );
++    scrollOwner.scrollTop = clamp(
++      previousScrollTop + scrollStep,
++      0,
++      edgeScroll.maxScrollTop
++    );
++    const scrollDelta = scrollOwner.scrollTop - previousScrollTop;
++    if (scrollDelta === 0) {
++      edgeScroll.lastTimestamp = 0;
++      return;
++    }
++    let top = dragPositionRef.current.top + scrollDelta / transformScale;
++    const left = dragPositionRef.current.left;
++    if (isBounded) {
++      const { offsetParent } = node;
++      if (offsetParent) {
++        const bottomBoundary = offsetParent.clientHeight - calcGridItemWHPx(h, rowHeight, margin[1]);
++        top = clamp(top, 0, bottomBoundary);
++      }
++    }
++    const newPosition = { top, left };
++    dragPositionRef.current = newPosition;
++    const rawPos = calcXYRaw(positionParams, top, left);
++    const { x: newX, y: newY } = applyPositionConstraints(
++      constraints,
++      effectiveLayoutItem,
++      rawPos.x,
++      rawPos.y,
++      getConstraintContext()
++    );
++    onDragProp?.(i, newX, newY, { e, node, newPosition });
++    edgeScroll.frame = requestAnimationFrame((nextTimestamp) => edgeScrollTickRef.current?.(nextTimestamp));
++  };
++  const scheduleEdgeScroll = useCallback((e, node) => {
++    const edgeScroll = edgeScrollRef.current;
++    if (edgeScroll.node !== node) {
++      edgeScroll.scrollOwner = getVerticalScrollOwner(node);
++      edgeScroll.node = node;
++      edgeScroll.maxScrollTop = edgeScroll.scrollOwner ? edgeScroll.scrollOwner.scrollHeight - edgeScroll.scrollOwner.clientHeight : 0;
++    }
++    edgeScroll.pointerY = e.clientY;
++    edgeScroll.e = e;
++    if (!edgeScroll.scrollOwner || getEdgeScrollVelocity(edgeScroll.scrollOwner, edgeScroll.pointerY) === 0) {
++      stopEdgeScroll();
++      return;
++    }
++    if (edgeScroll.frame === null) {
++      edgeScroll.frame = requestAnimationFrame((timestamp) => edgeScrollTickRef.current?.(timestamp));
++    }
++  }, [stopEdgeScroll]);
++  useEffect(() => stopEdgeScroll, [stopEdgeScroll]);
+   const onDragStart = useCallback(
+     (e, { node }) => {
+       if (!onDragStartProp) return;
+@@ -165,6 +286,10 @@ function GridItem(props) {
+         };
+       }
+       dragPositionRef.current = newPosition;
++      const scrollOwner = getVerticalScrollOwner(node);
++      edgeScrollRef.current.scrollOwner = scrollOwner;
++      edgeScrollRef.current.maxScrollTop = scrollOwner ? scrollOwner.scrollHeight - scrollOwner.clientHeight : 0;
++      edgeScrollRef.current.node = node;
+       if (dragThreshold > 0) {
+         const mouseEvent = e;
+         initialDragClientRef.current = {
+@@ -267,6 +392,7 @@ function GridItem(props) {
+         node,
+         newPosition
+       });
++      scheduleEdgeScroll(mouseEvent, node);
+     },
+     [
+       onDragProp,
+@@ -283,11 +409,13 @@ function GridItem(props) {
+       i,
+       constraints,
+       effectiveLayoutItem,
+-      getConstraintContext
++      getConstraintContext,
++      scheduleEdgeScroll
+     ]
+   );
+   const onDragStop = useCallback(
+     (e, { node }) => {
++      stopEdgeScroll();
+       if (!onDragStopProp || !dragging) return;
+       const wasPending = dragPendingRef.current;
+       dragPendingRef.current = false;
+@@ -323,7 +451,8 @@ function GridItem(props) {
+       constraints,
+       effectiveLayoutItem,
+       getConstraintContext,
+-      i
++      i,
++      stopEdgeScroll
+     ]
+   );
+   onDragStartRef.current = onDragStart;
