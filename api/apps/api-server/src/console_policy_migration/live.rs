@@ -5,7 +5,8 @@ use control_plane::{
     ports::{RoleConsolePolicyMigrationRehearsalInput, RoleConsolePolicyMigrationRepository},
     role::console_policy_migration::{
         compile_console_policy_migration_probes,
-        preview_console_policy_migration_actor_authorizations, ConsolePolicyMigrationActorProbeSet,
+        preview_console_policy_migration_actor_authorizations,
+        project_compiled_console_policy_migration_plan, ConsolePolicyMigrationActorProbeSet,
         ConsolePolicyMigrationActorRoleBinding, ConsolePolicyMigrationPreview,
     },
 };
@@ -123,15 +124,17 @@ pub(crate) async fn preview_live_migration(
             }));
             continue;
         }
-        let preview = migration
-            .plan()
-            .project_legacy_role(inventory.role_id, &inventory.source_grants)
-            .map_err(|error| {
-                anyhow!(
-                    "cannot project legacy console grants for role {}: {error}",
-                    inventory.role_code
-                )
-            })?;
+        let preview = project_compiled_console_policy_migration_plan(
+            migration.plan(),
+            inventory.role_id,
+            &inventory.source_grants,
+        )
+        .map_err(|error| {
+            anyhow!(
+                "cannot project legacy console grants for role {}: {error}",
+                inventory.role_code
+            )
+        })?;
         if !preview.authorization_delta.added.is_empty()
             || !preview.authorization_delta.removed.is_empty()
             || !preview.effective_delta.is_empty()

@@ -4,8 +4,10 @@ use access_control::{ConsoleAuthorization, ConsolePolicyGroup, SettingsFeatureOw
 use control_plane::ports::{
     RoleConsolePolicyMigrationCutoverMarker, RoleConsolePolicyMigrationRepository,
 };
-use control_plane::role::console_policy_migration::compile_console_policy_migration_probes;
 use control_plane::role::console_policy_migration::ConsolePolicyMigrationLegacyGrantProjection;
+use control_plane::role::console_policy_migration::{
+    compile_console_policy_migration_probes, project_compiled_console_policy_migration_plan,
+};
 use sqlx::{migrate::Migrator, PgPool};
 use uuid::Uuid;
 
@@ -584,13 +586,12 @@ fn ac_010_feature_to_other_regroup_preserves_data_source_secret_rotation() {
     let registry = compile_core_console_operation_registry(&settings).unwrap();
     let migration = compile_core_console_policy_migration_plan(registry.inventory()).unwrap();
 
-    let preview = migration
-        .plan()
-        .project_legacy_role(
-            Uuid::now_v7(),
-            &["settings_feature.access.system.data-models".to_string()],
-        )
-        .expect("the audited feature-to-Other regroup must project without an authorization delta");
+    let preview = project_compiled_console_policy_migration_plan(
+        migration.plan(),
+        Uuid::now_v7(),
+        &["settings_feature.access.system.data-models".to_string()],
+    )
+    .expect("the audited feature-to-Other regroup must project without an authorization delta");
 
     assert!(preview.authorization_delta.added.is_empty());
     assert!(preview.authorization_delta.removed.is_empty());
@@ -607,13 +608,12 @@ fn ac_010_new_role_console_policy_operations_are_default_disabled() {
     let registry = compile_core_console_operation_registry(&settings).unwrap();
     let migration = compile_core_console_policy_migration_plan(registry.inventory()).unwrap();
 
-    let preview = migration
-        .plan()
-        .project_legacy_role(
-            Uuid::now_v7(),
-            &["settings_feature.access.system.roles".to_string()],
-        )
-        .expect("the historic roles feature grant must remain projectable");
+    let preview = project_compiled_console_policy_migration_plan(
+        migration.plan(),
+        Uuid::now_v7(),
+        &["settings_feature.access.system.roles".to_string()],
+    )
+    .expect("the historic roles feature grant must remain projectable");
 
     for operation_id in [
         "roles.console_policy_catalog.view",
@@ -746,10 +746,12 @@ fn ac_010_catalog_only_legacy_grants_do_not_expand_console_authority() {
         };
         assert!(evidence.contains("console"));
 
-        let preview = migration
-            .plan()
-            .project_legacy_role(Uuid::now_v7(), &[legacy_grant.to_string()])
-            .expect("an audited catalog-only grant must not block migration");
+        let preview = project_compiled_console_policy_migration_plan(
+            migration.plan(),
+            Uuid::now_v7(),
+            &[legacy_grant.to_string()],
+        )
+        .expect("an audited catalog-only grant must not block migration");
         assert!(preview.authorization_delta.added.is_empty());
         assert!(preview.authorization_delta.removed.is_empty());
         assert!(preview.effective_delta.is_empty());

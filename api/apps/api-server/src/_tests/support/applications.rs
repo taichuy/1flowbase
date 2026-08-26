@@ -1,4 +1,5 @@
 use super::*;
+use control_plane::role::console_policy_migration::project_compiled_console_policy_migration_plan;
 use storage_durable::MainDurableStore;
 
 async fn main_durable_store(database_url: &str) -> MainDurableStore {
@@ -240,10 +241,12 @@ pub(crate) async fn project_legacy_permissions_to_console_policy(
         .filter(|permission| known_legacy_grants.contains(**permission))
         .map(|permission| (*permission).to_string())
         .collect::<Vec<_>>();
-    let projection = migration
-        .plan()
-        .project_legacy_role(Uuid::nil(), &source_grants)
-        .expect("test legacy permissions should project into console policy");
+    let projection = project_compiled_console_policy_migration_plan(
+        migration.plan(),
+        Uuid::nil(),
+        &source_grants,
+    )
+    .expect("test legacy permissions should project into console policy");
     let groups = projection
         .policy
         .groups()

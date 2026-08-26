@@ -9,7 +9,8 @@ use control_plane::ports::{
 };
 use control_plane::role::console_policy_migration::{
     compile_console_policy_migration_plan_from_catalog,
-    preview_console_policy_migration_actor_authorizations, project_legacy_role_console_policy,
+    preview_console_policy_migration_actor_authorizations,
+    project_compiled_console_policy_migration_plan, project_legacy_role_console_policy,
     CompiledConsolePolicyCatalog, CompiledConsolePolicyGroup, ConsolePolicyMigrationActorProbeSet,
     ConsolePolicyMigrationActorRoleBinding, ConsolePolicyMigrationLegacyGrantMapping,
     ConsolePolicyMigrationLegacyGrantProjection, ConsolePolicyMigrationProbe,
@@ -170,8 +171,12 @@ async fn applications_migration_input(
     let previews = inventories
         .iter()
         .map(|inventory| {
-            plan.project_legacy_role(inventory.role_id, &inventory.source_grants)
-                .unwrap()
+            project_compiled_console_policy_migration_plan(
+                plan,
+                inventory.role_id,
+                &inventory.source_grants,
+            )
+            .unwrap()
         })
         .collect();
     RoleConsolePolicyMigrationRehearsalInput {
@@ -393,8 +398,12 @@ async fn ac_010_ac_011_migration_artifacts_bind_multi_role_probe_union_to_single
     let previews = inventories
         .iter()
         .map(|inventory| {
-            plan.project_legacy_role(inventory.role_id, &inventory.source_grants)
-                .unwrap()
+            project_compiled_console_policy_migration_plan(
+                &plan,
+                inventory.role_id,
+                &inventory.source_grants,
+            )
+            .unwrap()
         })
         .collect::<Vec<_>>();
     let operator_role_id = inventories

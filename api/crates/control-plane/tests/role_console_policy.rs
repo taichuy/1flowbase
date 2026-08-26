@@ -17,10 +17,11 @@ use control_plane::application::console_policy_migration::{
 };
 use control_plane::role::console_policy_migration::{
     compile_console_policy_migration_plan, preview_console_policy_migration_actor_authorizations,
-    project_legacy_role_console_policy, CompiledConsolePolicyCatalog, CompiledConsolePolicyGroup,
-    ConsolePolicyMigrationActorProbeSet, ConsolePolicyMigrationActorRoleBinding,
-    ConsolePolicyMigrationLegacyGrantMapping, ConsolePolicyMigrationLegacyGrantProjection,
-    ConsolePolicyMigrationProbe, ConsolePolicyMigrationProbeKind, LegacyConsoleGrantMapping,
+    project_compiled_console_policy_migration_plan, project_legacy_role_console_policy,
+    CompiledConsolePolicyCatalog, CompiledConsolePolicyGroup, ConsolePolicyMigrationActorProbeSet,
+    ConsolePolicyMigrationActorRoleBinding, ConsolePolicyMigrationLegacyGrantMapping,
+    ConsolePolicyMigrationLegacyGrantProjection, ConsolePolicyMigrationProbe,
+    ConsolePolicyMigrationProbeKind, LegacyConsoleGrantMapping,
 };
 
 fn operation_id(value: &str) -> ConsoleOperationId {
@@ -196,22 +197,22 @@ fn ac_010_compiled_migration_plan_fingerprints_and_unions_actor_roles() {
 
     let own_role_id = Uuid::now_v7();
     let scope_role_id = Uuid::now_v7();
-    let own_role = plan
-        .project_legacy_role(
-            own_role_id,
-            &[
-                "legacy.simple".into(),
-                "legacy.records.view.own".into(),
-                "legacy.stale.non_console".into(),
-            ],
-        )
-        .expect("known own-row grants must project");
-    let scope_role = plan
-        .project_legacy_role(
-            scope_role_id,
-            &["legacy.create".into(), "legacy.records.view.all".into()],
-        )
-        .expect("known scope grants must project");
+    let own_role = project_compiled_console_policy_migration_plan(
+        &plan,
+        own_role_id,
+        &[
+            "legacy.simple".into(),
+            "legacy.records.view.own".into(),
+            "legacy.stale.non_console".into(),
+        ],
+    )
+    .expect("known own-row grants must project");
+    let scope_role = project_compiled_console_policy_migration_plan(
+        &plan,
+        scope_role_id,
+        &["legacy.create".into(), "legacy.records.view.all".into()],
+    )
+    .expect("known scope grants must project");
     let actor_user_id = Uuid::now_v7();
     let actor_previews = preview_console_policy_migration_actor_authorizations(
         &plan,
@@ -282,11 +283,14 @@ fn ac_010_compiled_migration_plan_fingerprints_and_unions_actor_roles() {
     .unwrap_err()
     .to_string()
     .contains("ambiguous legacy mapping"));
-    assert!(plan
-        .project_legacy_role(own_role_id, &["legacy.unknown".into()])
-        .unwrap_err()
-        .to_string()
-        .contains("unknown legacy grant"));
+    assert!(project_compiled_console_policy_migration_plan(
+        &plan,
+        own_role_id,
+        &["legacy.unknown".into()],
+    )
+    .unwrap_err()
+    .to_string()
+    .contains("unknown legacy grant"));
 }
 
 #[test]

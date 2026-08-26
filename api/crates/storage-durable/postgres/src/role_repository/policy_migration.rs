@@ -1,4 +1,5 @@
 use super::*;
+use control_plane::role::console_policy_migration::project_compiled_console_policy_migration_plan;
 
 fn normalized_migration_source(
     source: &RoleConsolePolicyMigrationSource,
@@ -237,10 +238,12 @@ impl RoleConsolePolicyMigrationRepository for PgControlPlaneStore {
             );
         }
         for inventory in &inventories {
-            let expected = input
-                .plan
-                .project_legacy_role(inventory.role_id, &inventory.source_grants)
-                .map_err(|_| ControlPlaneError::InvalidInput("console_policy_migration_mapping"))?;
+            let expected = project_compiled_console_policy_migration_plan(
+                &input.plan,
+                inventory.role_id,
+                &inventory.source_grants,
+            )
+            .map_err(|_| ControlPlaneError::InvalidInput("console_policy_migration_mapping"))?;
             if preview_by_role
                 .get(&inventory.role_id)
                 .is_none_or(|preview| *preview != &expected)

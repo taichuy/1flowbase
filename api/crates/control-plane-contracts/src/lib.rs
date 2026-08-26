@@ -3,10 +3,12 @@
 extern crate self as control_plane_contracts;
 
 pub mod application_public_api;
+pub mod console_policy_migration;
 pub mod error;
 pub mod ports;
 
 pub use application_public_api::*;
+pub use console_policy_migration::*;
 pub use error::*;
 pub use ports::*;
 

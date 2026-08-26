@@ -1,1 +1,2 @@
 mod application_public_api_contract_tests;
+mod console_policy_migration_contract_tests;
