@@ -95,7 +95,6 @@ dependencies = [
  "orchestration-runtime",
  "plugin-framework",
  "postgres-test-support",
- "publish-gateway",
  "rand_core 0.6.4",
  "regex",
  "reqwest 0.12.28",
@@ -2836,16 +2835,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
-]
-
-[[package]]
-name = "publish-gateway"
-version = "0.4.1"
-dependencies = [
- "domain",
- "serde",
- "serde_json",
- "uuid",
 ]
 
 [[package]]

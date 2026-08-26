@@ -9,7 +9,6 @@ members = [
   "crates/runtime-core",
   "crates/runtime-extension-host",
   "crates/runtime-profile",
-  "crates/publish-gateway",
   "crates/access-control",
   "crates/plugin-framework",
   "crates/extension-contracts",

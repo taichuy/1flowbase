@@ -50,7 +50,6 @@ domain = { path = "../../crates/domain" }
 control-plane = { path = "../../crates/control-plane" }
 orchestration-runtime = { path = "../../crates/orchestration-runtime" }
 runtime-core = { path = "../../crates/runtime-core" }
-publish-gateway = { path = "../../crates/publish-gateway" }
 access-control = { path = "../../crates/access-control" }
 plugin-framework = { path = "../../crates/plugin-framework" }
 storage-durable = { path = "../../crates/storage-durable" }
