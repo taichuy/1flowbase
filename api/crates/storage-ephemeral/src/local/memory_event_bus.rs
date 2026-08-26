@@ -4,7 +4,7 @@ use std::{
 };
 
 use async_trait::async_trait;
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     ensure_ephemeral_payload_size, ephemeral_metadata_size_bytes, EphemeralEntrySnapshot,
     EphemeralEntryValueSnapshot, EphemeralInspectionCapabilities, EphemeralValueRevealMode,
     EventBus,

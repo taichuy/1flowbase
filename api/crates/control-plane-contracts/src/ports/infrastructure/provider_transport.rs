@@ -1,7 +1,7 @@
 use std::fmt;
 
 use async_trait::async_trait;
-use plugin_framework::provider_contract::ProtocolContextEnvelope;
+use extension_contracts::provider_contract::ProtocolContextEnvelope;
 use serde::Deserialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -21,7 +21,7 @@ impl ProviderTransportSlotId {
         Self(flow_run_id)
     }
 
-    pub(crate) const fn as_uuid(self) -> Uuid {
+    pub const fn as_uuid(self) -> Uuid {
         self.0
     }
 }
@@ -314,11 +314,11 @@ impl ProviderContinuation {
         })
     }
 
-    pub(crate) fn response_id(&self) -> &str {
+    pub fn response_id(&self) -> &str {
         &self.response_id
     }
 
-    pub(crate) fn affinity(&self) -> &ProviderTransportAffinity {
+    pub fn affinity(&self) -> &ProviderTransportAffinity {
         &self.affinity
     }
 

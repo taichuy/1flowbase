@@ -980,6 +980,7 @@ dependencies = [
  "async-trait",
  "base64",
  "chacha20poly1305",
+ "control-plane-contracts",
  "domain",
  "ed25519-dalek",
  "flate2",
@@ -1003,6 +1004,21 @@ dependencies = [
  "time-tz",
  "tokio",
  "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "control-plane-contracts"
+version = "0.4.1"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "domain",
+ "extension-contracts",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "time",
  "uuid",
 ]
 
@@ -4009,7 +4025,7 @@ version = "0.4.1"
 dependencies = [
  "anyhow",
  "async-trait",
- "control-plane",
+ "control-plane-contracts",
  "domain",
  "moka",
  "serde_json",

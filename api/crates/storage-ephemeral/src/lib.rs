@@ -1,14 +1,13 @@
 extern crate self as storage_ephemeral;
 
 mod kv_store;
-mod lease_store;
 pub mod local;
 pub mod memory;
 mod session_store;
 mod wakeup_signal;
 
+pub use control_plane_contracts::ports::LeaseStore;
 pub use kv_store::EphemeralKvStore;
-pub use lease_store::LeaseStore;
 pub use local::{
     MemoryDistributedLock, MemoryEventBus, MemoryTaskQueue, MokaCacheStore, MokaRateLimitStore,
     MokaSessionStore,

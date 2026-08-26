@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use control_plane::ports::SessionStore;
+use control_plane_contracts::ports::SessionStore;
 use domain::SessionRecord;
 
 use crate::{

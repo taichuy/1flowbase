@@ -1,4 +1,4 @@
-use control_plane::ports::{EphemeralValueRevealMode, SessionStore};
+use control_plane_contracts::ports::{EphemeralValueRevealMode, SessionStore};
 use domain::SessionRecord;
 use storage_ephemeral::MokaSessionStore;
 use time::OffsetDateTime;

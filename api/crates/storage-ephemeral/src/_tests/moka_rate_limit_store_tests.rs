@@ -1,4 +1,4 @@
-use control_plane::ports::{EphemeralValueRevealMode, RateLimitStore};
+use control_plane_contracts::ports::{EphemeralValueRevealMode, RateLimitStore};
 use storage_ephemeral::MokaRateLimitStore;
 use time::Duration;
 

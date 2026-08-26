@@ -1,7 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     ephemeral_metadata_size_bytes, EphemeralEntrySnapshot, EphemeralEntryValueSnapshot,
     EphemeralValueRevealMode,
 };

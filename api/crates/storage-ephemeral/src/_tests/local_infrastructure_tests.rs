@@ -1,4 +1,6 @@
-use control_plane::ports::{DistributedLock, EphemeralValueRevealMode, EventBus, TaskQueue};
+use control_plane_contracts::ports::{
+    DistributedLock, EphemeralValueRevealMode, EventBus, TaskQueue,
+};
 use serde_json::json;
 use storage_ephemeral::{MemoryDistributedLock, MemoryEventBus, MemoryTaskQueue};
 use time::Duration;

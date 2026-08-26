@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     ephemeral_metadata_size_bytes, EphemeralEntrySnapshot, EphemeralEntryValueSnapshot,
     EphemeralInspectionCapabilities, EphemeralValueRevealMode, SessionStore,
 };
@@ -118,8 +118,10 @@ impl SessionStore for MokaSessionStore {
     }
 
     async fn reset_for_system_recovery(&self) -> anyhow::Result<()> {
-        <MokaCacheStore as control_plane::ports::CacheStore>::reset_for_system_recovery(&self.kv)
-            .await
+        <MokaCacheStore as control_plane_contracts::ports::CacheStore>::reset_for_system_recovery(
+            &self.kv,
+        )
+        .await
     }
 
     fn ephemeral_inspection_capabilities(&self) -> EphemeralInspectionCapabilities {

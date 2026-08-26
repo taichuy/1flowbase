@@ -1,5 +1,5 @@
 [package]
-name = "storage-ephemeral"
+name = "control-plane-contracts"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -7,10 +7,10 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
-control-plane-contracts = { path = "../control-plane-contracts" }
 domain = { path = "../domain" }
-moka.workspace = true
-tokio.workspace = true
+extension-contracts = { path = "../extension-contracts" }
+serde.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 time.workspace = true
 uuid.workspace = true

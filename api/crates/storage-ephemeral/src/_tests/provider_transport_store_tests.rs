@@ -1,4 +1,4 @@
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     ProviderContinuation, ProviderContinuationSlotId, ProviderProtocolContextLocator,
     ProviderProtocolContextSlotId, ProviderProtocolContextValue, ProviderTransportAffinity,
     ProviderTransportPayload, ProviderTransportSlotId, ProviderTransportStore,

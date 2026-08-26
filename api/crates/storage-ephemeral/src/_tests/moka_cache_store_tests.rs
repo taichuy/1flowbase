@@ -1,4 +1,4 @@
-use control_plane::ports::CacheStore;
+use control_plane_contracts::ports::CacheStore;
 use serde_json::json;
 use storage_ephemeral::{EphemeralKvStore, MokaCacheStore};
 use time::Duration;
