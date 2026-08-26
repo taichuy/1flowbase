@@ -1,5 +1,4 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use time::OffsetDateTime;
 use uuid::Uuid;
@@ -26,20 +25,7 @@ use crate::{
 
 pub const WORKFLOW_SCHEDULE_RUN_QUEUE: &str = "workflow-schedule-runs";
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct WorkflowScheduleTriggerRecord {
-    pub id: Uuid,
-    pub workspace_id: Uuid,
-    pub application_id: Uuid,
-    pub enabled: bool,
-    pub cron: String,
-    pub timezone: String,
-    pub input_payload: Value,
-    pub created_by: Uuid,
-    pub updated_by: Uuid,
-    pub created_at: OffsetDateTime,
-    pub updated_at: OffsetDateTime,
-}
+pub use control_plane_contracts::application_public_api::WorkflowScheduleTriggerRecord;
 
 #[derive(Debug, Clone)]
 pub struct ReplaceWorkflowScheduleTriggerCommand {

@@ -2,9 +2,7 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Result};
 use orchestration_runtime::compiler::FlowCompiler;
-use serde::{Deserialize, Serialize};
 use serde_json::json;
-use time::OffsetDateTime;
 use uuid::Uuid;
 
 use super::mapping::{
@@ -58,63 +56,9 @@ pub struct UnpublishApplicationCommand {
     pub application_id: Uuid,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ApplicationPublicationJsDependencySnapshot {
-    pub installation_id: Uuid,
-    pub provider_code: String,
-    pub plugin_id: String,
-    pub plugin_version: String,
-    pub alias: String,
-    pub package: String,
-    pub version: String,
-    pub target: String,
-    pub artifact_path: String,
-    pub artifact_hash: String,
-    pub integrity: String,
-    pub permissions: domain::JsDependencyPermissions,
-}
-
-impl From<domain::ApplicationJsDependencySelection> for ApplicationPublicationJsDependencySnapshot {
-    fn from(selection: domain::ApplicationJsDependencySelection) -> Self {
-        Self {
-            installation_id: selection.installation_id,
-            provider_code: selection.provider_code,
-            plugin_id: selection.plugin_id,
-            plugin_version: selection.plugin_version,
-            alias: selection.alias,
-            package: selection.package,
-            version: selection.version,
-            target: selection.target,
-            artifact_path: selection.artifact_path,
-            artifact_hash: selection.artifact_hash,
-            integrity: selection.integrity,
-            permissions: selection.permissions,
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ApplicationPublicationVersionRecord {
-    pub id: Uuid,
-    pub application_id: Uuid,
-    pub workspace_id: Uuid,
-    pub flow_id: Uuid,
-    pub flow_version_id: Uuid,
-    pub mapping_snapshot: ApplicationApiMappingConfig,
-    pub extension_slug: Option<String>,
-    pub compiled_plan_id: Uuid,
-    pub version_sequence: i64,
-    pub active: bool,
-    pub api_enabled: bool,
-    pub flow_schema_version: String,
-    pub document_hash: String,
-    pub document_snapshot: serde_json::Value,
-    pub runtime_profile_snapshot: serde_json::Value,
-    pub output_selector: serde_json::Value,
-    pub dependency_snapshot: Vec<ApplicationPublicationJsDependencySnapshot>,
-    pub created_by: Uuid,
-    pub created_at: OffsetDateTime,
-}
+pub use control_plane_contracts::application_public_api::{
+    ApplicationPublicationJsDependencySnapshot, ApplicationPublicationVersionRecord,
+};
 
 pub struct ApplicationPublicationService<R> {
     repository: R,

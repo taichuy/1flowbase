@@ -1,5 +1,4 @@
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::errors::ControlPlaneError;
@@ -26,10 +25,11 @@ pub struct ReplaceApplicationApiMappingCommand {
     pub mapping: ApplicationApiMappingConfig,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ApplicationApiMappingDraft {
-    pub mapping: ApplicationApiMappingConfig,
-}
+pub use control_plane_contracts::application_public_api::{
+    ApplicationApiMappingConfig, ApplicationApiMappingDraft, ApplicationApiMappingInput,
+    ApplicationApiMappingOutput, WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
+    WorkflowExtensionResponseMode,
+};
 
 pub struct ApplicationApiMappingService<R> {
     repository: R,
@@ -173,111 +173,6 @@ pub(crate) fn ensure_extension_registration_unchanged(
         Ok(())
     } else {
         Err(ControlPlaneError::Conflict("workflow_extension_registration_immutable").into())
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ApplicationApiMappingConfig {
-    pub input: ApplicationApiMappingInput,
-    pub output: ApplicationApiMappingOutput,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub extension: Option<WorkflowExtensionApiConfig>,
-}
-
-impl ApplicationApiMappingConfig {
-    pub fn default_native() -> Self {
-        Self {
-            input: ApplicationApiMappingInput {
-                query_target: "node-start.query".to_string(),
-                model_target: Some("node-start.model".to_string()),
-                inputs_target: Some("node-start".to_string()),
-                history_target: Some("node-start.history".to_string()),
-                attachments_target: Some("node-start.files".to_string()),
-            },
-            output: ApplicationApiMappingOutput::default(),
-            extension: None,
-        }
-    }
-
-    pub fn extension_slug(&self) -> Option<&str> {
-        self.extension
-            .as_ref()
-            .map(|extension| extension.slug.as_str())
-    }
-}
-
-impl ApplicationApiMappingDraft {
-    pub fn default_native() -> Self {
-        Self {
-            mapping: ApplicationApiMappingConfig::default_native(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ApplicationApiMappingInput {
-    pub query_target: String,
-    pub model_target: Option<String>,
-    pub inputs_target: Option<String>,
-    pub history_target: Option<String>,
-    pub attachments_target: Option<String>,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ApplicationApiMappingOutput {
-    pub answer_selector: Option<String>,
-    pub usage_selector: Option<String>,
-    pub files_selector: Option<String>,
-    pub error_selector: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct WorkflowExtensionApiConfig {
-    pub slug: String,
-    pub method: WorkflowExtensionHttpMethod,
-    pub response_mode: WorkflowExtensionResponseMode,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "UPPERCASE")]
-pub enum WorkflowExtensionHttpMethod {
-    Get,
-    Post,
-    Put,
-    Patch,
-    Delete,
-    Head,
-    Options,
-}
-
-impl WorkflowExtensionHttpMethod {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Get => "GET",
-            Self::Post => "POST",
-            Self::Put => "PUT",
-            Self::Patch => "PATCH",
-            Self::Delete => "DELETE",
-            Self::Head => "HEAD",
-            Self::Options => "OPTIONS",
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum WorkflowExtensionResponseMode {
-    Sync,
-    Async,
-}
-
-impl WorkflowExtensionResponseMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::Sync => "sync",
-            Self::Async => "async",
-        }
     }
 }
 

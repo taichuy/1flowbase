@@ -1,0 +1,1 @@
+mod application_public_api_contract_tests;
