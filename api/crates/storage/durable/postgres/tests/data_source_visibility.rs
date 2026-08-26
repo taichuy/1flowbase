@@ -35,11 +35,12 @@ async fn seeded_store() -> (
         .upsert_workspace(tenant.id, &format!("data-source-{}", Uuid::now_v7()))
         .await
         .unwrap();
-    store
-        .upsert_permission_catalog(&access_control::permission_catalog())
+    control_plane::bootstrap::upsert_permission_catalog(&store)
         .await
         .unwrap();
-    store.upsert_builtin_roles(workspace.id).await.unwrap();
+    control_plane::bootstrap::upsert_builtin_roles(&store, workspace.id)
+        .await
+        .unwrap();
     store
         .upsert_authenticator(&AuthenticatorRecord {
             id: PASSWORD_LOCAL_AUTHENTICATOR_ID,

@@ -909,10 +909,10 @@ async fn management_store() -> ManagementFixture {
     )
     .await
     .unwrap();
-    BootstrapRepository::upsert_permission_catalog(&store, &access_control::permission_catalog())
+    control_plane::bootstrap::upsert_permission_catalog(&store)
         .await
         .unwrap();
-    BootstrapRepository::upsert_builtin_roles(&store, workspace.id)
+    control_plane::bootstrap::upsert_builtin_roles(&store, workspace.id)
         .await
         .unwrap();
     BootstrapRepository::upsert_authenticator(

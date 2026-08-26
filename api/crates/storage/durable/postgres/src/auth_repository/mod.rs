@@ -656,31 +656,20 @@ impl BootstrapRepository for PgControlPlaneStore {
         Ok(control_plane::ports::WorkspaceBootstrapResult { workspace, created })
     }
 
-    async fn upsert_root_role(&self, workspace_id: Uuid) -> Result<()> {
-        upsert_role_templates(
-            self.pool(),
-            workspace_id,
-            access_control::bootstrap_role_templates()
-                .into_iter()
-                .filter(|role| matches!(role.scope_kind, RoleScopeKind::System)),
-        )
-        .await
+    async fn upsert_root_role(
+        &self,
+        workspace_id: Uuid,
+        templates: &[domain::RoleTemplate],
+    ) -> Result<()> {
+        upsert_role_templates(self.pool(), workspace_id, templates.iter().cloned()).await
     }
 
-    async fn seed_workspace_role_templates(&self, workspace_id: Uuid) -> Result<()> {
-        upsert_role_templates(
-            self.pool(),
-            workspace_id,
-            access_control::bootstrap_role_templates()
-                .into_iter()
-                .filter(|role| matches!(role.scope_kind, RoleScopeKind::Workspace)),
-        )
-        .await
-    }
-
-    async fn upsert_builtin_roles(&self, workspace_id: Uuid) -> Result<()> {
-        self.upsert_root_role(workspace_id).await?;
-        self.seed_workspace_role_templates(workspace_id).await
+    async fn seed_workspace_role_templates(
+        &self,
+        workspace_id: Uuid,
+        templates: &[domain::RoleTemplate],
+    ) -> Result<()> {
+        upsert_role_templates(self.pool(), workspace_id, templates.iter().cloned()).await
     }
 
     async fn upsert_root_user(

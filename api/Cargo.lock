@@ -4032,7 +4032,6 @@ dependencies = [
 name = "storage-durable-postgres"
 version = "0.4.1"
 dependencies = [
- "access-control",
  "anyhow",
  "async-trait",
  "base64",

@@ -85,6 +85,36 @@ async fn bootstrap_service_is_idempotent() {
 }
 
 #[tokio::test]
+async fn bootstrap_service_passes_access_control_role_templates_to_persistence() {
+    let repository = MemoryBootstrapRepository::default();
+
+    BootstrapService::new(repository.clone())
+        .run(&bootstrap_config())
+        .await
+        .unwrap();
+
+    let templates = access_control::bootstrap_role_templates();
+    let expected_root = templates
+        .iter()
+        .filter(|template| matches!(template.scope_kind, domain::RoleScopeKind::System))
+        .cloned()
+        .collect::<Vec<_>>();
+    let expected_workspace = templates
+        .into_iter()
+        .filter(|template| matches!(template.scope_kind, domain::RoleScopeKind::Workspace))
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        repository.root_role_template_inputs().await,
+        vec![expected_root]
+    );
+    assert_eq!(
+        repository.workspace_role_template_inputs().await,
+        vec![expected_workspace]
+    );
+}
+
+#[tokio::test]
 async fn bootstrap_service_seeds_password_local_authenticator_options() {
     let repository = MemoryBootstrapRepository::default();
     let service = BootstrapService::new(repository.clone());

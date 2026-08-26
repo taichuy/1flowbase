@@ -796,7 +796,7 @@ async fn ac_010_applications_console_policy_rehearsal_preserves_exact_and_partia
         workspace_id,
         "operator",
         &[
-            access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION,
+            control_plane::application::console_policy_migration::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION,
             "application.create.all",
             "application.view.all",
             "application.edit.all",
@@ -833,7 +833,7 @@ async fn ac_010_applications_console_policy_rehearsal_preserves_exact_and_partia
     assert_eq!(partial.groups()[0].operations().len(), 1);
     assert_eq!(
         partial.groups()[0].operations()[0].operation_id().as_str(),
-        access_control::APPLICATIONS_VIEW_OPERATION_ID
+        control_plane::application::console_policy_migration::APPLICATIONS_VIEW_OPERATION_ID
     );
     assert_eq!(
         partial.groups()[0].operations()[0].row_scope(),
@@ -850,7 +850,7 @@ async fn ac_011_rehearsal_fences_apply_and_verified_rollback_restores_pre_apply_
         workspace_id,
         "operator",
         &[
-            access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION,
+            control_plane::application::console_policy_migration::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION,
             "application.create.all",
             "application.view.all",
             "application.edit.all",
@@ -973,7 +973,7 @@ async fn ac_011_rehearsal_fences_apply_and_verified_rollback_restores_pre_apply_
         "#,
     )
     .bind(workspace_id)
-    .bind(access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION)
+    .bind(control_plane::application::console_policy_migration::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION)
     .fetch_one(store.pool())
     .await
     .unwrap();

@@ -1,4 +1,4 @@
-use access_control::permission_catalog;
+use access_control::{bootstrap_role_templates, permission_catalog};
 use anyhow::Result;
 use domain::AuthenticatorRecord;
 
@@ -23,6 +23,24 @@ pub struct BootstrapResult {
 
 pub struct BootstrapService<R> {
     repository: R,
+}
+
+pub async fn upsert_permission_catalog<R>(repository: &R) -> Result<()>
+where
+    R: BootstrapRepository,
+{
+    repository
+        .upsert_permission_catalog(&permission_catalog())
+        .await
+}
+
+pub async fn upsert_builtin_roles<R>(repository: &R, workspace_id: uuid::Uuid) -> Result<()>
+where
+    R: BootstrapRepository,
+{
+    repository
+        .upsert_builtin_roles(workspace_id, &bootstrap_role_templates())
+        .await
 }
 
 impl<R> BootstrapService<R>
@@ -98,9 +116,7 @@ where
                 )),
             })
             .await?;
-        self.repository
-            .upsert_permission_catalog(&permission_catalog())
-            .await?;
+        upsert_permission_catalog(&self.repository).await?;
 
         let tenant = self.repository.upsert_root_tenant().await?;
         let workspace_result = match official_catalog {
@@ -119,12 +135,25 @@ where
                     .await?
             }
         };
+        let role_templates = bootstrap_role_templates();
+        let root_role_templates = role_templates
+            .iter()
+            .filter(|role| matches!(role.scope_kind, domain::RoleScopeKind::System))
+            .cloned()
+            .collect::<Vec<_>>();
         self.repository
-            .upsert_root_role(workspace_result.workspace.id)
+            .upsert_root_role(workspace_result.workspace.id, &root_role_templates)
             .await?;
         if workspace_result.created {
+            let workspace_role_templates = role_templates
+                .into_iter()
+                .filter(|role| matches!(role.scope_kind, domain::RoleScopeKind::Workspace))
+                .collect::<Vec<_>>();
             self.repository
-                .seed_workspace_role_templates(workspace_result.workspace.id)
+                .seed_workspace_role_templates(
+                    workspace_result.workspace.id,
+                    &workspace_role_templates,
+                )
                 .await?;
         }
         let root_user = self

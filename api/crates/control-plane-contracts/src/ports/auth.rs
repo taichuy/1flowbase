@@ -61,11 +61,34 @@ pub trait BootstrapRepository: Send + Sync {
         workspace_name: &str,
         seed: &crate::i18n_catalog::VerifiedOfficialCatalogSeed,
     ) -> anyhow::Result<WorkspaceBootstrapResult>;
-    async fn upsert_root_role(&self, workspace_id: Uuid) -> anyhow::Result<()>;
-    async fn seed_workspace_role_templates(&self, workspace_id: Uuid) -> anyhow::Result<()>;
-    async fn upsert_builtin_roles(&self, workspace_id: Uuid) -> anyhow::Result<()> {
-        self.upsert_root_role(workspace_id).await?;
-        self.seed_workspace_role_templates(workspace_id).await
+    async fn upsert_root_role(
+        &self,
+        workspace_id: Uuid,
+        templates: &[RoleTemplate],
+    ) -> anyhow::Result<()>;
+    async fn seed_workspace_role_templates(
+        &self,
+        workspace_id: Uuid,
+        templates: &[RoleTemplate],
+    ) -> anyhow::Result<()>;
+    async fn upsert_builtin_roles(
+        &self,
+        workspace_id: Uuid,
+        templates: &[RoleTemplate],
+    ) -> anyhow::Result<()> {
+        let root_templates = templates
+            .iter()
+            .filter(|template| matches!(template.scope_kind, domain::RoleScopeKind::System))
+            .cloned()
+            .collect::<Vec<_>>();
+        self.upsert_root_role(workspace_id, &root_templates).await?;
+        let workspace_templates = templates
+            .iter()
+            .filter(|template| matches!(template.scope_kind, domain::RoleScopeKind::Workspace))
+            .cloned()
+            .collect::<Vec<_>>();
+        self.seed_workspace_role_templates(workspace_id, &workspace_templates)
+            .await
     }
     async fn upsert_root_user(
         &self,

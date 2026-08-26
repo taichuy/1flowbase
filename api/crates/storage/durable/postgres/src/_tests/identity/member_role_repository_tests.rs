@@ -32,11 +32,12 @@ async fn bootstrapped_store() -> (PgControlPlaneStore, Uuid, Uuid) {
         .await
         .unwrap();
 
-    store
-        .upsert_permission_catalog(&access_control::permission_catalog())
+    control_plane::bootstrap::upsert_permission_catalog(&store)
         .await
         .unwrap();
-    store.upsert_builtin_roles(workspace.id).await.unwrap();
+    control_plane::bootstrap::upsert_builtin_roles(&store, workspace.id)
+        .await
+        .unwrap();
     store
         .upsert_authenticator(&domain::AuthenticatorRecord {
             id: domain::PASSWORD_LOCAL_AUTHENTICATOR_ID,

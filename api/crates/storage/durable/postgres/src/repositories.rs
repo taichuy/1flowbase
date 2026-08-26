@@ -211,8 +211,12 @@ impl PgControlPlaneStore {
         BootstrapRepository::upsert_workspace(self, tenant_id, workspace_name).await
     }
 
-    pub async fn upsert_builtin_roles(&self, workspace_id: Uuid) -> Result<()> {
-        BootstrapRepository::upsert_builtin_roles(self, workspace_id).await
+    pub async fn upsert_builtin_roles(
+        &self,
+        workspace_id: Uuid,
+        templates: &[domain::RoleTemplate],
+    ) -> Result<()> {
+        BootstrapRepository::upsert_builtin_roles(self, workspace_id, templates).await
     }
 
     pub async fn upsert_root_user(

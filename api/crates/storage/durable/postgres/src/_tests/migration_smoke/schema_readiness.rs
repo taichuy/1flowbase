@@ -63,8 +63,7 @@ async fn migration_smoke_creates_workspace_tables_and_workspace_scoped_indexes()
         .fetch_one(&pool)
         .await
         .unwrap();
-    store
-        .upsert_permission_catalog(&access_control::permission_catalog())
+    control_plane::bootstrap::upsert_permission_catalog(&store)
         .await
         .unwrap();
 

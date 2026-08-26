@@ -10,8 +10,8 @@ use uuid::Uuid;
 
 use crate::ports::{BootstrapRepository, WorkspaceBootstrapResult};
 use domain::{
-    AuthenticatorRecord, BoundRole, PermissionDefinition, RoleScopeKind, TenantRecord, UserRecord,
-    UserStatus, WorkspaceRecord,
+    AuthenticatorRecord, BoundRole, PermissionDefinition, RoleScopeKind, RoleTemplate,
+    TenantRecord, UserRecord, UserStatus, WorkspaceRecord,
 };
 
 #[derive(Default, Clone)]
@@ -32,6 +32,8 @@ struct MemoryBootstrapRepositoryInner {
     root_tenant: RwLock<Option<TenantRecord>>,
     workspace: RwLock<Option<WorkspaceRecord>>,
     root_user: RwLock<Option<UserRecord>>,
+    root_role_template_inputs: RwLock<Vec<Vec<RoleTemplate>>>,
+    workspace_role_template_inputs: RwLock<Vec<Vec<RoleTemplate>>>,
 }
 
 impl MemoryBootstrapRepository {
@@ -81,6 +83,18 @@ impl MemoryBootstrapRepository {
 
     pub async fn seed_authenticator(&self, authenticator: AuthenticatorRecord) {
         self.inner.authenticators.write().await.push(authenticator);
+    }
+
+    pub async fn root_role_template_inputs(&self) -> Vec<Vec<RoleTemplate>> {
+        self.inner.root_role_template_inputs.read().await.clone()
+    }
+
+    pub async fn workspace_role_template_inputs(&self) -> Vec<Vec<RoleTemplate>> {
+        self.inner
+            .workspace_role_template_inputs
+            .read()
+            .await
+            .clone()
     }
 }
 
@@ -202,14 +216,32 @@ impl BootstrapRepository for MemoryBootstrapRepository {
         BootstrapRepository::upsert_workspace_for_bootstrap(self, tenant_id, workspace_name).await
     }
 
-    async fn upsert_root_role(&self, _workspace_id: Uuid) -> Result<()> {
+    async fn upsert_root_role(
+        &self,
+        _workspace_id: Uuid,
+        templates: &[RoleTemplate],
+    ) -> Result<()> {
+        self.inner
+            .root_role_template_inputs
+            .write()
+            .await
+            .push(templates.to_vec());
         Ok(())
     }
 
-    async fn seed_workspace_role_templates(&self, _workspace_id: Uuid) -> Result<()> {
+    async fn seed_workspace_role_templates(
+        &self,
+        _workspace_id: Uuid,
+        templates: &[RoleTemplate],
+    ) -> Result<()> {
         self.inner
             .workspace_role_template_seeds
             .fetch_add(1, Ordering::SeqCst);
+        self.inner
+            .workspace_role_template_inputs
+            .write()
+            .await
+            .push(templates.to_vec());
         Ok(())
     }
 
