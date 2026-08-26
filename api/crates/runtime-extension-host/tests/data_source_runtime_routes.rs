@@ -15,8 +15,8 @@ use plugin_framework::{
     DataSourceExecuteModelOperationInput, DataSourceModelOperationActorContext,
     DataSourceModelOperationScopeContext,
 };
-use plugin_runner::app;
-use plugin_runner::DataSourceHost;
+use runtime_extension_host::app;
+use runtime_extension_host::DataSourceHost;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 

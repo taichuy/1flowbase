@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use plugin_runner::{app, init_tracing, parse_bind_addr, DEFAULT_PLUGIN_RUNNER_ADDR};
+use runtime_extension_host::{app, init_tracing, parse_bind_addr, DEFAULT_PLUGIN_RUNNER_ADDR};
 use tokio::net::TcpListener;
 
 #[tokio::main]

@@ -31,7 +31,7 @@ use plugin_framework::{
     DataSourceExecuteModelOperationInput, DataSourceModelOperationActorContext,
     DataSourceModelOperationScopeContext,
 };
-use plugin_runner::{
+use runtime_extension_host::{
     capability_host::CapabilityHost, data_source_host::DataSourceHost, provider_host::ProviderHost,
 };
 use serde_json::{json, Map};
@@ -965,7 +965,7 @@ async fn strict_model_provider_binding_loads_the_stateful_lifecycle_host() {
     assert_eq!(snapshot.generation, 1);
     assert_eq!(
         snapshot.state,
-        plugin_runner::stdio_runtime::ProviderWorkerLifecycleState::Active
+        runtime_extension_host::stdio_runtime::ProviderWorkerLifecycleState::Active
     );
     let binding = crate::provider_runtime::ModelProviderSlotResolver::new(graph)
         .resolve(&installation)

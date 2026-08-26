@@ -28,7 +28,7 @@ use domain::{
     PluginVerificationStatus,
 };
 use plugin_framework::provider_contract::ProviderInvocationInput;
-use plugin_runner::{
+use runtime_extension_host::{
     capability_host::CapabilityHost, data_source_host::DataSourceHost, provider_host::ProviderHost,
 };
 use serde_json::{json, Map};

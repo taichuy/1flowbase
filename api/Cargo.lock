@@ -94,13 +94,13 @@ dependencies = [
  "observability",
  "orchestration-runtime",
  "plugin-framework",
- "plugin-runner",
  "postgres-test-support",
  "publish-gateway",
  "rand_core 0.6.4",
  "regex",
  "reqwest 0.12.28",
  "runtime-core",
+ "runtime-extension-host",
  "runtime-profile",
  "rust_decimal",
  "semver",
@@ -2736,19 +2736,8 @@ name = "plugin-runner"
 version = "0.4.1"
 dependencies = [
  "axum",
- "jsonschema",
- "libc",
- "plugin-framework",
- "runtime-profile",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "time",
+ "runtime-extension-host",
  "tokio",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]
@@ -3322,6 +3311,26 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "runtime-extension-host"
+version = "0.4.1"
+dependencies = [
+ "axum",
+ "jsonschema",
+ "libc",
+ "plugin-framework",
+ "runtime-profile",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "time",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

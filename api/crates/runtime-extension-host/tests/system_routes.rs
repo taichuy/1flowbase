@@ -2,7 +2,7 @@ use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
 };
-use plugin_runner::app;
+use runtime_extension_host::app;
 use serde_json::Value;
 use tower::ServiceExt;
 

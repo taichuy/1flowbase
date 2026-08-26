@@ -406,13 +406,13 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         .await?;
     let provider_runtime = Arc::new(ApiRuntimeServices::new(
         Arc::new(RwLock::new(
-            plugin_runner::provider_host::ProviderHost::default(),
+            runtime_extension_host::provider_host::ProviderHost::default(),
         )),
         Arc::new(RwLock::new(
-            plugin_runner::capability_host::CapabilityHost::default(),
+            runtime_extension_host::capability_host::CapabilityHost::default(),
         )),
         Arc::new(RwLock::new(
-            plugin_runner::data_source_host::DataSourceHost::default(),
+            runtime_extension_host::data_source_host::DataSourceHost::default(),
         )),
         Arc::clone(&extension_graph),
     )?);

@@ -34,13 +34,13 @@ use plugin_framework::{
     },
     ForwardProxyLease,
 };
-use plugin_runner::{
+use runtime_core::runtime_engine::DataSourceRuntimeRecordBackend;
+use runtime_extension_host::{
     capability_host::CapabilityHost,
     data_source_host::DataSourceHost,
     network_egress_host::{NetworkEgressHost, NetworkEgressWorkerConfig},
     provider_host::ProviderHost,
 };
-use runtime_core::runtime_engine::DataSourceRuntimeRecordBackend;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;

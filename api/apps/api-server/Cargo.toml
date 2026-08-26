@@ -57,7 +57,7 @@ storage-durable = { path = "../../crates/storage-durable" }
 storage-ephemeral = { path = "../../crates/storage-ephemeral" }
 storage-object = { path = "../../crates/storage-object" }
 observability = { path = "../../crates/observability" }
-plugin-runner = { path = "../plugin-runner" }
+runtime-extension-host = { path = "../../crates/runtime-extension-host" }
 runtime-profile = { path = "../../crates/runtime-profile" }
 
 [dev-dependencies]

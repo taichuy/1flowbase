@@ -6,18 +6,5 @@ license.workspace = true
 
 [dependencies]
 axum.workspace = true
-libc = "0.2"
-jsonschema.workspace = true
-plugin-framework = { path = "../../crates/plugin-framework" }
-runtime-profile = { path = "../../crates/runtime-profile" }
-serde.workspace = true
-serde_json.workspace = true
-time.workspace = true
+runtime-extension-host = { path = "../../crates/runtime-extension-host" }
 tokio.workspace = true
-tower.workspace = true
-tower-http.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
-
-[dev-dependencies]
-sha2.workspace = true

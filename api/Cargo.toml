@@ -7,6 +7,7 @@ members = [
   "crates/control-plane",
   "crates/orchestration-runtime",
   "crates/runtime-core",
+  "crates/runtime-extension-host",
   "crates/runtime-profile",
   "crates/publish-gateway",
   "crates/access-control",

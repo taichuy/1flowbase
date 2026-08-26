@@ -9,7 +9,7 @@ use axum::{
     http::{Method, Request, StatusCode},
     Router,
 };
-use plugin_runner::{app_with_state, AppState, CapabilityHost};
+use runtime_extension_host::{app_with_state, AppState, CapabilityHost};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 

@@ -152,13 +152,13 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
     let provider_runtime = std::sync::Arc::new(
         ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
             std::sync::Arc::new(RwLock::new(
-                plugin_runner::provider_host::ProviderHost::default(),
+                runtime_extension_host::provider_host::ProviderHost::default(),
             )),
             std::sync::Arc::new(RwLock::new(
-                plugin_runner::capability_host::CapabilityHost::default(),
+                runtime_extension_host::capability_host::CapabilityHost::default(),
             )),
             std::sync::Arc::new(RwLock::new(
-                plugin_runner::data_source_host::DataSourceHost::default(),
+                runtime_extension_host::data_source_host::DataSourceHost::default(),
             )),
         ),
     );

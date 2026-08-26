@@ -7,7 +7,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-use plugin_runner::network_egress_host::{
+use runtime_extension_host::network_egress_host::{
     NetworkEgressCleanupReason, NetworkEgressHost, NetworkEgressWorkerConfig,
     NetworkEgressWorkerState,
 };
