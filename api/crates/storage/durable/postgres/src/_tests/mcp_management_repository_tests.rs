@@ -367,10 +367,10 @@ async fn seed_store() -> (
         .upsert_workspace(tenant.id, "MCP Management")
         .await
         .unwrap();
-    control_plane::bootstrap::upsert_permission_catalog(&store)
+    control_plane_test_support::upsert_permission_catalog(&store)
         .await
         .unwrap();
-    control_plane::bootstrap::upsert_builtin_roles(&store, workspace.id)
+    control_plane_test_support::upsert_builtin_roles(&store, workspace.id)
         .await
         .unwrap();
     store
@@ -1032,7 +1032,7 @@ async fn mcp_tool_binding_write_scope_is_limited_to_actor_workspace() {
         .upsert_workspace(workspace.tenant_id, "Other MCP Management")
         .await
         .unwrap();
-    control_plane::bootstrap::upsert_builtin_roles(&store, other_workspace.id)
+    control_plane_test_support::upsert_builtin_roles(&store, other_workspace.id)
         .await
         .unwrap();
     let other_actor = store

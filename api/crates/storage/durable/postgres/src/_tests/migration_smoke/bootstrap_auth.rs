@@ -11,10 +11,10 @@ async fn bootstrap_repository_upserts_password_local_and_root_user() {
         .upsert_workspace(tenant.id, "1flowbase")
         .await
         .unwrap();
-    control_plane::bootstrap::upsert_permission_catalog(&store)
+    control_plane_test_support::upsert_permission_catalog(&store)
         .await
         .unwrap();
-    control_plane::bootstrap::upsert_builtin_roles(&store, workspace.id)
+    control_plane_test_support::upsert_builtin_roles(&store, workspace.id)
         .await
         .unwrap();
     store

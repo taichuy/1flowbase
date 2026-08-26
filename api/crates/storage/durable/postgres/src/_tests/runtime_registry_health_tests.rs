@@ -29,10 +29,10 @@ async fn seed_external_runtime_model(
         )
         .await
         .unwrap();
-    control_plane::bootstrap::upsert_permission_catalog(store)
+    control_plane_test_support::upsert_permission_catalog(store)
         .await
         .unwrap();
-    control_plane::bootstrap::upsert_builtin_roles(store, workspace.id)
+    control_plane_test_support::upsert_builtin_roles(store, workspace.id)
         .await
         .unwrap();
     store

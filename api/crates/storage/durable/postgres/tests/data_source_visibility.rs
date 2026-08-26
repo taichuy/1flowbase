@@ -35,10 +35,10 @@ async fn seeded_store() -> (
         .upsert_workspace(tenant.id, &format!("data-source-{}", Uuid::now_v7()))
         .await
         .unwrap();
-    control_plane::bootstrap::upsert_permission_catalog(&store)
+    control_plane_test_support::upsert_permission_catalog(&store)
         .await
         .unwrap();
-    control_plane::bootstrap::upsert_builtin_roles(&store, workspace.id)
+    control_plane_test_support::upsert_builtin_roles(&store, workspace.id)
         .await
         .unwrap();
     store

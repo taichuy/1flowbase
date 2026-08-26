@@ -1,0 +1,17 @@
+[package]
+name = "control-plane-test-support"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+anyhow.workspace = true
+control-plane = { path = "../control-plane" }
+uuid.workspace = true
+
+[dev-dependencies]
+access-control = { path = "../access-control" }
+async-trait.workspace = true
+domain = { path = "../domain" }
+tokio.workspace = true

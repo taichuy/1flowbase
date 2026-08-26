@@ -31,4 +31,5 @@ url.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]
+control-plane-test-support = { path = "../../../control-plane-test-support" }
 postgres-test-support = { path = "../../../postgres-test-support" }

@@ -91,10 +91,10 @@ async fn seed_store() -> (
         .upsert_workspace(tenant.id, "1flowbase")
         .await
         .unwrap();
-    control_plane::bootstrap::upsert_permission_catalog(&store)
+    control_plane_test_support::upsert_permission_catalog(&store)
         .await
         .unwrap();
-    control_plane::bootstrap::upsert_builtin_roles(&store, workspace.id)
+    control_plane_test_support::upsert_builtin_roles(&store, workspace.id)
         .await
         .unwrap();
     store
@@ -194,10 +194,10 @@ async fn seed_store_before_main_instance_aggregation() -> (
         .upsert_workspace(tenant.id, "1flowbase")
         .await
         .unwrap();
-    control_plane::bootstrap::upsert_permission_catalog(&store)
+    control_plane_test_support::upsert_permission_catalog(&store)
         .await
         .unwrap();
-    control_plane::bootstrap::upsert_builtin_roles(&store, workspace.id)
+    control_plane_test_support::upsert_builtin_roles(&store, workspace.id)
         .await
         .unwrap();
     store
