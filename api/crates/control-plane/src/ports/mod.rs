@@ -21,10 +21,6 @@ mod system_backup;
 mod ui_management;
 
 use async_trait::async_trait;
-use domain::{
-    ActorContext, ApiKeyRecord, AuditLogRecord, AuthenticatorRecord, DataModelScopeKind,
-    PermissionDefinition, RoleTemplate, ScopeContext, TenantRecord, UserRecord, WorkspaceRecord,
-};
 use plugin_framework::provider_contract::{
     ProviderBalanceResult, ProviderCompactResult, ProviderCountTokensInput,
     ProviderCountTokensResult, ProviderInvocationInput, ProviderInvocationResult,

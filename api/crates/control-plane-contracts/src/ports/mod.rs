@@ -1,5 +1,6 @@
 pub mod application;
 pub mod application_public_api;
+pub mod auth;
 pub mod data_source;
 pub mod extension_installation;
 pub mod file_management;
@@ -27,6 +28,7 @@ use uuid::Uuid;
 
 pub use application::*;
 pub use application_public_api::*;
+pub use auth::*;
 pub use data_source::*;
 pub use extension_installation::*;
 pub use file_management::*;

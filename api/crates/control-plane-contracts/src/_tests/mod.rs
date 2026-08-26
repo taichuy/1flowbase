@@ -1,4 +1,5 @@
 mod application_public_api_contract_tests;
+mod auth_contract_tests;
 mod backup_recovery_contract_tests;
 mod console_policy_migration_contract_tests;
 mod i18n_catalog_contract_tests;
