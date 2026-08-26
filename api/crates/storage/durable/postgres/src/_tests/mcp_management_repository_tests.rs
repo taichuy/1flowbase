@@ -2,7 +2,8 @@ use control_plane::mcp_bundle::{
     ExportMcpInstanceBundleCommand, ImportMcpBundleCommand, McpInstanceBundleExportKind,
 };
 use control_plane::ports::{
-    CreateMcpToolInput, ExtensionInstallationRepository, McpManagementRepository,
+    CreateMcpInstanceInput, CreateMcpToolBindingInput, CreateMcpToolInput,
+    CreateMcpUpstreamConnectionInput, ExtensionInstallationRepository, McpManagementRepository,
     SeedMcpBundleGraphInput, UpsertExtensionInstallationInput,
 };
 
@@ -661,24 +662,22 @@ async fn issue_1246_ac_005_ac_008_ac_009_upstream_secret_and_import_are_safe_and
 }
 
 #[tokio::test]
-async fn mcp_instance_bundle_includes_only_connections_referenced_by_its_bound_tools() {
-    let (store, _workspace, actor) = seed_store().await;
-    let service = McpManagementService::new(store);
-    let mut proxy_dependencies = Vec::new();
+async fn mcp_proxy_graph_records_preserve_connection_and_binding_associations() {
+    let (store, workspace, actor) = seed_store().await;
+    let mut graph_records = Vec::new();
 
-    for (connection_name, remote_tool_name) in [
-        ("Selected MCP", "selected.lookup"),
-        ("Unrelated MCP", "unrelated.lookup"),
+    for (instance_id, tool_id) in [
+        ("selected_instance", "selected_tool"),
+        ("unrelated_instance", "unrelated_tool"),
     ] {
-        let connection = service
-            .save_upstream_connection(SaveMcpUpstreamConnectionCommand {
+        let connection_id = uuid::Uuid::now_v7();
+        let connection = store
+            .create_mcp_upstream_connection(&CreateMcpUpstreamConnectionInput {
+                id: connection_id,
                 actor_user_id: actor.id,
-                connection_id: None,
-                name: connection_name.into(),
-                endpoint: format!(
-                    "https://{}.example.com/rpc",
-                    remote_tool_name.replace('.', "-")
-                ),
+                workspace_id: workspace.id,
+                name: format!("{tool_id} connection"),
+                endpoint: format!("https://{tool_id}.example.com/rpc"),
                 transport: domain::McpUpstreamTransport::StreamableHttp,
                 auth_type: domain::McpUpstreamAuthType::None,
                 custom_header_name: None,
@@ -686,35 +685,37 @@ async fn mcp_instance_bundle_includes_only_connections_referenced_by_its_bound_t
             })
             .await
             .unwrap();
-        service
-            .record_upstream_discovery(RecordMcpUpstreamDiscoveryCommand {
+        let tool = store
+            .create_mcp_tool(&CreateMcpToolInput {
+                id: uuid::Uuid::now_v7(),
                 actor_user_id: actor.id,
-                connection_id: connection.id,
-                discovered_at: OffsetDateTime::now_utc(),
-                tools: vec![McpRemoteToolDefinition {
-                    remote_tool_name: remote_tool_name.into(),
-                    description: Some(remote_tool_name.into()),
-                    input_schema: serde_json::json!({"type": "object"}),
-                    output_schema: serde_json::json!({"type": "object"}),
-                    schema_hash: format!("{remote_tool_name}-schema"),
-                }],
+                workspace_id: workspace.id,
+                tool_id: tool_id.into(),
+                name: tool_id.into(),
+                short_description: tool_id.into(),
+                full_description: tool_id.into(),
+                execution_target: domain::McpToolExecutionTarget::McpProxy {
+                    upstream_connection_id: connection_id,
+                    remote_tool_name: format!("{tool_id}.lookup"),
+                    source_schema_hash: format!("{tool_id}-schema"),
+                },
+                parameter_schema: serde_json::json!({"type": "object"}),
+                result_schema: serde_json::json!({"type": "object"}),
+                input_mapping: serde_json::json!({}),
+                output_mapping: serde_json::json!({}),
+                permission_code: None,
+                risk_level: domain::McpRiskLevel::High,
+                des_id: uuid::Uuid::now_v7().simple().to_string()[..8].to_string(),
+                des_id_required: false,
+                status: domain::McpToolStatus::Draft,
             })
             .await
             .unwrap();
-        let imported = service
-            .import_upstream_tools(actor.id, connection.id, &[remote_tool_name.to_string()])
-            .await
-            .unwrap();
-        proxy_dependencies.push((connection.id, imported[0].tool_id.clone()));
-    }
-
-    for (instance_id, (_, tool_id)) in [
-        ("selected_instance", &proxy_dependencies[0]),
-        ("unrelated_instance", &proxy_dependencies[1]),
-    ] {
-        service
-            .create_instance(CreateMcpInstanceCommand {
+        let instance = store
+            .create_mcp_instance(&CreateMcpInstanceInput {
+                id: uuid::Uuid::now_v7(),
                 actor_user_id: actor.id,
+                workspace_id: workspace.id,
                 instance_id: instance_id.into(),
                 name: instance_id.into(),
                 description_short: None,
@@ -723,41 +724,45 @@ async fn mcp_instance_bundle_includes_only_connections_referenced_by_its_bound_t
             })
             .await
             .unwrap();
-        service
-            .create_tool_binding(CreateMcpToolBindingCommand {
+        let binding = store
+            .create_mcp_tool_binding(&CreateMcpToolBindingInput {
+                id: uuid::Uuid::now_v7(),
                 actor_user_id: actor.id,
-                instance_id: instance_id.into(),
+                instance_record_id: instance.id,
+                tool_record_id: tool.id,
                 group_path: "/".into(),
-                tool_id: tool_id.clone(),
                 display_alias: None,
                 visible: true,
                 sort_order: 1,
             })
             .await
             .unwrap();
+        graph_records.push((connection, tool, instance, binding));
     }
 
-    let bundle = service
-        .export_instance_bundle(ExportMcpInstanceBundleCommand {
-            actor_user_id: actor.id,
-            instance_id: "selected_instance".into(),
-            organization: "taichuy".into(),
-            bundle_id: "selected_instance".into(),
-            bundle_version: "1.0.0".into(),
-            locale: "zh_Hans".into(),
-            current_system_version: "0.2.6".into(),
-            kind: McpInstanceBundleExportKind::Portable,
-        })
+    let connections = store
+        .list_mcp_upstream_connections(workspace.id)
         .await
-        .unwrap()
-        .package;
-
-    assert_eq!(bundle.instances.len(), 1);
-    assert_eq!(bundle.tools.len(), 1);
-    assert_eq!(bundle.connections.len(), 1);
-    assert_eq!(bundle.instances[0].instance_id, "selected_instance");
-    assert_eq!(bundle.tools[0].tool_id, proxy_dependencies[0].1);
-    assert_eq!(bundle.connections[0].connection_id, proxy_dependencies[0].0);
+        .unwrap();
+    let tools = store.list_mcp_tools(workspace.id).await.unwrap();
+    assert_eq!(connections.len(), 2);
+    assert_eq!(tools.len(), 2);
+    for (connection, tool, instance, binding) in graph_records {
+        assert!(connections.iter().any(|record| record.id == connection.id));
+        assert!(matches!(
+            tool.execution_target,
+            domain::McpToolExecutionTarget::McpProxy {
+                upstream_connection_id,
+                ..
+            } if upstream_connection_id == connection.id
+        ));
+        assert_eq!(binding.instance_record_id, instance.id);
+        assert_eq!(binding.tool_record_id, tool.id);
+        assert_eq!(
+            store.list_mcp_tool_bindings(&[instance.id]).await.unwrap(),
+            vec![binding]
+        );
+    }
 }
 
 #[tokio::test]

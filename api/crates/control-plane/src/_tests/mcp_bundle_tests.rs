@@ -10,8 +10,8 @@ use uuid::Uuid;
 use crate::{
     mcp_bundle::{
         compare_system_versions, official_builtin_interface_disposition,
-        retain_official_builtin_tools, OfficialBuiltinInterfaceDisposition,
-        SeedBuiltinMcpBundleCommand,
+        retain_official_builtin_tools, ExportMcpInstanceBundleCommand, McpInstanceBundleExportKind,
+        OfficialBuiltinInterfaceDisposition, SeedBuiltinMcpBundleCommand,
     },
     mcp_management::McpManagementService,
     ports::*,
@@ -103,12 +103,36 @@ struct SeedGraphState {
     instances: BTreeMap<String, (domain::McpManagedBundleSource, usize)>,
 }
 
-#[derive(Clone, Default)]
-struct SeedOnlyMcpRepository {
-    state: Arc<Mutex<SeedGraphState>>,
+struct McpBundleExportSnapshot {
+    actor: domain::ActorContext,
+    instances: Vec<domain::McpInstanceRecord>,
+    groups: Vec<domain::McpGroupRecord>,
+    bindings: Vec<domain::McpToolBindingRecord>,
+    policies: Vec<domain::McpInstanceDiscoveryPolicyRecord>,
+    tools: Vec<domain::McpToolRecord>,
+    connections: Vec<domain::McpUpstreamConnectionRecord>,
 }
 
-impl SeedOnlyMcpRepository {
+#[derive(Clone, Default)]
+struct McpBundleFixtureRepository {
+    state: Arc<Mutex<SeedGraphState>>,
+    export_snapshot: Option<Arc<McpBundleExportSnapshot>>,
+}
+
+impl McpBundleFixtureRepository {
+    fn with_export_snapshot(snapshot: McpBundleExportSnapshot) -> Self {
+        Self {
+            state: Arc::default(),
+            export_snapshot: Some(Arc::new(snapshot)),
+        }
+    }
+
+    fn export_snapshot(&self) -> &McpBundleExportSnapshot {
+        self.export_snapshot
+            .as_deref()
+            .expect("export fixture must provide a workspace snapshot")
+    }
+
     fn remove_managed_graph(&self) {
         let mut state = self
             .state
@@ -141,7 +165,7 @@ impl SeedOnlyMcpRepository {
 }
 
 #[async_trait]
-impl McpManagementRepository for SeedOnlyMcpRepository {
+impl McpManagementRepository for McpBundleFixtureRepository {
     async fn record_mcp_extension_bundle_import(
         &self,
         _workspace_id: Uuid,
@@ -162,24 +186,39 @@ impl McpManagementRepository for SeedOnlyMcpRepository {
 
     async fn load_actor_context_for_user(
         &self,
-        _actor_user_id: Uuid,
+        actor_user_id: Uuid,
     ) -> anyhow::Result<domain::ActorContext> {
-        unreachable!("builtin seed does not authorize through actor context")
+        let actor = &self.export_snapshot().actor;
+        assert_eq!(actor.user_id, actor_user_id);
+        Ok(actor.clone())
     }
 
     async fn list_mcp_instances(
         &self,
-        _workspace_id: Uuid,
+        workspace_id: Uuid,
     ) -> anyhow::Result<Vec<domain::McpInstanceRecord>> {
-        unreachable!("seed-only fixture does not list instances")
+        Ok(self
+            .export_snapshot()
+            .instances
+            .iter()
+            .filter(|instance| instance.workspace_id == workspace_id)
+            .cloned()
+            .collect())
     }
 
     async fn get_mcp_instance(
         &self,
-        _workspace_id: Uuid,
-        _instance_id: &str,
+        workspace_id: Uuid,
+        instance_id: &str,
     ) -> anyhow::Result<Option<domain::McpInstanceRecord>> {
-        unreachable!("seed-only fixture does not read instances")
+        Ok(self
+            .export_snapshot()
+            .instances
+            .iter()
+            .find(|instance| {
+                instance.workspace_id == workspace_id && instance.instance_id == instance_id
+            })
+            .cloned())
     }
 
     async fn create_mcp_instance(
@@ -279,9 +318,15 @@ impl McpManagementRepository for SeedOnlyMcpRepository {
 
     async fn list_mcp_upstream_connections(
         &self,
-        _workspace_id: Uuid,
+        workspace_id: Uuid,
     ) -> anyhow::Result<Vec<domain::McpUpstreamConnectionRecord>> {
-        unreachable!("seed-only fixture does not list upstream connections")
+        Ok(self
+            .export_snapshot()
+            .connections
+            .iter()
+            .filter(|connection| connection.workspace_id == workspace_id)
+            .cloned()
+            .collect())
     }
 
     async fn get_mcp_upstream_connection(
@@ -385,9 +430,15 @@ impl McpManagementRepository for SeedOnlyMcpRepository {
 
     async fn list_mcp_groups(
         &self,
-        _instance_record_ids: &[Uuid],
+        instance_record_ids: &[Uuid],
     ) -> anyhow::Result<Vec<domain::McpGroupRecord>> {
-        unreachable!("seed-only fixture does not list groups")
+        Ok(self
+            .export_snapshot()
+            .groups
+            .iter()
+            .filter(|group| instance_record_ids.contains(&group.instance_record_id))
+            .cloned()
+            .collect())
     }
 
     async fn upsert_mcp_group(
@@ -425,9 +476,15 @@ impl McpManagementRepository for SeedOnlyMcpRepository {
 
     async fn list_mcp_tools(
         &self,
-        _workspace_id: Uuid,
+        workspace_id: Uuid,
     ) -> anyhow::Result<Vec<domain::McpToolRecord>> {
-        unreachable!("seed-only fixture does not list tools")
+        Ok(self
+            .export_snapshot()
+            .tools
+            .iter()
+            .filter(|tool| tool.workspace_id == workspace_id)
+            .cloned()
+            .collect())
     }
 
     async fn get_mcp_tool(
@@ -468,9 +525,15 @@ impl McpManagementRepository for SeedOnlyMcpRepository {
 
     async fn list_mcp_tool_bindings(
         &self,
-        _instance_record_ids: &[Uuid],
+        instance_record_ids: &[Uuid],
     ) -> anyhow::Result<Vec<domain::McpToolBindingRecord>> {
-        unreachable!("seed-only fixture does not list bindings")
+        Ok(self
+            .export_snapshot()
+            .bindings
+            .iter()
+            .filter(|binding| instance_record_ids.contains(&binding.instance_record_id))
+            .cloned()
+            .collect())
     }
 
     async fn create_mcp_tool_binding(
@@ -497,9 +560,15 @@ impl McpManagementRepository for SeedOnlyMcpRepository {
 
     async fn list_mcp_instance_discovery_policies(
         &self,
-        _instance_record_ids: &[Uuid],
+        instance_record_ids: &[Uuid],
     ) -> anyhow::Result<Vec<domain::McpInstanceDiscoveryPolicyRecord>> {
-        unreachable!("seed-only fixture does not list policies")
+        Ok(self
+            .export_snapshot()
+            .policies
+            .iter()
+            .filter(|policy| instance_record_ids.contains(&policy.instance_record_id))
+            .cloned()
+            .collect())
     }
 
     async fn get_mcp_instance_discovery_policy(
@@ -586,7 +655,7 @@ fn managed_frontstage_package(version: &str) -> domain::McpBundlePackage {
 
 #[tokio::test]
 async fn builtin_seed_respects_version_receipt_after_managed_graph_is_deleted() {
-    let repository = SeedOnlyMcpRepository::default();
+    let repository = McpBundleFixtureRepository::default();
     let service = McpManagementService::new(repository.clone());
     let actor_user_id = Uuid::now_v7();
     let workspace_id = Uuid::now_v7();
@@ -621,7 +690,7 @@ async fn builtin_seed_respects_version_receipt_after_managed_graph_is_deleted() 
 
 #[tokio::test]
 async fn new_builtin_version_adds_managed_tools_once() {
-    let repository = SeedOnlyMcpRepository::default();
+    let repository = McpBundleFixtureRepository::default();
     let service = McpManagementService::new(repository.clone());
     let actor_user_id = Uuid::now_v7();
     let workspace_id = Uuid::now_v7();
@@ -670,6 +739,131 @@ async fn new_builtin_version_adds_managed_tools_once() {
         .iter()
         .all(|source| source.bundle_version == "1.1.0"));
     assert_eq!(snapshot.applied_versions, vec!["1.0.2", "1.1.0"]);
+}
+
+#[tokio::test]
+async fn instance_export_includes_only_the_bound_tools_connection_dependencies() {
+    let actor_user_id = Uuid::from_u128(10);
+    let workspace_id = Uuid::from_u128(20);
+    let selected_instance_record_id = Uuid::from_u128(30);
+    let unrelated_instance_record_id = Uuid::from_u128(31);
+    let selected_connection_id = Uuid::from_u128(40);
+    let unrelated_connection_id = Uuid::from_u128(41);
+
+    let instance = |id, instance_id: &str| domain::McpInstanceRecord {
+        id,
+        workspace_id,
+        instance_id: instance_id.into(),
+        name: instance_id.into(),
+        description_short: None,
+        status: domain::McpInstanceStatus::Enabled,
+        default_entry_path: "/".into(),
+        managed_by: None,
+        created_by: actor_user_id,
+        updated_by: actor_user_id,
+        created_at: OffsetDateTime::UNIX_EPOCH,
+        updated_at: OffsetDateTime::UNIX_EPOCH,
+    };
+    let policy = |id, instance_record_id| domain::McpInstanceDiscoveryPolicyRecord {
+        id,
+        workspace_id,
+        instance_record_id,
+        list_default_limit: 100,
+        list_max_depth: 8,
+        list_regex_enabled: true,
+        list_regex_max_length: 256,
+        list_return_fields: serde_json::json!(["name", "description"]),
+        created_by: actor_user_id,
+        updated_by: actor_user_id,
+        created_at: OffsetDateTime::UNIX_EPOCH,
+        updated_at: OffsetDateTime::UNIX_EPOCH,
+    };
+    let connection = |id, name: &str| domain::McpUpstreamConnectionRecord {
+        id,
+        workspace_id,
+        name: name.into(),
+        endpoint: format!("https://{name}.example.com/rpc"),
+        transport: domain::McpUpstreamTransport::StreamableHttp,
+        auth_type: domain::McpUpstreamAuthType::None,
+        custom_header_name: None,
+        status: domain::McpUpstreamConnectionStatus::Enabled,
+        credentials_configured: false,
+        last_connected_at: None,
+        last_discovered_at: None,
+        last_error: None,
+        created_by: actor_user_id,
+        updated_by: actor_user_id,
+        created_at: OffsetDateTime::UNIX_EPOCH,
+        updated_at: OffsetDateTime::UNIX_EPOCH,
+    };
+    let proxy_tool = |id, tool_id: &str, upstream_connection_id| {
+        let mut record = tool(
+            id,
+            tool_id,
+            domain::McpToolExecutionTarget::McpProxy {
+                upstream_connection_id,
+                remote_tool_name: format!("{tool_id}.lookup"),
+                source_schema_hash: format!("{tool_id}-schema"),
+            },
+        );
+        record.workspace_id = workspace_id;
+        record.created_by = actor_user_id;
+        record.updated_by = actor_user_id;
+        record
+    };
+    let scoped_binding = |id, instance_record_id, tool_id: &str| {
+        let mut record = binding(id, tool_id);
+        record.instance_record_id = instance_record_id;
+        record.created_by = actor_user_id;
+        record.updated_by = actor_user_id;
+        record
+    };
+
+    let repository = McpBundleFixtureRepository::with_export_snapshot(McpBundleExportSnapshot {
+        actor: domain::ActorContext::root(actor_user_id, workspace_id, "root"),
+        instances: vec![
+            instance(selected_instance_record_id, "selected_instance"),
+            instance(unrelated_instance_record_id, "unrelated_instance"),
+        ],
+        groups: Vec::new(),
+        bindings: vec![
+            scoped_binding(1, selected_instance_record_id, "selected_tool"),
+            scoped_binding(2, unrelated_instance_record_id, "unrelated_tool"),
+        ],
+        policies: vec![
+            policy(Uuid::from_u128(50), selected_instance_record_id),
+            policy(Uuid::from_u128(51), unrelated_instance_record_id),
+        ],
+        tools: vec![
+            proxy_tool(1, "selected_tool", selected_connection_id),
+            proxy_tool(2, "unrelated_tool", unrelated_connection_id),
+        ],
+        connections: vec![
+            connection(selected_connection_id, "selected"),
+            connection(unrelated_connection_id, "unrelated"),
+        ],
+    });
+    let bundle = McpManagementService::new(repository)
+        .export_instance_bundle(ExportMcpInstanceBundleCommand {
+            actor_user_id,
+            instance_id: "selected_instance".into(),
+            organization: "taichuy".into(),
+            bundle_id: "selected_instance".into(),
+            bundle_version: "1.0.0".into(),
+            locale: "zh_Hans".into(),
+            current_system_version: "0.2.6".into(),
+            kind: McpInstanceBundleExportKind::Portable,
+        })
+        .await
+        .unwrap()
+        .package;
+
+    assert_eq!(bundle.instances.len(), 1);
+    assert_eq!(bundle.instances[0].instance_id, "selected_instance");
+    assert_eq!(bundle.tools.len(), 1);
+    assert_eq!(bundle.tools[0].tool_id, "selected_tool");
+    assert_eq!(bundle.connections.len(), 1);
+    assert_eq!(bundle.connections[0].connection_id, selected_connection_id);
 }
 
 #[test]
