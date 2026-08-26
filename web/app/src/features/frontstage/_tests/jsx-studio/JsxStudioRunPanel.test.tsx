@@ -173,25 +173,6 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     );
   });
 
-  test('AC-006 runs Iconfont sources inside the Block-owned iframe', async () => {
-    const compiler = createCompiler();
-    renderPanel({
-      code: `
-        import React from 'react';
-        import { createFromIconfontCN } from '@ant-design/icons';
-        const IconFont = createFromIconfontCN({ scriptUrl: 'https://at.alicdn.com/t/example.js' });
-        export default () => <IconFont type="icon-example" />;
-      `,
-      revision: 'run:iconfont',
-      nativeCompiler: compiler
-    });
-
-    expect(
-      await screen.findByTestId('frontstage-unrestricted-tsx-frame-block-1')
-    ).toHaveAttribute('sandbox', 'allow-scripts');
-    expect(compiler).not.toHaveBeenCalled();
-  });
-
   test('D1-AC-004 shows stable compile diagnostics and retries only the frozen source', async () => {
     const successful = compileNativeReactComponent(source('recovered'), [
       {
@@ -258,7 +239,7 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     expect(revokeDraftRun).toHaveBeenCalledTimes(2);
   });
 
-  test('AC-002 delegates a bare third-party package to the unrestricted iframe', async () => {
+  test('AC-002 fails closed for a module absent from the frontend registry', async () => {
     const compiler = vi.fn().mockResolvedValue({
       ok: false,
       diagnostics: [
@@ -277,10 +258,15 @@ describe('JsxStudioRunPanel Native React run revision', () => {
       nativeCompiler: compiler
     });
 
+    expect(await screen.findByText('运行失败')).toBeInTheDocument();
     expect(
-      await screen.findByTestId('frontstage-unrestricted-tsx-frame-block-1')
-    ).toHaveAttribute('sandbox', 'allow-scripts');
-    expect(compiler).not.toHaveBeenCalled();
+      screen.getByText(
+        /Import source 'dayjs' is not allowed\./u
+      )
+    ).toBeInTheDocument();
+    expect(compiler).toHaveBeenCalledWith(
+      expect.objectContaining({ moduleDefinitions: expect.any(Array) })
+    );
   });
 
   test('D4-AC-007/D3R-AC-007 confines render errors to the current declarative Portal Host', async () => {

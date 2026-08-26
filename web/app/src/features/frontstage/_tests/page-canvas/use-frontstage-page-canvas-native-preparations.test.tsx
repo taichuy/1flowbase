@@ -84,44 +84,6 @@ describe('useFrontstagePageCanvasNativePreparations', () => {
       })
     );
   });
-
-  test('AC-004 prepares URL imports for the unrestricted iframe without the local module registry', async () => {
-    const fetchSource = vi.fn(async (): Promise<ConsoleFrontstageBlockNodeCode> => ({
-      block_id: 'block-1',
-      page_id: 'page-1',
-      source_code:
-        "import Widget from 'https://esm.sh/example-widget@1'; export default () => <Widget />;",
-      source_sha256: 'external-source-sha'
-    }));
-    const compile = vi.fn();
-    const moduleRegistryFactory = (): NativeReactModuleRegistry => ({
-      definitions: [],
-      load: vi.fn(async () => ({})),
-      resolveModuleMap: vi.fn(async () => ({})),
-      resolveModuleAssets: vi.fn(async () => [])
-    });
-    const { result } = renderHook(() =>
-      useFrontstagePageCanvasNativePreparations({
-        actorId: 'actor-1',
-        actorWorkspaceId: 'workspace-1',
-        readPlan: readPlan(),
-        fetchSource,
-        compile,
-        moduleRegistryFactory
-      })
-    );
-
-    await waitFor(() =>
-      expect(result.current.preparations[0]).toMatchObject({
-        status: 'ready',
-        prepared: {
-          source:
-            "import Widget from 'https://esm.sh/example-widget@1'; export default () => <Widget />;"
-        }
-      })
-    );
-    expect(compile).not.toHaveBeenCalled();
-  });
 });
 
 function readPlan(): FrontstagePageCanvasBlockCodeReadPlan {
