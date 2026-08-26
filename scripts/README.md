@@ -95,10 +95,10 @@ node scripts/node/dev-up.js stop
 
 说明：
 
-- 默认管理前端、`api-server`、`plugin-runner`，并在全量动作下管理 `docker/docker-compose.middleware.yaml`。
+- 默认管理前端与唯一 Backend `api-server`，并在全量动作下管理 `docker/docker-compose.middleware.yaml`。
 - `--skip-docker` 只跳过 Docker 中间件，不影响前后端本地进程。
 - `--frontend-only` 只管理前端。
-- `--backend-only` 只管理 `api-server` 与 `plugin-runner`。
+- `--backend-only` 只管理 `api-server`。
 - 日志写入 `tmp/logs/`。
 - pid 记录写入 `tmp/dev-up/pids/`。
 
@@ -194,7 +194,7 @@ node scripts/node/verify.js ci
 - `cargo check --workspace`
 
 CI 可用 `core-libs`、`runtime-storage`、`apps` 分片；`test` 目标额外支持
-`control-plane`、`api-server`、`plugin-runner` 包级分片。
+`control-plane`、`api-server` 包级分片。
 
 ### `node scripts/node/verify-coverage.js [frontend|backend|all]`
 
@@ -386,10 +386,9 @@ node scripts/node/cli/bump-version.js --to 0.3.0
 node scripts/node/container-image-security/verify-version.js print-tag web
 node scripts/node/container-image-security/verify-version.js web v0.3.0
 node scripts/node/container-image-security/verify-version.js api-server v0.3.0
-node scripts/node/container-image-security/verify-version.js plugin-runner v0.3.0
 ```
 
-支持组件：`web`、`api-server`、`plugin-runner`。
+支持组件：`web`、`api-server`。
 
 ## Plugin CLI
 
@@ -412,7 +411,7 @@ node scripts/node/plugin/cli.js package <plugin-path> --out ./dist
 - `package` 生成过滤 `demo/`、`scripts/`、`target/` 后的 `.1flowbasepkg` 安装产物，并返回 sha256 元数据。
 - 可通过 `--runtime-binary`、`--target`、`--signing-key-pem-file`、`--signing-key-id`、`--issued-at` 写入 runtime binary 和官方签名元数据。
 
-当前 demo dev 仍是本地 scaffold，不代表真实 `plugin-runner` debug runtime 已经打通。
+当前 demo dev 仍是本地 scaffold，不代表进程内 RuntimeExtensionHost debug runtime 已经打通。
 
 ## 清理rust缓存
 
@@ -441,7 +440,7 @@ cargo build --manifest-path api/Cargo.toml --workspace --release --locked
 
 ### `node scripts/node/clean-build-cache/cli.js [all|backend|frontend] [选项]`
 
-停止 `api-server` 与 `plugin-runner`，然后清理本地构建缓存。默认范围是 `all`，会真实删除。
+停止 `api-server`，然后清理本地构建缓存。默认范围是 `all`，会真实删除。
 
 ```bash
 node scripts/node/clean-build-cache/cli.js --dry-run

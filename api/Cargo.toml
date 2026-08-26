@@ -1,7 +1,6 @@
 [workspace]
 members = [
   "apps/api-server",
-  "apps/plugin-runner",
   "crates/domain",
   "crates/control-plane-contracts",
   "crates/control-plane",

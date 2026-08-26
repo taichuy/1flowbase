@@ -17,7 +17,7 @@
 
 - `apps/api-server` owns loader, policy, inventory, infra bootstrap, route mount, and boot assembly.
 - `plugins/host-extensions` owns HostExtension source manifests; `plugins/templates` owns source templates.
-- RuntimeExtension packages continue to use `apps/plugin-runner`.
+- RuntimeExtension packages run through the in-process `crates/runtime-extension-host` owned by the single `api-server` composition root.
 - CapabilityPlugin packages are workspace-selectable abilities.
 
 ## Verification

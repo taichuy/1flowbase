@@ -85,7 +85,6 @@ function normalizeRunInputs(options) {
     repoRoot: requireDirectory(options.repoRoot, 'repository root'),
     databaseUrl: requirePostgresUrl(options.databaseUrl),
     apiServerBin: requireFile(options.apiServerBin, 'api-server binary', true),
-    pluginRunnerBin: requireFile(options.pluginRunnerBin, 'plugin-runner binary', true),
     openaiPackage: singlePackage(options.openaiPackageDir, 'OpenAI'),
     anthropicPackage: singlePackage(options.anthropicPackageDir, 'Anthropic'),
     openaiCompatiblePackage: singlePackage(

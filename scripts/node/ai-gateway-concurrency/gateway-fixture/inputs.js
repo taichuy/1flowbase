@@ -97,7 +97,6 @@ function normalizeOptions(options) {
   return {
     databaseUrl: requirePostgresUrl(options.databaseUrl),
     apiServerBin,
-    pluginRunnerBin: requireFile(options.pluginRunnerBin, 'plugin-runner binary', { executable: true }),
     openaiPackage: requireFile(options.openaiPackage, 'official OpenAI package archive'),
     anthropicPackage: requireFile(options.anthropicPackage, 'official Anthropic package archive'),
     openaiCompatiblePackage: requireFile(

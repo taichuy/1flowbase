@@ -10,7 +10,7 @@ use api_server::{
         OfficialMcpBundleCatalogSource, OfficialMcpBundleSourcePort,
     },
     provider_runtime::{ApiDataSourceRuntimeRecordBackend, ApiProviderRuntime, ApiRuntimeServices},
-    runtime_profile_client::{HostApiRuntimeProfileCollector, PluginRunnerSystemPort},
+    runtime_profile_client::{HostApiRuntimeProfileCollector, RuntimeHostSystemPort},
 };
 use argon2::{
     password_hash::{PasswordHasher, SaltString},
@@ -40,10 +40,10 @@ const PAGE_TAB_SAVE_PATH: &str = "/api/console/frontstage/pages/{page_id}/tabs/{
 const PAGE_TAB_DELETE_PATH: &str = "/api/console/frontstage/pages/{page_id}/tabs/{tab_id}";
 
 #[derive(Clone)]
-struct UnreachablePluginRunner;
+struct UnreachableRuntimeHost;
 
 #[async_trait]
-impl PluginRunnerSystemPort for UnreachablePluginRunner {
+impl RuntimeHostSystemPort for UnreachableRuntimeHost {
     async fn fetch_runtime_profile(&self) -> anyhow::Result<runtime_profile::RuntimeProfile> {
         anyhow::bail!("plugin runner unavailable in frontstage callable tests")
     }
@@ -224,7 +224,7 @@ async fn fixture() -> Fixture {
             HostApiRuntimeProfileCollector::new(process_started_at).unwrap(),
         ),
         extension_boot_snapshot: None,
-        plugin_runner_system: Arc::new(UnreachablePluginRunner),
+        runtime_host_system: Arc::new(UnreachableRuntimeHost),
         official_plugin_source: Arc::new(NoopPluginSource),
         official_mcp_bundle_source: Arc::new(NoopMcpSource),
         official_extension_catalog_source: Arc::new(

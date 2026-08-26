@@ -20,7 +20,7 @@ api/plugins/
 - `packages/` stores `.1flowbasepkg` artifacts only.
 - `installed/` stores installed package results only.
 - `host-extensions/*` packages are system/root HostExtension source manifests owned by the plugin source workspace; they are not statically linked into `api-server`.
-- `runtime-extensions/*` packages implement registered runtime slots through plugin-runner.
+- `runtime-extensions/*` packages implement registered runtime slots through the in-process runtime-extension host.
 - `capability-plugins/*` packages contribute workspace-selected app/workflow capabilities.
 - `sets/minimal.yaml` and `sets/default.yaml` select package sources for deployment assembly. They do not make plugin source code part of `api-server`; selected plugins still move through package/install/load lifecycle.
 
@@ -28,7 +28,7 @@ api/plugins/
 
 - `api-server` owns loader, policy, inventory, infra bootstrap, route mount, and boot assembly.
 - The plugin source workspace owns HostExtension source manifests and templates.
-- RuntimeExtension packages continue to use `plugin-runner`.
+- RuntimeExtension packages are reconciled and executed by the single Host owned by `api-server`.
 - CapabilityPlugin packages remain workspace-selectable abilities.
 
 ## Data Source Plugin Rules
@@ -70,4 +70,4 @@ delivery is at-least-once, so consumers must deduplicate by `event_id`.
 
 - Start from `plugins/templates/data_source_http_fixture` for an external data-source runtime-extension fixture.
 - Keep the method names and JSON output shapes aligned with the runtime contract.
-- Replace the shell fixture runtime with your real executable after the package loads cleanly through `plugin-runner`.
+- Replace the shell fixture runtime with your real executable after the package passes runtime-extension-host conformance tests.

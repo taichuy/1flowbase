@@ -8,11 +8,13 @@ const FORBIDDEN_EDGES: &[(&str, &str)] = &[
     ("storage-durable-postgres", "access-control"),
     ("storage-ephemeral", "control-plane"),
     ("orchestration-runtime", "plugin-framework"),
+    ("orchestration-runtime", "runtime-extension-host"),
+    ("control-plane", "runtime-extension-host"),
     ("runtime-core", "plugin-framework"),
+    ("runtime-core", "runtime-extension-host"),
     ("runtime-profile", "plugin-framework"),
     ("runtime-extension-host", "plugin-framework"),
     ("control-plane-contracts", "control-plane"),
-    ("api-server", "plugin-runner"),
     ("api-server", "publish-gateway"),
 ];
 
@@ -281,33 +283,12 @@ fn protocol_layers_use_services_without_concrete_storage_or_sql() {
 }
 
 #[test]
-fn plugin_runner_is_only_a_runtime_host_entrypoint() {
+fn d_004_plugin_runner_is_absent_from_the_workspace_and_production_dependencies() {
     let api = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let metadata = cargo_metadata(&api);
-    let workspace_packages = metadata["workspace_members"]
-        .as_array()
-        .expect("workspace members should be an array")
-        .iter()
-        .filter_map(serde_json::Value::as_str)
+    let package_names = package_names_by_id(&metadata)
+        .into_values()
         .collect::<Vec<_>>();
-    let package_ids = package_names_by_id(&metadata);
-    let internal_dependencies = resolved_dependencies(&metadata, "plugin-runner")
-        .into_iter()
-        .filter(|dependency| {
-            package_ids.iter().any(|(id, name)| {
-                workspace_packages.contains(&id.as_str()) && name == &dependency.package
-            })
-        })
-        .map(|dependency| dependency.package)
-        .collect::<Vec<_>>();
-    assert_eq!(
-        internal_dependencies,
-        vec!["runtime-extension-host".to_owned()]
-    );
-    assert_eq!(
-        fs::read_dir(api.join("apps/plugin-runner/src"))
-            .expect("plugin runner source directory")
-            .count(),
-        1
-    );
+    assert!(!package_names.iter().any(|name| name == "plugin-runner"));
+    assert!(!api.join("apps/plugin-runner").exists());
 }

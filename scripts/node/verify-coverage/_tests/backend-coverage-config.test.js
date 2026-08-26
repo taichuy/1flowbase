@@ -19,7 +19,7 @@ test('coverage thresholds include critical runtime areas', () => {
     69
   );
   assert.equal(
-    backendThresholds.some((threshold) => threshold.packageName === 'plugin-runner'),
+    backendThresholds.some((threshold) => threshold.packageName === 'runtime-extension-host'),
     true
   );
   assert.equal(

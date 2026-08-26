@@ -52,7 +52,7 @@ test('buildComposeContent uses GHCR images and isolated rollback-gate volumes', 
 
   assert.match(compose, /ghcr\.io\/taichuy\/1flowbase-web:\$\{FLOWBASE_WEB_VERSION\}/u);
   assert.match(compose, /ghcr\.io\/taichuy\/1flowbase-api-server:\$\{FLOWBASE_API_SERVER_VERSION\}/u);
-  assert.match(compose, /ghcr\.io\/taichuy\/1flowbase-plugin-runner:\$\{FLOWBASE_PLUGIN_RUNNER_VERSION\}/u);
+  assert.doesNotMatch(compose, /plugin-runner|FLOWBASE_PLUGIN_RUNNER_VERSION/u);
   assert.match(compose, /rollback-db-data:/u);
   assert.match(compose, /"39123:80"/u);
   assert.match(compose, /BOOTSTRAP_ROOT_PASSWORD: rollback-gate-root-password/u);

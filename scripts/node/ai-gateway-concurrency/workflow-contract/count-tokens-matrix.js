@@ -13,11 +13,11 @@ const OFFICIAL_PROVIDERS = Object.freeze([
 
 const COUNT_TOKENS_GATE_MATRIX = Object.freeze([
   Object.freeze({ id: 'complete_envelope', owner: 'plugin-framework', filter: 'count_tokens', expected: 'typed_total' }),
-  Object.freeze({ id: 'capability_boundary', owner: 'plugin-runner', filter: 'd1_p03_count_tokens_missing_capability', expected: 'generic_estimate' }),
-  Object.freeze({ id: 'plugin_unavailable', owner: 'plugin-runner', filter: 'd1_p03_count_tokens_missing_plugin', expected: 'generic_estimate' }),
+  Object.freeze({ id: 'capability_boundary', owner: 'runtime-extension-host', filter: 'd1_p03_count_tokens_missing_capability', expected: 'generic_estimate' }),
+  Object.freeze({ id: 'plugin_unavailable', owner: 'runtime-extension-host', filter: 'd1_p03_count_tokens_missing_plugin', expected: 'generic_estimate' }),
   Object.freeze({ id: 'upstream_success', owner: 'provider-conformance', filter: 'six_actual_packages', expected: 'upstream_api_or_provider_estimate' }),
   Object.freeze({ id: 'upstream_4xx', owner: 'api-server', filter: 'count_tokens', expected: 'typed_4xx' }),
-  Object.freeze({ id: 'malformed_provider_result', owner: 'plugin-runner', filter: 'count_tokens_preserves_upstream_success_and_estimates_provider_failures', expected: 'generic_estimate' }),
+  Object.freeze({ id: 'malformed_provider_result', owner: 'runtime-extension-host', filter: 'count_tokens_preserves_upstream_success_and_estimates_provider_failures', expected: 'generic_estimate' }),
   Object.freeze({ id: 'model_tokenizer_shape', owner: 'plugin-framework', filter: 'count_tokens', expected: 'model_tokenizer' }),
   Object.freeze({ id: 'unknown_media', owner: 'provider-conformance', filter: 'six_actual_packages', expected: 'partial_with_unknown_count' }),
   Object.freeze({ id: 'generic_estimate', owner: 'plugin-framework', filter: 'provider_count_tokens_estimator', expected: 'generic_estimate' }),

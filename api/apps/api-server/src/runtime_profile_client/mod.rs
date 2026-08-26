@@ -11,7 +11,9 @@ use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 const API_SERVER_TARGET_ID: &str = "api-server";
-const PLUGIN_RUNNER_TARGET_ID: &str = "plugin-runner";
+// External system-status compatibility keeps this legacy target id while the
+// observation now comes from the in-process RuntimeExtensionHost.
+const RUNTIME_HOST_TARGET_ID: &str = "plugin-runner";
 const SNAPSHOT_FRESHNESS: Duration = Duration::seconds(1);
 const SNAPSHOT_RETENTION: Duration = Duration::seconds(10);
 const REFRESH_LOCK_TTL: Duration = Duration::seconds(10);
@@ -50,39 +52,16 @@ impl ApiRuntimeProfilePort for HostApiRuntimeProfileCollector {
 }
 
 #[async_trait]
-pub trait PluginRunnerSystemPort: Send + Sync {
+pub trait RuntimeHostSystemPort: Send + Sync {
     async fn fetch_runtime_profile(&self) -> Result<RuntimeProfile>;
 }
 
-#[derive(Clone)]
-pub struct HttpPluginRunnerSystemClient {
-    base_url: String,
-    client: reqwest::Client,
-}
-
-impl HttpPluginRunnerSystemClient {
-    pub fn new(base_url: impl Into<String>) -> Self {
-        Self {
-            base_url: base_url.into(),
-            client: reqwest::Client::new(),
-        }
-    }
-}
-
 #[async_trait]
-impl PluginRunnerSystemPort for HttpPluginRunnerSystemClient {
+impl RuntimeHostSystemPort for runtime_extension_host::RuntimeExtensionHost {
     async fn fetch_runtime_profile(&self) -> Result<RuntimeProfile> {
-        self.client
-            .get(format!(
-                "{}/system/runtime-profile",
-                self.base_url.trim_end_matches('/')
-            ))
-            .send()
+        let host = self.clone();
+        tokio::task::spawn_blocking(move || host.collect_runtime_profile().map_err(Into::into))
             .await?
-            .error_for_status()?
-            .json()
-            .await
-            .map_err(Into::into)
     }
 }
 
@@ -153,7 +132,7 @@ pub(crate) struct RuntimeProfileSnapshotCache {
     cache_store: Arc<dyn CacheStore>,
     refresh_lock: Arc<dyn DistributedLock>,
     api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
-    plugin_runner_system: Arc<dyn PluginRunnerSystemPort>,
+    runtime_host_system: Arc<dyn RuntimeHostSystemPort>,
     api_node_id: String,
     runtime_instance_id: String,
 }
@@ -163,7 +142,7 @@ impl RuntimeProfileSnapshotCache {
         cache_store: Arc<dyn CacheStore>,
         refresh_lock: Arc<dyn DistributedLock>,
         api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
-        plugin_runner_system: Arc<dyn PluginRunnerSystemPort>,
+        runtime_host_system: Arc<dyn RuntimeHostSystemPort>,
         api_node_id: impl Into<String>,
         process_started_at: OffsetDateTime,
     ) -> Self {
@@ -171,7 +150,7 @@ impl RuntimeProfileSnapshotCache {
             cache_store,
             refresh_lock,
             api_runtime_profile,
-            plugin_runner_system,
+            runtime_host_system,
             api_node_id: api_node_id.into(),
             runtime_instance_id: process_started_at.unix_timestamp_nanos().to_string(),
         }
@@ -238,7 +217,7 @@ impl RuntimeProfileSnapshotCache {
     async fn read_fresh_snapshot(&self) -> Result<Option<RuntimeProfilesSnapshot>> {
         let (api_observation, runner_observation) = tokio::try_join!(
             self.read_target_observation(API_SERVER_TARGET_ID),
-            self.read_target_observation(PLUGIN_RUNNER_TARGET_ID),
+            self.read_target_observation(RUNTIME_HOST_TARGET_ID),
         )?;
         let (Some(api_observation), Some(runner_observation)) =
             (api_observation, runner_observation)
@@ -293,7 +272,7 @@ impl RuntimeProfileSnapshotCache {
 
     async fn refresh_snapshot(&self) -> Result<RuntimeProfilesSnapshot> {
         let api_profile = self.api_runtime_profile.collect_runtime_profile().await?;
-        let runner_profile = self.plugin_runner_system.fetch_runtime_profile().await.ok();
+        let runner_profile = self.runtime_host_system.fetch_runtime_profile().await.ok();
         let observed_at = OffsetDateTime::now_utc();
         let api_observation =
             CachedRuntimeTargetObservation::reachable(api_profile.clone(), observed_at);
@@ -302,13 +281,13 @@ impl RuntimeProfileSnapshotCache {
                 CachedRuntimeTargetObservation::reachable(profile.clone(), observed_at)
             }
             None => {
-                CachedRuntimeTargetObservation::unreachable(PLUGIN_RUNNER_TARGET_ID, observed_at)
+                CachedRuntimeTargetObservation::unreachable(RUNTIME_HOST_TARGET_ID, observed_at)
             }
         };
         let api_value = serde_json::to_value(api_observation)?;
         let runner_value = serde_json::to_value(runner_observation)?;
         let api_key = self.target_key(API_SERVER_TARGET_ID);
-        let runner_key = self.target_key(PLUGIN_RUNNER_TARGET_ID);
+        let runner_key = self.target_key(RUNTIME_HOST_TARGET_ID);
 
         tokio::try_join!(
             self.cache_store

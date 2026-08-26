@@ -357,7 +357,6 @@ test('AC multi-pool controlled negatives: missing tuple and duplicate identity/k
       list_runs: { url: `http://127.0.0.1:4100/applications/${ordinal}/runs` },
     },
     runtime_activity: { url: `http://127.0.0.1:4100/applications/${ordinal}/activity` },
-    plugin_runner_active_streams: { url: 'http://127.0.0.1:4200/providers/active-streams' },
   });
   assert.throws(() => requireAnthropicTargetPool([target(1)]), /exactly two/u);
   assert.throws(() => requireAnthropicTargetPool([target(1), { ...target(2), provider_instance_id: 'instance-1' }]), /reused provider_instance_id/u);
@@ -366,7 +365,8 @@ test('AC multi-pool controlled negatives: missing tuple and duplicate identity/k
     { providerInstanceId: 'instance-1' },
   ]]), false);
   assert.equal(hasExpectedActiveStreamOverlap(['instance-1', 'instance-2'], [[
-    { providerInstanceId: 'instance-1' }, { providerInstanceId: 'instance-2' },
+    { providerInstanceId: 'instance-1', status: 'active' },
+    { providerInstanceId: 'instance-2', status: 'active' },
   ]]), true);
 });
 

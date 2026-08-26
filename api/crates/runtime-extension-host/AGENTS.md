@@ -7,10 +7,10 @@
 
 ## Evidence
 
-- host lifecycle、health 与 stdio/runtime contract 测试必须通过。
-- `plugin-runner` 保持纯启动入口，API protocol 层禁止导入本 crate 内部模块。
+- host lifecycle、profile、process、stream/cancel 与 stdio/runtime contract 测试必须通过。
+- 本 crate 只提供进程内 `RuntimeExtensionHost` facade 和稳定 Port 实现；不得新增 HTTP router、监听端口或独立 executable。
 
 ## Resources And Stop
 
-- 宿主可依赖 `extension-contracts` 与 `extension-package-runtime`，不得依赖完整 `plugin-framework`，也不吸收 package 管理或控制面状态决策。
+- 宿主可依赖 `extension-contracts`、`extension-package-runtime`、`runtime-core` 与 `runtime-profile`，不得依赖完整 `plugin-framework`，也不吸收 package 管理或控制面状态决策。
 - 若调整需要改变 Runtime 行为、插件 manifest 或部署进程边界，停止并返回 Root。

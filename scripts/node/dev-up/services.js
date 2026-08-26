@@ -8,9 +8,7 @@ const FRONTEND_COLD_STARTUP_TIMEOUT_MS = 60_000;
 const CARGO_COLD_STARTUP_TIMEOUT_MS = 60_000;
 const DEFAULT_WEB_PORT = 3100;
 const DEFAULT_API_SERVER_PORT = 7800;
-const DEFAULT_PLUGIN_RUNNER_PORT = 7801;
 const DEFAULT_API_SERVER_ADDR = '0.0.0.0:7800';
-const DEFAULT_PLUGIN_RUNNER_ADDR = '0.0.0.0:7801';
 
 function getRepoRoot() {
   return path.resolve(__dirname, '..', '..', '..');
@@ -77,14 +75,6 @@ function getServiceDefinitions(repoRoot) {
     DEFAULT_API_SERVER_ADDR,
     DEFAULT_API_SERVER_PORT
   );
-  const pluginRunnerAddress = parseServiceAddress(
-    localEnv.PLUGIN_RUNNER_ADDR,
-    DEFAULT_PLUGIN_RUNNER_ADDR,
-    DEFAULT_PLUGIN_RUNNER_PORT
-  );
-  const pluginRunnerInternalBaseUrl =
-    localEnv.API_PLUGIN_RUNNER_INTERNAL_BASE_URL ||
-    `http://127.0.0.1:${pluginRunnerAddress.port}`;
   const webPort = parsePositivePort(
     webEnv.VITE_DEV_SERVER_PORT || localEnv.VITE_DEV_SERVER_PORT,
     DEFAULT_WEB_PORT
@@ -134,33 +124,8 @@ function getServiceDefinitions(repoRoot) {
       },
       envFile: apiServerEnvFile,
       envExampleFile: apiServerEnvExampleFile,
-      envOverrides: {
-        API_PLUGIN_RUNNER_INTERNAL_BASE_URL: pluginRunnerInternalBaseUrl,
-      },
       logFile: path.join(paths.logDir, 'api-server.log'),
       pidFile: path.join(paths.pidDir, 'api-server.json'),
-    },
-    'plugin-runner': {
-      key: 'plugin-runner',
-      label: 'plugin-runner',
-      repoRoot,
-      cwd: path.join(repoRoot, 'api'),
-      command: 'cargo',
-      args: ['run', '-p', 'plugin-runner', '--bin', 'plugin-runner'],
-      bindHost: pluginRunnerAddress.bindHost,
-      probeHost: '127.0.0.1',
-      port: pluginRunnerAddress.port,
-      startupTimeoutMs: CARGO_COLD_STARTUP_TIMEOUT_MS,
-      readinessProbe: {
-        path: '/health',
-        expectedJson: {
-          service: 'plugin-runner',
-          status: 'ok',
-        },
-      },
-      envFile: apiServerEnvFile,
-      logFile: path.join(paths.logDir, 'plugin-runner.log'),
-      pidFile: path.join(paths.pidDir, 'plugin-runner.json'),
     },
   };
 }

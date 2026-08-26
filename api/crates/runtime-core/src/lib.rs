@@ -8,6 +8,7 @@ pub mod ordered_tree_template;
 pub mod resource_descriptor;
 pub mod resource_registry;
 pub mod runtime_acl;
+pub mod runtime_backend;
 pub mod runtime_engine;
 pub mod runtime_model_registry;
 pub mod runtime_record_repository;

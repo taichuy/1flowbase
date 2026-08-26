@@ -16,7 +16,7 @@
 按 `api/` 目录树顺序阅读和维护：
 
 - `apps/api-server` 是 Axum HTTP API 宿主，负责 public / console / runtime route、middleware、response、OpenAPI、loader、policy、inventory、infra bootstrap、route mount 与 boot assembly。
-- `apps/plugin-runner` 是 RuntimeExtension 运行宿主，不承载控制面业务逻辑。
+- `apps/api-server` 是唯一 Backend composition root，在进程内创建、注入并关闭唯一 `RuntimeExtensionHost`；不得恢复独立 Runtime 服务或端口。
 - `crates/access-control` 放权限目录、内建角色、权限校验。
 - `crates/control-plane-contracts` 放存储适配器可实现的稳定 repository trait、错误与持久化投影；不得依赖 `control-plane`。
 - `crates/control-plane` 放业务 service、状态写入口与审计入口，并消费或重导出稳定 contracts。
@@ -27,8 +27,8 @@
 - `crates/observability` 放日志、trace 与可观测性基础能力。
 - `crates/orchestration-runtime` 放编排编译、绑定运行时、执行引擎、预览执行器。
 - `crates/plugin-framework` 放插件 manifest / schema / contribution / registry / package 边界。
-- `crates/runtime-extension-host` 负责 RuntimeExtension 宿主装配，只依赖 bounded contracts 与 runtime package loader，不依赖完整 `plugin-framework`，且不向协议层泄漏内部实现。
-- `crates/runtime-core` 放 runtime registry、runtime CRUD 核心和 slot engine。
+- `crates/runtime-extension-host` 负责 RuntimeExtension Registry、Worker、stdio、profile 与生命周期的唯一运行真值，只依赖 bounded contracts、`runtime-core` 与 runtime package loader，不依赖完整 `plugin-framework`，且不向协议层泄漏内部实现。
+- `crates/runtime-core` 放 runtime registry、runtime CRUD 核心、slot engine 与稳定 Runtime Backend Port；不得依赖具体 Host。
 - `crates/runtime-profile` 放运行目标、locale、profile fingerprint 与插件运行环境快照。
 - `crates/storage/durable/core` 是 `storage-durable` 稳定边界，只放 backend kind 等不依赖具体 adapter 的类型。
 - `crates/storage/durable/postgres` 是 `storage-durable-postgres` crate，放 PostgreSQL repository impl、启动入口、查询、事务、migrations 与存储层 mapper。

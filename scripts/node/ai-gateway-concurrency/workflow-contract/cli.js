@@ -13,7 +13,6 @@ const RUN_FIELDS = new Map([
   ['--repo-root', 'repoRoot'],
   ['--database-url', 'databaseUrl'],
   ['--api-server-bin', 'apiServerBin'],
-  ['--plugin-runner-bin', 'pluginRunnerBin'],
   ['--openai-package-dir', 'openaiPackageDir'],
   ['--anthropic-package-dir', 'anthropicPackageDir'],
   ['--openai-compatible-package-dir', 'openaiCompatiblePackageDir'],

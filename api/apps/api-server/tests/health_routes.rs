@@ -9,7 +9,7 @@ use api_server::{
         OfficialMcpBundleCatalogSource, OfficialMcpBundleSourcePort,
     },
     provider_runtime::{ApiDataSourceRuntimeRecordBackend, ApiProviderRuntime, ApiRuntimeServices},
-    runtime_profile_client::{HostApiRuntimeProfileCollector, PluginRunnerSystemPort},
+    runtime_profile_client::{HostApiRuntimeProfileCollector, RuntimeHostSystemPort},
 };
 use argon2::{
     password_hash::{PasswordHasher, SaltString},
@@ -32,10 +32,10 @@ use tokio::sync::RwLock;
 use tower::ServiceExt;
 
 #[derive(Clone)]
-struct UnreachablePluginRunnerSystemClient;
+struct UnreachableRuntimeHostSystemClient;
 
 #[async_trait]
-impl PluginRunnerSystemPort for UnreachablePluginRunnerSystemClient {
+impl RuntimeHostSystemPort for UnreachableRuntimeHostSystemClient {
     async fn fetch_runtime_profile(&self) -> anyhow::Result<runtime_profile::RuntimeProfile> {
         anyhow::bail!("plugin runner unavailable in health route tests")
     }
@@ -227,7 +227,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
                 HostApiRuntimeProfileCollector::new(process_started_at).unwrap(),
             ),
             extension_boot_snapshot: None,
-            plugin_runner_system: std::sync::Arc::new(UnreachablePluginRunnerSystemClient),
+            runtime_host_system: std::sync::Arc::new(UnreachableRuntimeHostSystemClient),
             official_plugin_source: std::sync::Arc::new(NoopOfficialPluginSource),
             official_mcp_bundle_source: std::sync::Arc::new(NoopOfficialMcpBundleSource),
             official_extension_catalog_source: std::sync::Arc::new(

@@ -122,9 +122,6 @@ function readReadyManifest(filePath) {
     if (typeof target.runtime_activity?.url !== 'string') {
       throw new Error(`WP3 ready manifest omitted ${provider} runtime activity endpoint`);
     }
-    if (typeof target.plugin_runner_active_streams?.url !== 'string') {
-      throw new Error(`WP3 ready manifest omitted ${provider} plugin active streams endpoint`);
-    }
   }
   const anthropicPool = manifest.pools?.anthropic;
   if (!Array.isArray(anthropicPool) || anthropicPool.length !== 2) {
@@ -144,8 +141,8 @@ function readReadyManifest(filePath) {
         throw new Error(`WP3 ready manifest Anthropic pool target ${index} omitted durable ${key}`);
       }
     }
-    if (typeof target.runtime_activity?.url !== 'string' || typeof target.plugin_runner_active_streams?.url !== 'string') {
-      throw new Error(`WP3 ready manifest Anthropic pool target ${index} omitted runtime endpoints`);
+    if (typeof target.runtime_activity?.url !== 'string') {
+      throw new Error(`WP3 ready manifest Anthropic pool target ${index} omitted runtime endpoint`);
     }
     requireReadyEndpoint(
       target.gateway?.anthropic_messages_url,
@@ -263,7 +260,6 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
       databaseUrl: inputs.databaseUrl,
       apiServerBin: inputs.apiServerBin,
       frontstageCompilerRoot: path.join(inputs.repoRoot, 'web'),
-      pluginRunnerBin: inputs.pluginRunnerBin,
       openaiPackage: inputs.openaiPackage,
       anthropicPackage: inputs.anthropicPackage,
       openaiCompatiblePackage: inputs.openaiCompatiblePackage,
@@ -281,7 +277,6 @@ async function runWorkflowContract(rawOptions, dependencies = {}) {
         )({
           officialSourceSha: inputs.officialSourceSha,
           pairedLockRevision: inputs.pairedLockRevision,
-          pluginRunnerBin: inputs.pluginRunnerBin,
           packages: {
             openai: inputs.openaiPackage,
             anthropic: inputs.anthropicPackage,

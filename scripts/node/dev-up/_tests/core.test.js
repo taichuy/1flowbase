@@ -76,9 +76,9 @@ test('shouldManageDocker skips docker for frontend-only runs', () => {
 });
 
 test('selectServiceKeys maps scopes to managed services', () => {
-  assert.deepEqual(selectServiceKeys('all'), ['web', 'api-server', 'plugin-runner']);
+  assert.deepEqual(selectServiceKeys('all'), ['web', 'api-server']);
   assert.deepEqual(selectServiceKeys('frontend'), ['web']);
-  assert.deepEqual(selectServiceKeys('backend'), ['api-server', 'plugin-runner']);
+  assert.deepEqual(selectServiceKeys('backend'), ['api-server']);
 });
 
 test('dev-up suggests manual development database maintenance for backend starts only', () => {
@@ -101,14 +101,12 @@ test('getServiceDefinitions uses repo default ports and explicit backend binarie
 
   assert.equal(services.web.port, 3100);
   assert.equal(services['api-server'].port, 7800);
-  assert.equal(services['plugin-runner'].port, 7801);
   assert.equal(services.web.bindHost, '0.0.0.0');
   assert.equal(services.web.probeHost, '127.0.0.1');
   assert.equal(services['api-server'].bindHost, '0.0.0.0');
   assert.equal(services['api-server'].probeHost, '127.0.0.1');
   assert.deepEqual(services.web.args, ['--filter', '@1flowbase/web', 'dev']);
   assert.deepEqual(services['api-server'].args, ['run', '-p', 'api-server', '--bin', 'api-server']);
-  assert.deepEqual(services['plugin-runner'].args, ['run', '-p', 'plugin-runner', '--bin', 'plugin-runner']);
   assert.deepEqual(services.web.readinessProbe, {
     path: '/@vite/client',
   });
@@ -116,13 +114,6 @@ test('getServiceDefinitions uses repo default ports and explicit backend binarie
     path: '/health',
     expectedJson: {
       service: 'api-server',
-      status: 'ok',
-    },
-  });
-  assert.deepEqual(services['plugin-runner'].readinessProbe, {
-    path: '/health',
-    expectedJson: {
-      service: 'plugin-runner',
       status: 'ok',
     },
   });
@@ -274,7 +265,6 @@ test('getServiceDefinitions reads frontend env from web app env file', () => {
     path.join(apiServerDir, '.env'),
     [
       'API_SERVER_ADDR=0.0.0.0:7900',
-      'PLUGIN_RUNNER_ADDR=0.0.0.0:7901',
       'VITE_API_PROXY_TARGET=http://127.0.0.1:7900',
     ].join('\n')
   );
@@ -290,52 +280,10 @@ test('getServiceDefinitions reads frontend env from web app env file', () => {
 
   assert.equal(services.web.port, 3200);
   assert.equal(services['api-server'].port, 7900);
-  assert.equal(services['plugin-runner'].port, 7901);
   assert.equal(services.web.envFile, path.join(webAppDir, '.env'));
-  assert.equal(services['plugin-runner'].envFile, path.join(apiServerDir, '.env'));
   assert.equal(
     buildServiceEnv(services.web, {}).VITE_API_PROXY_TARGET,
     'https://1flowbase.example.test'
-  );
-  assert.equal(buildServiceEnv(services['plugin-runner'], {}).PLUGIN_RUNNER_ADDR, '0.0.0.0:7901');
-});
-
-test('AC-001 dev-up points API Server at the resolved Plugin Runner port', () => {
-  const tempRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-runner-url-'));
-  const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');
-  fs.mkdirSync(apiServerDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(apiServerDir, '.env'),
-    ['API_SERVER_ADDR=0.0.0.0:7900', 'PLUGIN_RUNNER_ADDR=0.0.0.0:7901'].join('\n')
-  );
-
-  const services = getServiceDefinitions(tempRepoRoot);
-
-  assert.equal(
-    buildServiceEnv(services['api-server'], {}).API_PLUGIN_RUNNER_INTERNAL_BASE_URL,
-    'http://127.0.0.1:7901'
-  );
-});
-
-test('AC-002 dev-up preserves an explicit Plugin Runner internal URL', () => {
-  const tempRepoRoot = fs.mkdtempSync(
-    path.join(os.tmpdir(), 'oneflowbase-dev-up-explicit-runner-url-')
-  );
-  const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');
-  fs.mkdirSync(apiServerDir, { recursive: true });
-  fs.writeFileSync(
-    path.join(apiServerDir, '.env'),
-    [
-      'PLUGIN_RUNNER_ADDR=0.0.0.0:7901',
-      'API_PLUGIN_RUNNER_INTERNAL_BASE_URL=http://plugin-runner.internal:8801',
-    ].join('\n')
-  );
-
-  const services = getServiceDefinitions(tempRepoRoot);
-
-  assert.equal(
-    buildServiceEnv(services['api-server'], {}).API_PLUGIN_RUNNER_INTERNAL_BASE_URL,
-    'http://plugin-runner.internal:8801'
   );
 });
 
@@ -349,7 +297,6 @@ test('dev-up seeds a new web env from existing worktree port configuration', () 
     path.join(apiServerDir, '.env'),
     [
       'API_SERVER_ADDR=0.0.0.0:7900',
-      'PLUGIN_RUNNER_ADDR=0.0.0.0:7901',
       'VITE_DEV_SERVER_PORT=3200',
       'VITE_API_PROXY_TARGET=http://127.0.0.1:7900',
     ].join('\n')
@@ -379,7 +326,6 @@ test('getServiceDefinitions gives cargo services extra startup time for cold car
 
   assert.equal(services.web.startupTimeoutMs, 60_000);
   assert.equal(services['api-server'].startupTimeoutMs, CARGO_COLD_STARTUP_TIMEOUT_MS);
-  assert.equal(services['plugin-runner'].startupTimeoutMs, CARGO_COLD_STARTUP_TIMEOUT_MS);
 });
 
 test('getServiceDefinitions leaves frontend pnpm startup interactive', () => {
@@ -395,7 +341,7 @@ test('waitForServicePort honors per-service startup timeout overrides', async ()
   const ready = await waitForServicePort(
     {
       probeHost: '127.0.0.1',
-      port: 7801,
+      port: 7811,
       startupTimeoutMs: 60_000,
     },
     async (host, port, timeoutMs) => {
@@ -408,7 +354,7 @@ test('waitForServicePort honors per-service startup timeout overrides', async ()
   assert.deepEqual(calls, [
     {
       host: '127.0.0.1',
-      port: 7801,
+      port: 7811,
       timeoutMs: 60_000,
     },
   ]);

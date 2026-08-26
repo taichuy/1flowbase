@@ -41,7 +41,7 @@ const backendThresholds = [
   // a newer full artifact proves the recovered baseline.
   { key: 'control-plane', packageName: 'control-plane', line: 69 },
   { key: 'orchestration-runtime', packageName: 'orchestration-runtime', line: 60 },
-  { key: 'plugin-runner', packageName: 'plugin-runner', line: 55 },
+  { key: 'runtime-extension-host', packageName: 'runtime-extension-host', line: 55 },
   { key: 'storage-postgres', packageName: 'storage-durable-postgres', line: 65 },
   { key: 'api-server', packageName: 'api-server', line: 60 },
 ];

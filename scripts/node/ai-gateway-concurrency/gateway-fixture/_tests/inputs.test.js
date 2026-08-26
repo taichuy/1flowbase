@@ -32,7 +32,6 @@ test('CLI accepts the complete explicit environment contract', () => {
   const parsed = parseArgs([], {
     AI_GATEWAY_FIXTURE_DATABASE_URL: 'postgres://fixture/fixture_db',
     AI_GATEWAY_FIXTURE_API_SERVER_BIN: '/tmp/api-server',
-    AI_GATEWAY_FIXTURE_PLUGIN_RUNNER_BIN: '/tmp/plugin-runner',
     AI_GATEWAY_FIXTURE_OPENAI_PACKAGE: '/tmp/openai.pkg',
     AI_GATEWAY_FIXTURE_ANTHROPIC_PACKAGE: '/tmp/anthropic.pkg',
     AI_GATEWAY_FIXTURE_OPENAI_COMPATIBLE_PACKAGE: '/tmp/openai-compatible.pkg',
@@ -54,7 +53,6 @@ test('normalization requires executable binaries and exact package files', () =>
     const options = normalizeOptions({
       databaseUrl: 'postgres://fixture@127.0.0.1/fixture_db',
       apiServerBin,
-      pluginRunnerBin: file('plugin-runner', 0o700),
       openaiPackage: file('openai.1flowbasepkg'),
       anthropicPackage: file('anthropic.1flowbasepkg'),
       openaiCompatiblePackage: file('openai_compatible.1flowbasepkg'),

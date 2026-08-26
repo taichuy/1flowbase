@@ -56,7 +56,6 @@ use control_plane::{
 use rand_core::OsRng;
 use serde::Serialize;
 use time::OffsetDateTime;
-use tokio::sync::RwLock;
 use tower_http::{
     cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer},
     trace::TraceLayer,
@@ -77,7 +76,7 @@ use crate::{
     host_infrastructure::build_local_host_infrastructure_from_host_extensions,
     official_mcp_bundles::OfficialMcpBundleSourcePort,
     provider_runtime::{ApiDataSourceRuntimeRecordBackend, ApiProviderRuntime, ApiRuntimeServices},
-    runtime_profile_client::{HostApiRuntimeProfileCollector, HttpPluginRunnerSystemClient},
+    runtime_profile_client::HostApiRuntimeProfileCollector,
 };
 
 pub const DEFAULT_API_SERVER_ADDR: &str = "0.0.0.0:7800";
@@ -283,6 +282,20 @@ pub async fn app_from_env() -> Result<Router> {
 }
 
 pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
+    app_and_runtime_host_from_config(config)
+        .await
+        .map(|(router, _)| router)
+}
+
+pub async fn app_and_runtime_host_from_env(
+) -> Result<(Router, Arc<runtime_extension_host::RuntimeExtensionHost>)> {
+    let config = ApiConfig::from_env()?;
+    app_and_runtime_host_from_config(&config).await
+}
+
+async fn app_and_runtime_host_from_config(
+    config: &ApiConfig,
+) -> Result<(Router, Arc<runtime_extension_host::RuntimeExtensionHost>)> {
     let durable = storage_durable_postgres::build_main_durable_postgres_with_max_connections(
         &config.database_url,
         config.database_pool_max_connections,
@@ -404,16 +417,12 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     control_plane::mcp_management::McpManagementService::new(store.clone())
         .read_workspace_catalog(bootstrap_result.root_user_id)
         .await?;
-    let provider_runtime = Arc::new(ApiRuntimeServices::new(
-        Arc::new(RwLock::new(
-            runtime_extension_host::provider_host::ProviderHost::default(),
-        )),
-        Arc::new(RwLock::new(
-            runtime_extension_host::capability_host::CapabilityHost::default(),
-        )),
-        Arc::new(RwLock::new(
-            runtime_extension_host::data_source_host::DataSourceHost::default(),
-        )),
+    let process_started_at = OffsetDateTime::now_utc();
+    let runtime_extension_host = Arc::new(runtime_extension_host::RuntimeExtensionHost::new(
+        process_started_at,
+    )?);
+    let provider_runtime = Arc::new(ApiRuntimeServices::new_with_runtime_host(
+        Arc::clone(&runtime_extension_host),
         Arc::clone(&extension_graph),
     )?);
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
@@ -573,7 +582,6 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         .validate_console_registry(&compiled_console_plan.console_operation_registry)?;
     activate_prepared_host_extensions(&store, &config.api_node_id, prepared_host_extensions)
         .await?;
-    let process_started_at = OffsetDateTime::now_utc();
     let runtime_activity = Arc::new(runtime_activity::ApplicationRuntimeActivityTracker::default());
     let assistant_conversation_events =
         Arc::new(routes::assistant::conversation_events::AssistantConversationEventHub::default());
@@ -595,6 +603,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
     {
         anyhow::bail!("model provider slot resolver must use the published extension graph");
     }
+    runtime_extension_host.mark_ready()?;
 
     let state = Arc::new(ApiState {
         #[cfg(test)]
@@ -617,9 +626,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         assistant_executions: Default::default(),
         assistant_client_sessions: Default::default(),
         api_runtime_profile,
-        plugin_runner_system: Arc::new(HttpPluginRunnerSystemClient::new(
-            config.plugin_runner_internal_base_url.clone(),
-        )),
+        runtime_host_system: runtime_extension_host.clone(),
         official_plugin_source,
         official_mcp_bundle_source,
         official_extension_catalog_source,
@@ -665,10 +672,13 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         bootstrap_result.root_user_id,
     );
 
-    Ok(app_with_state_and_config_and_console_route_assembly(
-        state,
-        config,
-        compiled_console_plan.route_assembly,
+    Ok((
+        app_with_state_and_config_and_console_route_assembly(
+            state,
+            config,
+            compiled_console_plan.route_assembly,
+        ),
+        runtime_extension_host,
     ))
 }
 

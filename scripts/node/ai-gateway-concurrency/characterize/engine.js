@@ -196,7 +196,6 @@ function requireAnthropicTargetPool(pool) {
       typeof target.durable?.query_run?.url_template !== 'string'
       || typeof target.durable?.list_runs?.url !== 'string'
       || typeof target.runtime_activity?.url !== 'string'
-      || typeof target.plugin_runner_active_streams?.url !== 'string'
     ) {
       throw new Error(`Anthropic pool target ${index} omitted durable or runtime evidence endpoint`);
     }
@@ -205,9 +204,6 @@ function requireAnthropicTargetPool(pool) {
     if (new Set(pool.map((target) => target[field])).size !== pool.length) {
       throw new Error(`Anthropic pool targets reused ${field}`);
     }
-  }
-  if (new Set(pool.map((target) => target.plugin_runner_active_streams.url)).size !== 1) {
-    throw new Error('Anthropic pool targets must share one active-stream endpoint');
   }
   return pool;
 }
@@ -220,29 +216,36 @@ function gatewayRequestTarget(transport, target) {
     applicationId: target.application_id,
     providerInstanceId: target.provider_instance_id,
     durableTarget: target,
-    activeStreamsEndpoint: target.plugin_runner_active_streams,
+    activeStreamsEndpoint: target.runtime_activity,
   };
 }
 
 function hasExpectedActiveStreamOverlap(expectedInstanceIds, snapshots) {
   return snapshots.some((snapshot) => expectedInstanceIds.every(
-    (instanceId) => snapshot.some((stream) => stream.providerInstanceId === instanceId)
+    (instanceId) => snapshot.some(
+      (stream) => stream.providerInstanceId === instanceId && stream.status === 'active'
+    )
   ));
 }
 
-async function observeActiveStreamOverlap({ endpoint, expectedInstanceIds, fetchImpl, isSettled }) {
+async function observeActiveStreamOverlap({ endpoints, expectedInstanceIds, fetchImpl, isSettled }) {
   const snapshots = [];
   const errors = [];
   while (!isSettled()) {
     try {
-      const response = await fetchImpl(endpoint.url, { method: endpoint.method ?? 'GET' });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const payload = await response.json();
-      const streams = Array.isArray(payload?.streams) ? payload.streams : [];
-      snapshots.push(streams.map((stream) => ({
-        providerInstanceId: stream?.provider_instance_id ?? null,
-        status: stream?.status ?? null,
-        transport: stream?.transport ?? null,
+      const totals = await Promise.all(endpoints.map(async (endpoint) => {
+        const response = await fetchImpl(endpoint.url, {
+          method: endpoint.method ?? 'GET',
+          headers: endpoint.headers ?? {},
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        const data = payload && typeof payload === 'object' && 'data' in payload ? payload.data : payload;
+        return Number.isInteger(data?.active?.total) ? data.active.total : null;
+      }));
+      snapshots.push(totals.map((total, index) => ({
+        providerInstanceId: expectedInstanceIds[index],
+        status: total > 0 ? 'active' : 'idle',
       })));
     } catch (error) {
       errors.push(error.message);
@@ -717,7 +720,7 @@ async function executeCharacterizePlan({
     let batchSettled = false;
     const observeOverlap = topology === TOPOLOGY.MULTI_POOL && row.scenario === SCENARIO.SLOW;
     const overlapPending = observeOverlap ? observeActiveStreamOverlap({
-      endpoint: pool[0].activeStreamsEndpoint,
+      endpoints: pool.map((target) => target.activeStreamsEndpoint),
       expectedInstanceIds: pool.map((target) => target.providerInstanceId),
       fetchImpl,
       isSettled: () => batchSettled,
@@ -889,7 +892,7 @@ async function runGatewayCharacterize({
       applicationId: durableTargetsByTransport[TRANSPORT.RESPONSES_SSE].application_id,
       providerInstanceId: durableTargetsByTransport[TRANSPORT.RESPONSES_SSE].provider_instance_id,
       durableTarget: durableTargetsByTransport[TRANSPORT.RESPONSES_SSE],
-      activeStreamsEndpoint: durableTargetsByTransport[TRANSPORT.RESPONSES_SSE].plugin_runner_active_streams,
+      activeStreamsEndpoint: durableTargetsByTransport[TRANSPORT.RESPONSES_SSE].runtime_activity,
     }],
     [TRANSPORT.CHAT_COMPLETIONS_SSE]: [{
       endpoint: endpointUrl(endpointSet, TRANSPORT.CHAT_COMPLETIONS_SSE),
@@ -898,7 +901,7 @@ async function runGatewayCharacterize({
       applicationId: durableTargetsByTransport[TRANSPORT.CHAT_COMPLETIONS_SSE].application_id,
       providerInstanceId: durableTargetsByTransport[TRANSPORT.CHAT_COMPLETIONS_SSE].provider_instance_id,
       durableTarget: durableTargetsByTransport[TRANSPORT.CHAT_COMPLETIONS_SSE],
-      activeStreamsEndpoint: durableTargetsByTransport[TRANSPORT.CHAT_COMPLETIONS_SSE].plugin_runner_active_streams,
+      activeStreamsEndpoint: durableTargetsByTransport[TRANSPORT.CHAT_COMPLETIONS_SSE].runtime_activity,
     }],
   };
   const result = await executeCharacterizePlan({

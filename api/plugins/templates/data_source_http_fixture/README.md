@@ -8,7 +8,7 @@ It is intentionally small:
 2. `datasource/data_source_http_fixture.yaml` declares source metadata and config schema.
 3. `bin/data_source_http_fixture` is a shell fixture that returns valid contract-shaped responses for validate, catalog, preview/import, list/get/create/update/delete, and one generic template operation.
 
-The template is exercised by `plugin-runner` integration tests to ensure the package stays loadable.
+The template is exercised by runtime-extension-host integration tests to ensure the package stays loadable.
 
 ## Usage
 

@@ -12,7 +12,7 @@ use runtime_profile::RuntimeProfile;
 use storage_ephemeral::{MemoryDistributedLock, MokaCacheStore};
 use time::OffsetDateTime;
 
-use super::super::{ApiRuntimeProfilePort, PluginRunnerSystemPort, RuntimeProfileSnapshotCache};
+use super::super::{ApiRuntimeProfilePort, RuntimeHostSystemPort, RuntimeProfileSnapshotCache};
 use crate::_tests::support::{sample_api_profile, sample_runner_profile};
 
 #[derive(Clone)]
@@ -32,14 +32,14 @@ impl ApiRuntimeProfilePort for CountingApiRuntimeProfileCollector {
 }
 
 #[derive(Clone)]
-struct CountingPluginRunnerSystemClient {
+struct CountingRuntimeHostSystemClient {
     calls: Arc<AtomicUsize>,
     delay: Duration,
     profile: Option<RuntimeProfile>,
 }
 
 #[async_trait]
-impl PluginRunnerSystemPort for CountingPluginRunnerSystemClient {
+impl RuntimeHostSystemPort for CountingRuntimeHostSystemClient {
     async fn fetch_runtime_profile(&self) -> anyhow::Result<RuntimeProfile> {
         self.calls.fetch_add(1, Ordering::SeqCst);
         tokio::time::sleep(self.delay).await;
@@ -76,7 +76,7 @@ fn snapshot_cache_fixture_with_runner(
             delay,
             profile: sample_api_profile("host-same"),
         }),
-        Arc::new(CountingPluginRunnerSystemClient {
+        Arc::new(CountingRuntimeHostSystemClient {
             calls: runner_calls.clone(),
             delay,
             profile: runner_profile,

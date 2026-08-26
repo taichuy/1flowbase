@@ -203,27 +203,16 @@ services:
       timeout: 3s
       retries: 20
 
-  plugin-runner:
-    image: ghcr.io/${repositoryOwner}/1flowbase-plugin-runner:\${FLOWBASE_PLUGIN_RUNNER_VERSION}
-    environment:
-      RUST_LOG: info
-      PLUGIN_RUNNER_ADDR: 0.0.0.0:7801
-    expose:
-      - "7801"
-
   api:
     image: ghcr.io/${repositoryOwner}/1flowbase-api-server:\${FLOWBASE_API_SERVER_VERSION}
     depends_on:
       db:
         condition: service_healthy
-      plugin-runner:
-        condition: service_started
     environment:
       RUST_LOG: info
       API_ENV: development
       API_DATABASE_URL: postgres://${DATABASE_USER}:${DATABASE_PASSWORD}@db:5432/${DATABASE_NAME}
       API_SERVER_ADDR: 0.0.0.0:7800
-      API_PLUGIN_RUNNER_INTERNAL_BASE_URL: http://plugin-runner:7801
       API_ALLOWED_ORIGINS: http://localhost:${webPort},http://127.0.0.1:${webPort}
       API_COOKIE_NAME: flowbase_console_session
       API_SESSION_TTL_DAYS: "7"
@@ -274,7 +263,6 @@ function imageEnv(imageTag, baseEnv = process.env) {
     ...baseEnv,
     FLOWBASE_WEB_VERSION: imageTag,
     FLOWBASE_API_SERVER_VERSION: imageTag,
-    FLOWBASE_PLUGIN_RUNNER_VERSION: imageTag,
   };
 }
 
@@ -508,7 +496,7 @@ function restoreSnapshot({ compose, imageTag, repoRoot, runCommandImpl, snapshot
 
   runComposeCommand({
     compose,
-    args: ['stop', 'web', 'api', 'plugin-runner'],
+    args: ['stop', 'web', 'api'],
     imageTag,
     repoRoot,
     runCommandImpl,

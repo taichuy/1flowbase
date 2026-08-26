@@ -26,7 +26,6 @@ function prepareManifest({ source, output }) {
   const artifacts = { ...manifest.artifacts };
   for (const [name, relativePath] of [
     ['apiServer', 'api/target/release/api-server'],
-    ['pluginRunner', 'api/target/release/plugin-runner'],
   ]) {
     const artifactPath = path.join(repoRoot, relativePath);
     if (!fs.existsSync(artifactPath) || !fs.statSync(artifactPath).isFile()) {
@@ -47,7 +46,6 @@ if (require.main === module) {
     process.stdout.write(`${JSON.stringify({
       output: path.resolve(process.argv.at(-1)),
       api_server_sha256: sealed.artifacts.apiServer.sha256,
-      plugin_runner_sha256: sealed.artifacts.pluginRunner.sha256,
     })}\n`);
   } catch (error) {
     process.stderr.write(`${error.stack || error.message}\n`);

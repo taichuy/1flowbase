@@ -41,7 +41,6 @@ function createFixtureRepo() {
     `[workspace]
 members = [
   "apps/api-server",
-  "apps/plugin-runner",
   "crates/domain"
 ]
 resolver = "2"
@@ -56,14 +55,6 @@ version = "0.1.0"
     path.join(repoRoot, 'api', 'apps', 'api-server', 'Cargo.toml'),
     `[package]
 name = "api-server"
-version = "0.1.0"
-edition.workspace = true
-`
-  );
-  writeFile(
-    path.join(repoRoot, 'api', 'apps', 'plugin-runner', 'Cargo.toml'),
-    `[package]
-name = "plugin-runner"
 version = "0.1.0"
 edition.workspace = true
 `
@@ -90,10 +81,6 @@ name = "domain"
 version = "0.1.0"
 
 [[package]]
-name = "plugin-runner"
-version = "0.1.0"
-
-[[package]]
 name = "serde"
 version = "1.0.0"
 `
@@ -103,7 +90,6 @@ version = "1.0.0"
     path.join(repoRoot, 'docker', '.env.example'),
     `FLOWBASE_WEB_VERSION=latest
 FLOWBASE_API_SERVER_VERSION=latest
-FLOWBASE_PLUGIN_RUNNER_VERSION=latest
 POSTGRES_DB=1flowbase
 `
   );
@@ -111,7 +97,6 @@ POSTGRES_DB=1flowbase
     path.join(repoRoot, 'docker', '.env'),
     `FLOWBASE_WEB_VERSION=0.0.1
 FLOWBASE_API_SERVER_VERSION=0.0.1
-FLOWBASE_PLUGIN_RUNNER_VERSION=0.0.1
 POSTGRES_DB=1flowbase
 `
   );
@@ -197,10 +182,6 @@ test('runVersionBump updates VERSION, frontend, backend, and lockfile versions t
   assert.match(fs.readFileSync(path.join(repoRoot, 'api', 'Cargo.toml'), 'utf8'), /version = "0\.1\.1"/u);
   assert.match(
     fs.readFileSync(path.join(repoRoot, 'api', 'apps', 'api-server', 'Cargo.toml'), 'utf8'),
-    /version = "0\.1\.1"/u
-  );
-  assert.match(
-    fs.readFileSync(path.join(repoRoot, 'api', 'apps', 'plugin-runner', 'Cargo.toml'), 'utf8'),
     /version = "0\.1\.1"/u
   );
 

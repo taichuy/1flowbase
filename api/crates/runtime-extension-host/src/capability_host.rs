@@ -48,6 +48,18 @@ pub struct CapabilityHost {
 }
 
 impl CapabilityHost {
+    pub fn loaded_count(&self) -> usize {
+        self.loaded_packages.len()
+    }
+
+    pub async fn stop_all(&mut self) -> FrameworkResult<()> {
+        let plugin_ids = self.loaded_packages.keys().cloned().collect::<Vec<_>>();
+        for plugin_id in plugin_ids {
+            self.unload(&plugin_id).await?;
+        }
+        Ok(())
+    }
+
     pub fn is_loaded(&self, plugin_id: &str) -> bool {
         self.loaded_packages.contains_key(plugin_id) && self.scopes.contains_key(plugin_id)
     }

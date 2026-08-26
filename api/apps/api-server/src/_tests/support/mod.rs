@@ -56,7 +56,7 @@ use crate::{
     },
     provider_runtime::{ApiProviderRuntime, ApiRuntimeServices},
     runtime_profile_client::{
-        ApiRuntimeProfilePort, HostApiRuntimeProfileCollector, PluginRunnerSystemPort,
+        ApiRuntimeProfilePort, HostApiRuntimeProfileCollector, RuntimeHostSystemPort,
     },
 };
 

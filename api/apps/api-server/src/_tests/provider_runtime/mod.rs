@@ -1126,15 +1126,21 @@ fn provider_runtime_consumer_has_no_provider_specific_branch_and_production_wire
     );
     assert_eq!(
         consumer.matches("&binding.plugin_id").count(),
-        12,
-        "ProviderHost load and operation paths must use the binding plugin id"
+        10,
+        "non-execution ProviderHost paths must use the binding plugin id"
+    );
+    assert_eq!(
+        consumer.matches("RuntimeExecutionPort::execute").count(),
+        2,
+        "provider execution paths must cross the stable runtime-core port"
     );
     assert_eq!(
         consumer.matches("binding.require_provider_code(").count(),
         4,
         "every canonical provider input must fail closed on a crossed provider code"
     );
-    assert!(boot.contains("ApiRuntimeServices::new("));
+    assert!(boot.contains("RuntimeExtensionHost::new("));
+    assert!(boot.contains("ApiRuntimeServices::new_with_runtime_host("));
     assert!(boot.contains("Arc::clone(&extension_graph)"));
     assert!(!boot.contains("new_without_model_provider_extension_graph_for_tests"));
 }

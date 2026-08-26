@@ -190,7 +190,6 @@ test('docker deploy shell script generates provider secret when env example keep
     [
       'FLOWBASE_WEB_VERSION=latest',
       'FLOWBASE_API_SERVER_VERSION=latest',
-      'FLOWBASE_PLUGIN_RUNNER_VERSION=latest',
       'POSTGRES_PASSWORD=example-password',
       'BOOTSTRAP_ROOT_PASSWORD=example-root-password',
       'API_PROVIDER_SECRET_MASTER_KEY=change-me-provider-secret-master-key',
@@ -239,7 +238,6 @@ test('docker deploy shell script shows and updates existing env configuration', 
     [
       'FLOWBASE_WEB_VERSION=latest',
       'FLOWBASE_API_SERVER_VERSION=latest',
-      'FLOWBASE_PLUGIN_RUNNER_VERSION=latest',
       'POSTGRES_PASSWORD=example-password',
       'BOOTSTRAP_ROOT_ACCOUNT=example-root',
       'BOOTSTRAP_ROOT_PASSWORD=example-root-password',
@@ -254,7 +252,6 @@ test('docker deploy shell script shows and updates existing env configuration', 
     [
       'FLOWBASE_WEB_VERSION=latest',
       'FLOWBASE_API_SERVER_VERSION=latest',
-      'FLOWBASE_PLUGIN_RUNNER_VERSION=latest',
       'POSTGRES_PASSWORD=old-password',
       'BOOTSTRAP_ROOT_ACCOUNT=old-root',
       'BOOTSTRAP_ROOT_PASSWORD=old-root-password',
@@ -396,7 +393,6 @@ test('docker deploy shell script can configure and start with external postgres'
     [
       'FLOWBASE_WEB_VERSION=latest',
       'FLOWBASE_API_SERVER_VERSION=latest',
-      'FLOWBASE_PLUGIN_RUNNER_VERSION=latest',
       'DATABASE_MODE=internal',
       'POSTGRES_DB=1flowbase',
       'POSTGRES_USER=postgres',
@@ -498,7 +494,6 @@ test('docker deploy shell script asks before updating local latest images', () =
     [
       'FLOWBASE_WEB_VERSION=latest',
       'FLOWBASE_API_SERVER_VERSION=latest',
-      'FLOWBASE_PLUGIN_RUNNER_VERSION=latest',
       'POSTGRES_PASSWORD=example-password',
       'API_OFFICIAL_PLUGIN_GITHUB_PROXY_URL=',
       '',
@@ -509,7 +504,6 @@ test('docker deploy shell script asks before updating local latest images', () =
     [
       'FLOWBASE_WEB_VERSION=latest',
       'FLOWBASE_API_SERVER_VERSION=latest',
-      'FLOWBASE_PLUGIN_RUNNER_VERSION=latest',
       'POSTGRES_PASSWORD=old-password',
       'API_OFFICIAL_PLUGIN_GITHUB_PROXY_URL=',
       '',
@@ -773,7 +767,7 @@ exit 0
     0o600,
   );
   const calls = fs.readFileSync(composeLog, 'utf8');
-  const dependencies = calls.indexOf('compose up -d db plugin-runner');
+  const dependencies = calls.indexOf('compose up -d db');
   const bootstrap = calls.indexOf('bootstrap');
   const finalStartup = calls.lastIndexOf('compose up -d');
   assert.ok(dependencies >= 0, calls);
@@ -889,7 +883,7 @@ test('container image workflow scans temporary image tags before official promot
     /publish-web:\n\s+needs:\n\s+- select-web\n\s+- build-web-dist\n\s+if: needs\.select-web\.outputs\.enabled == 'true'\n\s+runs-on: ubuntu-latest\n\s+permissions:\n\s+contents: read\n\s+packages: write/u,
   );
   assert.match(workflow, /publish-api-server:/u);
-  assert.match(workflow, /publish-plugin-runner:/u);
+  assert.doesNotMatch(workflow, /publish-plugin-runner:|1flowbase-plugin-runner/u);
 
   assert.match(workflow, /scan_tag=scan-\$\{\{ github\.run_id \}\}-\$\{\{ github\.run_attempt \}\}-\$\{\{ github\.sha \}\}/u);
   assert.match(workflow, /echo "scan_image_ref=ghcr\.io\/\$\{\{ github\.repository_owner \}\}\/1flowbase-web:\$scan_tag"/u);
@@ -920,7 +914,7 @@ test('container image workflow scans temporary image tags before official promot
         /if: github\.event_name != 'workflow_dispatch' \|\| inputs\.promote_official_tags == true \|\| inputs\.promote_official_tags == 'true'/gu,
       ),
     ].length,
-    3,
+    2,
   );
   assert.match(workflow, /docker buildx imagetools create/u);
   assert.match(workflow, /--tag "\$\{\{ steps\.image_refs\.outputs\.version_image_ref \}\}"/u);
@@ -958,7 +952,7 @@ test('container image workflow records a CD quality gate artifact for Trivy repo
 
   assert.match(
     workflow,
-    /report:\n\s+if: \$\{\{ always\(\) \}\}\n\s+needs:\n\s+- publish-web\n\s+- publish-api-server\n\s+- publish-plugin-runner\n\s+runs-on: ubuntu-latest\n\s+permissions:\n\s+contents: read\n\s+actions: read\n\s+issues: write/u,
+    /report:\n\s+if: \$\{\{ always\(\) \}\}\n\s+needs:\n\s+- publish-web\n\s+- publish-api-server\n\s+runs-on: ubuntu-latest\n\s+permissions:\n\s+contents: read\n\s+actions: read\n\s+issues: write/u,
   );
   assert.match(workflow, /pattern: test-governance-trivy-\*/u);
   assert.match(workflow, /path: tmp\/test-governance/u);
@@ -985,7 +979,6 @@ test('docker deploy shell script stops before pull when the image tag lacks the 
     [
       'FLOWBASE_WEB_VERSION=latest',
       'FLOWBASE_API_SERVER_VERSION=latest',
-      'FLOWBASE_PLUGIN_RUNNER_VERSION=latest',
       'POSTGRES_PASSWORD=change-me',
       'API_OFFICIAL_PLUGIN_GITHUB_PROXY_URL=',
       '',

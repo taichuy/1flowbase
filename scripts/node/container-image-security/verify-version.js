@@ -16,11 +16,6 @@ const COMPONENTS = {
     readVersion: readCargoPackageVersion,
     readVersionSource: readCargoPackageVersionSource,
   },
-  "plugin-runner": {
-    manifest: "api/apps/plugin-runner/Cargo.toml",
-    readVersion: readCargoPackageVersion,
-    readVersionSource: readCargoPackageVersionSource,
-  },
 };
 
 function readWebPackageVersion(source) {
@@ -89,7 +84,7 @@ const imageTag = maybeComponentOrTag;
 
 if (!component || !imageTag) {
   fail(
-    "Usage: node scripts/node/container-image-security/verify-version.js <web|api-server|plugin-runner> <vX.Y.Z>",
+    "Usage: node scripts/node/container-image-security/verify-version.js <web|api-server> <vX.Y.Z>",
   );
 }
 

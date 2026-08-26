@@ -89,7 +89,6 @@ print_env_summary() {
   for key in \
     FLOWBASE_WEB_VERSION \
     FLOWBASE_API_SERVER_VERSION \
-    FLOWBASE_PLUGIN_RUNNER_VERSION \
     WEB_PORT \
     DATABASE_MODE \
     POSTGRES_DB \
@@ -561,9 +560,6 @@ flowbase_env_or_file_value() {
     FLOWBASE_API_SERVER_VERSION)
       value="${FLOWBASE_API_SERVER_VERSION:-}"
       ;;
-    FLOWBASE_PLUGIN_RUNNER_VERSION)
-      value="${FLOWBASE_PLUGIN_RUNNER_VERSION:-}"
-      ;;
   esac
 
   if [ -z "$value" ]; then
@@ -588,17 +584,10 @@ flowbase_api_server_image() {
   printf '%s\n' "ghcr.io/taichuy/1flowbase-api-server:${version}"
 }
 
-flowbase_plugin_runner_image() {
-  file="$1"
-  version="$(flowbase_env_or_file_value FLOWBASE_PLUGIN_RUNNER_VERSION "$file" latest)"
-  printf '%s\n' "ghcr.io/taichuy/1flowbase-plugin-runner:${version}"
-}
-
 flowbase_uses_latest_image_tags() {
   file="$1"
   [ "$(flowbase_env_or_file_value FLOWBASE_WEB_VERSION "$file" latest)" = "latest" ] || return 1
   [ "$(flowbase_env_or_file_value FLOWBASE_API_SERVER_VERSION "$file" latest)" = "latest" ] || return 1
-  [ "$(flowbase_env_or_file_value FLOWBASE_PLUGIN_RUNNER_VERSION "$file" latest)" = "latest" ] || return 1
   return 0
 }
 
@@ -607,7 +596,6 @@ local_flowbase_latest_images_exist() {
   flowbase_uses_latest_image_tags "$file" || return 1
   docker image inspect "$(flowbase_web_image "$file")" >/dev/null 2>&1 || return 1
   docker image inspect "$(flowbase_api_server_image "$file")" >/dev/null 2>&1 || return 1
-  docker image inspect "$(flowbase_plugin_runner_image "$file")" >/dev/null 2>&1 || return 1
   return 0
 }
 
@@ -646,8 +634,7 @@ verify_flowbase_image_platforms() {
 
   for image in \
     "$(flowbase_web_image .env)" \
-    "$(flowbase_api_server_image .env)" \
-    "$(flowbase_plugin_runner_image .env)"
+    "$(flowbase_api_server_image .env)"
   do
     manifest_status=0
     manifest_supports_platform "$image" "$platform" || manifest_status="$?"
@@ -1144,10 +1131,8 @@ if [ -n "$RESTORE_BACKUP" ] && [ "$START_CONTAINERS" = "yes" ]; then
       compose "$@"
     fi
   }
-  if [ "$NEW_DATABASE_MODE" = "external" ]; then
-    compose -f docker-compose.external-db.yaml up -d plugin-runner
-  else
-    compose up -d db plugin-runner
+  if [ "$NEW_DATABASE_MODE" != "external" ]; then
+    compose up -d db
   fi
 
   recovery_env_file=".recovery-env.$$.tmp"

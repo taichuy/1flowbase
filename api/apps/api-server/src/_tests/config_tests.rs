@@ -722,52 +722,6 @@ fn api_config_reads_provider_secret_master_key() {
 }
 
 #[test]
-fn api_config_defaults_plugin_runner_internal_base_url() {
-    let config = ApiConfig::from_env_map(&[
-        (
-            "API_DATABASE_URL",
-            "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase",
-        ),
-        ("API_EPHEMERAL_BACKEND", "memory"),
-        ("BOOTSTRAP_ROOT_ACCOUNT", "root"),
-        ("BOOTSTRAP_ROOT_EMAIL", "root@example.com"),
-        ("BOOTSTRAP_ROOT_PASSWORD", "secret"),
-        ("BOOTSTRAP_WORKSPACE_NAME", "1flowbase"),
-    ])
-    .unwrap();
-
-    assert_eq!(
-        config.plugin_runner_internal_base_url,
-        "http://127.0.0.1:7801"
-    );
-}
-
-#[test]
-fn api_config_reads_plugin_runner_internal_base_url() {
-    let config = ApiConfig::from_env_map(&[
-        (
-            "API_DATABASE_URL",
-            "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase",
-        ),
-        ("API_EPHEMERAL_BACKEND", "memory"),
-        (
-            "API_PLUGIN_RUNNER_INTERNAL_BASE_URL",
-            "http://plugin-runner.internal:7801",
-        ),
-        ("BOOTSTRAP_ROOT_ACCOUNT", "root"),
-        ("BOOTSTRAP_ROOT_EMAIL", "root@example.com"),
-        ("BOOTSTRAP_ROOT_PASSWORD", "secret"),
-        ("BOOTSTRAP_WORKSPACE_NAME", "1flowbase"),
-    ])
-    .unwrap();
-
-    assert_eq!(
-        config.plugin_runner_internal_base_url,
-        "http://plugin-runner.internal:7801"
-    );
-}
-
-#[test]
 fn api_config_reads_official_plugin_repository_settings() {
     let config = ApiConfig::from_env_map(&[
         (

@@ -255,10 +255,7 @@ test("Rust workflow caches are dependency-keyed and bounded across branches", ()
     containerWorkflow,
     /key: rust-release-seeded-api-server-v2-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.arch \}\}-rust-1-slim-bookworm-release-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
   );
-  assert.match(
-    containerWorkflow,
-    /key: rust-release-seeded-plugin-runner-v2-\$\{\{ runner\.os \}\}-\$\{\{ matrix\.arch \}\}-rust-1-slim-bookworm-release-\$\{\{ hashFiles\('api\/Cargo\.lock', 'api\/\*\*\/Cargo\.toml'\) \}\}/u,
-  );
+  assert.doesNotMatch(containerWorkflow, /plugin-runner|PLUGIN_RUNNER/u);
 
   assert.match(workflow, /name: Restore release-seeded api-server Rust cache/u);
   assert.match(workflow, /name: Import release-seeded api-server Rust cache/u);
@@ -781,7 +778,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   assert.match(workflow, /- repo-backend-test-control-plane/u);
   assert.match(workflow, /- repo-backend-test-api-server-1-of-4/u);
   assert.match(workflow, /- repo-backend-test-api-server-4-of-4/u);
-  assert.match(workflow, /- repo-backend-test-plugin-runner/u);
+  assert.doesNotMatch(workflow, /- repo-backend-test-plugin-runner/u);
   assert.doesNotMatch(workflow, /- repo-backend-test-apps/u);
   assert.match(workflow, /- repo-backend-check-apps/u);
   assert.match(
@@ -810,7 +807,7 @@ test("quality gate workflow runs ci scope as parallel component gates before one
   );
   assert.match(workflow, /- coverage-backend-control-plane/u);
   assert.match(workflow, /- coverage-backend-orchestration-runtime/u);
-  assert.match(workflow, /- coverage-backend-plugin-runner/u);
+  assert.doesNotMatch(workflow, /- coverage-backend-plugin-runner/u);
   assert.match(workflow, /- coverage-backend-storage-postgres/u);
   assert.match(workflow, /- coverage-backend-api-server/u);
   assert.match(
@@ -908,7 +905,7 @@ test("container image workflows keep vulnerability findings as warnings", () => 
   const publishWorkflow = readContainerImagesWorkflow();
   const qualityGateWorkflow = readQualityGateWorkflow();
 
-  for (const component of ["web", "api-server", "plugin-runner"]) {
+  for (const component of ["web", "api-server"]) {
     assert.match(
       publishWorkflow,
       new RegExp(

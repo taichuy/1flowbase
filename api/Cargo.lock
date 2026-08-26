@@ -2596,6 +2596,7 @@ dependencies = [
  "regex",
  "reqwest 0.12.28",
  "rquickjs",
+ "runtime-core",
  "serde",
  "serde_json",
  "sha2 0.10.9",
@@ -2778,15 +2779,6 @@ dependencies = [
  "url",
  "uuid",
  "zip",
-]
-
-[[package]]
-name = "plugin-runner"
-version = "0.4.1"
-dependencies = [
- "axum",
- "runtime-extension-host",
- "tokio",
 ]
 
 [[package]]
@@ -3357,21 +3349,20 @@ dependencies = [
 name = "runtime-extension-host"
 version = "0.4.1"
 dependencies = [
- "axum",
+ "async-trait",
  "extension-contracts",
  "extension-package-runtime",
+ "http 1.4.0",
  "jsonschema",
  "libc",
+ "runtime-core",
  "runtime-profile",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "time",
  "tokio",
- "tower",
- "tower-http",
  "tracing",
- "tracing-subscriber",
 ]
 
 [[package]]

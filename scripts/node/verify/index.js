@@ -338,7 +338,7 @@ function parseBackendCliArgs(argv = []) {
 
 function usageBackend(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
-    'Usage: node scripts/node/verify-backend.js [all|static|fmt|clippy|test|check|image-llm-vision|official-i18n-seed] [core-libs|runtime-storage|apps|control-plane|api-server-N-of-4|plugin-runner]\n'
+    'Usage: node scripts/node/verify-backend.js [all|static|fmt|clippy|test|check|image-llm-vision|official-i18n-seed] [core-libs|runtime-storage|apps|control-plane|api-server-N-of-4]\n'
       + 'Runs backend Rust gates, optionally restricted to a CI shard. Package-level app shards are supported for test.\n'
   );
 }

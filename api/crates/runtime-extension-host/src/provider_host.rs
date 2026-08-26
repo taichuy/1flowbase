@@ -269,6 +269,18 @@ impl Default for ProviderHost {
 }
 
 impl ProviderHost {
+    pub fn loaded_count(&self) -> usize {
+        self.loaded_packages.len()
+    }
+
+    pub async fn stop_all(&mut self) -> FrameworkResult<()> {
+        let plugin_ids = self.loaded_packages.keys().cloned().collect::<Vec<_>>();
+        for plugin_id in plugin_ids {
+            self.unload(&plugin_id).await?;
+        }
+        Ok(())
+    }
+
     pub fn load(&mut self, package_root: &str) -> FrameworkResult<LoadedProviderSummary> {
         self.load_with_source_identity(package_root, None)
     }

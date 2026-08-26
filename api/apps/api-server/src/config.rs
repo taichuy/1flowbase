@@ -43,7 +43,6 @@ pub struct ApiConfig {
     pub plugin_upload_max_bytes: usize,
     pub runtime_table_name_policy: storage_durable_postgres::RuntimeTableNamePolicy,
     pub business_file_local_root: String,
-    pub plugin_runner_internal_base_url: String,
     pub cookie_name: String,
     pub cookie_secure: bool,
     pub session_ttl_days: i64,
@@ -324,10 +323,6 @@ impl ApiConfig {
             )?,
             runtime_table_name_policy,
             business_file_local_root: default_business_file_local_root(),
-            plugin_runner_internal_base_url: map
-                .get("API_PLUGIN_RUNNER_INTERNAL_BASE_URL")
-                .cloned()
-                .unwrap_or_else(|| "http://127.0.0.1:7801".to_string()),
             cookie_name: map
                 .get("API_COOKIE_NAME")
                 .cloned()

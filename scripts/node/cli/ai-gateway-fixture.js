@@ -9,7 +9,6 @@ const { createGatewayFixture } = require('../ai-gateway-concurrency/gateway-fixt
 const OPTION_FIELDS = new Map([
   ['--database-url', 'databaseUrl'],
   ['--api-server-bin', 'apiServerBin'],
-  ['--plugin-runner-bin', 'pluginRunnerBin'],
   ['--openai-package', 'openaiPackage'],
   ['--anthropic-package', 'anthropicPackage'],
   ['--openai-compatible-package', 'openaiCompatiblePackage'],
@@ -20,13 +19,13 @@ const OPTION_FIELDS = new Map([
 function usage() {
   return `Usage: node scripts/node/cli/ai-gateway-fixture.js \\
   --database-url <temporary-postgres-url> \\
-  --api-server-bin <path> --plugin-runner-bin <path> \\
+  --api-server-bin <path> \\
   --openai-package <archive> --anthropic-package <archive> \\
   --openai-compatible-package <archive> \\
   --upstream-base-url <loopback-url> [--ready-file <json>]
 
 The required values may instead be supplied as AI_GATEWAY_FIXTURE_DATABASE_URL,
-AI_GATEWAY_FIXTURE_API_SERVER_BIN, AI_GATEWAY_FIXTURE_PLUGIN_RUNNER_BIN,
+AI_GATEWAY_FIXTURE_API_SERVER_BIN,
 AI_GATEWAY_FIXTURE_OPENAI_PACKAGE, AI_GATEWAY_FIXTURE_ANTHROPIC_PACKAGE,
 AI_GATEWAY_FIXTURE_OPENAI_COMPATIBLE_PACKAGE, and
 AI_GATEWAY_FIXTURE_UPSTREAM_BASE_URL. The process owns the real gateway stack until
@@ -37,7 +36,6 @@ function parseArgs(argv, env = process.env) {
   const options = {
     databaseUrl: env.AI_GATEWAY_FIXTURE_DATABASE_URL,
     apiServerBin: env.AI_GATEWAY_FIXTURE_API_SERVER_BIN,
-    pluginRunnerBin: env.AI_GATEWAY_FIXTURE_PLUGIN_RUNNER_BIN,
     openaiPackage: env.AI_GATEWAY_FIXTURE_OPENAI_PACKAGE,
     anthropicPackage: env.AI_GATEWAY_FIXTURE_ANTHROPIC_PACKAGE,
     openaiCompatiblePackage: env.AI_GATEWAY_FIXTURE_OPENAI_COMPATIBLE_PACKAGE,

@@ -266,7 +266,7 @@ function addBackendCheckRoutes(routes, filePath) {
     return;
   }
 
-  if (APP_CRATES.has(crate) || crate === 'api-server' || crate === 'plugin-runner') {
+  if (APP_CRATES.has(crate) || crate === 'api-server') {
     addRoute(routes, 'repo-backend-check-apps');
     return;
   }

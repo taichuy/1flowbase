@@ -225,7 +225,6 @@ test('plugin demo dev serves static demo assets and injected runtime config', as
     pluginPath,
     host: '127.0.0.1',
     port: 0,
-    runnerUrl: 'http://127.0.0.1:7801',
     silent: true,
   });
 
@@ -239,7 +238,7 @@ test('plugin demo dev serves static demo assets and injected runtime config', as
     assert.equal(configResponse.statusCode, 200);
 
     config = JSON.parse(configResponse.body);
-    assert.equal(config.runnerUrl, 'http://127.0.0.1:7801');
+    assert.equal('runnerUrl' in config, false);
     assert.equal(config.providerCode, 'acme_openai_compatible');
     assert.notEqual(config.packageRoot, pluginPath);
     assert.equal(fs.existsSync(path.join(config.packageRoot, 'manifest.yaml')), true);
@@ -263,7 +262,6 @@ test('plugin demo dev rejects target without generated demo assets', async () =>
       pluginPath,
       host: '127.0.0.1',
       port: 0,
-      runnerUrl: 'http://127.0.0.1:7801',
       silent: true,
     }),
     /缺少 demo 资源/

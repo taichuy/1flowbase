@@ -25,12 +25,12 @@ impl ApiRuntimeProfilePort for StaticApiRuntimeProfileCollector {
 }
 
 #[derive(Clone)]
-struct StubPluginRunnerSystemClient {
+struct StubRuntimeHostSystemClient {
     result: Result<RuntimeProfile, String>,
 }
 
 #[async_trait]
-impl PluginRunnerSystemPort for StubPluginRunnerSystemClient {
+impl RuntimeHostSystemPort for StubRuntimeHostSystemClient {
     async fn fetch_runtime_profile(&self) -> anyhow::Result<RuntimeProfile> {
         self.result
             .clone()
@@ -122,7 +122,7 @@ async fn isolated_postgres_toolchain(
 async fn test_state_with_runtime_profile_state(
     process_started_at: OffsetDateTime,
     api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
-    plugin_runner_system: Arc<dyn PluginRunnerSystemPort>,
+    runtime_host_system: Arc<dyn RuntimeHostSystemPort>,
 ) -> (Arc<ApiState>, String) {
     let mut config = default_test_config();
     let database = isolated_database(&config.database_url).await;
@@ -324,7 +324,7 @@ async fn test_state_with_runtime_profile_state(
             assistant_executions: Default::default(),
             assistant_client_sessions: Default::default(),
             api_runtime_profile,
-            plugin_runner_system,
+            runtime_host_system,
             official_plugin_source: Arc::new(InMemoryOfficialPluginSource),
             official_mcp_bundle_source: Arc::new(InMemoryOfficialMcpBundleSource),
             official_extension_catalog_source: Arc::new(InMemoryOfficialExtensionCatalogSource),
@@ -352,12 +352,12 @@ async fn test_state_with_runtime_profile_state(
 async fn test_app_with_runtime_profile_state(
     process_started_at: OffsetDateTime,
     api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
-    plugin_runner_system: Arc<dyn PluginRunnerSystemPort>,
+    runtime_host_system: Arc<dyn RuntimeHostSystemPort>,
 ) -> (Router, String) {
     let (state, database_url) = test_state_with_runtime_profile_state(
         process_started_at,
         api_runtime_profile,
-        plugin_runner_system,
+        runtime_host_system,
     )
     .await;
     let config = default_test_config();
@@ -370,7 +370,7 @@ pub async fn test_app_with_database_url() -> (Router, String) {
     test_app_with_runtime_profile_state(
         OffsetDateTime::now_utc(),
         Arc::new(HostApiRuntimeProfileCollector::new(OffsetDateTime::now_utc()).unwrap()),
-        Arc::new(StubPluginRunnerSystemClient {
+        Arc::new(StubRuntimeHostSystemClient {
             result: Err("plugin runner unavailable".to_string()),
         }),
     )
@@ -395,7 +395,7 @@ pub(crate) async fn test_api_state_with_database_url() -> (Arc<ApiState>, String
     test_state_with_runtime_profile_state(
         OffsetDateTime::now_utc(),
         Arc::new(HostApiRuntimeProfileCollector::new(OffsetDateTime::now_utc()).unwrap()),
-        Arc::new(StubPluginRunnerSystemClient {
+        Arc::new(StubRuntimeHostSystemClient {
             result: Err("plugin runner unavailable".to_string()),
         }),
     )
@@ -499,7 +499,7 @@ pub async fn test_app_with_runtime_profiles(
         Arc::new(StaticApiRuntimeProfileCollector {
             profile: api_profile,
         }),
-        Arc::new(StubPluginRunnerSystemClient {
+        Arc::new(StubRuntimeHostSystemClient {
             result: runner_profile.ok_or_else(|| "plugin runner unavailable".to_string()),
         }),
     )

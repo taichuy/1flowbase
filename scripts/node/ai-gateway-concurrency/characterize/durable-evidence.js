@@ -32,18 +32,6 @@ function activeTotal(payload) {
   return Number.isInteger(data?.active?.total) ? data.active.total : null;
 }
 
-function activeStreams(payload) {
-  const data = unwrapData(payload);
-  if (!Array.isArray(data?.streams)) return null;
-  return data.streams.map((stream) => ({
-    invocationId: stream?.invocation_id ?? null,
-    providerCode: stream?.provider_code ?? null,
-    protocol: stream?.protocol ?? null,
-    transport: stream?.transport ?? null,
-    status: stream?.status ?? null,
-  }));
-}
-
 async function readJson(endpoint, fetchImpl) {
   const response = await fetchImpl(endpoint.url, {
     method: endpoint.method ?? 'GET',
@@ -100,10 +88,6 @@ function evaluateSnapshot(requests, snapshot) {
   for (const [transport, total] of Object.entries(snapshot.runtimeActiveTotals)) {
     if (total !== 0) failures.push(`${transport}: runtime data.active.total was ${total}`);
   }
-  for (const [url, streams] of Object.entries(snapshot.pluginStreams)) {
-    if (!Array.isArray(streams)) failures.push(`${url}: plugin streams response was invalid`);
-    else if (streams.length !== 0) failures.push(`${url}: plugin streams contained ${streams.length} active stream(s)`);
-  }
   return failures;
 }
 
@@ -153,7 +137,6 @@ async function captureSnapshot(requests, targetsByTransport, fetchImpl) {
   const queries = {};
   const listErrors = {};
   const runtimeActiveTotals = {};
-  const pluginStreams = {};
   const resolvedRunIds = {};
   await Promise.all(Object.entries(targetsByTransport).map(async ([transport, target]) => {
     try {
@@ -178,14 +161,7 @@ async function captureSnapshot(requests, targetsByTransport, fetchImpl) {
     };
     queries[request.clientNonce] = sanitizedQuery(await readJson(endpoint, fetchImpl));
   }));
-  const uniqueStreamEndpoints = new Map(Object.values(targetsByTransport).map((target) => [
-    target.plugin_runner_active_streams.url,
-    target.plugin_runner_active_streams,
-  ]));
-  await Promise.all([...uniqueStreamEndpoints].map(async ([url, endpoint]) => {
-    pluginStreams[url] = activeStreams(await readJson(endpoint, fetchImpl));
-  }));
-  return { lists, listErrors, queries, resolvedRunIds, runtimeActiveTotals, pluginStreams };
+  return { lists, listErrors, queries, resolvedRunIds, runtimeActiveTotals };
 }
 
 async function collectDurableConvergence({

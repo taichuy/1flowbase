@@ -29,7 +29,7 @@ test('AC service logs: independent stdout/stderr sections are tail-capped and se
       artifactRoot,
       services: {
         'api-server': { stdout: () => raw, stderr: () => raw },
-        'plugin-runner': { stdout: () => raw, stderr: () => raw },
+        'runtime-host-fixture': { stdout: () => raw, stderr: () => raw },
       },
       secrets: canaries,
     });
@@ -54,7 +54,7 @@ test('AC service logs controlled failure: a failed service write does not skip t
     artifactRoot: '/bounded-fixture-artifacts',
     services: {
       'api-server': { stdout: () => 'api', stderr: () => '' },
-      'plugin-runner': { stdout: () => 'runner', stderr: () => '' },
+      'runtime-host-fixture': { stdout: () => 'host', stderr: () => '' },
     },
     fsImpl: {
       mkdirSync() {},
@@ -64,5 +64,5 @@ test('AC service logs controlled failure: a failed service write does not skip t
       },
     },
   }), /service log persistence failed/u);
-  assert.deepEqual(writes, ['service-api-server.log', 'service-plugin-runner.log']);
+  assert.deepEqual(writes, ['service-api-server.log', 'service-runtime-host-fixture.log']);
 });

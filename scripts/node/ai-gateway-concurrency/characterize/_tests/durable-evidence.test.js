@@ -31,18 +31,16 @@ function snapshot(overrides = {}) {
     },
     queries: { 'load-000001': { id: RUN_ID, status: 'succeeded' } },
     runtimeActiveTotals: { [TRANSPORT.RESPONSES_SSE]: 0 },
-    pluginStreams: { 'http://127.0.0.1:4200/providers/active-streams': [] },
     ...overrides,
   };
 }
 
-test('AC durable controlled negatives fail direct query, duplicate UUID, running, activity, and streams', () => {
+test('AC durable controlled negatives fail direct query, duplicate UUID, running, and activity', () => {
   assert.match(evaluateSnapshot([request(), request({ clientNonce: 'load-000002' })], snapshot()).join('\n'), /duplicate run UUID/u);
   assert.match(evaluateSnapshot([request()], snapshot({ queries: {} })).join('\n'), /query_run result missing/u);
   assert.match(evaluateSnapshot([request()], snapshot({ queries: { 'load-000001': { id: '118f7af7-3694-7ba0-90bf-83b5ec689705', status: 'succeeded' } } })).join('\n'), /correlated\/query run id mismatch/u);
   assert.match(evaluateSnapshot([request()], snapshot({ queries: { 'load-000001': { id: RUN_ID, status: 'running' } } })).join('\n'), /remained running/u);
   assert.match(evaluateSnapshot([request()], snapshot({ runtimeActiveTotals: { [TRANSPORT.RESPONSES_SSE]: 1 } })).join('\n'), /active\.total was 1/u);
-  assert.match(evaluateSnapshot([request()], snapshot({ pluginStreams: { streams: [{ invocation_id: 'secret-free-id' }] } })).join('\n'), /contained 1 active stream/u);
   assert.equal(runUuidFromProtocolId(TRANSPORT.ANTHROPIC_SSE, `msg_${RUN_ID}`), null);
   assert.equal(runUuidFromProtocolId(TRANSPORT.CHAT_COMPLETIONS_SSE, `chatcmpl-${RUN_ID}`), RUN_ID);
   assert.equal(runUuidFromProtocolId(TRANSPORT.RESPONSES_SSE, `msg_${RUN_ID}`), null);
@@ -60,7 +58,6 @@ test('AC Anthropic protocol IDs remain opaque while durable truth correlates by 
       query_run: { url_template: 'http://fixture/query/{run_id}' },
     },
     runtime_activity: { url: 'http://fixture/activity' },
-    plugin_runner_active_streams: { url: 'http://fixture/streams' },
   };
   const response = (data) => ({ ok: true, status: 200, async json() { return data; } });
   const ledger = await collectDurableConvergence({
@@ -119,7 +116,6 @@ test('AC durable list endpoint failure remains advisory when direct truth conver
       query_run: { url_template: 'http://fixture/query/{run_id}' },
     },
     runtime_activity: { url: 'http://fixture/activity' },
-    plugin_runner_active_streams: { url: 'http://fixture/streams' },
   };
   const response = (data) => ({ ok: true, status: 200, async json() { return data; } });
   const ledger = await collectDurableConvergence({
@@ -143,7 +139,6 @@ test('AC durable controlled negative: deadline preserves a still-running evidenc
       query_run: { url_template: 'http://fixture/query/{run_id}' },
     },
     runtime_activity: { url: 'http://fixture/activity' },
-    plugin_runner_active_streams: { url: 'http://fixture/streams' },
   };
   const response = (data) => ({ ok: true, status: 200, async json() { return data; } });
   const ledger = await collectDurableConvergence({
@@ -171,7 +166,6 @@ test('AC durable positive: fixed poll converges from running/active to one termi
       query_run: { url_template: 'http://fixture/query/{run_id}' },
     },
     runtime_activity: { url: 'http://fixture/activity' },
-    plugin_runner_active_streams: { url: 'http://fixture/streams' },
   };
   const jsonResponse = (data) => ({ ok: true, status: 200, async json() { return data; } });
   const ledger = await collectDurableConvergence({
@@ -191,5 +185,5 @@ test('AC durable positive: fixed poll converges from running/active to one termi
   assert.equal(ledger.verdict, 'PASS');
   assert.equal(ledger.polls.length, 2);
   assert.equal(ledger.polls[0].failures.some((failure) => failure.includes('running')), true);
-  assert.deepEqual(ledger.polls[1].pluginStreams['http://fixture/streams'], []);
+  assert.equal(ledger.polls[1].runtimeActiveTotals[TRANSPORT.RESPONSES_SSE], 0);
 });

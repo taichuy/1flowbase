@@ -13,7 +13,6 @@ use std::{
 #[cfg(unix)]
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 
-use axum::http::Uri;
 use extension_package_runtime::{
     error::{FrameworkResult, PluginFrameworkError},
     AcquireHttpForwardProxyInput, EgressAvailability, EgressDescriptor, ForwardProxyLease,
@@ -21,6 +20,7 @@ use extension_package_runtime::{
     NetworkEgressProviderStdioResponse, PluginRuntimeLimits, ReleaseHttpForwardProxyInput,
     SyncEgressesInput, SyncEgressesResult,
 };
+use http::Uri;
 use serde::{Deserialize, Serialize};
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader, Lines},
@@ -120,6 +120,18 @@ impl NetworkEgressSource {
 }
 
 impl NetworkEgressHost {
+    pub fn loaded_count(&self) -> usize {
+        self.active_generations.len()
+    }
+
+    pub async fn stop_all(&mut self) -> FrameworkResult<()> {
+        let runtime_ids = self.active_generations.keys().cloned().collect::<Vec<_>>();
+        for runtime_id in runtime_ids {
+            self.unload(&runtime_id).await?;
+        }
+        Ok(())
+    }
+
     /// Validates one provider configuration against a candidate artifact without publishing that
     /// artifact as the provider instance's active generation.
     pub async fn preflight(
@@ -1120,7 +1132,7 @@ mod tests {
     impl EgressWorkerFixture {
         fn new(version: &str) -> Self {
             let root = std::env::temp_dir().join(format!(
-                "plugin-runner-network-egress-generation-{}-{}",
+                "runtime-extension-host-network-egress-generation-{}-{}",
                 std::process::id(),
                 super::NEXT_CONFIG_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
             ));

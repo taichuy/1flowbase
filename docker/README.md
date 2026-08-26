@@ -107,7 +107,7 @@ API_COOKIE_SECURE=false
 
 正式生产环境使用 HTTPS 时应保持 `API_COOKIE_SECURE=true`。否则浏览器会拒绝在明文 HTTP 页面保存 `Secure` session cookie，表现为登录接口返回成功，但刷新 `/api/console/me` 时仍然是未登录。
 
-镜像版本、端口、数据库、API、插件运行器和初始化 root 账号配置都集中在 `docker/.env.example`。不再需要复制 `api/api.env`、`plugin-runner/plugin-runner.env` 或 `postgres/postgres.env`。
+镜像版本、端口、数据库、API 和初始化 root 账号配置都集中在 `docker/.env.example`。不再需要复制旧的分组件 env 文件。
 
 官方插件默认要求官方签名校验，`API_OFFICIAL_PLUGIN_SIGNATURE_REQUIRED=true` 会拒绝未签名或无法用 trusted key 验证的官方 / 镜像源插件。自托管环境明确接受风险时可设为 `false`；此时仍校验 registry 中的 `sha256` checksum，未验证包会标记为 `unverified`。
 
@@ -115,14 +115,12 @@ API_COOKIE_SECURE=false
 
 - `web`: `http://127.0.0.1:3100`
 - `api`: compose 内部 `http://api:7800`
-- `plugin-runner`: compose 内部 `http://plugin-runner:7801`
 - `db`: compose 内部 `db:5432`
 
 默认镜像：
 
 - `ghcr.io/taichuy/1flowbase-web:${FLOWBASE_WEB_VERSION}`
 - `ghcr.io/taichuy/1flowbase-api-server:${FLOWBASE_API_SERVER_VERSION}`
-- `ghcr.io/taichuy/1flowbase-plugin-runner:${FLOWBASE_PLUGIN_RUNNER_VERSION}`
 
 默认使用每个组件镜像的 `latest` tag；生产部署或需要可复现回滚时，可以在 `.env` 里把单个组件 pin 到具体版本，例如 `FLOWBASE_WEB_VERSION=v0.1.1`。
 官方镜像发布 `linux/amd64` 和 `linux/arm64` manifest，Docker 会按本机平台自动选择。部署脚本在拉取或启动前会检测有效 Docker 平台，并提前提示当前 tag 是否缺少对应 manifest；如果需要临时强制使用 x86 镜像，可以设置 `DOCKER_DEFAULT_PLATFORM=linux/amd64`。
@@ -174,7 +172,6 @@ docker buildx version
 
 ```bash
 docker buildx build --load -f docker/api-server.Dockerfile -t ghcr.io/taichuy/1flowbase-api-server:local .
-docker buildx build --load -f docker/plugin-runner.Dockerfile -t ghcr.io/taichuy/1flowbase-plugin-runner:local .
 docker buildx build --load -f docker/web.Dockerfile -t ghcr.io/taichuy/1flowbase-web:local .
 ```
 
@@ -182,7 +179,7 @@ docker buildx build --load -f docker/web.Dockerfile -t ghcr.io/taichuy/1flowbase
 
 ```bash
 cd docker
-FLOWBASE_WEB_VERSION=local FLOWBASE_API_SERVER_VERSION=local FLOWBASE_PLUGIN_RUNNER_VERSION=local docker compose up -d
+FLOWBASE_WEB_VERSION=local FLOWBASE_API_SERVER_VERSION=local docker compose up -d
 ```
 
-CI 发布镜像时也会继续使用 GitHub Actions cache，因此同一镜像的后续构建会复用远端缓存。CI 使用 buildx 发布 `linux/amd64` 和 `linux/arm64`。镜像按组件 manifest 版本自动发布：`web/app/package.json` 的 `version` 变化只发布 `1flowbase-web:vX.Y.Z` 并更新 `1flowbase-web:latest`，`api/apps/api-server/Cargo.toml` 的 `version` 变化只发布 `1flowbase-api-server:vX.Y.Z` 并更新 `1flowbase-api-server:latest`，`api/apps/plugin-runner/Cargo.toml` 的 `version` 变化只发布 `1flowbase-plugin-runner:vX.Y.Z` 并更新 `1flowbase-plugin-runner:latest`。普通源码提交不会发布镜像。
+CI 发布镜像时也会继续使用 GitHub Actions cache，因此同一镜像的后续构建会复用远端缓存。CI 使用 buildx 发布 `linux/amd64` 和 `linux/arm64`。镜像按组件 manifest 版本自动发布：`web/app/package.json` 的 `version` 变化只发布 web 镜像，`api/apps/api-server/Cargo.toml` 的 `version` 变化只发布唯一 Backend 镜像。普通源码提交不会发布镜像。

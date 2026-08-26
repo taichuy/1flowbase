@@ -81,7 +81,6 @@ async function runLocalAcceptance(rawOptions = {}, dependencies = {}) {
     fixture = await deps.createGatewayFixture({
       databaseUrl: database.url,
       apiServerBin: manifest.artifacts.apiServer.path,
-      pluginRunnerBin: manifest.artifacts.pluginRunner.path,
       openaiPackage: manifest.artifacts.openaiPackage.path,
       anthropicPackage: manifest.artifacts.anthropicPackage.path,
       openaiCompatiblePackage: manifest.artifacts.openaiCompatiblePackage.path,

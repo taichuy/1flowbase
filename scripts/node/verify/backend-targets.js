@@ -16,7 +16,7 @@ const BACKEND_SHARDS = [
   },
   {
     key: 'apps',
-    packages: ['control-plane', 'api-server', 'plugin-runner'],
+    packages: ['control-plane', 'api-server'],
   },
 ];
 const BACKEND_APP_TEST_SHARDS = [
@@ -29,10 +29,6 @@ const BACKEND_APP_TEST_SHARDS = [
     packages: ['api-server'],
     nextestPartition: `hash:${index + 1}/4`,
   })),
-  {
-    key: 'plugin-runner',
-    packages: ['plugin-runner'],
-  },
 ];
 const BACKEND_RUNTIME_STORAGE_TEST_SHARDS = [
   {

@@ -22,7 +22,7 @@ function sha256File(filePath) {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
-function providerTarget(baseUrl, pluginRunnerBaseUrl, client, provider) {
+function providerTarget(baseUrl, client, provider) {
   const ownerHeaders = { cookie: client.cookie };
   return {
     application_id: provider.application_id,
@@ -62,10 +62,6 @@ function providerTarget(baseUrl, pluginRunnerBaseUrl, client, provider) {
       url: `${baseUrl}/api/console/applications/${provider.application_id}/monitoring/runtime-activity`,
       headers: ownerHeaders,
     },
-    plugin_runner_active_streams: {
-      method: 'GET',
-      url: `${pluginRunnerBaseUrl}/providers/active-streams`,
-    },
   };
 }
 
@@ -81,7 +77,6 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
   const removeScratch = dependencies.removeScratch || ((target) => fs.rmSync(target, { recursive: true, force: true }));
   const Client = dependencies.OwnerHttpClient || OwnerHttpClient;
   let apiProcess = null;
-  let runnerProcess = null;
   let rootPassword = null;
   let providerSecretMasterKey = null;
   let ownerClient = null;
@@ -113,14 +108,14 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
     try {
       persistLogs({
         artifactRoot: options.artifactRoot,
-        services: { 'api-server': apiProcess, 'plugin-runner': runnerProcess },
+        services: { 'api-server': apiProcess },
         secrets: fixtureSecrets(),
       });
       assertNoArtifactSecrets([options.artifactRoot], fixtureSecrets());
     } catch (error) {
       firstError ||= error;
     }
-    for (const handle of [apiProcess, runnerProcess]) {
+    for (const handle of [apiProcess]) {
       try {
         await stopProcess(handle);
       } catch (error) {
@@ -138,23 +133,13 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
     }
   };
   try {
-    let runnerPort = await reservePort();
-    while (options.apiPort !== null && runnerPort === options.apiPort) runnerPort = await reservePort();
     let apiPort = options.apiPort;
     if (apiPort === null) {
       apiPort = await reservePort();
-      while (apiPort === runnerPort) apiPort = await reservePort();
     }
     if (options.apiPort !== null) await assertPortAvailable(apiPort);
-    const pluginRunnerBaseUrl = `http://127.0.0.1:${runnerPort}`;
     const gatewayBaseUrl = `http://127.0.0.1:${apiPort}`;
     const scrubbedCredentials = { OPENAI_API_KEY: '', ANTHROPIC_API_KEY: '' };
-    runnerProcess = spawnProcess(options.pluginRunnerBin, {
-      ...scrubbedCredentials,
-      PLUGIN_RUNNER_ADDR: `127.0.0.1:${runnerPort}`,
-      RUST_LOG: process.env.RUST_LOG || 'info',
-    }, { cwd: scratchRoot });
-    await health(pluginRunnerBaseUrl, 'plugin-runner', { processHandle: runnerProcess });
 
     const rootAccount = `gateway_fixture_${crypto.randomBytes(4).toString('hex')}`;
     rootPassword = `Fixture-${crypto.randomBytes(18).toString('base64url')}`;
@@ -165,7 +150,6 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
       API_SERVER_ADDR: `127.0.0.1:${apiPort}`,
       API_DATABASE_URL: options.databaseUrl,
       API_DATABASE_POOL_MAX_CONNECTIONS: '5',
-      API_PLUGIN_RUNNER_INTERNAL_BASE_URL: pluginRunnerBaseUrl,
       API_PROVIDER_INSTALL_ROOT: path.join(scratchRoot, 'providers'),
       API_COOKIE_NAME: `gateway_fixture_${crypto.randomBytes(5).toString('hex')}`,
       API_COOKIE_SECURE: 'false',
@@ -204,13 +188,12 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
       }
     }
     const anthropicPool = providers.anthropic.map(
-      (provider) => providerTarget(gatewayBaseUrl, pluginRunnerBaseUrl, client, provider)
+      (provider) => providerTarget(gatewayBaseUrl, client, provider)
     );
     const targets = {
-      openai: providerTarget(gatewayBaseUrl, pluginRunnerBaseUrl, client, providers.openai),
+      openai: providerTarget(gatewayBaseUrl, client, providers.openai),
       openai_compatible: providerTarget(
         gatewayBaseUrl,
-        pluginRunnerBaseUrl,
         client,
         providers.openai_compatible
       ),
@@ -220,7 +203,6 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
       schema_version: '1flowbase.ai-gateway-fixture/v1',
       artifact_root: options.artifactRoot,
       gateway_base_url: gatewayBaseUrl,
-      plugin_runner_base_url: pluginRunnerBaseUrl,
       model,
       upstream_model: upstreamModel,
       packages: {
@@ -255,7 +237,7 @@ async function createGatewayFixture(rawOptions, dependencies = {}) {
     } catch (cleanupError) {
       error.message = `${error.message}; cleanup failed: ${cleanupError.message}`;
     }
-    const output = `${apiProcess?.output?.() || ''}${runnerProcess?.output?.() || ''}`.trim();
+    const output = `${apiProcess?.output?.() || ''}`.trim();
     if (output) error.message = `${error.message}; owned process output: ${output.slice(-4000)}`;
     error.message = redactServiceLog(error.message, fixtureSecrets());
     throw error;

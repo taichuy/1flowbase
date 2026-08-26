@@ -107,7 +107,6 @@ function targetFromProvider(provider, gatewayBaseUrl, providerId) {
     gatewayBaseUrl: (provider.gateway?.base_url || gatewayBaseUrl || '').replace(/\/$/u, ''),
     durable: provider.durable,
     runtimeActivity: provider.runtime_activity,
-    activeStreams: provider.plugin_runner_active_streams,
   };
 }
 

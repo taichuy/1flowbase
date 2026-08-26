@@ -114,7 +114,8 @@ test("quality gate limits conversation Cargo probes to one owned database and de
         "d1_p03_generic_estimator_is_total_for_canonical_prompt_block_families",
       ],
       ["plugin-framework-count-tokens-contract-tests", "count_tokens"],
-      ["plugin-runner-count-tokens-totality-tests", "count_tokens"],
+      ["extension-package-runtime-count-tokens-estimator-fault-tests", "count_tokens_estimator"],
+      ["runtime-extension-host-count-tokens-totality-tests", "count_tokens"],
       ["orchestration-runtime-count-tokens-terminal-tests", "count_tokens"],
       ["control-plane-count-tokens-route-tests", "count_tokens"],
       ["api-server-count-tokens-envelope-tests", "count_tokens"],
@@ -213,9 +214,9 @@ test("F03 Cargo filters execute the estimator corpus, fault fixture, and Native 
       source: "api/crates/plugin-framework/src/_tests/provider_contract_tests.rs",
     },
     {
-      packageName: "plugin-framework",
+      packageName: "extension-package-runtime",
       testName: "d1_p03_count_tokens_estimator_fault_injection_projects_typed_fallback_zero",
-      source: "api/crates/plugin-framework/src/provider_count_tokens_estimator.rs",
+      source: "api/crates/extension-package-runtime/src/provider_count_tokens_estimator.rs",
     },
     {
       packageName: "api-server",

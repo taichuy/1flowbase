@@ -227,8 +227,13 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
       "count_tokens",
     ),
     invocation(
-      "plugin-runner-count-tokens-totality-tests",
-      "plugin-runner",
+      "extension-package-runtime-count-tokens-estimator-fault-tests",
+      "extension-package-runtime",
+      "count_tokens_estimator",
+    ),
+    invocation(
+      "runtime-extension-host-count-tokens-totality-tests",
+      "runtime-extension-host",
       "count_tokens",
     ),
     invocation(
@@ -501,39 +506,6 @@ async function runQualityGate(rawOptions) {
       "--bin",
       "api-server",
     ]);
-    attempt("gateway-plugin-runner-build", "cargo", [
-      "build",
-      "--manifest-path",
-      path.join(repoRoot, "api/Cargo.toml"),
-      "--release",
-      "-p",
-      "plugin-runner",
-      "--bin",
-      "plugin-runner",
-    ]);
-
-    if (mainSourceSha && officialSourceSha) {
-      attempt("six-provider-count-tokens-and-generate-conformance", "node", [
-        path.join(repoRoot, "scripts/node/provider-conformance/cli.js"),
-        "--main-root",
-        repoRoot,
-        "--official-root",
-        officialSourceRoot,
-        "--main-sha",
-        mainSourceSha,
-        "--official-sha",
-        officialSourceSha,
-        "--package-dir",
-        packageRoot,
-        "--plugin-runner-bin",
-        path.join(repoRoot, "api/target/release/plugin-runner"),
-        "--fixture",
-        path.join(repoRoot, "scripts/node/provider-conformance/fixtures/six-provider-matrix.json"),
-        "--artifact",
-        path.join(artifactRoot, "provider-conformance-pair.json"),
-      ]);
-    }
-
     if (failures.length === 0 && database) {
       try {
         result = await runWorkflowContract({
@@ -543,10 +515,6 @@ async function runQualityGate(rawOptions) {
           repoRoot,
           databaseUrl: database.url,
           apiServerBin: path.join(repoRoot, "api/target/release/api-server"),
-          pluginRunnerBin: path.join(
-            repoRoot,
-            "api/target/release/plugin-runner",
-          ),
           openaiPackageDir: path.join(packageRoot, "openai"),
           anthropicPackageDir: path.join(packageRoot, "anthropic"),
           openaiCompatiblePackageDir: path.join(

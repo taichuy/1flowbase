@@ -40,7 +40,6 @@ on:
           - repo-backend-test-api-server-2-of-4
           - repo-backend-test-api-server-3-of-4
           - repo-backend-test-api-server-4-of-4
-          - repo-backend-test-plugin-runner
           - repo-backend-check-core-libs
           - repo-backend-check-runtime-storage
           - repo-backend-check-apps
@@ -55,7 +54,6 @@ on:
           - coverage-backend
           - coverage-backend-control-plane
           - coverage-backend-orchestration-runtime
-          - coverage-backend-plugin-runner
           - coverage-backend-storage-postgres
           - coverage-backend-api-server
           - container-images
@@ -400,7 +398,6 @@ jobs:
           - repo-backend-test-api-server-2-of-4
           - repo-backend-test-api-server-3-of-4
           - repo-backend-test-api-server-4-of-4
-          - repo-backend-test-plugin-runner
           - repo-backend-check-core-libs
           - repo-backend-check-runtime-storage
           - repo-backend-check-apps
@@ -606,7 +603,6 @@ jobs:
         scope:
           - coverage-backend-control-plane
           - coverage-backend-orchestration-runtime
-          - coverage-backend-plugin-runner
           - coverage-backend-storage-postgres
     steps:
       - uses: actions/checkout@v5
@@ -841,32 +837,6 @@ jobs:
           format: json
           output: tmp/test-governance/trivy-api-server-critical.json
           exit-code: "0"
-      - name: Generate plugin-runner HIGH Trivy warning report
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
-        env:
-          TRIVY_USERNAME: ${{ github.actor }}
-          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/1flowbase-plugin-runner:latest
-          version: v0.70.0
-          scanners: vuln
-          severity: HIGH
-          format: json
-          output: tmp/test-governance/trivy-plugin-runner-high.json
-          exit-code: "0"
-      - name: Generate plugin-runner CRITICAL Trivy gate report
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
-        env:
-          TRIVY_USERNAME: ${{ github.actor }}
-          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          image-ref: ghcr.io/${{ github.repository_owner }}/1flowbase-plugin-runner:latest
-          version: v0.70.0
-          scanners: vuln
-          severity: CRITICAL
-          format: json
-          output: tmp/test-governance/trivy-plugin-runner-critical.json
-          exit-code: "0"
       - uses: ./.github/actions/quality-gate
         env:
           GITHUB_REF_NAME: ${{ env.QUALITY_GATE_TARGET_BRANCH }}
@@ -924,7 +894,7 @@ jobs:
           INPUT_ARTIFACT_ROOT: tmp/test-governance/parallel
           INPUT_REPORT_TYPE: ${{ env.QUALITY_GATE_REPORT_TYPE }}
           INPUT_ENVIRONMENT: ${{ github.event_name == 'schedule' && env.QUALITY_GATE_SCHEDULED_ENVIRONMENT || inputs.environment }}
-          INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-clippy-core-libs,repo-backend-clippy-runtime-storage,repo-backend-clippy-apps,repo-backend-test-core-libs,repo-backend-test-runtime-storage-fast,repo-backend-test-storage-postgres-1-of-4,repo-backend-test-storage-postgres-2-of-4,repo-backend-test-storage-postgres-3-of-4,repo-backend-test-storage-postgres-4-of-4,repo-backend-test-control-plane,repo-backend-test-api-server-1-of-4,repo-backend-test-api-server-2-of-4,repo-backend-test-api-server-3-of-4,repo-backend-test-api-server-4-of-4,repo-backend-test-plugin-runner,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,backend-consistency-control-runtime,backend-consistency-storage,backend-consistency-api,coverage-frontend,coverage-backend-control-plane,coverage-backend-orchestration-runtime,coverage-backend-plugin-runner,coverage-backend-storage-postgres,container-images,ai-gateway-protocol-conformance,foundation-contracts'
+          INPUT_EXPECTED_SCOPES: 'repo-tooling,repo-frontend,repo-frontend-react-doctor,repo-backend-static,repo-backend-fmt,repo-backend-image-llm-vision,repo-backend-official-i18n-seed,repo-backend-clippy-core-libs,repo-backend-clippy-runtime-storage,repo-backend-clippy-apps,repo-backend-test-core-libs,repo-backend-test-runtime-storage-fast,repo-backend-test-storage-postgres-1-of-4,repo-backend-test-storage-postgres-2-of-4,repo-backend-test-storage-postgres-3-of-4,repo-backend-test-storage-postgres-4-of-4,repo-backend-test-control-plane,repo-backend-test-api-server-1-of-4,repo-backend-test-api-server-2-of-4,repo-backend-test-api-server-3-of-4,repo-backend-test-api-server-4-of-4,repo-backend-check-core-libs,repo-backend-check-runtime-storage,repo-backend-check-apps,backend-consistency-control-runtime,backend-consistency-storage,backend-consistency-api,coverage-frontend,coverage-backend-control-plane,coverage-backend-orchestration-runtime,coverage-backend-storage-postgres,container-images,ai-gateway-protocol-conformance,foundation-contracts'
           INPUT_PUBLISH_ISSUE: "true"
           INPUT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/upload-artifact@v6

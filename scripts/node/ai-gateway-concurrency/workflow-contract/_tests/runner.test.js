@@ -69,7 +69,6 @@ function fixtureManifest() {
     gateway,
     durable: durable(`${provider}-${ordinal}`),
     runtime_activity: activity(`${provider}-${ordinal}`),
-    plugin_runner_active_streams: streams,
   });
   const openai = target('openai', 1, 'published-openai-model', { responses_url: 'http://127.0.0.1:4100/v1/responses' });
   const openaiCompatible = target(

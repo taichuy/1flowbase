@@ -4,7 +4,6 @@ const { log } = require('./fs.js');
 const {
   DEFAULT_DEMO_HOST,
   DEFAULT_DEMO_PORT,
-  DEFAULT_RUNNER_URL,
   createPluginDemoScaffold,
   createPluginScaffold,
   resolvePort,
@@ -22,7 +21,7 @@ function usage() {
   demo init <plugin-path>
     在目标插件目录下生成 demo 页面与本地辅助脚本。
 
-  demo dev <plugin-path> [--host <host>] [--port <port>] [--runner-url <url>]
+  demo dev <plugin-path> [--host <host>] [--port <port>]
     启动目标插件目录下 demo/ 的本地静态服务。
 
   package <plugin-path> --out <output-dir>
@@ -34,7 +33,6 @@ function usage() {
   --target <triple>        package 时指定 rust target triple，例如 x86_64-unknown-linux-musl
   --host <host>        demo dev 监听地址，默认 127.0.0.1
   --port <port>        demo dev 监听端口，默认 4310；传 0 表示自动分配
-  --runner-url <url>   传给 demo 页面显示的 plugin-runner 地址，默认 http://127.0.0.1:7801
   --signing-key-pem-file <file>  package 时使用的 ed25519 PKCS8 私钥 PEM 文件
   --signing-key-id <id>          package 时写入官方签名 key id
   --issued-at <iso8601>          package 时写入官方签名签发时间，默认当前 UTC 时间
@@ -89,7 +87,6 @@ function parseCliArgs(argv) {
       pluginPath: path.resolve(third),
       host: DEFAULT_DEMO_HOST,
       port: DEFAULT_DEMO_PORT,
-      runnerUrl: DEFAULT_RUNNER_URL,
     };
 
     for (let index = 0; index < rest.length; index += 1) {
@@ -108,14 +105,6 @@ function parseCliArgs(argv) {
           throw new Error('--port 需要值');
         }
         options.port = resolvePort(next);
-        index += 1;
-        continue;
-      }
-      if (arg === '--runner-url') {
-        if (!next) {
-          throw new Error('--runner-url 需要值');
-        }
-        options.runnerUrl = next;
         index += 1;
         continue;
       }
@@ -270,7 +259,6 @@ async function main(argv) {
 module.exports = {
   DEFAULT_DEMO_HOST,
   DEFAULT_DEMO_PORT,
-  DEFAULT_RUNNER_URL,
   createPluginDemoScaffold,
   createPluginPackage,
   createPluginScaffold,

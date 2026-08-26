@@ -9,8 +9,7 @@ const PROVENANCE_FIDELITY_ORACLE = Object.freeze({
   providers: PROVIDERS,
   source: 'official_source_sha-equals-paired_lock_revision',
   artifact: 'built_package_sha256-equals-ready_package_sha256',
-  installed: 'ready_package_sha256-equals-installed_receipt_sha256',
-  runtime: 'installed_receipt_sha256-equals-runtime_loaded_package_sha256',
+  validated: 'ready_package_sha256-equals-validated_package_sha256',
 });
 
 function assertDigest(value, label, pattern) {
@@ -28,15 +27,13 @@ function assertProvenanceFidelity(evidence) {
     for (const [field, value] of Object.entries({
       built_package_sha256: row.built_package_sha256,
       ready_package_sha256: row.ready_package_sha256,
-      installed_receipt_sha256: row.installed_receipt_sha256,
-      runtime_loaded_package_sha256: row.runtime_loaded_package_sha256,
+      validated_package_sha256: row.validated_package_sha256,
     })) assertDigest(value, `${provider} ${field}`, SHA256_PATTERN);
     if (new Set([
       row.built_package_sha256,
       row.ready_package_sha256,
-      row.installed_receipt_sha256,
-      row.runtime_loaded_package_sha256,
-    ]).size !== 1) throw new Error(`${provider} package/install/runtime provenance diverged`);
+      row.validated_package_sha256,
+    ]).size !== 1) throw new Error(`${provider} package provenance diverged`);
   }
   return {
     schema_version: '1flowbase.ai-gateway-provenance-result/v1',

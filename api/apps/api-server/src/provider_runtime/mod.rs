@@ -30,16 +30,23 @@ use plugin_framework::{
         ProviderAuthOperation, ProviderAuthResult, ProviderBalanceResult, ProviderCompactResult,
         ProviderCountTokensInput, ProviderCountTokensResult, ProviderInvocationInput,
         ProviderModelDescriptor, ProviderResetCreditOperation, ProviderResetCreditResult,
-        ProviderUsageWindowsResult,
+        ProviderStreamEvent, ProviderUsageWindowsResult,
     },
     ForwardProxyLease,
 };
-use runtime_core::runtime_engine::DataSourceRuntimeRecordBackend;
+use runtime_core::{
+    runtime_backend::{
+        RuntimeBackendError, RuntimeExecutionPort, RuntimeExecutionRequest, RuntimeRequestId,
+        RuntimeStreamEventSink, RuntimeStreamSinks, RuntimeTargetId,
+    },
+    runtime_engine::DataSourceRuntimeRecordBackend,
+};
 use runtime_extension_host::{
     capability_host::CapabilityHost,
     data_source_host::DataSourceHost,
     network_egress_host::{NetworkEgressHost, NetworkEgressWorkerConfig},
     provider_host::ProviderHost,
+    RuntimeExtensionHost,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
@@ -57,16 +64,28 @@ use crate::runtime_activity::{
 
 mod model_provider_slot;
 
+struct RuntimeEventChannelSink(tokio::sync::mpsc::Sender<ProviderStreamEvent>);
+
+#[async_trait]
+impl RuntimeStreamEventSink for RuntimeEventChannelSink {
+    async fn emit(&self, event: ProviderStreamEvent) -> Result<(), RuntimeBackendError> {
+        self.0
+            .send(event)
+            .await
+            .map_err(|_| RuntimeBackendError::Execution {
+                target_id: "provider_event_stream".to_string(),
+                message: "provider live event receiver is closed".to_string(),
+            })
+    }
+}
+
 pub use model_provider_slot::{
     ModelProviderBindingProvenance, ModelProviderSlotBinding, ModelProviderSlotResolver,
 };
 
 #[derive(Clone)]
 pub struct ApiRuntimeServices {
-    provider_host: Arc<RwLock<ProviderHost>>,
-    capability_host: Arc<RwLock<CapabilityHost>>,
-    data_source_host: Arc<RwLock<DataSourceHost>>,
-    network_egress_host: Arc<RwLock<NetworkEgressHost>>,
+    runtime_host: Arc<RuntimeExtensionHost>,
     data_model_template_catalog:
         runtime_core::data_model_template_registry::DataModelTemplateCatalog,
     model_provider_slot_resolver: Option<ModelProviderSlotResolver>,
@@ -81,6 +100,20 @@ impl ApiRuntimeServices {
         data_source_host: Arc<RwLock<DataSourceHost>>,
         extension_graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
     ) -> anyhow::Result<Self> {
+        let runtime_host = Arc::new(RuntimeExtensionHost::from_shared_registries(
+            time::OffsetDateTime::now_utc(),
+            provider_host,
+            capability_host,
+            data_source_host,
+        )?);
+        runtime_host.mark_ready()?;
+        Self::new_with_runtime_host(runtime_host, extension_graph)
+    }
+
+    pub fn new_with_runtime_host(
+        runtime_host: Arc<RuntimeExtensionHost>,
+        extension_graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
+    ) -> anyhow::Result<Self> {
         let provider_input_pipeline = Arc::new(
             orchestration_runtime::provider_input_pipeline::ProviderInputPipeline::from_graph(
                 Arc::clone(&extension_graph),
@@ -88,10 +121,7 @@ impl ApiRuntimeServices {
             )?,
         );
         Ok(Self {
-            provider_host,
-            capability_host,
-            data_source_host,
-            network_egress_host: Arc::new(RwLock::new(NetworkEgressHost::default())),
+            runtime_host,
             data_model_template_catalog:
                 runtime_core::data_model_template_registry::DataModelTemplateCatalog::core(),
             model_provider_slot_resolver: Some(ModelProviderSlotResolver::new(extension_graph)),
@@ -107,11 +137,20 @@ impl ApiRuntimeServices {
         capability_host: Arc<RwLock<CapabilityHost>>,
         data_source_host: Arc<RwLock<DataSourceHost>>,
     ) -> Self {
+        let runtime_host = Arc::new(
+            RuntimeExtensionHost::from_shared_registries(
+                time::OffsetDateTime::now_utc(),
+                provider_host,
+                capability_host,
+                data_source_host,
+            )
+            .expect("test runtime host must initialize"),
+        );
+        runtime_host
+            .mark_ready()
+            .expect("test runtime host must become ready");
         Self {
-            provider_host,
-            capability_host,
-            data_source_host,
-            network_egress_host: Arc::new(RwLock::new(NetworkEgressHost::default())),
+            runtime_host,
             data_model_template_catalog:
                 runtime_core::data_model_template_registry::DataModelTemplateCatalog::core(),
             model_provider_slot_resolver: None,
@@ -131,6 +170,10 @@ impl ApiRuntimeServices {
         &self,
     ) -> runtime_core::data_model_template_registry::DataModelTemplateCatalog {
         self.data_model_template_catalog.clone()
+    }
+
+    pub fn runtime_host(&self) -> &Arc<RuntimeExtensionHost> {
+        &self.runtime_host
     }
 }
 
@@ -209,7 +252,8 @@ impl ApiProviderRuntime {
             .await?;
         let lease = self
             .services
-            .network_egress_host
+            .runtime_host
+            .network_egress_registry()
             .write()
             .await
             .resolve_http_forward_proxy(&provider_id.to_string(), provider_egress_key)
@@ -251,7 +295,8 @@ impl ApiProviderRuntime {
         lease_id: &str,
     ) -> anyhow::Result<()> {
         self.services
-            .network_egress_host
+            .runtime_host
+            .network_egress_registry()
             .write()
             .await
             .release_http_forward_proxy(&provider_id.to_string(), lease_id)
@@ -376,7 +421,8 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         match installation.contract_version.as_str() {
             plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT => self
                 .services
-                .provider_host
+                .runtime_host
+                .provider_registry()
                 .write()
                 .await
                 .unload(&installation.plugin_id)
@@ -384,7 +430,8 @@ impl ProviderRuntimePort for ApiProviderRuntime {
                 .map_err(map_provider_framework_error),
             "1flowbase.data_source/v1" => {
                 self.services
-                    .data_source_host
+                    .runtime_host
+                    .data_source_registry()
                     .write()
                     .await
                     .unload(&installation.plugin_id)
@@ -394,7 +441,8 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             }
             "1flowbase.capability/v1" => {
                 self.services
-                    .capability_host
+                    .runtime_host
+                    .capability_registry()
                     .write()
                     .await
                     .unload(&installation.plugin_id)
@@ -442,7 +490,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         let binding = self.resolve_model_provider_binding(installation)?;
         self.ensure_provider_loaded(&binding).await?;
         let operation = {
-            let host = self.services.provider_host.read().await;
+            let host = self.services.runtime_host.provider_registry().read().await;
             host.validate_operation(&binding.plugin_id, provider_config)
                 .map_err(map_provider_framework_error)?
         };
@@ -461,7 +509,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         let binding = self.resolve_model_provider_binding(installation)?;
         self.ensure_provider_loaded(&binding).await?;
         let auth_operation = {
-            let host = self.services.provider_host.read().await;
+            let host = self.services.runtime_host.provider_registry().read().await;
             host.authenticate_operation(&binding.plugin_id, provider_config, operation)
                 .map_err(map_provider_framework_error)?
         };
@@ -479,7 +527,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         let binding = self.resolve_model_provider_binding(installation)?;
         self.ensure_provider_loaded(&binding).await?;
         let operation = {
-            let host = self.services.provider_host.read().await;
+            let host = self.services.runtime_host.provider_registry().read().await;
             host.list_models_operation(&binding.plugin_id, provider_config)
                 .map_err(map_provider_framework_error)?
         };
@@ -497,7 +545,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         let binding = self.resolve_model_provider_binding(installation)?;
         self.ensure_provider_loaded(&binding).await?;
         let operation = {
-            let host = self.services.provider_host.read().await;
+            let host = self.services.runtime_host.provider_registry().read().await;
             host.get_balance_operation(&binding.plugin_id, provider_config)
                 .map_err(map_provider_framework_error)?
         };
@@ -515,7 +563,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         let binding = self.resolve_model_provider_binding(installation)?;
         self.ensure_provider_loaded(&binding).await?;
         let operation = {
-            let host = self.services.provider_host.read().await;
+            let host = self.services.runtime_host.provider_registry().read().await;
             host.get_usage_windows_operation(&binding.plugin_id, provider_config)
                 .map_err(map_provider_framework_error)?
         };
@@ -534,7 +582,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         let binding = self.resolve_model_provider_binding(installation)?;
         self.ensure_provider_loaded(&binding).await?;
         let operation = {
-            let host = self.services.provider_host.read().await;
+            let host = self.services.runtime_host.provider_registry().read().await;
             host.reset_credit_operation(&binding.plugin_id, provider_config, reset_credit_operation)
                 .map_err(map_provider_framework_error)?
         };
@@ -557,7 +605,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         let result = async {
             self.ensure_provider_loaded(&binding).await?;
             let operation = {
-                let host = self.services.provider_host.read().await;
+                let host = self.services.runtime_host.provider_registry().read().await;
                 host.count_tokens_operation(&binding.plugin_id, input)
                     .map_err(anyhow::Error::new)
             };
@@ -594,7 +642,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
         self.ensure_provider_loaded(&binding).await?;
         let operation = {
-            let host = self.services.provider_host.read().await;
+            let host = self.services.runtime_host.provider_registry().read().await;
             host.compact_operation(&binding.plugin_id, input)
                 .map_err(anyhow::Error::new)
         };
@@ -621,21 +669,16 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         trace_provider_operation_boundary(&binding, operation_name, "start", "started");
         let result = async {
             self.ensure_provider_loaded(&binding).await?;
-            let operation = {
-                let host = self.services.provider_host.read().await;
-                host.invoke_stream_operation(&binding.plugin_id, input)
-                    .map_err(map_provider_framework_error)
-            };
-            match operation {
-                Ok(operation) => operation
-                    .await
-                    .map(|output| ProviderRuntimeInvocationOutput {
-                        events: output.events,
-                        result: output.result,
-                    })
-                    .map_err(map_provider_framework_error),
-                Err(error) => Err(error),
-            }
+            RuntimeExecutionPort::execute(
+                self.services.runtime_host.as_ref(),
+                runtime_execution_request(&binding, input)?,
+            )
+            .await
+            .map(|output| ProviderRuntimeInvocationOutput {
+                events: output.events,
+                result: output.result,
+            })
+            .map_err(map_runtime_backend_error)
         }
         .await;
         trace_provider_operation_boundary(
@@ -665,29 +708,23 @@ impl ProviderRuntimePort for ApiProviderRuntime {
         trace_provider_operation_boundary(&binding, operation_name, "start", "started");
         let result = async {
             self.ensure_provider_loaded(&binding).await?;
-            let operation = {
-                let host = self.services.provider_host.read().await;
-                let (required_live_events, diagnostic_live_events) = live_events
-                    .map(|senders| (Some(senders.required), Some(senders.diagnostic)))
-                    .unwrap_or((None, None));
-                host.invoke_stream_with_live_events_operation(
-                    &binding.plugin_id,
-                    input,
-                    required_live_events,
-                    diagnostic_live_events,
-                )
-                .map_err(map_provider_framework_error)
-            };
-            match operation {
-                Ok(operation) => operation
-                    .await
-                    .map(|output| ProviderRuntimeInvocationOutput {
-                        events: output.events,
-                        result: output.result,
-                    })
-                    .map_err(map_provider_framework_error),
-                Err(error) => Err(error),
-            }
+            let sinks = live_events
+                .map(|senders| RuntimeStreamSinks {
+                    required: Some(Arc::new(RuntimeEventChannelSink(senders.required))),
+                    diagnostic: Some(Arc::new(RuntimeEventChannelSink(senders.diagnostic))),
+                })
+                .unwrap_or_default();
+            RuntimeExecutionPort::execute_stream(
+                self.services.runtime_host.as_ref(),
+                runtime_execution_request(&binding, input)?,
+                sinks,
+            )
+            .await
+            .map(|output| ProviderRuntimeInvocationOutput {
+                events: output.events,
+                result: output.result,
+            })
+            .map_err(map_runtime_backend_error)
         }
         .await;
         trace_provider_operation_boundary(
@@ -765,7 +802,8 @@ impl ProviderRuntimePort for ApiProviderRuntime {
 impl NetworkEgressRuntimePort for ApiProviderRuntime {
     async fn unload_network_egress_provider(&self, provider_id: Uuid) -> anyhow::Result<()> {
         self.services
-            .network_egress_host
+            .runtime_host
+            .network_egress_registry()
             .write()
             .await
             .unload(&provider_id.to_string())
@@ -795,7 +833,8 @@ impl NetworkEgressRuntimePort for ApiProviderRuntime {
         self.ensure_network_egress_loaded(provider_id, installation, secret)
             .await?;
         self.services
-            .network_egress_host
+            .runtime_host
+            .network_egress_registry()
             .write()
             .await
             .sync_egresses(&provider_id.to_string())
@@ -860,7 +899,12 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
     ) -> anyhow::Result<Value> {
         self.ensure_data_source_loaded(installation).await?;
         let operation = {
-            let host = self.services.data_source_host.read().await;
+            let host = self
+                .services
+                .runtime_host
+                .data_source_registry()
+                .read()
+                .await;
             host.validate_config_operation(
                 &installation.plugin_id,
                 DataSourceConfigInput {
@@ -884,7 +928,12 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
     ) -> anyhow::Result<Value> {
         self.ensure_data_source_loaded(installation).await?;
         let operation = {
-            let host = self.services.data_source_host.read().await;
+            let host = self
+                .services
+                .runtime_host
+                .data_source_registry()
+                .read()
+                .await;
             host.test_connection_operation(
                 &installation.plugin_id,
                 DataSourceConfigInput {
@@ -908,7 +957,12 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
     ) -> anyhow::Result<Value> {
         self.ensure_data_source_loaded(installation).await?;
         let operation = {
-            let host = self.services.data_source_host.read().await;
+            let host = self
+                .services
+                .runtime_host
+                .data_source_registry()
+                .read()
+                .await;
             host.discover_catalog_operation(
                 &installation.plugin_id,
                 DataSourceConfigInput {
@@ -931,7 +985,12 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
     ) -> anyhow::Result<DataSourceResourceDescriptor> {
         self.ensure_data_source_loaded(installation).await?;
         let operation = {
-            let host = self.services.data_source_host.read().await;
+            let host = self
+                .services
+                .runtime_host
+                .data_source_registry()
+                .read()
+                .await;
             host.describe_resource_operation(
                 &installation.plugin_id,
                 input.connection,
@@ -952,7 +1011,12 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
     ) -> anyhow::Result<DataSourcePreviewReadOutput> {
         self.ensure_data_source_loaded(installation).await?;
         let operation = {
-            let host = self.services.data_source_host.read().await;
+            let host = self
+                .services
+                .runtime_host
+                .data_source_registry()
+                .read()
+                .await;
             host.preview_read_operation(&installation.plugin_id, input)
                 .map_err(|error| map_framework_error(error, "data_source_runtime"))?
         };
@@ -968,7 +1032,12 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
     ) -> anyhow::Result<NativeSqlExecutionOutput> {
         self.ensure_data_source_loaded(installation).await?;
         let operation = {
-            let host = self.services.data_source_host.read().await;
+            let host = self
+                .services
+                .runtime_host
+                .data_source_registry()
+                .read()
+                .await;
             host.execute_sql_operation(&installation.plugin_id, input)
                 .map_err(map_provider_framework_error)?
         };
@@ -982,7 +1051,12 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
     ) -> anyhow::Result<Value> {
         self.ensure_data_source_loaded(installation).await?;
         let operation = {
-            let host = self.services.data_source_host.read().await;
+            let host = self
+                .services
+                .runtime_host
+                .data_source_registry()
+                .read()
+                .await;
             host.execute_model_operation_call(&installation.plugin_id, input)
                 .map_err(|error| map_framework_error(error, "data_source_runtime"))?
         };
@@ -1001,7 +1075,12 @@ impl DataSourceCrudRuntimePort for ApiProviderRuntime {
     ) -> anyhow::Result<DataSourceListRecordsOutput> {
         self.ensure_data_source_loaded(installation).await?;
         let operation = {
-            let host = self.services.data_source_host.read().await;
+            let host = self
+                .services
+                .runtime_host
+                .data_source_registry()
+                .read()
+                .await;
             host.list_records_operation(&installation.plugin_id, input)
                 .map_err(|error| map_framework_error(error, "data_source_runtime"))?
         };
@@ -1017,7 +1096,12 @@ impl DataSourceCrudRuntimePort for ApiProviderRuntime {
     ) -> anyhow::Result<DataSourceGetRecordOutput> {
         self.ensure_data_source_loaded(installation).await?;
         let operation = {
-            let host = self.services.data_source_host.read().await;
+            let host = self
+                .services
+                .runtime_host
+                .data_source_registry()
+                .read()
+                .await;
             host.get_record_operation(&installation.plugin_id, input)
                 .map_err(|error| map_framework_error(error, "data_source_runtime"))?
         };
@@ -1033,7 +1117,12 @@ impl DataSourceCrudRuntimePort for ApiProviderRuntime {
     ) -> anyhow::Result<DataSourceCreateRecordOutput> {
         self.ensure_data_source_loaded(installation).await?;
         let operation = {
-            let host = self.services.data_source_host.read().await;
+            let host = self
+                .services
+                .runtime_host
+                .data_source_registry()
+                .read()
+                .await;
             host.create_record_operation(&installation.plugin_id, input)
                 .map_err(|error| map_framework_error(error, "data_source_runtime"))?
         };
@@ -1049,7 +1138,12 @@ impl DataSourceCrudRuntimePort for ApiProviderRuntime {
     ) -> anyhow::Result<DataSourceUpdateRecordOutput> {
         self.ensure_data_source_loaded(installation).await?;
         let operation = {
-            let host = self.services.data_source_host.read().await;
+            let host = self
+                .services
+                .runtime_host
+                .data_source_registry()
+                .read()
+                .await;
             host.update_record_operation(&installation.plugin_id, input)
                 .map_err(|error| map_framework_error(error, "data_source_runtime"))?
         };
@@ -1065,7 +1159,12 @@ impl DataSourceCrudRuntimePort for ApiProviderRuntime {
     ) -> anyhow::Result<DataSourceDeleteRecordOutput> {
         self.ensure_data_source_loaded(installation).await?;
         let operation = {
-            let host = self.services.data_source_host.read().await;
+            let host = self
+                .services
+                .runtime_host
+                .data_source_registry()
+                .read()
+                .await;
             host.delete_record_operation(&installation.plugin_id, input)
                 .map_err(|error| map_framework_error(error, "data_source_runtime"))?
         };
@@ -1248,7 +1347,12 @@ impl CapabilityPluginRuntimePort for ApiProviderRuntime {
     async fn validate_config(&self, input: ValidateCapabilityConfigInput) -> anyhow::Result<Value> {
         self.ensure_capability_loaded(&input.installation).await?;
         let operation = {
-            let host = self.services.capability_host.read().await;
+            let host = self
+                .services
+                .runtime_host
+                .capability_registry()
+                .read()
+                .await;
             host.validate_config_operation(
                 &input.installation.plugin_id,
                 &input.contribution_code,
@@ -1268,7 +1372,12 @@ impl CapabilityPluginRuntimePort for ApiProviderRuntime {
     ) -> anyhow::Result<Value> {
         self.ensure_capability_loaded(&input.installation).await?;
         let operation = {
-            let host = self.services.capability_host.read().await;
+            let host = self
+                .services
+                .runtime_host
+                .capability_registry()
+                .read()
+                .await;
             host.resolve_dynamic_options_operation(
                 &input.installation.plugin_id,
                 &input.contribution_code,
@@ -1288,7 +1397,12 @@ impl CapabilityPluginRuntimePort for ApiProviderRuntime {
     ) -> anyhow::Result<Value> {
         self.ensure_capability_loaded(&input.installation).await?;
         let operation = {
-            let host = self.services.capability_host.read().await;
+            let host = self
+                .services
+                .runtime_host
+                .capability_registry()
+                .read()
+                .await;
             host.resolve_output_schema_operation(
                 &input.installation.plugin_id,
                 &input.contribution_code,
@@ -1309,7 +1423,12 @@ impl CapabilityPluginRuntimePort for ApiProviderRuntime {
         let activity = self.start_runtime_activity(ApplicationActivityKind::ToolCall);
         self.ensure_capability_loaded(&input.installation).await?;
         let operation = {
-            let host = self.services.capability_host.read().await;
+            let host = self
+                .services
+                .runtime_host
+                .capability_registry()
+                .read()
+                .await;
             host.execute_operation(
                 &input.installation.plugin_id,
                 &input.contribution_code,
@@ -1381,7 +1500,7 @@ impl ApiProviderRuntime {
         binding: &ModelProviderSlotBinding,
     ) -> anyhow::Result<()> {
         let ensure_loaded_started = std::time::Instant::now();
-        let mut host = self.services.provider_host.write().await;
+        let mut host = self.services.runtime_host.provider_registry().write().await;
         let result = match binding.legacy_manifest_eligibility() {
             Some(eligibility) => host.load_legacy_installed_if_needed(
                 &binding.plugin_id,
@@ -1408,7 +1527,12 @@ impl ApiProviderRuntime {
         &self,
         installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<()> {
-        let mut host = self.services.capability_host.write().await;
+        let mut host = self
+            .services
+            .runtime_host
+            .capability_registry()
+            .write()
+            .await;
         if host.is_loaded(&installation.plugin_id) {
             return Ok(());
         }
@@ -1428,7 +1552,12 @@ impl ApiProviderRuntime {
         &self,
         installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<()> {
-        let mut host = self.services.data_source_host.write().await;
+        let mut host = self
+            .services
+            .runtime_host
+            .data_source_registry()
+            .write()
+            .await;
         if !host.is_loaded(&installation.plugin_id) {
             let eligibility = legacy_manifest_eligibility(installation)?;
             match eligibility.as_ref() {
@@ -1479,7 +1608,8 @@ impl ApiProviderRuntime {
             installation.updated_at.unix_timestamp_nanos()
         );
         self.services
-            .network_egress_host
+            .runtime_host
+            .network_egress_registry()
             .write()
             .await
             .load_if_needed(
@@ -1553,6 +1683,34 @@ fn required_local_path(
     installation
         .local_path()
         .ok_or_else(|| ControlPlaneError::Conflict("plugin_artifact_path_missing").into())
+}
+
+fn runtime_execution_request(
+    binding: &ModelProviderSlotBinding,
+    input: ProviderInvocationInput,
+) -> anyhow::Result<RuntimeExecutionRequest> {
+    Ok(RuntimeExecutionRequest {
+        request_id: RuntimeRequestId::new(Uuid::now_v7().to_string())?,
+        target: RuntimeTargetId::new(binding.plugin_id.clone())?,
+        input,
+    })
+}
+
+fn map_runtime_backend_error(error: RuntimeBackendError) -> anyhow::Error {
+    match error {
+        RuntimeBackendError::Contract(error) => map_provider_framework_error(error),
+        RuntimeBackendError::InvalidRequest(_) => {
+            ControlPlaneError::InvalidInput("provider_runtime").into()
+        }
+        RuntimeBackendError::DuplicateRequest(_)
+        | RuntimeBackendError::DuplicateBackend
+        | RuntimeBackendError::MissingBackend
+        | RuntimeBackendError::Unavailable(_)
+        | RuntimeBackendError::Cancelled(_)
+        | RuntimeBackendError::Execution { .. } => {
+            ControlPlaneError::UpstreamUnavailable("provider_runtime").into()
+        }
+    }
 }
 
 fn map_provider_framework_error(error: PluginFrameworkError) -> anyhow::Error {

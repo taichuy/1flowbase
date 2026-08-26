@@ -72,7 +72,7 @@ test('WP-D4C maps protocol-matched published fixture applications to three clien
   const provider = (code) => ({
     application_id: `${code}-app`, model: 'fixture-model', api_key: `${code}-secret`,
     gateway: { base_url: 'http://127.0.0.1:7800' },
-    durable: { list_runs: {}, query_run: {} }, runtime_activity: {}, plugin_runner_active_streams: {},
+    durable: { list_runs: {}, query_run: {} }, runtime_activity: {},
   });
   const targets = targetsFromReady({
     schema_version: '1flowbase.ai-gateway-fixture/v1',
@@ -96,7 +96,7 @@ test('AC-017 fixes the finite three-client by three-provider target matrix', () 
   const provider = (code) => ({
     application_id: `${code}-app`, model: '1flowbase', api_key: `${code}-secret`,
     gateway: { base_url: 'http://127.0.0.1:7800' },
-    durable: { list_runs: {}, query_run: {} }, runtime_activity: {}, plugin_runner_active_streams: {},
+    durable: { list_runs: {}, query_run: {} }, runtime_activity: {},
   });
   const matrix = targetMatrixFromReady({
     schema_version: '1flowbase.ai-gateway-fixture/v1',

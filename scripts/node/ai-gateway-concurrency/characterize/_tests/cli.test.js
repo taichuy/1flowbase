@@ -26,7 +26,7 @@ test('AC-003/007: gateway CLI reads distinct Application keys from two named env
     '--mode', 'gateway',
     '--responses-sse-url', 'http://127.0.0.1:7800/v1/responses',
     '--mock-responses-websocket-url', 'ws://127.0.0.1:7802/v1/responses',
-    '--anthropic-sse-url', 'http://127.0.0.1:7801/v1/messages',
+    '--anthropic-sse-url', 'http://127.0.0.1:7811/v1/messages',
     '--openai-api-key-env', 'OPENAI_FIXTURE_API_KEY',
     '--anthropic-api-key-env', 'ANTHROPIC_FIXTURE_API_KEY',
     '--openai-model', 'gateway-openai-model',
@@ -49,7 +49,7 @@ test('AC-003/007: gateway CLI reads distinct Application keys from two named env
     [TRANSPORT.RESPONSES_SSE]: 'http://127.0.0.1:7800/v1/responses',
     [TRANSPORT.RESPONSES_WEBSOCKET]: 'ws://127.0.0.1:7802/v1/responses',
     [TRANSPORT.CHAT_COMPLETIONS_SSE]: 'http://127.0.0.1:7800/v1/chat/completions',
-    [TRANSPORT.ANTHROPIC_SSE]: 'http://127.0.0.1:7801/v1/messages',
+    [TRANSPORT.ANTHROPIC_SSE]: 'http://127.0.0.1:7811/v1/messages',
   });
 });
 
@@ -70,7 +70,7 @@ test('AC-003 controlled negatives: ambiguous or identical gateway keys fail clos
     '--mode', 'gateway',
     '--responses-sse-url', 'http://127.0.0.1:7800/v1/responses',
     '--mock-responses-websocket-url', 'ws://127.0.0.1:7802/v1/responses',
-    '--anthropic-sse-url', 'http://127.0.0.1:7801/v1/messages',
+    '--anthropic-sse-url', 'http://127.0.0.1:7811/v1/messages',
     '--openai-model', 'gateway-openai-model',
     '--anthropic-model', 'gateway-anthropic-model',
   ];

@@ -10,7 +10,7 @@ This directory owns GitHub Actions automation for repository quality gates.
 | `.github/workflows/quality-gate.yml` | Manual and nightly quality gate run; full `ci` scope runs component gates, coverage gates, and container image security in parallel before one aggregate Issue report. |
 | `.github/workflows/foundation-contracts.yml` | Reusable four-foundation fast contract executor called by `verify.yml` and full `quality-gate.yml`; emits candidate-bound component evidence and remains manually dispatchable for focused reruns. |
 | `.github/workflows/ai-gateway-concurrency.yml` | Reusable and manually runnable full AI Gateway protocol conformance gate; joins full manual/nightly `ci` aggregation and does not run for every pull request. |
-| `.github/workflows/container-images.yml` | Container image CD for `web`, `api-server`, and `plugin-runner`; builds scan-candidate GHCR tags, runs Trivy admission scans, promotes passing images to version and `latest` tags, then uploads artifact-only CD quality gate evidence. |
+| `.github/workflows/container-images.yml` | Container image CD for `web` and the single Backend `api-server`; builds scan-candidate GHCR tags, runs Trivy admission scans, promotes passing images to version and `latest` tags, then uploads artifact-only CD quality gate evidence. |
 | `.github/actions/quality-gate/action.yml` | Reusable repository-local action used by CI, manual, and nightly quality gates. |
 
 ## Automatic CI
@@ -123,7 +123,7 @@ configured as required checks and do not alter branch protection or repository r
 
 ## Container Image CD
 
-`container-images.yml` publishes the `web`, `api-server`, and `plugin-runner` images for
+`container-images.yml` publishes the `web` and `api-server` images for
 `latest` pushes and for the selected `workflow_dispatch` component. Enabled components first
 build native artifacts outside the publish job: `web` uploads per-architecture `dist`
 artifacts, and the Rust components upload per-architecture binaries. Publish jobs then build
@@ -214,7 +214,6 @@ Scheduled runs target `latest`, use `scope: ci`, and set `environment: nightly-l
 | `repo-backend-test-runtime-storage` | `node scripts/node/verify-backend.js test runtime-storage` |
 | `repo-backend-test-control-plane` | `node scripts/node/verify-backend.js test control-plane` |
 | `repo-backend-test-api-server` | `node scripts/node/verify-backend.js test api-server` |
-| `repo-backend-test-plugin-runner` | `node scripts/node/verify-backend.js test plugin-runner` |
 | `repo-backend-check-core-libs` | `node scripts/node/verify-backend.js check core-libs` |
 | `repo-backend-check-runtime-storage` | `node scripts/node/verify-backend.js check runtime-storage` |
 | `repo-backend-check-apps` | `node scripts/node/verify-backend.js check apps` |

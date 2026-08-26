@@ -374,7 +374,7 @@ pub async fn get_runtime_profile(
         state.infrastructure.cache_store(),
         state.infrastructure.distributed_lock(),
         state.api_runtime_profile.clone(),
-        state.plugin_runner_system.clone(),
+        state.runtime_host_system.clone(),
         state.api_node_id.clone(),
         state.process_started_at,
     )

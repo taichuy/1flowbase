@@ -262,7 +262,6 @@ function Show-EnvSummary([string]$Path) {
   foreach ($Key in @(
       "FLOWBASE_WEB_VERSION",
       "FLOWBASE_API_SERVER_VERSION",
-      "FLOWBASE_PLUGIN_RUNNER_VERSION",
       "WEB_PORT",
       "DATABASE_MODE",
       "POSTGRES_DB",
@@ -505,20 +504,17 @@ function Get-EnvOrFileValue([string]$Key, [string]$Path, [string]$DefaultValue) 
 function Get-FlowbaseImageRefs([string]$Path) {
   $WebVersion = Get-EnvOrFileValue "FLOWBASE_WEB_VERSION" $Path "latest"
   $ApiVersion = Get-EnvOrFileValue "FLOWBASE_API_SERVER_VERSION" $Path "latest"
-  $PluginRunnerVersion = Get-EnvOrFileValue "FLOWBASE_PLUGIN_RUNNER_VERSION" $Path "latest"
 
   return @(
     "ghcr.io/taichuy/1flowbase-web:$WebVersion",
-    "ghcr.io/taichuy/1flowbase-api-server:$ApiVersion",
-    "ghcr.io/taichuy/1flowbase-plugin-runner:$PluginRunnerVersion"
+    "ghcr.io/taichuy/1flowbase-api-server:$ApiVersion"
   )
 }
 
 function Test-FlowbaseUsesLatestImageTags([string]$Path) {
   return (
     (Get-EnvOrFileValue "FLOWBASE_WEB_VERSION" $Path "latest") -eq "latest" -and
-    (Get-EnvOrFileValue "FLOWBASE_API_SERVER_VERSION" $Path "latest") -eq "latest" -and
-    (Get-EnvOrFileValue "FLOWBASE_PLUGIN_RUNNER_VERSION" $Path "latest") -eq "latest"
+    (Get-EnvOrFileValue "FLOWBASE_API_SERVER_VERSION" $Path "latest") -eq "latest"
   )
 }
 
@@ -870,13 +866,11 @@ if ($PullImages) {
 }
 
 if ($RestoreBackup -and $StartContainers) {
-  if ($NewDatabaseMode -eq "external") {
-    Invoke-ComposeCommand @("-f", "docker-compose.external-db.yaml", "up", "-d", "plugin-runner")
-  } else {
-    Invoke-ComposeCommand @("up", "-d", "db", "plugin-runner")
-  }
-  if ($LASTEXITCODE -ne 0) {
-    Fail "Could not start recovery dependencies."
+  if ($NewDatabaseMode -ne "external") {
+    Invoke-ComposeCommand @("up", "-d", "db")
+    if ($LASTEXITCODE -ne 0) {
+      Fail "Could not start recovery dependencies."
+    }
   }
 
   $RecoveryEnvFile = Join-Path (Get-Location) (".recovery-env-" + [System.Guid]::NewGuid().ToString("N") + ".tmp")

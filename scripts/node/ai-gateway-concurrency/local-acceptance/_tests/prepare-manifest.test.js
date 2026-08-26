@@ -17,10 +17,8 @@ test('Root #1477 seals current Gateway binary digests without changing source ma
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'sealed-local-acceptance-'));
   try {
     const apiServer = path.join(root, 'api/target/release/api-server');
-    const pluginRunner = path.join(root, 'api/target/release/plugin-runner');
     fs.mkdirSync(path.dirname(apiServer), { recursive: true });
     fs.writeFileSync(apiServer, 'api-candidate');
-    fs.writeFileSync(pluginRunner, 'runner-candidate');
     const source = path.join(root, 'manifest.json');
     const sourceText = `${JSON.stringify({
       schema_version: '1flowbase.local-ai-gateway-acceptance/v1',
@@ -30,7 +28,6 @@ test('Root #1477 seals current Gateway binary digests without changing source ma
       },
       artifacts: {
         apiServer: { path: apiServer, sha256: '0'.repeat(64) },
-        pluginRunner: { path: pluginRunner, sha256: '0'.repeat(64) },
       },
     }, null, 2)}\n`;
     fs.writeFileSync(source, sourceText);
@@ -39,7 +36,6 @@ test('Root #1477 seals current Gateway binary digests without changing source ma
     const sealed = prepareManifest({ source, output });
 
     assert.equal(sealed.artifacts.apiServer.sha256, digest('api-candidate'));
-    assert.equal(sealed.artifacts.pluginRunner.sha256, digest('runner-candidate'));
     assert.equal(fs.readFileSync(source, 'utf8'), sourceText);
     assert.deepEqual(JSON.parse(fs.readFileSync(output, 'utf8')), sealed);
     assert.throws(

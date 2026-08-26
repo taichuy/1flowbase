@@ -23,7 +23,6 @@ function fixtureFiles() {
     options: {
       databaseUrl: 'postgres://fixture@127.0.0.1/fixture_db',
       apiServerBin: make('api-server', 0o700),
-      pluginRunnerBin: make('plugin-runner', 0o700),
       openaiPackage: make('openai.1flowbasepkg'),
       anthropicPackage: make('anthropic.1flowbasepkg'),
       openaiCompatiblePackage: make('openai_compatible.1flowbasepkg'),
@@ -161,14 +160,14 @@ function fakeDependencies({ OwnerClient = FakeOwnerClient, persistLogs = persist
 }
 
 // Root #1377 AC-001/003/004/005/008: real lifecycle targets are assembled from owner APIs.
-test('lifecycle exposes gateway, durable, activity, and active-stream targets then cleans up', async () => {
+test('lifecycle exposes gateway, durable, and in-process runtime activity targets then cleans up', async () => {
   FakeOwnerClient.calls = [];
   const files = fixtureFiles();
   const fake = fakeDependencies();
   let fixture;
   try {
     fixture = await createGatewayFixture(files.options, fake.dependencies);
-    assert.equal(fixture.result.gateway_base_url, 'http://127.0.0.1:41002');
+    assert.equal(fixture.result.gateway_base_url, 'http://127.0.0.1:41001');
     assert.equal(fixture.result.targets.openai.application_id, 'openai-application-1');
     assert.equal(fixture.result.targets.anthropic.model, '1flowbase');
     assert.equal(fixture.result.targets.anthropic.upstream_model, 'gateway-fixture-model');
@@ -196,10 +195,7 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
     assert.equal(fixture.result.artifact_root, files.options.artifactRoot);
     assert.match(fixture.result.targets.openai.durable.cancel_run.url_template, /\{run_id\}\/cancel$/u);
     assert.match(fixture.result.targets.openai.runtime_activity.url, /runtime-activity$/u);
-    assert.match(
-      fixture.result.targets.anthropic.plugin_runner_active_streams.url,
-      /providers\/active-streams$/u
-    );
+    assert.equal('plugin_runner_base_url' in fixture.result, false);
 
     const instanceWrite = FakeOwnerClient.calls.find(
       (call) => call.kind === 'write' && call.pathname.endsWith('/instances')
@@ -227,23 +223,19 @@ test('lifecycle exposes gateway, durable, activity, and active-stream targets th
       call.body.document.graph.nodes.find((node) => node.type === 'llm').config.model_provider.source_instance_id
     ), ['anthropic-instance-1', 'anthropic-instance-2']);
     assert.equal(fake.spawned[0].env.OPENAI_API_KEY, '');
-    assert.equal(fake.spawned[1].env.ANTHROPIC_API_KEY, '');
-    const installRoot = fake.spawned[1].env.API_PROVIDER_INSTALL_ROOT;
+    assert.equal(fake.spawned[0].env.ANTHROPIC_API_KEY, '');
+    const installRoot = fake.spawned[0].env.API_PROVIDER_INSTALL_ROOT;
     assert.ok(fs.existsSync(path.dirname(installRoot)));
 
     await fixture.close();
     await fixture.close();
-    assert.deepEqual(fake.stopped.map((value) => path.basename(value)), [
-      'api-server',
-      'plugin-runner',
-    ]);
+    assert.deepEqual(fake.stopped.map((value) => path.basename(value)), ['api-server']);
     assert.deepEqual(fake.events, [
       'persist',
       'stop:api-server',
-      'stop:plugin-runner',
       'rm',
     ]);
-    for (const service of ['api-server', 'plugin-runner']) {
+    for (const service of ['api-server']) {
       const log = fs.readFileSync(path.join(files.options.artifactRoot, `service-${service}.log`), 'utf8');
       assert.match(log, /\[REDACTED\]/u);
       assert.doesNotMatch(log, /postgres:\/\/|Fixture-|master|gateway_session=fake|fixture-(?:openai|anthropic|openai_compatible)-token|sk-application-canary/u);
@@ -323,7 +315,7 @@ test('publication source binds Generate and protocol context for all gateway pro
   }
 });
 
-test('controlled bootstrap failure terminates both owned children and removes scratch files', async () => {
+test('controlled bootstrap failure terminates the owned Backend and removes scratch files', async () => {
   class FailingOwnerClient extends FakeOwnerClient {
     async signIn() {
       throw new Error('controlled sign-in failure');
@@ -336,27 +328,23 @@ test('controlled bootstrap failure terminates both owned children and removes sc
       createGatewayFixture(files.options, fake.dependencies),
       /controlled sign-in failure/u
     );
-    assert.deepEqual(fake.stopped.map((value) => path.basename(value)), [
-      'api-server',
-      'plugin-runner',
-    ]);
+    assert.deepEqual(fake.stopped.map((value) => path.basename(value)), ['api-server']);
     assert.deepEqual(fake.events, [
       'persist',
       'stop:api-server',
-      'stop:plugin-runner',
       'rm',
     ]);
-    for (const service of ['api-server', 'plugin-runner']) {
+    for (const service of ['api-server']) {
       assert.equal(fs.existsSync(path.join(files.options.artifactRoot, `service-${service}.log`)), true);
     }
-    const installRoot = fake.spawned[1].env.API_PROVIDER_INSTALL_ROOT;
+    const installRoot = fake.spawned[0].env.API_PROVIDER_INSTALL_ROOT;
     assert.equal(fs.existsSync(path.dirname(installRoot)), false);
   } finally {
     fs.rmSync(files.root, { recursive: true, force: true });
   }
 });
 
-test('explicit API port is asserted before either child starts and is not randomly reserved', async () => {
+test('explicit API port is asserted before the Backend starts and is not randomly reserved', async () => {
   class FailingOwnerClient extends FakeOwnerClient {
     async signIn() {
       throw new Error('controlled sign-in failure');
@@ -374,10 +362,9 @@ test('explicit API port is asserted before either child starts and is not random
       createGatewayFixture({ ...files.options, apiPort: 7800 }, fake.dependencies),
       /controlled sign-in failure/u,
     );
-    assert.equal(fake.spawned[1].env.API_SERVER_ADDR, '127.0.0.1:7800');
-    assert.deepEqual(fake.events.slice(0, 3), [
+    assert.equal(fake.spawned[0].env.API_SERVER_ADDR, '127.0.0.1:7800');
+    assert.deepEqual(fake.events.slice(0, 2), [
       'assert-port:7800',
-      'spawn:plugin-runner',
       'spawn:api-server',
     ]);
   } finally {
@@ -385,18 +372,17 @@ test('explicit API port is asserted before either child starts and is not random
   }
 });
 
-test('injected service-log write failure still stops both children, removes scratch, and rejects close', async () => {
+test('injected service-log write failure still stops the Backend, removes scratch, and rejects close', async () => {
   const files = fixtureFiles();
   const fake = fakeDependencies({ persistLogs() { throw new Error('controlled log write failure'); } });
   let fixture;
   try {
     fixture = await createGatewayFixture(files.options, fake.dependencies);
-    const installRoot = fake.spawned[1].env.API_PROVIDER_INSTALL_ROOT;
+    const installRoot = fake.spawned[0].env.API_PROVIDER_INSTALL_ROOT;
     await assert.rejects(fixture.close(), /controlled log write failure/u);
     assert.deepEqual(fake.events, [
       'persist',
       'stop:api-server',
-      'stop:plugin-runner',
       'rm',
     ]);
     assert.equal(fs.existsSync(path.dirname(installRoot)), false);

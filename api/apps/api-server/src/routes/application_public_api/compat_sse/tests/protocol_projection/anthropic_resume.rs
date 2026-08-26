@@ -116,7 +116,7 @@ async fn anthropic_resume_replay_terminal_returns_explicit_unsupported() {
         assistant_executions: base_state.assistant_executions.clone(),
         assistant_client_sessions: base_state.assistant_client_sessions.clone(),
         api_runtime_profile: base_state.api_runtime_profile.clone(),
-        plugin_runner_system: base_state.plugin_runner_system.clone(),
+        runtime_host_system: base_state.runtime_host_system.clone(),
         official_plugin_source: base_state.official_plugin_source.clone(),
         official_mcp_bundle_source: base_state.official_mcp_bundle_source.clone(),
         official_extension_catalog_source: base_state.official_extension_catalog_source.clone(),

@@ -1,27 +1,14 @@
 name: 1flowbase
 
 services:
-  plugin-runner:
-    image: ghcr.io/taichuy/1flowbase-plugin-runner:${FLOWBASE_PLUGIN_RUNNER_VERSION:-latest}
-    restart: unless-stopped
-    environment:
-      RUST_LOG: ${PLUGIN_RUNNER_RUST_LOG:-info}
-      PLUGIN_RUNNER_ADDR: 0.0.0.0:7801
-    expose:
-      - "7801"
-
   api:
     image: ghcr.io/taichuy/1flowbase-api-server:${FLOWBASE_API_SERVER_VERSION:-latest}
     restart: unless-stopped
-    depends_on:
-      plugin-runner:
-        condition: service_started
     environment:
       RUST_LOG: ${API_RUST_LOG:-info}
       API_ENV: ${API_ENV:-production}
       API_DATABASE_URL: ${API_DATABASE_URL:?API_DATABASE_URL is required for external database compose}
       API_SERVER_ADDR: 0.0.0.0:7800
-      API_PLUGIN_RUNNER_INTERNAL_BASE_URL: http://plugin-runner:7801
       API_ALLOWED_ORIGINS: ${API_ALLOWED_ORIGINS:-http://localhost:3100,http://127.0.0.1:3100}
       API_COOKIE_NAME: ${API_COOKIE_NAME:-flowbase_console_session}
       API_COOKIE_SECURE: ${API_COOKIE_SECURE:-true}

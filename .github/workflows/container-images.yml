@@ -7,7 +7,6 @@ on:
     paths:
       - ".github/workflows/container-images.yml"
       - "docker/api-server.Dockerfile"
-      - "docker/plugin-runner.Dockerfile"
       - "docker/web.Dockerfile"
       - "api/Cargo.lock"
       - "api/Cargo.toml"
@@ -19,7 +18,6 @@ on:
       - "web/packages/page-runtime/**"
       - "web/packages/tailwindcss-catalog/**"
       - "api/apps/api-server/Cargo.toml"
-      - "api/apps/plugin-runner/Cargo.toml"
       - "api/plugins/default-extensions.lock.json"
       - "scripts/shell/package-default-extension.sh"
   workflow_dispatch:
@@ -31,7 +29,6 @@ on:
         options:
           - web
           - api-server
-          - plugin-runner
       image_tag:
         description: Image tag to publish, for example v0.1.0. Must match the component manifest version.
         required: true
@@ -142,58 +139,6 @@ jobs:
               && git cat-file -e "$before_sha^{commit}" 2>/dev/null \
               && git cat-file -e "$before_sha:api/apps/api-server/Cargo.toml" 2>/dev/null; then
               if old_version="$(git show "$before_sha:api/apps/api-server/Cargo.toml" | node scripts/node/container-image-security/verify-version.js read-stdin-version api-server)"; then
-                old_tag="v${old_version}"
-              fi
-            fi
-
-            if [[ "$image_tag" != "$old_tag" ]]; then
-              enabled=true
-            fi
-          fi
-
-          {
-            echo "enabled=$enabled"
-            echo "image_tag=$image_tag"
-            echo "old_tag=$old_tag"
-          } >> "$GITHUB_OUTPUT"
-
-  select-plugin-runner:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    outputs:
-      enabled: ${{ steps.select.outputs.enabled }}
-      image_tag: ${{ steps.select.outputs.image_tag }}
-      old_tag: ${{ steps.select.outputs.old_tag }}
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Select plugin-runner
-        id: select
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          enabled=false
-          image_tag=""
-          old_tag=""
-
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            if [[ "${{ inputs.component }}" == "plugin-runner" ]]; then
-              enabled=true
-              image_tag="${{ inputs.image_tag }}"
-            fi
-          else
-            image_tag="$(node scripts/node/container-image-security/verify-version.js print-tag plugin-runner)"
-            before_sha="${{ github.event.before }}"
-            zero_sha="0000000000000000000000000000000000000000"
-
-            if [[ "$before_sha" != "$zero_sha" ]] \
-              && git cat-file -e "$before_sha^{commit}" 2>/dev/null \
-              && git cat-file -e "$before_sha:api/apps/plugin-runner/Cargo.toml" 2>/dev/null; then
-              if old_version="$(git show "$before_sha:api/apps/plugin-runner/Cargo.toml" | node scripts/node/container-image-security/verify-version.js read-stdin-version plugin-runner)"; then
                 old_tag="v${old_version}"
               fi
             fi
@@ -655,216 +600,13 @@ jobs:
             --tag "${{ steps.image_refs.outputs.latest_image_ref }}" \
             "${{ steps.image_refs.outputs.scan_image_ref }}"
 
-  build-plugin-runner-binary:
-    needs:
-      - select-plugin-runner
-    if: needs.select-plugin-runner.outputs.enabled == 'true'
-    permissions:
-      contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-latest
-          - arch: arm64
-            runner: ubuntu-24.04-arm
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Restore plugin-runner Rust build cache
-        uses: actions/cache@v5
-        with:
-          path: |
-            tmp/container-cache/plugin-runner/${{ matrix.arch }}/cargo-registry
-            tmp/container-cache/plugin-runner/${{ matrix.arch }}/cargo-git
-            tmp/container-cache/plugin-runner/${{ matrix.arch }}/target
-          key: rust-release-seeded-plugin-runner-v2-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-${{ hashFiles('api/Cargo.lock', 'api/**/Cargo.toml') }}
-          restore-keys: |
-            rust-release-seeded-plugin-runner-v2-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-${{ hashFiles('api/Cargo.lock') }}-
-            rust-release-seeded-plugin-runner-v2-${{ runner.os }}-${{ matrix.arch }}-rust-1-slim-bookworm-release-
-
-      - name: Build plugin-runner binary on native ${{ matrix.arch }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          cache_root="tmp/container-cache/plugin-runner/${{ matrix.arch }}"
-          artifact_root="tmp/container-artifacts/plugin-runner/${{ matrix.arch }}"
-          mkdir -p \
-            "$cache_root/cargo-registry" \
-            "$cache_root/cargo-git" \
-            "$cache_root/target" \
-            "$artifact_root"
-
-          docker run --rm \
-            --platform "linux/${{ matrix.arch }}" \
-            -v "$PWD/api:/workspace/api" \
-            -v "$PWD/$cache_root/cargo-registry:/usr/local/cargo/registry" \
-            -v "$PWD/$cache_root/cargo-git:/usr/local/cargo/git" \
-            -v "$PWD/$cache_root/target:/workspace/target-cache" \
-            -v "$PWD/$artifact_root:/workspace/out" \
-            -w /workspace/api \
-            rust:1-slim-bookworm \
-            bash -c 'set -euo pipefail
-              apt-get update
-              apt-get install -y --no-install-recommends build-essential ca-certificates pkg-config
-              rm -rf /var/lib/apt/lists/*
-              CARGO_TARGET_DIR=/workspace/target-cache cargo build --release -p plugin-runner --bin plugin-runner
-              install -Dm755 /workspace/target-cache/release/plugin-runner /workspace/out/plugin-runner'
-
-          sha256sum "$artifact_root/plugin-runner" | tee "$artifact_root/plugin-runner.sha256"
-          ls -lh "$artifact_root/plugin-runner"
-          sudo chown -R "$(id -u):$(id -g)" "$cache_root"
-
-      - name: Upload plugin-runner binary artifact
-        uses: actions/upload-artifact@v6
-        with:
-          name: plugin-runner-binary-${{ matrix.arch }}
-          path: tmp/container-artifacts/plugin-runner/${{ matrix.arch }}
-          if-no-files-found: error
-
-  publish-plugin-runner:
-    needs:
-      - select-plugin-runner
-      - build-plugin-runner-binary
-    if: needs.select-plugin-runner.outputs.enabled == 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: docker/setup-qemu-action@v4
-        with:
-          cache-image: false
-
-      - uses: docker/setup-buildx-action@v4
-
-      - uses: docker/login-action@v4
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Validate plugin-runner version
-        run: node scripts/node/container-image-security/verify-version.js plugin-runner ${{ needs.select-plugin-runner.outputs.image_tag }}
-
-      - name: Download plugin-runner binary artifacts
-        uses: actions/download-artifact@v8
-        with:
-          pattern: plugin-runner-binary-*
-          path: tmp/plugin-runner-binary-artifacts
-          merge-multiple: false
-
-      - name: Prepare plugin-runner binary build context
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          mkdir -p tmp/plugin-runner-binaries/amd64 tmp/plugin-runner-binaries/arm64
-          cp tmp/plugin-runner-binary-artifacts/plugin-runner-binary-amd64/plugin-runner tmp/plugin-runner-binaries/amd64/plugin-runner
-          cp tmp/plugin-runner-binary-artifacts/plugin-runner-binary-arm64/plugin-runner tmp/plugin-runner-binaries/arm64/plugin-runner
-          chmod 0755 tmp/plugin-runner-binaries/amd64/plugin-runner tmp/plugin-runner-binaries/arm64/plugin-runner
-          sha256sum tmp/plugin-runner-binaries/amd64/plugin-runner tmp/plugin-runner-binaries/arm64/plugin-runner
-
-      - name: Prepare plugin-runner image references
-        id: image_refs
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          scan_tag=scan-${{ github.run_id }}-${{ github.run_attempt }}-${{ github.sha }}
-          {
-            echo "scan_tag=$scan_tag"
-            echo "scan_image_ref=ghcr.io/${{ github.repository_owner }}/1flowbase-plugin-runner:$scan_tag"
-            echo "version_image_ref=ghcr.io/${{ github.repository_owner }}/1flowbase-plugin-runner:${{ needs.select-plugin-runner.outputs.image_tag }}"
-            echo "latest_image_ref=ghcr.io/${{ github.repository_owner }}/1flowbase-plugin-runner:latest"
-            echo "buildcache_ref=ghcr.io/${{ github.repository_owner }}/1flowbase-plugin-runner:buildcache"
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Build and push prebuilt plugin-runner scan candidate
-        uses: docker/build-push-action@v7
-        with:
-          context: .
-          file: docker/plugin-runner.Dockerfile
-          target: runtime-prebuilt
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ steps.image_refs.outputs.scan_image_ref }}
-          labels: |
-            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-            org.opencontainers.image.revision=${{ github.sha }}
-            org.opencontainers.image.version=${{ needs.select-plugin-runner.outputs.image_tag }}
-            org.opencontainers.image.title=1flowbase-plugin-runner
-          build-contexts: |
-            plugin_runner_binaries=./tmp/plugin-runner-binaries
-          cache-from: |
-            type=gha,scope=1flowbase-plugin-runner-runtime
-            type=registry,ref=${{ steps.image_refs.outputs.buildcache_ref }}
-          cache-to: |
-            type=gha,mode=max,scope=1flowbase-plugin-runner-runtime
-            type=registry,ref=${{ steps.image_refs.outputs.buildcache_ref }},mode=max
-
-      - name: Prepare Trivy report directory
-        run: mkdir -p tmp/test-governance
-
-      - name: Generate HIGH Trivy warning report
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
-        env:
-          TRIVY_USERNAME: ${{ github.actor }}
-          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          image-ref: ${{ steps.image_refs.outputs.scan_image_ref }}
-          version: v0.70.0
-          scanners: vuln
-          severity: HIGH
-          format: json
-          output: tmp/test-governance/trivy-plugin-runner-high.json
-          exit-code: "0"
-
-      - name: Enforce CRITICAL Trivy release gate
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
-        env:
-          TRIVY_USERNAME: ${{ github.actor }}
-          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          image-ref: ${{ steps.image_refs.outputs.scan_image_ref }}
-          version: v0.70.0
-          scanners: vuln
-          severity: CRITICAL
-          format: json
-          output: tmp/test-governance/trivy-plugin-runner-critical.json
-          exit-code: "0"
-
-      - name: Upload Trivy reports
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: test-governance-trivy-plugin-runner
-          path: tmp/test-governance/trivy-plugin-runner-*.json
-          if-no-files-found: warn
-
-      - name: Promote scanned plugin-runner image to official tags
-        if: github.event_name != 'workflow_dispatch' || inputs.promote_official_tags == true || inputs.promote_official_tags == 'true'
-        run: |
-          docker buildx imagetools create \
-            --tag "${{ steps.image_refs.outputs.version_image_ref }}" \
-            --tag "${{ steps.image_refs.outputs.latest_image_ref }}" \
-            "${{ steps.image_refs.outputs.scan_image_ref }}"
-
   publish-release:
-    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/latest' && needs.select-web.result == 'success' && needs.select-api-server.result == 'success' && needs.select-plugin-runner.result == 'success' && (needs.publish-web.result == 'success' || needs.publish-web.result == 'skipped') && (needs.publish-api-server.result == 'success' || needs.publish-api-server.result == 'skipped') && (needs.publish-plugin-runner.result == 'success' || needs.publish-plugin-runner.result == 'skipped') }}
+    if: ${{ always() && github.event_name == 'push' && github.ref == 'refs/heads/latest' && needs.select-web.result == 'success' && needs.select-api-server.result == 'success' && (needs.publish-web.result == 'success' || needs.publish-web.result == 'skipped') && (needs.publish-api-server.result == 'success' || needs.publish-api-server.result == 'skipped') }}
     needs:
       - select-web
       - select-api-server
-      - select-plugin-runner
       - publish-web
       - publish-api-server
-      - publish-plugin-runner
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -915,7 +657,6 @@ jobs:
 
           - \`ghcr.io/${{ github.repository_owner }}/1flowbase-web:$RELEASE_TAG\`
           - \`ghcr.io/${{ github.repository_owner }}/1flowbase-api-server:$RELEASE_TAG\`
-          - \`ghcr.io/${{ github.repository_owner }}/1flowbase-plugin-runner:$RELEASE_TAG\`
           - \`ghcr.io/${{ github.repository_owner }}/1flowbase-*:latest\`
 
           ## Traceability
@@ -938,7 +679,6 @@ jobs:
     needs:
       - publish-web
       - publish-api-server
-      - publish-plugin-runner
     runs-on: ubuntu-latest
     permissions:
       contents: read

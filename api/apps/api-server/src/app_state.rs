@@ -74,7 +74,7 @@ use crate::{
     provider_runtime::ApiRuntimeServices,
     routes::assistant::conversation_events::AssistantConversationEventHub,
     runtime_activity::ApplicationRuntimeActivityTracker,
-    runtime_profile_client::{ApiRuntimeProfilePort, PluginRunnerSystemPort},
+    runtime_profile_client::{ApiRuntimeProfilePort, RuntimeHostSystemPort},
 };
 
 pub fn build_official_i18n_catalog_update_service(
@@ -375,7 +375,7 @@ pub struct ApiState {
     pub assistant_client_sessions:
         Arc<Mutex<HashMap<uuid::Uuid, Arc<crate::routes::assistant::AssistantClientToolBridge>>>>,
     pub api_runtime_profile: Arc<dyn ApiRuntimeProfilePort>,
-    pub plugin_runner_system: Arc<dyn PluginRunnerSystemPort>,
+    pub runtime_host_system: Arc<dyn RuntimeHostSystemPort>,
     pub official_plugin_source: Arc<dyn OfficialPluginSourcePort>,
     pub official_mcp_bundle_source: Arc<dyn OfficialMcpBundleSourcePort>,
     pub official_extension_catalog_source: Arc<dyn OfficialExtensionCatalogSourcePort>,

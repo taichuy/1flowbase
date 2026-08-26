@@ -21,7 +21,7 @@ function usage(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(`用法：node scripts/node/clean-build-cache/cli.js [all|backend|frontend] [选项]
 
 默认范围：all，真实删除后端和前端构建缓存。
-真实清理前会先停止 api-server 与 plugin-runner；dry-run 不停止进程、不删除文件。
+真实清理前会先停止 api-server；dry-run 不停止进程、不删除文件。
 
 范围：
   all            清理 api/target + 前端构建缓存
@@ -158,7 +158,7 @@ async function stopBackendServices({ repoRoot = getRepoRoot(), writeStdout = (te
     writeStdout(`[1flowbase-clean-build-cache] ${message}\n`);
   };
 
-  for (const key of ['plugin-runner', 'api-server']) {
+  for (const key of ['api-server']) {
     await stopService(serviceDefinitions[key], { logImpl });
   }
 }
@@ -193,7 +193,7 @@ async function runBuildCacheCleanup({
     return 0;
   }
 
-  writeStdout('[1flowbase-clean-build-cache] 正在停止 api-server 与 plugin-runner...\n');
+  writeStdout('[1flowbase-clean-build-cache] 正在停止 api-server...\n');
   await stopBackendServicesImpl({ repoRoot, writeStdout });
 
   for (const target of existingTargets) {

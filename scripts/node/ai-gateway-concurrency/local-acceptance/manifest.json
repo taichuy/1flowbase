@@ -38,10 +38,6 @@
       "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly/api/target/release/api-server",
       "sha256": "931334df26ef3051feb59727aea2cf88dbd73a2aa6010d03cb9139af1b858dcc"
     },
-    "pluginRunner": {
-      "path": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly/api/target/release/plugin-runner",
-      "sha256": "7cfee9867b496847cd0da0d998f2fb490bd842319e1934eea660de4722f5f4dd"
-    },
     "openaiPackage": {
       "directory": "/home/taichuy/git/1flowbase_git_workspace/issue-1477-regression-assembly/tmp/test-governance/ai-gateway-quality-gate/packages/openai",
       "filename_pattern": "^1flowbase@openai@0\\.2\\.22@linux-amd64@([a-f0-9]{64})\\.1flowbasepkg$"

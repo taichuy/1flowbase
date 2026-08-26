@@ -8,7 +8,7 @@ Default action: start
 
 Options:
   --frontend-only  Manage the frontend process only
-  --backend-only   Manage backend processes only (api-server + plugin-runner)
+  --backend-only   Manage the api-server backend process only
   --skip-docker    Skip Docker middleware management
   -h, --help       Show this help
 
@@ -96,9 +96,9 @@ function selectServiceKeys(scope) {
     case 'frontend':
       return ['web'];
     case 'backend':
-      return ['api-server', 'plugin-runner'];
+      return ['api-server'];
     default:
-      return ['web', 'api-server', 'plugin-runner'];
+      return ['web', 'api-server'];
   }
 }
 
