@@ -983,6 +983,7 @@ dependencies = [
  "control-plane-contracts",
  "domain",
  "ed25519-dalek",
+ "extension-contracts",
  "flate2",
  "hmac 0.12.1",
  "observability",
@@ -1404,6 +1405,7 @@ dependencies = [
 name = "extension-contracts"
 version = "0.4.1"
 dependencies = [
+ "anyhow",
  "base64",
  "serde",
  "serde_json",

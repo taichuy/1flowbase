@@ -16,21 +16,7 @@ use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
-pub fn count_tokens_input_tokens_from_output_payload(payload: &Value) -> Result<Option<i64>> {
-    let Some(terminal) =
-        ::orchestration_runtime::execution_state::NativeOperationTerminal::from_payload(payload)?
-    else {
-        return Ok(None);
-    };
-    let ::orchestration_runtime::execution_state::NativeOperationTerminal::CountTokens(receipt) =
-        terminal
-    else {
-        return Ok(None);
-    };
-    Ok(Some(i64::try_from(receipt.input_tokens()).map_err(
-        |_| anyhow!("CountTokens result exceeds the application log numeric range"),
-    )?))
-}
+pub use extension_contracts::semantic_terminal::count_tokens_input_tokens_from_output_payload;
 
 use crate::{
     application::{
