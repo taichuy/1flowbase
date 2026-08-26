@@ -9,6 +9,10 @@ publish = false
 name = "mcp_instance_copy"
 path = "tests/mcp_instance_copy.rs"
 
+[[test]]
+name = "mcp_management_integration"
+path = "tests/mcp_management_integration.rs"
+
 [dev-dependencies]
 control-plane = { path = "../control-plane" }
 control-plane-test-support = { path = "../control-plane-test-support" }
@@ -16,5 +20,6 @@ domain = { path = "../domain" }
 postgres-test-support = { path = "../postgres-test-support" }
 serde_json.workspace = true
 storage-durable-postgres = { path = "../storage/durable/postgres" }
+time.workspace = true
 tokio.workspace = true
 uuid.workspace = true
