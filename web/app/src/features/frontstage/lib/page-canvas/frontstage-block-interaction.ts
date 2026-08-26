@@ -16,18 +16,26 @@ export type FrontstageBlockInteractionInput = {
   dragIntent?: FrontstageDragInsertionIntent;
 };
 
-export type FrontstageStableInsertion = { rowY: number; index: number };
+export type FrontstageDragProjection =
+  | { kind: 'join-row'; rowIndex: number; cellIndex: number }
+  | { kind: 'standalone-row'; rowIndex: number };
+
+export type FrontstageDragPointer = {
+  column: number;
+  row: number;
+};
 
 export type FrontstageDragInsertionIntent = {
   pointerColumn: number;
-  previousInsertion: FrontstageStableInsertion | null;
+  pointerRow: number;
+  previousProjection: FrontstageDragProjection | null;
   deadbandColumns: number;
 };
 
 export type FrontstageBlockInteractionResult = {
   previewLayout: Layout;
   contacts: string[];
-  insertion: FrontstageStableInsertion | null;
+  projection: FrontstageDragProjection | null;
 };
 
 export type FrontstageInteractionCompactor = Compactor & {
@@ -36,11 +44,21 @@ export type FrontstageInteractionCompactor = Compactor & {
     activeId: string,
     interactionKind?: 'drag' | 'resize'
   ) => void;
-  updateDragPointer: (pointerColumn: number) => void;
+  updateDragPointer: (pointer: FrontstageDragPointer) => void;
   end: () => void;
 };
 
 export const FRONTSTAGE_DRAG_INSERTION_DEADBAND_COLUMNS = 0.5;
+const FRONTSTAGE_ROW_BOUNDARY_ENTER_RATIO = 0.12;
+const FRONTSTAGE_ROW_BOUNDARY_ENTER_MIN = 3;
+const FRONTSTAGE_ROW_BOUNDARY_ENTER_MAX = 8;
+const FRONTSTAGE_ROW_BOUNDARY_EXIT_DELTA = 2;
+
+type FrontstageAutomaticRow = {
+  members: Layout;
+  y: number;
+  height: number;
+};
 
 export function frontstageLayoutsCollide(
   left: LayoutItem,
@@ -86,25 +104,18 @@ function overlapArea(left: LayoutItem, right: LayoutItem): number {
   return width * height;
 }
 
-function clampHorizontalPosition(item: LayoutItem, columns: number): number {
-  return Math.max(
-    0,
-    Math.min(Math.round(item.x), Math.max(0, columns - item.w))
-  );
-}
-
 function resolveFrontstageInsertionIndex({
   active,
   destinationMembers,
   dragIntent,
   proposedActive,
-  targetY
+  rowIndex
 }: {
   active: LayoutItem;
-  destinationMembers: LayoutItem[];
+  destinationMembers: readonly LayoutItem[];
   dragIntent?: FrontstageDragInsertionIntent;
   proposedActive: LayoutItem;
-  targetY: number;
+  rowIndex: number;
 }): number {
   const proposedCenter = proposedActive.x + proposedActive.w / 2;
   const horizontalDirection = Math.sign(proposedActive.x - active.x);
@@ -117,11 +128,11 @@ function resolveFrontstageInsertionIndex({
         Math.abs(dragIntent.pointerColumn - midpoint) <=
         dragIntent.deadbandColumns
       ) {
-        const previous = dragIntent.previousInsertion;
-        if (previous?.rowY === targetY) {
+        const previous = dragIntent.previousProjection;
+        if (previous?.kind === 'join-row' && previous.rowIndex === rowIndex) {
           return Math.max(
             0,
-            Math.min(destinationMembers.length, previous.index)
+            Math.min(destinationMembers.length, previous.cellIndex)
           );
         }
         return horizontalDirection < 0 || active.x < item.x ? index : index + 1;
@@ -135,6 +146,198 @@ function resolveFrontstageInsertionIndex({
   }
 
   return destinationMembers.length;
+}
+
+function createFrontstageAutomaticRows(
+  layout: Layout,
+  activeId: string,
+  columns: number
+): FrontstageAutomaticRow[] {
+  const membersByY = new Map<number, LayoutItem[]>();
+  for (const item of layout) {
+    if (item.i === activeId) continue;
+    const members = membersByY.get(item.y) ?? [];
+    members.push({ ...item, moved: false });
+    membersByY.set(item.y, members);
+  }
+
+  let nextY = 0;
+  return [...membersByY.entries()]
+    .sort(([leftY], [rightY]) => leftY - rightY)
+    .map(([, members]) => {
+      const ordered = [...members].sort(
+        (left, right) => left.x - right.x || left.i.localeCompare(right.i)
+      );
+      const projected =
+        projectFrontstageAutomaticRow(ordered, columns, nextY) ??
+        ordered.map((item) => ({ ...item, y: nextY, moved: false }));
+      const height = Math.max(...projected.map((item) => item.h));
+      const row = { members: projected, y: nextY, height };
+      nextY += height;
+      return row;
+    });
+}
+
+function frontstageRowBoundaryPosition(
+  rows: readonly FrontstageAutomaticRow[],
+  rowIndex: number
+): number {
+  if (rows.length === 0) return 0;
+  if (rowIndex === rows.length) {
+    const last = rows[rows.length - 1]!;
+    return last.y + last.height;
+  }
+  return rows[rowIndex]!.y;
+}
+
+function frontstageRowBoundaryEnterThreshold(
+  rows: readonly FrontstageAutomaticRow[],
+  rowIndex: number
+): number {
+  const adjacentHeights = [rows[rowIndex - 1]?.height, rows[rowIndex]?.height]
+    .filter((height): height is number => height !== undefined);
+  const referenceHeight = Math.min(...adjacentHeights);
+  return Math.min(
+    referenceHeight / 4,
+    Math.max(
+      FRONTSTAGE_ROW_BOUNDARY_ENTER_MIN,
+      Math.min(
+        FRONTSTAGE_ROW_BOUNDARY_ENTER_MAX,
+        referenceHeight * FRONTSTAGE_ROW_BOUNDARY_ENTER_RATIO
+      )
+    )
+  );
+}
+
+function frontstageRowBoundaryDistance(
+  pointerRow: number,
+  boundary: number,
+  rowIndex: number,
+  rowCount: number
+): number {
+  if (rowIndex === 0 && pointerRow <= boundary) return 0;
+  if (rowIndex === rowCount && pointerRow >= boundary) return 0;
+  return Math.abs(pointerRow - boundary);
+}
+
+function resolveFrontstageDragProjection({
+  active,
+  dragIntent,
+  proposedActive,
+  rows
+}: {
+  active: LayoutItem;
+  dragIntent?: FrontstageDragInsertionIntent;
+  proposedActive: LayoutItem;
+  rows: readonly FrontstageAutomaticRow[];
+}): FrontstageDragProjection {
+  if (rows.length === 0) return { kind: 'standalone-row', rowIndex: 0 };
+
+  const pointerRow =
+    dragIntent?.pointerRow ?? proposedActive.y + proposedActive.h / 2;
+  const previous = dragIntent?.previousProjection;
+  if (previous?.kind === 'standalone-row') {
+    const boundary = frontstageRowBoundaryPosition(rows, previous.rowIndex);
+    const exitThreshold =
+      frontstageRowBoundaryEnterThreshold(rows, previous.rowIndex) +
+      FRONTSTAGE_ROW_BOUNDARY_EXIT_DELTA;
+    if (
+      frontstageRowBoundaryDistance(
+        pointerRow,
+        boundary,
+        previous.rowIndex,
+        rows.length
+      ) <= exitThreshold
+    ) {
+      return previous;
+    }
+  }
+
+  let closestBoundaryIndex = 0;
+  let closestBoundaryDistance = Infinity;
+  for (let rowIndex = 0; rowIndex <= rows.length; rowIndex += 1) {
+    const distance = frontstageRowBoundaryDistance(
+      pointerRow,
+      frontstageRowBoundaryPosition(rows, rowIndex),
+      rowIndex,
+      rows.length
+    );
+    if (distance < closestBoundaryDistance) {
+      closestBoundaryIndex = rowIndex;
+      closestBoundaryDistance = distance;
+    }
+  }
+  if (
+    closestBoundaryDistance <=
+    frontstageRowBoundaryEnterThreshold(rows, closestBoundaryIndex)
+  ) {
+    return { kind: 'standalone-row', rowIndex: closestBoundaryIndex };
+  }
+
+  let closestRowIndex = 0;
+  let closestRowDistance = Infinity;
+  for (let rowIndex = 0; rowIndex < rows.length; rowIndex += 1) {
+    const row = rows[rowIndex]!;
+    const distance = Math.abs(pointerRow - (row.y + row.height / 2));
+    if (distance < closestRowDistance) {
+      closestRowIndex = rowIndex;
+      closestRowDistance = distance;
+    }
+  }
+  const destinationMembers = rows[closestRowIndex]!.members;
+  return {
+    kind: 'join-row',
+    rowIndex: closestRowIndex,
+    cellIndex: resolveFrontstageInsertionIndex({
+      active,
+      destinationMembers,
+      dragIntent,
+      proposedActive,
+      rowIndex: closestRowIndex
+    })
+  };
+}
+
+function projectFrontstageAutomaticRows({
+  active,
+  columns,
+  committedLayout,
+  projection,
+  rows
+}: {
+  active: LayoutItem;
+  columns: number;
+  committedLayout: Layout;
+  projection: FrontstageDragProjection;
+  rows: readonly FrontstageAutomaticRow[];
+}): Layout {
+  const projectedRows = rows.map((row) => [...row.members]);
+  if (projection.kind === 'standalone-row') {
+    projectedRows.splice(projection.rowIndex, 0, [
+      { ...active, x: 0, w: columns, moved: false }
+    ]);
+  } else {
+    projectedRows[projection.rowIndex]!.splice(
+      projection.cellIndex,
+      0,
+      active
+    );
+  }
+
+  let nextY = 0;
+  const projectedById = new Map<string, LayoutItem>();
+  for (const row of projectedRows) {
+    const rowProjection = projectFrontstageAutomaticRow(row, columns, nextY);
+    if (!rowProjection) return committedLayout;
+    for (const item of rowProjection) projectedById.set(item.i, item);
+    nextY += Math.max(...rowProjection.map((item) => item.h));
+  }
+
+  return committedLayout.map((item) => ({
+    ...item,
+    ...(projectedById.get(item.i) ?? item),
+    moved: false
+  }));
 }
 
 function solveFrontstageAutomaticResize(
@@ -205,9 +408,25 @@ export function solveFrontstageBlockInteraction({
   dragIntent,
   proposedPosition
 }: FrontstageBlockInteractionInput): FrontstageBlockInteractionResult {
+  return solveFrontstageBlockInteractionWithRows(
+    { activeId, columns, committedLayout, dragIntent, proposedPosition },
+    createFrontstageAutomaticRows(committedLayout, activeId, columns)
+  );
+}
+
+function solveFrontstageBlockInteractionWithRows(
+  {
+    activeId,
+    columns,
+    committedLayout,
+    dragIntent,
+    proposedPosition
+  }: FrontstageBlockInteractionInput,
+  rows: readonly FrontstageAutomaticRow[]
+): FrontstageBlockInteractionResult {
   const active = committedLayout.find((item) => item.i === activeId);
   if (!active) {
-    return { previewLayout: committedLayout, contacts: [], insertion: null };
+    return { previewLayout: committedLayout, contacts: [], projection: null };
   }
 
   const proposedActive: LayoutItem = {
@@ -215,13 +434,6 @@ export function solveFrontstageBlockInteraction({
     x: proposedPosition.x,
     y: Math.max(0, Math.round(proposedPosition.y))
   };
-  if (proposedActive.x === active.x && proposedActive.y === active.y) {
-    return {
-      previewLayout: committedLayout.map((item) => ({ ...item, moved: false })),
-      contacts: [],
-      insertion: null
-    };
-  }
   const contacts = committedLayout
     .filter(
       (item) =>
@@ -233,68 +445,23 @@ export function solveFrontstageBlockInteraction({
       return overlapDifference || left.x - right.x || left.y - right.y;
     });
 
-  const target = contacts[0];
-  const targetY = target?.y ?? proposedActive.y;
-  const destinationMembers = committedLayout
-    .filter((item) => item.i !== activeId && item.y === targetY)
-    .sort((left, right) => left.x - right.x || left.i.localeCompare(right.i));
-  const insertionIndex = resolveFrontstageInsertionIndex({
+  const projection = resolveFrontstageDragProjection({
     active,
-    destinationMembers,
     dragIntent,
     proposedActive,
-    targetY
+    rows
   });
-  destinationMembers.splice(insertionIndex, 0, proposedActive);
-
-  const destinationProjection = projectFrontstageAutomaticRow(
-    destinationMembers,
-    columns,
-    targetY
-  );
-  const sourceMembers =
-    targetY === active.y
-      ? []
-      : committedLayout
-          .filter((item) => item.i !== activeId && item.y === active.y)
-          .sort(
-            (left, right) => left.x - right.x || left.i.localeCompare(right.i)
-          );
-  const sourceProjection = sourceMembers.length
-    ? projectFrontstageAutomaticRow(sourceMembers, columns, active.y)
-    : [];
-
-  if (!destinationProjection || !sourceProjection) {
-    return {
-      previewLayout: committedLayout.map((item) =>
-        item.i === activeId
-          ? {
-              ...item,
-              x: clampHorizontalPosition(proposedActive, columns),
-              y: proposedActive.y,
-              moved: false
-            }
-          : { ...item, moved: false }
-      ),
-      contacts: contacts.map((item) => item.i),
-      insertion: { rowY: targetY, index: insertionIndex }
-    };
-  }
-
-  const rowProjection = new Map<string, LayoutItem>();
-  for (const item of [...sourceProjection, ...destinationProjection]) {
-    rowProjection.set(item.i, item);
-  }
 
   return {
-    previewLayout: committedLayout.map((item) => {
-      const projection = rowProjection.get(item.i);
-      return projection
-        ? { ...item, ...projection, moved: false }
-        : { ...item, moved: false };
+    previewLayout: projectFrontstageAutomaticRows({
+      active: proposedActive,
+      columns,
+      committedLayout,
+      projection,
+      rows
     }),
     contacts: contacts.map((item) => item.i),
-    insertion: { rowY: targetY, index: insertionIndex }
+    projection
   };
 }
 
@@ -304,8 +471,11 @@ export function createFrontstageInteractionCompactor(
   let committedLayout: Layout | null = null;
   let activeId: string | null = null;
   let interactionKind: 'drag' | 'resize' = 'drag';
-  let pointerColumn: number | null = null;
-  let stableInsertion: FrontstageStableInsertion | null = null;
+  let dragPointer: FrontstageDragPointer | null = null;
+  let consumedDragPointer: FrontstageDragPointer | null = null;
+  let pointerRowOffset = 0;
+  let stableProjection: FrontstageDragProjection | null = null;
+  let automaticRows: FrontstageAutomaticRow[] | null = null;
 
   return {
     // `null` keeps RGL from pre-emptively pushing colliding items. The custom
@@ -316,12 +486,19 @@ export function createFrontstageInteractionCompactor(
       committedLayout = layout.map((item) => ({ ...item, moved: false }));
       activeId = nextActiveId;
       interactionKind = nextInteractionKind;
-      pointerColumn = null;
-      stableInsertion = null;
+      dragPointer = null;
+      consumedDragPointer = null;
+      pointerRowOffset = 0;
+      stableProjection = null;
+      automaticRows = null;
     },
-    updateDragPointer(nextPointerColumn) {
-      if (activeId && Number.isFinite(nextPointerColumn)) {
-        pointerColumn = nextPointerColumn;
+    updateDragPointer(nextPointer) {
+      if (
+        activeId &&
+        Number.isFinite(nextPointer.column) &&
+        Number.isFinite(nextPointer.row)
+      ) {
+        dragPointer = nextPointer;
       }
     },
     compact(layout, columns) {
@@ -345,29 +522,46 @@ export function createFrontstageInteractionCompactor(
         );
       }
 
-      const result = solveFrontstageBlockInteraction({
+      automaticRows ??= createFrontstageAutomaticRows(
         committedLayout,
         activeId,
-        proposedPosition: { x: proposedActive.x, y: proposedActive.y },
-        columns,
-        dragIntent:
-          pointerColumn === null
-            ? undefined
-            : {
-                pointerColumn,
-                previousInsertion: stableInsertion,
-                deadbandColumns: FRONTSTAGE_DRAG_INSERTION_DEADBAND_COLUMNS
-              }
-      });
-      stableInsertion = result.insertion;
+        columns
+      );
+      if (dragPointer !== null && consumedDragPointer !== dragPointer) {
+        pointerRowOffset = dragPointer.row - proposedActive.y;
+        consumedDragPointer = dragPointer;
+      }
+      const result = solveFrontstageBlockInteractionWithRows(
+        {
+          committedLayout,
+          activeId,
+          proposedPosition: { x: proposedActive.x, y: proposedActive.y },
+          columns,
+          dragIntent:
+            dragPointer === null
+              ? undefined
+              : {
+                  pointerColumn: dragPointer.column,
+                  pointerRow: proposedActive.y + pointerRowOffset,
+                  previousProjection: stableProjection,
+                  deadbandColumns:
+                    FRONTSTAGE_DRAG_INSERTION_DEADBAND_COLUMNS
+                }
+        },
+        automaticRows
+      );
+      stableProjection = result.projection;
       return result.previewLayout;
     },
     end() {
       committedLayout = null;
       activeId = null;
       interactionKind = 'drag';
-      pointerColumn = null;
-      stableInsertion = null;
+      dragPointer = null;
+      consumedDragPointer = null;
+      pointerRowOffset = 0;
+      stableProjection = null;
+      automaticRows = null;
     }
   };
 }

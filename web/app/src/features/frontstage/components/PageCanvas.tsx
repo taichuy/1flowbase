@@ -1251,15 +1251,19 @@ export const PageCanvas: FC<PageCanvasProps> = ({
           const bounds = event.currentTarget.getBoundingClientRect();
           if (bounds.width <= 0) return;
           const columns = FRONTSTAGE_GRID_COLUMNS[activeBreakpoint.current];
-          interactionCompactor.updateDragPointer(
-            Math.max(
+          interactionCompactor.updateDragPointer({
+            column: Math.max(
               0,
               Math.min(
                 columns,
                 ((event.clientX - bounds.left) / bounds.width) * columns
               )
+            ),
+            row: Math.max(
+              0,
+              (event.clientY - bounds.top) / FRONTSTAGE_GRID_ROW_HEIGHT
             )
-          );
+          });
         }}
       >
         {isRenderEmpty && isDesignMode ? (
