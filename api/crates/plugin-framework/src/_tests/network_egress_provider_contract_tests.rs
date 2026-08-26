@@ -24,6 +24,10 @@ fn ac_002_network_egress_stdio_contract_serializes_the_three_public_operations()
         "1flowbase.network_egress_provider/v1"
     );
     assert_eq!(
+        NETWORK_EGRESS_PROVIDER_CONTRACT,
+        extension_contracts::NETWORK_EGRESS_PROVIDER_CONTRACT
+    );
+    assert_eq!(
         serde_json::to_value(sync).unwrap(),
         json!({"operation": "sync_egresses", "input": {}})
     );

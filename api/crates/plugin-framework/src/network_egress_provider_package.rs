@@ -5,14 +5,14 @@ use std::{
 
 use serde::Deserialize;
 
+pub use extension_contracts::NETWORK_EGRESS_PROVIDER_CONTRACT;
+
 use crate::{
     error::{FrameworkResult, PluginFrameworkError},
     manifest_v1::{parse_plugin_manifest, PluginManifestV1},
     provider_contract::PluginFormSchema,
     PluginConsumptionKind, PluginExecutionMode,
 };
-
-pub const NETWORK_EGRESS_PROVIDER_CONTRACT: &str = "1flowbase.network_egress_provider/v1";
 
 /// A third-party runtime package that owns network egress behind the stable v1 contract.
 #[derive(Debug, Clone, PartialEq)]

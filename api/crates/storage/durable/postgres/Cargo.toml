@@ -12,8 +12,8 @@ chacha20poly1305.workspace = true
 control-plane = { path = "../../../control-plane" }
 control-plane-contracts = { path = "../../../control-plane-contracts" }
 domain = { path = "../../../domain" }
+extension-contracts = { path = "../../../extension-contracts" }
 futures-util.workspace = true
-plugin-framework = { path = "../../../plugin-framework" }
 percent-encoding.workspace = true
 rand.workspace = true
 rand_regex.workspace = true

@@ -39,7 +39,7 @@ impl NetworkEgressRuntimePort for RejectNetworkEgressPreflight {
         _provider_id: Uuid,
         _installation: &domain::LocalPluginInstallationRecord,
         _secret: NetworkEgressSecretMaterial,
-    ) -> anyhow::Result<Vec<plugin_framework::EgressDescriptor>> {
+    ) -> anyhow::Result<Vec<extension_contracts::EgressDescriptor>> {
         unreachable!("activation preflight must not synchronize the active runtime")
     }
 }
@@ -832,7 +832,8 @@ fn network_egress_commit_input(
     input.installation.provider_code = "clash-proxy".into();
     input.installation.plugin_id = plugin_id.clone();
     input.installation.plugin_version = version.into();
-    input.installation.contract_version = plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT.into();
+    input.installation.contract_version =
+        extension_contracts::NETWORK_EGRESS_PROVIDER_CONTRACT.into();
     input.installation.metadata_json = json!({ "plugin_type": "network_egress_provider" });
     input.artifact_instance.local_version = Some(version.into());
     input.artifact_instance.local_path = Some(format!("/tmp/clash-proxy/{version}"));

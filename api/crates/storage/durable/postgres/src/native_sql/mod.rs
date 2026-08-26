@@ -1,9 +1,9 @@
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
-use futures_util::TryStreamExt;
-use plugin_framework::{
+use extension_contracts::{
     NativeSqlColumn, NativeSqlExecutionItem, NativeSqlExecutionOutput, NativeSqlLogicalType,
     NativeSqlValueEncoding, ProviderRuntimeError, ProviderRuntimeErrorKind,
 };
+use futures_util::TryStreamExt;
 use serde_json::{json, Value};
 use sqlx::{
     postgres::{PgDatabaseError, PgRow},

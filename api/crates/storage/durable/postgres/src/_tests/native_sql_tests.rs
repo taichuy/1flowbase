@@ -1,6 +1,10 @@
 use postgres_test_support::PostgresTestSchema;
 use serde_json::json;
 
+fn assert_extension_contract_output(_: &extension_contracts::NativeSqlExecutionOutput) {}
+
+fn assert_extension_contract_error(_: &extension_contracts::ProviderRuntimeError) {}
+
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
         .or_else(|_| std::env::var("API_DATABASE_URL"))
@@ -26,6 +30,7 @@ select point(1, 2) as native_value;
     let output = crate::execute_native_sql(&pool, sql)
         .await
         .expect("execute opaque SQL");
+    assert_extension_contract_output(&output);
 
     assert_eq!(
         serde_json::to_value(output).expect("serialize canonical result"),
@@ -100,6 +105,7 @@ async fn ac_005_database_error_preserves_postgresql_code_and_detail_shape() {
     let error = crate::execute_native_sql(&pool, "select * from missing_native_sql_table")
         .await
         .expect_err("missing table must remain a source error");
+    assert_extension_contract_error(&error);
 
     assert_eq!(error.provider_summary.as_deref(), Some("42P01"));
     assert_eq!(
