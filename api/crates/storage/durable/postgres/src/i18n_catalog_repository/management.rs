@@ -1,13 +1,13 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane_contracts::{
-    ControlPlaneContractError as ControlPlaneError,
     ports::{
         AuditedCatalogTranslationInput, AuditedDeleteCatalogTranslationInput,
         AuditedDeleteCustomCatalogMessageInput, AuditedRestoreAllCatalogOverridesInput,
         CatalogManagementEntry, CatalogManagementOrigin, CatalogManagementPage,
         CatalogManagementQuery, I18nCatalogManagementRepository,
     },
+    ControlPlaneContractError as ControlPlaneError,
 };
 use domain::{CatalogLocale, WorkspaceCatalogRevision, WorkspaceCatalogState};
 use sqlx::{Postgres, Row, Transaction};

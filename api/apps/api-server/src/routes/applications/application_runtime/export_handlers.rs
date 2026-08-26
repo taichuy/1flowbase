@@ -185,14 +185,14 @@ async fn build_application_run_trace_export_document(
     run_id: Uuid,
     exported_at: OffsetDateTime,
 ) -> Result<ApplicationRunTraceExportDocument, ApiError> {
-    let detail = <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_detail(
+    let detail = <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_detail(
         &state.store,
         application_id,
         run_id,
     )
     .await?
     .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-    let runtime_events = <MainDurableStore as OrchestrationRuntimeRepository>::list_runtime_events(
+    let runtime_events = <ApiDurableStore as OrchestrationRuntimeRepository>::list_runtime_events(
         &state.store,
         run_id,
         0,
@@ -338,7 +338,7 @@ async fn build_application_run_trace_export_tree(
     let projection_status = to_trace_projection_status_response(&status);
     let statistics = if projection_is_succeeded(&status) {
         to_trace_projection_statistics_response(
-            <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_statistics(
+            <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_statistics(
                 &state.store,
                 flow_run.id,
             )
@@ -349,7 +349,7 @@ async fn build_application_run_trace_export_tree(
     };
     let nodes = if projection_is_succeeded(&status) {
         let roots =
-            <MainDurableStore as OrchestrationRuntimeRepository>::list_application_run_trace_roots(
+            <ApiDurableStore as OrchestrationRuntimeRepository>::list_application_run_trace_roots(
                 &state.store,
                 flow_run.id,
             )
@@ -383,7 +383,7 @@ fn build_application_run_trace_export_node(
     Box::pin(async move {
         let summary = to_trace_node_summary_from_projection(node.clone());
         let (content_kind, source_refs, detail_refs, payload) = if node.has_content {
-            match <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node_content(
+            match <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node_content(
                 &state.store,
                 flow_run_id,
                 node.trace_node_id,
@@ -471,7 +471,7 @@ async fn list_application_run_trace_export_children(
 
     loop {
         let page =
-            <MainDurableStore as OrchestrationRuntimeRepository>::list_application_run_trace_children_page(
+            <ApiDurableStore as OrchestrationRuntimeRepository>::list_application_run_trace_children_page(
                 &state.store,
                 ListApplicationRunTraceChildrenPageInput {
                     flow_run_id,

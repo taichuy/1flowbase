@@ -142,7 +142,7 @@ pub(super) fn settings_service(
     state: &ApiState,
     actor: &domain::ActorContext,
     operation_id: &'static str,
-) -> ModelProviderService<MainDurableStore, ApiProviderRuntime> {
+) -> ModelProviderService<ApiDurableStore, ApiProviderRuntime> {
     ModelProviderService::for_console_operation(
         state.store.for_actor(actor.clone()),
         ApiProviderRuntime::new(state.provider_runtime.clone()),

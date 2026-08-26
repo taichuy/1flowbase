@@ -3,11 +3,11 @@ use std::collections::BTreeSet;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use control_plane_contracts::{
-    ControlPlaneContractError as ControlPlaneError,
     ports::{
         AuthRepository, CreateMemberInput, CreateSelfRegisteredMemberInput, MemberRepository,
         SelfRegistrationRepository, UpdateMemberInput,
     },
+    ControlPlaneContractError as ControlPlaneError,
 };
 use domain::{ActorContext, AuditLogRecord};
 use uuid::Uuid;

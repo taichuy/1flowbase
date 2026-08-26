@@ -336,9 +336,11 @@ async fn block_code_save_rejects_a_stale_source_revision_atomically() {
         .unwrap_err();
     assert!(matches!(
         error.downcast_ref::<control_plane_contracts::ControlPlaneContractError>(),
-        Some(control_plane_contracts::ControlPlaneContractError::Conflict(
-            "frontstage_block_source_revision"
-        ))
+        Some(
+            control_plane_contracts::ControlPlaneContractError::Conflict(
+                "frontstage_block_source_revision"
+            )
+        )
     ));
     let persisted: String = sqlx::query_scalar(
         "select code from frontstage_block_codes where workspace_id = $1 and page_id = $2 and code_ref = 'root-code'",

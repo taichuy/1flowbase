@@ -247,10 +247,12 @@ impl NetworkEgressRepository for PgControlPlaneStore {
             .execute(self.pool())
             .await?;
         if result.rows_affected() == 0 {
-            return Err(control_plane_contracts::ControlPlaneContractError::NotFound(
-                "network_egress_provider",
-            )
-            .into());
+            return Err(
+                control_plane_contracts::ControlPlaneContractError::NotFound(
+                    "network_egress_provider",
+                )
+                .into(),
+            );
         }
         Ok(())
     }
@@ -343,9 +345,11 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         .fetch_optional(self.pool())
         .await?;
         row.map(provider).transpose()?.ok_or_else(|| {
-            anyhow::anyhow!(control_plane_contracts::ControlPlaneContractError::NotFound(
-                "network_egress_provider"
-            ))
+            anyhow::anyhow!(
+                control_plane_contracts::ControlPlaneContractError::NotFound(
+                    "network_egress_provider"
+                )
+            )
         })
     }
 
@@ -371,10 +375,12 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         "#).bind(input.provider_id).bind(input.health_status.as_str()).bind(&input.last_sync_error)
           .bind(input.synchronized_at).bind(input.actor_user_id).fetch_optional(&mut *transaction).await?;
         let Some(row) = row else {
-            return Err(control_plane_contracts::ControlPlaneContractError::NotFound(
-                "network_egress_provider",
-            )
-            .into());
+            return Err(
+                control_plane_contracts::ControlPlaneContractError::NotFound(
+                    "network_egress_provider",
+                )
+                .into(),
+            );
         };
         sqlx::query("delete from network_egress_projections where provider_id = $1")
             .bind(input.provider_id)
@@ -404,9 +410,11 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         "#).bind(input.provider_id).bind(&input.last_sync_error).bind(input.synchronized_at)
           .bind(input.actor_user_id).fetch_optional(self.pool()).await?;
         row.map(provider).transpose()?.ok_or_else(|| {
-            anyhow::anyhow!(control_plane_contracts::ControlPlaneContractError::NotFound(
-                "network_egress_provider"
-            ))
+            anyhow::anyhow!(
+                control_plane_contracts::ControlPlaneContractError::NotFound(
+                    "network_egress_provider"
+                )
+            )
         })
     }
 
@@ -439,9 +447,11 @@ impl NetworkEgressRepository for PgControlPlaneStore {
         .bind(input.secret_version)
         .fetch_optional(self.pool())
         .await?
-        .ok_or(control_plane_contracts::ControlPlaneContractError::NotFound(
-            "network_egress_provider_secret_ref",
-        ))?;
+        .ok_or(
+            control_plane_contracts::ControlPlaneContractError::NotFound(
+                "network_egress_provider_secret_ref",
+            ),
+        )?;
         Ok(provider_secret(row))
     }
 
@@ -537,9 +547,9 @@ impl NetworkEgressPoolRepository for PgControlPlaneStore {
         .fetch_optional(self.pool())
         .await?;
         row.map(pool).transpose()?.ok_or_else(|| {
-            anyhow::anyhow!(control_plane_contracts::ControlPlaneContractError::NotFound(
-                "network_egress_pool"
-            ))
+            anyhow::anyhow!(
+                control_plane_contracts::ControlPlaneContractError::NotFound("network_egress_pool")
+            )
         })
     }
 
@@ -550,7 +560,8 @@ impl NetworkEgressPoolRepository for PgControlPlaneStore {
             .await?;
         if result.rows_affected() == 0 {
             return Err(
-                control_plane_contracts::ControlPlaneContractError::NotFound("network_egress_pool").into(),
+                control_plane_contracts::ControlPlaneContractError::NotFound("network_egress_pool")
+                    .into(),
             );
         }
         Ok(())
@@ -620,9 +631,11 @@ impl NetworkEgressPoolRepository for PgControlPlaneStore {
         .fetch_optional(self.pool())
         .await?;
         row.map(pool_member).transpose()?.ok_or_else(|| {
-            anyhow::anyhow!(control_plane_contracts::ControlPlaneContractError::NotFound(
-                "network_egress_pool_member"
-            ))
+            anyhow::anyhow!(
+                control_plane_contracts::ControlPlaneContractError::NotFound(
+                    "network_egress_pool_member"
+                )
+            )
         })
     }
 
@@ -654,9 +667,11 @@ impl NetworkEgressPoolRepository for PgControlPlaneStore {
         .fetch_optional(self.pool())
         .await?;
         row.map(pool_member).transpose()?.ok_or_else(|| {
-            anyhow::anyhow!(control_plane_contracts::ControlPlaneContractError::NotFound(
-                "network_egress_pool_member",
-            ))
+            anyhow::anyhow!(
+                control_plane_contracts::ControlPlaneContractError::NotFound(
+                    "network_egress_pool_member",
+                )
+            )
         })
     }
 
@@ -676,17 +691,21 @@ impl NetworkEgressPoolRepository for PgControlPlaneStore {
                         if database_error.constraint()
                             == Some("network_egress_route_pool_members_member_fk") =>
                     {
-                        anyhow::Error::new(control_plane_contracts::ControlPlaneContractError::Conflict(
-                            "network_egress_pool_member_in_use",
-                        ))
+                        anyhow::Error::new(
+                            control_plane_contracts::ControlPlaneContractError::Conflict(
+                                "network_egress_pool_member_in_use",
+                            ),
+                        )
                     }
                     _ => error.into(),
                 })?;
         if result.rows_affected() == 0 {
-            return Err(control_plane_contracts::ControlPlaneContractError::NotFound(
-                "network_egress_pool_member",
-            )
-            .into());
+            return Err(
+                control_plane_contracts::ControlPlaneContractError::NotFound(
+                    "network_egress_pool_member",
+                )
+                .into(),
+            );
         }
         Ok(())
     }
@@ -798,7 +817,9 @@ impl NetworkEgressRouteRepository for PgControlPlaneStore {
         .await?;
         if updated.rows_affected() == 0 {
             return Err(anyhow::anyhow!(
-                control_plane_contracts::ControlPlaneContractError::NotFound("network_egress_route")
+                control_plane_contracts::ControlPlaneContractError::NotFound(
+                    "network_egress_route"
+                )
             ));
         }
         sqlx::query("delete from network_egress_route_pool_members where route_id = $1")
@@ -848,7 +869,10 @@ impl NetworkEgressRouteRepository for PgControlPlaneStore {
                 .await?;
         if result.rows_affected() == 0 {
             return Err(
-                control_plane_contracts::ControlPlaneContractError::NotFound("network_egress_route").into(),
+                control_plane_contracts::ControlPlaneContractError::NotFound(
+                    "network_egress_route",
+                )
+                .into(),
             );
         }
         Ok(())

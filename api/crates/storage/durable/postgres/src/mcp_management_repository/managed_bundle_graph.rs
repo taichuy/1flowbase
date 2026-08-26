@@ -1,5 +1,7 @@
 use anyhow::Result;
-use control_plane_contracts::{ControlPlaneContractError as ControlPlaneError, ports::SeedMcpBundleGraphInput};
+use control_plane_contracts::{
+    ports::SeedMcpBundleGraphInput, ControlPlaneContractError as ControlPlaneError,
+};
 use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;

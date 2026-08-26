@@ -1,9 +1,9 @@
 use std::sync::Arc;
 
+use control_plane_contracts::billing::PricingRule;
 use control_plane_contracts::ports::{
     BillingRepository, CreditCommandInput, ReserveCreditInput, UpsertPricingRuleInput,
 };
-use control_plane_contracts::billing::PricingRule;
 use rust_decimal::Decimal;
 use serde_json::json;
 use storage_durable_postgres::{run_migrations, PgControlPlaneStore};

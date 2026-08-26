@@ -1,7 +1,6 @@
 use anyhow::{bail, Result};
 use async_trait::async_trait;
 use control_plane_contracts::{
-    ControlPlaneContractError as ControlPlaneError,
     ports::{
         CommitPluginFamilyUninstallInput, CommitPluginInstallationInput,
         CreatePluginAssignmentInput, CreatePluginTaskInput, PluginRepository,
@@ -9,6 +8,7 @@ use control_plane_contracts::{
         UpdatePluginTaskStatusInput, UpsertPluginArtifactInstanceInput,
         UpsertPluginInstallationInput, UpsertPluginPackageCatalogProjectionInput,
     },
+    ControlPlaneContractError as ControlPlaneError,
 };
 use sqlx::Row;
 use uuid::Uuid;

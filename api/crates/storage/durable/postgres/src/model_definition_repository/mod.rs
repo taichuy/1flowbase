@@ -9,7 +9,6 @@ pub use naming::RuntimeTableNamePolicy;
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane_contracts::{
-    ControlPlaneContractError as ControlPlaneError,
     ports::{
         AddModelFieldInput, AuthRepository, CreateModelDefinitionInput,
         CreateScopeDataModelGrantInput, ModelDefinitionRepository,
@@ -17,6 +16,7 @@ use control_plane_contracts::{
         UpdateModelDefinitionInput, UpdateModelDefinitionStatusInput, UpdateModelFieldInput,
         UpdateScopeDataModelGrantInput,
     },
+    ControlPlaneContractError as ControlPlaneError,
 };
 use sqlx::Row;
 use uuid::Uuid;

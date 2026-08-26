@@ -3,6 +3,7 @@ use std::{
     sync::Arc,
 };
 
+use crate::app_state::ApiDurableStore;
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
     extract::{Path, Query, State},
@@ -34,7 +35,6 @@ use plugin_framework::{
     },
     provider_package::ProviderConfigField,
 };
-use storage_durable_postgres::MainDurableStore;
 use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 
@@ -94,7 +94,7 @@ fn service(
     actor: &domain::ActorContext,
     group_id: &'static str,
     operation_id: &'static str,
-) -> ModelProviderService<MainDurableStore, ApiProviderRuntime> {
+) -> ModelProviderService<ApiDurableStore, ApiProviderRuntime> {
     ModelProviderService::for_console_operation(
         state.store.for_actor(actor.clone()),
         ApiProviderRuntime::new(state.provider_runtime.clone()),

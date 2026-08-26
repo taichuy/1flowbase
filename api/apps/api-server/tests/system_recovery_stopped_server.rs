@@ -816,10 +816,12 @@ impl RecoveryScenario {
             .await
             .expect("fixture must allocate a whole isolated database");
         let database_url = database.database_url().to_owned();
-        let runtime =
-            storage_durable_postgres::build_main_durable_postgres_with_max_connections(&database_url, 2)
-                .await
-                .unwrap();
+        let runtime = storage_durable_postgres::build_main_durable_postgres_with_max_connections(
+            &database_url,
+            2,
+        )
+        .await
+        .unwrap();
         let store = runtime.store;
         let salt = SaltString::generate(&mut OsRng);
         let root_password_hash = Argon2::default()
@@ -1004,7 +1006,9 @@ impl RecoveryScenario {
         )
         .await
         .unwrap();
-        let migration_head = storage_durable_postgres::migration_head(store.pool()).await.unwrap();
+        let migration_head = storage_durable_postgres::migration_head(store.pool())
+            .await
+            .unwrap();
         assert_eq!(
             migration_head,
             storage_durable_postgres::current_migration_head().unwrap(),

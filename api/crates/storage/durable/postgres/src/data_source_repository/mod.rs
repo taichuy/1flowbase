@@ -1,7 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane_contracts::{
-    ControlPlaneContractError as ControlPlaneError,
     ports::{
         CreateDataSourceInstanceInput, CreateDataSourcePreviewSessionInput,
         DataSourceInstanceVisibility, DataSourceRepository, RotateDataSourceSecretInput,
@@ -9,6 +8,7 @@ use control_plane_contracts::{
         UpdateDataSourceInstanceStatusInput, UpsertDataSourceCatalogCacheInput,
         UpsertDataSourceSecretInput,
     },
+    ControlPlaneContractError as ControlPlaneError,
 };
 use sqlx::Row;
 use uuid::Uuid;

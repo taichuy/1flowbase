@@ -2,7 +2,9 @@ use anyhow::{anyhow, Result};
 use sqlx::Row;
 use uuid::Uuid;
 
-use control_plane_contracts::ports::{ApplicationRunResumeCallbackSummary, ApplicationRunResumeEventSummary};
+use control_plane_contracts::ports::{
+    ApplicationRunResumeCallbackSummary, ApplicationRunResumeEventSummary,
+};
 
 use crate::repositories::PgControlPlaneStore;
 

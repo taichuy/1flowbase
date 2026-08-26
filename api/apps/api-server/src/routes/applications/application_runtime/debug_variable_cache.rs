@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::app_state::ApiDurableStore;
 use axum::{
     extract::{Path, State},
     http::HeaderMap,
@@ -14,7 +15,6 @@ use control_plane::{
     },
 };
 use serde::Deserialize;
-use storage_durable_postgres::MainDurableStore;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -75,7 +75,7 @@ pub async fn upsert_debug_variable_cache_entry(
         return Err(ControlPlaneError::InvalidInput("debug_variable_cache_key").into());
     }
 
-    <MainDurableStore as OrchestrationRuntimeRepository>::upsert_debug_variable_cache_entry(
+    <ApiDurableStore as OrchestrationRuntimeRepository>::upsert_debug_variable_cache_entry(
         &state.store,
         &UpsertDebugVariableCacheEntryInput {
             workspace_id: context.actor.current_workspace_id,
@@ -132,7 +132,7 @@ pub async fn delete_debug_variable_cache_entries(
             .collect::<Vec<_>>()
     });
 
-    <MainDurableStore as OrchestrationRuntimeRepository>::delete_debug_variable_cache_entries(
+    <ApiDurableStore as OrchestrationRuntimeRepository>::delete_debug_variable_cache_entries(
         &state.store,
         &DeleteDebugVariableCacheEntriesInput {
             application_id: id,

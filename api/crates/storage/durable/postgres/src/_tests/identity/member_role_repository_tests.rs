@@ -1,9 +1,9 @@
 use control_plane_contracts::{
-    ControlPlaneContractError as ControlPlaneError,
     ports::{
         AuthRepository, CreateMemberInput, CreateWorkspaceRoleInput, MemberRepository,
         RoleRepository, UpdateProfileInput, UpdateWorkspaceRoleInput,
     },
+    ControlPlaneContractError as ControlPlaneError,
 };
 use domain::{AuditLogRecord, PermissionDefinition, RoleScopeKind, UserStatus};
 use serde_json::json;

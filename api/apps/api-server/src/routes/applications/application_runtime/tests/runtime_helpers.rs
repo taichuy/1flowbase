@@ -253,7 +253,7 @@ fn trace_tree_endpoints_read_projection_without_full_detail_fallback() {
             "get_application_run_trace_node_content"
         )
         .contains(
-            "<MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node_content"
+            "<ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node_content"
         )
     );
     assert!(
@@ -262,7 +262,7 @@ fn trace_tree_endpoints_read_projection_without_full_detail_fallback() {
             "get_application_run_trace_tool_callback_content"
         )
         .contains(
-            "<MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node_content"
+            "<ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node_content"
         )
     );
 }

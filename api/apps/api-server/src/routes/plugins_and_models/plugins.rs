@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::app_state::ApiDurableStore;
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
     body::{to_bytes, Body},
@@ -26,7 +27,6 @@ use control_plane::resource_action::{
 };
 use plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
 use serde::{Deserialize, Serialize};
-use storage_durable_postgres::MainDurableStore;
 use time::format_description::well_known::Rfc3339;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -517,7 +517,7 @@ pub(crate) mod settings_routes;
 pub(crate) fn base_service(
     state: &ApiState,
     actor: &domain::ActorContext,
-) -> PluginManagementService<MainDurableStore, ApiProviderRuntime> {
+) -> PluginManagementService<ApiDurableStore, ApiProviderRuntime> {
     PluginManagementService::new(
         state.store.for_actor(actor.clone()),
         ApiProviderRuntime::new(state.provider_runtime.clone()),
@@ -533,7 +533,7 @@ fn service(
     state: &ApiState,
     actor: &domain::ActorContext,
     operation_id: &'static str,
-) -> PluginManagementService<MainDurableStore, ApiProviderRuntime> {
+) -> PluginManagementService<ApiDurableStore, ApiProviderRuntime> {
     base_service(state, actor).for_plugin_console_operation(
         domain::ConsolePolicyGroup::other("other.plugins")
             .expect("compiled plugin policy group must be valid"),

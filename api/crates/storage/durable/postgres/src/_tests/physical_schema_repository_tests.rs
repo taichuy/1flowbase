@@ -1,8 +1,8 @@
-use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
 use control_plane_contracts::ports::{
     AddModelFieldInput, CreateModelDefinitionInput, ModelDefinitionRepository,
     UpdateModelDefinitionInput, UpdateModelFieldInput,
 };
+use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
 use domain::{DataModelScopeKind, ModelFieldKind};
 use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;

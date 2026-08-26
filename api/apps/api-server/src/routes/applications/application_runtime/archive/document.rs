@@ -100,7 +100,7 @@ async fn build_run_archive_v1_entry(
             ))?;
     normalize_run_archive_trace_tree_projection_status(&mut trace_tree);
     let export_warnings = required_json_field(&export_value, "export_warnings")?;
-    let detail = <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_detail(
+    let detail = <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_detail(
         &state.store,
         application_id,
         run_id,
@@ -109,7 +109,7 @@ async fn build_run_archive_v1_entry(
     .ok_or(ControlPlaneError::NotFound("flow_run"))?;
     let compiled_plan = match detail.flow_run.compiled_plan_id {
         Some(compiled_plan_id) => {
-            <MainDurableStore as OrchestrationRuntimeRepository>::get_compiled_plan(
+            <ApiDurableStore as OrchestrationRuntimeRepository>::get_compiled_plan(
                 &state.store,
                 compiled_plan_id,
             )
@@ -120,14 +120,14 @@ async fn build_run_archive_v1_entry(
         None => None,
     };
     let runtime_spans = records_to_json_values(
-        <MainDurableStore as OrchestrationRuntimeRepository>::list_runtime_spans(
+        <ApiDurableStore as OrchestrationRuntimeRepository>::list_runtime_spans(
             &state.store,
             run_id,
         )
         .await?,
     )?;
     let runtime_events = records_to_json_values(
-        <MainDurableStore as OrchestrationRuntimeRepository>::list_runtime_events(
+        <ApiDurableStore as OrchestrationRuntimeRepository>::list_runtime_events(
             &state.store,
             run_id,
             0,
@@ -135,7 +135,7 @@ async fn build_run_archive_v1_entry(
         .await?,
     )?;
     let runtime_items = records_to_json_values(
-        <MainDurableStore as OrchestrationRuntimeRepository>::list_runtime_items(
+        <ApiDurableStore as OrchestrationRuntimeRepository>::list_runtime_items(
             &state.store,
             run_id,
         )
@@ -189,21 +189,21 @@ async fn build_run_archive_v1_entry(
     )
     .await?;
     let usage_ledger = records_to_json_values(
-        <MainDurableStore as OrchestrationRuntimeRepository>::list_usage_ledger(
+        <ApiDurableStore as OrchestrationRuntimeRepository>::list_usage_ledger(
             &state.store,
             run_id,
         )
         .await?,
     )?;
     let model_failover_attempts = records_to_json_values(
-        <MainDurableStore as OrchestrationRuntimeRepository>::list_model_failover_attempt_ledger(
+        <ApiDurableStore as OrchestrationRuntimeRepository>::list_model_failover_attempt_ledger(
             &state.store,
             run_id,
         )
         .await?,
     )?;
     let capability_invocations = records_to_json_values(
-        <MainDurableStore as OrchestrationRuntimeRepository>::list_capability_invocations(
+        <ApiDurableStore as OrchestrationRuntimeRepository>::list_capability_invocations(
             &state.store,
             run_id,
         )
@@ -237,7 +237,7 @@ async fn build_run_archive_v1_entry(
 }
 
 async fn archive_json_rows(
-    store: &MainDurableStore,
+    store: &ApiDurableStore,
     query: &str,
     run_id: Uuid,
 ) -> Result<Vec<serde_json::Value>, ApiError> {

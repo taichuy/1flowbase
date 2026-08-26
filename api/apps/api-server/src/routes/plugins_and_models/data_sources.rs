@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::app_state::ApiDurableStore;
 use access_control::{
     ConsoleRouteOwnership::ConsoleOperation, AGENT_FLOW_DATA_SOURCE_OPTIONS_LIST_OPERATION_ID,
     DATA_SOURCES_SECRET_ROTATE_OPERATION_ID,
@@ -20,7 +21,6 @@ use control_plane::data_source::{
 };
 use control_plane::ports::RuntimeRegistrySync;
 use serde::{Deserialize, Serialize};
-use storage_durable_postgres::MainDurableStore;
 use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -274,7 +274,7 @@ pub async fn list_agent_flow_data_source_options(
 pub(super) fn service(
     state: &ApiState,
     actor: &domain::ActorContext,
-) -> DataSourceService<MainDurableStore, ApiProviderRuntime> {
+) -> DataSourceService<ApiDurableStore, ApiProviderRuntime> {
     DataSourceService::for_data_model_settings(
         state.store.for_actor(actor.clone()),
         ApiProviderRuntime::new(state.provider_runtime.clone()),
@@ -289,7 +289,7 @@ pub(super) fn service(
 fn business_service(
     state: &ApiState,
     actor: &domain::ActorContext,
-) -> DataSourceService<MainDurableStore, ApiProviderRuntime> {
+) -> DataSourceService<ApiDurableStore, ApiProviderRuntime> {
     DataSourceService::new(
         state.store.for_actor(actor.clone()),
         ApiProviderRuntime::new(state.provider_runtime.clone()),

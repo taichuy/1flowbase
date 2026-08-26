@@ -1,7 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane_contracts::{
-    ControlPlaneContractError as ControlPlaneError,
     ports::{
         AuthRepository, CreateMcpInstanceGraphInput, CreateMcpInstanceInput,
         CreateMcpToolBindingInput, CreateMcpToolInput, CreateMcpUpstreamConnectionInput,
@@ -10,6 +9,7 @@ use control_plane_contracts::{
         UpdateMcpUpstreamConnectionInput, UpsertMcpClientCredentialInput, UpsertMcpGroupInput,
         UpsertMcpUpstreamSecretInput, UpsertMcpUpstreamToolSourceInput,
     },
+    ControlPlaneContractError as ControlPlaneError,
 };
 use serde_json::json;
 use sqlx::Row;

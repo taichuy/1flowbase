@@ -1,13 +1,13 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane_contracts::{
-    ControlPlaneContractError as ControlPlaneError,
     ports::{
         CatalogResolutionCandidate, CatalogResolutionRepository, DeleteCatalogTranslationInput,
         DeleteCustomCatalogMessageInput, I18nCatalogRepository, RuntimeCatalogMessage,
         RuntimeCatalogProjection, RuntimeI18nCatalogRepository, StoredI18nCatalogReleaseDescriptor,
         UpsertCatalogTranslationInput,
     },
+    ControlPlaneContractError as ControlPlaneError,
 };
 use domain::{
     ActiveOfficialCatalogMessage, CatalogLocale, CatalogMessageIdentity, CatalogTranslation,

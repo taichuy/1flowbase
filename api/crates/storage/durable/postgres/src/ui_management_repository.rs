@@ -470,9 +470,11 @@ impl UiManagementRepository for PgControlPlaneStore {
                     .and_then(|database| database.constraint())
                     == Some("ui_component_records_identity_unique")
                 {
-                    anyhow::Error::new(control_plane_contracts::ControlPlaneContractError::Conflict(
-                        "ui_component_code",
-                    ))
+                    anyhow::Error::new(
+                        control_plane_contracts::ControlPlaneContractError::Conflict(
+                            "ui_component_code",
+                        ),
+                    )
                 } else {
                     error.into()
                 }

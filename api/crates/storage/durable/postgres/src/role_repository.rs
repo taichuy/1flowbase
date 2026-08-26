@@ -3,7 +3,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use control_plane_contracts::{
-    ControlPlaneContractError as ControlPlaneError,
+    console_policy_migration::{
+        validate_console_policy_migration_actor_previews, ConsolePolicyMigrationActorPreview,
+        ConsolePolicyMigrationActorRoleBinding,
+    },
     ports::{
         AuthRepository, CreateWorkspaceRoleInput, ReplaceRoleConsolePolicyInput,
         ReplaceRoleDataPolicyInput, ReplaceWorkspaceConsoleSettingsOrderInput,
@@ -13,10 +16,7 @@ use control_plane_contracts::{
         RoleConsolePolicyReader, RoleDataPolicyDefaultsInput, RoleRepository,
         UpdateWorkspaceRoleInput, WorkspaceConsoleSettingsOrder,
     },
-    console_policy_migration::{
-        validate_console_policy_migration_actor_previews, ConsolePolicyMigrationActorPreview,
-        ConsolePolicyMigrationActorRoleBinding,
-    },
+    ControlPlaneContractError as ControlPlaneError,
 };
 use domain::{ActorContext, AuditLogRecord, RoleScopeKind};
 use serde_json::Value;

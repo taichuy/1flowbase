@@ -157,11 +157,12 @@ impl ApiConfig {
             .get("API_RUNTIME_TABLE_PREFIX_REGEX")
             .map(String::as_str)
             .unwrap_or("rtm_workspace_[a-z0-9]{8}");
-        let runtime_table_name_policy = storage_durable_postgres::RuntimeTableNamePolicy::from_config(
-            runtime_table_auto_prefix_enabled,
-            runtime_table_prefix_regex,
-        )
-        .map_err(|error| anyhow!("invalid env API_RUNTIME_TABLE_PREFIX_REGEX: {error}"))?;
+        let runtime_table_name_policy =
+            storage_durable_postgres::RuntimeTableNamePolicy::from_config(
+                runtime_table_auto_prefix_enabled,
+                runtime_table_prefix_regex,
+            )
+            .map_err(|error| anyhow!("invalid env API_RUNTIME_TABLE_PREFIX_REGEX: {error}"))?;
         let cors_allowed_origins = parse_cors_allowed_origins(map.get("API_ALLOWED_ORIGINS"))?;
         let provider_install_root = map
             .get("API_PROVIDER_INSTALL_ROOT")

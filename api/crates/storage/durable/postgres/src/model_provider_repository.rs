@@ -1,7 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
 use control_plane_contracts::{
-    ControlPlaneContractError as ControlPlaneError,
     ports::{
         CreateModelCatalogSyncRunInput, CreateModelFailoverQueueItemInput,
         CreateModelFailoverQueueSnapshotInput, CreateModelFailoverQueueTemplateInput,
@@ -12,6 +11,7 @@ use control_plane_contracts::{
         UpsertModelProviderCatalogEntryInput, UpsertModelProviderMainInstanceInput,
         UpsertModelProviderSecretInput,
     },
+    ControlPlaneContractError as ControlPlaneError,
 };
 use serde_json::Value;
 use sqlx::Row;

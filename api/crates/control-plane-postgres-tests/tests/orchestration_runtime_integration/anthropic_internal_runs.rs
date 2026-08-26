@@ -198,7 +198,10 @@ async fn complete_summary_backfill_restores_a_missing_internal_run_projection() 
         .await
         .unwrap();
 
-    sqlx::migrate!("../storage/durable/postgres/migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../storage/durable/postgres/migrations")
+        .run(&pool)
+        .await
+        .unwrap();
 
     let restored: (String, String, Option<String>) = sqlx::query_as(
         r#"

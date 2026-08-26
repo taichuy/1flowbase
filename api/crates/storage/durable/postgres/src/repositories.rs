@@ -1,10 +1,10 @@
 use anyhow::Result;
-use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
 use control_plane_contracts::ports::{
     ApplicationRepository, AuthRepository, AuthenticatorSettingsRepository, BootstrapRepository,
     CreateApplicationInput, CreateMemberInput, FlowRepository, MemberRepository,
     UpdateProfileInput, WorkspaceRepository,
 };
+use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
 use domain::{
     ActorContext, ApplicationRecord, AuditLogRecord, AuthenticatorRecord, FlowChangeKind,
     FlowEditorState, PermissionDefinition, RoleScopeKind, TenantRecord, UserRecord,

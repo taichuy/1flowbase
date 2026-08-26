@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::app_state::ApiDurableStore;
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
     extract::{Path, Query, State},
@@ -21,7 +22,6 @@ use control_plane::{
     system_metadata::project_system_metadata_titles,
 };
 use serde::{Deserialize, Serialize};
-use storage_durable_postgres::MainDurableStore;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -659,7 +659,7 @@ fn parse_field_kind(raw: &str) -> Result<domain::ModelFieldKind, ApiError> {
 fn mutation_service(
     state: &ApiState,
     operation_id: &'static str,
-) -> ModelDefinitionMutationService<MainDurableStore, ApiRuntimeRegistrySync> {
+) -> ModelDefinitionMutationService<ApiDurableStore, ApiRuntimeRegistrySync> {
     ModelDefinitionMutationService::for_console_operation(
         state.store.clone(),
         ApiRuntimeRegistrySync::new(state.store.clone(), state.runtime_engine.registry().clone()),
@@ -672,7 +672,7 @@ fn mutation_service(
 fn settings_service(
     state: &ApiState,
     operation_id: &'static str,
-) -> ModelDefinitionService<MainDurableStore> {
+) -> ModelDefinitionService<ApiDurableStore> {
     ModelDefinitionService::for_console_operation(
         state.store.clone(),
         domain::ConsolePolicyGroup::settings_feature("system.data-models")

@@ -1,8 +1,8 @@
 use anyhow::{bail, Result};
 use async_trait::async_trait;
 use control_plane_contracts::{
-    ControlPlaneContractError as ControlPlaneError,
     ports::{HostInfrastructureConfigRepository, UpsertHostInfrastructureProviderConfigInput},
+    ControlPlaneContractError as ControlPlaneError,
 };
 use sqlx::Row;
 use uuid::Uuid;

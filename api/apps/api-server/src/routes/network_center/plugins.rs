@@ -1,5 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
+use crate::app_state::ApiDurableStore;
 use axum::{
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     handler::Handler,
@@ -11,7 +12,6 @@ use control_plane::plugin_management::{
     PluginCatalogFilter, PluginManagementService,
 };
 use control_plane::ports::NetworkEgressRepository;
-use storage_durable_postgres::MainDurableStore;
 use utoipa::ToSchema;
 
 use crate::{
@@ -168,7 +168,7 @@ fn service(
     state: &ApiState,
     actor: &domain::ActorContext,
     operation_id: &'static str,
-) -> PluginManagementService<MainDurableStore, ApiProviderRuntime> {
+) -> PluginManagementService<ApiDurableStore, ApiProviderRuntime> {
     crate::routes::plugins::base_service(state, actor)
         .for_network_egress_provider_console_operation(operation_id)
 }

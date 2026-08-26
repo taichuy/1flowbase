@@ -11,6 +11,11 @@ use plugin_framework::HostExtensionContributionManifest;
 use runtime_core::runtime_engine::RuntimeEngine;
 use serde::Serialize;
 use storage_durable_postgres::MainDurableStore;
+
+/// Durable store selected by the API composition root.
+///
+/// Protocol modules depend on this state-owned name instead of importing a concrete adapter.
+pub type ApiDurableStore = MainDurableStore;
 use time::OffsetDateTime;
 
 use crate::error_response::ApiError;

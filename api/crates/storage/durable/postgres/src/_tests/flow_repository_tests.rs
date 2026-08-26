@@ -1,8 +1,8 @@
 use std::sync::{Arc, OnceLock};
 
 use control_plane_contracts::{
-    ControlPlaneContractError as ControlPlaneError,
     ports::{ApplicationRepository, CreateApplicationInput, FlowRepository},
+    ControlPlaneContractError as ControlPlaneError,
 };
 use domain::{ApplicationType, FlowChangeKind, FlowVersionTrigger};
 use serde_json::json;

@@ -7,7 +7,7 @@ use extension_contracts::provider_contract::{
     ProviderBalanceResult, ProviderCanonicalBlockKind, ProviderCompactError,
     ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensCoverage,
     ProviderCountTokensError, ProviderCountTokensFallbackReason, ProviderCountTokensInput,
-    ProviderCountTokensMethod, ProviderCountTokensResult, ProviderGenerateProjectionError,
+    ProviderCountTokensResult, ProviderGenerateProjectionError,
     ProviderGenerateTranslationDecision, ProviderInvocationCapability, ProviderInvocationInput,
     ProviderInvocationResult, ProviderMessage, ProviderMessageRole, ProviderNativeTransport,
     ProviderNetworkEgressContext, ProviderNetworkEgressMode, ProviderOutputItemPhase,

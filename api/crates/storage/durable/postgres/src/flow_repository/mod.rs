@@ -1,6 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use control_plane_contracts::{ControlPlaneContractError as ControlPlaneError, ports::FlowRepository};
+use control_plane_contracts::{
+    ports::FlowRepository, ControlPlaneContractError as ControlPlaneError,
+};
 use sqlx::{Postgres, Row, Transaction};
 use uuid::Uuid;
 

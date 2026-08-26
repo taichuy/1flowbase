@@ -1,12 +1,12 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane_contracts::{
-    ControlPlaneContractError as ControlPlaneError,
     ports::{
         AuthRepository, CreateFrontstagePageInput, CreateFrontstagePageTabInput,
         FrontstagePageRepository, MoveFrontstagePageInput, SaveFrontstageTabDocumentInput,
         UpdateFrontstagePageMetadataInput, UpdateFrontstagePageTabInput, WorkspaceRepository,
     },
+    ControlPlaneContractError as ControlPlaneError,
 };
 use serde_json::json;
 use sqlx::Row;

@@ -329,8 +329,9 @@ impl SystemBackupRuntime {
         let sealed = self.service.get(backup_set_id).await?;
         let migration_head = storage_durable_postgres::current_migration_head()
             .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
-        let supported_source_migration_heads = storage_durable_postgres::supported_migration_heads()
-            .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
+        let supported_source_migration_heads =
+            storage_durable_postgres::supported_migration_heads()
+                .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
         let target = domain::BackupCompatibilityTarget {
             format_version: domain::SYSTEM_BACKUP_FORMAT_VERSION,
             application_build: self.application_build.clone(),
@@ -530,11 +531,12 @@ impl SystemBackupRuntime {
         let migration_head = storage_durable_postgres::migration_head(self.store.pool())
             .await
             .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
-        let mut sources: Vec<Arc<dyn BackupComponentSource>> =
-            vec![Arc::new(storage_durable_postgres::PostgreSqlLogicalBackup::new(
+        let mut sources: Vec<Arc<dyn BackupComponentSource>> = vec![Arc::new(
+            storage_durable_postgres::PostgreSqlLogicalBackup::new(
                 self.database_url.clone(),
                 self.postgres_toolchain.clone(),
-            ))];
+            ),
+        )];
         sources.extend(
             BusinessObjectBackupExporter::new(
                 self.store.clone(),

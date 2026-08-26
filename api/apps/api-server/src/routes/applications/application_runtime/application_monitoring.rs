@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::app_state::ApiDurableStore;
 use axum::{
     extract::{Path, Query, State},
     http::HeaderMap,
@@ -11,7 +12,6 @@ use control_plane::{
     ports::{GetApplicationRunMonitoringReportInput, OrchestrationRuntimeRepository},
 };
 use serde::{Deserialize, Serialize};
-use storage_durable_postgres::MainDurableStore;
 use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -251,7 +251,7 @@ pub async fn get_application_run_monitoring_report(
     let bucket = normalize_monitoring_bucket(query.bucket.as_deref(), query.time_range_days);
 
     let report =
-        <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_monitoring_report(
+        <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_monitoring_report(
             &state.store,
             id,
             GetApplicationRunMonitoringReportInput {

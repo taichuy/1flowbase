@@ -387,7 +387,7 @@ fn catalog_update_status_response(
 
 fn catalog_service(
     state: &ApiState,
-) -> UiComponentCatalogService<storage_durable_postgres::MainDurableStore, ApiUiComponentCatalogSource> {
+) -> UiComponentCatalogService<crate::app_state::ApiDurableStore, ApiUiComponentCatalogSource> {
     UiComponentCatalogService::new(
         state.store.clone(),
         ApiUiComponentCatalogSource::default_taichuy(),

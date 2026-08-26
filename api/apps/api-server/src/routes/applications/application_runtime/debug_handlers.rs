@@ -475,7 +475,7 @@ pub async fn get_flow_debug_run_snapshot(
 ) -> Result<Json<ApiSuccess<ApplicationRunDetailResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     let application = ensure_application_visible(&state, &context.actor, id).await?;
-    let detail = <MainDurableStore as OrchestrationRuntimeRepository>::get_application_run_detail(
+    let detail = <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_detail(
         &state.store,
         id,
         run_id,
@@ -488,7 +488,7 @@ pub async fn get_flow_debug_run_snapshot(
     }
 
     let runtime_events =
-        <MainDurableStore as OrchestrationRuntimeRepository>::list_runtime_events(
+        <ApiDurableStore as OrchestrationRuntimeRepository>::list_runtime_events(
             &state.store,
             run_id,
             0,

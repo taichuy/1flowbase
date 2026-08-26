@@ -1,5 +1,6 @@
 use std::{collections::HashMap, future::Future, pin::Pin, sync::Arc};
 
+use crate::app_state::ApiDurableStore;
 use control_plane::{
     errors::ControlPlaneError,
     orchestration_runtime::debug_artifacts::{
@@ -14,7 +15,6 @@ use control_plane::{
     },
 };
 use serde_json::{json, Map, Value};
-use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use crate::{app_state::ApiState, error_response::ApiError};
@@ -109,7 +109,7 @@ pub(super) fn count_llm_tool_callback_trace_items(
 impl RuntimeDebugArtifactWriter {
     async fn new(state: Arc<ApiState>) -> Result<Self, ApiError> {
         let storage =
-            <MainDurableStore as FileManagementRepository>::get_default_file_storage(&state.store)
+            <ApiDurableStore as FileManagementRepository>::get_default_file_storage(&state.store)
                 .await?
                 .ok_or(ControlPlaneError::Conflict("file_storage_default_missing"))?;
         if !storage.enabled {
@@ -158,7 +158,7 @@ impl RuntimeDebugArtifactWriter {
                 bytes: &preview.full_bytes,
             })
             .await?;
-        <MainDurableStore as OrchestrationRuntimeRepository>::create_runtime_debug_artifact(
+        <ApiDurableStore as OrchestrationRuntimeRepository>::create_runtime_debug_artifact(
             &self.state.store,
             &CreateRuntimeDebugArtifactInput {
                 artifact_id: preview.artifact_id,
@@ -204,7 +204,7 @@ impl RuntimeDebugArtifactWriter {
                 bytes: &bytes,
             })
             .await?;
-        <MainDurableStore as OrchestrationRuntimeRepository>::create_runtime_debug_artifact(
+        <ApiDurableStore as OrchestrationRuntimeRepository>::create_runtime_debug_artifact(
             &self.state.store,
             &CreateRuntimeDebugArtifactInput {
                 artifact_id,
@@ -560,7 +560,7 @@ pub async fn offload_application_run_detail_artifacts(
     };
     if flow_input_changed || flow_output_changed || flow_error_changed {
         detail.flow_run =
-            <MainDurableStore as OrchestrationRuntimeRepository>::update_flow_run_payloads(
+            <ApiDurableStore as OrchestrationRuntimeRepository>::update_flow_run_payloads(
                 &state.store,
                 &UpdateFlowRunPayloadsInput {
                     flow_run_id: detail.flow_run.id,
@@ -624,7 +624,7 @@ pub async fn offload_application_run_detail_artifacts(
 
         if input_changed || output_changed || error_changed || metrics_changed || debug_changed {
             *node_run =
-                <MainDurableStore as OrchestrationRuntimeRepository>::update_node_run_payloads(
+                <ApiDurableStore as OrchestrationRuntimeRepository>::update_node_run_payloads(
                     &state.store,
                     &UpdateNodeRunPayloadsInput {
                         node_run_id: node_run.id,
@@ -681,7 +681,7 @@ pub async fn offload_application_run_detail_artifacts(
 
         if locator_changed || variable_changed || external_changed {
             *checkpoint =
-                <MainDurableStore as OrchestrationRuntimeRepository>::update_checkpoint_payloads(
+                <ApiDurableStore as OrchestrationRuntimeRepository>::update_checkpoint_payloads(
                     &state.store,
                     &UpdateCheckpointPayloadsInput {
                         checkpoint_id: checkpoint.id,
@@ -742,7 +742,7 @@ pub async fn offload_application_run_detail_artifacts(
 
         if request_changed || response_changed || external_changed {
             *callback_task =
-                <MainDurableStore as OrchestrationRuntimeRepository>::update_callback_task_payloads(
+                <ApiDurableStore as OrchestrationRuntimeRepository>::update_callback_task_payloads(
                     &state.store,
                     &UpdateCallbackTaskPayloadsInput {
                         callback_task_id: callback_task.id,
@@ -767,15 +767,14 @@ pub async fn offload_application_run_detail_artifacts(
             .offload_value(&event_scope, "run_event_payload", event.payload.clone())
             .await?;
         if changed {
-            *event =
-                <MainDurableStore as OrchestrationRuntimeRepository>::update_run_event_payload(
-                    &state.store,
-                    &UpdateRunEventPayloadInput {
-                        run_event_id: event.id,
-                        payload,
-                    },
-                )
-                .await?;
+            *event = <ApiDurableStore as OrchestrationRuntimeRepository>::update_run_event_payload(
+                &state.store,
+                &UpdateRunEventPayloadInput {
+                    run_event_id: event.id,
+                    payload,
+                },
+            )
+            .await?;
         }
     }
 

@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::app_state::ApiDurableStore;
 use axum::{
     body::Body,
     http::{header::CONTENT_TYPE, Response, StatusCode},
@@ -11,7 +12,6 @@ use control_plane::{
     },
 };
 use serde_json::Value;
-use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use crate::{app_state::ApiState, error_response::ApiError};
@@ -237,18 +237,17 @@ pub(crate) async fn load_runtime_debug_artifact_response(
     application_id: Uuid,
     artifact_id: Uuid,
 ) -> Result<Response<Body>, ApiError> {
-    let artifact =
-        <MainDurableStore as OrchestrationRuntimeRepository>::get_runtime_debug_artifact(
-            &state.store,
-            &GetRuntimeDebugArtifactInput {
-                workspace_id,
-                application_id,
-                artifact_id,
-            },
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("runtime_debug_artifact"))?;
-    let storage = <MainDurableStore as FileManagementRepository>::get_file_storage(
+    let artifact = <ApiDurableStore as OrchestrationRuntimeRepository>::get_runtime_debug_artifact(
+        &state.store,
+        &GetRuntimeDebugArtifactInput {
+            workspace_id,
+            application_id,
+            artifact_id,
+        },
+    )
+    .await?
+    .ok_or(ControlPlaneError::NotFound("runtime_debug_artifact"))?;
+    let storage = <ApiDurableStore as FileManagementRepository>::get_file_storage(
         &state.store,
         artifact.storage_id,
     )
@@ -282,18 +281,17 @@ pub(crate) async fn load_runtime_debug_artifact_json_value(
     application_id: Uuid,
     artifact_id: Uuid,
 ) -> Result<Value, ApiError> {
-    let artifact =
-        <MainDurableStore as OrchestrationRuntimeRepository>::get_runtime_debug_artifact(
-            &state.store,
-            &GetRuntimeDebugArtifactInput {
-                workspace_id,
-                application_id,
-                artifact_id,
-            },
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("runtime_debug_artifact"))?;
-    let storage = <MainDurableStore as FileManagementRepository>::get_file_storage(
+    let artifact = <ApiDurableStore as OrchestrationRuntimeRepository>::get_runtime_debug_artifact(
+        &state.store,
+        &GetRuntimeDebugArtifactInput {
+            workspace_id,
+            application_id,
+            artifact_id,
+        },
+    )
+    .await?
+    .ok_or(ControlPlaneError::NotFound("runtime_debug_artifact"))?;
+    let storage = <ApiDurableStore as FileManagementRepository>::get_file_storage(
         &state.store,
         artifact.storage_id,
     )

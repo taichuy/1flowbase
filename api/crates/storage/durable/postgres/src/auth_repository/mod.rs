@@ -3,11 +3,11 @@ pub(crate) mod identity_binding;
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use control_plane_contracts::{
-    ControlPlaneContractError as ControlPlaneError,
     ports::{
         ApiKeyRepository, AuthRepository, BootstrapRepository, CreateApiKeyInput,
         UpdateProfileInput, UpdateUserMetaInput,
     },
+    ControlPlaneContractError as ControlPlaneError,
 };
 use domain::{
     ActorContext, ApiKeyRecord, AuditLogRecord, AuthenticatorRecord, BoundRole,

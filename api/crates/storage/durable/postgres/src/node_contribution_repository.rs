@@ -1,6 +1,8 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use control_plane_contracts::ports::{NodeContributionRepository, ReplaceInstallationNodeContributionsInput};
+use control_plane_contracts::ports::{
+    NodeContributionRepository, ReplaceInstallationNodeContributionsInput,
+};
 use domain::NodeContributionDependencyStatus;
 use sqlx::Row;
 use uuid::Uuid;

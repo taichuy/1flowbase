@@ -4,6 +4,7 @@ use std::{
     sync::Arc,
 };
 
+use crate::app_state::ApiDurableStore;
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
@@ -21,7 +22,6 @@ use control_plane::plugin_management::{
     PluginManagementService, SwitchPluginVersionCommand,
 };
 use plugin_framework::{intake_package_bytes, PackageIntakePolicy, PluginConsumptionKind};
-use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use crate::{
@@ -145,13 +145,13 @@ fn service(
     state: &ApiState,
     actor: &domain::ActorContext,
     operation_id: &'static str,
-) -> PluginManagementService<MainDurableStore, ApiProviderRuntime> {
+) -> PluginManagementService<ApiDurableStore, ApiProviderRuntime> {
     base_service(state, actor).for_extension_center_console_operation(operation_id)
 }
 
 fn extension_installation_service(
     state: &ApiState,
-) -> ExtensionInstallationService<MainDurableStore> {
+) -> ExtensionInstallationService<ApiDurableStore> {
     ExtensionInstallationService::new(state.store.clone(), &state.provider_install_root)
 }
 

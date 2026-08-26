@@ -1,6 +1,5 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
 use control_plane_contracts::ports::{
     ApplicationArchiveRelease, ApplicationArchiveReleaseDigest, ApplicationManagementPage,
     ApplicationManagementQuery, ApplicationManagementRecord, ApplicationManagementRepository,
@@ -9,6 +8,7 @@ use control_plane_contracts::ports::{
     CreateWorkflowTriggerConfig, DeleteApplicationInput,
     ReplaceApplicationEnvironmentVariablesInput, UpdateApplicationInput,
 };
+use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
 use serde_json::Value;
 use sqlx::{Postgres, QueryBuilder, Row};
 use uuid::Uuid;

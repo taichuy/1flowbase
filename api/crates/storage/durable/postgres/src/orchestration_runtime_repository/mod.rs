@@ -10,7 +10,6 @@ use control_plane_contracts::{
         ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage, PublishedRunPendingCallback,
         PublishedRunStreamState,
     },
-    ControlPlaneContractError as ControlPlaneError,
     ports::{
         AcquireResumeClaimInput, AcquireResumeClaimOutput, AppendBillingSessionInput,
         AppendCapabilityInvocationInput, AppendContextProjectionInput, AppendContextVersionInput,
@@ -51,6 +50,7 @@ use control_plane_contracts::{
         UpsertCompiledPlanInput, UpsertDataModelSideEffectReceiptInput,
         UpsertDebugVariableCacheEntryInput,
     },
+    ControlPlaneContractError as ControlPlaneError,
 };
 use serde_json::{json, Value};
 use sqlx::{Postgres, QueryBuilder, Row};
@@ -1096,7 +1096,8 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
     async fn list_assistant_conversations(
         &self,
         input: &control_plane_contracts::application_public_runtime::ListAssistantConversationsInput,
-    ) -> Result<control_plane_contracts::application_public_runtime::AssistantConversationPage> {
+    ) -> Result<control_plane_contracts::application_public_runtime::AssistantConversationPage>
+    {
         PgControlPlaneStore::list_assistant_conversations(self, input).await
     }
 
@@ -1129,8 +1130,9 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
         application_id: Uuid,
         actor_user_id: Uuid,
         conversation_id: Uuid,
-    ) -> Result<Vec<control_plane_contracts::application_public_runtime::AssistantConversationMessage>>
-    {
+    ) -> Result<
+        Vec<control_plane_contracts::application_public_runtime::AssistantConversationMessage>,
+    > {
         PgControlPlaneStore::list_assistant_conversation_messages(
             self,
             workspace_id,
@@ -1148,7 +1150,9 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
         actor_user_id: Uuid,
         conversation_id: Uuid,
     ) -> Result<
-        Vec<control_plane_contracts::application_public_runtime::AssistantConversationNativeMessage>,
+        Vec<
+            control_plane_contracts::application_public_runtime::AssistantConversationNativeMessage,
+        >,
     > {
         PgControlPlaneStore::list_assistant_conversation_native_history(
             self,
@@ -1166,8 +1170,9 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
         application_id: Uuid,
         actor_user_id: Uuid,
         flow_run_id: Uuid,
-    ) -> Result<Vec<control_plane_contracts::application_public_runtime::AssistantConversationMessage>>
-    {
+    ) -> Result<
+        Vec<control_plane_contracts::application_public_runtime::AssistantConversationMessage>,
+    > {
         PgControlPlaneStore::list_assistant_legacy_snapshot_messages(
             self,
             workspace_id,
