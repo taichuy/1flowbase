@@ -14,3 +14,4 @@ export * from './native-react-compiler/module-registry/contracts';
 export * from './native-react-compiler/module-registry/loader';
 export * from './js-block-diagnostics';
 export * from './isolated-frontend-block-realm';
+export * from './unrestricted-tsx-block-realm';

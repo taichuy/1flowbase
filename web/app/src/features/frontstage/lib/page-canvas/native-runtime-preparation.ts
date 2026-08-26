@@ -50,8 +50,10 @@ export interface FrontstageNativeInstanceMountIntent {
 }
 
 export interface FrontstageNativePreparedRuntime {
-  artifact: NativeReactComponentArtifact;
-  component: Extract<
+  /** Raw author source is the single input for the Block-owned iframe. */
+  source?: string;
+  artifact?: NativeReactComponentArtifact;
+  component?: Extract<
     NativeReactArtifactEvaluationResult,
     { ok: true }
   >['component'];

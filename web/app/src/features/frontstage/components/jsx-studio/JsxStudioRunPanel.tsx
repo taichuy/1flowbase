@@ -27,6 +27,7 @@ import {
 } from '../../lib/native-trusted-block-react-adapter';
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-trusted-block-runtime-factory';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
+import { UnrestrictedTsxBlockFrame } from '../UnrestrictedTsxBlockFrame';
 import { JsxStudioPreviewConsole } from './JsxStudioPreviewConsole';
 import {
   createStudioRunConsole,
@@ -53,7 +54,17 @@ interface StudioRunReadySnapshot {
   moduleAssets: NativeReactResolvedModuleAsset[];
 }
 
-type StudioRunSnapshot = StudioRunPendingSnapshot | StudioRunReadySnapshot;
+interface StudioRunFrameSnapshot {
+  status: 'iframe';
+  requestId: string;
+  diagnostics: [];
+  source: string;
+}
+
+type StudioRunSnapshot =
+  | StudioRunPendingSnapshot
+  | StudioRunReadySnapshot
+  | StudioRunFrameSnapshot;
 
 interface ActiveStudioRun {
   block: FrontstageBlockInstance;
@@ -194,6 +205,21 @@ export function JsxStudioRunPanel({
       }
       if (generationRef.current !== generation) return;
 
+      if (
+        requiresUnrestrictedBrowserRuntime(
+          frozenSource,
+          nativeModuleRegistryFactory
+        )
+      ) {
+        setSnapshot({
+          status: 'iframe',
+          requestId,
+          diagnostics: [],
+          source: frozenSource
+        });
+        return;
+      }
+
       const prepared = await prepareNativeReactSource({
         frozenSource,
         requestId,
@@ -306,6 +332,13 @@ export function JsxStudioRunPanel({
           }}
         />
       ) : null}
+      {snapshot?.status === 'iframe' ? (
+        <UnrestrictedTsxBlockFrame
+          blockId={block.id}
+          source={snapshot.source}
+          style={{ width: '100%' }}
+        />
+      ) : null}
       {snapshot?.status === 'compiling' ? <BlockUiLoadingShell /> : null}
       {failed ? (
         <Alert
@@ -330,6 +363,20 @@ export function JsxStudioRunPanel({
         consoleStore
       }}
     />
+  );
+}
+
+function requiresUnrestrictedBrowserRuntime(
+  source: string,
+  registryFactory: NativeReactModuleRegistryFactory
+): boolean {
+  if (/\bcreateFromIconfontCN\b/u.test(source)) return true;
+  const registeredSources = new Set(
+    registryFactory().definitions.map(({ module_source }) => module_source)
+  );
+  const importPattern = /\b(?:from\s*|import\s*)(['"])([^'"\n]+)\1/gu;
+  return [...source.matchAll(importPattern)].some(
+    (match) => !registeredSources.has(match[2])
   );
 }
 

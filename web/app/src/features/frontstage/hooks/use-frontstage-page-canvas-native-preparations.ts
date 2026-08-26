@@ -2,6 +2,7 @@ import {
   evaluateNativeReactComponentArtifactWithRegistry,
   diagnoseLegacyBlockModuleSource,
   NativeReactSourceContractError,
+  sha256Text,
   type NativeReactModuleDefinition,
   type NativeReactModuleRegistry
 } from '@1flowbase/page-runtime';
@@ -163,6 +164,19 @@ export function useFrontstagePageCanvasNativePreparations({
                 );
           const source = await fetchSource(request, signal);
           throwIfAborted(signal);
+          const sourceIdentity = {
+            sourceSha256: source.source_sha256 ?? sha256Text(source.source_code),
+            compilerAbi: '1flowbase/unrestricted-tsx@1',
+            runtimeAbi: '1flowbase/unrestricted-iframe@1'
+          };
+          if (hasUnregisteredBrowserImport(source.source_code, moduleRegistryFactory)) {
+            return {
+              source: source.source_code,
+              artifactCacheTier: 'miss',
+              identityInput: sourceIdentity,
+              moduleAssets: []
+            };
+          }
           const legacyDiagnostic = diagnoseLegacyBlockModuleSource(
             source.source_code
           );
@@ -239,6 +253,7 @@ export function useFrontstagePageCanvasNativePreparations({
           );
           throwIfAborted(signal);
           return {
+            source: source.source_code,
             artifact: evaluated.artifact,
             component: evaluated.component,
             artifactCacheTier,
@@ -300,6 +315,19 @@ export function useFrontstagePageCanvasNativePreparations({
     [readPlan]
   );
   return { preparations, retryBlock, refreshBlock };
+}
+
+function hasUnregisteredBrowserImport(
+  source: string,
+  moduleRegistryFactory: () => NativeReactModuleRegistry
+): boolean {
+  const registeredSources = new Set(
+    moduleRegistryFactory().definitions.map(({ module_source }) => module_source)
+  );
+  const importPattern = /\b(?:from\s*|import\s*)(['"])([^'"\n]+)\1/gu;
+  return [...source.matchAll(importPattern)].some(
+    (match) => !registeredSources.has(match[2])
+  );
 }
 
 async function defaultFetchSource(

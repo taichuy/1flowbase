@@ -29,6 +29,7 @@ import './page-canvas.css';
 
 import type { FrontstagePageContent } from '../api/page-content';
 import { BlockHoverToolbar } from './BlockHoverToolbar';
+import { UnrestrictedTsxBlockFrame } from './UnrestrictedTsxBlockFrame';
 import { createFrontstagePageDocument } from '../lib/page-document';
 import {
   createFrontstageBlockRenderPlanItems,
@@ -401,8 +402,17 @@ function NativeRuntimeSlotSurface({
     item.blockId,
     item.props,
     item.runtime.entry,
-    readyPreparation?.prepared.identityInput.sourceSha256
+    readyPreparation
   ]);
+  if (readyPreparation?.prepared.source) {
+    return (
+      <UnrestrictedTsxBlockFrame
+        blockId={item.blockId}
+        source={readyPreparation.prepared.source}
+        style={contentViewportStyle}
+      />
+    );
+  }
   if (preparation.status === 'failed' || runtimeError) {
     const retry =
       preparation.status === 'failed'
