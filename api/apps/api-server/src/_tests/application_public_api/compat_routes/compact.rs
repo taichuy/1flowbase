@@ -180,33 +180,50 @@ async fn k3_local_summary_keeps_generate_sse_and_does_not_persist_codex_turn_hea
     );
 }
 
-#[tokio::test]
-async fn k3_compact_provider_failure_is_an_error_without_completed_projection() {
-    let (app, state) = test_app_with_state().await;
-    let token = setup_compact_published_app(
-        &app,
-        "OpenAI Compact Provider Failure App",
-        CompactFixtureMode::ProviderFailure,
-    )
-    .await;
-    let before = flow_run_count(state.as_ref()).await;
+#[test]
+fn k3_compact_provider_failure_is_an_error_without_completed_projection() {
+    // The debug Axum service future exceeds libtest's default stack for this route. Keep the
+    // larger stack local to this regression instead of requiring a global RUST_MIN_STACK.
+    const COMPACT_FAILURE_TEST_STACK_BYTES: usize = 32 * 1024 * 1024;
+    std::thread::Builder::new()
+        .name("compact-provider-failure".to_owned())
+        .stack_size(COMPACT_FAILURE_TEST_STACK_BYTES)
+        .spawn(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("compact failure test runtime should build")
+                .block_on(async {
+                    let (app, state) = test_app_with_state().await;
+                    let token = setup_compact_published_app(
+                        &app,
+                        "OpenAI Compact Provider Failure App",
+                        CompactFixtureMode::ProviderFailure,
+                    )
+                    .await;
+                    let before = flow_run_count(state.as_ref()).await;
 
-    let response = post_openai_responses(
-        &app,
-        "/v1/responses",
-        &token,
-        v2_compaction_body(true),
-        Some(codex_turn_metadata("responses_compaction_v2")),
-    )
-    .await;
+                    let response = post_openai_responses(
+                        &app,
+                        "/v1/responses",
+                        &token,
+                        v2_compaction_body(true),
+                        Some(codex_turn_metadata("responses_compaction_v2")),
+                    )
+                    .await;
 
-    let status = response.status();
-    let payload = response_json(response).await;
-    assert_eq!(status, StatusCode::BAD_GATEWAY, "{payload}");
-    assert_eq!(payload["error"]["code"], json!("provider_upstream_error"));
-    assert!(payload.get("response").is_none());
-    assert!(!payload.to_string().contains("response.completed"));
-    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+                    let status = response.status();
+                    let payload = response_json(response).await;
+                    assert_eq!(status, StatusCode::BAD_GATEWAY, "{payload}");
+                    assert_eq!(payload["error"]["code"], json!("provider_upstream_error"));
+                    assert!(payload.get("response").is_none());
+                    assert!(!payload.to_string().contains("response.completed"));
+                    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+                });
+        })
+        .expect("compact failure test thread should start")
+        .join()
+        .expect("compact failure test thread should complete");
 }
 
 async fn setup_compact_published_app(app: &Router, name: &str, mode: CompactFixtureMode) -> String {
