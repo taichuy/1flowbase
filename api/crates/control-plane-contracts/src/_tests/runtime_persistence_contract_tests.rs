@@ -1,5 +1,6 @@
 use crate::ports::runtime::{
     CommitFlowRunTerminalResult, DataSourceRuntimePort, LegacyRuntimeShadowSourceKind,
+    OrchestrationRuntimeRepository,
 };
 use domain::FlowRunStatus;
 use serde_json::json;
@@ -28,4 +29,7 @@ fn runtime_persistence_contracts_keep_canonical_values_and_ports() {
 
     fn accepts_data_source_runtime_port(_: Option<&dyn DataSourceRuntimePort>) {}
     accepts_data_source_runtime_port(None);
+
+    fn accepts_orchestration_runtime_repository(_: Option<&dyn OrchestrationRuntimeRepository>) {}
+    accepts_orchestration_runtime_repository(None);
 }

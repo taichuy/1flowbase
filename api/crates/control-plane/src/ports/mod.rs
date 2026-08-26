@@ -27,7 +27,6 @@ use plugin_framework::provider_contract::{
     ProviderModelDescriptor, ProviderResetCreditOperation, ProviderResetCreditResult,
     ProviderStreamEvent, ProviderUsageWindowsResult,
 };
-use time::OffsetDateTime;
 use uuid::Uuid;
 
 pub use application::*;
