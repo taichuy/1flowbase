@@ -6,6 +6,8 @@ use serde_json::{json, Value};
 use time::OffsetDateTime;
 use uuid::Uuid;
 
+pub use control_plane_contracts::application_public_runtime::ApplicationPublishedCallbackAttemptRepository;
+
 use super::{
     api_keys::ApplicationApiKeyService,
     native::{durable_metadata_from_flow_run, NativeRunResult},
@@ -20,7 +22,6 @@ use crate::{
         ApiKeyRepository, ApplicationRepository, AuthRepository, CacheStore,
         FinishFlowRunCallbackResumeAttemptInput, OrchestrationRuntimeRepository,
         ProviderRuntimePort, RecordFlowRunCallbackResumeAttemptInput,
-        RecordFlowRunCallbackResumeAttemptOutput,
     },
 };
 
@@ -483,44 +484,6 @@ where
         })
         .await
     }
-}
-
-#[async_trait]
-pub trait ApplicationPublishedCallbackAttemptRepository: Send + Sync {
-    async fn record_published_callback_resume_attempt(
-        &self,
-        input: &RecordFlowRunCallbackResumeAttemptInput,
-    ) -> Result<RecordFlowRunCallbackResumeAttemptOutput>;
-
-    async fn get_published_callback_resume_attempt(
-        &self,
-        callback_task_id: Uuid,
-    ) -> Result<Option<domain::FlowRunCallbackResumeAttemptRecord>>;
-
-    async fn finish_published_callback_resume_attempt(
-        &self,
-        input: &FinishFlowRunCallbackResumeAttemptInput,
-    ) -> Result<domain::FlowRunCallbackResumeAttemptRecord>;
-
-    async fn cancel_published_callback_resume_attempts_for_run(
-        &self,
-        flow_run_id: Uuid,
-        completed_at: OffsetDateTime,
-    ) -> Result<Vec<domain::FlowRunCallbackResumeAttemptRecord>>;
-
-    async fn fail_waiting_callback_published_run(
-        &self,
-        flow_run_id: Uuid,
-        error_payload: Value,
-        finished_at: OffsetDateTime,
-    ) -> Result<Option<domain::FlowRunRecord>>;
-
-    async fn complete_waiting_callback_published_internal_run(
-        &self,
-        flow_run_id: Uuid,
-        output_payload: Value,
-        finished_at: OffsetDateTime,
-    ) -> Result<Option<domain::FlowRunRecord>>;
 }
 
 fn ensure_callback_is_consumable(

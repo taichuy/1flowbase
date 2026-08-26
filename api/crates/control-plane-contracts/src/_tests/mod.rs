@@ -1,4 +1,5 @@
 mod application_public_api_contract_tests;
+mod application_public_runtime_contract_tests;
 mod auth_contract_tests;
 mod backup_recovery_contract_tests;
 mod billing_contract_tests;

@@ -3,6 +3,7 @@
 extern crate self as control_plane_contracts;
 
 pub mod application_public_api;
+pub mod application_public_runtime;
 pub mod billing;
 pub mod console_policy_migration;
 pub mod error;
@@ -12,6 +13,7 @@ pub mod system_backup;
 pub mod system_recovery;
 
 pub use application_public_api::*;
+pub use application_public_runtime::*;
 pub use billing::*;
 pub use console_policy_migration::*;
 pub use error::*;
