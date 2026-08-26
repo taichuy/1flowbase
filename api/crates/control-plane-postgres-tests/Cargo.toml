@@ -1,0 +1,20 @@
+[package]
+name = "control-plane-postgres-tests"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[[test]]
+name = "mcp_instance_copy"
+path = "tests/mcp_instance_copy.rs"
+
+[dev-dependencies]
+control-plane = { path = "../control-plane" }
+control-plane-test-support = { path = "../control-plane-test-support" }
+domain = { path = "../domain" }
+postgres-test-support = { path = "../postgres-test-support" }
+serde_json.workspace = true
+storage-durable-postgres = { path = "../storage/durable/postgres" }
+tokio.workspace = true
+uuid.workspace = true

@@ -1026,6 +1026,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "control-plane-postgres-tests"
+version = "0.4.1"
+dependencies = [
+ "control-plane",
+ "control-plane-test-support",
+ "domain",
+ "postgres-test-support",
+ "serde_json",
+ "storage-durable-postgres",
+ "tokio",
+ "uuid",
+]
+
+[[package]]
 name = "control-plane-test-support"
 version = "0.4.1"
 dependencies = [
