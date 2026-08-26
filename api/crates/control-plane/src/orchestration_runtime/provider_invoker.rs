@@ -1772,7 +1772,8 @@ where
 impl<R, H> orchestration_runtime::execution_engine::CapabilityInvoker
     for RuntimeProviderInvoker<R, H>
 where
-    R: ModelDefinitionRepository
+    R: crate::ports::BillingRepository
+        + ModelDefinitionRepository
         + OrchestrationRuntimeRepository
         + PluginRepository
         + Clone
@@ -1831,9 +1832,8 @@ where
             let request: crate::ports::PluginCreditCommandRequest =
                 serde_json::from_value(command_value)
                     .map_err(|_| ControlPlaneError::InvalidInput("plugin_credit_command"))?;
-            let result = self
-                .repository
-                .execute_plugin_credit_command(
+            let result = crate::billing::CreditCommandService::new(self.repository.clone())
+                .execute_plugin_request(
                     self.workspace_id,
                     &plugin_id,
                     &output.granted_credit_permissions,
@@ -2099,6 +2099,10 @@ mod canonical_writer_tests;
 #[cfg(test)]
 #[path = "../_tests/orchestration_runtime/provider_invoker/continuation_claim_tests.rs"]
 mod continuation_claim_tests;
+
+#[cfg(test)]
+#[path = "../_tests/orchestration_runtime/provider_invoker/credit_command_tests.rs"]
+mod credit_command_tests;
 
 #[cfg(test)]
 #[path = "../_tests/orchestration_runtime/support.rs"]

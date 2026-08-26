@@ -27,7 +27,8 @@ pub(super) async fn continue_flow_debug_run<R, H>(
     command: ContinueFlowDebugRunCommand,
 ) -> Result<domain::ApplicationRunDetail>
 where
-    R: crate::ports::ApplicationRepository
+    R: crate::ports::BillingRepository
+        + crate::ports::ApplicationRepository
         + crate::ports::FileManagementRepository
         + crate::ports::FlowRepository
         + OrchestrationRuntimeRepository
@@ -55,7 +56,8 @@ pub(in crate::orchestration_runtime) async fn continue_flow_debug_run_with_provi
     provider_transport_payload: crate::ports::ProviderTransportPayload,
 ) -> Result<domain::ApplicationRunDetail>
 where
-    R: crate::ports::ApplicationRepository
+    R: crate::ports::BillingRepository
+        + crate::ports::ApplicationRepository
         + crate::ports::FileManagementRepository
         + crate::ports::FlowRepository
         + OrchestrationRuntimeRepository
@@ -86,7 +88,8 @@ pub(super) async fn continue_flow_debug_run_with_live_provider_events<R, H>(
     live_provider_events: LiveProviderStreamEventSender,
 ) -> Result<domain::ApplicationRunDetail>
 where
-    R: crate::ports::ApplicationRepository
+    R: crate::ports::BillingRepository
+        + crate::ports::ApplicationRepository
         + crate::ports::FileManagementRepository
         + crate::ports::FlowRepository
         + OrchestrationRuntimeRepository
@@ -118,7 +121,8 @@ async fn continue_flow_debug_run_with_optional_live_provider_events<R, H>(
     provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
 ) -> Result<domain::ApplicationRunDetail>
 where
-    R: crate::ports::ApplicationRepository
+    R: crate::ports::BillingRepository
+        + crate::ports::ApplicationRepository
         + crate::ports::FileManagementRepository
         + crate::ports::FlowRepository
         + OrchestrationRuntimeRepository

@@ -16,7 +16,8 @@ pub(super) async fn continue_flow_debug_run_inner<R, H>(
     provider_transport_payload: Option<crate::ports::ProviderTransportPayload>,
 ) -> Result<domain::ApplicationRunDetail>
 where
-    R: crate::ports::ApplicationRepository
+    R: crate::ports::BillingRepository
+        + crate::ports::ApplicationRepository
         + crate::ports::FileManagementRepository
         + crate::ports::FlowRepository
         + OrchestrationRuntimeRepository

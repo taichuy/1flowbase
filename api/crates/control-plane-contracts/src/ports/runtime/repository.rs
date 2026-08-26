@@ -2,16 +2,6 @@ use super::*;
 
 #[async_trait]
 pub trait OrchestrationRuntimeRepository: Send + Sync {
-    async fn execute_plugin_credit_command(
-        &self,
-        workspace_id: Uuid,
-        plugin_id: &str,
-        granted_permissions: &std::collections::BTreeSet<String>,
-        request: crate::ports::PluginCreditCommandRequest,
-    ) -> anyhow::Result<crate::ports::PluginCreditCommandResult> {
-        let _ = (workspace_id, plugin_id, granted_permissions, request);
-        anyhow::bail!("plugin credit command is not implemented")
-    }
     async fn upsert_compiled_plan(
         &self,
         input: &UpsertCompiledPlanInput,

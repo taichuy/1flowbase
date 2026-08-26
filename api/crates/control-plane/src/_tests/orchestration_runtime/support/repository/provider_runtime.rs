@@ -6,6 +6,7 @@ use std::{
 
 #[derive(Clone, Default)]
 pub(crate) struct InMemoryProviderRuntime {
+    capability_output: Option<CapabilityExecutionOutput>,
     invoke_delay: Option<std::time::Duration>,
     provider_events: Option<Vec<ProviderStreamEvent>>,
     provider_result: Option<ProviderInvocationResult>,
@@ -17,8 +18,16 @@ pub(crate) struct InMemoryProviderRuntime {
 }
 
 impl InMemoryProviderRuntime {
+    pub(crate) fn with_capability_output(capability_output: CapabilityExecutionOutput) -> Self {
+        Self {
+            capability_output: Some(capability_output),
+            ..Self::default()
+        }
+    }
+
     pub(crate) fn with_invoke_delay(invoke_delay: std::time::Duration) -> Self {
         Self {
+            capability_output: None,
             invoke_delay: Some(invoke_delay),
             provider_events: None,
             provider_result: None,
@@ -32,6 +41,7 @@ impl InMemoryProviderRuntime {
 
     pub(crate) fn with_provider_events(provider_events: Vec<ProviderStreamEvent>) -> Self {
         Self {
+            capability_output: None,
             invoke_delay: None,
             provider_events: Some(provider_events),
             provider_result: None,
@@ -45,6 +55,7 @@ impl InMemoryProviderRuntime {
 
     pub(crate) fn with_provider_result(provider_result: ProviderInvocationResult) -> Self {
         Self {
+            capability_output: None,
             invoke_delay: None,
             provider_events: None,
             provider_result: Some(provider_result),
@@ -61,6 +72,7 @@ impl InMemoryProviderRuntime {
         provider_result: ProviderInvocationResult,
     ) -> Self {
         Self {
+            capability_output: None,
             invoke_delay: None,
             provider_events: Some(provider_events),
             provider_result: Some(provider_result),
@@ -74,6 +86,7 @@ impl InMemoryProviderRuntime {
 
     pub(crate) fn with_provider_results(provider_results: Vec<ProviderInvocationResult>) -> Self {
         Self {
+            capability_output: None,
             invoke_delay: None,
             provider_events: None,
             provider_result: None,
@@ -89,6 +102,7 @@ impl InMemoryProviderRuntime {
         provider_outputs: Vec<crate::ports::ProviderRuntimeInvocationOutput>,
     ) -> Self {
         Self {
+            capability_output: None,
             invoke_delay: None,
             provider_events: None,
             provider_result: None,
@@ -102,6 +116,7 @@ impl InMemoryProviderRuntime {
 
     pub(crate) fn with_live_events_then_error(live_events: Vec<ProviderStreamEvent>) -> Self {
         Self {
+            capability_output: None,
             invoke_delay: None,
             provider_events: None,
             provider_result: None,
@@ -115,6 +130,7 @@ impl InMemoryProviderRuntime {
 
     pub(crate) fn with_fail_before_token_models(models: Vec<&str>) -> Self {
         Self {
+            capability_output: None,
             invoke_delay: None,
             provider_events: None,
             provider_result: None,
@@ -331,6 +347,9 @@ impl CapabilityPluginRuntimePort for InMemoryProviderRuntime {
         &self,
         input: ExecuteCapabilityNodeInput,
     ) -> Result<CapabilityExecutionOutput> {
+        if let Some(output) = &self.capability_output {
+            return Ok(output.clone());
+        }
         let answer = input
             .input_payload
             .get("query")

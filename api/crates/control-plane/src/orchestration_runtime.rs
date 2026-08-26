@@ -29,9 +29,9 @@ use crate::{
     plugin_management::ready_current_node_plugin_installation,
     ports::{
         AcquireResumeClaimInput, AppendRunEventInput, ApplicationJsDependencySelectionRepository,
-        ApplicationRepository, CacheStore, CallbackResumeWaitingNode, CommitFlowRunTerminalInput,
-        CommitFlowRunTerminalResult, CompleteCallbackTaskInput, FinishResumeClaimInput,
-        FlowRepository, ModelDefinitionRepository, ModelProviderRepository,
+        ApplicationRepository, BillingRepository, CacheStore, CallbackResumeWaitingNode,
+        CommitFlowRunTerminalInput, CommitFlowRunTerminalResult, CompleteCallbackTaskInput,
+        FinishResumeClaimInput, FlowRepository, ModelDefinitionRepository, ModelProviderRepository,
         NodeContributionRepository, OrchestrationRuntimeRepository, PluginRepository,
         ProviderRuntimePort, ResumeClaimDisposition, ResumeClaimKind, ResumeClaimRecord,
         ResumeClaimStatus, RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventStream,
@@ -562,7 +562,7 @@ where
         input: ResumeExecutionSegmentInput<'_>,
     ) -> Result<ResumeExecutionSegmentOutput>
     where
-        R: crate::ports::FileManagementRepository,
+        R: BillingRepository + crate::ports::FileManagementRepository,
     {
         let flow_execution_context = self.runtime_flow_execution_context(
             input.actor.clone(),
@@ -707,7 +707,9 @@ where
         command: StartNodeDebugPreviewCommand,
     ) -> Result<domain::NodeDebugPreviewResult>
     where
-        R: ApplicationJsDependencySelectionRepository + crate::ports::FileManagementRepository,
+        R: ApplicationJsDependencySelectionRepository
+            + BillingRepository
+            + crate::ports::FileManagementRepository,
     {
         let context = self
             .load_application_run_context(command.actor_user_id, command.application_id)
@@ -949,7 +951,7 @@ where
         command: ContinueFlowDebugRunCommand,
     ) -> Result<domain::ApplicationRunDetail>
     where
-        R: crate::ports::FileManagementRepository,
+        R: BillingRepository + crate::ports::FileManagementRepository,
     {
         live_debug_run::continue_flow_debug_run(self, command).await
     }
@@ -959,7 +961,7 @@ where
         command: StartPublishedFlowRunCommand,
     ) -> Result<domain::ApplicationRunDetail>
     where
-        R: crate::ports::FileManagementRepository,
+        R: BillingRepository + crate::ports::FileManagementRepository,
     {
         self.start_published_flow_run_inner(
             command.application_id,
@@ -976,7 +978,7 @@ where
         provider_transport_slot: Option<crate::ports::ProviderTransportSlotId>,
     ) -> Result<domain::ApplicationRunDetail>
     where
-        R: crate::ports::FileManagementRepository,
+        R: BillingRepository + crate::ports::FileManagementRepository,
     {
         let flow_run = self
             .repository
@@ -1125,7 +1127,7 @@ where
         live_provider_events: LiveProviderStreamEventSender,
     ) -> Result<domain::ApplicationRunDetail>
     where
-        R: crate::ports::FileManagementRepository,
+        R: BillingRepository + crate::ports::FileManagementRepository,
     {
         live_debug_run::continue_flow_debug_run_with_live_provider_events(
             self,
@@ -1150,7 +1152,7 @@ where
         command: ResumeFlowRunCommand,
     ) -> Result<domain::ApplicationRunDetail>
     where
-        R: crate::ports::FileManagementRepository,
+        R: BillingRepository + crate::ports::FileManagementRepository,
     {
         let context = self
             .load_application_run_context(command.actor_user_id, command.application_id)

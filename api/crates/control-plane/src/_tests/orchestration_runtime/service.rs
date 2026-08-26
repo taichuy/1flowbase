@@ -7,10 +7,10 @@ use control_plane::{
     capability_plugin_runtime::CapabilityPluginRuntimePort,
     errors::ControlPlaneError,
     ports::{
-        ApplicationJsDependencySelectionRepository, ApplicationRepository, FlowRepository,
-        ModelDefinitionRepository, ModelProviderRepository, NodeContributionRepository,
-        OrchestrationRuntimeRepository, PluginRepository, ProviderRuntimePort,
-        ReplaceApplicationJsDependencySelectionInput, RuntimeEventCloseReason,
+        ApplicationJsDependencySelectionRepository, ApplicationRepository, BillingRepository,
+        FlowRepository, ModelDefinitionRepository, ModelProviderRepository,
+        NodeContributionRepository, OrchestrationRuntimeRepository, PluginRepository,
+        ProviderRuntimePort, ReplaceApplicationJsDependencySelectionInput, RuntimeEventCloseReason,
         RuntimeEventDurability, RuntimeEventEnvelope, RuntimeEventPayload, RuntimeEventSource,
         RuntimeEventStream, UpsertDataModelSideEffectReceiptInput,
     },
@@ -121,7 +121,8 @@ async fn run_data_model_flow(
 }
 
 trait RuntimeRepositoryBounds:
-    ApplicationRepository
+    BillingRepository
+    + ApplicationRepository
     + ApplicationJsDependencySelectionRepository
     + control_plane::ports::FileManagementRepository
     + FlowRepository
@@ -138,7 +139,8 @@ trait RuntimeRepositoryBounds:
 }
 
 impl<T> RuntimeRepositoryBounds for T where
-    T: ApplicationRepository
+    T: BillingRepository
+        + ApplicationRepository
         + ApplicationJsDependencySelectionRepository
         + control_plane::ports::FileManagementRepository
         + FlowRepository

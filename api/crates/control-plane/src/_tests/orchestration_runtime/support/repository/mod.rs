@@ -63,6 +63,9 @@ struct InMemoryOrchestrationRuntimeState {
     model_billing_credit_releases: Vec<(Uuid, String)>,
     model_billing_reserved_session_count: usize,
     model_billing_finalize_attempt_count: usize,
+    plugin_credit_transactions_by_idempotency:
+        HashMap<(Uuid, String), crate::ports::CreditTransactionRecord>,
+    plugin_credit_rejections: Vec<(Uuid, String, String, String, String)>,
 }
 
 #[derive(Clone)]
@@ -73,6 +76,25 @@ pub(crate) struct InMemoryOrchestrationRuntimeRepository {
 }
 
 impl InMemoryOrchestrationRuntimeRepository {
+    pub(crate) fn verify_fixture_capability(&self) -> Uuid {
+        let mut inner = self.inner.lock().expect("runtime repo mutex poisoned");
+        let installation = inner
+            .installations_by_id
+            .values_mut()
+            .find(|record| record.provider_code == "fixture_capability")
+            .expect("fixture capability installation should exist");
+        installation.trust_level = "verified_official".to_string();
+        installation.id
+    }
+
+    pub(crate) fn plugin_credit_rejections(&self) -> Vec<(Uuid, String, String, String, String)> {
+        self.inner
+            .lock()
+            .expect("runtime repo mutex poisoned")
+            .plugin_credit_rejections
+            .clone()
+    }
+
     pub(crate) fn model_routing_catalog_read_count(&self) -> usize {
         self.inner
             .lock()
@@ -1177,6 +1199,7 @@ impl InMemoryOrchestrationRuntimeRepository {
     }
 }
 
+mod billing_repository;
 mod flow_ports;
 mod provider_runtime;
 mod runtime_repository;

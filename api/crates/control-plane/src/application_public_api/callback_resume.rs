@@ -458,7 +458,8 @@ pub trait ApplicationPublishedCallbackConsumer: Send + Sync {
 #[async_trait]
 impl<R, H> ApplicationPublishedCallbackConsumer for OrchestrationRuntimeService<R, H>
 where
-    R: ApplicationRepository
+    R: crate::ports::BillingRepository
+        + ApplicationRepository
         + crate::ports::FileManagementRepository
         + crate::ports::FlowRepository
         + OrchestrationRuntimeRepository

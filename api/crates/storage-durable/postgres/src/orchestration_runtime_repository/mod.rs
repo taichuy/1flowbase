@@ -93,17 +93,6 @@ include!("side_effect_receipt_methods.rs");
 
 #[async_trait]
 impl OrchestrationRuntimeRepository for PgControlPlaneStore {
-    async fn execute_plugin_credit_command(
-        &self,
-        workspace_id: Uuid,
-        plugin_id: &str,
-        granted_permissions: &std::collections::BTreeSet<String>,
-        request: control_plane::ports::PluginCreditCommandRequest,
-    ) -> Result<control_plane::ports::PluginCreditCommandResult> {
-        control_plane::billing::CreditCommandService::new(self.clone())
-            .execute_plugin_request(workspace_id, plugin_id, granted_permissions, request)
-            .await
-    }
     async fn upsert_compiled_plan(
         &self,
         input: &UpsertCompiledPlanInput,

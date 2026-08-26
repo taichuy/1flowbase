@@ -20,7 +20,7 @@ where
         command: CompleteCallbackTaskCommand,
     ) -> Result<domain::ApplicationRunDetail>
     where
-        R: crate::ports::FileManagementRepository,
+        R: crate::ports::BillingRepository + crate::ports::FileManagementRepository,
     {
         let application_id = command.application_id;
         let flow_run = self.complete_callback_task_run(command).await?;
@@ -35,7 +35,7 @@ where
         mut command: CompleteCallbackTaskCommand,
     ) -> Result<domain::FlowRunRecord>
     where
-        R: crate::ports::FileManagementRepository,
+        R: crate::ports::BillingRepository + crate::ports::FileManagementRepository,
     {
         command.response_payload = escape_json_nul_characters(command.response_payload);
         let context = self
@@ -238,7 +238,7 @@ where
         resume_claim: &ResumeClaimRecord,
     ) -> Result<domain::FlowRunRecord>
     where
-        R: crate::ports::FileManagementRepository,
+        R: crate::ports::BillingRepository + crate::ports::FileManagementRepository,
     {
         let waiting_node_id = checkpoint_node_id(checkpoint)?;
         let node = compiled_plan
