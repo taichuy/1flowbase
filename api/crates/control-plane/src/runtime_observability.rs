@@ -14,6 +14,7 @@ pub mod debug_read_model;
 pub mod items;
 pub mod projection;
 
+pub use control_plane_contracts::persistence_projection::audit_row_hash;
 pub use items::item_kind_for_event;
 
 pub const PROVIDER_DELTA_COALESCE_MAX_BYTES: usize = 4096;
@@ -27,24 +28,6 @@ pub struct AppendHostSpanInput {
     pub name: String,
     pub started_at: OffsetDateTime,
     pub metadata: Value,
-}
-
-pub fn audit_row_hash(
-    prev_hash: Option<&str>,
-    fact_table: &str,
-    fact_id: Uuid,
-    payload: &serde_json::Value,
-) -> String {
-    use sha2::{Digest, Sha256};
-
-    let mut hasher = Sha256::new();
-    if let Some(prev) = prev_hash {
-        hasher.update(prev.as_bytes());
-    }
-    hasher.update(fact_table.as_bytes());
-    hasher.update(fact_id.as_bytes());
-    hasher.update(serde_json::to_vec(payload).unwrap_or_default());
-    format!("sha256:{:x}", hasher.finalize())
 }
 
 pub async fn append_host_span<R>(

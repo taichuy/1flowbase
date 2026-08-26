@@ -5,4 +5,5 @@ mod backup_recovery_contract_tests;
 mod billing_contract_tests;
 mod console_policy_migration_contract_tests;
 mod i18n_catalog_contract_tests;
+mod persistence_projection_contract_tests;
 mod runtime_persistence_contract_tests;
