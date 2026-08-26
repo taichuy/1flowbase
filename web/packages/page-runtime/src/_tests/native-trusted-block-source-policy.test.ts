@@ -147,13 +147,10 @@ describe('Native trusted block source static policy', () => {
     ['XMLHttpRequest', 'const xhr = new XMLHttpRequest();'],
     ['WebSocket', "const socket = new WebSocket('wss://example.com');"],
     ['sendBeacon', "navigator.sendBeacon('/track');"]
-  ])('rejects network capability: %s', (_label, source) => {
+  ])('AC-005 accepts browser network capability: %s', (_label, source) => {
     const result = validateNativeTrustedBlockSource(source);
 
-    expect(result.ok).toBe(false);
-    expect(result.errors[0]).toMatchObject({
-      code: 'transform_failed'
-    });
+    expect(result.ok).toBe(true);
   });
 
   test.each([
@@ -164,13 +161,10 @@ describe('Native trusted block source static policy', () => {
     ['document', 'document.querySelector("#root");'],
     ['globalThis', 'globalThis.crypto;'],
     ['self', 'self.postMessage({});']
-  ])('rejects DOM or storage capability: %s', (_label, source) => {
+  ])('AC-005 accepts browser DOM or storage capability: %s', (_label, source) => {
     const result = validateNativeTrustedBlockSource(source);
 
-    expect(result.ok).toBe(false);
-    expect(result.errors[0]).toMatchObject({
-      code: 'transform_failed'
-    });
+    expect(result.ok).toBe(true);
   });
 
   test.each([

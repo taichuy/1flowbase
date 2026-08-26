@@ -1,4 +1,4 @@
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 import {
   compileNativeReactComponent,
@@ -26,7 +26,28 @@ const modules = {
   }
 };
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe('Native React artifact evaluator', () => {
+  test('AC-005 binds the browser fetch capability into native_react artifacts', () => {
+    const browserFetch = vi.fn();
+    vi.stubGlobal('fetch', browserFetch);
+    const artifact = compile(`
+export default function Block() {
+  void fetch('https://api.example.test/value');
+  return null;
+}
+`);
+    const evaluated = evaluateNativeReactComponentArtifact(artifact, modules);
+
+    expect(evaluated.ok).toBe(true);
+    if (!evaluated.ok) return;
+    evaluated.component();
+    expect(browserFetch).toHaveBeenCalledWith(
+      'https://api.example.test/value'
+    );
+  });
+
   test('R7-AC-001 binds a Host-owned console into the evaluated component closure', () => {
     const artifact = compile(`
 export default function Block() {

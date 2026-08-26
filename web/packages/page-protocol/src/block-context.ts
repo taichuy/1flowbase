@@ -1,4 +1,6 @@
 export const BLOCK_CONTEXT_KEYS = [
+  'root',
+  'assets',
   'currentUser',
   'workspace',
   'application',
@@ -137,10 +139,25 @@ export interface BlockContextUi {
   density?: 'compact' | 'comfortable';
 }
 
+export interface BlockExternalAssetHandle {
+  dispose(): void;
+}
+
+export interface BlockContextAssets {
+  importModule<TModule = Record<string, unknown>>(
+    url: string
+  ): Promise<TModule>;
+  loadStyle(url: string): Promise<BlockExternalAssetHandle>;
+  loadScript(url: string): Promise<BlockExternalAssetHandle>;
+  loadSvgSprite(url: string): Promise<BlockExternalAssetHandle>;
+}
+
 export interface BlockContext<
   TInputs extends BlockContextRecord = BlockContextRecord,
   TOutputs extends BlockContextRecord = BlockContextRecord
 > {
+  root: ShadowRoot;
+  assets: BlockContextAssets;
   currentUser: BlockContextIdentity | null;
   workspace: BlockContextEntity;
   application: BlockContextEntity | null;
@@ -157,3 +174,8 @@ export interface BlockContext<
   theme: BlockContextTheme;
   ui: BlockContextUi;
 }
+
+export type BlockContextSeed<
+  TInputs extends BlockContextRecord = BlockContextRecord,
+  TOutputs extends BlockContextRecord = BlockContextRecord
+> = Omit<BlockContext<TInputs, TOutputs>, 'root' | 'assets'>;

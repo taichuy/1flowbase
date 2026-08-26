@@ -1,7 +1,7 @@
 import { Alert, Button, Empty, Space, Typography } from 'antd';
 import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
 import type {
-  BlockContext,
+  BlockContextSeed,
   BlockProtocolError
 } from '@1flowbase/page-protocol';
 import {
@@ -85,7 +85,7 @@ import { createFrontstageAssistantDomRuntime } from '../lib/assistant-frontstage
 import { registerFrontstageAssistantRuntime } from '../lib/assistant-frontstage-runtime';
 
 export type FrontstagePageCanvasRuntimeContext = Pick<
-  BlockContext,
+  BlockContextSeed,
   'currentUser' | 'workspace' | 'application' | 'theme' | 'ui'
 >;
 
@@ -552,7 +552,7 @@ function FrontstageNativeRuntimeInstance({
         navigation: unavailable.navigation,
         outputs
       };
-  const context: BlockContext = {
+  const context: BlockContextSeed = {
     ...unavailable,
     ...(runtimeContext ?? {}),
     page: {

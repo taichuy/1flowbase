@@ -2,7 +2,7 @@ import type { BlockProtocolError } from '@1flowbase/page-protocol';
 
 import {
   RUNTIME_CAPABILITY_GUARD_BINDING_NAMES,
-  createNativeTrustedBlockRuntimeCapabilityGuardBindings,
+  createNativeTrustedBlockBrowserCapabilityBindings,
   getNativeTrustedBlockRuntimeCapabilityGuardValues,
   isNativeTrustedBlockRuntimeCapabilityGuardError
 } from '../native-trusted-block/runtime-capability-guard';
@@ -61,8 +61,7 @@ export function evaluateNativeReactComponentArtifact(
   if (moduleDiagnostic) return { ok: false, diagnostics: [moduleDiagnostic] };
 
   try {
-    const guardBindings =
-      createNativeTrustedBlockRuntimeCapabilityGuardBindings();
+    const guardBindings = createNativeTrustedBlockBrowserCapabilityBindings();
     const evaluator = createArtifactEvaluator(artifact, bindings);
     const component = evaluator(
       modules,

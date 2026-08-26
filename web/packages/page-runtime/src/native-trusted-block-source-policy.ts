@@ -912,14 +912,6 @@ function readDeniedPropertyAccess(
     };
   }
 
-  if (access.property === 'cookie') {
-    return {
-      identifier: access.property,
-      code: 'transform_failed',
-      message: 'Cookie access is not allowed in native trusted block source.'
-    };
-  }
-
   if (
     token.value === 'ReactDOM' &&
     (access.property === 'createPortal' ||
@@ -973,8 +965,7 @@ function isDeniedComputedProperty(property: string): boolean {
     deniedEscapeIdentifiers.has(property) ||
     deniedCallIdentifiers.has(property) ||
     deniedConstructorIdentifiers.has(property) ||
-    deniedAntdStaticModalMethods.has(property) ||
-    property === 'cookie'
+    deniedAntdStaticModalMethods.has(property)
   );
 }
 

@@ -68,7 +68,16 @@ const BLOCK_SDK_DECLARATIONS = `declare module '@1flowbase/block-sdk' {
   export interface BlockContextIdentity { readonly id: string; readonly displayName?: string; }
   export interface BlockContextEntity { readonly id: string; readonly name?: string; }
   export interface BlockContextPage { readonly id: string; readonly route: string; readonly title?: string; }
+  export interface BlockExternalAssetHandle { dispose(): void; }
+  export interface BlockContextAssets {
+    importModule<TModule = Record<string, unknown>>(url: string): Promise<TModule>;
+    loadStyle(url: string): Promise<BlockExternalAssetHandle>;
+    loadScript(url: string): Promise<BlockExternalAssetHandle>;
+    loadSvgSprite(url: string): Promise<BlockExternalAssetHandle>;
+  }
   export interface BlockContext {
+    readonly root: ShadowRoot;
+    readonly assets: BlockContextAssets;
     readonly currentUser: BlockContextIdentity | null;
     readonly workspace: BlockContextEntity;
     readonly application: BlockContextEntity | null;

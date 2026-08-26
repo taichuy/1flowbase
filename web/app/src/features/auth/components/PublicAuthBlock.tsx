@@ -5,7 +5,7 @@ import {
   type NativeReactResolvedModuleAsset,
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
-import type { BlockContext } from '@1flowbase/page-protocol';
+import type { BlockContextSeed } from '@1flowbase/page-protocol';
 import { Space } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -57,7 +57,7 @@ type PublicAuthRenderSnapshot =
   | {
       status: 'ready';
       component: FrontstageNativeTrustedBlockReactComponent;
-      context: BlockContext;
+      context: BlockContextSeed;
       moduleAssets: NativeReactResolvedModuleAsset[];
       plan: NativeTrustedBlockPreparePlan;
       renderEpoch: string;

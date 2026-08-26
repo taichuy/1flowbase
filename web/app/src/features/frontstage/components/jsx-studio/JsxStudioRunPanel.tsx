@@ -6,7 +6,7 @@ import {
   type NativeReactResolvedModuleAsset,
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
-import type { BlockContext } from '@1flowbase/page-protocol';
+import type { BlockContextSeed } from '@1flowbase/page-protocol';
 import { Alert, Button, Space } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -48,7 +48,7 @@ interface StudioRunReadySnapshot {
   diagnostics: [];
   component: FrontstageNativeTrustedBlockReactComponent;
   plan: NativeTrustedBlockPreparePlan;
-  context: BlockContext;
+  context: BlockContextSeed;
   renderEpoch: string;
   moduleAssets: NativeReactResolvedModuleAsset[];
 }
@@ -82,7 +82,7 @@ export interface JsxStudioRunPanelProps {
   nativeCompiler?: typeof compileNativeReactComponentInBrowser;
   nativeCompilerWorkerFactory?: NativeReactBrowserCompilerWorkerFactory;
   nativeModuleRegistryFactory?: NativeReactModuleRegistryFactory;
-  createBlockContext?(input: JsxStudioRunBlockContextInput): BlockContext;
+  createBlockContext?(input: JsxStudioRunBlockContextInput): BlockContextSeed;
 }
 
 export function JsxStudioRunPanel({

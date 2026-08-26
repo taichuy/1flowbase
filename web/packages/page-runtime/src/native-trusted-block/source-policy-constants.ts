@@ -15,15 +15,7 @@ export const allowedImports = new Set<string>(
   NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS satisfies readonly NativeTrustedBlockAllowedImport[]
 );
 
-export const deniedGlobalIdentifiers = new Set([
-  'window',
-  'document',
-  'globalThis',
-  'self',
-  'localStorage',
-  'sessionStorage',
-  'cookie'
-]);
+export const deniedGlobalIdentifiers = new Set<string>();
 
 export const deniedPortalIdentifiers = new Set([
   'ReactDOM',
@@ -47,16 +39,10 @@ export const deniedAntdStaticModalMethods = new Set([
 
 export const deniedCallIdentifiers = new Set([
   'require',
-  'eval',
-  'fetch',
-  'sendBeacon'
+  'eval'
 ]);
 
-export const deniedConstructorIdentifiers = new Set([
-  'Function',
-  'XMLHttpRequest',
-  'WebSocket'
-]);
+export const deniedConstructorIdentifiers = new Set(['Function']);
 
 export const deniedEscapeIdentifiers = new Set([
   'constructor',

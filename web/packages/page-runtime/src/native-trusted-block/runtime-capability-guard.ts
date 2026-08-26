@@ -47,6 +47,36 @@ export function createNativeTrustedBlockRuntimeCapabilityGuardBindings():
   };
 }
 
+export function createNativeTrustedBlockBrowserCapabilityBindings(
+  scope: typeof globalThis = globalThis
+): NativeTrustedBlockRuntimeCapabilityGuardBindings {
+  const browserScope = scope as typeof globalThis & {
+    window?: unknown;
+    document?: unknown;
+    self?: unknown;
+    navigator?: unknown;
+    localStorage?: unknown;
+    sessionStorage?: unknown;
+    XMLHttpRequest?: unknown;
+    WebSocket?: unknown;
+  };
+  return {
+    fetch:
+      typeof browserScope.fetch === 'function'
+        ? browserScope.fetch.bind(browserScope)
+        : undefined,
+    XMLHttpRequest: browserScope.XMLHttpRequest,
+    WebSocket: browserScope.WebSocket,
+    navigator: browserScope.navigator,
+    localStorage: readBrowserCapability(() => browserScope.localStorage),
+    sessionStorage: readBrowserCapability(() => browserScope.sessionStorage),
+    document: browserScope.document,
+    window: browserScope.window ?? browserScope,
+    globalThis: browserScope,
+    self: browserScope.self ?? browserScope
+  };
+}
+
 export function getNativeTrustedBlockRuntimeCapabilityGuardValues(
   bindings: NativeTrustedBlockRuntimeCapabilityGuardBindings
 ): unknown[] {
@@ -83,6 +113,14 @@ function createDeniedCallable(capability: string): unknown {
     set: deny,
     setPrototypeOf: deny
   });
+}
+
+function readBrowserCapability(read: () => unknown): unknown {
+  try {
+    return read();
+  } catch {
+    return undefined;
+  }
 }
 
 function createDeniedObject(

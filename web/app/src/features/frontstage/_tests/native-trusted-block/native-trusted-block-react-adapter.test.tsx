@@ -5,7 +5,10 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import type { BlockContext } from '@1flowbase/page-protocol';
+import type {
+  BlockContext,
+  BlockContextSeed
+} from '@1flowbase/page-protocol';
 import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
 
 import {
@@ -75,7 +78,9 @@ function createPlan(
   };
 }
 
-function createContext(overrides: Partial<BlockContext> = {}): BlockContext {
+function createContext(
+  overrides: Partial<BlockContextSeed> = {}
+): BlockContextSeed {
   return {
     currentUser: null,
     workspace: { id: 'workspace-1' },
@@ -326,6 +331,54 @@ describe('frontstage native trusted block declarative portal host', () => {
       })
     ]);
     expect(document.head).not.toHaveTextContent(/\.native-same/);
+  });
+
+  test('AC-003/006 injects ctx.assets into the current ShadowRoot and disposes its resources on unmount', async () => {
+    const root = createBlockRoot();
+    const receivedContexts: BlockContext[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          '<svg><symbol id="icon-scoped" viewBox="0 0 16 16"><path d="M0 0h16v16H0z" /></symbol></svg>'
+      }))
+    );
+    const Block: FrontstageNativeTrustedBlockReactComponent = ({ ctx }) => {
+      receivedContexts.push(ctx);
+      useEffect(() => {
+        void ctx.assets.loadSvgSprite('https://cdn.example.test/icons.svg');
+      }, [ctx]);
+      return <output>Scoped assets ready</output>;
+    };
+
+    const view = render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="assets:1"
+        plan={createPlan()}
+        component={Block}
+        ctx={createContext()}
+      />
+    );
+
+    await shadowQueries(root).findByText('Scoped assets ready');
+    await waitFor(() =>
+      expect(root.shadowRoot?.querySelector('#icon-scoped')).not.toBeNull()
+    );
+    expect(receivedContexts.at(-1)?.root).toBe(root.shadowRoot);
+    expect(receivedContexts.at(-1)?.assets).toEqual(
+      expect.objectContaining({
+        importModule: expect.any(Function),
+        loadStyle: expect.any(Function),
+        loadScript: expect.any(Function),
+        loadSvgSprite: expect.any(Function)
+      })
+    );
+
+    view.unmount();
+    expect(root.shadowRoot?.querySelector('#icon-scoped')).toBeNull();
   });
 
   test('D3R-AC-007 contains a render error to the current portal', async () => {

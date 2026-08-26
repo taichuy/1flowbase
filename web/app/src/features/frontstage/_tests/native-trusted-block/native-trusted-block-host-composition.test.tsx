@@ -1,7 +1,10 @@
 import { render, waitFor, within } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
-import type { BlockContext } from '@1flowbase/page-protocol';
+import type {
+  BlockContext,
+  BlockContextSeed
+} from '@1flowbase/page-protocol';
 import {
   NATIVE_TRUSTED_BLOCK_PERMISSION,
   NATIVE_TRUSTED_BLOCK_RUNTIME,
@@ -12,7 +15,9 @@ import {
 import { FrontstageNativeTrustedBlockPortalHost } from '../../lib/native-trusted-block-react-adapter';
 import { createFrontstageNativeTrustedBlockRuntimeFactory } from '../../lib/native-trusted-block-runtime-factory';
 
-function createContext(overrides: Partial<BlockContext> = {}): BlockContext {
+function createContext(
+  overrides: Partial<BlockContextSeed> = {}
+): BlockContextSeed {
   return {
     currentUser: null,
     workspace: { id: 'workspace-1' },

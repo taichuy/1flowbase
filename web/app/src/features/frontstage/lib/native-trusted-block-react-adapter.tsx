@@ -16,12 +16,15 @@ import { createPortal } from 'react-dom';
 
 import type {
   BlockContext,
+  BlockContextSeed,
   BlockProtocolError
 } from '@1flowbase/page-protocol';
 import {
   attachNativeTrustedBlockPortalSurface,
+  createNativeBlockExternalAssetScope,
   createNativeTrustedBlockPortalContainment,
   isNativeTrustedBlockRuntimeError,
+  type NativeBlockExternalAssetScope,
   type NativeTrustedBlockPortalContainment,
   type NativeTrustedBlockPortalSurface,
   type NativeTrustedBlockPreparePlan,
@@ -83,7 +86,7 @@ export interface FrontstageNativeTrustedBlockPortalHostProps {
   renderEpoch: string;
   plan: NativeTrustedBlockPreparePlan;
   component: FrontstageNativeTrustedBlockReactComponent;
-  ctx: BlockContext;
+  ctx: BlockContextSeed;
   moduleAssets?: readonly NativeReactResolvedModuleAsset[];
   providerScope?: FrontstageNativeTrustedBlockProviderScope;
   providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper;
@@ -171,13 +174,38 @@ export function FrontstageNativeTrustedBlockPortalHost({
     () => (surface ? createPortalContainment(surface.shadowRoot) : null),
     [surface]
   );
+  const externalAssetScope = useMemo<NativeBlockExternalAssetScope | null>(
+    () =>
+      surface
+        ? createNativeBlockExternalAssetScope({ root: surface.shadowRoot })
+        : null,
+    [surface]
+  );
+  const blockContext = useMemo<BlockContext | null>(
+    () =>
+      surface && externalAssetScope
+        ? {
+            ...ctx,
+            root: surface.shadowRoot,
+            assets: externalAssetScope.assets
+          }
+        : null,
+    [ctx, externalAssetScope, surface]
+  );
+
+  useLayoutEffect(
+    () => () => externalAssetScope?.dispose(),
+    [externalAssetScope]
+  );
 
   useLayoutEffect(() => {
     if (!surface) return;
     return attachModuleStyleAssets(surface, moduleAssets);
   }, [moduleAssets, surface]);
 
-  if (!surface || !styleCache || !portalContainment) return null;
+  if (!surface || !styleCache || !portalContainment || !blockContext) {
+    return null;
+  }
 
   const providerContext: FrontstageNativeTrustedBlockProviderContext = {
     plan,
@@ -194,7 +222,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
       <BlockComponent
         plan={plan}
         props={plan.props}
-        ctx={ctx}
+        ctx={blockContext}
         portalContainment={portalContainment}
       />
     </FrontstageNativeTrustedBlockErrorBoundary>
@@ -270,7 +298,7 @@ function decodeModuleStyle(asset: NativeReactResolvedModuleAsset): string {
 
 export function createFrontstageUnavailableBlockContext(
   plan: NativeTrustedBlockPreparePlan
-): BlockContext {
+): BlockContextSeed {
   const state: Record<string, unknown> = {};
 
   return {
