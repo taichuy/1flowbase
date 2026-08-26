@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: Frontstage 区块自由组合与高度 contract
-summary: Frontstage 以共享 24 单位网格内核承载自动布局与自由网格两种文档级策略，高度独立为 auto/fixed；移动端派生单列且不回写桌面布局。
+summary: Frontstage 以共享 24 单位网格内核承载自动布局与自由网格两种文档级策略；自动布局拖拽使用 pointer midpoint、0.5 列 deadband 与 stable insertion，首/中/末位均可达。
 keywords:
   - frontstage
   - block layout
@@ -12,12 +12,13 @@ match_when:
   - 调整 Frontstage 区块拖拽、缩放、响应式布局或高度配置
   - 评估自由像素画布、列网格或嵌套布局树
 created_at: 2026-07-19 22
-updated_at: 2026-07-20 08
-last_verified_at: 2026-07-20 08
+updated_at: 2026-08-26 19
+last_verified_at: 2026-08-26 19
 decision_policy: verify_before_decision
 status: active
 scope:
   - web/app/src/features/frontstage/lib/responsive-grid-layout.ts
+  - web/app/src/features/frontstage/lib/page-canvas/frontstage-block-interaction.ts
   - web/app/src/features/frontstage/lib/page-document.ts
   - web/app/src/features/frontstage/components/PageCanvas.tsx
   - web/app/src/features/frontstage/components/jsx-studio/JsxStudioResourcePanel.tsx
@@ -35,6 +36,7 @@ scope:
 
 - Page/Tab Document 的 `layoutMode` 取值为 `auto / free`，缺省与新文档默认 `auto`；页面配置使用“布局方式”下拉切换。
 - `auto` 强制受影响行连续铺满：拖动同时重组来源行与目标行，空白行单区块铺满，相邻 resize 边界联动调整比例。
+- `auto` 的排序意图由连续 pointer column 相对目标 midpoint 决定；midpoint 两侧使用 0.5 列 deadband，区间内保持上一 stable insertion。没有连续 pointer 的首帧以水平移动方向消除中心相等偏置，不能用第一列特判。
 - `free` 保留独立 `x/y/w/h` 并允许空隙；两种策略共享 bounds、min/max、collision、responsive 与 commit 内核，不复制 PageCanvas。
 - `auto` 高度由内容自然撑开、页面滚动，仅允许左右 resize。
 - `fixed` 高度形成内部滚动视窗，允许左右、底部和角落 resize；高度像素配置独立于布局行数。
@@ -48,6 +50,7 @@ scope:
 ## 后续演进真值
 
 - 在线 Single Issue：[#1376 建立 Frontstage 可演进区块布局内核与连续碰撞交互](https://github.com/taichuy/1flowbase/issues/1376)
+- 首位插入修复：[#1897 修复自动布局拖拽首位插入不可达](https://github.com/taichuy/1flowbase/issues/1897)，commit `d7d8e3288` 已推送 `dev`，当前 `phase:user-acceptance`。
 - 当前阶段：`phase:user-acceptance`；自动/自由策略、RGL v2 public API、确定性行接触 solver、边缘 resize、no-op save 与桌面/移动端真实指针验收已完成。
 - 只修改 1flowbase；`/home/taichuy/git/react-grid-layout` 仅作 `2.2.3` 参考源码，不修改、fork、patch 或本地链接。
 - 后续交互采用连续像素 preview 与响应式网格 commit 双态模型；24 列是 Frontstage desktop profile，不是通用布局内核常量。
