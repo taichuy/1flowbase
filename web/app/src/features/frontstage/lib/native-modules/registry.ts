@@ -1,3 +1,4 @@
+import * as antDesignIconsModule from '@ant-design/icons';
 import * as antdModule from 'antd';
 import * as antdStyleModule from 'antd-style';
 import * as ReactModule from 'react';
@@ -16,50 +17,6 @@ import {
 import { createFrontendModuleExtraLib } from './declarations';
 
 type ModuleNamespace = Record<string, unknown>;
-
-const ICON_EXPORTS = [
-  'ArrowDownOutlined',
-  'ArrowLeftOutlined',
-  'ArrowRightOutlined',
-  'ArrowUpOutlined',
-  'CalendarOutlined',
-  'CheckCircleOutlined',
-  'CheckOutlined',
-  'ClockCircleOutlined',
-  'CloseCircleOutlined',
-  'CloseOutlined',
-  'CopyOutlined',
-  'DeleteOutlined',
-  'DownloadOutlined',
-  'EditOutlined',
-  'ExclamationCircleOutlined',
-  'EyeInvisibleOutlined',
-  'EyeOutlined',
-  'FileOutlined',
-  'FolderOpenOutlined',
-  'FolderOutlined',
-  'HomeOutlined',
-  'InfoCircleOutlined',
-  'LeftOutlined',
-  'LinkOutlined',
-  'LoadingOutlined',
-  'LockOutlined',
-  'MailOutlined',
-  'MenuOutlined',
-  'MinusOutlined',
-  'MoreOutlined',
-  'PlusOutlined',
-  'QuestionCircleOutlined',
-  'ReloadOutlined',
-  'RightOutlined',
-  'SaveOutlined',
-  'SearchOutlined',
-  'SettingOutlined',
-  'UpOutlined',
-  'UploadOutlined',
-  'UserOutlined',
-  'WarningOutlined'
-] as const;
 
 const ANT_DESIGN_X_EXPORTS = [
   'Actions',
@@ -115,9 +72,13 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
       return { module, styles: [{ css: style.default }] };
     }
   ),
-  registration('@ant-design/icons', [...ICON_EXPORTS], async () => ({
-    module: await import('@ant-design/icons')
-  })),
+  registration(
+    '@ant-design/icons',
+    Object.keys(antDesignIconsModule),
+    async () => ({
+      module: antDesignIconsModule
+    })
+  ),
   registration('@1flowbase/charts', ['EChart'], async () => ({
     module: await import('@1flowbase/charts')
   })),

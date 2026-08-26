@@ -69,6 +69,11 @@ describe('frontstage native trusted block runtime factory', () => {
       registry.definitions.find(({ module_source }) => module_source === 'antd')
         ?.exports
     ).toContain('Button');
+    expect(
+      registry.definitions.find(
+        ({ module_source }) => module_source === '@ant-design/icons'
+      )?.exports
+    ).toContain('AntDesignOutlined');
   });
 
   test('AC-002 does not admit exports absent from the frontend registry', () => {
