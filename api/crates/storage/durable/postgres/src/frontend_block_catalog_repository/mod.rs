@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     FrontendBlockCatalogRepository, ReplaceInstallationFrontendBlocksInput,
     RetainedFrontendModuleAsset,
 };
@@ -229,6 +229,6 @@ impl FrontendBlockCatalogRepository for PgControlPlaneStore {
     async fn list_active_ui_code_templates_for_catalog(
         &self,
     ) -> Result<Vec<domain::UiCodeTemplate>> {
-        control_plane::ports::UiManagementRepository::list_ui_code_templates(self, false).await
+        control_plane_contracts::ports::UiManagementRepository::list_ui_code_templates(self, false).await
     }
 }

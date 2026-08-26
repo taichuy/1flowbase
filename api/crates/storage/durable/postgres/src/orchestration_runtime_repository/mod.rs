@@ -1,21 +1,16 @@
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use control_plane::{
-    application_public_api::{
-        callback_resume::ApplicationPublishedCallbackAttemptRepository,
-        conversations::{
-            ApplicationPublicConversationMessageRecord, ApplicationPublicConversationRecord,
-            ApplicationPublicConversationRepository, BindApplicationPublicConversationInput,
-            ListApplicationPublicConversationMessagesInput,
-        },
-        run_service::{
-            ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
-            CancelPublishedFlowRunInput, CreatePublishedFlowRunResult,
-            ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage,
-            PublishedRunPendingCallback, PublishedRunStreamState,
-        },
+use control_plane_contracts::{
+    application_public_runtime::{
+        ApplicationPublicConversationMessageRecord, ApplicationPublicConversationRecord,
+        ApplicationPublicConversationRepository, ApplicationPublishedCallbackAttemptRepository,
+        ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
+        BindApplicationPublicConversationInput, CancelPublishedFlowRunInput,
+        CreatePublishedFlowRunResult, ListApplicationPublicConversationMessagesInput,
+        ListWaitingCallbackPublishedRunsInput, PublishedRunNodeUsage, PublishedRunPendingCallback,
+        PublishedRunStreamState,
     },
-    errors::ControlPlaneError,
+    ControlPlaneContractError as ControlPlaneError,
     ports::{
         AcquireResumeClaimInput, AcquireResumeClaimOutput, AppendBillingSessionInput,
         AppendCapabilityInvocationInput, AppendContextProjectionInput, AppendContextVersionInput,
@@ -733,7 +728,7 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
 
     async fn insert_model_provider_request_logs_batch(
         &self,
-        records: &[control_plane::ports::ProviderRequestLogTask],
+        records: &[control_plane_contracts::ports::ProviderRequestLogTask],
     ) -> Result<()> {
         PgControlPlaneStore::insert_model_provider_request_logs_batch(self, records).await
     }
@@ -776,16 +771,16 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
     async fn list_application_runs_page(
         &self,
         application_id: Uuid,
-        input: control_plane::ports::ListApplicationRunsPageInput,
-    ) -> Result<control_plane::ports::ApplicationRunSummaryPage> {
+        input: control_plane_contracts::ports::ListApplicationRunsPageInput,
+    ) -> Result<control_plane_contracts::ports::ApplicationRunSummaryPage> {
         PgControlPlaneStore::list_application_runs_page(self, application_id, input).await
     }
 
     async fn list_application_run_logs_page(
         &self,
         application_id: Uuid,
-        input: control_plane::ports::ListApplicationRunsPageInput,
-    ) -> Result<control_plane::ports::ApplicationRunLogSummaryPage> {
+        input: control_plane_contracts::ports::ListApplicationRunsPageInput,
+    ) -> Result<control_plane_contracts::ports::ApplicationRunLogSummaryPage> {
         PgControlPlaneStore::list_application_run_logs_page(self, application_id, input).await
     }
 
@@ -800,7 +795,7 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         &self,
         application_id: Uuid,
         input: GetApplicationRunMonitoringReportInput,
-    ) -> Result<control_plane::ports::ApplicationRunMonitoringReport> {
+    ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringReport> {
         PgControlPlaneStore::get_application_run_monitoring_report(self, application_id, input)
             .await
     }
@@ -809,7 +804,7 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         &self,
         application_id: Uuid,
         input: ListApplicationConversationRunsPageInput,
-    ) -> Result<control_plane::ports::ApplicationConversationRunsPage> {
+    ) -> Result<control_plane_contracts::ports::ApplicationConversationRunsPage> {
         PgControlPlaneStore::list_application_conversation_runs_page(self, application_id, input)
             .await
     }
@@ -819,7 +814,7 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         application_id: Uuid,
         flow_run_id: Uuid,
         input: ListApplicationRunConversationMessageItemsPageInput,
-    ) -> Result<control_plane::ports::ApplicationRunConversationMessageItemsPage> {
+    ) -> Result<control_plane_contracts::ports::ApplicationRunConversationMessageItemsPage> {
         PgControlPlaneStore::list_application_run_conversation_message_items_page(
             self,
             application_id,
@@ -1073,8 +1068,8 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
 
     async fn create_assistant_conversation(
         &self,
-        input: &control_plane::application_public_api::run_service::CreateAssistantConversationInput,
-    ) -> Result<control_plane::application_public_api::run_service::AssistantConversationRecord>
+        input: &control_plane_contracts::application_public_runtime::CreateAssistantConversationInput,
+    ) -> Result<control_plane_contracts::application_public_runtime::AssistantConversationRecord>
     {
         PgControlPlaneStore::create_assistant_conversation(self, input).await
     }
@@ -1086,7 +1081,7 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
         actor_user_id: Uuid,
         conversation_id: Uuid,
     ) -> Result<
-        Option<control_plane::application_public_api::run_service::AssistantConversationRecord>,
+        Option<control_plane_contracts::application_public_runtime::AssistantConversationRecord>,
     > {
         PgControlPlaneStore::get_assistant_conversation(
             self,
@@ -1100,8 +1095,8 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
 
     async fn list_assistant_conversations(
         &self,
-        input: &control_plane::application_public_api::run_service::ListAssistantConversationsInput,
-    ) -> Result<control_plane::application_public_api::run_service::AssistantConversationPage> {
+        input: &control_plane_contracts::application_public_runtime::ListAssistantConversationsInput,
+    ) -> Result<control_plane_contracts::application_public_runtime::AssistantConversationPage> {
         PgControlPlaneStore::list_assistant_conversations(self, input).await
     }
 
@@ -1112,7 +1107,7 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
         actor_user_id: Uuid,
         conversation_id: Uuid,
     ) -> Result<
-        Option<control_plane::application_public_api::run_service::AssistantConversationSummary>,
+        Option<control_plane_contracts::application_public_runtime::AssistantConversationSummary>,
     > {
         PgControlPlaneStore::get_assistant_conversation_summary(
             self,
@@ -1134,7 +1129,7 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
         application_id: Uuid,
         actor_user_id: Uuid,
         conversation_id: Uuid,
-    ) -> Result<Vec<control_plane::application_public_api::run_service::AssistantConversationMessage>>
+    ) -> Result<Vec<control_plane_contracts::application_public_runtime::AssistantConversationMessage>>
     {
         PgControlPlaneStore::list_assistant_conversation_messages(
             self,
@@ -1153,7 +1148,7 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
         actor_user_id: Uuid,
         conversation_id: Uuid,
     ) -> Result<
-        Vec<control_plane::application_public_api::run_service::AssistantConversationNativeMessage>,
+        Vec<control_plane_contracts::application_public_runtime::AssistantConversationNativeMessage>,
     > {
         PgControlPlaneStore::list_assistant_conversation_native_history(
             self,
@@ -1171,7 +1166,7 @@ impl ApplicationPublishedFlowRunRepository for PgControlPlaneStore {
         application_id: Uuid,
         actor_user_id: Uuid,
         flow_run_id: Uuid,
-    ) -> Result<Vec<control_plane::application_public_api::run_service::AssistantConversationMessage>>
+    ) -> Result<Vec<control_plane_contracts::application_public_runtime::AssistantConversationMessage>>
     {
         PgControlPlaneStore::list_assistant_legacy_snapshot_messages(
             self,

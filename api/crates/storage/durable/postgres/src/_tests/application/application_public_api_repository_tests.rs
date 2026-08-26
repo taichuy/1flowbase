@@ -1,11 +1,8 @@
-use control_plane::{
+use control_plane_contracts::{
     application_public_api::{
-        mapping::{
-            ApplicationApiMappingConfig, ApplicationApiMappingDraft, ApplicationApiMappingInput,
-            ApplicationApiMappingOutput, WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod,
-            WorkflowExtensionResponseMode,
-        },
-        publications::ApplicationPublicationJsDependencySnapshot,
+        ApplicationApiMappingConfig, ApplicationApiMappingDraft, ApplicationApiMappingInput,
+        ApplicationApiMappingOutput, ApplicationPublicationJsDependencySnapshot,
+        WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
     },
     ports::{
         ApplicationApiMappingRepository, ApplicationPublicationRepository,

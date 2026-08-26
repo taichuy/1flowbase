@@ -1,11 +1,11 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use control_plane::{
+use control_plane_contracts::{
     application_public_api::{
-        mapping::ApplicationApiMappingDraft, publications::ApplicationPublicationVersionRecord,
-        workflow_schedule::WorkflowScheduleTriggerRecord,
+        ApplicationApiMappingDraft, ApplicationPublicationVersionRecord,
+        WorkflowScheduleTriggerRecord,
     },
-    errors::ControlPlaneError,
+    ControlPlaneContractError as ControlPlaneError,
     ports::{
         ApplicationApiMappingRepository, ApplicationPublicationRepository,
         CreateApplicationPublicationVersionInput, DeactivateApplicationPublicationsInput,

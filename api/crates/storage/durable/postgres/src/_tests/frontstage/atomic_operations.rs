@@ -2,7 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn page_creation_keeps_one_default_tab_and_last_tab_is_guarded() {
-    use control_plane::ports::{
+    use control_plane_contracts::ports::{
         CreateFrontstagePageInput, CreateFrontstagePageTabInput, FrontstagePageRepository,
     };
     let pool = isolated_database().await.connect().await.unwrap();

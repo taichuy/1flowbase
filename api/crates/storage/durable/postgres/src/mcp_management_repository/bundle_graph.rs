@@ -1,6 +1,6 @@
 use anyhow::Result;
-use control_plane::errors::ControlPlaneError;
-use control_plane::ports::ReplaceMcpBundleGraphInput;
+use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
+use control_plane_contracts::ports::ReplaceMcpBundleGraphInput;
 use uuid::Uuid;
 
 use crate::repositories::PgControlPlaneStore;

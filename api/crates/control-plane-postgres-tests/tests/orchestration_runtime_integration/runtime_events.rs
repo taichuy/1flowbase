@@ -596,7 +596,7 @@ async fn orchestration_runtime_repository_returns_callback_tasks_with_run_detail
 
     <PgControlPlaneStore as OrchestrationRuntimeRepository>::complete_callback_task(
         &store,
-        &control_plane::ports::CompleteCallbackTaskInput {
+        &control_plane_contracts::ports::CompleteCallbackTaskInput {
             callback_task_id: task.id,
             response_payload: json!({ "result": "ok" }),
             completed_at: started_at + Duration::seconds(5),
@@ -607,7 +607,7 @@ async fn orchestration_runtime_repository_returns_callback_tasks_with_run_detail
     let duplicate =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::complete_callback_task(
             &store,
-            &control_plane::ports::CompleteCallbackTaskInput {
+            &control_plane_contracts::ports::CompleteCallbackTaskInput {
                 callback_task_id: task.id,
                 response_payload: json!({ "result": "again" }),
                 completed_at: started_at + Duration::seconds(6),
@@ -684,7 +684,7 @@ async fn published_run_control_cancels_pending_callback_tasks_for_run() {
     .unwrap();
     <PgControlPlaneStore as OrchestrationRuntimeRepository>::complete_callback_task(
         &store,
-        &control_plane::ports::CompleteCallbackTaskInput {
+        &control_plane_contracts::ports::CompleteCallbackTaskInput {
             callback_task_id: completed.id,
             response_payload: json!({ "result": "ok" }),
             completed_at: started_at + Duration::seconds(5),
@@ -694,7 +694,7 @@ async fn published_run_control_cancels_pending_callback_tasks_for_run() {
     .unwrap();
 
     let cancelled =
-        <PgControlPlaneStore as control_plane::application_public_api::run_service::ApplicationPublishedRunControlRepository>::cancel_published_pending_callback_tasks_for_run(
+        <PgControlPlaneStore as control_plane_contracts::application_public_runtime::ApplicationPublishedRunControlRepository>::cancel_published_pending_callback_tasks_for_run(
             &store,
             run.id,
             started_at + Duration::seconds(6),
@@ -796,9 +796,9 @@ async fn published_run_control_lists_waiting_callback_runs_for_conversation() {
     .unwrap();
 
     let waiting_run_ids =
-        <PgControlPlaneStore as control_plane::application_public_api::run_service::ApplicationPublishedRunControlRepository>::list_waiting_callback_published_flow_run_ids_for_conversation(
+        <PgControlPlaneStore as control_plane_contracts::application_public_runtime::ApplicationPublishedRunControlRepository>::list_waiting_callback_published_flow_run_ids_for_conversation(
             &store,
-            &control_plane::application_public_api::run_service::ListWaitingCallbackPublishedRunsInput {
+            &control_plane_contracts::application_public_runtime::ListWaitingCallbackPublishedRunsInput {
                 application_id: matching.application_id,
                 api_key_id,
                 external_user: "claude-user".to_string(),

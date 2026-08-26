@@ -1,5 +1,5 @@
 use super::*;
-use control_plane::application_public_api::run_service::{
+use control_plane_contracts::application_public_runtime::{
     ApplicationPublishedFlowRunRepository, ApplicationPublishedRunControlRepository,
 };
 

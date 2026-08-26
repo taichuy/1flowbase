@@ -517,8 +517,8 @@ async fn model_provider_repository_persists_ordered_routing_policy_with_revision
     .await
     .expect_err("stale revision must not overwrite the routing policy");
     assert!(matches!(
-        stale_error.downcast_ref::<control_plane::errors::ControlPlaneError>(),
-        Some(control_plane::errors::ControlPlaneError::Conflict(
+        stale_error.downcast_ref::<control_plane_contracts::ControlPlaneContractError>(),
+        Some(control_plane_contracts::ControlPlaneContractError::Conflict(
             "model_provider_main_instance_revision"
         ))
     ));

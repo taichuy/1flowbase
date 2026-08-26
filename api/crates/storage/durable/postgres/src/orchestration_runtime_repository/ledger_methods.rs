@@ -423,7 +423,7 @@ impl PgControlPlaneStore {
         .bind(flow_run_id)
         .fetch_optional(&mut *tx)
         .await?;
-        let row_hash = control_plane::runtime_observability::audit_row_hash(
+        let row_hash = control_plane_contracts::persistence_projection::audit_row_hash(
             prev_hash.as_deref(),
             fact_table,
             fact_id,

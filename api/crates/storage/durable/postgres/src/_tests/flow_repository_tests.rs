@@ -1,7 +1,7 @@
 use std::sync::{Arc, OnceLock};
 
-use control_plane::{
-    errors::ControlPlaneError,
+use control_plane_contracts::{
+    ControlPlaneContractError as ControlPlaneError,
     ports::{ApplicationRepository, CreateApplicationInput, FlowRepository},
 };
 use domain::{ApplicationType, FlowChangeKind, FlowVersionTrigger};

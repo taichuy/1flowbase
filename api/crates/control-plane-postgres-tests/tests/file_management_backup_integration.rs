@@ -1,13 +1,13 @@
-use control_plane::{
-    file_management::{CreateWorkspaceFileTableCommand, FileTableProvisioningService},
-    ports::{CreateFileStorageInput, FileManagementRepository},
+use control_plane::file_management::{
+    CreateWorkspaceFileTableCommand, FileTableProvisioningService,
 };
 use control_plane_contracts::ports::{
     BackupObjectDatabaseReference, BackupObjectInventoryRepository,
 };
+use control_plane_contracts::ports::{CreateFileStorageInput, FileManagementRepository};
 use uuid::Uuid;
 
-use crate::{run_migrations, PgControlPlaneStore};
+use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
 
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")

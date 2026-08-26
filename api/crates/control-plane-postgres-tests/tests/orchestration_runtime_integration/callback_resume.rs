@@ -12,7 +12,7 @@ async fn persist_callback_wait(
     wait_index: usize,
     parent_context_version_id: Option<Uuid>,
     resume_claim: Option<(Uuid, Uuid)>,
-) -> control_plane::ports::PersistedWaitingState {
+) -> control_plane_contracts::ports::PersistedWaitingState {
     let (resume_claim_id, resume_claim_token) = resume_claim.unzip();
     store
         .persist_waiting_state(&PersistWaitingStateInput {

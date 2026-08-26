@@ -2,8 +2,8 @@ use std::collections::BTreeSet;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use control_plane::{
-    errors::ControlPlaneError,
+use control_plane_contracts::{
+    ControlPlaneContractError as ControlPlaneError,
     ports::{
         AuthRepository, CreateMemberInput, CreateSelfRegisteredMemberInput, MemberRepository,
         SelfRegistrationRepository, UpdateMemberInput,

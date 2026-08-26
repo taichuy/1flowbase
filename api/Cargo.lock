@@ -1029,11 +1029,17 @@ dependencies = [
 name = "control-plane-postgres-tests"
 version = "0.4.1"
 dependencies = [
+ "anyhow",
+ "async-trait",
  "control-plane",
+ "control-plane-contracts",
  "control-plane-test-support",
  "domain",
+ "extension-contracts",
  "postgres-test-support",
  "serde_json",
+ "sqlx",
+ "storage-durable",
  "storage-durable-postgres",
  "time",
  "tokio",
@@ -4064,7 +4070,6 @@ dependencies = [
  "async-trait",
  "base64",
  "chacha20poly1305",
- "control-plane",
  "control-plane-contracts",
  "control-plane-test-support",
  "domain",

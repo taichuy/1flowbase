@@ -1,5 +1,5 @@
-use control_plane::errors::ControlPlaneError;
-use control_plane::ports::{
+use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
+use control_plane_contracts::ports::{
     AddModelFieldInput, CreateModelDefinitionInput, ModelDefinitionRepository,
     UpdateModelDefinitionInput, UpdateModelFieldInput,
 };

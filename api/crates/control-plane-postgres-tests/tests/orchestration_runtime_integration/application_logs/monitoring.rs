@@ -227,9 +227,9 @@ external_user: Some(external_user.to_string()),
     }
 
     let messages =
-        <PgControlPlaneStore as control_plane::application_public_api::conversations::ApplicationPublicConversationRepository>::list_application_public_conversation_messages(
+        <PgControlPlaneStore as control_plane_contracts::application_public_runtime::ApplicationPublicConversationRepository>::list_application_public_conversation_messages(
             &store,
-            &control_plane::application_public_api::conversations::ListApplicationPublicConversationMessagesInput {
+            &control_plane_contracts::application_public_runtime::ListApplicationPublicConversationMessagesInput {
                 application_id: seeded.application_id,
                 api_key_id,
                 external_user: external_user.to_string(),

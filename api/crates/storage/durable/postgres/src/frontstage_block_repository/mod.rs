@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use control_plane::{
-    errors::ControlPlaneError,
+use control_plane_contracts::{
+    ControlPlaneContractError as ControlPlaneError,
     ports::{
         CreateFrontstageBlockNodeInput, DeleteFrontstageBlockLeafInput,
         DeleteFrontstageBlockSubtreeInput, FrontstageBlockPosition,

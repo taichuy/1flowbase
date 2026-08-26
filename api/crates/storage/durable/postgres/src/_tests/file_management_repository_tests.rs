@@ -1,4 +1,4 @@
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     CreateFileStorageInput, FileManagementRepository, UpdateFileStorageBindingInput,
 };
 use storage_durable_postgres::{run_migrations, PgControlPlaneStore};

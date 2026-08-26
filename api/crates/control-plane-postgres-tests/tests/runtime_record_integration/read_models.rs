@@ -1,10 +1,10 @@
 use super::*;
 
 const RUNTIME_READ_MODEL_CONTRACT_METADATA_SQL: &str = include_str!(
-    "../../../migrations/20260630103000_preserve_runtime_read_model_contract_metadata.sql"
+    "../../../storage/durable/postgres/migrations/20260630103000_preserve_runtime_read_model_contract_metadata.sql"
 );
 const MODEL_PROVIDER_REQUEST_LOGS_METADATA_SQL: &str = include_str!(
-    "../../../migrations/20260713130000_register_model_provider_request_logs_runtime_read.sql"
+    "../../../storage/durable/postgres/migrations/20260713130000_register_model_provider_request_logs_runtime_read.sql"
 );
 
 #[tokio::test]

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     BillingRepository, CreditCommandInput, ReserveCreditInput, UpsertPricingRuleInput,
 };
 use control_plane_contracts::billing::PricingRule;

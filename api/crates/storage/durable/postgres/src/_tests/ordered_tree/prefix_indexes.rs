@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use control_plane::ports::{AddModelFieldInput, ModelDefinitionRepository};
+use control_plane_contracts::ports::{AddModelFieldInput, ModelDefinitionRepository};
 use domain::ModelFieldKind;
 use serde_json::json;
 use sqlx::migrate::Migrator;

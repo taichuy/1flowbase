@@ -1,4 +1,4 @@
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     CreateDataSourceInstanceInput, CreateDataSourcePreviewSessionInput, DataSourceRepository,
     RotateDataSourceSecretInput, UpsertDataSourceCatalogCacheInput, UpsertDataSourceSecretInput,
     UpsertPluginInstallationInput,
@@ -69,7 +69,7 @@ async fn seed_store() -> (
         .unwrap();
 
     let installation_id = Uuid::now_v7();
-    control_plane::ports::PluginRepository::upsert_installation(
+    control_plane_contracts::ports::PluginRepository::upsert_installation(
         &store,
         &UpsertPluginInstallationInput {
             installation_id,
@@ -544,7 +544,7 @@ async fn updates_data_source_default_status() {
 
     let updated = <PgControlPlaneStore as DataSourceRepository>::update_instance_defaults(
         &store,
-        &control_plane::ports::UpdateDataSourceDefaultsInput {
+        &control_plane_contracts::ports::UpdateDataSourceDefaultsInput {
             workspace_id: workspace.id,
             instance_id: created.id,
             defaults: DataSourceDefaults {
@@ -565,7 +565,7 @@ async fn updates_main_source_defaults_with_workspace_scoped_status() {
 
     let updated = <PgControlPlaneStore as DataSourceRepository>::update_main_source_defaults(
         &store,
-        &control_plane::ports::UpdateMainSourceDefaultsInput {
+        &control_plane_contracts::ports::UpdateMainSourceDefaultsInput {
             workspace_id: workspace.id,
             defaults: DataSourceDefaults {
                 data_model_status: DataModelStatus::Draft,

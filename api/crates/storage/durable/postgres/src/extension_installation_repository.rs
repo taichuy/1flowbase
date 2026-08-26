@@ -1,7 +1,7 @@
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
-use control_plane::errors::ControlPlaneError;
-use control_plane::ports::{ExtensionInstallationRepository, UpsertExtensionInstallationInput};
+use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
+use control_plane_contracts::ports::{ExtensionInstallationRepository, UpsertExtensionInstallationInput};
 use sqlx::{postgres::PgRow, Row};
 use uuid::Uuid;
 

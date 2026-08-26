@@ -2,7 +2,7 @@ use std::{collections::HashSet, future::Future};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use control_plane::ports::ModelDefinitionRepository;
+use control_plane_contracts::ports::ModelDefinitionRepository;
 use serde_json::Value;
 use sqlx::{Postgres, QueryBuilder};
 use storage_durable::{

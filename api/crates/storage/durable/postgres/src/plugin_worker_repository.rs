@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use control_plane::ports::{CreatePluginWorkerLeaseInput, PluginWorkerRepository};
+use control_plane_contracts::ports::{CreatePluginWorkerLeaseInput, PluginWorkerRepository};
 use sqlx::Row;
 use uuid::Uuid;
 

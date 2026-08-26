@@ -1,4 +1,4 @@
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     CreateModelCatalogSyncRunInput, CreateModelFailoverQueueItemInput,
     CreateModelFailoverQueueSnapshotInput, CreateModelFailoverQueueTemplateInput,
     CreateModelProviderCatalogSourceInput, CreateModelProviderInstanceInput,
@@ -123,7 +123,7 @@ async fn seed_store() -> (
         .unwrap();
 
     let installation_id = Uuid::now_v7();
-    control_plane::ports::PluginRepository::upsert_installation(
+    control_plane_contracts::ports::PluginRepository::upsert_installation(
         &store,
         &UpsertPluginInstallationInput {
             installation_id,

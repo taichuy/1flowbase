@@ -18,7 +18,7 @@ impl PgControlPlaneStore {
         &self,
         application_id: Uuid,
         input: GetApplicationRunMonitoringReportInput,
-    ) -> Result<control_plane::ports::ApplicationRunMonitoringReport> {
+    ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringReport> {
         let bucket = normalize_application_run_monitoring_bucket(&input.bucket);
         let started_from = input.started_from;
         let started_to = input.started_to;
@@ -105,7 +105,7 @@ impl PgControlPlaneStore {
             )
             .await?;
 
-        Ok(control_plane::ports::ApplicationRunMonitoringReport {
+        Ok(control_plane_contracts::ports::ApplicationRunMonitoringReport {
             overview,
             duration,
             tokens,
@@ -129,7 +129,7 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
-    ) -> Result<control_plane::ports::ApplicationRunMonitoringOverview> {
+    ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringOverview> {
         let row = sqlx::query(&application_run_monitoring_logs_query(
             r#"
             select
@@ -156,7 +156,7 @@ impl PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
-        Ok(control_plane::ports::ApplicationRunMonitoringOverview {
+        Ok(control_plane_contracts::ports::ApplicationRunMonitoringOverview {
             total_count: row.get("total_count"),
             success_count: row.get("success_count"),
             failed_count: row.get("failed_count"),
@@ -173,7 +173,7 @@ impl PgControlPlaneStore {
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
         slow_run_threshold_ms: i64,
-    ) -> Result<control_plane::ports::ApplicationRunMonitoringDuration> {
+    ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringDuration> {
         let row = sqlx::query(&application_run_monitoring_logs_query(
             r#"
             , logs as (
@@ -211,7 +211,7 @@ impl PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
-        Ok(control_plane::ports::ApplicationRunMonitoringDuration {
+        Ok(control_plane_contracts::ports::ApplicationRunMonitoringDuration {
             duration_recorded_count: row.get("duration_recorded_count"),
             avg_duration_ms: row.get("avg_duration_ms"),
             p50_duration_ms: row.get("p50_duration_ms"),
@@ -225,7 +225,7 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
-    ) -> Result<control_plane::ports::ApplicationRunMonitoringTokens> {
+    ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringTokens> {
         let row = sqlx::query(&application_run_monitoring_logs_query(
             r#"
             select
@@ -246,7 +246,7 @@ impl PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
-        Ok(control_plane::ports::ApplicationRunMonitoringTokens {
+        Ok(control_plane_contracts::ports::ApplicationRunMonitoringTokens {
             total_tokens_sum: row.get("total_tokens_sum"),
             input_tokens_sum: row.get("input_tokens_sum"),
             output_tokens_sum: row.get("output_tokens_sum"),
@@ -264,7 +264,7 @@ impl PgControlPlaneStore {
         current_run_count: i64,
         current_total_tokens: i64,
         current_avg_tokens_per_run: f64,
-    ) -> Result<control_plane::ports::ApplicationRunMonitoringTokensComparison> {
+    ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringTokensComparison> {
         let Some((previous_from, previous_to)) = previous_monitoring_window(started_from, started_to)
         else {
             return Ok(empty_tokens_comparison());
@@ -291,7 +291,7 @@ impl PgControlPlaneStore {
         let previous_run_count = row.get("previous_run_count");
         let previous_avg_tokens_per_run = row.get("previous_avg_tokens_per_run");
 
-        Ok(control_plane::ports::ApplicationRunMonitoringTokensComparison {
+        Ok(control_plane_contracts::ports::ApplicationRunMonitoringTokensComparison {
             previous_total_tokens_sum,
             previous_run_count,
             previous_avg_tokens_per_run,
@@ -311,7 +311,7 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
-    ) -> Result<control_plane::ports::ApplicationRunMonitoringToolCallbacks> {
+    ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringToolCallbacks> {
         let row = sqlx::query(&application_run_monitoring_logs_query(
             r#"
             select
@@ -329,7 +329,7 @@ impl PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
-        Ok(control_plane::ports::ApplicationRunMonitoringToolCallbacks {
+        Ok(control_plane_contracts::ports::ApplicationRunMonitoringToolCallbacks {
             total_tool_callback_count: row.get("total_tool_callback_count"),
             avg_tool_callback_count: row.get("avg_tool_callback_count"),
             runs_with_tool_callback: row.get("runs_with_tool_callback"),
@@ -341,7 +341,7 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
-    ) -> Result<control_plane::ports::ApplicationRunMonitoringNodes> {
+    ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringNodes> {
         let row = sqlx::query(&application_run_monitoring_logs_query(
             r#"
             select
@@ -357,7 +357,7 @@ impl PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
-        Ok(control_plane::ports::ApplicationRunMonitoringNodes {
+        Ok(control_plane_contracts::ports::ApplicationRunMonitoringNodes {
             avg_unique_node_count: row.get("avg_unique_node_count"),
             max_unique_node_count: row.get("max_unique_node_count"),
         })
@@ -368,7 +368,7 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
-    ) -> Result<control_plane::ports::ApplicationRunMonitoringConcurrency> {
+    ) -> Result<control_plane_contracts::ports::ApplicationRunMonitoringConcurrency> {
         let peak_concurrency = sqlx::query_scalar::<_, i64>(
             &application_run_monitoring_logs_query(
             r#"
@@ -396,7 +396,7 @@ impl PgControlPlaneStore {
         .fetch_one(self.pool())
         .await?;
 
-        Ok(control_plane::ports::ApplicationRunMonitoringConcurrency { peak_concurrency })
+        Ok(control_plane_contracts::ports::ApplicationRunMonitoringConcurrency { peak_concurrency })
     }
 
     async fn application_run_monitoring_tokens_trend(
@@ -405,7 +405,7 @@ impl PgControlPlaneStore {
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
         bucket: &str,
-    ) -> Result<Vec<control_plane::ports::ApplicationRunMonitoringTokenTrendPoint>> {
+    ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringTokenTrendPoint>> {
         let rows = sqlx::query(&application_run_monitoring_logs_query(
             r#"
             select
@@ -425,7 +425,7 @@ impl PgControlPlaneStore {
         .bind(bucket)
         .fetch_all(self.pool())
         .await?;
-        Ok(rows.into_iter().map(|row| control_plane::ports::ApplicationRunMonitoringTokenTrendPoint {
+        Ok(rows.into_iter().map(|row| control_plane_contracts::ports::ApplicationRunMonitoringTokenTrendPoint {
                 bucket_start: row.get("bucket_start"),
                 run_count: row.get("run_count"),
                 total_tokens: row.get("total_tokens"),
@@ -440,7 +440,7 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
-    ) -> Result<Vec<control_plane::ports::ApplicationRunMonitoringProtocolBreakdown>> {
+    ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringProtocolBreakdown>> {
         let rows = sqlx::query(&application_run_monitoring_logs_query(
             r#"
             , logs as (
@@ -475,7 +475,7 @@ impl PgControlPlaneStore {
 
         Ok(rows
             .into_iter()
-            .map(|row| control_plane::ports::ApplicationRunMonitoringProtocolBreakdown {
+            .map(|row| control_plane_contracts::ports::ApplicationRunMonitoringProtocolBreakdown {
                 protocol: row.get("protocol"),
                 request_count: row.get("request_count"),
                 success_rate: row.get("success_rate"),
@@ -490,7 +490,7 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
-    ) -> Result<Vec<control_plane::ports::ApplicationRunMonitoringSourceBreakdown>> {
+    ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringSourceBreakdown>> {
         let rows = sqlx::query(&application_run_monitoring_logs_query(
             r#"
             , logs as (
@@ -529,7 +529,7 @@ impl PgControlPlaneStore {
 
         Ok(rows
             .into_iter()
-            .map(|row| control_plane::ports::ApplicationRunMonitoringSourceBreakdown {
+            .map(|row| control_plane_contracts::ports::ApplicationRunMonitoringSourceBreakdown {
                 invocation_source: row.get("invocation_source"),
                 request_count: row.get("request_count"),
                 success_rate: row.get("success_rate"),
@@ -543,7 +543,7 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
-    ) -> Result<Vec<control_plane::ports::ApplicationRunMonitoringAuthorizedAccountUsage>> {
+    ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringAuthorizedAccountUsage>> {
         let rows = self
             .application_run_monitoring_nullable_text_usage(
                 application_id,
@@ -555,7 +555,7 @@ impl PgControlPlaneStore {
 
         Ok(rows
             .into_iter()
-            .map(|row| control_plane::ports::ApplicationRunMonitoringAuthorizedAccountUsage {
+            .map(|row| control_plane_contracts::ports::ApplicationRunMonitoringAuthorizedAccountUsage {
                 authorized_account: row.dimension_value,
                 request_count: row.request_count,
                 total_tokens: row.total_tokens,
@@ -570,7 +570,7 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
-    ) -> Result<Vec<control_plane::ports::ApplicationRunMonitoringExternalConversationUsage>> {
+    ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringExternalConversationUsage>> {
         let rows = self
             .application_run_monitoring_nullable_text_usage(
                 application_id,
@@ -583,7 +583,7 @@ impl PgControlPlaneStore {
         Ok(rows
             .into_iter()
             .map(|row| {
-                control_plane::ports::ApplicationRunMonitoringExternalConversationUsage {
+                control_plane_contracts::ports::ApplicationRunMonitoringExternalConversationUsage {
                     external_conversation_id: row.dimension_value,
                     request_count: row.request_count,
                     total_tokens: row.total_tokens,
@@ -648,7 +648,7 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
-    ) -> Result<Vec<control_plane::ports::ApplicationRunMonitoringApiKeyUsage>> {
+    ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringApiKeyUsage>> {
         let rows = sqlx::query(&application_run_monitoring_logs_query(
             r#"
             select
@@ -679,7 +679,7 @@ impl PgControlPlaneStore {
 
         Ok(rows
             .into_iter()
-            .map(|row| control_plane::ports::ApplicationRunMonitoringApiKeyUsage {
+            .map(|row| control_plane_contracts::ports::ApplicationRunMonitoringApiKeyUsage {
                 api_key_id: row.get("api_key_id"),
                 api_key_name_snapshot: row.get("api_key_name_snapshot"),
                 request_count: row.get("request_count"),
@@ -696,7 +696,7 @@ impl PgControlPlaneStore {
         started_from: Option<OffsetDateTime>,
         started_to: Option<OffsetDateTime>,
         rank_kind: ApplicationRunMonitoringRankKind,
-    ) -> Result<Vec<control_plane::ports::ApplicationRunMonitoringRunRank>> {
+    ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunMonitoringRunRank>> {
         let (extra_filter, order_by) = match rank_kind {
             ApplicationRunMonitoringRankKind::Slowest => {
                 ("and finished_at is not null", "duration_ms desc nulls last")
@@ -735,7 +735,7 @@ impl PgControlPlaneStore {
             .map(|row| {
                 let status: String = row.get("status");
 
-                Ok(control_plane::ports::ApplicationRunMonitoringRunRank {
+                Ok(control_plane_contracts::ports::ApplicationRunMonitoringRunRank {
                     flow_run_id: row.get("flow_run_id"),
                     title: row.get("title"),
                     status:
@@ -787,8 +787,8 @@ fn previous_monitoring_window(
     (window > Duration::ZERO).then(|| (previous_to - window, previous_to))
 }
 
-fn empty_tokens_comparison() -> control_plane::ports::ApplicationRunMonitoringTokensComparison {
-    control_plane::ports::ApplicationRunMonitoringTokensComparison {
+fn empty_tokens_comparison() -> control_plane_contracts::ports::ApplicationRunMonitoringTokensComparison {
+    control_plane_contracts::ports::ApplicationRunMonitoringTokensComparison {
         previous_total_tokens_sum: 0,
         previous_run_count: 0,
         previous_avg_tokens_per_run: 0.0,

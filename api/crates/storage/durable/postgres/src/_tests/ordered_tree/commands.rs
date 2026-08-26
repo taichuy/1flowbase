@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use control_plane::ports::{CreateModelDefinitionInput, ModelDefinitionRepository};
+use control_plane_contracts::ports::{CreateModelDefinitionInput, ModelDefinitionRepository};
 use domain::DataModelScopeKind;
 use serde_json::json;
 use storage_durable::{

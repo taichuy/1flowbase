@@ -6,11 +6,11 @@ use super::*;
 
 const COMPLETE_SUMMARY_BACKFILL_VERSION: i64 = 20260807130000;
 const COMPLETE_SUMMARY_BACKFILL_SQL: &str = include_str!(
-    "../../../migrations/20260807130000_backfill_complete_application_run_log_summaries.sql"
+    "../../../storage/durable/postgres/migrations/20260807130000_backfill_complete_application_run_log_summaries.sql"
 );
 
 fn before_complete_summary_backfill_migrator() -> Migrator {
-    let migrations = sqlx::migrate!("./migrations")
+    let migrations = sqlx::migrate!("../storage/durable/postgres/migrations")
         .iter()
         .filter(|migration| migration.version < COMPLETE_SUMMARY_BACKFILL_VERSION)
         .cloned()
@@ -198,7 +198,7 @@ async fn complete_summary_backfill_restores_a_missing_internal_run_projection() 
         .await
         .unwrap();
 
-    sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+    sqlx::migrate!("../storage/durable/postgres/migrations").run(&pool).await.unwrap();
 
     let restored: (String, String, Option<String>) = sqlx::query_as(
         r#"

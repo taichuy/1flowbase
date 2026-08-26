@@ -18,12 +18,14 @@
 - `apps/api-server` 是 Axum HTTP API 宿主，负责 public / console / runtime route、middleware、response、OpenAPI、loader、policy、inventory、infra bootstrap、route mount 与 boot assembly。
 - `apps/plugin-runner` 是 RuntimeExtension 运行宿主，不承载控制面业务逻辑。
 - `crates/access-control` 放权限目录、内建角色、权限校验。
-- `crates/control-plane` 放业务 service、状态写入口、审计入口、repository trait 与外部端口。
+- `crates/control-plane-contracts` 放存储适配器可实现的稳定 repository trait、错误与持久化投影；不得依赖 `control-plane`。
+- `crates/control-plane` 放业务 service、状态写入口与审计入口，并消费或重导出稳定 contracts。
+- `crates/control-plane-postgres-tests` 是 `publish = false` 的跨层测试宿主，组合真实 control-plane service 与 PostgreSQL adapter。
 - `crates/domain` 放领域模型、作用域语义、稳定核心对象。
 - `crates/observability` 放日志、trace 与可观测性基础能力。
 - `crates/orchestration-runtime` 放编排编译、绑定运行时、执行引擎、预览执行器。
 - `crates/plugin-framework` 放插件 manifest / schema / contribution / registry / package 边界。
-- `crates/publish-gateway` 放发布网关边界。
+- `crates/runtime-extension-host` 负责 RuntimeExtension 宿主装配，不向协议层泄漏内部实现。
 - `crates/runtime-core` 放 runtime registry、runtime CRUD 核心和 slot engine。
 - `crates/runtime-profile` 放运行目标、locale、profile fingerprint 与插件运行环境快照。
 - `crates/storage/durable/core` 是 `storage-durable` 稳定边界，只放 backend kind 等不依赖具体 adapter 的类型。
@@ -47,10 +49,12 @@
 - 新增或调整后台设置注册必须使用统一 CLI 与 compiled inventory。统一入口尚未落地时，只能在已批准的 registry foundation Issue 内建立它，不新增平行手写注册表。
 - 后台设置授权只解决入口与操作资格；workspace / system、owner、row、field、secret 和状态约束继续由 `control-plane` 与 repository 执行。
 - `crates/control-plane` 是业务边界；关键写动作从命名明确的 service command 或 `Resource Action Kernel` action 进入。
-- `crates/control-plane/src/ports` 定义 repository trait 与外部端口。
+- adapter-facing repository trait 以 `crates/control-plane-contracts/src/ports` 为唯一稳定 owner；`control-plane/src/ports` 只保留业务端口或兼容重导出。
 - `crates/storage/durable/postgres/src/**/*_repository.rs` 和 `crates/storage/ephemeral/src/*` 是存储或短期协同端口实现。
 - actor / scope 过滤型查询属于持久化查询职责；状态流转、权限决策、审计写入属于 `control-plane`。
 - `crates/storage/durable/postgres/src/mappers` 是存储模型与领域模型转换层。
+- `storage-durable-postgres` 不得依赖或引用 `control-plane`、`plugin-framework`、`runtime-core`、`access-control`；跨层行为测试放到 `control-plane-postgres-tests`。
+- controller / routes 不得直接导入具体 PostgreSQL adapter 或 `runtime-extension-host` 内部模块，只能消费业务 service 与稳定 contract。
 - 主仓 durable 后端官方支持 PostgreSQL；外部数据库、SaaS、API 数据源走 runtime extension。
 - 业务文件二进制走 `storage-object`；插件安装包和业务文件属于不同存储域。
 - 默认本地业务文件根目录是 `api/storage`；`rustfs` driver 内建但不默认启用。

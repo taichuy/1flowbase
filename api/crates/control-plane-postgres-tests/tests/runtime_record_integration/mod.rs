@@ -1,10 +1,10 @@
 use control_plane::{
     file_management::FileManagementBootstrapService,
-    ports::{
-        AddModelFieldInput, CreateFileStorageInput, CreateModelDefinitionInput,
-        FileManagementRepository, ModelDefinitionRepository,
-    },
     system_metadata::SystemMetadataBootstrapService,
+};
+use control_plane_contracts::ports::{
+    AddModelFieldInput, CreateFileStorageInput, CreateModelDefinitionInput,
+    FileManagementRepository, ModelDefinitionRepository,
 };
 use domain::{DataModelScopeKind, ModelFieldKind, DEFAULT_SCOPE_ID, SYSTEM_SCOPE_ID};
 use serde_json::json;

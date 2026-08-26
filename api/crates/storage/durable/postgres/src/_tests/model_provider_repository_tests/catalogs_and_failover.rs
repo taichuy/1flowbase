@@ -253,7 +253,7 @@ async fn model_provider_repository_persists_failover_queue_templates_items_and_s
 #[tokio::test]
 async fn model_provider_repository_reassigns_all_instances_for_a_provider() {
     let (store, workspace, actor, installation_v1) = seed_store().await;
-    let installation_v2 = control_plane::ports::PluginRepository::upsert_installation(
+    let installation_v2 = control_plane_contracts::ports::PluginRepository::upsert_installation(
         &store,
         &UpsertPluginInstallationInput {
             installation_id: Uuid::now_v7(),

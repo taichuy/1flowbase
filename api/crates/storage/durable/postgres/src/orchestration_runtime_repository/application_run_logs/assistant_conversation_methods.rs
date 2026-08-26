@@ -1,8 +1,8 @@
 impl PgControlPlaneStore {
     async fn create_assistant_conversation(
         &self,
-        input: &control_plane::application_public_api::run_service::CreateAssistantConversationInput,
-    ) -> Result<control_plane::application_public_api::run_service::AssistantConversationRecord>
+        input: &control_plane_contracts::application_public_runtime::CreateAssistantConversationInput,
+    ) -> Result<control_plane_contracts::application_public_runtime::AssistantConversationRecord>
     {
         let row = sqlx::query(
             r#"
@@ -34,7 +34,7 @@ impl PgControlPlaneStore {
         actor_user_id: Uuid,
         conversation_id: Uuid,
     ) -> Result<
-        Option<control_plane::application_public_api::run_service::AssistantConversationRecord>,
+        Option<control_plane_contracts::application_public_runtime::AssistantConversationRecord>,
     > {
         let row = sqlx::query(
             r#"
@@ -58,8 +58,8 @@ impl PgControlPlaneStore {
 
     async fn list_assistant_conversations(
         &self,
-        input: &control_plane::application_public_api::run_service::ListAssistantConversationsInput,
-    ) -> Result<control_plane::application_public_api::run_service::AssistantConversationPage> {
+        input: &control_plane_contracts::application_public_runtime::ListAssistantConversationsInput,
+    ) -> Result<control_plane_contracts::application_public_runtime::AssistantConversationPage> {
         let page = input.page.max(1);
         let page_size = input.page_size.clamp(1, 50);
         let offset = (page - 1) * page_size;
@@ -161,7 +161,7 @@ impl PgControlPlaneStore {
             .into_iter()
             .map(|row| {
                 Ok(
-                    control_plane::application_public_api::run_service::AssistantConversationSummary {
+                    control_plane_contracts::application_public_runtime::AssistantConversationSummary {
                         conversation_id: row.try_get("conversation_id")?,
                         legacy_flow_run_id: row.try_get("legacy_flow_run_id")?,
                         latest_flow_run_id: row.try_get("latest_flow_run_id")?,
@@ -175,7 +175,7 @@ impl PgControlPlaneStore {
             .collect::<Result<Vec<_>>>()?;
 
         Ok(
-            control_plane::application_public_api::run_service::AssistantConversationPage {
+            control_plane_contracts::application_public_runtime::AssistantConversationPage {
                 items,
                 total,
                 page,
@@ -191,7 +191,7 @@ impl PgControlPlaneStore {
         actor_user_id: uuid::Uuid,
         conversation_id: uuid::Uuid,
     ) -> Result<
-        Option<control_plane::application_public_api::run_service::AssistantConversationSummary>,
+        Option<control_plane_contracts::application_public_runtime::AssistantConversationSummary>,
     > {
         let row = sqlx::query(
             r#"
@@ -233,7 +233,7 @@ impl PgControlPlaneStore {
 
         row.map(|row| {
             Ok(
-                control_plane::application_public_api::run_service::AssistantConversationSummary {
+                control_plane_contracts::application_public_runtime::AssistantConversationSummary {
                     conversation_id: row.try_get("conversation_id")?,
                     legacy_flow_run_id: row.try_get("legacy_flow_run_id")?,
                     latest_flow_run_id: row.try_get("latest_flow_run_id")?,
@@ -278,7 +278,7 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         actor_user_id: Uuid,
         conversation_id: Uuid,
-    ) -> Result<Vec<control_plane::application_public_api::run_service::AssistantConversationMessage>>
+    ) -> Result<Vec<control_plane_contracts::application_public_runtime::AssistantConversationMessage>>
     {
         let rows = sqlx::query(
             r#"
@@ -371,7 +371,7 @@ impl PgControlPlaneStore {
         actor_user_id: Uuid,
         conversation_id: Uuid,
     ) -> Result<
-        Vec<control_plane::application_public_api::run_service::AssistantConversationNativeMessage>,
+        Vec<control_plane_contracts::application_public_runtime::AssistantConversationNativeMessage>,
     > {
         let rows = sqlx::query(
             r#"
@@ -454,7 +454,7 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         actor_user_id: Uuid,
         flow_run_id: Uuid,
-    ) -> Result<Vec<control_plane::application_public_api::run_service::AssistantConversationMessage>>
+    ) -> Result<Vec<control_plane_contracts::application_public_runtime::AssistantConversationMessage>>
     {
         let rows = sqlx::query(
             r#"
@@ -565,8 +565,8 @@ impl PgControlPlaneStore {
 
 fn assistant_conversation_record_from_row(
     row: sqlx::postgres::PgRow,
-) -> control_plane::application_public_api::run_service::AssistantConversationRecord {
-    control_plane::application_public_api::run_service::AssistantConversationRecord {
+) -> control_plane_contracts::application_public_runtime::AssistantConversationRecord {
+    control_plane_contracts::application_public_runtime::AssistantConversationRecord {
         conversation_id: row.get("conversation_id"),
         workspace_id: row.get("scope_id"),
         application_id: row.get("application_id"),
@@ -578,13 +578,13 @@ fn assistant_conversation_record_from_row(
 
 fn assistant_conversation_messages_from_rows(
     rows: Vec<sqlx::postgres::PgRow>,
-) -> Result<Vec<control_plane::application_public_api::run_service::AssistantConversationMessage>> {
+) -> Result<Vec<control_plane_contracts::application_public_runtime::AssistantConversationMessage>> {
     rows.into_iter()
         .map(|row| {
             let role: String = row.try_get("role")?;
             let input_payload: serde_json::Value = row.try_get("input_payload")?;
             let page_references = if role == "user" {
-                control_plane::application_public_api::run_service::embedded_assistant_user_message(
+                control_plane_contracts::application_public_runtime::embedded_assistant_user_message(
                     &input_payload,
                 )
                 .map(|message| message.page_references().to_vec())
@@ -593,7 +593,7 @@ fn assistant_conversation_messages_from_rows(
                 Vec::new()
             };
             Ok(
-                control_plane::application_public_api::run_service::AssistantConversationMessage {
+                control_plane_contracts::application_public_runtime::AssistantConversationMessage {
                     id: row.try_get("id")?,
                     flow_run_id: row.try_get("flow_run_id")?,
                     role,
@@ -609,7 +609,7 @@ fn assistant_conversation_messages_from_rows(
 
 fn native_assistant_message_from_row(
     row: sqlx::postgres::PgRow,
-) -> Result<control_plane::application_public_api::run_service::AssistantConversationNativeMessage>
+) -> Result<control_plane_contracts::application_public_runtime::AssistantConversationNativeMessage>
 {
     let role: String = row.try_get("role")?;
     let content: String = row.try_get("content")?;
@@ -625,7 +625,7 @@ fn native_assistant_message_from_row(
         .and_then(serde_json::Value::as_array)
         .cloned();
     Ok(
-        control_plane::application_public_api::run_service::AssistantConversationNativeMessage {
+        control_plane_contracts::application_public_runtime::AssistantConversationNativeMessage {
             role,
             content,
             name: native_message

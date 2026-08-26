@@ -30,7 +30,7 @@ async fn seed_file_storage(
     .await
     .unwrap();
 
-    <PgControlPlaneStore as control_plane::ports::FileManagementRepository>::get_file_storage(
+    <PgControlPlaneStore as control_plane_contracts::ports::FileManagementRepository>::get_file_storage(
         store, storage_id,
     )
     .await

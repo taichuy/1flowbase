@@ -1,7 +1,8 @@
-use control_plane::{
-    application_public_api::run_service::{
-        assistant_conversation_native_history_to_values, ApplicationPublishedFlowRunRepository,
-        CreateAssistantConversationInput, ListAssistantConversationsInput,
+use control_plane::application_public_api::run_service::assistant_conversation_native_history_to_values;
+use control_plane_contracts::{
+    application_public_runtime::{
+        ApplicationPublishedFlowRunRepository, CreateAssistantConversationInput,
+        ListAssistantConversationsInput,
     },
     ports::{ApplicationRepository, CreateApplicationInput},
 };

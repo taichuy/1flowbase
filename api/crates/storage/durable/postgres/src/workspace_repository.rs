@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use control_plane::ports::WorkspaceRepository;
+use control_plane_contracts::ports::WorkspaceRepository;
 use sqlx::Row;
 use uuid::Uuid;
 

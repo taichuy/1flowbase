@@ -1,5 +1,5 @@
 use anyhow::Result;
-use control_plane::errors::ControlPlaneError;
+use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
 use sqlx::Row;
 use uuid::Uuid;
 

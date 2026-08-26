@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use control_plane::{
-    errors::ControlPlaneError,
+use control_plane_contracts::{
+    ControlPlaneContractError as ControlPlaneError,
     ports::{
         AuthRepository, CreateMcpInstanceGraphInput, CreateMcpInstanceInput,
         CreateMcpToolBindingInput, CreateMcpToolInput, CreateMcpUpstreamConnectionInput,
@@ -663,7 +663,7 @@ impl McpManagementRepository for PgControlPlaneStore {
 
     async fn seed_mcp_bundle_graph_once_atomically(
         &self,
-        input: &control_plane::ports::SeedMcpBundleGraphInput,
+        input: &control_plane_contracts::ports::SeedMcpBundleGraphInput,
     ) -> Result<()> {
         managed_bundle_graph::seed_mcp_bundle_graph_once_atomically(self, input).await
     }

@@ -471,7 +471,7 @@ async fn application_run_detail_stitches_prior_conversation_tool_trace() {
         .unwrap();
     <PgControlPlaneStore as OrchestrationRuntimeRepository>::complete_callback_task(
         &store,
-        &control_plane::ports::CompleteCallbackTaskInput {
+        &control_plane_contracts::ports::CompleteCallbackTaskInput {
             callback_task_id: callback_task.id,
             response_payload: json!({
                 "tool_results": [
@@ -1190,7 +1190,7 @@ async fn application_run_lightweight_reads_preserve_contract_order_without_unrel
 
 #[test]
 fn lightweight_summary_queries_do_not_select_callback_or_checkpoint_payload_columns() {
-    let source = include_str!("../../../orchestration_runtime_repository/detail_queries.rs");
+    let source = include_str!("../../../../storage/durable/postgres/src/orchestration_runtime_repository/detail_queries.rs");
     let overview = source
         .split("pub(super) async fn overview_tool_callback_count")
         .nth(1)

@@ -1,5 +1,4 @@
-use control_plane::{
-    errors::ControlPlaneError,
+use control_plane_contracts::{
     ports::{
         AcquireResumeClaimInput, AppendContextVersionInput, AppendCreditLedgerInput,
         AppendModelFailoverAttemptLedgerInput, AppendProviderInvocationContextInput,
@@ -24,6 +23,7 @@ use control_plane::{
         UpdateFlowRunPayloadsInput, UpdateNodeRunInput, UpdateNodeRunPayloadsInput,
         UpdateRunEventPayloadInput, UpsertCompiledPlanInput, UpsertDataModelSideEffectReceiptInput,
     },
+    ControlPlaneContractError as ControlPlaneError,
 };
 use domain::{
     ApplicationType, CallbackTaskStatus, ContextTransitionActor, ContextTransitionKind,

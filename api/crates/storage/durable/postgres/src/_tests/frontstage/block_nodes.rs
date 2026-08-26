@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     CreateFrontstageBlockNodeInput, CreateFrontstagePageInput, CreateFrontstagePageTabInput,
     DeleteFrontstageBlockSubtreeInput, FrontstageBlockCodeInput, FrontstageBlockDescriptorUpdate,
     FrontstageBlockPosition, FrontstageBlockSourceInput, FrontstageBlockTreeRepository,
@@ -335,8 +335,8 @@ async fn block_code_save_rejects_a_stale_source_revision_atomically() {
         .await
         .unwrap_err();
     assert!(matches!(
-        error.downcast_ref::<control_plane::errors::ControlPlaneError>(),
-        Some(control_plane::errors::ControlPlaneError::Conflict(
+        error.downcast_ref::<control_plane_contracts::ControlPlaneContractError>(),
+        Some(control_plane_contracts::ControlPlaneContractError::Conflict(
             "frontstage_block_source_revision"
         ))
     ));

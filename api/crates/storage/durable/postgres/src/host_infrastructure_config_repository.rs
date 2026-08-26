@@ -1,7 +1,7 @@
 use anyhow::{bail, Result};
 use async_trait::async_trait;
-use control_plane::{
-    errors::ControlPlaneError,
+use control_plane_contracts::{
+    ControlPlaneContractError as ControlPlaneError,
     ports::{HostInfrastructureConfigRepository, UpsertHostInfrastructureProviderConfigInput},
 };
 use sqlx::Row;

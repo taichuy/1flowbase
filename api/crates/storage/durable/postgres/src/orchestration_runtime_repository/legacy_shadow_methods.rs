@@ -1,6 +1,6 @@
 #[derive(Debug)]
 struct LegacyShadowCandidate {
-    source_kind: control_plane::ports::LegacyRuntimeShadowSourceKind,
+    source_kind: control_plane_contracts::ports::LegacyRuntimeShadowSourceKind,
     source_table: String,
     source_column: String,
     source_row_id: Uuid,
@@ -14,9 +14,9 @@ struct LegacyShadowCandidate {
 }
 
 fn legacy_shadow_source_rank(
-    source_kind: control_plane::ports::LegacyRuntimeShadowSourceKind,
+    source_kind: control_plane_contracts::ports::LegacyRuntimeShadowSourceKind,
 ) -> i32 {
-    use control_plane::ports::LegacyRuntimeShadowSourceKind;
+    use control_plane_contracts::ports::LegacyRuntimeShadowSourceKind;
     match source_kind {
         LegacyRuntimeShadowSourceKind::CheckpointContext => 1,
         LegacyRuntimeShadowSourceKind::CallbackRequest => 2,
@@ -27,8 +27,8 @@ fn legacy_shadow_source_rank(
 
 fn parse_legacy_shadow_source_kind(
     value: &str,
-) -> Result<control_plane::ports::LegacyRuntimeShadowSourceKind> {
-    use control_plane::ports::LegacyRuntimeShadowSourceKind;
+) -> Result<control_plane_contracts::ports::LegacyRuntimeShadowSourceKind> {
+    use control_plane_contracts::ports::LegacyRuntimeShadowSourceKind;
     match value {
         "checkpoint_context" => Ok(LegacyRuntimeShadowSourceKind::CheckpointContext),
         "callback_request" => Ok(LegacyRuntimeShadowSourceKind::CallbackRequest),
@@ -40,8 +40,8 @@ fn parse_legacy_shadow_source_kind(
     }
 }
 
-fn legacy_run_classification(status: &str) -> control_plane::ports::LegacyRuntimeRunClassification {
-    use control_plane::ports::LegacyRuntimeRunClassification;
+fn legacy_run_classification(status: &str) -> control_plane_contracts::ports::LegacyRuntimeRunClassification {
+    use control_plane_contracts::ports::LegacyRuntimeRunClassification;
     match status {
         "succeeded" | "incomplete" | "failed" | "cancelled" => {
             LegacyRuntimeRunClassification::Terminal
@@ -51,7 +51,7 @@ fn legacy_run_classification(status: &str) -> control_plane::ports::LegacyRuntim
 }
 
 fn accumulate_legacy_shadow_statistics(
-    statistics: &mut Vec<control_plane::ports::LegacyRuntimeShadowStatistics>,
+    statistics: &mut Vec<control_plane_contracts::ports::LegacyRuntimeShadowStatistics>,
     candidate: &LegacyShadowCandidate,
     source_bytes: u64,
     canonical_bytes: u64,
@@ -67,7 +67,7 @@ fn accumulate_legacy_shadow_statistics(
             && item.run_classification == classification
     });
     let index = position.unwrap_or_else(|| {
-        statistics.push(control_plane::ports::LegacyRuntimeShadowStatistics {
+        statistics.push(control_plane_contracts::ports::LegacyRuntimeShadowStatistics {
             source_kind: candidate.source_kind,
             source_table: candidate.source_table.clone(),
             source_column: candidate.source_column.clone(),
@@ -99,7 +99,7 @@ impl PgControlPlaneStore {
         &self,
         input: &ConvertLegacyRuntimeShadowBatchInput,
     ) -> Result<ConvertLegacyRuntimeShadowBatchResult> {
-        use control_plane::ports::{
+        use control_plane_contracts::ports::{
             LegacyRuntimeShadowDifference, LegacyRuntimeShadowExecution,
             LegacyRuntimeShadowSourceKind,
         };
@@ -190,7 +190,7 @@ impl PgControlPlaneStore {
             .collect::<Result<Vec<_>>>()?;
         let next =
             candidates.last().map(
-                |candidate| control_plane::ports::LegacyRuntimeShadowCursor {
+                |candidate| control_plane_contracts::ports::LegacyRuntimeShadowCursor {
                     source_kind: candidate.source_kind,
                     created_at: candidate.source_created_at,
                     source_row_id: candidate.source_row_id,
@@ -516,8 +516,8 @@ impl PgControlPlaneStore {
             .bind(candidate.application_id)
             .bind(candidate.flow_run_id)
             .bind(match legacy_run_classification(&candidate.run_status) {
-                control_plane::ports::LegacyRuntimeRunClassification::Pending => "pending",
-                control_plane::ports::LegacyRuntimeRunClassification::Terminal => "terminal",
+                control_plane_contracts::ports::LegacyRuntimeRunClassification::Pending => "pending",
+                control_plane_contracts::ports::LegacyRuntimeRunClassification::Terminal => "terminal",
             })
             .bind(&source_hash)
             .bind(i64::try_from(canonical.len())?)

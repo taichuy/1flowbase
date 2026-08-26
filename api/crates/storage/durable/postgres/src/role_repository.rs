@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use control_plane::{
-    errors::ControlPlaneError,
+use control_plane_contracts::{
+    ControlPlaneContractError as ControlPlaneError,
     ports::{
         AuthRepository, CreateWorkspaceRoleInput, ReplaceRoleConsolePolicyInput,
         ReplaceRoleDataPolicyInput, ReplaceWorkspaceConsoleSettingsOrderInput,
@@ -13,7 +13,7 @@ use control_plane::{
         RoleConsolePolicyReader, RoleDataPolicyDefaultsInput, RoleRepository,
         UpdateWorkspaceRoleInput, WorkspaceConsoleSettingsOrder,
     },
-    role::console_policy_migration::{
+    console_policy_migration::{
         validate_console_policy_migration_actor_previews, ConsolePolicyMigrationActorPreview,
         ConsolePolicyMigrationActorRoleBinding,
     },

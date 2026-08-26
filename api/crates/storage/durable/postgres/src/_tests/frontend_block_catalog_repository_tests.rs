@@ -1,4 +1,4 @@
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     CreatePluginAssignmentInput, FrontendBlockCatalogRegistryInput, FrontendBlockCatalogRepository,
     PluginRepository, ReplaceInstallationFrontendBlocksInput, UpsertPluginArtifactInstanceInput,
     UpsertPluginInstallationInput,

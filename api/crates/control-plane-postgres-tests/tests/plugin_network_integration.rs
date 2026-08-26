@@ -1,4 +1,4 @@
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     CreateNetworkEgressProviderInput, CreatePluginAssignmentInput, CreatePluginTaskInput,
     JsDependencyRegistryInput, JsDependencyRepository, NetworkEgressRepository,
     NetworkEgressRuntimePort, NetworkEgressSecretMaterial, NetworkEgressSecretResolver,
@@ -15,7 +15,7 @@ use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
 const REPAIR_NETWORK_EGRESS_CURRENT_ARTIFACTS_SQL: &str =
-    include_str!("../../../migrations/20260823180000_repair_network_egress_current_artifacts.sql");
+    include_str!("../../storage/durable/postgres/migrations/20260823180000_repair_network_egress_current_artifacts.sql");
 
 struct RejectNetworkEgressPreflight;
 
@@ -728,8 +728,8 @@ fn installation_commit_input(
     actor_user_id: Uuid,
     title: &str,
     runtime: &str,
-) -> control_plane::ports::CommitPluginInstallationInput {
-    use control_plane::ports::{
+) -> control_plane_contracts::ports::CommitPluginInstallationInput {
+    use control_plane_contracts::ports::{
         CommitPluginInstallationInput, FrontendBlockCatalogRegistryInput,
         ReplaceInstallationFrontendBlocksInput, ReplaceInstallationJsDependenciesInput,
         ReplaceInstallationNodeContributionsInput, UpsertPluginArtifactInstanceInput,
@@ -823,7 +823,7 @@ fn network_egress_commit_input(
     actor_user_id: Uuid,
     version: &str,
     runtime: &str,
-) -> control_plane::ports::CommitPluginInstallationInput {
+) -> control_plane_contracts::ports::CommitPluginInstallationInput {
     let mut input =
         installation_commit_input(installation_id, actor_user_id, "Clash Proxy", runtime);
     let plugin_id = format!("clash-proxy@{version}");
@@ -855,7 +855,7 @@ fn network_egress_commit_input_for_organization(
     actor_user_id: Uuid,
     organization: &str,
     version: &str,
-) -> control_plane::ports::CommitPluginInstallationInput {
+) -> control_plane_contracts::ports::CommitPluginInstallationInput {
     let mut input =
         network_egress_commit_input(installation_id, actor_user_id, version, "native_react");
     let plugin_id = format!("{organization}-clash-proxy@{version}");

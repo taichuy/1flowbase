@@ -1,4 +1,4 @@
-use control_plane::ports::{ExtensionInstallationRepository, UpsertExtensionInstallationInput};
+use control_plane_contracts::ports::{ExtensionInstallationRepository, UpsertExtensionInstallationInput};
 use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
@@ -258,7 +258,7 @@ async fn ac_002_repository_install_select_and_remove_maintain_one_explicit_curre
 
 #[tokio::test]
 async fn issue_1566_terminal_tasks_do_not_block_deletion_but_active_tasks_do() {
-    use control_plane::ports::{CreatePluginTaskInput, PluginRepository};
+    use control_plane_contracts::ports::{CreatePluginTaskInput, PluginRepository};
 
     let (store, actor) = seed_store().await;
     let mut older = input(actor.id);

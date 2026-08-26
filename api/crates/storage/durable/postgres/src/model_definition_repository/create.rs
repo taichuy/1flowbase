@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use control_plane::{errors::ControlPlaneError, ports::CreateModelDefinitionInput};
+use control_plane_contracts::{ControlPlaneContractError as ControlPlaneError, ports::CreateModelDefinitionInput};
 use uuid::Uuid;
 
 use crate::{

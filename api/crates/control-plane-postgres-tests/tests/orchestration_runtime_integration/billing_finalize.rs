@@ -1,5 +1,5 @@
 use super::*;
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     AppendCostLedgerInput, BillingRepository, FinalizeModelBillingInput, ReserveCreditInput,
     SettleCreditInput,
 };

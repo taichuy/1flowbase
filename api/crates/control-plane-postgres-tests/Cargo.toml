@@ -13,12 +13,54 @@ path = "tests/mcp_instance_copy.rs"
 name = "mcp_management_integration"
 path = "tests/mcp_management_integration.rs"
 
+[[test]]
+name = "file_management_backup_integration"
+path = "tests/file_management_backup_integration.rs"
+
+[[test]]
+name = "i18n_catalog_integration"
+path = "tests/i18n_catalog_integration.rs"
+
+[[test]]
+name = "role_policy_integration"
+path = "tests/role_policy_integration.rs"
+
+[[test]]
+name = "plugin_network_integration"
+path = "tests/plugin_network_integration.rs"
+
+[[test]]
+name = "runtime_record_integration"
+path = "tests/runtime_record_integration/mod.rs"
+
+[[test]]
+name = "network_egress_integration"
+path = "tests/network_egress_integration.rs"
+
+[[test]]
+name = "orchestration_runtime_integration"
+path = "tests/orchestration_runtime_integration/mod.rs"
+
+[[test]]
+name = "role_console_policy_integration"
+path = "tests/role_console_policy_integration.rs"
+
+[[test]]
+name = "dependency_boundaries"
+path = "tests/dependency_boundaries.rs"
+
 [dev-dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
 control-plane = { path = "../control-plane" }
+control-plane-contracts = { path = "../control-plane-contracts" }
 control-plane-test-support = { path = "../control-plane-test-support" }
 domain = { path = "../domain" }
+extension-contracts = { path = "../extension-contracts" }
 postgres-test-support = { path = "../postgres-test-support" }
 serde_json.workspace = true
+sqlx.workspace = true
+storage-durable = { path = "../storage/durable/core" }
 storage-durable-postgres = { path = "../storage/durable/postgres" }
 time.workspace = true
 tokio.workspace = true

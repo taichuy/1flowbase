@@ -1,7 +1,7 @@
 impl PgControlPlaneStore {
     pub async fn insert_model_provider_request_logs_batch(
         &self,
-        records: &[control_plane::ports::ProviderRequestLogTask],
+        records: &[control_plane_contracts::ports::ProviderRequestLogTask],
     ) -> Result<()> {
         if records.is_empty() {
             return Ok(());
@@ -64,16 +64,16 @@ impl PgControlPlaneStore {
 
     pub async fn delete_model_provider_request_logs(
         &self,
-        input: control_plane::ports::DeleteModelProviderRequestLogsInput,
+        input: control_plane_contracts::ports::DeleteModelProviderRequestLogsInput,
     ) -> Result<u64> {
         if input.attempt_ids.is_empty() {
             return Ok(0);
         }
         if input.attempt_ids.len()
-            > control_plane::ports::MODEL_PROVIDER_REQUEST_LOG_DELETE_BATCH_LIMIT
+            > control_plane_contracts::ports::MODEL_PROVIDER_REQUEST_LOG_DELETE_BATCH_LIMIT
         {
             return Err(
-                control_plane::errors::ControlPlaneError::InvalidInput("attempt_ids").into(),
+                control_plane_contracts::ControlPlaneContractError::InvalidInput("attempt_ids").into(),
             );
         }
 
@@ -89,12 +89,12 @@ impl PgControlPlaneStore {
 
     pub async fn clear_model_provider_request_logs_batch(
         &self,
-        input: control_plane::ports::ClearModelProviderRequestLogsBatchInput,
-    ) -> Result<control_plane::ports::ClearModelProviderRequestLogsBatchResult> {
+        input: control_plane_contracts::ports::ClearModelProviderRequestLogsBatchInput,
+    ) -> Result<control_plane_contracts::ports::ClearModelProviderRequestLogsBatchResult> {
         let candidate_limit =
-            (control_plane::ports::MODEL_PROVIDER_REQUEST_LOG_DELETE_BATCH_LIMIT + 1) as i64;
+            (control_plane_contracts::ports::MODEL_PROVIDER_REQUEST_LOG_DELETE_BATCH_LIMIT + 1) as i64;
         let delete_limit =
-            control_plane::ports::MODEL_PROVIDER_REQUEST_LOG_DELETE_BATCH_LIMIT as i64;
+            control_plane_contracts::ports::MODEL_PROVIDER_REQUEST_LOG_DELETE_BATCH_LIMIT as i64;
         let row = sqlx::query(
             r#"
             with snapshot as (
@@ -127,7 +127,7 @@ impl PgControlPlaneStore {
         .await?;
 
         Ok(
-            control_plane::ports::ClearModelProviderRequestLogsBatchResult {
+            control_plane_contracts::ports::ClearModelProviderRequestLogsBatchResult {
                 deleted_count: row.try_get::<i64, _>("deleted_count")? as u64,
                 has_more: row.try_get("has_more")?,
                 snapshot_created_before: row.try_get("snapshot_created_before")?,

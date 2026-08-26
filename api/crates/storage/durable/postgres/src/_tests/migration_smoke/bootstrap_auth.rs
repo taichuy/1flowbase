@@ -209,7 +209,7 @@ async fn ac_005_bootstrap_replaces_only_the_previous_official_authenticator_bloc
     };
     store.upsert_authenticator(&authenticator).await.unwrap();
 
-    let replaced = control_plane::ports::BootstrapRepository::
+    let replaced = control_plane_contracts::ports::BootstrapRepository::
         replace_authenticator_public_ui_block_if_matches(
             &store,
             authenticator.id,
@@ -234,7 +234,7 @@ async fn ac_005_bootstrap_replaces_only_the_previous_official_authenticator_bloc
         .update_authenticator_config(&authenticator)
         .await
         .unwrap();
-    let replaced = control_plane::ports::BootstrapRepository::
+    let replaced = control_plane_contracts::ports::BootstrapRepository::
         replace_authenticator_public_ui_block_if_matches(
             &store,
             authenticator.id,

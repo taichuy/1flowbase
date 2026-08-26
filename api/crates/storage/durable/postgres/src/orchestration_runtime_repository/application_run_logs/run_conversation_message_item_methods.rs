@@ -191,7 +191,7 @@ impl PgControlPlaneStore {
         application_id: Uuid,
         flow_run_id: Uuid,
         input: ListApplicationRunConversationMessageItemsPageInput,
-    ) -> Result<control_plane::ports::ApplicationRunConversationMessageItemsPage> {
+    ) -> Result<control_plane_contracts::ports::ApplicationRunConversationMessageItemsPage> {
         let limit = input.limit.clamp(1, 50);
         let mut total_count = self
             .application_run_conversation_message_items_count(application_id, flow_run_id)
@@ -307,7 +307,7 @@ impl PgControlPlaneStore {
             },
         };
 
-        Ok(control_plane::ports::ApplicationRunConversationMessageItemsPage {
+        Ok(control_plane_contracts::ports::ApplicationRunConversationMessageItemsPage {
             items,
             total_count,
             has_before,

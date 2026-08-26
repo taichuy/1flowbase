@@ -1,4 +1,4 @@
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     AddModelFieldInput, CreateModelDefinitionInput, ModelDefinitionRepository,
 };
 use domain::{DataModelScopeKind, ModelFieldKind};

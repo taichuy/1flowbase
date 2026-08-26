@@ -1,4 +1,4 @@
-use control_plane::ports::{CreateModelDefinitionInput, ModelDefinitionRepository};
+use control_plane_contracts::ports::{CreateModelDefinitionInput, ModelDefinitionRepository};
 use domain::DataModelScopeKind;
 use storage_durable::{model_metadata::ModelMetadata, resource_descriptor::ResourceDescriptor};
 use uuid::Uuid;

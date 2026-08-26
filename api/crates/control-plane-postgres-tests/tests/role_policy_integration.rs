@@ -198,9 +198,9 @@ async fn role_data_policy_migration_seeds_builtin_roles_and_new_roles_get_restri
     );
 
     let actor_user_id = Uuid::now_v7();
-    <PgControlPlaneStore as control_plane::ports::RoleRepository>::create_team_role(
+    <PgControlPlaneStore as control_plane_contracts::ports::RoleRepository>::create_team_role(
         &store,
-        &control_plane::ports::CreateWorkspaceRoleInput {
+        &control_plane_contracts::ports::CreateWorkspaceRoleInput {
             actor_user_id,
             workspace_id,
             code: "auditor".into(),

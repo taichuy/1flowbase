@@ -1,11 +1,8 @@
 mod backup_export;
 
-#[cfg(test)]
-mod _tests;
-
 use anyhow::Result;
 use async_trait::async_trait;
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     AuthRepository, CreateFileStorageInput, CreateFileTableRegistrationInput,
     DeleteFileStorageInput, DeleteFileTableInput, FileManagementRepository,
     UpdateFileStorageBindingInput, UpdateFileStorageInput,

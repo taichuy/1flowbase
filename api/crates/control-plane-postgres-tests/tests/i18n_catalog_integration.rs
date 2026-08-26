@@ -6,7 +6,7 @@ use control_plane::i18n_catalog::management::{
     RestoreOfficialTranslationCommand, UpsertCustomTranslationCommand,
     UpsertOfficialOverrideCommand,
 };
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     AuthRepository, BootstrapRepository, CatalogManagementOrigin, CatalogResolutionRepository,
     DeleteCatalogTranslationInput, DeleteCustomCatalogMessageInput, I18nCatalogRepository,
     RuntimeI18nCatalogRepository, UpsertCatalogTranslationInput,

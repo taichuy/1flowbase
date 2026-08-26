@@ -1,4 +1,4 @@
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     AddModelFieldInput, CreateModelDefinitionInput, CreateScopeDataModelGrantInput,
     ModelDefinitionRepository, UpdateModelDefinitionInput, UpdateModelDefinitionStatusInput,
     UpdateScopeDataModelGrantInput,
@@ -73,9 +73,9 @@ async fn seed_data_source_workspace(
         .await
         .unwrap();
     let installation_id = Uuid::now_v7();
-    control_plane::ports::PluginRepository::upsert_installation(
+    control_plane_contracts::ports::PluginRepository::upsert_installation(
         store,
-        &control_plane::ports::UpsertPluginInstallationInput {
+        &control_plane_contracts::ports::UpsertPluginInstallationInput {
             installation_id,
             category: domain::ExtensionCategory::RuntimeExtensions,
             organization: "test".to_string(),

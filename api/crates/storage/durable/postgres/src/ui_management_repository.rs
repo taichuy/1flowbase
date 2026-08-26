@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     CreateUiCodeTemplateInput, CreateUiComponentRecordInput, OfficialUiComponentCatalogRecord,
     ReviseUiCodeTemplateInput, UiComponentCatalogRepository, UiComponentRecordPatch,
     UiManagementRepository,
@@ -470,7 +470,7 @@ impl UiManagementRepository for PgControlPlaneStore {
                     .and_then(|database| database.constraint())
                     == Some("ui_component_records_identity_unique")
                 {
-                    anyhow::Error::new(control_plane::errors::ControlPlaneError::Conflict(
+                    anyhow::Error::new(control_plane_contracts::ControlPlaneContractError::Conflict(
                         "ui_component_code",
                     ))
                 } else {

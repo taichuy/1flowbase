@@ -1,6 +1,6 @@
 use anyhow::Result;
-use control_plane::errors::ControlPlaneError;
-use control_plane::ports::{
+use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
+use control_plane_contracts::ports::{
     ApplicationRepository, AuthRepository, AuthenticatorSettingsRepository, BootstrapRepository,
     CreateApplicationInput, CreateMemberInput, FlowRepository, MemberRepository,
     UpdateProfileInput, WorkspaceRepository,
@@ -286,7 +286,7 @@ impl PgControlPlaneStore {
 
     pub async fn update_user_meta(
         &self,
-        input: &control_plane::ports::UpdateUserMetaInput,
+        input: &control_plane_contracts::ports::UpdateUserMetaInput,
     ) -> Result<UserRecord> {
         AuthRepository::update_user_meta(self, input).await
     }
@@ -428,7 +428,7 @@ pub(crate) async fn primary_workspace_id(pool: &PgPool) -> Result<Uuid> {
     sqlx::query_scalar("select id from workspaces order by created_at asc limit 1")
         .fetch_optional(pool)
         .await?
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound("workspace").into())
+        .ok_or(control_plane_contracts::ControlPlaneContractError::NotFound("workspace").into())
 }
 
 pub(crate) async fn tenant_id_for_workspace(pool: &PgPool, workspace_id: Uuid) -> Result<Uuid> {
@@ -436,7 +436,7 @@ pub(crate) async fn tenant_id_for_workspace(pool: &PgPool, workspace_id: Uuid) -
         .bind(workspace_id)
         .fetch_optional(pool)
         .await?
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound("tenant").into())
+        .ok_or(control_plane_contracts::ControlPlaneContractError::NotFound("tenant").into())
 }
 
 pub(crate) async fn workspace_id_for_user(pool: &PgPool, user_id: Uuid) -> Result<Uuid> {

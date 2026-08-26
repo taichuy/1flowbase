@@ -369,7 +369,7 @@ impl RoleRepository for PgControlPlaneStore {
         &self,
         workspace_id: Uuid,
         role_code: &str,
-    ) -> Result<control_plane::ports::RoleDataPolicyView> {
+    ) -> Result<control_plane_contracts::ports::RoleDataPolicyView> {
         let role = find_role_by_code(self.pool(), workspace_id, role_code)
             .await?
             .ok_or(ControlPlaneError::NotFound("role"))?;
@@ -438,7 +438,7 @@ impl RoleRepository for PgControlPlaneStore {
             })
             .collect();
 
-        Ok(control_plane::ports::RoleDataPolicyView {
+        Ok(control_plane_contracts::ports::RoleDataPolicyView {
             role_code: role.code,
             default_policy,
             model_policies,
@@ -448,7 +448,7 @@ impl RoleRepository for PgControlPlaneStore {
     async fn replace_role_data_policy(
         &self,
         input: &ReplaceRoleDataPolicyInput,
-    ) -> Result<control_plane::ports::RoleDataPolicyView> {
+    ) -> Result<control_plane_contracts::ports::RoleDataPolicyView> {
         let role = find_role_by_code(self.pool(), input.workspace_id, &input.role_code)
             .await?
             .ok_or(ControlPlaneError::NotFound("role"))?;

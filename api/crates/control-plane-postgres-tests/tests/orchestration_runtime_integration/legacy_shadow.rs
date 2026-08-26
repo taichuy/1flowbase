@@ -176,12 +176,10 @@ async fn legacy_shadow_cursor_classifies_pending_and_terminal_runs() {
         .chain(second.statistics.iter())
         .map(|item| item.run_classification)
         .collect::<Vec<_>>();
-    assert!(
-        classifications.contains(&control_plane::ports::LegacyRuntimeRunClassification::Pending)
-    );
-    assert!(
-        classifications.contains(&control_plane::ports::LegacyRuntimeRunClassification::Terminal)
-    );
+    assert!(classifications
+        .contains(&control_plane_contracts::ports::LegacyRuntimeRunClassification::Pending));
+    assert!(classifications
+        .contains(&control_plane_contracts::ports::LegacyRuntimeRunClassification::Terminal));
     assert_ne!(pending.id, terminal.id);
 }
 

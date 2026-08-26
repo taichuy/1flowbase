@@ -8,8 +8,8 @@ pub use naming::RuntimeTableNamePolicy;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use control_plane::{
-    errors::ControlPlaneError,
+use control_plane_contracts::{
+    ControlPlaneContractError as ControlPlaneError,
     ports::{
         AddModelFieldInput, AuthRepository, CreateModelDefinitionInput,
         CreateScopeDataModelGrantInput, ModelDefinitionRepository,

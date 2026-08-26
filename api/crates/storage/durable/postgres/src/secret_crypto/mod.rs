@@ -3,7 +3,7 @@ use chacha20poly1305::{
     aead::{Aead, AeadCore, KeyInit, OsRng},
     XChaCha20Poly1305,
 };
-use control_plane::errors::ControlPlaneError;
+use control_plane_contracts::ControlPlaneContractError as ControlPlaneError;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 

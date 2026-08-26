@@ -1,5 +1,5 @@
-use control_plane::{
-    errors::ControlPlaneError,
+use control_plane_contracts::{
+    ControlPlaneContractError as ControlPlaneError,
     ports::{
         AuthRepository, CreateMemberInput, CreateWorkspaceRoleInput, MemberRepository,
         RoleRepository, UpdateProfileInput, UpdateWorkspaceRoleInput,
@@ -524,7 +524,7 @@ async fn member_profile_update_replaces_password_local_contact_identities() {
 
     <PgControlPlaneStore as MemberRepository>::update_member_profile(
         &store,
-        &control_plane::ports::UpdateMemberInput {
+        &control_plane_contracts::ports::UpdateMemberInput {
             actor_user_id,
             user_id: member.id,
             name: "Profile Identity".to_string(),

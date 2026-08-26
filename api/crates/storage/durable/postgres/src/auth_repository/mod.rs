@@ -2,8 +2,8 @@ pub(crate) mod identity_binding;
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use control_plane::{
-    errors::ControlPlaneError,
+use control_plane_contracts::{
+    ControlPlaneContractError as ControlPlaneError,
     ports::{
         ApiKeyRepository, AuthRepository, BootstrapRepository, CreateApiKeyInput,
         UpdateProfileInput, UpdateUserMetaInput,
@@ -481,7 +481,7 @@ impl BootstrapRepository for PgControlPlaneStore {
         &self,
         tenant_id: Uuid,
         workspace_name: &str,
-    ) -> Result<control_plane::ports::WorkspaceBootstrapResult> {
+    ) -> Result<control_plane_contracts::ports::WorkspaceBootstrapResult> {
         let existing = sqlx::query(
             r#"
             select id, tenant_id, name, logo_url, introduction
@@ -497,7 +497,7 @@ impl BootstrapRepository for PgControlPlaneStore {
         .await?;
 
         if let Some(row) = existing {
-            return Ok(control_plane::ports::WorkspaceBootstrapResult {
+            return Ok(control_plane_contracts::ports::WorkspaceBootstrapResult {
                 workspace: PgWorkspaceMapper::to_workspace_record(StoredWorkspaceRow {
                     id: row.get("id"),
                     tenant_id: row.get("tenant_id"),
@@ -531,7 +531,7 @@ impl BootstrapRepository for PgControlPlaneStore {
         .execute(self.pool())
         .await?;
 
-        Ok(control_plane::ports::WorkspaceBootstrapResult {
+        Ok(control_plane_contracts::ports::WorkspaceBootstrapResult {
             workspace: PgWorkspaceMapper::to_workspace_record(StoredWorkspaceRow {
                 id,
                 tenant_id,
@@ -547,8 +547,8 @@ impl BootstrapRepository for PgControlPlaneStore {
         &self,
         tenant_id: Uuid,
         workspace_name: &str,
-        seed: &control_plane::i18n_catalog::VerifiedOfficialCatalogSeed,
-    ) -> Result<control_plane::ports::WorkspaceBootstrapResult> {
+        seed: &control_plane_contracts::i18n_catalog::VerifiedOfficialCatalogSeed,
+    ) -> Result<control_plane_contracts::ports::WorkspaceBootstrapResult> {
         let mut transaction = self.pool().begin().await?;
         let existing = sqlx::query(
             r#"
@@ -653,7 +653,7 @@ impl BootstrapRepository for PgControlPlaneStore {
         .await?;
 
         transaction.commit().await?;
-        Ok(control_plane::ports::WorkspaceBootstrapResult { workspace, created })
+        Ok(control_plane_contracts::ports::WorkspaceBootstrapResult { workspace, created })
     }
 
     async fn upsert_root_role(

@@ -479,7 +479,7 @@ async fn migration_repairs_missing_system_projection_without_rebuilding_history(
     .unwrap();
 
     sqlx::raw_sql(include_str!(
-        "../../../../migrations/20260630120000_repair_run_conversation_projection_system.sql"
+        "../../../../storage/durable/postgres/migrations/20260630120000_repair_run_conversation_projection_system.sql"
     ))
     .execute(store.pool())
     .await

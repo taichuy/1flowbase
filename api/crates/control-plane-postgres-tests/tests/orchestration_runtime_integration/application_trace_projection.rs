@@ -18,24 +18,20 @@ async fn trace_projection_repository_queries_root_children_content_and_status() 
     )
     .await;
     let root_trace_node_id =
-        control_plane_contracts::trace_node_id_for_locator(
-            run.id,
-            "run:test/node:root",
-        );
-    let child_trace_node_id =
-        control_plane_contracts::trace_node_id_for_locator(
-            run.id,
-            "run:test/node:root/tool:weather",
-        );
+        control_plane_contracts::trace_node_id_for_locator(run.id, "run:test/node:root");
+    let child_trace_node_id = control_plane_contracts::trace_node_id_for_locator(
+        run.id,
+        "run:test/node:root/tool:weather",
+    );
 
     <PgControlPlaneStore as OrchestrationRuntimeRepository>::replace_application_run_trace_projection(
         &store,
-        &control_plane::ports::ReplaceApplicationRunTraceProjectionInput {
+        &control_plane_contracts::ports::ReplaceApplicationRunTraceProjectionInput {
             flow_run_id: run.id,
             projection_version: 1,
             source_watermark: "node_runs:2/runtime_events:0".to_string(),
             nodes: vec![
-                control_plane::ports::ApplicationRunTraceNodeProjectionInput {
+                control_plane_contracts::ports::ApplicationRunTraceNodeProjectionInput {
                     trace_node_id: root_trace_node_id,
                     parent_trace_node_id: None,
                     stable_locator: "run:test/node:root".to_string(),
@@ -62,7 +58,7 @@ async fn trace_projection_repository_queries_root_children_content_and_status() 
                     parent_tool_call_id: None,
                     trace_relation_kind: None,
                 },
-                control_plane::ports::ApplicationRunTraceNodeProjectionInput {
+                control_plane_contracts::ports::ApplicationRunTraceNodeProjectionInput {
                     trace_node_id: child_trace_node_id,
                     parent_trace_node_id: Some(root_trace_node_id),
                     stable_locator: "run:test/node:root/tool:weather".to_string(),
@@ -90,7 +86,7 @@ async fn trace_projection_repository_queries_root_children_content_and_status() 
                     trace_relation_kind: None,
                 },
             ],
-            contents: vec![control_plane::ports::ApplicationRunTraceNodeContentProjectionInput {
+            contents: vec![control_plane_contracts::ports::ApplicationRunTraceNodeContentProjectionInput {
                 trace_node_id: child_trace_node_id,
                 content_kind: "tool_callback".to_string(),
                 payload: json!({
@@ -195,7 +191,7 @@ async fn trace_projection_repository_queries_root_children_content_and_status() 
     let children_page =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_application_run_trace_children_page(
             &store,
-            control_plane::ports::ListApplicationRunTraceChildrenPageInput {
+            control_plane_contracts::ports::ListApplicationRunTraceChildrenPageInput {
                 flow_run_id: run.id,
                 parent_trace_node_id: root_trace_node_id,
                 page_size: 20,
@@ -287,12 +283,9 @@ async fn trace_projection_repository_paginates_children_by_stable_order() {
     )
     .await;
     let root_trace_node_id =
-        control_plane_contracts::trace_node_id_for_locator(
-            run.id,
-            "run:test/node:root",
-        );
+        control_plane_contracts::trace_node_id_for_locator(run.id, "run:test/node:root");
     let mut nodes = vec![
-        control_plane::ports::ApplicationRunTraceNodeProjectionInput {
+        control_plane_contracts::ports::ApplicationRunTraceNodeProjectionInput {
             trace_node_id: root_trace_node_id,
             parent_trace_node_id: None,
             stable_locator: "run:test/node:root".to_string(),
@@ -322,42 +315,43 @@ async fn trace_projection_repository_paginates_children_by_stable_order() {
     ];
     for index in 0..5 {
         let stable_locator = format!("run:test/node:root/tool:{index:02}");
-        nodes.push(control_plane::ports::ApplicationRunTraceNodeProjectionInput {
-            trace_node_id:
-                control_plane_contracts::trace_node_id_for_locator(
+        nodes.push(
+            control_plane_contracts::ports::ApplicationRunTraceNodeProjectionInput {
+                trace_node_id: control_plane_contracts::trace_node_id_for_locator(
                     run.id,
                     &stable_locator,
                 ),
-            parent_trace_node_id: Some(root_trace_node_id),
-            stable_locator,
-            node_kind: "tool_callback".to_string(),
-            owner_kind: Some("tool_call".to_string()),
-            owner_id: Some(format!("call-{index:02}")),
-            order_key: format!("000001/{index:06}"),
-            node_id: None,
-            node_type: Some("tool".to_string()),
-            node_mode: None,
-            node_alias: format!("tool_{index:02}"),
-            status: "succeeded".to_string(),
-            started_at: started_at + Duration::milliseconds(index * 100),
-            finished_at: Some(started_at + Duration::milliseconds(index * 100 + 50)),
-            duration_ms: Some(50),
-            metrics_payload: json!({}),
-            has_children: false,
-            child_count: 0,
-            has_content: false,
-            content_ref: None,
-            source_flow_run_id: None,
-            source_trace_node_id: None,
-            parent_callback_task_id: None,
-            parent_tool_call_id: None,
-            trace_relation_kind: None,
-        });
+                parent_trace_node_id: Some(root_trace_node_id),
+                stable_locator,
+                node_kind: "tool_callback".to_string(),
+                owner_kind: Some("tool_call".to_string()),
+                owner_id: Some(format!("call-{index:02}")),
+                order_key: format!("000001/{index:06}"),
+                node_id: None,
+                node_type: Some("tool".to_string()),
+                node_mode: None,
+                node_alias: format!("tool_{index:02}"),
+                status: "succeeded".to_string(),
+                started_at: started_at + Duration::milliseconds(index * 100),
+                finished_at: Some(started_at + Duration::milliseconds(index * 100 + 50)),
+                duration_ms: Some(50),
+                metrics_payload: json!({}),
+                has_children: false,
+                child_count: 0,
+                has_content: false,
+                content_ref: None,
+                source_flow_run_id: None,
+                source_trace_node_id: None,
+                parent_callback_task_id: None,
+                parent_tool_call_id: None,
+                trace_relation_kind: None,
+            },
+        );
     }
 
     <PgControlPlaneStore as OrchestrationRuntimeRepository>::replace_application_run_trace_projection(
         &store,
-        &control_plane::ports::ReplaceApplicationRunTraceProjectionInput {
+        &control_plane_contracts::ports::ReplaceApplicationRunTraceProjectionInput {
             flow_run_id: run.id,
             projection_version: 1,
             source_watermark: "node_runs:6/runtime_events:0".to_string(),
@@ -371,7 +365,7 @@ async fn trace_projection_repository_paginates_children_by_stable_order() {
     let first_page =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_application_run_trace_children_page(
             &store,
-            control_plane::ports::ListApplicationRunTraceChildrenPageInput {
+            control_plane_contracts::ports::ListApplicationRunTraceChildrenPageInput {
                 flow_run_id: run.id,
                 parent_trace_node_id: root_trace_node_id,
                 page_size: 2,
@@ -389,7 +383,7 @@ async fn trace_projection_repository_paginates_children_by_stable_order() {
     let second_page =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_application_run_trace_children_page(
             &store,
-            control_plane::ports::ListApplicationRunTraceChildrenPageInput {
+            control_plane_contracts::ports::ListApplicationRunTraceChildrenPageInput {
                 flow_run_id: run.id,
                 parent_trace_node_id: root_trace_node_id,
                 page_size: 2,
@@ -406,7 +400,7 @@ async fn trace_projection_repository_paginates_children_by_stable_order() {
     let last_page =
         <PgControlPlaneStore as OrchestrationRuntimeRepository>::list_application_run_trace_children_page(
             &store,
-            control_plane::ports::ListApplicationRunTraceChildrenPageInput {
+            control_plane_contracts::ports::ListApplicationRunTraceChildrenPageInput {
                 flow_run_id: run.id,
                 parent_trace_node_id: root_trace_node_id,
                 page_size: 2,
@@ -441,7 +435,7 @@ async fn trace_projection_failed_status_preserves_diagnostics() {
 
     <PgControlPlaneStore as OrchestrationRuntimeRepository>::upsert_application_run_trace_projection_status(
         &store,
-        &control_plane::ports::UpsertApplicationRunTraceProjectionStatusInput {
+        &control_plane_contracts::ports::UpsertApplicationRunTraceProjectionStatusInput {
             flow_run_id: run.id,
             projection_version: 1,
             status: domain::ApplicationRunTraceProjectionStatus::Failed,

@@ -1,4 +1,4 @@
-use control_plane::ports::RoleRepository;
+use control_plane_contracts::ports::RoleRepository;
 use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 

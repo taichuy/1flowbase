@@ -380,7 +380,7 @@ impl PgOrchestrationRuntimeMapper {
 
     pub fn to_flow_run_record(row: StoredFlowRunRow) -> Result<domain::FlowRunRecord> {
         let title =
-            control_plane::flow_run_title::display_flow_run_title(&row.title, &row.input_payload);
+            control_plane_contracts::flow_run_title::display_flow_run_title(&row.title, &row.input_payload);
         Ok(domain::FlowRunRecord {
             id: row.id,
             application_id: row.application_id,
@@ -724,7 +724,7 @@ impl PgOrchestrationRuntimeMapper {
             run_mode: parse_flow_run_mode(&row.run_mode)?,
             status: parse_flow_run_status(&row.status)?,
             target_node_id: row.target_node_id,
-            title: control_plane::flow_run_title::display_flow_run_title(
+            title: control_plane_contracts::flow_run_title::display_flow_run_title(
                 &row.title,
                 &row.input_payload,
             ),

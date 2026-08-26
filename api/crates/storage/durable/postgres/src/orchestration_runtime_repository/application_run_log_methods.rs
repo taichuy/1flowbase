@@ -2,7 +2,7 @@ impl PgControlPlaneStore {
     async fn list_application_run_count_tokens_results(
         &self,
         flow_run_ids: &[Uuid],
-    ) -> Result<Vec<control_plane::ports::ApplicationRunCountTokensResult>> {
+    ) -> Result<Vec<control_plane_contracts::ports::ApplicationRunCountTokensResult>> {
         if flow_run_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -23,11 +23,11 @@ impl PgControlPlaneStore {
                 let flow_run_id: Uuid = row.get("id");
                 let output_payload: serde_json::Value = row.get("output_payload");
                 let input_tokens =
-                    control_plane::orchestration_runtime::count_tokens_input_tokens_from_output_payload(
+                    extension_contracts::semantic_terminal::count_tokens_input_tokens_from_output_payload(
                         &output_payload,
                     )?
                     .ok_or_else(|| anyhow!("CountTokens terminal did not contain a typed result"))?;
-                Ok(control_plane::ports::ApplicationRunCountTokensResult {
+                Ok(control_plane_contracts::ports::ApplicationRunCountTokensResult {
                     flow_run_id,
                     input_tokens,
                 })
@@ -65,7 +65,7 @@ impl PgControlPlaneStore {
         tx: &mut sqlx::Transaction<'_, Postgres>,
         flow_run: &domain::FlowRunRecord,
     ) -> Result<()> {
-        let display_title = control_plane::flow_run_title::display_flow_run_title(
+        let display_title = control_plane_contracts::flow_run_title::display_flow_run_title(
             &flow_run.title,
             &flow_run.input_payload,
         );
@@ -519,7 +519,7 @@ impl PgControlPlaneStore {
         &self,
         application_id: Uuid,
         input: ListApplicationRunsPageInput,
-    ) -> Result<control_plane::ports::ApplicationRunLogSummaryPage> {
+    ) -> Result<control_plane_contracts::ports::ApplicationRunLogSummaryPage> {
         let page = input.page.max(1);
         let page_size = input.page_size.clamp(1, 100);
         let offset = (page - 1) * page_size;
@@ -597,7 +597,7 @@ impl PgControlPlaneStore {
             item.count_tokens_input_tokens = count_tokens_results.get(&item.run.id).copied();
         }
 
-        Ok(control_plane::ports::ApplicationRunLogSummaryPage {
+        Ok(control_plane_contracts::ports::ApplicationRunLogSummaryPage {
             items,
             total,
             page,
@@ -694,7 +694,7 @@ fn is_anthropic_claude_code_control_run(flow_run: &domain::FlowRunRecord) -> boo
         || application_conversation_user_text(&flow_run.input_payload)
             .as_deref()
             .and_then(
-                control_plane::application_public_api::compat::anthropic::claude_code_control_kind,
+                control_plane_contracts::application_public_runtime::claude_code_control_kind,
             )
             .is_some()
 }
@@ -803,7 +803,7 @@ fn application_conversation_system_text(payload: &serde_json::Value) -> Option<S
 
 fn application_conversation_user_text(payload: &serde_json::Value) -> Option<String> {
     if let Some(message) =
-        control_plane::application_public_api::run_service::embedded_assistant_user_message(payload)
+        control_plane_contracts::application_public_runtime::embedded_assistant_user_message(payload)
     {
         return trimmed_text(message.content());
     }

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use control_plane::ports::CommitPluginInstallationInput;
+use control_plane_contracts::ports::CommitPluginInstallationInput;
 use uuid::Uuid;
 
 use crate::{plugin_repository::map_installation, repositories::PgControlPlaneStore};

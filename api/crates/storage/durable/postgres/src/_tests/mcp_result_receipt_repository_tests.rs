@@ -1,4 +1,4 @@
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     McpOperationOutcome, McpResultReceiptRepository, RecordMcpResultReceiptInput,
     MCP_RESULT_RECEIPT_SUMMARY_MAX_BYTES,
 };

@@ -1,6 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     ApplicationJsDependencySelectionRepository, JsDependencyRepository,
     ReplaceApplicationJsDependencySelectionInput, ReplaceInstallationJsDependenciesInput,
 };

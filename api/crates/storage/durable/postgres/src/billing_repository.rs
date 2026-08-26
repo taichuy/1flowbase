@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use control_plane::{
-    errors::ControlPlaneError,
+use control_plane_contracts::{
+    ControlPlaneContractError as ControlPlaneError,
     ports::{
         BillingRepository, CreditAccountRecord, CreditCommandInput, CreditOutboxEvent,
         CreditReservation, CreditTransactionRecord, ListCreditLedgerInput, ListPricingRulesInput,

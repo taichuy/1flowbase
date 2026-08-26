@@ -1,7 +1,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
-use control_plane::{
-    errors::ControlPlaneError,
+use control_plane_contracts::{
+    ControlPlaneContractError as ControlPlaneError,
     ports::{
         CreateDataSourceInstanceInput, CreateDataSourcePreviewSessionInput,
         DataSourceInstanceVisibility, DataSourceRepository, RotateDataSourceSecretInput,
@@ -370,7 +370,7 @@ impl DataSourceRepository for PgControlPlaneStore {
 
     async fn update_instance_defaults(
         &self,
-        input: &control_plane::ports::UpdateDataSourceDefaultsInput,
+        input: &control_plane_contracts::ports::UpdateDataSourceDefaultsInput,
     ) -> Result<domain::DataSourceInstanceRecord> {
         let row = sqlx::query(
             r#"
@@ -449,7 +449,7 @@ impl DataSourceRepository for PgControlPlaneStore {
 
     async fn update_main_source_defaults(
         &self,
-        input: &control_plane::ports::UpdateMainSourceDefaultsInput,
+        input: &control_plane_contracts::ports::UpdateMainSourceDefaultsInput,
     ) -> Result<domain::DataSourceDefaults> {
         let row = sqlx::query(
             r#"

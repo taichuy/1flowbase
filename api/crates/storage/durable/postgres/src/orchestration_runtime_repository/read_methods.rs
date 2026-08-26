@@ -434,8 +434,8 @@ impl PgControlPlaneStore {
 
     async fn list_model_provider_request_logs_page(
         &self,
-        input: control_plane::ports::ListModelProviderRequestLogsPageInput,
-    ) -> Result<control_plane::ports::ModelProviderRequestLogsPage> {
+        input: control_plane_contracts::ports::ListModelProviderRequestLogsPageInput,
+    ) -> Result<control_plane_contracts::ports::ModelProviderRequestLogsPage> {
         let page = input.page.max(1);
         let page_size = input.page_size.clamp(1, 100);
         let offset = (page - 1) * page_size;
@@ -461,7 +461,7 @@ impl PgControlPlaneStore {
         let rows = query.build().fetch_all(self.pool()).await?;
         let items = rows
             .into_iter()
-            .map(|row| control_plane::ports::ModelProviderRequestLogRecord {
+            .map(|row| control_plane_contracts::ports::ModelProviderRequestLogRecord {
                 attempt_id: row.get("attempt_id"),
                 flow_run_id: row.get("flow_run_id"),
                 node_run_id: row.get("node_run_id"),
@@ -500,7 +500,7 @@ impl PgControlPlaneStore {
                 total_duration_ms: row.get("total_duration_ms"),
             })
             .collect();
-        Ok(control_plane::ports::ModelProviderRequestLogsPage {
+        Ok(control_plane_contracts::ports::ModelProviderRequestLogsPage {
             items,
             total_count,
             page,
@@ -599,8 +599,8 @@ impl PgControlPlaneStore {
     async fn list_application_runs_page(
         &self,
         application_id: Uuid,
-        input: control_plane::ports::ListApplicationRunsPageInput,
-    ) -> Result<control_plane::ports::ApplicationRunSummaryPage> {
+        input: control_plane_contracts::ports::ListApplicationRunsPageInput,
+    ) -> Result<control_plane_contracts::ports::ApplicationRunSummaryPage> {
         let page = input.page.max(1);
         let page_size = input.page_size.clamp(1, 100);
         let offset = (page - 1) * page_size;
@@ -682,7 +682,7 @@ impl PgControlPlaneStore {
         .fetch_all(self.pool())
         .await?;
 
-        Ok(control_plane::ports::ApplicationRunSummaryPage {
+        Ok(control_plane_contracts::ports::ApplicationRunSummaryPage {
             items: rows
                 .into_iter()
                 .map(map_application_run_summary)
@@ -696,8 +696,8 @@ impl PgControlPlaneStore {
     async fn list_application_conversation_runs_page(
         &self,
         application_id: Uuid,
-        input: control_plane::ports::ListApplicationConversationRunsPageInput,
-    ) -> Result<control_plane::ports::ApplicationConversationRunsPage> {
+        input: control_plane_contracts::ports::ListApplicationConversationRunsPageInput,
+    ) -> Result<control_plane_contracts::ports::ApplicationConversationRunsPage> {
         let limit = input.limit.clamp(1, 50);
         let (start_rn, end_rn, total) = if let Some(anchor_run_id) = input.before_run_id {
             let Some((anchor_rn, total)) = self
@@ -822,7 +822,7 @@ impl PgControlPlaneStore {
         let before_cursor = items.first().map(|run| run.id);
         let after_cursor = items.last().map(|run| run.id);
 
-        Ok(control_plane::ports::ApplicationConversationRunsPage {
+        Ok(control_plane_contracts::ports::ApplicationConversationRunsPage {
             items,
             has_before: start_rn > 1,
             has_after: end_rn < total,
@@ -1079,7 +1079,7 @@ impl PgControlPlaneStore {
 
 fn push_model_provider_request_log_filters<'a>(
     query: &mut QueryBuilder<'a, Postgres>,
-    input: &'a control_plane::ports::ListModelProviderRequestLogsPageInput,
+    input: &'a control_plane_contracts::ports::ListModelProviderRequestLogsPageInput,
 ) {
     query
         .push(" where logs.scope_id = ")
@@ -1126,8 +1126,8 @@ fn push_model_provider_request_log_filters<'a>(
 }
 
 fn empty_application_conversation_runs_page(
-) -> control_plane::ports::ApplicationConversationRunsPage {
-    control_plane::ports::ApplicationConversationRunsPage {
+) -> control_plane_contracts::ports::ApplicationConversationRunsPage {
+    control_plane_contracts::ports::ApplicationConversationRunsPage {
         items: Vec::new(),
         has_before: false,
         has_after: false,

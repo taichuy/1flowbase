@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
-use control_plane::ports::{
+use control_plane_contracts::ports::{
     McpOperationOutcome, McpResultReceipt, McpResultReceiptRepository, RecordMcpResultReceiptInput,
     MCP_RESULT_RECEIPT_OPERATION_ID_MAX_BYTES, MCP_RESULT_RECEIPT_SUMMARY_MAX_BYTES,
 };
