@@ -541,7 +541,7 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         provider_code: &str,
         upstream_model_id: &str,
         at: OffsetDateTime,
-    ) -> Result<Vec<control_plane::billing::PricingRule>> {
+    ) -> Result<Vec<control_plane_contracts::billing::PricingRule>> {
         BillingRepository::match_pricing_rules(self, provider_code, upstream_model_id, at).await
     }
 
@@ -549,7 +549,7 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         &self,
         provider_code: &str,
         upstream_model_id: &str,
-    ) -> Result<Vec<control_plane::billing::PricingRule>> {
+    ) -> Result<Vec<control_plane_contracts::billing::PricingRule>> {
         let mut candidates = BillingRepository::list_pricing_rules(
             self,
             &ListPricingRulesInput {
@@ -566,17 +566,17 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
         candidates.retain(|rule| {
             rule.provider_code == provider_code && rule.upstream_model_id == upstream_model_id
         });
-        if provider_code != control_plane::billing::GLOBAL_ZERO_PROVIDER_CODE
-            || upstream_model_id != control_plane::billing::GLOBAL_ZERO_MODEL_ID
+        if provider_code != control_plane_contracts::billing::GLOBAL_ZERO_PROVIDER_CODE
+            || upstream_model_id != control_plane_contracts::billing::GLOBAL_ZERO_MODEL_ID
         {
             let mut fallback = BillingRepository::list_pricing_rules(
                 self,
                 &ListPricingRulesInput {
                     provider_code: Some(
-                        control_plane::billing::GLOBAL_ZERO_PROVIDER_CODE.to_string(),
+                        control_plane_contracts::billing::GLOBAL_ZERO_PROVIDER_CODE.to_string(),
                     ),
                     upstream_model_id: Some(
-                        control_plane::billing::GLOBAL_ZERO_MODEL_ID.to_string(),
+                        control_plane_contracts::billing::GLOBAL_ZERO_MODEL_ID.to_string(),
                     ),
                     enabled: Some(true),
                     source_kind: None,
@@ -587,8 +587,9 @@ impl OrchestrationRuntimeRepository for PgControlPlaneStore {
             .await?
             .items;
             fallback.retain(|rule| {
-                rule.provider_code == control_plane::billing::GLOBAL_ZERO_PROVIDER_CODE
-                    && rule.upstream_model_id == control_plane::billing::GLOBAL_ZERO_MODEL_ID
+                rule.provider_code == control_plane_contracts::billing::GLOBAL_ZERO_PROVIDER_CODE
+                    && rule.upstream_model_id
+                        == control_plane_contracts::billing::GLOBAL_ZERO_MODEL_ID
             });
             candidates.extend(fallback);
         }

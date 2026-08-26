@@ -1,9 +1,9 @@
-use std::{collections::BTreeSet, sync::Arc};
+use std::sync::Arc;
 
-use control_plane::billing::{CreditCommandService, PricingRule};
 use control_plane::ports::{
     BillingRepository, CreditCommandInput, ReserveCreditInput, UpsertPricingRuleInput,
 };
+use control_plane_contracts::billing::PricingRule;
 use rust_decimal::Decimal;
 use serde_json::json;
 use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
@@ -215,9 +215,8 @@ async fn expired_reservation_without_cost_is_released() {
 }
 
 #[tokio::test]
-async fn plugin_credit_command_requires_capability_permission_and_remains_idempotent() {
+async fn plugin_credit_command_round_trips_actor_and_enforces_idempotency() {
     let (store, workspace_id, user_id) = seeded_store().await;
-    let service = CreditCommandService::new(store.clone());
     let command = CreditCommandInput {
         workspace_id,
         user_id,
@@ -229,26 +228,11 @@ async fn plugin_credit_command_requires_capability_permission_and_remains_idempo
         source_id: Some("2026-08-17".into()),
         idempotency_key: "checkin:user:2026-08-17".into(),
         actor_user_id: None,
-        actor_plugin_id: None,
+        actor_plugin_id: Some("checkin-plugin".into()),
         metadata: json!({}),
     };
-    let denied = service
-        .execute_plugin_command("checkin-plugin", &BTreeSet::new(), command.clone())
-        .await
-        .unwrap_err();
-    assert!(denied
-        .to_string()
-        .contains("credit_command_permission_denied"));
-
-    let permissions = BTreeSet::from(["credit.grant".to_string()]);
-    let first = service
-        .execute_plugin_command("checkin-plugin", &permissions, command.clone())
-        .await
-        .unwrap();
-    let repeated = service
-        .execute_plugin_command("checkin-plugin", &permissions, command)
-        .await
-        .unwrap();
+    let first = store.execute_credit_command(&command).await.unwrap();
+    let repeated = store.execute_credit_command(&command).await.unwrap();
     assert_eq!(first.id, repeated.id);
     assert_eq!(first.actor_plugin_id.as_deref(), Some("checkin-plugin"));
 
@@ -266,17 +250,35 @@ async fn plugin_credit_command_requires_capability_permission_and_remains_idempo
             source_id: Some("2026-08-17".into()),
             idempotency_key: String::new(),
             actor_user_id: None,
-            actor_plugin_id: None,
+            actor_plugin_id: Some("checkin-plugin".into()),
             metadata: json!({}),
         }
     };
-    let conflict = service
-        .execute_plugin_command("checkin-plugin", &permissions, conflicting)
+    let conflict = store
+        .execute_credit_command(&conflicting)
         .await
         .unwrap_err();
     assert!(conflict
         .to_string()
         .contains("credit_idempotency_payload_mismatch"));
+
+    let account = store
+        .get_credit_account(workspace_id, user_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(account.current_balance, "2.500000000000000000");
+    let ledger_count: i64 = sqlx::query_scalar(
+        r#"select count(*) from runtime_credit_ledger
+           where workspace_id=$1 and user_id=$2 and idempotency_key=$3"#,
+    )
+    .bind(workspace_id)
+    .bind(user_id)
+    .bind("checkin:user:2026-08-17")
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(ledger_count, 1);
 }
 
 #[tokio::test]

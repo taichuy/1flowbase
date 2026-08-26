@@ -1,7 +1,6 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane::{
-    billing::PricingRule,
     errors::ControlPlaneError,
     ports::{
         BillingRepository, CreditAccountRecord, CreditCommandInput, CreditOutboxEvent,
@@ -9,6 +8,7 @@ use control_plane::{
         PricingRulesPage, ReserveCreditInput, SettleCreditInput, UpsertPricingRuleInput,
     },
 };
+use control_plane_contracts::billing::PricingRule;
 use sqlx::{Postgres, QueryBuilder, Row, Transaction};
 use time::OffsetDateTime;
 use uuid::Uuid;
