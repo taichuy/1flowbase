@@ -1,4 +1,5 @@
 import * as antdModule from 'antd';
+import * as antdStyleModule from 'antd-style';
 import * as ReactModule from 'react';
 import * as ReactJsxRuntimeModule from 'react/jsx-runtime';
 import * as uiModule from '@1flowbase/ui';
@@ -93,6 +94,9 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   ),
   registration('antd', Object.keys(antdModule), async () => ({
     module: antdModule
+  })),
+  registration('antd-style', Object.keys(antdStyleModule), async () => ({
+    module: antdStyleModule
   })),
   registration('@1flowbase/ui', Object.keys(uiModule), async () => ({
     module: uiModule

@@ -12,6 +12,7 @@ import {
 } from '@1flowbase/page-runtime';
 
 import antdPackageJson from 'antd/package.json';
+import antdStylePackageJson from 'antd-style/package.json';
 import appPackageJson from '../../../../../package.json';
 import reactPackageJson from 'react/package.json';
 import uiPackageJson from '../../../../../../packages/ui/package.json';
@@ -37,6 +38,7 @@ function createPlan(
     source: `
 import React from 'react';
 import { Button } from 'antd';
+import { useResponsive } from 'antd-style';
 import { AppThemeProvider } from '@1flowbase/ui';
 
 export default function Block(props) {
@@ -101,6 +103,11 @@ describe('frontstage native trusted block runtime factory', () => {
           hostDependencyRange: appPackageJson.dependencies.antd,
           packageVersion: antdPackageJson.version
         },
+        'antd-style': {
+          importSource: 'antd-style',
+          hostDependencyRange: appPackageJson.dependencies['antd-style'],
+          packageVersion: antdStylePackageJson.version
+        },
         '@1flowbase/ui': {
           importSource: '@1flowbase/ui',
           hostDependencyRange: appPackageJson.dependencies['@1flowbase/ui'],
@@ -108,7 +115,7 @@ describe('frontstage native trusted block runtime factory', () => {
         }
       }
     });
-    expect(manifest.contractVersion).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(manifest.contractVersion).toBe('1.1.0');
   });
 
   test('evaluates valid non-JSX source through host modules and renders through the surface portal', async () => {
@@ -215,13 +222,11 @@ export default function Block() {
 
     const overrideElement = createBlockRoot();
     const overridePlan = createPlan({ props: { title: 'Scoped override' } });
-    const overrideComponent = createFrontstageNativeTrustedBlockRuntimeFactory(
-      {
-        modules: {
-          antd: { Button: OverrideButton }
-        }
+    const overrideComponent = createFrontstageNativeTrustedBlockRuntimeFactory({
+      modules: {
+        antd: { Button: OverrideButton }
       }
-    )(overridePlan);
+    })(overridePlan);
     render(
       <FrontstageNativeTrustedBlockPortalHost
         root={overrideElement}
@@ -258,9 +263,9 @@ export default function Block() {
       ).findByRole('button', { name: 'Default modules' })
     ).toBeInTheDocument();
     expect(
-      within(
-        defaultElement.shadowRoot as unknown as HTMLElement
-      ).queryByText('Override: Default modules')
+      within(defaultElement.shadowRoot as unknown as HTMLElement).queryByText(
+        'Override: Default modules'
+      )
     ).not.toBeInTheDocument();
   });
 
@@ -280,6 +285,7 @@ export default function Block() {
     expect(Object.keys(moduleMap).sort()).toEqual([
       '@1flowbase/ui',
       'antd',
+      'antd-style',
       'react',
       'react/jsx-runtime'
     ]);
@@ -305,9 +311,7 @@ export default function Block() {
     );
 
     expect(matches).toEqual([
-      expect.stringMatching(
-        /components\/jsx-studio\/JsxStudioRunPanel\.tsx$/u
-      )
+      expect.stringMatching(/components\/jsx-studio\/JsxStudioRunPanel\.tsx$/u)
     ]);
   });
 });

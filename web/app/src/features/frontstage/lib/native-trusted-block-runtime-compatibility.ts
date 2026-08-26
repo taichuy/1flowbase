@@ -1,4 +1,5 @@
 import antdPackageJson from 'antd/package.json';
+import antdStylePackageJson from 'antd-style/package.json';
 import appPackageJson from '../../../../package.json';
 import {
   NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS,
@@ -9,7 +10,7 @@ import reactPackageJson from 'react/package.json';
 import uiPackageJson from '../../../../../packages/ui/package.json';
 
 export const FRONTSTAGE_NATIVE_TRUSTED_BLOCK_COMPATIBILITY_CONTRACT_VERSION =
-  '1.0.0';
+  '1.1.0';
 
 type FrontstageNativeTrustedBlockAllowedImport =
   (typeof NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS)[number];
@@ -56,6 +57,11 @@ export function getFrontstageNativeTrustedBlockRuntimeCompatibility(): Frontstag
         importSource: 'antd',
         hostDependencyRange: appPackageJson.dependencies.antd,
         packageVersion: antdPackageJson.version
+      },
+      'antd-style': {
+        importSource: 'antd-style',
+        hostDependencyRange: appPackageJson.dependencies['antd-style'],
+        packageVersion: antdStylePackageJson.version
       },
       '@1flowbase/ui': {
         importSource: '@1flowbase/ui',

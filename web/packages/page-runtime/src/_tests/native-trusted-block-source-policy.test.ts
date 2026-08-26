@@ -24,6 +24,7 @@ describe('Native trusted block source static policy', () => {
     expect(NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS).toEqual([
       'react',
       'antd',
+      'antd-style',
       '@1flowbase/ui'
     ]);
   });
@@ -42,6 +43,7 @@ describe('Native trusted block source static policy', () => {
   test.each([
     ['react named import', "import { useMemo } from 'react';"],
     ['antd component import', "import { Button } from 'antd';"],
+    ['antd style import', "import { useResponsive } from 'antd-style';"],
     ['first-party UI import', "import { Surface } from '@1flowbase/ui';"],
     ['allowed re-export', "export { Surface } from '@1flowbase/ui';"]
   ])('accepts allowed source import: %s', (_label, source) => {

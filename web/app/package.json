@@ -35,6 +35,7 @@
     "@tanstack/react-router": "^1.114.15",
     "@xyflow/react": "^12.10.2",
     "antd": "^6.1.1",
+    "antd-style": "^4.1.0",
     "copy-to-clipboard": "^4.0.2",
     "echarts": "6.1.0",
     "i18next": "^26.3.0",

@@ -4,6 +4,7 @@ export const NATIVE_TRUSTED_BLOCK_PERMISSION = 'ui_block.javascript.native';
 export const NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS = [
   'react',
   'antd',
+  'antd-style',
   '@1flowbase/ui'
 ] as const;
 

@@ -15,6 +15,7 @@ describe('Frontstage JSX editor projection', () => {
       'react',
       'react/jsx-runtime',
       'antd',
+      'antd-style',
       '@1flowbase/ui',
       '@1flowbase/block-sdk',
       '@1flowbase/native-components',
@@ -54,6 +55,12 @@ describe('Frontstage JSX editor projection', () => {
       expect.objectContaining({
         source: '@ant-design/x-markdown'
       })
+    );
+    expect(
+      projection.monacoExtraLibs.find(({ source }) => source === 'antd-style')
+        ?.content
+    ).toContain(
+      'export function useResponsive(): Partial<Record<ResponsiveKey, boolean>>;'
     );
   });
 });

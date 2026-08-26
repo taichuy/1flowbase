@@ -57,6 +57,12 @@ const ANTD_DECLARATIONS = `declare module 'antd' {
 }
 `;
 
+const ANTD_STYLE_DECLARATIONS = `declare module 'antd-style' {
+  export type ResponsiveKey = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'xxl';
+  export function useResponsive(): Partial<Record<ResponsiveKey, boolean>>;
+}
+`;
+
 const BLOCK_SDK_DECLARATIONS = `declare module '@1flowbase/block-sdk' {
   export type BlockContextRecord = Record<string, unknown>;
   export interface BlockContextIdentity { readonly id: string; readonly displayName?: string; }
@@ -103,7 +109,12 @@ export function createFrontendModuleExtraLib(
           ? BLOCK_SDK_DECLARATIONS
           : moduleSource === 'antd'
             ? `${ANTD_DECLARATIONS}${createGenericModuleDeclarations(moduleSource, exports)}`
-            : createGenericModuleDeclarations(moduleSource, exports)
+            : moduleSource === 'antd-style'
+              ? `${ANTD_STYLE_DECLARATIONS}${createGenericModuleDeclarations(
+                  moduleSource,
+                  exports.filter((exportName) => exportName !== 'useResponsive')
+                )}`
+              : createGenericModuleDeclarations(moduleSource, exports)
   };
 }
 
