@@ -18,12 +18,12 @@ async fn trace_projection_repository_queries_root_children_content_and_status() 
     )
     .await;
     let root_trace_node_id =
-        control_plane::orchestration_runtime::trace_projection::trace_node_id_for_locator(
+        control_plane_contracts::trace_node_id_for_locator(
             run.id,
             "run:test/node:root",
         );
     let child_trace_node_id =
-        control_plane::orchestration_runtime::trace_projection::trace_node_id_for_locator(
+        control_plane_contracts::trace_node_id_for_locator(
             run.id,
             "run:test/node:root/tool:weather",
         );
@@ -287,7 +287,7 @@ async fn trace_projection_repository_paginates_children_by_stable_order() {
     )
     .await;
     let root_trace_node_id =
-        control_plane::orchestration_runtime::trace_projection::trace_node_id_for_locator(
+        control_plane_contracts::trace_node_id_for_locator(
             run.id,
             "run:test/node:root",
         );
@@ -324,7 +324,7 @@ async fn trace_projection_repository_paginates_children_by_stable_order() {
         let stable_locator = format!("run:test/node:root/tool:{index:02}");
         nodes.push(control_plane::ports::ApplicationRunTraceNodeProjectionInput {
             trace_node_id:
-                control_plane::orchestration_runtime::trace_projection::trace_node_id_for_locator(
+                control_plane_contracts::trace_node_id_for_locator(
                     run.id,
                     &stable_locator,
                 ),

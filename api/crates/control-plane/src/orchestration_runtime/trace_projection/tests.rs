@@ -5,6 +5,10 @@ mod runtime_internal_tools;
 
 #[test]
 fn stable_trace_node_id_is_deterministic_for_locator() {
+    assert_eq!(
+        trace_node_id_for_locator as *const (),
+        control_plane_contracts::trace_node_id_for_locator as *const ()
+    );
     let flow_run_id = Uuid::now_v7();
     let locator = format!("run:{flow_run_id}/node:{}", Uuid::now_v7());
 

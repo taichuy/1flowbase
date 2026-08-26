@@ -1,10 +1,10 @@
 use domain::{ConsoleOperationId, ConsoleOperationPolicy, ConsolePolicyGroup};
 
 use crate::{
-    CompiledConsolePolicyCatalog, CompiledConsolePolicyGroup,
-    CompiledConsolePolicyMigrationInventory, CompiledConsolePolicyMigrationPlan,
-    ConsolePolicyMigrationError, ConsolePolicyMigrationLegacyGrantMapping,
-    ConsolePolicyMigrationLegacyGrantProjection,
+    project_compiled_console_policy_migration_plan, CompiledConsolePolicyCatalog,
+    CompiledConsolePolicyGroup, CompiledConsolePolicyMigrationInventory,
+    CompiledConsolePolicyMigrationPlan, ConsolePolicyMigrationError,
+    ConsolePolicyMigrationLegacyGrantMapping, ConsolePolicyMigrationLegacyGrantProjection,
 };
 
 #[test]
@@ -38,6 +38,20 @@ fn compiled_console_policy_contract_exposes_canonical_read_surface() {
     assert_eq!(plan.catalog_fingerprint(), "sha256:catalog");
     assert_eq!(plan.mapping_fingerprint(), "sha256:mapping");
     assert_eq!(plan.mappings(), &[mapping]);
+
+    let preview = project_compiled_console_policy_migration_plan(
+        &plan,
+        uuid::Uuid::nil(),
+        &["legacy.settings.read".to_string()],
+    )
+    .expect("canonical projection must preserve the compiled mapping");
+    assert_eq!(
+        preview.source_grants,
+        ["legacy.settings.read".to_string()].into_iter().collect()
+    );
+    assert!(preview.authorization_delta.added.is_empty());
+    assert!(preview.authorization_delta.removed.is_empty());
+    assert!(preview.effective_delta.is_empty());
 }
 
 #[test]

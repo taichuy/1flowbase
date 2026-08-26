@@ -41,6 +41,14 @@ fn row(value: &str, scope: ConsoleOperationRowScope) -> ConsoleOperationPolicy {
     ConsoleOperationPolicy::row(operation_id(value), scope)
 }
 
+#[test]
+fn projection_compat_surface_reexports_the_canonical_function() {
+    assert_eq!(
+        project_compiled_console_policy_migration_plan as *const (),
+        control_plane_contracts::project_compiled_console_policy_migration_plan as *const ()
+    );
+}
+
 fn catalog(
     complete: bool,
     full_operations: Vec<ConsoleOperationPolicy>,

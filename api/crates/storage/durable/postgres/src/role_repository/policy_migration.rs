@@ -1,5 +1,5 @@
 use super::*;
-use control_plane::role::console_policy_migration::project_compiled_console_policy_migration_plan;
+use control_plane_contracts::project_compiled_console_policy_migration_plan;
 
 fn normalized_migration_source(
     source: &RoleConsolePolicyMigrationSource,

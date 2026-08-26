@@ -225,7 +225,7 @@ impl PgControlPlaneStore {
         };
 
         Ok(Some(
-            control_plane::orchestration_runtime::trace_projection::trace_projection_source_watermark_from_counts(
+            control_plane_contracts::trace_projection_source_watermark_from_counts(
                 flow_run_updated_at,
                 usize::try_from(node_run_count)
                     .map_err(|_| anyhow!("node_run_count must fit usize"))?,
