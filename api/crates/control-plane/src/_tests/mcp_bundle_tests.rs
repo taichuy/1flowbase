@@ -1,6 +1,9 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 
 use async_trait::async_trait;
@@ -117,6 +120,8 @@ struct McpBundleExportSnapshot {
 struct McpBundleFixtureRepository {
     state: Arc<Mutex<SeedGraphState>>,
     export_snapshot: Option<Arc<McpBundleExportSnapshot>>,
+    replace_inputs: Arc<Mutex<Vec<ReplaceMcpBundleGraphInput>>>,
+    fail_replace: Arc<AtomicBool>,
 }
 
 impl McpBundleFixtureRepository {
@@ -124,6 +129,8 @@ impl McpBundleFixtureRepository {
         Self {
             state: Arc::default(),
             export_snapshot: Some(Arc::new(snapshot)),
+            replace_inputs: Arc::default(),
+            fail_replace: Arc::default(),
         }
     }
 
@@ -131,6 +138,17 @@ impl McpBundleFixtureRepository {
         self.export_snapshot
             .as_deref()
             .expect("export fixture must provide a workspace snapshot")
+    }
+
+    fn replace_inputs(&self) -> Vec<ReplaceMcpBundleGraphInput> {
+        self.replace_inputs
+            .lock()
+            .expect("replace input recording lock must not be poisoned")
+            .clone()
+    }
+
+    fn reject_replace(&self) {
+        self.fail_replace.store(true, Ordering::SeqCst);
     }
 
     fn remove_managed_graph(&self) {
@@ -237,9 +255,16 @@ impl McpManagementRepository for McpBundleFixtureRepository {
 
     async fn replace_mcp_bundle_graph_atomically(
         &self,
-        _input: &ReplaceMcpBundleGraphInput,
+        input: &ReplaceMcpBundleGraphInput,
     ) -> anyhow::Result<()> {
-        unreachable!("seed-only fixture does not import bundles")
+        if self.fail_replace.load(Ordering::SeqCst) {
+            anyhow::bail!("replace rejected by fixture")
+        }
+        self.replace_inputs
+            .lock()
+            .expect("replace input recording lock must not be poisoned")
+            .push(input.clone());
+        Ok(())
     }
 
     async fn seed_mcp_bundle_graph_once_atomically(
@@ -864,6 +889,200 @@ async fn instance_export_includes_only_the_bound_tools_connection_dependencies()
     assert_eq!(bundle.tools[0].tool_id, "selected_tool");
     assert_eq!(bundle.connections.len(), 1);
     assert_eq!(bundle.connections[0].connection_id, selected_connection_id);
+}
+
+#[tokio::test]
+async fn bundle_preview_and_import_preserve_shared_tool_impact_and_atomic_replace_input() {
+    let actor_user_id = Uuid::from_u128(110);
+    let workspace_id = Uuid::from_u128(120);
+    let selected_instance_record_id = Uuid::from_u128(130);
+    let other_instance_record_id = Uuid::from_u128(131);
+    let mut package = managed_frontstage_package("1.0.2");
+    package.instances[0].name = "New name".into();
+    package.tools[0].name = "New tool".into();
+
+    let instance = |id, instance_id: &str, name: &str| domain::McpInstanceRecord {
+        id,
+        workspace_id,
+        instance_id: instance_id.into(),
+        name: name.into(),
+        description_short: Some("Managed".into()),
+        status: domain::McpInstanceStatus::Enabled,
+        default_entry_path: "/frontstage".into(),
+        managed_by: None,
+        created_by: actor_user_id,
+        updated_by: actor_user_id,
+        created_at: OffsetDateTime::UNIX_EPOCH,
+        updated_at: OffsetDateTime::UNIX_EPOCH,
+    };
+    let policy = |id, instance_record_id| domain::McpInstanceDiscoveryPolicyRecord {
+        id,
+        workspace_id,
+        instance_record_id,
+        list_default_limit: 20,
+        list_max_depth: 3,
+        list_regex_enabled: false,
+        list_regex_max_length: 64,
+        list_return_fields: serde_json::json!(["id", "name"]),
+        created_by: actor_user_id,
+        updated_by: actor_user_id,
+        created_at: OffsetDateTime::UNIX_EPOCH,
+        updated_at: OffsetDateTime::UNIX_EPOCH,
+    };
+    let record_from_bundle = |id: u128, bundle: &domain::McpBundleTool| {
+        let mut record = tool(id, &bundle.tool_id, bundle.execution_target.clone());
+        record.workspace_id = workspace_id;
+        record.name = bundle.name.clone();
+        record.short_description = bundle.short_description.clone();
+        record.full_description = bundle.full_description.clone();
+        record.parameter_schema = bundle.parameter_schema_snapshot.clone();
+        record.result_schema = bundle.result_schema_snapshot.clone();
+        record.input_mapping = bundle.input_mapping.clone();
+        record.output_mapping = bundle.output_mapping.clone();
+        record.permission_code = bundle.permission_code_snapshot.clone();
+        record.risk_level = bundle.risk_level_snapshot;
+        record.created_by = actor_user_id;
+        record.updated_by = actor_user_id;
+        record
+    };
+    let mut first_tool = record_from_bundle(1, &package.tools[0]);
+    first_tool.name = "Old tool".into();
+    let second_tool = record_from_bundle(2, &package.tools[1]);
+    let scoped_binding = |id, instance_record_id, tool_id: &str| {
+        let mut record = binding(id, tool_id);
+        record.instance_record_id = instance_record_id;
+        record.created_by = actor_user_id;
+        record.updated_by = actor_user_id;
+        record
+    };
+    let repository = McpBundleFixtureRepository::with_export_snapshot(McpBundleExportSnapshot {
+        actor: domain::ActorContext::root(actor_user_id, workspace_id, "root"),
+        instances: vec![
+            instance(
+                selected_instance_record_id,
+                "frontstage_browser",
+                "Old name",
+            ),
+            instance(other_instance_record_id, "keep_me", "Keep me"),
+        ],
+        groups: vec![domain::McpGroupRecord {
+            id: Uuid::from_u128(140),
+            instance_record_id: selected_instance_record_id,
+            path: "/frontstage".into(),
+            display_name: "Frontstage".into(),
+            description_short: None,
+            enabled: true,
+            sort_order: 0,
+            created_by: actor_user_id,
+            updated_by: actor_user_id,
+            created_at: OffsetDateTime::UNIX_EPOCH,
+            updated_at: OffsetDateTime::UNIX_EPOCH,
+        }],
+        bindings: vec![
+            scoped_binding(
+                1,
+                selected_instance_record_id,
+                "frontstage_list_page_blocks",
+            ),
+            scoped_binding(
+                2,
+                selected_instance_record_id,
+                "frontstage_inspect_block_render",
+            ),
+            scoped_binding(1, other_instance_record_id, "frontstage_list_page_blocks"),
+        ],
+        policies: vec![
+            policy(Uuid::from_u128(150), selected_instance_record_id),
+            policy(Uuid::from_u128(151), other_instance_record_id),
+        ],
+        tools: vec![first_tool, second_tool],
+        connections: Vec::new(),
+    });
+    let service = McpManagementService::new(repository.clone());
+
+    let preview = service
+        .preview_bundle(crate::mcp_bundle::PreviewMcpBundleCommand {
+            actor_user_id,
+            package: package.clone(),
+            interface_catalog: Vec::new(),
+            current_system_version: "0.3.6".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        preview.instances[0].effect,
+        domain::McpBundleItemEffect::Update
+    );
+    assert_eq!(preview.tools[0].effect, domain::McpBundleItemEffect::Update);
+    assert_eq!(
+        preview.shared_tool_impacts,
+        vec![domain::McpBundleSharedToolImpact {
+            tool_id: "frontstage_list_page_blocks".into(),
+            instance_ids: vec!["keep_me".into()],
+        }]
+    );
+
+    service
+        .import_bundle(crate::mcp_bundle::ImportMcpBundleCommand {
+            actor_user_id,
+            package: package.clone(),
+            interface_catalog: Vec::new(),
+            current_system_version: "0.3.6".into(),
+        })
+        .await
+        .unwrap();
+    let inputs = repository.replace_inputs();
+    assert_eq!(inputs.len(), 1);
+    assert_eq!(inputs[0].actor_user_id, actor_user_id);
+    assert_eq!(inputs[0].workspace_id, workspace_id);
+    assert_eq!(inputs[0].instances[0].name, "New name");
+    assert_eq!(inputs[0].tools[0].name, "New tool");
+
+    let mut invalid_package = package;
+    invalid_package.instances[0].bindings[0].tool_id = "missing_tool".into();
+    repository.reject_replace();
+    assert!(service
+        .import_bundle(crate::mcp_bundle::ImportMcpBundleCommand {
+            actor_user_id,
+            package: invalid_package,
+            interface_catalog: Vec::new(),
+            current_system_version: "0.3.6".into(),
+        })
+        .await
+        .is_err());
+    assert_eq!(repository.replace_inputs().len(), 1);
+}
+
+#[tokio::test]
+async fn explicit_bundle_import_restores_a_missing_managed_graph_through_atomic_replace() {
+    let actor_user_id = Uuid::from_u128(210);
+    let workspace_id = Uuid::from_u128(220);
+    let repository = McpBundleFixtureRepository::with_export_snapshot(McpBundleExportSnapshot {
+        actor: domain::ActorContext::root(actor_user_id, workspace_id, "root"),
+        instances: Vec::new(),
+        groups: Vec::new(),
+        bindings: Vec::new(),
+        policies: Vec::new(),
+        tools: Vec::new(),
+        connections: Vec::new(),
+    });
+
+    McpManagementService::new(repository.clone())
+        .import_bundle(crate::mcp_bundle::ImportMcpBundleCommand {
+            actor_user_id,
+            package: managed_frontstage_package("1.0.2"),
+            interface_catalog: Vec::new(),
+            current_system_version: "0.3.6".into(),
+        })
+        .await
+        .unwrap();
+
+    let inputs = repository.replace_inputs();
+    assert_eq!(inputs.len(), 1);
+    assert_eq!(inputs[0].source.organization, "1flowbase");
+    assert_eq!(inputs[0].source.bundle_id, "frontstage_assistant");
+    assert_eq!(inputs[0].instances[0].instance_id, "frontstage_browser");
+    assert_eq!(inputs[0].tools.len(), 2);
 }
 
 #[test]
