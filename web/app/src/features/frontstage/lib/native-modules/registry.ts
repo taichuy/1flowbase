@@ -14,8 +14,6 @@ import {
   type NativeTrustedBlockInjectedModuleMap
 } from '@1flowbase/page-runtime';
 
-import { createFrontendModuleExtraLib } from './declarations';
-
 type ModuleNamespace = Record<string, unknown>;
 
 const ANT_DESIGN_X_EXPORTS = [
@@ -108,11 +106,6 @@ export const FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS: readonly NativeReactMod
     module_source,
     exports: [...exports]
   }));
-
-export const FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS = registrations.map(
-  ({ module_source, exports }) =>
-    createFrontendModuleExtraLib(module_source, exports)
-);
 
 let sharedRegistry: NativeReactModuleRegistry | undefined;
 
