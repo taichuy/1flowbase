@@ -14,6 +14,7 @@ import type { CSSProperties, FC, Ref } from 'react';
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -41,6 +42,7 @@ import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import {
   createFrontstagePersistedGridLayout,
   createFrontstageResponsiveLayouts,
+  FRONTSTAGE_DEFAULT_AUTO_HEIGHT_PX,
   FRONTSTAGE_GRID_BREAKPOINTS,
   FRONTSTAGE_GRID_COLUMNS,
   FRONTSTAGE_GRID_ROW_HEIGHT,
@@ -61,6 +63,11 @@ import {
   frontstageLayoutsEqualForCommit
 } from '../lib/page-canvas/frontstage-block-interaction';
 import type { FrontstageRuntimeDemandPriority } from '../lib/page-canvas/runtime-demand';
+import { resolveFrontstageViewportDemandPriority } from '../lib/page-canvas/runtime-demand';
+import {
+  FrontstageAutoHeightBatch,
+  resolveFrontstageAutoHeightScrollDelta
+} from '../lib/page-canvas/auto-height-layout';
 import type { FrontstageNativePreparationSnapshot } from '../lib/page-canvas/native-runtime-preparation';
 import {
   frontstageNativeInstanceRenderKey,
@@ -171,7 +178,7 @@ function useFrontstagePageCanvasWidth() {
     return () => observer.disconnect();
   }, [containerNode]);
 
-  return { width, containerRef };
+  return { width, containerNode, containerRef };
 }
 
 function renderFrontstageResizeHandle(
@@ -213,6 +220,7 @@ type RenderPlanSlotProps = {
   designActions?: DesignBlockActions;
   toolbarDisabled?: boolean;
   onAutoHeightChange?: (blockId: string, height: number) => void;
+  intrinsicHeight?: number;
   onRuntimeDemandChange?: (
     blockId: string,
     priority: FrontstageRuntimeDemandPriority
@@ -233,6 +241,8 @@ const blockFrameBaseStyle: CSSProperties = {
 };
 
 const FRONTSTAGE_DESIGN_PREVIEW_MIN_HEIGHT = 160;
+const FRONTSTAGE_DEMAND_ENTER_MARGIN = 400;
+const FRONTSTAGE_DEMAND_EXIT_MARGIN = 800;
 
 const blockLabelStyle: CSSProperties = {
   position: 'absolute',
@@ -533,6 +543,15 @@ function FrontstageNativeRuntimeInstance({
     getSnapshot
   );
   const unavailable = createFrontstageUnavailableBlockContext(plan);
+  const [runtimeState] = useState(() => {
+    const state: Record<string, unknown> = {};
+    return {
+      state,
+      patch: (patch: Record<string, unknown>) => {
+        Object.assign(state, patch);
+      }
+    };
+  });
   const outputs = signalCoordinator
     ? signalCoordinator.outputsFor(item.blockId, instanceEpoch)
     : unavailable.outputs;
@@ -565,7 +584,9 @@ function FrontstageNativeRuntimeInstance({
     },
     inputs: { ...signalSnapshot.inputs, ...runtimeInputValues },
     ...capabilities,
-    props: { ...plan.props }
+    props: { ...plan.props },
+    state: runtimeState.state,
+    patch: runtimeState.patch
   };
 
   return (
@@ -602,6 +623,7 @@ function RenderPlanSlot({
   designActions,
   toolbarDisabled,
   onAutoHeightChange,
+  intrinsicHeight,
   onRuntimeDemandChange,
   onRuntimeRetry,
   onRuntimeRefresh
@@ -610,9 +632,16 @@ function RenderPlanSlot({
   const blockRef = useRef<HTMLDivElement>(null);
   const rendererVersionError = resolveRendererVersionError(item);
   const isFixedHeight = item.presentation.heightMode === 'fixed';
+  const viewportDemand = useRef({
+    priority: 3 as FrontstageRuntimeDemandPriority,
+    visible: false,
+    withinEnterMargin: false,
+    withinExitMargin: false
+  });
 
   useEffect(() => {
     if (isSelected) {
+      viewportDemand.current.priority = 0;
       onRuntimeDemandChange?.(item.blockId, 0);
       return;
     }
@@ -623,24 +652,44 @@ function RenderPlanSlot({
       return;
     }
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry?.isIntersecting) {
-          onRuntimeDemandChange?.(item.blockId, 3);
-          return;
-        }
-        const rect = entry.boundingClientRect;
-        const visible =
-          rect.bottom > 0 &&
-          rect.top < window.innerHeight &&
-          rect.right > 0 &&
-          rect.left < window.innerWidth;
-        onRuntimeDemandChange?.(item.blockId, visible ? 1 : 2);
-      },
-      { rootMargin: '400px 0px' }
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
+    const publishDemand = () => {
+      const current = viewportDemand.current;
+      const priority = resolveFrontstageViewportDemandPriority({
+        previousPriority: current.priority,
+        visible: current.visible,
+        withinEnterMargin: current.withinEnterMargin,
+        withinExitMargin: current.withinExitMargin
+      });
+      if (priority === current.priority) return;
+      current.priority = priority;
+      onRuntimeDemandChange?.(item.blockId, priority);
+    };
+    const observeBand = (
+      field: 'visible' | 'withinEnterMargin' | 'withinExitMargin',
+      rootMargin: string
+    ) => {
+      const root = node.closest<HTMLElement>(
+        '[data-flowbase-frontstage-scroll-owner]'
+      );
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          viewportDemand.current[field] = entry?.isIntersecting === true;
+          publishDemand();
+        },
+        { root, rootMargin }
+      );
+      observer.observe(node);
+      return observer;
+    };
+    const observers = [
+      observeBand('visible', '0px'),
+      observeBand(
+        'withinEnterMargin',
+        `${FRONTSTAGE_DEMAND_ENTER_MARGIN}px 0px`
+      ),
+      observeBand('withinExitMargin', `${FRONTSTAGE_DEMAND_EXIT_MARGIN}px 0px`)
+    ];
+    return () => observers.forEach((observer) => observer.disconnect());
   }, [isSelected, item.blockId, onRuntimeDemandChange]);
 
   useEffect(() => {
@@ -782,7 +831,12 @@ function RenderPlanSlot({
         overflow: isFixedHeight ? 'hidden' : 'visible',
         ...borderStyle,
         position: 'relative',
-        transition: 'border-color 0.15s, background 0.15s'
+        transition: 'border-color 0.15s, background 0.15s',
+        contentVisibility: 'auto',
+        containIntrinsicSize: `auto ${Math.max(
+          1,
+          intrinsicHeight ?? FRONTSTAGE_DEFAULT_AUTO_HEIGHT_PX
+        )}px`
       }}
       data-testid={`block-slot-${item.blockId}`}
       data-flowbase-frontstage-block-id={item.blockId}
@@ -793,6 +847,9 @@ function RenderPlanSlot({
             (isolatedPreparation ? 'ready' : 'loading'))
       }
       data-flowbase-frontstage-generation={runtimePreparation?.generation ?? 0}
+      data-flowbase-frontstage-intrinsic-height={
+        intrinsicHeight ?? FRONTSTAGE_DEFAULT_AUTO_HEIGHT_PX
+      }
       data-flowbase-frontstage-render-error={
         rendererVersionError?.description ??
         isolatedPreparationError?.message ??
@@ -843,6 +900,49 @@ function RenderPlanSlot({
 }
 
 // ─── PageCanvas ─────────────────────────────────────────────────────
+
+type FrontstageScrollAnchor = {
+  scrollOwner: HTMLElement;
+  blockId: string;
+  layoutDeltaPx: number;
+  scrollTop: number;
+};
+
+function captureFrontstageScrollAnchor(
+  canvasNode: HTMLElement | null
+): FrontstageScrollAnchor | null {
+  const scrollOwner = canvasNode?.closest<HTMLElement>(
+    '[data-flowbase-frontstage-scroll-owner]'
+  );
+  if (!canvasNode || !scrollOwner) return null;
+  const ownerRect = scrollOwner.getBoundingClientRect();
+  const visibleBlocks = Array.from(
+    canvasNode.querySelectorAll<HTMLElement>(
+      '[data-flowbase-frontstage-block-id]'
+    )
+  )
+    .map((blockElement) => {
+      const element =
+        blockElement.closest<HTMLElement>('.react-grid-item') ?? blockElement;
+      return {
+        blockId: blockElement.dataset.flowbaseFrontstageBlockId ?? '',
+        rect: element.getBoundingClientRect()
+      };
+    })
+    .filter(
+      ({ rect }) => rect.bottom > ownerRect.top && rect.top < ownerRect.bottom
+    )
+    .sort((left, right) => left.rect.top - right.rect.top);
+  const anchor = visibleBlocks[0];
+  return anchor
+    ? {
+        scrollOwner,
+        blockId: anchor.blockId,
+        layoutDeltaPx: 0,
+        scrollTop: scrollOwner.scrollTop
+      }
+    : null;
+}
 
 export const PageCanvas: FC<PageCanvasProps> = ({
   content,
@@ -910,6 +1010,8 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   const isRenderEmpty = renderItems.length === 0;
   const signalSession = useMemo(
     () => createFrontstagePageSignalSession(),
+    // The page id is the lifecycle key even though session construction is argument-free.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [content?.page.id]
   );
   const localSignalCoordinator = useMemo(
@@ -921,10 +1023,11 @@ export const PageCanvas: FC<PageCanvasProps> = ({
             signalSession
           )
         : null,
+    // Runtime block arrays reconcile below; depending on their identity would dispose live epochs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       content?.tab.id,
       pageDocument?.page.id,
-      runtimeBlocks,
       sharedSignalCoordinator,
       signalSession
     ]
@@ -946,21 +1049,59 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     () => () => localSignalCoordinator?.dispose(),
     [localSignalCoordinator]
   );
-  const { width: gridWidth, containerRef } = useFrontstagePageCanvasWidth();
+  const {
+    width: gridWidth,
+    containerNode: gridContainerNode,
+    containerRef
+  } = useFrontstagePageCanvasWidth();
   const interactionCompactor = useMemo(
     () => createFrontstageInteractionCompactor(document?.layoutMode ?? 'auto'),
     [document?.layoutMode]
   );
-  const [autoHeights, setAutoHeights] = useState<Record<string, number>>({});
+  const [autoRows, setAutoRows] = useState<Record<string, number>>({});
+  const autoRowsRef = useRef(autoRows);
+  const autoHeightScopeRef = useRef(content?.page.id);
+  const autoHeightBatchRef = useRef(new FrontstageAutoHeightBatch());
+  const autoHeightFrameRef = useRef<number | null>(null);
+  const pendingScrollAnchorRef = useRef<FrontstageScrollAnchor | null>(null);
   const layouts = useMemo(() => {
     const responsiveLayouts = createFrontstageResponsiveLayouts(
       renderItems,
-      autoHeights
+      autoRows
     );
     return document?.layoutMode === 'free'
       ? responsiveLayouts
       : normalizeFrontstageAutomaticResponsiveLayouts(responsiveLayouts);
-  }, [autoHeights, document?.layoutMode, renderItems]);
+  }, [autoRows, document?.layoutMode, renderItems]);
+  useEffect(() => {
+    autoRowsRef.current = autoRows;
+  }, [autoRows]);
+  useEffect(() => {
+    if (autoHeightScopeRef.current === content?.page.id) return;
+    autoHeightScopeRef.current = content?.page.id;
+    autoRowsRef.current = {};
+    autoHeightBatchRef.current = new FrontstageAutoHeightBatch();
+    setAutoRows({});
+  }, [content?.page.id]);
+  useEffect(
+    () => () => {
+      if (autoHeightFrameRef.current !== null) {
+        cancelAnimationFrame(autoHeightFrameRef.current);
+      }
+    },
+    []
+  );
+  useLayoutEffect(() => {
+    const anchor = pendingScrollAnchorRef.current;
+    pendingScrollAnchorRef.current = null;
+    if (
+      !anchor ||
+      Math.abs(anchor.scrollOwner.scrollTop - anchor.scrollTop) > 0.5
+    ) {
+      return;
+    }
+    anchor.scrollOwner.scrollTop += anchor.layoutDeltaPx;
+  }, [autoRows]);
   const latestLayouts = useRef(layouts);
   const dragCommittedLayout = useRef<Layout | null>(null);
   const activeBreakpoint = useRef<FrontstageGridBreakpoint>('lg');
@@ -994,13 +1135,56 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     );
   };
 
-  const updateAutoHeight = (blockId: string, height: number) => {
-    setAutoHeights((current) =>
-      Math.abs((current[blockId] ?? 0) - height) < 1
-        ? current
-        : { ...current, [blockId]: height }
-    );
-  };
+  const updateAutoHeight = useCallback(
+    (blockId: string, height: number) => {
+      autoHeightBatchRef.current.measure(blockId, height);
+      if (autoHeightFrameRef.current !== null) return;
+      autoHeightFrameRef.current = requestAnimationFrame(() => {
+        autoHeightFrameRef.current = null;
+        const currentRows = autoRowsRef.current;
+        const nextRows = autoHeightBatchRef.current.commit(currentRows);
+        if (nextRows === currentRows) return;
+        const anchor = captureFrontstageScrollAnchor(gridContainerNode);
+        if (anchor) {
+          const currentResponsiveLayouts = createFrontstageResponsiveLayouts(
+            renderItems,
+            currentRows
+          );
+          const nextResponsiveLayouts = createFrontstageResponsiveLayouts(
+            renderItems,
+            nextRows
+          );
+          const currentLayouts =
+            document?.layoutMode === 'free'
+              ? currentResponsiveLayouts
+              : normalizeFrontstageAutomaticResponsiveLayouts(
+                  currentResponsiveLayouts
+                );
+          const nextLayouts =
+            document?.layoutMode === 'free'
+              ? nextResponsiveLayouts
+              : normalizeFrontstageAutomaticResponsiveLayouts(
+                  nextResponsiveLayouts
+                );
+          const breakpoint = activeBreakpoint.current;
+          const columns = FRONTSTAGE_GRID_COLUMNS[breakpoint];
+          anchor.layoutDeltaPx = resolveFrontstageAutoHeightScrollDelta({
+            anchorBlockId: anchor.blockId,
+            columns,
+            compact: document?.layoutMode !== 'free',
+            currentLayout: currentLayouts[breakpoint] ?? [],
+            nextLayout: nextLayouts[breakpoint] ?? [],
+            rowHeight: FRONTSTAGE_GRID_ROW_HEIGHT,
+            rowMargin: FRONTSTAGE_GRID_VERTICAL_MARGIN
+          });
+        }
+        pendingScrollAnchorRef.current = anchor;
+        autoRowsRef.current = nextRows;
+        setAutoRows(nextRows);
+      });
+    },
+    [document?.layoutMode, gridContainerNode, renderItems]
+  );
 
   if (isLoading) {
     return (
@@ -1188,6 +1372,11 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                   designActions={designActions}
                   toolbarDisabled={toolbarDisabled}
                   onAutoHeightChange={updateAutoHeight}
+                  intrinsicHeight={
+                    autoRows[item.blockId] === undefined
+                      ? undefined
+                      : frontstageGridRowsToPixels(autoRows[item.blockId])
+                  }
                   onRuntimeDemandChange={onRuntimeDemandChange}
                   onRuntimeRetry={onRuntimeRetry}
                   onRuntimeRefresh={onRuntimeRefresh}

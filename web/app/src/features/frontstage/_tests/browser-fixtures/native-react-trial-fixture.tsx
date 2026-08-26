@@ -30,6 +30,8 @@ import {
   subscribeFrontstageRuntimeObservations,
   type FrontstageRuntimeObservation
 } from '../../lib/page-canvas/runtime-observation';
+import type { FrontstageBlockInstance } from '../../lib/page-document';
+import type { FrontstageBlockPorts } from '../../lib/page-signals/types';
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-trusted-block-runtime-factory';
 import type { PreparedFrontstageIsolatedContribution } from '../../lib/isolated-frontend-block-contribution';
 
@@ -458,6 +460,65 @@ function NativeReactTrialFixture() {
       }),
     [sourceRevision]
   );
+  const runtimeBlocks = useMemo<readonly FrontstageBlockInstance[]>(
+    () => [
+      fixtureRuntimeBlock(
+        'first',
+        0,
+        { label: `source-${sourceRevision}` },
+        {
+          inputs: [
+            {
+              name: 'count',
+              schema: { type: 'integer' },
+              source: { block_id: 'second', output: 'total', scope: 'tab' }
+            }
+          ],
+          outputs: []
+        }
+      ),
+      fixtureRuntimeBlock(
+        'second',
+        1,
+        {},
+        {
+          inputs: [],
+          outputs: [{ name: 'total', schema: { type: 'integer' } }]
+        }
+      ),
+      fixtureRuntimeBlock(
+        'public-a',
+        2,
+        { label: 'a' },
+        { inputs: [], outputs: [] }
+      ),
+      fixtureRuntimeBlock(
+        'public-b',
+        3,
+        { label: 'b' },
+        { inputs: [], outputs: [] }
+      ),
+      fixtureRuntimeBlock(
+        'isolated',
+        4,
+        { label: `isolated-${sourceRevision}` },
+        { inputs: [], outputs: [] },
+        'isolated_iframe'
+      ),
+      ...Array.from({ length: 6 }, (_, index) =>
+        fixtureRuntimeBlock(
+          `filler-${index + 1}`,
+          5 + index,
+          {},
+          {
+            inputs: [],
+            outputs: []
+          }
+        )
+      )
+    ],
+    [sourceRevision]
+  );
   const preparations = useMemo(
     () => [
       preparation(
@@ -646,27 +707,37 @@ function NativeReactTrialFixture() {
         <>
           <CatalogIconsProbe />
           <CatalogRichTextProbe />
-          <InstrumentedPageCanvas
-            content={content}
-            runtimePreparations={hidden ? [] : preparations}
-            isolatedRuntimePreparations={hidden ? [] : isolatedPreparations}
-            isolatedCapabilityHandlersByBlockId={isolatedCapabilityHandlers}
-            runtimeContext={{
-              currentUser: { id: 'fixture-user', displayName: 'Fixture User' },
-              workspace: { id: 'fixture-workspace' },
-              application: null,
-              theme: { mode: 'light', tokens: {} },
-              ui: {}
-            }}
-            onRuntimeDemandChange={(blockId, priority) =>
-              setDemands((current) =>
-                current[blockId] === priority
-                  ? current
-                  : { ...current, [blockId]: priority }
-              )
-            }
-            onRuntimeRetry={retryPreparation}
-          />
+          <div
+            data-testid="issue-1896-scroll-owner"
+            data-flowbase-frontstage-scroll-owner=""
+            style={{ height: 560, overflow: 'auto', position: 'relative' }}
+          >
+            <InstrumentedPageCanvas
+              content={content}
+              runtimeBlocks={runtimeBlocks}
+              runtimePreparations={hidden ? [] : preparations}
+              isolatedRuntimePreparations={hidden ? [] : isolatedPreparations}
+              isolatedCapabilityHandlersByBlockId={isolatedCapabilityHandlers}
+              runtimeContext={{
+                currentUser: {
+                  id: 'fixture-user',
+                  displayName: 'Fixture User'
+                },
+                workspace: { id: 'fixture-workspace' },
+                application: null,
+                theme: { mode: 'light', tokens: {} },
+                ui: {}
+              }}
+              onRuntimeDemandChange={(blockId, priority) =>
+                setDemands((current) =>
+                  current[blockId] === priority
+                    ? current
+                    : { ...current, [blockId]: priority }
+                )
+              }
+              onRuntimeRetry={retryPreparation}
+            />
+          </div>
         </>
       ) : null}
     </main>
@@ -696,6 +767,43 @@ function fixtureBlock(
     ports
   };
 }
+
+function fixtureRuntimeBlock(
+  id: string,
+  order: number,
+  props: Record<string, unknown>,
+  ports: FrontstageBlockPorts,
+  runtimeKind = 'native_react'
+): FrontstageBlockInstance {
+  return {
+    id,
+    rendererVersion: 'v1',
+    sourceId: id,
+    codeRef: `${id}-code`,
+    sourceCodeRef: id,
+    catalog: { providerCode: 'qa', installationId: 'fixture' },
+    contribution: {
+      pluginId: 'qa.native',
+      pluginVersion: '1.0.0',
+      code: id
+    },
+    runtime: {
+      kind: runtimeKind,
+      entry:
+        runtimeKind === 'isolated_iframe'
+          ? '@fixture/isolated-timer'
+          : `blocks/${id}.js`,
+      hint: runtimeKind
+    },
+    layout: { order, region: 'main', span: 12 },
+    presentation: { heightMode: 'auto', height: null },
+    order,
+    props,
+    ports
+  };
+}
+
+const accumulatedFixtureMounts = new Set<string>();
 
 function preparation(
   blockId: 'first' | 'second' | 'public-a' | 'public-b',
@@ -728,7 +836,8 @@ function preparation(
       error: new Error('controlled compile failure')
     };
   }
-  if (priority === 3) return { ...base, status: 'idle' };
+  const accumulatedMount = accumulatedFixtureMounts.has(blockId);
+  if (priority === 3 && !accumulatedMount) return { ...base, status: 'idle' };
   const identityInput = {
     sourceSha256: `${blockId}-${sourceRevision}`.padEnd(64, '0'),
     compilerAbi: 'native-fixture-compiler',
@@ -741,11 +850,15 @@ function preparation(
     artifactCacheTier,
     moduleAssets
   };
+  if (priority <= 1) accumulatedFixtureMounts.add(blockId);
   return {
     ...base,
     status: 'ready',
     prepared,
-    mountIntent: priority <= 1 ? { blockId, slotIndex, identityInput } : null
+    mountIntent:
+      priority <= 1 || accumulatedMount
+        ? { blockId, slotIndex, identityInput }
+        : null
   };
 }
 

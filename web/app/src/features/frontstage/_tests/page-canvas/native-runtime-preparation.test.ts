@@ -10,6 +10,7 @@ import {
 } from '../../lib/page-canvas/native-runtime-preparation';
 import {
   createFrontstageRuntimeDemandCandidates,
+  resolveFrontstageViewportDemandPriority,
   resolveFrontstageRuntimePreparationKind
 } from '../../lib/page-canvas/runtime-demand';
 import { frontstageRuntimeSourceMatchesDigest } from '../../lib/page-canvas/runtime-source';
@@ -40,9 +41,7 @@ describe('Frontstage Native React preparation demand', () => {
         },
         'workspace-1'
       )
-    ).toThrowError(
-      i18nText('frontstage', 'auto.runtime_preview_unavailable')
-    );
+    ).toThrowError(i18nText('frontstage', 'auto.runtime_preview_unavailable'));
   });
 
   test('D3-AC-001 keeps 0/1 mount intent, 2 preload, 3 dormant and stable priority/slot order', () => {
@@ -81,6 +80,41 @@ describe('Frontstage Native React preparation demand', () => {
         '0'.repeat(64)
       )
     ).toBe(false);
+  });
+
+  test('AC-007 applies viewport hysteresis before a not-yet-mounted block becomes dormant', () => {
+    expect(
+      resolveFrontstageViewportDemandPriority({
+        previousPriority: 3,
+        visible: false,
+        withinEnterMargin: true,
+        withinExitMargin: true
+      })
+    ).toBe(2);
+    expect(
+      resolveFrontstageViewportDemandPriority({
+        previousPriority: 2,
+        visible: false,
+        withinEnterMargin: false,
+        withinExitMargin: true
+      })
+    ).toBe(2);
+    expect(
+      resolveFrontstageViewportDemandPriority({
+        previousPriority: 2,
+        visible: false,
+        withinEnterMargin: false,
+        withinExitMargin: false
+      })
+    ).toBe(3);
+    expect(
+      resolveFrontstageViewportDemandPriority({
+        previousPriority: 3,
+        visible: true,
+        withinEnterMargin: true,
+        withinExitMargin: true
+      })
+    ).toBe(1);
   });
 });
 
@@ -135,6 +169,33 @@ describe('FrontstageNativePreparationScheduler', () => {
     expect(
       scheduler.getSnapshots().find(({ blockId }) => blockId === 'near')
     ).toMatchObject({ status: 'ready', mountIntent: null });
+  });
+
+  test('AC-001 keeps a ready mount intent sticky when viewport demand falls to preload or dormant', async () => {
+    const scheduler = new FrontstageNativePreparationScheduler(1);
+    scheduler.reconcile(
+      [task('accumulated', 0, async () => prepared('accumulated'))],
+      { accumulated: 1 }
+    );
+    await tick();
+
+    expect(scheduler.getSnapshots()[0]).toMatchObject({
+      status: 'ready',
+      priority: 1,
+      mountIntent: { blockId: 'accumulated' }
+    });
+
+    for (const priority of [2, 3] as const) {
+      scheduler.reconcile(
+        [task('accumulated', 0, async () => prepared('accumulated'))],
+        { accumulated: priority }
+      );
+      expect(scheduler.getSnapshots()[0]).toMatchObject({
+        status: 'ready',
+        priority,
+        mountIntent: { blockId: 'accumulated' }
+      });
+    }
   });
 
   test('D3-AC-002 exposes compile/module failures and retries with a new generation', async () => {

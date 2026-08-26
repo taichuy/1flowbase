@@ -151,7 +151,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     expect(unmounts).toBe(3);
   });
 
-  test('D3R-AC-005/008 presents demand 0/1, unmounts 2/3, and disposes the page epoch', async () => {
+  test('AC-001 preserves a mounted Portal across demand changes and disposes the page epoch', async () => {
     const contexts: BlockContext[] = [];
     let mounts = 0;
     let unmounts = 0;
@@ -175,6 +175,11 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     );
     const root = await nativeRoot();
     await within(root.shadow).findByTestId('lifecycle-native-block');
+    const blockSlot = screen.getByTestId('block-slot-block-1');
+    const measuredIntrinsicHeight = Number(
+      blockSlot.getAttribute('data-flowbase-frontstage-intrinsic-height')
+    );
+    expect(measuredIntrinsicHeight).toBeGreaterThan(0);
     const firstPublish = contexts.at(-1)!.outputs.publish;
 
     view.rerender(
@@ -192,31 +197,69 @@ describe('PageCanvas declarative Native block lifecycle', () => {
           content={pageContent('Demand')}
           runtimeBlocks={[runtimeBlock('Demand')]}
           runtimePreparations={[
-            preparation('source-a', priority, LifecycleBlock, false)
+            preparation('source-a', priority, LifecycleBlock)
           ]}
         />
       );
-      await waitFor(() => expect(root.shadow.childNodes).toHaveLength(0));
+      expect(
+        within(root.shadow).getByTestId('lifecycle-native-block')
+      ).toHaveTextContent('ready');
+      expect(blockSlot).toHaveAttribute(
+        'data-flowbase-frontstage-intrinsic-height',
+        String(measuredIntrinsicHeight)
+      );
     }
-    expect(unmounts).toBe(1);
+    expect(mounts).toBe(1);
+    expect(unmounts).toBe(0);
+    expect(firstPublish({})).toEqual({ ok: true, stale: false });
+
+    view.unmount();
+    await waitFor(() => expect(unmounts).toBe(1));
     expect(firstPublish({})).toEqual({ ok: false, stale: true });
+    expect(root.shadow.childNodes).toHaveLength(0);
+  });
+
+  test('AC-004 keeps ctx.state stable across host updates in one mount epoch', async () => {
+    const StatefulContextBlock = ({ ctx }: { ctx: BlockContext }) => {
+      const [revision, setRevision] = useState(0);
+      return (
+        <button
+          data-testid="context-state-native-block"
+          onClick={() => {
+            ctx.patch({ count: Number(ctx.state.count ?? 0) + 1 });
+            setRevision((current) => current + 1);
+          }}
+        >
+          {String(ctx.state.count ?? 'none')}:{revision}:{ctx.theme.mode}
+        </button>
+      );
+    };
+    const ready = preparation('source-a', 1, StatefulContextBlock);
+    const view = render(
+      <PageCanvas
+        content={pageContent('Context state')}
+        runtimeBlocks={[runtimeBlock('Context state')]}
+        runtimeContext={runtimeContext('light')}
+        runtimePreparations={[ready]}
+      />
+    );
+    const root = await nativeRoot();
+    const button = await within(root.shadow).findByTestId(
+      'context-state-native-block'
+    );
+    fireEvent.click(button);
+    expect(button).toHaveTextContent('1:1:light');
 
     view.rerender(
       <PageCanvas
-        content={pageContent('Demand')}
-        runtimeBlocks={[runtimeBlock('Demand')]}
-        runtimePreparations={[preparation('source-a', 1, LifecycleBlock)]}
+        content={pageContent('Context state')}
+        runtimeBlocks={[runtimeBlock('Context state')]}
+        runtimeContext={runtimeContext('dark')}
+        runtimePreparations={[ready]}
       />
     );
-    const remountedRoot = await nativeRoot();
-    await within(remountedRoot.shadow).findByTestId('lifecycle-native-block');
-    expect(mounts).toBe(2);
 
-    const secondPublish = contexts.at(-1)!.outputs.publish;
-    view.unmount();
-    await waitFor(() => expect(unmounts).toBe(2));
-    expect(secondPublish({})).toEqual({ ok: false, stale: true });
-    expect(remountedRoot.shadow.childNodes).toHaveLength(0);
+    await waitFor(() => expect(button).toHaveTextContent('1:1:dark'));
   });
 
   test('D3R-AC-005 render retry replaces only the failed Portal epoch', async () => {

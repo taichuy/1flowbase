@@ -1,7 +1,4 @@
-import type {
-  Layout,
-  ResponsiveLayouts
-} from 'react-grid-layout/legacy';
+import type { Layout, ResponsiveLayouts } from 'react-grid-layout/legacy';
 
 import type { FrontstageBlockRenderPlanItem } from './page-canvas/render-plan';
 import { normalizeFrontstageAutomaticRows } from './page-canvas/frontstage-row-layout';
@@ -42,7 +39,7 @@ const LEGACY_FRONTSTAGE_GRID_ROW_HEIGHT = 32;
 const LEGACY_FRONTSTAGE_GRID_ROW_GAP = 12;
 
 export type FrontstageGridBreakpoint = keyof typeof FRONTSTAGE_GRID_COLUMNS;
-const DEFAULT_FRONTSTAGE_GRID_HEIGHT_PX = 320;
+export const FRONTSTAGE_DEFAULT_AUTO_HEIGHT_PX = 320;
 const MIN_FRONTSTAGE_GRID_HEIGHT_PX = 120;
 export type FrontstagePersistedGridLayout = Record<
   string,
@@ -60,7 +57,7 @@ function layoutForBreakpoint(
   >,
   breakpoint: FrontstageGridBreakpoint,
   index: number,
-  autoHeight: number | undefined
+  autoRows: number | undefined
 ) {
   const stored = item.layout[breakpoint];
   const layout =
@@ -77,15 +74,13 @@ function layoutForBreakpoint(
     : columns / LEGACY_FRONTSTAGE_GRID_COLUMNS[breakpoint];
   const height =
     item.presentation.heightMode === 'fixed'
-      ? item.presentation.height ?? 320
-      : autoHeight;
+      ? (item.presentation.height ?? 320)
+      : undefined;
   const storedY =
-    typeof layout.y === 'number' && Number.isFinite(layout.y)
-      ? layout.y
-      : null;
+    typeof layout.y === 'number' && Number.isFinite(layout.y) ? layout.y : null;
   const y =
     storedY === null
-      ? index * pixelsToFrontstageGridRows(DEFAULT_FRONTSTAGE_GRID_HEIGHT_PX)
+      ? index * pixelsToFrontstageGridRows(FRONTSTAGE_DEFAULT_AUTO_HEIGHT_PX)
       : isCurrentVerticalGrid
         ? storedY
         : Math.round(
@@ -97,7 +92,9 @@ function layoutForBreakpoint(
 
   return {
     i: item.blockId,
-    x: isMobile ? 0 : Math.round(finiteLayoutValue(layout.x, 0) * horizontalScale),
+    x: isMobile
+      ? 0
+      : Math.round(finiteLayoutValue(layout.x, 0) * horizontalScale),
     y,
     w: isMobile
       ? 1
@@ -115,9 +112,12 @@ function layoutForBreakpoint(
             )
           )
         ),
-    h: height === undefined
-      ? pixelsToFrontstageGridRows(DEFAULT_FRONTSTAGE_GRID_HEIGHT_PX)
-      : pixelsToFrontstageGridRows(height),
+    h:
+      item.presentation.heightMode === 'auto' && autoRows !== undefined
+        ? Math.max(1, Math.round(autoRows))
+        : height === undefined
+          ? pixelsToFrontstageGridRows(FRONTSTAGE_DEFAULT_AUTO_HEIGHT_PX)
+          : pixelsToFrontstageGridRows(height),
     minW: 1,
     minH: pixelsToFrontstageGridRows(MIN_FRONTSTAGE_GRID_HEIGHT_PX),
     resizeHandles:
@@ -131,7 +131,7 @@ export function createFrontstageResponsiveLayouts(
   items: Array<
     Pick<FrontstageBlockRenderPlanItem, 'blockId' | 'layout' | 'presentation'>
   >,
-  autoHeights: Record<string, number> = {}
+  autoRows: Record<string, number> = {}
 ): ResponsiveLayouts<FrontstageGridBreakpoint> {
   return Object.fromEntries(
     Object.keys(FRONTSTAGE_GRID_COLUMNS).map((breakpoint) => [
@@ -141,7 +141,7 @@ export function createFrontstageResponsiveLayouts(
           item,
           breakpoint as FrontstageGridBreakpoint,
           index,
-          autoHeights[item.blockId]
+          autoRows[item.blockId]
         )
       )
     ])
@@ -187,9 +187,7 @@ export function createFrontstagePersistedGridLayout(
 export function pixelsToFrontstageGridRows(height: number): number {
   return Math.max(
     1,
-    Math.ceil(
-      (height + FRONTSTAGE_GRID_ROW_GAP) / FRONTSTAGE_GRID_ROW_HEIGHT
-    )
+    Math.ceil((height + FRONTSTAGE_GRID_ROW_GAP) / FRONTSTAGE_GRID_ROW_HEIGHT)
   );
 }
 

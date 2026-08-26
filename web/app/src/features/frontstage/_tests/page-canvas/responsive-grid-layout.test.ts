@@ -91,6 +91,18 @@ describe('frontstage responsive grid layout', () => {
     }
   });
 
+  test('AC-005 consumes committed grid rows without re-quantizing pixel noise', () => {
+    const autoItem = {
+      ...frontstageBlockFixture(),
+      blockId: 'auto',
+      presentation: { heightMode: 'auto' as const, height: null }
+    };
+
+    expect(
+      createFrontstageResponsiveLayouts([autoItem], { auto: 173 }).lg?.[0]
+    ).toMatchObject({ i: 'auto', h: 173 });
+  });
+
   test('AC-010 preserves the pixel position of persisted layouts when migrating the vertical grid', () => {
     const legacyItem = frontstageBlockFixture();
     legacyItem.layout = {

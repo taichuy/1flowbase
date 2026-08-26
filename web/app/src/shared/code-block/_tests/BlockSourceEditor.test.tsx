@@ -20,6 +20,37 @@ vi.mock('@monaco-editor/react', () => ({
   }
 }));
 
+test('AC-001 accepts React default imports supported by the Native React runtime', () => {
+  const setCompilerOptions = vi.fn();
+  const monaco = {
+    languages: {
+      typescript: {
+        JsxEmit: { Preserve: 'preserve' },
+        ModuleResolutionKind: { NodeJs: 'node-js' },
+        ScriptTarget: { ES2022: 'es2022' },
+        typescriptDefaults: { setCompilerOptions }
+      }
+    }
+  };
+
+  render(
+    <BlockSourceEditor
+      ariaLabel="TSX source"
+      path="file:///block.tsx"
+      value="import React from 'react';"
+      onChange={vi.fn()}
+    />
+  );
+  act(() => editorHarness.props?.beforeMount?.(monaco));
+
+  expect(setCompilerOptions).toHaveBeenCalledWith(
+    expect.objectContaining({
+      allowSyntheticDefaultImports: true,
+      esModuleInterop: true
+    })
+  );
+});
+
 test('registers Monaco declarations that arrive after the editor mounts', async () => {
   const dispose = vi.fn();
   const addExtraLib = vi.fn(() => ({ dispose }));

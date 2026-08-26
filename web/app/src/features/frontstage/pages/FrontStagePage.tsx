@@ -1296,7 +1296,10 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
               <Divider style={{ margin: 0 }} />
             </>
           ) : null}
-          <div className="frontstage-page-workspace__body">
+          <div
+            className="frontstage-page-workspace__body"
+            data-flowbase-frontstage-scroll-owner=""
+          >
             {renderPageTreeErrorBanner}
             {canEnterDesignMode &&
             isDesignMode &&

@@ -55,6 +55,8 @@ export function BlockSourceEditor({
   const configureMonaco: BeforeMount = (monaco) => {
     monaco.languages.typescript.typescriptDefaults.setCompilerOptions({
       allowNonTsExtensions: true,
+      allowSyntheticDefaultImports: true,
+      esModuleInterop: true,
       jsx: monaco.languages.typescript.JsxEmit.Preserve,
       moduleResolution: monaco.languages.typescript.ModuleResolutionKind.NodeJs,
       target: monaco.languages.typescript.ScriptTarget.ES2022

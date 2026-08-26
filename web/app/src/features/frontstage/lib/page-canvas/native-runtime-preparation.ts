@@ -233,7 +233,8 @@ export class FrontstageNativePreparationScheduler {
         if (placementChanged && current.snapshot.status === 'ready') {
           current.snapshot = this.readySnapshot(
             current,
-            current.snapshot.prepared
+            current.snapshot.prepared,
+            current.snapshot.mountIntent
           );
           snapshotsChanged = true;
         } else if (placementChanged) {
@@ -403,20 +404,22 @@ export class FrontstageNativePreparationScheduler {
 
   private readySnapshot(
     current: ScheduledPreparation,
-    prepared: FrontstageNativePreparedRuntime
+    prepared: FrontstageNativePreparedRuntime,
+    retainedMountIntent: FrontstageNativeInstanceMountIntent | null = null
   ): FrontstageNativePreparationSnapshot {
+    const shouldRetainMount =
+      retainedMountIntent !== null || current.priority <= 1;
     return {
       ...this.baseSnapshot(current),
       status: 'ready',
       prepared,
-      mountIntent:
-        current.priority <= 1
-          ? {
-              blockId: current.task.blockId,
-              slotIndex: current.task.slotIndex,
-              identityInput: prepared.identityInput
-            }
-          : null
+      mountIntent: shouldRetainMount
+        ? {
+            blockId: current.task.blockId,
+            slotIndex: current.task.slotIndex,
+            identityInput: prepared.identityInput
+          }
+        : null
     };
   }
 
