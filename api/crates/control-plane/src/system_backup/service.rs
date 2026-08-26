@@ -1,18 +1,16 @@
 use std::{collections::BTreeSet, sync::Arc};
 
 use argon2::Argon2;
-use async_trait::async_trait;
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use chacha20poly1305::{
     aead::{Aead, Payload},
     KeyInit, XChaCha20Poly1305, XNonce,
 };
 use domain::{
-    ApplicationBuild, ArtifactRebuildability, BackupComponent, BackupComponentDisposition,
-    BackupComponentId, BackupComponentKind, BackupComponentRestoreTarget, BackupJob, BackupJobId,
-    BackupJobState, BackupJournalEvent, BackupJournalEventKind, BackupJournalSubject,
-    BackupManifest, BackupProtection, BackupSetId, BackupSourceIdentity, ContentDigest,
-    KeyFingerprint, MigrationHead, SealedBackupManifest, SYSTEM_BACKUP_CHUNK_SIZE_BYTES,
+    ApplicationBuild, BackupComponent, BackupComponentDisposition, BackupComponentId, BackupJob,
+    BackupJobId, BackupJobState, BackupJournalEvent, BackupJournalEventKind, BackupJournalSubject,
+    BackupManifest, BackupProtection, BackupSetId, ContentDigest, KeyFingerprint, MigrationHead,
+    SealedBackupManifest, SYSTEM_BACKUP_CHUNK_SIZE_BYTES,
 };
 use rand_core::{OsRng, RngCore};
 use sha2::{Digest, Sha256};
@@ -21,46 +19,19 @@ use time::OffsetDateTime;
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use uuid::Uuid;
 
-use crate::ports::{
-    BackupComponentWriter, BackupKeyMaterial, BackupKeyProvider, BackupRepository,
-    BackupSetCatalogEntry,
-};
+use crate::ports::{BackupKeyMaterial, BackupKeyProvider, BackupRepository, BackupSetCatalogEntry};
 
 use super::{
     authenticate_backup_manifest, decrypt_backup_stream, encrypt_backup_stream,
     verify_backup_manifest, BackupEnvelopeError,
 };
 
+pub use control_plane_contracts::system_backup::{
+    BackupComponentDescriptor, BackupComponentSource, BackupSourceError,
+};
+
 pub const BACKUP_BUNDLE_MAGIC: &[u8; 8] = b"1FBKBND1";
 const BACKUP_BUNDLE_IO_BUFFER_BYTES: usize = 256 * 1024;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BackupComponentDescriptor {
-    pub component_id: BackupComponentId,
-    pub kind: BackupComponentKind,
-    pub source_identity: BackupSourceIdentity,
-    pub content_type: String,
-    pub disposition: BackupComponentDisposition,
-    pub rebuildability: ArtifactRebuildability,
-    pub restore_target: BackupComponentRestoreTarget,
-}
-
-#[derive(Debug, Error)]
-pub enum BackupSourceError {
-    #[error("backup source is unavailable")]
-    Unavailable,
-    #[error("backup source changed while being captured")]
-    Changed,
-    #[error("backup source is invalid")]
-    Invalid,
-}
-
-#[async_trait]
-pub trait BackupComponentSource: Send + Sync {
-    fn descriptor(&self) -> BackupComponentDescriptor;
-
-    async fn write_to(&self, destination: BackupComponentWriter) -> Result<(), BackupSourceError>;
-}
 
 #[derive(Debug, Clone)]
 pub struct CreateSystemBackupCommand {

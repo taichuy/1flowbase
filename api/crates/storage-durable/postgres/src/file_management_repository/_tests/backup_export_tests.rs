@@ -1,9 +1,9 @@
 use control_plane::{
-    file_management::{
-        BackupObjectDatabaseReference, BackupObjectInventoryRepository,
-        CreateWorkspaceFileTableCommand, FileTableProvisioningService,
-    },
+    file_management::{CreateWorkspaceFileTableCommand, FileTableProvisioningService},
     ports::{CreateFileStorageInput, FileManagementRepository},
+};
+use control_plane_contracts::ports::{
+    BackupObjectDatabaseReference, BackupObjectInventoryRepository,
 };
 use uuid::Uuid;
 

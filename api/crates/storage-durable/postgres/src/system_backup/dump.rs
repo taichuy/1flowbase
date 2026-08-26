@@ -1,7 +1,7 @@
 use std::process::Stdio;
 
 use async_trait::async_trait;
-use control_plane::{
+use control_plane_contracts::{
     ports::BackupComponentWriter,
     system_backup::{BackupComponentDescriptor, BackupComponentSource, BackupSourceError},
 };

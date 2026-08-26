@@ -13,6 +13,7 @@ pub mod model_definition;
 pub mod model_provider;
 pub mod network_egress;
 pub mod plugin;
+pub mod system_backup;
 pub mod ui_management;
 
 use async_trait::async_trait;
@@ -38,4 +39,5 @@ pub use model_definition::*;
 pub use model_provider::*;
 pub use network_egress::*;
 pub use plugin::*;
+pub use system_backup::*;
 pub use ui_management::*;

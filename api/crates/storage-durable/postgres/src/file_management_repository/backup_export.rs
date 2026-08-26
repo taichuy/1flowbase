@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use anyhow::{bail, Context, Result};
 use async_trait::async_trait;
-use control_plane::file_management::{
+use control_plane_contracts::ports::{
     BackupObjectDatabaseReference, BackupObjectInventoryRecord, BackupObjectInventoryRepository,
 };
 use sqlx::{Postgres, Row, Transaction};

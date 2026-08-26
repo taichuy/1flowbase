@@ -6,11 +6,15 @@ pub mod application_public_api;
 pub mod console_policy_migration;
 pub mod error;
 pub mod ports;
+pub mod system_backup;
+pub mod system_recovery;
 
 pub use application_public_api::*;
 pub use console_policy_migration::*;
 pub use error::*;
 pub use ports::*;
+pub use system_backup::*;
+pub use system_recovery::*;
 
 pub fn crate_name() -> &'static str {
     "control-plane-contracts"

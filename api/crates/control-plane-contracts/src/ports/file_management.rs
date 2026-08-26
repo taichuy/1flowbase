@@ -1,4 +1,50 @@
+use std::fmt;
+
 use super::*;
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum BackupObjectDatabaseReference {
+    FileRecord {
+        file_table_id: Uuid,
+        record_id: Uuid,
+    },
+    RuntimeDebugArtifact {
+        artifact_id: Uuid,
+    },
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct BackupObjectInventoryRecord {
+    pub reference: BackupObjectDatabaseReference,
+    pub storage_id: Uuid,
+    pub driver_type: String,
+    pub storage_config: serde_json::Value,
+    pub object_path: String,
+    pub content_type: String,
+    pub size_bytes: u64,
+}
+
+impl fmt::Debug for BackupObjectInventoryRecord {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("BackupObjectInventoryRecord")
+            .field("reference", &self.reference)
+            .field("storage_id", &self.storage_id)
+            .field("driver_type", &self.driver_type)
+            .field("storage_config", &"<redacted>")
+            .field("object_path", &self.object_path)
+            .field("content_type", &self.content_type)
+            .field("size_bytes", &self.size_bytes)
+            .finish()
+    }
+}
+
+#[async_trait]
+pub trait BackupObjectInventoryRepository: Send + Sync {
+    async fn list_backup_object_inventory(
+        &self,
+    ) -> anyhow::Result<Vec<BackupObjectInventoryRecord>>;
+}
 
 #[derive(Debug, Clone)]
 pub struct CreateFileStorageInput {
