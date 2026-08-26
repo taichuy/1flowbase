@@ -13,7 +13,7 @@ use domain::{
 };
 use sha2::{Digest, Sha256};
 use sqlx::PgPool;
-use storage_durable::{current_migration_head, supported_migration_heads, PostgreSqlToolchain};
+use storage_durable_postgres::{current_migration_head, supported_migration_heads, PostgreSqlToolchain};
 use sysinfo::Disks;
 
 pub struct ApiRecoveryTargetProbe {

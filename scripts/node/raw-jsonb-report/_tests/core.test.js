@@ -21,13 +21,13 @@ function createRepoWithMigration(sql, source = '') {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-raw-jsonb-report-'));
   writeFile(
     repoRoot,
-    'api/crates/storage-durable/postgres/migrations/20260101000000_fixture.sql',
+    'api/crates/storage/durable/postgres/migrations/20260101000000_fixture.sql',
     sql
   );
   if (source.length > 0) {
     writeFile(
       repoRoot,
-      'api/crates/storage-durable/postgres/src/orchestration_runtime_repository/read_methods.rs',
+      'api/crates/storage/durable/postgres/src/orchestration_runtime_repository/read_methods.rs',
       source
     );
   }
@@ -61,7 +61,7 @@ test('collectRawJsonbReport flags raw JSONB selected by an unbounded list entryp
   const report = collectRawJsonbReport({
     repoRoot,
     config: {
-      sourceSearchDirs: ['api/crates/storage-durable/postgres/src'],
+      sourceSearchDirs: ['api/crates/storage/durable/postgres/src'],
       fields: [
         {
           table: 'application_run_log_summaries',
@@ -126,7 +126,7 @@ test('collectRawJsonbReport accepts detail and run-scope raw reads without list 
   const report = collectRawJsonbReport({
     repoRoot,
     config: {
-      sourceSearchDirs: ['api/crates/storage-durable/postgres/src'],
+      sourceSearchDirs: ['api/crates/storage/durable/postgres/src'],
       fields: [
         {
           table: 'flow_runs',
@@ -180,7 +180,7 @@ test('collectRawJsonbReport accepts raw reads for a bounded primary-key batch', 
   const report = collectRawJsonbReport({
     repoRoot,
     config: {
-      sourceSearchDirs: ['api/crates/storage-durable/postgres/src'],
+      sourceSearchDirs: ['api/crates/storage/durable/postgres/src'],
       fields: [{
         table: 'flow_runs',
         column: 'output_payload',
@@ -226,7 +226,7 @@ test('collectRawJsonbReport treats constant projections as summary reads instead
   const report = collectRawJsonbReport({
     repoRoot,
     config: {
-      sourceSearchDirs: ['api/crates/storage-durable/postgres/src'],
+      sourceSearchDirs: ['api/crates/storage/durable/postgres/src'],
       fields: [
         {
           table: 'application_run_log_summaries',
@@ -274,7 +274,7 @@ test('collectRawJsonbReport recognizes table aliases when scanning raw list read
   const report = collectRawJsonbReport({
     repoRoot,
     config: {
-      sourceSearchDirs: ['api/crates/storage-durable/postgres/src'],
+      sourceSearchDirs: ['api/crates/storage/durable/postgres/src'],
       fields: [
         {
           table: 'flow_runs',
@@ -330,7 +330,7 @@ test('collectRawJsonbReport keeps storage SQL reads when non-SQL references exce
     repoRoot,
     maxEvidence: 4,
     config: {
-      sourceSearchDirs: ['api/crates/storage-durable/postgres/src'],
+      sourceSearchDirs: ['api/crates/storage/durable/postgres/src'],
       fields: [
         {
           table: 'node_runs',

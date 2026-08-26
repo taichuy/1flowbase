@@ -17,7 +17,7 @@
         "functionName": "list_application_runs"
       },
       "repository": {
-        "file": "api/crates/storage-durable/postgres/src/orchestration_runtime_repository/application_run_log_methods.rs",
+        "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/application_run_log_methods.rs",
         "functionName": "list_application_run_logs_page"
       },
       "extraSources": [
@@ -67,16 +67,16 @@
         "functionName": "get_application_run_monitoring_report"
       },
       "repository": {
-        "file": "api/crates/storage-durable/postgres/src/orchestration_runtime_repository/application_run_monitoring_methods.rs",
+        "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/application_run_monitoring_methods.rs",
         "functionName": "get_application_run_monitoring_report"
       },
       "extraSources": [
         {
-          "file": "api/crates/storage-durable/postgres/src/orchestration_runtime_repository/application_run_monitoring_methods.rs",
+          "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/application_run_monitoring_methods.rs",
           "functionName": "application_run_monitoring_logs_query"
         },
         {
-          "file": "api/crates/storage-durable/postgres/src/orchestration_runtime_repository/application_run_monitoring_methods.rs",
+          "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/application_run_monitoring_methods.rs",
           "functionName": "application_run_monitoring_ranked_runs"
         }
       ],
@@ -127,7 +127,7 @@
         "functionName": "list_application_conversation_messages"
       },
       "repository": {
-        "file": "api/crates/storage-durable/postgres/src/orchestration_runtime_repository/read_methods.rs",
+        "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/read_methods.rs",
         "functionName": "list_application_conversation_runs_page"
       },
       "contract": {
@@ -168,7 +168,7 @@
         "functionName": "get_application_run_trace_tree"
       },
       "repository": {
-        "file": "api/crates/storage-durable/postgres/src/orchestration_runtime_repository/application_run_trace_projection_methods.rs",
+        "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/application_run_trace_projection_methods.rs",
         "functionName": "list_application_run_trace_roots"
       },
       "contract": {
@@ -216,7 +216,7 @@
         "functionName": "get_application_run_trace_node_children"
       },
       "repository": {
-        "file": "api/crates/storage-durable/postgres/src/orchestration_runtime_repository/application_run_trace_projection_methods.rs",
+        "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/application_run_trace_projection_methods.rs",
         "functionName": "list_application_run_trace_children_page"
       },
       "extraSources": [
@@ -272,7 +272,7 @@
         "functionName": "get_runtime_debug_stream"
       },
       "repository": {
-        "file": "api/crates/storage-durable/postgres/src/orchestration_runtime_repository/read_methods.rs",
+        "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/read_methods.rs",
         "functionName": "list_runtime_event_backfill_page"
       },
       "extraSources": [
@@ -329,7 +329,7 @@
         "functionName": "subscribe_flow_debug_run_stream"
       },
       "repository": {
-        "file": "api/crates/storage-durable/postgres/src/orchestration_runtime_repository/read_methods.rs",
+        "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/read_methods.rs",
         "functionName": "list_runtime_event_backfill_page"
       },
       "extraSources": [
@@ -380,7 +380,7 @@
         "functionName": "list_usage_ledger"
       },
       "repository": {
-        "file": "api/crates/storage-durable/postgres/src/orchestration_runtime_repository/read_methods.rs",
+        "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/read_methods.rs",
         "functionName": "list_usage_ledger"
       },
       "contract": {
@@ -424,7 +424,7 @@
         "functionName": "resolve_runtime_debug_artifacts"
       },
       "repository": {
-        "file": "api/crates/storage-durable/postgres/src/orchestration_runtime_repository/artifact_methods.rs",
+        "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/artifact_methods.rs",
         "functionName": "get_runtime_debug_artifact"
       },
       "contract": {
@@ -474,7 +474,7 @@
         "functionName": "get_runtime_debug_artifact"
       },
       "repository": {
-        "file": "api/crates/storage-durable/postgres/src/orchestration_runtime_repository/artifact_methods.rs",
+        "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/artifact_methods.rs",
         "functionName": "get_runtime_debug_artifact"
       },
       "contract": {

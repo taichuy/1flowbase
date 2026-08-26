@@ -6,7 +6,7 @@ use argon2::{
 };
 use control_plane::bootstrap::{BootstrapConfig, BootstrapService};
 use rand_core::OsRng;
-use storage_durable::build_main_durable_postgres;
+use storage_durable_postgres::build_main_durable_postgres;
 
 #[tokio::main]
 async fn main() -> Result<()> {

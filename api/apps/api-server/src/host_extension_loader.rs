@@ -48,7 +48,7 @@ impl PreparedHostExtensionsAtStartup {
 }
 
 pub(crate) async fn prepare_host_extensions_at_startup(
-    store: &storage_durable::MainDurableStore,
+    store: &storage_durable_postgres::MainDurableStore,
     api_node_id: &str,
     provider_install_root: &str,
     host_extension_dropin_root: &str,
@@ -131,7 +131,7 @@ pub(crate) async fn prepare_host_extensions_at_startup(
 }
 
 async fn mark_host_extension_load_failed(
-    store: &storage_durable::MainDurableStore,
+    store: &storage_durable_postgres::MainDurableStore,
     api_node_id: &str,
     installation: &domain::LocalPluginInstallationRecord,
     error: &anyhow::Error,
@@ -148,7 +148,7 @@ async fn mark_host_extension_load_failed(
 }
 
 pub(crate) async fn activate_prepared_host_extensions(
-    store: &storage_durable::MainDurableStore,
+    store: &storage_durable_postgres::MainDurableStore,
     api_node_id: &str,
     mut prepared: PreparedHostExtensionsAtStartup,
 ) -> Result<HostExtensionStartupSummary> {

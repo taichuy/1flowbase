@@ -25,13 +25,13 @@ test('routeChangedFiles recommends related gates for frontend and backend consis
 test('buildAdvisoryMessage produces an English ASCII non-blocking prompt', () => {
   const routes = routeChangedFiles([
     'web/app/src/i18n/en-US.json',
-    'api/crates/storage-postgres/src/repository.rs',
+    'api/crates/storage/durable/postgres/src/repository.rs',
   ]);
   const message = buildAdvisoryMessage({
     mode: 'staged',
     changedFiles: [
       'web/app/src/i18n/en-US.json',
-      'api/crates/storage-postgres/src/repository.rs',
+      'api/crates/storage/durable/postgres/src/repository.rs',
     ],
     routes,
   });

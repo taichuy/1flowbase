@@ -215,22 +215,22 @@ fn model_provider_request_log_contract_matches_all_seeded_physical_fields() {
 
     let migrations = [
         include_str!(
-            "../../../storage-durable/postgres/migrations/20260713130000_register_model_provider_request_logs_runtime_read.sql"
+            "../../../storage/durable/postgres/migrations/20260713130000_register_model_provider_request_logs_runtime_read.sql"
         ),
         include_str!(
-            "../../../storage-durable/postgres/migrations/20260802100000_add_node_run_to_provider_request_logs.sql"
+            "../../../storage/durable/postgres/migrations/20260802100000_add_node_run_to_provider_request_logs.sql"
         ),
         include_str!(
-            "../../../storage-durable/postgres/migrations/20260808230000_add_user_attribution_to_provider_request_logs.sql"
+            "../../../storage/durable/postgres/migrations/20260808230000_add_user_attribution_to_provider_request_logs.sql"
         ),
         include_str!(
-            "../../../storage-durable/postgres/migrations/20260816130000_add_provider_request_log_plugin_cache_snapshots.sql"
+            "../../../storage/durable/postgres/migrations/20260816130000_add_provider_request_log_plugin_cache_snapshots.sql"
         ),
         include_str!(
-            "../../../storage-durable/postgres/migrations/20260818120000_add_provider_request_log_billing_snapshot.sql"
+            "../../../storage/durable/postgres/migrations/20260818120000_add_provider_request_log_billing_snapshot.sql"
         ),
         include_str!(
-            "../../../storage-durable/postgres/migrations/20260818130000_add_provider_request_log_billing_status.sql"
+            "../../../storage/durable/postgres/migrations/20260818130000_add_provider_request_log_billing_status.sql"
         ),
     ];
     for (code, field_kind, is_required, is_unique) in expected {

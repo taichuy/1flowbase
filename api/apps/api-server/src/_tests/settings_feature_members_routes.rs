@@ -13,7 +13,7 @@ use tower::ServiceExt;
 const MEMBERS_FEATURE_PERMISSION: &str = "settings_feature.access.system.members";
 
 async fn register_members_feature_permission(database_url: &str) {
-    let store = storage_durable::build_main_durable_postgres(database_url)
+    let store = storage_durable_postgres::build_main_durable_postgres(database_url)
         .await
         .expect("test database should be available")
         .store;
@@ -171,7 +171,7 @@ async fn members_feature_only_lists_role_options_and_replaces_member_roles_withi
     )
     .await;
     let outside_workspace_id = seed_workspace(&database_url, "Outside workspace").await;
-    let store = storage_durable::build_main_durable_postgres(&database_url)
+    let store = storage_durable_postgres::build_main_durable_postgres(&database_url)
         .await
         .unwrap()
         .store;

@@ -66,7 +66,7 @@ async fn create_test_application(
 }
 
 async fn register_feature_permissions(database_url: &str) {
-    let store = storage_durable::build_main_durable_postgres(database_url)
+    let store = storage_durable_postgres::build_main_durable_postgres(database_url)
         .await
         .expect("test database should be available")
         .store;
@@ -347,7 +347,7 @@ async fn explicit_settings_features_authorize_representative_routes_and_writes()
     let outside_application =
         create_test_application(&app, &root_cookie, &root_csrf, "Outside workspace").await;
     let outside_workspace = seed_workspace(&database_url, "Outside applications").await;
-    let store = storage_durable::build_main_durable_postgres(&database_url)
+    let store = storage_durable_postgres::build_main_durable_postgres(&database_url)
         .await
         .unwrap()
         .store;

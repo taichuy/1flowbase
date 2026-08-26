@@ -23,7 +23,7 @@ const KNOWN_EQUIVALENT_MIGRATION_DRIFTS = new Map([
     '20260808230000',
     {
       relativePath:
-        'api/crates/storage-durable/postgres/migrations/20260808230000_add_user_attribution_to_provider_request_logs.sql',
+        'api/crates/storage/durable/postgres/migrations/20260808230000_add_user_attribution_to_provider_request_logs.sql',
       appliedChecksum:
         '65656b2b49acc6f0c034d3df7440f5113f08d14613279d55aacc7463948c783c1a1aeb3f667500cd18245bf2a493db66',
       resolvedChecksum:

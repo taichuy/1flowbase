@@ -1,7 +1,7 @@
 {
   "version": 1,
   "sourceSearchDirs": [
-    "api/crates/storage-durable/postgres/src",
+    "api/crates/storage/durable/postgres/src",
     "api/crates/control-plane/src",
     "api/crates/orchestration-runtime/src",
     "api/crates/runtime-core/src"

@@ -26,7 +26,7 @@ serde.workspace = true
 serde_json.workspace = true
 semver.workspace = true
 sha2.workspace = true
-storage-object = { path = "../storage-object" }
+storage-object = { path = "../storage/object" }
 thiserror.workspace = true
 time.workspace = true
 time-tz.workspace = true

@@ -1,6 +1,6 @@
 use std::{ffi::OsString, path::PathBuf};
 
-use storage_durable::PostgreSqlToolchain;
+use storage_durable_postgres::PostgreSqlToolchain;
 use thiserror::Error;
 
 pub const PG_DUMP_PATH_ENV: &str = "API_POSTGRES_PG_DUMP_PATH";

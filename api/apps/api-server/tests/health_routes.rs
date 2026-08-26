@@ -124,7 +124,7 @@ async fn test_app() -> Router {
 async fn test_app_with_config(mut config: ApiConfig) -> Router {
     let database = isolated_database(&config.database_url).await;
     config.database_url = database.database_url().to_owned();
-    let durable = storage_durable::build_main_durable_postgres_with_max_connections(
+    let durable = storage_durable_postgres::build_main_durable_postgres_with_max_connections(
         &config.database_url,
         config.database_pool_max_connections,
     )

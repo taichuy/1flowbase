@@ -21,7 +21,7 @@ use control_plane::plugin_management::{
     PluginManagementService, SwitchPluginVersionCommand,
 };
 use plugin_framework::{intake_package_bytes, PackageIntakePolicy, PluginConsumptionKind};
-use storage_durable::MainDurableStore;
+use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use crate::{

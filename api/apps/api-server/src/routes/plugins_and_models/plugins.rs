@@ -26,7 +26,7 @@ use control_plane::resource_action::{
 };
 use plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
 use serde::{Deserialize, Serialize};
-use storage_durable::MainDurableStore;
+use storage_durable_postgres::MainDurableStore;
 use time::format_description::well_known::Rfc3339;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;

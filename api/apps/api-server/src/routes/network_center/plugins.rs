@@ -11,7 +11,7 @@ use control_plane::plugin_management::{
     PluginCatalogFilter, PluginManagementService,
 };
 use control_plane::ports::NetworkEgressRepository;
-use storage_durable::MainDurableStore;
+use storage_durable_postgres::MainDurableStore;
 use utoipa::ToSchema;
 
 use crate::{

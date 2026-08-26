@@ -10,7 +10,7 @@ use domain::{CatalogLocale, CatalogMessageIdentity};
 use plugin_framework::HostExtensionContributionManifest;
 use runtime_core::runtime_engine::RuntimeEngine;
 use serde::Serialize;
-use storage_durable::MainDurableStore;
+use storage_durable_postgres::MainDurableStore;
 use time::OffsetDateTime;
 
 use crate::error_response::ApiError;

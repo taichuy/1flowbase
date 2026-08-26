@@ -26,10 +26,10 @@
 - `crates/publish-gateway` 放发布网关边界。
 - `crates/runtime-core` 放 runtime registry、runtime CRUD 核心和 slot engine。
 - `crates/runtime-profile` 放运行目标、locale、profile fingerprint 与插件运行环境快照。
-- `crates/storage-durable` 放平台主存储边界、主存储启动入口与健康检查入口；宿主只消费这里暴露的稳定入口。
-- `crates/storage-durable/postgres` 是 `storage-postgres` crate，放 PostgreSQL repository impl、查询、事务、migrations、存储层 mapper。
-- `crates/storage-ephemeral` 放非持久 session store、短期协同原语与 ephemeral backend 适配。
-- `crates/storage-object` 放业务文件对象存储 driver 边界；内建 `local` 与 `rustfs` driver。
+- `crates/storage/durable/core` 是 `storage-durable` 稳定边界，只放 backend kind 等不依赖具体 adapter 的类型。
+- `crates/storage/durable/postgres` 是 `storage-durable-postgres` crate，放 PostgreSQL repository impl、启动入口、查询、事务、migrations 与存储层 mapper。
+- `crates/storage/ephemeral` 放非持久 session store、短期协同原语与 ephemeral backend 适配。
+- `crates/storage/object` 放业务文件对象存储 driver 边界；内建 `local` 与 `rustfs` driver。
 - `plugins` 是插件源码工作区和包工作区；`host-extensions`、`sets`、`templates`、`packages`、`installed` 的生命周期以 `api/plugins/README.md` 为准。
 - `target` 是构建产物目录，不手工修改。
 - 模块级与单元测试放到对应 `src/_tests`；应用宿主级健康检查、启动冒烟、跨 crate 集成验证放到 `tests/`。
@@ -48,9 +48,9 @@
 - 后台设置授权只解决入口与操作资格；workspace / system、owner、row、field、secret 和状态约束继续由 `control-plane` 与 repository 执行。
 - `crates/control-plane` 是业务边界；关键写动作从命名明确的 service command 或 `Resource Action Kernel` action 进入。
 - `crates/control-plane/src/ports` 定义 repository trait 与外部端口。
-- `crates/storage-durable/postgres/src/**/*_repository.rs` 和 `crates/storage-ephemeral/src/*` 是存储或短期协同端口实现。
+- `crates/storage/durable/postgres/src/**/*_repository.rs` 和 `crates/storage/ephemeral/src/*` 是存储或短期协同端口实现。
 - actor / scope 过滤型查询属于持久化查询职责；状态流转、权限决策、审计写入属于 `control-plane`。
-- `crates/storage-durable/postgres/src/mappers` 是存储模型与领域模型转换层。
+- `crates/storage/durable/postgres/src/mappers` 是存储模型与领域模型转换层。
 - 主仓 durable 后端官方支持 PostgreSQL；外部数据库、SaaS、API 数据源走 runtime extension。
 - 业务文件二进制走 `storage-object`；插件安装包和业务文件属于不同存储域。
 - 默认本地业务文件根目录是 `api/storage`；`rustfs` driver 内建但不默认启用。

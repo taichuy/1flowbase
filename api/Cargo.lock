@@ -107,7 +107,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "sqlx",
- "storage-durable",
+ "storage-durable-postgres",
  "storage-ephemeral",
  "storage-object",
  "sysinfo",
@@ -4018,8 +4018,39 @@ name = "storage-durable"
 version = "0.4.1"
 dependencies = [
  "anyhow",
+]
+
+[[package]]
+name = "storage-durable-postgres"
+version = "0.4.1"
+dependencies = [
+ "access-control",
+ "anyhow",
+ "async-trait",
+ "base64",
+ "chacha20poly1305",
  "control-plane",
- "storage-postgres",
+ "control-plane-contracts",
+ "domain",
+ "futures-util",
+ "percent-encoding",
+ "plugin-framework",
+ "postgres-test-support",
+ "rand 0.10.2",
+ "rand_regex",
+ "regex-syntax",
+ "runtime-core",
+ "rust_decimal",
+ "serde_json",
+ "sha2 0.10.9",
+ "sqlx",
+ "storage-durable",
+ "thiserror 2.0.18",
+ "time",
+ "tokio",
+ "tracing",
+ "url",
+ "uuid",
 ]
 
 [[package]]
@@ -4049,38 +4080,6 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
- "uuid",
-]
-
-[[package]]
-name = "storage-postgres"
-version = "0.4.1"
-dependencies = [
- "access-control",
- "anyhow",
- "async-trait",
- "base64",
- "chacha20poly1305",
- "control-plane",
- "control-plane-contracts",
- "domain",
- "futures-util",
- "percent-encoding",
- "plugin-framework",
- "postgres-test-support",
- "rand 0.10.2",
- "rand_regex",
- "regex-syntax",
- "runtime-core",
- "rust_decimal",
- "serde_json",
- "sha2 0.10.9",
- "sqlx",
- "thiserror 2.0.18",
- "time",
- "tokio",
- "tracing",
- "url",
  "uuid",
 ]
 

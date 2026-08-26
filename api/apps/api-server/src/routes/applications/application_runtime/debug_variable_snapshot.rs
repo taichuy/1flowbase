@@ -9,7 +9,7 @@ use control_plane::flow::FlowService;
 use control_plane::ports::{DebugVariableCacheEntry, OrchestrationRuntimeRepository};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use storage_durable::MainDurableStore;
+use storage_durable_postgres::MainDurableStore;
 use utoipa::ToSchema;
 use uuid::Uuid;
 

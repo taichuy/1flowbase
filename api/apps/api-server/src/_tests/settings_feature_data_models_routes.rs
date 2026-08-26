@@ -158,7 +158,7 @@ async fn response_json(response: axum::response::Response) -> Value {
 }
 
 async fn register_data_models_feature_permission(database_url: &str) {
-    let store = storage_durable::build_main_durable_postgres(database_url)
+    let store = storage_durable_postgres::build_main_durable_postgres(database_url)
         .await
         .expect("test database should be available")
         .store;

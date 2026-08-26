@@ -2,7 +2,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use control_plane::ports::RuntimeRegistrySync;
 use runtime_core::runtime_model_registry::RuntimeModelRegistry;
-use storage_durable::MainDurableStore;
+use storage_durable_postgres::MainDurableStore;
 
 #[derive(Clone)]
 pub struct ApiRuntimeRegistrySync {

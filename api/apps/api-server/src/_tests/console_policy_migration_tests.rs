@@ -92,7 +92,7 @@ async fn isolated_historical_pool(cutoff: i64) -> PgPool {
         .unwrap();
     let historical = Migrator {
         migrations: Cow::Owned(
-            sqlx::migrate!("../../crates/storage-durable/postgres/migrations")
+            sqlx::migrate!("../../crates/storage/durable/postgres/migrations")
                 .iter()
                 .filter(|migration| migration.version <= cutoff)
                 .cloned()
@@ -280,11 +280,11 @@ async fn verify_release_cohort(
 ) -> serde_json::Value {
     let pool = isolated_historical_pool(cutoff).await;
     seed_historical_console_fixture(&pool, migration).await;
-    sqlx::migrate!("../../crates/storage-durable/postgres/migrations")
+    sqlx::migrate!("../../crates/storage/durable/postgres/migrations")
         .run(&pool)
         .await
         .unwrap_or_else(|error| panic!("{label} must upgrade through current migrations: {error}"));
-    let store = storage_durable::MainDurableStore::new(pool.clone());
+    let store = storage_durable_postgres::MainDurableStore::new(pool.clone());
     let actor_user_id: Uuid =
         sqlx::query_scalar("select id from users where account like 'actor-%' order by id limit 1")
             .fetch_one(&pool)

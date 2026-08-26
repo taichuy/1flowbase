@@ -3,7 +3,7 @@ use control_plane::ports::{
     AppendRuntimeEventInput, CompleteCallbackTaskInput, CreateCallbackTaskInput,
     CreateNodeRunInput, OrchestrationRuntimeRepository, UpdateNodeRunInput,
 };
-use storage_durable::MainDurableStore;
+use storage_durable_postgres::MainDurableStore;
 
 async fn start_llm_preview(
     app: &axum::Router,

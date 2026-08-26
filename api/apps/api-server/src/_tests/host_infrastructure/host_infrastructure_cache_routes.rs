@@ -14,7 +14,7 @@ async fn response_json(response: axum::response::Response) -> Value {
 }
 
 async fn audit_event_count(database_url: &str, event_code: &str) -> i64 {
-    let store = storage_durable::build_main_durable_postgres(database_url)
+    let store = storage_durable_postgres::build_main_durable_postgres(database_url)
         .await
         .unwrap()
         .store;

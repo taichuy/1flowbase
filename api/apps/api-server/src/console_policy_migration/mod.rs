@@ -22,7 +22,7 @@ pub use report::{
 };
 
 pub async fn require_runtime_console_policy_cutover(
-    store: &storage_durable::MainDurableStore,
+    store: &storage_durable_postgres::MainDurableStore,
 ) -> Result<()> {
     let state = store.role_console_policy_migration_cutover_state().await?;
     match state.marker {

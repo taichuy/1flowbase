@@ -12,10 +12,10 @@ members = [
   "crates/access-control",
   "crates/plugin-framework",
   "crates/extension-contracts",
-  "crates/storage-durable/postgres",
-  "crates/storage-durable",
-  "crates/storage-ephemeral",
-  "crates/storage-object",
+  "crates/storage/durable/core",
+  "crates/storage/durable/postgres",
+  "crates/storage/ephemeral",
+  "crates/storage/object",
   "crates/observability",
   "crates/postgres-test-support"
 ]

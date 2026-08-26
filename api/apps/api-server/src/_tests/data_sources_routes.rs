@@ -186,7 +186,7 @@ async fn seed_data_source_installation(
         .unwrap()
         .unwrap();
     let scope =
-        <storage_durable::MainDurableStore as control_plane::ports::AuthRepository>::default_scope_for_user(
+        <storage_durable_postgres::MainDurableStore as control_plane::ports::AuthRepository>::default_scope_for_user(
             &state.store,
             root.id,
     )
@@ -213,7 +213,7 @@ async fn seed_data_source_installation(
     )
     .unwrap();
 
-    <storage_durable::MainDurableStore as control_plane::ports::PluginRepository>::upsert_installation(
+    <storage_durable_postgres::MainDurableStore as control_plane::ports::PluginRepository>::upsert_installation(
         &state.store,
         &UpsertPluginInstallationInput {
             installation_id,
@@ -240,7 +240,7 @@ async fn seed_data_source_installation(
     )
     .await
     .unwrap();
-    <storage_durable::MainDurableStore as control_plane::ports::PluginRepository>::upsert_artifact_instance(
+    <storage_durable_postgres::MainDurableStore as control_plane::ports::PluginRepository>::upsert_artifact_instance(
         &state.store,
         &control_plane::ports::UpsertPluginArtifactInstanceInput {
             node_id: state.api_node_id.clone(),
@@ -261,7 +261,7 @@ async fn seed_data_source_installation(
     .await
     .unwrap();
 
-    <storage_durable::MainDurableStore as control_plane::ports::PluginRepository>::create_assignment(
+    <storage_durable_postgres::MainDurableStore as control_plane::ports::PluginRepository>::create_assignment(
         &state.store,
         &CreatePluginAssignmentInput {
             installation_id,

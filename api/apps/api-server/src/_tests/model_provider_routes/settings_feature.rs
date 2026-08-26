@@ -8,7 +8,7 @@ use crate::_tests::support::{
 const MODEL_PROVIDERS_FEATURE_PERMISSION: &str = "settings_feature.access.system.model-providers";
 
 async fn register_model_providers_feature_permission(database_url: &str) {
-    let store = storage_durable::build_main_durable_postgres(database_url)
+    let store = storage_durable_postgres::build_main_durable_postgres(database_url)
         .await
         .expect("test database should be available")
         .store;

@@ -41,7 +41,7 @@ pub struct ApiConfig {
     pub database_url: String,
     pub database_pool_max_connections: u32,
     pub plugin_upload_max_bytes: usize,
-    pub runtime_table_name_policy: storage_durable::RuntimeTableNamePolicy,
+    pub runtime_table_name_policy: storage_durable_postgres::RuntimeTableNamePolicy,
     pub business_file_local_root: String,
     pub plugin_runner_internal_base_url: String,
     pub cookie_name: String,
@@ -157,7 +157,7 @@ impl ApiConfig {
             .get("API_RUNTIME_TABLE_PREFIX_REGEX")
             .map(String::as_str)
             .unwrap_or("rtm_workspace_[a-z0-9]{8}");
-        let runtime_table_name_policy = storage_durable::RuntimeTableNamePolicy::from_config(
+        let runtime_table_name_policy = storage_durable_postgres::RuntimeTableNamePolicy::from_config(
             runtime_table_auto_prefix_enabled,
             runtime_table_prefix_regex,
         )

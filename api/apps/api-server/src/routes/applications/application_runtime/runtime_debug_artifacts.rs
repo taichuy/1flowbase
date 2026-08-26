@@ -14,7 +14,7 @@ use control_plane::{
     },
 };
 use serde_json::{json, Map, Value};
-use storage_durable::MainDurableStore;
+use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use crate::{app_state::ApiState, error_response::ApiError};

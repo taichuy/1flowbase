@@ -52,9 +52,9 @@ orchestration-runtime = { path = "../../crates/orchestration-runtime" }
 runtime-core = { path = "../../crates/runtime-core" }
 access-control = { path = "../../crates/access-control" }
 plugin-framework = { path = "../../crates/plugin-framework" }
-storage-durable = { path = "../../crates/storage-durable" }
-storage-ephemeral = { path = "../../crates/storage-ephemeral" }
-storage-object = { path = "../../crates/storage-object" }
+storage-durable-postgres = { path = "../../crates/storage/durable/postgres" }
+storage-ephemeral = { path = "../../crates/storage/ephemeral" }
+storage-object = { path = "../../crates/storage/object" }
 observability = { path = "../../crates/observability" }
 runtime-extension-host = { path = "../../crates/runtime-extension-host" }
 runtime-profile = { path = "../../crates/runtime-profile" }

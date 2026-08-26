@@ -380,7 +380,7 @@ async fn runtime_model_routes_use_default_scope_id_for_workspace_model_crud() {
 
     create_runtime_record(&app, &cookie, &csrf, model_code, "default scoped").await;
 
-    let durable = storage_durable::build_main_durable_postgres(&database_url)
+    let durable = storage_durable_postgres::build_main_durable_postgres(&database_url)
         .await
         .unwrap();
     let pool = durable.store;

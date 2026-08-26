@@ -184,7 +184,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
     let manifest_fingerprint = compute_manifest_fingerprint(&package.path().join("manifest.yaml"))
         .await
         .expect("fixture manifest must have a fingerprint");
-    <storage_durable::MainDurableStore as PluginRepository>::upsert_installation(
+    <storage_durable_postgres::MainDurableStore as PluginRepository>::upsert_installation(
         &state.store,
         &UpsertPluginInstallationInput {
             installation_id,
@@ -213,7 +213,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
     .expect("fixture installation must persist");
     if let NetworkEgressConsumerSelector::ModelProviderInstance { instance_id } = &selector {
         let model_installation_id = uuid::Uuid::now_v7();
-        <storage_durable::MainDurableStore as PluginRepository>::upsert_installation(
+        <storage_durable_postgres::MainDurableStore as PluginRepository>::upsert_installation(
             &state.store,
             &UpsertPluginInstallationInput {
                 installation_id: model_installation_id,
@@ -240,7 +240,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
         )
         .await
         .expect("fixture model installation must persist");
-        <storage_durable::MainDurableStore as ModelProviderRepository>::create_instance(
+        <storage_durable_postgres::MainDurableStore as ModelProviderRepository>::create_instance(
             &state.store,
             &CreateModelProviderInstanceInput {
                 instance_id: *instance_id,
@@ -267,7 +267,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
         .await
         .expect("fixture model consumer must persist before its egress route");
     }
-    <storage_durable::MainDurableStore as PluginRepository>::upsert_artifact_instance(
+    <storage_durable_postgres::MainDurableStore as PluginRepository>::upsert_artifact_instance(
         &state.store,
         &UpsertPluginArtifactInstanceInput {
             node_id: state.api_node_id.clone(),
@@ -288,7 +288,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
     .await
     .expect("fixture artifact must persist");
     let provider_id = uuid::Uuid::now_v7();
-    <storage_durable::MainDurableStore as NetworkEgressRepository>::create_network_egress_provider(
+    <storage_durable_postgres::MainDurableStore as NetworkEgressRepository>::create_network_egress_provider(
         &state.store,
         &CreateNetworkEgressProviderInput {
             provider_id,
@@ -314,7 +314,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
     )
     .await
     .expect("fixture provider must persist");
-    <storage_durable::MainDurableStore as NetworkEgressRepository>::upsert_network_egress_provider_secret(
+    <storage_durable_postgres::MainDurableStore as NetworkEgressRepository>::upsert_network_egress_provider_secret(
         &state.store,
         &UpsertNetworkEgressProviderSecretInput {
             provider_id,
@@ -326,7 +326,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
     )
     .await
     .expect("fixture provider secret must persist");
-    <storage_durable::MainDurableStore as NetworkEgressRepository>::replace_network_egress_projection(
+    <storage_durable_postgres::MainDurableStore as NetworkEgressRepository>::replace_network_egress_projection(
         &state.store,
         &ReplaceNetworkEgressProjectionInput {
             provider_id,
@@ -348,7 +348,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
     .await
     .expect("fixture projection must persist");
     let pool_id = uuid::Uuid::now_v7();
-    <storage_durable::MainDurableStore as NetworkEgressPoolRepository>::create_network_egress_pool(
+    <storage_durable_postgres::MainDurableStore as NetworkEgressPoolRepository>::create_network_egress_pool(
         &state.store,
         &CreateNetworkEgressPoolInput {
             pool_id,
@@ -360,7 +360,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
     .await
     .expect("fixture pool must persist");
     let member_id = uuid::Uuid::now_v7();
-    <storage_durable::MainDurableStore as NetworkEgressPoolRepository>::create_network_egress_pool_member(
+    <storage_durable_postgres::MainDurableStore as NetworkEgressPoolRepository>::create_network_egress_pool_member(
         &state.store,
         &CreateNetworkEgressPoolMemberInput {
             member_id,
@@ -374,7 +374,7 @@ pub(super) async fn seed_network_egress_resolver_with_acquire_behavior(
     )
     .await
     .expect("fixture pool member must persist");
-    <storage_durable::MainDurableStore as NetworkEgressRouteRepository>::create_network_egress_route(
+    <storage_durable_postgres::MainDurableStore as NetworkEgressRouteRepository>::create_network_egress_route(
         &state.store,
         &CreateNetworkEgressRouteInput {
             route_id: uuid::Uuid::now_v7(),

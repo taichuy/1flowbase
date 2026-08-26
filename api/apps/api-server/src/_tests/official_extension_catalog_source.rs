@@ -192,7 +192,7 @@ pub(super) async fn seed_network_egress_resolver(
     let manifest_fingerprint = compute_manifest_fingerprint(&package.path().join("manifest.yaml"))
         .await
         .unwrap();
-    <storage_durable::MainDurableStore as PluginRepository>::upsert_installation(
+    <storage_durable_postgres::MainDurableStore as PluginRepository>::upsert_installation(
         &state.store,
         &UpsertPluginInstallationInput {
             installation_id,
@@ -221,7 +221,7 @@ pub(super) async fn seed_network_egress_resolver(
     .unwrap();
     if let NetworkEgressConsumerSelector::ModelProviderInstance { instance_id } = &selector {
         let model_installation_id = uuid::Uuid::now_v7();
-        <storage_durable::MainDurableStore as PluginRepository>::upsert_installation(
+        <storage_durable_postgres::MainDurableStore as PluginRepository>::upsert_installation(
             &state.store,
             &UpsertPluginInstallationInput {
                 installation_id: model_installation_id,
@@ -248,7 +248,7 @@ pub(super) async fn seed_network_egress_resolver(
         )
         .await
         .unwrap();
-        <storage_durable::MainDurableStore as ModelProviderRepository>::create_instance(
+        <storage_durable_postgres::MainDurableStore as ModelProviderRepository>::create_instance(
             &state.store,
             &CreateModelProviderInstanceInput {
                 instance_id: *instance_id,
@@ -275,7 +275,7 @@ pub(super) async fn seed_network_egress_resolver(
         .await
         .unwrap();
     }
-    <storage_durable::MainDurableStore as PluginRepository>::upsert_artifact_instance(
+    <storage_durable_postgres::MainDurableStore as PluginRepository>::upsert_artifact_instance(
         &state.store,
         &UpsertPluginArtifactInstanceInput {
             node_id: state.api_node_id.clone(),
@@ -296,7 +296,7 @@ pub(super) async fn seed_network_egress_resolver(
     .await
     .unwrap();
     let provider_id = uuid::Uuid::now_v7();
-    <storage_durable::MainDurableStore as NetworkEgressRepository>::create_network_egress_provider(
+    <storage_durable_postgres::MainDurableStore as NetworkEgressRepository>::create_network_egress_provider(
         &state.store,
         &CreateNetworkEgressProviderInput {
             provider_id,
@@ -315,7 +315,7 @@ pub(super) async fn seed_network_egress_resolver(
     )
     .await
     .unwrap();
-    <storage_durable::MainDurableStore as NetworkEgressRepository>::upsert_network_egress_provider_secret(
+    <storage_durable_postgres::MainDurableStore as NetworkEgressRepository>::upsert_network_egress_provider_secret(
         &state.store,
         &UpsertNetworkEgressProviderSecretInput {
             provider_id,
@@ -327,7 +327,7 @@ pub(super) async fn seed_network_egress_resolver(
     )
     .await
     .unwrap();
-    <storage_durable::MainDurableStore as NetworkEgressRepository>::replace_network_egress_projection(
+    <storage_durable_postgres::MainDurableStore as NetworkEgressRepository>::replace_network_egress_projection(
         &state.store,
         &ReplaceNetworkEgressProjectionInput {
             provider_id,
@@ -349,7 +349,7 @@ pub(super) async fn seed_network_egress_resolver(
     .await
     .unwrap();
     let pool_id = uuid::Uuid::now_v7();
-    <storage_durable::MainDurableStore as NetworkEgressPoolRepository>::create_network_egress_pool(
+    <storage_durable_postgres::MainDurableStore as NetworkEgressPoolRepository>::create_network_egress_pool(
         &state.store,
         &CreateNetworkEgressPoolInput {
             pool_id,
@@ -361,7 +361,7 @@ pub(super) async fn seed_network_egress_resolver(
     .await
     .unwrap();
     let member_id = uuid::Uuid::now_v7();
-    <storage_durable::MainDurableStore as NetworkEgressPoolRepository>::create_network_egress_pool_member(
+    <storage_durable_postgres::MainDurableStore as NetworkEgressPoolRepository>::create_network_egress_pool_member(
         &state.store,
         &CreateNetworkEgressPoolMemberInput {
             member_id,
@@ -375,7 +375,7 @@ pub(super) async fn seed_network_egress_resolver(
     )
     .await
     .unwrap();
-    <storage_durable::MainDurableStore as NetworkEgressRouteRepository>::create_network_egress_route(
+    <storage_durable_postgres::MainDurableStore as NetworkEgressRouteRepository>::create_network_egress_route(
         &state.store,
         &CreateNetworkEgressRouteInput {
             route_id: uuid::Uuid::now_v7(),

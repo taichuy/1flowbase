@@ -11,7 +11,7 @@ use control_plane::{
     ports::{GetApplicationRunMonitoringReportInput, OrchestrationRuntimeRepository},
 };
 use serde::{Deserialize, Serialize};
-use storage_durable::MainDurableStore;
+use storage_durable_postgres::MainDurableStore;
 use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
 use utoipa::ToSchema;
 use uuid::Uuid;

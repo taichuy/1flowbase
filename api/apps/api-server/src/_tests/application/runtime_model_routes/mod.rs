@@ -1125,7 +1125,7 @@ async fn create_enum_field(
 }
 
 async fn drop_runtime_table(database_url: &str, model_id: &str) {
-    let durable = storage_durable::build_main_durable_postgres(database_url)
+    let durable = storage_durable_postgres::build_main_durable_postgres(database_url)
         .await
         .unwrap();
     let pool = durable.store;
@@ -1146,7 +1146,7 @@ async fn update_runtime_record_title_directly(
     record_id: &str,
     title: &str,
 ) {
-    let durable = storage_durable::build_main_durable_postgres(database_url)
+    let durable = storage_durable_postgres::build_main_durable_postgres(database_url)
         .await
         .unwrap();
     let pool = durable.store;

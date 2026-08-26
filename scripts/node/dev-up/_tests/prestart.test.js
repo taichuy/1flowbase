@@ -204,7 +204,7 @@ test('AC-001 repairs the known local migration checksum drift without rebuilding
   fs.copyFileSync(
     path.resolve(
       __dirname,
-      '../../../../api/crates/storage-durable/postgres/migrations/20260808230000_add_user_attribution_to_provider_request_logs.sql'
+      '../../../../api/crates/storage/durable/postgres/migrations/20260808230000_add_user_attribution_to_provider_request_logs.sql'
     ),
     path.join(
       migrationDir,
@@ -308,7 +308,7 @@ test('AC-002 refuses the known repair when the database checksum does not match'
   fs.copyFileSync(
     path.resolve(
       __dirname,
-      '../../../../api/crates/storage-durable/postgres/migrations/20260808230000_add_user_attribution_to_provider_request_logs.sql'
+      '../../../../api/crates/storage/durable/postgres/migrations/20260808230000_add_user_attribution_to_provider_request_logs.sql'
     ),
     path.join(
       migrationDir,

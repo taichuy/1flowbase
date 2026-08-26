@@ -26,12 +26,8 @@ const CORE_LIB_CRATES = new Set([
 
 const RUNTIME_STORAGE_CRATES = new Set([
   'orchestration-runtime',
-  'publish-gateway',
   'runtime-core',
-  'storage-durable',
-  'storage-ephemeral',
-  'storage-object',
-  'storage-postgres',
+  'storage',
 ]);
 
 const APP_CRATES = new Set([
@@ -282,7 +278,7 @@ function addBackendCheckRoutes(routes, filePath) {
 
 function isBackendConsistencyFile(filePath) {
   return isBackendFile(filePath)
-    && (/^api\/crates\/(?:control-plane|orchestration-runtime|runtime-core|storage-durable|storage-ephemeral|storage-postgres)\//u.test(filePath)
+    && (/^api\/crates\/(?:control-plane|orchestration-runtime|runtime-core|storage(?:\/|$))/u.test(filePath)
     || /^api\/apps\/api-server\/src\/routes\//u.test(filePath)
     || /(?:^|\/)migrations?(?:\/|$)/iu.test(filePath)
     || /(?:state|transition|repository|workspace|runtime|model_definition|orchestration|permission|acl|access-control)/iu.test(filePath));

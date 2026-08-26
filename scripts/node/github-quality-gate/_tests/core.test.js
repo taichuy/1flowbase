@@ -583,7 +583,7 @@ test('buildReport includes backend consistency target results for consistency sc
         },
         {
           label: 'consistency-storage-model-definition-repository',
-          packageName: 'storage-postgres',
+          packageName: 'storage-durable-postgres',
           filter: 'model_definition_repository_tests',
           status: 'failed',
           exitCode: 101,
@@ -618,7 +618,7 @@ test('buildReport includes backend consistency target results for consistency sc
 
   assert.match(report.markdown, /## Backend Consistency Targets/u);
   assert.match(report.markdown, /\| Label \| Package \| Rust test filter \| Status \| Duration \| Passed \| Failed \|/u);
-  assert.match(report.markdown, /\| `consistency-storage-model-definition-repository` \| `storage-postgres` \| `model_definition_repository_tests` \| failed \| 2\.30s \| 2 \| 1 \|/u);
+  assert.match(report.markdown, /\| `consistency-storage-model-definition-repository` \| `storage-durable-postgres` \| `model_definition_repository_tests` \| failed \| 2\.30s \| 2 \| 1 \|/u);
   assert.equal(report.json.backendConsistencyTargets.length, 2);
   assert.deepEqual(report.json.backendConsistencyTargets[0], {
     label: 'consistency-control-plane-state-transitions',

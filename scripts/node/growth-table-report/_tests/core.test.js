@@ -21,13 +21,13 @@ function createRepoWithMigration(sql, source = '') {
   const repoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-growth-report-'));
   writeFile(
     repoRoot,
-    'api/crates/storage-durable/postgres/migrations/20260101000000_fixture.sql',
+    'api/crates/storage/durable/postgres/migrations/20260101000000_fixture.sql',
     sql
   );
   if (source.length > 0) {
     writeFile(
       repoRoot,
-      'api/crates/storage-durable/postgres/src/runtime_queries.rs',
+      'api/crates/storage/durable/postgres/src/runtime_queries.rs',
       source
     );
   }
@@ -56,7 +56,7 @@ test('collectGrowthTableReport flags missing routing columns, unsafe uniqueness,
   const report = collectGrowthTableReport({
     repoRoot,
     config: {
-      sourceSearchDirs: ['api/crates/storage-durable/postgres/src'],
+      sourceSearchDirs: ['api/crates/storage/durable/postgres/src'],
       tables: [
         {
           name: 'runtime_events',
@@ -337,7 +337,7 @@ test('collectGrowthTableReport splits write and read entrypoints from SQL eviden
   const report = collectGrowthTableReport({
     repoRoot,
     config: {
-      sourceSearchDirs: ['api/crates/storage-durable/postgres/src'],
+      sourceSearchDirs: ['api/crates/storage/durable/postgres/src'],
       tables: [
         {
           name: 'runtime_events',

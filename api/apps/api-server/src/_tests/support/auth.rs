@@ -80,8 +80,8 @@ async fn isolated_database(base_url: &str) -> PostgresTestSchema {
 }
 
 async fn isolated_postgres_toolchain(
-    store: &storage_durable::MainDurableStore,
-) -> (storage_durable::PostgreSqlToolchain, std::path::PathBuf) {
+    store: &storage_durable_postgres::MainDurableStore,
+) -> (storage_durable_postgres::PostgreSqlToolchain, std::path::PathBuf) {
     let server_version: String = sqlx::query_scalar("show server_version_num")
         .fetch_one(store.pool())
         .await
@@ -110,7 +110,7 @@ async fn isolated_postgres_toolchain(
                 .expect("test PostgreSQL tool should be executable");
         }
     }
-    let toolchain = storage_durable::PostgreSqlToolchain::discover(&pg_dump, &pg_restore)
+    let toolchain = storage_durable_postgres::PostgreSqlToolchain::discover(&pg_dump, &pg_restore)
         .await
         .expect("isolated PostgreSQL toolchain should be discoverable");
     (toolchain, root)
@@ -142,11 +142,11 @@ async fn test_state_with_runtime_profile_state(
         .display()
         .to_string();
     let mut pool_settings =
-        storage_durable::PgPoolSettings::with_max_connections(config.database_pool_max_connections);
+        storage_durable_postgres::PgPoolSettings::with_max_connections(config.database_pool_max_connections);
     pool_settings.acquire_timeout = Duration::from_secs(30);
     pool_settings.idle_timeout = Some(Duration::from_millis(250));
     pool_settings.max_lifetime = Some(Duration::from_secs(1));
-    let durable = storage_durable::build_main_durable_postgres_with_pool_settings(
+    let durable = storage_durable_postgres::build_main_durable_postgres_with_pool_settings(
         &config.database_url,
         pool_settings,
     )
@@ -173,7 +173,7 @@ async fn test_state_with_runtime_profile_state(
         .await
         .unwrap();
     let default_storage = if let Some(existing) =
-        <storage_durable::MainDurableStore as FileManagementRepository>::get_default_file_storage(
+        <storage_durable_postgres::MainDurableStore as FileManagementRepository>::get_default_file_storage(
             &store,
         )
         .await

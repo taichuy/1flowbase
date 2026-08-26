@@ -8,11 +8,10 @@ const BACKEND_SHARDS = [
     packages: [
       'runtime-core',
       'orchestration-runtime',
-      'publish-gateway',
       'storage-durable',
       'storage-ephemeral',
       'storage-object',
-      'storage-postgres',
+      'storage-durable-postgres',
     ],
   },
   {
@@ -41,7 +40,6 @@ const BACKEND_RUNTIME_STORAGE_TEST_SHARDS = [
     packages: [
       'runtime-core',
       'orchestration-runtime',
-      'publish-gateway',
       'storage-durable',
       'storage-ephemeral',
       'storage-object',
@@ -49,7 +47,7 @@ const BACKEND_RUNTIME_STORAGE_TEST_SHARDS = [
   },
   ...Array.from({ length: 4 }, (_, index) => ({
     key: `storage-postgres-${index + 1}-of-4`,
-    packages: ['storage-postgres'],
+    packages: ['storage-durable-postgres'],
     nextestPartition: `hash:${index + 1}/4`,
   })),
 ];
@@ -109,37 +107,37 @@ const BACKEND_CONSISTENCY_TARGETS = [
   {
     group: 'storage',
     label: 'consistency-storage-migration-smoke',
-    packageName: 'storage-postgres',
+    packageName: 'storage-durable-postgres',
     filter: 'migration_smoke',
   },
   {
     group: 'storage',
     label: 'consistency-storage-model-definition-repository',
-    packageName: 'storage-postgres',
+    packageName: 'storage-durable-postgres',
     filter: 'model_definition_repository_tests',
   },
   {
     group: 'storage',
     label: 'consistency-storage-runtime-record-repository',
-    packageName: 'storage-postgres',
+    packageName: 'storage-durable-postgres',
     filter: 'runtime_record_repository_tests',
   },
   {
     group: 'storage',
     label: 'consistency-storage-orchestration-runtime-repository',
-    packageName: 'storage-postgres',
+    packageName: 'storage-durable-postgres',
     filter: 'orchestration_runtime_repository_tests',
   },
   {
     group: 'storage',
     label: 'consistency-storage-physical-schema-repository',
-    packageName: 'storage-postgres',
+    packageName: 'storage-durable-postgres',
     filter: 'physical_schema_repository_tests',
   },
   {
     group: 'storage',
     label: 'consistency-storage-workspace-scope',
-    packageName: 'storage-postgres',
+    packageName: 'storage-durable-postgres',
     filter: 'workspace_scope_tests',
   },
   {

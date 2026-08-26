@@ -6,7 +6,7 @@ use control_plane::{
     ports::{NetworkEgressRepository, NetworkEgressSecretResolver, PluginRepository},
 };
 use reqwest::{Client, Proxy};
-use storage_durable::MainDurableStore;
+use storage_durable_postgres::MainDurableStore;
 use url::Url;
 use uuid::Uuid;
 

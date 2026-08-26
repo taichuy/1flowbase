@@ -24,7 +24,7 @@ function createFixtureRepo({ healthy = false } = {}) {
 
   writeFile(
     repoRoot,
-    'api/crates/storage-durable/postgres/migrations/20260516120000_create_frontstage_pages.sql',
+    'api/crates/storage/durable/postgres/migrations/20260516120000_create_frontstage_pages.sql',
     healthy
       ? `create table if not exists frontstage_pages (
   id uuid primary key,
@@ -47,7 +47,7 @@ create index if not exists frontstage_pages_workspace_parent_rank_idx
 
   writeFile(
     repoRoot,
-    'api/crates/storage-durable/postgres/migrations/20260701120000_create_frontstage_page_visibility_rules.sql',
+    'api/crates/storage/durable/postgres/migrations/20260701120000_create_frontstage_page_visibility_rules.sql',
     healthy
       ? `create table if not exists frontstage_page_visibility_rules (
   id uuid primary key,
@@ -77,7 +77,7 @@ alter table frontstage_page_visibility_rules
 
   writeFile(
     repoRoot,
-    'api/crates/storage-durable/postgres/src/frontstage_repository.rs',
+    'api/crates/storage/durable/postgres/src/frontstage_repository.rs',
     `async fn get_frontstage_page(&self, workspace_id: Uuid, page_id: Uuid) -> Result<Option<Page>> {
   sqlx::query("select id from frontstage_pages where workspace_id = $1 and id = $2")
     .bind(workspace_id)

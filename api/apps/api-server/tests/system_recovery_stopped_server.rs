@@ -252,7 +252,7 @@ async fn portable_bundle_bootstraps_a_fresh_database_without_the_original_enviro
     .fetch_one(&target_pool)
     .await
     .unwrap();
-    let target_store = storage_durable::MainDurableStore::new(target_pool.clone());
+    let target_store = storage_durable_postgres::MainDurableStore::new(target_pool.clone());
     let restored_login = AuthKernel::new(
         target_store.clone(),
         SessionIssuer::new(MemorySessionStore::new("portable-restored-login"), 7),
@@ -817,7 +817,7 @@ impl RecoveryScenario {
             .expect("fixture must allocate a whole isolated database");
         let database_url = database.database_url().to_owned();
         let runtime =
-            storage_durable::build_main_durable_postgres_with_max_connections(&database_url, 2)
+            storage_durable_postgres::build_main_durable_postgres_with_max_connections(&database_url, 2)
                 .await
                 .unwrap();
         let store = runtime.store;
@@ -998,16 +998,16 @@ impl RecoveryScenario {
         );
         let key_provider =
             Arc::new(EnvironmentBackupKeyProvider::from_master_key(PROVIDER_SECRET).unwrap());
-        let toolchain = storage_durable::PostgreSqlToolchain::discover(
+        let toolchain = storage_durable_postgres::PostgreSqlToolchain::discover(
             &harness.tools.pg_dump,
             &harness.tools.pg_restore,
         )
         .await
         .unwrap();
-        let migration_head = storage_durable::migration_head(store.pool()).await.unwrap();
+        let migration_head = storage_durable_postgres::migration_head(store.pool()).await.unwrap();
         assert_eq!(
             migration_head,
-            storage_durable::current_migration_head().unwrap(),
+            storage_durable_postgres::current_migration_head().unwrap(),
             "the recovery fixture database must match the current embedded migration chain"
         );
         let master_key_fingerprint =
@@ -1139,13 +1139,13 @@ impl BackupComponentSource for BytesBackupSource {
 
 fn recovery_sources(
     database_url: &str,
-    toolchain: &storage_durable::PostgreSqlToolchain,
+    toolchain: &storage_durable_postgres::PostgreSqlToolchain,
     storage_id: Uuid,
     object_path: &str,
     object_bytes: &[u8],
 ) -> Vec<Arc<dyn BackupComponentSource>> {
     vec![
-        Arc::new(storage_durable::PostgreSqlLogicalBackup::new(
+        Arc::new(storage_durable_postgres::PostgreSqlLogicalBackup::new(
             database_url,
             toolchain.clone(),
         )),

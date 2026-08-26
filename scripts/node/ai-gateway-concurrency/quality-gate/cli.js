@@ -298,7 +298,7 @@ function conversationTestInvocations(repoRoot, databaseUrl) {
     ),
     invocation(
       "storage-postgres-protocol-context-migration-tests",
-      "storage-postgres",
+      "storage-durable-postgres",
       "protocol_context_migration_tests",
     ),
     invocation(

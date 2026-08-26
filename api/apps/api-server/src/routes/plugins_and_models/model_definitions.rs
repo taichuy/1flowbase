@@ -21,7 +21,7 @@ use control_plane::{
     system_metadata::project_system_metadata_titles,
 };
 use serde::{Deserialize, Serialize};
-use storage_durable::MainDurableStore;
+use storage_durable_postgres::MainDurableStore;
 use utoipa::ToSchema;
 use uuid::Uuid;
 

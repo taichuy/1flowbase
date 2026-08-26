@@ -24,7 +24,7 @@ use domain::{
     KeyFingerprint, RecoveryJobId, SealedBackupManifest,
 };
 use sha2::{Digest, Sha256};
-use storage_durable::{MainDurableStore, PostgreSqlToolchain};
+use storage_durable_postgres::{MainDurableStore, PostgreSqlToolchain};
 use thiserror::Error;
 use tokio::io::{AsyncRead, AsyncWrite};
 use uuid::Uuid;
@@ -327,9 +327,9 @@ impl SystemBackupRuntime {
         backup_set_id: BackupSetId,
     ) -> Result<SystemBackupDetail, SystemBackupRuntimeError> {
         let sealed = self.service.get(backup_set_id).await?;
-        let migration_head = storage_durable::current_migration_head()
+        let migration_head = storage_durable_postgres::current_migration_head()
             .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
-        let supported_source_migration_heads = storage_durable::supported_migration_heads()
+        let supported_source_migration_heads = storage_durable_postgres::supported_migration_heads()
             .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
         let target = domain::BackupCompatibilityTarget {
             format_version: domain::SYSTEM_BACKUP_FORMAT_VERSION,
@@ -527,11 +527,11 @@ impl SystemBackupRuntime {
             .verify_server_compatibility(self.store.pool())
             .await
             .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
-        let migration_head = storage_durable::migration_head(self.store.pool())
+        let migration_head = storage_durable_postgres::migration_head(self.store.pool())
             .await
             .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
         let mut sources: Vec<Arc<dyn BackupComponentSource>> =
-            vec![Arc::new(storage_durable::PostgreSqlLogicalBackup::new(
+            vec![Arc::new(storage_durable_postgres::PostgreSqlLogicalBackup::new(
                 self.database_url.clone(),
                 self.postgres_toolchain.clone(),
             ))];

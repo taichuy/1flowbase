@@ -1482,7 +1482,7 @@ async fn ac_004_frontstage_tool_migration_binds_all_six_workspace_parameters_to_
         "frontstage_create_page",
     ];
     const MIGRATION_SQL: &str = include_str!(
-        "../../../../crates/storage-durable/postgres/migrations/20260806120000_bind_frontstage_mcp_tools_to_instance_workspace.sql"
+        "../../../../crates/storage/durable/postgres/migrations/20260806120000_bind_frontstage_mcp_tools_to_instance_workspace.sql"
     );
     let (state, database_url) = test_api_state_with_database_url().await;
     let app = crate::app_with_state(state);

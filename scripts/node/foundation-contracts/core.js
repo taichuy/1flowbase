@@ -166,7 +166,7 @@ function buildMcpFastPack(changedFiles) {
     fast.push({
       id: 'mcp-result-continuation',
       command: 'cargo',
-      args: ['test', '-p', 'storage-postgres', 'mcp_result_receipt_repository_tests'],
+      args: ['test', '-p', 'storage-durable-postgres', 'mcp_result_receipt_repository_tests'],
       cwd: 'api',
     });
   }

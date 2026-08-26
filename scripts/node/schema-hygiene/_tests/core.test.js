@@ -22,7 +22,7 @@ function createRepoWithMigrations(migrations) {
   for (const [fileName, sql] of Object.entries(migrations)) {
     writeFile(
       repoRoot,
-      `api/crates/storage-durable/postgres/migrations/${fileName}`,
+      `api/crates/storage/durable/postgres/migrations/${fileName}`,
       sql
     );
   }

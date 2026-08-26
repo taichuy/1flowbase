@@ -44,7 +44,7 @@ use runtime_extension_host::{
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
-use storage_durable::MainDurableStore;
+use storage_durable_postgres::MainDurableStore;
 use tokio::sync::RwLock;
 use tracing::info;
 use uuid::Uuid;
@@ -1084,7 +1084,7 @@ impl DataSourceRuntimeRecordBackend for ApiDataSourceRuntimeRecordBackend {
         sql: &str,
     ) -> anyhow::Result<NativeSqlExecutionOutput> {
         if data_source_instance_id == "main" {
-            return storage_durable::execute_native_sql(self.repository.pool(), sql)
+            return storage_durable_postgres::execute_native_sql(self.repository.pool(), sql)
                 .await
                 .map_err(|error| anyhow::Error::new(PluginFrameworkError::runtime(error)));
         }

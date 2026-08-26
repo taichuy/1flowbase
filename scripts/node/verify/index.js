@@ -676,12 +676,12 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
         },
         integrationCommand(
           'backend-coverage-control-plane-mcp-management-integration',
-          'storage-postgres',
+          'storage-durable-postgres',
           'mcp_management_repository_tests'
         ),
         integrationCommand(
           'backend-coverage-control-plane-ui-management-integration',
-          'storage-postgres',
+          'storage-durable-postgres',
           'ui_management_repository_tests'
         ),
         integrationCommand(

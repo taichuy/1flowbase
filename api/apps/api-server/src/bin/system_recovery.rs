@@ -38,7 +38,7 @@ use domain::{
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use sqlx::{postgres::PgPoolOptions, Row};
-use storage_durable::PostgreSqlRecoveryTarget;
+use storage_durable_postgres::PostgreSqlRecoveryTarget;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -498,8 +498,8 @@ async fn preflight(
         .context("offline recovery target database is unavailable")?;
     toolchain.verify_server_compatibility(&pool).await?;
     pool.close().await;
-    let migration_head = storage_durable::current_migration_head()?;
-    let supported_source_migration_heads = storage_durable::supported_migration_heads()?;
+    let migration_head = storage_durable_postgres::current_migration_head()?;
+    let supported_source_migration_heads = storage_durable_postgres::supported_migration_heads()?;
     let master_key_fingerprint = KeyFingerprint::try_from(format!(
         "{:x}",
         Sha256::digest(config.provider_secret_master_key.as_bytes())
@@ -584,7 +584,7 @@ async fn build_recovery_runtime(
         .verify_server_compatibility(&compatibility_pool)
         .await?;
     compatibility_pool.close().await;
-    let expected_migration_head = storage_durable::current_migration_head()?;
+    let expected_migration_head = storage_durable_postgres::current_migration_head()?;
     let postgres = Arc::new(
         PostgreSqlRecoveryTarget::try_new(&config.database_url, toolchain)
             .map_err(|_| anyhow!("offline PostgreSQL recovery target is invalid"))?,

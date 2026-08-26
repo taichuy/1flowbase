@@ -1,9 +1,9 @@
 use super::*;
 use control_plane::role::console_policy_migration::project_compiled_console_policy_migration_plan;
-use storage_durable::MainDurableStore;
+use storage_durable_postgres::MainDurableStore;
 
 async fn main_durable_store(database_url: &str) -> MainDurableStore {
-    storage_durable::build_main_durable_postgres(database_url)
+    storage_durable_postgres::build_main_durable_postgres(database_url)
         .await
         .unwrap()
         .store

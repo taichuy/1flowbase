@@ -3,7 +3,7 @@ use control_plane::ports::{
     AppendRuntimeEventInput, CreateCallbackTaskInput, OrchestrationRuntimeRepository,
     UpdateFlowRunInput,
 };
-use storage_durable::MainDurableStore;
+use storage_durable_postgres::MainDurableStore;
 
 async fn get_console_json(app: &axum::Router, cookie: &str, uri: String) -> Value {
     let response = app

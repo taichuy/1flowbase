@@ -191,7 +191,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
-fn service(state: &ApiState) -> NetworkEgressPoolService<storage_durable::MainDurableStore> {
+fn service(state: &ApiState) -> NetworkEgressPoolService<storage_durable_postgres::MainDurableStore> {
     NetworkEgressPoolService::with_secret_master_key(
         state.store.clone(),
         state.provider_secret_master_key.clone(),
@@ -201,9 +201,9 @@ fn service(state: &ApiState) -> NetworkEgressPoolService<storage_durable::MainDu
 fn proxy_service(
     state: &ApiState,
 ) -> NetworkEgressProviderService<
-    storage_durable::MainDurableStore,
+    storage_durable_postgres::MainDurableStore,
     ApiProviderRuntime,
-    ProviderRegistryNetworkEgressSecretResolver<storage_durable::MainDurableStore>,
+    ProviderRegistryNetworkEgressSecretResolver<storage_durable_postgres::MainDurableStore>,
 > {
     NetworkEgressProviderService::new(
         state.store.clone(),

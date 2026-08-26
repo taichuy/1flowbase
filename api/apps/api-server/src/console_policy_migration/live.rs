@@ -32,7 +32,7 @@ use super::{
 };
 
 pub(crate) struct LiveConsolePolicyMigrationContext {
-    pub(super) store: storage_durable::MainDurableStore,
+    pub(super) store: storage_durable_postgres::MainDurableStore,
     pub(super) migration: CompiledCoreConsolePolicyMigration,
 }
 
@@ -48,7 +48,7 @@ pub(crate) struct LiveConsolePolicyMigrationPreview {
 pub(super) async fn load_live_context(
     config: &ApiConfig,
 ) -> Result<LiveConsolePolicyMigrationContext> {
-    let durable = storage_durable::build_main_durable_postgres_with_max_connections(
+    let durable = storage_durable_postgres::build_main_durable_postgres_with_max_connections(
         &config.database_url,
         config.database_pool_max_connections,
     )
@@ -82,7 +82,7 @@ pub(super) async fn load_live_context(
 }
 
 pub(crate) async fn preview_live_migration(
-    store: &storage_durable::MainDurableStore,
+    store: &storage_durable_postgres::MainDurableStore,
     migration: &CompiledCoreConsolePolicyMigration,
     run_id: Uuid,
 ) -> Result<LiveConsolePolicyMigrationPreview> {
@@ -234,7 +234,7 @@ pub(crate) async fn preview_live_migration(
 }
 
 async fn live_actor_role_bindings(
-    store: &storage_durable::MainDurableStore,
+    store: &storage_durable_postgres::MainDurableStore,
     role_ids: &[Uuid],
 ) -> Result<Vec<ConsolePolicyMigrationActorRoleBinding>> {
     if role_ids.is_empty() {

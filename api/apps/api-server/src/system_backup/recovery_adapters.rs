@@ -142,7 +142,7 @@ impl PostRestoreReconcileTarget for PostgreSqlPostRestoreReconciler {
         &self,
         _context: &PostRestoreRecoveryContext,
     ) -> Result<(), PostRestoreDependencyError> {
-        let runtime = storage_durable::build_main_durable_postgres_with_max_connections(
+        let runtime = storage_durable_postgres::build_main_durable_postgres_with_max_connections(
             &self.database_url,
             1,
         )
@@ -211,9 +211,9 @@ impl PostgreSqlPostRestoreHealthVerifier {
             .connect(&self.database_url)
             .await
             .map_err(|_| PostRestoreDependencyError)?;
-        let store = storage_durable::MainDurableStore::new(pool.clone());
+        let store = storage_durable_postgres::MainDurableStore::new(pool.clone());
         let result = async {
-            let actual = storage_durable::migration_head(&pool)
+            let actual = storage_durable_postgres::migration_head(&pool)
                 .await
                 .map_err(|_| PostRestoreDependencyError)?;
             if &actual != expected_migration_head {

@@ -14,7 +14,7 @@ use control_plane::{
     },
 };
 use serde::Deserialize;
-use storage_durable::MainDurableStore;
+use storage_durable_postgres::MainDurableStore;
 use utoipa::ToSchema;
 use uuid::Uuid;
 

@@ -160,9 +160,9 @@ pub(crate) fn route_assembly_with_plugin_upload_max_bytes(
 fn service(
     state: &ApiState,
 ) -> NetworkEgressProviderService<
-    storage_durable::MainDurableStore,
+    storage_durable_postgres::MainDurableStore,
     ApiProviderRuntime,
-    ProviderRegistryNetworkEgressSecretResolver<storage_durable::MainDurableStore>,
+    ProviderRegistryNetworkEgressSecretResolver<storage_durable_postgres::MainDurableStore>,
 > {
     NetworkEgressProviderService::new(
         state.store.clone(),
@@ -176,7 +176,7 @@ fn service(
     )
 }
 
-fn route_service(state: &ApiState) -> NetworkEgressRouteService<storage_durable::MainDurableStore> {
+fn route_service(state: &ApiState) -> NetworkEgressRouteService<storage_durable_postgres::MainDurableStore> {
     NetworkEgressRouteService::new(state.store.clone())
 }
 

@@ -34,7 +34,7 @@ use plugin_framework::{
     },
     provider_package::ProviderConfigField,
 };
-use storage_durable::MainDurableStore;
+use storage_durable_postgres::MainDurableStore;
 use time::format_description::well_known::Rfc3339;
 use uuid::Uuid;
 

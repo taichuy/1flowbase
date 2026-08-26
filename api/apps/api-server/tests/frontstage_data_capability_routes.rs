@@ -133,7 +133,7 @@ async fn fixture() -> Fixture {
     let mut config = test_config();
     let database = isolated_database(&config.database_url).await;
     config.database_url = database.database_url().to_owned();
-    let durable = storage_durable::build_main_durable_postgres_with_max_connections(
+    let durable = storage_durable_postgres::build_main_durable_postgres_with_max_connections(
         &config.database_url,
         config.database_pool_max_connections,
     )

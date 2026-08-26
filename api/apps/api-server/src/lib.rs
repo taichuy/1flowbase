@@ -99,7 +99,7 @@ async fn health() -> Json<HealthResponse> {
 }
 
 async fn intake_active_data_source_templates_at_startup(
-    store: &storage_durable::MainDurableStore,
+    store: &storage_durable_postgres::MainDurableStore,
     runtime: &ApiProviderRuntime,
     api_node_id: &str,
     provider_install_root: &str,
@@ -283,7 +283,7 @@ pub async fn app_from_env() -> Result<Router> {
 }
 
 pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
-    let durable = storage_durable::build_main_durable_postgres_with_max_connections(
+    let durable = storage_durable_postgres::build_main_durable_postgres_with_max_connections(
         &config.database_url,
         config.database_pool_max_connections,
     )
@@ -339,7 +339,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
         )
         .await?;
     let default_storage = if let Some(existing) =
-        <storage_durable::MainDurableStore as control_plane::ports::FileManagementRepository>::get_default_file_storage(&store)
+        <storage_durable_postgres::MainDurableStore as control_plane::ports::FileManagementRepository>::get_default_file_storage(&store)
             .await?
     {
         existing
@@ -674,7 +674,7 @@ pub async fn app_from_config(config: &ApiConfig) -> Result<Router> {
 
 #[cfg(not(test))]
 fn spawn_default_ui_component_catalog_bootstrap(
-    store: storage_durable::MainDurableStore,
+    store: storage_durable_postgres::MainDurableStore,
     actor_user_id: uuid::Uuid,
 ) {
     tokio::spawn(async move {

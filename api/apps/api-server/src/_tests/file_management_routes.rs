@@ -221,7 +221,7 @@ async fn revoke_model_grant(database_url: &str, model_id: &str, workspace_id: &s
 }
 
 async fn register_files_feature_permission(database_url: &str) {
-    let store = storage_durable::build_main_durable_postgres(database_url)
+    let store = storage_durable_postgres::build_main_durable_postgres(database_url)
         .await
         .expect("test database should be available")
         .store;
@@ -333,7 +333,7 @@ async fn settings_feature_files_route_keeps_storage_root_boundary() {
 
     let outside_workspace = seed_workspace(&database_url, "Outside files").await;
     let outside_table_id = Uuid::now_v7();
-    let store = storage_durable::build_main_durable_postgres(&database_url)
+    let store = storage_durable_postgres::build_main_durable_postgres(&database_url)
         .await
         .unwrap()
         .store;
