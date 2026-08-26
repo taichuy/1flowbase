@@ -5,8 +5,8 @@
   "type": "module",
   "dependencies": {
     "@1flowbase/api-client": "workspace:*",
-    "@1flowbase/block-sdk": "workspace:*",
     "@1flowbase/block-renderer": "workspace:*",
+    "@1flowbase/block-sdk": "workspace:*",
     "@1flowbase/charts": "workspace:*",
     "@1flowbase/embed-sdk": "workspace:*",
     "@1flowbase/embedded-contracts": "workspace:*",
@@ -30,7 +30,7 @@
     "@lexical/utils": "^0.43.0",
     "@monaco-editor/loader": "^1.7.0",
     "@monaco-editor/react": "^4.7.0",
-    "@scalar/api-reference-react": "^0.9.34",
+    "@scalar/api-reference-react": "^0.9.65",
     "@tanstack/react-query": "^5.73.3",
     "@tanstack/react-router": "^1.114.15",
     "@xyflow/react": "^12.10.2",
