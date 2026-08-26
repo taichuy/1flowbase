@@ -161,7 +161,6 @@ async fn assert_run_creation_route_records_api_key_use(
 #[tokio::test]
 async fn compatible_run_creation_routes_record_application_api_key_use() {
     let (app, state) = test_app_with_state().await;
-
     let (chat_token, chat_api_key_id) =
         setup_published_app_with_key_id(&app, "OpenAI Chat Last Used Cache App").await;
     assert_run_creation_route_records_api_key_use(
@@ -174,20 +173,48 @@ async fn compatible_run_creation_routes_record_application_api_key_use() {
         openai_body(false),
     )
     .await;
+}
 
-    let (responses_token, responses_api_key_id) =
-        setup_published_app_with_key_id(&app, "OpenAI Responses Last Used Cache App").await;
-    assert_run_creation_route_records_api_key_use(
-        &app,
-        state.as_ref(),
-        responses_api_key_id,
-        "/v1/responses",
-        "authorization",
-        format!("Bearer {responses_token}"),
-        responses_body(false),
-    )
-    .await;
+#[test]
+fn compatible_responses_route_records_application_api_key_use() {
+    // The debug Axum service future exceeds libtest's default stack for this route. Keep the
+    // larger stack local to this regression instead of requiring a global RUST_MIN_STACK.
+    const COMPAT_RESPONSES_TEST_STACK_BYTES: usize = 32 * 1024 * 1024;
+    std::thread::Builder::new()
+        .name("compat-responses-api-key-use".to_owned())
+        .stack_size(COMPAT_RESPONSES_TEST_STACK_BYTES)
+        .spawn(|| {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("compat responses test runtime should build")
+                .block_on(async {
+                    let (app, state) = test_app_with_state().await;
+                    let (responses_token, responses_api_key_id) = setup_published_app_with_key_id(
+                        &app,
+                        "OpenAI Responses Last Used Cache App",
+                    )
+                    .await;
+                    assert_run_creation_route_records_api_key_use(
+                        &app,
+                        state.as_ref(),
+                        responses_api_key_id,
+                        "/v1/responses",
+                        "authorization",
+                        format!("Bearer {responses_token}"),
+                        responses_body(false),
+                    )
+                    .await;
+                });
+        })
+        .expect("compat responses test thread should start")
+        .join()
+        .expect("compat responses test thread should complete");
+}
 
+#[tokio::test]
+async fn compatible_anthropic_route_records_application_api_key_use() {
+    let (app, state) = test_app_with_state().await;
     let (anthropic_token, anthropic_api_key_id) =
         setup_published_app_with_key_id(&app, "Anthropic Last Used Cache App").await;
     assert_run_creation_route_records_api_key_use(

@@ -174,7 +174,10 @@ fn controlled_negative_runs_complete_policy_and_detects_dependency_rename() {
             {"id": "acl", "name": "access-control"}
         ],
         "resolve": {"nodes": [
-            {"id": "storage", "deps": [{"pkg": "control", "name": "cp_alias"}]},
+            {"id": "storage", "deps": [
+                {"pkg": "control", "name": "cp_alias"},
+                {"pkg": "plugin", "name": "plugin_alias"}
+            ]},
             {"id": "control", "deps": []},
             {"id": "plugin", "deps": []},
             {"id": "runtime", "deps": []},
@@ -184,15 +187,21 @@ fn controlled_negative_runs_complete_policy_and_detects_dependency_rename() {
 
     assert_eq!(
         dependency_policy_violations(&fixture),
-        vec!["storage-durable-postgres -> control-plane (crate alias cp_alias)"]
+        vec![
+            "storage-durable-postgres -> control-plane (crate alias cp_alias)",
+            "storage-durable-postgres -> plugin-framework (crate alias plugin_alias)",
+        ]
     );
     assert_eq!(
         source_dependency_violations(
             &fixture,
             "storage-durable-postgres",
-            "fn invalid() { cp_alias::ports::AuthRepository; }",
+            "fn invalid() { cp_alias::ports::AuthRepository; plugin_alias::Manifest; }",
         ),
-        vec!["storage-durable-postgres source references control-plane as cp_alias::"]
+        vec![
+            "storage-durable-postgres source references control-plane as cp_alias::",
+            "storage-durable-postgres source references plugin-framework as plugin_alias::",
+        ]
     );
 }
 
