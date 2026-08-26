@@ -3,6 +3,8 @@ use std::collections::BTreeSet;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+pub use extension_contracts::{EgressAvailability, EgressDescriptor};
+
 use crate::error::{FrameworkResult, PluginFrameworkError};
 
 /// The only stdio operations exposed by a network egress provider runtime.
@@ -92,7 +94,7 @@ impl SyncEgressesResult {
         let mut previous_key: Option<&str> = None;
 
         for descriptor in &self.egresses {
-            descriptor.validate()?;
+            validate_egress_descriptor(descriptor)?;
             if !provider_egress_keys.insert(descriptor.provider_egress_key.as_str()) {
                 return Err(PluginFrameworkError::invalid_provider_contract(
                     "sync_egresses result contains duplicate provider_egress_key",
@@ -110,40 +112,18 @@ impl SyncEgressesResult {
     }
 }
 
-/// A provider-owned, stable egress identity with only host-safe display data.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct EgressDescriptor {
-    pub provider_egress_key: String,
-    pub display_name: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub region: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub tags: Option<Vec<String>>,
-    pub availability: EgressAvailability,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum EgressAvailability {
-    Available,
-    Unavailable,
-}
-
-impl EgressDescriptor {
-    fn validate(&self) -> FrameworkResult<()> {
-        validate_non_empty(&self.provider_egress_key, "provider_egress_key")?;
-        validate_non_empty(&self.display_name, "display_name")?;
-        if let Some(region) = &self.region {
-            validate_non_empty(region, "region")?;
-        }
-        if let Some(tags) = &self.tags {
-            for tag in tags {
-                validate_non_empty(tag, "tags[]")?;
-            }
-        }
-        Ok(())
+fn validate_egress_descriptor(descriptor: &EgressDescriptor) -> FrameworkResult<()> {
+    validate_non_empty(&descriptor.provider_egress_key, "provider_egress_key")?;
+    validate_non_empty(&descriptor.display_name, "display_name")?;
+    if let Some(region) = &descriptor.region {
+        validate_non_empty(region, "region")?;
     }
+    if let Some(tags) = &descriptor.tags {
+        for tag in tags {
+            validate_non_empty(tag, "tags[]")?;
+        }
+    }
+    Ok(())
 }
 
 /// An HTTP forward-proxy lease with no provider configuration or credentials.

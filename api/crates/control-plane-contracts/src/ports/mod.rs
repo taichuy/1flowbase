@@ -10,6 +10,8 @@ pub mod mcp_management;
 pub mod mcp_result_receipt;
 pub mod model_definition;
 pub mod model_provider;
+pub mod network_egress;
+pub mod plugin;
 pub mod ui_management;
 
 use async_trait::async_trait;
@@ -32,4 +34,6 @@ pub use mcp_management::*;
 pub use mcp_result_receipt::*;
 pub use model_definition::*;
 pub use model_provider::*;
+pub use network_egress::*;
+pub use plugin::*;
 pub use ui_management::*;

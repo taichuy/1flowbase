@@ -9,6 +9,8 @@ pub mod data_model_template_contract;
 pub mod data_source_contract;
 pub mod error;
 pub mod extension_bus;
+pub mod network_egress_contract;
+pub mod package_intake_contract;
 pub mod provider_contract;
 pub mod runtime_target;
 
@@ -16,6 +18,8 @@ pub use data_model_template_contract::*;
 pub use data_source_contract::*;
 pub use error::*;
 pub use extension_bus::*;
+pub use network_egress_contract::*;
+pub use package_intake_contract::*;
 pub use provider_contract::*;
 pub use runtime_target::*;
 

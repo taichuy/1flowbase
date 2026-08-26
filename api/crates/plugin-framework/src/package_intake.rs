@@ -13,6 +13,8 @@ use tar::Archive;
 use uuid::Uuid;
 use zip::ZipArchive;
 
+pub use extension_contracts::TrustedPublicKey;
+
 use crate::{
     error::PluginFrameworkError,
     manifest_v1::{parse_plugin_manifest, PluginManifestV1},
@@ -20,13 +22,6 @@ use crate::{
     provider_package::ProviderPackage,
     runtime_target::RuntimeTarget,
 };
-
-#[derive(Debug, Clone)]
-pub struct TrustedPublicKey {
-    pub key_id: String,
-    pub algorithm: String,
-    pub public_key_pem: String,
-}
 
 pub fn verify_trusted_ed25519_artifact(
     artifact_bytes: &[u8],

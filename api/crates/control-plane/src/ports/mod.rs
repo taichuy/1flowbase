@@ -20,8 +20,6 @@ mod runtime;
 mod system_backup;
 mod ui_management;
 
-use std::collections::BTreeMap;
-
 use async_trait::async_trait;
 use domain::{
     ActorContext, ApiKeyRecord, AuditLogRecord, AuthenticatorRecord, DataModelScopeKind,
