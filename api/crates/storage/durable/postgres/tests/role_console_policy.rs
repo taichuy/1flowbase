@@ -172,7 +172,7 @@ async fn applications_migration_input(
         .iter()
         .map(|inventory| {
             project_compiled_console_policy_migration_plan(
-                plan,
+                &plan,
                 inventory.role_id,
                 &inventory.source_grants,
             )

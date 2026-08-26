@@ -1,8 +1,9 @@
 use std::time::Duration;
 
+use storage_durable::DurableBackendKind;
 use storage_durable_postgres::{
-    build_main_durable_postgres, build_main_durable_postgres_with_pool_settings,
-    DurableBackendKind, MainDurableStore, PgPoolSettings,
+    build_main_durable_postgres, build_main_durable_postgres_with_pool_settings, MainDurableStore,
+    PgPoolSettings,
 };
 
 #[test]
