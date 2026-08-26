@@ -5,8 +5,8 @@ use std::{
 
 use anyhow::Result;
 use async_trait::async_trait;
-use plugin_framework::{
-    error::PluginFrameworkError,
+use extension_contracts::{
+    error::ExtensionContractError,
     provider_contract::{
         ProtocolAuthenticationPresentation, ProtocolContextEnvelope, ProviderCompactProfile,
         ProviderCompactResult, ProviderCountTokensInput, ProviderCountTokensResult,
@@ -262,7 +262,7 @@ impl ProviderInvoker for RuntimeContractErrorInvoker {
         _runtime: &CompiledLlmRuntime,
         _input: ProviderInvocationInput,
     ) -> Result<ProviderInvocationOutput> {
-        Err(PluginFrameworkError::runtime(ProviderRuntimeError {
+        Err(ExtensionContractError::runtime(ProviderRuntimeError {
             kind: ProviderRuntimeErrorKind::ProviderInvalidResponse,
             message: "401 401 Unauthorized: Incorrect API key provided".to_string(),
             provider_summary: None,
@@ -296,7 +296,7 @@ impl ProviderInvoker for InvalidProviderContractInvoker {
         _runtime: &CompiledLlmRuntime,
         _input: ProviderInvocationInput,
     ) -> Result<ProviderInvocationOutput> {
-        Err(PluginFrameworkError::invalid_provider_contract(
+        Err(ExtensionContractError::invalid_provider_contract(
             "provider stream invocation must declare operation=generate",
         )
         .into())

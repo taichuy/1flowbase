@@ -8,7 +8,7 @@ license.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 domain = { path = "../domain" }
-plugin-framework = { path = "../plugin-framework" }
+extension-contracts = { path = "../extension-contracts" }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

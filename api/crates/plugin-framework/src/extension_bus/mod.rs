@@ -5,10 +5,7 @@
 
 mod compiler;
 mod deployment_set;
-mod descriptor;
-mod graph;
 
 pub use compiler::{compile_extension_graph, CompilationError};
 pub use deployment_set::*;
-pub use descriptor::*;
-pub use graph::*;
+pub use extension_contracts::extension_bus::*;

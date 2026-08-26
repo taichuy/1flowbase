@@ -890,7 +890,7 @@ fn protocol_context_output_paths(
             })
         });
         if selected_output.is_some_and(|output| {
-            output.value_type == plugin_framework::provider_contract::PROTOCOL_CONTEXT_VALUE_TYPE
+            output.value_type == extension_contracts::provider_contract::PROTOCOL_CONTEXT_VALUE_TYPE
         }) {
             continue;
         }

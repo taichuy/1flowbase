@@ -1236,7 +1236,7 @@ async fn native_responses_terminal_persists_only_ephemeral_continuation_marker()
     let runtime_context = ExecutionRuntimeContext::from_plan_input(&plan, &plan_input)
         .unwrap()
         .with_provider_invocation_capability(
-            plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
+            extension_contracts::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
         );
 
     let outcome = start_flow_debug_run_with_runtime_context(

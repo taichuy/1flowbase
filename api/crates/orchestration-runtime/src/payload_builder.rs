@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use anyhow::{anyhow, Result};
-use plugin_framework::provider_contract::ProviderStreamEvent;
+use extension_contracts::provider_contract::ProviderStreamEvent;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 

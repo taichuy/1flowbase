@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::Result;
 use async_trait::async_trait;
-use plugin_framework::provider_contract::{
+use extension_contracts::provider_contract::{
     ProviderInvocationInput, ProviderMessage, ProviderMessageRole, ProviderProjectionErrorCode,
     ProviderProjectionFidelity,
 };
@@ -35,9 +35,9 @@ impl ProviderInvoker for Issue1743AffinityResolver {
         runtime: &CompiledLlmRuntime,
     ) -> Result<ResolvedProviderRoute> {
         if runtime.provider_instance_id == "provider-wrong-affinity" {
-            return Err(plugin_framework::PluginFrameworkError::runtime(
-                plugin_framework::provider_contract::ProviderRuntimeError::new(
-                    plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderAffinityMismatch,
+            return Err(extension_contracts::ExtensionContractError::runtime(
+                extension_contracts::provider_contract::ProviderRuntimeError::new(
+                    extension_contracts::provider_contract::ProviderRuntimeErrorKind::ProviderAffinityMismatch,
                     "typed affinity mismatch fixture",
                 ),
             )
@@ -306,7 +306,7 @@ async fn issue_1743_typed_affinity_mismatch_is_ineligible_but_matching_backup_ro
         json!([{"type": "text", "text": "tool delta"}]),
     );
     canonical.required_capabilities.insert(
-        plugin_framework::provider_contract::ProviderInvocationCapability::NativeContinuationSupported,
+        extension_contracts::provider_contract::ProviderInvocationCapability::NativeContinuationSupported,
     );
 
     let selected = resolve_llm_request_runtime(
@@ -337,7 +337,7 @@ async fn issue_1743_native_continuation_capability_is_a_hard_route_requirement()
         json!([{"type": "text", "text": "tool delta"}]),
     );
     canonical.required_capabilities.insert(
-        plugin_framework::provider_contract::ProviderInvocationCapability::NativeContinuationSupported,
+        extension_contracts::provider_contract::ProviderInvocationCapability::NativeContinuationSupported,
     );
 
     let error = match resolve_llm_request_runtime(
@@ -355,15 +355,15 @@ async fn issue_1743_native_continuation_capability_is_a_hard_route_requirement()
     };
 
     let runtime_error = error
-        .downcast_ref::<plugin_framework::PluginFrameworkError>()
+        .downcast_ref::<extension_contracts::ExtensionContractError>()
         .and_then(|error| match error {
-            plugin_framework::PluginFrameworkError::RuntimeContract { error } => Some(error),
+            extension_contracts::ExtensionContractError::RuntimeContract { error } => Some(error),
             _ => None,
         })
         .expect("hard capability rejection must remain typed");
     assert_eq!(
         runtime_error.kind,
-        plugin_framework::provider_contract::ProviderRuntimeErrorKind::SemanticCapabilityUnsupported
+        extension_contracts::provider_contract::ProviderRuntimeErrorKind::SemanticCapabilityUnsupported
     );
 }
 
@@ -405,9 +405,9 @@ async fn issue_1743_reasoning_only_route_error_exposes_only_bounded_typed_projec
         Err(error) => error,
     };
     let runtime_error = error
-        .downcast_ref::<plugin_framework::PluginFrameworkError>()
+        .downcast_ref::<extension_contracts::ExtensionContractError>()
         .and_then(|error| match error {
-            plugin_framework::PluginFrameworkError::RuntimeContract { error } => Some(error),
+            extension_contracts::ExtensionContractError::RuntimeContract { error } => Some(error),
             _ => None,
         })
         .expect("semantic rejection must remain typed");
@@ -471,9 +471,9 @@ async fn issue_1743_invalid_canonical_route_error_retains_typed_nonempty_cause()
         Err(error) => error,
     };
     let details = error
-        .downcast_ref::<plugin_framework::PluginFrameworkError>()
+        .downcast_ref::<extension_contracts::ExtensionContractError>()
         .and_then(|error| match error {
-            plugin_framework::PluginFrameworkError::RuntimeContract { error } => {
+            extension_contracts::ExtensionContractError::RuntimeContract { error } => {
                 error.provider_details.as_ref()
             }
             _ => None,

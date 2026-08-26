@@ -442,7 +442,7 @@ fn selected_image_content_blocks_for_precondition(
     let available = inherited_image_content_blocks(variable_pool)
         .into_iter()
         .filter_map(|block| {
-            plugin_framework::provider_contract::provider_media_content_ref(&block)
+            extension_contracts::provider_contract::provider_media_content_ref(&block)
                 .map(|media_ref| (media_ref, block))
         })
         .collect::<BTreeMap<_, _>>();
@@ -772,14 +772,14 @@ mod tests {
             "type": "image",
             "source": { "type": "base64", "media_type": "image/png", "data": "aW1hZ2U=" }
         });
-        let image_ref = plugin_framework::provider_contract::provider_media_content_ref(&image)
+        let image_ref = extension_contracts::provider_contract::provider_media_content_ref(&image)
             .expect("image should have a media ref");
         let document = json!({
             "type": "document",
             "source": { "type": "base64", "media_type": "application/pdf", "data": "cGRm" }
         });
         let document_ref =
-            plugin_framework::provider_contract::provider_media_content_ref(&document)
+            extension_contracts::provider_contract::provider_media_content_ref(&document)
                 .expect("document should have a media ref");
         let history = json!([{
             "role": "user",

@@ -1,5 +1,5 @@
 use super::*;
-use plugin_framework::provider_contract::ProtocolContextEnvelope;
+use extension_contracts::provider_contract::ProtocolContextEnvelope;
 
 pub(super) struct BuiltProviderInvocation {
     pub(super) input: ProviderInvocationInput,
@@ -194,7 +194,7 @@ where
     );
     let mut required_capabilities = runtime_context.provider_invocation_capabilities.clone();
     let protocol_context_capability =
-        plugin_framework::provider_contract::ProviderInvocationCapability::ProtocolContext;
+        extension_contracts::provider_contract::ProviderInvocationCapability::ProtocolContext;
     if protocol_context.is_some() {
         required_capabilities.insert(protocol_context_capability);
     } else {
@@ -202,7 +202,7 @@ where
     }
     if previous_response_id.is_some() {
         required_capabilities.insert(
-            plugin_framework::provider_contract::ProviderInvocationCapability::NativeContinuationSupported,
+            extension_contracts::provider_contract::ProviderInvocationCapability::NativeContinuationSupported,
         );
     }
 
@@ -347,7 +347,7 @@ async fn resolve_protocol_context<I>(
     variable_pool: &Map<String, Value>,
     runtime_context: &ExecutionRuntimeContext,
     invoker: &I,
-) -> Result<Option<plugin_framework::provider_contract::ProtocolContextEnvelope>, Value>
+) -> Result<Option<extension_contracts::provider_contract::ProtocolContextEnvelope>, Value>
 where
     I: ProviderInvoker + ?Sized,
 {

@@ -2,7 +2,7 @@ use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
 use anyhow::{bail, Result};
 use async_trait::async_trait;
-use plugin_framework::{
+use extension_contracts::{
     extension_bus::{
         compile_extension_graph, Cardinality, ContractDescriptor, ContractVersion,
         ContributionDescriptor, ContributionId, ContributionMode, ContributionOrdering,

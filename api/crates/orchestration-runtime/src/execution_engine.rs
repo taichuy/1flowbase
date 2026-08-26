@@ -6,8 +6,8 @@ use std::{
 
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
-use plugin_framework::{
-    error::PluginFrameworkError,
+use extension_contracts::{
+    error::ExtensionContractError,
     provider_contract::{
         NativePromptBlock, ProviderCanonicalBlockLocator, ProviderCompactError,
         ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensError,

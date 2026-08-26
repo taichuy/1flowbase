@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, fs, time::Duration};
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use plugin_framework::provider_contract::ProviderInvocationInput;
+use extension_contracts::provider_contract::ProviderInvocationInput;
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;

@@ -11,7 +11,7 @@ base64.workspace = true
 domain = { path = "../domain" }
 futures-util.workspace = true
 jsonschema.workspace = true
-plugin-framework = { path = "../plugin-framework" }
+extension-contracts = { path = "../extension-contracts" }
 regex.workspace = true
 reqwest = { workspace = true, features = ["multipart", "stream"] }
 rquickjs.workspace = true

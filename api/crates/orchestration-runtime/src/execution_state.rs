@@ -1,5 +1,5 @@
 use anyhow::{anyhow, bail, Result};
-use plugin_framework::provider_contract::{
+use extension_contracts::provider_contract::{
     ProviderCompactProfile, ProviderCompactResult, ProviderCountTokensResult, ProviderStreamEvent,
     ProviderWireOperation,
 };

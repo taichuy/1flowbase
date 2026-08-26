@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+extension-contracts = { path = "../extension-contracts" }
 access-control = { path = "../access-control" }
 base64.workspace = true
 ed25519-dalek = { version = "2", features = ["pem"] }

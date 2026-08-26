@@ -6,7 +6,7 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
-plugin-framework = { path = "../plugin-framework" }
+extension-contracts = { path = "../extension-contracts" }
 serde.workspace = true
 sha2.workspace = true
 sysinfo.workspace = true

@@ -161,9 +161,9 @@ async fn ac_002_ac_003_media_refs_inject_only_selected_images_in_declared_order(
         "type": "image",
         "source": { "type": "base64", "media_type": "image/png", "data": "c2Vjb25k" }
     });
-    let first_ref = plugin_framework::provider_contract::provider_media_content_ref(&first)
+    let first_ref = extension_contracts::provider_contract::provider_media_content_ref(&first)
         .expect("first image should have a media ref");
-    let second_ref = plugin_framework::provider_contract::provider_media_content_ref(&second)
+    let second_ref = extension_contracts::provider_contract::provider_media_content_ref(&second)
         .expect("second image should have a media ref");
     let (invoker, captured_inputs) = sequential_tool_invoker(vec![
         tool_call_response(vec![ProviderToolCall {
@@ -280,7 +280,7 @@ async fn ac_005_media_ref_resolves_after_external_tool_callback_resume() {
         "type": "image",
         "source": { "type": "base64", "media_type": "image/png", "data": "cGVyc2lzdGVk" }
     });
-    let media_ref = plugin_framework::provider_contract::provider_media_content_ref(&image)
+    let media_ref = extension_contracts::provider_contract::provider_media_content_ref(&image)
         .expect("image should have a media ref");
     let (waiting_invoker, _) =
         sequential_tool_invoker(vec![tool_call_response(vec![ProviderToolCall {
@@ -1136,21 +1136,21 @@ async fn ac_001_cross_provider_image_llm_does_not_inherit_parent_reasoning_seman
     assert_eq!(captured.len(), 3, "mounted image provider must be invoked");
     let main_input = &captured[0];
     assert!(main_input.required_capabilities.contains(
-        &plugin_framework::provider_contract::ProviderInvocationCapability::MessageBlocksReasoningHistoryV1
+        &extension_contracts::provider_contract::ProviderInvocationCapability::MessageBlocksReasoningHistoryV1
     ));
     assert!(main_input.required_capabilities.contains(
-        &plugin_framework::provider_contract::ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1
+        &extension_contracts::provider_contract::ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1
     ));
     let mounted_input = &captured[1];
     assert_eq!(mounted_input.provider_code, "openai");
     assert!(
         !mounted_input.required_capabilities.contains(
-            &plugin_framework::provider_contract::ProviderInvocationCapability::MessageBlocksReasoningHistoryV1
+            &extension_contracts::provider_contract::ProviderInvocationCapability::MessageBlocksReasoningHistoryV1
         )
     );
     assert!(
         !mounted_input.required_capabilities.contains(
-            &plugin_framework::provider_contract::ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1
+            &extension_contracts::provider_contract::ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1
         )
     );
     let mounted_block_types = mounted_input

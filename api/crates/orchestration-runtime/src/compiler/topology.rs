@@ -612,7 +612,7 @@ fn validate_protocol_context_reference(
         });
         return;
     };
-    if output.value_type != plugin_framework::provider_contract::PROTOCOL_CONTEXT_VALUE_TYPE {
+    if output.value_type != extension_contracts::provider_contract::PROTOCOL_CONTEXT_VALUE_TYPE {
         issues.push(CompileIssue {
             node_id: target.node_id.clone(),
             code: CompileIssueCode::IncompatibleLlmContextSchema,
@@ -1465,7 +1465,7 @@ fn output_for_selector(
         return Some(CompiledOutput {
             key: "protocol_context".to_string(),
             title: "userinput.protocol_context".to_string(),
-            value_type: plugin_framework::provider_contract::PROTOCOL_CONTEXT_VALUE_TYPE
+            value_type: extension_contracts::provider_contract::PROTOCOL_CONTEXT_VALUE_TYPE
                 .to_string(),
             selector: Vec::new(),
             json_schema: None,

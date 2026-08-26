@@ -1,4 +1,4 @@
-use plugin_framework::{
+use extension_contracts::{
     DataModelCapabilityRequirement, DataModelOperationHandlerRef, DataModelOperationMethod,
     DataModelSystemFieldWritePolicy, DataModelTemplateDescriptor, DataModelTemplateIdentity,
     DataModelTemplateOperation, DataModelTemplateSourceSelector, DataModelTemplateSystemField,

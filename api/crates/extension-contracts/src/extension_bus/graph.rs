@@ -13,7 +13,8 @@ pub struct Provenance {
 }
 
 impl Provenance {
-    pub(crate) fn new(
+    #[doc(hidden)]
+    pub fn new(
         module_id: ModuleId,
         module_version: ModuleVersion,
         module_kind: ModuleKind,
@@ -59,7 +60,8 @@ pub struct ModuleResolutionReceipt {
 }
 
 impl ModuleResolutionReceipt {
-    pub(crate) fn new(provenance: Provenance, status: ModuleResolutionStatus) -> Self {
+    #[doc(hidden)]
+    pub fn new(provenance: Provenance, status: ModuleResolutionStatus) -> Self {
         Self { provenance, status }
     }
 
@@ -104,7 +106,8 @@ pub struct ContributionResolutionReceipt {
 }
 
 impl ContributionResolutionReceipt {
-    pub(crate) fn new(
+    #[doc(hidden)]
+    pub fn new(
         descriptor: ContributionDescriptor,
         provenance: Provenance,
         status: ContributionResolutionStatus,
@@ -136,7 +139,8 @@ pub struct EffectiveContribution {
 }
 
 impl EffectiveContribution {
-    pub(crate) fn new(descriptor: ContributionDescriptor, provenance: Provenance) -> Self {
+    #[doc(hidden)]
+    pub fn new(descriptor: ContributionDescriptor, provenance: Provenance) -> Self {
         Self {
             descriptor,
             provenance,
@@ -160,7 +164,8 @@ pub struct EffectiveExtensionPoint {
 }
 
 impl EffectiveExtensionPoint {
-    pub(crate) fn new(
+    #[doc(hidden)]
+    pub fn new(
         descriptor: ExtensionPointDescriptor,
         provenance: Provenance,
         contributions: Vec<EffectiveContribution>,
@@ -190,7 +195,8 @@ impl EffectiveExtensionPoint {
 pub struct ExtensionGraphFingerprint(String);
 
 impl ExtensionGraphFingerprint {
-    pub(crate) fn new(value: String) -> Self {
+    #[doc(hidden)]
+    pub fn new(value: String) -> Self {
         Self(value)
     }
 
@@ -211,7 +217,8 @@ pub struct EffectiveExtensionGraph {
 }
 
 impl EffectiveExtensionGraph {
-    pub(crate) fn new(
+    #[doc(hidden)]
+    pub fn new(
         bus_version: ExtensionBusVersion,
         module_order: Vec<ModuleId>,
         module_provenance: Vec<Provenance>,

@@ -135,7 +135,8 @@ pub enum Cardinality {
 }
 
 impl Cardinality {
-    pub(crate) fn accepts(self, actual: usize) -> bool {
+    /// Returns whether an effective contribution count satisfies this contract.
+    pub fn accepts(self, actual: usize) -> bool {
         match self {
             Self::ExactlyOne => actual == 1,
             Self::ZeroOrOne => actual <= 1,

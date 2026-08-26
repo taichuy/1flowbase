@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use plugin_framework::provider_contract::{
+use extension_contracts::provider_contract::{
     protocol_context_envelope_json_schema, validate_protocol_context_envelope,
     ProtocolContextEnvelope, PROTOCOL_CONTEXT_VALUE_TYPE,
 };

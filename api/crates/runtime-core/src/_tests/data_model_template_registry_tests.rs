@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use plugin_framework::{
+use extension_contracts::{
     DataModelCapabilityRequirement, DataModelOperationHandlerRef, DataModelSourceKind,
     DataModelTemplateDescriptor, DataModelTemplateIdentity, DataModelTemplateSource,
     DataModelTemplateSourceSelector,
@@ -81,35 +81,35 @@ fn ac_004_general_v1_descriptor_is_serializable_and_compiles_as_one_truth() {
         [
             (
                 "list_records",
-                plugin_framework::DataModelOperationMethod::Get,
+                extension_contracts::DataModelOperationMethod::Get,
                 "/api/runtime/models/{model_code}/list",
                 "view",
                 "core/list_records/v1".to_owned(),
             ),
             (
                 "get_record",
-                plugin_framework::DataModelOperationMethod::Get,
+                extension_contracts::DataModelOperationMethod::Get,
                 "/api/runtime/models/{model_code}/get/{id}",
                 "view",
                 "core/get_record/v1".to_owned(),
             ),
             (
                 "create_record",
-                plugin_framework::DataModelOperationMethod::Post,
+                extension_contracts::DataModelOperationMethod::Post,
                 "/api/runtime/models/{model_code}/create",
                 "create",
                 "core/create_record/v1".to_owned(),
             ),
             (
                 "update_record",
-                plugin_framework::DataModelOperationMethod::Patch,
+                extension_contracts::DataModelOperationMethod::Patch,
                 "/api/runtime/models/{model_code}/update/{id}",
                 "update",
                 "core/update_record/v1".to_owned(),
             ),
             (
                 "delete_record",
-                plugin_framework::DataModelOperationMethod::Delete,
+                extension_contracts::DataModelOperationMethod::Delete,
                 "/api/runtime/models/{model_code}/delete/{id}",
                 "delete",
                 "core/delete_record/v1".to_owned(),
@@ -120,7 +120,7 @@ fn ac_004_general_v1_descriptor_is_serializable_and_compiles_as_one_truth() {
         .resolve(&descriptor.identity)
         .unwrap()
         .match_operation(
-            plugin_framework::DataModelOperationMethod::Patch,
+            extension_contracts::DataModelOperationMethod::Patch,
             "/api/runtime/models/orders/update/018f0000-0000-7000-8000-000000000000",
         )
         .expect("production update route must match");
@@ -180,84 +180,84 @@ fn ordered_tree_v1_compiles_exactly_twelve_operations_without_regressing_other_t
         [
             (
                 "list_records",
-                plugin_framework::DataModelOperationMethod::Get,
+                extension_contracts::DataModelOperationMethod::Get,
                 "/api/runtime/models/{model_code}/list",
                 "view",
                 "core/ordered_tree_list_records/v1".to_owned()
             ),
             (
                 "get_record",
-                plugin_framework::DataModelOperationMethod::Get,
+                extension_contracts::DataModelOperationMethod::Get,
                 "/api/runtime/models/{model_code}/get/{id}",
                 "view",
                 "core/ordered_tree_get_record/v1".to_owned()
             ),
             (
                 "create_record",
-                plugin_framework::DataModelOperationMethod::Post,
+                extension_contracts::DataModelOperationMethod::Post,
                 "/api/runtime/models/{model_code}/create",
                 "create",
                 "core/ordered_tree_create_record/v1".to_owned()
             ),
             (
                 "update_record",
-                plugin_framework::DataModelOperationMethod::Patch,
+                extension_contracts::DataModelOperationMethod::Patch,
                 "/api/runtime/models/{model_code}/update/{id}",
                 "update",
                 "core/ordered_tree_update_record/v1".to_owned()
             ),
             (
                 "delete_record",
-                plugin_framework::DataModelOperationMethod::Delete,
+                extension_contracts::DataModelOperationMethod::Delete,
                 "/api/runtime/models/{model_code}/delete/{id}",
                 "delete",
                 "core/ordered_tree_delete_record/v1".to_owned()
             ),
             (
                 "tree_roots",
-                plugin_framework::DataModelOperationMethod::Get,
+                extension_contracts::DataModelOperationMethod::Get,
                 "/api/runtime/models/{model_code}/tree/roots",
                 "view",
                 "core/ordered_tree_list_roots/v1".to_owned()
             ),
             (
                 "tree_children",
-                plugin_framework::DataModelOperationMethod::Get,
+                extension_contracts::DataModelOperationMethod::Get,
                 "/api/runtime/models/{model_code}/tree/children/{id}",
                 "view",
                 "core/ordered_tree_list_children/v1".to_owned()
             ),
             (
                 "tree_ancestors",
-                plugin_framework::DataModelOperationMethod::Get,
+                extension_contracts::DataModelOperationMethod::Get,
                 "/api/runtime/models/{model_code}/tree/ancestors/{id}",
                 "view",
                 "core/ordered_tree_list_ancestors/v1".to_owned()
             ),
             (
                 "tree_descendants",
-                plugin_framework::DataModelOperationMethod::Get,
+                extension_contracts::DataModelOperationMethod::Get,
                 "/api/runtime/models/{model_code}/tree/descendants/{id}",
                 "view",
                 "core/ordered_tree_list_descendants/v1".to_owned()
             ),
             (
                 "tree_search",
-                plugin_framework::DataModelOperationMethod::Get,
+                extension_contracts::DataModelOperationMethod::Get,
                 "/api/runtime/models/{model_code}/tree/search",
                 "view",
                 "core/ordered_tree_search/v1".to_owned()
             ),
             (
                 "tree_move",
-                plugin_framework::DataModelOperationMethod::Post,
+                extension_contracts::DataModelOperationMethod::Post,
                 "/api/runtime/models/{model_code}/tree/move/{id}",
                 "update",
                 "core/ordered_tree_move/v1".to_owned()
             ),
             (
                 "tree_delete_subtree",
-                plugin_framework::DataModelOperationMethod::Post,
+                extension_contracts::DataModelOperationMethod::Post,
                 "/api/runtime/models/{model_code}/tree/delete-subtree/{id}",
                 "delete",
                 "core/ordered_tree_delete_subtree/v1".to_owned()

@@ -3,7 +3,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use plugin_framework::{
+use extension_contracts::{
     DataModelCapabilityRequirement, DataModelOperationHandlerRef, DataModelOperationMethod,
     DataModelTemplateContractError, DataModelTemplateDescriptor, DataModelTemplateIdentity,
     DataModelTemplateOperation, DataModelTemplateSource,

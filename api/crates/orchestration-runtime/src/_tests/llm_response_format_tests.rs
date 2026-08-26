@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::Result;
 use async_trait::async_trait;
-use plugin_framework::provider_contract::{
+use extension_contracts::provider_contract::{
     ProviderFinishReason, ProviderInvocationInput, ProviderInvocationResult, ProviderStreamEvent,
 };
 use serde_json::json;

@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use anyhow::{anyhow, Result};
-use plugin_framework::RuntimeTarget;
+use extension_contracts::RuntimeTarget;
 use serde::{Deserialize, Serialize};
 use sysinfo::System;
 use time::OffsetDateTime;

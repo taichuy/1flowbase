@@ -515,7 +515,7 @@ where
         );
         if invocation.input.messages.is_empty()
             && !invocation.input.required_capabilities.contains(
-                &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
+                &extension_contracts::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
             )
         {
             let attempt_finished_at = OffsetDateTime::now_utc();
@@ -565,7 +565,7 @@ where
             llm_tool_prompt_transcript(node, variable_pool, &invocation.input);
         let invocation_tools = invocation.input.tools.clone();
         let native_responses_passthrough = invocation.input.required_capabilities.contains(
-            &plugin_framework::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
+            &extension_contracts::provider_contract::ProviderInvocationCapability::ResponsesNativePassthrough,
         );
         let attempt_started_at = OffsetDateTime::now_utc();
         invocation.input.trace_context.insert(

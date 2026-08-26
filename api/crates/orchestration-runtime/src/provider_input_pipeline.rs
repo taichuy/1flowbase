@@ -7,14 +7,14 @@ use std::{
 
 use anyhow::Result;
 use async_trait::async_trait;
-use futures_util::FutureExt;
-use plugin_framework::{
+use extension_contracts::{
     extension_bus::{
         Cardinality, DeliverySemantics, EffectiveExtensionGraph, ExtensionPointKind,
         FailureSemantics, LifecycleSemantics, OrderingSemantics, OverridePolicy, ScopeSemantics,
     },
     provider_contract::ProviderInvocationInput,
 };
+use futures_util::FutureExt;
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 

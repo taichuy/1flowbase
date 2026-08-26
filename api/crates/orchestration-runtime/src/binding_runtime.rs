@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use anyhow::{anyhow, bail, Result};
-use plugin_framework::provider_contract::NativePromptBlock;
+use extension_contracts::provider_contract::NativePromptBlock;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 

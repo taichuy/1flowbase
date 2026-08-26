@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
-use plugin_framework::data_source_contract::{
+use extension_contracts::data_source_contract::{
     DataSourceConfigInput, DataSourceCreateRecordInput, DataSourceCreateRecordOutput,
     DataSourceDeleteRecordInput, DataSourceDeleteRecordOutput,
     DataSourceExecuteModelOperationInput, DataSourceGetRecordInput, DataSourceGetRecordOutput,
@@ -140,7 +140,7 @@ pub trait DataSourceRuntimeRecordBackend: Send + Sync {
         &self,
         workspace_id: Uuid,
         data_source_instance_id: Uuid,
-        expected_capabilities: plugin_framework::DataSourceCrudCapabilities,
+        expected_capabilities: extension_contracts::DataSourceCrudCapabilities,
         input: DataSourceExecuteModelOperationInput,
     ) -> Result<Value>;
 }
@@ -1107,7 +1107,7 @@ impl RuntimeEngine {
         &self,
         metadata: &ModelMetadata,
     ) -> Result<crate::data_model_template_registry::CompiledDataModelTemplate> {
-        let identity = plugin_framework::DataModelTemplateIdentity {
+        let identity = extension_contracts::DataModelTemplateIdentity {
             provider: metadata.template_provider.clone(),
             code: metadata.template_code.clone(),
             version: metadata.template_version.clone(),

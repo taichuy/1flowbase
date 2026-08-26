@@ -27,7 +27,7 @@ pub struct NodePreviewOutcome {
     pub error_payload: Option<Value>,
     pub metrics_payload: Value,
     pub debug_payload: Value,
-    pub provider_events: Vec<plugin_framework::provider_contract::ProviderStreamEvent>,
+    pub provider_events: Vec<extension_contracts::provider_contract::ProviderStreamEvent>,
 }
 
 impl NodePreviewOutcome {

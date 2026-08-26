@@ -1,5 +1,5 @@
 use domain::ActorContext;
-use plugin_framework::data_source_contract::{
+use extension_contracts::data_source_contract::{
     DataSourceCreateRecordInput, DataSourceCreateRecordOutput, DataSourceDeleteRecordInput,
     DataSourceDeleteRecordOutput, DataSourceExecuteModelOperationInput, DataSourceGetRecordInput,
     DataSourceGetRecordOutput, DataSourceListRecordsInput, DataSourceListRecordsOutput,
@@ -1002,7 +1002,7 @@ fn external_model_metadata(
         data_source_instance_id: Some(data_source_instance_id),
         source_kind: domain::DataModelSourceKind::ExternalSource,
         external_resource_key: Some("crm.contacts".into()),
-        external_capability_snapshot: Some(plugin_framework::DataSourceCrudCapabilities {
+        external_capability_snapshot: Some(extension_contracts::DataSourceCrudCapabilities {
             supports_list: true,
             supports_get: true,
             supports_update: true,
@@ -1205,7 +1205,7 @@ impl DataSourceRuntimeRecordBackend for CapturingDataSourceBackend {
         &self,
         _workspace_id: Uuid,
         data_source_instance_id: Uuid,
-        _expected_capabilities: plugin_framework::DataSourceCrudCapabilities,
+        _expected_capabilities: extension_contracts::DataSourceCrudCapabilities,
         input: DataSourceExecuteModelOperationInput,
     ) -> anyhow::Result<serde_json::Value> {
         self.capture("model_operation", data_source_instance_id, &input);

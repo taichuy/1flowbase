@@ -1,6 +1,6 @@
 use super::*;
 use domain::AiNativeOperation;
-use plugin_framework::provider_contract::{
+use extension_contracts::provider_contract::{
     NativeModelPromptContext, NativeModelRequestContext, ProtocolContextEnvelope,
     ProviderInvocationCapability, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
     NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY, NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,

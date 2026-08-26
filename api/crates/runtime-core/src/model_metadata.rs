@@ -13,7 +13,7 @@ pub struct ModelMetadata {
     pub data_source_instance_id: Option<Uuid>,
     pub source_kind: domain::DataModelSourceKind,
     pub external_resource_key: Option<String>,
-    pub external_capability_snapshot: Option<plugin_framework::DataSourceCrudCapabilities>,
+    pub external_capability_snapshot: Option<extension_contracts::DataSourceCrudCapabilities>,
     pub template_provider: String,
     pub template_code: String,
     pub template_version: String,

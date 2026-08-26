@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::Result;
 use async_trait::async_trait;
-use plugin_framework::provider_contract::{
+use extension_contracts::provider_contract::{
     ProviderFinishReason, ProviderInvocationCapability, ProviderInvocationInput,
     ProviderInvocationResult, ProviderStreamEvent,
 };
@@ -344,7 +344,7 @@ async fn llm_runtime_executes_system_only_node_prompt_as_user_turn() {
     );
     assert_eq!(
         input.messages[0].role,
-        plugin_framework::provider_contract::ProviderMessageRole::User
+        extension_contracts::provider_contract::ProviderMessageRole::User
     );
     assert!(
         input

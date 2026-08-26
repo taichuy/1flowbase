@@ -58,14 +58,14 @@ impl LlmRoutePreflightCause {
                 .iter()
                 .flat_map(|provenance| provenance.omitted_blocks.iter())
                 .filter_map(|block| match block.block_kind {
-                    plugin_framework::provider_contract::ProviderCanonicalBlockKind::Reasoning => {
+                    extension_contracts::provider_contract::ProviderCanonicalBlockKind::Reasoning => {
                         Some(
                             ProviderInvocationCapability::MessageBlocksReasoningHistoryV1
                                 .manifest_capability_name()
                                 .to_string(),
                         )
                     }
-                    plugin_framework::provider_contract::ProviderCanonicalBlockKind::RedactedReasoning => {
+                    extension_contracts::provider_contract::ProviderCanonicalBlockKind::RedactedReasoning => {
                         Some(
                             ProviderInvocationCapability::MessageBlocksRedactedReasoningHistoryV1
                                 .manifest_capability_name()
@@ -405,7 +405,7 @@ fn semantic_route_error(
     causes: &[LlmRoutePreflightCause],
 ) -> anyhow::Error {
     let cause_count = causes.len();
-    plugin_framework::PluginFrameworkError::runtime(
+    extension_contracts::ExtensionContractError::runtime(
         ProviderRuntimeError::new(
             ProviderRuntimeErrorKind::SemanticCapabilityUnsupported,
             "no LLM route accepts the request's canonical message-block semantics",
@@ -988,12 +988,12 @@ mod tests {
             Ok(_) => panic!("a stale compiled capability claim must not authorize invocation"),
         };
         let framework_error = error
-            .downcast_ref::<plugin_framework::PluginFrameworkError>()
+            .downcast_ref::<extension_contracts::ExtensionContractError>()
             .expect("semantic rejection should preserve the typed framework error");
 
         assert!(matches!(
             framework_error,
-            plugin_framework::PluginFrameworkError::RuntimeContract { error }
+            extension_contracts::ExtensionContractError::RuntimeContract { error }
                 if error.kind == ProviderRuntimeErrorKind::SemanticCapabilityUnsupported
         ));
     }
@@ -1073,12 +1073,12 @@ mod tests {
             Ok(_) => panic!("redacted reasoning must not route to an incompatible Provider"),
         };
         let framework_error = error
-            .downcast_ref::<plugin_framework::PluginFrameworkError>()
+            .downcast_ref::<extension_contracts::ExtensionContractError>()
             .expect("semantic rejection should preserve the typed framework error");
 
         assert!(matches!(
             framework_error,
-            plugin_framework::PluginFrameworkError::RuntimeContract { error }
+            extension_contracts::ExtensionContractError::RuntimeContract { error }
                 if error.kind == ProviderRuntimeErrorKind::SemanticCapabilityUnsupported
         ));
     }

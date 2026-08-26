@@ -720,7 +720,7 @@ async fn ac_001_start_protocol_context_is_normal_downstream_workflow_data() {
 
     assert_eq!(envelope, protocol_context);
     assert!(captured_input.required_capabilities.contains(
-        &plugin_framework::provider_contract::ProviderInvocationCapability::ProtocolContext
+        &extension_contracts::provider_contract::ProviderInvocationCapability::ProtocolContext
     ));
     assert!(captured_input
         .run_context
@@ -869,7 +869,7 @@ async fn wp_d1b_null_protocol_context_reference_disables_forwarding() {
     let runtime_context = ExecutionRuntimeContext::default()
         .with_protocol_context(protocol_context_fixture())
         .with_provider_invocation_capability(
-            plugin_framework::provider_contract::ProviderInvocationCapability::ProtocolContext,
+            extension_contracts::provider_contract::ProviderInvocationCapability::ProtocolContext,
         );
     start_flow_debug_run_with_runtime_context(
         &plan,
@@ -889,7 +889,7 @@ async fn wp_d1b_null_protocol_context_reference_disables_forwarding() {
 
     assert!(captured_input.client_protocol_envelope.is_none());
     assert!(!captured_input.required_capabilities.contains(
-        &plugin_framework::provider_contract::ProviderInvocationCapability::ProtocolContext
+        &extension_contracts::provider_contract::ProviderInvocationCapability::ProtocolContext
     ));
 }
 
@@ -927,7 +927,7 @@ async fn ac_004_typed_code_variable_remains_normal_data_and_reaches_the_provider
         Some(protocol_context)
     );
     assert!(captured_input.required_capabilities.contains(
-        &plugin_framework::provider_contract::ProviderInvocationCapability::ProtocolContext
+        &extension_contracts::provider_contract::ProviderInvocationCapability::ProtocolContext
     ));
     assert_eq!(
         outcome.node_traces[0].input_payload["protocol_context"],

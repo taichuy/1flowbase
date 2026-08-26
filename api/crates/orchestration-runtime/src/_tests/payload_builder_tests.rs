@@ -1,8 +1,8 @@
+use extension_contracts::provider_contract::ProviderStreamEvent;
 use orchestration_runtime::{
     compiled_plan::CompiledOutput,
     payload_builder::{PublicOutputContract, RawNodeExecutionResult},
 };
-use plugin_framework::provider_contract::ProviderStreamEvent;
 use serde_json::{json, Map, Value};
 
 fn output(key: &str) -> CompiledOutput {

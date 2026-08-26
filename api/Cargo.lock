@@ -1382,6 +1382,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "extension-contracts"
+version = "0.4.1"
+dependencies = [
+ "base64",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "fancy-regex"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2510,9 +2521,9 @@ dependencies = [
  "async-trait",
  "base64",
  "domain",
+ "extension-contracts",
  "futures-util",
  "jsonschema",
- "plugin-framework",
  "regex",
  "reqwest 0.12.28",
  "rquickjs",
@@ -2684,6 +2695,7 @@ dependencies = [
  "access-control",
  "base64",
  "ed25519-dalek",
+ "extension-contracts",
  "flate2",
  "jsonschema",
  "serde",
@@ -3283,7 +3295,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "domain",
- "plugin-framework",
+ "extension-contracts",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
@@ -3296,7 +3308,7 @@ name = "runtime-profile"
 version = "0.4.1"
 dependencies = [
  "anyhow",
- "plugin-framework",
+ "extension-contracts",
  "serde",
  "sha2 0.10.9",
  "sysinfo",

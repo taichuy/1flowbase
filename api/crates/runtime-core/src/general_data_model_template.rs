@@ -1,6 +1,6 @@
 use std::{collections::BTreeSet, sync::OnceLock};
 
-use plugin_framework::{
+use extension_contracts::{
     DataModelCapabilityRequirement, DataModelOperationHandlerRef, DataModelOperationMethod,
     DataModelSystemFieldWritePolicy, DataModelTemplateDescriptor, DataModelTemplateIdentity,
     DataModelTemplateOperation, DataModelTemplateSource, DataModelTemplateSourceSelector,
@@ -91,14 +91,14 @@ pub fn core_data_model_template_registry(
 
 pub fn source_capabilities(
     source: &DataModelTemplateSource,
-    external_capabilities: Option<&plugin_framework::DataSourceCrudCapabilities>,
+    external_capabilities: Option<&extension_contracts::DataSourceCrudCapabilities>,
 ) -> BTreeSet<String> {
     let mut capabilities = BTreeSet::new();
     match source.kind {
-        plugin_framework::DataModelSourceKind::MainSource => {
+        extension_contracts::DataModelSourceKind::MainSource => {
             capabilities.insert(GENERAL_RECORDS_READ_CAPABILITY.to_owned());
         }
-        plugin_framework::DataModelSourceKind::ExternalSource => {
+        extension_contracts::DataModelSourceKind::ExternalSource => {
             if external_capabilities.is_some_and(|value| value.supports_list && value.supports_get)
             {
                 capabilities.insert(GENERAL_RECORDS_READ_CAPABILITY.to_owned());
