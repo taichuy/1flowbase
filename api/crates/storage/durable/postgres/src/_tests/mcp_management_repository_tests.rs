@@ -1,59 +1,89 @@
 use control_plane::mcp_bundle::{
     ExportMcpInstanceBundleCommand, ImportMcpBundleCommand, McpInstanceBundleExportKind,
-    SeedBuiltinMcpBundleCommand,
 };
-use control_plane::ports::{ExtensionInstallationRepository, UpsertExtensionInstallationInput};
+use control_plane::ports::{
+    CreateMcpToolInput, ExtensionInstallationRepository, McpManagementRepository,
+    SeedMcpBundleGraphInput, UpsertExtensionInstallationInput,
+};
 
 #[tokio::test]
 async fn ac_001_ac_002_ac_003_builtin_bundle_is_seeded_once_and_remains_mutable() {
     let (store, workspace, actor) = seed_store().await;
-    let service = McpManagementService::new(store.clone());
     let package = managed_frontstage_package("1.0.2");
     seed_builtin_bundle_installation(&store, actor.id, "1.0.2").await;
-    service
-        .seed_builtin_bundle_once(SeedBuiltinMcpBundleCommand {
-            actor_user_id: actor.id,
-            workspace_id: workspace.id,
-            package: package.clone(),
-            interface_catalog: Vec::new(),
-        })
+    let input = managed_frontstage_seed_input(actor.id, workspace.id, package.clone());
+    store
+        .seed_mcp_bundle_graph_once_atomically(&input)
         .await
         .unwrap();
-    let catalog = service.read_workspace_catalog(actor.id).await.unwrap();
-    assert_eq!(catalog.instances.len(), 1);
-    assert_eq!(catalog.tools.len(), 2);
-    assert_eq!(catalog.bindings.len(), 2);
-    let source = catalog.instances[0].managed_by.as_ref().unwrap();
+    let instances = store.list_mcp_instances(workspace.id).await.unwrap();
+    let tools = store.list_mcp_tools(workspace.id).await.unwrap();
+    let bindings = store
+        .list_mcp_tool_bindings(&[instances[0].id])
+        .await
+        .unwrap();
+    assert_eq!(instances.len(), 1);
+    assert_eq!(tools.len(), 2);
+    assert_eq!(bindings.len(), 2);
+    let source = instances[0].managed_by.as_ref().unwrap();
     assert_eq!(source.organization, "1flowbase");
     assert_eq!(source.bundle_id, "frontstage_assistant");
     assert_eq!(source.bundle_version, "1.0.2");
-    assert!(catalog.tools.iter().all(|tool| tool.managed_by.is_some()));
-    service
-        .delete_instance(actor.id, "frontstage_browser")
+    assert!(tools.iter().all(|tool| tool.managed_by.is_some()));
+
+    store
+        .delete_mcp_instance(workspace.id, "frontstage_browser")
         .await
         .unwrap();
-    service
-        .delete_tool(actor.id, "frontstage_list_page_blocks")
+    store
+        .delete_mcp_tool(workspace.id, "frontstage_list_page_blocks")
         .await
         .unwrap();
-    service
-        .delete_tool(actor.id, "frontstage_inspect_block_render")
+    store
+        .delete_mcp_tool(workspace.id, "frontstage_inspect_block_render")
         .await
         .unwrap();
 
-    service
-        .seed_builtin_bundle_once(SeedBuiltinMcpBundleCommand {
-            actor_user_id: actor.id,
-            workspace_id: workspace.id,
-            package: package.clone(),
-            interface_catalog: Vec::new(),
-        })
+    store
+        .seed_mcp_bundle_graph_once_atomically(&input)
         .await
         .unwrap();
-    let restarted_catalog = service.read_workspace_catalog(actor.id).await.unwrap();
-    assert!(restarted_catalog.instances.is_empty());
-    assert!(restarted_catalog.tools.is_empty());
-    assert!(restarted_catalog.bindings.is_empty());
+    assert!(store
+        .list_mcp_instances(workspace.id)
+        .await
+        .unwrap()
+        .is_empty());
+    assert!(store.list_mcp_tools(workspace.id).await.unwrap().is_empty());
+}
+
+// H4B3A3 owns the explicit-import application behavior; this fixture keeps its PostgreSQL
+// restoration round-trip until that packet moves the service assertion.
+#[tokio::test]
+async fn mcp_bundle_explicit_import_restores_deleted_managed_graph() {
+    let (store, workspace, actor) = seed_store().await;
+    let service = McpManagementService::new(store.clone());
+    let package = managed_frontstage_package("1.0.2");
+    seed_builtin_bundle_installation(&store, actor.id, "1.0.2").await;
+    store
+        .seed_mcp_bundle_graph_once_atomically(&managed_frontstage_seed_input(
+            actor.id,
+            workspace.id,
+            package.clone(),
+        ))
+        .await
+        .unwrap();
+    store
+        .delete_mcp_instance(workspace.id, "frontstage_browser")
+        .await
+        .unwrap();
+    store
+        .delete_mcp_tool(workspace.id, "frontstage_list_page_blocks")
+        .await
+        .unwrap();
+    store
+        .delete_mcp_tool(workspace.id, "frontstage_inspect_block_render")
+        .await
+        .unwrap();
 
     service
         .import_bundle(ImportMcpBundleCommand {
@@ -77,15 +107,13 @@ async fn ac_001_ac_002_ac_003_builtin_bundle_is_seeded_once_and_remains_mutable(
 #[tokio::test]
 async fn ac_005_new_builtin_bundle_version_adds_managed_tools_once() {
     let (store, workspace, actor) = seed_store().await;
-    let service = McpManagementService::new(store.clone());
     seed_builtin_bundle_installation(&store, actor.id, "1.0.2").await;
-    service
-        .seed_builtin_bundle_once(SeedBuiltinMcpBundleCommand {
-            actor_user_id: actor.id,
-            workspace_id: workspace.id,
-            package: managed_frontstage_package("1.0.2"),
-            interface_catalog: Vec::new(),
-        })
+    store
+        .seed_mcp_bundle_graph_once_atomically(&managed_frontstage_seed_input(
+            actor.id,
+            workspace.id,
+            managed_frontstage_package("1.0.2"),
+        ))
         .await
         .unwrap();
 
@@ -104,34 +132,26 @@ async fn ac_005_new_builtin_bundle_version_adds_managed_tools_once() {
             visible: true,
             sort_order: 2,
         });
-    service
-        .seed_builtin_bundle_once(SeedBuiltinMcpBundleCommand {
-            actor_user_id: actor.id,
-            workspace_id: workspace.id,
-            package: upgraded.clone(),
-            interface_catalog: Vec::new(),
-        })
+    let upgraded_input = managed_frontstage_seed_input(actor.id, workspace.id, upgraded);
+    store
+        .seed_mcp_bundle_graph_once_atomically(&upgraded_input)
         .await
         .unwrap();
-    service
-        .seed_builtin_bundle_once(SeedBuiltinMcpBundleCommand {
-            actor_user_id: actor.id,
-            workspace_id: workspace.id,
-            package: upgraded,
-            interface_catalog: Vec::new(),
-        })
+    store
+        .seed_mcp_bundle_graph_once_atomically(&upgraded_input)
         .await
         .unwrap();
 
-    let catalog = service.read_workspace_catalog(actor.id).await.unwrap();
-    assert_eq!(catalog.tools.len(), 3);
-    assert_eq!(catalog.bindings.len(), 3);
+    let tools = store.list_mcp_tools(workspace.id).await.unwrap();
+    let instances = store.list_mcp_instances(workspace.id).await.unwrap();
+    let bindings = store
+        .list_mcp_tool_bindings(&[instances[0].id])
+        .await
+        .unwrap();
+    assert_eq!(tools.len(), 3);
+    assert_eq!(bindings.len(), 3);
     assert_eq!(
-        catalog.instances[0]
-            .managed_by
-            .as_ref()
-            .unwrap()
-            .bundle_version,
+        instances[0].managed_by.as_ref().unwrap().bundle_version,
         "1.1.0"
     );
 }
@@ -503,6 +523,48 @@ fn managed_frontstage_package(version: &str) -> domain::McpBundlePackage {
         }],
         tools,
         connections: Vec::new(),
+    }
+}
+
+fn managed_frontstage_seed_input(
+    actor_user_id: uuid::Uuid,
+    workspace_id: uuid::Uuid,
+    package: domain::McpBundlePackage,
+) -> SeedMcpBundleGraphInput {
+    let source = domain::McpManagedBundleSource {
+        organization: package.manifest.organization,
+        bundle_id: package.manifest.bundle_id,
+        bundle_version: package.manifest.bundle_version,
+    };
+    let tools = package
+        .tools
+        .into_iter()
+        .map(|tool| CreateMcpToolInput {
+            id: uuid::Uuid::now_v7(),
+            actor_user_id,
+            workspace_id,
+            tool_id: tool.tool_id,
+            name: tool.name,
+            short_description: tool.short_description,
+            full_description: tool.full_description,
+            execution_target: tool.execution_target,
+            parameter_schema: tool.parameter_schema_snapshot,
+            result_schema: tool.result_schema_snapshot,
+            input_mapping: tool.input_mapping,
+            output_mapping: tool.output_mapping,
+            permission_code: tool.permission_code_snapshot,
+            risk_level: tool.risk_level_snapshot,
+            des_id: uuid::Uuid::now_v7().simple().to_string()[..8].to_string(),
+            des_id_required: false,
+            status: tool.status,
+        })
+        .collect();
+    SeedMcpBundleGraphInput {
+        actor_user_id,
+        workspace_id,
+        source,
+        tools,
+        instances: package.instances,
     }
 }
 
