@@ -5,6 +5,11 @@ use serde::Deserialize;
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
+pub use control_plane_contracts::application_public_runtime::claude_code_control::claude_code_control_kind;
+use control_plane_contracts::application_public_runtime::claude_code_control::{
+    CLAUDE_CODE_SESSION_TITLE_JSON_MARKER, CLAUDE_CODE_SESSION_TITLE_SYSTEM_MARKER,
+};
+
 use crate::application_public_api::callback_tool_ids::decode_anthropic_callback_tool_use_id;
 use crate::application_public_api::client_protocol_envelope::{
     anthropic_context_1m_requested, protocol_context_field_is_safe,
@@ -14,23 +19,6 @@ use crate::application_public_api::protocol_translation::{
     TranslationDecisionKind, TranslationProtocol, TranslationReport, TranslationSafeRepresentation,
 };
 
-const CLAUDE_CODE_COMPACT_SUMMARY_PROMPT_PREFIX: &str =
-    "Your task is to create a detailed summary of the conversation so far";
-const CLAUDE_CODE_PARTIAL_COMPACT_SUMMARY_PROMPT_PREFIX: &str =
-    "Your task is to create a detailed summary of the RECENT portion of the conversation";
-const CLAUDE_CODE_CONTEXT_CONTINUATION_SUMMARY_PROMPT_PREFIX: &str =
-    "Your task is to create a detailed summary of this conversation. This summary will be placed at the start of a continuing session";
-const CLAUDE_CODE_AWAY_SUMMARY_PROMPT_PREFIX: &str =
-    "The user stepped away and is coming back. Write exactly 1-3 short sentences.";
-const CLAUDE_CODE_AWAY_SUMMARY_NEXT_STEP_MARKER: &str = "Next: the concrete next step.";
-const CLAUDE_CODE_COMPACT_RESUME_MARKER: &str =
-    "This session is being continued from a previous conversation that ran out of context.";
-const CLAUDE_CODE_COMPACT_RESUME_SUMMARY_MARKER: &str =
-    "The summary below covers the earlier portion of the conversation.";
-const CLAUDE_CODE_COMPACT_TRANSCRIPT_MARKER: &str =
-    "If you need specific details from before compaction";
-const CLAUDE_CODE_SESSION_TITLE_SYSTEM_MARKER: &str = "Generate a concise, sentence-case title";
-const CLAUDE_CODE_SESSION_TITLE_JSON_MARKER: &str = "Return JSON with a single \"title\" field";
 const ANTHROPIC_CONTEXT_1M_MODEL_SUFFIX: &str = "[1m]";
 const ANTHROPIC_CONTEXT_1M_TOKENS: u64 = 1_000_000;
 const ANTHROPIC_TYPED_ROOT_FIELDS: &[&str] = &[
@@ -134,7 +122,5 @@ use request_metadata::*;
 use validation::*;
 
 pub use content_mapping::anthropic_content_is_tool_result_only;
-pub use request_metadata::claude_code_control_kind;
-
 #[cfg(test)]
 mod tests;

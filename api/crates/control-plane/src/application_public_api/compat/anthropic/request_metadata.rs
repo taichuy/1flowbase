@@ -357,27 +357,6 @@ pub(super) fn push_system_part(parts: &mut Vec<NativePromptBlock>, content: &str
     parts.push(NativePromptBlock::text(content));
 }
 
-pub fn claude_code_control_kind(content: &str) -> Option<&'static str> {
-    if content.contains(CLAUDE_CODE_COMPACT_SUMMARY_PROMPT_PREFIX)
-        || content.contains(CLAUDE_CODE_PARTIAL_COMPACT_SUMMARY_PROMPT_PREFIX)
-        || content.contains(CLAUDE_CODE_CONTEXT_CONTINUATION_SUMMARY_PROMPT_PREFIX)
-    {
-        return Some("compact_summary");
-    }
-    if content.contains(CLAUDE_CODE_COMPACT_RESUME_MARKER)
-        && (content.contains(CLAUDE_CODE_COMPACT_RESUME_SUMMARY_MARKER)
-            || content.contains(CLAUDE_CODE_COMPACT_TRANSCRIPT_MARKER))
-    {
-        return Some("compact_resume");
-    }
-    if content.contains(CLAUDE_CODE_AWAY_SUMMARY_PROMPT_PREFIX)
-        && content.contains(CLAUDE_CODE_AWAY_SUMMARY_NEXT_STEP_MARKER)
-    {
-        return Some("away_summary");
-    }
-    None
-}
-
 pub(super) fn claude_code_system_control_kind(
     system_parts: &[NativePromptBlock],
 ) -> Option<&'static str> {
