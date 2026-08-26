@@ -1,4 +1,4 @@
-use std::fs;
+use std::{fs, future::Future};
 
 use axum::{
     body::{to_bytes, Body},
@@ -22,208 +22,225 @@ enum CompactFixtureMode {
     ProviderFailure,
 }
 
-#[tokio::test]
-async fn k3_codex_turn_metadata_is_not_parsed_before_application_key_authentication() {
-    let app = test_app().await;
+const COMPACT_ROUTE_TEST_STACK_BYTES: usize = 32 * 1024 * 1024;
 
-    let response = post_openai_responses(
-        &app,
-        "/v1/responses",
-        "not-an-application-api-key",
-        responses_body(false),
-        Some(json!("not a Codex metadata object")),
-    )
-    .await;
-
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    let payload = response_json(response).await;
-    assert_eq!(payload["error"]["code"], json!("not_authenticated"));
+fn run_compact_route_test<F, Fut>(test: F)
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: Future<Output = ()> + 'static,
+{
+    // Debug Axum service futures for compact routes exceed libtest's default stack. Keep the
+    // larger stack local to this regression family instead of requiring a global RUST_MIN_STACK.
+    std::thread::Builder::new()
+        .name("compact-route-regression".to_owned())
+        .stack_size(COMPACT_ROUTE_TEST_STACK_BYTES)
+        .spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("compact route test runtime should build")
+                .block_on(test());
+        })
+        .expect("compact route test thread should start")
+        .join()
+        .expect("compact route test thread should complete");
 }
 
-#[tokio::test]
-async fn k3_legacy_compact_returns_exact_provider_items_from_a_workflow_run() {
-    let (app, state) = test_app_with_state().await;
-    let token = setup_compact_published_app(
-        &app,
-        "OpenAI Legacy Compact Exact Items App",
-        CompactFixtureMode::Success,
-    )
-    .await;
-    let before = flow_run_count(state.as_ref()).await;
+#[test]
+fn k3_codex_turn_metadata_is_not_parsed_before_application_key_authentication() {
+    run_compact_route_test(|| async {
+        let app = test_app().await;
 
-    let response = post_openai_responses(
-        &app,
-        "/v1/responses/compact",
-        &token,
-        responses_body(false),
-        None,
-    )
-    .await;
+        let response = post_openai_responses(
+            &app,
+            "/v1/responses",
+            "not-an-application-api-key",
+            responses_body(false),
+            Some(json!("not a Codex metadata object")),
+        )
+        .await;
 
-    let status = response.status();
-    let payload = response_json(response).await;
-    assert_eq!(status, StatusCode::OK, "{payload}");
-    assert_eq!(
-        payload,
-        json!([
-            {
-                "id": "msg_compact_canary",
-                "type": "message",
-                "status": "completed",
-                "role": "assistant",
-                "content": [{
-                    "type": "output_text",
-                    "text": "legacy compact exact canary",
-                    "annotations": []
-                }]
-            }
-        ])
-    );
-    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
-}
-
-#[tokio::test]
-async fn k3_v2_compact_stream_preserves_one_opaque_item_from_a_workflow_run() {
-    let (app, state) = test_app_with_state().await;
-    let token = setup_compact_published_app(
-        &app,
-        "OpenAI V2 Compact Opaque SSE App",
-        CompactFixtureMode::Success,
-    )
-    .await;
-    let before = flow_run_count(state.as_ref()).await;
-
-    let response = post_openai_responses(
-        &app,
-        "/v1/responses",
-        &token,
-        v2_compaction_body(true),
-        Some(codex_turn_metadata("responses_compaction_v2")),
-    )
-    .await;
-
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response
-            .headers()
-            .get("content-type")
-            .and_then(|value| value.to_str().ok()),
-        Some("text/event-stream")
-    );
-    let body = String::from_utf8(
-        to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("Compact SSE body should be readable")
-            .to_vec(),
-    )
-    .expect("Compact SSE body should be UTF-8");
-    assert!(body.contains("event: response.completed"), "{body}");
-    assert_eq!(body.matches(V2_OPAQUE_CANARY).count(), 1, "{body}");
-    let event = sse_json_event(&body, "response.completed");
-    assert_eq!(event["type"], json!("response.completed"));
-    assert_eq!(event["response"]["id"], json!("resp-v2-canary"));
-    let output = event["response"]["output"]
-        .as_array()
-        .expect("completed Compact response should contain an output array");
-    assert_eq!(output.len(), 1);
-    assert_eq!(output[0]["type"], json!("compaction"));
-    assert_eq!(output[0]["encrypted_content"], json!(V2_OPAQUE_CANARY));
-    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
-}
-
-#[tokio::test]
-async fn k3_local_summary_keeps_generate_sse_and_does_not_persist_codex_turn_header() {
-    let (app, state) = test_app_with_state().await;
-    let token = setup_published_app(&app, "OpenAI Local Summary Generate App").await;
-    let before = flow_run_count(state.as_ref()).await;
-    let metadata = json!({
-        "request_kind": "compaction",
-        "compaction": {"implementation": "responses"},
-        "private_turn_marker": PRIVATE_TURN_MARKER
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let payload = response_json(response).await;
+        assert_eq!(payload["error"]["code"], json!("not_authenticated"));
     });
+}
 
-    let response = post_openai_responses(
-        &app,
-        "/v1/responses",
-        &token,
-        responses_body(true),
-        Some(metadata),
-    )
-    .await;
+#[test]
+fn k3_legacy_compact_returns_exact_provider_items_from_a_workflow_run() {
+    run_compact_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let token = setup_compact_published_app(
+            &app,
+            "OpenAI Legacy Compact Exact Items App",
+            CompactFixtureMode::Success,
+        )
+        .await;
+        let before = flow_run_count(state.as_ref()).await;
 
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response
-            .headers()
-            .get("content-type")
-            .and_then(|value| value.to_str().ok()),
-        Some("text/event-stream")
-    );
-    let body = String::from_utf8(
-        to_bytes(response.into_body(), usize::MAX)
-            .await
-            .expect("local summary SSE body should be readable")
-            .to_vec(),
-    )
-    .expect("local summary SSE body should be UTF-8");
-    assert!(body.contains("event: response.completed"), "{body}");
-    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
-    let input_payload: Value = sqlx::query_scalar(
-        "select input_payload from flow_runs order by created_at desc, id desc limit 1",
-    )
-    .fetch_one(state.store.pool())
-    .await
-    .expect("local summary flow run should retain its normal input payload");
-    assert!(
-        !input_payload.to_string().contains(PRIVATE_TURN_MARKER),
-        "captured Codex turn metadata must not enter the persisted Generate input"
-    );
+        let response = post_openai_responses(
+            &app,
+            "/v1/responses/compact",
+            &token,
+            responses_body(false),
+            None,
+        )
+        .await;
+
+        let status = response.status();
+        let payload = response_json(response).await;
+        assert_eq!(status, StatusCode::OK, "{payload}");
+        assert_eq!(
+            payload,
+            json!([
+                {
+                    "id": "msg_compact_canary",
+                    "type": "message",
+                    "status": "completed",
+                    "role": "assistant",
+                    "content": [{
+                        "type": "output_text",
+                        "text": "legacy compact exact canary",
+                        "annotations": []
+                    }]
+                }
+            ])
+        );
+        assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+    });
+}
+
+#[test]
+fn k3_v2_compact_stream_preserves_one_opaque_item_from_a_workflow_run() {
+    run_compact_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let token = setup_compact_published_app(
+            &app,
+            "OpenAI V2 Compact Opaque SSE App",
+            CompactFixtureMode::Success,
+        )
+        .await;
+        let before = flow_run_count(state.as_ref()).await;
+
+        let response = post_openai_responses(
+            &app,
+            "/v1/responses",
+            &token,
+            v2_compaction_body(true),
+            Some(codex_turn_metadata("responses_compaction_v2")),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get("content-type")
+                .and_then(|value| value.to_str().ok()),
+            Some("text/event-stream")
+        );
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("Compact SSE body should be readable")
+                .to_vec(),
+        )
+        .expect("Compact SSE body should be UTF-8");
+        assert!(body.contains("event: response.completed"), "{body}");
+        assert_eq!(body.matches(V2_OPAQUE_CANARY).count(), 1, "{body}");
+        let event = sse_json_event(&body, "response.completed");
+        assert_eq!(event["type"], json!("response.completed"));
+        assert_eq!(event["response"]["id"], json!("resp-v2-canary"));
+        let output = event["response"]["output"]
+            .as_array()
+            .expect("completed Compact response should contain an output array");
+        assert_eq!(output.len(), 1);
+        assert_eq!(output[0]["type"], json!("compaction"));
+        assert_eq!(output[0]["encrypted_content"], json!(V2_OPAQUE_CANARY));
+        assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+    });
+}
+
+#[test]
+fn k3_local_summary_keeps_generate_sse_and_does_not_persist_codex_turn_header() {
+    run_compact_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let token = setup_published_app(&app, "OpenAI Local Summary Generate App").await;
+        let before = flow_run_count(state.as_ref()).await;
+        let metadata = json!({
+            "request_kind": "compaction",
+            "compaction": {"implementation": "responses"},
+            "private_turn_marker": PRIVATE_TURN_MARKER
+        });
+
+        let response = post_openai_responses(
+            &app,
+            "/v1/responses",
+            &token,
+            responses_body(true),
+            Some(metadata),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response
+                .headers()
+                .get("content-type")
+                .and_then(|value| value.to_str().ok()),
+            Some("text/event-stream")
+        );
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .expect("local summary SSE body should be readable")
+                .to_vec(),
+        )
+        .expect("local summary SSE body should be UTF-8");
+        assert!(body.contains("event: response.completed"), "{body}");
+        assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+        let input_payload: Value = sqlx::query_scalar(
+            "select input_payload from flow_runs order by created_at desc, id desc limit 1",
+        )
+        .fetch_one(state.store.pool())
+        .await
+        .expect("local summary flow run should retain its normal input payload");
+        assert!(
+            !input_payload.to_string().contains(PRIVATE_TURN_MARKER),
+            "captured Codex turn metadata must not enter the persisted Generate input"
+        );
+    });
 }
 
 #[test]
 fn k3_compact_provider_failure_is_an_error_without_completed_projection() {
-    // The debug Axum service future exceeds libtest's default stack for this route. Keep the
-    // larger stack local to this regression instead of requiring a global RUST_MIN_STACK.
-    const COMPACT_FAILURE_TEST_STACK_BYTES: usize = 32 * 1024 * 1024;
-    std::thread::Builder::new()
-        .name("compact-provider-failure".to_owned())
-        .stack_size(COMPACT_FAILURE_TEST_STACK_BYTES)
-        .spawn(|| {
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("compact failure test runtime should build")
-                .block_on(async {
-                    let (app, state) = test_app_with_state().await;
-                    let token = setup_compact_published_app(
-                        &app,
-                        "OpenAI Compact Provider Failure App",
-                        CompactFixtureMode::ProviderFailure,
-                    )
-                    .await;
-                    let before = flow_run_count(state.as_ref()).await;
+    run_compact_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let token = setup_compact_published_app(
+            &app,
+            "OpenAI Compact Provider Failure App",
+            CompactFixtureMode::ProviderFailure,
+        )
+        .await;
+        let before = flow_run_count(state.as_ref()).await;
 
-                    let response = post_openai_responses(
-                        &app,
-                        "/v1/responses",
-                        &token,
-                        v2_compaction_body(true),
-                        Some(codex_turn_metadata("responses_compaction_v2")),
-                    )
-                    .await;
+        let response = post_openai_responses(
+            &app,
+            "/v1/responses",
+            &token,
+            v2_compaction_body(true),
+            Some(codex_turn_metadata("responses_compaction_v2")),
+        )
+        .await;
 
-                    let status = response.status();
-                    let payload = response_json(response).await;
-                    assert_eq!(status, StatusCode::BAD_GATEWAY, "{payload}");
-                    assert_eq!(payload["error"]["code"], json!("provider_upstream_error"));
-                    assert!(payload.get("response").is_none());
-                    assert!(!payload.to_string().contains("response.completed"));
-                    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
-                });
-        })
-        .expect("compact failure test thread should start")
-        .join()
-        .expect("compact failure test thread should complete");
+        let status = response.status();
+        let payload = response_json(response).await;
+        assert_eq!(status, StatusCode::BAD_GATEWAY, "{payload}");
+        assert_eq!(payload["error"]["code"], json!("provider_upstream_error"));
+        assert!(payload.get("response").is_none());
+        assert!(!payload.to_string().contains("response.completed"));
+        assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+    });
 }
 
 async fn setup_compact_published_app(app: &Router, name: &str, mode: CompactFixtureMode) -> String {
