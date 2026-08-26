@@ -232,6 +232,8 @@ const blockFrameBaseStyle: CSSProperties = {
   boxShadow: '0 14px 40px rgba(37, 99, 235, 0.05)'
 };
 
+const FRONTSTAGE_DESIGN_PREVIEW_MIN_HEIGHT = 160;
+
 const blockLabelStyle: CSSProperties = {
   position: 'absolute',
   top: 12,
@@ -686,9 +688,21 @@ function RenderPlanSlot({
     maxWidth: '100%',
     minWidth: 0,
     height: isFixedHeight ? '100%' : 'auto',
+    minHeight:
+      isDesignMode && !isFixedHeight
+        ? FRONTSTAGE_DESIGN_PREVIEW_MIN_HEIGHT
+        : undefined,
     boxSizing: 'border-box',
-    overflow: isFixedHeight ? 'auto' : 'visible',
-    padding: isDesignMode ? '40px 24px 20px' : 12
+    overflow: isDesignMode ? 'clip' : isFixedHeight ? 'auto' : 'visible',
+    padding: isDesignMode ? '40px 24px 20px' : 12,
+    ...(isDesignMode
+      ? {
+          position: 'relative',
+          zIndex: 0,
+          isolation: 'isolate',
+          contain: 'layout paint'
+        }
+      : {})
   };
 
   const handleSelect = () => {
@@ -806,9 +820,7 @@ function RenderPlanSlot({
       }}
     >
       {isDesignMode ? (
-        <span style={blockLabelStyle}>
-          {item.title ?? item.blockId}
-        </span>
+        <span style={blockLabelStyle}>{item.title ?? item.blockId}</span>
       ) : null}
       {renderBlockContent()}
 
