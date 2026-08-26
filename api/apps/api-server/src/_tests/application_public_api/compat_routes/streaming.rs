@@ -1,30 +1,32 @@
 use super::*;
 use control_plane::ports::RuntimeEventCloseReason;
 
-#[tokio::test]
-async fn ac_002_compatible_turn_subscribes_before_execution_can_append() {
-    let runtime_events = Arc::new(SubscribeBeforeAppendRuntimeEventStream::new());
-    let (app, _) = test_app_with_runtime_event_stream(runtime_events.clone()).await;
-    let token = setup_published_app(&app, "Subscribe Before Execute Compatible App").await;
+#[test]
+fn ac_002_compatible_turn_subscribes_before_execution_can_append() {
+    run_compat_route_test(|| async {
+        let runtime_events = Arc::new(SubscribeBeforeAppendRuntimeEventStream::new());
+        let (app, _) = test_app_with_runtime_event_stream(runtime_events.clone()).await;
+        let token = setup_published_app(&app, "Subscribe Before Execute Compatible App").await;
 
-    let response = post_json(
-        &app,
-        "/v1/chat/completions",
-        ("authorization", format!("Bearer {token}")),
-        openai_body(true),
-    )
-    .await;
-    assert_eq!(response.status(), StatusCode::OK);
-    timeout(
-        Duration::from_secs(5),
-        to_bytes(response.into_body(), usize::MAX),
-    )
-    .await
-    .expect("compatible stream should finish")
-    .unwrap();
+        let response = post_json(
+            &app,
+            "/v1/chat/completions",
+            ("authorization", format!("Bearer {token}")),
+            openai_body(true),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        timeout(
+            Duration::from_secs(5),
+            to_bytes(response.into_body(), usize::MAX),
+        )
+        .await
+        .expect("compatible stream should finish")
+        .unwrap();
 
-    assert!(runtime_events.append_observed());
-    assert!(!runtime_events.append_before_subscribe());
+        assert!(runtime_events.append_observed());
+        assert!(!runtime_events.append_before_subscribe());
+    });
 }
 
 async fn wait_for_active_streaming_run(state: &ApiState) -> uuid::Uuid {
@@ -191,16 +193,18 @@ async fn assert_first_answer_delta_precedes_provider_release(
     );
 }
 
-#[tokio::test]
-async fn ac_live_causality_three_sse_surfaces_emit_before_provider_terminal() {
-    for protocol in [
-        CausalSseProtocol::OpenAiChat,
-        CausalSseProtocol::OpenAiResponses,
-        CausalSseProtocol::AnthropicMessages,
-    ] {
-        let app = test_app().await;
-        assert_first_answer_delta_precedes_provider_release(&app, protocol).await;
-    }
+#[test]
+fn ac_live_causality_three_sse_surfaces_emit_before_provider_terminal() {
+    run_compat_route_test(|| async {
+        for protocol in [
+            CausalSseProtocol::OpenAiChat,
+            CausalSseProtocol::OpenAiResponses,
+            CausalSseProtocol::AnthropicMessages,
+        ] {
+            let app = test_app().await;
+            assert_first_answer_delta_precedes_provider_release(&app, protocol).await;
+        }
+    });
 }
 
 async fn cancel_active_streaming_run_and_collect_sse(
@@ -317,614 +321,664 @@ async fn cancel_active_streaming_run_and_collect_sse(
     (run_id, body)
 }
 
-#[tokio::test]
-async fn d2_ac_004_native_streaming_cancel_projects_one_safe_terminal_and_closes() {
-    let (app, state) = test_app_with_state().await;
-    let (token, gate) =
-        setup_published_app_with_provider_gate(&app, "Native Actual Cancel SSE App").await;
+#[test]
+fn d2_ac_004_native_streaming_cancel_projects_one_safe_terminal_and_closes() {
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let (token, gate) =
+            setup_published_app_with_provider_gate(&app, "Native Actual Cancel SSE App").await;
 
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/agent/v1/runs")
-                .header("authorization", format!("Bearer {token}"))
-                .header("accept", "text/event-stream")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "query": "cancel this delayed native stream",
-                        "response_mode": "streaming",
-                        "stream_options": {}
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/agent/v1/runs")
+                    .header("authorization", format!("Bearer {token}"))
+                    .header("accept", "text/event-stream")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "query": "cancel this delayed native stream",
+                            "response_mode": "streaming",
+                            "stream_options": {}
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/event-stream"
+        );
+        let (_, body) = cancel_active_streaming_run_and_collect_sse(
+            &app,
+            state.as_ref(),
+            &token,
+            &gate,
+            response,
         )
-        .await
-        .unwrap();
+        .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response.headers().get("content-type").unwrap(),
-        "text/event-stream"
-    );
-    let (_, body) =
-        cancel_active_streaming_run_and_collect_sse(&app, state.as_ref(), &token, &gate, response)
-            .await;
-
-    assert!(body.contains("partial"), "{body}");
-    assert!(body.contains("event: run.cancelled"), "{body}");
-    assert!(body.contains("\"code\":\"run_cancelled\""), "{body}");
-    assert!(!body.contains("event: run.completed"), "{body}");
-    assert!(!body.contains("event: run.incomplete"), "{body}");
+        assert!(body.contains("partial"), "{body}");
+        assert!(body.contains("event: run.cancelled"), "{body}");
+        assert!(body.contains("\"code\":\"run_cancelled\""), "{body}");
+        assert!(!body.contains("event: run.completed"), "{body}");
+        assert!(!body.contains("event: run.incomplete"), "{body}");
+    });
 }
 
-#[tokio::test]
-async fn d2_ac_004_native_cancel_terminal_constraint_failure_rolls_back_status_and_keeps_live_stream_open(
+#[test]
+fn d2_ac_004_native_cancel_terminal_constraint_failure_rolls_back_status_and_keeps_live_stream_open(
 ) {
-    let (app, state) = test_app_with_state().await;
-    let (token, gate) =
-        setup_published_app_with_provider_gate(&app, "Native Cancel Atomic Rollback App").await;
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/api/agent/v1/runs")
-                .header("authorization", format!("Bearer {token}"))
-                .header("accept", "text/event-stream")
-                .header("content-type", "application/json")
-                .body(Body::from(
-                    json!({
-                        "query": "cancel only if terminal persistence can commit",
-                        "response_mode": "streaming",
-                        "stream_options": {}
-                    })
-                    .to_string(),
-                ))
-                .unwrap(),
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let (token, gate) =
+            setup_published_app_with_provider_gate(&app, "Native Cancel Atomic Rollback App").await;
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/agent/v1/runs")
+                    .header("authorization", format!("Bearer {token}"))
+                    .header("accept", "text/event-stream")
+                    .header("content-type", "application/json")
+                    .body(Body::from(
+                        json!({
+                            "query": "cancel only if terminal persistence can commit",
+                            "response_mode": "streaming",
+                            "stream_options": {}
+                        })
+                        .to_string(),
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let run_id = wait_for_active_streaming_run(state.as_ref()).await;
+        wait_for_provider_partial_delta(state.as_ref(), run_id, &gate).await;
+        sqlx::query(
+            "alter table runtime_events add constraint reject_flow_cancelled_terminal check (event_type <> 'flow_cancelled')",
         )
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    let run_id = wait_for_active_streaming_run(state.as_ref()).await;
-    wait_for_provider_partial_delta(state.as_ref(), run_id, &gate).await;
-    sqlx::query(
-        "alter table runtime_events add constraint reject_flow_cancelled_terminal check (event_type <> 'flow_cancelled')",
-    )
-    .execute(state.store.pool())
-    .await
-    .unwrap();
-
-    let cancel = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri(format!("/api/agent/v1/runs/{run_id}/cancel"))
-                .header("authorization", format!("Bearer {token}"))
-                .body(Body::empty())
-                .unwrap(),
-        )
+        .execute(state.store.pool())
         .await
         .unwrap();
 
-    assert!(!cancel.status().is_success());
-    let status = sqlx::query_scalar::<_, String>("select status from flow_runs where id = $1")
+        let cancel = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/agent/v1/runs/{run_id}/cancel"))
+                    .header("authorization", format!("Bearer {token}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert!(!cancel.status().is_success());
+        let status = sqlx::query_scalar::<_, String>("select status from flow_runs where id = $1")
+            .bind(run_id)
+            .fetch_one(state.store.pool())
+            .await
+            .unwrap();
+        let output =
+            sqlx::query_scalar::<_, Value>("select output_payload from flow_runs where id = $1")
+                .bind(run_id)
+                .fetch_one(state.store.pool())
+                .await
+                .unwrap();
+        let error = sqlx::query_scalar::<_, Option<Value>>(
+            "select error_payload from flow_runs where id = $1",
+        )
         .bind(run_id)
         .fetch_one(state.store.pool())
         .await
         .unwrap();
-    let output =
-        sqlx::query_scalar::<_, Value>("select output_payload from flow_runs where id = $1")
-            .bind(run_id)
-            .fetch_one(state.store.pool())
-            .await
-            .unwrap();
-    let error =
-        sqlx::query_scalar::<_, Option<Value>>("select error_payload from flow_runs where id = $1")
-            .bind(run_id)
-            .fetch_one(state.store.pool())
-            .await
-            .unwrap();
-    let durable_terminals = sqlx::query_scalar::<_, i64>(
-        "select count(*) from runtime_events where flow_run_id = $1 and event_type = 'flow_cancelled'",
-    )
-    .bind(run_id)
-    .fetch_one(state.store.pool())
-    .await
-    .unwrap();
-    let subscription = state
-        .runtime_event_stream
-        .subscribe(run_id, None)
+        let durable_terminals = sqlx::query_scalar::<_, i64>(
+            "select count(*) from runtime_events where flow_run_id = $1 and event_type = 'flow_cancelled'",
+        )
+        .bind(run_id)
+        .fetch_one(state.store.pool())
         .await
-        .expect("the partial stream must remain inspectable after durable cancellation rollback");
+        .unwrap();
+        let subscription = state
+            .runtime_event_stream
+            .subscribe(run_id, None)
+            .await
+            .expect(
+                "the partial stream must remain inspectable after durable cancellation rollback",
+            );
 
-    assert_eq!(status, "running");
-    assert_eq!(output, json!({}));
-    assert!(error.is_none());
-    assert_eq!(durable_terminals, 0);
-    assert!(subscription.closure.borrow().is_none());
-    assert_eq!(
-        subscription
-            .replay
-            .iter()
-            .filter(|event| event.event_type == "flow_cancelled")
-            .count(),
-        0
-    );
+        assert_eq!(status, "running");
+        assert_eq!(output, json!({}));
+        assert!(error.is_none());
+        assert_eq!(durable_terminals, 0);
+        assert!(subscription.closure.borrow().is_none());
+        assert_eq!(
+            subscription
+                .replay
+                .iter()
+                .filter(|event| event.event_type == "flow_cancelled")
+                .count(),
+            0
+        );
 
-    gate.release();
-    let _ = timeout(
-        Duration::from_secs(5),
-        to_bytes(response.into_body(), usize::MAX),
-    )
-    .await;
+        gate.release();
+        let _ = timeout(
+            Duration::from_secs(5),
+            to_bytes(response.into_body(), usize::MAX),
+        )
+        .await;
+    });
 }
 
-#[tokio::test]
-async fn d2_ac_004_openai_chat_streaming_cancel_projects_error_without_done() {
-    let (app, state) = test_app_with_state().await;
-    let (token, gate) =
-        setup_published_app_with_provider_gate(&app, "OpenAI Chat Actual Cancel SSE App").await;
+#[test]
+fn d2_ac_004_openai_chat_streaming_cancel_projects_error_without_done() {
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let (token, gate) =
+            setup_published_app_with_provider_gate(&app, "OpenAI Chat Actual Cancel SSE App").await;
 
-    let response = post_json(
-        &app,
-        "/v1/chat/completions",
-        ("authorization", format!("Bearer {token}")),
-        openai_body(true),
-    )
-    .await;
+        let response = post_json(
+            &app,
+            "/v1/chat/completions",
+            ("authorization", format!("Bearer {token}")),
+            openai_body(true),
+        )
+        .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response.headers().get("content-type").unwrap(),
-        "text/event-stream"
-    );
-    let (_, body) =
-        cancel_active_streaming_run_and_collect_sse(&app, state.as_ref(), &token, &gate, response)
-            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/event-stream"
+        );
+        let (_, body) = cancel_active_streaming_run_and_collect_sse(
+            &app,
+            state.as_ref(),
+            &token,
+            &gate,
+            response,
+        )
+        .await;
 
-    assert!(body.contains("partial"), "{body}");
-    assert!(body.contains("\"code\":\"run_cancelled\""), "{body}");
-    assert!(!body.contains("\"finish_reason\":\"stop\""), "{body}");
-    assert!(!body.contains("[DONE]"), "{body}");
+        assert!(body.contains("partial"), "{body}");
+        assert!(body.contains("\"code\":\"run_cancelled\""), "{body}");
+        assert!(!body.contains("\"finish_reason\":\"stop\""), "{body}");
+        assert!(!body.contains("[DONE]"), "{body}");
+    });
 }
 
-#[tokio::test]
-async fn d2_ac_004_openai_responses_streaming_cancel_projects_failed_without_completed() {
-    let (app, state) = test_app_with_state().await;
-    let (token, gate) =
-        setup_published_app_with_provider_gate(&app, "OpenAI Responses Actual Cancel SSE App")
-            .await;
+#[test]
+fn d2_ac_004_openai_responses_streaming_cancel_projects_failed_without_completed() {
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let (token, gate) =
+            setup_published_app_with_provider_gate(&app, "OpenAI Responses Actual Cancel SSE App")
+                .await;
 
-    let response = post_json(
-        &app,
-        "/v1/responses",
-        ("authorization", format!("Bearer {token}")),
-        responses_body(true),
-    )
-    .await;
+        let response = post_json(
+            &app,
+            "/v1/responses",
+            ("authorization", format!("Bearer {token}")),
+            responses_body(true),
+        )
+        .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response.headers().get("content-type").unwrap(),
-        "text/event-stream"
-    );
-    let (_, body) =
-        cancel_active_streaming_run_and_collect_sse(&app, state.as_ref(), &token, &gate, response)
-            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/event-stream"
+        );
+        let (_, body) = cancel_active_streaming_run_and_collect_sse(
+            &app,
+            state.as_ref(),
+            &token,
+            &gate,
+            response,
+        )
+        .await;
 
-    assert!(body.contains("partial"), "{body}");
-    assert!(body.contains("event: response.failed"), "{body}");
-    assert!(body.contains("\"code\":\"run_cancelled\""), "{body}");
-    assert!(!body.contains("event: response.completed"), "{body}");
+        assert!(body.contains("partial"), "{body}");
+        assert!(body.contains("event: response.failed"), "{body}");
+        assert!(body.contains("\"code\":\"run_cancelled\""), "{body}");
+        assert!(!body.contains("event: response.completed"), "{body}");
+    });
 }
 
-#[tokio::test]
-async fn d2_ac_004_anthropic_streaming_cancel_projects_error_without_message_stop() {
-    let (app, state) = test_app_with_state().await;
-    let (token, gate) =
-        setup_published_app_with_provider_gate(&app, "Anthropic Actual Cancel SSE App").await;
+#[test]
+fn d2_ac_004_anthropic_streaming_cancel_projects_error_without_message_stop() {
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let (token, gate) =
+            setup_published_app_with_provider_gate(&app, "Anthropic Actual Cancel SSE App").await;
 
-    let response = post_json(
-        &app,
-        "/v1/messages",
-        ("x-api-key", token.clone()),
-        anthropic_body(true),
-    )
-    .await;
+        let response = post_json(
+            &app,
+            "/v1/messages",
+            ("x-api-key", token.clone()),
+            anthropic_body(true),
+        )
+        .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(
-        response.headers().get("content-type").unwrap(),
-        "text/event-stream"
-    );
-    let (_, body) =
-        cancel_active_streaming_run_and_collect_sse(&app, state.as_ref(), &token, &gate, response)
-            .await;
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "text/event-stream"
+        );
+        let (_, body) = cancel_active_streaming_run_and_collect_sse(
+            &app,
+            state.as_ref(),
+            &token,
+            &gate,
+            response,
+        )
+        .await;
 
-    assert!(body.contains("partial"), "{body}");
-    assert!(body.contains("event: error"), "{body}");
-    assert!(body.contains("published run cancelled"), "{body}");
-    assert!(!body.contains("event: message_stop"), "{body}");
-    assert!(!body.contains("\"stop_reason\":\"end_turn\""), "{body}");
-    assert!(!body.contains("\"stop_reason\":\"max_tokens\""), "{body}");
+        assert!(body.contains("partial"), "{body}");
+        assert!(body.contains("event: error"), "{body}");
+        assert!(body.contains("published run cancelled"), "{body}");
+        assert!(!body.contains("event: message_stop"), "{body}");
+        assert!(!body.contains("\"stop_reason\":\"end_turn\""), "{body}");
+        assert!(!body.contains("\"stop_reason\":\"max_tokens\""), "{body}");
+    });
 }
 
-#[tokio::test]
-async fn anthropic_blocking_keeps_non_reasoning_markers_in_visible_output() {
-    let app = test_app().await;
-    let token = setup_published_app_with_marker_output_provider(
-        &app,
-        "Anthropic Blocking Marker Output App",
-    )
-    .await;
+#[test]
+fn anthropic_blocking_keeps_non_reasoning_markers_in_visible_output() {
+    run_compat_route_test(|| async {
+        let app = test_app().await;
+        let token = setup_published_app_with_marker_output_provider(
+            &app,
+            "Anthropic Blocking Marker Output App",
+        )
+        .await;
 
-    let response = post_json(
-        &app,
-        "/v1/messages",
-        ("x-api-key", token),
-        anthropic_body(false),
-    )
-    .await;
+        let response = post_json(
+            &app,
+            "/v1/messages",
+            ("x-api-key", token),
+            anthropic_body(false),
+        )
+        .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
-    let payload = response_json(response).await;
-    assert_eq!(payload["type"], json!("message"));
-    assert_eq!(payload["content"][0]["type"], json!("thinking"));
-    assert_eq!(payload["content"][0]["thinking"], json!("provider marker"));
-    assert_eq!(payload["content"][1]["type"], json!("text"));
-    assert_eq!(
-        payload["content"][1]["text"],
-        json!("<tool_call>marker</tool_call>\n\n---\n\n下面是美化后内容\n\nvisible marker output"),
-        "blocking projection must preserve the non-reasoning segment after the canonical reasoning block"
-    );
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload = response_json(response).await;
+        assert_eq!(payload["type"], json!("message"));
+        assert_eq!(payload["content"][0]["type"], json!("thinking"));
+        assert_eq!(payload["content"][0]["thinking"], json!("provider marker"));
+        assert_eq!(payload["content"][1]["type"], json!("text"));
+        assert_eq!(
+            payload["content"][1]["text"],
+            json!("<tool_call>marker</tool_call>\n\n---\n\n下面是美化后内容\n\nvisible marker output"),
+            "blocking projection must preserve the non-reasoning segment after the canonical reasoning block"
+        );
+    });
 }
 
-#[tokio::test]
-async fn compatible_streaming_routes_return_protocol_sse() {
-    let app = test_app().await;
-    let token = setup_published_app(&app, "Compatible Streaming Route App").await;
+#[test]
+fn compatible_streaming_routes_return_protocol_sse() {
+    run_compat_route_test(|| async {
+        let app = test_app().await;
+        let token = setup_published_app(&app, "Compatible Streaming Route App").await;
 
-    let openai = post_json(
-        &app,
-        "/v1/chat/completions",
-        ("authorization", format!("Bearer {token}")),
-        openai_body(true),
-    )
-    .await;
-    assert_eq!(openai.status(), StatusCode::OK);
-    assert_eq!(
-        openai.headers().get("content-type").unwrap(),
-        "text/event-stream"
-    );
-    let openai_body = timeout(
-        Duration::from_secs(5),
-        to_bytes(openai.into_body(), usize::MAX),
-    )
-    .await
-    .expect("OpenAI compatible SSE should finish")
-    .unwrap();
-    let openai_body = String::from_utf8(openai_body.to_vec()).unwrap();
-    assert!(openai_body.contains("[DONE]"), "{openai_body}");
-    assert!(
-        !openai_body.contains("event: workflow.event"),
-        "{openai_body}"
-    );
+        let openai = post_json(
+            &app,
+            "/v1/chat/completions",
+            ("authorization", format!("Bearer {token}")),
+            openai_body(true),
+        )
+        .await;
+        assert_eq!(openai.status(), StatusCode::OK);
+        assert_eq!(
+            openai.headers().get("content-type").unwrap(),
+            "text/event-stream"
+        );
+        let openai_body = timeout(
+            Duration::from_secs(5),
+            to_bytes(openai.into_body(), usize::MAX),
+        )
+        .await
+        .expect("OpenAI compatible SSE should finish")
+        .unwrap();
+        let openai_body = String::from_utf8(openai_body.to_vec()).unwrap();
+        assert!(openai_body.contains("[DONE]"), "{openai_body}");
+        assert!(
+            !openai_body.contains("event: workflow.event"),
+            "{openai_body}"
+        );
 
-    let responses = post_json(
-        &app,
-        "/v1/responses",
-        ("authorization", format!("Bearer {token}")),
-        responses_body(true),
-    )
-    .await;
-    assert_eq!(responses.status(), StatusCode::OK);
-    assert_eq!(
-        responses.headers().get("content-type").unwrap(),
-        "text/event-stream"
-    );
-    let responses_body = timeout(
-        Duration::from_secs(5),
-        to_bytes(responses.into_body(), usize::MAX),
-    )
-    .await
-    .expect("OpenAI Responses SSE should finish")
-    .unwrap();
-    let responses_body = String::from_utf8(responses_body.to_vec()).unwrap();
-    assert!(
-        responses_body.contains("event: response.created"),
-        "{responses_body}"
-    );
-    assert!(
-        responses_body.contains("event: response.completed")
-            || responses_body.contains("event: response.failed"),
-        "{responses_body}"
-    );
-    assert!(
-        !responses_body.contains("event: workflow.event"),
-        "{responses_body}"
-    );
+        let responses = post_json(
+            &app,
+            "/v1/responses",
+            ("authorization", format!("Bearer {token}")),
+            responses_body(true),
+        )
+        .await;
+        assert_eq!(responses.status(), StatusCode::OK);
+        assert_eq!(
+            responses.headers().get("content-type").unwrap(),
+            "text/event-stream"
+        );
+        let responses_body = timeout(
+            Duration::from_secs(5),
+            to_bytes(responses.into_body(), usize::MAX),
+        )
+        .await
+        .expect("OpenAI Responses SSE should finish")
+        .unwrap();
+        let responses_body = String::from_utf8(responses_body.to_vec()).unwrap();
+        assert!(
+            responses_body.contains("event: response.created"),
+            "{responses_body}"
+        );
+        assert!(
+            responses_body.contains("event: response.completed")
+                || responses_body.contains("event: response.failed"),
+            "{responses_body}"
+        );
+        assert!(
+            !responses_body.contains("event: workflow.event"),
+            "{responses_body}"
+        );
 
-    let anthropic = post_json(
-        &app,
-        "/v1/messages",
-        ("x-api-key", token),
-        anthropic_body(true),
-    )
-    .await;
-    assert_eq!(anthropic.status(), StatusCode::OK);
-    assert_eq!(
-        anthropic.headers().get("content-type").unwrap(),
-        "text/event-stream"
-    );
-    let anthropic_body = timeout(
-        Duration::from_secs(5),
-        to_bytes(anthropic.into_body(), usize::MAX),
-    )
-    .await
-    .expect("Anthropic compatible SSE should finish")
-    .unwrap();
-    let anthropic_body = String::from_utf8(anthropic_body.to_vec()).unwrap();
-    assert_eq!(
-        anthropic_body.matches("event: message_start").count(),
-        1,
-        "{anthropic_body}"
-    );
-    assert!(
-        anthropic_body.contains("event: message_stop") || anthropic_body.contains("event: error"),
-        "{anthropic_body}"
-    );
-    assert!(
-        !anthropic_body.contains("event: workflow.event"),
-        "{anthropic_body}"
-    );
+        let anthropic = post_json(
+            &app,
+            "/v1/messages",
+            ("x-api-key", token),
+            anthropic_body(true),
+        )
+        .await;
+        assert_eq!(anthropic.status(), StatusCode::OK);
+        assert_eq!(
+            anthropic.headers().get("content-type").unwrap(),
+            "text/event-stream"
+        );
+        let anthropic_body = timeout(
+            Duration::from_secs(5),
+            to_bytes(anthropic.into_body(), usize::MAX),
+        )
+        .await
+        .expect("Anthropic compatible SSE should finish")
+        .unwrap();
+        let anthropic_body = String::from_utf8(anthropic_body.to_vec()).unwrap();
+        assert_eq!(
+            anthropic_body.matches("event: message_start").count(),
+            1,
+            "{anthropic_body}"
+        );
+        assert!(
+            anthropic_body.contains("event: message_stop")
+                || anthropic_body.contains("event: error"),
+            "{anthropic_body}"
+        );
+        assert!(
+            !anthropic_body.contains("event: workflow.event"),
+            "{anthropic_body}"
+        );
+    });
 }
 
-#[tokio::test]
-async fn ac_008_openai_chat_stale_tool_continuation_starts_a_new_run() {
-    let (app, state) = test_app_with_state().await;
-    let token = setup_published_app(&app, "OpenAI Streaming Tool Resume App").await;
-    let before = flow_run_count(state.as_ref()).await;
-    let tool_call_id = encode_openai_callback_tool_call_id(
-        uuid::Uuid::from_u128(0x22222222222222222222222222222222),
-        "call_inventory",
-    );
+#[test]
+fn ac_008_openai_chat_stale_tool_continuation_starts_a_new_run() {
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let token = setup_published_app(&app, "OpenAI Streaming Tool Resume App").await;
+        let before = flow_run_count(state.as_ref()).await;
+        let tool_call_id = encode_openai_callback_tool_call_id(
+            uuid::Uuid::from_u128(0x22222222222222222222222222222222),
+            "call_inventory",
+        );
 
-    let response = post_json(
-        &app,
-        "/v1/chat/completions",
-        ("authorization", format!("Bearer {token}")),
-        json!({
-            "model": "provider/custom-model:latest",
-            "stream": true,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Find inventory"
-                },
-                {
-                    "role": "assistant",
-                    "content": null,
-                    "tool_calls": [{
-                        "id": tool_call_id,
-                        "type": "function",
-                        "function": {
-                            "name": "lookup_inventory",
-                            "arguments": "{\"sku\":\"sku_123\"}"
-                        }
-                    }]
-                },
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call_id,
-                    "content": "{\"stock\":7}"
-                }
-            ]
-        }),
-    )
-    .await;
+        let response = post_json(
+            &app,
+            "/v1/chat/completions",
+            ("authorization", format!("Bearer {token}")),
+            json!({
+                "model": "provider/custom-model:latest",
+                "stream": true,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Find inventory"
+                    },
+                    {
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": [{
+                            "id": tool_call_id,
+                            "type": "function",
+                            "function": {
+                                "name": "lookup_inventory",
+                                "arguments": "{\"sku\":\"sku_123\"}"
+                            }
+                        }]
+                    },
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": "{\"stock\":7}"
+                    }
+                ]
+            }),
+        )
+        .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = timeout(
-        Duration::from_secs(5),
-        to_bytes(response.into_body(), usize::MAX),
-    )
-    .await
-    .expect("stale Chat tool history should complete as a new streamed run")
-    .unwrap();
-    assert!(String::from_utf8_lossy(&body).contains("[DONE]"));
-    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = timeout(
+            Duration::from_secs(5),
+            to_bytes(response.into_body(), usize::MAX),
+        )
+        .await
+        .expect("stale Chat tool history should complete as a new streamed run")
+        .unwrap();
+        assert!(String::from_utf8_lossy(&body).contains("[DONE]"));
+        assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+    });
 }
 
-#[tokio::test]
-async fn ac_008_openai_chat_stale_nul_tool_continuation_starts_a_new_run() {
-    let (app, state) = test_app_with_state().await;
-    let token = setup_published_app(&app, "OpenAI Streaming NUL Tool Resume App").await;
-    let before = flow_run_count(state.as_ref()).await;
-    let tool_call_id = encode_openai_callback_tool_call_id(
-        uuid::Uuid::from_u128(0x11111111111111111111111111111111),
-        "call_inventory",
-    );
+#[test]
+fn ac_008_openai_chat_stale_nul_tool_continuation_starts_a_new_run() {
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let token = setup_published_app(&app, "OpenAI Streaming NUL Tool Resume App").await;
+        let before = flow_run_count(state.as_ref()).await;
+        let tool_call_id = encode_openai_callback_tool_call_id(
+            uuid::Uuid::from_u128(0x11111111111111111111111111111111),
+            "call_inventory",
+        );
 
-    let response = post_json(
-        &app,
-        "/v1/chat/completions",
-        ("authorization", format!("Bearer {token}")),
-        json!({
-            "model": "provider/custom-model:latest",
-            "stream": true,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "Find inventory"
-                },
-                {
-                    "role": "assistant",
-                    "content": null,
-                    "tool_calls": [{
-                        "id": tool_call_id,
-                        "type": "function",
-                        "function": {
-                            "name": "lookup_inventory",
-                            "arguments": "{\"sku\":\"sku_123\"}"
-                        }
-                    }]
-                },
-                {
-                    "role": "tool",
-                    "tool_call_id": tool_call_id,
-                    "content": "STDERR:\n\0after"
-                }
-            ]
-        }),
-    )
-    .await;
+        let response = post_json(
+            &app,
+            "/v1/chat/completions",
+            ("authorization", format!("Bearer {token}")),
+            json!({
+                "model": "provider/custom-model:latest",
+                "stream": true,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": "Find inventory"
+                    },
+                    {
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": [{
+                            "id": tool_call_id,
+                            "type": "function",
+                            "function": {
+                                "name": "lookup_inventory",
+                                "arguments": "{\"sku\":\"sku_123\"}"
+                            }
+                        }]
+                    },
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": "STDERR:\n\0after"
+                    }
+                ]
+            }),
+        )
+        .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = timeout(
-        Duration::from_secs(5),
-        to_bytes(response.into_body(), usize::MAX),
-    )
-    .await
-    .expect("stale NUL tool history should complete as a new streamed run")
-    .unwrap();
-    assert!(String::from_utf8_lossy(&body).contains("[DONE]"));
-    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = timeout(
+            Duration::from_secs(5),
+            to_bytes(response.into_body(), usize::MAX),
+        )
+        .await
+        .expect("stale NUL tool history should complete as a new streamed run")
+        .unwrap();
+        assert!(String::from_utf8_lossy(&body).contains("[DONE]"));
+        assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+    });
 }
 
-#[tokio::test]
-async fn ac_008_openai_responses_stale_tool_continuation_starts_a_new_run() {
-    let (app, state) = test_app_with_state().await;
-    let token = setup_published_app(&app, "OpenAI Responses Streaming Tool Resume App").await;
-    let before = flow_run_count(state.as_ref()).await;
-    let call_id = encode_openai_callback_tool_call_id(
-        uuid::Uuid::from_u128(0x44444444444444444444444444444444),
-        "call_inventory",
-    );
+#[test]
+fn ac_008_openai_responses_stale_tool_continuation_starts_a_new_run() {
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let token = setup_published_app(&app, "OpenAI Responses Streaming Tool Resume App").await;
+        let before = flow_run_count(state.as_ref()).await;
+        let call_id = encode_openai_callback_tool_call_id(
+            uuid::Uuid::from_u128(0x44444444444444444444444444444444),
+            "call_inventory",
+        );
 
-    let response = post_json(
-        &app,
-        "/v1/responses",
-        ("authorization", format!("Bearer {token}")),
-        json!({
-            "model": "provider/custom-model:latest",
-            "stream": true,
-            "input": [
-                {
-                    "type": "message",
-                    "role": "user",
-                    "content": [{"type": "input_text", "text": "Find inventory"}]
-                },
-                {
-                    "type": "function_call",
-                    "call_id": call_id.clone(),
-                    "name": "lookup_inventory",
-                    "arguments": "{\"sku\":\"sku_123\"}"
-                },
-                {
+        let response = post_json(
+            &app,
+            "/v1/responses",
+            ("authorization", format!("Bearer {token}")),
+            json!({
+                "model": "provider/custom-model:latest",
+                "stream": true,
+                "input": [
+                    {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "Find inventory"}]
+                    },
+                    {
+                        "type": "function_call",
+                        "call_id": call_id.clone(),
+                        "name": "lookup_inventory",
+                        "arguments": "{\"sku\":\"sku_123\"}"
+                    },
+                    {
+                        "type": "function_call_output",
+                        "call_id": call_id,
+                        "output": {"stock": 7}
+                    }
+                ]
+            }),
+        )
+        .await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = timeout(
+            Duration::from_secs(5),
+            to_bytes(response.into_body(), usize::MAX),
+        )
+        .await
+        .expect("stale Responses tool history should complete as a new streamed run")
+        .unwrap();
+        assert!(String::from_utf8_lossy(&body).contains("response.completed"));
+        assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+    });
+}
+
+#[test]
+fn ac_008_openai_responses_orphan_tool_output_is_rejected_without_a_new_run() {
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let token = setup_published_app(&app, "OpenAI Responses Orphan Tool Output App").await;
+        let before = flow_run_count(state.as_ref()).await;
+
+        let response = post_json(
+            &app,
+            "/v1/responses",
+            ("authorization", format!("Bearer {token}")),
+            json!({
+                "model": "provider/custom-model:latest",
+                "input": [{
                     "type": "function_call_output",
-                    "call_id": call_id,
+                    "call_id": encode_openai_callback_tool_call_id(uuid::Uuid::now_v7(), "call_orphan"),
                     "output": {"stock": 7}
-                }
-            ]
-        }),
-    )
-    .await;
+                }]
+            }),
+        )
+        .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
-    let body = timeout(
-        Duration::from_secs(5),
-        to_bytes(response.into_body(), usize::MAX),
-    )
-    .await
-    .expect("stale Responses tool history should complete as a new streamed run")
-    .unwrap();
-    assert!(String::from_utf8_lossy(&body).contains("response.completed"));
-    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        assert_eq!(flow_run_count(state.as_ref()).await, before);
+    });
 }
 
-#[tokio::test]
-async fn ac_008_openai_responses_orphan_tool_output_is_rejected_without_a_new_run() {
-    let (app, state) = test_app_with_state().await;
-    let token = setup_published_app(&app, "OpenAI Responses Orphan Tool Output App").await;
-    let before = flow_run_count(state.as_ref()).await;
+#[test]
+fn compatible_streaming_routes_emit_terminal_fallback_after_runtime_stream_closes() {
+    run_compat_route_test(|| async {
+        let (app, _) =
+            test_app_with_runtime_event_stream(Arc::new(DropTerminalRuntimeEventStream::new()))
+                .await;
+        let token = setup_published_app(&app, "Compatible Terminal Fallback Route App").await;
 
-    let response = post_json(
-        &app,
-        "/v1/responses",
-        ("authorization", format!("Bearer {token}")),
-        json!({
-            "model": "provider/custom-model:latest",
-            "input": [{
-                "type": "function_call_output",
-                "call_id": encode_openai_callback_tool_call_id(uuid::Uuid::now_v7(), "call_orphan"),
-                "output": {"stock": 7}
-            }]
-        }),
-    )
-    .await;
+        let openai = post_json(
+            &app,
+            "/v1/chat/completions",
+            ("authorization", format!("Bearer {token}")),
+            openai_body(true),
+        )
+        .await;
+        assert_eq!(openai.status(), StatusCode::OK);
 
-    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-    assert_eq!(flow_run_count(state.as_ref()).await, before);
+        let openai_body = timeout(
+            Duration::from_secs(5),
+            to_bytes(openai.into_body(), usize::MAX),
+        )
+        .await
+        .expect("OpenAI compatible SSE should finish from durable terminal fallback")
+        .unwrap();
+        let openai_body = String::from_utf8(openai_body.to_vec()).unwrap();
+
+        assert!(openai_body.contains("[DONE]"), "{openai_body}");
+    });
 }
 
-#[tokio::test]
-async fn compatible_streaming_routes_emit_terminal_fallback_after_runtime_stream_closes() {
-    let (app, _) =
-        test_app_with_runtime_event_stream(Arc::new(DropTerminalRuntimeEventStream::new())).await;
-    let token = setup_published_app(&app, "Compatible Terminal Fallback Route App").await;
+#[test]
+fn compatible_streaming_routes_do_not_poll_durable_terminal_while_runtime_stream_stays_open() {
+    run_compat_route_test(|| async {
+        let (app, _) = test_app_with_runtime_event_stream(Arc::new(
+            NeverCloseDropTerminalRuntimeEventStream::new(),
+        ))
+        .await;
+        let token = setup_published_app(&app, "Compatible Stuck Runtime Stream Route App").await;
 
-    let openai = post_json(
-        &app,
-        "/v1/chat/completions",
-        ("authorization", format!("Bearer {token}")),
-        openai_body(true),
-    )
-    .await;
-    assert_eq!(openai.status(), StatusCode::OK);
+        let openai = post_json(
+            &app,
+            "/v1/chat/completions",
+            ("authorization", format!("Bearer {token}")),
+            openai_body(true),
+        )
+        .await;
+        assert_eq!(openai.status(), StatusCode::OK);
 
-    let openai_body = timeout(
-        Duration::from_secs(5),
-        to_bytes(openai.into_body(), usize::MAX),
-    )
-    .await
-    .expect("OpenAI compatible SSE should finish from durable terminal fallback")
-    .unwrap();
-    let openai_body = String::from_utf8(openai_body.to_vec()).unwrap();
+        let openai_body = timeout(
+            Duration::from_millis(900),
+            to_bytes(openai.into_body(), usize::MAX),
+        )
+        .await;
 
-    assert!(openai_body.contains("[DONE]"), "{openai_body}");
-}
-
-#[tokio::test]
-async fn compatible_streaming_routes_do_not_poll_durable_terminal_while_runtime_stream_stays_open()
-{
-    let (app, _) = test_app_with_runtime_event_stream(Arc::new(
-        NeverCloseDropTerminalRuntimeEventStream::new(),
-    ))
-    .await;
-    let token = setup_published_app(&app, "Compatible Stuck Runtime Stream Route App").await;
-
-    let openai = post_json(
-        &app,
-        "/v1/chat/completions",
-        ("authorization", format!("Bearer {token}")),
-        openai_body(true),
-    )
-    .await;
-    assert_eq!(openai.status(), StatusCode::OK);
-
-    let openai_body = timeout(
-        Duration::from_millis(900),
-        to_bytes(openai.into_body(), usize::MAX),
-    )
-    .await;
-
-    assert!(
-        openai_body.is_err(),
-        "OpenAI compatible SSE should wait for an ephemeral close signal instead of polling durable state"
-    );
+        assert!(
+            openai_body.is_err(),
+            "OpenAI compatible SSE should wait for an ephemeral close signal instead of polling durable state"
+        );
+    });
 }

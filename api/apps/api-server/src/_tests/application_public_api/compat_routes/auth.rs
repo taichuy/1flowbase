@@ -1,128 +1,139 @@
 use super::*;
 
-#[tokio::test]
-async fn compatible_routes_require_application_api_key() {
-    let app = test_app().await;
+#[test]
+fn compatible_routes_require_application_api_key() {
+    run_compat_route_test(|| async {
+        let app = test_app().await;
 
-    let response = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/v1/chat/completions")
-                .header("content-type", "application/json")
-                .body(Body::from(openai_body(false).to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/chat/completions")
+                    .header("content-type", "application/json")
+                    .body(Body::from(openai_body(false).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    let payload = response_json(response).await;
-    assert_eq!(payload["error"]["code"], json!("not_authenticated"));
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        let payload = response_json(response).await;
+        assert_eq!(payload["error"]["code"], json!("not_authenticated"));
 
-    let responses = app
-        .clone()
-        .oneshot(
-            Request::builder()
-                .method("POST")
-                .uri("/v1/responses")
-                .header("content-type", "application/json")
-                .body(Body::from(responses_body(false).to_string()))
-                .unwrap(),
-        )
-        .await
-        .unwrap();
+        let responses = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/responses")
+                    .header("content-type", "application/json")
+                    .body(Body::from(responses_body(false).to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
 
-    assert_eq!(responses.status(), StatusCode::UNAUTHORIZED);
-    let payload = response_json(responses).await;
-    assert_eq!(payload["error"]["code"], json!("not_authenticated"));
+        assert_eq!(responses.status(), StatusCode::UNAUTHORIZED);
+        let payload = response_json(responses).await;
+        assert_eq!(payload["error"]["code"], json!("not_authenticated"));
+    });
 }
 
-#[tokio::test]
-async fn compatible_routes_return_not_published_for_unpublished_key_application() {
-    let app = test_app().await;
-    let token = setup_unpublished_app_key(&app, "Compatible Unpublished Route App").await;
+#[test]
+fn compatible_routes_return_not_published_for_unpublished_key_application() {
+    run_compat_route_test(|| async {
+        let app = test_app().await;
+        let token = setup_unpublished_app_key(&app, "Compatible Unpublished Route App").await;
 
-    let response = post_json(
-        &app,
-        "/v1/messages",
-        ("x-api-key", token),
-        anthropic_body(false),
-    )
-    .await;
+        let response = post_json(
+            &app,
+            "/v1/messages",
+            ("x-api-key", token),
+            anthropic_body(false),
+        )
+        .await;
 
-    assert_eq!(response.status(), StatusCode::CONFLICT);
-    let payload = response_json(response).await;
-    assert_eq!(payload["error"]["type"], json!("application_not_published"));
+        assert_eq!(response.status(), StatusCode::CONFLICT);
+        let payload = response_json(response).await;
+        assert_eq!(payload["error"]["type"], json!("application_not_published"));
+    });
 }
 
 /// Root #1453: Native, OpenAI and Anthropic create full runs without Generate bindings.
-#[tokio::test]
-async fn three_ingress_routes_create_agentflow_runs_without_generate_bindings() {
-    let (app, state) = test_app_with_state().await;
-    let token = setup_unbound_published_app_key(&app, "Three Ingress Unbound App").await;
-    assert_published_compat_plan_has_provider_route(state.as_ref(), "Three Ingress Unbound App")
+#[test]
+fn three_ingress_routes_create_agentflow_runs_without_generate_bindings() {
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let token = setup_unbound_published_app_key(&app, "Three Ingress Unbound App").await;
+        assert_published_compat_plan_has_provider_route(
+            state.as_ref(),
+            "Three Ingress Unbound App",
+        )
         .await;
-    let before = flow_run_count(state.as_ref()).await;
+        let before = flow_run_count(state.as_ref()).await;
 
-    let native = post_json(
-        &app,
-        "/api/agent/v1/runs",
-        ("authorization", format!("Bearer {token}")),
-        json!({
-            "query": "Summarize the incident",
-            "model": COMPAT_ROUTE_PROVIDER_MODEL,
-            "response_mode": "blocking"
-        }),
-    )
-    .await;
-    assert_eq!(native.status(), StatusCode::CREATED);
+        let native = post_json(
+            &app,
+            "/api/agent/v1/runs",
+            ("authorization", format!("Bearer {token}")),
+            json!({
+                "query": "Summarize the incident",
+                "model": COMPAT_ROUTE_PROVIDER_MODEL,
+                "response_mode": "blocking"
+            }),
+        )
+        .await;
+        assert_eq!(native.status(), StatusCode::CREATED);
 
-    let mut openai_body = openai_body(false);
-    openai_body["model"] = json!(COMPAT_ROUTE_PROVIDER_MODEL);
-    let openai = post_json(
-        &app,
-        "/v1/chat/completions",
-        ("authorization", format!("Bearer {token}")),
-        openai_body,
-    )
-    .await;
-    assert_eq!(openai.status(), StatusCode::OK);
+        let mut openai_body = openai_body(false);
+        openai_body["model"] = json!(COMPAT_ROUTE_PROVIDER_MODEL);
+        let openai = post_json(
+            &app,
+            "/v1/chat/completions",
+            ("authorization", format!("Bearer {token}")),
+            openai_body,
+        )
+        .await;
+        assert_eq!(openai.status(), StatusCode::OK);
 
-    let mut anthropic_body = anthropic_body(false);
-    anthropic_body["model"] = json!(COMPAT_ROUTE_PROVIDER_MODEL);
-    let anthropic = post_json(&app, "/v1/messages", ("x-api-key", token), anthropic_body).await;
-    assert_eq!(anthropic.status(), StatusCode::OK);
-    assert_eq!(flow_run_count(state.as_ref()).await, before + 3);
+        let mut anthropic_body = anthropic_body(false);
+        anthropic_body["model"] = json!(COMPAT_ROUTE_PROVIDER_MODEL);
+        let anthropic = post_json(&app, "/v1/messages", ("x-api-key", token), anthropic_body).await;
+        assert_eq!(anthropic.status(), StatusCode::OK);
+        assert_eq!(flow_run_count(state.as_ref()).await, before + 3);
+    });
 }
 
 /// Root #1366 AC-003 / AC-005: OpenAI user remains a conversation identity.
-#[tokio::test]
-async fn d2_ac_003_openai_chat_user_does_not_require_provider_end_user_reference_capability() {
-    let (app, state) = test_app_with_state().await;
-    let token = setup_published_app(&app, "OpenAI Conversation User Capability App").await;
-    assert_published_compat_plan_has_provider_route(
-        state.as_ref(),
-        "OpenAI Conversation User Capability App",
-    )
-    .await;
-    let before = flow_run_count(state.as_ref()).await;
-    let mut body = openai_body(false);
-    body["user"] = json!("openai-conversation-user");
+#[test]
+fn d2_ac_003_openai_chat_user_does_not_require_provider_end_user_reference_capability() {
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let token = setup_published_app(&app, "OpenAI Conversation User Capability App").await;
+        assert_published_compat_plan_has_provider_route(
+            state.as_ref(),
+            "OpenAI Conversation User Capability App",
+        )
+        .await;
+        let before = flow_run_count(state.as_ref()).await;
+        let mut body = openai_body(false);
+        body["user"] = json!("openai-conversation-user");
 
-    let response = post_json(
-        &app,
-        "/v1/chat/completions",
-        ("authorization", format!("Bearer {token}")),
-        body,
-    )
-    .await;
+        let response = post_json(
+            &app,
+            "/v1/chat/completions",
+            ("authorization", format!("Bearer {token}")),
+            body,
+        )
+        .await;
 
-    assert_eq!(response.status(), StatusCode::OK);
-    let payload = response_json(response).await;
-    assert_eq!(payload["object"], json!("chat.completion"));
-    assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload = response_json(response).await;
+        assert_eq!(payload["object"], json!("chat.completion"));
+        assert_eq!(flow_run_count(state.as_ref()).await, before + 1);
+    });
 }
 
 async fn assert_run_creation_route_records_api_key_use(
@@ -158,73 +169,59 @@ async fn assert_run_creation_route_records_api_key_use(
     );
 }
 
-#[tokio::test]
-async fn compatible_run_creation_routes_record_application_api_key_use() {
-    let (app, state) = test_app_with_state().await;
-    let (chat_token, chat_api_key_id) =
-        setup_published_app_with_key_id(&app, "OpenAI Chat Last Used Cache App").await;
-    assert_run_creation_route_records_api_key_use(
-        &app,
-        state.as_ref(),
-        chat_api_key_id,
-        "/v1/chat/completions",
-        "authorization",
-        format!("Bearer {chat_token}"),
-        openai_body(false),
-    )
-    .await;
+#[test]
+fn compatible_run_creation_routes_record_application_api_key_use() {
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let (chat_token, chat_api_key_id) =
+            setup_published_app_with_key_id(&app, "OpenAI Chat Last Used Cache App").await;
+        assert_run_creation_route_records_api_key_use(
+            &app,
+            state.as_ref(),
+            chat_api_key_id,
+            "/v1/chat/completions",
+            "authorization",
+            format!("Bearer {chat_token}"),
+            openai_body(false),
+        )
+        .await;
+    });
 }
 
 #[test]
 fn compatible_responses_route_records_application_api_key_use() {
-    // The debug Axum service future exceeds libtest's default stack for this route. Keep the
-    // larger stack local to this regression instead of requiring a global RUST_MIN_STACK.
-    const COMPAT_RESPONSES_TEST_STACK_BYTES: usize = 32 * 1024 * 1024;
-    std::thread::Builder::new()
-        .name("compat-responses-api-key-use".to_owned())
-        .stack_size(COMPAT_RESPONSES_TEST_STACK_BYTES)
-        .spawn(|| {
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("compat responses test runtime should build")
-                .block_on(async {
-                    let (app, state) = test_app_with_state().await;
-                    let (responses_token, responses_api_key_id) = setup_published_app_with_key_id(
-                        &app,
-                        "OpenAI Responses Last Used Cache App",
-                    )
-                    .await;
-                    assert_run_creation_route_records_api_key_use(
-                        &app,
-                        state.as_ref(),
-                        responses_api_key_id,
-                        "/v1/responses",
-                        "authorization",
-                        format!("Bearer {responses_token}"),
-                        responses_body(false),
-                    )
-                    .await;
-                });
-        })
-        .expect("compat responses test thread should start")
-        .join()
-        .expect("compat responses test thread should complete");
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let (responses_token, responses_api_key_id) =
+            setup_published_app_with_key_id(&app, "OpenAI Responses Last Used Cache App").await;
+        assert_run_creation_route_records_api_key_use(
+            &app,
+            state.as_ref(),
+            responses_api_key_id,
+            "/v1/responses",
+            "authorization",
+            format!("Bearer {responses_token}"),
+            responses_body(false),
+        )
+        .await;
+    });
 }
 
-#[tokio::test]
-async fn compatible_anthropic_route_records_application_api_key_use() {
-    let (app, state) = test_app_with_state().await;
-    let (anthropic_token, anthropic_api_key_id) =
-        setup_published_app_with_key_id(&app, "Anthropic Last Used Cache App").await;
-    assert_run_creation_route_records_api_key_use(
-        &app,
-        state.as_ref(),
-        anthropic_api_key_id,
-        "/v1/messages",
-        "x-api-key",
-        anthropic_token,
-        anthropic_body(false),
-    )
-    .await;
+#[test]
+fn compatible_anthropic_route_records_application_api_key_use() {
+    run_compat_route_test(|| async {
+        let (app, state) = test_app_with_state().await;
+        let (anthropic_token, anthropic_api_key_id) =
+            setup_published_app_with_key_id(&app, "Anthropic Last Used Cache App").await;
+        assert_run_creation_route_records_api_key_use(
+            &app,
+            state.as_ref(),
+            anthropic_api_key_id,
+            "/v1/messages",
+            "x-api-key",
+            anthropic_token,
+            anthropic_body(false),
+        )
+        .await;
+    });
 }

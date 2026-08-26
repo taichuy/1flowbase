@@ -23,15 +23,41 @@ use control_plane::ports::{
     RuntimeEventTrimPolicy,
 };
 use serde_json::{json, Value};
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Arc,
+use std::{
+    future::Future,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 use time::OffsetDateTime;
 use tokio::time::{timeout, Duration};
 use tower::ServiceExt;
 
 const COMPAT_ROUTE_PROVIDER_MODEL: &str = "fixture_chat";
+const COMPAT_ROUTE_TEST_STACK_BYTES: usize = 32 * 1024 * 1024;
+
+fn run_compat_route_test<F, Fut>(test: F)
+where
+    F: FnOnce() -> Fut + Send + 'static,
+    Fut: Future<Output = ()> + 'static,
+{
+    // Debug Axum service futures for this integration module exceed libtest's default stack.
+    // Keep the larger stack local instead of requiring a global RUST_MIN_STACK.
+    std::thread::Builder::new()
+        .name("application-public-compat-route".to_owned())
+        .stack_size(COMPAT_ROUTE_TEST_STACK_BYTES)
+        .spawn(move || {
+            tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("compat route test runtime should build")
+                .block_on(test());
+        })
+        .expect("compat route test thread should start")
+        .join()
+        .expect("compat route test thread should complete");
+}
 
 pub(super) struct DropTerminalRuntimeEventStream {
     inner: LocalRuntimeEventStream,
@@ -723,8 +749,8 @@ async fn post_json(
     token_header: (&str, String),
     body: Value,
 ) -> axum::response::Response {
-    app.clone()
-        .oneshot(
+    Box::pin(
+        app.clone().oneshot(
             Request::builder()
                 .method("POST")
                 .uri(uri)
@@ -732,9 +758,10 @@ async fn post_json(
                 .header("content-type", "application/json")
                 .body(Body::from(body.to_string()))
                 .unwrap(),
-        )
-        .await
-        .unwrap()
+        ),
+    )
+    .await
+    .unwrap()
 }
 
 async fn get_models(app: &Router, uri: &str, token: &str) -> axum::response::Response {

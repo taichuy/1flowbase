@@ -1,4 +1,4 @@
-use std::{fs, future::Future};
+use std::fs;
 
 use axum::{
     body::{to_bytes, Body},
@@ -22,33 +22,9 @@ enum CompactFixtureMode {
     ProviderFailure,
 }
 
-const COMPACT_ROUTE_TEST_STACK_BYTES: usize = 32 * 1024 * 1024;
-
-fn run_compact_route_test<F, Fut>(test: F)
-where
-    F: FnOnce() -> Fut + Send + 'static,
-    Fut: Future<Output = ()> + 'static,
-{
-    // Debug Axum service futures for compact routes exceed libtest's default stack. Keep the
-    // larger stack local to this regression family instead of requiring a global RUST_MIN_STACK.
-    std::thread::Builder::new()
-        .name("compact-route-regression".to_owned())
-        .stack_size(COMPACT_ROUTE_TEST_STACK_BYTES)
-        .spawn(move || {
-            tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .expect("compact route test runtime should build")
-                .block_on(test());
-        })
-        .expect("compact route test thread should start")
-        .join()
-        .expect("compact route test thread should complete");
-}
-
 #[test]
 fn k3_codex_turn_metadata_is_not_parsed_before_application_key_authentication() {
-    run_compact_route_test(|| async {
+    run_compat_route_test(|| async {
         let app = test_app().await;
 
         let response = post_openai_responses(
@@ -68,7 +44,7 @@ fn k3_codex_turn_metadata_is_not_parsed_before_application_key_authentication() 
 
 #[test]
 fn k3_legacy_compact_returns_exact_provider_items_from_a_workflow_run() {
-    run_compact_route_test(|| async {
+    run_compat_route_test(|| async {
         let (app, state) = test_app_with_state().await;
         let token = setup_compact_published_app(
             &app,
@@ -112,7 +88,7 @@ fn k3_legacy_compact_returns_exact_provider_items_from_a_workflow_run() {
 
 #[test]
 fn k3_v2_compact_stream_preserves_one_opaque_item_from_a_workflow_run() {
-    run_compact_route_test(|| async {
+    run_compat_route_test(|| async {
         let (app, state) = test_app_with_state().await;
         let token = setup_compact_published_app(
             &app,
@@ -163,7 +139,7 @@ fn k3_v2_compact_stream_preserves_one_opaque_item_from_a_workflow_run() {
 
 #[test]
 fn k3_local_summary_keeps_generate_sse_and_does_not_persist_codex_turn_header() {
-    run_compact_route_test(|| async {
+    run_compat_route_test(|| async {
         let (app, state) = test_app_with_state().await;
         let token = setup_published_app(&app, "OpenAI Local Summary Generate App").await;
         let before = flow_run_count(state.as_ref()).await;
@@ -214,7 +190,7 @@ fn k3_local_summary_keeps_generate_sse_and_does_not_persist_codex_turn_header() 
 
 #[test]
 fn k3_compact_provider_failure_is_an_error_without_completed_projection() {
-    run_compact_route_test(|| async {
+    run_compat_route_test(|| async {
         let (app, state) = test_app_with_state().await;
         let token = setup_compact_published_app(
             &app,
@@ -648,14 +624,15 @@ async fn post_openai_responses(
     if let Some(codex_metadata) = codex_metadata {
         request = request.header("x-codex-turn-metadata", codex_metadata.to_string());
     }
-    app.clone()
-        .oneshot(
+    Box::pin(
+        app.clone().oneshot(
             request
                 .body(Body::from(body.to_string()))
                 .expect("OpenAI Compact request should build"),
-        )
-        .await
-        .expect("OpenAI Compact request should respond")
+        ),
+    )
+    .await
+    .expect("OpenAI Compact request should respond")
 }
 
 fn v2_compaction_body(stream: bool) -> Value {
