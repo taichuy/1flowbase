@@ -5,7 +5,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use plugin_framework::{
+use extension_package_runtime::{
     error::{FrameworkResult, PluginFrameworkError},
     provider_contract::{
         ProviderInvocationResult, ProviderRuntimeError, ProviderRuntimeErrorKind,
@@ -956,7 +956,7 @@ mod tests {
 
     #[tokio::test]
     async fn reasoning_signature_uses_required_live_lane_and_preserves_order_at_capacity_one() {
-        use plugin_framework::provider_contract::{ProviderFinishReason, ProviderUsage};
+        use extension_package_runtime::provider_contract::{ProviderFinishReason, ProviderUsage};
 
         let (required, mut required_receiver) = tokio::sync::mpsc::channel(1);
         let (diagnostic, _diagnostic_receiver) = tokio::sync::mpsc::channel(1);

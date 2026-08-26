@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::app_state::ApiDurableStore;
 use axum::{
     extract::{Path, Query, State},
     http::HeaderMap,
@@ -250,18 +249,17 @@ pub async fn get_application_run_monitoring_report(
     let started_to = parse_optional_time(query.to.as_deref(), "to")?;
     let bucket = normalize_monitoring_bucket(query.bucket.as_deref(), query.time_range_days);
 
-    let report =
-        <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_monitoring_report(
-            &state.store,
-            id,
-            GetApplicationRunMonitoringReportInput {
-                started_from,
-                started_to,
-                bucket: bucket.to_string(),
-                slow_run_threshold_ms: SLOW_RUN_THRESHOLD_MS,
-            },
-        )
-        .await?;
+    let report = <_ as OrchestrationRuntimeRepository>::get_application_run_monitoring_report(
+        &state.store,
+        id,
+        GetApplicationRunMonitoringReportInput {
+            started_from,
+            started_to,
+            bucket: bucket.to_string(),
+            slow_run_threshold_ms: SLOW_RUN_THRESHOLD_MS,
+        },
+    )
+    .await?;
 
     Ok(Json(ApiSuccess::new(to_report_response(
         report,

@@ -15,7 +15,44 @@ use storage_durable_postgres::MainDurableStore;
 /// Durable store selected by the API composition root.
 ///
 /// Protocol modules depend on this state-owned name instead of importing a concrete adapter.
-pub type ApiDurableStore = MainDurableStore;
+pub type ApiModelProviderService = control_plane::model_provider::ModelProviderService<
+    MainDurableStore,
+    crate::provider_runtime::ApiProviderRuntime,
+>;
+pub type ApiPluginManagementService = control_plane::plugin_management::PluginManagementService<
+    MainDurableStore,
+    crate::provider_runtime::ApiProviderRuntime,
+>;
+pub type ApiExtensionInstallationService =
+    control_plane::plugin_management::ExtensionInstallationService<MainDurableStore>;
+pub type ApiDataSourceService = control_plane::data_source::DataSourceService<
+    MainDurableStore,
+    crate::provider_runtime::ApiProviderRuntime,
+>;
+pub type ApiModelDefinitionMutationService =
+    control_plane::runtime_registry_sync::ModelDefinitionMutationService<
+        MainDurableStore,
+        crate::runtime_registry_sync::ApiRuntimeRegistrySync,
+    >;
+pub type ApiModelDefinitionService =
+    control_plane::model_definition::ModelDefinitionService<MainDurableStore>;
+pub type ApiNetworkEgressProviderService =
+    control_plane::network_egress::NetworkEgressProviderService<
+        MainDurableStore,
+        crate::provider_runtime::ApiProviderRuntime,
+        control_plane::network_egress_secret::ProviderRegistryNetworkEgressSecretResolver<
+            MainDurableStore,
+        >,
+    >;
+pub type ApiNetworkEgressRouteService =
+    control_plane::network_egress_route::NetworkEgressRouteService<MainDurableStore>;
+pub type ApiNetworkEgressPoolService =
+    control_plane::network_egress_pool::NetworkEgressPoolService<MainDurableStore>;
+pub type ApiUiComponentCatalogService =
+    control_plane::ui_component_catalog::UiComponentCatalogService<
+        MainDurableStore,
+        crate::ui_component_catalog_source::ApiUiComponentCatalogSource,
+    >;
 use time::OffsetDateTime;
 
 use crate::error_response::ApiError;

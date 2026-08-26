@@ -14,7 +14,7 @@ use std::{
 use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
 
 use axum::http::Uri;
-use plugin_framework::{
+use extension_package_runtime::{
     error::{FrameworkResult, PluginFrameworkError},
     AcquireHttpForwardProxyInput, EgressAvailability, EgressDescriptor, ForwardProxyLease,
     NetworkEgressProviderPackage, NetworkEgressProviderStdioRequest,
@@ -499,8 +499,8 @@ impl NetworkEgressWorkerErrorResponse {
 
     fn into_framework_error(self) -> PluginFrameworkError {
         PluginFrameworkError::runtime(
-            plugin_framework::provider_contract::ProviderRuntimeError::new(
-                plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderInvalidResponse,
+            extension_package_runtime::provider_contract::ProviderRuntimeError::new(
+                extension_package_runtime::provider_contract::ProviderRuntimeErrorKind::ProviderInvalidResponse,
                 "network egress provider rejected the requested operation",
             )
             .with_provider_summary(self.error.message)
@@ -1103,7 +1103,7 @@ mod tests {
         path::{Path, PathBuf},
     };
 
-    use plugin_framework::error::PluginFrameworkError;
+    use extension_package_runtime::error::PluginFrameworkError;
 
     use super::{
         ForwardProxyLease, NetworkEgressCleanupReason, NetworkEgressHost, NetworkEgressLeaseOwner,

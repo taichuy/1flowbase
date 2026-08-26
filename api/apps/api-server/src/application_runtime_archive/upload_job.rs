@@ -1,4 +1,5 @@
 use super::*;
+use sqlx::Row;
 
 pub(super) const RUN_ARCHIVE_UPLOAD_MAX_BYTES: i64 = 100 * 1024 * 1024;
 pub(super) const RUN_ARCHIVE_UPLOAD_MAX_CHUNK_BYTES: i64 = 8 * 1024 * 1024;
@@ -420,4 +421,85 @@ pub(super) fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
         .get(name)
         .and_then(|value| value.to_str().ok())
         .map(ToString::to_string)
+}
+pub(super) async fn persist_run_archive_upload_session(
+    store: &storage_durable_postgres::MainDurableStore,
+    session_id: Uuid,
+    scope_id: Uuid,
+    application_id: Uuid,
+    actor_user_id: Uuid,
+    filename: Option<&str>,
+    total_size_bytes: i64,
+    expected_sha256: &str,
+    chunk_size_bytes: i64,
+) -> Result<(), ApiError> {
+    sqlx::query(
+        r#"
+        insert into run_archive_upload_sessions (
+            id, scope_id, application_id, actor_user_id, original_filename,
+            total_size_bytes, expected_sha256, chunk_size_bytes, status, created_by, updated_by
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, 'uploading', $9, $9)
+        "#,
+    )
+    .bind(session_id)
+    .bind(scope_id)
+    .bind(application_id)
+    .bind(actor_user_id)
+    .bind(filename)
+    .bind(total_size_bytes)
+    .bind(expected_sha256)
+    .bind(chunk_size_bytes)
+    .bind(actor_user_id)
+    .execute(store.pool())
+    .await?;
+    Ok(())
+}
+
+pub(super) struct PersistRunArchiveChunkInput<'a> {
+    pub chunk_id: Uuid,
+    pub scope_id: Uuid,
+    pub session_id: Uuid,
+    pub chunk_index: i32,
+    pub content: &'a [u8],
+    pub chunk_sha256: &'a str,
+    pub actor_user_id: Uuid,
+    pub total_size_bytes: i64,
+}
+
+pub(super) async fn persist_run_archive_chunk(
+    store: &storage_durable_postgres::MainDurableStore,
+    input: PersistRunArchiveChunkInput<'_>,
+) -> Result<i64, ApiError> {
+    let mut tx = store.pool().begin().await?;
+    sqlx::query(
+        r#"
+        insert into run_archive_upload_chunks (
+            id, scope_id, session_id, chunk_index, chunk_size_bytes,
+            chunk_sha256, content, created_by, updated_by
+        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+        on conflict (session_id, chunk_index) do update
+        set chunk_size_bytes = excluded.chunk_size_bytes,
+            chunk_sha256 = excluded.chunk_sha256,
+            content = excluded.content,
+            updated_at = now(),
+            updated_by = excluded.updated_by
+        "#,
+    )
+    .bind(input.chunk_id)
+    .bind(input.scope_id)
+    .bind(input.session_id)
+    .bind(input.chunk_index)
+    .bind(i64::try_from(input.content.len()).unwrap_or(i64::MAX))
+    .bind(input.chunk_sha256)
+    .bind(input.content)
+    .bind(input.actor_user_id)
+    .execute(&mut *tx)
+    .await?;
+    let received_bytes =
+        refresh_run_archive_upload_session_received_bytes(&mut tx, input.session_id).await?;
+    if received_bytes > input.total_size_bytes {
+        return Err(ControlPlaneError::InvalidInput("archive_size").into());
+    }
+    tx.commit().await?;
+    Ok(received_bytes)
 }

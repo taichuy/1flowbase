@@ -191,20 +191,14 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
-fn service(state: &ApiState) -> NetworkEgressPoolService<crate::app_state::ApiDurableStore> {
+fn service(state: &ApiState) -> crate::app_state::ApiNetworkEgressPoolService {
     NetworkEgressPoolService::with_secret_master_key(
         state.store.clone(),
         state.provider_secret_master_key.clone(),
     )
 }
 
-fn proxy_service(
-    state: &ApiState,
-) -> NetworkEgressProviderService<
-    crate::app_state::ApiDurableStore,
-    ApiProviderRuntime,
-    ProviderRegistryNetworkEgressSecretResolver<crate::app_state::ApiDurableStore>,
-> {
+fn proxy_service(state: &ApiState) -> crate::app_state::ApiNetworkEgressProviderService {
     NetworkEgressProviderService::new(
         state.store.clone(),
         ApiProviderRuntime::new(state.provider_runtime.clone()),

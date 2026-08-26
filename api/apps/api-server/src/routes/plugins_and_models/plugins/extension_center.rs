@@ -4,7 +4,6 @@ use std::{
     sync::Arc,
 };
 
-use crate::app_state::ApiDurableStore;
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
@@ -19,7 +18,7 @@ use control_plane::plugin_management::{
     DisablePluginCommand, EnablePluginCommand, ExtensionArtifactInstallOutcome,
     ExtensionCatalogCategory, ExtensionInstallationService, ExtensionRiskOverride,
     InstallExtensionArtifactCommand, InstallExtensionNodePluginCommand, InstalledExtensionFamily,
-    PluginManagementService, SwitchPluginVersionCommand,
+    SwitchPluginVersionCommand,
 };
 use plugin_framework::{intake_package_bytes, PackageIntakePolicy, PluginConsumptionKind};
 use uuid::Uuid;
@@ -33,7 +32,6 @@ use crate::{
         OfficialExtensionArtifactDescriptor, OfficialExtensionArtifactError,
         OfficialExtensionCatalogEntry,
     },
-    provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_delete, console_get, console_post, ConsoleRouteAssembly,
@@ -145,13 +143,13 @@ fn service(
     state: &ApiState,
     actor: &domain::ActorContext,
     operation_id: &'static str,
-) -> PluginManagementService<ApiDurableStore, ApiProviderRuntime> {
+) -> crate::app_state::ApiPluginManagementService {
     base_service(state, actor).for_extension_center_console_operation(operation_id)
 }
 
 fn extension_installation_service(
     state: &ApiState,
-) -> ExtensionInstallationService<ApiDurableStore> {
+) -> crate::app_state::ApiExtensionInstallationService {
     ExtensionInstallationService::new(state.store.clone(), &state.provider_install_root)
 }
 

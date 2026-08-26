@@ -12,5 +12,5 @@
 
 ## Resources And Stop
 
-- 宿主可依赖稳定 runtime / extension contract，不吸收 package 管理或控制面状态决策。
+- 宿主可依赖 `extension-contracts` 与 `extension-package-runtime`，不得依赖完整 `plugin-framework`，也不吸收 package 管理或控制面状态决策。
 - 若调整需要改变 Runtime 行为、插件 manifest 或部署进程边界，停止并返回 Root。

@@ -10,7 +10,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use plugin_framework::{
+use extension_package_runtime::{
     artifact_reconcile::{
         reconcile_provider_artifact, ArtifactReconcileInput, ArtifactReconcileOutcome,
     },

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use plugin_framework::error::{FrameworkResult, PluginFrameworkError};
+use extension_package_runtime::error::{FrameworkResult, PluginFrameworkError};
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -75,7 +75,7 @@ impl CapabilityHost {
     pub async fn load_legacy_installed(
         &mut self,
         package_root: impl AsRef<std::path::Path>,
-        eligibility: &plugin_framework::LegacyInstalledManifestEligibility,
+        eligibility: &extension_package_runtime::LegacyInstalledManifestEligibility,
     ) -> FrameworkResult<LoadedCapabilitySummary> {
         let loaded = PackageLoader::load_legacy_installed_capability(package_root, eligibility)?;
         let summary = LoadedCapabilitySummary::from_loaded(&loaded);

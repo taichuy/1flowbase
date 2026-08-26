@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::app_state::ApiDurableStore;
 use axum::{
     extract::{Path, State},
     http::HeaderMap,
@@ -110,13 +109,13 @@ fn merge_debug_variable_cache_entries(
 }
 
 async fn load_debug_variable_cache_entries(
-    store: &ApiDurableStore,
+    store: &impl OrchestrationRuntimeRepository,
     application_id: Uuid,
     draft_id: Uuid,
     actor_user_id: Uuid,
 ) -> Result<Vec<DebugVariableCacheEntry>, ApiError> {
     Ok(
-        <ApiDurableStore as OrchestrationRuntimeRepository>::list_debug_variable_cache_entries(
+        <_ as OrchestrationRuntimeRepository>::list_debug_variable_cache_entries(
             store,
             application_id,
             draft_id,
@@ -175,7 +174,7 @@ fn run_matches_snapshot_key(
 }
 
 pub(super) async fn build_debug_variable_snapshot(
-    store: &ApiDurableStore,
+    store: &impl OrchestrationRuntimeRepository,
     application_id: Uuid,
     workspace_id: Uuid,
     actor_user_id: Uuid,
@@ -183,11 +182,8 @@ pub(super) async fn build_debug_variable_snapshot(
 ) -> Result<DebugVariableSnapshotResponse, ApiError> {
     let document_hash = debug_snapshot_document_hash(&editor_state.draft.document);
     let flow_schema_version = debug_snapshot_flow_schema_version(editor_state);
-    let runs = <ApiDurableStore as OrchestrationRuntimeRepository>::list_application_runs(
-        store,
-        application_id,
-    )
-    .await?;
+    let runs =
+        <_ as OrchestrationRuntimeRepository>::list_application_runs(store, application_id).await?;
     let mut variable_cache = serde_json::Map::new();
     let source_flow_run_ids = serde_json::Map::new();
     let source_node_run_ids = serde_json::Map::new();
@@ -198,13 +194,12 @@ pub(super) async fn build_debug_variable_snapshot(
     let mut snapshot_document_hash = document_hash;
 
     for run in runs {
-        let Some(detail) =
-            <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_detail(
-                store,
-                application_id,
-                run.id,
-            )
-            .await?
+        let Some(detail) = <_ as OrchestrationRuntimeRepository>::get_application_run_detail(
+            store,
+            application_id,
+            run.id,
+        )
+        .await?
         else {
             continue;
         };

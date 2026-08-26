@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use plugin_framework::error::{FrameworkResult, PluginFrameworkError};
+use extension_package_runtime::error::{FrameworkResult, PluginFrameworkError};
 use tokio::sync::Notify;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

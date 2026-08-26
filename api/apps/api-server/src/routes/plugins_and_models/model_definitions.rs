@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::app_state::ApiDurableStore;
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
     extract::{Path, Query, State},
@@ -659,7 +658,7 @@ fn parse_field_kind(raw: &str) -> Result<domain::ModelFieldKind, ApiError> {
 fn mutation_service(
     state: &ApiState,
     operation_id: &'static str,
-) -> ModelDefinitionMutationService<ApiDurableStore, ApiRuntimeRegistrySync> {
+) -> crate::app_state::ApiModelDefinitionMutationService {
     ModelDefinitionMutationService::for_console_operation(
         state.store.clone(),
         ApiRuntimeRegistrySync::new(state.store.clone(), state.runtime_engine.registry().clone()),
@@ -672,7 +671,7 @@ fn mutation_service(
 fn settings_service(
     state: &ApiState,
     operation_id: &'static str,
-) -> ModelDefinitionService<ApiDurableStore> {
+) -> crate::app_state::ApiModelDefinitionService {
     ModelDefinitionService::for_console_operation(
         state.store.clone(),
         domain::ConsolePolicyGroup::settings_feature("system.data-models")

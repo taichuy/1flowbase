@@ -1,6 +1,6 @@
 use std::{path::Path, process::Stdio, time::Duration};
 
-use plugin_framework::{
+use extension_package_runtime::{
     error::{FrameworkResult, PluginFrameworkError},
     provider_contract::ProviderRuntimeError,
     PluginRuntimeLimits,
@@ -166,7 +166,7 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use plugin_framework::PluginRuntimeLimits;
+    use extension_package_runtime::PluginRuntimeLimits;
     use serde_json::json;
     use tokio::time::{sleep, Duration};
 

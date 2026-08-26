@@ -3,7 +3,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use plugin_framework::{
+use extension_package_runtime::{
     capability_kind::PluginConsumptionKind,
     data_source_package::DataSourcePackage,
     error::{FrameworkResult, PluginFrameworkError},
@@ -164,7 +164,7 @@ impl PackageLoader {
         let manifest_raw = fs::read_to_string(&manifest_path)
             .map_err(|error| PluginFrameworkError::io(Some(&manifest_path), error.to_string()))?;
         let manifest = match eligibility {
-            Some(eligibility) => plugin_framework::parse_legacy_installed_plugin_manifest(
+            Some(eligibility) => extension_package_runtime::parse_legacy_installed_plugin_manifest(
                 &manifest_raw,
                 eligibility,
             )?,
@@ -205,7 +205,7 @@ impl LoadedCapabilityPackage {
 }
 
 fn parse_capability_manifest(raw: &str) -> FrameworkResult<PluginManifestV1> {
-    let manifest = plugin_framework::parse_plugin_manifest(raw)?;
+    let manifest = extension_package_runtime::parse_plugin_manifest(raw)?;
     validate_capability_manifest(&manifest)?;
     Ok(manifest)
 }

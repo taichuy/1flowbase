@@ -1,6 +1,6 @@
 use std::{path::Path, process::Stdio, time::Duration};
 
-use plugin_framework::{
+use extension_package_runtime::{
     data_source_contract::{DataSourceStdioError, DataSourceStdioRequest, DataSourceStdioResponse},
     error::{FrameworkResult, PluginFrameworkError},
     provider_contract::ProviderRuntimeError,
@@ -107,12 +107,14 @@ fn map_dispatched_transport_error(
     executable_path: &Path,
     message: String,
 ) -> PluginFrameworkError {
-    if request.method != plugin_framework::data_source_contract::DataSourceStdioMethod::ExecuteSql {
+    if request.method
+        != extension_package_runtime::data_source_contract::DataSourceStdioMethod::ExecuteSql
+    {
         return PluginFrameworkError::io(Some(executable_path), message);
     }
     PluginFrameworkError::runtime(
         ProviderRuntimeError::new(
-            plugin_framework::provider_contract::ProviderRuntimeErrorKind::ProviderTransportUnavailable,
+            extension_package_runtime::provider_contract::ProviderRuntimeErrorKind::ProviderTransportUnavailable,
             message,
         )
         .with_provider_summary("outcome_unknown")
@@ -155,7 +157,7 @@ mod tests {
         time::{SystemTime, UNIX_EPOCH},
     };
 
-    use plugin_framework::{
+    use extension_package_runtime::{
         data_source_contract::{DataSourceStdioMethod, DataSourceStdioRequest},
         PluginRuntimeLimits,
     };

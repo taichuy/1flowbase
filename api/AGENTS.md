@@ -22,10 +22,12 @@
 - `crates/control-plane` 放业务 service、状态写入口与审计入口，并消费或重导出稳定 contracts。
 - `crates/control-plane-postgres-tests` 是 `publish = false` 的跨层测试宿主，组合真实 control-plane service 与 PostgreSQL adapter。
 - `crates/domain` 放领域模型、作用域语义、稳定核心对象。
+- `crates/extension-contracts` 是跨 Host / Runtime 稳定 wire type 与 runtime contract 的唯一 owner；不得拥有 package intake、registry、host lifecycle、storage 或 control-plane 逻辑。
+- `crates/extension-package-runtime` 只放 Runtime Host 所需的 package descriptor、manifest 解析、installed artifact 加载与确定性 reconcile；不得拥有 intake、签名、安装、registry 或 graph compiler。
 - `crates/observability` 放日志、trace 与可观测性基础能力。
 - `crates/orchestration-runtime` 放编排编译、绑定运行时、执行引擎、预览执行器。
 - `crates/plugin-framework` 放插件 manifest / schema / contribution / registry / package 边界。
-- `crates/runtime-extension-host` 负责 RuntimeExtension 宿主装配，不向协议层泄漏内部实现。
+- `crates/runtime-extension-host` 负责 RuntimeExtension 宿主装配，只依赖 bounded contracts 与 runtime package loader，不依赖完整 `plugin-framework`，且不向协议层泄漏内部实现。
 - `crates/runtime-core` 放 runtime registry、runtime CRUD 核心和 slot engine。
 - `crates/runtime-profile` 放运行目标、locale、profile fingerprint 与插件运行环境快照。
 - `crates/storage/durable/core` 是 `storage-durable` 稳定边界，只放 backend kind 等不依赖具体 adapter 的类型。

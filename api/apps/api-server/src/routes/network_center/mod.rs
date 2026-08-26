@@ -157,13 +157,7 @@ pub(crate) fn route_assembly_with_plugin_upload_max_bytes(
         .merge(routes::route_assembly())
 }
 
-fn service(
-    state: &ApiState,
-) -> NetworkEgressProviderService<
-    crate::app_state::ApiDurableStore,
-    ApiProviderRuntime,
-    ProviderRegistryNetworkEgressSecretResolver<crate::app_state::ApiDurableStore>,
-> {
+fn service(state: &ApiState) -> crate::app_state::ApiNetworkEgressProviderService {
     NetworkEgressProviderService::new(
         state.store.clone(),
         ApiProviderRuntime::new(state.provider_runtime.clone()),
@@ -176,7 +170,7 @@ fn service(
     )
 }
 
-fn route_service(state: &ApiState) -> NetworkEgressRouteService<crate::app_state::ApiDurableStore> {
+fn route_service(state: &ApiState) -> crate::app_state::ApiNetworkEgressRouteService {
     NetworkEgressRouteService::new(state.store.clone())
 }
 

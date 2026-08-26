@@ -271,7 +271,7 @@ pub(super) async fn find_trace_projection_tool_callback_node(
         format!("{}/tools/tool:{tool_call_id}", owner.stable_locator),
     ] {
         if let Some(node) =
-            <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node_by_locator(
+            <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_by_locator(
                 &state.store,
                 flow_run_id,
                 &stable_locator,

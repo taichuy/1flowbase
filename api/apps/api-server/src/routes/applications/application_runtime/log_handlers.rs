@@ -56,7 +56,7 @@ pub async fn list_application_runs(
     }
 
     let runs_page =
-        <ApiDurableStore as OrchestrationRuntimeRepository>::list_application_run_logs_page(
+        <_ as OrchestrationRuntimeRepository>::list_application_run_logs_page(
             &state.store,
             id,
             control_plane::ports::ListApplicationRunsPageInput {
@@ -140,7 +140,7 @@ pub async fn list_application_conversation_messages(
     ensure_application_visible(&state, &context.actor, id).await?;
 
     let page =
-        <ApiDurableStore as OrchestrationRuntimeRepository>::list_application_conversation_runs_page(
+        <_ as OrchestrationRuntimeRepository>::list_application_conversation_runs_page(
             &state.store,
             id,
             ListApplicationConversationRunsPageInput {
@@ -200,7 +200,7 @@ pub async fn list_application_run_conversation_messages(
     ensure_application_visible(&state, &context.actor, id).await?;
 
     let projection_page =
-        <ApiDurableStore as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
+        <_ as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
             &state.store,
             id,
             run_id,
@@ -224,7 +224,7 @@ pub async fn list_application_run_conversation_messages(
     }
 
     let current_item =
-        <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_conversation_current_item(
+        <_ as OrchestrationRuntimeRepository>::get_application_run_conversation_current_item(
         &state.store,
         id,
         run_id,
@@ -243,7 +243,7 @@ async fn ensure_application_run_trace_projection_status(
     flow_run_id: Uuid,
 ) -> Result<domain::ApplicationRunTraceProjectionStatusRecord, ApiError> {
     let status =
-        <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
+        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
             &state.store,
             flow_run_id,
             APPLICATION_RUN_TRACE_PROJECTION_VERSION,
@@ -262,7 +262,7 @@ async fn ensure_application_run_trace_projection_status(
     }
 
     let source_watermark =
-        <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source_watermark(
+        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source_watermark(
             &state.store,
             application_id,
             flow_run_id,
@@ -274,14 +274,14 @@ async fn ensure_application_run_trace_projection_status(
     }
 
     let source =
-        <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source(
+        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source(
             &state.store,
             application_id,
             flow_run_id,
         )
         .await?
         .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-    let runtime_events = <ApiDurableStore as OrchestrationRuntimeRepository>::list_runtime_events(
+    let runtime_events = <_ as OrchestrationRuntimeRepository>::list_runtime_events(
         &state.store,
         flow_run_id,
         0,
@@ -290,13 +290,13 @@ async fn ensure_application_run_trace_projection_status(
     let source =
         enrich_application_run_detail_visible_internal_llm_route_traces(source, &runtime_events);
     let projection = build_application_run_trace_projection(&source)?;
-    <ApiDurableStore as OrchestrationRuntimeRepository>::replace_application_run_trace_projection(
+    <_ as OrchestrationRuntimeRepository>::replace_application_run_trace_projection(
         &state.store,
         &projection,
     )
     .await?;
 
-    <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
+    <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
         &state.store,
         flow_run_id,
         APPLICATION_RUN_TRACE_PROJECTION_VERSION,
@@ -425,7 +425,7 @@ async fn load_application_run_overview(
     flow_run_id: Uuid,
 ) -> Result<ApplicationRunOverviewReadModel, ApiError> {
     Ok(
-        <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_overview(
+        <_ as OrchestrationRuntimeRepository>::get_application_run_overview(
             &state.store,
             application_id,
             flow_run_id,
@@ -484,7 +484,7 @@ pub async fn get_application_run_trace_tree(
     let context = require_session(&state, &headers).await?;
     let application = ensure_application_visible(&state, &context.actor, id).await?;
     let status = ensure_application_run_trace_projection_status(&state, id, run_id).await?;
-    let flow_run = <ApiDurableStore as OrchestrationRuntimeRepository>::get_flow_run(
+    let flow_run = <_ as OrchestrationRuntimeRepository>::get_flow_run(
         &state.store,
         id,
         run_id,
@@ -492,7 +492,7 @@ pub async fn get_application_run_trace_tree(
     .await?
     .ok_or(ControlPlaneError::NotFound("flow_run"))?;
     let nodes = if projection_is_succeeded(&status) {
-        <ApiDurableStore as OrchestrationRuntimeRepository>::list_application_run_trace_roots(
+        <_ as OrchestrationRuntimeRepository>::list_application_run_trace_roots(
             &state.store,
             run_id,
         )
@@ -502,7 +502,7 @@ pub async fn get_application_run_trace_tree(
     };
     let statistics = if projection_is_succeeded(&status) {
         to_trace_projection_statistics_response(
-            <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_statistics(
+            <_ as OrchestrationRuntimeRepository>::get_application_run_trace_statistics(
                 &state.store,
                 run_id,
             )
@@ -577,14 +577,14 @@ pub async fn get_application_run_trace_node_children(
             },
         )));
     }
-    <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node(
+    <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node(
         &state.store,
         run_id,
         parent_trace_node_id,
     )
     .await?
     .ok_or(ControlPlaneError::NotFound("trace_node"))?;
-    let page = <ApiDurableStore as OrchestrationRuntimeRepository>::list_application_run_trace_children_page(
+    let page = <_ as OrchestrationRuntimeRepository>::list_application_run_trace_children_page(
             &state.store,
             ListApplicationRunTraceChildrenPageInput {
                 flow_run_id: run_id,
@@ -659,7 +659,7 @@ pub async fn get_application_run_trace_node_content(
         )));
     }
     let node =
-        <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node(
+        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node(
             &state.store,
             run_id,
             trace_node_uuid,
@@ -667,7 +667,7 @@ pub async fn get_application_run_trace_node_content(
         .await?
         .ok_or(ControlPlaneError::NotFound("trace_node"))?;
     let content =
-        <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node_content(
+        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_content(
             &state.store,
             run_id,
             trace_node_uuid,
@@ -736,7 +736,7 @@ pub async fn get_application_run_trace_node_detail(
         )));
     }
     let node =
-        <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node(
+        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node(
             &state.store,
             run_id,
             trace_node_uuid,
@@ -744,7 +744,7 @@ pub async fn get_application_run_trace_node_detail(
         .await?
         .ok_or(ControlPlaneError::NotFound("trace_node"))?;
     let content =
-        <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node_content(
+        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_content(
             &state.store,
             run_id,
             trace_node_uuid,
@@ -765,7 +765,7 @@ pub async fn get_application_run_trace_node_detail(
             let detail_flow_run_id =
                 trace_node_content_source_flow_run_id(&content.payload)?.unwrap_or(run_id);
             let node_runs =
-                <ApiDurableStore as OrchestrationRuntimeRepository>::list_application_run_trace_node_run_details(
+                <_ as OrchestrationRuntimeRepository>::list_application_run_trace_node_run_details(
                     &state.store,
                     detail_flow_run_id,
                     node_run_ids,
@@ -793,7 +793,7 @@ pub async fn get_application_run_trace_node_detail(
             let detail_flow_run_id =
                 trace_node_content_source_flow_run_id(&content.payload)?.unwrap_or(run_id);
             let checkpoints =
-                <ApiDurableStore as OrchestrationRuntimeRepository>::list_application_run_trace_checkpoints(
+                <_ as OrchestrationRuntimeRepository>::list_application_run_trace_checkpoints(
                     &state.store,
                     id,
                     detail_flow_run_id,
@@ -811,7 +811,7 @@ pub async fn get_application_run_trace_node_detail(
             let detail_flow_run_id =
                 trace_node_content_source_flow_run_id(&content.payload)?.unwrap_or(run_id);
             let events =
-                <ApiDurableStore as OrchestrationRuntimeRepository>::list_application_run_trace_events(
+                <_ as OrchestrationRuntimeRepository>::list_application_run_trace_events(
                     &state.store,
                     id,
                     detail_flow_run_id,
@@ -876,7 +876,7 @@ pub async fn get_application_run_trace_tool_callback_content(
         )));
     }
     let owner =
-        <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node(
+        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node(
             &state.store,
             run_id,
             trace_node_uuid,
@@ -886,7 +886,7 @@ pub async fn get_application_run_trace_tool_callback_content(
     let tool_node =
         find_trace_projection_tool_callback_node(&state, run_id, &owner, &tool_call_id).await?;
     let content =
-        <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node_content(
+        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_content(
             &state.store,
             run_id,
             tool_node.trace_node_id,
@@ -925,7 +925,7 @@ pub async fn get_application_run_resume_timeline(
     let context = require_session(&state, &headers).await?;
     ensure_application_visible(&state, &context.actor, id).await?;
     let timeline =
-        <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_resume_timeline(
+        <_ as OrchestrationRuntimeRepository>::get_application_run_resume_timeline(
             &state.store,
             id,
             run_id,
@@ -973,7 +973,7 @@ pub async fn get_application_run_resume_timeline_summary(
 ) -> Result<Json<ApiSuccess<ApplicationRunResumeTimelineSummaryResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     ensure_application_visible(&state, &context.actor, id).await?;
-    let timeline = <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_resume_timeline_summary(
+    let timeline = <_ as OrchestrationRuntimeRepository>::get_application_run_resume_timeline_summary(
         &state.store,
         id,
         run_id,
@@ -1032,14 +1032,14 @@ pub async fn get_application_run_node_last_run(
     let context = require_session(&state, &headers).await?;
     ensure_application_visible(&state, &context.actor, id).await?;
 
-    let detail = <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_detail(
+    let detail = <_ as OrchestrationRuntimeRepository>::get_application_run_detail(
         &state.store,
         id,
         run_id,
     )
     .await?
     .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-    let runtime_events = <ApiDurableStore as OrchestrationRuntimeRepository>::list_runtime_events(
+    let runtime_events = <_ as OrchestrationRuntimeRepository>::list_runtime_events(
         &state.store,
         run_id,
         0,
@@ -1104,14 +1104,14 @@ pub async fn get_runtime_debug_stream(
     let context = require_session(&state, &headers).await?;
     ensure_application_visible(&state, &context.actor, id).await?;
 
-    <ApiDurableStore as OrchestrationRuntimeRepository>::get_flow_run(&state.store, id, run_id)
+    <_ as OrchestrationRuntimeRepository>::get_flow_run(&state.store, id, run_id)
         .await?
         .ok_or(ControlPlaneError::NotFound("flow_run"))?;
 
     let page_size = runtime_debug_stream_page_size(query.limit);
     let from_sequence = query.from_sequence.unwrap_or(0).max(0);
     let mut records =
-        <ApiDurableStore as OrchestrationRuntimeRepository>::list_runtime_event_backfill_page(
+        <_ as OrchestrationRuntimeRepository>::list_runtime_event_backfill_page(
             &state.store,
             run_id,
             from_sequence,
@@ -1171,7 +1171,7 @@ pub async fn get_node_last_run(
     let context = require_session(&state, &headers).await?;
     ensure_application_visible(&state, &context.actor, id).await?;
 
-    let last_run = <ApiDurableStore as OrchestrationRuntimeRepository>::get_latest_node_run(
+    let last_run = <_ as OrchestrationRuntimeRepository>::get_latest_node_run(
         &state.store,
         id,
         &node_id,
@@ -1180,7 +1180,7 @@ pub async fn get_node_last_run(
     let last_run = match last_run {
         Some(last_run) => {
             let runtime_events =
-                <ApiDurableStore as OrchestrationRuntimeRepository>::list_runtime_events(
+                <_ as OrchestrationRuntimeRepository>::list_runtime_events(
                     &state.store,
                     last_run.flow_run.id,
                     0,

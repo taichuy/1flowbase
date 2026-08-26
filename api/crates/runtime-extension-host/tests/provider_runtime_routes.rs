@@ -10,7 +10,7 @@ use axum::{
     http::{Method, Request, StatusCode},
     Router,
 };
-use plugin_framework::compute_manifest_fingerprint;
+use extension_package_runtime::compute_manifest_fingerprint;
 use runtime_extension_host::app;
 use serde_json::{json, Value};
 use tower::ServiceExt;

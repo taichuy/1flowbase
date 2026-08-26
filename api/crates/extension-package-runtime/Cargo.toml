@@ -1,0 +1,15 @@
+[package]
+name = "extension-package-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+extension-contracts = { path = "../extension-contracts" }
+jsonschema.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+serde_yaml = "0.9"
+sha2.workspace = true
+thiserror.workspace = true
+tokio.workspace = true

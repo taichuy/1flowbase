@@ -6,7 +6,7 @@ fn service(
     state: &ApiState,
     actor: &domain::ActorContext,
     operation_id: &'static str,
-) -> PluginManagementService<ApiDurableStore, ApiProviderRuntime> {
+) -> crate::app_state::ApiPluginManagementService {
     super::base_service(state, actor).for_model_provider_console_operation(operation_id)
 }
 

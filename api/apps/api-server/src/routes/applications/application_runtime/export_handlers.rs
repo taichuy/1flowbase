@@ -185,14 +185,14 @@ async fn build_application_run_trace_export_document(
     run_id: Uuid,
     exported_at: OffsetDateTime,
 ) -> Result<ApplicationRunTraceExportDocument, ApiError> {
-    let detail = <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_detail(
+    let detail = <_ as OrchestrationRuntimeRepository>::get_application_run_detail(
         &state.store,
         application_id,
         run_id,
     )
     .await?
     .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-    let runtime_events = <ApiDurableStore as OrchestrationRuntimeRepository>::list_runtime_events(
+    let runtime_events = <_ as OrchestrationRuntimeRepository>::list_runtime_events(
         &state.store,
         run_id,
         0,
@@ -273,30 +273,10 @@ async fn backfill_export_node_run_error_payloads(
     run_id: Uuid,
     value: &mut serde_json::Value,
 ) -> Result<(), ApiError> {
-    let rows = sqlx::query(
-        r#"
-        select id, error_payload
-        from node_runs
-        where flow_run_id = $1
-          and error_payload is not null
-        "#,
-    )
-    .bind(run_id)
-    .fetch_all(state.store.pool())
-    .await?;
-    if rows.is_empty() {
+    let error_payloads = archive::load_node_run_error_payloads(&state.store, run_id).await?;
+    if error_payloads.is_empty() {
         return Ok(());
     }
-
-    let error_payloads = rows
-        .into_iter()
-        .map(|row| {
-            (
-                row.get::<Uuid, _>("id").to_string(),
-                row.get::<serde_json::Value, _>("error_payload"),
-            )
-        })
-        .collect::<std::collections::HashMap<_, _>>();
     let Some(node_runs) = value
         .get_mut("node_runs")
         .and_then(serde_json::Value::as_array_mut)
@@ -338,7 +318,7 @@ async fn build_application_run_trace_export_tree(
     let projection_status = to_trace_projection_status_response(&status);
     let statistics = if projection_is_succeeded(&status) {
         to_trace_projection_statistics_response(
-            <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_statistics(
+            <_ as OrchestrationRuntimeRepository>::get_application_run_trace_statistics(
                 &state.store,
                 flow_run.id,
             )
@@ -349,7 +329,7 @@ async fn build_application_run_trace_export_tree(
     };
     let nodes = if projection_is_succeeded(&status) {
         let roots =
-            <ApiDurableStore as OrchestrationRuntimeRepository>::list_application_run_trace_roots(
+            <_ as OrchestrationRuntimeRepository>::list_application_run_trace_roots(
                 &state.store,
                 flow_run.id,
             )
@@ -383,7 +363,7 @@ fn build_application_run_trace_export_node(
     Box::pin(async move {
         let summary = to_trace_node_summary_from_projection(node.clone());
         let (content_kind, source_refs, detail_refs, payload) = if node.has_content {
-            match <ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node_content(
+            match <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_content(
                 &state.store,
                 flow_run_id,
                 node.trace_node_id,
@@ -471,7 +451,7 @@ async fn list_application_run_trace_export_children(
 
     loop {
         let page =
-            <ApiDurableStore as OrchestrationRuntimeRepository>::list_application_run_trace_children_page(
+            <_ as OrchestrationRuntimeRepository>::list_application_run_trace_children_page(
                 &state.store,
                 ListApplicationRunTraceChildrenPageInput {
                     flow_run_id,

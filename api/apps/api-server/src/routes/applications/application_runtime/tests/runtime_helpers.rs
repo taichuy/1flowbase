@@ -247,24 +247,16 @@ fn trace_tree_endpoints_read_projection_without_full_detail_fallback() {
         "get_application_run_trace_node_children"
     )
     .contains("list_application_run_trace_children"));
-    assert!(
-        application_trace_tree_endpoint_source(
-            log_endpoint_source,
-            "get_application_run_trace_node_content"
-        )
-        .contains(
-            "<ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node_content"
-        )
-    );
-    assert!(
-        application_trace_tree_endpoint_source(
-            log_endpoint_source,
-            "get_application_run_trace_tool_callback_content"
-        )
-        .contains(
-            "<ApiDurableStore as OrchestrationRuntimeRepository>::get_application_run_trace_node_content"
-        )
-    );
+    assert!(application_trace_tree_endpoint_source(
+        log_endpoint_source,
+        "get_application_run_trace_node_content"
+    )
+    .contains("<_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_content"));
+    assert!(application_trace_tree_endpoint_source(
+        log_endpoint_source,
+        "get_application_run_trace_tool_callback_content"
+    )
+    .contains("<_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_content"));
 }
 
 #[test]
@@ -345,7 +337,10 @@ fn d1_lightweight_endpoint_inventory_keeps_detail_export_and_archive_contract_bo
     assert!(!trace_detail.contains("get_application_run_detail"));
 
     assert!(include_str!("../export_handlers.rs").contains("get_application_run_detail"));
-    assert!(include_str!("../archive/document.rs").contains("get_application_run_detail"));
+    assert!(
+        include_str!("../../../../application_runtime_archive/document.rs")
+            .contains("get_application_run_detail")
+    );
 }
 
 #[test]

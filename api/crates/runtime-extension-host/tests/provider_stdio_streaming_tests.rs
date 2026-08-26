@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use plugin_framework::{provider_contract::ProviderStdioRequest, PluginRuntimeLimits};
+use extension_package_runtime::{provider_contract::ProviderStdioRequest, PluginRuntimeLimits};
 
 fn fixture_script(name: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -10,7 +10,7 @@ fn fixture_script(name: &str) -> PathBuf {
 
 fn invoke_request() -> ProviderStdioRequest {
     ProviderStdioRequest {
-        method: plugin_framework::provider_contract::ProviderStdioMethod::Invoke,
+        method: extension_package_runtime::provider_contract::ProviderStdioMethod::Invoke,
         input: serde_json::json!({ "model": "fixture" }),
     }
 }
@@ -121,7 +121,7 @@ async fn provider_worker_direct_api_cleans_child_after_runtime_failure() {
     let script = fixture_script("lifecycle_worker.sh");
     let mut worker = runtime_extension_host::stdio_runtime::ProviderWorker::new(script, limits());
     let request = ProviderStdioRequest {
-        method: plugin_framework::provider_contract::ProviderStdioMethod::Validate,
+        method: extension_package_runtime::provider_contract::ProviderStdioMethod::Validate,
         input: serde_json::json!({ "mode": "crash" }),
     };
 

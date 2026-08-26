@@ -1,6 +1,6 @@
 use std::{collections::HashMap, sync::Arc};
 
-use plugin_framework::{
+use extension_package_runtime::{
     data_source_contract::{
         validate_native_sql_output, DataSourceCatalogEntry, DataSourceConfigInput,
         DataSourceCreateRecordInput, DataSourceCreateRecordOutput, DataSourceDeleteRecordInput,
@@ -62,7 +62,7 @@ pub struct DataSourceDescriptorOutput {
 pub struct DataSourceHost {
     loaded_packages: HashMap<String, LoadedDataSourcePackage>,
     legacy_manifest_eligibilities:
-        HashMap<String, plugin_framework::LegacyInstalledManifestEligibility>,
+        HashMap<String, extension_package_runtime::LegacyInstalledManifestEligibility>,
     scopes: HashMap<String, Arc<PluginScope>>,
     next_generation: HashMap<String, u64>,
 }
@@ -96,7 +96,7 @@ impl DataSourceHost {
     pub async fn load_legacy_installed(
         &mut self,
         package_root: impl AsRef<std::path::Path>,
-        eligibility: &plugin_framework::LegacyInstalledManifestEligibility,
+        eligibility: &extension_package_runtime::LegacyInstalledManifestEligibility,
     ) -> FrameworkResult<LoadedDataSourceSummary> {
         let loaded = PackageLoader::load_legacy_installed_data_source(package_root, eligibility)?;
         let summary = LoadedDataSourceSummary::from_loaded(&loaded);
@@ -535,7 +535,7 @@ impl DataSourceHost {
         &mut self,
         plugin_id: String,
         loaded: LoadedDataSourcePackage,
-        legacy_eligibility: Option<plugin_framework::LegacyInstalledManifestEligibility>,
+        legacy_eligibility: Option<extension_package_runtime::LegacyInstalledManifestEligibility>,
     ) -> FrameworkResult<()> {
         self.unload(&plugin_id).await?;
         let next_generation = self.next_generation.entry(plugin_id.clone()).or_insert(0);

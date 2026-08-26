@@ -14,6 +14,7 @@ members = [
   "crates/control-plane-postgres-tests",
   "crates/plugin-framework",
   "crates/extension-contracts",
+  "crates/extension-package-runtime",
   "crates/storage/durable/core",
   "crates/storage/durable/postgres",
   "crates/storage/ephemeral",

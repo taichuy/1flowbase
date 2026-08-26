@@ -8,7 +8,7 @@ use std::{
     },
 };
 
-use plugin_framework::{
+use extension_package_runtime::{
     error::{FrameworkResult, PluginFrameworkError},
     manifest_v1::PluginExecutionMode,
     provider_contract::{
@@ -31,7 +31,7 @@ use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
 
 #[cfg(test)]
-use plugin_framework::provider_contract::ProviderCountTokensMethod;
+use extension_package_runtime::provider_contract::ProviderCountTokensMethod;
 
 use crate::package_loader::{LoadedProviderPackage, PackageLoader};
 use crate::stdio_runtime::{
@@ -247,7 +247,7 @@ pub struct ProviderHost {
     loaded_packages: HashMap<String, LoadedProviderPackage>,
     loaded_sources: HashMap<String, LoadedProviderSource>,
     legacy_manifest_eligibilities:
-        HashMap<String, plugin_framework::LegacyInstalledManifestEligibility>,
+        HashMap<String, extension_package_runtime::LegacyInstalledManifestEligibility>,
     provider_workers: ProviderWorkerRegistry,
     active_streams: Arc<Mutex<HashMap<String, ActiveProviderStreamRecord>>>,
     active_invocation_leases: Arc<Mutex<HashMap<String, Arc<Semaphore>>>>,
@@ -286,7 +286,7 @@ impl ProviderHost {
         &mut self,
         source: LoadedProviderSource,
         expected_plugin_id: Option<&str>,
-        legacy_eligibility: Option<&plugin_framework::LegacyInstalledManifestEligibility>,
+        legacy_eligibility: Option<&extension_package_runtime::LegacyInstalledManifestEligibility>,
     ) -> FrameworkResult<LoadedProviderSummary> {
         let loaded = match legacy_eligibility {
             Some(eligibility) => {
@@ -348,7 +348,7 @@ impl ProviderHost {
         plugin_id: &str,
         package_root: &str,
         source_identity: Option<&str>,
-        eligibility: &plugin_framework::LegacyInstalledManifestEligibility,
+        eligibility: &extension_package_runtime::LegacyInstalledManifestEligibility,
     ) -> FrameworkResult<()> {
         let requested_source = LoadedProviderSource::resolve(package_root, source_identity)?;
         if self
@@ -1023,7 +1023,7 @@ impl ProviderHost {
         );
         let permit = semaphore.acquire_owned().await.map_err(|_| {
             PluginFrameworkError::runtime(
-                plugin_framework::provider_contract::ProviderRuntimeError::normalize(
+                extension_package_runtime::provider_contract::ProviderRuntimeError::normalize(
                     "provider_invocation_lease",
                     "active provider invocation lease is closed",
                     None,

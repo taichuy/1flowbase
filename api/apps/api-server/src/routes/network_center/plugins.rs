@@ -1,6 +1,5 @@
 use std::{collections::HashMap, sync::Arc};
 
-use crate::app_state::ApiDurableStore;
 use axum::{
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     handler::Handler,
@@ -9,7 +8,7 @@ use axum::{
 };
 use control_plane::plugin_management::{
     official_plugin_host_compatibility, DeletePluginFamilyCommand, InstallUploadedPluginCommand,
-    PluginCatalogFilter, PluginManagementService,
+    PluginCatalogFilter,
 };
 use control_plane::ports::NetworkEgressRepository;
 use utoipa::ToSchema;
@@ -18,7 +17,6 @@ use crate::{
     app_state::ApiState,
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
-    provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::{
         console_route_assembly::{console_delete, console_get, console_post, ConsoleRouteAssembly},
@@ -168,7 +166,7 @@ fn service(
     state: &ApiState,
     actor: &domain::ActorContext,
     operation_id: &'static str,
-) -> PluginManagementService<ApiDurableStore, ApiProviderRuntime> {
+) -> crate::app_state::ApiPluginManagementService {
     crate::routes::plugins::base_service(state, actor)
         .for_network_egress_provider_console_operation(operation_id)
 }

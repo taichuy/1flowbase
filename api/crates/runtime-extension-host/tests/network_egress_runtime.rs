@@ -212,7 +212,7 @@ async fn nc_02b_sync_egresses_exposes_only_the_validated_provider_catalog() {
     assert_eq!(egresses[0].provider_egress_key, "egress-us-1");
     assert_eq!(
         egresses[0].availability,
-        plugin_framework::EgressAvailability::Available
+        extension_package_runtime::EgressAvailability::Available
     );
     assert!(host.sync_egresses("missing@0.1.0").await.is_err());
 

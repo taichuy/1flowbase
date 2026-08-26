@@ -10,7 +10,7 @@ use axum::{
     http::{Method, Request, StatusCode},
     Router,
 };
-use plugin_framework::{
+use extension_package_runtime::{
     DataModelOperationHandlerRef, DataModelTemplateIdentity, DataSourceConfigInput,
     DataSourceExecuteModelOperationInput, DataSourceModelOperationActorContext,
     DataSourceModelOperationScopeContext,

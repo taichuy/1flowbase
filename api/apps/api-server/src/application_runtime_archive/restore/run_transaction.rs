@@ -550,7 +550,7 @@ pub(crate) async fn restore_run_archive_v1(
 
     tx.commit().await?;
     for update in final_run_updates {
-        <ApiDurableStore as OrchestrationRuntimeRepository>::update_flow_run_payloads(
+        <_ as OrchestrationRuntimeRepository>::update_flow_run_payloads(
             &state.store,
             &UpdateFlowRunPayloadsInput {
                 flow_run_id: update.target_run_id,
@@ -560,7 +560,7 @@ pub(crate) async fn restore_run_archive_v1(
             },
         )
         .await?;
-        <ApiDurableStore as OrchestrationRuntimeRepository>::update_flow_run(
+        <_ as OrchestrationRuntimeRepository>::update_flow_run(
             &state.store,
             &UpdateFlowRunInput {
                 flow_run_id: update.target_run_id,

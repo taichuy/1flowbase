@@ -170,33 +170,17 @@ pub(crate) async fn create_run_archive_upload_session(
     }
 
     let session_id = Uuid::now_v7();
-    sqlx::query(
-        r#"
-        insert into run_archive_upload_sessions (
-            id,
-            scope_id,
-            application_id,
-            actor_user_id,
-            original_filename,
-            total_size_bytes,
-            expected_sha256,
-            chunk_size_bytes,
-            status,
-            created_by,
-            updated_by
-        ) values ($1, $2, $3, $4, $5, $6, $7, $8, 'uploading', $9, $9)
-        "#,
+    persist_run_archive_upload_session(
+        &state.store,
+        session_id,
+        application.workspace_id,
+        application.id,
+        context.actor.user_id,
+        body.filename.as_deref(),
+        body.total_size_bytes,
+        expected_sha256,
+        chunk_size_bytes,
     )
-    .bind(session_id)
-    .bind(application.workspace_id)
-    .bind(application.id)
-    .bind(context.actor.user_id)
-    .bind(body.filename.as_deref())
-    .bind(body.total_size_bytes)
-    .bind(expected_sha256)
-    .bind(chunk_size_bytes)
-    .bind(context.actor.user_id)
-    .execute(state.store.pool())
     .await?;
 
     let session = load_run_archive_upload_session(&state, id, session_id).await?;
@@ -264,44 +248,20 @@ pub(crate) async fn upload_run_archive_chunk(
     }
 
     let chunk_id = Uuid::now_v7();
-    let mut tx = state.store.pool().begin().await?;
-    sqlx::query(
-        r#"
-        insert into run_archive_upload_chunks (
-            id,
-            scope_id,
+    let received_bytes = persist_run_archive_chunk(
+        &state.store,
+        PersistRunArchiveChunkInput {
+            chunk_id,
+            scope_id: session.scope_id,
             session_id,
             chunk_index,
-            chunk_size_bytes,
-            chunk_sha256,
-            content,
-            created_by,
-            updated_by
-        ) values ($1, $2, $3, $4, $5, $6, $7, $8, $8)
-        on conflict (session_id, chunk_index) do update
-        set chunk_size_bytes = excluded.chunk_size_bytes,
-            chunk_sha256 = excluded.chunk_sha256,
-            content = excluded.content,
-            updated_at = now(),
-            updated_by = excluded.updated_by
-        "#,
+            content: body.as_ref(),
+            chunk_sha256: &actual_sha256,
+            actor_user_id: context.actor.user_id,
+            total_size_bytes: session.total_size_bytes,
+        },
     )
-    .bind(chunk_id)
-    .bind(session.scope_id)
-    .bind(session_id)
-    .bind(chunk_index)
-    .bind(i64::try_from(body.len()).unwrap_or(i64::MAX))
-    .bind(&actual_sha256)
-    .bind(body.as_ref())
-    .bind(context.actor.user_id)
-    .execute(&mut *tx)
     .await?;
-    let received_bytes =
-        refresh_run_archive_upload_session_received_bytes(&mut tx, session_id).await?;
-    if received_bytes > session.total_size_bytes {
-        return Err(ControlPlaneError::InvalidInput("archive_size").into());
-    }
-    tx.commit().await?;
 
     Ok(Json(ApiSuccess::new(RunArchiveChunkUploadResponse {
         session_id: session_id.to_string(),

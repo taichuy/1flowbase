@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex as StdMutex};
 use std::time::Duration;
 
-use plugin_framework::{
+use extension_package_runtime::{
     error::{FrameworkResult, PluginFrameworkError},
     provider_contract::{ProviderStdioRequest, ProviderStreamEvent},
     PluginRuntimeLimits,
@@ -380,7 +380,7 @@ fn lifecycle_lock_error() -> PluginFrameworkError {
 mod tests {
     use std::path::PathBuf;
 
-    use plugin_framework::provider_contract::ProviderStdioMethod;
+    use extension_package_runtime::provider_contract::ProviderStdioMethod;
     use serde_json::json;
 
     use super::*;

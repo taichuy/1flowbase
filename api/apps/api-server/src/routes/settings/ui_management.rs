@@ -385,9 +385,7 @@ fn catalog_update_status_response(
     }
 }
 
-fn catalog_service(
-    state: &ApiState,
-) -> UiComponentCatalogService<crate::app_state::ApiDurableStore, ApiUiComponentCatalogSource> {
+fn catalog_service(state: &ApiState) -> crate::app_state::ApiUiComponentCatalogService {
     UiComponentCatalogService::new(
         state.store.clone(),
         ApiUiComponentCatalogSource::default_taichuy(),

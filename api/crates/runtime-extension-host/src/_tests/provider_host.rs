@@ -1,5 +1,5 @@
 use super::*;
-use plugin_framework::provider_contract::{
+use extension_package_runtime::provider_contract::{
     NativeModelRequestContext, NativePromptBlock, NativePromptCacheControl,
     NativePromptCacheControlType, ProtocolContextEnvelope, ProviderAuthOperation,
     ProviderCompactProfile, ProviderInvocationCapability, ProviderResetCreditOperation,
@@ -454,7 +454,7 @@ fn publisher_cutover_runner_loads_eligible_legacy_installed_provider_receipt() {
 
     let loaded = PackageLoader::load_legacy_installed(
         package.path(),
-        &plugin_framework::LegacyInstalledManifestEligibility {
+        &extension_package_runtime::LegacyInstalledManifestEligibility {
             expected_publisher_namespace: "1flowbase".to_string(),
             expected_versioned_plugin_id: "fixture_provider@0.1.0".to_string(),
             expected_raw_manifest_fingerprint: format!(
@@ -738,15 +738,17 @@ fn count_tokens_input(model: &str) -> ProviderCountTokensInput {
         protocol: "anthropic_messages".to_string(),
         model: model.to_string(),
         provider_config: json!({}),
-        messages: vec![plugin_framework::provider_contract::ProviderMessage {
-            role: plugin_framework::provider_contract::ProviderMessageRole::User,
-            content: "count this canonical prompt".to_string(),
-            name: None,
-            tool_call_id: None,
-            is_error: None,
-            tool_calls: None,
-            content_blocks: None,
-        }],
+        messages: vec![
+            extension_package_runtime::provider_contract::ProviderMessage {
+                role: extension_package_runtime::provider_contract::ProviderMessageRole::User,
+                content: "count this canonical prompt".to_string(),
+                name: None,
+                tool_call_id: None,
+                is_error: None,
+                tool_calls: None,
+                content_blocks: None,
+            },
+        ],
         ..ProviderInvocationInput::default()
     })
 }

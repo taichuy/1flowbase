@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use crate::app_state::ApiDurableStore;
 use axum::{
     body::Body,
     http::{header::CONTENT_TYPE, Response, StatusCode},
@@ -237,7 +236,7 @@ pub(crate) async fn load_runtime_debug_artifact_response(
     application_id: Uuid,
     artifact_id: Uuid,
 ) -> Result<Response<Body>, ApiError> {
-    let artifact = <ApiDurableStore as OrchestrationRuntimeRepository>::get_runtime_debug_artifact(
+    let artifact = <_ as OrchestrationRuntimeRepository>::get_runtime_debug_artifact(
         &state.store,
         &GetRuntimeDebugArtifactInput {
             workspace_id,
@@ -247,12 +246,10 @@ pub(crate) async fn load_runtime_debug_artifact_response(
     )
     .await?
     .ok_or(ControlPlaneError::NotFound("runtime_debug_artifact"))?;
-    let storage = <ApiDurableStore as FileManagementRepository>::get_file_storage(
-        &state.store,
-        artifact.storage_id,
-    )
-    .await?
-    .ok_or(ControlPlaneError::NotFound("file_storage"))?;
+    let storage =
+        <_ as FileManagementRepository>::get_file_storage(&state.store, artifact.storage_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("file_storage"))?;
     if !storage.enabled {
         return Err(ControlPlaneError::Conflict("file_storage_disabled").into());
     }
@@ -281,7 +278,7 @@ pub(crate) async fn load_runtime_debug_artifact_json_value(
     application_id: Uuid,
     artifact_id: Uuid,
 ) -> Result<Value, ApiError> {
-    let artifact = <ApiDurableStore as OrchestrationRuntimeRepository>::get_runtime_debug_artifact(
+    let artifact = <_ as OrchestrationRuntimeRepository>::get_runtime_debug_artifact(
         &state.store,
         &GetRuntimeDebugArtifactInput {
             workspace_id,
@@ -291,12 +288,10 @@ pub(crate) async fn load_runtime_debug_artifact_json_value(
     )
     .await?
     .ok_or(ControlPlaneError::NotFound("runtime_debug_artifact"))?;
-    let storage = <ApiDurableStore as FileManagementRepository>::get_file_storage(
-        &state.store,
-        artifact.storage_id,
-    )
-    .await?
-    .ok_or(ControlPlaneError::NotFound("file_storage"))?;
+    let storage =
+        <_ as FileManagementRepository>::get_file_storage(&state.store, artifact.storage_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("file_storage"))?;
     if !storage.enabled {
         return Err(ControlPlaneError::Conflict("file_storage_disabled").into());
     }
