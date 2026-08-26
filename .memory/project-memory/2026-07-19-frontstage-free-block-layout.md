@@ -52,7 +52,8 @@ scope:
 
 - 在线 Single Issue：[#1376 建立 Frontstage 可演进区块布局内核与连续碰撞交互](https://github.com/taichuy/1flowbase/issues/1376)
 - 首位插入修复：[#1897 修复自动布局拖拽首位插入不可达](https://github.com/taichuy/1flowbase/issues/1897)，commit `d7d8e3288` 已推送 `dev`，用户于 2026-08-26 验收并关闭。
-- 当前活动 Issue：[#1899 支持区块拖拽边缘自动滚动](https://github.com/taichuy/1flowbase/issues/1899) 已于 2026-08-27 完成实现并进入 `phase:user-acceptance`。1flowbase 通过精确绑定 `react-grid-layout@2.2.3` 的 pnpm dependency patch，在 `GridItem` 私有坐标 owner 内用 smoothstep rAF、6px 单帧上限、drag-start 最大滚动快照和实际 scroll delta 补偿保持 dragged item / placeholder 同步；双向 Playwright 最大漂移 6px、一次拖拽一次保存、刷新持久化与 #1897 回归均通过。
+- 边缘滚动 Issue：[#1899 支持区块拖拽边缘自动滚动](https://github.com/taichuy/1flowbase/issues/1899) 已由用户于 2026-08-27 验收并关闭。1flowbase 通过精确绑定 `react-grid-layout@2.2.3` 的 pnpm dependency patch，在 `GridItem` 私有坐标 owner 内用 smoothstep rAF、6px 单帧上限、drag-start 最大滚动快照和实际 scroll delta 补偿保持 dragged item / placeholder 同步；双向 Playwright 最大漂移 6px、一次拖拽一次保存、刷新持久化与 #1897 回归均通过。
+- 当前活动 Issue：[#1900 支持并排行与独占行之间的二维拖拽投影](https://github.com/taichuy/1flowbase/issues/1900)，`phase:ready`。自动布局 drag session 将使用缓存的逻辑行序列与二维 intent classifier，互斥表达 `JoinRow(rowIndex, cellIndex)` 和 `InsertStandaloneRow(rowIndex)`；纵向边界使用进入／退出不同阈值的滞回，横向继续复用 midpoint/deadband，不改变持久化布局 contract 或 #1899 RGL patch。
 - 当前阶段：`phase:user-acceptance`；自动/自由策略、RGL v2 public API、确定性行接触 solver、边缘 resize、no-op save 与桌面/移动端真实指针验收已完成。
 - 只修改 1flowbase；`/home/taichuy/git/react-grid-layout` 仅作 `2.2.3` 参考源码，不修改、fork 或本地链接。仓库内 patch 绑定精确版本并由 preinstall receipt 守住；升级时先移除 patch 运行 #1899 浏览器 contract，官方版本通过即删除 patch，失败才迁移。
 - 后续交互采用连续像素 preview 与响应式网格 commit 双态模型；24 列是 Frontstage desktop profile，不是通用布局内核常量。
