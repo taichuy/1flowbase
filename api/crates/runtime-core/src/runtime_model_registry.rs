@@ -5,6 +5,8 @@ use std::{
 
 use crate::model_metadata::ModelMetadata;
 
+pub use storage_durable::runtime_model_availability::RuntimeDataModelAvailability;
+
 #[derive(Debug, Default, Clone)]
 pub struct RuntimeModelRegistry {
     models: Arc<RwLock<HashMap<String, Vec<RegisteredRuntimeModel>>>>,
@@ -14,25 +16,6 @@ pub struct RuntimeModelRegistry {
 pub struct RegisteredRuntimeModel {
     pub metadata: ModelMetadata,
     pub availability: RuntimeDataModelAvailability,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RuntimeDataModelAvailability {
-    Available,
-    NotPublished,
-    Disabled,
-    Broken,
-}
-
-impl RuntimeDataModelAvailability {
-    pub fn from_status(status: domain::DataModelStatus) -> Self {
-        match status {
-            domain::DataModelStatus::Published => Self::Available,
-            domain::DataModelStatus::Draft => Self::NotPublished,
-            domain::DataModelStatus::Disabled => Self::Disabled,
-            domain::DataModelStatus::Broken => Self::Broken,
-        }
-    }
 }
 
 impl RuntimeModelRegistry {

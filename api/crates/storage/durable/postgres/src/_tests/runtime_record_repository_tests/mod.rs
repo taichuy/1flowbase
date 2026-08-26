@@ -7,11 +7,11 @@ use control_plane::{
     system_metadata::SystemMetadataBootstrapService,
 };
 use domain::{DataModelScopeKind, ModelFieldKind, DEFAULT_SCOPE_ID, SYSTEM_SCOPE_ID};
-use runtime_core::runtime_engine::RuntimeModelError;
-use runtime_core::runtime_record_repository::{
+use serde_json::json;
+use storage_durable::runtime_model_availability::RuntimeModelError;
+use storage_durable::runtime_record_repository::{
     RuntimeListQuery, RuntimeRecordRepository, RuntimeSortInput,
 };
-use serde_json::json;
 use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
 use time::macros::datetime;
 use uuid::Uuid;

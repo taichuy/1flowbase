@@ -19,7 +19,6 @@ percent-encoding.workspace = true
 rand.workspace = true
 rand_regex.workspace = true
 regex-syntax.workspace = true
-runtime-core = { path = "../../../runtime-core" }
 storage-durable = { path = "../core" }
 serde_json.workspace = true
 rust_decimal.workspace = true

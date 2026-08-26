@@ -6,3 +6,10 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+async-trait.workspace = true
+domain = { path = "../../../domain" }
+extension-contracts = { path = "../../../extension-contracts" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true

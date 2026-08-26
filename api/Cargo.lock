@@ -3297,6 +3297,7 @@ dependencies = [
  "extension-contracts",
  "serde",
  "serde_json",
+ "storage-durable",
  "thiserror 2.0.18",
  "tokio",
  "uuid",
@@ -4018,6 +4019,13 @@ name = "storage-durable"
 version = "0.4.1"
 dependencies = [
  "anyhow",
+ "async-trait",
+ "domain",
+ "extension-contracts",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "uuid",
 ]
 
 [[package]]
@@ -4039,7 +4047,6 @@ dependencies = [
  "rand 0.10.2",
  "rand_regex",
  "regex-syntax",
- "runtime-core",
  "rust_decimal",
  "serde_json",
  "sha2 0.10.9",

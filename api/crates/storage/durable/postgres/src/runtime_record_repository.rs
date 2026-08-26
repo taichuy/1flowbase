@@ -3,16 +3,16 @@ use std::{collections::HashSet, future::Future};
 use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use control_plane::ports::ModelDefinitionRepository;
-use runtime_core::{
+use serde_json::Value;
+use sqlx::{Postgres, QueryBuilder};
+use storage_durable::{
     model_metadata::ModelMetadata,
-    runtime_engine::ensure_runtime_model_available,
-    runtime_model_registry::RuntimeDataModelAvailability,
+    runtime_model_availability::ensure_runtime_model_available,
+    runtime_model_availability::RuntimeDataModelAvailability,
     runtime_record_repository::{
         RuntimeListQuery, RuntimeListResult, RuntimeRecordRepository, RuntimeSortInput,
     },
 };
-use serde_json::Value;
-use sqlx::{Postgres, QueryBuilder};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use uuid::Uuid;
 
@@ -221,7 +221,7 @@ impl PgControlPlaneStore {
             if let Err(mark_error) = self.mark_runtime_model_unavailable(metadata).await {
                 return mark_error;
             }
-            return runtime_core::runtime_engine::RuntimeModelError::unavailable(
+            return storage_durable::runtime_model_availability::RuntimeModelError::unavailable(
                 &metadata.model_code,
             )
             .into();
@@ -440,7 +440,7 @@ impl RuntimeRecordRepository for PgControlPlaneStore {
                 .keys()
                 .find(|field_code| matches!(field_code.as_str(), "parent_id" | "sibling_rank"))
             {
-                return Err(runtime_core::runtime_record_repository::OrderedTreeCommandError::FieldNotWritable(
+                return Err(storage_durable::runtime_record_repository::OrderedTreeCommandError::FieldNotWritable(
                     field_code.clone(),
                 )
                 .into());
@@ -711,7 +711,7 @@ fn to_runtime_model_metadata(model: domain::ModelDefinitionRecord) -> Result<Mod
             .filter(|field| field.availability_status.is_healthy())
             .collect(),
         record_capabilities,
-        resource: runtime_core::resource_descriptor::ResourceDescriptor::runtime_model(
+        resource: storage_durable::resource_descriptor::ResourceDescriptor::runtime_model(
             &model.code,
             model.scope_kind,
         ),

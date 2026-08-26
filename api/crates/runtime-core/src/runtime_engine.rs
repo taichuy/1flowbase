@@ -16,20 +16,20 @@ use extension_contracts::data_source_contract::{
     DataSourceUpdateRecordOutput, NativeSqlExecutionOutput,
 };
 use serde_json::Value;
-use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
     capability_slots::{DefaultValueResolver, RecordValidator},
     model_metadata::ModelMetadata,
     runtime_acl::{resolve_access_scope, RuntimeDataAction, RuntimeScopeGrant},
-    runtime_model_registry::{
-        RegisteredRuntimeModel, RuntimeDataModelAvailability, RuntimeModelRegistry,
-    },
+    runtime_model_registry::{RegisteredRuntimeModel, RuntimeModelRegistry},
     runtime_record_repository::{OrderedTreeRuntimeRepository, RuntimeRecordRepository},
 };
 
 pub use crate::runtime_record_repository::{RuntimeListQuery, RuntimeListResult, RuntimeSortInput};
+pub use storage_durable::runtime_model_availability::{
+    ensure_runtime_model_available, RuntimeModelError,
+};
 
 #[derive(Debug, Clone)]
 pub struct RuntimeListInput {
@@ -145,70 +145,6 @@ pub trait DataSourceRuntimeRecordBackend: Send + Sync {
     ) -> Result<Value>;
 }
 
-#[derive(Debug, Error, Clone, PartialEq, Eq)]
-pub enum RuntimeModelError {
-    #[error("runtime model unavailable: {0}")]
-    Unavailable(String),
-    #[error("runtime model not published: {0}")]
-    NotPublished(String),
-    #[error("runtime model disabled: {0}")]
-    Disabled(String),
-    #[error("runtime model broken: {0}")]
-    Broken(String),
-    #[error("runtime model record action not allowed: {model_code}:{action}")]
-    RecordActionNotAllowed {
-        model_code: String,
-        action: &'static str,
-    },
-    #[error("runtime model create missing api required fields: {model_code}:{fields:?}")]
-    MissingCreateRequiredFields {
-        model_code: String,
-        fields: Vec<String>,
-    },
-    #[error("runtime model operation invalid input: {0}")]
-    InvalidOperationInput(&'static str),
-    #[error("runtime model operation invalid field: {0}")]
-    InvalidOperationField(String),
-    #[error("runtime model ordered-tree adapter unavailable")]
-    OrderedTreeUnavailable,
-}
-
-impl RuntimeModelError {
-    pub fn unavailable(model_code: impl Into<String>) -> Self {
-        Self::Unavailable(model_code.into())
-    }
-
-    pub fn not_published(model_code: impl Into<String>) -> Self {
-        Self::NotPublished(model_code.into())
-    }
-
-    pub fn disabled(model_code: impl Into<String>) -> Self {
-        Self::Disabled(model_code.into())
-    }
-
-    pub fn broken(model_code: impl Into<String>) -> Self {
-        Self::Broken(model_code.into())
-    }
-
-    pub fn record_action_not_allowed(model_code: impl Into<String>, action: &'static str) -> Self {
-        Self::RecordActionNotAllowed {
-            model_code: model_code.into(),
-            action,
-        }
-    }
-
-    pub fn missing_create_required_fields<I, S>(model_code: impl Into<String>, fields: I) -> Self
-    where
-        I: IntoIterator<Item = S>,
-        S: Into<String>,
-    {
-        Self::MissingCreateRequiredFields {
-            model_code: model_code.into(),
-            fields: fields.into_iter().map(Into::into).collect(),
-        }
-    }
-}
-
 fn operation_object(value: Value) -> Result<serde_json::Map<String, Value>> {
     value
         .as_object()
@@ -293,22 +229,6 @@ fn reject_structure_fields(payload: &Value) -> Result<()> {
         }
     }
     Ok(())
-}
-
-pub fn ensure_runtime_model_available(
-    model_code: &str,
-    availability: RuntimeDataModelAvailability,
-) -> Result<()> {
-    match availability {
-        RuntimeDataModelAvailability::Available => Ok(()),
-        RuntimeDataModelAvailability::NotPublished => {
-            Err(RuntimeModelError::not_published(model_code).into())
-        }
-        RuntimeDataModelAvailability::Disabled => {
-            Err(RuntimeModelError::disabled(model_code).into())
-        }
-        RuntimeDataModelAvailability::Broken => Err(RuntimeModelError::broken(model_code).into()),
-    }
 }
 
 fn ensure_runtime_record_action_allowed(

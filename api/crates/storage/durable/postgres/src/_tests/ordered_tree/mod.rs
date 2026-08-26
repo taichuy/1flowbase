@@ -1,6 +1,6 @@
 use control_plane::ports::{CreateModelDefinitionInput, ModelDefinitionRepository};
 use domain::DataModelScopeKind;
-use runtime_core::{model_metadata::ModelMetadata, resource_descriptor::ResourceDescriptor};
+use storage_durable::{model_metadata::ModelMetadata, resource_descriptor::ResourceDescriptor};
 use uuid::Uuid;
 
 use crate::ordered_tree::rank::{between, rebalance, FractionalRank};

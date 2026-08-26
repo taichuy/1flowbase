@@ -11,6 +11,7 @@ domain = { path = "../domain" }
 extension-contracts = { path = "../extension-contracts" }
 serde.workspace = true
 serde_json.workspace = true
+storage-durable = { path = "../storage/durable/core" }
 thiserror.workspace = true
 uuid.workspace = true
 

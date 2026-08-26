@@ -2,9 +2,9 @@ use std::borrow::Cow;
 
 use control_plane::ports::{AddModelFieldInput, ModelDefinitionRepository};
 use domain::ModelFieldKind;
-use runtime_core::runtime_record_repository::RuntimeRecordRepository;
 use serde_json::json;
 use sqlx::migrate::Migrator;
+use storage_durable::runtime_record_repository::RuntimeRecordRepository;
 use uuid::Uuid;
 
 use super::{create_ordered_tree_model, create_workspace, isolated_database, runtime_metadata};

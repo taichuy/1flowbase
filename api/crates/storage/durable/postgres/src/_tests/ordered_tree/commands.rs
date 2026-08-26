@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use control_plane::ports::{CreateModelDefinitionInput, ModelDefinitionRepository};
 use domain::DataModelScopeKind;
-use runtime_core::{
+use serde_json::json;
+use storage_durable::{
     model_metadata::ModelMetadata,
     runtime_record_repository::{
         OrderedTreeCommandError, OrderedTreeCreateInput, OrderedTreeCreatePosition,
@@ -10,7 +11,6 @@ use runtime_core::{
         OrderedTreeStructureRepository, OrderedTreeSubtreeDeleteInput, RuntimeRecordRepository,
     },
 };
-use serde_json::json;
 use tokio::sync::Barrier;
 use uuid::Uuid;
 

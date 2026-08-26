@@ -8,7 +8,7 @@ use control_plane::ports::{
     UpdateFrontstageBlockDescriptorsInput,
 };
 use domain::{AuditLogRecord, FrontstageBlockPresentation};
-use runtime_core::runtime_record_repository::{OrderedTreeCommandError, OrderedTreeQueryError};
+use storage_durable::runtime_record_repository::{OrderedTreeCommandError, OrderedTreeQueryError};
 use time::OffsetDateTime;
 
 use super::*;

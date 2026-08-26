@@ -2,7 +2,7 @@ use control_plane::ports::{
     AddModelFieldInput, CreateModelDefinitionInput, ModelDefinitionRepository,
 };
 use domain::{DataModelScopeKind, ModelFieldKind};
-use runtime_core::runtime_record_repository::{
+use storage_durable::runtime_record_repository::{
     OrderedTreeBoundedListInput, OrderedTreeChildrenInput, OrderedTreeDescendantsInput,
     OrderedTreeNodeInput, OrderedTreeQueryError, OrderedTreeQueryRepository,
     OrderedTreeSearchInput, OrderedTreeSubtreeImpactInput,
