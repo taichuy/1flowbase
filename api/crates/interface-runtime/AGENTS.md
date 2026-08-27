@@ -1,0 +1,22 @@
+# Scope
+
+- 本 crate 只拥有协议无关的 active Interface Definition、compiled Registry snapshot 和 typed Invocation Kernel。
+- 唯一允许的内部直接依赖是 `domain`；基础库限 identity、fingerprint、error 所需。
+
+# Invariants
+
+- Adapter 完成 credential 解析后才能传入 `ActorContext`；本 crate 不读取 Cookie、Header、Session、API Key 或 MCP credential。
+- 调用顺序固定为 Resolve → Authorize → optional typed target admission → Invoke → Complete / Fail。
+- 每次调用固定一个 Registry snapshot、Registry fingerprint 和 Effective Graph fingerprint。
+- Definition、Handler、Target、Authorization 使用 typed identity/port；不暴露 Axum Handler、Host Registry、本机路径、数据库连接、SQL 或无限制 JSON invocation。
+- public API 只从 `lib.rs` 显式 re-export；内部模块保持私有。
+
+# Evolution Boundary
+
+- I-02 可复用 typed target-admission seam，但不得在此实现通用 Hook executor、多 Handler Decision aggregation 或 contribution lifecycle。
+- 新协议、Runtime topology、Storage adapter 与插件加载属于外层 owner，不得加入本 crate。
+
+# Evidence And Stop
+
+- 修改时同步维护 Registry/Kernel controlled negatives、Cargo boundary 和 public facade gate。
+- 若闭合需要依赖 `api-server`、Axum、control-plane 实现、plugin-framework、Runtime Host 或 Storage 实现，停止并返回架构 Root。

@@ -19,6 +19,7 @@
 | 目录 / crate | 唯一职责 | 允许的内部直接依赖 |
 | --- | --- | --- |
 | `domain` | 领域对象、不变量、状态与作用域语义 | 无 |
+| `interface-runtime` | 协议无关的 active Interface Definition、compiled Registry snapshot 与 typed Invocation Kernel | `domain` |
 | `extension-contracts` | Host / Runtime 稳定 wire type、Slot 与协议错误 | 无 |
 | `access-control` | 权限目录、角色与授权规则 | `domain` |
 | `control-plane-contracts` | adapter-facing repository trait、持久化投影与 contract error | `domain`、`extension-contracts` |
@@ -44,6 +45,7 @@
 - repository trait 放 `control-plane-contracts`；SQL、Row 映射和数据库事务实现放 `storage/durable/postgres`。
 - 跨 Host / Runtime 的稳定协议放 `extension-contracts`；安装、registry 和扩展图放 `plugin-framework`。
 - RuntimeExtension 加载与进程生命周期放 `runtime-extension-host`；执行编排放 `orchestration-runtime`。
+- `interface-runtime` 只接收已认证 `ActorContext`；Cookie/Header/Session/API Key 解析留在 HTTP/MCP Adapter。Effective Extension Graph 是声明输入，compiled Dynamic Interface Registry 是 active definition 真值。
 - `RuntimeBackend` 必须组合 Execution、Observation、Provider、DataSource、Capability、Network Egress 六个窄 Port；必需方法不提供默认失败实现。
 - `orchestration-runtime` 只持有 `RuntimeExecutionPort`；完整 `RuntimeBackend` 仅停留在 `api-server` composition root 与业务能力装配层，窄 Port 必须由该层从 exactly-one Slot Backend 内部投影，装配构造器不得接收第二个独立 Port 来源。
 - Durable、Ephemeral、Object 是三类 Storage；PostgreSQL 只是 Durable 的官方 adapter。

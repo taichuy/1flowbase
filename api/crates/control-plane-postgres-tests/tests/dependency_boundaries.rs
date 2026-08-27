@@ -1,6 +1,16 @@
 use std::{collections::BTreeMap, fs, path::Path, process::Command};
 
 const FORBIDDEN_EDGES: &[(&str, &str)] = &[
+    ("interface-runtime", "api-server"),
+    ("interface-runtime", "access-control"),
+    ("interface-runtime", "control-plane"),
+    ("interface-runtime", "control-plane-contracts"),
+    ("interface-runtime", "plugin-framework"),
+    ("interface-runtime", "runtime-core"),
+    ("interface-runtime", "runtime-extension-host"),
+    ("interface-runtime", "storage-durable"),
+    ("interface-runtime", "storage-durable-postgres"),
+    ("interface-runtime", "storage-ephemeral"),
     ("storage-durable", "storage-durable-postgres"),
     ("storage-durable-postgres", "control-plane"),
     ("storage-durable-postgres", "plugin-framework"),
@@ -204,6 +214,33 @@ fn controlled_negative_runs_complete_policy_and_detects_dependency_rename() {
             "storage-durable-postgres source references control-plane as cp_alias::",
             "storage-durable-postgres source references plugin-framework as plugin_alias::",
         ]
+    );
+}
+
+#[test]
+fn controlled_negative_rejects_interface_runtime_implementation_dependency_alias() {
+    let fixture = serde_json::json!({
+        "packages": [
+            {"id": "interface", "name": "interface-runtime"},
+            {"id": "api", "name": "api-server"}
+        ],
+        "resolve": {"nodes": [
+            {"id": "interface", "deps": [{"pkg": "api", "name": "application_alias"}]},
+            {"id": "api", "deps": []}
+        ]}
+    });
+
+    assert_eq!(
+        dependency_policy_violations(&fixture),
+        vec!["interface-runtime -> api-server (crate alias application_alias)"]
+    );
+    assert_eq!(
+        source_dependency_violations(
+            &fixture,
+            "interface-runtime",
+            "fn invalid() { application_alias::ApiState; }",
+        ),
+        vec!["interface-runtime source references api-server as application_alias::"]
     );
 }
 
