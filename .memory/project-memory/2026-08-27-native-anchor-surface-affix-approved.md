@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: Native Anchor Affix 生命周期改由 Frontstage surface 拥有
-summary: 用户于 2026-08-27 确认 #1910 采用 surface-owned AffixLayer；ShadowRoot 继续拥有 target 隔离，scrollOwner 拥有滚动与 active，Block containing block 不再决定默认 Affix 的释放边界。
+summary: 用户于 2026-08-27 确认并已实现 #1910 surface-owned AffixLayer；candidate a89ee2b2a 已推送 dev 并通过 Dev Acceptance，当前等待用户页面验收。
 keywords:
   - issue 1910
   - Native Anchor
@@ -28,7 +28,7 @@ scope:
 
 ## 谁在做什么
 
-当前开发会话以 #1910 为唯一 Single Issue，把 Native Anchor 的视觉吸附从 Block 内 CSS containing block 迁移到 Frontstage surface-owned AffixLayer；后续实现需先补 AC-009～012 authentic red，再进入开发与集中 Dev Acceptance。
+当前开发会话以 #1910 为唯一 Single Issue，已把 Native Anchor 的视觉吸附从 Block 内 CSS containing block 迁移到 Frontstage surface-owned AffixLayer。AC-009～012、影响回归、浏览器全范围取证和 Native React fast receipt 已通过。
 
 ## 为什么这样做
 
@@ -47,4 +47,4 @@ scope:
 
 ## 截止与下一事件
 
-无日历截止日期。下一事件是用户明确开始实现后，使用 frontend-development 与 test-driven-development 执行 #1910；完成后由 qa-evaluation 结算并进入用户验收。
+无日历截止日期。candidate `a89ee2b2a` 已推送 `dev`，#1910 为 `phase:user-acceptance`；下一事件是用户在指定页面完成手动验收，确认后关闭 Issue。
