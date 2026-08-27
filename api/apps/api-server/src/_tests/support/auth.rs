@@ -210,19 +210,8 @@ async fn test_state_with_runtime_profile_state(
         .ensure_builtin_user_and_role_models(bootstrap.root_user_id)
         .await
         .unwrap();
-    let provider_runtime = Arc::new(
-        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
-            Arc::new(RwLock::new(
-                runtime_extension_host::provider_host::ProviderHost::default(),
-            )),
-            Arc::new(RwLock::new(
-                runtime_extension_host::capability_host::CapabilityHost::default(),
-            )),
-            Arc::new(RwLock::new(
-                runtime_extension_host::data_source_host::DataSourceHost::default(),
-            )),
-        ),
-    );
+    let provider_runtime =
+        Arc::new(ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests());
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
     let data_model_template_catalog = provider_runtime.data_model_template_catalog();
     let runtime_registry = runtime_core::runtime_model_registry::RuntimeModelRegistry::default();

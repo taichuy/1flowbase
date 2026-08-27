@@ -8,8 +8,8 @@ use std::{
 use async_trait::async_trait;
 use extension_contracts::ProviderInvocationInput;
 use runtime_core::runtime_backend::{
-    RuntimeArtifactReference, RuntimeBackendError, RuntimeBackendLifecycle, RuntimeBackendSlot,
-    RuntimeExecutionPort, RuntimeExecutionRequest, RuntimeExtensionPort, RuntimeObservationPort,
+    ProviderRuntimePort, RuntimeArtifactReference, RuntimeBackendError, RuntimeBackendLifecycle,
+    RuntimeBackendSlot, RuntimeExecutionPort, RuntimeExecutionRequest, RuntimeObservationPort,
     RuntimePackageActivation, RuntimeRequestId, RuntimeStreamSinks, RuntimeTargetId,
 };
 use runtime_extension_host::{RuntimeArtifactResolver, RuntimeExtensionHost};

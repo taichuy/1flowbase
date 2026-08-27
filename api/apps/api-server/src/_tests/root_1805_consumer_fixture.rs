@@ -28,12 +28,8 @@ use domain::{
     PluginVerificationStatus,
 };
 use plugin_framework::provider_contract::ProviderInvocationInput;
-use runtime_extension_host::{
-    capability_host::CapabilityHost, data_source_host::DataSourceHost, provider_host::ProviderHost,
-};
 use serde_json::{json, Map};
 use time::OffsetDateTime;
-use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::{
@@ -84,13 +80,7 @@ impl orchestration_runtime::execution_engine::ProviderInvoker for ResolverBacked
 }
 
 fn network_egress_runtime_services() -> Arc<ApiRuntimeServices> {
-    Arc::new(
-        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
-            Arc::new(RwLock::new(ProviderHost::default())),
-            Arc::new(RwLock::new(CapabilityHost::default())),
-            Arc::new(RwLock::new(DataSourceHost::default())),
-        ),
-    )
+    Arc::new(ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests())
 }
 
 struct TempProviderPackage {

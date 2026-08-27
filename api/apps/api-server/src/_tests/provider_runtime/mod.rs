@@ -31,13 +31,9 @@ use plugin_framework::{
     DataSourceExecuteModelOperationInput, DataSourceModelOperationActorContext,
     DataSourceModelOperationScopeContext,
 };
-use runtime_extension_host::{
-    capability_host::CapabilityHost, data_source_host::DataSourceHost, provider_host::ProviderHost,
-};
 use serde_json::{json, Map};
 use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
-use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use crate::provider_runtime::{ApiProviderRuntime, ApiRuntimeServices};
@@ -77,13 +73,7 @@ impl orchestration_runtime::execution_engine::ProviderInvoker for ResolverBacked
 }
 
 fn network_egress_runtime_services() -> Arc<ApiRuntimeServices> {
-    Arc::new(
-        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
-            Arc::new(RwLock::new(ProviderHost::default())),
-            Arc::new(RwLock::new(CapabilityHost::default())),
-            Arc::new(RwLock::new(DataSourceHost::default())),
-        ),
-    )
+    Arc::new(ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests())
 }
 
 struct TempProviderPackage {
@@ -640,20 +630,6 @@ done
     }
 }
 
-async fn wait_for_provider_active_streams(provider_host: &Arc<RwLock<ProviderHost>>, count: usize) {
-    for _ in 0..20 {
-        let snapshot = {
-            let host = provider_host.read().await;
-            host.active_stream_snapshot().await
-        };
-        if snapshot.streams.len() == count {
-            return;
-        }
-        tokio::time::sleep(Duration::from_millis(50)).await;
-    }
-    panic!("expected {count} active provider stream(s)");
-}
-
 fn fixture_installation(package: &TempProviderPackage) -> domain::LocalPluginInstallationRecord {
     let now = OffsetDateTime::now_utc();
     let installation = PluginInstallationRecord {
@@ -895,13 +871,7 @@ fn checked_data_source_model_operation_input(
 #[tokio::test]
 async fn strict_runtime_uses_one_boot_graph_for_model_provider_and_empty_input_pipeline() {
     let graph = model_provider_extension_graph();
-    let services = ApiRuntimeServices::new(
-        Arc::new(RwLock::new(ProviderHost::default())),
-        Arc::new(RwLock::new(CapabilityHost::default())),
-        Arc::new(RwLock::new(DataSourceHost::default())),
-        Arc::clone(&graph),
-    )
-    .unwrap();
+    let services = ApiRuntimeServices::new(Arc::clone(&graph)).unwrap();
     let snapshot = crate::extension_bus::ExtensionBootSnapshot::new(Arc::clone(&graph));
     let resolver_graph = services.model_provider_extension_graph().unwrap();
 
@@ -922,11 +892,7 @@ async fn strict_runtime_uses_one_boot_graph_for_model_provider_and_empty_input_p
         snapshot.fingerprint()
     );
 
-    let legacy = ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
-        Arc::new(RwLock::new(ProviderHost::default())),
-        Arc::new(RwLock::new(CapabilityHost::default())),
-        Arc::new(RwLock::new(DataSourceHost::default())),
-    );
+    let legacy = ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests();
     assert!(legacy.model_provider_extension_graph().is_none());
 }
 
@@ -938,35 +904,14 @@ async fn strict_model_provider_binding_loads_the_stateful_lifecycle_host() {
     let mut installation = strict_fixture_installation(&package);
     installation.artifact.availability_status = PluginAvailabilityStatus::InstallIncomplete;
     let graph = model_provider_extension_graph();
-    let provider_host = Arc::new(RwLock::new(ProviderHost::default()));
-    let services = Arc::new(
-        ApiRuntimeServices::new(
-            Arc::clone(&provider_host),
-            Arc::new(RwLock::new(CapabilityHost::default())),
-            Arc::new(RwLock::new(DataSourceHost::default())),
-            Arc::clone(&graph),
-        )
-        .unwrap(),
-    );
+    let services = Arc::new(ApiRuntimeServices::new(Arc::clone(&graph)).unwrap());
     let runtime = ApiProviderRuntime::new(services);
 
     let output = ProviderRuntimePort::validate_provider(&runtime, &installation, json!({}))
         .await
         .expect("strict binding should dispatch through the stateful provider host");
-    let snapshot = provider_host
-        .read()
-        .await
-        .provider_worker_snapshot(&installation.plugin_id)
-        .unwrap()
-        .unwrap();
-
     assert_eq!(output["provider"], "fixture");
     assert!(spawn_marker.exists());
-    assert_eq!(snapshot.generation, 1);
-    assert_eq!(
-        snapshot.state,
-        runtime_extension_host::stdio_runtime::ProviderWorkerLifecycleState::Active
-    );
     let binding = crate::provider_runtime::ModelProviderSlotResolver::new(graph)
         .resolve(&installation)
         .unwrap();
@@ -985,15 +930,7 @@ async fn strict_model_provider_binding_rejects_invalid_dynamic_facts_before_spaw
     let spawn_marker = package.path().join("spawned");
     write_stateful_slot_provider_package(&package, &spawn_marker);
     let graph = model_provider_extension_graph();
-    let runtime = ApiProviderRuntime::new(Arc::new(
-        ApiRuntimeServices::new(
-            Arc::new(RwLock::new(ProviderHost::default())),
-            Arc::new(RwLock::new(CapabilityHost::default())),
-            Arc::new(RwLock::new(DataSourceHost::default())),
-            graph,
-        )
-        .unwrap(),
-    ));
+    let runtime = ApiProviderRuntime::new(Arc::new(ApiRuntimeServices::new(graph).unwrap()));
     let valid = strict_fixture_installation(&package);
     let mut cases = Vec::new();
 
@@ -1082,13 +1019,7 @@ async fn strict_model_provider_binding_rejects_wrong_provider_code_and_missing_p
     write_stateful_slot_provider_package(&package, &spawn_marker);
     let installation = strict_fixture_installation(&package);
     let runtime = ApiProviderRuntime::new(Arc::new(
-        ApiRuntimeServices::new(
-            Arc::new(RwLock::new(ProviderHost::default())),
-            Arc::new(RwLock::new(CapabilityHost::default())),
-            Arc::new(RwLock::new(DataSourceHost::default())),
-            model_provider_extension_graph(),
-        )
-        .unwrap(),
+        ApiRuntimeServices::new(model_provider_extension_graph()).unwrap(),
     ));
     let wrong_provider = ProviderInvocationInput {
         provider_code: "another_provider".to_string(),
@@ -1152,13 +1083,8 @@ async fn ac_003_api_runtime_dispatches_network_egress_lifecycle_without_model_pr
     let package = TempProviderPackage::new();
     write_network_egress_package(&package);
     let installation = network_egress_fixture_installation(&package);
-    let services = Arc::new(
-        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
-            Arc::new(RwLock::new(ProviderHost::default())),
-            Arc::new(RwLock::new(CapabilityHost::default())),
-            Arc::new(RwLock::new(DataSourceHost::default())),
-        ),
-    );
+    let services =
+        Arc::new(ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests());
     let runtime = ApiProviderRuntime::new(services);
 
     ProviderRuntimePort::activate_plugin(&runtime, &installation)
@@ -1171,13 +1097,8 @@ async fn ac_003_api_runtime_dispatches_network_egress_lifecycle_without_model_pr
 
 #[tokio::test]
 async fn data_source_runtime_intakes_and_dispatches_checked_external_template() {
-    let services = Arc::new(
-        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
-            Arc::new(RwLock::new(ProviderHost::default())),
-            Arc::new(RwLock::new(CapabilityHost::default())),
-            Arc::new(RwLock::new(DataSourceHost::default())),
-        ),
-    );
+    let services =
+        Arc::new(ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests());
     let runtime = ApiProviderRuntime::new(services.clone());
     let installation = checked_data_source_fixture_installation();
 
@@ -1249,11 +1170,7 @@ async fn provider_runtime_get_balance_ensures_loaded_and_calls_host() {
     let package = TempProviderPackage::new();
     write_balance_provider_package(&package);
     let runtime = ApiProviderRuntime::new(Arc::new(
-        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
-            Arc::new(RwLock::new(ProviderHost::default())),
-            Arc::new(RwLock::new(CapabilityHost::default())),
-            Arc::new(RwLock::new(DataSourceHost::default())),
-        ),
+        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(),
     ));
 
     let balance = runtime
@@ -1277,11 +1194,7 @@ async fn provider_runtime_projects_declared_usage_and_reset_credit_operations() 
     let package = TempProviderPackage::new();
     write_account_operations_provider_package(&package);
     let runtime = ApiProviderRuntime::new(Arc::new(
-        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
-            Arc::new(RwLock::new(ProviderHost::default())),
-            Arc::new(RwLock::new(CapabilityHost::default())),
-            Arc::new(RwLock::new(DataSourceHost::default())),
-        ),
+        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(),
     ));
     let installation = fixture_installation(&package);
 
@@ -1335,11 +1248,7 @@ async fn publisher_cutover_provider_runtime_consumes_legacy_manifest_compatibili
         Sha256::digest(legacy_raw.as_bytes())
     ));
     let runtime = ApiProviderRuntime::new(Arc::new(
-        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
-            Arc::new(RwLock::new(ProviderHost::default())),
-            Arc::new(RwLock::new(CapabilityHost::default())),
-            Arc::new(RwLock::new(DataSourceHost::default())),
-        ),
+        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(),
     ));
 
     let balance = runtime
@@ -1348,53 +1257,6 @@ async fn publisher_cutover_provider_runtime_consumes_legacy_manifest_compatibili
         .expect("AC-001 publisher cutover installation should reach the runner");
 
     assert!(balance.is_available);
-}
-
-#[tokio::test]
-async fn provider_runtime_drops_host_lock_before_invoking_provider() {
-    let package = TempProviderPackage::new();
-    write_slow_invocation_provider_package(&package);
-    let provider_host = Arc::new(RwLock::new(ProviderHost::default()));
-    let runtime = ApiProviderRuntime::new(Arc::new(
-        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
-            Arc::clone(&provider_host),
-            Arc::new(RwLock::new(CapabilityHost::default())),
-            Arc::new(RwLock::new(DataSourceHost::default())),
-        ),
-    ));
-    let installation = fixture_installation(&package);
-
-    ProviderRuntimePort::ensure_loaded(&runtime, &installation)
-        .await
-        .expect("provider should load before invocation");
-    let invoke_runtime = runtime.clone();
-    let invoke_installation = installation.clone();
-    let invocation = tokio::spawn(async move {
-        invoke_runtime
-            .invoke_stream(
-                &invoke_installation,
-                ProviderInvocationInput {
-                    provider_instance_id: "provider-1".to_string(),
-                    provider_code: "fixture_provider".to_string(),
-                    protocol: "openai_compatible".to_string(),
-                    model: "fixture_chat".to_string(),
-                    provider_config: json!({
-                        "api_key": "secret"
-                    }),
-                    ..ProviderInvocationInput::default()
-                },
-            )
-            .await
-            .unwrap()
-    });
-    wait_for_provider_active_streams(&provider_host, 1).await;
-
-    let write_guard = tokio::time::timeout(Duration::from_millis(200), provider_host.write())
-        .await
-        .expect("provider host write lock should not wait for an external invocation");
-    drop(write_guard);
-    let output = invocation.await.unwrap();
-    assert_eq!(output.result.final_content.as_deref(), Some("slow"));
 }
 
 /// Root #1805 AC-010/AC-014: a capability-declaring Provider can consume the Host's
@@ -1407,11 +1269,7 @@ async fn root_1805_model_provider_consumes_lease_free_egress_handoff_through_pro
     let package = TempProviderPackage::new();
     write_network_egress_handoff_provider_package(&package, proxy_target);
     let runtime = ApiProviderRuntime::new(Arc::new(
-        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
-            Arc::new(RwLock::new(ProviderHost::default())),
-            Arc::new(RwLock::new(CapabilityHost::default())),
-            Arc::new(RwLock::new(DataSourceHost::default())),
-        ),
+        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(),
     ));
     let mut input = ProviderInvocationInput {
         provider_instance_id: "provider-1".to_string(),
@@ -1688,11 +1546,7 @@ async fn provider_runtime_preserves_contract_error_for_llm_invocation() {
     let package = TempProviderPackage::new();
     write_failing_provider_package(&package);
     let runtime = ApiProviderRuntime::new(Arc::new(
-        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
-            Arc::new(RwLock::new(ProviderHost::default())),
-            Arc::new(RwLock::new(CapabilityHost::default())),
-            Arc::new(RwLock::new(DataSourceHost::default())),
-        ),
+        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(),
     ));
 
     let error = runtime
@@ -1730,11 +1584,7 @@ async fn provider_runtime_preserves_invalid_provider_contract_display_message() 
     let package = TempProviderPackage::new();
     write_failing_provider_package(&package);
     let runtime = ApiProviderRuntime::new(Arc::new(
-        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
-            Arc::new(RwLock::new(ProviderHost::default())),
-            Arc::new(RwLock::new(CapabilityHost::default())),
-            Arc::new(RwLock::new(DataSourceHost::default())),
-        ),
+        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(),
     ));
 
     let error = runtime
@@ -1773,11 +1623,7 @@ async fn provider_runtime_compact_preserves_typed_v2_opaque_result() {
         r#"{"ok":true,"result":{"result_type":"completed_opaque_compaction_item","operation":"compact","profile":"responses_compaction_v2","response_id":"response-frozen","compaction_item":{"type":"compaction","encrypted_content":"opaque-v2"},"encrypted_content":"opaque-v2"}}"#,
     );
     let runtime = ApiProviderRuntime::new(Arc::new(
-        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
-            Arc::new(RwLock::new(ProviderHost::default())),
-            Arc::new(RwLock::new(CapabilityHost::default())),
-            Arc::new(RwLock::new(DataSourceHost::default())),
-        ),
+        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(),
     ));
 
     let compacted = runtime
@@ -1811,11 +1657,7 @@ async fn provider_runtime_compact_preserves_typed_provider_failure() {
         r#"{"ok":false,"error":{"kind":"provider_upstream_error","message":"upstream Compact failed","provider_summary":"opaque upstream"}}"#,
     );
     let runtime = ApiProviderRuntime::new(Arc::new(
-        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
-            Arc::new(RwLock::new(ProviderHost::default())),
-            Arc::new(RwLock::new(CapabilityHost::default())),
-            Arc::new(RwLock::new(DataSourceHost::default())),
-        ),
+        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(),
     ));
 
     let error = runtime

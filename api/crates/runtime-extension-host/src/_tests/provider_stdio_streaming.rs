@@ -39,7 +39,7 @@ fn default_limits() -> PluginRuntimeLimits {
 async fn provider_stdio_v2_reads_ndjson_stream_until_result() {
     let script = fixture_script("success.sh");
 
-    let output = runtime_extension_host::stdio_runtime::call_executable_streaming(
+    let output = crate::stdio_runtime::call_executable_streaming(
         &script,
         &invoke_request(),
         &limits(),
@@ -57,13 +57,13 @@ async fn provider_stdio_v2_reads_ndjson_stream_until_result() {
 #[tokio::test]
 async fn provider_stdio_default_invocation_budget_is_300_seconds() {
     assert_eq!(
-        runtime_extension_host::stdio_runtime::DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS,
+        crate::stdio_runtime::DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS,
         300_000
     );
 
     let script = fixture_script("default_budget.sh");
 
-    let output = runtime_extension_host::stdio_runtime::call_executable_streaming(
+    let output = crate::stdio_runtime::call_executable_streaming(
         &script,
         &invoke_request(),
         &default_limits(),
@@ -84,7 +84,7 @@ async fn provider_stdio_default_invocation_budget_is_300_seconds() {
 async fn provider_stdio_v2_rejects_bad_json_line() {
     let script = fixture_script("bad_json.sh");
 
-    let error = runtime_extension_host::stdio_runtime::call_executable_streaming(
+    let error = crate::stdio_runtime::call_executable_streaming(
         &script,
         &invoke_request(),
         &limits(),
@@ -101,7 +101,7 @@ async fn provider_stdio_v2_rejects_bad_json_line() {
 #[tokio::test]
 async fn provider_worker_stdio_reuses_process_across_streaming_invocations() {
     let script = fixture_script("worker_reuse.sh");
-    let mut worker = runtime_extension_host::stdio_runtime::ProviderWorker::new(script, limits());
+    let mut worker = crate::stdio_runtime::ProviderWorker::new(script, limits());
 
     let first = worker
         .call_streaming(&invoke_request(), None, None, None)
@@ -119,7 +119,7 @@ async fn provider_worker_stdio_reuses_process_across_streaming_invocations() {
 #[tokio::test]
 async fn provider_worker_direct_api_cleans_child_after_runtime_failure() {
     let script = fixture_script("lifecycle_worker.sh");
-    let mut worker = runtime_extension_host::stdio_runtime::ProviderWorker::new(script, limits());
+    let mut worker = crate::stdio_runtime::ProviderWorker::new(script, limits());
     let request = ProviderStdioRequest {
         method: extension_package_runtime::provider_contract::ProviderStdioMethod::Validate,
         input: serde_json::json!({ "mode": "crash" }),
@@ -131,6 +131,6 @@ async fn provider_worker_direct_api_cleans_child_after_runtime_failure() {
     assert!(receipt.exited);
     assert_eq!(
         receipt.final_state,
-        runtime_extension_host::stdio_runtime::ProviderWorkerLifecycleState::Failed
+        crate::stdio_runtime::ProviderWorkerLifecycleState::Failed
     );
 }

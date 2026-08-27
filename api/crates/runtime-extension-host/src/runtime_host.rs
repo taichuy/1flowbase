@@ -91,36 +91,7 @@ impl RuntimeExtensionHost {
         )
     }
 
-    pub fn from_registries(
-        process_started_at: OffsetDateTime,
-        provider_host: ProviderHost,
-        capability_host: CapabilityHost,
-        data_source_host: DataSourceHost,
-    ) -> Result<Self, RuntimeBackendError> {
-        Self::from_shared_registries(
-            process_started_at,
-            Arc::new(RwLock::new(provider_host)),
-            Arc::new(RwLock::new(capability_host)),
-            Arc::new(RwLock::new(data_source_host)),
-        )
-    }
-
-    pub fn from_shared_registries(
-        process_started_at: OffsetDateTime,
-        provider_host: Arc<RwLock<ProviderHost>>,
-        capability_host: Arc<RwLock<CapabilityHost>>,
-        data_source_host: Arc<RwLock<DataSourceHost>>,
-    ) -> Result<Self, RuntimeBackendError> {
-        Self::from_shared_registries_with_artifact_resolver(
-            process_started_at,
-            provider_host,
-            capability_host,
-            data_source_host,
-            Arc::new(MissingRuntimeArtifactResolver),
-        )
-    }
-
-    pub fn from_shared_registries_with_artifact_resolver(
+    fn from_shared_registries_with_artifact_resolver(
         process_started_at: OffsetDateTime,
         provider_host: Arc<RwLock<ProviderHost>>,
         capability_host: Arc<RwLock<CapabilityHost>>,

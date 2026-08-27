@@ -12,9 +12,9 @@ use extension_package_runtime::{
     parse_plugin_manifest, PluginConsumptionKind, PluginExecutionMode,
 };
 use runtime_core::runtime_backend::{
-    RuntimeArtifactReference, RuntimeBackendError, RuntimeExecutionPort, RuntimeExecutionRequest,
-    RuntimeExtensionPort, RuntimeNetworkEgressActivation, RuntimePackageActivation,
-    RuntimeRequestId, RuntimeStreamSinks, RuntimeTargetId,
+    NetworkEgressRuntimePort, ProviderRuntimePort, RuntimeArtifactReference, RuntimeBackendError,
+    RuntimeExecutionPort, RuntimeExecutionRequest, RuntimeNetworkEgressActivation,
+    RuntimePackageActivation, RuntimeRequestId, RuntimeStreamSinks, RuntimeTargetId,
 };
 use runtime_extension_host::{RuntimeArtifactResolver, RuntimeExtensionHost};
 

@@ -46,17 +46,12 @@ use runtime_core::{
     runtime_engine::DataSourceRuntimeRecordBackend,
 };
 #[cfg(test)]
-use runtime_extension_host::{
-    capability_host::CapabilityHost, data_source_host::DataSourceHost, provider_host::ProviderHost,
-    RuntimeExtensionHost,
-};
+use runtime_extension_host::RuntimeExtensionHost;
 use serde::{de::DeserializeOwned, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use storage_durable_postgres::MainDurableStore;
-#[cfg(test)]
-use tokio::sync::RwLock;
 use tracing::info;
 use uuid::Uuid;
 
@@ -168,20 +163,12 @@ impl runtime_extension_host::RuntimeArtifactResolver for TestRuntimeArtifactReso
 impl ApiRuntimeServices {
     #[cfg(test)]
     pub fn new(
-        provider_host: Arc<RwLock<ProviderHost>>,
-        capability_host: Arc<RwLock<CapabilityHost>>,
-        data_source_host: Arc<RwLock<DataSourceHost>>,
         extension_graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
     ) -> anyhow::Result<Self> {
-        let runtime_host = Arc::new(
-            RuntimeExtensionHost::from_shared_registries_with_artifact_resolver(
-                time::OffsetDateTime::now_utc(),
-                provider_host,
-                capability_host,
-                data_source_host,
-                Arc::new(TestRuntimeArtifactResolver),
-            )?,
-        );
+        let runtime_host = Arc::new(RuntimeExtensionHost::new_with_artifact_resolver(
+            time::OffsetDateTime::now_utc(),
+            Arc::new(TestRuntimeArtifactResolver),
+        )?);
         runtime_host.mark_ready()?;
         let mut slot = RuntimeBackendSlot::default();
         slot.bind(runtime_host)?;
@@ -213,20 +200,13 @@ impl ApiRuntimeServices {
     }
 
     /// Explicit escape hatch for lightweight and legacy test states.
-    /// Production boot must use [`Self::new`] with the published Extension Bus graph.
+    /// Production boot must use [`Self::new_with_runtime_backend`] with the published graph.
     #[doc(hidden)]
     #[cfg(test)]
-    pub fn new_without_model_provider_extension_graph_for_tests(
-        provider_host: Arc<RwLock<ProviderHost>>,
-        capability_host: Arc<RwLock<CapabilityHost>>,
-        data_source_host: Arc<RwLock<DataSourceHost>>,
-    ) -> Self {
+    pub fn new_without_model_provider_extension_graph_for_tests() -> Self {
         let runtime_host = Arc::new(
-            RuntimeExtensionHost::from_shared_registries_with_artifact_resolver(
+            RuntimeExtensionHost::new_with_artifact_resolver(
                 time::OffsetDateTime::now_utc(),
-                provider_host,
-                capability_host,
-                data_source_host,
                 Arc::new(TestRuntimeArtifactResolver),
             )
             .expect("test runtime host must initialize"),
