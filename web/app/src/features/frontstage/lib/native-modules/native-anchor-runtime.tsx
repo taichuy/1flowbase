@@ -22,6 +22,10 @@ interface ScopedAnchorLink {
 }
 
 type AnchorLinkItem = NonNullable<AnchorProps['items']>[number];
+type AffixPhase = 'flow' | 'pinned' | 'end-clamp';
+
+const AFFIX_ENTER_EPSILON = 0.5;
+const AFFIX_EXIT_EPSILON = 2;
 
 function NativeBlockAnchorComponent({
   items,
@@ -44,7 +48,9 @@ function NativeBlockAnchorComponent({
   const detectedHrefRef = useRef('');
   const affixShellRef = useRef<HTMLDivElement | null>(null);
   const affixStickyRef = useRef<HTMLDivElement | null>(null);
-  const affixedRef = useRef(false);
+  const affixPhaseRef = useRef<AffixPhase>('flow');
+  const affixFlowHeightRef = useRef<number | null>(null);
+  const affixFlowOffsetRef = useRef(0);
   activeHrefRef.current = activeHref;
   const scoped = useMemo(
     () => createScopedItems(items, instanceId),
@@ -66,6 +72,13 @@ function NativeBlockAnchorComponent({
     }
     const shellRect = shell.getBoundingClientRect();
     const stickyRect = sticky.getBoundingClientRect();
+    if (affixPhaseRef.current === 'flow') {
+      affixFlowHeightRef.current = stickyRect.height;
+      affixFlowOffsetRef.current = stickyRect.top - shellRect.top;
+    }
+    const affixHeight = affixFlowHeightRef.current ?? stickyRect.height;
+    const normalTop = shellRect.top + affixFlowOffsetRef.current;
+    shell.style.height = `${affixHeight}px`;
     const hostRect = surface.targetRoot.host.getBoundingClientRect();
     const ownerRect =
       scrollOwner instanceof HTMLElement
@@ -76,15 +89,26 @@ function NativeBlockAnchorComponent({
     const desiredTop =
       offsetBottom === undefined
         ? ownerRect.top + (offsetTop ?? 0)
-        : ownerRect.bottom - offsetBottom - stickyRect.height;
+        : ownerRect.bottom - offsetBottom - affixHeight;
+    const nextPhase = resolveAffixPhase({
+      current: affixPhaseRef.current,
+      desiredTop,
+      endTop:
+        offsetBottom === undefined
+          ? hostRect.bottom - affixHeight
+          : hostRect.top,
+      normalTop,
+      placement: offsetBottom === undefined ? 'top' : 'bottom'
+    });
     const nextTop =
-      offsetBottom === undefined
-        ? Math.min(
-            hostRect.bottom - stickyRect.height,
-            Math.max(shellRect.top, desiredTop)
-          )
-        : Math.max(hostRect.top, Math.min(shellRect.top, desiredTop));
-    const nextAffixed = Math.abs(nextTop - shellRect.top) > 0.5;
+      nextPhase === 'flow'
+        ? normalTop
+        : nextPhase === 'pinned'
+          ? desiredTop
+          : offsetBottom === undefined
+            ? hostRect.bottom - affixHeight
+            : hostRect.top;
+    const nextAffixed = nextPhase !== 'flow';
     if (nextAffixed) {
       const containingBlock = resolveFixedContainingBlock(
         surface.targetRoot.host
@@ -93,20 +117,19 @@ function NativeBlockAnchorComponent({
         left: 0,
         top: 0
       };
-      shell.style.height = `${stickyRect.height}px`;
       sticky.style.left = `${shellRect.left - containingRect.left}px`;
       sticky.style.position = 'fixed';
       sticky.style.top = `${nextTop - containingRect.top}px`;
       sticky.style.width = `${shellRect.width}px`;
     } else {
-      shell.style.height = '';
       sticky.style.left = '';
       sticky.style.position = '';
       sticky.style.top = '';
       sticky.style.width = '';
     }
-    if (nextAffixed !== affixedRef.current) {
-      affixedRef.current = nextAffixed;
+    const wasAffixed = affixPhaseRef.current !== 'flow';
+    affixPhaseRef.current = nextPhase;
+    if (nextAffixed !== wasAffixed) {
       if (typeof affix === 'object') affix.onChange?.(nextAffixed);
     }
   }, [affix, offsetTop, scrollOwner, surface]);
@@ -247,6 +270,50 @@ function NativeBlockAnchorComponent({
   ) : (
     anchor
   );
+}
+
+function resolveAffixPhase({
+  current,
+  desiredTop,
+  endTop,
+  normalTop,
+  placement
+}: {
+  current: AffixPhase;
+  desiredTop: number;
+  endTop: number;
+  normalTop: number;
+  placement: 'top' | 'bottom';
+}): AffixPhase {
+  if (placement === 'top') {
+    if (current === 'flow') {
+      if (normalTop > desiredTop - AFFIX_ENTER_EPSILON) return 'flow';
+      return endTop <= desiredTop ? 'end-clamp' : 'pinned';
+    }
+    if (normalTop >= desiredTop + AFFIX_EXIT_EPSILON) return 'flow';
+    if (current === 'end-clamp') {
+      return endTop >= desiredTop + AFFIX_EXIT_EPSILON
+        ? 'pinned'
+        : 'end-clamp';
+    }
+    return endTop <= desiredTop - AFFIX_ENTER_EPSILON
+      ? 'end-clamp'
+      : 'pinned';
+  }
+
+  if (current === 'flow') {
+    if (normalTop < desiredTop + AFFIX_ENTER_EPSILON) return 'flow';
+    return endTop >= desiredTop ? 'end-clamp' : 'pinned';
+  }
+  if (normalTop <= desiredTop - AFFIX_EXIT_EPSILON) return 'flow';
+  if (current === 'end-clamp') {
+    return endTop <= desiredTop - AFFIX_EXIT_EPSILON
+      ? 'pinned'
+      : 'end-clamp';
+  }
+  return endTop >= desiredTop + AFFIX_ENTER_EPSILON
+    ? 'end-clamp'
+    : 'pinned';
 }
 
 function resolveFixedContainingBlock(host: Element): HTMLElement | null {

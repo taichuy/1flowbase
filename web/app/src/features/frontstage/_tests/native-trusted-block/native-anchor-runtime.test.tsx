@@ -150,6 +150,47 @@ describe('native block Anchor runtime adapter', () => {
     /* eslint-enable jest-dom/prefer-to-have-style */
   });
 
+  test('I1910-AC-008 keeps a monotonic scroll in the pinned state across geometry feedback', async () => {
+    const onChange = vi.fn();
+    const fixture = await mountAnchorSurface('affix-hysteresis', {
+      affix: { onChange }
+    });
+    const affixTrack = fixture.shadowRoot.querySelector<HTMLElement>(
+      '[data-flowbase-native-anchor-affix]'
+    );
+    const affix = affixTrack?.firstElementChild as HTMLElement | null;
+    if (!affixTrack || !affix) throw new Error('Missing Anchor affix shell.');
+    fixture.scrollOwner.style.transform = 'translate3d(0, 0, 0)';
+    fixture.scrollOwner.getBoundingClientRect = () =>
+      domRect({ top: 80, height: 240 });
+    fixture.root.getBoundingClientRect = () =>
+      domRect({ top: 0, height: 800 });
+    affixTrack.getBoundingClientRect = () =>
+      domRect({
+        top:
+          affix.style.position === 'fixed'
+            ? 80
+            : 100 - fixture.scrollOwner.scrollTop,
+        height: 94
+      });
+    affix.getBoundingClientRect = () =>
+      domRect({
+        top:
+          affix.style.position === 'fixed'
+            ? 80
+            : 100 - fixture.scrollOwner.scrollTop,
+        height: 94
+      });
+
+    for (const scrollTop of [30, 32, 34]) {
+      fixture.scrollOwner.scrollTop = scrollTop;
+      fireEvent.scroll(fixture.scrollOwner);
+      await nextAnimationFrame();
+    }
+
+    expect(onChange.mock.calls.map(([affixed]) => affixed)).toEqual([true]);
+  });
+
   test('I1910-AC-003 chooses a fixed viewport before the page scroll owner', () => {
     const pageScrollOwner = document.createElement('main');
     pageScrollOwner.dataset.flowbaseFrontstageScrollOwner = '';
@@ -198,7 +239,7 @@ describe('native block Anchor runtime adapter', () => {
     const onClick = vi.fn((event: MouseEvent<HTMLElement>) =>
       event.preventDefault()
     );
-    const fixture = await mountAnchorSurface('cancelled', onClick);
+    const fixture = await mountAnchorSurface('cancelled', { onClick });
     const target = fixture.shadowRoot.getElementById('part-2');
     if (!target) throw new Error('Missing anchor target.');
     target.getBoundingClientRect = () => domRect({ top: 500, height: 100 });
@@ -235,7 +276,7 @@ describe('native block Anchor runtime adapter', () => {
 
 async function mountAnchorSurface(
   suffix = 'default',
-  onClick?: AnchorProps['onClick']
+  anchorProps: Pick<AnchorProps, 'affix' | 'onClick'> = {}
 ) {
   const registry = createFrontstageNativeReactModuleRegistry();
   const antdModule = await registry.load('antd');
@@ -264,7 +305,7 @@ async function mountAnchorSurface(
               { key: 'part-1', href: '#part-1', title: 'Part 1' },
               { key: 'part-2', href: '#part-2', title: 'Part 2' }
             ]}
-            onClick={onClick}
+            {...anchorProps}
           />
         </>
       )}
@@ -279,6 +320,10 @@ async function mountAnchorSurface(
     name: 'Part 2'
   });
   return { root, scrollOwner, scrollTo, shadowRoot, view };
+}
+
+async function nextAnimationFrame(): Promise<void> {
+  await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
 }
 
 function createPlan(): NativeTrustedBlockPreparePlan {
