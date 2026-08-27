@@ -118,13 +118,17 @@ describe('native block Anchor runtime adapter', () => {
     );
   });
 
-  test('I1910-AC-001 keeps an affixed Anchor visible inside a transformed grid item', async () => {
+  test('I1910-AC-001/009 delegates affix geometry to a native sticky track', async () => {
     const fixture = await mountAnchorSurface('affix');
     const affixTrack = fixture.shadowRoot.querySelector<HTMLElement>(
       '[data-flowbase-native-anchor-affix]'
     );
     const affix = affixTrack?.firstElementChild as HTMLElement | null;
     if (!affixTrack || !affix) throw new Error('Missing Anchor affix shell.');
+    const mount = fixture.shadowRoot.querySelector<HTMLElement>(
+      '[data-flowbase-native-trusted-block-mount]'
+    );
+    if (!mount) throw new Error('Missing native block mount.');
     fixture.scrollOwner.getBoundingClientRect = () =>
       domRect({ top: 80, height: 240 });
     fixture.root.getBoundingClientRect = () =>
@@ -135,19 +139,15 @@ describe('native block Anchor runtime adapter', () => {
 
     fireEvent.scroll(fixture.scrollOwner);
 
-    /* eslint-disable jest-dom/prefer-to-have-style -- toHaveStyle cannot inspect imperative styles inside this test ShadowRoot. */
-    await waitFor(() =>
-      expect(affix).toHaveAttribute(
-        'style',
-        expect.stringContaining('position: fixed')
-      )
-    );
-    expect(affix).toHaveAttribute('style', expect.stringContaining('top: 0px'));
-    expect(affixTrack).toHaveAttribute(
-      'style',
-      expect.stringContaining('height: 94px')
-    );
-    /* eslint-enable jest-dom/prefer-to-have-style */
+    expect(affixTrack).toHaveStyle({ position: 'sticky', top: '0px' });
+    expect(affix).not.toHaveStyle({ position: 'fixed' });
+    expect(affix).not.toHaveStyle({ top: '0px' });
+    expect(affix).not.toHaveStyle({ left: '0px' });
+    expect(affix).not.toHaveStyle({ width: '100%' });
+    expect(mount).toHaveStyle({
+      overflowX: 'visible',
+      overflowY: 'visible'
+    });
   });
 
   test('I1910-AC-008 keeps a monotonic scroll in the pinned state across geometry feedback', async () => {
@@ -158,29 +158,19 @@ describe('native block Anchor runtime adapter', () => {
     const affixTrack = fixture.shadowRoot.querySelector<HTMLElement>(
       '[data-flowbase-native-anchor-affix]'
     );
+    const sentinel = fixture.shadowRoot.querySelector<HTMLElement>(
+      '[data-flowbase-native-anchor-affix-sentinel]'
+    );
     const affix = affixTrack?.firstElementChild as HTMLElement | null;
-    if (!affixTrack || !affix) throw new Error('Missing Anchor affix shell.');
+    if (!affixTrack || !sentinel || !affix) {
+      throw new Error('Missing Anchor affix shell.');
+    }
     fixture.scrollOwner.style.transform = 'translate3d(0, 0, 0)';
     fixture.scrollOwner.getBoundingClientRect = () =>
       domRect({ top: 80, height: 240 });
-    fixture.root.getBoundingClientRect = () =>
-      domRect({ top: 0, height: 800 });
-    affixTrack.getBoundingClientRect = () =>
-      domRect({
-        top:
-          affix.style.position === 'fixed'
-            ? 80
-            : 100 - fixture.scrollOwner.scrollTop,
-        height: 94
-      });
-    affix.getBoundingClientRect = () =>
-      domRect({
-        top:
-          affix.style.position === 'fixed'
-            ? 80
-            : 100 - fixture.scrollOwner.scrollTop,
-        height: 94
-      });
+    sentinel.getBoundingClientRect = () =>
+      domRect({ top: 100 - fixture.scrollOwner.scrollTop, height: 0 });
+    affix.getBoundingClientRect = () => domRect({ top: 80, height: 94 });
 
     for (const scrollTop of [30, 32, 34]) {
       fixture.scrollOwner.scrollTop = scrollTop;

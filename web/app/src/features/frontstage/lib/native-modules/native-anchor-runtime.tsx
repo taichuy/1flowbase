@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -22,10 +23,16 @@ interface ScopedAnchorLink {
 }
 
 type AnchorLinkItem = NonNullable<AnchorProps['items']>[number];
-type AffixPhase = 'flow' | 'pinned' | 'end-clamp';
 
 const AFFIX_ENTER_EPSILON = 0.5;
 const AFFIX_EXIT_EPSILON = 2;
+const affixOverflowLeases = new WeakMap<HTMLElement, AffixOverflowLease>();
+
+interface AffixOverflowLease {
+  count: number;
+  overflowX: string;
+  overflowY: string;
+}
 
 function NativeBlockAnchorComponent({
   items,
@@ -46,40 +53,36 @@ function NativeBlockAnchorComponent({
   const [activeHref, setActiveHref] = useState('');
   const activeHrefRef = useRef(activeHref);
   const detectedHrefRef = useRef('');
-  const affixShellRef = useRef<HTMLDivElement | null>(null);
+  const affixSentinelRef = useRef<HTMLSpanElement | null>(null);
   const affixStickyRef = useRef<HTMLDivElement | null>(null);
-  const affixPhaseRef = useRef<AffixPhase>('flow');
-  const affixFlowHeightRef = useRef<number | null>(null);
-  const affixFlowOffsetRef = useRef(0);
+  const affixedRef = useRef(false);
   activeHrefRef.current = activeHref;
   const scoped = useMemo(
     () => createScopedItems(items, instanceId),
     [instanceId, items]
   );
   const scrollOwner = getContainer?.() ?? surface?.scrollOwner;
+  const affixEnabled = Boolean(affix);
+
+  useLayoutEffect(() => {
+    affixedRef.current = false;
+    if (!surface || !affixEnabled) return;
+    return acquireAffixOverflowLease(surface.targetRoot);
+  }, [affixEnabled, surface]);
 
   const measureAffix = useCallback(() => {
-    const shell = affixShellRef.current;
+    const sentinel = affixSentinelRef.current;
     const sticky = affixStickyRef.current;
     if (
-      !surface ||
       !scrollOwner ||
       !affix ||
-      !shell ||
+      !sentinel ||
       !sticky
     ) {
       return;
     }
-    const shellRect = shell.getBoundingClientRect();
+    const sentinelRect = sentinel.getBoundingClientRect();
     const stickyRect = sticky.getBoundingClientRect();
-    if (affixPhaseRef.current === 'flow') {
-      affixFlowHeightRef.current = stickyRect.height;
-      affixFlowOffsetRef.current = stickyRect.top - shellRect.top;
-    }
-    const affixHeight = affixFlowHeightRef.current ?? stickyRect.height;
-    const normalTop = shellRect.top + affixFlowOffsetRef.current;
-    shell.style.height = `${affixHeight}px`;
-    const hostRect = surface.targetRoot.host.getBoundingClientRect();
     const ownerRect =
       scrollOwner instanceof HTMLElement
         ? scrollOwner.getBoundingClientRect()
@@ -89,50 +92,18 @@ function NativeBlockAnchorComponent({
     const desiredTop =
       offsetBottom === undefined
         ? ownerRect.top + (offsetTop ?? 0)
-        : ownerRect.bottom - offsetBottom - affixHeight;
-    const nextPhase = resolveAffixPhase({
-      current: affixPhaseRef.current,
+        : ownerRect.bottom - offsetBottom - stickyRect.height;
+    const nextAffixed = resolveAffixed({
+      affixed: affixedRef.current,
       desiredTop,
-      endTop:
-        offsetBottom === undefined
-          ? hostRect.bottom - affixHeight
-          : hostRect.top,
-      normalTop,
+      normalTop: sentinelRect.top,
       placement: offsetBottom === undefined ? 'top' : 'bottom'
     });
-    const nextTop =
-      nextPhase === 'flow'
-        ? normalTop
-        : nextPhase === 'pinned'
-          ? desiredTop
-          : offsetBottom === undefined
-            ? hostRect.bottom - affixHeight
-            : hostRect.top;
-    const nextAffixed = nextPhase !== 'flow';
-    if (nextAffixed) {
-      const containingBlock = resolveFixedContainingBlock(
-        surface.targetRoot.host
-      );
-      const containingRect = containingBlock?.getBoundingClientRect() ?? {
-        left: 0,
-        top: 0
-      };
-      sticky.style.left = `${shellRect.left - containingRect.left}px`;
-      sticky.style.position = 'fixed';
-      sticky.style.top = `${nextTop - containingRect.top}px`;
-      sticky.style.width = `${shellRect.width}px`;
-    } else {
-      sticky.style.left = '';
-      sticky.style.position = '';
-      sticky.style.top = '';
-      sticky.style.width = '';
-    }
-    const wasAffixed = affixPhaseRef.current !== 'flow';
-    affixPhaseRef.current = nextPhase;
-    if (nextAffixed !== wasAffixed) {
+    if (nextAffixed !== affixedRef.current) {
+      affixedRef.current = nextAffixed;
       if (typeof affix === 'object') affix.onChange?.(nextAffixed);
     }
-  }, [affix, offsetTop, scrollOwner, surface]);
+  }, [affix, offsetTop, scrollOwner]);
 
   const publishActiveHref = useCallback(
     (nextHref: string) => {
@@ -256,81 +227,84 @@ function NativeBlockAnchorComponent({
     />
   );
   return affix ? (
-    <div
-      ref={affixShellRef}
-      data-flowbase-native-anchor-affix=""
-      style={{ width: '100%' }}
-    >
+    <>
+      <span
+        ref={affixSentinelRef}
+        data-flowbase-native-anchor-affix-sentinel=""
+        aria-hidden="true"
+        style={{ display: 'block', height: 0, pointerEvents: 'none' }}
+      />
       <div
-        ref={affixStickyRef}
+        data-flowbase-native-anchor-affix=""
+        style={{
+          display: 'flow-root',
+          position: 'sticky',
+          width: '100%',
+          ...(typeof affix === 'object' && affix.offsetBottom !== undefined
+            ? { bottom: affix.offsetBottom }
+            : { top: offsetTop ?? 0 })
+        }}
       >
-        {anchor}
+        <div ref={affixStickyRef}>{anchor}</div>
       </div>
-    </div>
+    </>
   ) : (
     anchor
   );
 }
 
-function resolveAffixPhase({
-  current,
+function resolveAffixed({
+  affixed,
   desiredTop,
-  endTop,
   normalTop,
   placement
 }: {
-  current: AffixPhase;
+  affixed: boolean;
   desiredTop: number;
-  endTop: number;
   normalTop: number;
   placement: 'top' | 'bottom';
-}): AffixPhase {
+}): boolean {
   if (placement === 'top') {
-    if (current === 'flow') {
-      if (normalTop > desiredTop - AFFIX_ENTER_EPSILON) return 'flow';
-      return endTop <= desiredTop ? 'end-clamp' : 'pinned';
-    }
-    if (normalTop >= desiredTop + AFFIX_EXIT_EPSILON) return 'flow';
-    if (current === 'end-clamp') {
-      return endTop >= desiredTop + AFFIX_EXIT_EPSILON
-        ? 'pinned'
-        : 'end-clamp';
-    }
-    return endTop <= desiredTop - AFFIX_ENTER_EPSILON
-      ? 'end-clamp'
-      : 'pinned';
+    return affixed
+      ? normalTop < desiredTop + AFFIX_EXIT_EPSILON
+      : normalTop <= desiredTop - AFFIX_ENTER_EPSILON;
   }
-
-  if (current === 'flow') {
-    if (normalTop < desiredTop + AFFIX_ENTER_EPSILON) return 'flow';
-    return endTop >= desiredTop ? 'end-clamp' : 'pinned';
-  }
-  if (normalTop <= desiredTop - AFFIX_EXIT_EPSILON) return 'flow';
-  if (current === 'end-clamp') {
-    return endTop <= desiredTop - AFFIX_EXIT_EPSILON
-      ? 'pinned'
-      : 'end-clamp';
-  }
-  return endTop >= desiredTop + AFFIX_ENTER_EPSILON
-    ? 'end-clamp'
-    : 'pinned';
+  return affixed
+    ? normalTop > desiredTop - AFFIX_EXIT_EPSILON
+    : normalTop >= desiredTop + AFFIX_ENTER_EPSILON;
 }
 
-function resolveFixedContainingBlock(host: Element): HTMLElement | null {
-  let candidate = host.parentElement;
-  while (candidate) {
-    const style = window.getComputedStyle(candidate);
-    if (
-      style.transform !== 'none' ||
-      style.perspective !== 'none' ||
-      style.filter !== 'none' ||
-      style.willChange.split(',').some((value) => value.trim() === 'transform')
-    ) {
-      return candidate;
-    }
-    candidate = candidate.parentElement;
+function acquireAffixOverflowLease(root: ShadowRoot): () => void {
+  const mount = root.querySelector<HTMLElement>(
+    '[data-flowbase-native-trusted-block-mount]'
+  );
+  if (!mount) {
+    throw new Error('Native block Anchor requires an active portal mount.');
   }
-  return null;
+  const activeLease = affixOverflowLeases.get(mount);
+  if (activeLease) {
+    activeLease.count += 1;
+  } else {
+    affixOverflowLeases.set(mount, {
+      count: 1,
+      overflowX: mount.style.overflowX,
+      overflowY: mount.style.overflowY
+    });
+    // A horizontal-only overflow container computes to overflow-y:auto and
+    // becomes the sticky scroll owner even when it has no vertical range.
+    // Affixed blocks therefore use the real surface scroll owner on both axes.
+    mount.style.overflowX = 'visible';
+    mount.style.overflowY = 'visible';
+  }
+  return () => {
+    const lease = affixOverflowLeases.get(mount);
+    if (!lease) return;
+    lease.count -= 1;
+    if (lease.count > 0) return;
+    mount.style.overflowX = lease.overflowX;
+    mount.style.overflowY = lease.overflowY;
+    affixOverflowLeases.delete(mount);
+  };
 }
 
 export const NativeBlockAnchor = Object.assign(NativeBlockAnchorComponent, {
