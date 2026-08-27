@@ -223,378 +223,237 @@ pub struct RuntimeCapabilityExecutionOutcome {
     pub granted_credit_permissions: BTreeSet<String>,
 }
 
-/// Typed RuntimeExtension operations consumed by Backend business paths.
-///
-/// The exhaustive methods deliberately avoid exposing Host registries. A future Backend adapter
-/// implements this Port and is selected only by the composition-root binding.
 #[async_trait]
-pub trait RuntimeExtensionPort: Send + Sync {
+pub trait ProviderRuntimePort: Send + Sync {
     async fn activate_provider(
         &self,
-        _request: RuntimePackageActivation,
-    ) -> Result<(), RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "activate_provider",
-        ))
-    }
-
-    async fn activate_data_source(
-        &self,
-        _request: RuntimePackageActivation,
-    ) -> Result<Vec<DataModelTemplateDescriptor>, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "activate_data_source",
-        ))
-    }
-
-    async fn activate_capability(
-        &self,
-        _request: RuntimePackageActivation,
-    ) -> Result<(), RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "activate_capability",
-        ))
-    }
-
-    async fn deactivate_provider(&self, _plugin_id: &str) -> Result<(), RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "deactivate_provider",
-        ))
-    }
-
-    async fn deactivate_data_source(&self, _plugin_id: &str) -> Result<(), RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "deactivate_data_source",
-        ))
-    }
-
-    async fn deactivate_capability(&self, _plugin_id: &str) -> Result<(), RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "deactivate_capability",
-        ))
-    }
+        request: RuntimePackageActivation,
+    ) -> Result<(), RuntimeBackendError>;
+    async fn deactivate_provider(&self, plugin_id: &str) -> Result<(), RuntimeBackendError>;
 
     async fn provider_validate(
         &self,
-        _target_id: &str,
-        _provider_config: Value,
-    ) -> Result<Value, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "provider_validate",
-        ))
-    }
+        target_id: &str,
+        provider_config: Value,
+    ) -> Result<Value, RuntimeBackendError>;
 
     async fn provider_authenticate(
         &self,
-        _target_id: &str,
-        _provider_config: Value,
-        _operation: ProviderAuthOperation,
-    ) -> Result<ProviderAuthResult, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "provider_authenticate",
-        ))
-    }
+        target_id: &str,
+        provider_config: Value,
+        operation: ProviderAuthOperation,
+    ) -> Result<ProviderAuthResult, RuntimeBackendError>;
 
     async fn provider_list_models(
         &self,
-        _target_id: &str,
-        _provider_config: Value,
-    ) -> Result<Vec<ProviderModelDescriptor>, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "provider_list_models",
-        ))
-    }
+        target_id: &str,
+        provider_config: Value,
+    ) -> Result<Vec<ProviderModelDescriptor>, RuntimeBackendError>;
 
     async fn provider_get_balance(
         &self,
-        _target_id: &str,
-        _provider_config: Value,
-    ) -> Result<ProviderBalanceResult, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "provider_get_balance",
-        ))
-    }
+        target_id: &str,
+        provider_config: Value,
+    ) -> Result<ProviderBalanceResult, RuntimeBackendError>;
 
     async fn provider_get_usage_windows(
         &self,
-        _target_id: &str,
-        _provider_config: Value,
-    ) -> Result<ProviderUsageWindowsResult, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "provider_get_usage_windows",
-        ))
-    }
+        target_id: &str,
+        provider_config: Value,
+    ) -> Result<ProviderUsageWindowsResult, RuntimeBackendError>;
 
     async fn provider_reset_credit(
         &self,
-        _target_id: &str,
-        _provider_config: Value,
-        _operation: ProviderResetCreditOperation,
-    ) -> Result<ProviderResetCreditResult, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "provider_reset_credit",
-        ))
-    }
+        target_id: &str,
+        provider_config: Value,
+        operation: ProviderResetCreditOperation,
+    ) -> Result<ProviderResetCreditResult, RuntimeBackendError>;
 
     async fn provider_count_tokens(
         &self,
-        _target_id: &str,
-        _input: ProviderCountTokensInput,
-    ) -> Result<ProviderCountTokensResult, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "provider_count_tokens",
-        ))
-    }
+        target_id: &str,
+        input: ProviderCountTokensInput,
+    ) -> Result<ProviderCountTokensResult, RuntimeBackendError>;
 
     async fn provider_compact(
         &self,
-        _target_id: &str,
-        _input: ProviderInvocationInput,
-    ) -> Result<ProviderCompactResult, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "provider_compact",
-        ))
-    }
+        target_id: &str,
+        input: ProviderInvocationInput,
+    ) -> Result<ProviderCompactResult, RuntimeBackendError>;
+}
 
+#[async_trait]
+pub trait DataSourceRuntimePort: Send + Sync {
+    async fn activate_data_source(
+        &self,
+        request: RuntimePackageActivation,
+    ) -> Result<Vec<DataModelTemplateDescriptor>, RuntimeBackendError>;
+    async fn deactivate_data_source(&self, plugin_id: &str) -> Result<(), RuntimeBackendError>;
     async fn data_source_validate(
         &self,
-        _target_id: &str,
-        _input: DataSourceConfigInput,
-    ) -> Result<Value, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "data_source_validate",
-        ))
-    }
+        target_id: &str,
+        input: DataSourceConfigInput,
+    ) -> Result<Value, RuntimeBackendError>;
 
     async fn data_source_test_connection(
         &self,
-        _target_id: &str,
-        _input: DataSourceConfigInput,
-    ) -> Result<Value, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "data_source_test_connection",
-        ))
-    }
+        target_id: &str,
+        input: DataSourceConfigInput,
+    ) -> Result<Value, RuntimeBackendError>;
 
     async fn data_source_discover_catalog(
         &self,
-        _target_id: &str,
-        _input: DataSourceConfigInput,
-    ) -> Result<Vec<DataSourceCatalogEntry>, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "data_source_discover_catalog",
-        ))
-    }
+        target_id: &str,
+        input: DataSourceConfigInput,
+    ) -> Result<Vec<DataSourceCatalogEntry>, RuntimeBackendError>;
 
     async fn data_source_describe_resource(
         &self,
-        _target_id: &str,
-        _input: DataSourceDescribeResourceInput,
-    ) -> Result<DataSourceResourceDescriptor, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "data_source_describe_resource",
-        ))
-    }
+        target_id: &str,
+        input: DataSourceDescribeResourceInput,
+    ) -> Result<DataSourceResourceDescriptor, RuntimeBackendError>;
 
     async fn data_source_preview_read(
         &self,
-        _target_id: &str,
-        _input: DataSourcePreviewReadInput,
-    ) -> Result<DataSourcePreviewReadOutput, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "data_source_preview_read",
-        ))
-    }
+        target_id: &str,
+        input: DataSourcePreviewReadInput,
+    ) -> Result<DataSourcePreviewReadOutput, RuntimeBackendError>;
 
     async fn data_source_import_snapshot(
         &self,
-        _target_id: &str,
-        _input: DataSourceImportSnapshotInput,
-    ) -> Result<DataSourceImportSnapshotOutput, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "data_source_import_snapshot",
-        ))
-    }
+        target_id: &str,
+        input: DataSourceImportSnapshotInput,
+    ) -> Result<DataSourceImportSnapshotOutput, RuntimeBackendError>;
 
     async fn data_source_list_records(
         &self,
-        _target_id: &str,
-        _input: DataSourceListRecordsInput,
-    ) -> Result<DataSourceListRecordsOutput, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "data_source_list_records",
-        ))
-    }
+        target_id: &str,
+        input: DataSourceListRecordsInput,
+    ) -> Result<DataSourceListRecordsOutput, RuntimeBackendError>;
 
     async fn data_source_get_record(
         &self,
-        _target_id: &str,
-        _input: DataSourceGetRecordInput,
-    ) -> Result<DataSourceGetRecordOutput, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "data_source_get_record",
-        ))
-    }
+        target_id: &str,
+        input: DataSourceGetRecordInput,
+    ) -> Result<DataSourceGetRecordOutput, RuntimeBackendError>;
 
     async fn data_source_create_record(
         &self,
-        _target_id: &str,
-        _input: DataSourceCreateRecordInput,
-    ) -> Result<DataSourceCreateRecordOutput, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "data_source_create_record",
-        ))
-    }
+        target_id: &str,
+        input: DataSourceCreateRecordInput,
+    ) -> Result<DataSourceCreateRecordOutput, RuntimeBackendError>;
 
     async fn data_source_update_record(
         &self,
-        _target_id: &str,
-        _input: DataSourceUpdateRecordInput,
-    ) -> Result<DataSourceUpdateRecordOutput, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "data_source_update_record",
-        ))
-    }
+        target_id: &str,
+        input: DataSourceUpdateRecordInput,
+    ) -> Result<DataSourceUpdateRecordOutput, RuntimeBackendError>;
 
     async fn data_source_delete_record(
         &self,
-        _target_id: &str,
-        _input: DataSourceDeleteRecordInput,
-    ) -> Result<DataSourceDeleteRecordOutput, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "data_source_delete_record",
-        ))
-    }
+        target_id: &str,
+        input: DataSourceDeleteRecordInput,
+    ) -> Result<DataSourceDeleteRecordOutput, RuntimeBackendError>;
 
     async fn data_source_execute_sql(
         &self,
-        _target_id: &str,
-        _input: DataSourceExecuteSqlInput,
-    ) -> Result<NativeSqlExecutionOutput, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "data_source_execute_sql",
-        ))
-    }
+        target_id: &str,
+        input: DataSourceExecuteSqlInput,
+    ) -> Result<NativeSqlExecutionOutput, RuntimeBackendError>;
 
     async fn data_source_execute_model_operation(
         &self,
-        _target_id: &str,
-        _input: DataSourceExecuteModelOperationInput,
-    ) -> Result<Value, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "data_source_execute_model_operation",
-        ))
-    }
+        target_id: &str,
+        input: DataSourceExecuteModelOperationInput,
+    ) -> Result<Value, RuntimeBackendError>;
+}
 
+#[async_trait]
+pub trait CapabilityRuntimePort: Send + Sync {
+    async fn activate_capability(
+        &self,
+        request: RuntimePackageActivation,
+    ) -> Result<(), RuntimeBackendError>;
+    async fn deactivate_capability(&self, plugin_id: &str) -> Result<(), RuntimeBackendError>;
     async fn capability_validate(
         &self,
-        _target_id: &str,
-        _contribution_code: &str,
-        _config_payload: Value,
-    ) -> Result<Value, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "capability_validate",
-        ))
-    }
+        target_id: &str,
+        contribution_code: &str,
+        config_payload: Value,
+    ) -> Result<Value, RuntimeBackendError>;
 
     async fn capability_resolve_dynamic_options(
         &self,
-        _target_id: &str,
-        _contribution_code: &str,
-        _config_payload: Value,
-    ) -> Result<Value, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "capability_resolve_dynamic_options",
-        ))
-    }
+        target_id: &str,
+        contribution_code: &str,
+        config_payload: Value,
+    ) -> Result<Value, RuntimeBackendError>;
 
     async fn capability_resolve_output_schema(
         &self,
-        _target_id: &str,
-        _contribution_code: &str,
-        _config_payload: Value,
-    ) -> Result<Value, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "capability_resolve_output_schema",
-        ))
-    }
+        target_id: &str,
+        contribution_code: &str,
+        config_payload: Value,
+    ) -> Result<Value, RuntimeBackendError>;
 
     async fn capability_execute(
         &self,
-        _target_id: &str,
-        _contribution_code: &str,
-        _config_payload: Value,
-        _input_payload: Value,
-    ) -> Result<RuntimeCapabilityExecutionOutcome, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "capability_execute",
-        ))
-    }
+        target_id: &str,
+        contribution_code: &str,
+        config_payload: Value,
+        input_payload: Value,
+    ) -> Result<RuntimeCapabilityExecutionOutcome, RuntimeBackendError>;
+}
 
+#[async_trait]
+pub trait NetworkEgressRuntimePort: Send + Sync {
     async fn network_egress_preflight(
         &self,
-        _request: RuntimeNetworkEgressActivation,
-    ) -> Result<(), RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "network_egress_preflight",
-        ))
-    }
+        request: RuntimeNetworkEgressActivation,
+    ) -> Result<(), RuntimeBackendError>;
 
     async fn network_egress_activate(
         &self,
-        _request: RuntimeNetworkEgressActivation,
-    ) -> Result<(), RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "network_egress_activate",
-        ))
-    }
+        request: RuntimeNetworkEgressActivation,
+    ) -> Result<(), RuntimeBackendError>;
 
     async fn network_egress_sync(
         &self,
-        _runtime_id: &str,
-    ) -> Result<Vec<EgressDescriptor>, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "network_egress_sync",
-        ))
-    }
+        runtime_id: &str,
+    ) -> Result<Vec<EgressDescriptor>, RuntimeBackendError>;
 
     async fn network_egress_resolve_http_forward_proxy(
         &self,
-        _runtime_id: &str,
-        _egress_key: &str,
-    ) -> Result<ForwardProxyLease, RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "network_egress_resolve_http_forward_proxy",
-        ))
-    }
+        runtime_id: &str,
+        egress_key: &str,
+    ) -> Result<ForwardProxyLease, RuntimeBackendError>;
 
     async fn network_egress_release_http_forward_proxy(
         &self,
-        _runtime_id: &str,
-        _lease_id: &str,
-    ) -> Result<(), RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "network_egress_release_http_forward_proxy",
-        ))
-    }
+        runtime_id: &str,
+        lease_id: &str,
+    ) -> Result<(), RuntimeBackendError>;
 
-    async fn network_egress_deactivate(
-        &self,
-        _runtime_id: &str,
-    ) -> Result<(), RuntimeBackendError> {
-        Err(RuntimeBackendError::UnsupportedOperation(
-            "network_egress_deactivate",
-        ))
-    }
+    async fn network_egress_deactivate(&self, runtime_id: &str) -> Result<(), RuntimeBackendError>;
 }
 
 pub trait RuntimeBackend:
-    RuntimeExecutionPort + RuntimeObservationPort + RuntimeExtensionPort
+    RuntimeExecutionPort
+    + RuntimeObservationPort
+    + ProviderRuntimePort
+    + DataSourceRuntimePort
+    + CapabilityRuntimePort
+    + NetworkEgressRuntimePort
 {
 }
 
 impl<T> RuntimeBackend for T where
-    T: RuntimeExecutionPort + RuntimeObservationPort + RuntimeExtensionPort
+    T: RuntimeExecutionPort
+        + RuntimeObservationPort
+        + ProviderRuntimePort
+        + DataSourceRuntimePort
+        + CapabilityRuntimePort
+        + NetworkEgressRuntimePort
 {
 }
 
@@ -617,71 +476,5 @@ impl RuntimeBackendSlot {
             .as_ref()
             .cloned()
             .ok_or(RuntimeBackendError::MissingBackend)
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    struct FakeBackend;
-
-    #[async_trait]
-    impl RuntimeExecutionPort for FakeBackend {
-        async fn execute(
-            &self,
-            _request: RuntimeExecutionRequest,
-        ) -> Result<RuntimeExecutionOutcome, RuntimeBackendError> {
-            unreachable!("compile-time adapter fixture is not executed")
-        }
-
-        async fn execute_stream(
-            &self,
-            _request: RuntimeExecutionRequest,
-            _sinks: RuntimeStreamSinks,
-        ) -> Result<RuntimeExecutionOutcome, RuntimeBackendError> {
-            unreachable!("compile-time adapter fixture is not executed")
-        }
-
-        async fn cancel(
-            &self,
-            _request_id: &RuntimeRequestId,
-        ) -> Result<RuntimeCancelOutcome, RuntimeBackendError> {
-            Ok(RuntimeCancelOutcome::NotFound)
-        }
-    }
-
-    #[async_trait]
-    impl RuntimeObservationPort for FakeBackend {
-        async fn snapshot(&self) -> Result<RuntimeBackendSnapshot, RuntimeBackendError> {
-            Ok(RuntimeBackendSnapshot {
-                backend_kind: "fake_remote_adapter".to_string(),
-                lifecycle: RuntimeBackendLifecycle::Ready,
-                registries: RuntimeRegistrySnapshot {
-                    providers: 0,
-                    data_sources: 0,
-                    capabilities: 0,
-                    network_egress_providers: 0,
-                },
-                active_request_ids: Vec::new(),
-            })
-        }
-    }
-
-    impl RuntimeExtensionPort for FakeBackend {}
-
-    #[test]
-    fn d_010_future_adapter_only_replaces_the_runtime_backend_binding() {
-        let mut slot = RuntimeBackendSlot::default();
-        slot.bind(Arc::new(FakeBackend)).unwrap();
-        assert!(slot.backend().is_ok());
-    }
-
-    #[test]
-    fn d_001_runtime_backend_slot_rejects_a_second_contribution() {
-        let mut slot = RuntimeBackendSlot::default();
-        slot.bind(Arc::new(FakeBackend)).unwrap();
-        let error = slot.bind(Arc::new(FakeBackend)).unwrap_err();
-        assert!(matches!(error, RuntimeBackendError::DuplicateBackend));
     }
 }

@@ -6,12 +6,12 @@ use std::{
 
 use async_trait::async_trait;
 use runtime_core::runtime_backend::{
+    CapabilityRuntimePort, DataSourceRuntimePort, NetworkEgressRuntimePort, ProviderRuntimePort,
     RuntimeArtifactReference, RuntimeBackendError, RuntimeBackendLifecycle, RuntimeBackendSnapshot,
     RuntimeCancelOutcome, RuntimeCapabilityExecutionOutcome, RuntimeExecutionOutcome,
-    RuntimeExecutionPort, RuntimeExecutionRequest, RuntimeExtensionPort,
-    RuntimeLegacyManifestEligibility, RuntimeNetworkEgressActivation, RuntimeObservationPort,
-    RuntimePackageActivation, RuntimeRegistrySnapshot, RuntimeRequestId, RuntimeStreamEventSink,
-    RuntimeStreamSinks,
+    RuntimeExecutionPort, RuntimeExecutionRequest, RuntimeLegacyManifestEligibility,
+    RuntimeNetworkEgressActivation, RuntimeObservationPort, RuntimePackageActivation,
+    RuntimeRegistrySnapshot, RuntimeRequestId, RuntimeStreamEventSink, RuntimeStreamSinks,
 };
 
 #[async_trait]
@@ -260,7 +260,7 @@ fn legacy_eligibility(
 }
 
 #[async_trait]
-impl RuntimeExtensionPort for RuntimeExtensionHost {
+impl ProviderRuntimePort for RuntimeExtensionHost {
     async fn activate_provider(
         &self,
         request: RuntimePackageActivation,
@@ -285,68 +285,8 @@ impl RuntimeExtensionPort for RuntimeExtensionHost {
         .map_err(RuntimeBackendError::from)
     }
 
-    async fn activate_data_source(
-        &self,
-        request: RuntimePackageActivation,
-    ) -> Result<Vec<extension_contracts::DataModelTemplateDescriptor>, RuntimeBackendError> {
-        self.ensure_activating()?;
-        let package_root = self.artifact_resolver.resolve(&request.artifact).await?;
-        let mut host = self.data_source_host.write().await;
-        if !host.is_loaded(&request.plugin_id) {
-            match request.legacy_eligibility {
-                Some(eligibility) => {
-                    host.load_legacy_installed(&package_root, &legacy_eligibility(eligibility))
-                        .await
-                }
-                None => host.load(&package_root).await,
-            }
-            .map_err(RuntimeBackendError::from)?;
-        }
-        host.data_model_templates(&request.plugin_id)
-            .map_err(RuntimeBackendError::from)
-    }
-
-    async fn activate_capability(
-        &self,
-        request: RuntimePackageActivation,
-    ) -> Result<(), RuntimeBackendError> {
-        self.ensure_activating()?;
-        let package_root = self.artifact_resolver.resolve(&request.artifact).await?;
-        let mut host = self.capability_host.write().await;
-        if host.is_loaded(&request.plugin_id) {
-            return Ok(());
-        }
-        match request.legacy_eligibility {
-            Some(eligibility) => {
-                host.load_legacy_installed(&package_root, &legacy_eligibility(eligibility))
-                    .await
-            }
-            None => host.load(&package_root).await,
-        }
-        .map(|_| ())
-        .map_err(RuntimeBackendError::from)
-    }
-
     async fn deactivate_provider(&self, plugin_id: &str) -> Result<(), RuntimeBackendError> {
         self.provider_host
-            .write()
-            .await
-            .unload(plugin_id)
-            .await
-            .map_err(RuntimeBackendError::from)
-    }
-
-    async fn deactivate_data_source(&self, plugin_id: &str) -> Result<(), RuntimeBackendError> {
-        self.data_source_host
-            .write()
-            .await
-            .unload(plugin_id)
-            .await
-            .map_err(RuntimeBackendError::from)
-    }
-
-    async fn deactivate_capability(&self, plugin_id: &str) -> Result<(), RuntimeBackendError> {
-        self.capability_host
             .write()
             .await
             .unload(plugin_id)
@@ -497,6 +437,39 @@ impl RuntimeExtensionPort for RuntimeExtensionHost {
         operation
             .await
             .map(|output| output.result)
+            .map_err(RuntimeBackendError::from)
+    }
+}
+
+#[async_trait]
+impl DataSourceRuntimePort for RuntimeExtensionHost {
+    async fn activate_data_source(
+        &self,
+        request: RuntimePackageActivation,
+    ) -> Result<Vec<extension_contracts::DataModelTemplateDescriptor>, RuntimeBackendError> {
+        self.ensure_activating()?;
+        let package_root = self.artifact_resolver.resolve(&request.artifact).await?;
+        let mut host = self.data_source_host.write().await;
+        if !host.is_loaded(&request.plugin_id) {
+            match request.legacy_eligibility {
+                Some(eligibility) => {
+                    host.load_legacy_installed(&package_root, &legacy_eligibility(eligibility))
+                        .await
+                }
+                None => host.load(&package_root).await,
+            }
+            .map_err(RuntimeBackendError::from)?;
+        }
+        host.data_model_templates(&request.plugin_id)
+            .map_err(RuntimeBackendError::from)
+    }
+
+    async fn deactivate_data_source(&self, plugin_id: &str) -> Result<(), RuntimeBackendError> {
+        self.data_source_host
+            .write()
+            .await
+            .unload(plugin_id)
+            .await
             .map_err(RuntimeBackendError::from)
     }
 
@@ -706,6 +679,39 @@ impl RuntimeExtensionPort for RuntimeExtensionHost {
             .map_err(RuntimeBackendError::from)?;
         operation.await.map_err(Into::into)
     }
+}
+
+#[async_trait]
+impl CapabilityRuntimePort for RuntimeExtensionHost {
+    async fn activate_capability(
+        &self,
+        request: RuntimePackageActivation,
+    ) -> Result<(), RuntimeBackendError> {
+        self.ensure_activating()?;
+        let package_root = self.artifact_resolver.resolve(&request.artifact).await?;
+        let mut host = self.capability_host.write().await;
+        if host.is_loaded(&request.plugin_id) {
+            return Ok(());
+        }
+        match request.legacy_eligibility {
+            Some(eligibility) => {
+                host.load_legacy_installed(&package_root, &legacy_eligibility(eligibility))
+                    .await
+            }
+            None => host.load(&package_root).await,
+        }
+        .map(|_| ())
+        .map_err(RuntimeBackendError::from)
+    }
+
+    async fn deactivate_capability(&self, plugin_id: &str) -> Result<(), RuntimeBackendError> {
+        self.capability_host
+            .write()
+            .await
+            .unload(plugin_id)
+            .await
+            .map_err(RuntimeBackendError::from)
+    }
 
     async fn capability_validate(
         &self,
@@ -786,7 +792,10 @@ impl RuntimeExtensionPort for RuntimeExtensionHost {
             })
             .map_err(Into::into)
     }
+}
 
+#[async_trait]
+impl NetworkEgressRuntimePort for RuntimeExtensionHost {
     async fn network_egress_preflight(
         &self,
         request: RuntimeNetworkEgressActivation,
