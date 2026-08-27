@@ -14,8 +14,8 @@ match_when:
   - 修改新建 Block 默认位置或缺失 x-layout 坐标的 fallback
   - 判断 Ordered Tree 顺序与响应式布局位置的所有权
 created_at: 2026-08-27 23
-updated_at: 2026-08-27 23
-last_verified_at: 2026-08-27 23
+updated_at: 2026-08-28 00
+last_verified_at: 2026-08-28 00
 decision_policy: verify_before_decision
 status: active
 scope:
@@ -48,4 +48,10 @@ scope:
 
 ## 截止与下一事件
 
-无日历截止日期。#1913 当前为 `phase:ready`；下一事件是用户明确开始实现后执行 AC-001～008，完成集中 Dev Acceptance 后进入用户验收。
+无日历截止日期。实现已由 `cd5d798fa` 推送到 `dev`，#1913 当前为 `phase:user-acceptance`；下一事件是用户刷新页面验收底部创建效果，确认后关闭 Issue。
+
+## 实现与验收候选
+
+- 响应式布局 allocator 已改为每个断点先求已有定位项的最大 `y + h`，再按文档顺序线性追加未定位项。
+- 目标测试 11/11、影响回归 75/75、TypeScript、ESLint、Prettier 与 `page.frontstage` style-boundary 均通过。
+- 浏览器实测新建项位于所有既有行之后，与前一行保持 10px 间距，滚动到底部可见且无页面错误。
