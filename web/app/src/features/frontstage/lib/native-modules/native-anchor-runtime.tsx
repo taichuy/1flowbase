@@ -1,7 +1,4 @@
-import {
-  Anchor as AntdAnchor,
-  type AnchorProps
-} from 'antd';
+import { Anchor as AntdAnchor, type AnchorProps } from 'antd';
 import {
   useCallback,
   useEffect,
@@ -44,6 +41,7 @@ function NativeBlockAnchorComponent({
   targetOffset,
   bounds = 5,
   affix = true,
+  direction = 'vertical',
   showInkInFixed,
   style,
   ...props
@@ -63,6 +61,11 @@ function NativeBlockAnchorComponent({
   );
   const scrollOwner = getContainer?.() ?? surface?.scrollOwner;
   const affixEnabled = Boolean(affix);
+  const internalActiveHref = scoped.originalToInternal.get(activeHref) ?? '';
+  const getInternalCurrentAnchor = useCallback(
+    () => internalActiveHref,
+    [internalActiveHref]
+  );
 
   useLayoutEffect(() => {
     affixedRef.current = false;
@@ -73,12 +76,7 @@ function NativeBlockAnchorComponent({
   const measureAffix = useCallback(() => {
     const sentinel = affixSentinelRef.current;
     const sticky = affixStickyRef.current;
-    if (
-      !scrollOwner ||
-      !affix ||
-      !sentinel ||
-      !sticky
-    ) {
+    if (!scrollOwner || !affix || !sentinel || !sticky) {
       return;
     }
     const sentinelRect = sentinel.getBoundingClientRect();
@@ -123,6 +121,21 @@ function NativeBlockAnchorComponent({
 
   const measureActiveHref = useCallback(() => {
     if (!surface || !scrollOwner) return;
+    const sticky = affixStickyRef.current;
+    if (direction === 'horizontal' && affix && sticky) {
+      const stickyRect = sticky.getBoundingClientRect();
+      const ownerRect =
+        scrollOwner instanceof HTMLElement
+          ? scrollOwner.getBoundingClientRect()
+          : { top: 0, bottom: window.innerHeight };
+      if (
+        stickyRect.height > 0 &&
+        (stickyRect.bottom <= ownerRect.top ||
+          stickyRect.top >= ownerRect.bottom)
+      ) {
+        return;
+      }
+    }
     const threshold = targetOffset ?? offsetTop ?? 0;
     let active: { href: string; top: number } | null = null;
     for (const link of scoped.links) {
@@ -135,7 +148,17 @@ function NativeBlockAnchorComponent({
       }
     }
     publishActiveHref(active?.href ?? '');
-  }, [bounds, offsetTop, publishActiveHref, scoped.links, scrollOwner, surface, targetOffset]);
+  }, [
+    affix,
+    bounds,
+    direction,
+    offsetTop,
+    publishActiveHref,
+    scoped.links,
+    scrollOwner,
+    surface,
+    targetOffset
+  ]);
 
   useEffect(() => {
     if (!surface || !scrollOwner) return;
@@ -183,14 +206,13 @@ function NativeBlockAnchorComponent({
         targetOffset={targetOffset}
         bounds={bounds}
         affix={affix}
+        direction={direction}
         showInkInFixed={showInkInFixed}
         style={style}
       />
     );
   }
 
-  const internalActiveHref =
-    scoped.originalToInternal.get(activeHref) ?? '';
   const scopedItems = items === undefined ? {} : { items: scoped.items };
   const handleClick = (
     event: MouseEvent<HTMLElement>,
@@ -216,12 +238,13 @@ function NativeBlockAnchorComponent({
       {...props}
       {...scopedItems}
       getContainer={() => scrollOwner}
-      getCurrentAnchor={() => internalActiveHref}
+      getCurrentAnchor={getInternalCurrentAnchor}
       onClick={handleClick}
       offsetTop={offsetTop}
       targetOffset={targetOffset}
       bounds={bounds}
       affix={false}
+      direction={direction}
       showInkInFixed={affix ? true : showInkInFixed}
       style={style}
     />
@@ -365,7 +388,10 @@ function isLocalHref(href: string): boolean {
   return href.startsWith('#') && href.length > 1;
 }
 
-function resolveLocalTarget(root: ShadowRoot, href: string): HTMLElement | null {
+function resolveLocalTarget(
+  root: ShadowRoot,
+  href: string
+): HTMLElement | null {
   if (!isLocalHref(href)) return null;
   const id = decodeURIComponent(href.slice(1));
   return root.getElementById(id) as HTMLElement | null;

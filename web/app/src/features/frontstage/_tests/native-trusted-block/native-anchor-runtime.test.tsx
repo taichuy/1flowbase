@@ -91,7 +91,8 @@ describe('native block Anchor runtime adapter', () => {
     const fixture = await mountAnchorSurface();
     const firstTarget = fixture.shadowRoot.getElementById('part-1');
     const secondTarget = fixture.shadowRoot.getElementById('part-2');
-    if (!firstTarget || !secondTarget) throw new Error('Missing anchor target.');
+    if (!firstTarget || !secondTarget)
+      throw new Error('Missing anchor target.');
     fixture.scrollOwner.getBoundingClientRect = () =>
       domRect({ top: 80, height: 240 });
     fixture.scrollOwner.style.transform = 'translate3d(0, 0, 0)';
@@ -133,8 +134,7 @@ describe('native block Anchor runtime adapter', () => {
       domRect({ top: 80, height: 240 });
     fixture.root.getBoundingClientRect = () =>
       domRect({ top: 20, height: 800 });
-    affixTrack.getBoundingClientRect = () =>
-      domRect({ top: 40, height: 94 });
+    affixTrack.getBoundingClientRect = () => domRect({ top: 40, height: 94 });
     affix.getBoundingClientRect = () => domRect({ top: 40, height: 94 });
 
     fireEvent.scroll(fixture.scrollOwner);
@@ -181,6 +181,82 @@ describe('native block Anchor runtime adapter', () => {
     expect(onChange.mock.calls.map(([affixed]) => affixed)).toEqual([true]);
   });
 
+  test('I1910-AC-010 does not re-scroll a horizontal Anchor after a semantic no-op rerender', async () => {
+    const fixture = await mountAnchorSurface('stable-horizontal', {
+      direction: 'horizontal'
+    });
+    const firstTarget = fixture.shadowRoot.getElementById('part-1');
+    const secondTarget = fixture.shadowRoot.getElementById('part-2');
+    if (!firstTarget || !secondTarget) {
+      throw new Error('Missing anchor target.');
+    }
+    fixture.scrollOwner.getBoundingClientRect = () =>
+      domRect({ top: 80, height: 240 });
+    firstTarget.getBoundingClientRect = () =>
+      domRect({ top: -320, height: 120 });
+    secondTarget.getBoundingClientRect = () =>
+      domRect({ top: 80, height: 120 });
+    Object.defineProperties(fixture.scrollOwner, {
+      clientHeight: { configurable: true, value: 240 },
+      clientWidth: { configurable: true, value: 300 },
+      scrollHeight: { configurable: true, value: 1_000 },
+      scrollWidth: { configurable: true, value: 300 }
+    });
+    const secondLink = within(
+      fixture.shadowRoot as unknown as HTMLElement
+    ).getByRole('link', { name: 'Part 2' });
+    secondLink.getBoundingClientRect = () => domRect({ top: 500, height: 24 });
+
+    fireEvent.click(secondLink);
+    await waitFor(() => expect(fixture.scroll).toHaveBeenCalled());
+    fixture.scroll.mockClear();
+
+    fixture.rerender();
+    await waitFor(() => expect(fixture.scroll).not.toHaveBeenCalled());
+  });
+
+  test('I1910-AC-010 freezes horizontal active detection after the sticky track leaves its owner', async () => {
+    const fixture = await mountAnchorSurface('horizontal-owner-exit', {
+      direction: 'horizontal'
+    });
+    const firstTarget = fixture.shadowRoot.getElementById('part-1');
+    const secondTarget = fixture.shadowRoot.getElementById('part-2');
+    const stickyTrack = fixture.shadowRoot.querySelector<HTMLElement>(
+      '[data-flowbase-native-anchor-affix]'
+    );
+    const sticky = stickyTrack?.firstElementChild as HTMLElement | null;
+    if (!firstTarget || !secondTarget || !stickyTrack || !sticky) {
+      throw new Error('Missing horizontal Anchor geometry fixture.');
+    }
+    fixture.scrollOwner.getBoundingClientRect = () =>
+      domRect({ top: 80, height: 240 });
+    firstTarget.getBoundingClientRect = () => domRect({ top: 80, height: 120 });
+    secondTarget.getBoundingClientRect = () =>
+      domRect({ top: 480, height: 120 });
+    stickyTrack.getBoundingClientRect = () => domRect({ top: 80, height: 24 });
+    sticky.getBoundingClientRect = () => domRect({ top: 80, height: 24 });
+    fireEvent.scroll(fixture.scrollOwner);
+    const firstLink = within(
+      fixture.shadowRoot as unknown as HTMLElement
+    ).getByRole('link', { name: 'Part 1' });
+    await waitFor(() =>
+      expect(firstLink.className).toContain('-link-title-active')
+    );
+
+    firstTarget.getBoundingClientRect = () =>
+      domRect({ top: -720, height: 120 });
+    secondTarget.getBoundingClientRect = () =>
+      domRect({ top: -320, height: 120 });
+    stickyTrack.getBoundingClientRect = () => domRect({ top: -40, height: 24 });
+    sticky.getBoundingClientRect = () => domRect({ top: -40, height: 24 });
+    fireEvent.scroll(fixture.scrollOwner);
+    await nextAnimationFrame();
+    await nextAnimationFrame();
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+
+    expect(firstLink).toHaveClass(/-link-title-active/u);
+  });
+
   test('I1910-AC-003 chooses a fixed viewport before the page scroll owner', () => {
     const pageScrollOwner = document.createElement('main');
     pageScrollOwner.dataset.flowbaseFrontstageScrollOwner = '';
@@ -202,7 +278,8 @@ describe('native block Anchor runtime adapter', () => {
     const second = await mountAnchorSurface('second');
     const firstTarget = first.shadowRoot.getElementById('part-2');
     const secondTarget = second.shadowRoot.getElementById('part-2');
-    if (!firstTarget || !secondTarget) throw new Error('Missing anchor target.');
+    if (!firstTarget || !secondTarget)
+      throw new Error('Missing anchor target.');
     first.scrollOwner.getBoundingClientRect = () =>
       domRect({ top: 0, height: 200 });
     second.scrollOwner.getBoundingClientRect = () =>
@@ -266,7 +343,7 @@ describe('native block Anchor runtime adapter', () => {
 
 async function mountAnchorSurface(
   suffix = 'default',
-  anchorProps: Pick<AnchorProps, 'affix' | 'onClick'> = {}
+  anchorProps: Pick<AnchorProps, 'affix' | 'direction' | 'onClick'> = {}
 ) {
   const registry = createFrontstageNativeReactModuleRegistry();
   const antdModule = await registry.load('antd');
@@ -277,31 +354,40 @@ async function mountAnchorSurface(
   scrollOwner.append(root);
   document.body.append(scrollOwner);
   const scrollTo = vi.fn();
+  const scroll = vi.fn();
   Object.defineProperty(scrollOwner, 'scrollTo', {
     configurable: true,
     value: scrollTo
   });
-  const view = render(
+  Object.defineProperty(scrollOwner, 'scroll', {
+    configurable: true,
+    value: scroll
+  });
+  const plan = { ...createPlan(), blockId: `native-anchor-${suffix}` };
+  const ctx = createContext();
+  const BlockComponent = () => (
+    <>
+      <div id="part-1">Part one content</div>
+      <div id="part-2">Part two content</div>
+      <Anchor
+        items={[
+          { key: 'part-1', href: '#part-1', title: 'Part 1' },
+          { key: 'part-2', href: '#part-2', title: 'Part 2' }
+        ]}
+        {...anchorProps}
+      />
+    </>
+  );
+  const renderSurface = () => (
     <FrontstageNativeTrustedBlockPortalHost
       root={root}
       renderEpoch={`anchor:${suffix}`}
-      plan={{ ...createPlan(), blockId: `native-anchor-${suffix}` }}
-      component={() => (
-        <>
-          <div id="part-1">Part one content</div>
-          <div id="part-2">Part two content</div>
-          <Anchor
-            items={[
-              { key: 'part-1', href: '#part-1', title: 'Part 1' },
-              { key: 'part-2', href: '#part-2', title: 'Part 2' }
-            ]}
-            {...anchorProps}
-          />
-        </>
-      )}
-      ctx={createContext()}
+      plan={plan}
+      component={BlockComponent}
+      ctx={ctx}
     />
   );
+  const view = render(renderSurface());
   const shadowRoot = await waitFor(() => {
     expect(root.shadowRoot).not.toBeNull();
     return root.shadowRoot as ShadowRoot;
@@ -309,11 +395,21 @@ async function mountAnchorSurface(
   await within(shadowRoot as unknown as HTMLElement).findByRole('link', {
     name: 'Part 2'
   });
-  return { root, scrollOwner, scrollTo, shadowRoot, view };
+  return {
+    root,
+    scrollOwner,
+    scroll,
+    scrollTo,
+    shadowRoot,
+    view,
+    rerender: () => view.rerender(renderSurface())
+  };
 }
 
 async function nextAnimationFrame(): Promise<void> {
-  await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()));
+  await new Promise<void>((resolve) =>
+    window.requestAnimationFrame(() => resolve())
+  );
 }
 
 function createPlan(): NativeTrustedBlockPreparePlan {
@@ -358,13 +454,7 @@ function createContext(): BlockContextSeed {
   };
 }
 
-function domRect({
-  top,
-  height
-}: {
-  top: number;
-  height: number;
-}): DOMRect {
+function domRect({ top, height }: { top: number; height: number }): DOMRect {
   return {
     x: 0,
     y: top,
