@@ -435,8 +435,11 @@ async fn app_and_runtime_host_from_config(
     let mut runtime_backend_slot = runtime_core::runtime_backend::RuntimeBackendSlot::default();
     runtime_backend_slot.bind(runtime_extension_host.clone())?;
     let runtime_backend = runtime_backend_slot.backend()?;
+    let runtime_execution: Arc<dyn runtime_core::runtime_backend::RuntimeExecutionPort> =
+        runtime_backend.clone();
     let provider_runtime = Arc::new(ApiRuntimeServices::new_with_runtime_backend(
         runtime_backend,
+        runtime_execution,
         Arc::clone(&extension_graph),
     )?);
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());

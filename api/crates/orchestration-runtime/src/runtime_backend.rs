@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use runtime_core::runtime_backend::{
-    RuntimeBackend, RuntimeBackendError, RuntimeCancelOutcome, RuntimeExecutionOutcome,
+    RuntimeBackendError, RuntimeCancelOutcome, RuntimeExecutionOutcome, RuntimeExecutionPort,
     RuntimeExecutionRequest, RuntimeRequestId, RuntimeStreamSinks,
 };
 
@@ -12,19 +12,19 @@ use runtime_core::runtime_backend::{
 /// orchestration or API business path.
 #[derive(Clone)]
 pub struct OrchestrationRuntimeBackend {
-    backend: Arc<dyn RuntimeBackend>,
+    execution: Arc<dyn RuntimeExecutionPort>,
 }
 
 impl OrchestrationRuntimeBackend {
-    pub fn new(backend: Arc<dyn RuntimeBackend>) -> Self {
-        Self { backend }
+    pub fn new(execution: Arc<dyn RuntimeExecutionPort>) -> Self {
+        Self { execution }
     }
 
     pub async fn execute(
         &self,
         request: RuntimeExecutionRequest,
     ) -> Result<RuntimeExecutionOutcome, RuntimeBackendError> {
-        self.backend.execute(request).await
+        self.execution.execute(request).await
     }
 
     pub async fn execute_stream(
@@ -32,13 +32,13 @@ impl OrchestrationRuntimeBackend {
         request: RuntimeExecutionRequest,
         sinks: RuntimeStreamSinks,
     ) -> Result<RuntimeExecutionOutcome, RuntimeBackendError> {
-        self.backend.execute_stream(request, sinks).await
+        self.execution.execute_stream(request, sinks).await
     }
 
     pub async fn cancel(
         &self,
         request_id: &RuntimeRequestId,
     ) -> Result<RuntimeCancelOutcome, RuntimeBackendError> {
-        self.backend.cancel(request_id).await
+        self.execution.cancel(request_id).await
     }
 }

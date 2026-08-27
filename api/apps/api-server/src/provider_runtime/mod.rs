@@ -39,9 +39,10 @@ use plugin_framework::{
 use runtime_core::runtime_backend::RuntimeBackendSlot;
 use runtime_core::{
     runtime_backend::{
-        RuntimeArtifactReference, RuntimeBackend, RuntimeBackendError, RuntimeExecutionRequest,
-        RuntimeLegacyManifestEligibility, RuntimeNetworkEgressActivation, RuntimePackageActivation,
-        RuntimeRequestId, RuntimeStreamEventSink, RuntimeStreamSinks, RuntimeTargetId,
+        RuntimeArtifactReference, RuntimeBackend, RuntimeBackendError, RuntimeExecutionPort,
+        RuntimeExecutionRequest, RuntimeLegacyManifestEligibility, RuntimeNetworkEgressActivation,
+        RuntimePackageActivation, RuntimeRequestId, RuntimeStreamEventSink, RuntimeStreamSinks,
+        RuntimeTargetId,
     },
     runtime_engine::DataSourceRuntimeRecordBackend,
 };
@@ -172,11 +173,14 @@ impl ApiRuntimeServices {
         runtime_host.mark_ready()?;
         let mut slot = RuntimeBackendSlot::default();
         slot.bind(runtime_host)?;
-        Self::new_with_runtime_backend(slot.backend()?, extension_graph)
+        let runtime_backend = slot.backend()?;
+        let runtime_execution: Arc<dyn RuntimeExecutionPort> = runtime_backend.clone();
+        Self::new_with_runtime_backend(runtime_backend, runtime_execution, extension_graph)
     }
 
     pub fn new_with_runtime_backend(
         runtime_backend: Arc<dyn RuntimeBackend>,
+        runtime_execution: Arc<dyn RuntimeExecutionPort>,
         extension_graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
     ) -> anyhow::Result<Self> {
         let provider_input_pipeline = Arc::new(
@@ -186,9 +190,9 @@ impl ApiRuntimeServices {
             )?,
         );
         let orchestration_backend =
-            orchestration_runtime::runtime_backend::OrchestrationRuntimeBackend::new(Arc::clone(
-                &runtime_backend,
-            ));
+            orchestration_runtime::runtime_backend::OrchestrationRuntimeBackend::new(
+                runtime_execution,
+            );
         Ok(Self {
             runtime_backend,
             orchestration_backend,
@@ -218,10 +222,11 @@ impl ApiRuntimeServices {
         slot.bind(runtime_host)
             .expect("test runtime backend must bind exactly once");
         let runtime_backend = slot.backend().expect("test runtime backend must exist");
+        let runtime_execution: Arc<dyn RuntimeExecutionPort> = runtime_backend.clone();
         let orchestration_backend =
-            orchestration_runtime::runtime_backend::OrchestrationRuntimeBackend::new(Arc::clone(
-                &runtime_backend,
-            ));
+            orchestration_runtime::runtime_backend::OrchestrationRuntimeBackend::new(
+                runtime_execution,
+            );
         Self {
             runtime_backend,
             orchestration_backend,

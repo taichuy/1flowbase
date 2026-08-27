@@ -63,6 +63,25 @@ test('Delivery 1898 binds the production Backend Slot and hides concrete registr
   assert.doesNotMatch(contract, /pub package_root:/u);
 });
 
+test('Delivery 1898 projects only the execution port into orchestration', () => {
+  const boot = fs.readFileSync(path.join(repoRoot, 'api/apps/api-server/src/lib.rs'), 'utf8');
+  const orchestration = fs.readFileSync(
+    path.join(repoRoot, 'api/crates/orchestration-runtime/src/runtime_backend.rs'),
+    'utf8',
+  );
+
+  assert.match(orchestration, /Arc<dyn RuntimeExecutionPort>/u);
+  assert.doesNotMatch(orchestration, /\bRuntimeBackend\b/u);
+  assert.match(
+    boot,
+    /let runtime_execution: Arc<dyn runtime_core::runtime_backend::RuntimeExecutionPort>/u,
+  );
+  assert.match(
+    boot,
+    /ApiRuntimeServices::new_with_runtime_backend\([\s\S]*?runtime_backend,[\s\S]*?runtime_execution,/u,
+  );
+});
+
 test('Delivery 1898 requires all six narrow Runtime Backend ports', () => {
   const contract = fs.readFileSync(
     path.join(repoRoot, 'api/crates/runtime-core/src/runtime_backend.rs'),
@@ -142,10 +161,10 @@ test('Delivery 1898 exposes only the approved Runtime Host facade', () => {
   const violations = consumerRoots
     .flatMap((root) => productionFiles(root, consumerIgnoredDirectories))
     .flatMap((file) => {
-    if (path.extname(file) !== '.rs') return [];
-    return forbiddenImport.test(fs.readFileSync(file, 'utf8'))
-      ? [path.relative(repoRoot, file)]
-      : [];
+      if (path.extname(file) !== '.rs') return [];
+      return forbiddenImport.test(fs.readFileSync(file, 'utf8'))
+        ? [path.relative(repoRoot, file)]
+        : [];
     });
   assert.deepEqual(violations, []);
 });
