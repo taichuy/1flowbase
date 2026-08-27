@@ -9,6 +9,7 @@ members = [
   "crates/runtime-extension-host",
   "crates/runtime-profile",
   "crates/access-control",
+  "crates/interface-runtime",
   "crates/control-plane-test-support",
   "crates/control-plane-postgres-tests",
   "crates/plugin-framework",
