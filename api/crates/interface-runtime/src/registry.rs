@@ -19,6 +19,34 @@ pub trait InterfaceContract: Send + Sync + 'static {
     const CONTRACT_VERSION: &'static str;
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum InterfaceAuthenticationPolicy {
+    Anonymous,
+    Authenticated,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum InterfaceAuditPolicy {
+    ReadOnly,
+    Mutating,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum InterfaceErrorPolicy {
+    TypedTarget,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum InterfaceScope {
+    System,
+    Workspace,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum InterfaceLifecycle {
+    BootSnapshot,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InterfaceDefinition {
     interface_id: InterfaceId,
@@ -26,6 +54,11 @@ pub struct InterfaceDefinition {
     output_contract: ContractIdentity,
     route: Option<RouteIdentity>,
     permission: PermissionIdentity,
+    authentication: InterfaceAuthenticationPolicy,
+    audit: InterfaceAuditPolicy,
+    error: InterfaceErrorPolicy,
+    scope: InterfaceScope,
+    lifecycle: InterfaceLifecycle,
     handler_reference: HandlerReference,
     target_reference: TargetReference,
     owner: InterfaceOwner,
@@ -39,6 +72,11 @@ impl InterfaceDefinition {
         output_contract: ContractIdentity,
         route: Option<RouteIdentity>,
         permission: PermissionIdentity,
+        authentication: InterfaceAuthenticationPolicy,
+        audit: InterfaceAuditPolicy,
+        error: InterfaceErrorPolicy,
+        scope: InterfaceScope,
+        lifecycle: InterfaceLifecycle,
         handler_reference: HandlerReference,
         target_reference: TargetReference,
         owner: InterfaceOwner,
@@ -49,6 +87,11 @@ impl InterfaceDefinition {
             output_contract,
             route,
             permission,
+            authentication,
+            audit,
+            error,
+            scope,
+            lifecycle,
             handler_reference,
             target_reference,
             owner,
@@ -73,6 +116,26 @@ impl InterfaceDefinition {
 
     pub fn permission(&self) -> &PermissionIdentity {
         &self.permission
+    }
+
+    pub fn authentication(&self) -> InterfaceAuthenticationPolicy {
+        self.authentication
+    }
+
+    pub fn audit(&self) -> InterfaceAuditPolicy {
+        self.audit
+    }
+
+    pub fn error(&self) -> InterfaceErrorPolicy {
+        self.error
+    }
+
+    pub fn scope(&self) -> InterfaceScope {
+        self.scope
+    }
+
+    pub fn lifecycle(&self) -> InterfaceLifecycle {
+        self.lifecycle
     }
 
     pub fn handler_reference(&self) -> &HandlerReference {
@@ -455,6 +518,24 @@ fn registry_fingerprint(
             definition.handler_reference().as_str(),
             definition.target_reference().as_str(),
             definition.owner().as_str(),
+            match definition.authentication() {
+                InterfaceAuthenticationPolicy::Anonymous => "authn:anonymous",
+                InterfaceAuthenticationPolicy::Authenticated => "authn:authenticated",
+            },
+            match definition.audit() {
+                InterfaceAuditPolicy::ReadOnly => "audit:read-only",
+                InterfaceAuditPolicy::Mutating => "audit:mutating",
+            },
+            match definition.error() {
+                InterfaceErrorPolicy::TypedTarget => "error:typed-target",
+            },
+            match definition.scope() {
+                InterfaceScope::System => "scope:system",
+                InterfaceScope::Workspace => "scope:workspace",
+            },
+            match definition.lifecycle() {
+                InterfaceLifecycle::BootSnapshot => "lifecycle:boot-snapshot",
+            },
         ] {
             digest.update([0]);
             digest.update(part.as_bytes());

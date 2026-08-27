@@ -1,10 +1,11 @@
 use std::sync::Arc;
 
 use crate::{
-    ContractIdentity, GraphFingerprint, HandlerReference, InterfaceContract, InterfaceDefinition,
-    InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceOwner,
-    InterfaceTargetError, PermissionIdentity, RegistryCompilationError, RegistryCompiler,
-    RouteIdentity, TargetReference,
+    ContractIdentity, GraphFingerprint, HandlerReference, InterfaceAuditPolicy,
+    InterfaceAuthenticationPolicy, InterfaceContract, InterfaceDefinition, InterfaceErrorPolicy,
+    InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId,
+    InterfaceLifecycle, InterfaceOwner, InterfaceScope, InterfaceTargetError, PermissionIdentity,
+    RegistryCompilationError, RegistryCompiler, RouteIdentity, TargetReference,
 };
 
 struct Input;
@@ -58,6 +59,11 @@ fn definition(id: &str, path: &str) -> InterfaceDefinition {
         ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
         Some(RouteIdentity::new("GET", path).unwrap()),
         permission(),
+        InterfaceAuthenticationPolicy::Authenticated,
+        InterfaceAuditPolicy::ReadOnly,
+        InterfaceErrorPolicy::TypedTarget,
+        InterfaceScope::System,
+        InterfaceLifecycle::BootSnapshot,
         HandlerReference::new("test.handler").unwrap(),
         TargetReference::new("test.target").unwrap(),
         InterfaceOwner::new("test.owner").unwrap(),

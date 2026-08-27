@@ -18,9 +18,10 @@ pub use invocation::{
     InvocationId, InvocationLineage, InvocationLineageError,
 };
 pub use registry::{
-    CompiledInterfaceRegistry, DynamicInterfaceRegistry, InterfaceContract, InterfaceDefinition,
-    InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceTargetError,
-    RegistryCompilationError, RegistryCompiler,
+    CompiledInterfaceRegistry, DynamicInterfaceRegistry, InterfaceAuditPolicy,
+    InterfaceAuthenticationPolicy, InterfaceContract, InterfaceDefinition, InterfaceErrorPolicy,
+    InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceLifecycle,
+    InterfaceScope, InterfaceTargetError, RegistryCompilationError, RegistryCompiler,
 };
 
 #[cfg(test)]

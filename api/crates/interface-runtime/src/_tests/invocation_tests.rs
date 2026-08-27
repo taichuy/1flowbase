@@ -8,14 +8,16 @@ use uuid::Uuid;
 
 use crate::{
     ContractIdentity, DynamicInterfaceRegistry, GraphFingerprint, HandlerReference,
-    InterfaceAuthorizationError, InterfaceAuthorizationFuture, InterfaceAuthorizationPort,
-    InterfaceAuthorizationRequest, InterfaceContract, InterfaceDefinition, InterfaceHandler,
+    InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceAuthorizationError,
+    InterfaceAuthorizationFuture, InterfaceAuthorizationPort, InterfaceAuthorizationRequest,
+    InterfaceContract, InterfaceDefinition, InterfaceErrorPolicy, InterfaceHandler,
     InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceInvocationError,
     InterfaceInvocationKernel, InterfaceInvocationStage, InterfaceInvocationTerminal,
-    InterfaceOwner, InterfaceProtocol, InterfaceTargetAdmissionError,
-    InterfaceTargetAdmissionFuture, InterfaceTargetAdmissionPort, InterfaceTargetAdmissionRequest,
-    InterfaceTargetError, InvocationEnvelope, InvocationId, InvocationLineage,
-    InvocationLineageError, PermissionIdentity, RegistryCompiler, RouteIdentity, TargetReference,
+    InterfaceLifecycle, InterfaceOwner, InterfaceProtocol, InterfaceScope,
+    InterfaceTargetAdmissionError, InterfaceTargetAdmissionFuture, InterfaceTargetAdmissionPort,
+    InterfaceTargetAdmissionRequest, InterfaceTargetError, InvocationEnvelope, InvocationId,
+    InvocationLineage, InvocationLineageError, PermissionIdentity, RegistryCompiler, RouteIdentity,
+    TargetReference,
 };
 
 #[derive(Clone)]
@@ -129,6 +131,11 @@ fn compile_snapshot(
             ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
             Some(RouteIdentity::new("GET", "/api/console/invocation").unwrap()),
             permission,
+            InterfaceAuthenticationPolicy::Authenticated,
+            InterfaceAuditPolicy::ReadOnly,
+            InterfaceErrorPolicy::TypedTarget,
+            InterfaceScope::System,
+            InterfaceLifecycle::BootSnapshot,
             HandlerReference::new("invocation.handler").unwrap(),
             TargetReference::new("invocation.target").unwrap(),
             InterfaceOwner::new("core").unwrap(),
