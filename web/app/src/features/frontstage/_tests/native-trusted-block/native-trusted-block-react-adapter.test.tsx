@@ -321,7 +321,7 @@ describe('frontstage native trusted block declarative portal host', () => {
     ]);
     const config = providerRecords.configs[0];
     expect((config.getPopupContainer as () => ShadowRoot)()).toBe(shadowRoot);
-    expect((config.getTargetContainer as () => ShadowRoot)()).toBe(shadowRoot);
+    expect((config.getTargetContainer as () => Window)()).toBe(window);
     expect(receivedContainment).toEqual([
       expect.objectContaining({
         root: shadowRoot,

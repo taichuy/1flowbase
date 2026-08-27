@@ -12,8 +12,8 @@ match_when:
   - 调整 Frontstage 区块拖拽、缩放、响应式布局或高度配置
   - 评估自由像素画布、列网格或嵌套布局树
 created_at: 2026-07-19 22
-updated_at: 2026-08-27 00
-last_verified_at: 2026-08-27 00
+updated_at: 2026-08-27 19
+last_verified_at: 2026-08-27 19
 decision_policy: verify_before_decision
 status: active
 scope:
@@ -58,5 +58,6 @@ scope:
 - 用户 Block `01a04127-cbdb-7e70-a723-f8c74fd9b966` 已由 MCP 从 SHA `e7a02164...33cb` 迁移到 `32afd8d6...6fb7`，自然高度为 `392px` 并消费 runtime available height。真实页面 1600px 桌面证据：同行 slot `926px`、intrinsic wrapper/content viewport `924px`、内部 host `900px`（扣除 12px 双侧 padding），generation 保持 `0`，console/page errors 为 0；截图与证据位于 `tmp/test-governance/issue-1902-viewport-contract/`。
 - 当前阶段：`phase:user-acceptance`；自动/自由策略、RGL v2 public API、确定性行接触 solver、边缘 resize、no-op save、二维投影、行级外框等高及 Block runtime available-size 传播已完成，等待用户最终验收 #1902。
 - `antd-style` ShadowRoot Issue：[#1907 修复 antd-style ShadowRoot 样式隔离并按需加载](https://github.com/taichuy/1flowbase/issues/1907) 已实现并进入 `phase:user-acceptance`。Native React 只为实际导入 `antd-style` 的 Block 建立 per-surface ShadowRoot `StyleProvider` 与唯一 Emotion prefix；registry 改为 module-level dynamic import 并复用 single-flight / 浏览器 ESM cache，production chunk 约 `17.5 KB / 6.43 KB gzip`。真实 Block `01a04264-25ec-7f72-abeb-cba94795817d` source SHA 保持 `e338479e32fae7600d8a1b0d86e555996bcd69bcc058b446fad3c3d2cc5077f1`，computed style、ShadowRoot 规则归属、定向测试、TypeScript、production build 与 `page.frontstage` style-boundary 均通过；证据位于 `tmp/test-governance/issue-1907-antd-style/`。
+- Native Block Anchor Issue：[#1910 修复 Native Block Anchor 的 ShadowRoot 目标解析与滚动归属](https://github.com/taichuy/1flowbase/issues/1910) 已完成实现与 Dev Acceptance Gate，待用户验收。runtime surface 将 ShadowRoot `targetRoot` 与真实 `scrollOwner` 分离，注入的 `antd.Anchor` 只在当前 ShadowRoot 解析本地目标，并用变换 containing block 的 fixed 坐标补偿保持 Affix 可见；不修改用户 Block 源码、页面 hash 或 Ant Design 上游。真实 Block `01a042d5-7d24-7550-9591-4b903c7a26ab` 点击 Part 2 后 `scrollTop=913`、`targetDelta=0`、active 为 Part 2，Anchor 保持在 owner 顶部且 console/page errors 为 0；证据位于 `tmp/test-governance/issue-1910-native-anchor/`。
 - 只修改 1flowbase；`/home/taichuy/git/react-grid-layout` 仅作 `2.2.3` 参考源码，不修改、fork 或本地链接。仓库内 patch 绑定精确版本并由 preinstall receipt 守住；升级时先移除 patch 运行 #1899 浏览器 contract，官方版本通过即删除 patch，失败才迁移。
 - 后续交互采用连续像素 preview 与响应式网格 commit 双态模型；24 列是 Frontstage desktop profile，不是通用布局内核常量。

@@ -14,8 +14,11 @@ import {
 } from '@1flowbase/page-runtime';
 
 import { ANTD_STYLE_EXPORTS, loadAntdStyleModule } from './antd-style-runtime';
+import { NativeBlockAnchor } from './native-anchor-runtime';
 
 type ModuleNamespace = Record<string, unknown>;
+
+const nativeAntdModule = { ...antdModule, Anchor: NativeBlockAnchor };
 
 const ANT_DESIGN_X_EXPORTS = [
   'Actions',
@@ -49,7 +52,7 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
     async () => ({ module: ReactJsxRuntimeModule })
   ),
   registration('antd', Object.keys(antdModule), async () => ({
-    module: antdModule
+    module: nativeAntdModule
   })),
   registration('antd-style', ANTD_STYLE_EXPORTS, async () => ({
     module: await loadAntdStyleModule()

@@ -41,6 +41,10 @@ import {
   loadAntdStyleModule,
   type AntdStyleShadowProvider
 } from './native-modules/antd-style-runtime';
+import {
+  NativeBlockSurfaceProvider,
+  resolveNativeBlockScrollOwner
+} from './native-modules/native-block-surface-context';
 
 export interface FrontstageNativeTrustedBlockReactComponentProps {
   plan: NativeTrustedBlockPreparePlan;
@@ -62,6 +66,7 @@ export interface FrontstageNativeTrustedBlockProviderContext {
   root: Element;
   shadowRoot: ShadowRoot;
   mountElement: HTMLElement;
+  scrollOwner: HTMLElement | Window;
   portalContainment: NativeTrustedBlockPortalContainment;
 }
 
@@ -228,6 +233,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
     root,
     shadowRoot: surface.shadowRoot,
     mountElement: surface.mountElement,
+    scrollOwner: resolveNativeBlockScrollOwner(root),
     portalContainment
   };
   const content = (
@@ -467,17 +473,25 @@ function wrapWithHostProviders(
   providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper
 ): ReactNode {
   const getShadowContainer = () => context.shadowRoot;
+  const getTargetContainer = () => context.scrollOwner;
   const isolatedPrefix = createShadowStylePrefix(context.plan.blockId);
   const hostChildren = (
     <StyleProvider cache={styleCache} container={context.shadowRoot}>
       <ConfigProvider
         getPopupContainer={getShadowContainer}
-        getTargetContainer={getShadowContainer}
+        getTargetContainer={getTargetContainer}
         locale={providerScope?.locale}
         prefixCls={isolatedPrefix}
         theme={providerScope?.theme}
       >
-        <AntdApp>{children}</AntdApp>
+        <NativeBlockSurfaceProvider
+          scope={{
+            targetRoot: context.shadowRoot,
+            scrollOwner: context.scrollOwner
+          }}
+        >
+          <AntdApp>{children}</AntdApp>
+        </NativeBlockSurfaceProvider>
       </ConfigProvider>
     </StyleProvider>
   );
