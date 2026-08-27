@@ -45,7 +45,7 @@ impl RuntimeHostSystemPort for CountingRuntimeHostSystemClient {
         tokio::time::sleep(self.delay).await;
         self.profile
             .clone()
-            .ok_or_else(|| anyhow::anyhow!("plugin runner unavailable"))
+            .ok_or_else(|| anyhow::anyhow!("runtime extension host unavailable"))
     }
 }
 
@@ -101,7 +101,7 @@ async fn ac_001_reuses_fresh_runtime_target_snapshots_and_exposes_them_for_inspe
     let second = fixture.snapshots.get_or_refresh().await.unwrap();
 
     assert_eq!(first.api_profile.service, "api-server");
-    assert_eq!(first.runner_profile.unwrap().service, "plugin-runner");
+    assert_eq!(first.host_profile.service, "runtime-extension-host");
     assert_eq!(second.api_profile.service, "api-server");
     assert_eq!(fixture.api_calls.load(Ordering::SeqCst), 1);
     assert_eq!(fixture.runner_calls.load(Ordering::SeqCst), 1);
@@ -122,7 +122,7 @@ async fn ac_001_reuses_fresh_runtime_target_snapshots_and_exposes_them_for_inspe
     assert!(entries.iter().any(|entry| entry
         .inspection_path
         .iter()
-        .any(|part| part == "plugin-runner")));
+        .any(|part| part == "runtime-extension-host")));
 }
 
 #[tokio::test]
@@ -161,16 +161,20 @@ async fn ac_003_coalesces_concurrent_runtime_snapshot_refreshes() {
 }
 
 #[tokio::test]
-async fn ac_004_caches_plugin_runner_unreachable_observations() {
+async fn d_006_does_not_cache_an_unreachable_in_process_runtime_host() {
     let fixture = snapshot_cache_fixture_with_runner(Duration::ZERO, None);
 
-    let first = fixture.snapshots.get_or_refresh().await.unwrap();
-    let second = fixture.snapshots.get_or_refresh().await.unwrap();
+    let error = fixture.snapshots.get_or_refresh().await.unwrap_err();
 
-    assert!(first.runner_profile.is_none());
-    assert!(second.runner_profile.is_none());
+    assert!(error
+        .to_string()
+        .contains("runtime extension host unavailable"));
     assert_eq!(fixture.api_calls.load(Ordering::SeqCst), 1);
     assert_eq!(fixture.runner_calls.load(Ordering::SeqCst), 1);
+    let entries = CacheStore::list_ephemeral_entries(fixture.cache_store.as_ref())
+        .await
+        .unwrap();
+    assert!(entries.is_empty());
 }
 
 #[tokio::test]

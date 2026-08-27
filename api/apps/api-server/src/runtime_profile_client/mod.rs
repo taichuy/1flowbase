@@ -11,9 +11,7 @@ use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
 
 const API_SERVER_TARGET_ID: &str = "api-server";
-// External system-status compatibility keeps this legacy target id while the
-// observation now comes from the in-process RuntimeExtensionHost.
-const RUNTIME_HOST_TARGET_ID: &str = "plugin-runner";
+const RUNTIME_HOST_TARGET_ID: &str = "runtime-extension-host";
 const SNAPSHOT_FRESHNESS: Duration = Duration::seconds(1);
 const SNAPSHOT_RETENTION: Duration = Duration::seconds(10);
 const REFRESH_LOCK_TTL: Duration = Duration::seconds(10);
@@ -68,7 +66,7 @@ impl RuntimeHostSystemPort for runtime_extension_host::RuntimeExtensionHost {
 #[derive(Debug, Clone)]
 pub(crate) struct RuntimeProfilesSnapshot {
     pub api_profile: RuntimeProfile,
-    pub runner_profile: Option<RuntimeProfile>,
+    pub host_profile: RuntimeProfile,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,10 +75,6 @@ enum CachedRuntimeTargetObservation {
     Reachable {
         observed_at: OffsetDateTime,
         profile: Box<RuntimeProfile>,
-    },
-    Unreachable {
-        observed_at: OffsetDateTime,
-        target_id: String,
     },
 }
 
@@ -92,25 +86,15 @@ impl CachedRuntimeTargetObservation {
         }
     }
 
-    fn unreachable(target_id: impl Into<String>, observed_at: OffsetDateTime) -> Self {
-        Self::Unreachable {
-            observed_at,
-            target_id: target_id.into(),
-        }
-    }
-
     fn observed_at(&self) -> OffsetDateTime {
         match self {
-            Self::Reachable { observed_at, .. } | Self::Unreachable { observed_at, .. } => {
-                *observed_at
-            }
+            Self::Reachable { observed_at, .. } => *observed_at,
         }
     }
 
     fn target_id(&self) -> &str {
         match self {
             Self::Reachable { profile, .. } => &profile.service,
-            Self::Unreachable { target_id, .. } => target_id,
         }
     }
 
@@ -119,10 +103,9 @@ impl CachedRuntimeTargetObservation {
         age >= Duration::ZERO && age <= SNAPSHOT_FRESHNESS
     }
 
-    fn into_profile(self) -> Option<RuntimeProfile> {
+    fn into_profile(self) -> RuntimeProfile {
         match self {
-            Self::Reachable { profile, .. } => Some(*profile),
-            Self::Unreachable { .. } => None,
+            Self::Reachable { profile, .. } => *profile,
         }
     }
 }
@@ -228,13 +211,9 @@ impl RuntimeProfileSnapshotCache {
         if !api_observation.is_fresh(now) || !runner_observation.is_fresh(now) {
             return Ok(None);
         }
-        let Some(api_profile) = api_observation.into_profile() else {
-            return Err(anyhow!("api-server runtime target cannot be unreachable"));
-        };
-
         Ok(Some(RuntimeProfilesSnapshot {
-            api_profile,
-            runner_profile: runner_observation.into_profile(),
+            api_profile: api_observation.into_profile(),
+            host_profile: runner_observation.into_profile(),
         }))
     }
 
@@ -272,33 +251,27 @@ impl RuntimeProfileSnapshotCache {
 
     async fn refresh_snapshot(&self) -> Result<RuntimeProfilesSnapshot> {
         let api_profile = self.api_runtime_profile.collect_runtime_profile().await?;
-        let runner_profile = self.runtime_host_system.fetch_runtime_profile().await.ok();
+        let host_profile = self.runtime_host_system.fetch_runtime_profile().await?;
         let observed_at = OffsetDateTime::now_utc();
         let api_observation =
             CachedRuntimeTargetObservation::reachable(api_profile.clone(), observed_at);
-        let runner_observation = match runner_profile.as_ref() {
-            Some(profile) => {
-                CachedRuntimeTargetObservation::reachable(profile.clone(), observed_at)
-            }
-            None => {
-                CachedRuntimeTargetObservation::unreachable(RUNTIME_HOST_TARGET_ID, observed_at)
-            }
-        };
+        let host_observation =
+            CachedRuntimeTargetObservation::reachable(host_profile.clone(), observed_at);
         let api_value = serde_json::to_value(api_observation)?;
-        let runner_value = serde_json::to_value(runner_observation)?;
+        let host_value = serde_json::to_value(host_observation)?;
         let api_key = self.target_key(API_SERVER_TARGET_ID);
-        let runner_key = self.target_key(RUNTIME_HOST_TARGET_ID);
+        let host_key = self.target_key(RUNTIME_HOST_TARGET_ID);
 
         tokio::try_join!(
             self.cache_store
                 .set_json(&api_key, api_value, Some(SNAPSHOT_RETENTION),),
             self.cache_store
-                .set_json(&runner_key, runner_value, Some(SNAPSHOT_RETENTION),),
+                .set_json(&host_key, host_value, Some(SNAPSHOT_RETENTION),),
         )?;
 
         Ok(RuntimeProfilesSnapshot {
             api_profile,
-            runner_profile,
+            host_profile,
         })
     }
 

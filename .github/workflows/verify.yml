@@ -35,17 +35,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout exact main source
-        uses: actions/checkout
+        uses: actions/checkout@v6
         with:
           ref: ${{ inputs.main_source_sha }}
       - name: Checkout exact official plugin source
-        uses: actions/checkout
+        uses: actions/checkout@v6
         with:
           repository: taichuy/1flowbase-official-plugins
           ref: ${{ inputs.official_source_sha }}
           path: tmp/provider-conformance/official-source
-      - uses: dtolnay/rust-toolchain
-      - name: Validate the eight official RuntimeExtension manifests against the in-process host contract
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run official executable wire and behavior suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          for plugin_dir in tmp/provider-conformance/official-source/runtime-extensions/@taichuy/*; do
+            if [ ! -f "${plugin_dir}/Cargo.toml" ]; then
+              continue
+            fi
+            cargo test --manifest-path "${plugin_dir}/Cargo.toml" --all-targets
+            cargo build --manifest-path "${plugin_dir}/Cargo.toml"
+          done
+      - name: Execute the eight official RuntimeExtensions through the in-process host
         env:
           ONEFLOWBASE_OFFICIAL_PLUGIN_ROOT: ${{ github.workspace }}/tmp/provider-conformance/official-source
         run: cargo test --manifest-path api/Cargo.toml -p runtime-extension-host --test official_plugin_compatibility -- --ignored

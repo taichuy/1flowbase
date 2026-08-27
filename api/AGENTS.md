@@ -28,7 +28,7 @@
 - `crates/orchestration-runtime` 放编排编译、绑定运行时、执行引擎、预览执行器。
 - `crates/plugin-framework` 放插件 manifest / schema / contribution / registry / package 边界。
 - `crates/runtime-extension-host` 负责 RuntimeExtension Registry、Worker、stdio、profile 与生命周期的唯一运行真值，只依赖 bounded contracts、`runtime-core` 与 runtime package loader，不依赖完整 `plugin-framework`，且不向协议层泄漏内部实现。
-- `crates/runtime-core` 放 runtime registry、runtime CRUD 核心、slot engine 与稳定 Runtime Backend Port；不得依赖具体 Host。
+- `crates/runtime-core` 放 runtime registry、runtime CRUD 核心、slot engine 与稳定 Runtime Backend Port；Port 只接收 artifact reference，不暴露本机 package path，也不得依赖具体 Host。
 - `crates/runtime-profile` 放运行目标、locale、profile fingerprint 与插件运行环境快照。
 - `crates/storage/durable/core` 是 `storage-durable` 稳定边界，只放 backend kind 等不依赖具体 adapter 的类型。
 - `crates/storage/durable/postgres` 是 `storage-durable-postgres` crate，放 PostgreSQL repository impl、启动入口、查询、事务、migrations 与存储层 mapper。

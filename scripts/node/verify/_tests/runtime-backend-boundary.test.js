@@ -38,3 +38,27 @@ test('Delivery 1898 keeps one Backend executable in the Cargo workspace', () => 
   assert.doesNotMatch(workspace, forbidden);
   assert.equal(fs.existsSync(path.join(repoRoot, 'api/apps/plugin-runner')), false);
 });
+
+test('Delivery 1898 binds the production Backend Slot and hides concrete registries', () => {
+  const boot = fs.readFileSync(path.join(repoRoot, 'api/apps/api-server/src/lib.rs'), 'utf8');
+  const runtime = fs.readFileSync(
+    path.join(repoRoot, 'api/apps/api-server/src/provider_runtime/mod.rs'),
+    'utf8',
+  );
+  const host = fs.readFileSync(
+    path.join(repoRoot, 'api/crates/runtime-extension-host/src/runtime_host.rs'),
+    'utf8',
+  );
+  const contract = fs.readFileSync(
+    path.join(repoRoot, 'api/crates/runtime-core/src/runtime_backend.rs'),
+    'utf8',
+  );
+
+  assert.match(boot, /RuntimeBackendSlot::default\(\)/u);
+  assert.match(boot, /runtime_backend_slot\.bind\(runtime_extension_host\.clone\(\)\)/u);
+  assert.match(runtime, /orchestration_backend/u);
+  assert.doesNotMatch(runtime, /\.(?:provider|data_source|capability|network_egress)_registry\(\)/u);
+  assert.doesNotMatch(host, /pub fn (?:provider|data_source|capability|network_egress)_registry/u);
+  assert.match(contract, /pub struct RuntimeArtifactReference/u);
+  assert.doesNotMatch(contract, /pub package_root:/u);
+});

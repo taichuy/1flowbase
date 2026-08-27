@@ -115,6 +115,26 @@ test("verify workflow runs on beta, main and latest but only publishes quality r
   assert.match(workflow, /INPUT_PR_NUMBER: \$\{\{ github\.event\.pull_request\.number \}\}/u);
   assert.doesNotMatch(workflow, /INPUT_PUBLISH_ISSUE: .+refs\/heads\/main/u);
 });
+
+test("Delivery 1898 provider conformance pins every reusable action", () => {
+  const workflow = readVerifyWorkflow();
+  const providerConformance = workflow.slice(
+    workflow.indexOf("  provider-conformance:"),
+    workflow.indexOf("  repo-tooling-gate:"),
+  );
+
+  assert.match(providerConformance, /uses: actions\/checkout@v6/u);
+  assert.match(providerConformance, /uses: dtolnay\/rust-toolchain@stable/u);
+  assert.doesNotMatch(providerConformance, /^\s*uses:\s+[^\s@]+\s*$/mu);
+  assert.match(
+    providerConformance,
+    /cargo test --manifest-path "\$\{plugin_dir\}\/Cargo\.toml" --all-targets/u,
+  );
+  assert.match(
+    providerConformance,
+    /runtime-extension-host --test official_plugin_compatibility -- --ignored/u,
+  );
+});
 test("verify workflow runs lightweight merge gates before one aggregate report", () => {
   const workflow = readVerifyWorkflow();
 

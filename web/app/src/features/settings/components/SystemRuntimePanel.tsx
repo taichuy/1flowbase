@@ -79,8 +79,8 @@ function serviceLabel(targetId: string) {
   if (targetId === 'api-server') {
     return 'API Server';
   }
-  if (targetId === 'plugin-runner') {
-    return 'Plugin Runner';
+  if (targetId === 'runtime-extension-host') {
+    return 'Runtime Extension Host';
   }
   return targetId;
 }

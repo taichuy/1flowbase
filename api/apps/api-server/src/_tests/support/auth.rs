@@ -484,7 +484,7 @@ pub fn sample_api_profile(host_fingerprint: &str) -> RuntimeProfile {
 }
 
 pub fn sample_runner_profile(host_fingerprint: &str) -> RuntimeProfile {
-    sample_runtime_profile("plugin-runner", host_fingerprint)
+    sample_runtime_profile("runtime-extension-host", host_fingerprint)
 }
 
 pub async fn test_app_with_runtime_profiles(
@@ -500,7 +500,7 @@ pub async fn test_app_with_runtime_profiles(
             profile: api_profile,
         }),
         Arc::new(StubRuntimeHostSystemClient {
-            result: runner_profile.ok_or_else(|| "plugin runner unavailable".to_string()),
+            result: runner_profile.ok_or_else(|| "runtime extension host unavailable".to_string()),
         }),
     )
     .await;

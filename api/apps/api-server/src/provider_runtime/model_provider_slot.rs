@@ -87,7 +87,7 @@ pub struct ModelProviderSlotBinding {
     pub source_kind: String,
     pub provenance: ModelProviderBindingProvenance,
     pub graph_fingerprint: String,
-    package_root: String,
+    artifact_reference: String,
     legacy_manifest_eligibility: Option<LegacyInstalledManifestEligibility>,
 }
 
@@ -105,10 +105,6 @@ impl ModelProviderSlotBinding {
         graph_fingerprint: String,
         installation: &domain::LocalPluginInstallationRecord,
     ) -> anyhow::Result<Self> {
-        let package_root = installation
-            .local_path()
-            .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?
-            .to_string();
         Ok(Self {
             point_id,
             installation_id: installation.id,
@@ -125,7 +121,7 @@ impl ModelProviderSlotBinding {
             source_kind: installation.source_kind.clone(),
             provenance,
             graph_fingerprint,
-            package_root,
+            artifact_reference: runtime_artifact_reference(installation)?,
             legacy_manifest_eligibility: legacy_manifest_eligibility(installation)?,
         })
     }
@@ -142,14 +138,14 @@ impl ModelProviderSlotBinding {
         )
     }
 
-    pub(crate) fn package_root(&self) -> &str {
-        &self.package_root
-    }
-
     pub(crate) fn legacy_manifest_eligibility(
         &self,
     ) -> Option<&LegacyInstalledManifestEligibility> {
         self.legacy_manifest_eligibility.as_ref()
+    }
+
+    pub(crate) fn artifact_reference(&self) -> &str {
+        &self.artifact_reference
     }
 
     pub(crate) fn require_provider_code(&self, provider_code: &str) -> anyhow::Result<()> {
@@ -157,6 +153,22 @@ impl ModelProviderSlotBinding {
             return Ok(());
         }
         Err(ControlPlaneError::InvalidInput("provider_code").into())
+    }
+}
+
+fn runtime_artifact_reference(
+    installation: &domain::LocalPluginInstallationRecord,
+) -> anyhow::Result<String> {
+    #[cfg(test)]
+    {
+        return installation
+            .local_path()
+            .map(str::to_string)
+            .ok_or_else(|| ControlPlaneError::Conflict("plugin_artifact_path_missing").into());
+    }
+    #[cfg(not(test))]
+    {
+        Ok(installation.id.to_string())
     }
 }
 

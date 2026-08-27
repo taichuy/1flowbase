@@ -9,6 +9,7 @@
 
 - host lifecycle、profile、process、stream/cancel 与 stdio/runtime contract 测试必须通过。
 - 本 crate 只提供进程内 `RuntimeExtensionHost` facade 和稳定 Port 实现；不得新增 HTTP router、监听端口或独立 executable。
+- package 激活只消费 `RuntimeArtifactReference`；本机路径由 composition root 注入的 resolver 解析，不进入稳定 Port。
 
 ## Resources And Stop
 

@@ -15,4 +15,4 @@ pub mod stdio_runtime;
 
 mod runtime_host;
 
-pub use runtime_host::RuntimeExtensionHost;
+pub use runtime_host::{RuntimeArtifactResolver, RuntimeExtensionHost};

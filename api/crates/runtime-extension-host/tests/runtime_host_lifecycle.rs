@@ -1,12 +1,132 @@
-use std::sync::Arc;
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    sync::Arc,
+    time::Duration,
+};
 
 use async_trait::async_trait;
+use extension_contracts::ProviderInvocationInput;
 use runtime_core::runtime_backend::{
-    RuntimeBackendError, RuntimeBackendLifecycle, RuntimeBackendSlot, RuntimeExecutionPort,
-    RuntimeObservationPort, RuntimeRequestId,
+    RuntimeArtifactReference, RuntimeBackendError, RuntimeBackendLifecycle, RuntimeBackendSlot,
+    RuntimeExecutionPort, RuntimeExecutionRequest, RuntimeExtensionPort, RuntimeObservationPort,
+    RuntimePackageActivation, RuntimeRequestId, RuntimeStreamSinks, RuntimeTargetId,
 };
-use runtime_extension_host::RuntimeExtensionHost;
+use runtime_extension_host::{RuntimeArtifactResolver, RuntimeExtensionHost};
 use time::OffsetDateTime;
+
+struct LifecycleProviderPackage(PathBuf);
+
+impl LifecycleProviderPackage {
+    fn new() -> Self {
+        let root = std::env::temp_dir().join(format!(
+            "runtime-host-lifecycle-{}-{}",
+            std::process::id(),
+            OffsetDateTime::now_utc().unix_timestamp_nanos()
+        ));
+        fs::create_dir_all(root.join("provider")).unwrap();
+        fs::create_dir_all(root.join("bin")).unwrap();
+        fs::write(
+            root.join("manifest.yaml"),
+            r#"manifest_version: 1
+plugin_id: lifecycle_provider
+version: 0.1.0
+publisher_namespace: 1flowbase
+vendor: 1flowbase
+display_name: Lifecycle Provider
+description: Runtime host lifecycle fixture
+source_kind: uploaded
+trust_level: checksum_only
+consumption_kind: runtime_extension
+execution_mode: stateful_provider_worker
+slot_codes:
+  - model_provider
+binding_targets:
+  - workspace
+selection_mode: assignment_then_select
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.provider/v2
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: none
+  secrets: provider_instance_only
+  storage: none
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json_worker
+  entry: bin/lifecycle_provider
+  capabilities:
+    - config.validate
+  limits:
+    timeout_ms: 30000
+node_contributions: []
+"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("provider/lifecycle_provider.yaml"),
+            r#"provider_code: lifecycle_provider
+display_name: Lifecycle Provider
+protocol: openai_compatible
+model_discovery: static
+config_schema: []
+"#,
+        )
+        .unwrap();
+        let executable = root.join("bin/lifecycle_provider");
+        fs::write(
+            &executable,
+            include_str!("_fixtures/provider_stdio/lifecycle_worker.sh"),
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = fs::metadata(&executable).unwrap().permissions();
+            permissions.set_mode(0o755);
+            fs::set_permissions(&executable, permissions).unwrap();
+        }
+        Self(root)
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for LifecycleProviderPackage {
+    fn drop(&mut self) {
+        let _ = fs::remove_dir_all(&self.0);
+    }
+}
+
+struct FixtureArtifactResolver(PathBuf);
+
+#[async_trait]
+impl RuntimeArtifactResolver for FixtureArtifactResolver {
+    async fn resolve(
+        &self,
+        _artifact: &RuntimeArtifactReference,
+    ) -> Result<PathBuf, RuntimeBackendError> {
+        Ok(self.0.clone())
+    }
+}
+
+fn lifecycle_request(request_id: &str) -> RuntimeExecutionRequest {
+    RuntimeExecutionRequest {
+        request_id: RuntimeRequestId::new(request_id).unwrap(),
+        target: RuntimeTargetId::new("lifecycle_provider").unwrap(),
+        input: ProviderInvocationInput {
+            provider_instance_id: "lifecycle-instance".to_string(),
+            provider_code: "lifecycle_provider".to_string(),
+            protocol: "openai_compatible".to_string(),
+            model: "slow".to_string(),
+            provider_config: serde_json::json!({ "mode": "slow" }),
+            ..ProviderInvocationInput::default()
+        },
+    }
+}
 
 #[tokio::test]
 async fn d_001_one_host_owns_all_runtime_registries_and_the_backend_slot() {
@@ -29,13 +149,74 @@ async fn d_001_one_host_owns_all_runtime_registries_and_the_backend_slot() {
 
 #[tokio::test]
 async fn d_003_ready_drain_stop_is_monotonic_and_cancel_is_idempotent() {
-    let host = RuntimeExtensionHost::new(OffsetDateTime::now_utc()).unwrap();
+    let package = LifecycleProviderPackage::new();
+    let host = Arc::new(
+        RuntimeExtensionHost::new_with_artifact_resolver(
+            OffsetDateTime::now_utc(),
+            Arc::new(FixtureArtifactResolver(package.path().to_path_buf())),
+        )
+        .unwrap(),
+    );
+    host.activate_provider(RuntimePackageActivation {
+        plugin_id: "lifecycle_provider".to_string(),
+        artifact: RuntimeArtifactReference::new("lifecycle-artifact").unwrap(),
+        source_identity: Some("lifecycle-fixture".to_string()),
+        legacy_eligibility: None,
+    })
+    .await
+    .expect("package activation is valid while the host is starting");
+
+    let starting_error = host
+        .execute_stream(
+            lifecycle_request("starting-request"),
+            RuntimeStreamSinks::default(),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        starting_error,
+        RuntimeBackendError::Unavailable(RuntimeBackendLifecycle::Starting)
+    ));
+
     host.mark_ready().unwrap();
     assert_eq!(host.lifecycle(), RuntimeBackendLifecycle::Ready);
 
-    let request_id = RuntimeRequestId::new("missing-request").unwrap();
+    let request_id = RuntimeRequestId::new("active-request").unwrap();
+    let execution_host = Arc::clone(&host);
+    let execution = tokio::spawn(async move {
+        execution_host
+            .execute_stream(
+                lifecycle_request("active-request"),
+                RuntimeStreamSinks::default(),
+            )
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let snapshot = RuntimeObservationPort::snapshot(host.as_ref())
+                .await
+                .unwrap();
+            if snapshot.active_request_ids == ["active-request"] {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("active request must become observable before cancellation");
+
     assert_eq!(
-        RuntimeExecutionPort::cancel(&host, &request_id)
+        RuntimeExecutionPort::cancel(host.as_ref(), &request_id)
+            .await
+            .unwrap(),
+        runtime_core::runtime_backend::RuntimeCancelOutcome::Cancelled
+    );
+    assert!(matches!(
+        execution.await.unwrap().unwrap_err(),
+        RuntimeBackendError::Cancelled(cancelled) if cancelled == request_id
+    ));
+    assert_eq!(
+        RuntimeExecutionPort::cancel(host.as_ref(), &request_id)
             .await
             .unwrap(),
         runtime_core::runtime_backend::RuntimeCancelOutcome::NotFound
@@ -43,6 +224,17 @@ async fn d_003_ready_drain_stop_is_monotonic_and_cancel_is_idempotent() {
 
     host.drain().await.unwrap();
     assert_eq!(host.lifecycle(), RuntimeBackendLifecycle::Draining);
+    let draining_error = host
+        .execute_stream(
+            lifecycle_request("draining-request"),
+            RuntimeStreamSinks::default(),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        draining_error,
+        RuntimeBackendError::Unavailable(RuntimeBackendLifecycle::Draining)
+    ));
     host.stop().await.unwrap();
     assert_eq!(host.lifecycle(), RuntimeBackendLifecycle::Stopped);
     let error = host.mark_ready().unwrap_err();

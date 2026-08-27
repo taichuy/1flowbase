@@ -140,7 +140,7 @@ function runtimeProfile(sampleIndex = 0) {
       },
       plugin_runner: {
         reachable: true,
-        service: 'plugin-runner',
+        service: 'runtime-extension-host',
         status: 'ok',
         version: '0.2.6',
         host_fingerprint: 'host-1'
@@ -166,7 +166,7 @@ function runtimeProfile(sampleIndex = 0) {
           process_bytes: 268_435_456,
           process_gb: 0.25
         },
-        services: ['api-server', 'plugin-runner']
+        services: ['api-server', 'runtime-extension-host']
       }
     ],
     runtime_targets: [
@@ -177,7 +177,7 @@ function runtimeProfile(sampleIndex = 0) {
         metrics: runtimeMetrics(12.5 + sampleIndex, capturedAt, 335_544_320, 2)
       },
       {
-        target_id: 'plugin-runner',
+        target_id: 'runtime-extension-host',
         reachable: true,
         host_fingerprint: 'host-1',
         metrics: runtimeMetrics(37.5 + sampleIndex, capturedAt, 469_762_048, 3)
@@ -297,7 +297,7 @@ describe('SystemRuntimePanel', () => {
       })
     );
     fireEvent.click(
-      await screen.findByRole('option', { name: 'Plugin Runner' })
+      await screen.findByRole('option', { name: 'Runtime Extension Host' })
     );
 
     expect(within(environmentSection!).getByText('768 MB')).toBeInTheDocument();
@@ -374,7 +374,7 @@ describe('SystemRuntimePanel', () => {
     await screen.findByText('资源监控');
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '运行目标' }));
     fireEvent.click(
-      await screen.findByRole('option', { name: 'Plugin Runner' })
+      await screen.findByRole('option', { name: 'Runtime Extension Host' })
     );
     expect(screen.getByText('37.5%')).toBeInTheDocument();
   });
@@ -484,7 +484,7 @@ describe('SystemRuntimePanel', () => {
     expect(screen.getByText('环境内存')).toBeInTheDocument();
     fireEvent.click(screen.getByText('进程内存'));
     expect(screen.getByText('API Server · 2 个进程')).toBeInTheDocument();
-    expect(screen.getByText('Plugin Runner · 3 个进程')).toBeInTheDocument();
+    expect(screen.getByText('Runtime Extension Host · 3 个进程')).toBeInTheDocument();
     expect(screen.getByText('同宿主合计 · 5 个进程')).toBeInTheDocument();
 
     await waitFor(() => {
@@ -518,7 +518,7 @@ describe('SystemRuntimePanel', () => {
 
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '运行目标' }));
     fireEvent.click(
-      await screen.findByRole('option', { name: 'Plugin Runner' })
+      await screen.findByRole('option', { name: 'Runtime Extension Host' })
     );
     await waitFor(() => {
       const option = echartsMock.chart.setOption.mock.calls
@@ -527,13 +527,13 @@ describe('SystemRuntimePanel', () => {
         .find(
           (candidate) =>
             Array.isArray(candidate?.series) &&
-            candidate.series[1]?.name === 'Plugin Runner 进程树'
+            candidate.series[1]?.name === 'Runtime Extension Host 进程树'
         ) as { series?: Array<{ name?: string }> } | undefined;
 
       expect(option?.series?.map((series) => series.name)).toEqual([
         '同宿主相关进程合计',
-        'Plugin Runner 进程树',
-        'Plugin Runner 根进程 RSS'
+        'Runtime Extension Host 进程树',
+        'Runtime Extension Host 根进程 RSS'
       ]);
     });
   });

@@ -75,7 +75,10 @@ use crate::{
     },
     host_infrastructure::build_local_host_infrastructure_from_host_extensions,
     official_mcp_bundles::OfficialMcpBundleSourcePort,
-    provider_runtime::{ApiDataSourceRuntimeRecordBackend, ApiProviderRuntime, ApiRuntimeServices},
+    provider_runtime::{
+        ApiDataSourceRuntimeRecordBackend, ApiProviderRuntime, ApiRuntimeArtifactResolver,
+        ApiRuntimeServices,
+    },
     runtime_profile_client::HostApiRuntimeProfileCollector,
 };
 
@@ -418,11 +421,22 @@ async fn app_and_runtime_host_from_config(
         .read_workspace_catalog(bootstrap_result.root_user_id)
         .await?;
     let process_started_at = OffsetDateTime::now_utc();
-    let runtime_extension_host = Arc::new(runtime_extension_host::RuntimeExtensionHost::new(
-        process_started_at,
-    )?);
-    let provider_runtime = Arc::new(ApiRuntimeServices::new_with_runtime_host(
-        Arc::clone(&runtime_extension_host),
+    let runtime_artifact_resolver = Arc::new(ApiRuntimeArtifactResolver::new(
+        store.clone(),
+        config.api_node_id.clone(),
+        config.provider_install_root.clone(),
+    ));
+    let runtime_extension_host = Arc::new(
+        runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver(
+            process_started_at,
+            runtime_artifact_resolver,
+        )?,
+    );
+    let mut runtime_backend_slot = runtime_core::runtime_backend::RuntimeBackendSlot::default();
+    runtime_backend_slot.bind(runtime_extension_host.clone())?;
+    let runtime_backend = runtime_backend_slot.backend()?;
+    let provider_runtime = Arc::new(ApiRuntimeServices::new_with_runtime_backend(
+        runtime_backend,
         Arc::clone(&extension_graph),
     )?);
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());

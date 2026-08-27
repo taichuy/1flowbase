@@ -664,7 +664,7 @@ describe('SettingsPage', () => {
         },
         plugin_runner: {
           reachable: true,
-          service: 'plugin-runner',
+          service: 'runtime-extension-host',
           status: 'ok',
           version: '0.1.0',
           host_fingerprint: 'host-1'
@@ -692,7 +692,7 @@ describe('SettingsPage', () => {
             process_bytes: 1073741824,
             process_gb: 1
           },
-          services: ['api-server', 'plugin-runner']
+          services: ['api-server', 'runtime-extension-host']
         }
       ],
       runtime_targets: [
@@ -745,7 +745,7 @@ describe('SettingsPage', () => {
           }
         },
         {
-          target_id: 'plugin-runner',
+          target_id: 'runtime-extension-host',
           reachable: true,
           host_fingerprint: 'host-1',
           metrics: {
@@ -1158,7 +1158,7 @@ describe('SettingsPage', () => {
     expect(screen.queryByText('zh_Hans')).not.toBeInTheDocument();
     expect(screen.getByText('相关进程内存')).toBeInTheDocument();
     expect(screen.getAllByText('API Server').length).toBeGreaterThan(0);
-    expect(screen.getByText('Plugin Runner')).toBeInTheDocument();
+    expect(screen.getByText('Runtime Extension Host')).toBeInTheDocument();
     expect(
       systemRuntimeApi.fetchSettingsSystemRuntimeProfile
     ).toHaveBeenCalled();

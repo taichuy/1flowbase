@@ -383,7 +383,7 @@ pub async fn get_runtime_profile(
     Ok(Json(ApiSuccess::new(merge_runtime_profiles(
         locale,
         profiles.api_profile,
-        profiles.runner_profile,
+        profiles.host_profile,
         state.api_node_id.clone(),
         state.provider_install_root.clone(),
         state.host_extension_dropin_root.clone(),
@@ -407,58 +407,34 @@ fn header_accept_language(headers: &HeaderMap) -> Option<String> {
 fn merge_runtime_profiles(
     locale_meta: LocaleResolution,
     api_profile: RuntimeProfile,
-    runner_profile: Option<RuntimeProfile>,
+    host_profile: RuntimeProfile,
     api_node_id: String,
     provider_install_root: String,
     host_extension_dropin_root: String,
 ) -> SystemRuntimeProfileResponse {
-    let relationship = match runner_profile.as_ref() {
-        Some(profile) if profile.host_fingerprint == api_profile.host_fingerprint => {
-            SystemRuntimeRelationship::SameHost
-        }
-        Some(_) => SystemRuntimeRelationship::SplitHost,
-        None => SystemRuntimeRelationship::RunnerUnreachable,
-    };
-
-    let hosts = match runner_profile.as_ref() {
-        Some(profile) if profile.host_fingerprint == api_profile.host_fingerprint => {
-            vec![host_from_profiles(
-                &api_profile,
-                &[&api_profile, profile],
-                vec!["api-server", "plugin-runner"],
-            )]
-        }
-        Some(profile) => vec![
-            host_from_profiles(&api_profile, &[&api_profile], vec!["api-server"]),
-            host_from_profiles(profile, &[profile], vec!["plugin-runner"]),
-        ],
-        None => vec![host_from_profiles(
-            &api_profile,
-            &[&api_profile],
-            vec!["api-server"],
-        )],
-    };
+    let hosts = vec![host_from_profiles(
+        &api_profile,
+        &[&api_profile],
+        vec!["api-server", "runtime-extension-host"],
+    )];
     let runtime_targets = vec![
         runtime_target_from_profile(&api_profile),
-        runner_profile
-            .as_ref()
-            .map(runtime_target_from_profile)
-            .unwrap_or_else(unreachable_runner_target),
+        runtime_target_from_profile(&host_profile),
     ];
 
     SystemRuntimeProfileResponse {
         api_node_id,
         provider_install_root,
         host_extension_dropin_root,
-        related_process_memory_complete: runner_profile.is_some(),
+        related_process_memory_complete: true,
         locale_meta: locale_meta.into(),
-        topology: SystemRuntimeTopologyResponse { relationship },
+        topology: SystemRuntimeTopologyResponse {
+            relationship: SystemRuntimeRelationship::SameHost,
+        },
         services: SystemRuntimeServicesResponse {
             api_server: service_from_profile(&api_profile),
-            plugin_runner: runner_profile
-                .as_ref()
-                .map(service_from_profile)
-                .unwrap_or_else(unreachable_runner_service),
+            // Keep the established response key while projecting the real in-process service.
+            plugin_runner: service_from_profile(&host_profile),
         },
         hosts,
         runtime_targets,
@@ -471,15 +447,6 @@ fn runtime_target_from_profile(profile: &RuntimeProfile) -> SystemRuntimeTargetR
         reachable: true,
         host_fingerprint: Some(profile.host_fingerprint.clone()),
         metrics: Some(SystemRuntimeMetricsResponse::from(&profile.metrics)),
-    }
-}
-
-fn unreachable_runner_target() -> SystemRuntimeTargetResponse {
-    SystemRuntimeTargetResponse {
-        target_id: "plugin-runner".to_string(),
-        reachable: false,
-        host_fingerprint: None,
-        metrics: None,
     }
 }
 
@@ -529,16 +496,6 @@ fn service_from_profile(profile: &RuntimeProfile) -> SystemRuntimeServiceRespons
         status: Some(profile.service_status.clone()),
         version: Some(profile.service_version.clone()),
         host_fingerprint: Some(profile.host_fingerprint.clone()),
-    }
-}
-
-fn unreachable_runner_service() -> SystemRuntimeServiceResponse {
-    SystemRuntimeServiceResponse {
-        reachable: false,
-        service: "plugin-runner".to_string(),
-        status: None,
-        version: None,
-        host_fingerprint: None,
     }
 }
 

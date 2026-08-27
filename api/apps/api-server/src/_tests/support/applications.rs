@@ -34,7 +34,7 @@ pub(super) fn sample_runtime_profile(service: &str, host_fingerprint: &str) -> R
     let captured_at = OffsetDateTime::from_unix_timestamp(1_700_000_120).unwrap();
     let (related_process_bytes, related_process_count) = match service {
         "api-server" => (320 * 1024 * 1024, 2),
-        "plugin-runner" => (448 * 1024 * 1024, 3),
+        "runtime-extension-host" => (448 * 1024 * 1024, 3),
         _ => (256 * 1024 * 1024, 1),
     };
     RuntimeProfile {

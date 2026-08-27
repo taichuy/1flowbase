@@ -1124,23 +1124,25 @@ fn provider_runtime_consumer_has_no_provider_specific_branch_and_production_wire
         12,
         "every ProviderRuntimePort operation must resolve the typed slot binding"
     );
-    assert_eq!(
-        consumer.matches("&binding.plugin_id").count(),
-        10,
-        "non-execution ProviderHost paths must use the binding plugin id"
-    );
-    assert_eq!(
-        consumer.matches("RuntimeExecutionPort::execute").count(),
-        2,
-        "provider execution paths must cross the stable runtime-core port"
-    );
+    assert!(consumer.contains(".orchestration_backend"));
+    assert!(consumer.contains(".provider_count_tokens("));
+    assert!(consumer.contains(".data_source_execute_sql("));
+    assert!(consumer.contains(".capability_execute("));
+    assert!(consumer.contains(".network_egress_sync("));
+    assert!(!consumer.contains(".provider_registry()"));
+    assert!(!consumer.contains(".data_source_registry()"));
+    assert!(!consumer.contains(".capability_registry()"));
+    assert!(!consumer.contains(".network_egress_registry()"));
     assert_eq!(
         consumer.matches("binding.require_provider_code(").count(),
         4,
         "every canonical provider input must fail closed on a crossed provider code"
     );
-    assert!(boot.contains("RuntimeExtensionHost::new("));
-    assert!(boot.contains("ApiRuntimeServices::new_with_runtime_host("));
+    assert!(boot.contains("RuntimeExtensionHost::new_with_artifact_resolver("));
+    assert!(boot.contains("ApiRuntimeArtifactResolver::new("));
+    assert!(boot.contains("RuntimeBackendSlot::default()"));
+    assert!(boot.contains("runtime_backend_slot.bind(runtime_extension_host.clone())"));
+    assert!(boot.contains("ApiRuntimeServices::new_with_runtime_backend("));
     assert!(boot.contains("Arc::clone(&extension_graph)"));
     assert!(!boot.contains("new_without_model_provider_extension_graph_for_tests"));
 }

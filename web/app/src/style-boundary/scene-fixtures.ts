@@ -549,7 +549,7 @@ export function seedStyleBoundarySettingsFetch() {
             },
             plugin_runner: {
               reachable: true,
-              service: 'plugin-runner',
+              service: 'runtime-extension-host',
               status: 'ok',
               version: '0.2.6',
               host_fingerprint: 'host-boundary'
@@ -575,7 +575,7 @@ export function seedStyleBoundarySettingsFetch() {
                 process_bytes: 268_435_456,
                 process_gb: 0.25
               },
-              services: ['api-server', 'plugin-runner']
+              services: ['api-server', 'runtime-extension-host']
             }
           ],
           runtime_targets: [
@@ -586,7 +586,7 @@ export function seedStyleBoundarySettingsFetch() {
               metrics: createStyleBoundaryRuntimeMetrics(12.5, 268_435_456)
             },
             {
-              target_id: 'plugin-runner',
+              target_id: 'runtime-extension-host',
               reachable: true,
               host_fingerprint: 'host-boundary',
               metrics: createStyleBoundaryRuntimeMetrics(8.5, 134_217_728)

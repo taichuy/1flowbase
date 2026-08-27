@@ -2,6 +2,11 @@ use crate::_tests::support::{
     get_json, sample_api_profile, sample_runner_profile, test_app_with_runtime_profile_error,
     test_app_with_runtime_profiles,
 };
+use axum::{
+    body::Body,
+    http::{Request, StatusCode},
+};
+use tower::ServiceExt;
 
 #[tokio::test]
 async fn runtime_profile_merges_same_host_services() {
@@ -20,7 +25,11 @@ async fn runtime_profile_merges_same_host_services() {
     let runtime_targets = payload["data"]["runtime_targets"].as_array().unwrap();
     assert_eq!(runtime_targets.len(), 2);
     assert_eq!(runtime_targets[0]["target_id"], "api-server");
-    assert_eq!(runtime_targets[1]["target_id"], "plugin-runner");
+    assert_eq!(runtime_targets[1]["target_id"], "runtime-extension-host");
+    assert_eq!(
+        payload["data"]["services"]["plugin_runner"]["service"],
+        "runtime-extension-host"
+    );
     assert_eq!(
         runtime_targets[0]["metrics"]["cpu"]["availability"],
         "available"
@@ -43,9 +52,9 @@ async fn runtime_profile_merges_same_host_services() {
     );
     assert_eq!(
         payload["data"]["hosts"][0]["related_process_bytes"],
-        768 * 1024 * 1024
+        320 * 1024 * 1024
     );
-    assert_eq!(payload["data"]["hosts"][0]["related_process_count"], 5);
+    assert_eq!(payload["data"]["hosts"][0]["related_process_count"], 2);
     assert_eq!(
         payload["data"]["locale_meta"]["source"],
         "user_preferred_locale"
@@ -62,7 +71,7 @@ async fn runtime_profile_merges_same_host_services() {
 }
 
 #[tokio::test]
-async fn ac_008_runtime_profile_keeps_related_process_totals_separate_across_hosts() {
+async fn d_006_runtime_profile_keeps_one_host_even_if_two_collectors_disagree() {
     let (app, cookie) = test_app_with_runtime_profiles(
         sample_api_profile("host_api"),
         Some(sample_runner_profile("host_runner")),
@@ -72,17 +81,13 @@ async fn ac_008_runtime_profile_keeps_related_process_totals_separate_across_hos
     .await;
 
     let payload = get_json(&app, "/api/console/system/runtime-profile", &cookie).await;
-    let hosts = payload["data"]["hosts"]
-        .as_array()
-        .expect("split-host response should contain host groups");
+    let hosts = payload["data"]["hosts"].as_array().expect("host groups");
 
-    assert_eq!(hosts.len(), 2);
+    assert_eq!(payload["data"]["topology"]["relationship"], "same_host");
+    assert_eq!(hosts.len(), 1);
     assert_eq!(hosts[0]["host_fingerprint"], "host_api");
     assert_eq!(hosts[0]["related_process_bytes"], 320 * 1024 * 1024);
     assert_eq!(hosts[0]["related_process_count"], 2);
-    assert_eq!(hosts[1]["host_fingerprint"], "host_runner");
-    assert_eq!(hosts[1]["related_process_bytes"], 448 * 1024 * 1024);
-    assert_eq!(hosts[1]["related_process_count"], 3);
 }
 
 #[tokio::test]
@@ -98,7 +103,7 @@ async fn ac_010_runtime_profile_exposes_available_cgroup_memory_composition() {
         });
     let (app, cookie) = test_app_with_runtime_profiles(
         api_profile,
-        None,
+        Some(sample_runner_profile("host_cgroup")),
         &["settings_feature.access.system.system-runtime"],
         None,
     )
@@ -115,21 +120,22 @@ async fn ac_010_runtime_profile_exposes_available_cgroup_memory_composition() {
 }
 
 #[tokio::test]
-async fn runtime_profile_reports_runner_unreachable_without_failing_request() {
+async fn d_006_runtime_profile_fails_when_the_in_process_host_cannot_be_observed() {
     let (app, cookie) =
         test_app_with_runtime_profile_error(&["settings_feature.access.system.system-runtime"])
             .await;
 
-    let payload = get_json(&app, "/api/console/system/runtime-profile", &cookie).await;
-    assert_eq!(
-        payload["data"]["topology"]["relationship"],
-        "runner_unreachable"
-    );
-    assert_eq!(
-        payload["data"]["services"]["plugin_runner"]["reachable"],
-        false
-    );
-    assert_eq!(payload["data"]["related_process_memory_complete"], false);
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/api/console/system/runtime-profile")
+                .header("cookie", cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
 }
 
 #[tokio::test]
