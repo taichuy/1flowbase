@@ -323,7 +323,7 @@ async fn app_and_runtime_host_from_config(
         Arc::clone(&extension_graph),
         extension_assembly.interface_operations(),
         Arc::new(
-            routes::host_infrastructure::interface_operation::DurableHostInfrastructureProvidersViewQuery::new(
+            extension_bus::DurableHostInfrastructureProvidersViewQuery::new(
                 store.clone(),
                 config.api_node_id.clone(),
             ),

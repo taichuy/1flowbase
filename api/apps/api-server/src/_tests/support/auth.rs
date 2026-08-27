@@ -258,7 +258,7 @@ async fn test_state_with_runtime_profile_state(
             ),
             extension_assembly.interface_operations(),
             Arc::new(
-                crate::routes::host_infrastructure::interface_operation::DurableHostInfrastructureProvidersViewQuery::new(
+                crate::extension_bus::DurableHostInfrastructureProvidersViewQuery::new(
                     store.clone(),
                     config.api_node_id.clone(),
                 ),

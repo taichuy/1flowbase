@@ -3,7 +3,8 @@ use std::{future::Future, pin::Pin, sync::Arc};
 use access_control::{ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup};
 use anyhow::{bail, Result};
 use control_plane::{
-    host_infrastructure_config::HostInfrastructureConfigService, ports::RoleConsolePolicyReader,
+    host_infrastructure_config::HostInfrastructureProviderConfigList,
+    ports::RoleConsolePolicyReader,
 };
 use interface_runtime::{
     CompiledInterfaceRegistry, ContractIdentity, GraphFingerprint, HandlerReference,
@@ -27,7 +28,6 @@ use plugin_framework::{
 
 use super::{to_provider_response, HostInfrastructureProviderConfigResponse};
 use crate::app_state::ApiState;
-use storage_durable_postgres::MainDurableStore;
 
 pub const INTERFACE_OPERATION_POINT_ID: &str = "1flowbase.application.interface-operation";
 pub const INTERFACE_OPERATION_CONTRACT_ID: &str = "interface-operation";
@@ -83,11 +83,11 @@ impl InterfaceContract for HostInfrastructureProvidersViewOutput {
         HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OUTPUT_CONTRACT_VERSION;
 }
 
-type HostInfrastructureProvidersViewQueryFuture<'a> = Pin<
+pub(crate) type HostInfrastructureProvidersViewQueryFuture<'a> = Pin<
     Box<
         dyn Future<
                 Output = Result<
-                    Vec<HostInfrastructureProviderConfigResponse>,
+                    HostInfrastructureProviderConfigList,
                     crate::error_response::ApiError,
                 >,
             > + Send
@@ -97,33 +97,6 @@ type HostInfrastructureProvidersViewQueryFuture<'a> = Pin<
 
 pub(crate) trait HostInfrastructureProvidersViewQuery: Send + Sync {
     fn list(&self) -> HostInfrastructureProvidersViewQueryFuture<'_>;
-}
-
-pub(crate) struct DurableHostInfrastructureProvidersViewQuery {
-    store: MainDurableStore,
-    node_id: String,
-}
-
-impl DurableHostInfrastructureProvidersViewQuery {
-    pub(crate) fn new(store: MainDurableStore, node_id: String) -> Self {
-        Self { store, node_id }
-    }
-}
-
-impl HostInfrastructureProvidersViewQuery for DurableHostInfrastructureProvidersViewQuery {
-    fn list(&self) -> HostInfrastructureProvidersViewQueryFuture<'_> {
-        Box::pin(async move {
-            Ok(
-                HostInfrastructureConfigService::new(self.store.clone(), self.node_id.clone())
-                    .list_providers()
-                    .await?
-                    .providers
-                    .into_iter()
-                    .map(to_provider_response)
-                    .collect(),
-            )
-        })
-    }
 }
 
 struct HostInfrastructureProvidersViewHandler {
@@ -143,7 +116,13 @@ impl InterfaceHandler<HostInfrastructureProvidersViewInput, HostInfrastructurePr
             query
                 .list()
                 .await
-                .map(|providers| HostInfrastructureProvidersViewOutput { providers })
+                .map(|list| HostInfrastructureProvidersViewOutput {
+                    providers: list
+                        .providers
+                        .into_iter()
+                        .map(to_provider_response)
+                        .collect(),
+                })
                 .map_err(|error| {
                     InterfaceTargetError::with_source("host_infrastructure_providers_view", error)
                 })

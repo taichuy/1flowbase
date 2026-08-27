@@ -1,10 +1,40 @@
 use std::sync::Arc;
 
+use control_plane::host_infrastructure_config::HostInfrastructureConfigService;
 use plugin_framework::extension_bus::{
     ContributionResolutionReceipt, EffectiveExtensionGraph, EffectiveExtensionPoint, ModuleId,
     ModuleResolutionReceipt, Provenance,
 };
 use serde::Serialize;
+use storage_durable_postgres::MainDurableStore;
+
+pub(crate) struct DurableHostInfrastructureProvidersViewQuery {
+    store: MainDurableStore,
+    node_id: String,
+}
+
+impl DurableHostInfrastructureProvidersViewQuery {
+    pub(crate) fn new(store: MainDurableStore, node_id: String) -> Self {
+        Self { store, node_id }
+    }
+}
+
+impl crate::routes::host_infrastructure::interface_operation::HostInfrastructureProvidersViewQuery
+    for DurableHostInfrastructureProvidersViewQuery
+{
+    fn list(
+        &self,
+    ) -> crate::routes::host_infrastructure::interface_operation::HostInfrastructureProvidersViewQueryFuture<'_>
+    {
+        Box::pin(async move {
+            Ok(
+                HostInfrastructureConfigService::new(self.store.clone(), self.node_id.clone())
+                    .list_providers()
+                    .await?,
+            )
+        })
+    }
+}
 
 pub const EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1: &str = "1flowbase.effective-extension-plan/v1";
 
