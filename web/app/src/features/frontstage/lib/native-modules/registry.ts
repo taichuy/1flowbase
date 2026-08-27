@@ -14,11 +14,16 @@ import {
 } from '@1flowbase/page-runtime';
 
 import { ANTD_STYLE_EXPORTS, loadAntdStyleModule } from './antd-style-runtime';
+import { NativeBlockAffix } from './native-affix-runtime';
 import { NativeBlockAnchor } from './native-anchor-runtime';
 
 type ModuleNamespace = Record<string, unknown>;
 
-const nativeAntdModule = { ...antdModule, Anchor: NativeBlockAnchor };
+const nativeAntdModule = {
+  ...antdModule,
+  Affix: NativeBlockAffix,
+  Anchor: NativeBlockAnchor
+};
 
 const ANT_DESIGN_X_EXPORTS = [
   'Actions',
