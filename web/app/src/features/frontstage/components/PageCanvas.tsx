@@ -1,6 +1,7 @@
 import { Alert, Button, Empty, Space, Typography } from 'antd';
 import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
 import type {
+  BlockContextSizing,
   BlockContextSeed,
   BlockProtocolError
 } from '@1flowbase/page-protocol';
@@ -372,6 +373,8 @@ function NativeRuntimeSlotSurface({
   nativeContextHost,
   pageContent,
   contentViewportStyle,
+  fillsAvailableHeight,
+  onIntrinsicSizeReport,
   onRetry
 }: {
   item: FrontstageBlockRenderPlanItem;
@@ -383,8 +386,12 @@ function NativeRuntimeSlotSurface({
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
   nativeContextHost?: FrontstageNativeBlockContextHost;
   pageContent?: FrontstagePageContent;
+  fillsAvailableHeight: boolean;
+  onIntrinsicSizeReport?: (height: number) => void;
 }) {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  const [availableSize, setAvailableSize] = useState({ width: 0, height: 0 });
   const [runtimeError, setRuntimeError] = useState<BlockProtocolError | null>(
     null
   );
@@ -393,6 +400,30 @@ function NativeRuntimeSlotSurface({
   const renderIdentity = readyPreparation?.mountIntent
     ? frontstageNativeInstanceRenderKey(readyPreparation.mountIntent)
     : null;
+  useEffect(() => {
+    if (!viewport || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+      setAvailableSize((current) =>
+        Math.abs(current.width - width) < 0.5 &&
+        Math.abs(current.height - height) < 0.5
+          ? current
+          : { width, height }
+      );
+    });
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [viewport]);
+  const reportIntrinsicSize = useCallback(
+    ({ height }: { height: number }) => onIntrinsicSizeReport?.(height),
+    [onIntrinsicSizeReport]
+  );
+  const runtimeSizing = useMemo<BlockContextSizing>(
+    () => ({ available: availableSize, reportIntrinsicSize }),
+    [availableSize, reportIntrinsicSize]
+  );
   useEffect(() => setRuntimeError(null), [renderIdentity]);
   const plan = useMemo<NativeTrustedBlockPreparePlan>(() => {
     const preparedSource = readyPreparation
@@ -459,11 +490,16 @@ function NativeRuntimeSlotSurface({
   }
 
   return (
-    <div style={contentViewportStyle}>
+    <div ref={setViewport} style={contentViewportStyle}>
       <div
         ref={setRoot}
         data-testid={`frontstage-native-block-root-${item.blockId}`}
-        style={{ width: '100%', maxWidth: '100%', minWidth: 0 }}
+        style={{
+          width: '100%',
+          maxWidth: '100%',
+          minWidth: 0,
+          height: fillsAvailableHeight ? '100%' : undefined
+        }}
       />
       {root ? (
         <FrontstageNativeRuntimeInstance
@@ -477,6 +513,7 @@ function NativeRuntimeSlotSurface({
           runtimeContext={runtimeContext}
           nativeContextHost={nativeContextHost}
           pageContent={pageContent}
+          runtimeSizing={runtimeSizing}
           onRuntimeError={setRuntimeError}
         />
       ) : (
@@ -501,6 +538,7 @@ function FrontstageNativeRuntimeInstance({
   runtimeContext,
   nativeContextHost,
   pageContent,
+  runtimeSizing,
   onRuntimeError
 }: {
   root: Element;
@@ -515,6 +553,7 @@ function FrontstageNativeRuntimeInstance({
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
   nativeContextHost?: FrontstageNativeBlockContextHost;
   pageContent?: FrontstagePageContent;
+  runtimeSizing: BlockContextSizing;
   onRuntimeError(error: BlockProtocolError): void;
 }) {
   const { instanceEpoch, isCurrentInstance } = useFrontstageNativeBlockInstance(
@@ -584,6 +623,11 @@ function FrontstageNativeRuntimeInstance({
     },
     inputs: { ...signalSnapshot.inputs, ...runtimeInputValues },
     ...capabilities,
+    ui: {
+      ...unavailable.ui,
+      ...(runtimeContext?.ui ?? {}),
+      sizing: runtimeSizing
+    },
     props: { ...plan.props },
     state: runtimeState.state,
     patch: runtimeState.patch
@@ -631,6 +675,18 @@ function RenderPlanSlot({
   const [isHovered, setIsHovered] = useState(false);
   const blockRef = useRef<HTMLDivElement>(null);
   const intrinsicContentRef = useRef<HTMLDivElement>(null);
+  const runtimeIntrinsicOwnerRef = useRef<string | null>(null);
+  const [runtimeIntrinsicOwner, setRuntimeIntrinsicOwner] = useState<
+    string | null
+  >(null);
+  const runtimeRenderIdentity =
+    runtimePreparation?.status === 'ready' &&
+    runtimePreparation.mountIntent
+      ? frontstageNativeInstanceRenderKey(runtimePreparation.mountIntent)
+      : null;
+  const fillsAvailableHeight =
+    runtimeRenderIdentity !== null &&
+    runtimeIntrinsicOwner === runtimeRenderIdentity;
   const rendererVersionError = resolveRendererVersionError(item);
   const isFixedHeight = item.presentation.heightMode === 'fixed';
   const viewportDemand = useRef({
@@ -700,13 +756,37 @@ function RenderPlanSlot({
     }
 
     const observer = new ResizeObserver(([entry]) => {
-      if (entry) {
+      if (
+        entry &&
+        runtimeIntrinsicOwnerRef.current !== runtimeRenderIdentity
+      ) {
         onAutoHeightChange?.(item.blockId, entry.contentRect.height);
       }
     });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [isFixedHeight, item.blockId, onAutoHeightChange]);
+  }, [
+    isFixedHeight,
+    item.blockId,
+    onAutoHeightChange,
+    runtimeRenderIdentity
+  ]);
+
+  const handleIntrinsicSizeReport = useCallback(
+    (height: number) => {
+      if (
+        !runtimeRenderIdentity ||
+        !Number.isFinite(height) ||
+        height <= 0
+      ) {
+        return;
+      }
+      runtimeIntrinsicOwnerRef.current = runtimeRenderIdentity;
+      setRuntimeIntrinsicOwner(runtimeRenderIdentity);
+      onAutoHeightChange?.(item.blockId, height);
+    },
+    [item.blockId, onAutoHeightChange, runtimeRenderIdentity]
+  );
 
   // Determine border style based on mode
   let borderStyle: CSSProperties;
@@ -737,7 +817,7 @@ function RenderPlanSlot({
     width: '100%',
     maxWidth: '100%',
     minWidth: 0,
-    height: isFixedHeight ? '100%' : 'auto',
+    height: isFixedHeight || fillsAvailableHeight ? '100%' : 'auto',
     minHeight:
       isDesignMode && !isFixedHeight
         ? FRONTSTAGE_DESIGN_PREVIEW_MIN_HEIGHT
@@ -807,6 +887,8 @@ function RenderPlanSlot({
           nativeContextHost={nativeContextHost}
           pageContent={pageContent}
           contentViewportStyle={contentViewportStyle}
+          fillsAvailableHeight={fillsAvailableHeight}
+          onIntrinsicSizeReport={handleIntrinsicSizeReport}
           onRetry={
             onRuntimeRetry ? () => onRuntimeRetry(item.blockId) : undefined
           }
@@ -884,7 +966,12 @@ function RenderPlanSlot({
         <div
           ref={intrinsicContentRef}
           data-flowbase-frontstage-intrinsic-content={item.blockId}
-          style={{ width: '100%', maxWidth: '100%', minWidth: 0 }}
+          style={{
+            width: '100%',
+            maxWidth: '100%',
+            minWidth: 0,
+            height: fillsAvailableHeight ? '100%' : undefined
+          }}
         >
           {renderBlockContent()}
         </div>

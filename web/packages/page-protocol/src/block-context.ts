@@ -134,9 +134,24 @@ export interface BlockContextTheme {
   tokens: BlockContextRecord;
 }
 
+export interface BlockContextAvailableSize {
+  width: number;
+  height: number;
+}
+
+export interface BlockContextIntrinsicSize {
+  height: number;
+}
+
+export interface BlockContextSizing {
+  available: Readonly<BlockContextAvailableSize>;
+  reportIntrinsicSize(size: BlockContextIntrinsicSize): void;
+}
+
 export interface BlockContextUi {
   locale?: string;
   density?: 'compact' | 'comfortable';
+  sizing?: BlockContextSizing;
 }
 
 export interface BlockExternalAssetHandle {

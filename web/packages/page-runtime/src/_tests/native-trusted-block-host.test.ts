@@ -45,6 +45,7 @@ describe('native trusted block portal surface', () => {
       width: '100%',
       maxWidth: '100%',
       minWidth: '0',
+      height: '100%',
       boxSizing: 'border-box',
       overflowX: 'auto',
       overflowY: 'visible'

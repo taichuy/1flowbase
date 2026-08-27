@@ -5,7 +5,12 @@ import {
   waitFor,
   within
 } from '@testing-library/react';
-import { useEffect, useState, type ComponentType } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useState,
+  type ComponentType
+} from 'react';
 import { describe, expect, test, vi } from 'vitest';
 
 import type { BlockContext } from '@1flowbase/page-protocol';
@@ -260,6 +265,84 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     );
 
     await waitFor(() => expect(button).toHaveTextContent('1:1:dark'));
+  });
+
+  test('AC-008 AC-010 exposes allocated viewport size while explicit intrinsic demand stays independent', async () => {
+    let mounts = 0;
+    const SizingBlock = ({ ctx }: { ctx: BlockContext }) => {
+      const [localCount, setLocalCount] = useState(0);
+      useState(() => ++mounts);
+      const sizing = ctx.ui.sizing;
+      useLayoutEffect(() => {
+        sizing?.reportIntrinsicSize({ height: 320 });
+      }, [sizing]);
+      return (
+        <button
+          data-testid="sizing-native-block"
+          onClick={() => setLocalCount((current) => current + 1)}
+        >
+          {sizing?.available.width ?? 'missing'}x
+          {sizing?.available.height ?? 'missing'}:{localCount}
+        </button>
+      );
+    };
+    const ready = preparation('source-a', 1, SizingBlock);
+    const view = render(
+      <PageCanvas
+        content={pageContent('Sizing')}
+        runtimeBlocks={[runtimeBlock('Sizing')]}
+        runtimeContext={runtimeContext('light')}
+        runtimePreparations={[ready]}
+      />
+    );
+
+    const root = await nativeRoot();
+    const button = await within(root.shadow).findByTestId(
+      'sizing-native-block'
+    );
+    await waitFor(() => expect(button).toHaveTextContent('1280x800:0'));
+    await waitFor(() =>
+      expect(screen.getByTestId('block-slot-block-1')).toHaveAttribute(
+        'data-flowbase-frontstage-intrinsic-height',
+        '320'
+      )
+    );
+    expect(root.host.parentElement).toHaveStyle({ height: '100%' });
+    expect(
+      root.host.closest('[data-flowbase-frontstage-intrinsic-content]')
+    ).toHaveStyle({ height: '100%' });
+
+    fireEvent.click(button);
+    view.rerender(
+      <PageCanvas
+        content={pageContent('Sizing')}
+        runtimeBlocks={[runtimeBlock('Sizing')]}
+        runtimeContext={runtimeContext('dark')}
+        runtimePreparations={[ready]}
+      />
+    );
+
+    await waitFor(() => expect(button).toHaveTextContent('1280x800:1'));
+    expect(mounts).toBe(1);
+
+    const PlainBlock = (_props: {
+      ctx: BlockContext;
+      props: Record<string, unknown>;
+    }) => <div data-testid="plain-native-block">plain</div>;
+    view.rerender(
+      <PageCanvas
+        content={pageContent('Plain')}
+        runtimeBlocks={[runtimeBlock('Plain')]}
+        runtimeContext={runtimeContext('dark')}
+        runtimePreparations={[
+          preparation('source-b', 1, PlainBlock)
+        ]}
+      />
+    );
+    await within(root.shadow).findByTestId('plain-native-block');
+    expect(
+      root.host.closest('[data-flowbase-frontstage-intrinsic-content]')
+    ).not.toHaveStyle({ height: '100%' });
   });
 
   test('D3R-AC-005 render retry replaces only the failed Portal epoch', async () => {

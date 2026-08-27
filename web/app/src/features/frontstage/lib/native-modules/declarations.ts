@@ -40,7 +40,14 @@ const BLOCK_SDK_DECLARATIONS = `declare module '@1flowbase/block-sdk' {
     };
     readonly events: { emit(name: string, payload?: BlockContextRecord): void };
     readonly theme: { readonly mode: 'light' | 'dark'; readonly tokens: Readonly<BlockContextRecord> };
-    readonly ui: { readonly locale?: string; readonly density?: 'compact' | 'comfortable' };
+    readonly ui: {
+      readonly locale?: string;
+      readonly density?: 'compact' | 'comfortable';
+      readonly sizing?: {
+        readonly available: { readonly width: number; readonly height: number };
+        reportIntrinsicSize(size: { readonly height: number }): void;
+      };
+    };
   }
   export interface BlockComponentProps { readonly ctx: BlockContext; }
   export const blockSdkVersion: string;
