@@ -174,15 +174,14 @@ impl ApiRuntimeServices {
         let mut slot = RuntimeBackendSlot::default();
         slot.bind(runtime_host)?;
         let runtime_backend = slot.backend()?;
-        let runtime_execution: Arc<dyn RuntimeExecutionPort> = runtime_backend.clone();
-        Self::new_with_runtime_backend(runtime_backend, runtime_execution, extension_graph)
+        Self::new_with_runtime_backend(runtime_backend, extension_graph)
     }
 
     pub fn new_with_runtime_backend(
         runtime_backend: Arc<dyn RuntimeBackend>,
-        runtime_execution: Arc<dyn RuntimeExecutionPort>,
         extension_graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
     ) -> anyhow::Result<Self> {
+        let runtime_execution: Arc<dyn RuntimeExecutionPort> = runtime_backend.clone();
         let provider_input_pipeline = Arc::new(
             orchestration_runtime::provider_input_pipeline::ProviderInputPipeline::from_graph(
                 Arc::clone(&extension_graph),

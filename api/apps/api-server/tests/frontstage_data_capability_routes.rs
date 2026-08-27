@@ -172,15 +172,9 @@ async fn fixture() -> Fixture {
     .compile_graph()
     .unwrap();
     let runtime_backend = runtime_backend_slot.backend().unwrap();
-    let runtime_execution: Arc<dyn runtime_core::runtime_backend::RuntimeExecutionPort> =
-        runtime_backend.clone();
     let provider_runtime = Arc::new(
-        ApiRuntimeServices::new_with_runtime_backend(
-            runtime_backend,
-            runtime_execution,
-            Arc::new(extension_graph),
-        )
-        .unwrap(),
+        ApiRuntimeServices::new_with_runtime_backend(runtime_backend, Arc::new(extension_graph))
+            .unwrap(),
     );
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
     let registry = runtime_core::runtime_model_registry::RuntimeModelRegistry::default();

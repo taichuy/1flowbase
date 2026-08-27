@@ -164,12 +164,9 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
     .compile_graph()
     .unwrap();
     let runtime_backend = runtime_backend_slot.backend().unwrap();
-    let runtime_execution: std::sync::Arc<dyn runtime_core::runtime_backend::RuntimeExecutionPort> =
-        runtime_backend.clone();
     let provider_runtime = std::sync::Arc::new(
         ApiRuntimeServices::new_with_runtime_backend(
             runtime_backend,
-            runtime_execution,
             std::sync::Arc::new(extension_graph),
         )
         .unwrap(),

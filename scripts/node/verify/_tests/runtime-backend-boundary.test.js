@@ -65,21 +65,34 @@ test('Delivery 1898 binds the production Backend Slot and hides concrete registr
 
 test('Delivery 1898 projects only the execution port into orchestration', () => {
   const boot = fs.readFileSync(path.join(repoRoot, 'api/apps/api-server/src/lib.rs'), 'utf8');
+  const runtime = fs.readFileSync(
+    path.join(repoRoot, 'api/apps/api-server/src/provider_runtime/mod.rs'),
+    'utf8',
+  );
   const orchestration = fs.readFileSync(
     path.join(repoRoot, 'api/crates/orchestration-runtime/src/runtime_backend.rs'),
     'utf8',
   );
+  const constructorParameters = runtime.match(
+    /pub fn new_with_runtime_backend\(([\s\S]*?)\) -> anyhow::Result<Self>/u,
+  );
 
   assert.match(orchestration, /Arc<dyn RuntimeExecutionPort>/u);
   assert.doesNotMatch(orchestration, /\bRuntimeBackend\b/u);
+  assert.ok(constructorParameters, 'Runtime Backend constructor signature must be inspectable');
+  assert.match(constructorParameters[1], /runtime_backend: Arc<dyn RuntimeBackend>/u);
+  assert.match(constructorParameters[1], /extension_graph:/u);
+  assert.doesNotMatch(constructorParameters[1], /runtime_execution/u);
+  assert.match(
+    runtime,
+    /let runtime_execution: Arc<dyn RuntimeExecutionPort> = runtime_backend\.clone\(\);/u,
+  );
+  assert.doesNotMatch(boot, /let runtime_execution:/u);
   assert.match(
     boot,
-    /let runtime_execution: Arc<dyn runtime_core::runtime_backend::RuntimeExecutionPort>/u,
+    /ApiRuntimeServices::new_with_runtime_backend\(\s*runtime_backend,\s*Arc::clone\(&extension_graph\),\s*\)/u,
   );
-  assert.match(
-    boot,
-    /ApiRuntimeServices::new_with_runtime_backend\([\s\S]*?runtime_backend,[\s\S]*?runtime_execution,/u,
-  );
+  assert.equal((boot.match(/runtime_backend_slot\.backend\(\)\?/gu) ?? []).length, 1);
 });
 
 test('Delivery 1898 requires all six narrow Runtime Backend ports', () => {
