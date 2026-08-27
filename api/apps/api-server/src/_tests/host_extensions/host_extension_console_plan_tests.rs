@@ -41,9 +41,13 @@ fn ac_001_active_linked_host_console_contribution_is_compiled_and_mounted() {
         extension_assembly.interface_operations(),
     )
     .expect("test extension boot snapshot should compile");
+    let interface_snapshot = extension_boot_snapshot
+        .interface_registry()
+        .unwrap()
+        .snapshot();
     let plan = compile_console_boot_plan_with_interface_operations(
         [host],
-        extension_boot_snapshot.interface_operations(),
+        Some(interface_snapshot.as_ref()),
     )
     .expect("Core and active linked HostExtension should compile as one console plan");
 

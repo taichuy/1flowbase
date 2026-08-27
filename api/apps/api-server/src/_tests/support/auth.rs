@@ -260,9 +260,13 @@ async fn test_state_with_runtime_profile_state(
         )
         .expect("test extension boot snapshot should compile"),
     );
+    let interface_snapshot = extension_boot_snapshot
+        .interface_registry()
+        .unwrap()
+        .snapshot();
     let console_boot_plan = crate::app_state::compile_console_boot_plan_with_interface_operations(
         Vec::new(),
-        extension_boot_snapshot.interface_operations(),
+        Some(interface_snapshot.as_ref()),
     )
     .expect("test console boot plan should compile with interface operations");
     let settings_feature_registry = console_boot_plan.settings_feature_registry;

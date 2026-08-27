@@ -203,11 +203,13 @@ pub fn app_with_state(state: Arc<ApiState>) -> Router {
 }
 
 fn console_router(state: Arc<ApiState>, include_openapi: bool) -> Router {
+    let interface_snapshot = state
+        .extension_boot_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.interface_registry())
+        .map(|registry| registry.snapshot());
     let assembly = routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations(
-        state
-            .extension_boot_snapshot
-            .as_ref()
-            .and_then(|snapshot| snapshot.interface_operations()),
+        interface_snapshot.as_deref(),
     );
     console_router_with_assembly(state, include_openapi, assembly)
 }
@@ -253,11 +255,13 @@ fn console_router_with_assembly(
 }
 
 pub fn app_with_state_and_config(state: Arc<ApiState>, config: &ApiConfig) -> Router {
+    let interface_snapshot = state
+        .extension_boot_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.interface_registry())
+        .map(|registry| registry.snapshot());
     let assembly = routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations_and_plugin_upload_max_bytes(
-        state
-            .extension_boot_snapshot
-            .as_ref()
-            .and_then(|snapshot| snapshot.interface_operations()),
+        interface_snapshot.as_deref(),
         config.plugin_upload_max_bytes,
     );
     app_with_state_and_config_and_console_route_assembly(state, config, assembly)
@@ -583,17 +587,20 @@ async fn app_and_runtime_host_from_config(
     let authenticator_registry = Arc::new(
         control_plane::auth::AuthenticatorRegistry::from_host_extensions(&host_extension_registry)?,
     );
+    let interface_snapshot = extension_boot_snapshot
+        .interface_registry()
+        .ok_or_else(|| anyhow::anyhow!("interface registry is absent at production boot"))?
+        .snapshot();
     let compiled_console_plan =
         app_state::compile_console_boot_plan_with_interface_operations_and_plugin_upload_max_bytes(
             console_host_extensions,
-            extension_boot_snapshot.interface_operations(),
+            Some(interface_snapshot.as_ref()),
             config.plugin_upload_max_bytes,
         )?;
-    extension_boot_snapshot
-        .interface_operations()
-        .ok_or_else(|| anyhow::anyhow!("interface operation catalog is absent at production boot"))?
-        .providers_view()
-        .validate_console_registry(&compiled_console_plan.console_operation_registry)?;
+    routes::host_infrastructure::interface_operation::validate_console_registry(
+        interface_snapshot.as_ref(),
+        &compiled_console_plan.console_operation_registry,
+    )?;
     activate_prepared_host_extensions(&store, &config.api_node_id, prepared_host_extensions)
         .await?;
     let runtime_activity = Arc::new(runtime_activity::ApplicationRuntimeActivityTracker::default());

@@ -6,14 +6,12 @@ use plugin_framework::extension_bus::{
 };
 use serde::Serialize;
 
-use crate::routes::host_infrastructure::interface_operation::InterfaceOperationCatalog;
-
 pub const EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1: &str = "1flowbase.effective-extension-plan/v1";
 
 #[derive(Debug)]
 pub struct ExtensionBootSnapshot {
     graph: Arc<EffectiveExtensionGraph>,
-    interface_operations: Option<InterfaceOperationCatalog>,
+    interface_registry: Option<Arc<interface_runtime::DynamicInterfaceRegistry>>,
 }
 
 impl ExtensionBootSnapshot {
@@ -21,7 +19,7 @@ impl ExtensionBootSnapshot {
     pub(crate) fn new(graph: Arc<EffectiveExtensionGraph>) -> Self {
         Self {
             graph,
-            interface_operations: None,
+            interface_registry: None,
         }
     }
 
@@ -29,11 +27,17 @@ impl ExtensionBootSnapshot {
         graph: Arc<EffectiveExtensionGraph>,
         descriptors: &[plugin_framework::HostExtensionInterfaceOperationManifest],
     ) -> anyhow::Result<Self> {
-        let interface_operations =
-            InterfaceOperationCatalog::compile(Arc::clone(&graph), descriptors)?;
+        let interface_snapshot =
+            crate::routes::host_infrastructure::interface_operation::compile_interface_registry(
+                Arc::clone(&graph),
+                descriptors,
+            )?;
+        let interface_registry = Arc::new(interface_runtime::DynamicInterfaceRegistry::new(
+            interface_snapshot,
+        ));
         Ok(Self {
             graph,
-            interface_operations: Some(interface_operations),
+            interface_registry: Some(interface_registry),
         })
     }
 
@@ -49,8 +53,8 @@ impl ExtensionBootSnapshot {
         self.graph.fingerprint().as_str()
     }
 
-    pub fn interface_operations(&self) -> Option<&InterfaceOperationCatalog> {
-        self.interface_operations.as_ref()
+    pub fn interface_registry(&self) -> Option<&Arc<interface_runtime::DynamicInterfaceRegistry>> {
+        self.interface_registry.as_ref()
     }
 
     pub fn effective_plan(&self) -> EffectiveExtensionPlan<'_> {

@@ -5,7 +5,7 @@ use crate::_tests::support::{
 };
 use axum::{
     body::{to_bytes, Body},
-    http::{Request, StatusCode},
+    http::{HeaderMap, Request, StatusCode},
 };
 use control_plane::ports::{AuthRepository, PluginRepository, UpsertPluginInstallationInput};
 use domain::{
@@ -176,8 +176,9 @@ async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pendi
         )
         .unwrap(),
     );
+    let interface_snapshot = extension_snapshot.interface_registry().unwrap().snapshot();
     let activated_route_assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations(
-        extension_snapshot.interface_operations(),
+        Some(interface_snapshot.as_ref()),
     );
     let activated_registry =
         crate::routes::console_route_assembly::compile_migrated_core_console_operation_registry(
@@ -189,20 +190,19 @@ async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pendi
     mutable_state.extension_boot_snapshot = Some(Arc::clone(&extension_snapshot));
     mutable_state.console_operation_registry = Arc::new(activated_registry);
     let typed_payload = serde_json::to_value(
-        extension_snapshot
-            .interface_operations()
-            .unwrap()
-            .providers_view()
-            .dispatch(
-                Arc::clone(&state),
-                crate::routes::host_infrastructure::interface_operation::HostInfrastructureProvidersViewInput,
-            )
-            .await
-            .unwrap(),
+        crate::routes::host_infrastructure::interface_operation::invoke_providers_view(
+            Arc::clone(&state),
+            domain::ActorContext::root(uuid::Uuid::now_v7(), state.bootstrap_workspace_id, "root"),
+            interface_runtime::InterfaceProtocol::Internal,
+        )
+        .await
+        .unwrap()
+        .0
+        .into_providers(),
     )
     .unwrap();
 
-    let app = crate::app_with_state_and_config(state, &test_config());
+    let app = crate::app_with_state_and_config(Arc::clone(&state), &test_config());
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let list_response = app
         .clone()
@@ -230,6 +230,45 @@ async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pendi
         2
     );
     assert_eq!(list_payload["data"][0]["config_schema"][0]["key"], "host");
+
+    let actor =
+        domain::ActorContext::root(uuid::Uuid::now_v7(), state.bootstrap_workspace_id, "root");
+    let capability = crate::openapi_interface::build_openapi_capability_catalog(
+        state.as_ref(),
+        state.bootstrap_workspace_id,
+    )
+    .await
+    .unwrap()
+    .into_iter()
+    .find(|entry| {
+        entry.interface.operation_id
+            == crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
+    })
+    .unwrap();
+    let mcp_interface =
+        crate::routes::mcp_management::mcp_interface_entry_from_capability(capability);
+    let mcp_result = match crate::routes::mcp_management::debug_execute::execute_with_server_bindings(
+        Arc::clone(&state),
+        HeaderMap::new(),
+        actor,
+        mcp_interface,
+        crate::routes::mcp_management::McpDebugExecuteBody {
+            interface_id: crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID.to_string(),
+            debug_response_mode:
+                crate::routes::mcp_management::debug_execute::McpDebugResponseMode::ToolResult,
+            mcp_arguments: json!({}),
+            input_mapping: json!({"mappings": []}),
+            output_mapping: json!({}),
+        },
+        crate::routes::mcp_management::debug_execute::McpServerBoundInputs {
+            workspace_id: state.bootstrap_workspace_id,
+        },
+    )
+    .await {
+        Ok(value) => value,
+        Err(_) => panic!("activated interface MCP wrapper must invoke the typed Kernel"),
+    };
+    assert_eq!(mcp_result, typed_payload);
 
     let save_response = app
         .clone()

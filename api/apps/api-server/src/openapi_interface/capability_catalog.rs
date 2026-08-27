@@ -35,11 +35,12 @@ pub struct ActivatedInterfaceOperationProjection {
     pub output_contract_id: String,
     pub output_contract_version: String,
     pub required_core_permission: String,
-    pub auth_policy: plugin_framework::HostExtensionInterfaceOperationAuthPolicy,
-    pub audit_policy: plugin_framework::HostExtensionInterfaceOperationAuditPolicy,
-    pub error_policy: plugin_framework::HostExtensionInterfaceOperationErrorPolicy,
+    pub auth_policy: interface_runtime::InterfaceAuthenticationPolicy,
+    pub audit_policy: interface_runtime::InterfaceAuditPolicy,
+    pub error_policy: interface_runtime::InterfaceErrorPolicy,
     pub graph_fingerprint: String,
-    pub provenance: plugin_framework::extension_bus::Provenance,
+    pub registry_fingerprint: String,
+    pub owner: String,
 }
 
 #[derive(Debug, Clone)]
@@ -234,11 +235,11 @@ pub async fn build_openapi_capability_catalog(
         })
         .collect::<BTreeMap<_, _>>();
     let mut documented_console_routes = BTreeSet::new();
-    let providers_view_binding = state
+    let interface_snapshot = state
         .extension_boot_snapshot
         .as_ref()
-        .and_then(|snapshot| snapshot.interface_operations())
-        .map(|catalog| catalog.providers_view());
+        .and_then(|snapshot| snapshot.interface_registry())
+        .map(|registry| registry.snapshot());
 
     for category in &state.api_docs.catalog().categories {
         let Some(operations) = state.api_docs.category_operations(&category.id) else {
@@ -252,13 +253,13 @@ pub async fn build_openapi_capability_catalog(
                 continue;
             };
             let route = route_identity(&operation.method, &operation.path);
-            if interface.operation_id
-                == crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
-            {
-                let Some(binding) = providers_view_binding else {
-                    continue;
-                };
-                let projected = activated_providers_view_entry(binding, interface)?;
+            if interface_snapshot.as_deref().is_some_and(|registry| {
+                activated_providers_view_route_matches(registry, &interface)
+            }) {
+                let registry = interface_snapshot
+                    .as_deref()
+                    .expect("activated interface route requires a registry snapshot");
+                let projected = activated_providers_view_entry(registry, interface)?;
                 documented_console_routes.insert(route);
                 entries.push(projected);
                 continue;
@@ -411,24 +412,25 @@ fn missing_openapi_entry(
 }
 
 fn activated_providers_view_entry(
-    binding: &crate::routes::host_infrastructure::interface_operation::HostInfrastructureProvidersViewBinding,
+    registry: &interface_runtime::CompiledInterfaceRegistry,
     mut interface: OpenApiInterfaceCatalogEntry,
 ) -> Result<OpenApiCapabilityCatalogEntry, ApiError> {
-    let descriptor = binding.definition().descriptor();
-    if interface.operation_id != descriptor.operation_id
-        || !interface
-            .method
-            .eq_ignore_ascii_case(descriptor.method.as_str())
-        || interface.path != descriptor.path
-    {
+    let definition =
+        crate::routes::host_infrastructure::interface_operation::providers_view_definition(
+            registry,
+        )?;
+    let route = definition
+        .route()
+        .ok_or_else(|| anyhow::anyhow!("activated interface operation has no route projection"))?;
+    if !interface.method.eq_ignore_ascii_case(route.method()) || interface.path != route.path() {
         return Err(anyhow::anyhow!(
             "activated interface operation disagrees with the generated OpenAPI contract"
         )
         .into());
     }
-    interface.operation_id = descriptor.operation_id.clone();
-    interface.method = descriptor.method.as_str().to_string();
-    interface.path = descriptor.path.clone();
+    interface.operation_id = definition.interface_id().as_str().to_string();
+    interface.method = route.method().to_string();
+    interface.path = route.path().to_string();
     Ok(OpenApiCapabilityCatalogEntry {
         risk_level: operation_risk_level(&interface.method),
         interface,
@@ -436,19 +438,32 @@ fn activated_providers_view_entry(
         bindable: true,
         disabled_reason: None,
         activated_operation: Some(ActivatedInterfaceOperationProjection {
-            operation_id: descriptor.operation_id.clone(),
-            input_contract_id: descriptor.input.contract_id.clone(),
-            input_contract_version: descriptor.input.contract_version.clone(),
-            output_contract_id: descriptor.output.contract_id.clone(),
-            output_contract_version: descriptor.output.contract_version.clone(),
-            required_core_permission: descriptor.required_core_permission.clone(),
-            auth_policy: descriptor.auth_policy,
-            audit_policy: descriptor.audit_policy,
-            error_policy: descriptor.error_policy,
-            graph_fingerprint: binding.graph_fingerprint().to_string(),
-            provenance: binding.provenance().clone(),
+            operation_id: definition.interface_id().as_str().to_string(),
+            input_contract_id: definition.input_contract().contract_id().to_string(),
+            input_contract_version: definition.input_contract().version().to_string(),
+            output_contract_id: definition.output_contract().contract_id().to_string(),
+            output_contract_version: definition.output_contract().version().to_string(),
+            required_core_permission: definition.permission().as_str().to_string(),
+            auth_policy: definition.authentication(),
+            audit_policy: definition.audit(),
+            error_policy: definition.error(),
+            graph_fingerprint: registry.graph_fingerprint().as_str().to_string(),
+            registry_fingerprint: registry.fingerprint().as_str().to_string(),
+            owner: definition.owner().as_str().to_string(),
         }),
     })
+}
+
+fn activated_providers_view_route_matches(
+    registry: &interface_runtime::CompiledInterfaceRegistry,
+    interface: &OpenApiInterfaceCatalogEntry,
+) -> bool {
+    crate::routes::host_infrastructure::interface_operation::providers_view_definition(registry)
+        .ok()
+        .and_then(|definition| definition.route())
+        .is_some_and(|route| {
+            interface.method.eq_ignore_ascii_case(route.method()) && interface.path == route.path()
+        })
 }
 
 fn route_identity(method: &str, path: &str) -> (String, String) {
@@ -511,11 +526,11 @@ mod tests {
             assembly.interface_operations(),
         )
         .unwrap();
-        let binding = snapshot.interface_operations().unwrap().providers_view();
+        let registry = snapshot.interface_registry().unwrap().snapshot();
         let request_schema = json!({"type": "object", "properties": {}});
         let response_schema = json!({"type": "array", "items": {"type": "object"}});
         let projected = activated_providers_view_entry(
-            binding,
+            registry.as_ref(),
             OpenApiInterfaceCatalogEntry {
                 operation_id: HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID.to_string(),
                 method: "GET".to_string(),
@@ -539,15 +554,35 @@ mod tests {
         assert_eq!(projected.interface.request_schema, request_schema);
         assert_eq!(projected.interface.response_schema, response_schema);
         let activated = projected.activated_operation.unwrap();
-        let descriptor = binding.definition().descriptor();
-        assert_eq!(activated.operation_id, descriptor.operation_id);
-        assert_eq!(activated.input_contract_id, descriptor.input.contract_id);
-        assert_eq!(activated.output_contract_id, descriptor.output.contract_id);
-        assert_eq!(activated.auth_policy, descriptor.auth_policy);
-        assert_eq!(activated.audit_policy, descriptor.audit_policy);
-        assert_eq!(activated.error_policy, descriptor.error_policy);
-        assert_eq!(activated.graph_fingerprint, binding.graph_fingerprint());
-        assert_eq!(activated.provenance, *binding.provenance());
-        assert!(Arc::ptr_eq(binding.graph_arc(), snapshot.graph_arc()));
+        let definition =
+            crate::routes::host_infrastructure::interface_operation::providers_view_definition(
+                registry.as_ref(),
+            )
+            .unwrap();
+        assert_eq!(activated.operation_id, definition.interface_id().as_str());
+        assert_eq!(
+            activated.input_contract_id,
+            definition.input_contract().contract_id()
+        );
+        assert_eq!(
+            activated.output_contract_id,
+            definition.output_contract().contract_id()
+        );
+        assert_eq!(activated.auth_policy, definition.authentication());
+        assert_eq!(activated.audit_policy, definition.audit());
+        assert_eq!(activated.error_policy, definition.error());
+        assert_eq!(
+            activated.graph_fingerprint,
+            registry.graph_fingerprint().as_str()
+        );
+        assert_eq!(
+            activated.registry_fingerprint,
+            registry.fingerprint().as_str()
+        );
+        assert_eq!(activated.owner, definition.owner().as_str());
+        assert_eq!(
+            registry.graph_fingerprint().as_str(),
+            snapshot.fingerprint()
+        );
     }
 }

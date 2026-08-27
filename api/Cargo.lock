@@ -90,6 +90,7 @@ dependencies = [
  "form_urlencoded",
  "futures-util",
  "hmac 0.12.1",
+ "interface-runtime",
  "jsonschema",
  "observability",
  "orchestration-runtime",

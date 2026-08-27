@@ -28,8 +28,9 @@ async fn test_frontend_block_app_with_database_url() -> (axum::Router, String) {
         )
         .unwrap(),
     );
+    let interface_snapshot = snapshot.interface_registry().unwrap().snapshot();
     let route_assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations(
-        snapshot.interface_operations(),
+        Some(interface_snapshot.as_ref()),
     );
     let registry =
         crate::routes::console_route_assembly::compile_migrated_core_console_operation_registry(

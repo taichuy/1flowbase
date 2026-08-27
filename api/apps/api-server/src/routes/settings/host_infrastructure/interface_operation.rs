@@ -1,12 +1,20 @@
-use std::{future::Future, marker::PhantomData, pin::Pin, sync::Arc};
+use std::sync::Arc;
 
-use access_control::{
-    ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup, SettingsFeatureOwnerKind,
-};
+use access_control::{ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup};
 use anyhow::{bail, Result};
+use interface_runtime::{
+    CompiledInterfaceRegistry, ContractIdentity, GraphFingerprint, HandlerReference,
+    InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceAuthorizationError,
+    InterfaceAuthorizationFuture, InterfaceAuthorizationPort, InterfaceAuthorizationRequest,
+    InterfaceContract, InterfaceDefinition, InterfaceErrorPolicy, InterfaceHandler,
+    InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceInvocationError,
+    InterfaceInvocationKernel, InterfaceLifecycle, InterfaceOwner, InterfaceProtocol,
+    InterfaceScope, InterfaceTargetError, InvocationEnvelope, InvocationId, InvocationLineage,
+    PermissionIdentity, RegistryCompiler, RouteIdentity, TargetReference,
+};
 use plugin_framework::extension_bus::{
     Cardinality, DeliverySemantics, EffectiveExtensionGraph, ExtensionPointKind, FailureSemantics,
-    LifecycleSemantics, ModuleKind, OrderingSemantics, OverridePolicy, Provenance, ScopeSemantics,
+    LifecycleSemantics, ModuleKind, OrderingSemantics, OverridePolicy, ScopeSemantics,
 };
 use plugin_framework::{
     HostExtensionInterfaceOperationAuditPolicy, HostExtensionInterfaceOperationAuthPolicy,
@@ -15,7 +23,7 @@ use plugin_framework::{
 };
 
 use super::{list_host_infrastructure_providers_typed, HostInfrastructureProviderConfigResponse};
-use crate::{app_state::ApiState, error_response::ApiError};
+use crate::app_state::ApiState;
 
 pub const INTERFACE_OPERATION_POINT_ID: &str = "1flowbase.application.interface-operation";
 pub const INTERFACE_OPERATION_CONTRACT_ID: &str = "interface-operation";
@@ -36,171 +44,277 @@ pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OUTPUT_CONTRACT_VERSION: &str = "1"
 pub const INTERFACE_OPERATION_OWNER_MODULE_ID: &str = "1flowbase.boot-core";
 pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID: &str = "official.local-infra-host";
 pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONSOLE_OWNER_ID: &str = "boot-core";
+pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_HANDLER_REFERENCE: &str =
+    "api-server.host-infrastructure.providers.view";
+pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_REFERENCE: &str =
+    "control-plane.host-infrastructure.providers.view";
 
-pub trait InterfaceOperationSchema: Send + Sync + 'static {
-    type Value: Send + 'static;
-    const SCHEMA_ID: &'static str;
+pub struct HostInfrastructureProvidersViewInput {
+    state: Arc<ApiState>,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct HostInfrastructureProvidersViewInput;
-
-#[derive(Debug, Clone)]
-pub struct HostInfrastructureProvidersViewInputSchema;
-
-impl InterfaceOperationSchema for HostInfrastructureProvidersViewInputSchema {
-    type Value = HostInfrastructureProvidersViewInput;
-    const SCHEMA_ID: &'static str = HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INPUT_CONTRACT_ID;
+impl HostInfrastructureProvidersViewInput {
+    pub fn new(state: Arc<ApiState>) -> Self {
+        Self { state }
+    }
 }
 
-#[derive(Debug, Clone)]
-pub struct HostInfrastructureProvidersViewOutputSchema;
-
-impl InterfaceOperationSchema for HostInfrastructureProvidersViewOutputSchema {
-    type Value = Vec<HostInfrastructureProviderConfigResponse>;
-    const SCHEMA_ID: &'static str = HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OUTPUT_CONTRACT_ID;
+impl InterfaceContract for HostInfrastructureProvidersViewInput {
+    const CONTRACT_ID: &'static str = HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INPUT_CONTRACT_ID;
+    const CONTRACT_VERSION: &'static str =
+        HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INPUT_CONTRACT_VERSION;
 }
 
-#[derive(Debug, Clone)]
-pub struct InterfaceOperationDefinition<I, O>
-where
-    I: InterfaceOperationSchema,
-    O: InterfaceOperationSchema,
+pub struct HostInfrastructureProvidersViewOutput {
+    providers: Vec<HostInfrastructureProviderConfigResponse>,
+}
+
+impl HostInfrastructureProvidersViewOutput {
+    pub fn into_providers(self) -> Vec<HostInfrastructureProviderConfigResponse> {
+        self.providers
+    }
+}
+
+impl InterfaceContract for HostInfrastructureProvidersViewOutput {
+    const CONTRACT_ID: &'static str = HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OUTPUT_CONTRACT_ID;
+    const CONTRACT_VERSION: &'static str =
+        HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OUTPUT_CONTRACT_VERSION;
+}
+
+struct HostInfrastructureProvidersViewHandler;
+
+impl InterfaceHandler<HostInfrastructureProvidersViewInput, HostInfrastructureProvidersViewOutput>
+    for HostInfrastructureProvidersViewHandler
 {
-    descriptor: HostExtensionInterfaceOperationManifest,
-    marker: PhantomData<fn(I) -> O>,
-}
-
-impl<I, O> InterfaceOperationDefinition<I, O>
-where
-    I: InterfaceOperationSchema,
-    O: InterfaceOperationSchema,
-{
-    pub fn descriptor(&self) -> &HostExtensionInterfaceOperationManifest {
-        &self.descriptor
-    }
-}
-
-type InterfaceOperationFuture<O> =
-    Pin<Box<dyn Future<Output = std::result::Result<O, ApiError>> + Send + 'static>>;
-type InterfaceOperationHandler<I, O> = fn(Arc<ApiState>, I) -> InterfaceOperationFuture<O>;
-
-pub type HostInfrastructureProvidersViewDefinition = InterfaceOperationDefinition<
-    HostInfrastructureProvidersViewInputSchema,
-    HostInfrastructureProvidersViewOutputSchema,
->;
-
-#[derive(Debug)]
-pub struct InterfaceOperationBinding<I, O>
-where
-    I: InterfaceOperationSchema,
-    O: InterfaceOperationSchema,
-{
-    definition: InterfaceOperationDefinition<I, O>,
-    graph: Arc<EffectiveExtensionGraph>,
-    provenance: Provenance,
-    handler: InterfaceOperationHandler<I::Value, O::Value>,
-}
-
-impl<I, O> InterfaceOperationBinding<I, O>
-where
-    I: InterfaceOperationSchema,
-    O: InterfaceOperationSchema,
-{
-    pub fn definition(&self) -> &InterfaceOperationDefinition<I, O> {
-        &self.definition
-    }
-
-    pub fn graph_fingerprint(&self) -> &str {
-        self.graph.fingerprint().as_str()
-    }
-
-    pub fn graph_arc(&self) -> &Arc<EffectiveExtensionGraph> {
-        &self.graph
-    }
-
-    pub fn provenance(&self) -> &Provenance {
-        &self.provenance
-    }
-
-    pub fn owner_module_id(&self) -> &'static str {
-        INTERFACE_OPERATION_OWNER_MODULE_ID
-    }
-
-    pub async fn dispatch(
+    fn invoke(
         &self,
-        state: Arc<ApiState>,
-        input: I::Value,
-    ) -> std::result::Result<O::Value, ApiError> {
-        (self.handler)(state, input).await
+        _context: InterfaceHandlerContext,
+        input: HostInfrastructureProvidersViewInput,
+    ) -> InterfaceHandlerFuture<HostInfrastructureProvidersViewOutput> {
+        Box::pin(async move {
+            list_host_infrastructure_providers_typed(input.state.as_ref())
+                .await
+                .map(|providers| HostInfrastructureProvidersViewOutput { providers })
+                .map_err(|error| {
+                    InterfaceTargetError::with_source("host_infrastructure_providers_view", error)
+                })
+        })
     }
 }
 
-pub type HostInfrastructureProvidersViewBinding = InterfaceOperationBinding<
-    HostInfrastructureProvidersViewInputSchema,
-    HostInfrastructureProvidersViewOutputSchema,
->;
+struct ConsoleInterfaceAuthorizationPort {
+    store: storage_durable_postgres::MainDurableStore,
+    console_registry: Arc<ConsoleOperationRegistry>,
+}
 
-impl
-    InterfaceOperationBinding<
-        HostInfrastructureProvidersViewInputSchema,
-        HostInfrastructureProvidersViewOutputSchema,
-    >
-{
-    pub fn validate_console_registry(&self, registry: &ConsoleOperationRegistry) -> Result<()> {
-        let descriptor = self.definition.descriptor();
-        let access =
-            registry.access_for_console_route(descriptor.method.as_str(), &descriptor.path)?;
-        if access.operation_id != descriptor.operation_id
-            || access.authorization != &ConsoleAuthorization::Simple
-            || access.policy_group
-                != &ConsolePolicyGroup::SettingsFeature("system.host-infrastructure".to_string())
-        {
-            bail!("host infrastructure providers view ConsoleOperation contract mismatch");
-        }
-        let operation = registry
-            .inventory()
-            .operations
-            .iter()
-            .find(|operation| operation.operation_id == descriptor.operation_id)
-            .ok_or_else(|| {
-                anyhow::anyhow!("host infrastructure providers view ConsoleOperation is absent")
+impl InterfaceAuthorizationPort for ConsoleInterfaceAuthorizationPort {
+    fn authorize(
+        &self,
+        request: InterfaceAuthorizationRequest,
+    ) -> InterfaceAuthorizationFuture<'_> {
+        let store = self.store.clone();
+        let console_registry = Arc::clone(&self.console_registry);
+        Box::pin(async move {
+            let route = request.definition().route().ok_or_else(|| {
+                InterfaceAuthorizationError::classified("console_route_unregistered")
             })?;
-        if operation.owner.kind != SettingsFeatureOwnerKind::Core
-            || operation.owner.owner_id != HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONSOLE_OWNER_ID
-        {
-            bail!("host infrastructure providers view must retain Core authorization ownership");
-        }
-        Ok(())
+            let access = crate::middleware::require_settings_feature_permission::compiled_console_route_access(
+                &console_registry,
+                route.method(),
+                route.path(),
+            )
+            .map_err(InterfaceAuthorizationError::classified)?;
+            if request.actor().is_root {
+                return Ok(());
+            }
+            let policies = store
+                .load_console_policy_for_bound_role(
+                    request.actor().user_id,
+                    request.actor().current_workspace_id,
+                    &request.actor().effective_display_role,
+                )
+                .await
+                .map_err(|error| {
+                    InterfaceAuthorizationError::with_source(
+                        "console_authorization_unavailable",
+                        crate::error_response::ApiError::from(error),
+                    )
+                })?;
+            if crate::middleware::require_settings_feature_permission::authorize_compiled_console_access(
+                &access,
+                request.actor(),
+                &policies,
+            ) {
+                Ok(())
+            } else {
+                Err(InterfaceAuthorizationError::with_source(
+                    "console_operation_permission_denied",
+                    crate::error_response::ApiError::from(
+                        control_plane::errors::ControlPlaneError::PermissionDenied(
+                            "console_operation_permission_denied",
+                        ),
+                    ),
+                ))
+            }
+        })
     }
 }
 
-#[derive(Debug)]
-pub struct InterfaceOperationCatalog {
-    providers_view: HostInfrastructureProvidersViewBinding,
+pub(crate) fn invocation_kernel(
+    store: storage_durable_postgres::MainDurableStore,
+    console_registry: Arc<ConsoleOperationRegistry>,
+) -> Arc<InterfaceInvocationKernel> {
+    Arc::new(InterfaceInvocationKernel::new(Arc::new(
+        ConsoleInterfaceAuthorizationPort {
+            store,
+            console_registry,
+        },
+    )))
 }
 
-impl InterfaceOperationCatalog {
-    pub(crate) fn compile(
-        graph: Arc<EffectiveExtensionGraph>,
-        descriptors: &[HostExtensionInterfaceOperationManifest],
-    ) -> Result<Self> {
-        let mut providers_view_descriptors = descriptors.iter().filter(|descriptor| {
-            descriptor.operation_id == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
-        });
-        let descriptor = providers_view_descriptors.next().cloned().ok_or_else(|| {
-            anyhow::anyhow!("host infrastructure providers view descriptor is absent")
+pub async fn invoke_providers_view(
+    state: Arc<ApiState>,
+    actor: domain::ActorContext,
+    protocol: InterfaceProtocol,
+) -> Result<
+    (
+        HostInfrastructureProvidersViewOutput,
+        interface_runtime::InterfaceInvocationReceipt,
+    ),
+    crate::error_response::ApiError,
+> {
+    let snapshot = state
+        .extension_boot_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.interface_registry())
+        .map(|registry| registry.snapshot())
+        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+            "interface_operation",
+        ))?;
+    let kernel = invocation_kernel(
+        state.store.clone(),
+        Arc::clone(&state.console_operation_registry),
+    );
+    match kernel
+        .invoke::<HostInfrastructureProvidersViewInput, HostInfrastructureProvidersViewOutput>(
+            snapshot,
+            InvocationEnvelope::new(
+                InvocationLineage::root(InvocationId::now_v7()),
+                InterfaceId::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID)
+                    .expect("built-in interface identity must remain valid"),
+                protocol,
+                actor,
+                None,
+                HostInfrastructureProvidersViewInput::new(state),
+            ),
+        )
+        .await
+    {
+        Ok(outcome) => {
+            let receipt = outcome.receipt().clone();
+            Ok((outcome.into_value(), receipt))
+        }
+        Err(failure) => Err(invocation_failure_api_error(failure.into_error())),
+    }
+}
+
+fn invocation_failure_api_error(
+    error: InterfaceInvocationError,
+) -> crate::error_response::ApiError {
+    match error {
+        InterfaceInvocationError::AuthorizationRejected(error) => error
+            .into_source::<crate::error_response::ApiError>()
+            .unwrap_or_else(|| {
+                control_plane::errors::ControlPlaneError::PermissionDenied(
+                    "console_operation_permission_denied",
+                )
+                .into()
+            }),
+        InterfaceInvocationError::TargetFailed(error) => error
+            .into_source::<crate::error_response::ApiError>()
+            .unwrap_or_else(|| anyhow::anyhow!("host infrastructure providers view failed").into()),
+        InterfaceInvocationError::UnknownInterface => {
+            control_plane::errors::ControlPlaneError::NotFound("interface_operation").into()
+        }
+        InterfaceInvocationError::ContractMismatch => {
+            control_plane::errors::ControlPlaneError::Conflict("interface_contract").into()
+        }
+        InterfaceInvocationError::AdmissionRejected(error) => {
+            anyhow::anyhow!(error.to_string()).into()
+        }
+        InterfaceInvocationError::DeadlineElapsed => {
+            anyhow::anyhow!("interface invocation deadline elapsed").into()
+        }
+    }
+}
+
+pub(crate) fn compile_interface_registry(
+    graph: Arc<EffectiveExtensionGraph>,
+    descriptors: &[HostExtensionInterfaceOperationManifest],
+) -> Result<Arc<CompiledInterfaceRegistry>> {
+    let descriptor = validate_active_providers_view(&graph, descriptors)?;
+    let definition = definition_from_descriptor(descriptor)?;
+    let interface_id = definition.interface_id().clone();
+    let handler_reference = definition.handler_reference().clone();
+    let graph_fingerprint = GraphFingerprint::new(graph.fingerprint().as_str())?;
+    let mut compiler = RegistryCompiler::new(
+        graph_fingerprint,
+        [PermissionIdentity::new(
+            HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION,
+        )?],
+    );
+    compiler.register_definition(definition)?;
+    compiler.bind_handler::<
+        HostInfrastructureProvidersViewInput,
+        HostInfrastructureProvidersViewOutput,
+    >(
+        &interface_id,
+        handler_reference,
+        Arc::new(HostInfrastructureProvidersViewHandler),
+    )?;
+    Ok(compiler.compile()?)
+}
+
+pub fn providers_view_definition(
+    registry: &CompiledInterfaceRegistry,
+) -> Result<&InterfaceDefinition> {
+    registry
+        .definition(&InterfaceId::new(
+            HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID,
+        )?)
+        .ok_or_else(|| anyhow::anyhow!("host infrastructure providers view is absent"))
+}
+
+pub fn validate_console_registry(
+    interface_registry: &CompiledInterfaceRegistry,
+    console_registry: &ConsoleOperationRegistry,
+) -> Result<()> {
+    let definition = providers_view_definition(interface_registry)?;
+    let route = definition
+        .route()
+        .ok_or_else(|| anyhow::anyhow!("host infrastructure providers view route is absent"))?;
+    let access = console_registry.access_for_console_route(route.method(), route.path())?;
+    if access.operation_id != definition.interface_id().as_str()
+        || access.authorization != &ConsoleAuthorization::Simple
+        || access.policy_group
+            != &ConsolePolicyGroup::SettingsFeature("system.host-infrastructure".to_string())
+    {
+        bail!("host infrastructure providers view ConsoleOperation contract mismatch");
+    }
+    let operation = console_registry
+        .inventory()
+        .operations
+        .iter()
+        .find(|operation| operation.operation_id == definition.interface_id().as_str())
+        .ok_or_else(|| {
+            anyhow::anyhow!("host infrastructure providers view ConsoleOperation is absent")
         })?;
-        if providers_view_descriptors.next().is_some() {
-            bail!("host infrastructure providers view descriptor is not unique");
-        }
-        let providers_view = bind_providers_view(graph, descriptor)?;
-        Ok(Self { providers_view })
+    if operation.owner.kind != access_control::SettingsFeatureOwnerKind::Core
+        || operation.owner.owner_id != HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONSOLE_OWNER_ID
+    {
+        bail!("host infrastructure providers view must retain Core authorization ownership");
     }
-
-    pub fn providers_view(&self) -> &HostInfrastructureProvidersViewBinding {
-        &self.providers_view
-    }
+    Ok(())
 }
 
 pub(crate) fn official_local_infra_host_providers_view_descriptor(
@@ -225,29 +339,56 @@ pub(crate) fn official_local_infra_host_providers_view_descriptor(
     }
 }
 
-pub fn host_infrastructure_providers_view_definition() -> HostInfrastructureProvidersViewDefinition
-{
-    InterfaceOperationDefinition {
-        descriptor: official_local_infra_host_providers_view_descriptor(),
-        marker: PhantomData,
-    }
-}
-
 pub(crate) fn host_infrastructure_providers_view_console_path() -> &'static str {
     HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH
         .strip_prefix("/api/console")
         .expect("providers view path must remain under /api/console")
 }
 
-fn bind_providers_view(
-    graph: Arc<EffectiveExtensionGraph>,
+fn definition_from_descriptor(
     descriptor: HostExtensionInterfaceOperationManifest,
-) -> Result<HostInfrastructureProvidersViewBinding> {
+) -> Result<InterfaceDefinition> {
+    Ok(InterfaceDefinition::new(
+        InterfaceId::new(&descriptor.operation_id)?,
+        ContractIdentity::new(
+            &descriptor.input.contract_id,
+            &descriptor.input.contract_version,
+        )?,
+        ContractIdentity::new(
+            &descriptor.output.contract_id,
+            &descriptor.output.contract_version,
+        )?,
+        Some(RouteIdentity::new(
+            descriptor.method.as_str(),
+            &descriptor.path,
+        )?),
+        PermissionIdentity::new(&descriptor.required_core_permission)?,
+        InterfaceAuthenticationPolicy::Authenticated,
+        InterfaceAuditPolicy::ReadOnly,
+        InterfaceErrorPolicy::TypedTarget,
+        InterfaceScope::System,
+        InterfaceLifecycle::BootSnapshot,
+        HandlerReference::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_HANDLER_REFERENCE)?,
+        TargetReference::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_REFERENCE)?,
+        InterfaceOwner::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID)?,
+    ))
+}
+
+fn validate_active_providers_view(
+    graph: &EffectiveExtensionGraph,
+    descriptors: &[HostExtensionInterfaceOperationManifest],
+) -> Result<HostExtensionInterfaceOperationManifest> {
     let canonical = official_local_infra_host_providers_view_descriptor();
-    if descriptor != canonical
-        || canonical.input.contract_id != HostInfrastructureProvidersViewInputSchema::SCHEMA_ID
-        || canonical.output.contract_id != HostInfrastructureProvidersViewOutputSchema::SCHEMA_ID
-    {
+    let mut matching = descriptors.iter().filter(|descriptor| {
+        descriptor.operation_id == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
+    });
+    let descriptor = matching.next().cloned().ok_or_else(|| {
+        anyhow::anyhow!("host infrastructure providers view descriptor is absent")
+    })?;
+    if matching.next().is_some() {
+        bail!("host infrastructure providers view descriptor is not unique");
+    }
+    if descriptor != canonical {
         bail!("host infrastructure providers view interface operation contract mismatch");
     }
     let point = graph
@@ -256,11 +397,6 @@ fn bind_providers_view(
         .find(|point| point.descriptor().point_id.as_str() == INTERFACE_OPERATION_POINT_ID)
         .ok_or_else(|| anyhow::anyhow!("interface operation extension point is unavailable"))?;
     let point_descriptor = point.descriptor();
-    let allowed_permission = point_descriptor
-        .allowed_permissions
-        .iter()
-        .map(|permission| permission.as_str())
-        .collect::<Vec<_>>();
     if point_descriptor.owner_module_id.as_str() != INTERFACE_OPERATION_OWNER_MODULE_ID
         || point_descriptor.point_kind != ExtensionPointKind::Contribution
         || point_descriptor.contract.contract_id.as_str() != INTERFACE_OPERATION_CONTRACT_ID
@@ -273,50 +409,35 @@ fn bind_providers_view(
         || point_descriptor.delivery != DeliverySemantics::Synchronous
         || point_descriptor.lifecycle != LifecycleSemantics::BootSnapshot
         || point_descriptor.override_policy != OverridePolicy::Sealed
-        || !allowed_permission.contains(&HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION)
+        || !point_descriptor
+            .allowed_permissions
+            .iter()
+            .any(|permission| permission.as_str() == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION)
     {
         bail!("interface operation extension point contract mismatch");
     }
-    let mut target_contributions = point.contributions().iter().filter(|contribution| {
+    let mut contributions = point.contributions().iter().filter(|contribution| {
         contribution.descriptor().contribution_id.as_str()
             == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTION_ID
     });
-    let contribution = target_contributions.next().ok_or_else(|| {
+    let contribution = contributions.next().ok_or_else(|| {
         anyhow::anyhow!("host infrastructure providers view contribution is not active")
     })?;
-    if target_contributions.next().is_some() {
-        bail!("host infrastructure providers view contribution is not unique");
-    }
-    let required_permission = contribution
-        .descriptor()
-        .required_permissions
-        .iter()
-        .map(|permission| permission.as_str())
-        .collect::<Vec<_>>();
-    if contribution.descriptor().contribution_id.as_str()
-        != HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTION_ID
+    if contributions.next().is_some()
         || contribution.descriptor().contributor_module_id.as_str()
             != HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID
         || contribution.provenance().module_kind() != ModuleKind::TrustedHost
         || contribution.provenance().module_id().as_str()
             != HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID
-        || required_permission != [HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION]
+        || contribution
+            .descriptor()
+            .required_permissions
+            .iter()
+            .map(|permission| permission.as_str())
+            .collect::<Vec<_>>()
+            != [HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION]
     {
         bail!("host infrastructure providers view contribution contract mismatch");
     }
-
-    let provenance = contribution.provenance().clone();
-    Ok(InterfaceOperationBinding {
-        definition: host_infrastructure_providers_view_definition(),
-        graph,
-        provenance,
-        handler: dispatch_host_infrastructure_providers_view,
-    })
-}
-
-fn dispatch_host_infrastructure_providers_view(
-    state: Arc<ApiState>,
-    _input: HostInfrastructureProvidersViewInput,
-) -> InterfaceOperationFuture<Vec<HostInfrastructureProviderConfigResponse>> {
-    Box::pin(async move { list_host_infrastructure_providers_typed(state.as_ref()).await })
+    Ok(descriptor)
 }

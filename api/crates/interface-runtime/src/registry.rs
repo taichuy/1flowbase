@@ -431,6 +431,17 @@ pub struct CompiledInterfaceRegistry {
     bindings: BTreeMap<InterfaceId, Arc<dyn ErasedInterfaceBinding>>,
 }
 
+impl std::fmt::Debug for CompiledInterfaceRegistry {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CompiledInterfaceRegistry")
+            .field("graph_fingerprint", &self.graph_fingerprint)
+            .field("fingerprint", &self.fingerprint)
+            .field("definitions", &self.definitions)
+            .finish_non_exhaustive()
+    }
+}
+
 impl CompiledInterfaceRegistry {
     pub fn graph_fingerprint(&self) -> &GraphFingerprint {
         &self.graph_fingerprint
@@ -472,6 +483,15 @@ impl CompiledInterfaceRegistry {
 
 pub struct DynamicInterfaceRegistry {
     current: RwLock<Arc<CompiledInterfaceRegistry>>,
+}
+
+impl std::fmt::Debug for DynamicInterfaceRegistry {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("DynamicInterfaceRegistry")
+            .field("current", &self.snapshot())
+            .finish()
+    }
 }
 
 impl DynamicInterfaceRegistry {

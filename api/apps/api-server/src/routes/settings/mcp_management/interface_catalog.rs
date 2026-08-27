@@ -351,15 +351,20 @@ mod tests {
             assembly.interface_operations(),
         )
         .unwrap();
-        let binding = snapshot.interface_operations().unwrap().providers_view();
-        let descriptor = binding.definition().descriptor();
+        let registry = snapshot.interface_registry().unwrap().snapshot();
+        let definition =
+            crate::routes::host_infrastructure::interface_operation::providers_view_definition(
+                registry.as_ref(),
+            )
+            .unwrap();
+        let route = definition.route().unwrap();
         let parameter_schema = json!({"type": "object", "properties": {}});
         let result_schema = json!({"type": "array", "items": {"type": "object"}});
         let entry = OpenApiCapabilityCatalogEntry {
             interface: OpenApiInterfaceCatalogEntry {
-                operation_id: descriptor.operation_id.clone(),
-                method: descriptor.method.as_str().to_string(),
-                path: descriptor.path.clone(),
+                operation_id: definition.interface_id().as_str().to_string(),
+                method: route.method().to_string(),
+                path: route.path().to_string(),
                 name: "providers".to_string(),
                 description: "providers".to_string(),
                 parameter_descriptors: Vec::new(),
@@ -374,24 +379,25 @@ mod tests {
             bindable: true,
             disabled_reason: None,
             activated_operation: Some(ActivatedInterfaceOperationProjection {
-                operation_id: descriptor.operation_id.clone(),
-                input_contract_id: descriptor.input.contract_id.clone(),
-                input_contract_version: descriptor.input.contract_version.clone(),
-                output_contract_id: descriptor.output.contract_id.clone(),
-                output_contract_version: descriptor.output.contract_version.clone(),
-                required_core_permission: descriptor.required_core_permission.clone(),
-                auth_policy: descriptor.auth_policy,
-                audit_policy: descriptor.audit_policy,
-                error_policy: descriptor.error_policy,
-                graph_fingerprint: binding.graph_fingerprint().to_string(),
-                provenance: binding.provenance().clone(),
+                operation_id: definition.interface_id().as_str().to_string(),
+                input_contract_id: definition.input_contract().contract_id().to_string(),
+                input_contract_version: definition.input_contract().version().to_string(),
+                output_contract_id: definition.output_contract().contract_id().to_string(),
+                output_contract_version: definition.output_contract().version().to_string(),
+                required_core_permission: definition.permission().as_str().to_string(),
+                auth_policy: definition.authentication(),
+                audit_policy: definition.audit(),
+                error_policy: definition.error(),
+                graph_fingerprint: registry.graph_fingerprint().as_str().to_string(),
+                registry_fingerprint: registry.fingerprint().as_str().to_string(),
+                owner: definition.owner().as_str().to_string(),
             }),
         };
 
         let mcp = mcp_interface_entry_from_capability(entry);
-        assert_eq!(mcp.interface_id, descriptor.operation_id);
-        assert_eq!(mcp.method, descriptor.method.as_str());
-        assert_eq!(mcp.path, descriptor.path);
+        assert_eq!(mcp.interface_id, definition.interface_id().as_str());
+        assert_eq!(mcp.method, route.method());
+        assert_eq!(mcp.path, route.path());
         assert_eq!(mcp.parameter_schema, parameter_schema);
         assert_eq!(mcp.result_schema, result_schema);
         assert_eq!(

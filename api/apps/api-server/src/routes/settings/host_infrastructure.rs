@@ -353,7 +353,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 }
 
 pub(crate) fn route_assembly_with_interface_operations(
-    interface_operations: Option<&interface_operation::InterfaceOperationCatalog>,
+    interface_registry: Option<&interface_runtime::CompiledInterfaceRegistry>,
 ) -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
@@ -442,7 +442,10 @@ pub(crate) fn route_assembly_with_interface_operations(
                 ConsoleOperation("host_infrastructure.cache.domain.clear".to_string()),
             ),
         );
-    let assembly = if interface_operations.is_some() {
+    let assembly = if interface_registry
+        .and_then(|registry| interface_operation::providers_view_definition(registry).ok())
+        .is_some()
+    {
         assembly.route(
             interface_operation::host_infrastructure_providers_view_console_path(),
             console_get(
@@ -927,21 +930,14 @@ pub async fn list_host_infrastructure_providers(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<HostInfrastructureProviderConfigResponse>>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let binding = state
-        .extension_boot_snapshot
-        .as_ref()
-        .and_then(|snapshot| snapshot.interface_operations())
-        .map(|catalog| catalog.providers_view())
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-            "interface_operation",
-        ))?;
-    let providers = binding
-        .dispatch(
-            Arc::clone(&state),
-            interface_operation::HostInfrastructureProvidersViewInput,
-        )
-        .await?;
+    let context = require_session(&state, &headers).await?;
+    let (output, _receipt) = interface_operation::invoke_providers_view(
+        Arc::clone(&state),
+        context.actor,
+        interface_runtime::InterfaceProtocol::Http,
+    )
+    .await?;
+    let providers = output.into_providers();
 
     Ok(Json(ApiSuccess::new(providers)))
 }

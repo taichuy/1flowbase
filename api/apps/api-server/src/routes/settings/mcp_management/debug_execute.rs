@@ -102,6 +102,7 @@ pub async fn execute(
     execute_with_server_bindings(
         state,
         headers,
+        context.actor.clone(),
         interface_entry,
         body,
         McpServerBoundInputs {
@@ -115,6 +116,7 @@ pub async fn execute(
 pub async fn execute_with_server_bindings(
     state: Arc<ApiState>,
     headers: HeaderMap,
+    actor: domain::ActorContext,
     interface_entry: domain::McpInterfaceCatalogEntry,
     body: McpDebugExecuteBody,
     server_bound_inputs: McpServerBoundInputs,
@@ -125,6 +127,23 @@ pub async fn execute_with_server_bindings(
         &body.mcp_arguments,
         server_bound_inputs,
     )?;
+    let activated_interface_response = if interface_entry.interface_id
+        == crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
+    {
+        let (output, _receipt) = crate::routes::host_infrastructure::interface_operation::invoke_providers_view(
+            Arc::clone(&state),
+            actor,
+            interface_runtime::InterfaceProtocol::Mcp,
+        )
+        .await
+        .map_err(|error| McpDebugExecuteError::Api(error.0))?;
+        Some(
+            serde_json::to_value(crate::response::ApiSuccess::new(output.into_providers()))
+                .map_err(|error| anyhow::anyhow!("failed to serialize interface response: {error}"))?,
+        )
+    } else {
+        None
+    };
     let dispatch_entry = crate::openapi_interface::OpenApiInterfaceCatalogEntry {
         operation_id: interface_entry.interface_id.clone(),
         method: interface_entry.method.clone(),
@@ -148,27 +167,31 @@ pub async fn execute_with_server_bindings(
             Value::Object(interface_arguments.body.clone())
         },
     };
-    let interface_response = match crate::openapi_interface::dispatch(
-        state,
-        &headers,
-        &dispatch_entry,
-        dispatch_arguments,
-        BTreeMap::new(),
-    )
-    .await
-    {
-        Ok(crate::openapi_interface::DispatchSuccess::Json(value)) => value,
-        Ok(crate::openapi_interface::DispatchSuccess::NoContent) => Value::Null,
-        Ok(crate::openapi_interface::DispatchSuccess::Media(_)) => {
-            return Err(
-                anyhow::anyhow!("MCP debug execute requires a JSON interface response").into(),
-            )
-        }
-        Err(crate::openapi_interface::DispatchError::Api(error)) => {
-            return Err(McpDebugExecuteError::Api(error));
-        }
-        Err(crate::openapi_interface::DispatchError::Target(response)) => {
-            return Err(McpDebugExecuteError::TargetResponse(response));
+    let interface_response = if let Some(value) = activated_interface_response {
+        value
+    } else {
+        match crate::openapi_interface::dispatch(
+            state,
+            &headers,
+            &dispatch_entry,
+            dispatch_arguments,
+            BTreeMap::new(),
+        )
+        .await
+        {
+            Ok(crate::openapi_interface::DispatchSuccess::Json(value)) => value,
+            Ok(crate::openapi_interface::DispatchSuccess::NoContent) => Value::Null,
+            Ok(crate::openapi_interface::DispatchSuccess::Media(_)) => {
+                return Err(
+                    anyhow::anyhow!("MCP debug execute requires a JSON interface response").into(),
+                )
+            }
+            Err(crate::openapi_interface::DispatchError::Api(error)) => {
+                return Err(McpDebugExecuteError::Api(error));
+            }
+            Err(crate::openapi_interface::DispatchError::Target(response)) => {
+                return Err(McpDebugExecuteError::TargetResponse(response));
+            }
         }
     };
     let tool_result = map_tool_result(&body.output_mapping, &interface_response);

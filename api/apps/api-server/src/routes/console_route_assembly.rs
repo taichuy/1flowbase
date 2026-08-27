@@ -257,20 +257,16 @@ pub fn migrated_core_console_contract_bindings() -> Vec<ConsoleRouteAssemblyBind
 }
 
 pub(crate) fn migrated_core_console_route_assembly_with_interface_operations(
-    interface_operations: Option<
-        &crate::routes::host_infrastructure::interface_operation::InterfaceOperationCatalog,
-    >,
+    interface_registry: Option<&interface_runtime::CompiledInterfaceRegistry>,
 ) -> ConsoleRouteAssembly<Arc<ApiState>> {
     migrated_core_console_route_assembly_with_interface_operations_and_plugin_upload_max_bytes(
-        interface_operations,
+        interface_registry,
         crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES,
     )
 }
 
 pub(crate) fn migrated_core_console_route_assembly_with_interface_operations_and_plugin_upload_max_bytes(
-    interface_operations: Option<
-        &crate::routes::host_infrastructure::interface_operation::InterfaceOperationCatalog,
-    >,
+    interface_registry: Option<&interface_runtime::CompiledInterfaceRegistry>,
     plugin_upload_max_bytes: usize,
 ) -> ConsoleRouteAssembly<Arc<ApiState>> {
     ConsoleRouteAssembly::new()
@@ -292,7 +288,7 @@ pub(crate) fn migrated_core_console_route_assembly_with_interface_operations_and
         .merge(super::file_tables::route_assembly())
         .merge(
             super::host_infrastructure::route_assembly_with_interface_operations(
-                interface_operations,
+                interface_registry,
             ),
         )
         .merge(super::runtime_i18n_catalog::route_assembly())
