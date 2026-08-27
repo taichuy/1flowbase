@@ -73,11 +73,19 @@ describe('native block Anchor runtime adapter', () => {
     ).not.toBeNull();
     target.getBoundingClientRect = () => domRect({ top: 480, height: 120 });
     scrollOwner.getBoundingClientRect = () => domRect({ top: 80, height: 240 });
+    const layer = await waitFor(() => {
+      const element = scrollOwner.querySelector<HTMLElement>(
+        '[data-flowbase-native-anchor-affix-layer="native-anchor-block"]'
+      );
+      expect(element?.shadowRoot).not.toBeNull();
+      return element as HTMLElement;
+    });
 
     fireEvent.click(
-      await within(shadowRoot as unknown as HTMLElement).findByRole('link', {
-        name: 'Part 2'
-      })
+      await within(layer.shadowRoot as unknown as HTMLElement).findByRole(
+        'link',
+        { name: 'Part 2' }
+      )
     );
 
     await waitFor(() => expect(scrollTo).toHaveBeenCalled());
@@ -103,7 +111,7 @@ describe('native block Anchor runtime adapter', () => {
 
     fireEvent.scroll(fixture.scrollOwner);
     const firstLink = within(
-      fixture.shadowRoot as unknown as HTMLElement
+      fixture.anchorRoot as unknown as HTMLElement
     ).getByRole('link', { name: 'Part 1' });
     await waitFor(() =>
       expect(firstLink.className).toContain('-link-title-active')
@@ -112,42 +120,47 @@ describe('native block Anchor runtime adapter', () => {
     fixture.scrollOwner.scrollTop = 400;
     fireEvent.scroll(fixture.scrollOwner);
     const secondLink = within(
-      fixture.shadowRoot as unknown as HTMLElement
+      fixture.anchorRoot as unknown as HTMLElement
     ).getByRole('link', { name: 'Part 2' });
     await waitFor(() =>
       expect(secondLink.className).toContain('-link-title-active')
     );
   });
 
-  test('I1910-AC-001/009 delegates affix geometry to a native sticky track', async () => {
+  test('I1910-AC-009/011 delegates affix geometry to a surface-owned layer past the Block boundary', async () => {
     const fixture = await mountAnchorSurface('affix');
-    const affixTrack = fixture.shadowRoot.querySelector<HTMLElement>(
+    const placeholder = fixture.shadowRoot.querySelector<HTMLElement>(
       '[data-flowbase-native-anchor-affix]'
     );
-    const affix = affixTrack?.firstElementChild as HTMLElement | null;
-    if (!affixTrack || !affix) throw new Error('Missing Anchor affix shell.');
-    const mount = fixture.shadowRoot.querySelector<HTMLElement>(
-      '[data-flowbase-native-trusted-block-mount]'
+    const sentinel = fixture.shadowRoot.querySelector<HTMLElement>(
+      '[data-flowbase-native-anchor-affix-sentinel]'
     );
-    if (!mount) throw new Error('Missing native block mount.');
+    if (!placeholder || !sentinel) {
+      throw new Error('Missing Anchor affix placeholder.');
+    }
     fixture.scrollOwner.getBoundingClientRect = () =>
       domRect({ top: 80, height: 240 });
     fixture.root.getBoundingClientRect = () =>
-      domRect({ top: 20, height: 800 });
-    affixTrack.getBoundingClientRect = () => domRect({ top: 40, height: 94 });
-    affix.getBoundingClientRect = () => domRect({ top: 40, height: 94 });
+      domRect({ top: -800, height: 600 });
+    placeholder.getBoundingClientRect = () =>
+      domRect({ top: -220, height: 94 });
+    sentinel.getBoundingClientRect = () => domRect({ top: -220, height: 0 });
 
     fireEvent.scroll(fixture.scrollOwner);
+    await nextAnimationFrame();
 
-    expect(affixTrack).toHaveStyle({ position: 'sticky', top: '0px' });
-    expect(affix).not.toHaveStyle({ position: 'fixed' });
-    expect(affix).not.toHaveStyle({ top: '0px' });
-    expect(affix).not.toHaveStyle({ left: '0px' });
-    expect(affix).not.toHaveStyle({ width: '100%' });
-    expect(mount).toHaveStyle({
-      overflowX: 'visible',
-      overflowY: 'visible'
+    const layer = await waitFor(() => {
+      const element = fixture.scrollOwner.querySelector<HTMLElement>(
+        `[data-flowbase-native-anchor-affix-layer="${fixture.plan.blockId}"]`
+      );
+      expect(element).not.toBeNull();
+      return element as HTMLElement;
     });
+    expect(layer.parentElement).toBe(fixture.scrollOwner);
+    expect(fixture.root.contains(layer)).toBe(false);
+    expect(layer).toHaveAttribute('data-flowbase-native-anchor-pinned', 'true');
+    expect(layer).toHaveStyle({ position: 'sticky', top: '0px' });
+    expect(layer.shadowRoot?.textContent).toContain('Part 1');
   });
 
   test('I1910-AC-008 keeps a monotonic scroll in the pinned state across geometry feedback', async () => {
@@ -161,8 +174,8 @@ describe('native block Anchor runtime adapter', () => {
     const sentinel = fixture.shadowRoot.querySelector<HTMLElement>(
       '[data-flowbase-native-anchor-affix-sentinel]'
     );
-    const affix = affixTrack?.firstElementChild as HTMLElement | null;
-    if (!affixTrack || !sentinel || !affix) {
+    const layer = await findAffixLayer(fixture);
+    if (!affixTrack || !sentinel) {
       throw new Error('Missing Anchor affix shell.');
     }
     fixture.scrollOwner.style.transform = 'translate3d(0, 0, 0)';
@@ -170,7 +183,7 @@ describe('native block Anchor runtime adapter', () => {
       domRect({ top: 80, height: 240 });
     sentinel.getBoundingClientRect = () =>
       domRect({ top: 100 - fixture.scrollOwner.scrollTop, height: 0 });
-    affix.getBoundingClientRect = () => domRect({ top: 80, height: 94 });
+    layer.getBoundingClientRect = () => domRect({ top: 80, height: 94 });
 
     for (const scrollTop of [30, 32, 34]) {
       fixture.scrollOwner.scrollTop = scrollTop;
@@ -203,58 +216,83 @@ describe('native block Anchor runtime adapter', () => {
       scrollWidth: { configurable: true, value: 300 }
     });
     const secondLink = within(
-      fixture.shadowRoot as unknown as HTMLElement
+      fixture.anchorRoot as unknown as HTMLElement
     ).getByRole('link', { name: 'Part 2' });
     secondLink.getBoundingClientRect = () => domRect({ top: 500, height: 24 });
 
     fireEvent.click(secondLink);
     await waitFor(() => expect(fixture.scroll).toHaveBeenCalled());
+    await nextAnimationFrame();
     fixture.scroll.mockClear();
 
     fixture.rerender();
-    await waitFor(() => expect(fixture.scroll).not.toHaveBeenCalled());
+    await nextAnimationFrame();
+    expect(
+      within(fixture.anchorRoot as unknown as HTMLElement).getByRole('link', {
+        name: 'Part 2'
+      })
+    ).toBe(secondLink);
+    expect(fixture.scroll).not.toHaveBeenCalled();
   });
 
-  test('I1910-AC-010 freezes horizontal active detection after the sticky track leaves its owner', async () => {
-    const fixture = await mountAnchorSurface('horizontal-owner-exit', {
-      direction: 'horizontal'
-    });
-    const firstTarget = fixture.shadowRoot.getElementById('part-1');
-    const secondTarget = fixture.shadowRoot.getElementById('part-2');
-    const stickyTrack = fixture.shadowRoot.querySelector<HTMLElement>(
-      '[data-flowbase-native-anchor-affix]'
+  test('I1910-AC-012 lets the most recently entered Anchor own the surface layer and restores the previous owner on reverse scroll', async () => {
+    const scrollOwner = document.createElement('div');
+    scrollOwner.style.overflowY = 'auto';
+    document.body.append(scrollOwner);
+    const first = await mountAnchorSurface('takeover-first', {}, scrollOwner);
+    const second = await mountAnchorSurface('takeover-second', {}, scrollOwner);
+    scrollOwner.getBoundingClientRect = () => domRect({ top: 80, height: 240 });
+    const firstSentinel = first.shadowRoot.querySelector<HTMLElement>(
+      '[data-flowbase-native-anchor-affix-sentinel]'
     );
-    const sticky = stickyTrack?.firstElementChild as HTMLElement | null;
-    if (!firstTarget || !secondTarget || !stickyTrack || !sticky) {
-      throw new Error('Missing horizontal Anchor geometry fixture.');
+    const secondSentinel = second.shadowRoot.querySelector<HTMLElement>(
+      '[data-flowbase-native-anchor-affix-sentinel]'
+    );
+    if (!firstSentinel || !secondSentinel) {
+      throw new Error('Missing Anchor takeover sentinels.');
     }
-    fixture.scrollOwner.getBoundingClientRect = () =>
-      domRect({ top: 80, height: 240 });
-    firstTarget.getBoundingClientRect = () => domRect({ top: 80, height: 120 });
-    secondTarget.getBoundingClientRect = () =>
-      domRect({ top: 480, height: 120 });
-    stickyTrack.getBoundingClientRect = () => domRect({ top: 80, height: 24 });
-    sticky.getBoundingClientRect = () => domRect({ top: 80, height: 24 });
-    fireEvent.scroll(fixture.scrollOwner);
-    const firstLink = within(
-      fixture.shadowRoot as unknown as HTMLElement
-    ).getByRole('link', { name: 'Part 1' });
-    await waitFor(() =>
-      expect(firstLink.className).toContain('-link-title-active')
+    firstSentinel.getBoundingClientRect = () =>
+      domRect({ top: 100 - scrollOwner.scrollTop, height: 0 });
+    secondSentinel.getBoundingClientRect = () =>
+      domRect({ top: 500 - scrollOwner.scrollTop, height: 0 });
+
+    scrollOwner.scrollTop = 200;
+    fireEvent.scroll(scrollOwner);
+    await nextAnimationFrame();
+    const firstLayer = await findAffixLayer(first);
+    const secondLayer = await findAffixLayer(second);
+    expect(firstLayer).toHaveAttribute(
+      'data-flowbase-native-anchor-pinned',
+      'true'
+    );
+    expect(secondLayer).toHaveAttribute(
+      'data-flowbase-native-anchor-pinned',
+      'false'
     );
 
-    firstTarget.getBoundingClientRect = () =>
-      domRect({ top: -720, height: 120 });
-    secondTarget.getBoundingClientRect = () =>
-      domRect({ top: -320, height: 120 });
-    stickyTrack.getBoundingClientRect = () => domRect({ top: -40, height: 24 });
-    sticky.getBoundingClientRect = () => domRect({ top: -40, height: 24 });
-    fireEvent.scroll(fixture.scrollOwner);
+    scrollOwner.scrollTop = 600;
+    fireEvent.scroll(scrollOwner);
     await nextAnimationFrame();
-    await nextAnimationFrame();
-    await new Promise((resolve) => window.setTimeout(resolve, 50));
+    expect(firstLayer).toHaveAttribute(
+      'data-flowbase-native-anchor-pinned',
+      'false'
+    );
+    expect(secondLayer).toHaveAttribute(
+      'data-flowbase-native-anchor-pinned',
+      'true'
+    );
 
-    expect(firstLink).toHaveClass(/-link-title-active/u);
+    scrollOwner.scrollTop = 200;
+    fireEvent.scroll(scrollOwner);
+    await nextAnimationFrame();
+    expect(firstLayer).toHaveAttribute(
+      'data-flowbase-native-anchor-pinned',
+      'true'
+    );
+    expect(secondLayer).toHaveAttribute(
+      'data-flowbase-native-anchor-pinned',
+      'false'
+    );
   });
 
   test('I1910-AC-003 chooses a fixed viewport before the page scroll owner', () => {
@@ -290,7 +328,7 @@ describe('native block Anchor runtime adapter', () => {
       domRect({ top: 700, height: 100 });
 
     fireEvent.click(
-      within(second.shadowRoot as unknown as HTMLElement).getByRole('link', {
+      within(second.anchorRoot as unknown as HTMLElement).getByRole('link', {
         name: 'Part 2'
       })
     );
@@ -312,7 +350,7 @@ describe('native block Anchor runtime adapter', () => {
     target.getBoundingClientRect = () => domRect({ top: 500, height: 100 });
 
     fireEvent.click(
-      within(fixture.shadowRoot as unknown as HTMLElement).getByRole('link', {
+      within(fixture.anchorRoot as unknown as HTMLElement).getByRole('link', {
         name: 'Part 2'
       })
     );
@@ -325,12 +363,16 @@ describe('native block Anchor runtime adapter', () => {
     expect(window.location.hash).toBe('');
   });
 
-  test('I1910-AC-007 removes the surface scroll listener on dispose', async () => {
-    const fixture = await mountAnchorSurface('dispose');
+  test('I1910-AC-007 disposes the surface listener, layer, and owner lease', async () => {
+    const scrollOwner = document.createElement('div');
+    scrollOwner.style.position = 'static';
+    const fixture = await mountAnchorSurface('dispose', {}, scrollOwner);
+    const layer = await findAffixLayer(fixture);
     const removeEventListener = vi.spyOn(
       fixture.scrollOwner,
       'removeEventListener'
     );
+    expect(fixture.scrollOwner).toHaveStyle({ position: 'relative' });
 
     fixture.view.unmount();
 
@@ -338,21 +380,24 @@ describe('native block Anchor runtime adapter', () => {
       'scroll',
       expect.any(Function)
     );
+    expect(layer.isConnected).toBe(false);
+    expect(fixture.scrollOwner.style.position).toBe('static');
   });
 });
 
 async function mountAnchorSurface(
   suffix = 'default',
-  anchorProps: Pick<AnchorProps, 'affix' | 'direction' | 'onClick'> = {}
+  anchorProps: Pick<AnchorProps, 'affix' | 'direction' | 'onClick'> = {},
+  owner?: HTMLElement
 ) {
   const registry = createFrontstageNativeReactModuleRegistry();
   const antdModule = await registry.load('antd');
   const Anchor = antdModule.Anchor as ComponentType<AnchorProps>;
-  const scrollOwner = document.createElement('div');
+  const scrollOwner = owner ?? document.createElement('div');
   scrollOwner.style.overflowY = 'auto';
   const root = document.createElement('div');
   scrollOwner.append(root);
-  document.body.append(scrollOwner);
+  if (!scrollOwner.isConnected) document.body.append(scrollOwner);
   const scrollTo = vi.fn();
   const scroll = vi.fn();
   Object.defineProperty(scrollOwner, 'scrollTo', {
@@ -392,7 +437,15 @@ async function mountAnchorSurface(
     expect(root.shadowRoot).not.toBeNull();
     return root.shadowRoot as ShadowRoot;
   });
-  await within(shadowRoot as unknown as HTMLElement).findByRole('link', {
+  const layer = await waitFor(() => {
+    const element = scrollOwner.querySelector<HTMLElement>(
+      `[data-flowbase-native-anchor-affix-layer="${plan.blockId}"]`
+    );
+    expect(element?.shadowRoot).not.toBeNull();
+    return element as HTMLElement;
+  });
+  const anchorRoot = layer.shadowRoot as ShadowRoot;
+  await within(anchorRoot as unknown as HTMLElement).findByRole('link', {
     name: 'Part 2'
   });
   return {
@@ -400,10 +453,24 @@ async function mountAnchorSurface(
     scrollOwner,
     scroll,
     scrollTo,
+    anchorRoot,
     shadowRoot,
+    plan,
     view,
     rerender: () => view.rerender(renderSurface())
   };
+}
+
+async function findAffixLayer(
+  fixture: Awaited<ReturnType<typeof mountAnchorSurface>>
+): Promise<HTMLElement> {
+  return waitFor(() => {
+    const layer = fixture.scrollOwner.querySelector<HTMLElement>(
+      `[data-flowbase-native-anchor-affix-layer="${fixture.plan.blockId}"]`
+    );
+    expect(layer).not.toBeNull();
+    return layer as HTMLElement;
+  });
 }
 
 async function nextAnimationFrame(): Promise<void> {

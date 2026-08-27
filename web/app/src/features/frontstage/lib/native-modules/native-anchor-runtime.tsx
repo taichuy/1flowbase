@@ -1,3 +1,4 @@
+import { StyleProvider, createCache } from '@ant-design/cssinjs';
 import { Anchor as AntdAnchor, type AnchorProps } from 'antd';
 import {
   useCallback,
@@ -10,7 +11,12 @@ import {
   type MouseEvent,
   type ReactNode
 } from 'react';
+import { createPortal } from 'react-dom';
 
+import {
+  attachNativeAnchorAffixLayer,
+  type NativeAnchorAffixLayer
+} from './native-anchor-affix-layer';
 import { useNativeBlockSurface } from './native-block-surface-context';
 
 interface ScopedAnchorLink {
@@ -20,16 +26,6 @@ interface ScopedAnchorLink {
 }
 
 type AnchorLinkItem = NonNullable<AnchorProps['items']>[number];
-
-const AFFIX_ENTER_EPSILON = 0.5;
-const AFFIX_EXIT_EPSILON = 2;
-const affixOverflowLeases = new WeakMap<HTMLElement, AffixOverflowLease>();
-
-interface AffixOverflowLease {
-  count: number;
-  overflowX: string;
-  overflowY: string;
-}
 
 function NativeBlockAnchorComponent({
   items,
@@ -52,15 +48,34 @@ function NativeBlockAnchorComponent({
   const activeHrefRef = useRef(activeHref);
   const detectedHrefRef = useRef('');
   const affixSentinelRef = useRef<HTMLSpanElement | null>(null);
-  const affixStickyRef = useRef<HTMLDivElement | null>(null);
-  const affixedRef = useRef(false);
+  const affixPlaceholderRef = useRef<HTMLDivElement | null>(null);
+  const affixOptionsRef = useRef({
+    offset: 0,
+    placement: 'top' as 'top' | 'bottom'
+  });
+  const affixOnChangeRef = useRef<
+    ((affixed?: boolean) => void) | undefined
+  >(undefined);
+  const [affixLayer, setAffixLayer] = useState<NativeAnchorAffixLayer | null>(
+    null
+  );
+  const affixStyleCache = useMemo(() => createCache(), []);
   activeHrefRef.current = activeHref;
   const scoped = useMemo(
     () => createScopedItems(items, instanceId),
     [instanceId, items]
   );
+  const targetRoot = surface?.targetRoot;
   const scrollOwner = getContainer?.() ?? surface?.scrollOwner;
   const affixEnabled = Boolean(affix);
+  const offsetBottom =
+    typeof affix === 'object' ? affix.offsetBottom : undefined;
+  affixOptionsRef.current = {
+    offset: offsetBottom ?? offsetTop ?? 0,
+    placement: offsetBottom === undefined ? 'top' : 'bottom'
+  };
+  affixOnChangeRef.current =
+    typeof affix === 'object' ? affix.onChange : undefined;
   const internalActiveHref = scoped.originalToInternal.get(activeHref) ?? '';
   const getInternalCurrentAnchor = useCallback(
     () => internalActiveHref,
@@ -68,40 +83,54 @@ function NativeBlockAnchorComponent({
   );
 
   useLayoutEffect(() => {
-    affixedRef.current = false;
-    if (!surface || !affixEnabled) return;
-    return acquireAffixOverflowLease(surface.targetRoot);
-  }, [affixEnabled, surface]);
-
-  const measureAffix = useCallback(() => {
+    const placeholder = affixPlaceholderRef.current;
     const sentinel = affixSentinelRef.current;
-    const sticky = affixStickyRef.current;
-    if (!scrollOwner || !affix || !sentinel || !sticky) {
+    if (
+      !targetRoot ||
+      !scrollOwner ||
+      !affixEnabled ||
+      !placeholder ||
+      !sentinel
+    ) {
       return;
     }
-    const sentinelRect = sentinel.getBoundingClientRect();
-    const stickyRect = sticky.getBoundingClientRect();
-    const ownerRect =
-      scrollOwner instanceof HTMLElement
-        ? scrollOwner.getBoundingClientRect()
-        : { top: 0, bottom: window.innerHeight };
-    const offsetBottom =
-      typeof affix === 'object' ? affix.offsetBottom : undefined;
-    const desiredTop =
-      offsetBottom === undefined
-        ? ownerRect.top + (offsetTop ?? 0)
-        : ownerRect.bottom - offsetBottom - stickyRect.height;
-    const nextAffixed = resolveAffixed({
-      affixed: affixedRef.current,
-      desiredTop,
-      normalTop: sentinelRect.top,
-      placement: offsetBottom === undefined ? 'top' : 'bottom'
+    const blockId =
+      targetRoot.host.getAttribute('data-flowbase-native-trusted-block-id') ??
+      instanceId;
+    const layer = attachNativeAnchorAffixLayer({
+      blockId,
+      onPinnedChange: (pinned) => affixOnChangeRef.current?.(pinned),
+      options: () => affixOptionsRef.current,
+      placeholder,
+      scrollOwner,
+      sentinel
     });
-    if (nextAffixed !== affixedRef.current) {
-      affixedRef.current = nextAffixed;
-      if (typeof affix === 'object') affix.onChange?.(nextAffixed);
-    }
-  }, [affix, offsetTop, scrollOwner]);
+    setAffixLayer(layer);
+    return () => layer.dispose();
+  }, [affixEnabled, instanceId, scrollOwner, targetRoot]);
+
+  useLayoutEffect(() => {
+    const placeholder = affixPlaceholderRef.current;
+    if (!affixLayer || !placeholder) return;
+    const sync = () => {
+      const height = affixLayer.mountElement.getBoundingClientRect().height;
+      if (height > 0) placeholder.style.height = `${height}px`;
+      affixLayer.refresh();
+    };
+    sync();
+    const observer =
+      typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(sync);
+    observer?.observe(affixLayer.mountElement);
+    window.addEventListener('resize', sync);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', sync);
+    };
+  }, [affixLayer]);
+
+  const measureAffix = useCallback(() => {
+    affixLayer?.refresh();
+  }, [affixLayer]);
 
   const publishActiveHref = useCallback(
     (nextHref: string) => {
@@ -120,26 +149,11 @@ function NativeBlockAnchorComponent({
   );
 
   const measureActiveHref = useCallback(() => {
-    if (!surface || !scrollOwner) return;
-    const sticky = affixStickyRef.current;
-    if (direction === 'horizontal' && affix && sticky) {
-      const stickyRect = sticky.getBoundingClientRect();
-      const ownerRect =
-        scrollOwner instanceof HTMLElement
-          ? scrollOwner.getBoundingClientRect()
-          : { top: 0, bottom: window.innerHeight };
-      if (
-        stickyRect.height > 0 &&
-        (stickyRect.bottom <= ownerRect.top ||
-          stickyRect.top >= ownerRect.bottom)
-      ) {
-        return;
-      }
-    }
+    if (!targetRoot || !scrollOwner) return;
     const threshold = targetOffset ?? offsetTop ?? 0;
     let active: { href: string; top: number } | null = null;
     for (const link of scoped.links) {
-      const target = resolveLocalTarget(surface.targetRoot, link.originalHref);
+      const target = resolveLocalTarget(targetRoot, link.originalHref);
       if (!target) continue;
       const linkThreshold = link.targetOffset ?? threshold;
       const top = getTargetOffsetTop(target, scrollOwner);
@@ -149,19 +163,17 @@ function NativeBlockAnchorComponent({
     }
     publishActiveHref(active?.href ?? '');
   }, [
-    affix,
     bounds,
-    direction,
     offsetTop,
     publishActiveHref,
     scoped.links,
     scrollOwner,
-    surface,
+    targetRoot,
     targetOffset
   ]);
 
   useEffect(() => {
-    if (!surface || !scrollOwner) return;
+    if (!targetRoot || !scrollOwner) return;
     let frame = 0;
     const scheduleMeasure = () => {
       if (frame) return;
@@ -180,19 +192,19 @@ function NativeBlockAnchorComponent({
         ? null
         : new ResizeObserver(scheduleMeasure);
     for (const link of scoped.links) {
-      const target = resolveLocalTarget(surface.targetRoot, link.originalHref);
+      const target = resolveLocalTarget(targetRoot, link.originalHref);
       if (target) observer?.observe(target);
     }
-    observer?.observe(surface.targetRoot.host);
+    observer?.observe(targetRoot.host);
     return () => {
       if (frame) window.cancelAnimationFrame(frame);
       observer?.disconnect();
       scrollOwner.removeEventListener('scroll', scheduleMeasure);
       window.removeEventListener('resize', scheduleMeasure);
     };
-  }, [measureActiveHref, measureAffix, scoped.links, scrollOwner, surface]);
+  }, [measureActiveHref, measureAffix, scoped.links, scrollOwner, targetRoot]);
 
-  if (!surface || !scrollOwner) {
+  if (!targetRoot || !scrollOwner) {
     const fallbackItems = items === undefined ? {} : { items };
     return (
       <AntdAnchor
@@ -222,7 +234,7 @@ function NativeBlockAnchorComponent({
     onClick?.(event, { ...link, href: originalHref });
     if (event.defaultPrevented || !isLocalHref(originalHref)) return;
     event.preventDefault();
-    const target = resolveLocalTarget(surface.targetRoot, originalHref);
+    const target = resolveLocalTarget(targetRoot, originalHref);
     if (!target) return;
     const localOffset = scoped.targetOffsets.get(originalHref);
     scrollTargetIntoOwner(
@@ -258,76 +270,28 @@ function NativeBlockAnchorComponent({
         style={{ display: 'block', height: 0, pointerEvents: 'none' }}
       />
       <div
+        ref={affixPlaceholderRef}
         data-flowbase-native-anchor-affix=""
         style={{
           display: 'flow-root',
-          position: 'sticky',
-          width: '100%',
-          ...(typeof affix === 'object' && affix.offsetBottom !== undefined
-            ? { bottom: affix.offsetBottom }
-            : { top: offsetTop ?? 0 })
+          width: '100%'
         }}
-      >
-        <div ref={affixStickyRef}>{anchor}</div>
-      </div>
+      />
+      {affixLayer
+        ? createPortal(
+            <StyleProvider
+              cache={affixStyleCache}
+              container={affixLayer.shadowRoot}
+            >
+              {anchor}
+            </StyleProvider>,
+            affixLayer.mountElement
+          )
+        : null}
     </>
   ) : (
     anchor
   );
-}
-
-function resolveAffixed({
-  affixed,
-  desiredTop,
-  normalTop,
-  placement
-}: {
-  affixed: boolean;
-  desiredTop: number;
-  normalTop: number;
-  placement: 'top' | 'bottom';
-}): boolean {
-  if (placement === 'top') {
-    return affixed
-      ? normalTop < desiredTop + AFFIX_EXIT_EPSILON
-      : normalTop <= desiredTop - AFFIX_ENTER_EPSILON;
-  }
-  return affixed
-    ? normalTop > desiredTop - AFFIX_EXIT_EPSILON
-    : normalTop >= desiredTop + AFFIX_ENTER_EPSILON;
-}
-
-function acquireAffixOverflowLease(root: ShadowRoot): () => void {
-  const mount = root.querySelector<HTMLElement>(
-    '[data-flowbase-native-trusted-block-mount]'
-  );
-  if (!mount) {
-    throw new Error('Native block Anchor requires an active portal mount.');
-  }
-  const activeLease = affixOverflowLeases.get(mount);
-  if (activeLease) {
-    activeLease.count += 1;
-  } else {
-    affixOverflowLeases.set(mount, {
-      count: 1,
-      overflowX: mount.style.overflowX,
-      overflowY: mount.style.overflowY
-    });
-    // A horizontal-only overflow container computes to overflow-y:auto and
-    // becomes the sticky scroll owner even when it has no vertical range.
-    // Affixed blocks therefore use the real surface scroll owner on both axes.
-    mount.style.overflowX = 'visible';
-    mount.style.overflowY = 'visible';
-  }
-  return () => {
-    const lease = affixOverflowLeases.get(mount);
-    if (!lease) return;
-    lease.count -= 1;
-    if (lease.count > 0) return;
-    mount.style.overflowX = lease.overflowX;
-    mount.style.overflowY = lease.overflowY;
-    affixOverflowLeases.delete(mount);
-  };
 }
 
 export const NativeBlockAnchor = Object.assign(NativeBlockAnchorComponent, {
