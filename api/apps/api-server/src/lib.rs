@@ -629,6 +629,7 @@ async fn app_and_runtime_host_from_config(
     let state = Arc::new(ApiState {
         #[cfg(test)]
         test_resources: None,
+        console_policy_reader: Arc::new(store.clone()),
         store,
         system_backup,
         system_maintenance,

@@ -207,6 +207,7 @@ async fn fixture() -> Fixture {
     let system_backup = None;
     let state = Arc::new(ApiState {
         store: store.clone(),
+        console_policy_reader: Arc::new(store.clone()),
         system_backup,
         system_maintenance,
         authenticator_registry: Arc::new(control_plane::auth::AuthenticatorRegistry::new()),

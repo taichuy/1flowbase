@@ -5,7 +5,9 @@ use std::{
 
 use axum::http::{header::ACCEPT_LANGUAGE, HeaderMap};
 use control_plane::i18n_catalog::CatalogResolver;
-use control_plane::ports::{OfficialPluginSourcePort, RuntimeEventStream, SessionStore};
+use control_plane::ports::{
+    OfficialPluginSourcePort, RoleConsolePolicyReader, RuntimeEventStream, SessionStore,
+};
 use domain::{CatalogLocale, CatalogMessageIdentity};
 use plugin_framework::HostExtensionContributionManifest;
 use runtime_core::runtime_engine::RuntimeEngine;
@@ -354,6 +356,7 @@ pub struct ApiState {
     pub authenticator_registry: Arc<control_plane::auth::AuthenticatorRegistry>,
     pub settings_feature_registry: Arc<access_control::SettingsFeatureRegistry>,
     pub console_operation_registry: Arc<access_control::ConsoleOperationRegistry>,
+    pub console_policy_reader: Arc<dyn RoleConsolePolicyReader>,
     pub infrastructure: Arc<HostInfrastructureRegistry>,
     /// Present on production boot; lightweight test states may omit the production graph.
     pub extension_boot_snapshot: Option<Arc<ExtensionBootSnapshot>>,

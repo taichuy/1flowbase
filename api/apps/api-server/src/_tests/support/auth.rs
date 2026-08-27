@@ -298,6 +298,7 @@ async fn test_state_with_runtime_profile_state(
                 ],
             ))),
             store: store.clone(),
+            console_policy_reader: Arc::new(store.clone()),
             system_backup,
             system_maintenance,
             authenticator_registry: Arc::new(control_plane::auth::AuthenticatorRegistry::new()),

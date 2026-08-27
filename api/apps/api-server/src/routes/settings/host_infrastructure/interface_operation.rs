@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use access_control::{ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup};
 use anyhow::{bail, Result};
+use control_plane::ports::RoleConsolePolicyReader;
 use interface_runtime::{
     CompiledInterfaceRegistry, ContractIdentity, GraphFingerprint, HandlerReference,
     InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceAuthorizationError,
@@ -103,7 +104,7 @@ impl InterfaceHandler<HostInfrastructureProvidersViewInput, HostInfrastructurePr
 }
 
 struct ConsoleInterfaceAuthorizationPort {
-    store: storage_durable_postgres::MainDurableStore,
+    policy_reader: Arc<dyn RoleConsolePolicyReader>,
     console_registry: Arc<ConsoleOperationRegistry>,
 }
 
@@ -112,7 +113,7 @@ impl InterfaceAuthorizationPort for ConsoleInterfaceAuthorizationPort {
         &self,
         request: InterfaceAuthorizationRequest,
     ) -> InterfaceAuthorizationFuture<'_> {
-        let store = self.store.clone();
+        let policy_reader = Arc::clone(&self.policy_reader);
         let console_registry = Arc::clone(&self.console_registry);
         Box::pin(async move {
             let route = request.definition().route().ok_or_else(|| {
@@ -127,12 +128,8 @@ impl InterfaceAuthorizationPort for ConsoleInterfaceAuthorizationPort {
             if request.actor().is_root {
                 return Ok(());
             }
-            let policies = store
-                .load_console_policy_for_bound_role(
-                    request.actor().user_id,
-                    request.actor().current_workspace_id,
-                    &request.actor().effective_display_role,
-                )
+            let policies = policy_reader
+                .load_role_console_policies_for_user(request.actor())
                 .await
                 .map_err(|error| {
                     InterfaceAuthorizationError::with_source(
@@ -161,12 +158,12 @@ impl InterfaceAuthorizationPort for ConsoleInterfaceAuthorizationPort {
 }
 
 pub(crate) fn invocation_kernel(
-    store: storage_durable_postgres::MainDurableStore,
+    policy_reader: Arc<dyn RoleConsolePolicyReader>,
     console_registry: Arc<ConsoleOperationRegistry>,
 ) -> Arc<InterfaceInvocationKernel> {
     Arc::new(InterfaceInvocationKernel::new(Arc::new(
         ConsoleInterfaceAuthorizationPort {
-            store,
+            policy_reader,
             console_registry,
         },
     )))
@@ -192,7 +189,7 @@ pub async fn invoke_providers_view(
             "interface_operation",
         ))?;
     let kernel = invocation_kernel(
-        state.store.clone(),
+        Arc::clone(&state.console_policy_reader),
         Arc::clone(&state.console_operation_registry),
     );
     match kernel

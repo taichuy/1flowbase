@@ -687,6 +687,7 @@ pub(super) async fn test_app_with_runtime_event_stream(
     let state = Arc::new(ApiState {
         test_resources: base_state.test_resources.clone(),
         store: base_state.store.clone(),
+        console_policy_reader: Arc::clone(&base_state.console_policy_reader),
         system_backup: base_state.system_backup.clone(),
         system_maintenance: base_state.system_maintenance.clone(),
         authenticator_registry: base_state.authenticator_registry.clone(),

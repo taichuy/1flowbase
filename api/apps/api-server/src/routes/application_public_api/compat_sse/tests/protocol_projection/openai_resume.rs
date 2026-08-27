@@ -65,6 +65,7 @@ async fn openai_chat_replayed_waiting_callback_keeps_prior_delta_then_projects_t
     let state = Arc::new(ApiState {
         test_resources: base_state.test_resources.clone(),
         store: base_state.store.clone(),
+        console_policy_reader: Arc::clone(&base_state.console_policy_reader),
         system_backup: base_state.system_backup.clone(),
         system_maintenance: base_state.system_maintenance.clone(),
         authenticator_registry: base_state.authenticator_registry.clone(),
@@ -319,6 +320,7 @@ async fn openai_chat_resume_replay_terminal_keeps_durable_text_before_tool_call(
     let state = Arc::new(ApiState {
         test_resources: base_state.test_resources.clone(),
         store: base_state.store.clone(),
+        console_policy_reader: Arc::clone(&base_state.console_policy_reader),
         system_backup: base_state.system_backup.clone(),
         system_maintenance: base_state.system_maintenance.clone(),
         authenticator_registry: base_state.authenticator_registry.clone(),
