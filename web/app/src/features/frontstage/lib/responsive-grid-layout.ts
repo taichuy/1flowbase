@@ -50,20 +50,26 @@ function finiteLayoutValue(value: unknown, fallback: number): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
 
+function layoutRecordForBreakpoint(
+  item: Pick<FrontstageBlockRenderPlanItem, 'layout'>,
+  breakpoint: FrontstageGridBreakpoint
+): Record<string, unknown> {
+  const stored = item.layout[breakpoint];
+  return typeof stored === 'object' && stored !== null && !Array.isArray(stored)
+    ? (stored as Record<string, unknown>)
+    : item.layout;
+}
+
 function layoutForBreakpoint(
   item: Pick<
     FrontstageBlockRenderPlanItem,
     'blockId' | 'layout' | 'presentation'
   >,
   breakpoint: FrontstageGridBreakpoint,
-  index: number,
+  unpositionedY: number,
   autoRows: number | undefined
 ) {
-  const stored = item.layout[breakpoint];
-  const layout =
-    typeof stored === 'object' && stored !== null && !Array.isArray(stored)
-      ? (stored as Record<string, unknown>)
-      : item.layout;
+  const layout = layoutRecordForBreakpoint(item, breakpoint);
   const columns = FRONTSTAGE_GRID_COLUMNS[breakpoint];
   const isMobile = breakpoint === 'xs' || breakpoint === 'xxs';
   const isCurrentGrid = item.layout.gridColumns === FRONTSTAGE_GRID_VERSION;
@@ -80,7 +86,7 @@ function layoutForBreakpoint(
     typeof layout.y === 'number' && Number.isFinite(layout.y) ? layout.y : null;
   const y =
     storedY === null
-      ? index * pixelsToFrontstageGridRows(FRONTSTAGE_DEFAULT_AUTO_HEIGHT_PX)
+      ? unpositionedY
       : isCurrentVerticalGrid
         ? storedY
         : Math.round(
@@ -134,17 +140,37 @@ export function createFrontstageResponsiveLayouts(
   autoRows: Record<string, number> = {}
 ): ResponsiveLayouts<FrontstageGridBreakpoint> {
   return Object.fromEntries(
-    Object.keys(FRONTSTAGE_GRID_COLUMNS).map((breakpoint) => [
-      breakpoint,
-      items.map((item, index) =>
-        layoutForBreakpoint(
-          item,
-          breakpoint as FrontstageGridBreakpoint,
-          index,
-          autoRows[item.blockId]
-        )
-      )
-    ])
+    Object.keys(FRONTSTAGE_GRID_COLUMNS).map((breakpointValue) => {
+      const breakpoint = breakpointValue as FrontstageGridBreakpoint;
+      const projected = items.map((item) => {
+        const storedLayout = layoutRecordForBreakpoint(item, breakpoint);
+        return {
+          positioned:
+            typeof storedLayout.y === 'number' &&
+            Number.isFinite(storedLayout.y),
+          layout: layoutForBreakpoint(
+            item,
+            breakpoint,
+            0,
+            autoRows[item.blockId]
+          )
+        };
+      });
+      let bottomFrontier = projected.reduce(
+        (frontier, item) =>
+          item.positioned
+            ? Math.max(frontier, item.layout.y + item.layout.h)
+            : frontier,
+        0
+      );
+      const layout = projected.map((item) => {
+        if (item.positioned) return item.layout;
+        const appended = { ...item.layout, y: bottomFrontier };
+        bottomFrontier += appended.h;
+        return appended;
+      });
+      return [breakpoint, layout];
+    })
   ) as ResponsiveLayouts<FrontstageGridBreakpoint>;
 }
 
