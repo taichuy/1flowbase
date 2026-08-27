@@ -488,6 +488,7 @@ describe('FrontStagePage - runtime canvas state', () => {
               component: () => <h1>{`source:${layer.block_id}`}</h1>,
               artifactCacheTier: 'miss' as const,
               moduleAssets: [],
+              moduleSources: [],
               identityInput
             },
             mountIntent: { blockId: layer.block_id, slotIndex, identityInput }

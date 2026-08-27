@@ -848,7 +848,8 @@ function preparation(
     component: component as FrontstageNativePreparedRuntime['component'],
     identityInput,
     artifactCacheTier,
-    moduleAssets
+    moduleAssets,
+    moduleSources: []
   };
   if (priority <= 1) accumulatedFixtureMounts.add(blockId);
   return {

@@ -27,6 +27,7 @@ import {
   createFrontstageNativeTrustedBlockRuntimeFactory,
   getFrontstageNativeTrustedBlockRuntimeCompatibility
 } from '../../lib/native-trusted-block-runtime-factory';
+import { ANTD_STYLE_EXPORTS } from '../../lib/native-modules/antd-style-runtime';
 
 function createPlan(
   overrides: Partial<NativeTrustedBlockPreparePlan> = {}
@@ -82,6 +83,39 @@ describe('frontstage native trusted block runtime factory', () => {
       registry.definitions.find(({ module_source }) => module_source === 'antd')
         ?.exports
     ).not.toContain('RemovedComponent');
+  });
+
+  test('I1907-AC-003/006 exposes a stable lazy antd-style module contract', async () => {
+    const registry = createFrontstageNativeReactModuleRegistry();
+    expect(
+      registry.definitions.find(
+        ({ module_source }) => module_source === 'antd-style'
+      )
+    ).toEqual({
+      module_source: 'antd-style',
+      exports: ANTD_STYLE_EXPORTS
+    });
+
+    const [first, second] = await Promise.all([
+      registry.load('antd-style'),
+      registry.load('antd-style')
+    ]);
+    expect(first).toBe(second);
+    for (const exportName of ANTD_STYLE_EXPORTS) {
+      expect(first).toHaveProperty(exportName);
+    }
+
+    const registrySource = readFileSync(
+      join(
+        process.cwd(),
+        'src/features/frontstage/lib/native-modules/registry.ts'
+      ),
+      'utf8'
+    );
+    expect(registrySource).not.toMatch(
+      /import\s+\*\s+as\s+antdStyleModule\s+from\s+['"]antd-style['"]/u
+    );
+    expect(registrySource).toContain('loadAntdStyleModule');
   });
 
   test('exposes a serializable host compatibility manifest for injected modules', () => {
@@ -296,7 +330,7 @@ export default function Block() {
     ]);
   });
 
-  test('is consumed only by the editor run panel and not by catalog code', () => {
+  test('keeps the legacy synchronous factory out of production components and catalog code', () => {
     const frontstageDir = join(process.cwd(), 'src/features/frontstage');
     const scannedFiles = collectSourceFiles([
       join(frontstageDir, 'pages'),
@@ -315,9 +349,7 @@ export default function Block() {
       )
     );
 
-    expect(matches).toEqual([
-      expect.stringMatching(/components\/jsx-studio\/JsxStudioRunPanel\.tsx$/u)
-    ]);
+    expect(matches).toEqual([]);
   });
 });
 

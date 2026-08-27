@@ -1,19 +1,18 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/react';
+import { createStyles } from 'antd-style';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import type {
-  BlockContext,
-  BlockContextSeed
-} from '@1flowbase/page-protocol';
+import type { BlockContext, BlockContextSeed } from '@1flowbase/page-protocol';
 import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
 
 import {
   FrontstageNativeTrustedBlockPortalHost,
-  type FrontstageNativeTrustedBlockReactComponent
+  type FrontstageNativeTrustedBlockReactComponent,
+  type FrontstageNativeTrustedBlockReactComponentProps
 } from '../../lib/native-trusted-block-react-adapter';
 import {
   TrustedFrontendContributionHandle,
@@ -213,6 +212,7 @@ describe('frontstage native trusted block declarative portal host', () => {
         plan={createPlan()}
         component={StatefulBlock}
         ctx={createContext({ props: { contextTitle: 'Context 1' } })}
+        moduleSources={['antd-style']}
         providerScope={{ theme: { token: { colorPrimary: '#111111' } } }}
       />
     );
@@ -226,6 +226,7 @@ describe('frontstage native trusted block declarative portal host', () => {
         plan={createPlan({ props: { title: 'Updated' } })}
         component={StatefulBlock}
         ctx={createContext({ props: { contextTitle: 'Context 2' } })}
+        moduleSources={['antd-style']}
         providerScope={{ theme: { token: { colorPrimary: '#222222' } } }}
       />
     );
@@ -331,6 +332,92 @@ describe('frontstage native trusted block declarative portal host', () => {
       })
     ]);
     expect(document.head).not.toHaveTextContent(/\.native-same/);
+  });
+
+  test('I1907-AC-001/002 injects antd-style rules into the importing block ShadowRoot', async () => {
+    const root = createBlockRoot();
+    const useStyles = createStyles({
+      shell: {
+        border: '3px solid rgb(22, 119, 255)',
+        padding: 17
+      }
+    });
+    const Block = () => {
+      const { styles } = useStyles();
+      return <output className={styles.shell}>antd-style scoped</output>;
+    };
+
+    render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="antd-style:1"
+        plan={createPlan({
+          source:
+            "import { createStyles } from 'antd-style'; export default function Block() { return null; }"
+        })}
+        component={Block}
+        ctx={createContext()}
+        moduleSources={['antd-style']}
+      />
+    );
+
+    const output = await shadowQueries(root).findByText('antd-style scoped');
+    expect(output.className).toMatch(/css-/u);
+    expect(
+      root.shadowRoot?.querySelector('style[data-emotion]')
+    ).not.toBeNull();
+    expect(document.head.querySelector(`style[data-emotion]`)).toBeNull();
+  });
+
+  test('I1907-AC-002/005 isolates antd-style caches for two surfaces and cleans them on dispose', async () => {
+    const firstRoot = createBlockRoot();
+    const secondRoot = createBlockRoot();
+    const useStyles = createStyles({
+      surface: { backgroundColor: 'rgb(245, 245, 245)' }
+    });
+    const Block = ({
+      plan
+    }: FrontstageNativeTrustedBlockReactComponentProps) => {
+      const { styles } = useStyles();
+      return <output className={styles.surface}>{plan.entry}</output>;
+    };
+    const view = render(
+      <>
+        <FrontstageNativeTrustedBlockPortalHost
+          root={firstRoot}
+          renderEpoch="antd-style:first"
+          plan={createPlan({ entry: 'First' })}
+          component={Block}
+          ctx={createContext()}
+          moduleSources={['antd-style']}
+        />
+        <FrontstageNativeTrustedBlockPortalHost
+          root={secondRoot}
+          renderEpoch="antd-style:second"
+          plan={createPlan({ entry: 'Second' })}
+          component={Block}
+          ctx={createContext()}
+          moduleSources={['antd-style']}
+        />
+      </>
+    );
+
+    await shadowQueries(firstRoot).findByText('First');
+    await shadowQueries(secondRoot).findByText('Second');
+    const firstStyle = firstRoot.shadowRoot?.querySelector(
+      'style[data-emotion]'
+    );
+    const secondStyle = secondRoot.shadowRoot?.querySelector(
+      'style[data-emotion]'
+    );
+    expect(firstStyle?.getAttribute('data-emotion')).not.toBe(
+      secondStyle?.getAttribute('data-emotion')
+    );
+    expect(document.head.querySelector('style[data-emotion]')).toBeNull();
+
+    view.unmount();
+    expect(firstRoot.shadowRoot?.childNodes).toHaveLength(0);
+    expect(secondRoot.shadowRoot?.childNodes).toHaveLength(0);
   });
 
   test('AC-003/006 injects ctx.assets into the current ShadowRoot and disposes its resources on unmount', async () => {

@@ -37,6 +37,10 @@ import type {
   PreparedTrustedFrontendContribution,
   TrustedFrontendContributionHandle
 } from './native-trusted-block-contribution-lifecycle';
+import {
+  loadAntdStyleModule,
+  type AntdStyleShadowProvider
+} from './native-modules/antd-style-runtime';
 
 export interface FrontstageNativeTrustedBlockReactComponentProps {
   plan: NativeTrustedBlockPreparePlan;
@@ -88,6 +92,7 @@ export interface FrontstageNativeTrustedBlockPortalHostProps {
   component: FrontstageNativeTrustedBlockReactComponent;
   ctx: BlockContextSeed;
   moduleAssets?: readonly NativeReactResolvedModuleAsset[];
+  moduleSources?: readonly string[];
   providerScope?: FrontstageNativeTrustedBlockProviderScope;
   providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper;
   onRuntimeError?: FrontstageNativeTrustedBlockRuntimeErrorHandler;
@@ -105,6 +110,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
   component: BlockComponent,
   ctx,
   moduleAssets = [],
+  moduleSources = [],
   providerScope,
   providerWrapper,
   onRuntimeError,
@@ -170,6 +176,10 @@ export function FrontstageNativeTrustedBlockPortalHost({
   }, [renderInput]);
 
   const styleCache = useMemo(() => (surface ? createCache() : null), [surface]);
+  const antdStylePrefix = useMemo(
+    () => (surface ? createAntdStyleSurfacePrefix(plan.blockId) : null),
+    [plan.blockId, surface]
+  );
   const portalContainment = useMemo(
     () => (surface ? createPortalContainment(surface.shadowRoot) : null),
     [surface]
@@ -203,7 +213,13 @@ export function FrontstageNativeTrustedBlockPortalHost({
     return attachModuleStyleAssets(surface, moduleAssets);
   }, [moduleAssets, surface]);
 
-  if (!surface || !styleCache || !portalContainment || !blockContext) {
+  if (
+    !surface ||
+    !styleCache ||
+    !antdStylePrefix ||
+    !portalContainment ||
+    !blockContext
+  ) {
     return null;
   }
 
@@ -233,6 +249,8 @@ export function FrontstageNativeTrustedBlockPortalHost({
       content,
       providerContext,
       styleCache,
+      moduleSources,
+      antdStylePrefix,
       providerScope,
       providerWrapper
     ),
@@ -443,12 +461,14 @@ function wrapWithHostProviders(
   children: ReactNode,
   context: FrontstageNativeTrustedBlockProviderContext,
   styleCache: ReturnType<typeof createCache>,
+  moduleSources: readonly string[],
+  antdStylePrefix: string,
   providerScope?: FrontstageNativeTrustedBlockProviderScope,
   providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper
 ): ReactNode {
   const getShadowContainer = () => context.shadowRoot;
   const isolatedPrefix = createShadowStylePrefix(context.plan.blockId);
-  const scopedChildren = (
+  const hostChildren = (
     <StyleProvider cache={styleCache} container={context.shadowRoot}>
       <ConfigProvider
         getPopupContainer={getShadowContainer}
@@ -461,17 +481,87 @@ function wrapWithHostProviders(
       </ConfigProvider>
     </StyleProvider>
   );
+  const scopedChildren = moduleSources.includes('antd-style') ? (
+    <AntdStyleSurfaceProvider
+      container={context.shadowRoot}
+      prefix={antdStylePrefix}
+    >
+      {hostChildren}
+    </AntdStyleSurfaceProvider>
+  ) : (
+    hostChildren
+  );
 
   return providerWrapper
     ? providerWrapper(scopedChildren, context)
     : scopedChildren;
 }
 
+let antdStyleSurfaceSequence = 0;
+
+function createAntdStyleSurfacePrefix(blockId: string): string {
+  antdStyleSurfaceSequence += 1;
+  return `native-css-${encodeAlphabetic(hashBlockId(blockId) + 1)}-${encodeAlphabetic(antdStyleSurfaceSequence)}`;
+}
+
+function encodeAlphabetic(value: number): string {
+  let remaining = value;
+  let encoded = '';
+  while (remaining > 0) {
+    remaining -= 1;
+    encoded = String.fromCharCode(97 + (remaining % 26)) + encoded;
+    remaining = Math.floor(remaining / 26);
+  }
+  return encoded;
+}
+
+function AntdStyleSurfaceProvider({
+  children,
+  container,
+  prefix
+}: {
+  children: ReactNode;
+  container: ShadowRoot;
+  prefix: string;
+}): ReactNode {
+  const [Provider, setProvider] = useState<AntdStyleShadowProvider | null>(
+    null
+  );
+  const [loadError, setLoadError] = useState<unknown>(null);
+
+  useEffect(() => {
+    let active = true;
+    void loadAntdStyleModule().then(
+      (module) => {
+        if (active) setProvider(() => module.StyleProvider);
+      },
+      (error: unknown) => {
+        if (active) setLoadError(error);
+      }
+    );
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (loadError) throw loadError;
+  if (!Provider) return null;
+  return (
+    <Provider container={container} prefix={prefix}>
+      {children}
+    </Provider>
+  );
+}
+
 function createShadowStylePrefix(blockId: string): string {
+  return `ant-native-${hashBlockId(blockId).toString(36)}`;
+}
+
+function hashBlockId(blockId: string): number {
   let hash = 2166136261;
   for (const character of blockId) {
     hash ^= character.codePointAt(0) ?? 0;
     hash = Math.imul(hash, 16777619);
   }
-  return `ant-native-${(hash >>> 0).toString(36)}`;
+  return hash >>> 0;
 }

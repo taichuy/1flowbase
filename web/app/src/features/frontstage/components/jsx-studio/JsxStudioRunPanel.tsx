@@ -25,7 +25,7 @@ import {
   FrontstageNativeTrustedBlockPortalHost,
   type FrontstageNativeTrustedBlockReactComponent
 } from '../../lib/native-trusted-block-react-adapter';
-import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-trusted-block-runtime-factory';
+import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-modules/registry';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import { JsxStudioPreviewConsole } from './JsxStudioPreviewConsole';
 import {
@@ -51,6 +51,7 @@ interface StudioRunReadySnapshot {
   context: BlockContextSeed;
   renderEpoch: string;
   moduleAssets: NativeReactResolvedModuleAsset[];
+  moduleSources: string[];
 }
 
 type StudioRunSnapshot = StudioRunPendingSnapshot | StudioRunReadySnapshot;
@@ -238,7 +239,10 @@ export function JsxStudioRunPanel({
         plan,
         context,
         renderEpoch: instanceEpoch,
-        moduleAssets: prepared.moduleAssets
+        moduleAssets: prepared.moduleAssets,
+        moduleSources: prepared.artifact.program.injectedModules.map(
+          ({ source }) => source
+        )
       });
     },
     [
@@ -295,6 +299,7 @@ export function JsxStudioRunPanel({
           component={snapshot.component}
           ctx={snapshot.context}
           moduleAssets={snapshot.moduleAssets}
+          moduleSources={snapshot.moduleSources}
           onRuntimeError={(error) => {
             const active = activeRunRef.current;
             if (!active || active.requestId !== snapshot.requestId) return;

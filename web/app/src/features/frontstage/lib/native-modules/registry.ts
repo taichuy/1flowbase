@@ -1,6 +1,5 @@
 import * as antDesignIconsModule from '@ant-design/icons';
 import * as antdModule from 'antd';
-import * as antdStyleModule from 'antd-style';
 import * as ReactModule from 'react';
 import * as ReactJsxRuntimeModule from 'react/jsx-runtime';
 import * as uiModule from '@1flowbase/ui';
@@ -13,6 +12,8 @@ import {
   type NativeReactModuleRegistry,
   type NativeTrustedBlockInjectedModuleMap
 } from '@1flowbase/page-runtime';
+
+import { ANTD_STYLE_EXPORTS, loadAntdStyleModule } from './antd-style-runtime';
 
 type ModuleNamespace = Record<string, unknown>;
 
@@ -50,8 +51,8 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   registration('antd', Object.keys(antdModule), async () => ({
     module: antdModule
   })),
-  registration('antd-style', Object.keys(antdStyleModule), async () => ({
-    module: antdStyleModule
+  registration('antd-style', ANTD_STYLE_EXPORTS, async () => ({
+    module: await loadAntdStyleModule()
   })),
   registration('@1flowbase/ui', Object.keys(uiModule), async () => ({
     module: uiModule

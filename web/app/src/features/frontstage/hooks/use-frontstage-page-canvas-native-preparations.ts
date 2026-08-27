@@ -16,7 +16,7 @@ import {
   compileNativeReactComponentInBrowser,
   type NativeReactBrowserCompileResult
 } from '../../../shared/code-block/native-react-compiler-browser';
-import { createFrontstageNativeReactModuleRegistry } from '../lib/native-trusted-block-runtime-factory';
+import { createFrontstageNativeReactModuleRegistry } from '../lib/native-modules/registry';
 import {
   createFrontstageNativeReactArtifactCacheIdentity,
   frontstageNativeReactArtifactCache,
@@ -237,12 +237,16 @@ export function useFrontstagePageCanvasNativePreparations({
               (module) => module.source
             )
           );
+          const moduleSources = evaluated.artifact.program.injectedModules.map(
+            (module) => module.source
+          );
           throwIfAborted(signal);
           return {
             artifact: evaluated.artifact,
             component: evaluated.component,
             artifactCacheTier,
             moduleAssets,
+            moduleSources,
             ...(contribution ? { contribution } : {}),
             identityInput: {
               sourceSha256: evaluated.artifact.identity.source_sha256,

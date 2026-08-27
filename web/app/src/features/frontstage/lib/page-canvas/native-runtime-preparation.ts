@@ -58,6 +58,7 @@ export interface FrontstageNativePreparedRuntime {
   identityInput: FrontstageNativeInstanceIdentityInput;
   artifactCacheTier: 'l2' | 'miss';
   moduleAssets: NativeReactResolvedModuleAsset[];
+  moduleSources: string[];
   contribution?: PreparedTrustedFrontendContribution;
 }
 

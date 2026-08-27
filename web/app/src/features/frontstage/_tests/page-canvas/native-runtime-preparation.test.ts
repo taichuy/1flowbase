@@ -403,6 +403,7 @@ function prepared(blockId: string): FrontstageNativePreparedRuntime {
     component: (() => null) as FrontstageNativePreparedRuntime['component'],
     artifactCacheTier: 'miss',
     moduleAssets: [],
+    moduleSources: [],
     identityInput: {
       sourceSha256: blockId,
       compilerAbi: 'compiler',

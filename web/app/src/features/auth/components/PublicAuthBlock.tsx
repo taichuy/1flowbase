@@ -22,7 +22,7 @@ import {
   FrontstageNativeTrustedBlockPortalHost,
   type FrontstageNativeTrustedBlockReactComponent
 } from '../../frontstage/lib/native-trusted-block-react-adapter';
-import { createFrontstageNativeReactModuleRegistry } from '../../frontstage/lib/native-trusted-block-runtime-factory';
+import { createFrontstageNativeReactModuleRegistry } from '../../frontstage/lib/native-modules/registry';
 import type { FrontstageBlockInstance } from '../../frontstage/lib/page-document';
 import type {
   PasswordSignInResponse,
@@ -59,6 +59,7 @@ type PublicAuthRenderSnapshot =
       component: FrontstageNativeTrustedBlockReactComponent;
       context: BlockContextSeed;
       moduleAssets: NativeReactResolvedModuleAsset[];
+      moduleSources: string[];
       plan: NativeTrustedBlockPreparePlan;
       renderEpoch: string;
       attempt: PublicAuthAttempt;
@@ -192,6 +193,9 @@ export function PublicAuthBlock({
               ...capabilities
             },
             moduleAssets: prepared.moduleAssets,
+            moduleSources: prepared.artifact.program.injectedModules.map(
+              ({ source }) => source
+            ),
             plan,
             renderEpoch,
             attempt
@@ -240,6 +244,7 @@ export function PublicAuthBlock({
           component={snapshot.component}
           ctx={snapshot.context}
           moduleAssets={snapshot.moduleAssets}
+          moduleSources={snapshot.moduleSources}
           onRuntimeError={() => {
             activeInstanceRef.current = null;
             if (snapshot.attempt === 0) {

@@ -269,6 +269,30 @@ describe('JsxStudioRunPanel Native React run revision', () => {
     );
   });
 
+  test('I1907-AC-004 renders antd-style inside the JSX Studio ShadowRoot', async () => {
+    const code = `
+      import { createStyles } from 'antd-style';
+      const useStyles = createStyles({ shell: { border: '3px solid rgb(22, 119, 255)', padding: 17 } });
+      export default function Block() {
+        const { styles } = useStyles();
+        return <output className={styles.shell}>Studio styled</output>;
+      }
+    `;
+    const view = renderPanel({
+      code,
+      revision: 'run:antd-style-shadow',
+      nativeCompiler: createCompiler()
+    });
+
+    await waitFor(() => expect(trialShadowRoot(view.container)).not.toBeNull());
+    const shadowRoot = trialShadowRoot(view.container);
+    const output = await within(
+      shadowRoot as unknown as HTMLElement
+    ).findByText('Studio styled');
+    expect(output.className).toMatch(/css-/u);
+    expect(shadowRoot.querySelector('style[data-emotion]')).not.toBeNull();
+  });
+
   test('D4-AC-007/D3R-AC-007 confines render errors to the current declarative Portal Host', async () => {
     const compiler = createCompiler();
     const crashingBlock = { ...block, id: 'crashing-block' };
