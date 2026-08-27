@@ -15,6 +15,8 @@ use runtime_core::runtime_backend::{
 use runtime_extension_host::{RuntimeArtifactResolver, RuntimeExtensionHost};
 use time::OffsetDateTime;
 
+const LIFECYCLE_PLUGIN_ID: &str = "lifecycle_provider@0.1.0";
+
 struct LifecycleProviderPackage(PathBuf);
 
 impl LifecycleProviderPackage {
@@ -122,7 +124,7 @@ impl RuntimeArtifactResolver for FixtureArtifactResolver {
 fn lifecycle_request(request_id: &str) -> RuntimeExecutionRequest {
     RuntimeExecutionRequest {
         request_id: RuntimeRequestId::new(request_id).unwrap(),
-        target: RuntimeTargetId::new("lifecycle_provider").unwrap(),
+        target: RuntimeTargetId::new(LIFECYCLE_PLUGIN_ID).unwrap(),
         input: ProviderInvocationInput {
             provider_instance_id: "lifecycle-instance".to_string(),
             provider_code: "lifecycle_provider".to_string(),
@@ -164,7 +166,7 @@ async fn d_003_ready_drain_stop_is_monotonic_and_cancel_is_idempotent() {
         .unwrap(),
     );
     host.activate_provider(RuntimePackageActivation {
-        plugin_id: "lifecycle_provider".to_string(),
+        plugin_id: LIFECYCLE_PLUGIN_ID.to_string(),
         artifact: RuntimeArtifactReference::new("lifecycle-artifact").unwrap(),
         source_identity: Some("lifecycle-fixture".to_string()),
         legacy_eligibility: None,

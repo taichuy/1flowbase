@@ -203,20 +203,18 @@ pnpm dev
 
 Override `VITE_EXTERNAL_NPM_PROXY_TARGET` in `web/app/.env` when the pack server uses another address.
 
-Start backend services:
+Start the backend service:
 
 ```bash
 cd api
 # Copy api/apps/api-server/.env.example to .env before the first run.
 cargo run -p api-server --bin api-server
-cargo run -p plugin-runner --bin plugin-runner
 ```
 
-Default backend endpoints:
+Default backend endpoint:
 
 ```text
 API Server: http://127.0.0.1:7800
-Plugin Runner: http://127.0.0.1:7801
 ```
 
 Script-assisted startup:

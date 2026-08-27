@@ -191,14 +191,12 @@ http://127.0.0.1:3100
 cd api
 # 首次运行前请确保将 api/apps/api-server/.env.example 复制并保存为 .env。
 cargo run -p api-server --bin api-server
-cargo run -p plugin-runner --bin plugin-runner
 ```
 
 默认后端服务地址：
 
 ```text
 API 服务：http://127.0.0.1:7800
-插件运行器：http://127.0.0.1:7801
 ```
 
 使用脚本辅助启动：

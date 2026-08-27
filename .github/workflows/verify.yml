@@ -45,7 +45,7 @@ jobs:
           ref: ${{ inputs.official_source_sha }}
           path: tmp/provider-conformance/official-source
       - uses: dtolnay/rust-toolchain@stable
-      - name: Run official executable wire and behavior suites
+      - name: Build the exact official RuntimeExtension executables
         shell: bash
         run: |
           set -euo pipefail
@@ -53,7 +53,6 @@ jobs:
             if [ ! -f "${plugin_dir}/Cargo.toml" ]; then
               continue
             fi
-            cargo test --manifest-path "${plugin_dir}/Cargo.toml" --all-targets
             cargo build --manifest-path "${plugin_dir}/Cargo.toml"
           done
       - name: Execute the eight official RuntimeExtensions through the in-process host

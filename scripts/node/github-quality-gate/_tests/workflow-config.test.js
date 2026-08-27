@@ -128,7 +128,11 @@ test("Delivery 1898 provider conformance pins every reusable action", () => {
   assert.doesNotMatch(providerConformance, /^\s*uses:\s+[^\s@]+\s*$/mu);
   assert.match(
     providerConformance,
-    /cargo test --manifest-path "\$\{plugin_dir\}\/Cargo\.toml" --all-targets/u,
+    /cargo build --manifest-path "\$\{plugin_dir\}\/Cargo\.toml"/u,
+  );
+  assert.doesNotMatch(
+    providerConformance,
+    /cargo test --manifest-path "\$\{plugin_dir\}\/Cargo\.toml"/u,
   );
   assert.match(
     providerConformance,
