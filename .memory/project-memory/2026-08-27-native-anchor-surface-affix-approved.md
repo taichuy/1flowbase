@@ -17,7 +17,7 @@ created_at: 2026-08-27 23
 updated_at: 2026-08-27 23
 last_verified_at: 2026-08-27 23
 decision_policy: verify_before_decision
-status: active
+status: completed
 scope:
   - https://github.com/taichuy/1flowbase/issues/1910
   - web/app/src/features/frontstage/lib/native-modules/native-anchor-runtime.tsx
@@ -47,4 +47,4 @@ scope:
 
 ## 截止与下一事件
 
-无日历截止日期。candidate `a89ee2b2a` 已推送 `dev`，#1910 为 `phase:user-acceptance`；下一事件是用户在指定页面完成手动验收，确认后关闭 Issue。
+无日历截止日期。用户已完成页面验收，#1910 于 2026-08-27 关闭；后续底部创建位置问题由独立的 #1913 跟踪，不再扩张本决策边界。
