@@ -224,6 +224,13 @@ pub struct RuntimeCapabilityExecutionOutcome {
 }
 
 #[async_trait]
+/// Provider operations are mandatory for every Runtime Backend.
+///
+/// ```compile_fail
+/// use runtime_core::runtime_backend::ProviderRuntimePort;
+/// struct IncompleteProviderBackend;
+/// impl ProviderRuntimePort for IncompleteProviderBackend {}
+/// ```
 pub trait ProviderRuntimePort: Send + Sync {
     async fn activate_provider(
         &self,
@@ -283,6 +290,13 @@ pub trait ProviderRuntimePort: Send + Sync {
 }
 
 #[async_trait]
+/// Data Source operations are mandatory for every Runtime Backend.
+///
+/// ```compile_fail
+/// use runtime_core::runtime_backend::DataSourceRuntimePort;
+/// struct IncompleteDataSourceBackend;
+/// impl DataSourceRuntimePort for IncompleteDataSourceBackend {}
+/// ```
 pub trait DataSourceRuntimePort: Send + Sync {
     async fn activate_data_source(
         &self,
@@ -369,6 +383,13 @@ pub trait DataSourceRuntimePort: Send + Sync {
 }
 
 #[async_trait]
+/// Capability operations are mandatory for every Runtime Backend.
+///
+/// ```compile_fail
+/// use runtime_core::runtime_backend::CapabilityRuntimePort;
+/// struct IncompleteCapabilityBackend;
+/// impl CapabilityRuntimePort for IncompleteCapabilityBackend {}
+/// ```
 pub trait CapabilityRuntimePort: Send + Sync {
     async fn activate_capability(
         &self,
@@ -406,6 +427,13 @@ pub trait CapabilityRuntimePort: Send + Sync {
 }
 
 #[async_trait]
+/// Network Egress operations are mandatory for every Runtime Backend.
+///
+/// ```compile_fail
+/// use runtime_core::runtime_backend::NetworkEgressRuntimePort;
+/// struct IncompleteNetworkEgressBackend;
+/// impl NetworkEgressRuntimePort for IncompleteNetworkEgressBackend {}
+/// ```
 pub trait NetworkEgressRuntimePort: Send + Sync {
     async fn network_egress_preflight(
         &self,

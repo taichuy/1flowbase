@@ -33,7 +33,6 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use tar::Builder;
 use time::OffsetDateTime;
-use tokio::sync::RwLock;
 use tower::ServiceExt;
 use uuid::Uuid;
 

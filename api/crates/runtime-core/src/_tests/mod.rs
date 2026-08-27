@@ -1,5 +1,6 @@
 mod data_model_template_registry_tests;
 mod resource_registry_tests;
 mod runtime_acl_tests;
+mod runtime_backend_tests;
 mod runtime_engine_tests;
 mod runtime_model_registry_tests;

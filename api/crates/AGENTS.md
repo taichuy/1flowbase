@@ -25,7 +25,7 @@
 | `observability` | 日志、trace、metrics 基础能力 | `domain` |
 | `extension-package-runtime` | Runtime Host 所需的 package descriptor、解析、artifact load/reconcile | `extension-contracts` |
 | `runtime-profile` | 运行目标、locale、fingerprint 与环境快照 | `extension-contracts` |
-| `runtime-core` | runtime registry、runtime CRUD 核心、slot engine 与 Runtime Backend Port | `domain`、`extension-contracts`、`storage-durable` |
+| `runtime-core` | runtime registry、runtime CRUD 核心、slot engine 与六个必实现 Runtime Backend Port | `domain`、`extension-contracts`、`storage-durable` |
 | `orchestration-runtime` | 编排编译、绑定、执行与 `provider-routing` | `domain`、`extension-contracts`、`runtime-core` |
 | `plugin-framework` | manifest、contribution、registry、安装与扩展图 | `access-control`、`extension-contracts`、`extension-package-runtime` |
 | `runtime-extension-host` | RuntimeExtension Registry、Worker、stdio、profile 与生命周期的唯一运行真值 | `extension-contracts`、`extension-package-runtime`、`runtime-core`、`runtime-profile` |
@@ -44,6 +44,7 @@
 - repository trait 放 `control-plane-contracts`；SQL、Row 映射和数据库事务实现放 `storage/durable/postgres`。
 - 跨 Host / Runtime 的稳定协议放 `extension-contracts`；安装、registry 和扩展图放 `plugin-framework`。
 - RuntimeExtension 加载与进程生命周期放 `runtime-extension-host`；执行编排放 `orchestration-runtime`。
+- `RuntimeBackend` 必须组合 Execution、Observation、Provider、DataSource、Capability、Network Egress 六个窄 Port；必需方法不提供默认失败实现。
 - Durable、Ephemeral、Object 是三类 Storage；PostgreSQL 只是 Durable 的官方 adapter。
 
 ## Evidence And Stop

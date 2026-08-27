@@ -10,8 +10,9 @@ stdio、Runtime Profile 与生命周期状态。
 Control Plane 与 Orchestration 不得创建具体 Host。Orchestration 先完成 target
 选择，再通过 `runtime-core` 拥有的 `RuntimeExecutionPort` 执行，通过
 `RuntimeObservationPort` 观察。API Backend 业务路径通过 typed
-`RuntimeExtensionPort` 使用 Provider、DataSource、Capability 与 Network Egress 能力，
-不读取具体 Registry。三个 Port 组合成 `RuntimeBackend`，由 `RuntimeBackendSlot` 以
+`ProviderRuntimePort`、`DataSourceRuntimePort`、`CapabilityRuntimePort` 与
+`NetworkEgressRuntimePort` 使用对应能力，不读取具体 Registry。六个 Port 组合成
+`RuntimeBackend`，由 `RuntimeBackendSlot` 以
 `exactly_one` 基数绑定；开源版唯一 binding 是进程内 Host。
 
 ## 稳定 Port
@@ -23,10 +24,16 @@ Control Plane 与 Orchestration 不得创建具体 Host。Orchestration 先完�
 - `cancel`：按 `request_id` 取消 Host 管理的活跃任务。
 
 `RuntimeObservationPort::snapshot` 返回生命周期、Registry 数量和活跃请求数。
-`RuntimeExtensionPort` 为四类 Runtime 能力提供逐操作的 typed method；package 激活只
-接收 `RuntimeArtifactReference`。进程内 Backend 在 composition root 注入 artifact
-resolver，将安装记录 ID 解析为本机 materialization；该路径不进入稳定 Port。
+四个业务 Port 为对应 Runtime 能力提供逐操作的 typed method，所有方法均为必实现项，
+不提供默认 `UnsupportedOperation`；package 激活只接收 `RuntimeArtifactReference`。
+进程内 Backend 在 composition root 注入 artifact resolver，将安装记录 ID 解析为本机
+materialization；该路径不进入稳定 Port。
 Port 不暴露 HTTP/gRPC、端口、进程、文件路径、Registry 或无边界 JSON 万能调用。
+
+`runtime-extension-host` crate root 只公开 `RuntimeExtensionHost`、
+`RuntimeArtifactResolver` 与明确批准的稳定 Facade。Provider、DataSource、Capability、
+Network Egress Host、Registry、Worker、stdio、package loader 和 Process Supervisor 均为
+crate 私有；需要内部状态的测试必须位于 `src/_tests`，外部测试只走 Facade 或六个 Port。
 
 `request_id` 标识一次 Host 调用，不写入现有插件 wire。调用方必须保证同一逻辑
 尝试使用可追踪的唯一值；当前 Port 不承诺重复执行幂等。若业务需要幂等，幂等键
@@ -85,6 +92,10 @@ Domain、数据库或 `api-server` 内部类型，也不得打包整个后端 cr
 因此修改。远程 Adapter 解析同一 `RuntimeArtifactReference`，不能要求业务路径传递
 本机 package path。远程实现若需要服务发现、重试、熔断、租约、选主、调度或扩缩容，必须
 另立 contract 和 Delivery；不得把这些概念提前泄漏进当前稳定 Port。
+
+任何 Backend 必须在编译期完整实现六个 Port。本阶段不定义部分能力 Backend；若未来
+确有该需求，必须另立 Delivery，引入显式 capability set 并在 Slot bind 时校验，不能
+恢复默认失败方法或在业务调用期探测能力。
 
 官方兼容门禁必须构建并启动 8 个官方 executable，经真实 Host 验证三种 execution
 mode、两种 stdio protocol、Validate、CountTokens、Generate 的 event/error/result 与

@@ -2,6 +2,11 @@
 //!
 //! The public boundary is [`RuntimeExtensionHost`] plus the stable ports owned by `runtime-core`.
 //! Worker protocol, registry, process and package details remain implementation concerns.
+//!
+//! Internal Host types cannot be imported by consumers:
+//! ```compile_fail
+//! use runtime_extension_host::provider_host::ProviderHost;
+//! ```
 
 mod capability_host;
 mod capability_stdio;
