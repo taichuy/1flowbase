@@ -1094,9 +1094,9 @@ if [ "$POSTGRES_PASSWORD_SYNC_REQUIRED" -eq 0 ] && [ "$PULL_IMAGES" = "no" ] && 
   echo "Docker files are ready in ./docker."
   echo "No images were pulled and no containers were started."
   if [ "$NEW_DATABASE_MODE" = "external" ]; then
-    echo "To start later, run: cd docker && docker compose -f docker-compose.external-db.yaml pull && docker compose -f docker-compose.external-db.yaml up -d"
+    echo "To start later, run: cd docker && docker compose -f docker-compose.external-db.yaml pull && docker compose -f docker-compose.external-db.yaml up -d --remove-orphans"
   else
-    echo "To start later, run: cd docker && docker compose pull && docker compose up -d"
+    echo "To start later, run: cd docker && docker compose pull && docker compose up -d --remove-orphans"
   fi
   exit 0
 fi
@@ -1170,16 +1170,16 @@ fi
 
 if [ "$START_CONTAINERS" = "yes" ]; then
   if [ "$NEW_DATABASE_MODE" = "external" ]; then
-    compose -f docker-compose.external-db.yaml up -d
+    compose -f docker-compose.external-db.yaml up -d --remove-orphans
   else
-    compose up -d
+    compose up -d --remove-orphans
   fi
 else
   echo "Skipping container startup."
   if [ "$NEW_DATABASE_MODE" = "external" ]; then
-    echo "To start later, run: cd docker && docker compose -f docker-compose.external-db.yaml up -d"
+    echo "To start later, run: cd docker && docker compose -f docker-compose.external-db.yaml up -d --remove-orphans"
   else
-    echo "To start later, run: cd docker && docker compose up -d"
+    echo "To start later, run: cd docker && docker compose up -d --remove-orphans"
   fi
   exit 0
 fi

@@ -834,9 +834,9 @@ if (-not $PostgresPasswordSyncRequired -and -not $PullImages -and -not $StartCon
   Write-Host "Docker files are ready in ./docker."
   Write-Host "No images were pulled and no containers were started."
   if ($NewDatabaseMode -eq "external") {
-    Write-Host "To start later, run: cd docker && docker compose -f docker-compose.external-db.yaml pull && docker compose -f docker-compose.external-db.yaml up -d"
+    Write-Host "To start later, run: cd docker && docker compose -f docker-compose.external-db.yaml pull && docker compose -f docker-compose.external-db.yaml up -d --remove-orphans"
   } else {
-    Write-Host "To start later, run: cd docker && docker compose pull && docker compose up -d"
+    Write-Host "To start later, run: cd docker && docker compose pull && docker compose up -d --remove-orphans"
   }
   exit 0
 }
@@ -900,16 +900,16 @@ if ($RestoreBackup -and $StartContainers) {
 
 if ($StartContainers) {
   if ($NewDatabaseMode -eq "external") {
-    Invoke-ComposeCommand @("-f", "docker-compose.external-db.yaml", "up", "-d")
+    Invoke-ComposeCommand @("-f", "docker-compose.external-db.yaml", "up", "-d", "--remove-orphans")
   } else {
-    Invoke-ComposeCommand @("up", "-d")
+    Invoke-ComposeCommand @("up", "-d", "--remove-orphans")
   }
 } else {
   Write-Host "Skipping container startup."
   if ($NewDatabaseMode -eq "external") {
-    Write-Host "To start later, run: cd docker && docker compose -f docker-compose.external-db.yaml up -d"
+    Write-Host "To start later, run: cd docker && docker compose -f docker-compose.external-db.yaml up -d --remove-orphans"
   } else {
-    Write-Host "To start later, run: cd docker && docker compose up -d"
+    Write-Host "To start later, run: cd docker && docker compose up -d --remove-orphans"
   }
   exit 0
 }
