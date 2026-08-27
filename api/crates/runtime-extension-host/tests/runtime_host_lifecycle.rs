@@ -26,6 +26,7 @@ impl LifecycleProviderPackage {
         ));
         fs::create_dir_all(root.join("provider")).unwrap();
         fs::create_dir_all(root.join("bin")).unwrap();
+        fs::create_dir_all(root.join("i18n")).unwrap();
         fs::write(
             root.join("manifest.yaml"),
             r#"manifest_version: 1
@@ -72,6 +73,11 @@ protocol: openai_compatible
 model_discovery: static
 config_schema: []
 "#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("i18n/en_US.json"),
+            r#"{ "plugin": { "label": "Lifecycle Provider" } }"#,
         )
         .unwrap();
         let executable = root.join("bin/lifecycle_provider");
@@ -222,8 +228,44 @@ async fn d_003_ready_drain_stop_is_monotonic_and_cancel_is_idempotent() {
         runtime_core::runtime_backend::RuntimeCancelOutcome::NotFound
     );
 
+    let draining_host = Arc::clone(&host);
+    let draining_execution = tokio::spawn(async move {
+        draining_host
+            .execute_stream(
+                lifecycle_request("drain-active-request"),
+                RuntimeStreamSinks::default(),
+            )
+            .await
+    });
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            let snapshot = RuntimeObservationPort::snapshot(host.as_ref())
+                .await
+                .unwrap();
+            if snapshot.active_request_ids == ["drain-active-request"] {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .expect("drain fixture request must become active");
+
     host.drain().await.unwrap();
     assert_eq!(host.lifecycle(), RuntimeBackendLifecycle::Draining);
+    assert!(matches!(
+        draining_execution.await.unwrap().unwrap_err(),
+        RuntimeBackendError::Cancelled(cancelled)
+            if cancelled.as_str() == "drain-active-request"
+    ));
+    assert!(
+        RuntimeObservationPort::snapshot(host.as_ref())
+            .await
+            .unwrap()
+            .active_request_ids
+            .is_empty(),
+        "drain must leave no request admitted before its lifecycle transition"
+    );
     let draining_error = host
         .execute_stream(
             lifecycle_request("draining-request"),

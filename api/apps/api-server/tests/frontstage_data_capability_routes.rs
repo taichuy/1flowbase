@@ -31,7 +31,6 @@ use control_plane::{
 };
 use serde_json::{json, Value};
 use time::OffsetDateTime;
-use tokio::sync::RwLock;
 use tower::ServiceExt;
 use uuid::Uuid;
 
@@ -157,18 +156,27 @@ async fn fixture() -> Fixture {
         .await
         .unwrap();
 
+    let runtime_host = Arc::new(
+        runtime_extension_host::RuntimeExtensionHost::new(OffsetDateTime::now_utc()).unwrap(),
+    );
+    runtime_host.mark_ready().unwrap();
+    let mut runtime_backend_slot = runtime_core::runtime_backend::RuntimeBackendSlot::default();
+    runtime_backend_slot.bind(runtime_host).unwrap();
+    let api_workspace_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let extension_graph = api_server::extension_bus::assemble_extension_graph_input(
+        &api_workspace_root,
+        api_server::extension_bus::DEFAULT_PLUGIN_SET_PATH,
+        Vec::new(),
+    )
+    .unwrap()
+    .compile_graph()
+    .unwrap();
     let provider_runtime = Arc::new(
-        ApiRuntimeServices::new_without_model_provider_extension_graph_for_tests(
-            Arc::new(RwLock::new(
-                runtime_extension_host::provider_host::ProviderHost::default(),
-            )),
-            Arc::new(RwLock::new(
-                runtime_extension_host::capability_host::CapabilityHost::default(),
-            )),
-            Arc::new(RwLock::new(
-                runtime_extension_host::data_source_host::DataSourceHost::default(),
-            )),
-        ),
+        ApiRuntimeServices::new_with_runtime_backend(
+            runtime_backend_slot.backend().unwrap(),
+            Arc::new(extension_graph),
+        )
+        .unwrap(),
     );
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
     let registry = runtime_core::runtime_model_registry::RuntimeModelRegistry::default();

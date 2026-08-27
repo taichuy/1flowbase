@@ -906,12 +906,15 @@ impl RuntimeExecutionPort for RuntimeExtensionHost {
         request: RuntimeExecutionRequest,
         sinks: RuntimeStreamSinks,
     ) -> Result<RuntimeExecutionOutcome, RuntimeBackendError> {
-        self.ensure_accepting()?;
         let request_id = request.request_id.clone();
         let target_id = request.target.as_str().to_string();
         let provider_host = Arc::clone(&self.provider_host);
 
         let mut active = self.active_requests.lock().await;
+        // Admission and registration share the same critical section that drain() acquires after
+        // transitioning the lifecycle. A request is therefore either registered for drain to
+        // cancel, or observes Draining and is rejected; it cannot slip between those outcomes.
+        self.ensure_accepting()?;
         if active.contains_key(&request_id) {
             return Err(RuntimeBackendError::DuplicateRequest(request_id));
         }

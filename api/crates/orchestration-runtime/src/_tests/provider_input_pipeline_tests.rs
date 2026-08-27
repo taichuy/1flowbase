@@ -1,15 +1,20 @@
-use std::{collections::BTreeSet, sync::Arc, time::Duration};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+    time::Duration,
+};
 
 use anyhow::{bail, Result};
 use async_trait::async_trait;
 use extension_contracts::{
     extension_bus::{
-        compile_extension_graph, Cardinality, ContractDescriptor, ContractVersion,
-        ContributionDescriptor, ContributionId, ContributionMode, ContributionOrdering,
-        DeliverySemantics, ExtensionBusVersion, ExtensionPointDescriptor, ExtensionPointId,
-        ExtensionPointKind, FailureSemantics, LifecycleSemantics, ModuleActivationDeclaration,
-        ModuleDescriptor, ModuleId, ModuleKind, ModuleVersion, OrderingSemantics, OverridePolicy,
-        PermissionCode, ScopeSemantics,
+        Cardinality, ContractDescriptor, ContractVersion, ContributionDescriptor, ContributionId,
+        ContributionMode, ContributionOrdering, DeliverySemantics, EffectiveContribution,
+        EffectiveExtensionGraph, EffectiveExtensionPoint, ExtensionBusVersion,
+        ExtensionGraphFingerprint, ExtensionPointDescriptor, ExtensionPointId, ExtensionPointKind,
+        FailureSemantics, LifecycleSemantics, ModuleActivationDeclaration, ModuleDescriptor,
+        ModuleId, ModuleKind, ModuleVersion, OrderingSemantics, OverridePolicy, PermissionCode,
+        Provenance, ScopeSemantics,
     },
     provider_contract::{
         NativePromptBlock, NativePromptCacheControl, NativePromptCacheControlType,
@@ -204,13 +209,96 @@ fn contributor(
     }
 }
 
+fn compile_fixture_graph(modules: Vec<ModuleDescriptor>) -> Result<EffectiveExtensionGraph> {
+    let core = modules
+        .iter()
+        .find(|module| module.module_id.as_str() == PROVIDER_INPUT_PIPELINE_OWNER_MODULE_ID)
+        .ok_or_else(|| anyhow::anyhow!("fixture Boot Core is missing"))?;
+    let point_descriptor = core
+        .extension_points
+        .iter()
+        .find(|point| point.point_id.as_str() == PROVIDER_INPUT_PIPELINE_POINT_ID)
+        .cloned()
+        .ok_or_else(|| anyhow::anyhow!("fixture provider input point is missing"))?;
+    let point_provenance = Provenance::new(
+        core.module_id.clone(),
+        core.module_version.clone(),
+        core.module_kind,
+    );
+    let module_order = modules
+        .iter()
+        .map(|module| module.module_id.clone())
+        .collect::<Vec<_>>();
+    let module_provenance = modules
+        .iter()
+        .map(|module| {
+            Provenance::new(
+                module.module_id.clone(),
+                module.module_version.clone(),
+                module.module_kind,
+            )
+        })
+        .collect::<Vec<_>>();
+    let mut remaining = modules
+        .iter()
+        .flat_map(|module| {
+            let provenance = Provenance::new(
+                module.module_id.clone(),
+                module.module_version.clone(),
+                module.module_kind,
+            );
+            module.contributions.iter().cloned().map(move |descriptor| {
+                (
+                    descriptor.contribution_id.clone(),
+                    (descriptor, provenance.clone()),
+                )
+            })
+        })
+        .collect::<BTreeMap<_, _>>();
+    let mut emitted = BTreeSet::new();
+    let mut effective = Vec::new();
+    while !remaining.is_empty() {
+        let next = remaining.keys().find(|candidate_id| {
+            let descriptor = &remaining[*candidate_id].0;
+            let after_ready = descriptor
+                .ordering
+                .after
+                .iter()
+                .all(|dependency| emitted.contains(dependency));
+            let before_ready = remaining.iter().all(|(other_id, (other, _))| {
+                other_id == *candidate_id || !other.ordering.before.contains(*candidate_id)
+            });
+            after_ready && before_ready
+        });
+        let Some(next) = next.cloned() else {
+            bail!("fixture contribution ordering is cyclic or incomplete");
+        };
+        let (descriptor, provenance) = remaining.remove(&next).unwrap();
+        emitted.insert(next);
+        effective.push(EffectiveContribution::new(descriptor, provenance));
+    }
+
+    Ok(EffectiveExtensionGraph::new(
+        ExtensionBusVersion::V1,
+        module_order,
+        module_provenance,
+        Vec::new(),
+        vec![EffectiveExtensionPoint::new(
+            point_descriptor,
+            point_provenance,
+            effective,
+        )],
+        Vec::new(),
+        ExtensionGraphFingerprint::new("provider-input-pipeline-fixture".to_string()),
+    ))
+}
+
 fn pipeline(
     contributors: Vec<ModuleDescriptor>,
     registrations: Vec<TrustedProviderInputContributionRegistration>,
 ) -> ProviderInputPipeline {
-    let graph =
-        compile_extension_graph(std::iter::once(core_module()).chain(contributors).collect())
-            .unwrap();
+    let graph = compile_fixture_graph(std::iter::once(core_module()).chain(contributors).collect())
+        .unwrap();
     ProviderInputPipeline::from_graph(Arc::new(graph), registrations).unwrap()
 }
 
@@ -549,7 +637,7 @@ async fn receipt_digest_is_stable_across_execution_durations() {
 
 #[test]
 fn duplicate_trusted_registrations_are_rejected() {
-    let graph = compile_extension_graph(vec![
+    let graph = compile_fixture_graph(vec![
         core_module(),
         contributor("fixture.duplicate", "fixture.duplicate.rewrite", &[], None),
     ])
@@ -574,7 +662,7 @@ fn duplicate_trusted_registrations_are_rejected() {
 
 #[test]
 fn graph_and_trusted_registration_sets_must_match_exactly() {
-    let missing_registration_graph = compile_extension_graph(vec![
+    let missing_registration_graph = compile_fixture_graph(vec![
         core_module(),
         contributor("fixture.missing", "fixture.missing.rewrite", &[], None),
     ])
@@ -587,7 +675,7 @@ fn graph_and_trusted_registration_sets_must_match_exactly() {
         .to_string()
         .contains("provider input contribution is not registered"));
 
-    let empty_graph = compile_extension_graph(vec![core_module()]).unwrap();
+    let empty_graph = compile_fixture_graph(vec![core_module()]).unwrap();
     let extra_error = ProviderInputPipeline::from_graph(
         Arc::new(empty_graph),
         vec![registration(
