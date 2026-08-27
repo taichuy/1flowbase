@@ -73,9 +73,9 @@ describe('PageCanvas', () => {
       }
     ]);
 
-    expect((block as FrontstageBlockInstance & { title?: string | null }).title).toBe(
-      'K7M2PX9Q'
-    );
+    expect(
+      (block as FrontstageBlockInstance & { title?: string | null }).title
+    ).toBe('K7M2PX9Q');
 
     render(
       <PageCanvas
@@ -253,7 +253,9 @@ describe('PageCanvas', () => {
     render(
       <PageCanvas
         content={createPageContent()}
-        runtimeBlocks={[createRuntimeBlock('future', { rendererVersion: 'v2' })]}
+        runtimeBlocks={[
+          createRuntimeBlock('future', { rendererVersion: 'v2' })
+        ]}
       />
     );
 
@@ -334,8 +336,13 @@ describe('PageCanvas', () => {
       'react-grid-item'
     );
     expect(screen.getByTestId('block-slot-hero')).toHaveStyle({
-      height: 'auto'
+      height: 'calc(100% - 10px)'
     });
+    expect(
+      screen
+        .getByTestId('block-slot-hero')
+        .querySelector('[data-flowbase-frontstage-intrinsic-content="hero"]')
+    ).toBeInTheDocument();
     expect(
       screen.getAllByTestId('frontstage-grid-resize-handle-e')
     ).toHaveLength(2);

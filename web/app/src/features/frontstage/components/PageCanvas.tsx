@@ -630,6 +630,7 @@ function RenderPlanSlot({
 }: RenderPlanSlotProps) {
   const [isHovered, setIsHovered] = useState(false);
   const blockRef = useRef<HTMLDivElement>(null);
+  const intrinsicContentRef = useRef<HTMLDivElement>(null);
   const rendererVersionError = resolveRendererVersionError(item);
   const isFixedHeight = item.presentation.heightMode === 'fixed';
   const viewportDemand = useRef({
@@ -693,7 +694,7 @@ function RenderPlanSlot({
   }, [isSelected, item.blockId, onRuntimeDemandChange]);
 
   useEffect(() => {
-    const node = blockRef.current;
+    const node = intrinsicContentRef.current;
     if (!node || isFixedHeight || typeof ResizeObserver === 'undefined') {
       return;
     }
@@ -825,9 +826,7 @@ function RenderPlanSlot({
       ref={blockRef}
       style={{
         ...blockFrameBaseStyle,
-        height: isFixedHeight
-          ? `calc(100% - ${FRONTSTAGE_GRID_ROW_GAP}px)`
-          : 'auto',
+        height: `calc(100% - ${FRONTSTAGE_GRID_ROW_GAP}px)`,
         overflow: isFixedHeight ? 'hidden' : 'visible',
         ...borderStyle,
         position: 'relative',
@@ -879,7 +878,17 @@ function RenderPlanSlot({
       {isDesignMode ? (
         <span style={blockLabelStyle}>{item.title ?? item.blockId}</span>
       ) : null}
-      {renderBlockContent()}
+      {isFixedHeight ? (
+        renderBlockContent()
+      ) : (
+        <div
+          ref={intrinsicContentRef}
+          data-flowbase-frontstage-intrinsic-content={item.blockId}
+          style={{ width: '100%', maxWidth: '100%', minWidth: 0 }}
+        >
+          {renderBlockContent()}
+        </div>
+      )}
 
       {isDesignMode && designActions && isToolbarVisible && (
         <BlockHoverToolbar
@@ -1135,6 +1144,15 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     );
   };
 
+  const createCurrentRowRequirements = () =>
+    Object.fromEntries(
+      (
+        createFrontstageResponsiveLayouts(renderItems, autoRowsRef.current)[
+          activeBreakpoint.current
+        ] ?? []
+      ).map((item) => [item.i, item.h])
+    );
+
   const updateAutoHeight = useCallback(
     (blockId: string, height: number) => {
       autoHeightBatchRef.current.measure(blockId, height);
@@ -1313,7 +1331,12 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                 dragCommittedLayout.current = currentLayout.map((item) => ({
                   ...item
                 }));
-                interactionCompactor.begin(currentLayout, draggedItem.i);
+                interactionCompactor.begin(
+                  currentLayout,
+                  draggedItem.i,
+                  'drag',
+                  createCurrentRowRequirements()
+                );
               }
             }}
             onDragStop={(currentLayout) => {
@@ -1332,7 +1355,8 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                 interactionCompactor.begin(
                   currentLayout,
                   resizedItem.i,
-                  'resize'
+                  'resize',
+                  createCurrentRowRequirements()
                 );
               }
             }}

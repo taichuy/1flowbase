@@ -6,13 +6,17 @@ import {
   type LayoutItem
 } from 'react-grid-layout';
 import type { FrontstagePageLayoutMode } from '../page-document';
-import { projectFrontstageAutomaticRow } from './frontstage-row-layout';
+import {
+  normalizeFrontstageAutomaticRows,
+  projectFrontstageAutomaticRow
+} from './frontstage-row-layout';
 
 export type FrontstageBlockInteractionInput = {
   committedLayout: Layout;
   activeId: string;
   proposedPosition: { x: number; y: number };
   columns: number;
+  requiredRowsByBlock?: Readonly<Record<string, number>>;
   dragIntent?: FrontstageDragInsertionIntent;
 };
 
@@ -42,7 +46,8 @@ export type FrontstageInteractionCompactor = Compactor & {
   begin: (
     layout: Layout,
     activeId: string,
-    interactionKind?: 'drag' | 'resize'
+    interactionKind?: 'drag' | 'resize',
+    requiredRowsByBlock?: Readonly<Record<string, number>>
   ) => void;
   updateDragPointer: (pointer: FrontstageDragPointer) => void;
   end: () => void;
@@ -151,13 +156,18 @@ function resolveFrontstageInsertionIndex({
 function createFrontstageAutomaticRows(
   layout: Layout,
   activeId: string,
-  columns: number
+  columns: number,
+  requiredRowsByBlock?: Readonly<Record<string, number>>
 ): FrontstageAutomaticRow[] {
   const membersByY = new Map<number, LayoutItem[]>();
   for (const item of layout) {
     if (item.i === activeId) continue;
     const members = membersByY.get(item.y) ?? [];
-    members.push({ ...item, moved: false });
+    members.push({
+      ...item,
+      h: requiredRowsByBlock?.[item.i] ?? item.h,
+      moved: false
+    });
     membersByY.set(item.y, members);
   }
 
@@ -194,8 +204,10 @@ function frontstageRowBoundaryEnterThreshold(
   rows: readonly FrontstageAutomaticRow[],
   rowIndex: number
 ): number {
-  const adjacentHeights = [rows[rowIndex - 1]?.height, rows[rowIndex]?.height]
-    .filter((height): height is number => height !== undefined);
+  const adjacentHeights = [
+    rows[rowIndex - 1]?.height,
+    rows[rowIndex]?.height
+  ].filter((height): height is number => height !== undefined);
   const referenceHeight = Math.min(...adjacentHeights);
   return Math.min(
     referenceHeight / 4,
@@ -317,11 +329,7 @@ function projectFrontstageAutomaticRows({
       { ...active, x: 0, w: columns, moved: false }
     ]);
   } else {
-    projectedRows[projection.rowIndex]!.splice(
-      projection.cellIndex,
-      0,
-      active
-    );
+    projectedRows[projection.rowIndex]!.splice(projection.cellIndex, 0, active);
   }
 
   let nextY = 0;
@@ -343,10 +351,24 @@ function projectFrontstageAutomaticRows({
 function solveFrontstageAutomaticResize(
   committedLayout: Layout,
   proposedActive: LayoutItem,
-  columns: number
+  columns: number,
+  requiredRowsByBlock?: Readonly<Record<string, number>>
 ): Layout {
   const active = committedLayout.find((item) => item.i === proposedActive.i);
   if (!active) return committedLayout;
+  const activeHeight =
+    proposedActive.h === active.h
+      ? (requiredRowsByBlock?.[active.i] ?? active.h)
+      : proposedActive.h;
+
+  const restoreRequiredHeight = (item: LayoutItem): LayoutItem => ({
+    ...item,
+    h:
+      item.i === active.i
+        ? activeHeight
+        : (requiredRowsByBlock?.[item.i] ?? item.h),
+    moved: false
+  });
 
   const row = committedLayout
     .filter((item) => item.y === active.y)
@@ -358,10 +380,9 @@ function solveFrontstageAutomaticResize(
     : row[activeIndex + 1];
 
   if (!neighbor || proposedActive.w === active.w) {
-    return committedLayout.map((item) =>
-      item.i === active.i
-        ? { ...item, h: proposedActive.h, moved: false }
-        : { ...item, moved: false }
+    return normalizeFrontstageAutomaticRows(
+      committedLayout.map(restoreRequiredHeight),
+      columns
     );
   }
 
@@ -384,33 +405,51 @@ function solveFrontstageAutomaticResize(
     : active.x;
   const neighborX = resizedFromWest ? neighbor.x : activeX + activeWidth;
 
-  return committedLayout.map((item) => {
-    if (item.i === active.i) {
-      return {
-        ...item,
-        x: activeX,
-        w: activeWidth,
-        h: proposedActive.h,
-        moved: false
-      };
-    }
-    if (item.i === neighbor.i) {
-      return { ...item, x: neighborX, w: neighborWidth, moved: false };
-    }
-    return { ...item, moved: false };
-  });
+  return normalizeFrontstageAutomaticRows(
+    committedLayout.map((item) => {
+      if (item.i === active.i) {
+        return {
+          ...restoreRequiredHeight(item),
+          x: activeX,
+          w: activeWidth
+        };
+      }
+      if (item.i === neighbor.i) {
+        return {
+          ...restoreRequiredHeight(item),
+          x: neighborX,
+          w: neighborWidth
+        };
+      }
+      return restoreRequiredHeight(item);
+    }),
+    columns
+  );
 }
 
 export function solveFrontstageBlockInteraction({
   activeId,
   columns,
   committedLayout,
+  requiredRowsByBlock,
   dragIntent,
   proposedPosition
 }: FrontstageBlockInteractionInput): FrontstageBlockInteractionResult {
   return solveFrontstageBlockInteractionWithRows(
-    { activeId, columns, committedLayout, dragIntent, proposedPosition },
-    createFrontstageAutomaticRows(committedLayout, activeId, columns)
+    {
+      activeId,
+      columns,
+      committedLayout,
+      requiredRowsByBlock,
+      dragIntent,
+      proposedPosition
+    },
+    createFrontstageAutomaticRows(
+      committedLayout,
+      activeId,
+      columns,
+      requiredRowsByBlock
+    )
   );
 }
 
@@ -419,6 +458,7 @@ function solveFrontstageBlockInteractionWithRows(
     activeId,
     columns,
     committedLayout,
+    requiredRowsByBlock,
     dragIntent,
     proposedPosition
   }: FrontstageBlockInteractionInput,
@@ -431,6 +471,7 @@ function solveFrontstageBlockInteractionWithRows(
 
   const proposedActive: LayoutItem = {
     ...active,
+    h: requiredRowsByBlock?.[active.i] ?? active.h,
     x: proposedPosition.x,
     y: Math.max(0, Math.round(proposedPosition.y))
   };
@@ -476,13 +517,19 @@ export function createFrontstageInteractionCompactor(
   let pointerRowOffset = 0;
   let stableProjection: FrontstageDragProjection | null = null;
   let automaticRows: FrontstageAutomaticRow[] | null = null;
+  let requiredRowsByBlock: Readonly<Record<string, number>> | undefined;
 
   return {
     // `null` keeps RGL from pre-emptively pushing colliding items. The custom
     // compactor below owns the deterministic row projection during a session.
     type: null,
     allowOverlap: false,
-    begin(layout, nextActiveId, nextInteractionKind = 'drag') {
+    begin(
+      layout,
+      nextActiveId,
+      nextInteractionKind = 'drag',
+      nextRequiredRowsByBlock
+    ) {
       committedLayout = layout.map((item) => ({ ...item, moved: false }));
       activeId = nextActiveId;
       interactionKind = nextInteractionKind;
@@ -491,6 +538,7 @@ export function createFrontstageInteractionCompactor(
       pointerRowOffset = 0;
       stableProjection = null;
       automaticRows = null;
+      requiredRowsByBlock = nextRequiredRowsByBlock;
     },
     updateDragPointer(nextPointer) {
       if (
@@ -518,14 +566,16 @@ export function createFrontstageInteractionCompactor(
         return solveFrontstageAutomaticResize(
           committedLayout,
           proposedActive,
-          columns
+          columns,
+          requiredRowsByBlock
         );
       }
 
       automaticRows ??= createFrontstageAutomaticRows(
         committedLayout,
         activeId,
-        columns
+        columns,
+        requiredRowsByBlock
       );
       if (dragPointer !== null && consumedDragPointer !== dragPointer) {
         pointerRowOffset = dragPointer.row - proposedActive.y;
@@ -537,6 +587,7 @@ export function createFrontstageInteractionCompactor(
           activeId,
           proposedPosition: { x: proposedActive.x, y: proposedActive.y },
           columns,
+          requiredRowsByBlock,
           dragIntent:
             dragPointer === null
               ? undefined
@@ -544,8 +595,7 @@ export function createFrontstageInteractionCompactor(
                   pointerColumn: dragPointer.column,
                   pointerRow: proposedActive.y + pointerRowOffset,
                   previousProjection: stableProjection,
-                  deadbandColumns:
-                    FRONTSTAGE_DRAG_INSERTION_DEADBAND_COLUMNS
+                  deadbandColumns: FRONTSTAGE_DRAG_INSERTION_DEADBAND_COLUMNS
                 }
         },
         automaticRows
@@ -562,6 +612,7 @@ export function createFrontstageInteractionCompactor(
       pointerRowOffset = 0;
       stableProjection = null;
       automaticRows = null;
+      requiredRowsByBlock = undefined;
     }
   };
 }

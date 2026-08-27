@@ -187,11 +187,43 @@ describe('frontstage responsive grid layout', () => {
     expect(normalized.lg?.map(({ i, x, y, w }) => ({ i, x, y, w }))).toEqual([
       { i: 'first', x: 0, y: 0, w: 12 },
       { i: 'second', x: 12, y: 0, w: 12 },
-      { i: 'third', x: 0, y: 8, w: 24 }
+      { i: 'third', x: 0, y: 6, w: 24 }
     ]);
     expect(normalized.xs).toHaveLength(3);
     expect(normalized.xs?.every((item) => item.x === 0 && item.w === 1)).toBe(
       true
     );
+  });
+
+  test('AC-001 AC-004 allocates the row maximum height and prefix-sums following rows', () => {
+    const normalized = normalizeFrontstageAutomaticResponsiveLayouts({
+      lg: [
+        { i: 'short', x: 0, y: 0, w: 12, h: 6 },
+        { i: 'tall', x: 12, y: 0, w: 12, h: 10 },
+        { i: 'following', x: 0, y: 20, w: 24, h: 4 }
+      ]
+    });
+
+    expect(normalized.lg?.map(({ i, y, h }) => ({ i, y, h }))).toEqual([
+      { i: 'short', y: 0, h: 10 },
+      { i: 'tall', y: 0, h: 10 },
+      { i: 'following', y: 10, h: 4 }
+    ]);
+  });
+
+  test('AC-006 stacks an infeasible multi-member row at a single-column breakpoint', () => {
+    const normalized = normalizeFrontstageAutomaticResponsiveLayouts({
+      xs: [
+        { i: 'short', x: 0, y: 0, w: 1, h: 6 },
+        { i: 'tall', x: 0, y: 0, w: 1, h: 10 }
+      ]
+    });
+
+    expect(
+      normalized.xs?.map(({ i, x, y, w, h }) => ({ i, x, y, w, h }))
+    ).toEqual([
+      { i: 'short', x: 0, y: 0, w: 1, h: 6 },
+      { i: 'tall', x: 0, y: 6, w: 1, h: 10 }
+    ]);
   });
 });

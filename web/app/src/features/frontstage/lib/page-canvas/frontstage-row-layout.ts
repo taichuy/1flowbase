@@ -36,11 +36,19 @@ export function projectFrontstageAutomaticRow(
 ): Layout | null {
   const widths = allocateFrontstageRowWidths(items, columns);
   if (!widths) return null;
+  const rowHeight = Math.max(...items.map((item) => item.h));
 
   let nextX = 0;
   return items.map((item, index) => {
     const width = widths[index]!;
-    const projected = { ...item, x: nextX, y: rowY, w: width, moved: false };
+    const projected = {
+      ...item,
+      x: nextX,
+      y: rowY,
+      w: width,
+      h: rowHeight,
+      moved: false
+    };
     nextX += width;
     return projected;
   });
@@ -58,7 +66,10 @@ export function normalizeFrontstageAutomaticRows(
   }
 
   const projectedById = new Map<string, LayoutItem>();
-  for (const [rowY, row] of rows) {
+  let nextY = 0;
+  for (const [, row] of [...rows.entries()].sort(
+    ([leftY], [rightY]) => leftY - rightY
+  )) {
     const ordered = [...row].sort(
       (left, right) => left.x - right.x || left.i.localeCompare(right.i)
     );
@@ -71,11 +82,30 @@ export function normalizeFrontstageAutomaticRows(
     );
     const fillsRow =
       ordered.reduce((width, item) => width + item.w, 0) === columns;
+    const rowHeight = Math.max(...ordered.map((item) => item.h));
     const projected =
       isAlreadyContinuous && fillsRow
-        ? ordered.map((item) => ({ ...item, moved: false }))
-        : projectFrontstageAutomaticRow(ordered, columns, rowY);
-    for (const item of projected ?? ordered) projectedById.set(item.i, item);
+        ? ordered.map((item) => ({
+            ...item,
+            y: nextY,
+            h: rowHeight,
+            moved: false
+          }))
+        : projectFrontstageAutomaticRow(ordered, columns, nextY);
+    if (!projected) {
+      for (const item of ordered) {
+        const standalone = projectFrontstageAutomaticRow(
+          [item],
+          columns,
+          nextY
+        )?.[0] ?? { ...item, x: 0, y: nextY, w: columns, moved: false };
+        projectedById.set(item.i, standalone);
+        nextY += standalone.h;
+      }
+      continue;
+    }
+    for (const item of projected) projectedById.set(item.i, item);
+    nextY += rowHeight;
   }
 
   return layout.map((item) => ({ ...(projectedById.get(item.i) ?? item) }));

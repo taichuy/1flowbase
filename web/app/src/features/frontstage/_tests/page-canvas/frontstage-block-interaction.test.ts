@@ -196,6 +196,35 @@ describe('frontstage block interaction solver', () => {
     expectValidLayout(result.previewLayout, 24);
   });
 
+  test('AC-002 AC-004 restores intrinsic demand when an allocated member becomes standalone', () => {
+    const committed: Layout = [
+      { i: 'short', x: 0, y: 0, w: 12, h: 10 },
+      { i: 'tall', x: 12, y: 0, w: 12, h: 10 },
+      { i: 'following', x: 0, y: 10, w: 24, h: 4 }
+    ];
+
+    const result = solveFrontstageBlockInteraction({
+      committedLayout: committed,
+      activeId: 'short',
+      proposedPosition: { x: 0, y: 10 },
+      columns: 24,
+      requiredRowsByBlock: { short: 6, tall: 10, following: 4 },
+      dragIntent: {
+        pointerColumn: 6,
+        pointerRow: 10,
+        previousProjection: null,
+        deadbandColumns: 0.5
+      }
+    });
+
+    expect(result.previewLayout.map(({ i, y, h }) => ({ i, y, h }))).toEqual([
+      { i: 'short', y: 10, h: 6 },
+      { i: 'tall', y: 0, h: 10 },
+      { i: 'following', y: 16, h: 4 }
+    ]);
+    expectValidLayout(result.previewLayout, 24);
+  });
+
   test('AC-001 moves the trailing block into the first slot after crossing the leading block', () => {
     const committed: Layout = [
       { i: 'first', x: 0, y: 0, w: 12, h: 6 },
