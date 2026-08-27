@@ -371,7 +371,7 @@ pub async fn test_app_with_database_url() -> (Router, String) {
         OffsetDateTime::now_utc(),
         Arc::new(HostApiRuntimeProfileCollector::new(OffsetDateTime::now_utc()).unwrap()),
         Arc::new(StubRuntimeHostSystemClient {
-            result: Err("plugin runner unavailable".to_string()),
+            result: Ok(sample_runner_profile("host_api_server")),
         }),
     )
     .await
@@ -396,7 +396,7 @@ pub(crate) async fn test_api_state_with_database_url() -> (Arc<ApiState>, String
         OffsetDateTime::now_utc(),
         Arc::new(HostApiRuntimeProfileCollector::new(OffsetDateTime::now_utc()).unwrap()),
         Arc::new(StubRuntimeHostSystemClient {
-            result: Err("plugin runner unavailable".to_string()),
+            result: Ok(sample_runner_profile("host_api_server")),
         }),
     )
     .await

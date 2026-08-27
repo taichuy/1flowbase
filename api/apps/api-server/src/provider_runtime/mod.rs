@@ -944,7 +944,7 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
                 },
             )
             .await
-            .map_err(map_runtime_backend_error)
+            .map_err(map_data_source_runtime_error)
     }
 
     async fn test_connection(
@@ -964,7 +964,7 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
                 },
             )
             .await
-            .map_err(map_runtime_backend_error)
+            .map_err(map_data_source_runtime_error)
     }
 
     async fn discover_catalog(
@@ -985,7 +985,7 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
                 },
             )
             .await
-            .map_err(map_runtime_backend_error)?;
+            .map_err(map_data_source_runtime_error)?;
         Ok(serde_json::to_value(entries)?)
     }
 
@@ -999,7 +999,7 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
             .runtime_backend
             .data_source_describe_resource(&installation.plugin_id, input)
             .await
-            .map_err(map_runtime_backend_error)
+            .map_err(map_data_source_runtime_error)
     }
 
     async fn preview_read(
@@ -1012,7 +1012,7 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
             .runtime_backend
             .data_source_preview_read(&installation.plugin_id, input)
             .await
-            .map_err(map_runtime_backend_error)
+            .map_err(map_data_source_runtime_error)
     }
 
     async fn execute_sql(
@@ -1025,7 +1025,7 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
             .runtime_backend
             .data_source_execute_sql(&installation.plugin_id, input)
             .await
-            .map_err(map_runtime_backend_error)
+            .map_err(map_data_source_runtime_error)
     }
 
     async fn execute_model_operation(
@@ -1038,7 +1038,7 @@ impl DataSourceRuntimePort for ApiProviderRuntime {
             .runtime_backend
             .data_source_execute_model_operation(&installation.plugin_id, input)
             .await
-            .map_err(map_runtime_backend_error)
+            .map_err(map_data_source_runtime_error)
     }
 }
 
@@ -1054,7 +1054,7 @@ impl DataSourceCrudRuntimePort for ApiProviderRuntime {
             .runtime_backend
             .data_source_list_records(&installation.plugin_id, input)
             .await
-            .map_err(map_runtime_backend_error)
+            .map_err(map_data_source_runtime_error)
     }
 
     async fn get_record(
@@ -1067,7 +1067,7 @@ impl DataSourceCrudRuntimePort for ApiProviderRuntime {
             .runtime_backend
             .data_source_get_record(&installation.plugin_id, input)
             .await
-            .map_err(map_runtime_backend_error)
+            .map_err(map_data_source_runtime_error)
     }
 
     async fn create_record(
@@ -1080,7 +1080,7 @@ impl DataSourceCrudRuntimePort for ApiProviderRuntime {
             .runtime_backend
             .data_source_create_record(&installation.plugin_id, input)
             .await
-            .map_err(map_runtime_backend_error)
+            .map_err(map_data_source_runtime_error)
     }
 
     async fn update_record(
@@ -1093,7 +1093,7 @@ impl DataSourceCrudRuntimePort for ApiProviderRuntime {
             .runtime_backend
             .data_source_update_record(&installation.plugin_id, input)
             .await
-            .map_err(map_runtime_backend_error)
+            .map_err(map_data_source_runtime_error)
     }
 
     async fn delete_record(
@@ -1106,7 +1106,7 @@ impl DataSourceCrudRuntimePort for ApiProviderRuntime {
             .runtime_backend
             .data_source_delete_record(&installation.plugin_id, input)
             .await
-            .map_err(map_runtime_backend_error)
+            .map_err(map_data_source_runtime_error)
     }
 }
 
@@ -1634,6 +1634,26 @@ fn map_runtime_backend_error(error: RuntimeBackendError) -> anyhow::Error {
         | RuntimeBackendError::UnsupportedOperation(_)
         | RuntimeBackendError::Execution { .. } => {
             ControlPlaneError::UpstreamUnavailable("provider_runtime").into()
+        }
+    }
+}
+
+fn map_data_source_runtime_error(error: RuntimeBackendError) -> anyhow::Error {
+    match error {
+        RuntimeBackendError::Contract(error) => map_framework_error(error, "data_source_runtime"),
+        RuntimeBackendError::InvalidRequest(_) => {
+            ControlPlaneError::InvalidInput("data_source_runtime").into()
+        }
+        RuntimeBackendError::CountTokens(_)
+        | RuntimeBackendError::Compact(_)
+        | RuntimeBackendError::DuplicateRequest(_)
+        | RuntimeBackendError::DuplicateBackend
+        | RuntimeBackendError::MissingBackend
+        | RuntimeBackendError::Unavailable(_)
+        | RuntimeBackendError::Cancelled(_)
+        | RuntimeBackendError::UnsupportedOperation(_)
+        | RuntimeBackendError::Execution { .. } => {
+            ControlPlaneError::UpstreamUnavailable("data_source_runtime").into()
         }
     }
 }
