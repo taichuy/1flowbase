@@ -6,15 +6,13 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use crate::{
+    ContractIdentity, GraphFingerprint, HandlerReference, InterfaceId, InterfaceOwner,
+    InvocationId, PermissionIdentity, RegistryFingerprint, RouteIdentity, TargetReference,
+};
 use domain::ActorContext;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
-use uuid::Uuid;
-
-use crate::{
-    ContractIdentity, GraphFingerprint, HandlerReference, InterfaceId, InterfaceOwner,
-    PermissionIdentity, RegistryFingerprint, RouteIdentity, TargetReference,
-};
 
 pub trait InterfaceContract: Send + Sync + 'static {
     const CONTRACT_ID: &'static str;
@@ -93,7 +91,7 @@ impl InterfaceDefinition {
 #[derive(Clone, Debug)]
 pub struct InterfaceHandlerContext {
     actor: ActorContext,
-    invocation_id: Uuid,
+    invocation_id: InvocationId,
     graph_fingerprint: GraphFingerprint,
     registry_fingerprint: RegistryFingerprint,
 }
@@ -101,7 +99,7 @@ pub struct InterfaceHandlerContext {
 impl InterfaceHandlerContext {
     pub(crate) fn new(
         actor: ActorContext,
-        invocation_id: Uuid,
+        invocation_id: InvocationId,
         graph_fingerprint: GraphFingerprint,
         registry_fingerprint: RegistryFingerprint,
     ) -> Self {
@@ -117,7 +115,7 @@ impl InterfaceHandlerContext {
         &self.actor
     }
 
-    pub fn invocation_id(&self) -> Uuid {
+    pub fn invocation_id(&self) -> InvocationId {
         self.invocation_id
     }
 
@@ -130,21 +128,40 @@ impl InterfaceHandlerContext {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Error)]
+#[derive(Debug, Error)]
 #[error("interface target failed with {classification}")]
 pub struct InterfaceTargetError {
     classification: Arc<str>,
+    payload: Option<Box<dyn Any + Send + Sync>>,
 }
 
 impl InterfaceTargetError {
     pub fn classified(classification: impl AsRef<str>) -> Self {
         Self {
             classification: Arc::from(classification.as_ref()),
+            payload: None,
+        }
+    }
+
+    pub fn with_source<T>(classification: impl AsRef<str>, source: T) -> Self
+    where
+        T: Send + Sync + 'static,
+    {
+        Self {
+            classification: Arc::from(classification.as_ref()),
+            payload: Some(Box::new(source)),
         }
     }
 
     pub fn classification(&self) -> &str {
         self.classification.as_ref()
+    }
+
+    pub fn into_source<T>(self) -> Option<T>
+    where
+        T: Send + Sync + 'static,
+    {
+        self.payload?.downcast::<T>().ok().map(|source| *source)
     }
 }
 
