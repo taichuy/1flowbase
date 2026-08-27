@@ -54,7 +54,7 @@ scope:
 - 首位插入修复：[#1897 修复自动布局拖拽首位插入不可达](https://github.com/taichuy/1flowbase/issues/1897)，commit `d7d8e3288` 已推送 `dev`，用户于 2026-08-26 验收并关闭。
 - 边缘滚动 Issue：[#1899 支持区块拖拽边缘自动滚动](https://github.com/taichuy/1flowbase/issues/1899) 已由用户于 2026-08-27 验收并关闭。1flowbase 通过精确绑定 `react-grid-layout@2.2.3` 的 pnpm dependency patch，在 `GridItem` 私有坐标 owner 内用 smoothstep rAF、6px 单帧上限、drag-start 最大滚动快照和实际 scroll delta 补偿保持 dragged item / placeholder 同步；双向 Playwright 最大漂移 6px、一次拖拽一次保存、刷新持久化与 #1897 回归均通过。
 - 二维投影 Issue：[#1900 支持并排行与独占行之间的二维拖拽投影](https://github.com/taichuy/1flowbase/issues/1900) 已由用户于 2026-08-27 验收并关闭。自动布局 drag session 使用缓存的逻辑行序列与二维 intent classifier，互斥表达 `JoinRow(rowIndex, cellIndex)` 和 `InsertStandaloneRow(rowIndex)`；纵向边界采用进入／退出不同阈值的滞回，行位置由成员最大高度前缀和生成。PageCanvas 提供 content-space pointer，compactor 缓存 pointer-to-active offset 以兼容 #1899 无 pointermove 的边缘滚动；不改变持久化布局 contract 或 RGL patch。
-- 当前讨论：自动布局同一逻辑行需要统一外框高度，以该行成员的最大内容需求为行高，较矮区块只扩展 first-party frame，不反向污染 intrinsic content measurement；方向尚待用户确认，未创建新 Issue、未修改产品代码。
-- 当前阶段：`phase:discussion`；自动/自由策略、RGL v2 public API、确定性行接触 solver、边缘 resize、no-op save 与桌面/移动端真实指针验收已完成。
+- 当前活动 Issue：[#1902 自动布局按行最大内容高度统一区块外框](https://github.com/taichuy/1flowbase/issues/1902)，实现 commit `8e7c36ad5` 已推送 `dev` 并进入 `phase:user-acceptance`。自动布局通过 `IntrinsicRowsByBlock -> Map<RowKey, RowBucket> -> Max Reduction -> Prefix Sum -> Allocated Layout` 分离内容需求和行级分配；较矮区块只扩展 first-party frame，内部 intrinsic measurement 不受拉伸反馈污染。高内容从 420px 缩到 170px 后整行从 422px 收缩到 200px，下一行从 top 496 上移到 274；移动端单列与 #1897/#1899/#1900 浏览器回归均通过。
+- 当前阶段：`phase:user-acceptance`；自动/自由策略、RGL v2 public API、确定性行接触 solver、边缘 resize、no-op save、二维投影、行级等高与桌面/移动端真实指针验收已完成。
 - 只修改 1flowbase；`/home/taichuy/git/react-grid-layout` 仅作 `2.2.3` 参考源码，不修改、fork 或本地链接。仓库内 patch 绑定精确版本并由 preinstall receipt 守住；升级时先移除 patch 运行 #1899 浏览器 contract，官方版本通过即删除 patch，失败才迁移。
 - 后续交互采用连续像素 preview 与响应式网格 commit 双态模型；24 列是 Frontstage desktop profile，不是通用布局内核常量。
