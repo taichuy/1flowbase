@@ -10,6 +10,19 @@ use crate::{
     RegistryFingerprint,
 };
 
+async fn await_before_deadline<T>(
+    deadline: Option<SystemTime>,
+    future: impl Future<Output = T>,
+) -> Result<T, ()> {
+    let Some(deadline) = deadline else {
+        return Ok(future.await);
+    };
+    let remaining = deadline.duration_since(SystemTime::now()).map_err(|_| ())?;
+    tokio::time::timeout(remaining, future)
+        .await
+        .map_err(|_| ())
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct InvocationId(Uuid);
 
@@ -484,15 +497,26 @@ impl InterfaceInvocationKernel {
                 InterfaceInvocationTerminal::Rejected,
             ));
         }
-        if let Err(error) = self
-            .authorization
-            .authorize(InterfaceAuthorizationRequest::new(
-                actor.clone(),
-                definition.clone(),
-                protocol,
-            ))
-            .await
-        {
+        let authorization = await_before_deadline(
+            deadline,
+            self.authorization
+                .authorize(InterfaceAuthorizationRequest::new(
+                    actor.clone(),
+                    definition.clone(),
+                    protocol,
+                )),
+        )
+        .await;
+        let authorization = match authorization {
+            Ok(authorization) => authorization,
+            Err(()) => {
+                return Err(receipt.fail(
+                    InterfaceInvocationError::DeadlineElapsed,
+                    InterfaceInvocationTerminal::Cancelled,
+                ));
+            }
+        };
+        if let Err(error) = authorization {
             return Err(receipt.fail(
                 InterfaceInvocationError::AuthorizationRejected(error),
                 InterfaceInvocationTerminal::Rejected,
@@ -500,26 +524,31 @@ impl InterfaceInvocationKernel {
         }
         receipt.stage(InterfaceInvocationStage::Authorized);
         if let Some(target_admission) = &self.target_admission {
-            if let Err(error) = target_admission
-                .admit(InterfaceTargetAdmissionRequest::new(
+            let admission = await_before_deadline(
+                deadline,
+                target_admission.admit(InterfaceTargetAdmissionRequest::new(
                     actor.clone(),
                     definition,
                     protocol,
-                ))
-                .await
-            {
+                )),
+            )
+            .await;
+            let admission = match admission {
+                Ok(admission) => admission,
+                Err(()) => {
+                    return Err(receipt.fail(
+                        InterfaceInvocationError::DeadlineElapsed,
+                        InterfaceInvocationTerminal::Cancelled,
+                    ));
+                }
+            };
+            if let Err(error) = admission {
                 return Err(receipt.fail(
                     InterfaceInvocationError::AdmissionRejected(error),
                     InterfaceInvocationTerminal::Rejected,
                 ));
             }
             receipt.stage(InterfaceInvocationStage::Admitted);
-        }
-        if deadline.is_some_and(|deadline| deadline <= SystemTime::now()) {
-            return Err(receipt.fail(
-                InterfaceInvocationError::DeadlineElapsed,
-                InterfaceInvocationTerminal::Cancelled,
-            ));
         }
         let Some(handler) = snapshot.handler::<I, O>(&interface_id) else {
             return Err(receipt.fail(
@@ -534,7 +563,17 @@ impl InterfaceInvocationKernel {
             snapshot.graph_fingerprint().clone(),
             snapshot.fingerprint().clone(),
         );
-        match handler.invoke(context, input).await {
+        let target = await_before_deadline(deadline, handler.invoke(context, input)).await;
+        let target = match target {
+            Ok(target) => target,
+            Err(()) => {
+                return Err(receipt.fail(
+                    InterfaceInvocationError::DeadlineElapsed,
+                    InterfaceInvocationTerminal::Cancelled,
+                ));
+            }
+        };
+        match target {
             Ok(value) => Ok(InterfaceInvocationOutcome {
                 value,
                 receipt: receipt.complete(),

@@ -32,7 +32,7 @@ fn ac_001_active_linked_host_console_contribution_is_compiled_and_mounted() {
         Vec::new(),
     )
     .expect("test extension graph input should assemble");
-    let extension_boot_snapshot = crate::extension_bus::ExtensionBootSnapshot::compile(
+    let extension_boot_snapshot = crate::extension_bus::ExtensionBootSnapshot::compile_for_test(
         Arc::new(
             extension_assembly
                 .compile_graph()

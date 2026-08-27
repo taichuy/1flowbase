@@ -257,6 +257,12 @@ async fn test_state_with_runtime_profile_state(
                     .expect("test extension graph should compile"),
             ),
             extension_assembly.interface_operations(),
+            Arc::new(
+                crate::routes::host_infrastructure::interface_operation::DurableHostInfrastructureProvidersViewQuery::new(
+                    store.clone(),
+                    config.api_node_id.clone(),
+                ),
+            ),
         )
         .expect("test extension boot snapshot should compile"),
     );

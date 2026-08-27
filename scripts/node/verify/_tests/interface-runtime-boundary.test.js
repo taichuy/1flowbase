@@ -52,7 +52,7 @@ test('Delivery 1912 keeps interface-runtime dependency closed and AuthN adapter-
     .filter(Boolean)
     .sort();
 
-  assert.deepEqual(dependencies, ['domain', 'sha2', 'thiserror', 'uuid']);
+  assert.deepEqual(dependencies, ['domain', 'sha2', 'thiserror', 'tokio', 'uuid']);
   assert.deepEqual(forbiddenSourceImports(production), []);
   assert.deepEqual(forbiddenSourceImports('use axum::http::HeaderMap;'), ['axum::']);
   assert.doesNotMatch(production, /(?:Cookie|HeaderMap|Session|ApiKey)Credential/u);
@@ -128,6 +128,9 @@ test('Delivery 1912 production slice consumes one compiled registry for HTTP and
   const boot = read('api/apps/api-server/src/extension_bus/boot_snapshot.rs');
   const composition = read('api/apps/api-server/src/lib.rs');
   const http = read('api/apps/api-server/src/routes/settings/host_infrastructure.rs');
+  const permissionMiddleware = read(
+    'api/apps/api-server/src/middleware/require_settings_feature_permission.rs',
+  );
   const operation = read(
     'api/apps/api-server/src/routes/settings/host_infrastructure/interface_operation.rs',
   );
@@ -142,5 +145,29 @@ test('Delivery 1912 production slice consumes one compiled registry for HTTP and
   assert.match(operation, /InvocationEnvelope::new/u);
   assert.match(operation, /InterfaceProtocol/u);
   assert.doesNotMatch(operation, /require_session|Cookie|HeaderMap/u);
+  const contractDeclarations = [
+    ...operation.matchAll(
+      /pub struct\s+HostInfrastructureProvidersView(?:Input|Output)(?:\s*\{[^}]*\}|\s*;)/gu,
+    ),
+  ].map((match) => match[0]);
+  const forbiddenContractCapabilities = (source) =>
+    ['ApiState', 'MainDurableStore', 'HostInfrastructureRegistry', 'Store', 'Registry'].filter(
+      (capability) => source.includes(capability),
+    );
+  assert.equal(contractDeclarations.length, 2);
+  assert.deepEqual(contractDeclarations.flatMap(forbiddenContractCapabilities), []);
+  assert.deepEqual(
+    forbiddenContractCapabilities(
+      'pub struct HostInfrastructureProvidersViewInput { state: Arc<ApiState> }',
+    ),
+    ['ApiState'],
+  );
+  assert.match(operation, /HostInfrastructureProvidersViewHandler\s*\{[\s\S]*query/u);
+  assert.match(permissionMiddleware, /is_active_interface_route/u);
+  assert.match(permissionMiddleware, /extensions_mut\(\)\.insert\(context\.actor\)/u);
+  assert.match(
+    http,
+    /list_host_infrastructure_providers\([\s\S]*Extension\(actor\): Extension<domain::ActorContext>/u,
+  );
   assert.doesNotMatch(boot, /InterfaceOperationCatalog/u);
 });

@@ -1,19 +1,48 @@
-use std::{fs, path::Path, sync::Arc};
+use std::{
+    fs,
+    path::Path,
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    },
+};
 
 use crate::_tests::support::{
-    login_and_capture_cookie, test_api_state_with_database_url, test_config,
+    create_member, create_role, login_and_capture_cookie, replace_member_roles,
+    replace_role_permissions, test_api_state_with_database_url, test_config,
 };
+use async_trait::async_trait;
 use axum::{
     body::{to_bytes, Body},
     http::{HeaderMap, Request, StatusCode},
 };
-use control_plane::ports::{AuthRepository, PluginRepository, UpsertPluginInstallationInput};
+use control_plane::ports::{
+    AuthRepository, PluginRepository, RoleConsolePolicyReader, UpsertPluginInstallationInput,
+};
 use domain::{
     PluginAvailabilityStatus, PluginDesiredState, PluginRuntimeStatus, PluginVerificationStatus,
 };
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use uuid::Uuid;
+
+struct CountingConsolePolicyReader {
+    delegate: storage_durable_postgres::MainDurableStore,
+    reads: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl RoleConsolePolicyReader for CountingConsolePolicyReader {
+    async fn load_role_console_policies_for_user(
+        &self,
+        actor: &domain::ActorContext,
+    ) -> anyhow::Result<Vec<domain::RoleConsolePolicy>> {
+        self.reads.fetch_add(1, Ordering::SeqCst);
+        self.delegate
+            .load_role_console_policies_for_user(actor)
+            .await
+    }
+}
 
 async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
@@ -173,6 +202,12 @@ async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pendi
         crate::extension_bus::ExtensionBootSnapshot::compile(
             Arc::new(extension_assembly.compile_graph().unwrap()),
             extension_assembly.interface_operations(),
+            Arc::new(
+                crate::routes::host_infrastructure::interface_operation::DurableHostInfrastructureProvidersViewQuery::new(
+                    state.store.clone(),
+                    state.api_node_id.clone(),
+                ),
+            ),
         )
         .unwrap(),
     );
@@ -331,4 +366,96 @@ async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pendi
     );
 
     let _ = fs::remove_dir_all(install_root);
+}
+
+#[tokio::test]
+async fn providers_interface_authorizes_non_root_once_for_allow_and_deny() {
+    let (mut state, _database_url) = test_api_state_with_database_url().await;
+    let reads = Arc::new(AtomicUsize::new(0));
+    let delegate = state.store.clone();
+    Arc::get_mut(&mut state).unwrap().console_policy_reader =
+        Arc::new(CountingConsolePolicyReader {
+            delegate,
+            reads: Arc::clone(&reads),
+        });
+    let app = crate::app_with_state_and_config(state, &test_config());
+    let (root_cookie, root_csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
+
+    create_role(&app, &root_cookie, &root_csrf, "providers_viewer").await;
+    replace_role_permissions(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "providers_viewer",
+        &["settings_feature.access.system.host-infrastructure"],
+    )
+    .await;
+    let allowed_id = create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "providers-allowed",
+        "change-me",
+    )
+    .await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &allowed_id,
+        &["providers_viewer"],
+    )
+    .await;
+    let (allowed_cookie, _) =
+        login_and_capture_cookie(&app, "providers-allowed", "change-me").await;
+
+    reads.store(0, Ordering::SeqCst);
+    let allowed = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/settings/host-infrastructure/providers")
+                .header("cookie", allowed_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(allowed.status(), StatusCode::OK);
+    assert_eq!(reads.load(Ordering::SeqCst), 1);
+
+    create_role(&app, &root_cookie, &root_csrf, "providers_denied").await;
+    let denied_id = create_member(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        "providers-denied",
+        "change-me",
+    )
+    .await;
+    replace_member_roles(
+        &app,
+        &root_cookie,
+        &root_csrf,
+        &denied_id,
+        &["providers_denied"],
+    )
+    .await;
+    let (denied_cookie, _) = login_and_capture_cookie(&app, "providers-denied", "change-me").await;
+
+    reads.store(0, Ordering::SeqCst);
+    let denied = app
+        .oneshot(
+            Request::builder()
+                .method("GET")
+                .uri("/api/console/settings/host-infrastructure/providers")
+                .header("cookie", denied_cookie)
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+    assert_eq!(reads.load(Ordering::SeqCst), 1);
 }

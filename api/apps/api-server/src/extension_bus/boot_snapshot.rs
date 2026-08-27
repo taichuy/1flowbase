@@ -26,11 +26,15 @@ impl ExtensionBootSnapshot {
     pub(crate) fn compile(
         graph: Arc<EffectiveExtensionGraph>,
         descriptors: &[plugin_framework::HostExtensionInterfaceOperationManifest],
+        providers_view_query: Arc<
+            dyn crate::routes::host_infrastructure::interface_operation::HostInfrastructureProvidersViewQuery,
+        >,
     ) -> anyhow::Result<Self> {
         let interface_snapshot =
             crate::routes::host_infrastructure::interface_operation::compile_interface_registry(
                 Arc::clone(&graph),
                 descriptors,
+                providers_view_query,
             )?;
         let interface_registry = Arc::new(interface_runtime::DynamicInterfaceRegistry::new(
             interface_snapshot,
@@ -39,6 +43,20 @@ impl ExtensionBootSnapshot {
             graph,
             interface_registry: Some(interface_registry),
         })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn compile_for_test(
+        graph: Arc<EffectiveExtensionGraph>,
+        descriptors: &[plugin_framework::HostExtensionInterfaceOperationManifest],
+    ) -> anyhow::Result<Self> {
+        Self::compile(
+            graph,
+            descriptors,
+            Arc::new(
+                crate::routes::host_infrastructure::interface_operation::UnavailableHostInfrastructureProvidersViewQuery,
+            ),
+        )
     }
 
     pub fn graph(&self) -> &EffectiveExtensionGraph {

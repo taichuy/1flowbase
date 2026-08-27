@@ -85,6 +85,49 @@ struct Admission {
     reject: bool,
 }
 
+struct SlowAuthorization;
+
+impl InterfaceAuthorizationPort for SlowAuthorization {
+    fn authorize(
+        &self,
+        _request: InterfaceAuthorizationRequest,
+    ) -> InterfaceAuthorizationFuture<'_> {
+        Box::pin(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            Ok(())
+        })
+    }
+}
+
+struct SlowAdmission;
+
+impl InterfaceTargetAdmissionPort for SlowAdmission {
+    fn admit(
+        &self,
+        _request: InterfaceTargetAdmissionRequest,
+    ) -> InterfaceTargetAdmissionFuture<'_> {
+        Box::pin(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            Ok(())
+        })
+    }
+}
+
+struct SlowHandler;
+
+impl InterfaceHandler<Input, Output> for SlowHandler {
+    fn invoke(
+        &self,
+        _context: InterfaceHandlerContext,
+        input: Input,
+    ) -> InterfaceHandlerFuture<Output> {
+        Box::pin(async move {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            Ok(Output(input.0))
+        })
+    }
+}
+
 impl InterfaceTargetAdmissionPort for Admission {
     fn admit(
         &self,
@@ -257,6 +300,136 @@ async fn rejects_authorization_admission_target_failure_and_elapsed_deadline() {
     assert_eq!(
         cancelled.receipt().terminal(),
         InterfaceInvocationTerminal::Cancelled
+    );
+}
+
+#[tokio::test]
+async fn deadline_cancels_each_in_flight_stage() {
+    let snapshot = compile_snapshot(
+        "graph:slow-authorization",
+        0,
+        false,
+        Arc::new(Mutex::new(None)),
+    );
+    let deadline = Some(SystemTime::now() + Duration::from_millis(10));
+    let authorization = InterfaceInvocationKernel::new(Arc::new(SlowAuthorization))
+        .invoke::<Input, Output>(
+            Arc::clone(&snapshot),
+            InvocationEnvelope::new(
+                InvocationLineage::root(InvocationId::now_v7()),
+                interface_id(),
+                InterfaceProtocol::Http,
+                actor(true),
+                deadline,
+                Input(2),
+            ),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        authorization.error(),
+        InterfaceInvocationError::DeadlineElapsed
+    ));
+    assert_eq!(
+        authorization.receipt().terminal(),
+        InterfaceInvocationTerminal::Cancelled
+    );
+    assert_eq!(
+        authorization.receipt().stages(),
+        &[InterfaceInvocationStage::Resolved]
+    );
+
+    let admission = InterfaceInvocationKernel::with_target_admission(
+        Arc::new(Authorization { reject: false }),
+        Arc::new(SlowAdmission),
+    )
+    .invoke::<Input, Output>(
+        Arc::clone(&snapshot),
+        InvocationEnvelope::new(
+            InvocationLineage::root(InvocationId::now_v7()),
+            interface_id(),
+            InterfaceProtocol::Http,
+            actor(true),
+            Some(SystemTime::now() + Duration::from_millis(10)),
+            Input(2),
+        ),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(
+        admission.error(),
+        InterfaceInvocationError::DeadlineElapsed
+    ));
+    assert_eq!(
+        admission.receipt().terminal(),
+        InterfaceInvocationTerminal::Cancelled
+    );
+    assert_eq!(
+        admission.receipt().stages(),
+        &[
+            InterfaceInvocationStage::Resolved,
+            InterfaceInvocationStage::Authorized
+        ]
+    );
+
+    let permission = PermissionIdentity::new("invocation.read").unwrap();
+    let mut compiler = RegistryCompiler::new(
+        GraphFingerprint::new("graph:slow-handler").unwrap(),
+        [permission.clone()],
+    );
+    compiler
+        .register_definition(InterfaceDefinition::new(
+            interface_id(),
+            ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
+            ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
+            Some(RouteIdentity::new("GET", "/api/console/invocation").unwrap()),
+            permission,
+            InterfaceAuthenticationPolicy::Authenticated,
+            InterfaceAuditPolicy::ReadOnly,
+            InterfaceErrorPolicy::TypedTarget,
+            InterfaceScope::System,
+            InterfaceLifecycle::BootSnapshot,
+            HandlerReference::new("invocation.handler").unwrap(),
+            TargetReference::new("invocation.target").unwrap(),
+            InterfaceOwner::new("core").unwrap(),
+        ))
+        .unwrap();
+    compiler
+        .bind_handler::<Input, Output>(
+            &interface_id(),
+            HandlerReference::new("invocation.handler").unwrap(),
+            Arc::new(SlowHandler),
+        )
+        .unwrap();
+    let handler = InterfaceInvocationKernel::new(Arc::new(Authorization { reject: false }))
+        .invoke::<Input, Output>(
+            compiler.compile().unwrap(),
+            InvocationEnvelope::new(
+                InvocationLineage::root(InvocationId::now_v7()),
+                interface_id(),
+                InterfaceProtocol::Http,
+                actor(true),
+                Some(SystemTime::now() + Duration::from_millis(10)),
+                Input(2),
+            ),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        handler.error(),
+        InterfaceInvocationError::DeadlineElapsed
+    ));
+    assert_eq!(
+        handler.receipt().terminal(),
+        InterfaceInvocationTerminal::Cancelled
+    );
+    assert_eq!(
+        handler.receipt().stages(),
+        &[
+            InterfaceInvocationStage::Resolved,
+            InterfaceInvocationStage::Authorized,
+            InterfaceInvocationStage::Invoking,
+        ]
     );
 }
 

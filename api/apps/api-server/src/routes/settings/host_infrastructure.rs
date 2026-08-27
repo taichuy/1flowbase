@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use access_control::{ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup};
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Extension, Path, Query, State},
     http::HeaderMap,
     Json, Router,
 };
@@ -928,32 +928,17 @@ pub async fn clear_host_infrastructure_cache_domain(
 )]
 pub async fn list_host_infrastructure_providers(
     State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
+    Extension(actor): Extension<domain::ActorContext>,
 ) -> Result<Json<ApiSuccess<Vec<HostInfrastructureProviderConfigResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
     let (output, _receipt) = interface_operation::invoke_providers_view(
         Arc::clone(&state),
-        context.actor,
+        actor,
         interface_runtime::InterfaceProtocol::Http,
     )
     .await?;
     let providers = output.into_providers();
 
     Ok(Json(ApiSuccess::new(providers)))
-}
-
-async fn list_host_infrastructure_providers_typed(
-    state: &ApiState,
-) -> Result<Vec<HostInfrastructureProviderConfigResponse>, ApiError> {
-    Ok(
-        HostInfrastructureConfigService::new(state.store.clone(), state.api_node_id.clone())
-            .list_providers()
-            .await?
-            .providers
-            .into_iter()
-            .map(to_provider_response)
-            .collect(),
-    )
 }
 
 #[utoipa::path(

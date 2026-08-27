@@ -30,9 +30,11 @@ fn assembly() -> crate::extension_bus::ExtensionGraphInputAssembly {
 fn effective_graph_compiles_one_typed_registry_definition_and_handler() {
     let assembly = assembly();
     let graph = Arc::new(assembly.compile_graph().unwrap());
-    let snapshot =
-        ExtensionBootSnapshot::compile(Arc::clone(&graph), assembly.interface_operations())
-            .unwrap();
+    let snapshot = ExtensionBootSnapshot::compile_for_test(
+        Arc::clone(&graph),
+        assembly.interface_operations(),
+    )
+    .unwrap();
     let registry = snapshot.interface_registry().unwrap().snapshot();
     let definition = providers_view_definition(registry.as_ref()).unwrap();
 
@@ -72,13 +74,14 @@ fn effective_graph_compiles_one_typed_registry_definition_and_handler() {
 fn missing_duplicate_mismatched_or_disabled_definition_fails_closed() {
     let assembly = assembly();
     let graph = Arc::new(assembly.compile_graph().unwrap());
-    assert!(ExtensionBootSnapshot::compile(Arc::clone(&graph), &[]).is_err());
+    assert!(ExtensionBootSnapshot::compile_for_test(Arc::clone(&graph), &[]).is_err());
 
     let duplicate = assembly.interface_operations()[0].clone();
-    assert!(
-        ExtensionBootSnapshot::compile(Arc::clone(&graph), &[duplicate.clone(), duplicate],)
-            .is_err()
-    );
+    assert!(ExtensionBootSnapshot::compile_for_test(
+        Arc::clone(&graph),
+        &[duplicate.clone(), duplicate],
+    )
+    .is_err());
 
     let canonical = assembly.interface_operations()[0].clone();
     let mut candidates = Vec::new();
@@ -98,7 +101,7 @@ fn missing_duplicate_mismatched_or_disabled_definition_fails_closed() {
     wrong_output.output.contract_version = "2".to_string();
     candidates.push(wrong_output);
     for candidate in candidates {
-        assert!(ExtensionBootSnapshot::compile(Arc::clone(&graph), &[candidate]).is_err());
+        assert!(ExtensionBootSnapshot::compile_for_test(Arc::clone(&graph), &[candidate]).is_err());
     }
 
     let mut modules = assembly.module_descriptors().to_vec();
@@ -112,7 +115,9 @@ fn missing_duplicate_mismatched_or_disabled_definition_fails_closed() {
         .retain(|contribution| contribution.point_id.as_str() != INTERFACE_OPERATION_POINT_ID);
     let disabled =
         Arc::new(plugin_framework::extension_bus::compile_extension_graph(modules).unwrap());
-    assert!(ExtensionBootSnapshot::compile(disabled, assembly.interface_operations()).is_err());
+    assert!(
+        ExtensionBootSnapshot::compile_for_test(disabled, assembly.interface_operations()).is_err()
+    );
 }
 
 #[test]
@@ -131,7 +136,7 @@ fn wrong_graph_owner_is_rejected_before_registry_publish() {
 #[test]
 fn registry_definition_projects_route_console_openapi_and_mcp_identity() {
     let assembly = assembly();
-    let snapshot = ExtensionBootSnapshot::compile(
+    let snapshot = ExtensionBootSnapshot::compile_for_test(
         Arc::new(assembly.compile_graph().unwrap()),
         assembly.interface_operations(),
     )

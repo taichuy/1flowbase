@@ -346,7 +346,7 @@ mod tests {
         let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
         let assembly =
             assemble_extension_graph_input(root, DEFAULT_PLUGIN_SET_PATH, Vec::new()).unwrap();
-        let snapshot = ExtensionBootSnapshot::compile(
+        let snapshot = ExtensionBootSnapshot::compile_for_test(
             Arc::new(assembly.compile_graph().unwrap()),
             assembly.interface_operations(),
         )

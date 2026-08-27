@@ -67,19 +67,27 @@ pub(crate) fn authorize_compiled_console_access(
 
 pub async fn require_settings_feature_permission(
     State(state): State<Arc<ApiState>>,
-    request: Request<Body>,
+    mut request: Request<Body>,
     next: Next,
 ) -> Result<Response, ApiError> {
-    let path = request.uri().path();
+    let path = request.uri().path().to_string();
     if path != "/api/console" && !path.starts_with("/api/console/") {
         return Ok(next.run(request).await);
     }
 
     let context = require_session(&state, request.headers()).await?;
+    if crate::routes::host_infrastructure::interface_operation::is_active_interface_route(
+        state.as_ref(),
+        request.method().as_str(),
+        &path,
+    ) {
+        request.extensions_mut().insert(context.actor);
+        return Ok(next.run(request).await);
+    }
     let access = compiled_console_route_access(
         &state.console_operation_registry,
         request.method().as_str(),
-        path,
+        &path,
     )
     .map_err(ControlPlaneError::PermissionDenied)?;
 

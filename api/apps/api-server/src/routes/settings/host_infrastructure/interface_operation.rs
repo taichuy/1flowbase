@@ -1,8 +1,10 @@
-use std::sync::Arc;
+use std::{future::Future, pin::Pin, sync::Arc};
 
 use access_control::{ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup};
 use anyhow::{bail, Result};
-use control_plane::ports::RoleConsolePolicyReader;
+use control_plane::{
+    host_infrastructure_config::HostInfrastructureConfigService, ports::RoleConsolePolicyReader,
+};
 use interface_runtime::{
     CompiledInterfaceRegistry, ContractIdentity, GraphFingerprint, HandlerReference,
     InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceAuthorizationError,
@@ -23,8 +25,9 @@ use plugin_framework::{
     HostExtensionInterfaceOperationMethod,
 };
 
-use super::{list_host_infrastructure_providers_typed, HostInfrastructureProviderConfigResponse};
+use super::{to_provider_response, HostInfrastructureProviderConfigResponse};
 use crate::app_state::ApiState;
+use storage_durable_postgres::MainDurableStore;
 
 pub const INTERFACE_OPERATION_POINT_ID: &str = "1flowbase.application.interface-operation";
 pub const INTERFACE_OPERATION_CONTRACT_ID: &str = "interface-operation";
@@ -50,13 +53,11 @@ pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_HANDLER_REFERENCE: &str =
 pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_REFERENCE: &str =
     "control-plane.host-infrastructure.providers.view";
 
-pub struct HostInfrastructureProvidersViewInput {
-    state: Arc<ApiState>,
-}
+pub struct HostInfrastructureProvidersViewInput;
 
 impl HostInfrastructureProvidersViewInput {
-    pub fn new(state: Arc<ApiState>) -> Self {
-        Self { state }
+    pub fn new() -> Self {
+        Self
     }
 }
 
@@ -82,7 +83,52 @@ impl InterfaceContract for HostInfrastructureProvidersViewOutput {
         HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OUTPUT_CONTRACT_VERSION;
 }
 
-struct HostInfrastructureProvidersViewHandler;
+type HostInfrastructureProvidersViewQueryFuture<'a> = Pin<
+    Box<
+        dyn Future<
+                Output = Result<
+                    Vec<HostInfrastructureProviderConfigResponse>,
+                    crate::error_response::ApiError,
+                >,
+            > + Send
+            + 'a,
+    >,
+>;
+
+pub(crate) trait HostInfrastructureProvidersViewQuery: Send + Sync {
+    fn list(&self) -> HostInfrastructureProvidersViewQueryFuture<'_>;
+}
+
+pub(crate) struct DurableHostInfrastructureProvidersViewQuery {
+    store: MainDurableStore,
+    node_id: String,
+}
+
+impl DurableHostInfrastructureProvidersViewQuery {
+    pub(crate) fn new(store: MainDurableStore, node_id: String) -> Self {
+        Self { store, node_id }
+    }
+}
+
+impl HostInfrastructureProvidersViewQuery for DurableHostInfrastructureProvidersViewQuery {
+    fn list(&self) -> HostInfrastructureProvidersViewQueryFuture<'_> {
+        Box::pin(async move {
+            Ok(
+                HostInfrastructureConfigService::new(self.store.clone(), self.node_id.clone())
+                    .list_providers()
+                    .await?
+                    .providers
+                    .into_iter()
+                    .map(to_provider_response)
+                    .collect(),
+            )
+        })
+    }
+}
+
+struct HostInfrastructureProvidersViewHandler {
+    query: Arc<dyn HostInfrastructureProvidersViewQuery>,
+}
 
 impl InterfaceHandler<HostInfrastructureProvidersViewInput, HostInfrastructureProvidersViewOutput>
     for HostInfrastructureProvidersViewHandler
@@ -90,10 +136,12 @@ impl InterfaceHandler<HostInfrastructureProvidersViewInput, HostInfrastructurePr
     fn invoke(
         &self,
         _context: InterfaceHandlerContext,
-        input: HostInfrastructureProvidersViewInput,
+        _input: HostInfrastructureProvidersViewInput,
     ) -> InterfaceHandlerFuture<HostInfrastructureProvidersViewOutput> {
+        let query = Arc::clone(&self.query);
         Box::pin(async move {
-            list_host_infrastructure_providers_typed(input.state.as_ref())
+            query
+                .list()
                 .await
                 .map(|providers| HostInfrastructureProvidersViewOutput { providers })
                 .map_err(|error| {
@@ -202,7 +250,7 @@ pub async fn invoke_providers_view(
                 protocol,
                 actor,
                 None,
-                HostInfrastructureProvidersViewInput::new(state),
+                HostInfrastructureProvidersViewInput::new(),
             ),
         )
         .await
@@ -248,6 +296,7 @@ fn invocation_failure_api_error(
 pub(crate) fn compile_interface_registry(
     graph: Arc<EffectiveExtensionGraph>,
     descriptors: &[HostExtensionInterfaceOperationManifest],
+    providers_view_query: Arc<dyn HostInfrastructureProvidersViewQuery>,
 ) -> Result<Arc<CompiledInterfaceRegistry>> {
     let descriptor = validate_active_providers_view(&graph, descriptors)?;
     let definition = definition_from_descriptor(descriptor)?;
@@ -267,9 +316,37 @@ pub(crate) fn compile_interface_registry(
     >(
         &interface_id,
         handler_reference,
-        Arc::new(HostInfrastructureProvidersViewHandler),
+        Arc::new(HostInfrastructureProvidersViewHandler {
+            query: providers_view_query,
+        }),
     )?;
     Ok(compiler.compile()?)
+}
+
+pub(crate) fn is_active_interface_route(state: &ApiState, method: &str, path: &str) -> bool {
+    state
+        .extension_boot_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.interface_registry())
+        .map(|registry| registry.snapshot())
+        .is_some_and(|snapshot| {
+            providers_view_definition(snapshot.as_ref())
+                .ok()
+                .and_then(InterfaceDefinition::route)
+                .is_some_and(|route| route.method() == method && route.path() == path)
+        })
+}
+
+#[cfg(test)]
+pub(crate) struct UnavailableHostInfrastructureProvidersViewQuery;
+
+#[cfg(test)]
+impl HostInfrastructureProvidersViewQuery for UnavailableHostInfrastructureProvidersViewQuery {
+    fn list(&self) -> HostInfrastructureProvidersViewQueryFuture<'_> {
+        Box::pin(async {
+            Err(anyhow::anyhow!("providers view query fixture is unavailable").into())
+        })
+    }
 }
 
 pub fn providers_view_definition(

@@ -22,7 +22,7 @@ async fn test_frontend_block_app_with_database_url() -> (axum::Router, String) {
     )
     .unwrap();
     let snapshot = Arc::new(
-        crate::extension_bus::ExtensionBootSnapshot::compile(
+        crate::extension_bus::ExtensionBootSnapshot::compile_for_test(
             Arc::new(assembly.compile_graph().unwrap()),
             assembly.interface_operations(),
         )
@@ -567,7 +567,7 @@ async fn ac_001_ac_002_ac_003_frontend_block_catalog_exposes_one_lightweight_sys
     )
     .unwrap();
     let snapshot = Arc::new(
-        crate::extension_bus::ExtensionBootSnapshot::compile(
+        crate::extension_bus::ExtensionBootSnapshot::compile_for_test(
             Arc::new(assembly.compile_graph().unwrap()),
             assembly.interface_operations(),
         )

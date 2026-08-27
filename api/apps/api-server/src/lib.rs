@@ -322,6 +322,12 @@ async fn app_and_runtime_host_from_config(
     let extension_boot_snapshot = Arc::new(extension_bus::ExtensionBootSnapshot::compile(
         Arc::clone(&extension_graph),
         extension_assembly.interface_operations(),
+        Arc::new(
+            routes::host_infrastructure::interface_operation::DurableHostInfrastructureProvidersViewQuery::new(
+                store.clone(),
+                config.api_node_id.clone(),
+            ),
+        ),
     )?);
     let builtin_host_extensions = extension_assembly.into_host_extension_manifests();
     let mut host_extension_registry =
