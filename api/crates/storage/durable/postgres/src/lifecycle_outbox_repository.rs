@@ -74,15 +74,21 @@ impl LifecycleOutboxRepository for PgControlPlaneStore {
         &self,
         worker_id: Uuid,
         limit: u32,
+        claim_lease: time::Duration,
     ) -> Result<Vec<LifecycleOutboxRecord>> {
         if limit == 0 || limit > 1_000 {
             bail!("lifecycle outbox claim limit must be between 1 and 1000");
         }
+        if claim_lease <= time::Duration::ZERO || claim_lease > time::Duration::hours(1) {
+            bail!("lifecycle outbox claim lease must be between 1ns and 1h");
+        }
+        let stale_before = OffsetDateTime::now_utc() - claim_lease;
         let rows = sqlx::query(
             r#"
             with candidates as (
                 select event_id from lifecycle_outbox
-                where status = 'pending' and available_at <= now()
+                where (status = 'pending' and available_at <= now())
+                   or (status = 'claimed' and claimed_at <= $3)
                 order by available_at, occurred_at, event_id
                 for update skip locked
                 limit $2
@@ -97,6 +103,7 @@ impl LifecycleOutboxRepository for PgControlPlaneStore {
         )
         .bind(worker_id)
         .bind(i64::from(limit))
+        .bind(stale_before)
         .fetch_all(self.pool())
         .await?;
         rows.into_iter().map(map_record).collect()

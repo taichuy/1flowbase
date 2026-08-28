@@ -48,6 +48,7 @@ uuid.workspace = true
 zip.workspace = true
 domain = { path = "../../crates/domain" }
 control-plane = { path = "../../crates/control-plane" }
+control-plane-contracts = { path = "../../crates/control-plane-contracts" }
 extension-contracts = { path = "../../crates/extension-contracts" }
 orchestration-runtime = { path = "../../crates/orchestration-runtime" }
 runtime-core = { path = "../../crates/runtime-core" }

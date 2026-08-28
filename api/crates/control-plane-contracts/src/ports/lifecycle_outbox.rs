@@ -44,6 +44,7 @@ pub trait LifecycleOutboxRepository: Send + Sync {
         &self,
         worker_id: Uuid,
         limit: u32,
+        claim_lease: time::Duration,
     ) -> anyhow::Result<Vec<LifecycleOutboxRecord>>;
 
     async fn mark_lifecycle_fact_delivered(

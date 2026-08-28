@@ -24,6 +24,7 @@ pub mod i18n;
 pub mod i18n_catalog;
 mod installed_provider_package;
 pub mod js_dependency;
+pub mod lifecycle_outbox_dispatcher;
 pub mod mcp_bundle;
 pub mod mcp_management;
 pub mod member;

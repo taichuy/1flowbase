@@ -84,6 +84,47 @@ use crate::{
 
 pub const DEFAULT_API_SERVER_ADDR: &str = "0.0.0.0:7800";
 
+struct ApiLifecycleFactDelivery;
+
+#[async_trait::async_trait]
+impl control_plane::lifecycle_outbox_dispatcher::LifecycleFactDeliveryPort
+    for ApiLifecycleFactDelivery
+{
+    async fn deliver(
+        &self,
+        fact: &control_plane_contracts::ports::LifecycleOutboxRecord,
+    ) -> anyhow::Result<()> {
+        let _: serde_json::Value = serde_json::from_slice(&fact.canonical_payload)?;
+        tracing::info!(
+            event_id = %fact.event_id,
+            contract_id = %fact.contract_id,
+            contract_version = %fact.contract_version,
+            attempt = fact.attempt_count,
+            "delivered durable lifecycle fact"
+        );
+        Ok(())
+    }
+}
+
+struct ApiLifecycleDeliveryCompletion;
+
+impl control_plane::lifecycle_outbox_dispatcher::LifecycleDeliveryCompletionPort
+    for ApiLifecycleDeliveryCompletion
+{
+    fn complete(
+        &self,
+        outcome: extension_contracts::CompletionOutcome<
+            control_plane::lifecycle_outbox_dispatcher::LifecycleFactDeliveryCompletion,
+        >,
+    ) {
+        tracing::info!(
+            event_id = %outcome.payload().event_id,
+            terminal = ?outcome.terminal(),
+            "lifecycle fact delivery completed"
+        );
+    }
+}
+
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct HealthResponse {
     pub service: &'static str,
@@ -312,6 +353,14 @@ async fn app_and_runtime_host_from_config(
         .store
         .clone()
         .with_runtime_table_name_policy(config.runtime_table_name_policy.clone());
+    tokio::spawn(
+        control_plane::lifecycle_outbox_dispatcher::LifecycleOutboxDispatcher::new(
+            store.clone(),
+            Arc::new(ApiLifecycleFactDelivery),
+            Arc::new(ApiLifecycleDeliveryCompletion),
+        )
+        .run(),
+    );
     console_policy_migration::require_runtime_console_policy_cutover(&store).await?;
     let extension_assembly = extension_bus::assemble_extension_graph_input(
         api_workspace_root()?,

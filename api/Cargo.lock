@@ -84,6 +84,7 @@ dependencies = [
  "axum-extra",
  "base64",
  "control-plane",
+ "control-plane-contracts",
  "domain",
  "ed25519-dalek",
  "extension-contracts",

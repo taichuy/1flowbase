@@ -36,7 +36,11 @@ async fn lcf_005_outbox_claim_retry_delivery_and_idempotency_are_durable() {
     assert_eq!(first.occurred_at.nanosecond(), 123_456_000);
 
     let worker = Uuid::now_v7();
-    let claimed = store.claim_lifecycle_facts(worker, 10).await.unwrap();
+    let lease = Duration::seconds(30);
+    let claimed = store
+        .claim_lifecycle_facts(worker, 10, lease)
+        .await
+        .unwrap();
     assert_eq!(claimed.len(), 1);
     assert_eq!(claimed[0].status, LifecycleOutboxStatus::Claimed);
     assert_eq!(claimed[0].attempt_count, 1);
@@ -50,7 +54,10 @@ async fn lcf_005_outbox_claim_retry_delivery_and_idempotency_are_durable() {
         )
         .await
         .unwrap();
-    let claimed_again = store.claim_lifecycle_facts(worker, 10).await.unwrap();
+    let claimed_again = store
+        .claim_lifecycle_facts(worker, 10, lease)
+        .await
+        .unwrap();
     assert_eq!(claimed_again[0].attempt_count, 2);
     let delivered = store
         .mark_lifecycle_fact_delivered(input.event_id, worker)
@@ -58,10 +65,47 @@ async fn lcf_005_outbox_claim_retry_delivery_and_idempotency_are_durable() {
         .unwrap();
     assert_eq!(delivered.status, LifecycleOutboxStatus::Delivered);
     assert!(store
-        .claim_lifecycle_facts(worker, 10)
+        .claim_lifecycle_facts(worker, 10, lease)
         .await
         .unwrap()
         .is_empty());
+}
+
+#[tokio::test]
+async fn lcf_qaf_stale_claim_is_recovered_by_a_new_worker() {
+    let store = store().await;
+    let input = RecordLifecycleFactInput {
+        event_id: Uuid::now_v7(),
+        transaction_id: Uuid::now_v7(),
+        contract_id: "model_definition.committed".to_string(),
+        contract_version: "v1".to_string(),
+        canonical_payload: b"recovery".to_vec(),
+        occurred_at: OffsetDateTime::now_utc(),
+    };
+    store.record_lifecycle_fact(&input).await.unwrap();
+    let crashed_worker = Uuid::now_v7();
+    store
+        .claim_lifecycle_facts(crashed_worker, 1, Duration::seconds(30))
+        .await
+        .unwrap();
+    sqlx::query("update lifecycle_outbox set claimed_at = now() - interval '31 seconds' where event_id = $1")
+        .bind(input.event_id)
+        .execute(store.pool())
+        .await
+        .unwrap();
+
+    let recovery_worker = Uuid::now_v7();
+    let recovered = store
+        .claim_lifecycle_facts(recovery_worker, 1, Duration::seconds(30))
+        .await
+        .unwrap();
+    assert_eq!(recovered.len(), 1);
+    assert_eq!(recovered[0].claimed_by, Some(recovery_worker));
+    assert_eq!(recovered[0].attempt_count, 2);
+    assert!(store
+        .mark_lifecycle_fact_delivered(input.event_id, crashed_worker)
+        .await
+        .is_err());
 }
 
 #[tokio::test]
