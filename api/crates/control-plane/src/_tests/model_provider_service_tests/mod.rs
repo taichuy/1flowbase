@@ -975,7 +975,7 @@ impl ModelProviderRepository for MemoryModelProviderRepository {
                             workspace_id: input.workspace_id,
                             provider_code: input.provider_code.clone(),
                             model_id: policy.model_id.clone(),
-                            distribution_rule: policy.distribution_rule,
+                            distribution_rule: policy.distribution_rule.clone(),
                             provider_instance_ids: policy.provider_instance_ids.clone(),
                             excluded_provider_instance_ids: policy
                                 .excluded_provider_instance_ids

@@ -1698,7 +1698,7 @@ fn model_group_llm_runtime(
                     upstream_model_id: "gpt-5.4-mini".to_string(),
                 })
                 .collect(),
-            distribution_rule,
+            distribution_rule: distribution_rule.clone(),
             distribution_key: (distribution_rule == LlmDistributionRule::RoundRobin).then(|| {
                 "llm-router:workspace:workspace-1:provider:fixture_provider:model:gpt-5.4-mini:targets:test"
                     .to_string()

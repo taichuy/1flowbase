@@ -11,6 +11,8 @@ use super::{create_ordered_tree_model, create_workspace, isolated_database, runt
 use crate::{run_migrations, PgControlPlaneStore};
 
 const DROP_TEXT_PREFIX_INDEXES_MIGRATION_VERSION: i64 = 20260811150000;
+const LIFECYCLE_OUTBOX_MIGRATION_SQL: &str =
+    include_str!("../../../migrations/20260828100000_create_lifecycle_outbox.sql");
 
 fn before_drop_text_prefix_indexes_migrator() -> Migrator {
     let migrations = sqlx::migrate!("./migrations")
@@ -105,6 +107,10 @@ async fn migration_drops_legacy_ordered_tree_text_prefix_indexes() {
     let pool = isolated_database().await.connect().await.unwrap();
     before_drop_text_prefix_indexes_migrator()
         .run(&pool)
+        .await
+        .unwrap();
+    sqlx::raw_sql(LIFECYCLE_OUTBOX_MIGRATION_SQL)
+        .execute(&pool)
         .await
         .unwrap();
     let store = PgControlPlaneStore::new(pool.clone());

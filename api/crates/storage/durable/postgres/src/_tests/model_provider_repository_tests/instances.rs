@@ -585,7 +585,7 @@ async fn model_provider_repository_persists_ordered_routing_policy_with_revision
             .await
             .unwrap()
             .unwrap();
-    assert_eq!(after_delete.revision, record.revision + 1);
+    assert_eq!(after_delete.revision, dynamic_record.revision + 1);
     assert!(after_delete.model_routing_policies[0]
         .provider_instance_ids
         .is_empty());
@@ -663,6 +663,10 @@ async fn model_provider_repository_backfills_main_instance_settings_when_upgradi
         .await
         .unwrap();
     sqlx::raw_sql(MAIN_MODEL_ROUTING_POLICY_EXCLUSIONS_MIGRATION_SQL)
+        .execute(store.pool())
+        .await
+        .unwrap();
+    sqlx::raw_sql(OPEN_PROVIDER_DISTRIBUTION_RULE_IDENTITY_MIGRATION_SQL)
         .execute(store.pool())
         .await
         .unwrap();

@@ -1052,7 +1052,7 @@ fn provider_runtime_consumer_has_no_provider_specific_branch_and_production_wire
         consumer
             .matches("self.resolve_model_provider_binding(installation)?")
             .count(),
-        12,
+        13,
         "every ProviderRuntimePort operation must resolve the typed slot binding"
     );
     assert!(consumer.contains(".orchestration_backend"));
@@ -1066,10 +1066,10 @@ fn provider_runtime_consumer_has_no_provider_specific_branch_and_production_wire
     assert!(!consumer.contains(".network_egress_registry()"));
     assert_eq!(
         consumer.matches("binding.require_provider_code(").count(),
-        4,
+        5,
         "every canonical provider input must fail closed on a crossed provider code"
     );
-    assert!(boot.contains("RuntimeExtensionHost::new_with_artifact_resolver("));
+    assert!(boot.contains("RuntimeExtensionHost::new_with_artifact_resolver_and_plugin_data("));
     assert!(boot.contains("ApiRuntimeArtifactResolver::new("));
     assert!(boot.contains("RuntimeBackendSlot::default()"));
     assert!(boot.contains("runtime_backend_slot.bind(runtime_extension_host.clone())"));
