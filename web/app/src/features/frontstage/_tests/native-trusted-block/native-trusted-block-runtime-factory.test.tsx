@@ -6,6 +6,7 @@ import { describe, expect, test, vi } from 'vitest';
 
 import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
 import {
+  compileNativeReactComponent,
   NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS,
   NATIVE_TRUSTED_BLOCK_PERMISSION,
   NATIVE_TRUSTED_BLOCK_RUNTIME
@@ -116,6 +117,52 @@ describe('frontstage native trusted block runtime factory', () => {
       /import\s+\*\s+as\s+antdStyleModule\s+from\s+['"]antd-style['"]/u
     );
     expect(registrySource).toContain('loadAntdStyleModule');
+  });
+
+  test('AC-002 exposes every installed Ant Design ES module source', async () => {
+    const registry = createFrontstageNativeReactModuleRegistry();
+
+    expect(
+      registry.definitions.find(
+        ({ module_source }) => module_source === 'antd/es/masonry/MasonryItem'
+      )
+    ).toEqual({
+      module_source: 'antd/es/masonry/MasonryItem',
+      exports: ['*']
+    });
+    await expect(
+      registry.load('antd/es/masonry/MasonryItem')
+    ).resolves.toHaveProperty('default');
+  });
+
+  test('AC-002 compiles type-only imports from installed Ant Design ES modules', () => {
+    const registry = createFrontstageNativeReactModuleRegistry();
+    const result = compileNativeReactComponent(
+      `import type { MasonryItemType } from 'antd/es/masonry/MasonryItem';
+
+const items: MasonryItemType<number>[] = [{ key: 'item-1', data: 120 }];
+
+export default function Block() {
+  return <div>{items[0].data}</div>;
+}`,
+      registry.definitions
+    );
+
+    expect(result.ok).toBe(true);
+  });
+
+  test('AC-002 compiles runtime imports from installed Ant Design ES modules', () => {
+    const registry = createFrontstageNativeReactModuleRegistry();
+    const result = compileNativeReactComponent(
+      `import MasonryItem from 'antd/es/masonry/MasonryItem';
+
+export default function Block() {
+  return <MasonryItem item={{ key: 'item-1', data: 120 }} />;
+}`,
+      registry.definitions
+    );
+
+    expect(result.ok).toBe(true);
   });
 
   test('exposes a serializable host compatibility manifest for injected modules', () => {

@@ -4,12 +4,19 @@ import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite';
 
 import { nativeModuleDeclarationsPlugin } from './build/native-module-declarations';
+import {
+  collectAntDesignEsModuleSources,
+  nativeAntDesignEsModulesPlugin
+} from './build/native-antd-es-modules';
 import { FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES } from './src/features/frontstage/lib/native-modules/resolved-dependency-sources';
 
 const reactDraggableBrowserDefines = {
   'process.env.DRAGGABLE_DEBUG': 'false'
 };
 const appRoot = fileURLToPath(new URL('.', import.meta.url));
+const nativeAntDesignEsModuleSources = collectAntDesignEsModuleSources().map(
+  ({ moduleSource }) => moduleSource
+);
 
 function manualChunks(id: string) {
   if (!id.includes('/node_modules/')) {
@@ -82,8 +89,12 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [
+      nativeAntDesignEsModulesPlugin(),
       nativeModuleDeclarationsPlugin({
-        moduleSources: FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES,
+        moduleSources: [
+          ...FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES,
+          ...nativeAntDesignEsModuleSources
+        ],
         projectRoot: appRoot
       }),
       react()

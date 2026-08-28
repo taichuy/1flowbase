@@ -226,8 +226,7 @@ const label = "unterminated;
     ['message global API', "message.success('done');"],
     ['notification global API', "notification.open({ message: 'done' });"],
     ['Modal static method', 'Modal.confirm({ title: "Confirm" });'],
-    ['computed Modal static method', "Modal['info']({ title: 'Info' });"],
-    ['Upload component usage', 'return React.createElement(Upload);']
+    ['computed Modal static method', "Modal['info']({ title: 'Info' });"]
   ])('rejects AntD global or privileged API: %s', (_label, source) => {
     const result = validateNativeTrustedBlockSource(source);
 
@@ -235,6 +234,14 @@ const label = "unterminated;
     expect(result.errors[0]).toMatchObject({
       code: 'transform_failed'
     });
+  });
+
+  test('AC-006 accepts AntD Upload component usage', () => {
+    expect(
+      validateNativeTrustedBlockSource(
+        "import { Upload } from 'antd'; export default () => React.createElement(Upload);"
+      )
+    ).toMatchObject({ ok: true });
   });
 
   test('allows ordinary object properties named like an AntD global API', () => {

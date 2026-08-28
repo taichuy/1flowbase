@@ -176,6 +176,7 @@ function validateLoadedModule(
     );
   }
   for (const exportName of registration.exports) {
+    if (exportName === '*') continue;
     if (!(exportName in value.module)) {
       throw registryError(
         'module_export_missing',

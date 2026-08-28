@@ -640,16 +640,6 @@ function validateDeniedCapabilities(
       return;
     }
 
-    if (token.value === 'Upload') {
-      addError(
-        capabilityError(
-          token.value,
-          'AntD Upload is not allowed in native trusted block source.'
-        )
-      );
-      return;
-    }
-
     if (deniedEscapeIdentifiers.has(token.value)) {
       addError(
         capabilityError(

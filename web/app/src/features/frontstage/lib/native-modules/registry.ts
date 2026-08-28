@@ -3,6 +3,10 @@ import * as antdModule from 'antd';
 import * as ReactModule from 'react';
 import * as ReactJsxRuntimeModule from 'react/jsx-runtime';
 import * as uiModule from '@1flowbase/ui';
+import {
+  ANTD_ES_MODULE_DEFINITIONS,
+  loadAntDesignEsModule
+} from 'virtual:1flowbase-native-antd-es-modules';
 
 import {
   createNativeReactModuleRegistry,
@@ -61,6 +65,11 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   registration('antd', Object.keys(antdModule), async () => ({
     module: nativeAntdModule
   })),
+  ...ANTD_ES_MODULE_DEFINITIONS.map(({ module_source, exports }) =>
+    registration(module_source, exports, async () => ({
+      module: await loadAntDesignEsModule(module_source)
+    }))
+  ),
   registration('antd-style', ANTD_STYLE_EXPORTS, async () => ({
     module: await loadAntdStyleModule()
   })),
