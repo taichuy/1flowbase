@@ -30,6 +30,7 @@ pub mod node_contribution_repository;
 pub mod orchestration_runtime_repository;
 pub mod ordered_tree;
 pub mod physical_schema_repository;
+pub mod plugin_data_repository;
 mod plugin_installation_commit_repository;
 pub mod plugin_repository;
 pub mod plugin_worker_repository;

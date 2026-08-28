@@ -11,6 +11,7 @@ const GOVERNANCE_TABLES: &[&str] = &[
     "lifecycle_outbox",
     "plugin_schema_ownership",
     "plugin_schema_reconcile_receipts",
+    "plugin_data_idempotency_receipts",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

@@ -5,6 +5,9 @@ use std::{
 };
 
 use async_trait::async_trait;
+use extension_contracts::{
+    PluginDataBinding, PluginDataError, PluginDataErrorKind, PluginDataPort, PluginDataRequest,
+};
 use runtime_core::runtime_backend::{
     CapabilityRuntimePort, DataSourceRuntimePort, NetworkEgressRuntimePort, ProviderRuntimePort,
     RuntimeArtifactReference, RuntimeBackendError, RuntimeBackendLifecycle, RuntimeBackendSnapshot,
@@ -37,6 +40,25 @@ impl RuntimeArtifactResolver for MissingRuntimeArtifactResolver {
         })
     }
 }
+
+#[derive(Debug)]
+struct MissingPluginDataPort;
+
+impl PluginDataPort for MissingPluginDataPort {
+    fn execute<'a>(
+        &'a self,
+        _binding: &'a PluginDataBinding,
+        _request: &'a PluginDataRequest,
+    ) -> extension_contracts::PluginDataFuture<'a> {
+        Box::pin(async {
+            Err(PluginDataError {
+                kind: PluginDataErrorKind::StorageUnavailable,
+                code: "plugin_data_port_not_configured".to_string(),
+                retryable: false,
+            })
+        })
+    }
+}
 use runtime_profile::{RuntimeProfile, RuntimeProfileCollector};
 use time::OffsetDateTime;
 use tokio::{
@@ -59,6 +81,7 @@ pub struct RuntimeExtensionHost {
     lifecycle: Arc<StdRwLock<RuntimeBackendLifecycle>>,
     active_requests: Arc<Mutex<HashMap<RuntimeRequestId, AbortHandle>>>,
     artifact_resolver: Arc<dyn RuntimeArtifactResolver>,
+    plugin_data: Arc<dyn PluginDataPort>,
 }
 
 impl std::fmt::Debug for RuntimeExtensionHost {
@@ -88,6 +111,22 @@ impl RuntimeExtensionHost {
             Arc::new(RwLock::new(CapabilityHost::default())),
             Arc::new(RwLock::new(DataSourceHost::default())),
             artifact_resolver,
+            Arc::new(MissingPluginDataPort),
+        )
+    }
+
+    pub fn new_with_artifact_resolver_and_plugin_data(
+        process_started_at: OffsetDateTime,
+        artifact_resolver: Arc<dyn RuntimeArtifactResolver>,
+        plugin_data: Arc<dyn PluginDataPort>,
+    ) -> Result<Self, RuntimeBackendError> {
+        Self::from_shared_registries_with_artifact_resolver(
+            process_started_at,
+            Arc::new(RwLock::new(ProviderHost::default())),
+            Arc::new(RwLock::new(CapabilityHost::default())),
+            Arc::new(RwLock::new(DataSourceHost::default())),
+            artifact_resolver,
+            plugin_data,
         )
     }
 
@@ -97,6 +136,7 @@ impl RuntimeExtensionHost {
         capability_host: Arc<RwLock<CapabilityHost>>,
         data_source_host: Arc<RwLock<DataSourceHost>>,
         artifact_resolver: Arc<dyn RuntimeArtifactResolver>,
+        plugin_data: Arc<dyn PluginDataPort>,
     ) -> Result<Self, RuntimeBackendError> {
         let profile = RuntimeProfileCollector::new(
             "runtime-extension-host",
@@ -117,6 +157,7 @@ impl RuntimeExtensionHost {
             lifecycle: Arc::new(StdRwLock::new(RuntimeBackendLifecycle::Starting)),
             active_requests: Arc::new(Mutex::new(HashMap::new())),
             artifact_resolver,
+            plugin_data,
         })
     }
 

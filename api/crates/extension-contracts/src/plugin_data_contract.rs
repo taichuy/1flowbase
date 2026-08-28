@@ -16,7 +16,7 @@ const MAX_PAGE_SIZE: u32 = 100;
 const MAX_STRING_BYTES: usize = 64 * 1024;
 const MAX_JSON_BYTES: usize = 256 * 1024;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PluginDataPermission {
     Read,

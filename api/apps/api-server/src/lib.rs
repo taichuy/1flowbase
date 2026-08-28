@@ -437,9 +437,10 @@ async fn app_and_runtime_host_from_config(
         config.provider_install_root.clone(),
     ));
     let runtime_extension_host = Arc::new(
-        runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver(
+        runtime_extension_host::RuntimeExtensionHost::new_with_artifact_resolver_and_plugin_data(
             process_started_at,
             runtime_artifact_resolver,
+            Arc::new(store.clone()),
         )?,
     );
     let mut runtime_backend_slot = runtime_core::runtime_backend::RuntimeBackendSlot::default();
