@@ -232,6 +232,96 @@ describe('native block Dropdown runtime adapter', () => {
     expect(hidePopover).toHaveBeenCalledOnce();
     expect(showPopover).toHaveBeenCalledTimes(2);
   });
+
+  test('I1923-AC-001/002 keeps a fixed virtual trigger in viewport coordinates', async () => {
+    let containingBlockLeft = 200;
+    let containingBlockTop = 300;
+    const originalGetBoundingClientRect =
+      HTMLElement.prototype.getBoundingClientRect;
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        if (!this.hasAttribute('data-testid')) {
+          return originalGetBoundingClientRect.call(this);
+        }
+        const left = Number.parseFloat(this.style.left) + containingBlockLeft;
+        const top = Number.parseFloat(this.style.top) + containingBlockTop;
+        return {
+          x: left,
+          y: top,
+          width: 1,
+          height: 1,
+          top,
+          right: left + 1,
+          bottom: top + 1,
+          left,
+          toJSON: () => ({})
+        };
+      });
+
+    try {
+      const registry = createFrontstageNativeReactModuleRegistry();
+      const antdModule = await registry.load('antd');
+      const Dropdown = antdModule.Dropdown as ComponentType<DropdownProps>;
+      const root = document.createElement('div');
+      document.body.append(root);
+      render(
+        <FrontstageNativeTrustedBlockPortalHost
+          root={root}
+          renderEpoch="dropdown:virtual-anchor"
+          plan={createPlan()}
+          component={() => (
+            <Dropdown
+              open
+              trigger={[]}
+              menu={{ items: [{ key: 'mark', label: 'Mark keyword' }] }}
+            >
+              <span
+                aria-hidden
+                data-testid="virtual-anchor"
+                style={{
+                  position: 'fixed',
+                  left: 120,
+                  top: 80,
+                  width: 1,
+                  height: 1,
+                  pointerEvents: 'none'
+                }}
+              />
+            </Dropdown>
+          )}
+          ctx={createContext()}
+        />
+      );
+      const shadowRoot = await waitFor(() => root.shadowRoot as ShadowRoot);
+      const anchor = within(
+        shadowRoot as unknown as HTMLElement
+      ).getByTestId('virtual-anchor');
+
+      await waitFor(() => {
+        expect(anchor.getBoundingClientRect()).toMatchObject({
+          left: 120,
+          top: 80
+        });
+      });
+      expect(
+        within(shadowRoot as unknown as HTMLElement).getByText('Mark keyword')
+      ).toBeVisible();
+
+      containingBlockLeft = 150;
+      containingBlockTop = 250;
+      window.dispatchEvent(new Event('scroll'));
+
+      await waitFor(() => {
+        expect(anchor.getBoundingClientRect()).toMatchObject({
+          left: 120,
+          top: 80
+        });
+      });
+    } finally {
+      rectSpy.mockRestore();
+    }
+  });
 });
 
 function createPlan(): NativeTrustedBlockPreparePlan {
