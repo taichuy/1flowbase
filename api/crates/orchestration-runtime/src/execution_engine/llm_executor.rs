@@ -376,6 +376,8 @@ where
             }
         };
         let generate_projection_receipt = resolved_attempt.generate_projection_receipt.clone();
+        let distribution_selection_receipt =
+            resolved_attempt.distribution_selection_receipt.clone();
         let attempt_runtime = &resolved_attempt.runtime;
         let resolved_route = match resolved_attempt.route {
             Ok(route) => route,
@@ -385,7 +387,7 @@ where
                 let mut error_payload =
                     build_provider_error_payload(attempt_runtime, &provider_error);
                 error_payload["failed_after_first_token"] = Value::Bool(false);
-                let attempt = build_attempt_metric(AttemptMetricInput {
+                let mut attempt = build_attempt_metric(AttemptMetricInput {
                     attempt_index,
                     retry_reason: retry_reason.as_deref(),
                     runtime: attempt_runtime,
@@ -402,6 +404,10 @@ where
                     finished_at: OffsetDateTime::now_utc(),
                     time_to_first_token_ms: None,
                 });
+                attach_distribution_selection_receipt(
+                    &mut attempt,
+                    distribution_selection_receipt.as_ref(),
+                );
                 attempt_metrics.push(attempt.clone());
                 failed_attempts.push(attempt);
                 if retry_enabled
@@ -520,7 +526,7 @@ where
         {
             let attempt_finished_at = OffsetDateTime::now_utc();
             let error_payload = build_empty_prompt_messages_error_payload(attempt_runtime);
-            let attempt = build_attempt_metric(AttemptMetricInput {
+            let mut attempt = build_attempt_metric(AttemptMetricInput {
                 attempt_index,
                 retry_reason: retry_reason.as_deref(),
                 runtime: attempt_runtime,
@@ -537,6 +543,10 @@ where
                 finished_at: attempt_finished_at,
                 time_to_first_token_ms: None,
             });
+            attach_distribution_selection_receipt(
+                &mut attempt,
+                distribution_selection_receipt.as_ref(),
+            );
             attempt_metrics.push(attempt);
 
             return build_failed_llm_execution(
@@ -588,7 +598,7 @@ where
                     build_provider_error_payload(attempt_runtime, &provider_error);
                 error_payload["failed_after_first_token"] = Value::Bool(false);
                 let recoverable_error_message = recoverable_provider_error_message(&provider_error);
-                let attempt = build_attempt_metric(AttemptMetricInput {
+                let mut attempt = build_attempt_metric(AttemptMetricInput {
                     attempt_index,
                     retry_reason: retry_reason.as_deref(),
                     runtime: attempt_runtime,
@@ -605,6 +615,10 @@ where
                     finished_at: attempt_finished_at,
                     time_to_first_token_ms: None,
                 });
+                attach_distribution_selection_receipt(
+                    &mut attempt,
+                    distribution_selection_receipt.as_ref(),
+                );
                 attempt_metrics.push(attempt.clone());
                 failed_attempts.push(attempt);
                 if retry_enabled
@@ -781,6 +795,10 @@ where
             finished_at: attempt_finished_at,
             time_to_first_token_ms: output.time_to_first_token_ms,
         });
+        attach_distribution_selection_receipt(
+            &mut attempt,
+            distribution_selection_receipt.as_ref(),
+        );
         attach_provider_stream_timing(&mut attempt, provider_observability.stream_timing.as_ref());
         attach_provider_billing(&mut attempt, provider_observability.billing.as_ref());
         attempt_metrics.push(attempt.clone());

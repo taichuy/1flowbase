@@ -5,7 +5,7 @@ use extension_contracts::provider_contract::{
     ProviderInvocationCapability, CLIENT_PROTOCOL_ENVELOPE_PAYLOAD_KEY,
     NATIVE_MODEL_PROMPT_CONTEXT_PAYLOAD_KEY, NATIVE_MODEL_REQUEST_CONTEXT_PAYLOAD_KEY,
 };
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 const RUNTIME_TOOL_REGISTRATIONS_KEY: &str = "tool_registrations";
 
@@ -23,6 +23,8 @@ pub struct ExecutionRuntimeContext {
     pub(super) native_model_prompt_context: NativeModelPromptContext,
     pub(super) native_model_request_context: NativeModelRequestContext,
     pub(super) llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
+    pub(super) provider_distribution_invocation_id: Arc<OnceLock<String>>,
+    pub(super) round_robin_pins: Arc<Mutex<BTreeMap<String, Arc<tokio::sync::OnceCell<usize>>>>>,
     pub(super) http_response_file_persister: Option<Arc<dyn HttpResponseFilePersister>>,
     pub(super) provider_invocation_capabilities: BTreeSet<ProviderInvocationCapability>,
     pub(super) runtime_internal_tool_invoker: Option<Arc<dyn RuntimeInternalToolInvoker>>,
@@ -62,6 +64,8 @@ impl ExecutionRuntimeContext {
                 variable_pool,
             )?,
             llm_routing_counter_store: None,
+            provider_distribution_invocation_id: Arc::default(),
+            round_robin_pins: Arc::default(),
             http_response_file_persister: None,
             provider_invocation_capabilities: BTreeSet::new(),
             runtime_internal_tool_invoker: None,
@@ -227,6 +231,22 @@ impl ExecutionRuntimeContext {
             .as_ref()
             .ok_or_else(|| anyhow!("llm routing counter store is not configured"))?;
         store.increment_counter(key, 1, ttl).await
+    }
+
+    pub(super) fn provider_distribution_invocation_id(&self) -> &str {
+        self.provider_distribution_invocation_id
+            .get_or_init(|| uuid::Uuid::now_v7().to_string())
+    }
+
+    pub(super) fn round_robin_pin(&self, key: &str) -> Result<Arc<tokio::sync::OnceCell<usize>>> {
+        let mut pins = self
+            .round_robin_pins
+            .lock()
+            .map_err(|_| anyhow!("provider distribution pin store is unavailable"))?;
+        Ok(pins
+            .entry(key.to_string())
+            .or_insert_with(|| Arc::new(tokio::sync::OnceCell::new()))
+            .clone())
     }
 }
 

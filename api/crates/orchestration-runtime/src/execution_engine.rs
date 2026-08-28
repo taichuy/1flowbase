@@ -61,6 +61,7 @@ pub(crate) mod llm_metrics;
 mod llm_node_outputs;
 mod llm_parameters;
 mod node_failure_policy;
+mod provider_routing;
 mod run_input;
 #[cfg(test)]
 mod tests;

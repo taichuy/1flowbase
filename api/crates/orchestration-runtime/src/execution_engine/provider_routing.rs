@@ -1,0 +1,79 @@
+use super::*;
+use extension_contracts::{
+    ProviderDistributionCandidate, ProviderDistributionDecision,
+    ProviderDistributionSelectionReceipt,
+};
+
+const BUILTIN_RULE_VERSION: &str = "1";
+const BUILTIN_REGISTRY_FINGERPRINT: &str = "builtin-provider-distribution-registry/v1";
+const LLM_ROUTING_COUNTER_TTL: time::Duration = time::Duration::hours(1);
+
+pub(super) struct ProviderDistributionSelection {
+    pub(super) target_index: usize,
+    pub(super) receipt: ProviderDistributionSelectionReceipt,
+}
+
+pub(super) async fn select_builtin_provider_target(
+    rule: crate::compiled_plan::LlmDistributionRule,
+    distribution_key: Option<&str>,
+    target_ids: &[String],
+    attempt_index: usize,
+    runtime_context: &ExecutionRuntimeContext,
+) -> Result<ProviderDistributionSelection> {
+    let candidates = target_ids
+        .iter()
+        .enumerate()
+        .map(|(index, target_id)| ProviderDistributionCandidate {
+            target_id: target_id.clone(),
+            order: index as u32,
+            ready: true,
+            capabilities: BTreeSet::new(),
+        })
+        .collect::<Vec<_>>();
+    let target_index = match rule {
+        crate::compiled_plan::LlmDistributionRule::None => 0,
+        crate::compiled_plan::LlmDistributionRule::RetryRoundRobin => {
+            attempt_index % candidates.len()
+        }
+        crate::compiled_plan::LlmDistributionRule::RoundRobin if candidates.len() > 1 => {
+            let key = distribution_key
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| anyhow!("round_robin llm routing is missing distribution_key"))?;
+            let pin = runtime_context.round_robin_pin(key)?;
+            *pin.get_or_try_init(|| async {
+                let counter = runtime_context
+                    .next_llm_routing_counter(key, Some(LLM_ROUTING_COUNTER_TTL))
+                    .await?;
+                Ok::<usize, anyhow::Error>(
+                    (counter - 1).rem_euclid(candidates.len() as i64) as usize
+                )
+            })
+            .await?
+        }
+        crate::compiled_plan::LlmDistributionRule::RoundRobin => 0,
+    };
+    let selected = candidates
+        .get(target_index)
+        .filter(|candidate| candidate.ready)
+        .ok_or_else(|| anyhow!("provider distribution selected an ineligible target"))?;
+    let rule_id = match rule {
+        crate::compiled_plan::LlmDistributionRule::None => "builtin.none",
+        crate::compiled_plan::LlmDistributionRule::RoundRobin => "builtin.round_robin",
+        crate::compiled_plan::LlmDistributionRule::RetryRoundRobin => "builtin.retry_round_robin",
+    };
+    Ok(ProviderDistributionSelection {
+        target_index,
+        receipt: ProviderDistributionSelectionReceipt {
+            invocation_id: runtime_context
+                .provider_distribution_invocation_id()
+                .to_string(),
+            rule_id: rule_id.to_string(),
+            rule_version: BUILTIN_RULE_VERSION.to_string(),
+            registry_fingerprint: BUILTIN_REGISTRY_FINGERPRINT.to_string(),
+            attempt: attempt_index as u32,
+            decision: ProviderDistributionDecision::Select {
+                target_id: selected.target_id.clone(),
+            },
+        },
+    })
+}

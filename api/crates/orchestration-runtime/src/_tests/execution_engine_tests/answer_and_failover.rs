@@ -524,8 +524,8 @@ async fn llm_node_retry_routes_next_target_before_first_token() {
                     upstream_model_id: "backup-model".to_string(),
                 },
             ],
-            distribution_rule: LlmDistributionRule::RoundRobin,
-            distribution_key: Some("retry-routing".to_string()),
+            distribution_rule: LlmDistributionRule::RetryRoundRobin,
+            distribution_key: None,
             context_policy: json!({}),
             stream_policy: json!({}),
         }),
@@ -1398,6 +1398,102 @@ async fn none_distribution_keeps_existing_attempt_order_across_runs() {
         .lock()
         .expect("counter keys mutex poisoned")
         .is_empty());
+}
+
+#[tokio::test]
+async fn none_distribution_pins_first_target_across_retries() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.config["retry_enabled"] = json!(true);
+    llm.config["max_retries"] = json!(1);
+    llm.config["retry_interval_ms"] = json!(0);
+    llm.llm_runtime = Some(model_group_llm_runtime(
+        LlmDistributionRule::None,
+        &["provider-a", "provider-b"],
+    ));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let invoker = FailFirstAttemptsInvoker {
+        calls: calls.clone(),
+        remaining_failures: std::sync::atomic::AtomicUsize::new(1),
+    };
+
+    start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": { "query": "hello" } }),
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        calls.lock().expect("calls mutex poisoned").as_slice(),
+        ["provider-a", "provider-a"]
+    );
+}
+
+#[tokio::test]
+async fn round_robin_distribution_pins_selected_target_across_retries() {
+    let mut plan = base_plan();
+    let llm = plan
+        .nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist");
+    llm.config["retry_enabled"] = json!(true);
+    llm.config["max_retries"] = json!(1);
+    llm.config["retry_interval_ms"] = json!(0);
+    llm.llm_runtime = Some(model_group_llm_runtime(
+        LlmDistributionRule::RoundRobin,
+        &["provider-a", "provider-b"],
+    ));
+    let calls = Arc::new(Mutex::new(Vec::new()));
+    let counter_store = Arc::new(RecordingRoutingCounterStore::default());
+    let invoker = FailFirstAttemptsInvoker {
+        calls: calls.clone(),
+        remaining_failures: std::sync::atomic::AtomicUsize::new(1),
+    };
+    let runtime_context = ExecutionRuntimeContext::from_plan_input(
+        &plan,
+        &serde_json::Map::from_iter([("node-start".to_string(), json!({ "query": "hello" }))]),
+    )
+    .expect("runtime context should parse")
+    .with_llm_routing_counter_store(counter_store.clone());
+
+    let outcome = start_flow_debug_run_with_runtime_context(
+        &plan,
+        &json!({ "node-start": { "query": "hello" } }),
+        runtime_context,
+        &invoker,
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        calls.lock().expect("calls mutex poisoned").as_slice(),
+        ["provider-a", "provider-a"]
+    );
+    assert_eq!(
+        counter_store
+            .keys
+            .lock()
+            .expect("counter keys mutex poisoned")
+            .len(),
+        1
+    );
+    let attempts = outcome
+        .node_traces
+        .iter()
+        .find(|trace| trace.node_id == "node-llm")
+        .expect("llm trace should exist")
+        .metrics_payload["attempts"]
+        .as_array()
+        .expect("attempt metrics should be present");
+    assert_eq!(
+        attempts[1]["provider_distribution_selection"]["decision"]["target_id"],
+        json!("provider-a")
+    );
 }
 
 #[tokio::test]

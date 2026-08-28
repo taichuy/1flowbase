@@ -1,7 +1,5 @@
 use super::*;
 
-const LLM_ROUTING_COUNTER_TTL: time::Duration = time::Duration::hours(1);
-
 pub(super) async fn llm_request_runtimes<I>(
     node: &CompiledNode,
     runtime: &CompiledLlmRuntime,
@@ -32,6 +30,8 @@ pub(crate) struct ResolvedLlmRequestRuntime {
     pub(crate) runtime: CompiledLlmRuntime,
     pub(crate) route: Result<ResolvedProviderRoute>,
     pub(crate) generate_projection_receipt: Option<ProviderGenerateTranslationReceipt>,
+    pub(crate) distribution_selection_receipt:
+        Option<extension_contracts::ProviderDistributionSelectionReceipt>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,19 +149,23 @@ where
                 &projection_causes,
             ));
         }
-        let target_index = llm_target_index(
+        let selection = llm_target_selection(
             main_routing.distribution_rule,
             main_routing.distribution_key.as_deref(),
-            compatible.len(),
+            &compatible
+                .iter()
+                .map(|(candidate, _)| candidate.runtime.provider_instance_id.clone())
+                .collect::<Vec<_>>(),
             attempt_index,
             runtime_context,
         )
         .await?;
-        let (selected, preflight) = compatible.swap_remove(target_index);
+        let (selected, preflight) = compatible.swap_remove(selection.target_index);
         return Ok(ResolvedLlmRequestRuntime {
             runtime: selected.runtime,
             route: Ok(selected.route),
             generate_projection_receipt: preflight.map(|preflight| preflight.receipt),
+            distribution_selection_receipt: Some(selection.receipt),
         });
     }
 
@@ -182,6 +186,7 @@ where
                         runtime: candidate,
                         route: Ok(route),
                         generate_projection_receipt: preflight.map(|preflight| preflight.receipt),
+                        distribution_selection_receipt: None,
                     }),
                     Err(cause) => {
                         missing.extend(cause.missing_capabilities());
@@ -199,6 +204,7 @@ where
                 runtime: candidate,
                 route: Err(error),
                 generate_projection_receipt: None,
+                distribution_selection_receipt: None,
             }),
         }
     }
@@ -211,7 +217,7 @@ where
         ));
     }
 
-    let target_index = llm_target_index(
+    let selection = llm_target_selection(
         runtime
             .routing
             .as_ref()
@@ -221,12 +227,17 @@ where
             .routing
             .as_ref()
             .and_then(|routing| routing.distribution_key.as_deref()),
-        compatible.len(),
+        &compatible
+            .iter()
+            .map(|candidate| candidate.runtime.provider_instance_id.clone())
+            .collect::<Vec<_>>(),
         attempt_index,
         runtime_context,
     )
     .await?;
-    Ok(compatible.swap_remove(target_index))
+    let mut selected = compatible.swap_remove(selection.target_index);
+    selected.distribution_selection_receipt = Some(selection.receipt);
+    Ok(selected)
 }
 
 pub(crate) fn preflight_llm_route_candidate(
@@ -323,31 +334,21 @@ fn llm_route_candidate_runtimes(runtime: &CompiledLlmRuntime) -> Vec<CompiledLlm
         .collect()
 }
 
-async fn llm_target_index(
+async fn llm_target_selection(
     distribution_rule: crate::compiled_plan::LlmDistributionRule,
     distribution_key: Option<&str>,
-    target_count: usize,
+    target_ids: &[String],
     attempt_index: usize,
     runtime_context: &ExecutionRuntimeContext,
-) -> Result<usize> {
-    Ok(match distribution_rule {
-        crate::compiled_plan::LlmDistributionRule::RoundRobin if target_count > 1 => {
-            let distribution_key = distribution_key
-                .filter(|value| !value.is_empty())
-                .ok_or_else(|| anyhow!("round_robin llm routing is missing distribution_key"))?;
-            let counter = runtime_context
-                .next_llm_routing_counter(distribution_key, Some(LLM_ROUTING_COUNTER_TTL))
-                .await?;
-            (counter - 1).rem_euclid(target_count as i64) as usize
-        }
-        crate::compiled_plan::LlmDistributionRule::RetryRoundRobin
-        | crate::compiled_plan::LlmDistributionRule::None
-            if target_count > 1 =>
-        {
-            attempt_index % target_count
-        }
-        _ => 0,
-    })
+) -> Result<super::provider_routing::ProviderDistributionSelection> {
+    super::provider_routing::select_builtin_provider_target(
+        distribution_rule,
+        distribution_key,
+        target_ids,
+        attempt_index,
+        runtime_context,
+    )
+    .await
 }
 
 fn missing_routing_capabilities(
@@ -491,6 +492,21 @@ pub(crate) fn attach_generate_projection_receipt(
         "provider_generate_projection".to_string(),
         receipt
             .map(bounded_generate_projection_receipt)
+            .unwrap_or(Value::Null),
+    );
+}
+
+pub(super) fn attach_distribution_selection_receipt(
+    attempt: &mut Value,
+    receipt: Option<&extension_contracts::ProviderDistributionSelectionReceipt>,
+) {
+    let Some(attempt) = attempt.as_object_mut() else {
+        return;
+    };
+    attempt.insert(
+        "provider_distribution_selection".to_string(),
+        receipt
+            .and_then(|receipt| serde_json::to_value(receipt).ok())
             .unwrap_or(Value::Null),
     );
 }
