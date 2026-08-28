@@ -207,20 +207,27 @@ pub async fn invoke_providers_view(
     ),
     crate::error_response::ApiError,
 > {
-    let snapshot = state
-        .extension_boot_snapshot
-        .as_ref()
-        .and_then(|snapshot| snapshot.interface_registry())
+    let boot_snapshot = state.extension_boot_snapshot.as_ref().ok_or(
+        control_plane::errors::ControlPlaneError::NotFound("interface_operation"),
+    )?;
+    let snapshot = boot_snapshot
+        .interface_registry()
         .map(|registry| registry.snapshot())
         .ok_or(control_plane::errors::ControlPlaneError::NotFound(
             "interface_operation",
         ))?;
+    let hook_plan = boot_snapshot.providers_view_hook_plan().ok_or(
+        control_plane::errors::ControlPlaneError::NotFound("interface_hook_plan"),
+    )?;
     let kernel = invocation_kernel(
         Arc::clone(&state.console_policy_reader),
         Arc::clone(&state.console_operation_registry),
     );
     match kernel
-        .invoke::<HostInfrastructureProvidersViewInput, HostInfrastructureProvidersViewOutput>(
+        .invoke_with_hook_plan::<
+            HostInfrastructureProvidersViewInput,
+            HostInfrastructureProvidersViewOutput,
+        >(
             snapshot,
             InvocationEnvelope::new(
                 InvocationLineage::root(InvocationId::now_v7()),
@@ -231,6 +238,7 @@ pub async fn invoke_providers_view(
                 None,
                 HostInfrastructureProvidersViewInput::new(),
             ),
+            hook_plan,
         )
         .await
     {
@@ -260,8 +268,12 @@ fn invocation_failure_api_error(
         InterfaceInvocationError::UnknownInterface => {
             control_plane::errors::ControlPlaneError::NotFound("interface_operation").into()
         }
-        InterfaceInvocationError::ContractMismatch => {
+        InterfaceInvocationError::ContractMismatch
+        | InterfaceInvocationError::HookPlanFingerprintMismatch => {
             control_plane::errors::ControlPlaneError::Conflict("interface_contract").into()
+        }
+        InterfaceInvocationError::BeforeHookRejected(error) => {
+            anyhow::anyhow!(error.to_string()).into()
         }
         InterfaceInvocationError::AdmissionRejected(error) => {
             anyhow::anyhow!(error.to_string()).into()

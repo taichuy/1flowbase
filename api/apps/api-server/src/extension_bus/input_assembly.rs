@@ -41,6 +41,11 @@ pub const MODEL_PROVIDER_EXTENSION_POINT_ID: &str = "1flowbase.runtime.model-pro
 pub const MODEL_PROVIDER_CONTRACT_ID: &str = "model-provider";
 pub const MODEL_PROVIDER_CONTRACT_VERSION: &str =
     plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
+pub const INTERFACE_COMPLETION_HOOK_POINT_ID: &str = "1flowbase.interface.completion";
+pub const INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID: &str =
+    "1flowbase.boot-core.interface.completion.observer";
+pub const INTERFACE_LIFECYCLE_HOOK_CONTRACT_ID: &str = "interface-lifecycle-hook";
+pub const INTERFACE_LIFECYCLE_HOOK_CONTRACT_VERSION: &str = "1";
 pub use control_plane::ports::{
     RUNTIME_EVENT_AFTER_COMMIT_CONTRACT_ID, RUNTIME_EVENT_AFTER_COMMIT_POINT_ID,
     RUNTIME_EVENT_DIAGNOSTIC_CONTRACT_ID, RUNTIME_EVENT_DIAGNOSTIC_POINT_ID,
@@ -234,9 +239,40 @@ fn boot_core_descriptor() -> Result<ModuleDescriptor> {
             runtime_event_diagnostic_extension_point()?,
             runtime_event_after_commit_extension_point()?,
             interface_operation_extension_point()?,
+            interface_completion_hook_extension_point()?,
             frontend_block_contribution_extension_point()?,
         ],
-        contributions: Vec::new(),
+        contributions: vec![ContributionDescriptor {
+            contribution_id: ContributionId::new(INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID)?,
+            contributor_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
+            point_id: ExtensionPointId::new(INTERFACE_COMPLETION_HOOK_POINT_ID)?,
+            contract_version: plugin_framework::extension_bus::ContractVersion::new(
+                INTERFACE_LIFECYCLE_HOOK_CONTRACT_VERSION,
+            )?,
+            required_permissions: BTreeSet::new(),
+            mode: ContributionMode::Append,
+            ordering: ContributionOrdering::default(),
+        }],
+    })
+}
+
+fn interface_completion_hook_extension_point() -> Result<ExtensionPointDescriptor> {
+    Ok(ExtensionPointDescriptor {
+        point_id: ExtensionPointId::new(INTERFACE_COMPLETION_HOOK_POINT_ID)?,
+        owner_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
+        point_kind: ExtensionPointKind::Pipeline,
+        contract: ContractDescriptor::new(
+            INTERFACE_LIFECYCLE_HOOK_CONTRACT_ID,
+            INTERFACE_LIFECYCLE_HOOK_CONTRACT_VERSION,
+        )?,
+        scope: ScopeSemantics::System,
+        cardinality: Cardinality::OneOrMore,
+        ordering: OrderingSemantics::Dependency,
+        failure: FailureSemantics::BestEffort,
+        delivery: DeliverySemantics::Synchronous,
+        lifecycle: LifecycleSemantics::Invocation,
+        allowed_permissions: BTreeSet::new(),
+        override_policy: OverridePolicy::Sealed,
     })
 }
 

@@ -1,5 +1,17 @@
 use super::*;
 
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ModelDefinitionCommittedFact {
+    pub model_definition_id: Uuid,
+    pub scope_kind: DataModelScopeKind,
+    pub scope_id: Uuid,
+}
+
+impl extension_contracts::LifecycleContract for ModelDefinitionCommittedFact {
+    const CONTRACT_ID: &'static str = "model_definition.committed";
+    const CONTRACT_VERSION: &'static str = "v1";
+}
+
 #[derive(Debug, Clone)]
 pub struct CreateModelDefinitionInput {
     pub actor_user_id: Uuid,

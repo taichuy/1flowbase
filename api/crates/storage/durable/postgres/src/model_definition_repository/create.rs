@@ -1,10 +1,16 @@
 use anyhow::{anyhow, Result};
 use control_plane_contracts::{
-    ports::CreateModelDefinitionInput, ControlPlaneContractError as ControlPlaneError,
+    ports::{CreateModelDefinitionInput, ModelDefinitionCommittedFact, RecordLifecycleFactInput},
+    ControlPlaneContractError as ControlPlaneError,
 };
+use extension_contracts::{
+    AfterCommitFact, LifecycleContract, LifecycleFactId, LifecycleTransactionId,
+};
+use time::OffsetDateTime;
 use uuid::Uuid;
 
 use crate::{
+    lifecycle_outbox_repository::record_lifecycle_fact_in_transaction,
     physical_schema_repository::create_runtime_model_table, repositories::PgControlPlaneStore,
 };
 
@@ -125,6 +131,27 @@ pub(super) async fn create_model_definition(
         }
         let after_snapshot = serde_json::to_value(&model)?;
         let mut tx = store.pool().begin().await?;
+        let transaction_id = Uuid::now_v7();
+        let event_id = Uuid::now_v7();
+        let occurred_at = OffsetDateTime::now_utc();
+        let fact = AfterCommitFact::new(
+            LifecycleFactId::new(event_id.to_string())?,
+            LifecycleTransactionId::new(transaction_id.to_string())?,
+            occurred_at.unix_timestamp_nanos() as i64 / 1_000_000,
+            ModelDefinitionCommittedFact {
+                model_definition_id: model.id,
+                scope_kind: model.scope_kind,
+                scope_id: model.scope_id,
+            },
+        );
+        let fact_input = RecordLifecycleFactInput {
+            event_id,
+            transaction_id,
+            contract_id: ModelDefinitionCommittedFact::CONTRACT_ID.to_string(),
+            contract_version: ModelDefinitionCommittedFact::CONTRACT_VERSION.to_string(),
+            canonical_payload: serde_json::to_vec(&fact)?,
+            occurred_at,
+        };
 
         let transactional_result = async {
             insert_model_definition(
@@ -162,7 +189,9 @@ pub(super) async fn create_model_definition(
                     error_message: None,
                 },
             )
-            .await
+            .await?;
+            record_lifecycle_fact_in_transaction(&mut tx, &fact_input).await?;
+            Ok::<(), anyhow::Error>(())
         }
         .await;
 

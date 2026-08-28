@@ -1,12 +1,41 @@
-use std::sync::Arc;
+use std::{num::NonZeroU64, sync::Arc};
 
 use control_plane::host_infrastructure_config::HostInfrastructureConfigService;
 use plugin_framework::extension_bus::{
-    ContributionResolutionReceipt, EffectiveExtensionGraph, EffectiveExtensionPoint, ModuleId,
+    compile_hook_plans, ContractDescriptor, ContributionId, ContributionResolutionReceipt,
+    EffectiveExtensionGraph, EffectiveExtensionPoint, HookHandlerBinding, HookHandlerContract,
+    HookMutationCapability, HookPhase, HookPointBinding, HookPointContract, ModuleId,
     ModuleResolutionReceipt, Provenance,
 };
 use serde::Serialize;
 use storage_durable_postgres::MainDurableStore;
+
+use super::{INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID, INTERFACE_COMPLETION_HOOK_POINT_ID};
+use crate::routes::host_infrastructure::interface_operation::{
+    HostInfrastructureProvidersViewInput, HostInfrastructureProvidersViewOutput,
+};
+
+const INTERFACE_COMPLETION_CONTEXT_CONTRACT_ID: &str = "interface-invocation-completion";
+const INTERFACE_COMPLETION_CONTEXT_CONTRACT_VERSION: &str = "1";
+
+struct ProvidersViewCompletionObserver;
+
+impl interface_runtime::InterfaceCompletionHook for ProvidersViewCompletionObserver {
+    fn completed(
+        &self,
+        context: interface_runtime::InterfaceHookContext,
+        terminal: interface_runtime::InterfaceInvocationTerminal,
+    ) -> interface_runtime::InterfaceCompletionHookFuture<'_> {
+        Box::pin(async move {
+            tracing::debug!(
+                invocation_id = %context.invocation_id().value(),
+                graph_fingerprint = context.graph_fingerprint().as_str(),
+                ?terminal,
+                "interface invocation completed"
+            );
+        })
+    }
+}
 
 pub(crate) struct DurableHostInfrastructureProvidersViewQuery {
     store: MainDurableStore,
@@ -38,10 +67,31 @@ impl crate::routes::host_infrastructure::interface_operation::HostInfrastructure
 
 pub const EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1: &str = "1flowbase.effective-extension-plan/v1";
 
-#[derive(Debug)]
 pub struct ExtensionBootSnapshot {
     graph: Arc<EffectiveExtensionGraph>,
     interface_registry: Option<Arc<interface_runtime::DynamicInterfaceRegistry>>,
+    providers_view_hook_plan: Option<
+        Arc<
+            interface_runtime::TypedInterfaceHookPlan<
+                HostInfrastructureProvidersViewInput,
+                HostInfrastructureProvidersViewOutput,
+            >,
+        >,
+    >,
+}
+
+impl std::fmt::Debug for ExtensionBootSnapshot {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ExtensionBootSnapshot")
+            .field("graph_fingerprint", &self.graph.fingerprint().as_str())
+            .field("has_interface_registry", &self.interface_registry.is_some())
+            .field(
+                "has_providers_view_hook_plan",
+                &self.providers_view_hook_plan.is_some(),
+            )
+            .finish()
+    }
 }
 
 impl ExtensionBootSnapshot {
@@ -50,6 +100,7 @@ impl ExtensionBootSnapshot {
         Self {
             graph,
             interface_registry: None,
+            providers_view_hook_plan: None,
         }
     }
 
@@ -69,9 +120,46 @@ impl ExtensionBootSnapshot {
         let interface_registry = Arc::new(interface_runtime::DynamicInterfaceRegistry::new(
             interface_snapshot,
         ));
+        let hook_contract = HookPointContract {
+            context: ContractDescriptor::new(
+                INTERFACE_COMPLETION_CONTEXT_CONTRACT_ID,
+                INTERFACE_COMPLETION_CONTEXT_CONTRACT_VERSION,
+            )?,
+            decision: None,
+            phase: HookPhase::Completion,
+            timeout_ms: NonZeroU64::new(1_000).expect("hook timeout is non-zero"),
+            mutation: HookMutationCapability::ObserveOnly,
+        };
+        let effective_plans = compile_hook_plans(
+            &graph,
+            vec![HookPointBinding::new(
+                plugin_framework::extension_bus::ExtensionPointId::new(
+                    INTERFACE_COMPLETION_HOOK_POINT_ID,
+                )?,
+                hook_contract.clone(),
+            )],
+            vec![HookHandlerBinding::new(
+                ContributionId::new(INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID)?,
+                HookHandlerContract {
+                    context: hook_contract.context,
+                    decision: None,
+                    phase: HookPhase::Completion,
+                },
+            )],
+        )?;
+        if effective_plans.len() != 1 {
+            anyhow::bail!("providers view completion hook plan is not unique");
+        }
+        let providers_view_hook_plan = Arc::new(
+            interface_runtime::TypedInterfaceHookPlan::new(
+                interface_runtime::GraphFingerprint::new(graph.fingerprint().as_str())?,
+            )
+            .bind_completion(Arc::new(ProvidersViewCompletionObserver)),
+        );
         Ok(Self {
             graph,
             interface_registry: Some(interface_registry),
+            providers_view_hook_plan: Some(providers_view_hook_plan),
         })
     }
 
@@ -103,6 +191,19 @@ impl ExtensionBootSnapshot {
 
     pub fn interface_registry(&self) -> Option<&Arc<interface_runtime::DynamicInterfaceRegistry>> {
         self.interface_registry.as_ref()
+    }
+
+    pub(crate) fn providers_view_hook_plan(
+        &self,
+    ) -> Option<
+        &Arc<
+            interface_runtime::TypedInterfaceHookPlan<
+                HostInfrastructureProvidersViewInput,
+                HostInfrastructureProvidersViewOutput,
+            >,
+        >,
+    > {
+        self.providers_view_hook_plan.as_ref()
     }
 
     pub fn effective_plan(&self) -> EffectiveExtensionPlan<'_> {

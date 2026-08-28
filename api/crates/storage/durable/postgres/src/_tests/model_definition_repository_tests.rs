@@ -193,6 +193,13 @@ async fn ac_001_model_definition_repository_defaults_physical_table_name_to_code
     assert_eq!(persisted.template_provider, created.template_provider);
     assert_eq!(persisted.template_code, created.template_code);
     assert_eq!(persisted.template_version, created.template_version);
+    let committed_fact_count: i64 = sqlx::query_scalar(
+        "select count(*) from lifecycle_outbox where contract_id = 'model_definition.committed' and status = 'pending'",
+    )
+    .fetch_one(store.pool())
+    .await
+    .unwrap();
+    assert_eq!(committed_fact_count, 1);
     let updated = ModelDefinitionRepository::update_model_definition(
         &store,
         &UpdateModelDefinitionInput {
