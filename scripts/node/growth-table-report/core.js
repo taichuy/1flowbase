@@ -11,12 +11,13 @@ const DEFAULT_CONFIG_FILE = path.join('scripts', 'node', 'growth-table-report', 
 const DEFAULT_MIGRATIONS_DIR = path.join(
   'api',
   'crates',
-  'storage-durable',
+  'storage',
+  'durable',
   'postgres',
   'migrations'
 );
 const DEFAULT_SOURCE_SEARCH_DIRS = [
-  path.join('api', 'crates', 'storage-durable', 'postgres', 'src'),
+  path.join('api', 'crates', 'storage', 'durable', 'postgres', 'src'),
   path.join('api', 'crates', 'control-plane', 'src'),
   path.join('api', 'crates', 'orchestration-runtime', 'src'),
   path.join('api', 'crates', 'runtime-core', 'src'),

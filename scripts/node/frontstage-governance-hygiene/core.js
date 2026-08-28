@@ -8,7 +8,8 @@ const DEFAULT_MAX_FINDINGS = 200;
 const DEFAULT_MIGRATIONS_DIR = path.join(
   'api',
   'crates',
-  'storage-durable',
+  'storage',
+  'durable',
   'postgres',
   'migrations'
 );
@@ -31,7 +32,8 @@ const FRONTSTAGE_BLOCK_TREE_SERVICE_FILE = path.join(
 const FRONTSTAGE_REPOSITORY_FILE = path.join(
   'api',
   'crates',
-  'storage-durable',
+  'storage',
+  'durable',
   'postgres',
   'src',
   'frontstage_repository.rs'

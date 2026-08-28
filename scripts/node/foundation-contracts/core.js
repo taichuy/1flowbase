@@ -63,7 +63,7 @@ const FOUNDATION_DEFINITIONS = {
     risk: 'data model definition, physical schema, runtime API, scope/ACL, and metadata preservation drift',
     matches(filePath) {
       return /^api\/crates\/control-plane\/src\/(?:model_definition|_tests\/model_definition)/u.test(filePath)
-        || /^api\/crates\/storage-durable\/postgres\/(?:migrations\/.*model_definition|src\/(?:model_definition_repository|mappers\/model_definition_mapper)|src\/_tests\/model_definition)/u.test(filePath)
+        || /^api\/crates\/storage\/durable\/postgres\/(?:migrations\/.*model_definition|src\/(?:model_definition_repository|mappers\/model_definition_mapper)|src\/_tests\/model_definition)/u.test(filePath)
         || /^api\/apps\/api-server\/src\/(?:_tests\/application\/model_definition_routes|routes\/plugins_and_models\/(?:model_definitions|runtime_models|data_sources)|openapi(?:_interface)?\/)/u.test(filePath)
         || /^api\/crates\/runtime-core\/src\/(?:runtime_model_registry|runtime_record_repository|runtime_acl|model_metadata|_tests\/(?:runtime_model_registry_tests|runtime_acl_tests))\.rs$/u.test(filePath);
     },

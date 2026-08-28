@@ -11,13 +11,14 @@ const DEFAULT_CONFIG_FILE = path.join('scripts', 'node', 'raw-jsonb-report', 'co
 const DEFAULT_MIGRATIONS_DIR = path.join(
   'api',
   'crates',
-  'storage-durable',
+  'storage',
+  'durable',
   'postgres',
   'migrations'
 );
 const DEFAULT_SOURCE_SEARCH_DIRS = [
   path.join('api', 'apps', 'api-server', 'src'),
-  path.join('api', 'crates', 'storage-durable', 'postgres', 'src'),
+  path.join('api', 'crates', 'storage', 'durable', 'postgres', 'src'),
   path.join('api', 'crates', 'control-plane', 'src'),
   path.join('api', 'crates', 'orchestration-runtime', 'src'),
 ];

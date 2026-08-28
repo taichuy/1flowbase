@@ -28,7 +28,8 @@ const DEFAULT_CONFIG_FILE = path.join('scripts', 'node', 'capacity-report', 'con
 const DEFAULT_MIGRATIONS_DIR = path.join(
   'api',
   'crates',
-  'storage-durable',
+  'storage',
+  'durable',
   'postgres',
   'migrations'
 );

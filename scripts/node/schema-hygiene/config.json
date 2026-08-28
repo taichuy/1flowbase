@@ -626,6 +626,46 @@
     "forbidden": ["misc", "legacy", "todo", "n/a", "none"]
   },
   "exemptions": {
+    "lifecycle_outbox": {
+      "kind": "delivery_outbox",
+      "reason": "lifecycle events use event_id as identity and mutate explicit delivery state while remaining globally bounded by pending and transaction indexes",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "plugin_data_idempotency_receipts": {
+      "kind": "bounded_idempotency_receipt",
+      "reason": "plugin data requests use the owner workspace provider and idempotency key composite identity and retain immutable request and response receipts",
+      "skip": [
+        "managed-table-id",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "plugin_schema_ownership": {
+      "kind": "system_schema_ownership_catalog",
+      "reason": "managed schema ownership uses ownership_key as the global object identity and owner indexes bound all catalog queries",
+      "skip": [
+        "managed-table-id",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
+    "plugin_schema_reconcile_receipts": {
+      "kind": "bounded_reconcile_receipt",
+      "reason": "schema reconcile receipts use receipt_id and owner fingerprint identity with applied_at as their immutable completion timestamp",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
     "credit_event_outbox": {
       "kind": "delivery_outbox",
       "reason": "outbox rows are identified by event_id, routed by workspace_id, and mutate only delivery lifecycle columns (locked_by, locked_until, published_at, last_error) instead of a generic updated_at",

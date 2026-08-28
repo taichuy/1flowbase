@@ -180,7 +180,8 @@ test('AC-001 repairs the known local migration checksum drift without rebuilding
     tempRepoRoot,
     'api',
     'crates',
-    'storage-durable',
+    'storage',
+    'durable',
     'postgres',
     'migrations'
   );
@@ -289,7 +290,8 @@ test('AC-002 refuses the known repair when the database checksum does not match'
     tempRepoRoot,
     'api',
     'crates',
-    'storage-durable',
+    'storage',
+    'durable',
     'postgres',
     'migrations'
   );

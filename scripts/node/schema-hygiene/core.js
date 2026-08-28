@@ -16,7 +16,8 @@ const DEFAULT_MAX_FINDINGS = 400;
 const DEFAULT_MIGRATIONS_DIR = path.join(
   'api',
   'crates',
-  'storage-durable',
+  'storage',
+  'durable',
   'postgres',
   'migrations'
 );

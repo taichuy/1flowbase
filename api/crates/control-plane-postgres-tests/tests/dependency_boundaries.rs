@@ -113,7 +113,12 @@ fn collect_production_rs_files(directory: &Path, files: &mut Vec<std::path::Path
                 continue;
             }
             collect_production_rs_files(&path, files);
-        } else if path.extension().is_some_and(|extension| extension == "rs") {
+        } else if path.extension().is_some_and(|extension| extension == "rs")
+            && !matches!(
+                path.file_name().and_then(|name| name.to_str()),
+                Some("tests.rs" | "_tests.rs")
+            )
+        {
             files.push(path);
         }
     }
