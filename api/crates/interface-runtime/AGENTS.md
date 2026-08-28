@@ -6,14 +6,15 @@
 # Invariants
 
 - Adapter 完成 credential 解析后才能传入 `ActorContext`；本 crate 不读取 Cookie、Header、Session、API Key 或 MCP credential。
-- 调用顺序固定为 Resolve → Authorize → optional typed target admission → Invoke → Complete / Fail。
+- 调用顺序固定为 Resolve → Authorize → optional typed target admission → typed Before → Invoke → typed After / Failure → Completion。
 - 每次调用固定一个 Registry snapshot、Registry fingerprint 和 Effective Graph fingerprint。
 - Definition、Handler、Target、Authorization 使用 typed identity/port；不暴露 Axum Handler、Host Registry、本机路径、数据库连接、SQL 或无限制 JSON invocation。
 - public API 只从 `lib.rs` 显式 re-export；内部模块保持私有。
 
 # Evolution Boundary
 
-- I-02 可复用 typed target-admission seam，但不得在此实现通用 Hook executor、多 Handler Decision aggregation 或 contribution lifecycle。
+- #1917 只允许执行由 Composition Root 从 Effective Graph 投影的 typed、fingerprint-frozen Hook Plan；本 crate 不编译 Graph，也不拥有领域 Decision aggregation。
+- AfterCommit 由真实 transaction owner 写 durable outbox；本 crate 只表达 Invocation terminal，不推测 commit。
 - 新协议、Runtime topology、Storage adapter 与插件加载属于外层 owner，不得加入本 crate。
 
 # Evidence And Stop

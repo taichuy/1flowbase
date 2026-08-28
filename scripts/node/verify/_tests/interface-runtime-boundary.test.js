@@ -74,18 +74,28 @@ test('Delivery 1912 exposes only the approved typed interface facade', () => {
     'GraphFingerprint',
     'HandlerReference',
     'IdentityError',
+    'InterfaceAfterHook',
+    'InterfaceAfterHookFuture',
     'InterfaceAuditPolicy',
     'InterfaceAuthenticationPolicy',
     'InterfaceAuthorizationError',
     'InterfaceAuthorizationFuture',
     'InterfaceAuthorizationPort',
     'InterfaceAuthorizationRequest',
+    'InterfaceBeforeHook',
+    'InterfaceBeforeHookError',
+    'InterfaceBeforeHookFuture',
+    'InterfaceCompletionHook',
+    'InterfaceCompletionHookFuture',
     'InterfaceContract',
     'InterfaceDefinition',
     'InterfaceErrorPolicy',
     'InterfaceHandler',
     'InterfaceHandlerContext',
     'InterfaceHandlerFuture',
+    'InterfaceFailureHook',
+    'InterfaceFailureHookFuture',
+    'InterfaceHookContext',
     'InterfaceId',
     'InterfaceInvocationError',
     'InterfaceInvocationFailure',
@@ -114,14 +124,43 @@ test('Delivery 1912 exposes only the approved typed interface facade', () => {
     'RegistryFingerprint',
     'RouteIdentity',
     'TargetReference',
+    'TypedInterfaceHookPlan',
   ].sort();
 
-  assert.deepEqual(declaredModules, ['identity', 'invocation', 'registry', '_tests']);
+  assert.deepEqual(declaredModules, ['hook', 'identity', 'invocation', 'registry', '_tests']);
   assert.deepEqual(publicModules, []);
   assert.deepEqual(publicSymbols, approvedSymbols);
   assert.doesNotMatch(facade, /serde_json|axum|sqlx|RegistryHandle|HttpHandler/u);
   assert.match(facade, /pub use invocation::\{/u);
+  assert.match(facade, /pub use hook::\{/u);
   assert.match(facade, /pub use registry::\{/u);
+});
+
+test('Delivery 1917 binds one graph-frozen hook plan and commits facts through durable outbox', () => {
+  const boot = read('api/apps/api-server/src/extension_bus/boot_snapshot.rs');
+  const operation = read(
+    'api/apps/api-server/src/routes/settings/host_infrastructure/interface_operation.rs',
+  );
+  const transaction = read(
+    'api/crates/storage/durable/postgres/src/model_definition_repository/create.rs',
+  );
+  const migration = read(
+    'api/crates/storage/durable/postgres/migrations/20260828100000_create_lifecycle_outbox.sql',
+  );
+  const runtimeCargo = read('api/crates/interface-runtime/Cargo.toml');
+
+  assert.match(boot, /compile_hook_plans/u);
+  assert.match(boot, /TypedInterfaceHookPlan::new/u);
+  assert.match(operation, /invoke_with_hook_plan/u);
+  assert.match(transaction, /record_lifecycle_fact_in_transaction\(&mut tx/u);
+  assert.match(transaction, /tx\.commit\(\)\.await/u);
+  assert.ok(
+    transaction.indexOf('record_lifecycle_fact_in_transaction(&mut tx') <
+      transaction.indexOf('tx.commit().await'),
+  );
+  assert.match(migration, /create table if not exists lifecycle_outbox/u);
+  assert.doesNotMatch(migration, /\b(?:drop|alter)\s+(?:table|column)\b/iu);
+  assert.doesNotMatch(runtimeCargo, /plugin-framework|extension-contracts|storage-durable/u);
 });
 
 test('Delivery 1912 production slice consumes one compiled registry for HTTP and MCP', () => {
