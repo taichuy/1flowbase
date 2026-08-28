@@ -293,10 +293,12 @@ fn map_llm_distribution_rule(
         }
         domain::ModelProviderDistributionRule::Dynamic {
             rule_id,
+            rule_version,
             contract_version,
             config,
         } => orchestration_runtime::compiled_plan::LlmDistributionRule::Dynamic {
             rule_id,
+            rule_version,
             contract_version,
             config: config
                 .into_iter()

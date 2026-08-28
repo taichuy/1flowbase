@@ -397,6 +397,7 @@ async fn drs_008_013_session_retry_executes_through_real_host_and_plugin_data() 
         attempt: 0,
         rule_id: "@taichuy/session_retry".into(),
         rule_version: "1.0.0".into(),
+        contract_version: extension_contracts::PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1.into(),
         registry_fingerprint: "fixture-registry".into(),
         config: BTreeMap::new(),
         candidates: vec!["provider-a", "provider-b"]

@@ -438,6 +438,7 @@ pub enum ModelProviderDistributionRule {
     RetryRoundRobin,
     Dynamic {
         rule_id: String,
+        rule_version: String,
         contract_version: String,
         config: std::collections::BTreeMap<String, ModelProviderDistributionConfigValue>,
     },
@@ -467,6 +468,13 @@ impl ModelProviderDistributionRule {
             Self::Dynamic {
                 contract_version, ..
             } => contract_version,
+            _ => "1",
+        }
+    }
+
+    pub fn rule_version(&self) -> &str {
+        match self {
+            Self::Dynamic { rule_version, .. } => rule_version,
             _ => "1",
         }
     }

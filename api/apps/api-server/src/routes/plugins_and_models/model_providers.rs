@@ -129,6 +129,7 @@ fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
 
 fn parse_distribution_rule(
     raw: &str,
+    rule_version: Option<String>,
     contract_version: Option<String>,
     config: std::collections::BTreeMap<String, ModelProviderDistributionConfigValueBody>,
 ) -> Result<domain::ModelProviderDistributionRule, ApiError> {
@@ -143,6 +144,11 @@ fn parse_distribution_rule(
         _ if valid_distribution_rule_id(raw) => {
             Ok(domain::ModelProviderDistributionRule::Dynamic {
                 rule_id: raw.to_string(),
+                rule_version: rule_version
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "distribution_rule_version",
+                    ))?,
                 contract_version: contract_version
                     .filter(|value| !value.trim().is_empty())
                     .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
@@ -666,11 +672,13 @@ fn to_main_model_routing_policy_response(
 
 fn to_main_model_routing_policy(
     policy: ModelProviderMainModelRoutingPolicyBody,
+    rule_version: Option<String>,
 ) -> Result<domain::ModelProviderMainModelRoutingPolicy, ApiError> {
     Ok(domain::ModelProviderMainModelRoutingPolicy {
         model_id: policy.model_id,
         distribution_rule: parse_distribution_rule(
             &policy.distribution_rule,
+            rule_version,
             policy.distribution_rule_contract_version,
             policy.distribution_rule_config,
         )?,
@@ -1391,28 +1399,38 @@ pub async fn update_main_instance(
     let model_routing_policies = if let Some(policies) = body.model_routing_policies {
         let mut compiled = Vec::with_capacity(policies.len());
         for policy in policies {
-            let policy = to_main_model_routing_policy(policy)?;
-            if let domain::ModelProviderDistributionRule::Dynamic {
-                rule_id,
-                contract_version,
-                config,
-            } = &policy.distribution_rule
-            {
-                let config = config
+            let rule_version = if !matches!(
+                policy.distribution_rule.as_str(),
+                "none"
+                    | "builtin.none"
+                    | "round_robin"
+                    | "builtin.round_robin"
+                    | "retry_round_robin"
+                    | "builtin.retry_round_robin"
+            ) {
+                let contract_version = policy
+                    .distribution_rule_contract_version
+                    .as_deref()
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "distribution_rule_contract_version",
+                    ))?;
+                let config = policy
+                    .distribution_rule_config
                     .iter()
                     .map(|(key, value)| {
                         let value = match value {
-                            domain::ModelProviderDistributionConfigValue::String(value) => {
+                            ModelProviderDistributionConfigValueBody::String(value) => {
                                 extension_contracts::ProviderDistributionConfigValue::String(
                                     value.clone(),
                                 )
                             }
-                            domain::ModelProviderDistributionConfigValue::Integer(value) => {
+                            ModelProviderDistributionConfigValueBody::Integer(value) => {
                                 extension_contracts::ProviderDistributionConfigValue::Integer(
                                     *value,
                                 )
                             }
-                            domain::ModelProviderDistributionConfigValue::Boolean(value) => {
+                            ModelProviderDistributionConfigValueBody::Boolean(value) => {
                                 extension_contracts::ProviderDistributionConfigValue::Boolean(
                                     *value,
                                 )
@@ -1423,12 +1441,20 @@ pub async fn update_main_instance(
                     .collect();
                 state
                     .provider_runtime
-                    .validate_provider_distribution_rule(rule_id, contract_version, &config)
+                    .validate_provider_distribution_rule(
+                        &policy.distribution_rule,
+                        contract_version,
+                        &config,
+                    )
                     .await
                     .map_err(|_| {
                         control_plane::errors::ControlPlaneError::InvalidInput("distribution_rule")
-                    })?;
-            }
+                    })?
+                    .into()
+            } else {
+                None
+            };
+            let policy = to_main_model_routing_policy(policy, rule_version)?;
             compiled.push(policy);
         }
         Some(compiled)

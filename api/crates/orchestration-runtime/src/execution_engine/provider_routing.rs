@@ -60,6 +60,7 @@ where
         crate::compiled_plan::LlmDistributionRule::RoundRobin => 0,
         crate::compiled_plan::LlmDistributionRule::Dynamic {
             rule_id,
+            rule_version,
             contract_version,
             config,
         } => {
@@ -73,7 +74,8 @@ where
                 routing_policy_id: distribution_key.unwrap_or(rule_id).to_string(),
                 attempt: attempt_index as u32,
                 rule_id: rule_id.clone(),
-                rule_version: contract_version.clone(),
+                rule_version: rule_version.clone(),
+                contract_version: contract_version.clone(),
                 registry_fingerprint: registry_fingerprint.clone(),
                 config: config.clone(),
                 candidates: candidates.clone(),
@@ -117,6 +119,7 @@ where
                 .to_string(),
             rule_id: rule_id.to_string(),
             rule_version: BUILTIN_RULE_VERSION.to_string(),
+            contract_version: BUILTIN_RULE_VERSION.to_string(),
             registry_fingerprint,
             attempt: attempt_index as u32,
             decision: ProviderDistributionDecision::Select {

@@ -131,6 +131,7 @@ impl ProviderDistributionHost {
             invocation_id: invocation.invocation_id,
             rule_id: invocation.rule_id,
             rule_version: invocation.rule_version,
+            contract_version: invocation.contract_version,
             registry_fingerprint: invocation.registry_fingerprint,
             attempt: invocation.attempt,
             decision,

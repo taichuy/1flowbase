@@ -45,6 +45,7 @@ pub struct StoredModelProviderMainModelRoutingPolicyRow {
     pub provider_code: String,
     pub model_id: String,
     pub distribution_rule: String,
+    pub distribution_rule_version: String,
     pub distribution_rule_contract_version: String,
     pub distribution_rule_config: serde_json::Value,
     pub provider_instance_ids: Vec<Uuid>,
@@ -138,6 +139,7 @@ impl PgModelProviderMapper {
             model_id: row.model_id,
             distribution_rule: parse_distribution_rule(
                 &row.distribution_rule,
+                &row.distribution_rule_version,
                 &row.distribution_rule_contract_version,
                 row.distribution_rule_config,
             )?,
@@ -205,6 +207,7 @@ pub fn parse_instance_status(value: &str) -> Result<ModelProviderInstanceStatus>
 
 pub fn parse_distribution_rule(
     value: &str,
+    rule_version: &str,
     contract_version: &str,
     config: serde_json::Value,
 ) -> Result<ModelProviderDistributionRule> {
@@ -216,6 +219,7 @@ pub fn parse_distribution_rule(
         }
         _ => Ok(ModelProviderDistributionRule::Dynamic {
             rule_id: value.to_string(),
+            rule_version: rule_version.to_string(),
             contract_version: contract_version.to_string(),
             config: serde_json::from_value(config)
                 .map_err(|error| anyhow!("invalid provider distribution config: {error}"))?,

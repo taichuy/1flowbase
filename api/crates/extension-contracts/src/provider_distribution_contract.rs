@@ -67,6 +67,7 @@ pub struct ProviderDistributionInvocation {
     pub attempt: u32,
     pub rule_id: String,
     pub rule_version: String,
+    pub contract_version: String,
     pub registry_fingerprint: String,
     #[serde(default)]
     pub config: BTreeMap<String, ProviderDistributionConfigValue>,
@@ -86,6 +87,7 @@ pub struct ProviderDistributionSelectionReceipt {
     pub invocation_id: String,
     pub rule_id: String,
     pub rule_version: String,
+    pub contract_version: String,
     pub registry_fingerprint: String,
     pub attempt: u32,
     pub decision: ProviderDistributionDecision,
@@ -119,6 +121,8 @@ impl ProviderDistributionInvocation {
     pub fn validate(&self) -> Result<(), ProviderDistributionContractError> {
         if self.invocation_id.trim().is_empty()
             || self.routing_policy_id.trim().is_empty()
+            || self.rule_version.trim().is_empty()
+            || self.contract_version != PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1
             || self.registry_fingerprint.trim().is_empty()
             || self.candidates.is_empty()
             || self.candidates.len() > 64

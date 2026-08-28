@@ -274,7 +274,7 @@ impl ApiRuntimeServices {
             String,
             extension_contracts::ProviderDistributionConfigValue,
         >,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<String> {
         self.provider_distribution_snapshot
             .read()
             .await
@@ -557,13 +557,17 @@ impl ProviderRuntimePort for ApiProviderRuntime {
     async fn select_provider_distribution(
         &self,
         rule_id: &str,
-        mut invocation: extension_contracts::ProviderDistributionInvocation,
+        invocation: extension_contracts::ProviderDistributionInvocation,
         context: ProviderRuntimeExecutionContext,
     ) -> anyhow::Result<extension_contracts::ProviderDistributionSelectionReceipt> {
         let snapshot = self.services.provider_distribution_snapshot.read().await;
-        let (plugin_id, fingerprint) =
-            snapshot.resolve_runtime(rule_id, &invocation.rule_version, &invocation.config)?;
-        invocation.registry_fingerprint = fingerprint.to_string();
+        let plugin_id = snapshot.resolve_runtime(
+            rule_id,
+            &invocation.rule_version,
+            &invocation.contract_version,
+            &invocation.config,
+            &invocation.registry_fingerprint,
+        )?;
         let plugin_id = plugin_id.to_string();
         drop(snapshot);
         self.services

@@ -97,9 +97,14 @@ impl EffectiveProviderDistributionSnapshot {
     pub(super) fn resolve_runtime(
         &self,
         rule_id: &str,
+        rule_version: &str,
         contract_version: &str,
         config: &BTreeMap<String, ProviderDistributionConfigValue>,
-    ) -> Result<(&str, &str)> {
+        frozen_fingerprint: &str,
+    ) -> Result<&str> {
+        if self.registry.fingerprint() != frozen_fingerprint {
+            bail!("provider distribution registry fingerprint mismatch");
+        }
         let definition = self
             .registry
             .get(rule_id)
@@ -107,10 +112,13 @@ impl EffectiveProviderDistributionSnapshot {
         if definition.contract_version != contract_version {
             bail!("provider distribution contract version mismatch");
         }
+        if definition.rule_version != rule_version {
+            bail!("provider distribution rule version mismatch");
+        }
         self.registry.validate_config(rule_id, config)?;
         match &definition.handler {
             ProviderDistributionHandlerRef::RuntimeExtension { plugin_id, .. } => {
-                Ok((plugin_id.as_str(), self.registry.fingerprint()))
+                Ok(plugin_id.as_str())
             }
             ProviderDistributionHandlerRef::Builtin { .. } => {
                 bail!("builtin distribution rule cannot be dispatched as a runtime extension")
@@ -123,7 +131,7 @@ impl EffectiveProviderDistributionSnapshot {
         rule_id: &str,
         contract_version: &str,
         config: &BTreeMap<String, ProviderDistributionConfigValue>,
-    ) -> Result<()> {
+    ) -> Result<String> {
         let definition = self
             .registry
             .get(rule_id)
@@ -132,7 +140,7 @@ impl EffectiveProviderDistributionSnapshot {
             bail!("provider distribution contract version mismatch");
         }
         self.registry.validate_config(rule_id, config)?;
-        Ok(())
+        Ok(definition.rule_version.clone())
     }
 }
 
@@ -166,15 +174,46 @@ mod tests {
             ),
         )]))
         .unwrap();
-        let (target, fingerprint) = snapshot
+        let target = snapshot
             .resolve_runtime(
                 "@taichuy/session_retry",
+                "1.0.0",
                 PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1,
                 &BTreeMap::new(),
+                snapshot.fingerprint(),
             )
             .unwrap();
         assert_eq!(target, "@taichuy/session-retry-distribution@0.0.0");
-        assert_eq!(fingerprint, snapshot.fingerprint());
+    }
+
+    #[test]
+    fn frozen_fingerprint_and_rule_version_are_required() {
+        let snapshot = EffectiveProviderDistributionSnapshot::compile(BTreeMap::from([(
+            "@taichuy/session_retry".to_string(),
+            (
+                "@taichuy/session-retry-distribution@0.0.0".to_string(),
+                contribution("@taichuy/session_retry"),
+            ),
+        )]))
+        .unwrap();
+        assert!(snapshot
+            .resolve_runtime(
+                "@taichuy/session_retry",
+                "1.0.0",
+                PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1,
+                &BTreeMap::new(),
+                "stale-fingerprint",
+            )
+            .is_err());
+        assert!(snapshot
+            .resolve_runtime(
+                "@taichuy/session_retry",
+                "2.0.0",
+                PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1,
+                &BTreeMap::new(),
+                snapshot.fingerprint(),
+            )
+            .is_err());
     }
 
     #[test]

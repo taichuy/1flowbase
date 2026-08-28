@@ -48,6 +48,7 @@ async fn list_main_model_routing_policies(
             provider_code,
             model_id,
             distribution_rule,
+            distribution_rule_version,
             distribution_rule_contract_version,
             distribution_rule_config,
             provider_instance_ids,
@@ -631,13 +632,14 @@ impl ModelProviderRepository for PgControlPlaneStore {
                         provider_code,
                         model_id,
                         distribution_rule,
+                        distribution_rule_version,
                         distribution_rule_contract_version,
                         distribution_rule_config,
                         provider_instance_ids,
                         excluded_provider_instance_ids,
                         created_by,
                         updated_by
-                    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10)
+                    ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $11)
                     "#,
                 )
                 .bind(Uuid::now_v7())
@@ -645,6 +647,7 @@ impl ModelProviderRepository for PgControlPlaneStore {
                 .bind(&input.provider_code)
                 .bind(&policy.model_id)
                 .bind(policy.distribution_rule.rule_id())
+                .bind(policy.distribution_rule.rule_version())
                 .bind(policy.distribution_rule.contract_version())
                 .bind(serde_json::to_value(policy.distribution_rule.config())?)
                 .bind(&policy.provider_instance_ids)

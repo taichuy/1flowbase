@@ -505,6 +505,7 @@ async fn model_provider_repository_persists_ordered_routing_policy_with_revision
 
     let dynamic_rule = domain::ModelProviderDistributionRule::Dynamic {
         rule_id: "@taichuy/session-retry-distribution".into(),
+        rule_version: "1.0.0".into(),
         contract_version: "1".into(),
         config: std::collections::BTreeMap::from([(
             "affinity_ttl_seconds".into(),

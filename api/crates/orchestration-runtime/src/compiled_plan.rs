@@ -139,6 +139,7 @@ pub enum LlmDistributionRule {
     RetryRoundRobin,
     Dynamic {
         rule_id: String,
+        rule_version: String,
         contract_version: String,
         config: std::collections::BTreeMap<
             String,
