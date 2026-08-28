@@ -15,6 +15,7 @@ mod data_source_stdio;
 mod network_egress_host;
 mod package_loader;
 mod plugin_scope;
+mod provider_distribution_host;
 mod provider_host;
 mod stdio_runtime;
 

@@ -26,9 +26,45 @@ pub struct LoadedDataSourcePackage {
     pub package: DataSourcePackage,
 }
 
+#[derive(Debug, Clone)]
+pub struct LoadedProviderDistributionPackage {
+    pub runtime_executable: PathBuf,
+    pub manifest: PluginManifestV1,
+}
+
 pub struct PackageLoader;
 
 impl PackageLoader {
+    pub fn load_provider_distribution(
+        package_root: impl AsRef<Path>,
+    ) -> FrameworkResult<LoadedProviderDistributionPackage> {
+        let package_root = fs::canonicalize(package_root.as_ref()).map_err(|error| {
+            PluginFrameworkError::invalid_provider_package(format!(
+                "cannot resolve package root: {error}"
+            ))
+        })?;
+        let manifest_path = package_root.join("manifest.yaml");
+        let manifest_raw = fs::read_to_string(&manifest_path)
+            .map_err(|error| PluginFrameworkError::io(Some(&manifest_path), error.to_string()))?;
+        let manifest = extension_package_runtime::parse_plugin_manifest(&manifest_raw)?;
+        if manifest.provider_distribution_rules.len() != 1 {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "provider distribution package must declare exactly one rule",
+            ));
+        }
+        let runtime_executable = package_root.join(&manifest.runtime.entry);
+        if !runtime_executable.is_file() {
+            return Err(PluginFrameworkError::invalid_provider_package(format!(
+                "provider distribution runtime entry does not exist: {}",
+                runtime_executable.display()
+            )));
+        }
+        Ok(LoadedProviderDistributionPackage {
+            runtime_executable,
+            manifest,
+        })
+    }
+
     pub fn load(package_root: impl AsRef<Path>) -> FrameworkResult<LoadedProviderPackage> {
         Self::load_provider_package(package_root, None)
     }

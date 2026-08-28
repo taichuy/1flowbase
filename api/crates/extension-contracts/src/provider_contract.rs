@@ -99,6 +99,7 @@ pub enum ProviderStdioMethod {
     Auth,
     Usage,
     ResetCredit,
+    SelectDistribution,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

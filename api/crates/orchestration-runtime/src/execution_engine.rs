@@ -161,6 +161,14 @@ impl ResolvedProviderRoute {
 
 #[async_trait]
 pub trait ProviderInvoker: Send + Sync {
+    async fn select_provider_distribution(
+        &self,
+        _plugin_id: &str,
+        _invocation: extension_contracts::ProviderDistributionInvocation,
+    ) -> Result<extension_contracts::ProviderDistributionSelectionReceipt> {
+        Err(anyhow!("provider distribution runtime is not configured"))
+    }
+
     async fn pipeline_provider_input(
         &self,
         input: ProviderInvocationInput,

@@ -14,7 +14,8 @@ use control_plane::{
     ports::{
         DataSourceCrudRuntimePort, DataSourceRepository, DataSourceRuntimePort,
         NetworkEgressRuntimePort, NetworkEgressSecretMaterial, PluginRepository,
-        ProviderLiveEventSenders, ProviderRuntimeInvocationOutput, ProviderRuntimePort,
+        ProviderLiveEventSenders, ProviderRuntimeExecutionContext, ProviderRuntimeInvocationOutput,
+        ProviderRuntimePort,
     },
 };
 use plugin_framework::{
@@ -471,6 +472,30 @@ struct DataSourceRuntimeTarget {
 
 #[async_trait]
 impl ProviderRuntimePort for ApiProviderRuntime {
+    async fn select_provider_distribution(
+        &self,
+        plugin_id: &str,
+        invocation: extension_contracts::ProviderDistributionInvocation,
+        context: ProviderRuntimeExecutionContext,
+    ) -> anyhow::Result<extension_contracts::ProviderDistributionSelectionReceipt> {
+        self.services
+            .orchestration_backend
+            .select_provider_distribution(
+                runtime_core::runtime_backend::RuntimeProviderDistributionRequest {
+                    request_id: RuntimeRequestId::new(Uuid::now_v7().to_string())?,
+                    target: RuntimeTargetId::new(plugin_id.to_string())?,
+                    invocation,
+                    principal: runtime_core::runtime_backend::RuntimeExecutionPrincipal {
+                        workspace_id: context.workspace_id.to_string(),
+                        actor_id: context.actor_id.map(|id| id.to_string()),
+                        deadline_unix_ms: context.deadline_unix_ms,
+                    },
+                },
+            )
+            .await
+            .map_err(map_runtime_backend_error)
+    }
+
     async fn activate_plugin(
         &self,
         installation: &domain::LocalPluginInstallationRecord,
@@ -485,6 +510,15 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             // Network egress workers receive their private configuration only through `sync`.
             // Installation activation is intentionally deferred so no worker can start without it.
             plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT => Ok(()),
+            extension_contracts::PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1 => self
+                .services
+                .runtime_backend
+                .activate_provider_distribution_rule(runtime_package_activation(
+                    installation,
+                    None,
+                )?)
+                .await
+                .map_err(map_runtime_backend_error),
             _ => Err(ControlPlaneError::InvalidInput("plugin_installation").into()),
         }
     }
@@ -519,6 +553,12 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             // Network egress workers are provider-instance scoped. Artifact deactivation does not
             // identify an instance and therefore cannot own its worker lifecycle.
             plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT => Ok(()),
+            extension_contracts::PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1 => self
+                .services
+                .runtime_backend
+                .deactivate_provider_distribution_rule(&installation.plugin_id)
+                .await
+                .map_err(map_runtime_backend_error),
             _ => Err(ControlPlaneError::InvalidInput("plugin_installation").into()),
         }
     }

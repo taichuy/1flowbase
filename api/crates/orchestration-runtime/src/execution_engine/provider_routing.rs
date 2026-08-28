@@ -13,13 +13,17 @@ pub(super) struct ProviderDistributionSelection {
     pub(super) receipt: ProviderDistributionSelectionReceipt,
 }
 
-pub(super) async fn select_builtin_provider_target(
+pub(super) async fn select_provider_target<I>(
     rule: &crate::compiled_plan::LlmDistributionRule,
     distribution_key: Option<&str>,
     target_ids: &[String],
     attempt_index: usize,
     runtime_context: &ExecutionRuntimeContext,
-) -> Result<ProviderDistributionSelection> {
+    invoker: &I,
+) -> Result<ProviderDistributionSelection>
+where
+    I: ProviderInvoker + ?Sized,
+{
     let candidates = target_ids
         .iter()
         .enumerate()
@@ -51,10 +55,45 @@ pub(super) async fn select_builtin_provider_target(
             .await?
         }
         crate::compiled_plan::LlmDistributionRule::RoundRobin => 0,
-        crate::compiled_plan::LlmDistributionRule::Dynamic { rule_id, .. } => {
-            return Err(anyhow!(
-                "provider distribution rule is not bound to a runtime handler: {rule_id}"
-            ));
+        crate::compiled_plan::LlmDistributionRule::Dynamic {
+            rule_id,
+            contract_version,
+            config,
+        } => {
+            let invocation = extension_contracts::ProviderDistributionInvocation {
+                invocation_id: runtime_context
+                    .provider_distribution_invocation_id()
+                    .to_string(),
+                conversation_id: runtime_context
+                    .provider_distribution_conversation_id
+                    .clone(),
+                routing_policy_id: distribution_key.unwrap_or(rule_id).to_string(),
+                attempt: attempt_index as u32,
+                rule_id: rule_id.clone(),
+                rule_version: contract_version.clone(),
+                registry_fingerprint: BUILTIN_REGISTRY_FINGERPRINT.to_string(),
+                config: config.clone(),
+                candidates: candidates.clone(),
+            };
+            let receipt = invoker
+                .select_provider_distribution(rule_id, invocation)
+                .await?;
+            let target_id = match &receipt.decision {
+                ProviderDistributionDecision::Select { target_id } => target_id,
+                ProviderDistributionDecision::NoEligibleTarget { reason } => {
+                    return Err(anyhow!(
+                        "provider distribution found no eligible target: {reason}"
+                    ));
+                }
+            };
+            let target_index = candidates
+                .iter()
+                .position(|candidate| candidate.ready && candidate.target_id == *target_id)
+                .ok_or_else(|| anyhow!("provider distribution selected an ineligible target"))?;
+            return Ok(ProviderDistributionSelection {
+                target_index,
+                receipt,
+            });
         }
     };
     let selected = candidates
@@ -65,9 +104,7 @@ pub(super) async fn select_builtin_provider_target(
         crate::compiled_plan::LlmDistributionRule::None => "builtin.none",
         crate::compiled_plan::LlmDistributionRule::RoundRobin => "builtin.round_robin",
         crate::compiled_plan::LlmDistributionRule::RetryRoundRobin => "builtin.retry_round_robin",
-        crate::compiled_plan::LlmDistributionRule::Dynamic { .. } => unreachable!(
-            "dynamic provider distribution rules return before builtin receipt construction"
-        ),
+        crate::compiled_plan::LlmDistributionRule::Dynamic { .. } => unreachable!(),
     };
     Ok(ProviderDistributionSelection {
         target_index,

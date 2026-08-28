@@ -158,6 +158,7 @@ where
                 .collect::<Vec<_>>(),
             attempt_index,
             runtime_context,
+            invoker,
         )
         .await?;
         let (selected, preflight) = compatible.swap_remove(selection.target_index);
@@ -233,6 +234,7 @@ where
             .collect::<Vec<_>>(),
         attempt_index,
         runtime_context,
+        invoker,
     )
     .await?;
     let mut selected = compatible.swap_remove(selection.target_index);
@@ -340,13 +342,15 @@ async fn llm_target_selection(
     target_ids: &[String],
     attempt_index: usize,
     runtime_context: &ExecutionRuntimeContext,
+    invoker: &(impl ProviderInvoker + ?Sized),
 ) -> Result<super::provider_routing::ProviderDistributionSelection> {
-    super::provider_routing::select_builtin_provider_target(
+    super::provider_routing::select_provider_target(
         distribution_rule,
         distribution_key,
         target_ids,
         attempt_index,
         runtime_context,
+        invoker,
     )
     .await
 }

@@ -14,7 +14,8 @@ use runtime_core::runtime_backend::{
     RuntimeCancelOutcome, RuntimeCapabilityExecutionOutcome, RuntimeExecutionOutcome,
     RuntimeExecutionPort, RuntimeExecutionRequest, RuntimeLegacyManifestEligibility,
     RuntimeNetworkEgressActivation, RuntimeObservationPort, RuntimePackageActivation,
-    RuntimeRegistrySnapshot, RuntimeRequestId, RuntimeStreamEventSink, RuntimeStreamSinks,
+    RuntimeProviderDistributionRequest, RuntimeRegistrySnapshot, RuntimeRequestId,
+    RuntimeStreamEventSink, RuntimeStreamSinks,
 };
 
 #[async_trait]
@@ -68,7 +69,8 @@ use tokio::{
 
 use crate::{
     capability_host::CapabilityHost, data_source_host::DataSourceHost,
-    network_egress_host::NetworkEgressHost, provider_host::ProviderHost,
+    network_egress_host::NetworkEgressHost, provider_distribution_host::ProviderDistributionHost,
+    provider_host::ProviderHost,
 };
 
 #[derive(Clone)]
@@ -77,6 +79,7 @@ pub struct RuntimeExtensionHost {
     capability_host: Arc<RwLock<CapabilityHost>>,
     data_source_host: Arc<RwLock<DataSourceHost>>,
     network_egress_host: Arc<RwLock<NetworkEgressHost>>,
+    provider_distribution_host: Arc<RwLock<ProviderDistributionHost>>,
     profile: Arc<RuntimeProfileCollector>,
     lifecycle: Arc<StdRwLock<RuntimeBackendLifecycle>>,
     active_requests: Arc<Mutex<HashMap<RuntimeRequestId, AbortHandle>>>,
@@ -153,6 +156,7 @@ impl RuntimeExtensionHost {
             capability_host,
             data_source_host,
             network_egress_host: Arc::new(RwLock::new(NetworkEgressHost::default())),
+            provider_distribution_host: Arc::new(RwLock::new(ProviderDistributionHost::default())),
             profile: Arc::new(profile),
             lifecycle: Arc::new(StdRwLock::new(RuntimeBackendLifecycle::Starting)),
             active_requests: Arc::new(Mutex::new(HashMap::new())),
@@ -914,6 +918,50 @@ async fn forward_events(
 
 #[async_trait]
 impl RuntimeExecutionPort for RuntimeExtensionHost {
+    async fn activate_provider_distribution_rule(
+        &self,
+        request: RuntimePackageActivation,
+    ) -> Result<(), RuntimeBackendError> {
+        self.ensure_activating()?;
+        let package_root = self.artifact_resolver.resolve(&request.artifact).await?;
+        self.provider_distribution_host
+            .write()
+            .await
+            .load(&package_root.to_string_lossy(), &request.plugin_id)
+            .map_err(RuntimeBackendError::from)
+    }
+
+    async fn deactivate_provider_distribution_rule(
+        &self,
+        plugin_id: &str,
+    ) -> Result<(), RuntimeBackendError> {
+        self.provider_distribution_host
+            .write()
+            .await
+            .unload(plugin_id)
+            .await
+            .map_err(RuntimeBackendError::from)
+    }
+
+    async fn select_provider_distribution(
+        &self,
+        request: RuntimeProviderDistributionRequest,
+    ) -> Result<extension_contracts::ProviderDistributionSelectionReceipt, RuntimeBackendError>
+    {
+        self.ensure_accepting()?;
+        self.provider_distribution_host
+            .read()
+            .await
+            .select(
+                request.target.as_str(),
+                request.invocation,
+                request.principal,
+                Arc::clone(&self.plugin_data),
+            )
+            .await
+            .map_err(RuntimeBackendError::from)
+    }
+
     async fn execute(
         &self,
         request: RuntimeExecutionRequest,

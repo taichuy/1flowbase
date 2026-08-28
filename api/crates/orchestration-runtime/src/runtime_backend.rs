@@ -2,7 +2,8 @@ use std::sync::Arc;
 
 use runtime_core::runtime_backend::{
     RuntimeBackendError, RuntimeCancelOutcome, RuntimeExecutionOutcome, RuntimeExecutionPort,
-    RuntimeExecutionRequest, RuntimeRequestId, RuntimeStreamSinks,
+    RuntimeExecutionRequest, RuntimeProviderDistributionRequest, RuntimeRequestId,
+    RuntimeStreamSinks,
 };
 
 /// Orchestration-owned Runtime Backend seam.
@@ -25,6 +26,14 @@ impl OrchestrationRuntimeBackend {
         request: RuntimeExecutionRequest,
     ) -> Result<RuntimeExecutionOutcome, RuntimeBackendError> {
         self.execution.execute(request).await
+    }
+
+    pub async fn select_provider_distribution(
+        &self,
+        request: RuntimeProviderDistributionRequest,
+    ) -> Result<extension_contracts::ProviderDistributionSelectionReceipt, RuntimeBackendError>
+    {
+        self.execution.select_provider_distribution(request).await
     }
 
     pub async fn execute_stream(

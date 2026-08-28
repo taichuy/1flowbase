@@ -24,6 +24,7 @@ pub struct ExecutionRuntimeContext {
     pub(super) native_model_request_context: NativeModelRequestContext,
     pub(super) llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
     pub(super) provider_distribution_invocation_id: Arc<OnceLock<String>>,
+    pub(super) provider_distribution_conversation_id: Option<String>,
     pub(super) round_robin_pins: Arc<Mutex<BTreeMap<String, Arc<tokio::sync::OnceCell<usize>>>>>,
     pub(super) http_response_file_persister: Option<Arc<dyn HttpResponseFilePersister>>,
     pub(super) provider_invocation_capabilities: BTreeSet<ProviderInvocationCapability>,
@@ -65,6 +66,11 @@ impl ExecutionRuntimeContext {
             )?,
             llm_routing_counter_store: None,
             provider_distribution_invocation_id: Arc::default(),
+            provider_distribution_conversation_id: variable_pool
+                .get("sys")
+                .and_then(|value| value.get("conversation_id"))
+                .and_then(Value::as_str)
+                .map(str::to_string),
             round_robin_pins: Arc::default(),
             http_response_file_persister: None,
             provider_invocation_capabilities: BTreeSet::new(),

@@ -160,6 +160,25 @@ where
         + 'static,
     H: ProviderRuntimePort + Clone + Send + Sync,
 {
+    async fn select_provider_distribution(
+        &self,
+        plugin_id: &str,
+        invocation: extension_contracts::ProviderDistributionInvocation,
+    ) -> Result<extension_contracts::ProviderDistributionSelectionReceipt> {
+        self.runtime
+            .select_provider_distribution(
+                plugin_id,
+                invocation,
+                crate::ports::ProviderRuntimeExecutionContext {
+                    workspace_id: self.workspace_id,
+                    actor_id: None,
+                    deadline_unix_ms: time::OffsetDateTime::now_utc().unix_timestamp() * 1000
+                        + 300_000,
+                },
+            )
+            .await
+    }
+
     async fn pipeline_provider_input(
         &self,
         mut input: ProviderInvocationInput,

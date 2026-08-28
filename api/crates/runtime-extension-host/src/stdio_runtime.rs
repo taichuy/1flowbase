@@ -136,6 +136,59 @@ pub(crate) struct ProviderWorkerTerminationEvidence {
 }
 
 impl ProviderWorker {
+    pub(crate) async fn call_with_host_calls(
+        &mut self,
+        request: &ProviderStdioRequest,
+        timeout_limits: &PluginRuntimeLimits,
+        host_calls: Option<ProviderHostCallContext>,
+    ) -> FrameworkResult<Value> {
+        let executable_path = self.executable_path.clone();
+        let timeout_limits = timeout_limits.clone();
+        let process = self.ensure_process().await?;
+        write_worker_request(&executable_path, &mut process.stdin, request).await?;
+        let mut timeout_state = ProviderStreamTimeoutState::new();
+        let (completion_sender, mut completion_receiver) =
+            tokio::sync::mpsc::unbounded_channel::<HostCallCompletion>();
+        let mut active_host_calls = ActiveHostCalls::default();
+        loop {
+            let line = tokio::select! {
+                completion = completion_receiver.recv(), if !active_host_calls.0.is_empty() => {
+                    if let Some(completion) = completion {
+                        if active_host_calls.0.remove(&completion.call_id).is_some() {
+                            write_host_result(&executable_path, &mut process.stdin, completion).await?;
+                        }
+                    }
+                    continue;
+                }
+                line = next_provider_stdout_line(
+                    &mut process.stdout,
+                    &executable_path,
+                    &timeout_limits,
+                    &mut timeout_state,
+                ) => line?,
+            };
+            let Some(line) = line else { break };
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Ok(frame) = serde_json::from_str::<RuntimeHostWorkerFrame>(trimmed) {
+                handle_host_worker_frame(
+                    &executable_path,
+                    &mut process.stdin,
+                    frame,
+                    host_calls.as_ref(),
+                    &completion_sender,
+                    &mut active_host_calls,
+                )
+                .await?;
+                continue;
+            }
+            return parse_stdio_response_line(&executable_path, trimmed);
+        }
+        Err(worker_ended_without_output_error())
+    }
+
     pub fn new(executable_path: PathBuf, limits: PluginRuntimeLimits) -> Self {
         Self {
             executable_path,

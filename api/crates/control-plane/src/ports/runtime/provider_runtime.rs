@@ -21,6 +21,15 @@ pub struct ProviderRuntimeExecutionContext {
 
 #[async_trait]
 pub trait ProviderRuntimePort: Send + Sync {
+    async fn select_provider_distribution(
+        &self,
+        _plugin_id: &str,
+        _invocation: extension_contracts::ProviderDistributionInvocation,
+        _context: ProviderRuntimeExecutionContext,
+    ) -> anyhow::Result<extension_contracts::ProviderDistributionSelectionReceipt> {
+        anyhow::bail!("provider distribution runtime is not configured")
+    }
+
     async fn activate_plugin(
         &self,
         installation: &domain::LocalPluginInstallationRecord,

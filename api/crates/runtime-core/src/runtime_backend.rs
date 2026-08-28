@@ -17,6 +17,7 @@ use extension_contracts::{
     DataSourceListRecordsInput, DataSourceListRecordsOutput, DataSourcePreviewReadInput,
     DataSourcePreviewReadOutput, DataSourceResourceDescriptor, DataSourceUpdateRecordInput,
     DataSourceUpdateRecordOutput, EgressDescriptor, ForwardProxyLease, NativeSqlExecutionOutput,
+    ProviderDistributionInvocation, ProviderDistributionSelectionReceipt,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -87,6 +88,14 @@ pub struct RuntimeExecutionRequest {
 pub struct RuntimeExecutionOutcome {
     pub events: Vec<ProviderStreamEvent>,
     pub result: ProviderInvocationResult,
+}
+
+#[derive(Debug, Clone)]
+pub struct RuntimeProviderDistributionRequest {
+    pub request_id: RuntimeRequestId,
+    pub target: RuntimeTargetId,
+    pub invocation: ProviderDistributionInvocation,
+    pub principal: RuntimeExecutionPrincipal,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -160,6 +169,21 @@ pub struct RuntimeStreamSinks {
 
 #[async_trait]
 pub trait RuntimeExecutionPort: Send + Sync {
+    async fn activate_provider_distribution_rule(
+        &self,
+        request: RuntimePackageActivation,
+    ) -> Result<(), RuntimeBackendError>;
+
+    async fn deactivate_provider_distribution_rule(
+        &self,
+        plugin_id: &str,
+    ) -> Result<(), RuntimeBackendError>;
+
+    async fn select_provider_distribution(
+        &self,
+        request: RuntimeProviderDistributionRequest,
+    ) -> Result<ProviderDistributionSelectionReceipt, RuntimeBackendError>;
+
     async fn execute(
         &self,
         request: RuntimeExecutionRequest,

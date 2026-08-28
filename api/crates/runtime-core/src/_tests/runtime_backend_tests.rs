@@ -25,13 +25,36 @@ use crate::runtime_backend::{
     RuntimeBackendSnapshot, RuntimeCancelOutcome, RuntimeCapabilityExecutionOutcome,
     RuntimeExecutionOutcome, RuntimeExecutionPort, RuntimeExecutionRequest,
     RuntimeNetworkEgressActivation, RuntimeObservationPort, RuntimePackageActivation,
-    RuntimeRegistrySnapshot, RuntimeRequestId, RuntimeStreamSinks,
+    RuntimeProviderDistributionRequest, RuntimeRegistrySnapshot, RuntimeRequestId,
+    RuntimeStreamSinks,
 };
 
 struct CompleteFakeBackend;
 
 #[async_trait]
 impl RuntimeExecutionPort for CompleteFakeBackend {
+    async fn activate_provider_distribution_rule(
+        &self,
+        _request: RuntimePackageActivation,
+    ) -> Result<(), RuntimeBackendError> {
+        Ok(())
+    }
+
+    async fn deactivate_provider_distribution_rule(
+        &self,
+        _plugin_id: &str,
+    ) -> Result<(), RuntimeBackendError> {
+        Ok(())
+    }
+
+    async fn select_provider_distribution(
+        &self,
+        _request: RuntimeProviderDistributionRequest,
+    ) -> Result<extension_contracts::ProviderDistributionSelectionReceipt, RuntimeBackendError>
+    {
+        unreachable!("compile fixture is not executed")
+    }
+
     async fn execute(
         &self,
         _request: RuntimeExecutionRequest,
