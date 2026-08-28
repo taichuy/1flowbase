@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: Frontstage Native Block Dropdown Top Layer adapter
-summary: 用户确认 #1915 采用 Block-scoped Top Layer Overlay；#1923 已修复 ShadowRoot Selection 与 fixed virtual trigger；#1924 已让级联 submenu 继承同一 Top Layer，等待用户验收。
+summary: 用户确认 #1915 采用 Block-scoped Top Layer Overlay；#1923 已修复 ShadowRoot Selection 与 fixed virtual trigger；#1924 已让级联 submenu 继承同一 Top Layer并通过用户验收。
 keywords:
   - issue 1915
   - issue 1923
@@ -20,7 +20,7 @@ created_at: 2026-08-28 09
 updated_at: 2026-08-28 16
 last_verified_at: 2026-08-28 16
 decision_policy: verify_before_decision
-status: active
+status: completed
 scope:
   - https://github.com/taichuy/1flowbase/issues/1915
   - https://github.com/taichuy/1flowbase/issues/1923
@@ -57,4 +57,4 @@ scope:
 
 无日历截止日期。#1915 的 UI 模式往返与裁剪证据保持有效；#1923 的最终认证 Chromium 真实双击证据显示 Shadow Selection center / bottom target `(275.015625, 192)` 与 trigger 完全一致，误差为 0，菜单由真实 `mouseup` 后进入 open Top Layer，且无 page error。用户已于 2026-08-28 16 确认问题解决，#1923 已关闭。
 
-#1924 的认证 Chromium 边界 fixture 将设计态裁剪边界压到 `bottom=297`，submenu 实际延伸到 `bottom=362` 后仍完整可见；子菜单 DOM 父链包含当前 Block 的 NativeOverlayLayer，选择子项后 layer 回到 closed，且无 page error。当前等待用户实际验收。
+#1924 的认证 Chromium 边界 fixture 将设计态裁剪边界压到 `bottom=297`，submenu 实际延伸到 `bottom=362` 后仍完整可见；子菜单 DOM 父链包含当前 Block 的 NativeOverlayLayer，选择子项后 layer 回到 closed，且无 page error。用户已于 2026-08-28 确认修复，Issue 已关闭。
