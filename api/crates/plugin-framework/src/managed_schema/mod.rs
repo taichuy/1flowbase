@@ -235,7 +235,15 @@ pub fn compile_managed_schema_plan(
             });
         }
     }
-    entries.sort_by_key(|entry| entry.object.ownership_key());
+    entries.sort_by_key(|entry| {
+        let dependency_rank = match (&entry.action, &entry.object) {
+            (ManagedSchemaAction::EnsurePresent, ManagedSchemaObject::OwnedCollection { .. }) => 0,
+            (ManagedSchemaAction::EnsurePresent, ManagedSchemaObject::OwnedField { .. }) => 1,
+            (ManagedSchemaAction::EnsurePresent, ManagedSchemaObject::ExtensionField { .. }) => 2,
+            (ManagedSchemaAction::RetainInactive, _) => 3,
+        };
+        (dependency_rank, entry.object.ownership_key())
+    });
     let fingerprint = fingerprint(&owner, &entries);
     Ok(EffectiveManagedSchemaPlan {
         owner,

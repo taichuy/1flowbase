@@ -7,7 +7,7 @@ use extension_contracts::{
 
 use crate::{
     compile_managed_schema_plan, ExistingManagedSchemaOwnership, ManagedSchemaAction,
-    ManagedSchemaCompilationError, PluginSchemaOwner,
+    ManagedSchemaCompilationError, ManagedSchemaObject, PluginSchemaOwner,
 };
 
 fn owner(version: &str) -> PluginSchemaOwner {
@@ -49,6 +49,10 @@ fn pdm_002_pdm_006_compiles_namespaced_plan_without_target_opt_in() {
     )
     .unwrap();
     assert_eq!(plan.entries().len(), 3);
+    assert!(matches!(
+        plan.entries().first().map(|entry| &entry.object),
+        Some(ManagedSchemaObject::OwnedCollection { .. })
+    ));
     assert!(plan.entries().iter().all(|entry| {
         entry.action == ManagedSchemaAction::EnsurePresent
             && entry.object.ownership_key().len() < 128
