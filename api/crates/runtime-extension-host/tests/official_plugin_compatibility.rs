@@ -166,7 +166,7 @@ async fn d_008_eight_official_runtime_extensions_execute_through_the_real_host()
         "gemini".to_string(),
         "openai".to_string(),
         "openai_compatible".to_string(),
-        "session_retry_distribution@1.0.0".to_string(),
+        "session_retry_distribution".to_string(),
     ]);
     let mut actual = BTreeSet::new();
     let mut modes = BTreeSet::new();
@@ -190,6 +190,9 @@ async fn d_008_eight_official_runtime_extensions_execute_through_the_real_host()
                 | PluginExecutionMode::StatefulProviderWorker
                 | PluginExecutionMode::StatefulRuntimeWorker
         ));
+        if manifest.plugin_id == "session_retry_distribution" {
+            assert_eq!(manifest.version, "1.0.0");
+        }
         actual.insert(manifest.plugin_id.clone());
         modes.insert(manifest.execution_mode.as_str());
         protocols.insert(manifest.runtime.protocol.clone());
