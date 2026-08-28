@@ -102,6 +102,7 @@ export interface FrontstageNativeTrustedBlockPortalHostProps {
   providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper;
   onRuntimeError?: FrontstageNativeTrustedBlockRuntimeErrorHandler;
   contribution?: PreparedTrustedFrontendContribution;
+  surfaceLayoutEpoch?: string;
 }
 
 /**
@@ -119,7 +120,8 @@ export function FrontstageNativeTrustedBlockPortalHost({
   providerScope,
   providerWrapper,
   onRuntimeError,
-  contribution
+  contribution,
+  surfaceLayoutEpoch = 'stable'
 }: FrontstageNativeTrustedBlockPortalHostProps): ReactNode {
   const [surface, setSurface] =
     useState<NativeTrustedBlockPortalSurface | null>(null);
@@ -258,7 +260,8 @@ export function FrontstageNativeTrustedBlockPortalHost({
       moduleSources,
       antdStylePrefix,
       providerScope,
-      providerWrapper
+      providerWrapper,
+      surfaceLayoutEpoch
     ),
     surface.mountElement,
     renderEpoch
@@ -470,7 +473,8 @@ function wrapWithHostProviders(
   moduleSources: readonly string[],
   antdStylePrefix: string,
   providerScope?: FrontstageNativeTrustedBlockProviderScope,
-  providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper
+  providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper,
+  surfaceLayoutEpoch = 'stable'
 ): ReactNode {
   const getShadowContainer = () => context.shadowRoot;
   const getTargetContainer = () => context.scrollOwner;
@@ -487,7 +491,8 @@ function wrapWithHostProviders(
         <NativeBlockSurfaceProvider
           scope={{
             targetRoot: context.shadowRoot,
-            scrollOwner: context.scrollOwner
+            scrollOwner: context.scrollOwner,
+            layoutEpoch: surfaceLayoutEpoch
           }}
         >
           <AntdApp>{children}</AntdApp>

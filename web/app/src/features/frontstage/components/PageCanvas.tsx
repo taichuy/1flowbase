@@ -373,6 +373,7 @@ function NativeRuntimeSlotSurface({
   nativeContextHost,
   pageContent,
   contentViewportStyle,
+  surfaceLayoutEpoch,
   fillsAvailableHeight,
   onIntrinsicSizeReport,
   onRetry
@@ -380,6 +381,7 @@ function NativeRuntimeSlotSurface({
   item: FrontstageBlockRenderPlanItem;
   preparation: FrontstageNativePreparationSnapshot;
   contentViewportStyle: CSSProperties;
+  surfaceLayoutEpoch: string;
   onRetry?: () => void;
   signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
   runtimeInputValues?: Readonly<Record<string, unknown>>;
@@ -514,6 +516,7 @@ function NativeRuntimeSlotSurface({
           nativeContextHost={nativeContextHost}
           pageContent={pageContent}
           runtimeSizing={runtimeSizing}
+          surfaceLayoutEpoch={surfaceLayoutEpoch}
           onRuntimeError={setRuntimeError}
         />
       ) : (
@@ -539,6 +542,7 @@ function FrontstageNativeRuntimeInstance({
   nativeContextHost,
   pageContent,
   runtimeSizing,
+  surfaceLayoutEpoch,
   onRuntimeError
 }: {
   root: Element;
@@ -554,6 +558,7 @@ function FrontstageNativeRuntimeInstance({
   nativeContextHost?: FrontstageNativeBlockContextHost;
   pageContent?: FrontstagePageContent;
   runtimeSizing: BlockContextSizing;
+  surfaceLayoutEpoch: string;
   onRuntimeError(error: BlockProtocolError): void;
 }) {
   const { instanceEpoch, isCurrentInstance } = useFrontstageNativeBlockInstance(
@@ -646,6 +651,7 @@ function FrontstageNativeRuntimeInstance({
       moduleAssets={preparation.prepared.moduleAssets}
       moduleSources={preparation.prepared.moduleSources}
       contribution={preparation.prepared.contribution}
+      surfaceLayoutEpoch={surfaceLayoutEpoch}
       onRuntimeError={onRuntimeError}
     />
   );
@@ -888,6 +894,7 @@ function RenderPlanSlot({
           nativeContextHost={nativeContextHost}
           pageContent={pageContent}
           contentViewportStyle={contentViewportStyle}
+          surfaceLayoutEpoch={isDesignMode ? 'design' : 'preview'}
           fillsAvailableHeight={fillsAvailableHeight}
           onIntrinsicSizeReport={handleIntrinsicSizeReport}
           onRetry={

@@ -16,13 +16,15 @@ import {
 import { ANTD_STYLE_EXPORTS, loadAntdStyleModule } from './antd-style-runtime';
 import { NativeBlockAffix } from './native-affix-runtime';
 import { NativeBlockAnchor } from './native-anchor-runtime';
+import { NativeBlockDropdown } from './native-dropdown-runtime';
 
 type ModuleNamespace = Record<string, unknown>;
 
 const nativeAntdModule = {
   ...antdModule,
   Affix: NativeBlockAffix,
-  Anchor: NativeBlockAnchor
+  Anchor: NativeBlockAnchor,
+  Dropdown: NativeBlockDropdown
 };
 
 const ANT_DESIGN_X_EXPORTS = [

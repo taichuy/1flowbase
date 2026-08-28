@@ -8,6 +8,7 @@ import {
 export interface NativeBlockSurfaceScope {
   targetRoot: ShadowRoot;
   scrollOwner: HTMLElement | Window;
+  layoutEpoch: string;
 }
 
 const NativeBlockSurfaceContext = createContext<NativeBlockSurfaceScope | null>(
