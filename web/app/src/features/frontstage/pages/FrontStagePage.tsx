@@ -1186,6 +1186,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
           runtimeInputsByBlockId={runtimeInputsByBlockId}
           sharedSignalCoordinator={pageSignalCoordinator}
           onRuntimeDemandChange={handleRuntimeDemandChange}
+          onRuntimeInteraction={pageCanvasNativePreparations.noteInteraction}
           onRuntimeRetry={pageCanvasNativePreparations.retryBlock}
           onRuntimeRefresh={pageCanvasNativePreparations.refreshBlock}
           isDesignMode={canEnterDesignMode && isDesignMode}

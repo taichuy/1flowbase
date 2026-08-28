@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -28,6 +29,69 @@ import type { FrontstageBlockInstance } from '../../lib/page-document';
 import { createFrontstagePageContentFixture } from '../frontstage-page-content-fixtures';
 
 describe('PageCanvas declarative Native block lifecycle', () => {
+  test('AC-001/AC-006 gives internal input an interaction lease while preserving browser offscreen containment', async () => {
+    const noteInteraction = vi.fn();
+    render(
+      <PageCanvas
+        content={pageContent('Interaction')}
+        runtimeBlocks={[runtimeBlock('Interaction')]}
+        runtimePreparations={[preparation('source-a', 1, () => null)]}
+        onRuntimeInteraction={noteInteraction}
+      />
+    );
+
+    const canvas = screen.getByTestId('page-canvas-render-slots');
+    fireEvent.pointerOver(canvas);
+    fireEvent.pointerDown(canvas);
+    expect(noteInteraction).toHaveBeenCalledTimes(2);
+
+    const blockSlot = await screen.findByTestId('block-slot-block-1');
+    expect(blockSlot).toHaveStyle({ contentVisibility: 'auto' });
+    expect(blockSlot.style.containIntrinsicSize).toMatch(/^auto /u);
+  });
+
+  test('AC-004 does not re-render unrelated ready Block trees when one stable height commits', async () => {
+    let reportFirstHeight: ((input: { height: number }) => void) | undefined;
+    let secondInvocationCount = 0;
+    const FirstBlock = ({ ctx }: { ctx: BlockContext }) => {
+      reportFirstHeight = ctx.ui.sizing?.reportIntrinsicSize;
+      return <div>first</div>;
+    };
+    const SecondBlock = () => {
+      secondInvocationCount += 1;
+      return <div>second</div>;
+    };
+    const blocks = [
+      runtimeBlock('First', 'block-1', 0),
+      {
+        ...runtimeBlock('Second', 'block-2', 1),
+        presentation: { heightMode: 'fixed' as const, height: 320 }
+      }
+    ];
+    render(
+      <PageCanvas
+        content={pageContentWithBlocks(blocks)}
+        runtimeBlocks={blocks}
+        runtimePreparations={[
+          preparation('source-a', 1, FirstBlock),
+          preparation('source-b', 1, SecondBlock, true, {}, 'block-2', 1)
+        ]}
+      />
+    );
+
+    await waitFor(() => expect(reportFirstHeight).toBeTypeOf('function'));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const secondBlockCountBeforeCommit = secondInvocationCount;
+    act(() => reportFirstHeight?.({ height: 500 }));
+    await waitFor(() =>
+      expect(screen.getByTestId('block-slot-block-1')).toHaveAttribute(
+        'data-flowbase-frontstage-intrinsic-height',
+        '500'
+      )
+    );
+    expect(secondInvocationCount).toBe(secondBlockCountBeforeCommit);
+  });
+
   test('AC-013 exposes route inputs to the selected runtime block context', async () => {
     const InputBlock = ({ ctx }: { ctx: BlockContext }) => (
       <div data-testid="runtime-route-input">
@@ -404,7 +468,9 @@ function preparation(
   identityOverrides: Partial<{
     compilerAbi: string;
     runtimeAbi: string;
-  }> = {}
+  }> = {},
+  blockId = 'block-1',
+  slotIndex = 0
 ): Extract<FrontstageNativePreparationSnapshot, { status: 'ready' }> {
   const identityInput = {
     sourceSha256: sourceSha256.padEnd(64, '0'),
@@ -413,12 +479,12 @@ function preparation(
   };
   return {
     status: 'ready',
-    blockId: 'block-1',
-    slotIndex: 0,
+    blockId,
+    slotIndex,
     priority,
     generation: 0,
     mountIntent: present
-      ? { blockId: 'block-1', slotIndex: 0, identityInput }
+      ? { blockId, slotIndex, identityInput }
       : null,
     prepared: {
       artifact: {} as FrontstageNativePreparedRuntime['artifact'],
@@ -443,9 +509,13 @@ function runtimeContext(
   };
 }
 
-function runtimeBlock(title: string): FrontstageBlockInstance {
+function runtimeBlock(
+  title: string,
+  blockId = 'block-1',
+  order = 0
+): FrontstageBlockInstance {
   return {
-    id: 'block-1',
+    id: blockId,
     rendererVersion: 'v1',
     sourceId: 'block-1',
     codeRef: 'block-1-code',
@@ -464,12 +534,36 @@ function runtimeBlock(title: string): FrontstageBlockInstance {
       entry: 'blocks/block-1.js',
       hint: 'native_react'
     },
-    layout: { order: 0, region: 'main' },
+    layout: { order, region: 'main' },
     presentation: { heightMode: 'auto', height: null },
-    order: 0,
+    order,
     props: { title },
     ports: { inputs: [], outputs: [] }
   };
+}
+
+function pageContentWithBlocks(
+  blocks: readonly FrontstageBlockInstance[]
+): FrontstagePageContent {
+  return createFrontstagePageContentFixture({
+    root: {
+      uid: 'root-1',
+      payload: {
+        blocks: blocks.map((block) => ({
+          id: block.id,
+          renderer_version: block.rendererVersion,
+          codeRef: block.codeRef,
+          catalog: block.catalog,
+          contribution: block.contribution,
+          runtime: block.runtime,
+          layout: block.layout,
+          presentation: block.presentation,
+          props: block.props,
+          ports: block.ports
+        }))
+      }
+    }
+  });
 }
 
 function pageContent(title: string): FrontstagePageContent {

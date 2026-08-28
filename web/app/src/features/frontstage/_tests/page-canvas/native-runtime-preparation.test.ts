@@ -119,6 +119,59 @@ describe('Frontstage Native React preparation demand', () => {
 });
 
 describe('FrontstageNativePreparationScheduler', () => {
+  test('AC-001/AC-002 defers compile admission during an active interaction lease', async () => {
+    vi.useFakeTimers();
+    try {
+      const scheduler = new FrontstageNativePreparationScheduler(1);
+      scheduler.noteInteraction();
+      scheduler.reconcile(
+        [
+          task('nearby', 0, async (_signal, enterStage) => {
+            await enterStage('compile');
+            return prepared('nearby');
+          })
+        ],
+        { nearby: 1 }
+      );
+      await tick();
+
+      expect(scheduler.getSnapshots()[0]).toMatchObject({
+        status: 'source_fetch'
+      });
+
+      await vi.advanceTimersByTimeAsync(250);
+      await tick();
+      expect(scheduler.getSnapshots()[0]).toMatchObject({ status: 'ready' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('AC-001 defers a prepared result entering ready mount during an active interaction lease', async () => {
+    vi.useFakeTimers();
+    try {
+      const scheduler = new FrontstageNativePreparationScheduler(1);
+      const flight = deferred<FrontstageNativePreparedRuntime>();
+      scheduler.reconcile(
+        [task('nearby', 0, async () => flight.promise)],
+        { nearby: 1 }
+      );
+      scheduler.noteInteraction();
+      flight.resolve(prepared('nearby'));
+      await tick();
+
+      expect(scheduler.getSnapshots()[0]).toMatchObject({
+        status: 'source_fetch'
+      });
+
+      await vi.advanceTimersByTimeAsync(250);
+      await tick();
+      expect(scheduler.getSnapshots()[0]).toMatchObject({ status: 'ready' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('does not emit again when reconcile receives semantically unchanged tasks and demands', () => {
     const scheduler = new FrontstageNativePreparationScheduler(1);
     const listener = vi.fn();
@@ -209,7 +262,7 @@ describe('FrontstageNativePreparationScheduler', () => {
     scheduler.reconcile(
       [
         task('block', 0, async (_signal, enterStage) => {
-          enterStage(attempt++ === 0 ? 'compile' : 'module_resolve');
+          await enterStage(attempt++ === 0 ? 'compile' : 'module_resolve');
           if (attempt === 1) throw new Error('compile failed');
           return prepared('block');
         })
@@ -238,15 +291,15 @@ describe('FrontstageNativePreparationScheduler', () => {
     scheduler.reconcile(
       [
         task('l2-hit', 0, async (_signal, enterStage) => {
-          enterStage('artifact_lookup');
-          enterStage('module_resolve');
+          await enterStage('artifact_lookup');
+          await enterStage('module_resolve');
           return { ...prepared('l2-hit'), artifactCacheTier: 'l2' };
         }),
         task('l2-miss', 1, async (_signal, enterStage) => {
-          enterStage('artifact_lookup');
-          enterStage('compile');
+          await enterStage('artifact_lookup');
+          await enterStage('compile');
           compile();
-          enterStage('module_resolve');
+          await enterStage('module_resolve');
           return prepared('l2-miss');
         })
       ],
@@ -329,8 +382,8 @@ describe('FrontstageNativePreparationScheduler', () => {
     scheduler.reconcile(
       [
         observedTask('v2', async (_signal, enterStage) => {
-          enterStage('artifact_lookup');
-          enterStage('module_resolve', 'l2');
+          await enterStage('artifact_lookup');
+          await enterStage('module_resolve', 'l2');
           return { ...prepared('observed'), artifactCacheTier: 'l2' };
         })
       ],
@@ -363,8 +416,8 @@ describe('FrontstageNativePreparationScheduler', () => {
     scheduler.reconcile(
       [
         task('module-fail', 0, async (_signal, enterStage) => {
-          enterStage('artifact_lookup');
-          enterStage('module_resolve');
+          await enterStage('artifact_lookup');
+          await enterStage('module_resolve');
           throw new Error('module digest mismatch');
         })
       ],
@@ -421,5 +474,13 @@ function deferred<T = FrontstageNativePreparedRuntime>() {
 }
 
 async function tick(): Promise<void> {
+  for (let turn = 0; turn < 3; turn += 1) {
+    for (let index = 0; index < 5; index += 1) await Promise.resolve();
+    if (vi.isFakeTimers()) {
+      await vi.advanceTimersByTimeAsync(0);
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
   for (let index = 0; index < 5; index += 1) await Promise.resolve();
 }

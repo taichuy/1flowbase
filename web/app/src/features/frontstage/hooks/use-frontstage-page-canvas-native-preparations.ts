@@ -57,6 +57,7 @@ export interface UseFrontstagePageCanvasNativePreparationsInput {
 
 export interface UseFrontstagePageCanvasNativePreparationsResult {
   preparations: FrontstageNativePreparationSnapshot[];
+  noteInteraction(): void;
   retryBlock(blockId: string): void;
   refreshBlock(blockId: string): void;
 }
@@ -177,7 +178,7 @@ export function useFrontstagePageCanvasNativePreparations({
           let artifact;
           let artifactCacheTier: 'l2' | 'miss' = 'miss';
           if (!forceCompile) {
-            enterStage('artifact_lookup');
+            await enterStage('artifact_lookup');
             const cached = await artifactCache.get(identity);
             throwIfAborted(signal);
             if (cached.status === 'hit') {
@@ -186,7 +187,7 @@ export function useFrontstagePageCanvasNativePreparations({
             }
           }
           if (!artifact) {
-            enterStage('compile', 'miss');
+            await enterStage('compile', 'miss');
             const moduleRegistry = moduleRegistryFactory();
             const compiled = await compile({
               source: source.source_code,
@@ -206,7 +207,7 @@ export function useFrontstagePageCanvasNativePreparations({
             throwIfAborted(signal);
           }
 
-          enterStage('module_resolve', artifactCacheTier);
+          await enterStage('module_resolve', artifactCacheTier);
           const componentFactoryKey = JSON.stringify(artifact.identity);
           if (forceCompile) componentFactoryFlights.delete(componentFactoryKey);
           const moduleRegistry = moduleRegistryFactory();
@@ -290,6 +291,10 @@ export function useFrontstagePageCanvasNativePreparations({
     (blockId: string) => scheduler.retry(blockId),
     [scheduler]
   );
+  const noteInteraction = useCallback(
+    () => scheduler.noteInteraction(),
+    [scheduler]
+  );
   const refreshBlock = useCallback(
     (blockId: string) => {
       const request = readPlan?.requests.find(
@@ -303,7 +308,7 @@ export function useFrontstagePageCanvasNativePreparations({
     },
     [readPlan]
   );
-  return { preparations, retryBlock, refreshBlock };
+  return { preparations, noteInteraction, retryBlock, refreshBlock };
 }
 
 async function defaultFetchSource(

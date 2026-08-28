@@ -130,7 +130,7 @@ export interface FrontstageNativePreparationTask {
     enterStage: (
       stage: FrontstageNativePreparationActiveStage,
       cacheTier?: FrontstageRuntimeObservationCacheTier
-    ) => void
+    ) => Promise<void>
   ): Promise<FrontstageNativePreparedRuntime>;
 }
 
@@ -144,12 +144,14 @@ interface ScheduledPreparation {
 }
 
 export const DEFAULT_FRONTSTAGE_NATIVE_PREPARATION_CONCURRENCY = 2;
+export const FRONTSTAGE_NATIVE_INTERACTION_LEASE_MS = 200;
 
 /** Owns one page's bounded Native React preparation queue; React roots belong to P2. */
 export class FrontstageNativePreparationScheduler {
   private readonly scheduled = new Map<string, ScheduledPreparation>();
   private readonly listeners = new Set<() => void>();
   private visible = true;
+  private interactionLeaseUntilMs = 0;
 
   constructor(
     readonly maxConcurrent = DEFAULT_FRONTSTAGE_NATIVE_PREPARATION_CONCURRENCY
@@ -164,6 +166,14 @@ export class FrontstageNativePreparationScheduler {
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);
+  }
+
+  /** Gives browser input and ready-instance updates priority over new heavy stages. */
+  noteInteraction(): void {
+    this.interactionLeaseUntilMs = Math.max(
+      this.interactionLeaseUntilMs,
+      Date.now() + FRONTSTAGE_NATIVE_INTERACTION_LEASE_MS
+    );
   }
 
   getSnapshots(): FrontstageNativePreparationSnapshot[] {
@@ -334,18 +344,28 @@ export class FrontstageNativePreparationScheduler {
     this.observe(current, generation, 'source_fetch', 'network');
     this.emit();
 
-    const enterStage = (
+    const enterStage = async (
       stage: FrontstageNativePreparationActiveStage,
       cacheTier?: FrontstageRuntimeObservationCacheTier
     ) => {
-      if (!this.isCurrent(current, generation, abortController)) return;
+      if (stage === 'compile' || stage === 'module_resolve') {
+        await this.admitMainThreadStage(current, generation, abortController);
+      }
+      if (!this.isCurrent(current, generation, abortController)) {
+        throw new DOMException('Preparation aborted.', 'AbortError');
+      }
       current.snapshot = this.snapshot(current, stage);
       this.observe(current, generation, stage, cacheTier);
       this.emit();
     };
     void current.task
       .prepare(abortController.signal, enterStage)
-      .then((prepared) => {
+      .then(async (prepared) => {
+        await this.admitMainThreadStage(
+          current,
+          generation,
+          abortController
+        );
         if (!this.isCurrent(current, generation, abortController)) return;
         current.abortController = null;
         current.snapshot = this.readySnapshot(current, prepared);
@@ -371,6 +391,24 @@ export class FrontstageNativePreparationScheduler {
         this.emit();
         this.pump();
       });
+  }
+
+  private async admitMainThreadStage(
+    current: ScheduledPreparation,
+    generation: number,
+    abortController: AbortController
+  ): Promise<void> {
+    while (Date.now() < this.interactionLeaseUntilMs) {
+      await waitForPreparationTurn(
+        this.interactionLeaseUntilMs - Date.now(),
+        abortController.signal
+      );
+      if (!this.isCurrent(current, generation, abortController)) return;
+    }
+    await schedulePreparationTurn(
+      current.priority <= 1 ? 'user-visible' : 'background',
+      abortController.signal
+    );
   }
 
   private isCurrent(
@@ -468,4 +506,53 @@ function toError(error: unknown): Error {
   return error instanceof Error
     ? error
     : new Error('Native React preparation failed.');
+}
+
+type FrontstageBrowserTaskPriority = 'user-visible' | 'background';
+
+async function schedulePreparationTurn(
+  priority: FrontstageBrowserTaskPriority,
+  signal: AbortSignal
+): Promise<void> {
+  const browserScheduler = (
+    globalThis as typeof globalThis & {
+      scheduler?: {
+        postTask(
+          callback: () => void,
+          options: { priority: FrontstageBrowserTaskPriority; signal: AbortSignal }
+        ): Promise<void>;
+      };
+    }
+  ).scheduler;
+  if (browserScheduler?.postTask) {
+    await browserScheduler.postTask(() => undefined, { priority, signal });
+    return;
+  }
+  await waitForPreparationTurn(0, signal);
+}
+
+function waitForPreparationTurn(
+  delayMs: number,
+  signal: AbortSignal
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(
+        signal.reason ?? new DOMException('Preparation aborted.', 'AbortError')
+      );
+      return;
+    }
+    const timer = setTimeout(finish, Math.max(0, delayMs));
+    signal.addEventListener('abort', abort, { once: true });
+    function finish() {
+      signal.removeEventListener('abort', abort);
+      resolve();
+    }
+    function abort() {
+      clearTimeout(timer);
+      reject(
+        signal.reason ?? new DOMException('Preparation aborted.', 'AbortError')
+      );
+    }
+  });
 }
