@@ -15,6 +15,7 @@ pub mod host_extension_dropin;
 pub mod host_extension_manifest;
 pub mod host_extension_registry;
 pub mod installation;
+pub mod managed_schema;
 pub mod manifest_v1;
 pub mod network_egress_provider_contract;
 pub mod network_egress_provider_package;
@@ -52,6 +53,7 @@ pub use host_extension_manifest::{
 };
 pub use host_extension_registry::{HostExtensionRegistry, RegisteredHostExtension};
 pub use installation::*;
+pub use managed_schema::*;
 pub use manifest_v1::{
     parse_legacy_installed_plugin_manifest, parse_plugin_manifest,
     FrontendBlockContextContractManifest, FrontendBlockContributionManifest,

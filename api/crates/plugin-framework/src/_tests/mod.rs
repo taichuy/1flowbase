@@ -8,6 +8,7 @@ mod host_extension_contribution_tests;
 mod host_extension_dropin_tests;
 mod host_extension_manifest_tests;
 mod host_extension_registry_tests;
+mod managed_schema;
 mod manifest_v1_tests;
 mod network_egress_provider_contract_tests;
 mod network_egress_provider_package_tests;
