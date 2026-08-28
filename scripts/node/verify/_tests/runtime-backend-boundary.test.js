@@ -210,4 +210,9 @@ test('Delivery 1920 keeps provider distribution inside the execution port and ro
   assert.doesNotMatch(hostFacade, /pub mod provider_distribution_host/u);
   assert.match(migration, /drop constraint if exists model_provider_main_model_distribution_rules_rule_check/u);
   assert.doesNotMatch(migration, /check \(distribution_rule in/u);
+  assert.doesNotMatch(
+    migration,
+    /set\s+distribution_rule\s*=\s*'builtin\.'\s*\|\|\s*distribution_rule/u,
+    'additive identity support must not rewrite values needed by the rollback binary',
+  );
 });

@@ -5,10 +5,6 @@ alter table model_provider_main_model_distribution_rules
     add column if not exists distribution_rule_contract_version text not null default '1',
     add column if not exists distribution_rule_config jsonb not null default '{}'::jsonb;
 
-update model_provider_main_model_distribution_rules
-set distribution_rule = 'builtin.' || distribution_rule
-where distribution_rule in ('none', 'round_robin', 'retry_round_robin');
-
 alter table model_provider_main_model_distribution_rules
     add constraint model_provider_main_model_distribution_rules_identity_format_check
     check (
