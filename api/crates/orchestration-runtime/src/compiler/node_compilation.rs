@@ -475,7 +475,7 @@ fn compile_failover_queue_runtime(
             queue_template_id,
             queue_snapshot_id,
             queue_targets: targets,
-            distribution_rule: LlmDistributionRule::None,
+            distribution_rule: LlmDistributionRule::RetryRoundRobin,
             distribution_key: None,
             context_policy: compile_llm_context_policy(config),
             stream_policy: serde_json::json!({}),

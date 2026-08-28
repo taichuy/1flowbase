@@ -686,6 +686,7 @@ fn compile_failover_queue_routes_with_frozen_targets() {
     assert_eq!(routing["routing_mode"], json!("failover_queue"));
     assert_eq!(routing["queue_template_id"], json!("queue-template-1"));
     assert_eq!(routing["queue_snapshot_id"], json!("queue-snapshot-1"));
+    assert_eq!(routing["distribution_rule"], json!("retry_round_robin"));
     assert_eq!(
         routing["queue_targets"][0]["upstream_model_id"],
         json!("gpt-5.4-mini")
