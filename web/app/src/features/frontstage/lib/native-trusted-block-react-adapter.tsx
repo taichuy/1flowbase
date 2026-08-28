@@ -45,6 +45,7 @@ import {
   NativeBlockSurfaceProvider,
   resolveNativeBlockScrollOwner
 } from './native-modules/native-block-surface-context';
+import { useNativeBlockMotionTheme } from './native-modules/native-motion-runtime';
 
 export interface FrontstageNativeTrustedBlockReactComponentProps {
   plan: NativeTrustedBlockPreparePlan;
@@ -131,6 +132,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
     [BlockComponent, ctx, moduleAssets, plan, providerScope]
   );
   const mountedRenderInput = useRef<typeof renderInput | null>(null);
+  const runtimeMotionTheme = useNativeBlockMotionTheme(providerScope?.theme);
 
   useEffect(() => {
     const lifecycle = contribution?.createHandle() ?? null;
@@ -259,7 +261,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
       styleCache,
       moduleSources,
       antdStylePrefix,
-      providerScope,
+      { ...providerScope, theme: runtimeMotionTheme },
       providerWrapper,
       surfaceLayoutEpoch
     ),

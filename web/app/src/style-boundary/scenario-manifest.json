@@ -233,6 +233,7 @@
       "web/app/src/features/frontstage/lib/native-modules/antd-style-runtime.ts",
       "web/app/src/features/frontstage/lib/native-modules/native-anchor-runtime.tsx",
       "web/app/src/features/frontstage/lib/native-modules/native-block-surface-context.ts",
+      "web/app/src/features/frontstage/lib/native-modules/native-motion-runtime.ts",
       "web/app/src/features/frontstage/lib/native-modules/registry.ts",
       "web/app/src/features/frontstage/lib/native-trusted-block-react-adapter.tsx",
       "web/app/src/features/frontstage/lib/responsive-grid-layout.ts",

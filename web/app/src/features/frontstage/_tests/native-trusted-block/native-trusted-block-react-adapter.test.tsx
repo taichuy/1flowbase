@@ -2,7 +2,7 @@ import { fireEvent, render, waitFor, within } from '@testing-library/react';
 import { createStyles } from 'antd-style';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { act, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -236,6 +236,139 @@ describe('frontstage native trusted block declarative portal host', () => {
     );
     expect(mounted).toHaveBeenCalledTimes(1);
     expect(unmounted).not.toHaveBeenCalled();
+  });
+
+  test('I1927-AC-001 injects the responsive motion budget into the native surface theme', async () => {
+    const root = createBlockRoot();
+
+    render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="motion:responsive"
+        plan={createPlan()}
+        component={() => <output>responsive motion</output>}
+        ctx={createContext()}
+      />
+    );
+
+    await shadowQueries(root).findByText('responsive motion');
+    expect(providerRecords.configs.at(-1)?.theme).toEqual({
+      token: expect.objectContaining({
+        motion: true,
+        motionDurationFast: '0.03s',
+        motionDurationMid: '0.05s',
+        motionDurationSlow: '0.08s'
+      })
+    });
+  });
+
+  test('I1927-AC-002 preserves authored theme tokens over the responsive defaults', async () => {
+    const root = createBlockRoot();
+
+    render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="motion:authored"
+        plan={createPlan()}
+        component={() => <output>authored motion</output>}
+        ctx={createContext()}
+        providerScope={{
+          theme: {
+            token: {
+              colorPrimary: '#123456',
+              motionDurationMid: '0.24s'
+            }
+          }
+        }}
+      />
+    );
+
+    await shadowQueries(root).findByText('authored motion');
+    expect(providerRecords.configs.at(-1)?.theme).toEqual({
+      token: expect.objectContaining({
+        colorPrimary: '#123456',
+        motionDurationFast: '0.03s',
+        motionDurationMid: '0.24s',
+        motionDurationSlow: '0.08s'
+      })
+    });
+  });
+
+  test('I1927-AC-003 follows reduced-motion changes without remounting the block', async () => {
+    const root = createBlockRoot();
+    const mounted = vi.fn();
+    let reduced = true;
+    let changeListener: ((event: MediaQueryListEvent) => void) | undefined;
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({
+        get matches() {
+          return reduced;
+        },
+        media: '(prefers-reduced-motion: reduce)',
+        onchange: null,
+        addEventListener: vi.fn(
+          (_type: string, listener: (event: MediaQueryListEvent) => void) => {
+            changeListener = listener;
+          }
+        ),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn()
+      }))
+    );
+    const Block = () => {
+      useEffect(() => mounted(), []);
+      return <output>reduced motion</output>;
+    };
+
+    render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="motion:reduced"
+        plan={createPlan()}
+        component={Block}
+        ctx={createContext()}
+      />
+    );
+
+    await shadowQueries(root).findByText('reduced motion');
+    expect(
+      (
+        providerRecords.configs.at(-1)?.theme as {
+          token?: Record<string, unknown>;
+        }
+      ).token
+    ).toEqual(
+      expect.objectContaining({
+        motion: false,
+        motionDurationFast: '0s',
+        motionDurationMid: '0s',
+        motionDurationSlow: '0s'
+      })
+    );
+
+    reduced = false;
+    act(() => changeListener?.({ matches: false } as MediaQueryListEvent));
+
+    await waitFor(() =>
+      expect(
+        (
+          providerRecords.configs.at(-1)?.theme as {
+            token?: Record<string, unknown>;
+          }
+        ).token
+      ).toEqual(
+        expect.objectContaining({
+          motion: true,
+          motionDurationFast: '0.03s',
+          motionDurationMid: '0.05s',
+          motionDurationSlow: '0.08s'
+        })
+      )
+    );
+    expect(mounted).toHaveBeenCalledTimes(1);
   });
 
   test('D5-P2 mounts once, updates without remounting, and disposes the typed contribution instance once', async () => {
