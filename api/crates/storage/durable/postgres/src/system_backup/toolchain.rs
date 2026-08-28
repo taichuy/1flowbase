@@ -27,6 +27,8 @@ pub enum PostgreSqlBackupError {
     Io(#[from] std::io::Error),
     #[error("PostgreSQL backup metadata query failed")]
     Database(#[from] sqlx::Error),
+    #[error("PostgreSQL managed schema backup inventory is inconsistent")]
+    ManagedSchemaInventoryInvalid,
 }
 
 impl PostgreSqlToolchain {

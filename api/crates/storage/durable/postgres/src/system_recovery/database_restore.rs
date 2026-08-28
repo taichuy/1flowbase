@@ -16,7 +16,8 @@ use tokio::{io::AsyncWriteExt, process::Command};
 use url::Url;
 
 use crate::system_backup::{
-    migration_head, read_bounded_stderr, PostgreSqlCommandConnection, PostgreSqlToolchain,
+    managed_schema_backup_inventory, migration_head, read_bounded_stderr,
+    PostgreSqlCommandConnection, PostgreSqlToolchain,
 };
 
 const POSTGRES_IDENTIFIER_LIMIT: usize = 63;
@@ -173,6 +174,9 @@ impl PostgreSqlRecoveryTarget {
         let actual = migration_head(&pool)
             .await
             .map_err(|_| RecoveryStepTargetError::Integrity)?;
+        managed_schema_backup_inventory(&pool)
+            .await
+            .map_err(|_| RecoveryStepTargetError::Integrity)?;
         pool.close().await;
         if actual != context.migration_head {
             return Err(RecoveryStepTargetError::Integrity);
@@ -293,6 +297,9 @@ impl RecoveryStepTarget for PostgreSqlRecoveryTarget {
             .await
             .map_err(|_| RecoveryStepTargetError::Integrity)?;
         let actual = migration_head(&pool)
+            .await
+            .map_err(|_| RecoveryStepTargetError::Integrity)?;
+        managed_schema_backup_inventory(&pool)
             .await
             .map_err(|_| RecoveryStepTargetError::Integrity)?;
         pool.close().await;

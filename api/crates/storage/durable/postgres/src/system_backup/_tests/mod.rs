@@ -12,6 +12,8 @@ use super::{
     PostgreSqlCommandConnectionError,
 };
 
+mod managed_schema;
+
 #[test]
 fn parses_supported_postgresql_tool_versions() {
     assert_eq!(

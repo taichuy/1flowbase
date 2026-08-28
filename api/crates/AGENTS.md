@@ -49,6 +49,7 @@
 - `RuntimeBackend` 必须组合 Execution、Observation、Provider、DataSource、Capability、Network Egress 六个窄 Port；必需方法不提供默认失败实现。
 - `orchestration-runtime` 只持有 `RuntimeExecutionPort`；完整 `RuntimeBackend` 仅停留在 `api-server` composition root 与业务能力装配层，窄 Port 必须由该层从 exactly-one Slot Backend 内部投影，装配构造器不得接收第二个独立 Port 来源。
 - Durable、Ephemeral、Object 是三类 Storage；PostgreSQL 只是 Durable 的官方 adapter。
+- Plugin Managed Data Model 只接受 manifest 的 additive desired state；`control-plane-contracts` 持有窄 Port，`plugin-framework` 编译 plan，PostgreSQL adapter 独占 catalog/DDL/ownership。目标业务表不得维护 `extension_field_slot` 或第二套 allowlist；RuntimeExtension 不得获得 SQL 或数据库连接。
 
 ## Evidence And Stop
 

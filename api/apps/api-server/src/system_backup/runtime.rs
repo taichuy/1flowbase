@@ -531,6 +531,9 @@ impl SystemBackupRuntime {
         let migration_head = storage_durable_postgres::migration_head(self.store.pool())
             .await
             .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
+        storage_durable_postgres::managed_schema_backup_inventory(self.store.pool())
+            .await
+            .map_err(|_| SystemBackupRuntimeError::PostgreSqlPreflight)?;
         let mut sources: Vec<Arc<dyn BackupComponentSource>> = vec![Arc::new(
             storage_durable_postgres::PostgreSqlLogicalBackup::new(
                 self.database_url.clone(),
