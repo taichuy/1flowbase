@@ -76,13 +76,13 @@ Worker 状态由 Host 管理，最小状态机为启动、可用、执行、排�
 method、event、error、result 与优雅退出语义以 `extension-contracts` 为唯一事实。
 Host 不承担 Provider Routing、权限、事务、安装或签名决策。
 
-## 未来 SDK
+## 有限 Rust SDK
 
-本阶段不发布 SDK。未来 Rust、TypeScript、Python SDK 只能建立在可发布的
-`extension-contracts` 上，提供 manifest 构造/校验、强类型请求、framed stdio
-worker loop、handler 注册、流事件、标准错误、优雅退出、Host Simulator、golden
-fixture 与 Conformance Kit。SDK 不得暴露 Host Registry、Routing、Control Plane、
-Domain、数据库或 `api-server` 内部类型，也不得打包整个后端 crate graph。
+`runtime-extension-sdk` 只为 `runtime_host_call/v1` 提供 typed PluginData client、Host
+Simulator 与 golden fixture，并且生产依赖只闭合到 `extension-contracts`。它不承诺完整
+worker framework，也不包含 manifest 构造、Provider Routing、Host Registry、Control
+Plane、Domain、数据库或 `api-server` 类型。TypeScript/Python SDK、通用 handler 注册与
+完整 Conformance Kit 仍需独立 Delivery。
 
 ## 未来 Remote Adapter
 

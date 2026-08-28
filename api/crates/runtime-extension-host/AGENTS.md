@@ -12,6 +12,8 @@
 - crate root 只公开 `RuntimeExtensionHost`、`RuntimeArtifactResolver` 与明确批准的稳定 Facade；Host、Registry、Worker、stdio、package loader 和 Process Supervisor 保持 crate 私有。
 - 依赖内部类型或状态的测试放 `src/_tests`；外部测试和 `api-server` fixture 只走 Facade / Runtime Port，不为测试扩大公共 API。
 - package 激活只消费 `RuntimeArtifactReference`；本机路径由 composition root 注入的 resolver 解析，不进入稳定 Port。
+- `runtime_host_call/v1` 是 additive worker callback family；先于 provider event/result 私有 demux。call id 必须关联、重复/未知 fail closed，cancel/deadline/crash/drain 必须清理 active call。
+- PluginData binding 的 publisher/plugin/version 来自已加载 manifest，workspace/actor/deadline 来自内部 execution principal；worker 不得声明这些字段。
 
 ## Resources And Stop
 

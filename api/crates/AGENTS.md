@@ -30,6 +30,7 @@
 | `orchestration-runtime` | 编排编译、绑定、执行与 `provider-routing` | `domain`、`extension-contracts`、`runtime-core` |
 | `plugin-framework` | manifest、contribution、registry、安装与扩展图 | `access-control`、`extension-contracts`、`extension-package-runtime` |
 | `runtime-extension-host` | RuntimeExtension Registry、Worker、stdio、profile 与生命周期的唯一运行真值 | `extension-contracts`、`extension-package-runtime`、`runtime-core`、`runtime-profile` |
+| `runtime-extension-sdk` | RuntimeExtension 作者侧 typed Host Service client、Simulator 与 wire fixture | `extension-contracts` |
 | `control-plane` | Use Case、状态写入口、事务、审计与应用策略 | `access-control`、`control-plane-contracts`、`domain`、`extension-contracts`、`observability`、`orchestration-runtime`、`plugin-framework`、`runtime-core`、`runtime-profile`、`storage-object` |
 | `storage/durable/core` (`storage-durable`) | 与数据库实现无关的 Durable contract 与共享类型 | `domain`、`extension-contracts` |
 | `storage/durable/postgres` (`storage-durable-postgres`) | PostgreSQL repository、SQL、事务、migration 与 mapper | `control-plane-contracts`、`domain`、`extension-contracts`、`storage-durable` |
@@ -50,6 +51,7 @@
 - `orchestration-runtime` 只持有 `RuntimeExecutionPort`；完整 `RuntimeBackend` 仅停留在 `api-server` composition root 与业务能力装配层，窄 Port 必须由该层从 exactly-one Slot Backend 内部投影，装配构造器不得接收第二个独立 Port 来源。
 - Durable、Ephemeral、Object 是三类 Storage；PostgreSQL 只是 Durable 的官方 adapter。
 - Plugin Managed Data Model 只接受 manifest 的 additive desired state；`control-plane-contracts` 持有窄 Port，`plugin-framework` 编译 plan，PostgreSQL adapter 独占 catalog/DDL/ownership。目标业务表不得维护 `extension_field_slot` 或第二套 allowlist；RuntimeExtension 不得获得 SQL 或数据库连接。
+- `PluginDataPort` 是 Host Service，不进入 RuntimeBackend 六 Port。worker frame 不携带 plugin/workspace/actor 身份；Host 从 manifest 与内部 execution principal 注入，PostgreSQL adapter 仅按 ownership ledger 解析物理对象。
 
 ## Evidence And Stop
 
