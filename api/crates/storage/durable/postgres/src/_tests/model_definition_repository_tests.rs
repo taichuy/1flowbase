@@ -1,12 +1,14 @@
 use control_plane_contracts::ports::{
     AddModelFieldInput, CreateModelDefinitionInput, CreateScopeDataModelGrantInput,
-    ModelDefinitionRepository, UpdateModelDefinitionInput, UpdateModelDefinitionStatusInput,
-    UpdateScopeDataModelGrantInput,
+    LifecyclePublicationCatalog, LifecyclePublicationPlan, LifecycleSubscriberTarget,
+    ModelDefinitionCommittedFact, ModelDefinitionRepository, UpdateModelDefinitionInput,
+    UpdateModelDefinitionStatusInput, UpdateScopeDataModelGrantInput,
 };
 use domain::{
     DataModelProtection, DataModelScopeKind, DataModelSourceKind, DataModelStatus, ModelFieldKind,
     ScopeDataModelPermissionProfile, SYSTEM_SCOPE_ID,
 };
+use extension_contracts::LifecycleContract;
 use storage_durable_postgres::{run_migrations, PgControlPlaneStore};
 use uuid::Uuid;
 
@@ -138,7 +140,23 @@ async fn seed_data_source_instance(
 async fn ac_001_model_definition_repository_defaults_physical_table_name_to_code() {
     let pool = isolated_database().await.connect().await.unwrap();
     run_migrations(&pool).await.unwrap();
-    let store = PgControlPlaneStore::new(pool);
+    let publication_catalog = LifecyclePublicationCatalog::new([(
+        (
+            ModelDefinitionCommittedFact::CONTRACT_ID.to_string(),
+            ModelDefinitionCommittedFact::CONTRACT_VERSION.to_string(),
+        ),
+        LifecyclePublicationPlan {
+            graph_fingerprint: "fixture-graph-v1".to_string(),
+            subscribers: vec![LifecycleSubscriberTarget {
+                subscriber_id: "fixture-subscriber".to_string(),
+                handler_id: "fixture-handler".to_string(),
+                handler_version: "v1".to_string(),
+            }],
+        },
+    )])
+    .unwrap();
+    let store =
+        PgControlPlaneStore::new(pool).with_lifecycle_publication_catalog(publication_catalog);
     let workspace_id = Uuid::now_v7();
     let tenant_id = root_tenant_id(&store).await;
     let workspace_name = format!("Core Workspace {}", workspace_id.simple());

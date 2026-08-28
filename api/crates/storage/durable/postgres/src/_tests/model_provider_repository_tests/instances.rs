@@ -671,6 +671,10 @@ async fn model_provider_repository_backfills_main_instance_settings_when_upgradi
         .execute(store.pool())
         .await
         .unwrap();
+    sqlx::raw_sql(PROVIDER_DISTRIBUTION_RULE_VERSION_MIGRATION_SQL)
+        .execute(store.pool())
+        .await
+        .unwrap();
 
     let main_instance =
         ModelProviderRepository::get_main_instance(&store, workspace.id, "fixture_provider")

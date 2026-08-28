@@ -66,6 +66,8 @@ const MAIN_MODEL_ROUTING_POLICY_EXCLUSIONS_MIGRATION_SQL: &str = include_str!(
 );
 const OPEN_PROVIDER_DISTRIBUTION_RULE_IDENTITY_MIGRATION_SQL: &str =
     include_str!("../../../migrations/20260828160000_open_provider_distribution_rule_identity.sql");
+const PROVIDER_DISTRIBUTION_RULE_VERSION_MIGRATION_SQL: &str =
+    include_str!("../../../migrations/20260828180000_add_provider_distribution_rule_version.sql");
 
 fn base_database_url() -> String {
     std::env::var("DATABASE_URL")
