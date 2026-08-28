@@ -331,7 +331,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     await waitFor(() => expect(button).toHaveTextContent('1:1:dark'));
   });
 
-  test('AC-008 AC-010 exposes allocated viewport size while explicit intrinsic demand stays independent', async () => {
+  test('AC-008/010 AC-1926-001/004 fills the allocated viewport after either automatic or explicit intrinsic measurement', async () => {
     let mounts = 0;
     const SizingBlock = ({ ctx }: { ctx: BlockContext }) => {
       const [localCount, setLocalCount] = useState(0);
@@ -371,7 +371,13 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         '320'
       )
     );
-    expect(root.host.parentElement).toHaveStyle({ height: '100%' });
+    await waitFor(() =>
+      expect(root.host.parentElement).toHaveStyle({ height: '100%' })
+    );
+    expect(root.host.parentElement).toHaveAttribute(
+      'data-flowbase-frontstage-available-height',
+      '800'
+    );
     expect(
       root.host.closest('[data-flowbase-frontstage-intrinsic-content]')
     ).toHaveStyle({ height: '100%' });
@@ -398,15 +404,20 @@ describe('PageCanvas declarative Native block lifecycle', () => {
         content={pageContent('Plain')}
         runtimeBlocks={[runtimeBlock('Plain')]}
         runtimeContext={runtimeContext('dark')}
-        runtimePreparations={[
-          preparation('source-b', 1, PlainBlock)
-        ]}
+        runtimePreparations={[preparation('source-b', 1, PlainBlock)]}
       />
     );
     await within(root.shadow).findByTestId('plain-native-block');
-    expect(
-      root.host.closest('[data-flowbase-frontstage-intrinsic-content]')
-    ).not.toHaveStyle({ height: '100%' });
+    await waitFor(() =>
+      expect(
+        root.host.closest('[data-flowbase-frontstage-intrinsic-content]')
+      ).toHaveStyle({ height: '100%' })
+    );
+    expect(root.host.parentElement).toHaveStyle({ height: '100%' });
+    expect(root.host.parentElement).toHaveAttribute(
+      'data-flowbase-frontstage-available-height',
+      '800'
+    );
   });
 
   test('D3R-AC-005 render retry replaces only the failed Portal epoch', async () => {
@@ -483,9 +494,7 @@ function preparation(
     slotIndex,
     priority,
     generation: 0,
-    mountIntent: present
-      ? { blockId, slotIndex, identityInput }
-      : null,
+    mountIntent: present ? { blockId, slotIndex, identityInput } : null,
     prepared: {
       artifact: {} as FrontstageNativePreparedRuntime['artifact'],
       component: component as FrontstageNativePreparedRuntime['component'],

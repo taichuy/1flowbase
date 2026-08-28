@@ -51,11 +51,42 @@ describe('FrontstageAutoHeightBatch', () => {
     batch.measure('hero', 434, 'identity-1', 0);
     const first = batch.commit({}, 0);
     expect(first).toEqual({ hero: pixelsToFrontstageGridRows(434) });
+    expect(batch.takeCommittedMeasurements()).toEqual([
+      {
+        blockId: 'hero',
+        identity: 'identity-1',
+        rows: pixelsToFrontstageGridRows(434)
+      }
+    ]);
 
     batch.measure('hero', 296, 'identity-2', 1);
     expect(batch.commit(first, 1)).toEqual({
       hero: pixelsToFrontstageGridRows(296)
     });
+    expect(batch.takeCommittedMeasurements()).toEqual([
+      {
+        blockId: 'hero',
+        identity: 'identity-2',
+        rows: pixelsToFrontstageGridRows(296)
+      }
+    ]);
+  });
+
+  test('AC-1926-005 commits a new measurement owner even when its row count is unchanged', () => {
+    const batch = new FrontstageAutoHeightBatch({ settleMs: 0 });
+    batch.measure('hero', 320, 'identity-1', 0);
+    const rows = batch.commit({}, 0);
+    batch.takeCommittedMeasurements();
+
+    batch.measure('hero', 320, 'identity-2', 1);
+    expect(batch.commit(rows, 1)).toBe(rows);
+    expect(batch.takeCommittedMeasurements()).toEqual([
+      {
+        blockId: 'hero',
+        identity: 'identity-2',
+        rows: pixelsToFrontstageGridRows(320)
+      }
+    ]);
   });
 
   test('AC-004 does not treat a motion sample gap caused by a long task as terminal stability', () => {

@@ -230,6 +230,7 @@ type RenderPlanSlotProps = {
     renderIdentity: string | null
   ) => void;
   intrinsicHeight?: number;
+  intrinsicMeasurementOwner?: string | null;
   onRuntimeDemandChange?: (
     blockId: string,
     priority: FrontstageRuntimeDemandPriority
@@ -500,7 +501,13 @@ function NativeRuntimeSlotSurface({
   }
 
   return (
-    <div ref={setViewport} style={contentViewportStyle}>
+    <div
+      ref={setViewport}
+      style={contentViewportStyle}
+      data-flowbase-frontstage-allocation-viewport={item.blockId}
+      data-flowbase-frontstage-available-width={availableSize.width}
+      data-flowbase-frontstage-available-height={availableSize.height}
+    >
       <div
         ref={setRoot}
         data-testid={`frontstage-native-block-root-${item.blockId}`}
@@ -683,6 +690,7 @@ const RenderPlanSlot = memo(function RenderPlanSlot({
   toolbarDisabled,
   onAutoHeightChange,
   intrinsicHeight,
+  intrinsicMeasurementOwner,
   onRuntimeDemandChange,
   onRuntimeRetry,
   onRuntimeRefresh
@@ -691,19 +699,16 @@ const RenderPlanSlot = memo(function RenderPlanSlot({
   const blockRef = useRef<HTMLDivElement>(null);
   const intrinsicContentRef = useRef<HTMLDivElement>(null);
   const runtimeIntrinsicOwnerRef = useRef<string | null>(null);
-  const [runtimeIntrinsicOwner, setRuntimeIntrinsicOwner] = useState<
-    string | null
-  >(null);
   const runtimeRenderIdentity =
-    runtimePreparation?.status === 'ready' &&
-    runtimePreparation.mountIntent
+    runtimePreparation?.status === 'ready' && runtimePreparation.mountIntent
       ? frontstageNativeInstanceRenderKey(runtimePreparation.mountIntent)
       : null;
-  const fillsAvailableHeight =
-    runtimeRenderIdentity !== null &&
-    runtimeIntrinsicOwner === runtimeRenderIdentity;
   const rendererVersionError = resolveRendererVersionError(item);
   const isFixedHeight = item.presentation.heightMode === 'fixed';
+  const fillsAvailableHeight =
+    isFixedHeight ||
+    (runtimeRenderIdentity !== null &&
+      intrinsicMeasurementOwner === runtimeRenderIdentity);
   const viewportDemand = useRef({
     priority: 3 as FrontstageRuntimeDemandPriority,
     visible: false,
@@ -766,14 +771,21 @@ const RenderPlanSlot = memo(function RenderPlanSlot({
 
   useEffect(() => {
     const node = intrinsicContentRef.current;
-    if (!node || isFixedHeight || typeof ResizeObserver === 'undefined') {
+    if (
+      !node ||
+      isFixedHeight ||
+      typeof ResizeObserver === 'undefined' ||
+      (runtimeRenderIdentity !== null &&
+        intrinsicMeasurementOwner === runtimeRenderIdentity)
+    ) {
       return;
     }
 
     const observer = new ResizeObserver(([entry]) => {
       if (
         entry &&
-        runtimeIntrinsicOwnerRef.current !== runtimeRenderIdentity
+        runtimeIntrinsicOwnerRef.current !== runtimeRenderIdentity &&
+        intrinsicMeasurementOwner !== runtimeRenderIdentity
       ) {
         onAutoHeightChange?.(
           item.blockId,
@@ -786,6 +798,7 @@ const RenderPlanSlot = memo(function RenderPlanSlot({
     return () => observer.disconnect();
   }, [
     isFixedHeight,
+    intrinsicMeasurementOwner,
     item.blockId,
     onAutoHeightChange,
     runtimeRenderIdentity
@@ -793,15 +806,10 @@ const RenderPlanSlot = memo(function RenderPlanSlot({
 
   const handleIntrinsicSizeReport = useCallback(
     (height: number) => {
-      if (
-        !runtimeRenderIdentity ||
-        !Number.isFinite(height) ||
-        height <= 0
-      ) {
+      if (!runtimeRenderIdentity || !Number.isFinite(height) || height <= 0) {
         return;
       }
       runtimeIntrinsicOwnerRef.current = runtimeRenderIdentity;
-      setRuntimeIntrinsicOwner(runtimeRenderIdentity);
       onAutoHeightChange?.(item.blockId, height, runtimeRenderIdentity);
     },
     [item.blockId, onAutoHeightChange, runtimeRenderIdentity]
@@ -950,6 +958,9 @@ const RenderPlanSlot = memo(function RenderPlanSlot({
       data-flowbase-frontstage-generation={runtimePreparation?.generation ?? 0}
       data-flowbase-frontstage-intrinsic-height={
         intrinsicHeight ?? FRONTSTAGE_DEFAULT_AUTO_HEIGHT_PX
+      }
+      data-flowbase-frontstage-intrinsic-owner={
+        intrinsicMeasurementOwner ?? undefined
       }
       data-flowbase-frontstage-render-error={
         rendererVersionError?.description ??
@@ -1177,6 +1188,10 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   );
   const [autoRows, setAutoRows] = useState<Record<string, number>>({});
   const autoRowsRef = useRef(autoRows);
+  const [autoRowOwners, setAutoRowOwners] = useState<
+    Record<string, string | null>
+  >({});
+  const autoRowOwnersRef = useRef(autoRowOwners);
   const autoHeightScopeRef = useRef(content?.page.id);
   const autoHeightBatchRef = useRef(
     new FrontstageAutoHeightBatch({
@@ -1199,14 +1214,19 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     autoRowsRef.current = autoRows;
   }, [autoRows]);
   useEffect(() => {
+    autoRowOwnersRef.current = autoRowOwners;
+  }, [autoRowOwners]);
+  useEffect(() => {
     if (autoHeightScopeRef.current === content?.page.id) return;
     autoHeightScopeRef.current = content?.page.id;
     autoRowsRef.current = {};
+    autoRowOwnersRef.current = {};
     autoHeightBatchRef.current = new FrontstageAutoHeightBatch({
       settleMs: FRONTSTAGE_AUTO_HEIGHT_SETTLE_MS,
       settleFrames: FRONTSTAGE_AUTO_HEIGHT_SETTLE_FRAMES
     });
     setAutoRows({});
+    setAutoRowOwners({});
   }, [content?.page.id]);
   useEffect(
     () => () => {
@@ -1282,6 +1302,23 @@ export const PageCanvas: FC<PageCanvasProps> = ({
         autoHeightFrameRef.current = null;
         const currentRows = autoRowsRef.current;
         const nextRows = autoHeightBatchRef.current.commit(currentRows, nowMs);
+        const committedMeasurements =
+          autoHeightBatchRef.current.takeCommittedMeasurements();
+        if (committedMeasurements.length > 0) {
+          const currentOwners = autoRowOwnersRef.current;
+          let nextOwners: Record<string, string | null> | null = null;
+          for (const measurement of committedMeasurements) {
+            if (currentOwners[measurement.blockId] === measurement.identity) {
+              continue;
+            }
+            nextOwners ??= { ...currentOwners };
+            nextOwners[measurement.blockId] = measurement.identity;
+          }
+          if (nextOwners) {
+            autoRowOwnersRef.current = nextOwners;
+            setAutoRowOwners(nextOwners);
+          }
+        }
         if (nextRows !== currentRows) {
           const anchor = captureFrontstageScrollAnchor(gridContainerNode);
           if (anchor) {
@@ -1550,6 +1587,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                       ? undefined
                       : frontstageGridRowsToPixels(autoRows[item.blockId])
                   }
+                  intrinsicMeasurementOwner={autoRowOwners[item.blockId]}
                   onRuntimeDemandChange={onRuntimeDemandChange}
                   onRuntimeRetry={onRuntimeRetry}
                   onRuntimeRefresh={onRuntimeRefresh}

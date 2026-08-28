@@ -13,6 +13,12 @@ interface FrontstageAutoHeightRecord {
   stableFrames: number;
 }
 
+export interface FrontstageCommittedIntrinsicMeasurement {
+  blockId: string;
+  identity: string | null;
+  rows: number;
+}
+
 export function resolveFrontstageAutoHeightScrollDelta({
   anchorBlockId,
   columns,
@@ -47,6 +53,7 @@ export function resolveFrontstageAutoHeightScrollDelta({
 export class FrontstageAutoHeightBatch {
   private readonly records = new Map<string, FrontstageAutoHeightRecord>();
   private readonly pendingBlockIds = new Set<string>();
+  private committedMeasurements: FrontstageCommittedIntrinsicMeasurement[] = [];
   private readonly settleMs: number;
   private readonly settleFrames: number;
 
@@ -110,8 +117,19 @@ export class FrontstageAutoHeightBatch {
       }
       record.committedRows = rows;
       this.pendingBlockIds.delete(blockId);
+      this.committedMeasurements.push({
+        blockId,
+        identity: record.identity,
+        rows
+      });
     }
     return nextRows ?? currentRows;
+  }
+
+  takeCommittedMeasurements(): readonly FrontstageCommittedIntrinsicMeasurement[] {
+    const committed = this.committedMeasurements;
+    this.committedMeasurements = [];
+    return committed;
   }
 
   hasPendingMeasurements(): boolean {
