@@ -64,6 +64,60 @@ export default function Block() {
     expect(browserFetch).toHaveBeenCalledWith('https://api.example.test/value');
   });
 
+  test('I1923-AC-002 resolves a real ShadowRoot selection before the retargeted window range', () => {
+    const zeroRect = {
+      x: 0,
+      y: 0,
+      width: 0,
+      height: 0,
+      top: 0,
+      right: 0,
+      bottom: 0,
+      left: 0,
+      toJSON: () => ({})
+    };
+    const selectionRect = {
+      x: 250,
+      y: 30,
+      width: 50,
+      height: 20,
+      top: 30,
+      right: 300,
+      bottom: 50,
+      left: 250,
+      toJSON: () => ({})
+    };
+    const windowSelection = {
+      rangeCount: 1,
+      getRangeAt: () => ({ getBoundingClientRect: () => zeroRect }),
+      toString: () => 'Select'
+    } as unknown as Selection;
+    const shadowSelection = {
+      rangeCount: 1,
+      getRangeAt: () => ({ getBoundingClientRect: () => selectionRect }),
+      toString: () => 'Select'
+    } as unknown as Selection;
+    const browserWindow = { getSelection: () => windowSelection };
+    const browserDocument = {
+      querySelectorAll: () => [
+        { shadowRoot: { getSelection: () => shadowSelection } }
+      ]
+    };
+    vi.stubGlobal('window', browserWindow);
+    vi.stubGlobal('document', browserDocument);
+    const artifact = compile(`
+export default function Block() {
+  return window.getSelection().getRangeAt(0).getBoundingClientRect().width;
+}
+`);
+
+    const evaluated = evaluateNativeReactComponentArtifact(artifact, modules);
+
+    expect(evaluated.ok).toBe(true);
+    if (!evaluated.ok) return;
+    expect(evaluated.component()).toBe(50);
+  });
+
   test('R7-AC-001 binds a Host-owned console into the evaluated component closure', () => {
     const artifact = compile(`
 export default function Block() {

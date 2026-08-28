@@ -60,6 +60,11 @@ export function createNativeTrustedBlockBrowserCapabilityBindings(
     XMLHttpRequest?: unknown;
     WebSocket?: unknown;
   };
+  const browserWindow = browserScope.window ?? browserScope;
+  const selectionAwareBindings = createSelectionAwareBrowserBindings(
+    browserWindow,
+    browserScope.document
+  );
   return {
     fetch:
       typeof browserScope.fetch === 'function'
@@ -70,11 +75,113 @@ export function createNativeTrustedBlockBrowserCapabilityBindings(
     navigator: browserScope.navigator,
     localStorage: readBrowserCapability(() => browserScope.localStorage),
     sessionStorage: readBrowserCapability(() => browserScope.sessionStorage),
-    document: browserScope.document,
-    window: browserScope.window ?? browserScope,
+    document: selectionAwareBindings.document,
+    window: selectionAwareBindings.window,
     globalThis: browserScope,
     self: browserScope.self ?? browserScope
   };
+}
+
+function createSelectionAwareBrowserBindings(
+  browserWindow: unknown,
+  browserDocument: unknown
+): { window: unknown; document: unknown } {
+  if (!isObjectValue(browserWindow) || !isObjectValue(browserDocument)) {
+    return { window: browserWindow, document: browserDocument };
+  }
+  const resolveSelection = () =>
+    resolveNativeTrustedBlockSelection(browserWindow, browserDocument);
+  const documentProxy = proxyBrowserObject(browserDocument, {
+    getSelection: resolveSelection
+  });
+  const windowProxy = proxyBrowserObject(browserWindow, {
+    document: () => documentProxy,
+    getSelection: resolveSelection
+  });
+  return { window: windowProxy, document: documentProxy };
+}
+
+function resolveNativeTrustedBlockSelection(
+  browserWindow: object,
+  browserDocument: object
+): unknown {
+  const fallback = callObjectMethod(browserWindow, 'getSelection');
+  if (hasRenderableSelectionRange(fallback)) return fallback;
+  const roots = callObjectMethod(
+    browserDocument,
+    'querySelectorAll',
+    '[data-flowbase-native-trusted-block-root]'
+  );
+  if (!isIterable(roots)) return fallback;
+  const fallbackText = selectionText(fallback);
+  for (const root of roots) {
+    if (!isObjectValue(root) || !isObjectValue(root.shadowRoot)) continue;
+    const candidate = callObjectMethod(root.shadowRoot, 'getSelection');
+    if (
+      hasRenderableSelectionRange(candidate) &&
+      (!fallbackText || selectionText(candidate) === fallbackText)
+    ) {
+      return candidate;
+    }
+  }
+  return fallback;
+}
+
+function hasRenderableSelectionRange(selection: unknown): boolean {
+  if (!isObjectValue(selection) || selection.rangeCount !== 1) return false;
+  const range = callObjectMethod(selection, 'getRangeAt', 0);
+  if (!isObjectValue(range)) return false;
+  const rect = callObjectMethod(range, 'getBoundingClientRect');
+  return (
+    isObjectValue(rect) &&
+    ((typeof rect.width === 'number' && rect.width > 0) ||
+      (typeof rect.height === 'number' && rect.height > 0))
+  );
+}
+
+function selectionText(selection: unknown): string {
+  if (!isObjectValue(selection)) return '';
+  const value = callObjectMethod(selection, 'toString');
+  return typeof value === 'string' ? value : '';
+}
+
+function proxyBrowserObject(
+  target: object,
+  overrides: Record<PropertyKey, () => unknown>
+): object {
+  type BrowserMethod = (...args: unknown[]) => unknown;
+  const boundMethods = new WeakMap<BrowserMethod, BrowserMethod>();
+  return new Proxy(target, {
+    get(object, property) {
+      const override = overrides[property];
+      if (override) return property === 'getSelection' ? override : override();
+      const value = Reflect.get(object, property, object);
+      if (typeof value !== 'function') return value;
+      const method = value as BrowserMethod;
+      let bound = boundMethods.get(method);
+      if (!bound) {
+        bound = method.bind(object) as BrowserMethod;
+        boundMethods.set(method, bound);
+      }
+      return bound;
+    }
+  });
+}
+
+function callObjectMethod(
+  target: object,
+  property: PropertyKey,
+  ...args: unknown[]
+): unknown {
+  const method = Reflect.get(target, property, target);
+  return typeof method === 'function' ? method.apply(target, args) : undefined;
+}
+
+function isIterable(value: unknown): value is Iterable<unknown> {
+  return (
+    isObjectValue(value) &&
+    typeof Reflect.get(value, Symbol.iterator, value) === 'function'
+  );
 }
 
 export function getNativeTrustedBlockRuntimeCapabilityGuardValues(
@@ -184,4 +291,8 @@ function formatCapability(capability: string, property: string | symbol): string
 
 function isRecord(value: unknown): value is { name?: unknown; path?: unknown } {
   return typeof value === 'object' && value !== null;
+}
+
+function isObjectValue(value: unknown): value is Record<PropertyKey, unknown> {
+  return (typeof value === 'object' && value !== null) || typeof value === 'function';
 }
