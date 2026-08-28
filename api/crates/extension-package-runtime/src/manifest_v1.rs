@@ -273,6 +273,8 @@ pub struct PluginManifestV1 {
     pub js_dependencies: Vec<JsDependencyManifest>,
     #[serde(default)]
     pub block_contributions: Vec<FrontendBlockContributionManifest>,
+    #[serde(default)]
+    pub data_models: Vec<crate::PluginDataModelContribution>,
 }
 
 impl PluginManifestV1 {
@@ -434,6 +436,18 @@ fn validate_plugin_manifest(
     validate_execution_runtime_pair(manifest)?;
     validate_provider_runtime_capabilities(manifest, contract_policy)?;
     validate_permission_values(&manifest.permissions)?;
+    if !manifest.data_models.is_empty() && manifest.permissions.storage != "host_managed" {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "data_models requires permissions.storage=host_managed",
+        ));
+    }
+    for contribution in &manifest.data_models {
+        contribution.validate_additive_v1().map_err(|error| {
+            PluginFrameworkError::invalid_provider_package(format!(
+                "invalid data_models contribution: {error}"
+            ))
+        })?;
+    }
     if !manifest.permissions.credit.is_empty()
         && (manifest.consumption_kind != PluginConsumptionKind::CapabilityPlugin
             || manifest.execution_mode != PluginExecutionMode::ProcessPerCall

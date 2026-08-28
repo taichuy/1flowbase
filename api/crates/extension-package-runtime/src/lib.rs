@@ -30,3 +30,6 @@ pub use manifest_v1::*;
 pub use network_egress_provider_package::*;
 pub use provider_count_tokens_estimator::*;
 pub use provider_package::*;
+
+#[cfg(test)]
+mod _tests;

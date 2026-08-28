@@ -1,0 +1,1 @@
+mod plugin_data_model_manifest_tests;
