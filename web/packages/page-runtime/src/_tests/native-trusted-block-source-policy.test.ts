@@ -223,7 +223,6 @@ const label = "unterminated;
   });
 
   test.each([
-    ['message global API', "message.success('done');"],
     ['notification global API', "notification.open({ message: 'done' });"],
     ['Modal static method', 'Modal.confirm({ title: "Confirm" });'],
     ['computed Modal static method', "Modal['info']({ title: 'Info' });"]
@@ -233,6 +232,22 @@ const label = "unterminated;
     expect(result.ok).toBe(false);
     expect(result.errors[0]).toMatchObject({
       code: 'transform_failed'
+    });
+  });
+
+  test.each([
+    [
+      'static API',
+      "import { message } from 'antd'; message.success('done');"
+    ],
+    [
+      'instance Hook',
+      "import { message } from 'antd'; const [api] = message.useMessage(); api.info('done');"
+    ]
+  ])('I1922-AC-001/002 allows AntD message %s', (_label, source) => {
+    expect(validateNativeTrustedBlockSource(source)).toMatchObject({
+      ok: true,
+      errors: []
     });
   });
 

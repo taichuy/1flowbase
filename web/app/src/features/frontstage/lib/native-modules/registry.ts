@@ -21,6 +21,7 @@ import { ANTD_STYLE_EXPORTS, loadAntdStyleModule } from './antd-style-runtime';
 import { NativeBlockAffix } from './native-affix-runtime';
 import { NativeBlockAnchor } from './native-anchor-runtime';
 import { NativeBlockDropdown } from './native-dropdown-runtime';
+import { NativeBlockMessage } from './native-message-runtime';
 
 type ModuleNamespace = Record<string, unknown>;
 
@@ -28,7 +29,8 @@ const nativeAntdModule = {
   ...antdModule,
   Affix: NativeBlockAffix,
   Anchor: NativeBlockAnchor,
-  Dropdown: NativeBlockDropdown
+  Dropdown: NativeBlockDropdown,
+  message: NativeBlockMessage
 };
 
 const ANT_DESIGN_X_EXPORTS = [
