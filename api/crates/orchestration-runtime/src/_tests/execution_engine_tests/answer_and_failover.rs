@@ -1497,6 +1497,130 @@ async fn round_robin_distribution_pins_selected_target_across_retries() {
 }
 
 #[tokio::test]
+async fn all_distribution_rules_emit_the_canonical_receipt_contract_identity() {
+    let canonical = extension_contracts::PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1;
+    for rule in [
+        LlmDistributionRule::None,
+        LlmDistributionRule::RoundRobin,
+        LlmDistributionRule::RetryRoundRobin,
+    ] {
+        let mut plan = base_plan();
+        plan.nodes
+            .get_mut("node-llm")
+            .expect("llm node should exist")
+            .llm_runtime = Some(model_group_llm_runtime(rule, &["provider-a", "provider-b"]));
+        let runtime_context = ExecutionRuntimeContext::from_plan_input(
+            &plan,
+            &serde_json::Map::from_iter([("node-start".to_string(), json!({ "query": "hello" }))]),
+        )
+        .expect("runtime context should parse")
+        .with_llm_routing_counter_store(Arc::new(RecordingRoutingCounterStore::default()));
+        let outcome = start_flow_debug_run_with_runtime_context(
+            &plan,
+            &json!({ "node-start": { "query": "hello" } }),
+            runtime_context,
+            &RecordingSuccessInvoker {
+                calls: Arc::new(Mutex::new(Vec::new())),
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            outcome
+                .node_traces
+                .iter()
+                .find(|trace| trace.node_id == "node-llm")
+                .unwrap()
+                .metrics_payload["attempts"][0]["provider_distribution_selection"]
+                ["contract_version"],
+            json!(canonical)
+        );
+    }
+
+    let mut plan = base_plan();
+    plan.nodes
+        .get_mut("node-llm")
+        .expect("llm node should exist")
+        .llm_runtime = Some(model_group_llm_runtime(
+        LlmDistributionRule::Dynamic {
+            rule_id: "fixture.session_retry".to_string(),
+            rule_version: "1.0.0".to_string(),
+            contract_version: canonical.to_string(),
+            config: BTreeMap::new(),
+        },
+        &["provider-a", "provider-b"],
+    ));
+    let outcome = start_flow_debug_run(
+        &plan,
+        &json!({ "node-start": { "query": "hello" } }),
+        &CanonicalDynamicDistributionInvoker,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        outcome
+            .node_traces
+            .iter()
+            .find(|trace| trace.node_id == "node-llm")
+            .unwrap()
+            .metrics_payload["attempts"][0]["provider_distribution_selection"]["contract_version"],
+        json!(canonical)
+    );
+}
+
+struct CanonicalDynamicDistributionInvoker;
+
+impl_noop_code_invoker!(CanonicalDynamicDistributionInvoker);
+
+#[async_trait]
+impl ProviderInvoker for CanonicalDynamicDistributionInvoker {
+    async fn provider_distribution_registry_fingerprint(&self) -> Result<String> {
+        Ok("fixture-registry-fingerprint".to_string())
+    }
+
+    async fn select_provider_distribution(
+        &self,
+        _plugin_id: &str,
+        invocation: extension_contracts::ProviderDistributionInvocation,
+    ) -> Result<extension_contracts::ProviderDistributionSelectionReceipt> {
+        Ok(extension_contracts::ProviderDistributionSelectionReceipt {
+            invocation_id: invocation.invocation_id,
+            rule_id: invocation.rule_id,
+            rule_version: invocation.rule_version,
+            contract_version: invocation.contract_version,
+            registry_fingerprint: invocation.registry_fingerprint,
+            attempt: invocation.attempt,
+            decision: extension_contracts::ProviderDistributionDecision::Select {
+                target_id: invocation.candidates[0].target_id.clone(),
+            },
+        })
+    }
+
+    async fn invoke_llm(
+        &self,
+        runtime: &CompiledLlmRuntime,
+        _input: ProviderInvocationInput,
+    ) -> Result<ProviderInvocationOutput> {
+        Ok(final_provider_output(format!(
+            "winner:{}",
+            runtime.provider_instance_id
+        )))
+    }
+}
+
+#[async_trait]
+impl CapabilityInvoker for CanonicalDynamicDistributionInvoker {
+    async fn invoke_capability_node(
+        &self,
+        _runtime: &CompiledPluginRuntime,
+        _config_payload: serde_json::Value,
+        _input_payload: serde_json::Value,
+    ) -> Result<CapabilityInvocationOutput> {
+        unreachable!("distribution fixture does not execute capability nodes")
+    }
+}
+
+#[tokio::test]
 async fn retry_round_robin_resets_to_first_target_across_runs() {
     // AC-002: a new LLM node call always starts at target A.
     let mut plan = base_plan();

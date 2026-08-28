@@ -1,7 +1,7 @@
 use super::*;
 use extension_contracts::{
     ProviderDistributionCandidate, ProviderDistributionDecision,
-    ProviderDistributionSelectionReceipt,
+    ProviderDistributionSelectionReceipt, PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1,
 };
 
 const BUILTIN_RULE_VERSION: &str = "1";
@@ -119,7 +119,7 @@ where
                 .to_string(),
             rule_id: rule_id.to_string(),
             rule_version: BUILTIN_RULE_VERSION.to_string(),
-            contract_version: BUILTIN_RULE_VERSION.to_string(),
+            contract_version: PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1.to_string(),
             registry_fingerprint,
             attempt: attempt_index as u32,
             decision: ProviderDistributionDecision::Select {
