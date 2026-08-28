@@ -5,7 +5,9 @@
 
 mod compiler;
 mod deployment_set;
+mod hook_plan;
 
 pub use compiler::{compile_extension_graph, CompilationError};
 pub use deployment_set::*;
 pub use extension_contracts::extension_bus::*;
+pub use hook_plan::*;
