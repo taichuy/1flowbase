@@ -19,6 +19,7 @@ pub(crate) async fn record_lifecycle_fact_in_transaction(
     input: &RecordLifecycleFactInput,
 ) -> Result<LifecycleOutboxRecord> {
     validate_input(input)?;
+    let occurred_at = postgres_timestamp_precision(input.occurred_at)?;
     sqlx::query(
         r#"
         insert into lifecycle_outbox (
@@ -33,7 +34,7 @@ pub(crate) async fn record_lifecycle_fact_in_transaction(
     .bind(&input.contract_id)
     .bind(&input.contract_version)
     .bind(&input.canonical_payload)
-    .bind(input.occurred_at)
+    .bind(occurred_at)
     .execute(&mut **transaction)
     .await?;
 
@@ -44,11 +45,17 @@ pub(crate) async fn record_lifecycle_fact_in_transaction(
         || record.contract_id != input.contract_id
         || record.contract_version != input.contract_version
         || record.canonical_payload != input.canonical_payload
-        || record.occurred_at != input.occurred_at
+        || record.occurred_at != occurred_at
     {
         bail!("lifecycle outbox event ID conflicts with a different fact");
     }
     Ok(record)
+}
+
+fn postgres_timestamp_precision(value: OffsetDateTime) -> Result<OffsetDateTime> {
+    let microseconds = value.unix_timestamp_nanos().div_euclid(1_000);
+    OffsetDateTime::from_unix_timestamp_nanos(microseconds * 1_000)
+        .map_err(|error| anyhow!("lifecycle outbox timestamp is out of range: {error}"))
 }
 
 #[async_trait]

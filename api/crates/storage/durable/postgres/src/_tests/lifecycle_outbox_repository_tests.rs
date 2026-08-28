@@ -28,11 +28,12 @@ async fn lcf_005_outbox_claim_retry_delivery_and_idempotency_are_durable() {
         contract_id: "model_definition.committed".to_string(),
         contract_version: "v1".to_string(),
         canonical_payload: br#"{"model_definition_id":"model-1"}"#.to_vec(),
-        occurred_at: OffsetDateTime::now_utc(),
+        occurred_at: OffsetDateTime::from_unix_timestamp_nanos(1_700_000_000_123_456_789).unwrap(),
     };
     let first = store.record_lifecycle_fact(&input).await.unwrap();
     let replay = store.record_lifecycle_fact(&input).await.unwrap();
     assert_eq!(first, replay);
+    assert_eq!(first.occurred_at.nanosecond(), 123_456_000);
 
     let worker = Uuid::now_v7();
     let claimed = store.claim_lifecycle_facts(worker, 10).await.unwrap();
