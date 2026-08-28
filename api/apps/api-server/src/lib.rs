@@ -84,28 +84,6 @@ use crate::{
 
 pub const DEFAULT_API_SERVER_ADDR: &str = "0.0.0.0:7800";
 
-struct ApiLifecycleFactDelivery;
-
-#[async_trait::async_trait]
-impl control_plane::lifecycle_outbox_dispatcher::LifecycleFactDeliveryPort
-    for ApiLifecycleFactDelivery
-{
-    async fn deliver(
-        &self,
-        fact: &control_plane_contracts::ports::LifecycleOutboxRecord,
-    ) -> anyhow::Result<()> {
-        let _: serde_json::Value = serde_json::from_slice(&fact.canonical_payload)?;
-        tracing::info!(
-            event_id = %fact.event_id,
-            contract_id = %fact.contract_id,
-            contract_version = %fact.contract_version,
-            attempt = fact.attempt_count,
-            "delivered durable lifecycle fact"
-        );
-        Ok(())
-    }
-}
-
 struct ApiLifecycleDeliveryCompletion;
 
 impl control_plane::lifecycle_outbox_dispatcher::LifecycleDeliveryCompletionPort
@@ -353,14 +331,6 @@ async fn app_and_runtime_host_from_config(
         .store
         .clone()
         .with_runtime_table_name_policy(config.runtime_table_name_policy.clone());
-    tokio::spawn(
-        control_plane::lifecycle_outbox_dispatcher::LifecycleOutboxDispatcher::new(
-            store.clone(),
-            Arc::new(ApiLifecycleFactDelivery),
-            Arc::new(ApiLifecycleDeliveryCompletion),
-        )
-        .run(),
-    );
     console_policy_migration::require_runtime_console_policy_cutover(&store).await?;
     let extension_assembly = extension_bus::assemble_extension_graph_input(
         api_workspace_root()?,
@@ -368,6 +338,7 @@ async fn app_and_runtime_host_from_config(
         Vec::new(),
     )?;
     let extension_graph = Arc::new(extension_assembly.compile_graph()?);
+    let lifecycle_plan = extension_assembly.compile_lifecycle_subscriber_plan(&extension_graph)?;
     let extension_boot_snapshot = Arc::new(extension_bus::ExtensionBootSnapshot::compile(
         Arc::clone(&extension_graph),
         extension_assembly.interface_operations(),
@@ -387,6 +358,20 @@ async fn app_and_runtime_host_from_config(
         &host_extension_registry,
         &extension_graph,
     )?);
+    let (lifecycle_delivery, lifecycle_publication_catalog) =
+        host_extensions::lifecycle::ApiLifecycleFactDelivery::bind(
+            &lifecycle_plan,
+            infrastructure.event_bus(),
+        )?;
+    let store = store.with_lifecycle_publication_catalog(lifecycle_publication_catalog);
+    tokio::spawn(
+        control_plane::lifecycle_outbox_dispatcher::LifecycleOutboxDispatcher::new(
+            store.clone(),
+            Arc::new(lifecycle_delivery),
+            Arc::new(ApiLifecycleDeliveryCompletion),
+        )
+        .run(),
+    );
     let session_store = infrastructure
         .session_store()
         .expect("storage-ephemeral default provider must provide session store");

@@ -144,14 +144,23 @@ pub(super) async fn create_model_definition(
                 scope_id: model.scope_id,
             },
         );
-        let fact_input = RecordLifecycleFactInput {
+        let publication = store
+            .lifecycle_publication_catalog
+            .plan_for(
+                ModelDefinitionCommittedFact::CONTRACT_ID,
+                ModelDefinitionCommittedFact::CONTRACT_VERSION,
+            )
+            .cloned();
+        let canonical_payload = serde_json::to_vec(&fact)?;
+        let fact_input = publication.map(|publication| RecordLifecycleFactInput {
             event_id,
             transaction_id,
             contract_id: ModelDefinitionCommittedFact::CONTRACT_ID.to_string(),
             contract_version: ModelDefinitionCommittedFact::CONTRACT_VERSION.to_string(),
-            canonical_payload: serde_json::to_vec(&fact)?,
+            canonical_payload,
             occurred_at,
-        };
+            publication,
+        });
 
         let transactional_result = async {
             insert_model_definition(
@@ -190,7 +199,9 @@ pub(super) async fn create_model_definition(
                 },
             )
             .await?;
-            record_lifecycle_fact_in_transaction(&mut tx, &fact_input).await?;
+            if let Some(fact_input) = &fact_input {
+                record_lifecycle_fact_in_transaction(&mut tx, fact_input).await?;
+            }
             Ok::<(), anyhow::Error>(())
         }
         .await;

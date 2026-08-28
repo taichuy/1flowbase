@@ -8,8 +8,11 @@ Effective Graph
   → Authorize → Admit → Before → Invoke → After / Failure → Completion
 
 real transaction owner
-  → write AfterCommitFact into lifecycle_outbox in the same transaction
+  → bind the frozen Effective Graph subscriber plan
+  → write AfterCommitFact and one durable row per subscriber in the same transaction
   → commit makes the fact visible; rollback removes it
+  → dispatch each typed handler independently
+  → acknowledge the fact only after every subscriber succeeds
 ```
 
 ## Ownership
@@ -27,6 +30,8 @@ real transaction owner
 - Event subscriber 不同步控制当前 Invocation；后续状态修改创建新的 `TypedCommand`。
 - 不提供字符串 Hook handler、万能 JSON Decision、插件 aggregation function、SQL 或数据库连接。
 - 一次 Invocation 固定 Registry fingerprint 和 Effective Graph fingerprint；新 snapshot 只影响新调用。
+- AfterCommit 延迟投递使用事实写入时冻结的 graph fingerprint、subscriber identity 与 handler version；当前进程没有对应 frozen handler 时 fail-closed 并重试，不得切换到新版本。
+- 每个 subscriber 独立 claim、fencing、retry 与幂等边界；只有全部 subscriber Delivered 后事实才成为 Delivered。没有 active subscriber 时不写 outbox。
 
 ## Verification
 

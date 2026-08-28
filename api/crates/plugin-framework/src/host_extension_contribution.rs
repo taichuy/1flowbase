@@ -247,6 +247,22 @@ pub struct HostExtensionMigrationManifest {
     pub path: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostExtensionLifecycleContractManifest {
+    pub contract_id: String,
+    pub contract_version: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostExtensionLifecycleSubscriptionManifest {
+    pub subscription_id: String,
+    pub point_id: String,
+    pub fact: HostExtensionLifecycleContractManifest,
+    pub handler: HostExtensionLifecycleContractManifest,
+}
+
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct HostExtensionContributionManifest {
@@ -277,6 +293,8 @@ pub struct HostExtensionContributionManifest {
     pub console_surfaces: HostExtensionConsoleSurfacesManifest,
     pub workers: Vec<HostExtensionWorkerManifest>,
     pub migrations: Vec<HostExtensionMigrationManifest>,
+    #[serde(default)]
+    pub lifecycle_subscriptions: Vec<HostExtensionLifecycleSubscriptionManifest>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

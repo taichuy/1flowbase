@@ -71,7 +71,11 @@ where
             let delivery = self.delivery.deliver(&fact).await;
             let terminal = if delivery.is_ok() {
                 self.repository
-                    .mark_lifecycle_fact_delivered(fact.event_id, self.worker_id)
+                    .mark_lifecycle_fact_delivered(
+                        fact.event_id,
+                        &fact.subscriber_id,
+                        self.worker_id,
+                    )
                     .await?;
                 CompletionTerminal::Succeeded
             } else {
@@ -79,6 +83,7 @@ where
                 self.repository
                     .retry_lifecycle_fact(
                         fact.event_id,
+                        &fact.subscriber_id,
                         self.worker_id,
                         OffsetDateTime::now_utc() + Duration::seconds(retry_delay),
                         &delivery
@@ -146,6 +151,7 @@ mod tests {
         async fn mark_lifecycle_fact_delivered(
             &self,
             _event_id: Uuid,
+            _subscriber_id: &str,
             _worker_id: Uuid,
         ) -> Result<LifecycleOutboxRecord> {
             *self.completed.lock().unwrap() = Some(LifecycleOutboxStatus::Delivered);
@@ -155,6 +161,7 @@ mod tests {
         async fn retry_lifecycle_fact(
             &self,
             _event_id: Uuid,
+            _subscriber_id: &str,
             _worker_id: Uuid,
             _available_at: OffsetDateTime,
             _error: &str,
@@ -195,6 +202,10 @@ mod tests {
                 contract_version: "1".to_string(),
                 canonical_payload: b"{}".to_vec(),
                 occurred_at: OffsetDateTime::now_utc(),
+                graph_fingerprint: "graph-v1".to_string(),
+                subscriber_id: "subscriber-a".to_string(),
+                handler_id: "handler-a".to_string(),
+                handler_version: "v1".to_string(),
                 status: LifecycleOutboxStatus::Claimed,
                 attempt_count: 1,
                 available_at: OffsetDateTime::now_utc(),

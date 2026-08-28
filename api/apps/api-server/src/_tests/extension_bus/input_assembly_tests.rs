@@ -197,8 +197,34 @@ fn default_plugin_set_parses_and_drives_builtin_host_inventory() {
         assert_eq!(descriptor.lifecycle, LifecycleSemantics::Invocation);
         assert_eq!(descriptor.override_policy, OverridePolicy::Sealed);
         assert!(descriptor.allowed_permissions.is_empty());
-        assert!(lane.contributions().is_empty());
+        if point_id == api_server::extension_bus::RUNTIME_EVENT_AFTER_COMMIT_POINT_ID {
+            assert_eq!(lane.contributions().len(), 1);
+            assert_eq!(
+                lane.contributions()[0]
+                    .descriptor()
+                    .contribution_id
+                    .as_str(),
+                "official.plugin-host.lifecycle.model-definition-committed"
+            );
+        } else {
+            assert!(lane.contributions().is_empty());
+        }
     }
+
+    let lifecycle_plan = assembly.compile_lifecycle_subscriber_plan(&graph).unwrap();
+    assert_eq!(
+        lifecycle_plan.graph_fingerprint(),
+        graph.fingerprint().as_str()
+    );
+    assert_eq!(lifecycle_plan.subscribers().len(), 1);
+    let subscriber = &lifecycle_plan.subscribers()[0];
+    assert_eq!(subscriber.subscriber_id, "model-definition-committed");
+    assert_eq!(subscriber.fact_contract_id, "model_definition.committed");
+    assert_eq!(subscriber.fact_contract_version, "v1");
+    assert_eq!(
+        subscriber.handler_id,
+        "official.plugin-host.model-definition-committed"
+    );
 }
 
 // Root #1688 AC-001/AC-002: set declaration order is not graph resolution order.

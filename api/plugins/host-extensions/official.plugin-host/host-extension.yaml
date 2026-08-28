@@ -12,3 +12,12 @@ infrastructure_providers: []
 routes: []
 workers: []
 migrations: []
+lifecycle_subscriptions:
+  - subscription_id: model-definition-committed
+    point_id: 1flowbase.application.runtime-event.after-commit
+    fact:
+      contract_id: model_definition.committed
+      contract_version: v1
+    handler:
+      contract_id: official.plugin-host.model-definition-committed
+      contract_version: v1

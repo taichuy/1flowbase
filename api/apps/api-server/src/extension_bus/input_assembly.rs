@@ -117,6 +117,33 @@ impl ExtensionGraphInputAssembly {
     pub fn compile_graph(&self) -> Result<EffectiveExtensionGraph> {
         compile_extension_graph(self.module_descriptors.clone()).map_err(anyhow::Error::from)
     }
+
+    pub fn compile_lifecycle_subscriber_plan(
+        &self,
+        graph: &EffectiveExtensionGraph,
+    ) -> Result<plugin_framework::extension_bus::EffectiveLifecycleSubscriberPlan> {
+        let mut bindings = Vec::new();
+        for (_, manifest) in &self.host_extension_manifests {
+            for subscription in &manifest.lifecycle_subscriptions {
+                bindings.push(
+                    plugin_framework::extension_bus::LifecycleSubscriberBinding {
+                        contribution_id: lifecycle_subscription_contribution_id(
+                            &manifest.extension_id,
+                            &subscription.subscription_id,
+                        )?,
+                        subscription_id: subscription.subscription_id.clone(),
+                        point_id: ExtensionPointId::new(subscription.point_id.clone())?,
+                        fact_contract_id: subscription.fact.contract_id.clone(),
+                        fact_contract_version: subscription.fact.contract_version.clone(),
+                        handler_id: subscription.handler.contract_id.clone(),
+                        handler_version: subscription.handler.contract_version.clone(),
+                    },
+                );
+            }
+        }
+        plugin_framework::extension_bus::compile_lifecycle_subscriber_plan(graph, bindings)
+            .map_err(anyhow::Error::from)
+    }
 }
 
 pub fn assemble_extension_graph_input(
@@ -501,6 +528,22 @@ fn derive_host_module_descriptor(
             ordering: ContributionOrdering::default(),
         });
     }
+    for subscription in &contribution.lifecycle_subscriptions {
+        descriptor.contributions.push(ContributionDescriptor {
+            contribution_id: lifecycle_subscription_contribution_id(
+                &contribution.extension_id,
+                &subscription.subscription_id,
+            )?,
+            contributor_module_id: ModuleId::new(contribution.extension_id.as_str())?,
+            point_id: ExtensionPointId::new(subscription.point_id.clone())?,
+            contract_version: plugin_framework::extension_bus::ContractVersion::new(
+                RUNTIME_EVENT_LANE_CONTRACT_VERSION,
+            )?,
+            required_permissions: BTreeSet::new(),
+            mode: ContributionMode::Append,
+            ordering: ContributionOrdering::default(),
+        });
+    }
     if contribution.extension_id == HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID {
         descriptor.granted_permissions.insert(PermissionCode::new(
             HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION,
@@ -517,6 +560,14 @@ fn derive_host_module_descriptor(
         bail!("official providers view interface operation contribution id mismatch");
     }
     Ok(descriptor)
+}
+
+fn lifecycle_subscription_contribution_id(
+    extension_id: &str,
+    subscription_id: &str,
+) -> Result<ContributionId> {
+    ContributionId::new(format!("{extension_id}.lifecycle.{subscription_id}"))
+        .map_err(anyhow::Error::from)
 }
 
 pub(crate) fn infrastructure_provider_contribution_id(

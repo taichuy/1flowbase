@@ -1,4 +1,5 @@
 use anyhow::Result;
+use control_plane_contracts::ports::LifecyclePublicationCatalog;
 use control_plane_contracts::ports::{
     ApplicationRepository, AuthRepository, AuthenticatorSettingsRepository, BootstrapRepository,
     CreateApplicationInput, CreateMemberInput, FlowRepository, MemberRepository,
@@ -20,6 +21,7 @@ pub struct PgControlPlaneStore {
     pool: PgPool,
     actor_override: Option<ActorContext>,
     pub(crate) runtime_table_name_policy: crate::RuntimeTableNamePolicy,
+    pub(crate) lifecycle_publication_catalog: std::sync::Arc<LifecyclePublicationCatalog>,
 }
 
 impl PgControlPlaneStore {
@@ -28,7 +30,18 @@ impl PgControlPlaneStore {
             pool,
             actor_override: None,
             runtime_table_name_policy: crate::RuntimeTableNamePolicy::default(),
+            lifecycle_publication_catalog: std::sync::Arc::new(
+                LifecyclePublicationCatalog::default(),
+            ),
         }
+    }
+
+    pub fn with_lifecycle_publication_catalog(
+        mut self,
+        catalog: LifecyclePublicationCatalog,
+    ) -> Self {
+        self.lifecycle_publication_catalog = std::sync::Arc::new(catalog);
+        self
     }
 
     pub fn with_runtime_table_name_policy(
@@ -44,6 +57,9 @@ impl PgControlPlaneStore {
             pool: self.pool.clone(),
             actor_override: Some(actor),
             runtime_table_name_policy: self.runtime_table_name_policy.clone(),
+            lifecycle_publication_catalog: std::sync::Arc::clone(
+                &self.lifecycle_publication_catalog,
+            ),
         }
     }
 
