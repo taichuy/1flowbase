@@ -12,6 +12,7 @@ mod frontstage;
 mod host_infrastructure_config_repository_tests;
 mod i18n_global_key_migration_tests;
 mod identity;
+mod lifecycle_outbox_repository_tests;
 mod max_output_tokens_migration_tests;
 mod mcp_result_receipt_repository_tests;
 mod migration_smoke;
