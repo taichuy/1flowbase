@@ -1,8 +1,8 @@
 use anyhow::{anyhow, bail, Result};
 use async_trait::async_trait;
 use control_plane_contracts::ports::{
-    ManagedSchemaApplyReceipt, ManagedSchemaFieldType, ManagedSchemaOperation,
-    ManagedSchemaOwnershipRecord, ManagedSchemaPlan, ManagedSchemaPreview,
+    ManagedSchemaApplyReceipt, ManagedSchemaFieldType, ManagedSchemaObjectKind,
+    ManagedSchemaOperation, ManagedSchemaOwnershipRecord, ManagedSchemaPlan, ManagedSchemaPreview,
     ManagedSchemaPreviewAction, ManagedSchemaPreviewEntry, ManagedSchemaRepository,
 };
 use sqlx::{PgPool, Postgres, Row, Transaction};
@@ -612,6 +612,12 @@ fn map_receipt(row: sqlx::postgres::PgRow) -> Result<ManagedSchemaApplyReceipt> 
 }
 
 fn map_ownership(row: sqlx::postgres::PgRow) -> Result<ManagedSchemaOwnershipRecord> {
+    let object_kind = match row.try_get::<String, _>("object_kind")?.as_str() {
+        "owned_collection" => ManagedSchemaObjectKind::OwnedCollection,
+        "owned_field" => ManagedSchemaObjectKind::OwnedField,
+        "extension_field" => ManagedSchemaObjectKind::ExtensionField,
+        _ => return Err(anyhow!("invalid managed schema object kind")),
+    };
     let field_type = row
         .try_get::<Option<String>, _>("field_type")?
         .map(|value| match value.as_str() {
@@ -629,6 +635,8 @@ fn map_ownership(row: sqlx::postgres::PgRow) -> Result<ManagedSchemaOwnershipRec
         ownership_key: row.try_get("ownership_key")?,
         owner_id: row.try_get("owner_id")?,
         owner_version: row.try_get("owner_version")?,
+        object_kind,
+        logical_name: row.try_get("logical_name")?,
         physical_table: row.try_get("physical_table")?,
         physical_column: row.try_get("physical_column")?,
         field_type,

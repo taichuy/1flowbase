@@ -115,6 +115,9 @@ async fn pdm_003_005_owned_and_extension_objects_reconcile_idempotently() {
     assert!(ownership
         .iter()
         .all(|record| record.owner_id == "acme.analytics"));
+    assert!(ownership.iter().any(|record| {
+        record.object_kind.as_str() == "owned_field" && record.logical_name == "notes.title"
+    }));
 
     let retained = plan(
         "acme.analytics",

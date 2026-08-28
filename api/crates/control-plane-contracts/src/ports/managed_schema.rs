@@ -93,10 +93,29 @@ pub struct ManagedSchemaApplyReceipt {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ManagedSchemaObjectKind {
+    OwnedCollection,
+    OwnedField,
+    ExtensionField,
+}
+
+impl ManagedSchemaObjectKind {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::OwnedCollection => "owned_collection",
+            Self::OwnedField => "owned_field",
+            Self::ExtensionField => "extension_field",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ManagedSchemaOwnershipRecord {
     pub ownership_key: String,
     pub owner_id: String,
     pub owner_version: String,
+    pub object_kind: ManagedSchemaObjectKind,
+    pub logical_name: String,
     pub physical_table: String,
     pub physical_column: Option<String>,
     pub field_type: Option<ManagedSchemaFieldType>,
