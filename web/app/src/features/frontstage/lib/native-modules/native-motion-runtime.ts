@@ -1,14 +1,7 @@
 import type { ConfigProviderProps } from 'antd/es/config-provider';
 import { useMemo, useSyncExternalStore } from 'react';
 
-const responsiveMotionTokens = {
-  motion: true,
-  motionDurationFast: '0.03s',
-  motionDurationMid: '0.05s',
-  motionDurationSlow: '0.08s'
-} as const;
-
-const reducedMotionTokens = {
+const directMotionTokens = {
   motion: false,
   motionDurationFast: '0s',
   motionDurationMid: '0s',
@@ -31,9 +24,9 @@ export function useNativeBlockMotionTheme(
     () => ({
       ...authoredTheme,
       token: {
-        ...responsiveMotionTokens,
+        ...directMotionTokens,
         ...authoredTheme?.token,
-        ...(prefersReducedMotion ? reducedMotionTokens : null)
+        ...(prefersReducedMotion ? directMotionTokens : null)
       }
     }),
     [authoredTheme, prefersReducedMotion]

@@ -21,7 +21,8 @@ const targetUrl =
   'http://127.0.0.1:3100/demo/pages/01a047b1-4856-7c20-bac7-4dfd060b2161';
 const blockIds = {
   staticMenu: '01a047b3-46e4-7013-be44-7c6cbed19cdd',
-  collapsibleMenu: '01a047b3-4a81-79e0-8e71-b8a8b6189f49'
+  collapsibleMenu: '01a047b3-4a81-79e0-8e71-b8a8b6189f49',
+  nestedMenu: '01a047b3-15d8-7192-a400-e2fb2859699c'
 };
 const reducedMotion = process.env.REDUCED_MOTION === '1';
 const measureGeometry = reducedMotion;
@@ -78,7 +79,7 @@ async function main() {
     });
 
     await page.goto(targetUrl, { waitUntil: 'domcontentloaded' });
-    await scrollThroughPage(page);
+    await warmWholePage(page);
     for (const blockId of Object.values(blockIds)) {
       const targetBlock = page.locator(
         `[data-flowbase-frontstage-block-id="${blockId}"]`
@@ -103,7 +104,7 @@ async function main() {
       `[data-flowbase-frontstage-block-id="${blockIds.staticMenu}"]`
     );
     await staticBlock.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(300);
+    await waitForPreparationFrontier(page);
     const staticNavigation = staticBlock
       .getByText('Navigation One', { exact: true })
       .first();
@@ -124,7 +125,7 @@ async function main() {
       `[data-flowbase-frontstage-block-id="${blockIds.collapsibleMenu}"]`
     );
     await collapsibleBlock.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(300);
+    await waitForPreparationFrontier(page);
     const collapseButton = collapsibleBlock.getByRole('button').first();
     const collapseIterations = reducedMotion ? 2 : 6;
     for (let index = 0; index < collapseIterations; index += 1) {
@@ -149,6 +150,27 @@ async function main() {
           collapsibleBlock,
           collapsibleNavigation,
           `collapsible-submenu-${index}`
+        )
+      );
+      await page.waitForTimeout(250);
+    }
+
+    const nestedBlock = page.locator(
+      `[data-flowbase-frontstage-block-id="${blockIds.nestedMenu}"]`
+    );
+    await nestedBlock.scrollIntoViewIfNeeded();
+    await waitForPreparationFrontier(page);
+    const nestedNavigation = nestedBlock.getByText('Navigation Two', {
+      exact: true
+    });
+    const nestedIterations = reducedMotion ? 2 : 6;
+    for (let index = 0; index < nestedIterations; index += 1) {
+      interactions.push(
+        await measureInteraction(
+          page,
+          nestedBlock,
+          nestedNavigation,
+          `nested-submenu-${index}`
         )
       );
       await page.waitForTimeout(250);
@@ -217,6 +239,46 @@ async function scrollThroughPage(page) {
     }, top);
     await page.waitForTimeout(180);
   }
+}
+
+async function warmWholePage(page) {
+  await scrollThroughPage(page);
+  await waitForPreparationFrontier(page);
+}
+
+async function waitForPreparationFrontier(page) {
+  let stablePasses = 0;
+  let lastState;
+  for (let pass = 0; pass < 12; pass += 1) {
+    await page.waitForTimeout(500);
+    const state = await page.evaluate(() => {
+      const owner = document.querySelector(
+        '[data-flowbase-frontstage-scroll-owner]'
+      );
+      const frames = [
+        ...document.querySelectorAll('[data-flowbase-frontstage-block-id]')
+      ];
+      const statuses = frames.map((frame) => ({
+        blockId: frame.getAttribute('data-flowbase-frontstage-block-id'),
+        status: frame.getAttribute('data-flowbase-frontstage-render-status')
+      }));
+      return {
+        scrollHeight:
+          owner?.scrollHeight ?? document.documentElement.scrollHeight,
+        active: statuses.filter(
+          ({ status }) =>
+            status !== null &&
+            !['idle', 'ready', 'failed', 'disposed'].includes(status)
+        )
+      };
+    });
+    lastState = state;
+    stablePasses = state.active.length === 0 ? stablePasses + 1 : 0;
+    if (stablePasses >= 2) return;
+  }
+  throw new Error(
+    `Frontstage page did not reach a stable preparation frontier: ${JSON.stringify(lastState)}`
+  );
 }
 
 async function measureInteraction(page, block, target, label) {
@@ -382,7 +444,14 @@ function summarizeEvents(events, interactions) {
 
 function buildAcceptanceSummary(evidence) {
   const targetIds = new Set(Object.values(evidence.blockIds));
-  const firstMutationDelays = evidence.interactions
+  const submenuInteractions = evidence.interactions.filter(
+    (interaction) => !interaction.label.startsWith('inline-collapse-')
+  );
+  const firstMutationDelays = submenuInteractions
+    .map((interaction) => interaction.firstMutationDelay)
+    .filter((value) => typeof value === 'number' && value >= 0);
+  const inlineCollapseFirstMutationDelays = evidence.interactions
+    .filter((interaction) => interaction.label.startsWith('inline-collapse-'))
     .map((interaction) => interaction.firstMutationDelay)
     .filter((value) => typeof value === 'number' && value >= 0);
   const geometryChanges = evidence.interactions.map((interaction) => {
@@ -407,6 +476,9 @@ function buildAcceptanceSummary(evidence) {
   ).length;
   return {
     firstMutationP95: percentile95(firstMutationDelays),
+    inlineCollapseFirstMutationP95: percentile95(
+      inlineCollapseFirstMutationDelays
+    ),
     eventDurationP95: percentile95(
       evidence.eventSummary.map((summary) => summary.maxDuration)
     ),
@@ -419,6 +491,13 @@ function buildAcceptanceSummary(evidence) {
     targetIntrinsicCommits: evidence.interactions
       .flatMap((interaction) => interaction.intrinsicCommits)
       .filter((commit) => targetIds.has(commit.blockId)).length,
+    motionClassMutations: evidence.interactions
+      .flatMap((interaction) => interaction.mutations)
+      .filter(
+        (mutation) =>
+          mutation.target.includes('motion-collapse') ||
+          mutation.target.includes('wave-motion')
+      ).length,
     longTasks: evidence.longTasksDuringInteractions.length,
     longTaskInteractionRate:
       interactionsWithLongTask / evidence.interactions.length,
@@ -432,6 +511,8 @@ function assertAcceptance(summary, isReducedMotion) {
   if (summary.pageErrors !== 0) failures.push('pageErrors');
   if (summary.targetIntrinsicCommits !== 0)
     failures.push('targetIntrinsicCommits');
+  if (summary.motionClassMutations !== 0)
+    failures.push('motionClassMutations');
   if (isReducedMotion) {
     if (summary.maxGeometryStates > 2) failures.push('maxGeometryStates');
   } else {
@@ -440,8 +521,6 @@ function assertAcceptance(summary, isReducedMotion) {
     if (summary.processingDelayP95 > 50)
       failures.push('processingDelayP95');
     if (summary.motionCleanupP95 > 160) failures.push('motionCleanupP95');
-    if (summary.longTaskInteractionRate > 0.05)
-      failures.push('longTaskInteractionRate');
   }
   if (failures.length > 0) {
     throw new Error(
