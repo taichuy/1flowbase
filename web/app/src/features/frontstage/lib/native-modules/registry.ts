@@ -22,6 +22,7 @@ import { NativeBlockAffix } from './native-affix-runtime';
 import { NativeBlockAnchor } from './native-anchor-runtime';
 import { NativeBlockDropdown } from './native-dropdown-runtime';
 import { NativeBlockMessage } from './native-message-runtime';
+import { NativeBlockMenu } from './menu/native-menu-runtime';
 
 type ModuleNamespace = Record<string, unknown>;
 
@@ -30,6 +31,7 @@ const nativeAntdModule = {
   Affix: NativeBlockAffix,
   Anchor: NativeBlockAnchor,
   Dropdown: NativeBlockDropdown,
+  Menu: NativeBlockMenu,
   message: NativeBlockMessage
 };
 
