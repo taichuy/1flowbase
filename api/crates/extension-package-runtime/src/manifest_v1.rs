@@ -275,6 +275,8 @@ pub struct PluginManifestV1 {
     pub block_contributions: Vec<FrontendBlockContributionManifest>,
     #[serde(default)]
     pub data_models: Vec<crate::PluginDataModelContribution>,
+    #[serde(default)]
+    pub provider_distribution_rules: Vec<extension_contracts::ProviderDistributionRuleContribution>,
 }
 
 impl PluginManifestV1 {
@@ -448,6 +450,13 @@ fn validate_plugin_manifest(
             ))
         })?;
     }
+    for contribution in &manifest.provider_distribution_rules {
+        contribution.validate().map_err(|error| {
+            PluginFrameworkError::invalid_provider_package(format!(
+                "invalid provider_distribution_rules contribution: {error}"
+            ))
+        })?;
+    }
     if !manifest.permissions.credit.is_empty()
         && (manifest.consumption_kind != PluginConsumptionKind::CapabilityPlugin
             || manifest.execution_mode != PluginExecutionMode::ProcessPerCall
@@ -460,6 +469,7 @@ fn validate_plugin_manifest(
     validate_binding_targets(&manifest.binding_targets)?;
     validate_slot_codes(manifest)?;
     validate_network_egress_provider_manifest(manifest)?;
+    validate_provider_distribution_rule_manifest(manifest)?;
 
     if manifest.consumption_kind == PluginConsumptionKind::HostExtension
         && manifest
@@ -1275,6 +1285,7 @@ fn validate_slot_codes(manifest: &PluginManifestV1) -> FrameworkResult<()> {
         "record_validator",
         "field_computed_value",
         "network_egress_provider",
+        extension_contracts::PROVIDER_DISTRIBUTION_RULE_SLOT,
     ];
     const HOST_EXTENSION_ALLOWED: &[&str] = &["host_bootstrap"];
     const CAPABILITY_PLUGIN_ALLOWED: &[&str] =
@@ -1323,6 +1334,34 @@ fn validate_network_egress_provider_manifest(manifest: &PluginManifestV1) -> Fra
         ));
     }
 
+    Ok(())
+}
+
+fn validate_provider_distribution_rule_manifest(
+    manifest: &PluginManifestV1,
+) -> FrameworkResult<()> {
+    let declares = manifest
+        .slot_codes
+        .iter()
+        .any(|slot| slot == extension_contracts::PROVIDER_DISTRIBUTION_RULE_SLOT);
+    if !declares {
+        if !manifest.provider_distribution_rules.is_empty() {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "provider_distribution_rules requires provider_distribution_rule slot",
+            ));
+        }
+        return Ok(());
+    }
+    if manifest.consumption_kind != PluginConsumptionKind::RuntimeExtension
+        || manifest.slot_codes.as_slice() != [extension_contracts::PROVIDER_DISTRIBUTION_RULE_SLOT]
+        || manifest.execution_mode != PluginExecutionMode::StatefulRuntimeWorker
+        || manifest.runtime.protocol != "stdio_json_worker"
+        || manifest.provider_distribution_rules.len() != 1
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "provider_distribution_rule requires one contribution and an exclusive stateful_runtime_worker stdio_json_worker slot",
+        ));
+    }
     Ok(())
 }
 
@@ -1477,6 +1516,12 @@ fn validate_contract_version(manifest: &PluginManifestV1) -> FrameworkResult<()>
             } else if manifest
                 .slot_codes
                 .iter()
+                .any(|slot| slot == extension_contracts::PROVIDER_DISTRIBUTION_RULE_SLOT)
+            {
+                extension_contracts::PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1
+            } else if manifest
+                .slot_codes
+                .iter()
                 .any(|slot| matches!(slot.as_str(), "data_source" | "data_import_snapshot"))
             {
                 "1flowbase.data_source/v1"
@@ -1526,7 +1571,12 @@ fn validate_provider_runtime_capabilities(
             .slot_codes
             .iter()
             .any(|slot| slot == "model_provider");
-    if !is_model_provider && !manifest.runtime.capabilities.is_empty() {
+    let is_distribution_rule = manifest.consumption_kind == PluginConsumptionKind::RuntimeExtension
+        && manifest
+            .slot_codes
+            .iter()
+            .any(|slot| slot == extension_contracts::PROVIDER_DISTRIBUTION_RULE_SLOT);
+    if !is_model_provider && !is_distribution_rule && !manifest.runtime.capabilities.is_empty() {
         return Err(PluginFrameworkError::invalid_provider_package(
             "runtime.capabilities is only supported for model_provider runtime extensions",
         ));
@@ -1534,6 +1584,19 @@ fn validate_provider_runtime_capabilities(
 
     let mut seen = HashSet::new();
     for capability in &manifest.runtime.capabilities {
+        if is_distribution_rule {
+            validate_allowed(
+                capability,
+                "runtime.capabilities[]",
+                &[extension_contracts::RUNTIME_HOST_CALL_CAPABILITY_V1],
+            )?;
+            if !seen.insert(capability.as_str()) {
+                return Err(PluginFrameworkError::invalid_provider_package(format!(
+                    "runtime.capabilities contains duplicate value: {capability}"
+                )));
+            }
+            continue;
+        }
         // Publisher-cutover receipts bind these bytes to durable identity; bare
         // `protocol_context` remains rejected by every package intake path.
         let is_legacy_protocol_context = capability == "protocol_context"

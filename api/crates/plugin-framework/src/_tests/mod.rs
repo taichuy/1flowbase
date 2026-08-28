@@ -14,6 +14,7 @@ mod network_egress_provider_contract_tests;
 mod network_egress_provider_package_tests;
 mod package_intake_tests;
 mod provider_contract_tests;
+mod provider_distribution_registry_tests;
 mod provider_manifest_adapter_tests;
 mod provider_package_tests;
 mod runtime_target_tests;

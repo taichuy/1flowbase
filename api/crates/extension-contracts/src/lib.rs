@@ -16,6 +16,7 @@ pub mod package_intake_contract;
 pub mod plugin_data_contract;
 pub mod plugin_data_model_contract;
 pub mod provider_contract;
+pub mod provider_distribution_contract;
 pub mod runtime_target;
 pub mod semantic_terminal;
 
@@ -30,6 +31,7 @@ pub use package_intake_contract::*;
 pub use plugin_data_contract::*;
 pub use plugin_data_model_contract::*;
 pub use provider_contract::*;
+pub use provider_distribution_contract::*;
 pub use runtime_target::*;
 pub use semantic_terminal::*;
 
