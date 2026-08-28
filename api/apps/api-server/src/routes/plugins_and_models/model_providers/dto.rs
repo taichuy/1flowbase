@@ -425,6 +425,24 @@ pub struct ModelProviderMainInstanceResponse {
     pub auto_include_new_instances: bool,
     pub revision: i64,
     pub model_routing_policies: Vec<ModelProviderMainModelRoutingPolicyResponse>,
+    pub distribution_rules: Vec<ModelProviderDistributionRuleDefinitionResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelProviderDistributionRuleDefinitionResponse {
+    pub value: String,
+    pub rule_id: String,
+    pub rule_version: String,
+    pub contract_version: String,
+    pub display_name: String,
+    pub config_fields: Vec<ModelProviderDistributionConfigFieldResponse>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ModelProviderDistributionConfigFieldResponse {
+    pub key: String,
+    pub value_type: String,
+    pub required: bool,
 }
 
 #[derive(Debug, Serialize, ToSchema)]

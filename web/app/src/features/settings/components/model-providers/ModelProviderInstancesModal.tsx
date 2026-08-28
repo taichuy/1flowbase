@@ -29,6 +29,8 @@ type ModelGroup =
 type ModelGroupTarget = ModelGroup['targets'][number];
 type DistributionRule =
   SettingsModelProviderMainInstance['model_routing_policies'][number]['distribution_rule'];
+type RoutingPolicy =
+  SettingsModelProviderMainInstance['model_routing_policies'][number];
 
 const SOURCE_INSTANCE_TAG_COLORS = [
   'blue',
@@ -125,6 +127,8 @@ export function ModelProviderInstancesModal({
   onSaveRoutingPolicy: (
     modelId: string,
     distributionRule: DistributionRule,
+    distributionRuleContractVersion: string | undefined,
+    distributionRuleConfig: RoutingPolicy['distribution_rule_config'],
     providerInstanceIds: string[],
     excludedProviderInstanceIds: string[],
     onSuccess: () => void
@@ -408,16 +412,21 @@ export function ModelProviderInstancesModal({
           modelId={editingGroup.model_id}
           policy={editingPolicy}
           targets={editingGroup.targets}
+          distributionRules={mainInstance?.distribution_rules ?? []}
           saving={updatingMainInstance}
           onCancel={() => setEditingGroup(null)}
           onSave={({
             distribution_rule,
+            distribution_rule_contract_version,
+            distribution_rule_config,
             provider_instance_ids,
             excluded_provider_instance_ids
           }) => {
             onSaveRoutingPolicy(
               editingGroup.model_id,
               distribution_rule,
+              distribution_rule_contract_version,
+              distribution_rule_config,
               provider_instance_ids,
               excluded_provider_instance_ids,
               () => setEditingGroup(null)

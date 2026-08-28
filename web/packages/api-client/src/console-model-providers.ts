@@ -329,6 +329,20 @@ export interface ConsoleModelProviderMainInstance {
   auto_include_new_instances: boolean;
   revision: number;
   model_routing_policies: ConsoleModelProviderMainModelRoutingPolicy[];
+  distribution_rules?: ConsoleModelProviderDistributionRuleDefinition[];
+}
+
+export interface ConsoleModelProviderDistributionRuleDefinition {
+  value: string;
+  rule_id: string;
+  rule_version: string;
+  contract_version: string;
+  display_name: string;
+  config_fields: Array<{
+    key: string;
+    value_type: 'string' | 'integer' | 'boolean';
+    required: boolean;
+  }>;
 }
 
 export interface ConsoleModelProviderMainModelRoutingPolicy {

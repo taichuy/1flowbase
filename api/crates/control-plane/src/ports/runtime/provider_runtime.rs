@@ -21,6 +21,10 @@ pub struct ProviderRuntimeExecutionContext {
 
 #[async_trait]
 pub trait ProviderRuntimePort: Send + Sync {
+    async fn provider_distribution_registry_fingerprint(&self) -> anyhow::Result<String> {
+        Ok("builtin-provider-distribution-registry/v1".to_string())
+    }
+
     async fn select_provider_distribution(
         &self,
         _plugin_id: &str,

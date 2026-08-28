@@ -160,6 +160,12 @@ where
         + 'static,
     H: ProviderRuntimePort + Clone + Send + Sync,
 {
+    async fn provider_distribution_registry_fingerprint(&self) -> Result<String> {
+        self.runtime
+            .provider_distribution_registry_fingerprint()
+            .await
+    }
+
     async fn select_provider_distribution(
         &self,
         plugin_id: &str,

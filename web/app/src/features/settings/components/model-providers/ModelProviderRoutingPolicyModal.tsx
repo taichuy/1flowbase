@@ -142,6 +142,7 @@ export function ModelProviderRoutingPolicyModal({
   modelId,
   policy,
   targets,
+  distributionRules,
   saving,
   onCancel,
   onSave
@@ -150,10 +151,15 @@ export function ModelProviderRoutingPolicyModal({
   modelId: string;
   policy: RoutingPolicy | undefined;
   targets: RoutingPolicyTarget[];
+  distributionRules: NonNullable<
+    SettingsModelProviderMainInstance['distribution_rules']
+  >;
   saving: boolean;
   onCancel: () => void;
   onSave: (input: {
     distribution_rule: DistributionRule;
+    distribution_rule_contract_version?: string;
+    distribution_rule_config?: RoutingPolicy['distribution_rule_config'];
     provider_instance_ids: string[];
     excluded_provider_instance_ids: string[];
   }) => void;
@@ -245,14 +251,23 @@ export function ModelProviderRoutingPolicyModal({
     });
   };
 
-  const submit = () =>
+  const submit = () => {
+    const definition = distributionRules.find(
+      (candidate) => candidate.value === distributionRule
+    );
     onSave({
       distribution_rule: distributionRule,
+      distribution_rule_contract_version: definition?.contract_version,
+      distribution_rule_config:
+        policy?.distribution_rule === distributionRule
+          ? policy.distribution_rule_config
+          : {},
       provider_instance_ids: providerInstanceIds,
       excluded_provider_instance_ids: providerInstanceIds.filter((id) =>
         excludedProviderInstanceIds.has(id)
       )
     });
+  };
 
   return (
     <FixedHeightModal
@@ -293,20 +308,11 @@ export function ModelProviderRoutingPolicyModal({
               setDistributionRule(event.currentTarget.value as DistributionRule)
             }
           >
-            <option value="none">
-              {i18nText('settings', 'auto.distribution_rule_none')}
-            </option>
-            <option value="round_robin">
-              {i18nText('settings', 'auto.distribution_rule_round_robin')}
-            </option>
-            <option value="retry_round_robin">
-              {i18nText('settings', 'auto.distribution_rule_retry_round_robin')}
-            </option>
-            {!['none', 'round_robin', 'retry_round_robin'].includes(
-              distributionRule
-            ) ? (
-              <option value={distributionRule}>{distributionRule}</option>
-            ) : null}
+            {distributionRules.map((definition) => (
+              <option key={definition.rule_id} value={definition.value}>
+                {definition.display_name}
+              </option>
+            ))}
           </select>
         </label>
         <div className="model-provider-panel__routing-policy-field">

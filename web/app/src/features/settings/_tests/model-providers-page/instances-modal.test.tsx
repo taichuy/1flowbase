@@ -834,6 +834,8 @@ describe('ModelProvidersPage - instances modal', () => {
       (
         _modelId: string,
         _distributionRule: string,
+        _distributionRuleContractVersion: string | undefined,
+        _distributionRuleConfig: Record<string, unknown> | undefined,
         _providerInstanceIds: string[],
         _excludedProviderInstanceIds: string[],
         onSuccess: () => void

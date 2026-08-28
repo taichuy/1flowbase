@@ -848,6 +848,8 @@ export function SettingsModelProvidersSection({
         onSaveRoutingPolicy={(
           modelId,
           distributionRule,
+          distributionRuleContractVersion,
+          distributionRuleConfig,
           providerInstanceIds,
           excludedProviderInstanceIds,
           onSuccess
@@ -861,6 +863,9 @@ export function SettingsModelProvidersSection({
           const nextPolicy = {
             model_id: modelId,
             distribution_rule: distributionRule,
+            distribution_rule_contract_version:
+              distributionRuleContractVersion,
+            distribution_rule_config: distributionRuleConfig,
             provider_instance_ids: providerInstanceIds,
             excluded_provider_instance_ids: excludedProviderInstanceIds
           };

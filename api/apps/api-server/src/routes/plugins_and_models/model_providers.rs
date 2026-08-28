@@ -573,6 +573,9 @@ fn to_consume_reset_credit_response(
 
 fn to_main_instance_response(
     view: ModelProviderMainInstanceView,
+    distribution_rules: Vec<
+        plugin_framework::provider_distribution_registry::ProviderDistributionRuleDefinition,
+    >,
 ) -> ModelProviderMainInstanceResponse {
     ModelProviderMainInstanceResponse {
         provider_code: view.provider_code,
@@ -582,6 +585,48 @@ fn to_main_instance_response(
             .model_routing_policies
             .into_iter()
             .map(to_main_model_routing_policy_response)
+            .collect(),
+        distribution_rules: distribution_rules
+            .into_iter()
+            .map(to_distribution_rule_definition_response)
+            .collect(),
+    }
+}
+
+fn to_distribution_rule_definition_response(
+    definition: plugin_framework::provider_distribution_registry::ProviderDistributionRuleDefinition,
+) -> ModelProviderDistributionRuleDefinitionResponse {
+    let value = match &definition.handler {
+        plugin_framework::provider_distribution_registry::ProviderDistributionHandlerRef::Builtin { code } => code.clone(),
+        plugin_framework::provider_distribution_registry::ProviderDistributionHandlerRef::RuntimeExtension { .. } => definition.rule_id.clone(),
+    };
+    ModelProviderDistributionRuleDefinitionResponse {
+        value,
+        rule_id: definition.rule_id,
+        rule_version: definition.rule_version,
+        contract_version: definition.contract_version,
+        display_name: definition.display_name,
+        config_fields: definition
+            .config_fields
+            .into_iter()
+            .map(
+                |(key, field)| ModelProviderDistributionConfigFieldResponse {
+                    key,
+                    value_type: match field.value_type {
+                        extension_contracts::ProviderDistributionConfigValueType::String => {
+                            "string"
+                        }
+                        extension_contracts::ProviderDistributionConfigValueType::Integer => {
+                            "integer"
+                        }
+                        extension_contracts::ProviderDistributionConfigValueType::Boolean => {
+                            "boolean"
+                        }
+                    }
+                    .to_string(),
+                    required: field.required,
+                },
+            )
             .collect(),
     }
 }
@@ -1313,7 +1358,14 @@ pub async fn get_main_instance(
     let view = settings_service(&state, &context.actor, "model_providers.main_instance.view")
         .get_main_instance(context.user.id, &provider_code)
         .await?;
-    Ok(Json(ApiSuccess::new(to_main_instance_response(view))))
+    let distribution_rules = state
+        .provider_runtime
+        .provider_distribution_definitions()
+        .await;
+    Ok(Json(ApiSuccess::new(to_main_instance_response(
+        view,
+        distribution_rules,
+    ))))
 }
 
 #[utoipa::path(
@@ -1336,15 +1388,53 @@ pub async fn update_main_instance(
 ) -> Result<Json<ApiSuccess<ModelProviderMainInstanceResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
-    let model_routing_policies = body
-        .model_routing_policies
-        .map(|policies| {
-            policies
-                .into_iter()
-                .map(to_main_model_routing_policy)
-                .collect::<Result<Vec<_>, ApiError>>()
-        })
-        .transpose()?;
+    let model_routing_policies = if let Some(policies) = body.model_routing_policies {
+        let mut compiled = Vec::with_capacity(policies.len());
+        for policy in policies {
+            let policy = to_main_model_routing_policy(policy)?;
+            if let domain::ModelProviderDistributionRule::Dynamic {
+                rule_id,
+                contract_version,
+                config,
+            } = &policy.distribution_rule
+            {
+                let config = config
+                    .iter()
+                    .map(|(key, value)| {
+                        let value = match value {
+                            domain::ModelProviderDistributionConfigValue::String(value) => {
+                                extension_contracts::ProviderDistributionConfigValue::String(
+                                    value.clone(),
+                                )
+                            }
+                            domain::ModelProviderDistributionConfigValue::Integer(value) => {
+                                extension_contracts::ProviderDistributionConfigValue::Integer(
+                                    *value,
+                                )
+                            }
+                            domain::ModelProviderDistributionConfigValue::Boolean(value) => {
+                                extension_contracts::ProviderDistributionConfigValue::Boolean(
+                                    *value,
+                                )
+                            }
+                        };
+                        (key.clone(), value)
+                    })
+                    .collect();
+                state
+                    .provider_runtime
+                    .validate_provider_distribution_rule(rule_id, contract_version, &config)
+                    .await
+                    .map_err(|_| {
+                        control_plane::errors::ControlPlaneError::InvalidInput("distribution_rule")
+                    })?;
+            }
+            compiled.push(policy);
+        }
+        Some(compiled)
+    } else {
+        None
+    };
     let view = settings_service(
         &state,
         &context.actor,
@@ -1359,7 +1449,14 @@ pub async fn update_main_instance(
     })
     .await?;
 
-    Ok(Json(ApiSuccess::new(to_main_instance_response(view))))
+    let distribution_rules = state
+        .provider_runtime
+        .provider_distribution_definitions()
+        .await;
+    Ok(Json(ApiSuccess::new(to_main_instance_response(
+        view,
+        distribution_rules,
+    ))))
 }
 
 #[utoipa::path(

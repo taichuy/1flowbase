@@ -24,6 +24,7 @@ pub struct ExecutionRuntimeContext {
     pub(super) native_model_request_context: NativeModelRequestContext,
     pub(super) llm_routing_counter_store: Option<Arc<dyn LlmRoutingCounterStore>>,
     pub(super) provider_distribution_invocation_id: Arc<OnceLock<String>>,
+    pub(super) provider_distribution_registry_fingerprint: Arc<tokio::sync::OnceCell<String>>,
     pub(super) provider_distribution_conversation_id: Option<String>,
     pub(super) round_robin_pins: Arc<Mutex<BTreeMap<String, Arc<tokio::sync::OnceCell<usize>>>>>,
     pub(super) http_response_file_persister: Option<Arc<dyn HttpResponseFilePersister>>,
@@ -66,6 +67,7 @@ impl ExecutionRuntimeContext {
             )?,
             llm_routing_counter_store: None,
             provider_distribution_invocation_id: Arc::default(),
+            provider_distribution_registry_fingerprint: Arc::default(),
             provider_distribution_conversation_id: variable_pool
                 .get("sys")
                 .and_then(|value| value.get("conversation_id"))
@@ -242,6 +244,20 @@ impl ExecutionRuntimeContext {
     pub(super) fn provider_distribution_invocation_id(&self) -> &str {
         self.provider_distribution_invocation_id
             .get_or_init(|| uuid::Uuid::now_v7().to_string())
+    }
+
+    pub(super) async fn provider_distribution_registry_fingerprint<I>(
+        &self,
+        invoker: &I,
+    ) -> Result<&str>
+    where
+        I: ProviderInvoker + ?Sized,
+    {
+        Ok(self
+            .provider_distribution_registry_fingerprint
+            .get_or_try_init(|| invoker.provider_distribution_registry_fingerprint())
+            .await?
+            .as_str())
     }
 
     pub(super) fn round_robin_pin(&self, key: &str) -> Result<Arc<tokio::sync::OnceCell<usize>>> {

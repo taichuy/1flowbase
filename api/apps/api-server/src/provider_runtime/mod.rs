@@ -63,7 +63,10 @@ use crate::runtime_activity::{
     ApplicationActivityKind, ApplicationRuntimeActivityTracker,
 };
 
+mod distribution_registry;
 mod model_provider_slot;
+
+use distribution_registry::EffectiveProviderDistributionSnapshot;
 
 struct RuntimeEventChannelSink(tokio::sync::mpsc::Sender<ProviderStreamEvent>);
 
@@ -93,6 +96,7 @@ pub struct ApiRuntimeServices {
     model_provider_slot_resolver: Option<ModelProviderSlotResolver>,
     provider_input_pipeline:
         Option<Arc<orchestration_runtime::provider_input_pipeline::ProviderInputPipeline>>,
+    provider_distribution_snapshot: Arc<tokio::sync::RwLock<EffectiveProviderDistributionSnapshot>>,
 }
 
 #[derive(Clone)]
@@ -200,6 +204,9 @@ impl ApiRuntimeServices {
                 runtime_core::data_model_template_registry::DataModelTemplateCatalog::core(),
             model_provider_slot_resolver: Some(ModelProviderSlotResolver::new(extension_graph)),
             provider_input_pipeline: Some(provider_input_pipeline),
+            provider_distribution_snapshot: Arc::new(tokio::sync::RwLock::new(
+                EffectiveProviderDistributionSnapshot::builtins()?,
+            )),
         })
     }
 
@@ -234,7 +241,78 @@ impl ApiRuntimeServices {
                 runtime_core::data_model_template_registry::DataModelTemplateCatalog::core(),
             model_provider_slot_resolver: None,
             provider_input_pipeline: None,
+            provider_distribution_snapshot: Arc::new(tokio::sync::RwLock::new(
+                EffectiveProviderDistributionSnapshot::builtins()
+                    .expect("builtin distribution registry must compile"),
+            )),
         }
+    }
+
+    pub async fn provider_distribution_definitions(
+        &self,
+    ) -> Vec<plugin_framework::provider_distribution_registry::ProviderDistributionRuleDefinition>
+    {
+        self.provider_distribution_snapshot
+            .read()
+            .await
+            .definitions()
+    }
+
+    pub async fn provider_distribution_fingerprint(&self) -> String {
+        self.provider_distribution_snapshot
+            .read()
+            .await
+            .fingerprint()
+            .to_string()
+    }
+
+    pub async fn validate_provider_distribution_rule(
+        &self,
+        rule_id: &str,
+        contract_version: &str,
+        config: &std::collections::BTreeMap<
+            String,
+            extension_contracts::ProviderDistributionConfigValue,
+        >,
+    ) -> anyhow::Result<()> {
+        self.provider_distribution_snapshot
+            .read()
+            .await
+            .validate(rule_id, contract_version, config)
+    }
+
+    async fn activate_provider_distribution_runtime(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+    ) -> anyhow::Result<()> {
+        let package_root = installation.local_path().ok_or_else(|| {
+            anyhow::anyhow!("distribution runtime has no local package materialization")
+        })?;
+        let mut snapshot = self.provider_distribution_snapshot.write().await;
+        let next = snapshot.with_runtime_package(
+            &installation.plugin_id,
+            PathBuf::from(package_root).as_path(),
+        )?;
+        self.runtime_backend
+            .activate_provider_distribution_rule(runtime_package_activation(installation, None)?)
+            .await
+            .map_err(map_runtime_backend_error)?;
+        *snapshot = next;
+        Ok(())
+    }
+
+    async fn deactivate_provider_distribution_runtime(
+        &self,
+        plugin_id: &str,
+    ) -> anyhow::Result<()> {
+        let mut snapshot = self.provider_distribution_snapshot.write().await;
+        let next = snapshot.without_plugin(plugin_id)?;
+        self.runtime_backend
+            .deactivate_provider_distribution_rule(plugin_id)
+            .await
+            .map_err(map_runtime_backend_error)?;
+        *snapshot = next;
+        Ok(())
     }
 
     pub fn model_provider_extension_graph(
@@ -472,18 +550,28 @@ struct DataSourceRuntimeTarget {
 
 #[async_trait]
 impl ProviderRuntimePort for ApiProviderRuntime {
+    async fn provider_distribution_registry_fingerprint(&self) -> anyhow::Result<String> {
+        Ok(self.services.provider_distribution_fingerprint().await)
+    }
+
     async fn select_provider_distribution(
         &self,
-        plugin_id: &str,
-        invocation: extension_contracts::ProviderDistributionInvocation,
+        rule_id: &str,
+        mut invocation: extension_contracts::ProviderDistributionInvocation,
         context: ProviderRuntimeExecutionContext,
     ) -> anyhow::Result<extension_contracts::ProviderDistributionSelectionReceipt> {
+        let snapshot = self.services.provider_distribution_snapshot.read().await;
+        let (plugin_id, fingerprint) =
+            snapshot.resolve_runtime(rule_id, &invocation.rule_version, &invocation.config)?;
+        invocation.registry_fingerprint = fingerprint.to_string();
+        let plugin_id = plugin_id.to_string();
+        drop(snapshot);
         self.services
             .orchestration_backend
             .select_provider_distribution(
                 runtime_core::runtime_backend::RuntimeProviderDistributionRequest {
                     request_id: RuntimeRequestId::new(Uuid::now_v7().to_string())?,
-                    target: RuntimeTargetId::new(plugin_id.to_string())?,
+                    target: RuntimeTargetId::new(plugin_id)?,
                     invocation,
                     principal: runtime_core::runtime_backend::RuntimeExecutionPrincipal {
                         workspace_id: context.workspace_id.to_string(),
@@ -510,15 +598,11 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             // Network egress workers receive their private configuration only through `sync`.
             // Installation activation is intentionally deferred so no worker can start without it.
             plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT => Ok(()),
-            extension_contracts::PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1 => self
-                .services
-                .runtime_backend
-                .activate_provider_distribution_rule(runtime_package_activation(
-                    installation,
-                    None,
-                )?)
-                .await
-                .map_err(map_runtime_backend_error),
+            extension_contracts::PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1 => {
+                self.services
+                    .activate_provider_distribution_runtime(installation)
+                    .await
+            }
             _ => Err(ControlPlaneError::InvalidInput("plugin_installation").into()),
         }
     }
@@ -553,12 +637,11 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             // Network egress workers are provider-instance scoped. Artifact deactivation does not
             // identify an instance and therefore cannot own its worker lifecycle.
             plugin_framework::NETWORK_EGRESS_PROVIDER_CONTRACT => Ok(()),
-            extension_contracts::PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1 => self
-                .services
-                .runtime_backend
-                .deactivate_provider_distribution_rule(&installation.plugin_id)
-                .await
-                .map_err(map_runtime_backend_error),
+            extension_contracts::PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1 => {
+                self.services
+                    .deactivate_provider_distribution_runtime(&installation.plugin_id)
+                    .await
+            }
             _ => Err(ControlPlaneError::InvalidInput("plugin_installation").into()),
         }
     }
