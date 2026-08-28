@@ -196,24 +196,26 @@ impl ProviderWorkerSupervisor {
         result
     }
 
-    pub(crate) async fn call_streaming_with_limits(
+    pub(crate) async fn call_streaming_with_limits_and_host_calls(
         self: &Arc<Self>,
         request: &ProviderStdioRequest,
         timeout_limits: &PluginRuntimeLimits,
         required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
         diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
         event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
+        host_calls: Option<crate::stdio_runtime::ProviderHostCallContext>,
     ) -> FrameworkResult<StreamingProviderOutput> {
         let lease = self.admit()?;
         let mut worker = self.worker.lock().await;
         self.ensure_lease_can_dispatch(&worker)?;
         let result = worker
-            .call_streaming_with_limits(
+            .call_streaming_with_limits_and_host_calls(
                 request,
                 timeout_limits,
                 required_live_events,
                 diagnostic_live_events,
                 event_observer,
+                host_calls,
             )
             .await;
         if result.is_err() {

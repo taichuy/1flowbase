@@ -12,6 +12,13 @@ pub struct ProviderLiveEventSenders {
     pub diagnostic: tokio::sync::mpsc::Sender<ProviderStreamEvent>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ProviderRuntimeExecutionContext {
+    pub workspace_id: uuid::Uuid,
+    pub actor_id: Option<uuid::Uuid>,
+    pub deadline_unix_ms: i64,
+}
+
 #[async_trait]
 pub trait ProviderRuntimePort: Send + Sync {
     async fn activate_plugin(
@@ -144,6 +151,24 @@ pub trait ProviderRuntimePort: Send + Sync {
         let _ = (workspace_id, selector);
         self.invoke_stream_with_live_events(installation, input, live_events)
             .await
+    }
+
+    async fn invoke_stream_with_execution_context(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        input: ProviderInvocationInput,
+        live_events: Option<ProviderLiveEventSenders>,
+        context: ProviderRuntimeExecutionContext,
+        selector: domain::NetworkEgressConsumerSelector,
+    ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
+        self.invoke_stream_with_network_egress(
+            installation,
+            input,
+            live_events,
+            context.workspace_id,
+            selector,
+        )
+        .await
     }
 
     async fn acquire_http_node_client(

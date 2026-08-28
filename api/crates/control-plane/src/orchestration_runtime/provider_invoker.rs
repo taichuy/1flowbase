@@ -773,11 +773,23 @@ where
         );
         let invocation_result = self
             .runtime
-            .invoke_stream_with_network_egress(
+            .invoke_stream_with_execution_context(
                 &installation,
                 input,
                 live_provider_events,
-                self.workspace_id,
+                crate::ports::ProviderRuntimeExecutionContext {
+                    workspace_id: self.workspace_id,
+                    actor_id: self
+                        .flow_execution_context
+                        .as_ref()
+                        .map(|context| context.data_model.actor.user_id),
+                    deadline_unix_ms: i64::try_from(
+                        (OffsetDateTime::now_utc() + time::Duration::minutes(5))
+                            .unix_timestamp_nanos()
+                            / 1_000_000,
+                    )
+                    .unwrap_or(i64::MAX),
+                },
                 domain::NetworkEgressConsumerSelector::ModelProviderInstance {
                     instance_id: instance.id,
                 },

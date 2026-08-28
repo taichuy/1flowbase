@@ -700,7 +700,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             self.ensure_provider_loaded(&binding).await?;
             self.services
                 .orchestration_backend
-                .execute(runtime_execution_request(&binding, input)?)
+                .execute(runtime_execution_request(&binding, input, None)?)
                 .await
                 .map(|output| ProviderRuntimeInvocationOutput {
                     events: output.events,
@@ -744,7 +744,7 @@ impl ProviderRuntimePort for ApiProviderRuntime {
                 .unwrap_or_default();
             self.services
                 .orchestration_backend
-                .execute_stream(runtime_execution_request(&binding, input)?, sinks)
+                .execute_stream(runtime_execution_request(&binding, input, None)?, sinks)
                 .await
                 .map(|output| ProviderRuntimeInvocationOutput {
                     events: output.events,
@@ -796,6 +796,66 @@ impl ProviderRuntimePort for ApiProviderRuntime {
             (Ok(_), Err(error)) => Err(error),
             (Ok(output), Ok(())) => Ok(output),
         }
+    }
+
+    async fn invoke_stream_with_execution_context(
+        &self,
+        installation: &domain::LocalPluginInstallationRecord,
+        mut input: ProviderInvocationInput,
+        live_events: Option<ProviderLiveEventSenders>,
+        context: control_plane::ports::ProviderRuntimeExecutionContext,
+        selector: domain::NetworkEgressConsumerSelector,
+    ) -> anyhow::Result<ProviderRuntimeInvocationOutput> {
+        let binding = self.resolve_model_provider_binding(installation)?;
+        binding.require_provider_code(&input.provider_code)?;
+        let activity = self.start_runtime_activity(ApplicationActivityKind::ModelRequest);
+        self.ensure_provider_loaded(&binding).await?;
+        let scope = match self.network_egress.as_ref() {
+            Some(network_egress) => {
+                network_egress
+                    .acquire(context.workspace_id, selector)
+                    .await?
+            }
+            None => None,
+        };
+        if let Some(scope) = &scope {
+            input.set_network_egress_context(scope.provider_invocation_context());
+        }
+        let sinks = live_events
+            .map(|senders| RuntimeStreamSinks {
+                required: Some(Arc::new(RuntimeEventChannelSink(senders.required))),
+                diagnostic: Some(Arc::new(RuntimeEventChannelSink(senders.diagnostic))),
+            })
+            .unwrap_or_default();
+        let principal = runtime_core::runtime_backend::RuntimeExecutionPrincipal {
+            workspace_id: context.workspace_id.to_string(),
+            actor_id: context.actor_id.map(|value| value.to_string()),
+            deadline_unix_ms: context.deadline_unix_ms,
+        };
+        let invocation = self
+            .services
+            .orchestration_backend
+            .execute_stream(
+                runtime_execution_request(&binding, input, Some(principal))?,
+                sinks,
+            )
+            .await
+            .map(|output| ProviderRuntimeInvocationOutput {
+                events: output.events,
+                result: output.result,
+            })
+            .map_err(map_runtime_backend_error);
+        let release = match scope {
+            Some(scope) => scope.release().await,
+            None => Ok(()),
+        };
+        let result = match (invocation, release) {
+            (Err(error), _) => Err(error),
+            (Ok(_), Err(error)) => Err(error),
+            (Ok(output), Ok(())) => Ok(output),
+        };
+        finish_runtime_activity(activity, &result);
+        result
     }
 
     async fn acquire_http_node_client(
@@ -1594,11 +1654,13 @@ fn runtime_network_egress_activation(
 fn runtime_execution_request(
     binding: &ModelProviderSlotBinding,
     input: ProviderInvocationInput,
+    principal: Option<runtime_core::runtime_backend::RuntimeExecutionPrincipal>,
 ) -> anyhow::Result<RuntimeExecutionRequest> {
     Ok(RuntimeExecutionRequest {
         request_id: RuntimeRequestId::new(Uuid::now_v7().to_string())?,
         target: RuntimeTargetId::new(binding.plugin_id.clone())?,
         input,
+        principal,
     })
 }
 

@@ -69,10 +69,18 @@ impl RuntimeTargetId {
 }
 
 #[derive(Debug, Clone)]
+pub struct RuntimeExecutionPrincipal {
+    pub workspace_id: String,
+    pub actor_id: Option<String>,
+    pub deadline_unix_ms: i64,
+}
+
+#[derive(Debug, Clone)]
 pub struct RuntimeExecutionRequest {
     pub request_id: RuntimeRequestId,
     pub target: RuntimeTargetId,
     pub input: ProviderInvocationInput,
+    pub principal: Option<RuntimeExecutionPrincipal>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

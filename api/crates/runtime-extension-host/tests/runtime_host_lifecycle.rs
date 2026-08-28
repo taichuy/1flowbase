@@ -133,6 +133,7 @@ fn lifecycle_request(request_id: &str) -> RuntimeExecutionRequest {
             provider_config: serde_json::json!({ "mode": "slow" }),
             ..ProviderInvocationInput::default()
         },
+        principal: None,
     }
 }
 

@@ -930,6 +930,7 @@ impl RuntimeExecutionPort for RuntimeExtensionHost {
         let request_id = request.request_id.clone();
         let target_id = request.target.as_str().to_string();
         let provider_host = Arc::clone(&self.provider_host);
+        let plugin_data = Arc::clone(&self.plugin_data);
 
         let mut active = self.active_requests.lock().await;
         // Admission and registration share the same critical section that drain() acquires after
@@ -963,11 +964,13 @@ impl RuntimeExecutionPort for RuntimeExtensionHost {
             };
             let operation = {
                 let host = provider_host.read().await;
-                host.invoke_stream_with_live_events_operation(
+                host.invoke_stream_with_host_calls_operation(
                     &target_id,
                     request.input,
                     required_sender,
                     diagnostic_sender,
+                    request.principal,
+                    Some(plugin_data),
                 )
                 .map_err(RuntimeBackendError::from)?
             };

@@ -1,8 +1,14 @@
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     process::Stdio,
     sync::Arc,
     time::{Duration, Instant},
+};
+
+use extension_contracts::{
+    PluginDataBinding, PluginDataError, PluginDataErrorKind, PluginDataPort, RuntimeHostFrame,
+    RuntimeHostWorkerFrame, PLUGIN_DATA_SERVICE_V1, RUNTIME_HOST_CALL_PROTOCOL_V1,
 };
 
 use extension_package_runtime::{
@@ -16,6 +22,7 @@ use extension_package_runtime::{
 };
 use serde::Serialize;
 use serde_json::Value;
+use time::OffsetDateTime;
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, Lines},
     process::{Child, ChildStdin, ChildStdout, Command},
@@ -58,6 +65,28 @@ pub struct ProviderWorkerCleanupReceipt {
 pub struct StreamingProviderOutput {
     pub events: Vec<ProviderStreamEvent>,
     pub result: ProviderInvocationResult,
+}
+
+#[derive(Clone)]
+pub(crate) struct ProviderHostCallContext {
+    pub binding: PluginDataBinding,
+    pub plugin_data: Arc<dyn PluginDataPort>,
+}
+
+struct HostCallCompletion {
+    call_id: String,
+    result: Result<extension_contracts::PluginDataResponse, PluginDataError>,
+}
+
+#[derive(Default)]
+struct ActiveHostCalls(HashMap<String, tokio::task::JoinHandle<()>>);
+
+impl Drop for ActiveHostCalls {
+    fn drop(&mut self) {
+        for (_, task) in self.0.drain() {
+            task.abort();
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -214,6 +243,26 @@ impl ProviderWorker {
         diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
         event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
     ) -> FrameworkResult<StreamingProviderOutput> {
+        self.call_streaming_with_limits_and_host_calls(
+            request,
+            timeout_limits,
+            required_live_events,
+            diagnostic_live_events,
+            event_observer,
+            None,
+        )
+        .await
+    }
+
+    pub(crate) async fn call_streaming_with_limits_and_host_calls(
+        &mut self,
+        request: &ProviderStdioRequest,
+        timeout_limits: &PluginRuntimeLimits,
+        required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+        diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
+        event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
+        host_calls: Option<ProviderHostCallContext>,
+    ) -> FrameworkResult<StreamingProviderOutput> {
         let timeout_ms = provider_invocation_timeout_ms(timeout_limits);
         match tokio::time::timeout(
             Duration::from_millis(timeout_ms),
@@ -223,6 +272,7 @@ impl ProviderWorker {
                 required_live_events,
                 diagnostic_live_events,
                 event_observer,
+                host_calls,
             ),
         )
         .await
@@ -339,6 +389,7 @@ impl ProviderWorker {
         required_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
         diagnostic_live_events: Option<tokio::sync::mpsc::Sender<ProviderStreamEvent>>,
         event_observer: Option<tokio::sync::mpsc::UnboundedSender<()>>,
+        host_calls: Option<ProviderHostCallContext>,
     ) -> FrameworkResult<StreamingProviderOutput> {
         let executable_path = self.executable_path.clone();
         let timeout_limits = timeout_limits.clone();
@@ -349,16 +400,42 @@ impl ProviderWorker {
         let mut result = None;
 
         let mut timeout_state = ProviderStreamTimeoutState::new();
-        while let Some(line) = next_provider_stdout_line(
-            &mut process.stdout,
-            &executable_path,
-            &timeout_limits,
-            &mut timeout_state,
-        )
-        .await?
-        {
+        let (completion_sender, mut completion_receiver) =
+            tokio::sync::mpsc::unbounded_channel::<HostCallCompletion>();
+        let mut active_host_calls = ActiveHostCalls::default();
+        loop {
+            let line = tokio::select! {
+                completion = completion_receiver.recv(), if !active_host_calls.0.is_empty() => {
+                    if let Some(completion) = completion {
+                        if active_host_calls.0.remove(&completion.call_id).is_some() {
+                            write_host_result(&executable_path, &mut process.stdin, completion).await?;
+                        }
+                    }
+                    continue;
+                }
+                line = next_provider_stdout_line(
+                    &mut process.stdout,
+                    &executable_path,
+                    &timeout_limits,
+                    &mut timeout_state,
+                ) => line?,
+            };
+            let Some(line) = line else { break };
             let trimmed = line.trim();
             if trimmed.is_empty() {
+                continue;
+            }
+
+            if let Ok(frame) = serde_json::from_str::<RuntimeHostWorkerFrame>(trimmed) {
+                handle_host_worker_frame(
+                    &executable_path,
+                    &mut process.stdin,
+                    frame,
+                    host_calls.as_ref(),
+                    &completion_sender,
+                    &mut active_host_calls,
+                )
+                .await?;
                 continue;
             }
 
@@ -454,6 +531,177 @@ impl ProviderWorkerProcessControl {
             cleanup_error,
         }
     }
+}
+
+async fn handle_host_worker_frame(
+    executable_path: &Path,
+    stdin: &mut ChildStdin,
+    frame: RuntimeHostWorkerFrame,
+    context: Option<&ProviderHostCallContext>,
+    completion_sender: &tokio::sync::mpsc::UnboundedSender<HostCallCompletion>,
+    active: &mut ActiveHostCalls,
+) -> FrameworkResult<()> {
+    match frame {
+        RuntimeHostWorkerFrame::HostCall {
+            protocol,
+            call_id,
+            service,
+            request,
+        } => {
+            validate_host_call_identity(&protocol, &call_id, service.as_str())?;
+            request.validate().map_err(host_call_contract_error)?;
+            if active.0.contains_key(&call_id) {
+                return Err(host_protocol_error("duplicate host call id"));
+            }
+            let Some(context) = context.cloned() else {
+                return write_host_result(
+                    executable_path,
+                    stdin,
+                    HostCallCompletion {
+                        call_id,
+                        result: Err(plugin_data_error(
+                            PluginDataErrorKind::PermissionDenied,
+                            "runtime_host_call_not_granted",
+                            false,
+                        )),
+                    },
+                )
+                .await;
+            };
+            let completion_call_id = call_id.clone();
+            let sender = completion_sender.clone();
+            let task = tokio::spawn(async move {
+                let remaining_ms = context
+                    .binding
+                    .deadline_unix_ms
+                    .saturating_sub(now_unix_ms());
+                let result = if remaining_ms <= 0 {
+                    Err(plugin_data_error(
+                        PluginDataErrorKind::DeadlineExceeded,
+                        "plugin_data_deadline",
+                        false,
+                    ))
+                } else {
+                    match tokio::time::timeout(
+                        Duration::from_millis(u64::try_from(remaining_ms).unwrap_or(u64::MAX)),
+                        context.plugin_data.execute(&context.binding, &request),
+                    )
+                    .await
+                    {
+                        Ok(result) => result,
+                        Err(_) => Err(plugin_data_error(
+                            PluginDataErrorKind::DeadlineExceeded,
+                            "plugin_data_deadline",
+                            false,
+                        )),
+                    }
+                };
+                let _ = sender.send(HostCallCompletion {
+                    call_id: completion_call_id,
+                    result,
+                });
+            });
+            active.0.insert(call_id, task);
+            Ok(())
+        }
+        RuntimeHostWorkerFrame::HostCancel { protocol, call_id } => {
+            validate_host_call_identity(&protocol, &call_id, PLUGIN_DATA_SERVICE_V1)?;
+            let Some(task) = active.0.remove(&call_id) else {
+                return Err(host_protocol_error("unknown host call id"));
+            };
+            task.abort();
+            write_host_result(
+                executable_path,
+                stdin,
+                HostCallCompletion {
+                    call_id,
+                    result: Err(plugin_data_error(
+                        PluginDataErrorKind::Cancelled,
+                        "plugin_data_cancelled",
+                        false,
+                    )),
+                },
+            )
+            .await
+        }
+    }
+}
+
+fn validate_host_call_identity(
+    protocol: &str,
+    call_id: &str,
+    service: &str,
+) -> FrameworkResult<()> {
+    if protocol != RUNTIME_HOST_CALL_PROTOCOL_V1 || service != PLUGIN_DATA_SERVICE_V1 {
+        return Err(host_protocol_error(
+            "unsupported host call protocol or service",
+        ));
+    }
+    if call_id.is_empty()
+        || call_id.len() > 128
+        || !call_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+    {
+        return Err(host_protocol_error("invalid host call id"));
+    }
+    Ok(())
+}
+
+async fn write_host_result(
+    executable_path: &Path,
+    stdin: &mut ChildStdin,
+    completion: HostCallCompletion,
+) -> FrameworkResult<()> {
+    let (result, error) = match completion.result {
+        Ok(result) => (Some(result), None),
+        Err(error) => (None, Some(error)),
+    };
+    let frame = RuntimeHostFrame::HostResult {
+        protocol: RUNTIME_HOST_CALL_PROTOCOL_V1.to_string(),
+        call_id: completion.call_id,
+        result,
+        error,
+    };
+    let mut bytes = serde_json::to_vec(&frame)
+        .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))?;
+    bytes.push(b'\n');
+    stdin
+        .write_all(&bytes)
+        .await
+        .map_err(|error| PluginFrameworkError::io(Some(executable_path), error.to_string()))?;
+    stdin
+        .flush()
+        .await
+        .map_err(|error| PluginFrameworkError::io(Some(executable_path), error.to_string()))
+}
+
+fn host_call_contract_error(error: PluginDataError) -> PluginFrameworkError {
+    host_protocol_error(&format!("invalid plugin data request: {}", error.code))
+}
+
+fn host_protocol_error(message: &str) -> PluginFrameworkError {
+    PluginFrameworkError::runtime(ProviderRuntimeError::normalize(
+        "runtime_host_call",
+        message,
+        None,
+    ))
+}
+
+fn plugin_data_error(
+    kind: PluginDataErrorKind,
+    code: &'static str,
+    retryable: bool,
+) -> PluginDataError {
+    PluginDataError {
+        kind,
+        code: code.to_string(),
+        retryable,
+    }
+}
+
+fn now_unix_ms() -> i64 {
+    i64::try_from(OffsetDateTime::now_utc().unix_timestamp_nanos() / 1_000_000).unwrap_or(i64::MAX)
 }
 
 pub async fn call_executable(

@@ -1570,6 +1570,7 @@ fn validate_provider_runtime_capabilities(
                     PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_CHAT_V1_CAPABILITY,
                     PROVIDER_PROTOCOL_CONTEXT_RESTORE_OPENAI_RESPONSES_V1_CAPABILITY,
                     PROVIDER_NETWORK_EGRESS_HANDOFF_V1_CAPABILITY,
+                    extension_contracts::RUNTIME_HOST_CALL_CAPABILITY_V1,
                 ],
             )?;
         }

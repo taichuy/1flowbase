@@ -247,6 +247,7 @@ async fn d_008_eight_official_runtime_extensions_execute_through_the_real_host()
                         .unwrap(),
                     target: RuntimeTargetId::new(runtime_plugin_id).unwrap(),
                     input: generate_input(plugin_id),
+                    principal: None,
                 },
                 RuntimeStreamSinks::default(),
             )

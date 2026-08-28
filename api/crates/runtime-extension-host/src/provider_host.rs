@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs,
     path::PathBuf,
     sync::{
@@ -8,6 +8,10 @@ use std::{
     },
 };
 
+use extension_contracts::{
+    PluginDataBinding, PluginDataPermission, PluginDataPort, PluginStorageBinding,
+    RUNTIME_HOST_CALL_CAPABILITY_V1,
+};
 use extension_package_runtime::{
     error::{FrameworkResult, PluginFrameworkError},
     manifest_v1::PluginExecutionMode,
@@ -35,8 +39,8 @@ use extension_package_runtime::provider_contract::ProviderCountTokensMethod;
 
 use crate::package_loader::{LoadedProviderPackage, PackageLoader};
 use crate::stdio_runtime::{
-    call_executable, call_executable_streaming, ProviderWorkerCleanupReason,
-    ProviderWorkerCleanupReceipt, ProviderWorkerLifecycleState,
+    call_executable, call_executable_streaming, ProviderHostCallContext,
+    ProviderWorkerCleanupReason, ProviderWorkerCleanupReceipt, ProviderWorkerLifecycleState,
     DEFAULT_PROVIDER_INVOCATION_TIMEOUT_MS,
 };
 
@@ -231,6 +235,7 @@ struct PreparedProviderStreamInvocation {
     input: ProviderInvocationInput,
     required_live_events: ProviderLiveEvents,
     diagnostic_live_events: ProviderLiveEvents,
+    host_calls: Option<ProviderHostCallContext>,
 }
 
 impl Drop for ActiveProviderInvocationLease {
@@ -933,7 +938,34 @@ impl ProviderHost {
     ) -> FrameworkResult<
         impl std::future::Future<Output = FrameworkResult<ProviderInvokeStreamOutput>> + Send + 'static,
     > {
+        self.invoke_stream_with_host_calls_operation(
+            plugin_id,
+            input,
+            required_live_events,
+            diagnostic_live_events,
+            None,
+            None,
+        )
+    }
+
+    pub(crate) fn invoke_stream_with_host_calls_operation(
+        &self,
+        plugin_id: &str,
+        input: ProviderInvocationInput,
+        required_live_events: ProviderLiveEvents,
+        diagnostic_live_events: ProviderLiveEvents,
+        principal: Option<runtime_core::runtime_backend::RuntimeExecutionPrincipal>,
+        plugin_data: Option<Arc<dyn PluginDataPort>>,
+    ) -> FrameworkResult<
+        impl std::future::Future<Output = FrameworkResult<ProviderInvokeStreamOutput>> + Send + 'static,
+    > {
         let loaded = self.loaded_package(plugin_id)?.clone();
+        let host_calls = match (principal, plugin_data) {
+            (Some(principal), Some(plugin_data)) => {
+                build_host_call_context(&loaded, &input, principal, plugin_data)?
+            }
+            _ => None,
+        };
         let provider_workers = Arc::clone(&self.provider_workers);
         let active_streams = Arc::clone(&self.active_streams);
         let active_invocation_leases = Arc::clone(&self.active_invocation_leases);
@@ -953,6 +985,7 @@ impl ProviderHost {
                 input,
                 required_live_events,
                 diagnostic_live_events,
+                host_calls,
             })
             .await
         })
@@ -1145,6 +1178,7 @@ impl ProviderHost {
             input,
             required_live_events,
             diagnostic_live_events,
+            host_calls,
         } = invocation;
 
         let prepared_wire = current_provider_wire_input(&loaded, &input)?;
@@ -1167,25 +1201,32 @@ impl ProviderHost {
         let invocation_limits = provider_invocation_limits(&loaded.package.manifest.runtime.limits);
         let output = match loaded.package.manifest.execution_mode {
             PluginExecutionMode::ProcessPerCall => {
-                call_executable_streaming(
-                    &loaded.runtime_executable,
-                    &request,
-                    &invocation_limits,
-                    required_live_events,
-                    diagnostic_live_events,
-                    event_observer,
-                )
-                .await
-            }
-            PluginExecutionMode::StatefulProviderWorker => {
-                let worker = provider_worker_handle(&provider_workers, plugin_id, &loaded)?;
-                worker
-                    .call_streaming_with_limits(
+                if host_calls.is_some() {
+                    Err(PluginFrameworkError::invalid_provider_package(
+                        "runtime_host_call/v1 requires a stateful provider worker",
+                    ))
+                } else {
+                    call_executable_streaming(
+                        &loaded.runtime_executable,
                         &request,
                         &invocation_limits,
                         required_live_events,
                         diagnostic_live_events,
                         event_observer,
+                    )
+                    .await
+                }
+            }
+            PluginExecutionMode::StatefulProviderWorker => {
+                let worker = provider_worker_handle(&provider_workers, plugin_id, &loaded)?;
+                worker
+                    .call_streaming_with_limits_and_host_calls(
+                        &request,
+                        &invocation_limits,
+                        required_live_events,
+                        diagnostic_live_events,
+                        event_observer,
+                        host_calls,
                     )
                     .await
             }
@@ -1234,6 +1275,49 @@ fn current_provider_wire_input(
         wire_value,
         translation_receipt,
     })
+}
+
+fn build_host_call_context(
+    loaded: &LoadedProviderPackage,
+    input: &ProviderInvocationInput,
+    principal: runtime_core::runtime_backend::RuntimeExecutionPrincipal,
+    plugin_data: Arc<dyn PluginDataPort>,
+) -> FrameworkResult<Option<ProviderHostCallContext>> {
+    let manifest = &loaded.package.manifest;
+    if !manifest
+        .runtime
+        .capabilities
+        .iter()
+        .any(|capability| capability == RUNTIME_HOST_CALL_CAPABILITY_V1)
+    {
+        return Ok(None);
+    }
+    if manifest.permissions.storage != "host_managed" {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "runtime_host_call/v1 requires permissions.storage=host_managed",
+        ));
+    }
+    if manifest.data_models.len() != 1
+        || manifest.data_models[0].storage_binding != PluginStorageBinding::Main
+    {
+        return Err(PluginFrameworkError::invalid_provider_package(
+            "runtime_host_call/v1 requires one main plugin data model binding",
+        ));
+    }
+    Ok(Some(ProviderHostCallContext {
+        binding: PluginDataBinding {
+            publisher_namespace: manifest.publisher_namespace.clone(),
+            plugin_code: manifest.plugin_code()?.to_string(),
+            plugin_version: manifest.version.clone(),
+            storage_binding: "main".to_string(),
+            workspace_id: principal.workspace_id,
+            actor_id: principal.actor_id,
+            provider_instance_id: input.provider_instance_id.clone(),
+            permissions: BTreeSet::from([PluginDataPermission::Read, PluginDataPermission::Write]),
+            deadline_unix_ms: principal.deadline_unix_ms,
+        },
+        plugin_data,
+    }))
 }
 
 // Provider errors intentionally preserve complete typed upstream diagnostics.
