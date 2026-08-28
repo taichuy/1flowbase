@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: Frontstage Native Block Dropdown Top Layer adapter
-summary: 用户确认 #1915 采用 Block-scoped Top Layer Overlay；#1923 在用户退回首轮无效验收后，进一步修复真实 ShadowRoot Selection retargeting 与 fixed virtual trigger 坐标，两层候选已通过真实鼠标输入 QA，等待再次验收。
+summary: 用户确认 #1915 采用 Block-scoped Top Layer Overlay；#1923 在用户退回首轮无效验收后，进一步修复真实 ShadowRoot Selection retargeting 与 fixed virtual trigger 坐标，并已由用户验收关闭。
 keywords:
   - issue 1915
   - issue 1923
@@ -19,7 +19,7 @@ created_at: 2026-08-28 09
 updated_at: 2026-08-28 16
 last_verified_at: 2026-08-28 16
 decision_policy: verify_before_decision
-status: active
+status: completed
 scope:
   - https://github.com/taichuy/1flowbase/issues/1915
   - https://github.com/taichuy/1flowbase/issues/1923
@@ -51,4 +51,4 @@ scope:
 
 ## 验收候选与下一事件
 
-无日历截止日期。#1915 的 UI 模式往返与裁剪证据保持有效；#1923 的最终认证 Chromium 真实双击证据显示 Shadow Selection center / bottom target `(275.015625, 192)` 与 trigger 完全一致，误差为 0，菜单由真实 `mouseup` 后进入 open Top Layer，且无 page error。下一事件是用户刷新指定 Block 再次检查划词效果；确认后关闭 #1923。
+无日历截止日期。#1915 的 UI 模式往返与裁剪证据保持有效；#1923 的最终认证 Chromium 真实双击证据显示 Shadow Selection center / bottom target `(275.015625, 192)` 与 trigger 完全一致，误差为 0，菜单由真实 `mouseup` 后进入 open Top Layer，且无 page error。用户已于 2026-08-28 16 确认问题解决，#1923 已关闭。
