@@ -49,6 +49,7 @@
 - `interface-runtime` 只接收已认证 `ActorContext`；Cookie/Header/Session/API Key 解析留在 HTTP/MCP Adapter。Effective Extension Graph 是声明输入，compiled Dynamic Interface Registry 是 active definition 真值。
 - `RuntimeBackend` 必须组合 Execution、Observation、Provider、DataSource、Capability、Network Egress 六个窄 Port；必需方法不提供默认失败实现。
 - `orchestration-runtime` 只持有 `RuntimeExecutionPort`；完整 `RuntimeBackend` 仅停留在 `api-server` composition root 与业务能力装配层，窄 Port 必须由该层从 exactly-one Slot Backend 内部投影，装配构造器不得接收第二个独立 Port 来源。
+- Provider Distribution Rule 属于 `RuntimeExecutionPort` 的 typed operation，不新增第七 Port；Host 只执行插件 decision，`orchestration-runtime` 独占 eligible target 校验、retry 与 Provider invocation。
 - Durable、Ephemeral、Object 是三类 Storage；PostgreSQL 只是 Durable 的官方 adapter。
 - Plugin Managed Data Model 只接受 manifest 的 additive desired state；`control-plane-contracts` 持有窄 Port，`plugin-framework` 编译 plan，PostgreSQL adapter 独占 catalog/DDL/ownership。目标业务表不得维护 `extension_field_slot` 或第二套 allowlist；RuntimeExtension 不得获得 SQL 或数据库连接。
 - `PluginDataPort` 是 Host Service，不进入 RuntimeBackend 六 Port。worker frame 不携带 plugin/workspace/actor 身份；Host 从 manifest 与内部 execution principal 注入，PostgreSQL adapter 仅按 ownership ledger 解析物理对象。

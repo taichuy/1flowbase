@@ -1,20 +1,24 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet, HashMap},
     fs,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 use extension_contracts::{
-    ProviderCountTokensInput, ProviderFinishReason, ProviderInvocationInput, ProviderStreamEvent,
+    PluginDataBinding, PluginDataOperation, PluginDataOperationResult, PluginDataPort,
+    PluginDataRequest, PluginDataResponse, PluginDataRow, PluginDataValue,
+    ProviderCountTokensInput, ProviderDistributionCandidate, ProviderDistributionInvocation,
+    ProviderFinishReason, ProviderInvocationInput, ProviderStreamEvent,
 };
 use extension_package_runtime::{
     parse_plugin_manifest, PluginConsumptionKind, PluginExecutionMode,
 };
 use runtime_core::runtime_backend::{
     NetworkEgressRuntimePort, ProviderRuntimePort, RuntimeArtifactReference, RuntimeBackendError,
-    RuntimeExecutionPort, RuntimeExecutionRequest, RuntimeNetworkEgressActivation,
-    RuntimePackageActivation, RuntimeRequestId, RuntimeStreamSinks, RuntimeTargetId,
+    RuntimeExecutionPort, RuntimeExecutionPrincipal, RuntimeExecutionRequest,
+    RuntimeNetworkEgressActivation, RuntimePackageActivation, RuntimeProviderDistributionRequest,
+    RuntimeRequestId, RuntimeStreamSinks, RuntimeTargetId,
 };
 use runtime_extension_host::{RuntimeArtifactResolver, RuntimeExtensionHost};
 
@@ -84,7 +88,10 @@ fn stage_built_packages(official_root: &Path) -> StagedPackages {
         time::OffsetDateTime::now_utc().unix_timestamp_nanos()
     ));
     let extension_root = official_root.join("runtime-extensions/@taichuy");
-    for plugin_id in PROVIDERS.into_iter().chain(["clash-proxy"]) {
+    for plugin_id in PROVIDERS
+        .into_iter()
+        .chain(["clash-proxy", "session-retry-distribution"])
+    {
         let source = extension_root.join(plugin_id);
         let destination = stage_root.join(plugin_id);
         copy_runtime_assets(&source, &destination);
@@ -159,6 +166,7 @@ async fn d_008_eight_official_runtime_extensions_execute_through_the_real_host()
         "gemini".to_string(),
         "openai".to_string(),
         "openai_compatible".to_string(),
+        "session_retry_distribution@1.0.0".to_string(),
     ]);
     let mut actual = BTreeSet::new();
     let mut modes = BTreeSet::new();
@@ -289,4 +297,133 @@ async fn d_008_eight_official_runtime_extensions_execute_through_the_real_host()
     assert!(!clash_error.to_string().trim().is_empty());
 
     host.stop().await.unwrap();
+}
+
+#[derive(Default)]
+struct AffinityDataPort {
+    values: tokio::sync::Mutex<HashMap<String, String>>,
+}
+
+impl PluginDataPort for AffinityDataPort {
+    fn execute<'a>(
+        &'a self,
+        _binding: &'a PluginDataBinding,
+        request: &'a PluginDataRequest,
+    ) -> extension_contracts::PluginDataFuture<'a> {
+        Box::pin(async move {
+            let mut state = self.values.lock().await;
+            let mut results = Vec::new();
+            for operation in &request.operations {
+                match operation {
+                    PluginDataOperation::FindOne { filters, .. } => {
+                        let key = filters
+                            .iter()
+                            .map(|filter| {
+                                format!(
+                                    "{}={:?}",
+                                    filter.field,
+                                    filter.value.as_ref().expect("equal filter value")
+                                )
+                            })
+                            .collect::<Vec<_>>()
+                            .join("|");
+                        let row = state.get(&key).map(|target| PluginDataRow {
+                            values: BTreeMap::from([(
+                                "target_id".to_string(),
+                                PluginDataValue::String(target.clone()),
+                            )]),
+                        });
+                        results.push(PluginDataOperationResult::OptionalRow { row });
+                    }
+                    PluginDataOperation::Upsert {
+                        identity, values, ..
+                    } => {
+                        let key = identity
+                            .iter()
+                            .map(|(field, value)| format!("{field}={value:?}"))
+                            .collect::<Vec<_>>()
+                            .join("|");
+                        if let Some(PluginDataValue::String(target)) = values.get("target_id") {
+                            state.entry(key).or_insert_with(|| target.clone());
+                        }
+                        results.push(PluginDataOperationResult::Mutation { affected: 1 });
+                    }
+                    _ => {
+                        return Err(extension_contracts::PluginDataError::invalid(
+                            "fixture_operation",
+                        ))
+                    }
+                }
+            }
+            Ok(PluginDataResponse {
+                results,
+                replayed: false,
+            })
+        })
+    }
+}
+
+#[tokio::test]
+#[ignore = "requires built official Session Retry executable"]
+async fn drs_008_013_session_retry_executes_through_real_host_and_plugin_data() {
+    let official_root = official_root();
+    let staged = stage_built_packages(&official_root);
+    let host = RuntimeExtensionHost::new_with_artifact_resolver_and_plugin_data(
+        time::OffsetDateTime::now_utc(),
+        Arc::new(StagedArtifactResolver(staged.0.clone())),
+        Arc::new(AffinityDataPort::default()),
+    )
+    .unwrap();
+    let plugin_id = versioned_plugin_id(
+        &official_root.join("runtime-extensions/@taichuy"),
+        "session-retry-distribution",
+    );
+    host.activate_provider_distribution_rule(RuntimePackageActivation {
+        plugin_id,
+        artifact: RuntimeArtifactReference::new("session-retry-distribution").unwrap(),
+        source_identity: None,
+        legacy_eligibility: None,
+    })
+    .await
+    .unwrap();
+    host.mark_ready().unwrap();
+    let invocation = ProviderDistributionInvocation {
+        invocation_id: "invocation-1".into(),
+        conversation_id: Some("conversation-1".into()),
+        routing_policy_id: "policy-1".into(),
+        attempt: 0,
+        rule_id: "@taichuy/session_retry".into(),
+        rule_version: "1.0.0".into(),
+        registry_fingerprint: "fixture-registry".into(),
+        config: BTreeMap::new(),
+        candidates: vec!["provider-a", "provider-b"]
+            .into_iter()
+            .enumerate()
+            .map(|(order, target_id)| ProviderDistributionCandidate {
+                target_id: target_id.into(),
+                order: order as u32,
+                ready: true,
+                capabilities: BTreeSet::new(),
+            })
+            .collect(),
+    };
+    let receipt = host
+        .select_provider_distribution(RuntimeProviderDistributionRequest {
+            request_id: RuntimeRequestId::new("distribution-1").unwrap(),
+            target: RuntimeTargetId::new("@taichuy/session_retry").unwrap(),
+            invocation,
+            principal: RuntimeExecutionPrincipal {
+                workspace_id: "workspace-1".into(),
+                actor_id: None,
+                deadline_unix_ms: i64::MAX,
+            },
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        receipt.decision,
+        extension_contracts::ProviderDistributionDecision::Select {
+            target_id: "provider-a".into()
+        }
+    );
 }

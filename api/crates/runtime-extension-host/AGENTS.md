@@ -14,6 +14,7 @@
 - package 激活只消费 `RuntimeArtifactReference`；本机路径由 composition root 注入的 resolver 解析，不进入稳定 Port。
 - `runtime_host_call/v1` 是 additive worker callback family；先于 provider event/result 私有 demux。call id 必须关联、重复/未知 fail closed，cancel/deadline/crash/drain 必须清理 active call。
 - PluginData binding 的 publisher/plugin/version 来自已加载 manifest，workspace/actor/deadline 来自内部 execution principal；worker 不得声明这些字段。
+- Provider Distribution worker 只返回 typed decision；Host 必须拒绝不在 frozen eligible snapshot 内的 target，且该私有 Host 不得提升为公共 Registry/Facade。
 
 ## Resources And Stop
 

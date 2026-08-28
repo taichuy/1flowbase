@@ -181,3 +181,33 @@ test('Delivery 1898 exposes only the approved Runtime Host facade', () => {
     });
   assert.deepEqual(violations, []);
 });
+
+test('Delivery 1920 keeps provider distribution inside the execution port and routing owner', () => {
+  const contract = fs.readFileSync(
+    path.join(repoRoot, 'api/crates/runtime-core/src/runtime_backend.rs'),
+    'utf8',
+  );
+  const orchestration = fs.readFileSync(
+    path.join(repoRoot, 'api/crates/orchestration-runtime/src/execution_engine/provider_routing.rs'),
+    'utf8',
+  );
+  const hostFacade = fs.readFileSync(
+    path.join(repoRoot, 'api/crates/runtime-extension-host/src/lib.rs'),
+    'utf8',
+  );
+  const migration = fs.readFileSync(
+    path.join(
+      repoRoot,
+      'api/crates/storage/durable/postgres/migrations/20260828160000_open_provider_distribution_rule_identity.sql',
+    ),
+    'utf8',
+  );
+
+  assert.match(contract, /trait RuntimeExecutionPort[\s\S]*select_provider_distribution/u);
+  assert.doesNotMatch(contract, /trait ProviderDistributionRuntimePort/u);
+  assert.match(orchestration, /select_provider_distribution/u);
+  assert.match(orchestration, /selected an ineligible target/u);
+  assert.doesNotMatch(hostFacade, /pub mod provider_distribution_host/u);
+  assert.match(migration, /drop constraint if exists model_provider_main_model_distribution_rules_rule_check/u);
+  assert.doesNotMatch(migration, /check \(distribution_rule in/u);
+});
