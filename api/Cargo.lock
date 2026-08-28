@@ -86,6 +86,7 @@ dependencies = [
  "control-plane",
  "domain",
  "ed25519-dalek",
+ "extension-contracts",
  "flate2",
  "form_urlencoded",
  "futures-util",

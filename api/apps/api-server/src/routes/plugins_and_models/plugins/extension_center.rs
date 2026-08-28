@@ -46,11 +46,13 @@ use super::{
 mod builtin_mcp;
 mod catalog_page;
 mod dto;
+mod managed_schema;
 
 use builtin_mcp::builtin_frontstage_catalog_entry;
 pub(crate) use builtin_mcp::BUILTIN_FRONTSTAGE_CATALOG_ID;
 use catalog_page::load_catalog_page;
 pub use dto::*;
+use managed_schema::{prepare_managed_schema, retain_managed_schema, ManagedSchemaDeclaration};
 
 pub(super) fn route_assembly(
     plugin_upload_max_bytes: usize,
@@ -400,12 +402,28 @@ pub async fn disable_installed_plugin(
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
+    let installation =
+        control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(
+            &state.store,
+            &state.api_node_id,
+            installation_id,
+        )
+        .await?
+        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+            "extension_installation",
+        ))?;
     let task = service(&state, &context.actor, "extension_center.installed.disable")
         .disable_plugin(DisablePluginCommand {
             actor_user_id: context.user.id,
             installation_id,
         })
         .await?;
+    retain_managed_schema(
+        &state,
+        context.actor.current_workspace_id,
+        &installation.identity,
+    )
+    .await?;
     Ok(Json(ApiSuccess::new(to_task_response(task))))
 }
 
@@ -461,6 +479,7 @@ pub async fn delete_local_extension_installation(
             "extension_installation",
         ))?;
     let installation_service = extension_installation_service(&state);
+    let managed_schema_identity = existing.identity.clone();
     let installation = if is_runtime_uninstall_category(existing.identity.category) {
         let plugin =
             control_plane::ports::PluginRepository::get_installation(&state.store, installation_id)
@@ -502,6 +521,12 @@ pub async fn delete_local_extension_installation(
                 "extension_installation",
             ))?
     };
+    retain_managed_schema(
+        &state,
+        context.actor.current_workspace_id,
+        &managed_schema_identity,
+    )
+    .await?;
     Ok(Json(ApiSuccess::new(to_local_inventory_entry(
         installation,
     ))))
@@ -937,6 +962,7 @@ struct NodePluginInspection {
     signature_algorithm: Option<String>,
     signing_key_id: Option<String>,
     application_action: domain::ExtensionApplicationAction,
+    managed_schema: Option<ManagedSchemaDeclaration>,
 }
 
 #[derive(Debug)]
@@ -951,6 +977,7 @@ struct UploadedExtensionArtifact {
     signature_algorithm: Option<String>,
     signing_key_id: Option<String>,
     application_action: domain::ExtensionApplicationAction,
+    managed_schema: Option<ManagedSchemaDeclaration>,
 }
 
 #[derive(Default)]
@@ -1263,6 +1290,7 @@ async fn inspect_node_plugin(
     )
     .await?;
     let manifest = intake.manifest.clone();
+    let managed_schema = ManagedSchemaDeclaration::from_manifest(&manifest)?;
     let artifact_id = manifest.plugin_code()?.to_string();
     let category = match manifest.consumption_kind {
         PluginConsumptionKind::HostExtension => ExtensionCatalogCategory::HostExtensions,
@@ -1288,6 +1316,7 @@ async fn inspect_node_plugin(
         } else {
             domain::ExtensionApplicationAction::None
         },
+        managed_schema,
     };
     let _ = tokio::fs::remove_dir_all(&intake.extracted_root).await;
     Ok(inspection)
@@ -1338,6 +1367,8 @@ async fn install_or_update_official_extension(
                     installation: to_local_inventory_entry(installation),
                     local_artifact_was_present: true,
                     node_plugin_installation_id,
+                    managed_schema_preview: None,
+                    managed_schema_receipt: None,
                 })),
             )
                 .into_response());
@@ -1430,6 +1461,7 @@ async fn install_or_update_official_extension(
         .and_then(serde_json::Value::as_str)
         .map(str::to_string);
     let mut application_action = catalog_application_action(category);
+    let mut managed_schema_declaration = None;
     if is_node_plugin_category(category) {
         let inspection = inspect_node_plugin(
             state,
@@ -1453,7 +1485,15 @@ async fn install_or_update_official_extension(
         signature_algorithm = inspection.signature_algorithm;
         signing_key_id = inspection.signing_key_id;
         application_action = inspection.application_action;
+        managed_schema_declaration = inspection.managed_schema;
     }
+    let prepared_schema = prepare_managed_schema(
+        state,
+        context.actor.current_workspace_id,
+        managed_schema_declaration.as_ref(),
+    )
+    .await?;
+    let managed_schema_preview = prepared_schema.as_ref().map(|prepared| prepared.preview());
     let trust = match (source_kind, signature_status) {
         ("official_registry", domain::ExtensionSignatureStatus::Verified) => "official",
         (_, domain::ExtensionSignatureStatus::Verified) => "trusted",
@@ -1526,6 +1566,10 @@ async fn install_or_update_official_extension(
         .ok_or(control_plane::errors::ControlPlaneError::NotFound(
             "extension_installation",
         ))?;
+        let managed_schema_receipt = match prepared_schema {
+            Some(prepared) => Some(prepared.apply(state).await?),
+            None => None,
+        };
         return Ok((
             StatusCode::CREATED,
             Json(ApiSuccess::new(ExtensionInstallResponse {
@@ -1535,6 +1579,8 @@ async fn install_or_update_official_extension(
                 installation: to_local_inventory_entry(installation.clone()),
                 local_artifact_was_present: false,
                 node_plugin_installation_id: Some(installation.id.to_string()),
+                managed_schema_preview,
+                managed_schema_receipt,
             })),
         )
             .into_response());
@@ -1586,6 +1632,8 @@ async fn install_or_update_official_extension(
             installation: to_local_inventory_entry(installation),
             local_artifact_was_present,
             node_plugin_installation_id,
+            managed_schema_preview: None,
+            managed_schema_receipt: None,
         })),
     )
         .into_response())

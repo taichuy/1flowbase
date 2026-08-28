@@ -169,6 +169,7 @@ async fn classify_uploaded_extension(
                 signature_algorithm: None,
                 signing_key_id: None,
                 application_action: domain::ExtensionApplicationAction::ActivateI18n,
+                managed_schema: None,
             });
         }
         if let Ok(template) =
@@ -201,6 +202,7 @@ async fn classify_uploaded_extension(
                 signature_algorithm: None,
                 signing_key_id: None,
                 application_action: domain::ExtensionApplicationAction::ImportAgentFlow,
+                managed_schema: None,
             });
         }
         return Err(control_plane::errors::ControlPlaneError::InvalidInput(
@@ -252,6 +254,7 @@ async fn classify_uploaded_extension(
             signature_algorithm: None,
             signing_key_id: None,
             application_action: domain::ExtensionApplicationAction::ImportMcp,
+            managed_schema: None,
         });
     }
 
@@ -288,6 +291,7 @@ async fn classify_uploaded_extension(
         signature_algorithm: inspection.signature_algorithm,
         signing_key_id: inspection.signing_key_id,
         application_action: inspection.application_action,
+        managed_schema: inspection.managed_schema,
     })
 }
 
@@ -363,6 +367,8 @@ async fn install_uploaded_artifact(
                 installation: to_local_inventory_entry(installation),
                 local_artifact_was_present: true,
                 node_plugin_installation_id,
+                managed_schema_preview: None,
+                managed_schema_receipt: None,
             })),
         )
             .into_response());
@@ -389,6 +395,13 @@ async fn install_uploaded_artifact(
         reason: value.reason,
         acknowledged_warnings: value.acknowledged_warnings,
     });
+    let prepared_schema = prepare_managed_schema(
+        state,
+        actor.current_workspace_id,
+        artifact.managed_schema.as_ref(),
+    )
+    .await?;
+    let managed_schema_preview = prepared_schema.as_ref().map(|prepared| prepared.preview());
     if artifact.node_plugin {
         let installed = service(state, actor, "extension_center.install.upload")
             .install_extension_node_plugin(InstallExtensionNodePluginCommand {
@@ -408,6 +421,10 @@ async fn install_uploaded_artifact(
         .ok_or(control_plane::errors::ControlPlaneError::NotFound(
             "extension_installation",
         ))?;
+        let managed_schema_receipt = match prepared_schema {
+            Some(prepared) => Some(prepared.apply(state).await?),
+            None => None,
+        };
         return Ok((
             StatusCode::CREATED,
             Json(ApiSuccess::new(ExtensionInstallResponse {
@@ -417,6 +434,8 @@ async fn install_uploaded_artifact(
                 installation: to_local_inventory_entry(installation.clone()),
                 local_artifact_was_present: false,
                 node_plugin_installation_id: Some(installation.id.to_string()),
+                managed_schema_preview,
+                managed_schema_receipt,
             })),
         )
             .into_response());
@@ -468,6 +487,8 @@ async fn install_uploaded_artifact(
             installation: to_local_inventory_entry(installation),
             local_artifact_was_present,
             node_plugin_installation_id,
+            managed_schema_preview: None,
+            managed_schema_receipt: None,
         })),
     )
         .into_response())

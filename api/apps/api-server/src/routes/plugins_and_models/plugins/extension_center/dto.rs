@@ -91,6 +91,33 @@ pub struct ExtensionInstallResponse {
     pub node_plugin_installation_id: Option<String>,
     pub application_action: String,
     pub application_status: String,
+    pub managed_schema_preview: Option<ManagedSchemaPreviewResponse>,
+    pub managed_schema_receipt: Option<ManagedSchemaApplyReceiptResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ManagedSchemaPreviewEntryResponse {
+    pub ownership_key: String,
+    pub action: String,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ManagedSchemaPreviewResponse {
+    pub owner_id: String,
+    pub fingerprint: String,
+    pub entries: Vec<ManagedSchemaPreviewEntryResponse>,
+}
+
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ManagedSchemaApplyReceiptResponse {
+    pub receipt_id: String,
+    pub owner_id: String,
+    pub owner_version: String,
+    pub fingerprint: String,
+    pub created_objects: u32,
+    pub existing_objects: u32,
+    pub retained_objects: u32,
+    pub applied_at: String,
 }
 
 #[derive(Debug, Serialize, ToSchema)]
