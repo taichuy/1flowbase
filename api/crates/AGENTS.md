@@ -45,6 +45,7 @@
 - 业务决策、权限结果、状态流转、事务意图放 `control-plane`；纯领域不变量放 `domain`。
 - repository trait 放 `control-plane-contracts`；SQL、Row 映射和数据库事务实现放 `storage/durable/postgres`。
 - 跨 Host / Runtime 的稳定协议放 `extension-contracts`；安装、registry 和扩展图放 `plugin-framework`。
+- lifecycle subscriber 的 typed handler binding/registry 由 `plugin-framework` 编译，`api-server` Composition Root 只注入已激活 binding；delivery adapter 不得按 handler id 硬编码插件实现或以 EventBus enqueue 代替 handler 完成。
 - RuntimeExtension 加载与进程生命周期放 `runtime-extension-host`；执行编排放 `orchestration-runtime`。
 - `interface-runtime` 只接收已认证 `ActorContext`；Cookie/Header/Session/API Key 解析留在 HTTP/MCP Adapter。Effective Extension Graph 是声明输入，compiled Dynamic Interface Registry 是 active definition 真值。
 - `RuntimeBackend` 必须组合 Execution、Observation、Provider、DataSource、Capability、Network Egress 六个窄 Port；必需方法不提供默认失败实现。

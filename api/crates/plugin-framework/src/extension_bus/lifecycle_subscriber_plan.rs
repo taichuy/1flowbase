@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use super::{
     ContributionId, DeliverySemantics, EffectiveExtensionGraph, ExtensionPointId,
-    ExtensionPointKind,
+    ExtensionPointKind, LifecycleSemantics, ModuleKind,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,6 +21,9 @@ pub struct LifecycleSubscriberBinding {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EffectiveLifecycleSubscriber {
     pub subscriber_id: String,
+    pub contributor_module_id: String,
+    pub contributor_module_kind: ModuleKind,
+    pub lifecycle: LifecycleSemantics,
     pub fact_contract_id: String,
     pub fact_contract_version: String,
     pub handler_id: String,
@@ -55,6 +58,12 @@ pub enum LifecycleSubscriberPlanError {
     InvalidPoint(String),
     #[error("active lifecycle contribution {0} has no typed subscriber binding")]
     MissingBinding(String),
+    #[error("module kind {module_kind:?} cannot contribute lifecycle {lifecycle:?} through {subscription_id}")]
+    LifecycleEscalation {
+        subscription_id: String,
+        module_kind: ModuleKind,
+        lifecycle: LifecycleSemantics,
+    },
 }
 
 pub fn compile_lifecycle_subscriber_plan(
@@ -96,8 +105,20 @@ pub fn compile_lifecycle_subscriber_plan(
                     binding.point_id.as_str().to_string(),
                 ));
             }
+            let module_kind = contribution.provenance().module_kind();
+            let lifecycle = point.descriptor().lifecycle;
+            if !allows_lifecycle(module_kind, lifecycle) {
+                return Err(LifecycleSubscriberPlanError::LifecycleEscalation {
+                    subscription_id: binding.subscription_id.clone(),
+                    module_kind,
+                    lifecycle,
+                });
+            }
             subscribers.push(EffectiveLifecycleSubscriber {
                 subscriber_id: binding.subscription_id.clone(),
+                contributor_module_id: contribution.provenance().module_id().as_str().to_string(),
+                contributor_module_kind: module_kind,
+                lifecycle,
                 fact_contract_id: binding.fact_contract_id.clone(),
                 fact_contract_version: binding.fact_contract_version.clone(),
                 handler_id: binding.handler_id.clone(),
@@ -143,4 +164,25 @@ pub fn compile_lifecycle_subscriber_plan(
         graph_fingerprint: graph.fingerprint().as_str().to_string(),
         subscribers,
     })
+}
+
+fn allows_lifecycle(module_kind: ModuleKind, lifecycle: LifecycleSemantics) -> bool {
+    match module_kind {
+        ModuleKind::BootCore => true,
+        ModuleKind::TrustedHost => matches!(
+            lifecycle,
+            LifecycleSemantics::BootSnapshot | LifecycleSemantics::Invocation
+        ),
+        ModuleKind::Runtime => matches!(
+            lifecycle,
+            LifecycleSemantics::RuntimeWorker | LifecycleSemantics::Invocation
+        ),
+        ModuleKind::Capability => matches!(
+            lifecycle,
+            LifecycleSemantics::WorkspaceAssignment
+                | LifecycleSemantics::UiMount
+                | LifecycleSemantics::Invocation
+        ),
+        ModuleKind::User => false,
+    }
 }

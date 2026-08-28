@@ -361,7 +361,9 @@ async fn app_and_runtime_host_from_config(
     let (lifecycle_delivery, lifecycle_publication_catalog) =
         host_extensions::lifecycle::ApiLifecycleFactDelivery::bind(
             &lifecycle_plan,
-            infrastructure.event_bus(),
+            host_extensions::lifecycle::builtin_lifecycle_handler_bindings(
+                infrastructure.event_bus(),
+            ),
         )?;
     let store = store.with_lifecycle_publication_catalog(lifecycle_publication_catalog);
     tokio::spawn(

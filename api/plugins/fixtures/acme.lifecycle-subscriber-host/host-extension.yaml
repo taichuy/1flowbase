@@ -1,0 +1,28 @@
+schema_version: 1flowbase.host-extension/v1
+extension_id: acme.lifecycle-subscriber-host
+version: 1.0.0
+bootstrap_phase: boot
+native:
+  abi_version: 1flowbase.host.native/v1
+  library: builtin://acme.lifecycle-subscriber-host
+  entry_symbol: acme_lifecycle_subscriber_fixture
+owned_resources: [fixture-lifecycle-receipts]
+extends_resources: []
+infrastructure_providers:
+  - contract: cache-store
+    provider_code: fixture-local
+    display_name: Fixture Local Cache
+    config_ref: secret://system/fixture/cache
+    config_schema: []
+routes: []
+workers: []
+migrations: []
+lifecycle_subscriptions:
+  - subscription_id: model-definition-committed
+    point_id: 1flowbase.application.runtime-event.after-commit
+    fact:
+      contract_id: model_definition.committed
+      contract_version: v1
+    handler:
+      contract_id: acme.lifecycle-subscriber.model-definition-committed
+      contract_version: v1

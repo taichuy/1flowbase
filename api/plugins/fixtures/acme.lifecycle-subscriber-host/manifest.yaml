@@ -1,0 +1,26 @@
+schema_version: 1flowbase.plugin.manifest/v1
+manifest_version: 1
+plugin_id: acme.lifecycle-subscriber-host@1.0.0
+version: 1.0.0
+publisher_namespace: acme
+vendor: Acme
+display_name: Lifecycle Subscriber Fixture
+description: Independent typed lifecycle subscriber used by controlled integration tests.
+source_kind: uploaded
+trust_level: checksum_only
+consumption_kind: host_extension
+execution_mode: in_process
+slot_codes: [host_bootstrap]
+binding_targets: []
+selection_mode: auto_activate
+minimum_host_version: 0.1.0
+contract_version: 1flowbase.host_extension/v1
+permissions:
+  network: none
+  secrets: host_managed
+  storage: host_managed
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: native_host
+  entry: host-extension.yaml

@@ -31,12 +31,37 @@ test('durable delivery invokes frozen typed subscribers before acknowledgement',
   const dispatcher = read(
     'api/crates/control-plane/src/lifecycle_outbox_dispatcher.rs'
   );
-  assert.match(delivery, /fact\.graph_fingerprint != self\.graph_fingerprint/u);
-  assert.match(delivery, /handler\.handle\(fact\)\.await/u);
+  assert.match(delivery, /compile_lifecycle_handler_registry/u);
+  assert.match(delivery, /self\.registry[\s\S]*?\.deliver\(/u);
   assert.match(delivery, /ModelDefinitionCommittedFact/u);
+  assert.doesNotMatch(delivery, /match \(handler_id, handler_version\)/u);
+  assert.doesNotMatch(delivery, /match \([\s\S]*?subscriber\.handler_id/u);
   assert.doesNotMatch(delivery, /delivered durable lifecycle fact/u);
   assert.match(dispatcher, /delivery\.deliver\(&fact\)\.await/u);
   assert.match(dispatcher, /&fact\.subscriber_id/u);
+});
+
+test('composition injects one activated typed handler registry', () => {
+  const api = read('api/apps/api-server/src/lib.rs');
+  const delivery = read('api/apps/api-server/src/host_extensions/lifecycle.rs');
+  const registry = read(
+    'api/crates/plugin-framework/src/extension_bus/lifecycle_handler_registry.rs'
+  );
+  assert.match(api, /builtin_lifecycle_handler_bindings/u);
+  assert.match(delivery, /LifecycleHandlerBinding::typed/u);
+  assert.match(registry, /TypedLifecycleSubscriberHandler/u);
+  assert.match(registry, /invalid typed lifecycle fact/u);
+  assert.doesNotMatch(registry, /serde_json::Value/u);
+});
+
+test('lifecycle contribution privileges are explicit for all plugin kinds', () => {
+  const plan = read(
+    'api/crates/plugin-framework/src/extension_bus/lifecycle_subscriber_plan.rs'
+  );
+  assert.match(plan, /ModuleKind::TrustedHost/u);
+  assert.match(plan, /ModuleKind::Runtime/u);
+  assert.match(plan, /ModuleKind::Capability/u);
+  assert.match(plan, /LifecycleEscalation/u);
 });
 
 test('outbox records per-subscriber durable state and aggregate completion', () => {
