@@ -1,4 +1,8 @@
-import { Dropdown as AntdDropdown, type DropdownProps } from 'antd';
+import {
+  ConfigProvider,
+  Dropdown as AntdDropdown,
+  type DropdownProps
+} from 'antd';
 import {
   cloneElement,
   isValidElement,
@@ -86,11 +90,13 @@ export function NativeBlockDropdown({
     [controlled, layer, onOpenChange]
   );
   const resolvePopupContainer = useCallback(
-    (triggerNode: HTMLElement) =>
+    (triggerNode?: HTMLElement) =>
       layer?.container ??
-      getPopupContainer?.(triggerNode) ??
+      (triggerNode ? getPopupContainer?.(triggerNode) : undefined) ??
       (targetRoot?.host as HTMLElement | undefined) ??
-      triggerNode.ownerDocument.body,
+      triggerNode?.ownerDocument.body ??
+      targetRoot?.ownerDocument.body ??
+      document.body,
     [getPopupContainer, layer, targetRoot]
   );
   const hoverTrigger = (trigger ?? ['hover']).includes('hover');
@@ -113,16 +119,23 @@ export function NativeBlockDropdown({
       {normalizedChildren}
     </AntdDropdown>
   );
+  const popupScopedDropdown = usesNativeLayer ? (
+    <ConfigProvider getPopupContainer={resolvePopupContainer}>
+      {dropdown}
+    </ConfigProvider>
+  ) : (
+    dropdown
+  );
   return hoverTrigger && !disabled ? (
     <span
       data-flowbase-native-dropdown-intent=""
       style={{ display: 'contents' }}
       onPointerOverCapture={() => transitionOpen(true, { source: 'trigger' })}
     >
-      {dropdown}
+      {popupScopedDropdown}
     </span>
   ) : (
-    dropdown
+    popupScopedDropdown
   );
 }
 

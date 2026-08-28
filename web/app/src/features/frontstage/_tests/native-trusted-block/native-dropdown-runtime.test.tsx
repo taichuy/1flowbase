@@ -181,6 +181,62 @@ describe('native block Dropdown runtime adapter', () => {
     );
   });
 
+  test('I1924-AC-002/004 keeps a cascading submenu inside the Block top-layer surface', async () => {
+    const registry = createFrontstageNativeReactModuleRegistry();
+    const antdModule = await registry.load('antd');
+    const Dropdown = antdModule.Dropdown as ComponentType<DropdownProps>;
+    const root = document.createElement('div');
+    document.body.append(root);
+    render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="dropdown:cascading"
+        plan={createPlan()}
+        component={() => (
+          <Dropdown
+            menu={{
+              subMenuOpenDelay: 0,
+              items: [
+                {
+                  key: 'sub',
+                  label: 'sub menu',
+                  children: [{ key: 'child', label: 'child menu item' }]
+                }
+              ]
+            }}
+          >
+            <button type="button">Cascading menu</button>
+          </Dropdown>
+        )}
+        ctx={createContext()}
+      />
+    );
+    const shadowRoot = await waitFor(() => root.shadowRoot as ShadowRoot);
+    const queries = within(shadowRoot as unknown as HTMLElement);
+
+    fireEvent.pointerOver(
+      queries.getByRole('button', { name: 'Cascading menu' })
+    );
+    const submenuTitle = await queries.findByText('sub menu');
+    fireEvent.mouseEnter(
+      submenuTitle.closest('[role="menuitem"]') as HTMLElement
+    );
+
+    const child = await queries.findByText('child menu item');
+    const layer = shadowRoot.querySelector<HTMLElement>(
+      '[data-flowbase-native-overlay-layer]'
+    );
+    expect(child.closest('[data-flowbase-native-overlay-layer]')).toBe(layer);
+
+    fireEvent.click(child);
+    await waitFor(() =>
+      expect(layer).toHaveAttribute(
+        'data-flowbase-native-overlay-state',
+        'closed'
+      )
+    );
+  });
+
   test('I1915-AC-006 reactivates a controlled open Dropdown after a layout epoch change', async () => {
     const registry = createFrontstageNativeReactModuleRegistry();
     const antdModule = await registry.load('antd');
