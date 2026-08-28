@@ -24,6 +24,11 @@ use crate::{
     plugin_scope::PluginScope,
 };
 
+fn serialize_input<T: Serialize>(input: T) -> FrameworkResult<Value> {
+    serde_json::to_value(input)
+        .map_err(|error| PluginFrameworkError::serialization(None, error.to_string()))
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct LoadedDataSourceSummary {
     pub plugin_id: String,
@@ -165,7 +170,7 @@ impl DataSourceHost {
         let operation = self.call_runtime_operation(
             plugin_id,
             DataSourceStdioMethod::ValidateConfig,
-            serde_json::to_value(input).unwrap(),
+            serialize_input(input)?,
         )?;
         Ok(async move {
             Ok(DataSourceValueOutput {
@@ -192,7 +197,7 @@ impl DataSourceHost {
         let operation = self.call_runtime_operation(
             plugin_id,
             DataSourceStdioMethod::TestConnection,
-            serde_json::to_value(input).unwrap(),
+            serialize_input(input)?,
         )?;
         Ok(async move {
             Ok(DataSourceValueOutput {
@@ -219,7 +224,7 @@ impl DataSourceHost {
         let operation = self.call_runtime_operation(
             plugin_id,
             DataSourceStdioMethod::DiscoverCatalog,
-            serde_json::to_value(input).unwrap(),
+            serialize_input(input)?,
         )?;
         Ok(async move {
             Ok(DataSourceCatalogOutput {
@@ -249,11 +254,10 @@ impl DataSourceHost {
         let operation = self.call_runtime_operation(
             plugin_id,
             DataSourceStdioMethod::DescribeResource,
-            serde_json::to_value(DataSourceDescribeResourceInput {
+            serialize_input(DataSourceDescribeResourceInput {
                 connection,
                 resource_key,
-            })
-            .unwrap(),
+            })?,
         )?;
         Ok(async move {
             Ok(DataSourceDescriptorOutput {
@@ -280,7 +284,7 @@ impl DataSourceHost {
         let operation = self.call_runtime_operation(
             plugin_id,
             DataSourceStdioMethod::PreviewRead,
-            serde_json::to_value(input).unwrap(),
+            serialize_input(input)?,
         )?;
         Ok(async move { normalize_preview_read(operation.await?) })
     }
@@ -305,7 +309,7 @@ impl DataSourceHost {
         let operation = self.call_runtime_operation(
             plugin_id,
             DataSourceStdioMethod::ImportSnapshot,
-            serde_json::to_value(input).unwrap(),
+            serialize_input(input)?,
         )?;
         Ok(async move { normalize_import_snapshot(operation.await?) })
     }
@@ -328,7 +332,7 @@ impl DataSourceHost {
         let operation = self.call_runtime_operation(
             plugin_id,
             DataSourceStdioMethod::ListRecords,
-            serde_json::to_value(input).unwrap(),
+            serialize_input(input)?,
         )?;
         Ok(async move { normalize_list_records(operation.await?) })
     }
@@ -351,7 +355,7 @@ impl DataSourceHost {
         let operation = self.call_runtime_operation(
             plugin_id,
             DataSourceStdioMethod::GetRecord,
-            serde_json::to_value(input).unwrap(),
+            serialize_input(input)?,
         )?;
         Ok(async move { normalize_get_record(operation.await?) })
     }
@@ -376,7 +380,7 @@ impl DataSourceHost {
         let operation = self.call_runtime_operation(
             plugin_id,
             DataSourceStdioMethod::CreateRecord,
-            serde_json::to_value(input).unwrap(),
+            serialize_input(input)?,
         )?;
         Ok(async move { normalize_create_record(operation.await?) })
     }
@@ -401,7 +405,7 @@ impl DataSourceHost {
         let operation = self.call_runtime_operation(
             plugin_id,
             DataSourceStdioMethod::UpdateRecord,
-            serde_json::to_value(input).unwrap(),
+            serialize_input(input)?,
         )?;
         Ok(async move { normalize_update_record(operation.await?) })
     }
@@ -426,7 +430,7 @@ impl DataSourceHost {
         let operation = self.call_runtime_operation(
             plugin_id,
             DataSourceStdioMethod::DeleteRecord,
-            serde_json::to_value(input).unwrap(),
+            serialize_input(input)?,
         )?;
         Ok(async move { normalize_delete_record(operation.await?) })
     }
@@ -455,7 +459,7 @@ impl DataSourceHost {
         let operation = self.call_runtime_operation(
             plugin_id,
             DataSourceStdioMethod::ExecuteSql,
-            serde_json::to_value(input).unwrap(),
+            serialize_input(input)?,
         )?;
         Ok(async move { normalize_native_sql_output(operation.await?) })
     }
