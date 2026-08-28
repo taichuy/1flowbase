@@ -636,6 +636,17 @@
         "managed-table-scope-time-index"
       ]
     },
+    "lifecycle_outbox_deliveries": {
+      "kind": "subscriber_delivery_outbox",
+      "reason": "subscriber delivery rows are bounded children of one lifecycle event and use event_id plus subscriber_id as identity while explicit claim and delivery timestamps track mutable state",
+      "skip": [
+        "managed-table-id",
+        "managed-table-created-at",
+        "managed-table-updated-at-or-append-only",
+        "managed-table-scope-column",
+        "managed-table-scope-time-index"
+      ]
+    },
     "plugin_data_idempotency_receipts": {
       "kind": "bounded_idempotency_receipt",
       "reason": "plugin data requests use the owner workspace provider and idempotency key composite identity and retain immutable request and response receipts",

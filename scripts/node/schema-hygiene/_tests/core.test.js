@@ -814,6 +814,7 @@ test('default schema hygiene config exempts bounded projection and release table
     ['plugin_package_catalog_projection', 'bounded_projection_exempt'],
     ['extension_artifact_instances', 'bounded_projection_exempt'],
     ['plugin_artifact_cleanup_jobs', 'system_runtime_cleanup_queue_declared'],
+    ['lifecycle_outbox_deliveries', 'subscriber_delivery_outbox_declared'],
     ['i18n_catalog_release_files', 'bounded_release_child_declared'],
     ['i18n_catalog_release_messages', 'bounded_release_child_declared'],
     ['i18n_catalog_release_translations', 'bounded_release_child_declared'],
