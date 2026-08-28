@@ -69,9 +69,22 @@ pub struct UpdateModelProviderMainInstanceBody {
 pub struct ModelProviderMainModelRoutingPolicyBody {
     pub model_id: String,
     pub distribution_rule: String,
+    #[serde(default)]
+    pub distribution_rule_contract_version: Option<String>,
+    #[serde(default)]
+    pub distribution_rule_config:
+        std::collections::BTreeMap<String, ModelProviderDistributionConfigValueBody>,
     pub provider_instance_ids: Vec<Uuid>,
     #[serde(default)]
     pub excluded_provider_instance_ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum ModelProviderDistributionConfigValueBody {
+    String(String),
+    Integer(i64),
+    Boolean(bool),
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -435,6 +448,10 @@ pub struct ModelProviderOptionGroupResponse {
 pub struct ModelProviderMainModelRoutingPolicyResponse {
     pub model_id: String,
     pub distribution_rule: String,
+    pub distribution_rule_id: String,
+    pub distribution_rule_contract_version: String,
+    pub distribution_rule_config:
+        std::collections::BTreeMap<String, ModelProviderDistributionConfigValueBody>,
     pub provider_instance_ids: Vec<Uuid>,
     pub excluded_provider_instance_ids: Vec<Uuid>,
 }

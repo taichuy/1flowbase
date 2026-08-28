@@ -130,13 +130,21 @@ pub enum LlmRoutingMode {
     FailoverQueue,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum LlmDistributionRule {
     #[default]
     None,
     RoundRobin,
     RetryRoundRobin,
+    Dynamic {
+        rule_id: String,
+        contract_version: String,
+        config: std::collections::BTreeMap<
+            String,
+            extension_contracts::ProviderDistributionConfigValue,
+        >,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -252,7 +252,7 @@ where
                 model_groups.push(ModelProviderOptionGroup {
                     distribution_rule: routing_policies
                         .get(&model_id)
-                        .map(|policy| policy.distribution_rule)
+                        .map(|policy| policy.distribution_rule.clone())
                         .unwrap_or_default(),
                     model_id,
                     model,
@@ -327,7 +327,7 @@ fn model_routing_policies_by_id(
                         policy.model_id.clone(),
                         domain::ModelProviderMainModelRoutingPolicy {
                             model_id: policy.model_id.clone(),
-                            distribution_rule: policy.distribution_rule,
+                            distribution_rule: policy.distribution_rule.clone(),
                             provider_instance_ids: policy.provider_instance_ids.clone(),
                             excluded_provider_instance_ids: policy
                                 .excluded_provider_instance_ids

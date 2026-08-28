@@ -98,10 +98,12 @@ export interface ConsoleModelProviderPricingTarget {
   rating_policy: Record<string, unknown>;
 }
 
-export type ConsoleModelProviderDistributionRule =
-  | 'none'
-  | 'round_robin'
-  | 'retry_round_robin';
+export type ConsoleModelProviderDistributionRule = string;
+
+export type ConsoleModelProviderDistributionConfigValue =
+  | { type: 'string'; value: string }
+  | { type: 'integer'; value: number }
+  | { type: 'boolean'; value: boolean };
 
 export interface ConsoleModelProviderCatalogEntry {
   installation_id: string;
@@ -332,6 +334,12 @@ export interface ConsoleModelProviderMainInstance {
 export interface ConsoleModelProviderMainModelRoutingPolicy {
   model_id: string;
   distribution_rule: ConsoleModelProviderDistributionRule;
+  distribution_rule_id?: string;
+  distribution_rule_contract_version?: string;
+  distribution_rule_config?: Record<
+    string,
+    ConsoleModelProviderDistributionConfigValue
+  >;
   provider_instance_ids: string[];
   excluded_provider_instance_ids: string[];
 }

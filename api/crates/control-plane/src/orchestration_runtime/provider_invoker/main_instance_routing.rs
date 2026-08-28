@@ -20,7 +20,7 @@ where
         });
         let distribution_rule = map_distribution_rule(
             routing_policy
-                .map(|policy| policy.distribution_rule)
+                .map(|policy| policy.distribution_rule.clone())
                 .unwrap_or_default(),
         );
         let excluded = routing_policy
@@ -65,7 +65,7 @@ where
                 runtime,
                 &instance,
                 main_instance.as_ref().map(|main| main.revision),
-                distribution_rule,
+                distribution_rule.clone(),
             );
             match self.resolve_registered_llm_route(&selected_runtime).await {
                 Ok(route) => candidates.push(
@@ -224,5 +224,30 @@ fn map_distribution_rule(
         domain::ModelProviderDistributionRule::RetryRoundRobin => {
             orchestration_runtime::compiled_plan::LlmDistributionRule::RetryRoundRobin
         }
+        domain::ModelProviderDistributionRule::Dynamic {
+            rule_id,
+            contract_version,
+            config,
+        } => orchestration_runtime::compiled_plan::LlmDistributionRule::Dynamic {
+            rule_id,
+            contract_version,
+            config: config
+                .into_iter()
+                .map(|(key, value)| {
+                    let value = match value {
+                        domain::ModelProviderDistributionConfigValue::String(value) => {
+                            extension_contracts::ProviderDistributionConfigValue::String(value)
+                        }
+                        domain::ModelProviderDistributionConfigValue::Integer(value) => {
+                            extension_contracts::ProviderDistributionConfigValue::Integer(value)
+                        }
+                        domain::ModelProviderDistributionConfigValue::Boolean(value) => {
+                            extension_contracts::ProviderDistributionConfigValue::Boolean(value)
+                        }
+                    };
+                    (key, value)
+                })
+                .collect(),
+        },
     }
 }

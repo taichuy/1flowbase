@@ -45,6 +45,8 @@ pub struct StoredModelProviderMainModelRoutingPolicyRow {
     pub provider_code: String,
     pub model_id: String,
     pub distribution_rule: String,
+    pub distribution_rule_contract_version: String,
+    pub distribution_rule_config: serde_json::Value,
     pub provider_instance_ids: Vec<Uuid>,
     pub excluded_provider_instance_ids: Vec<Uuid>,
     pub created_by: Uuid,
@@ -134,7 +136,11 @@ impl PgModelProviderMapper {
             workspace_id: row.workspace_id,
             provider_code: row.provider_code,
             model_id: row.model_id,
-            distribution_rule: parse_distribution_rule(&row.distribution_rule)?,
+            distribution_rule: parse_distribution_rule(
+                &row.distribution_rule,
+                &row.distribution_rule_contract_version,
+                row.distribution_rule_config,
+            )?,
             provider_instance_ids: row.provider_instance_ids,
             excluded_provider_instance_ids: row.excluded_provider_instance_ids,
             created_by: row.created_by,
@@ -197,12 +203,23 @@ pub fn parse_instance_status(value: &str) -> Result<ModelProviderInstanceStatus>
     }
 }
 
-pub fn parse_distribution_rule(value: &str) -> Result<ModelProviderDistributionRule> {
+pub fn parse_distribution_rule(
+    value: &str,
+    contract_version: &str,
+    config: serde_json::Value,
+) -> Result<ModelProviderDistributionRule> {
     match value {
-        "none" => Ok(ModelProviderDistributionRule::None),
-        "round_robin" => Ok(ModelProviderDistributionRule::RoundRobin),
-        "retry_round_robin" => Ok(ModelProviderDistributionRule::RetryRoundRobin),
-        _ => Err(anyhow!("unknown model provider distribution rule: {value}")),
+        "none" | "builtin.none" => Ok(ModelProviderDistributionRule::None),
+        "round_robin" | "builtin.round_robin" => Ok(ModelProviderDistributionRule::RoundRobin),
+        "retry_round_robin" | "builtin.retry_round_robin" => {
+            Ok(ModelProviderDistributionRule::RetryRoundRobin)
+        }
+        _ => Ok(ModelProviderDistributionRule::Dynamic {
+            rule_id: value.to_string(),
+            contract_version: contract_version.to_string(),
+            config: serde_json::from_value(config)
+                .map_err(|error| anyhow!("invalid provider distribution config: {error}"))?,
+        }),
     }
 }
 

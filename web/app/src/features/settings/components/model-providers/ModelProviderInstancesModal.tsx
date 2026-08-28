@@ -51,8 +51,8 @@ function sourceInstanceTagColor(sourceInstanceDisplayName: string) {
   return SOURCE_INSTANCE_TAG_COLORS[colorIndex];
 }
 
-function distributionRuleOptions() {
-  return [
+function distributionRuleOptions(currentRule: DistributionRule) {
+  const options = [
     {
       value: 'none',
       label: i18nText('settings', 'auto.distribution_rule_none')
@@ -66,6 +66,10 @@ function distributionRuleOptions() {
       label: i18nText('settings', 'auto.distribution_rule_retry_round_robin')
     }
   ] satisfies Array<{ value: DistributionRule; label: string }>;
+  if (!options.some((option) => option.value === currentRule)) {
+    options.push({ value: currentRule, label: currentRule });
+  }
+  return options;
 }
 
 export function ModelProviderInstancesModal({
@@ -222,7 +226,7 @@ export function ModelProviderInstancesModal({
           }
         >
           <option value="" disabled hidden />
-          {distributionRuleOptions().map((option) => (
+          {distributionRuleOptions(group.distribution_rule).map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>

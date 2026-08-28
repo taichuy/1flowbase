@@ -429,23 +429,67 @@ impl ModelProviderCatalogSource {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ModelProviderDistributionRule {
     #[default]
     None,
     RoundRobin,
     RetryRoundRobin,
+    Dynamic {
+        rule_id: String,
+        contract_version: String,
+        config: std::collections::BTreeMap<String, ModelProviderDistributionConfigValue>,
+    },
 }
 
 impl ModelProviderDistributionRule {
-    pub fn as_str(self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::None => "none",
             Self::RoundRobin => "round_robin",
             Self::RetryRoundRobin => "retry_round_robin",
+            Self::Dynamic { rule_id, .. } => rule_id,
         }
     }
+
+    pub fn rule_id(&self) -> &str {
+        match self {
+            Self::None => "builtin.none",
+            Self::RoundRobin => "builtin.round_robin",
+            Self::RetryRoundRobin => "builtin.retry_round_robin",
+            Self::Dynamic { rule_id, .. } => rule_id,
+        }
+    }
+
+    pub fn contract_version(&self) -> &str {
+        match self {
+            Self::Dynamic {
+                contract_version, ..
+            } => contract_version,
+            _ => "1",
+        }
+    }
+
+    pub fn config(
+        &self,
+    ) -> &std::collections::BTreeMap<String, ModelProviderDistributionConfigValue> {
+        static EMPTY: std::sync::OnceLock<
+            std::collections::BTreeMap<String, ModelProviderDistributionConfigValue>,
+        > = std::sync::OnceLock::new();
+        match self {
+            Self::Dynamic { config, .. } => config,
+            _ => EMPTY.get_or_init(Default::default),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", content = "value", rename_all = "snake_case")]
+pub enum ModelProviderDistributionConfigValue {
+    String(String),
+    Integer(i64),
+    Boolean(bool),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

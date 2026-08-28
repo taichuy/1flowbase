@@ -503,6 +503,37 @@ async fn model_provider_repository_persists_ordered_routing_policy_with_revision
         record.model_routing_policies
     );
 
+    let dynamic_rule = domain::ModelProviderDistributionRule::Dynamic {
+        rule_id: "@taichuy/session-retry-distribution".into(),
+        contract_version: "1".into(),
+        config: std::collections::BTreeMap::from([(
+            "affinity_ttl_seconds".into(),
+            domain::ModelProviderDistributionConfigValue::Integer(3600),
+        )]),
+    };
+    let dynamic_record = ModelProviderRepository::upsert_main_instance(
+        &store,
+        &UpsertModelProviderMainInstanceInput {
+            workspace_id: workspace.id,
+            provider_code: "fixture_provider".into(),
+            auto_include_new_instances: true,
+            expected_revision: record.revision,
+            model_routing_policies: Some(vec![domain::ModelProviderMainModelRoutingPolicy {
+                model_id: "fixture_chat".into(),
+                distribution_rule: dynamic_rule.clone(),
+                provider_instance_ids: vec![instance.id],
+                excluded_provider_instance_ids: vec![],
+            }]),
+            updated_by: actor.id,
+        },
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        dynamic_record.model_routing_policies[0].distribution_rule,
+        dynamic_rule
+    );
+
     let stale_error = ModelProviderRepository::upsert_main_instance(
         &store,
         &UpsertModelProviderMainInstanceInput {

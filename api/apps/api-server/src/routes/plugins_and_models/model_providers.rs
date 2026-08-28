@@ -127,15 +127,60 @@ fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
 }
 
-fn parse_distribution_rule(raw: &str) -> Result<domain::ModelProviderDistributionRule, ApiError> {
+fn parse_distribution_rule(
+    raw: &str,
+    contract_version: Option<String>,
+    config: std::collections::BTreeMap<String, ModelProviderDistributionConfigValueBody>,
+) -> Result<domain::ModelProviderDistributionRule, ApiError> {
     match raw {
-        "none" => Ok(domain::ModelProviderDistributionRule::None),
-        "round_robin" => Ok(domain::ModelProviderDistributionRule::RoundRobin),
-        "retry_round_robin" => Ok(domain::ModelProviderDistributionRule::RetryRoundRobin),
+        "none" | "builtin.none" => Ok(domain::ModelProviderDistributionRule::None),
+        "round_robin" | "builtin.round_robin" => {
+            Ok(domain::ModelProviderDistributionRule::RoundRobin)
+        }
+        "retry_round_robin" | "builtin.retry_round_robin" => {
+            Ok(domain::ModelProviderDistributionRule::RetryRoundRobin)
+        }
+        _ if valid_distribution_rule_id(raw) => {
+            Ok(domain::ModelProviderDistributionRule::Dynamic {
+                rule_id: raw.to_string(),
+                contract_version: contract_version
+                    .filter(|value| !value.trim().is_empty())
+                    .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "distribution_rule_contract_version",
+                    ))?,
+                config: config
+                    .into_iter()
+                    .map(|(key, value)| {
+                        let value = match value {
+                            ModelProviderDistributionConfigValueBody::String(value) => {
+                                domain::ModelProviderDistributionConfigValue::String(value)
+                            }
+                            ModelProviderDistributionConfigValueBody::Integer(value) => {
+                                domain::ModelProviderDistributionConfigValue::Integer(value)
+                            }
+                            ModelProviderDistributionConfigValueBody::Boolean(value) => {
+                                domain::ModelProviderDistributionConfigValue::Boolean(value)
+                            }
+                        };
+                        (key, value)
+                    })
+                    .collect(),
+            })
+        }
         _ => {
             Err(control_plane::errors::ControlPlaneError::InvalidInput("distribution_rule").into())
         }
     }
+}
+
+fn valid_distribution_rule_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.chars().all(|character| {
+            character.is_ascii_lowercase()
+                || character.is_ascii_digit()
+                || matches!(character, '_' | '-' | '.' | '@' | '/')
+        })
 }
 
 fn normalize_provider_icon(provider_code: &str, icon: Option<String>) -> Option<String> {
@@ -544,9 +589,31 @@ fn to_main_instance_response(
 fn to_main_model_routing_policy_response(
     policy: domain::ModelProviderMainModelRoutingPolicy,
 ) -> ModelProviderMainModelRoutingPolicyResponse {
+    let distribution_rule_config = policy
+        .distribution_rule
+        .config()
+        .iter()
+        .map(|(key, value)| {
+            let value = match value {
+                domain::ModelProviderDistributionConfigValue::String(value) => {
+                    ModelProviderDistributionConfigValueBody::String(value.clone())
+                }
+                domain::ModelProviderDistributionConfigValue::Integer(value) => {
+                    ModelProviderDistributionConfigValueBody::Integer(*value)
+                }
+                domain::ModelProviderDistributionConfigValue::Boolean(value) => {
+                    ModelProviderDistributionConfigValueBody::Boolean(*value)
+                }
+            };
+            (key.clone(), value)
+        })
+        .collect();
     ModelProviderMainModelRoutingPolicyResponse {
         model_id: policy.model_id,
         distribution_rule: policy.distribution_rule.as_str().to_string(),
+        distribution_rule_id: policy.distribution_rule.rule_id().to_string(),
+        distribution_rule_contract_version: policy.distribution_rule.contract_version().to_string(),
+        distribution_rule_config,
         provider_instance_ids: policy.provider_instance_ids,
         excluded_provider_instance_ids: policy.excluded_provider_instance_ids,
     }
@@ -557,7 +624,11 @@ fn to_main_model_routing_policy(
 ) -> Result<domain::ModelProviderMainModelRoutingPolicy, ApiError> {
     Ok(domain::ModelProviderMainModelRoutingPolicy {
         model_id: policy.model_id,
-        distribution_rule: parse_distribution_rule(&policy.distribution_rule)?,
+        distribution_rule: parse_distribution_rule(
+            &policy.distribution_rule,
+            policy.distribution_rule_contract_version,
+            policy.distribution_rule_config,
+        )?,
         provider_instance_ids: policy.provider_instance_ids,
         excluded_provider_instance_ids: policy.excluded_provider_instance_ids,
     })

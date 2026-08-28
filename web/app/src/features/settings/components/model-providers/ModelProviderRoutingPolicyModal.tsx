@@ -302,6 +302,11 @@ export function ModelProviderRoutingPolicyModal({
             <option value="retry_round_robin">
               {i18nText('settings', 'auto.distribution_rule_retry_round_robin')}
             </option>
+            {!['none', 'round_robin', 'retry_round_robin'].includes(
+              distributionRule
+            ) ? (
+              <option value={distributionRule}>{distributionRule}</option>
+            ) : null}
           </select>
         </label>
         <div className="model-provider-panel__routing-policy-field">

@@ -732,7 +732,7 @@ describe('ModelProvidersPage - instances modal', () => {
       const distributionRuleChangeSpy = vi.fn(
         (
           modelId: string,
-          distributionRule: 'none' | 'round_robin' | 'retry_round_robin'
+          distributionRule: string
         ) => {
           mainInstanceState = {
             ...mainInstanceState,

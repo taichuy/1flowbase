@@ -173,7 +173,7 @@ export function buildSettingsModelProviderOptions(): ConsoleModelProviderOptions
 
 export function buildMainInstanceSettings(
   autoIncludeNewInstances = true,
-  distributionRule: 'none' | 'round_robin' | 'retry_round_robin' = 'none'
+  distributionRule: string = 'none'
 ) {
   return {
     provider_code: modelProviderCatalogEntries[0].provider_code,

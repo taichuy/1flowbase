@@ -150,7 +150,7 @@ where
             ));
         }
         let selection = llm_target_selection(
-            main_routing.distribution_rule,
+            &main_routing.distribution_rule,
             main_routing.distribution_key.as_deref(),
             &compatible
                 .iter()
@@ -221,8 +221,8 @@ where
         runtime
             .routing
             .as_ref()
-            .map(|routing| routing.distribution_rule)
-            .unwrap_or_default(),
+            .map(|routing| &routing.distribution_rule)
+            .unwrap_or(&crate::compiled_plan::LlmDistributionRule::None),
         runtime
             .routing
             .as_ref()
@@ -335,7 +335,7 @@ fn llm_route_candidate_runtimes(runtime: &CompiledLlmRuntime) -> Vec<CompiledLlm
 }
 
 async fn llm_target_selection(
-    distribution_rule: crate::compiled_plan::LlmDistributionRule,
+    distribution_rule: &crate::compiled_plan::LlmDistributionRule,
     distribution_key: Option<&str>,
     target_ids: &[String],
     attempt_index: usize,

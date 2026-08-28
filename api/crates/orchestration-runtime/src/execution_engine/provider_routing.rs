@@ -14,7 +14,7 @@ pub(super) struct ProviderDistributionSelection {
 }
 
 pub(super) async fn select_builtin_provider_target(
-    rule: crate::compiled_plan::LlmDistributionRule,
+    rule: &crate::compiled_plan::LlmDistributionRule,
     distribution_key: Option<&str>,
     target_ids: &[String],
     attempt_index: usize,
@@ -51,6 +51,11 @@ pub(super) async fn select_builtin_provider_target(
             .await?
         }
         crate::compiled_plan::LlmDistributionRule::RoundRobin => 0,
+        crate::compiled_plan::LlmDistributionRule::Dynamic { rule_id, .. } => {
+            return Err(anyhow!(
+                "provider distribution rule is not bound to a runtime handler: {rule_id}"
+            ));
+        }
     };
     let selected = candidates
         .get(target_index)
@@ -60,6 +65,9 @@ pub(super) async fn select_builtin_provider_target(
         crate::compiled_plan::LlmDistributionRule::None => "builtin.none",
         crate::compiled_plan::LlmDistributionRule::RoundRobin => "builtin.round_robin",
         crate::compiled_plan::LlmDistributionRule::RetryRoundRobin => "builtin.retry_round_robin",
+        crate::compiled_plan::LlmDistributionRule::Dynamic { .. } => unreachable!(
+            "dynamic provider distribution rules return before builtin receipt construction"
+        ),
     };
     Ok(ProviderDistributionSelection {
         target_index,
