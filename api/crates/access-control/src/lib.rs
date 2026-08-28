@@ -2,6 +2,7 @@ extern crate self as access_control;
 
 mod catalog;
 mod console_operations;
+mod decision;
 mod evaluator;
 mod navigation;
 mod settings_features;
@@ -44,6 +45,7 @@ pub use console_operations::{
     MODEL_SCOPE_GRANTS_LIST_OPERATION_ID, MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID,
     MODEL_TEMPLATES_LIST_OPERATION_ID,
 };
+pub use decision::*;
 pub use evaluator::ensure_permission;
 pub use navigation::{
     accessible_console_navigation, accessible_console_navigation_with_contributions,

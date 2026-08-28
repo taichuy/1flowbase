@@ -1,9 +1,15 @@
 //! Protocol-independent active interface definitions and invocation contracts.
 
+mod hook;
 mod identity;
 mod invocation;
 mod registry;
 
+pub use hook::{
+    InterfaceAfterHook, InterfaceAfterHookFuture, InterfaceBeforeHook, InterfaceBeforeHookError,
+    InterfaceBeforeHookFuture, InterfaceCompletionHook, InterfaceCompletionHookFuture,
+    InterfaceFailureHook, InterfaceFailureHookFuture, InterfaceHookContext, TypedInterfaceHookPlan,
+};
 pub use identity::{
     ContractIdentity, GraphFingerprint, HandlerReference, IdentityError, InterfaceId,
     InterfaceOwner, PermissionIdentity, RegistryFingerprint, RouteIdentity, TargetReference,

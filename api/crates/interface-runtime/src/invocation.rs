@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 use crate::{
     CompiledInterfaceRegistry, ContractIdentity, GraphFingerprint, InterfaceContract,
-    InterfaceDefinition, InterfaceHandlerContext, InterfaceId, InterfaceTargetError,
-    RegistryFingerprint,
+    InterfaceDefinition, InterfaceHandlerContext, InterfaceHookContext, InterfaceId,
+    InterfaceTargetError, RegistryFingerprint, TypedInterfaceHookPlan,
 };
 
 async fn await_before_deadline<T>(
@@ -307,7 +307,9 @@ pub enum InterfaceInvocationStage {
     Resolved,
     Authorized,
     Admitted,
+    BeforeHooksCompleted,
     Invoking,
+    AfterHooksCompleted,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -370,10 +372,14 @@ pub enum InterfaceInvocationError {
     UnknownInterface,
     #[error("invocation contract does not match the registered interface")]
     ContractMismatch,
+    #[error("hook plan fingerprint does not match the invocation snapshot")]
+    HookPlanFingerprintMismatch,
     #[error(transparent)]
     AuthorizationRejected(InterfaceAuthorizationError),
     #[error(transparent)]
     AdmissionRejected(InterfaceTargetAdmissionError),
+    #[error(transparent)]
+    BeforeHookRejected(crate::InterfaceBeforeHookError),
     #[error(transparent)]
     TargetFailed(InterfaceTargetError),
     #[error("interface invocation deadline elapsed")]
@@ -461,13 +467,40 @@ impl InterfaceInvocationKernel {
         I: InterfaceContract,
         O: InterfaceContract,
     {
+        self.invoke_internal(snapshot, envelope, None).await
+    }
+
+    pub async fn invoke_with_hook_plan<I, O>(
+        &self,
+        snapshot: Arc<CompiledInterfaceRegistry>,
+        envelope: InvocationEnvelope<I>,
+        hook_plan: &TypedInterfaceHookPlan<I, O>,
+    ) -> InterfaceInvocationResult<O>
+    where
+        I: InterfaceContract,
+        O: InterfaceContract,
+    {
+        self.invoke_internal(snapshot, envelope, Some(hook_plan))
+            .await
+    }
+
+    async fn invoke_internal<I, O>(
+        &self,
+        snapshot: Arc<CompiledInterfaceRegistry>,
+        envelope: InvocationEnvelope<I>,
+        hook_plan: Option<&TypedInterfaceHookPlan<I, O>>,
+    ) -> InterfaceInvocationResult<O>
+    where
+        I: InterfaceContract,
+        O: InterfaceContract,
+    {
         let InvocationEnvelope {
             lineage,
             interface_id,
             protocol,
             actor,
             deadline,
-            input,
+            mut input,
         } = envelope;
         let mut receipt = ReceiptBuilder::new(
             &snapshot,
@@ -476,13 +509,43 @@ impl InterfaceInvocationKernel {
             interface_id.clone(),
             protocol,
         );
+        let hook_context = InterfaceHookContext::new(
+            actor.clone(),
+            lineage.invocation_id(),
+            snapshot.graph_fingerprint().clone(),
+            snapshot.fingerprint().clone(),
+        );
         if deadline.is_some_and(|deadline| deadline <= SystemTime::now()) {
+            run_completion_hooks(
+                hook_plan,
+                &hook_context,
+                InterfaceInvocationTerminal::Cancelled,
+            )
+            .await;
             return Err(receipt.fail(
                 InterfaceInvocationError::DeadlineElapsed,
                 InterfaceInvocationTerminal::Cancelled,
             ));
         }
+        if hook_plan.is_some_and(|plan| plan.graph_fingerprint() != snapshot.graph_fingerprint()) {
+            run_completion_hooks(
+                hook_plan,
+                &hook_context,
+                InterfaceInvocationTerminal::Rejected,
+            )
+            .await;
+            return Err(receipt.fail(
+                InterfaceInvocationError::HookPlanFingerprintMismatch,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        }
         let Some(definition) = snapshot.definition(&interface_id).cloned() else {
+            run_completion_hooks(
+                hook_plan,
+                &hook_context,
+                InterfaceInvocationTerminal::Rejected,
+            )
+            .await;
             return Err(receipt.fail(
                 InterfaceInvocationError::UnknownInterface,
                 InterfaceInvocationTerminal::Rejected,
@@ -492,6 +555,12 @@ impl InterfaceInvocationKernel {
         if definition.input_contract() != &contract_identity::<I>()
             || definition.output_contract() != &contract_identity::<O>()
         {
+            run_completion_hooks(
+                hook_plan,
+                &hook_context,
+                InterfaceInvocationTerminal::Rejected,
+            )
+            .await;
             return Err(receipt.fail(
                 InterfaceInvocationError::ContractMismatch,
                 InterfaceInvocationTerminal::Rejected,
@@ -510,6 +579,12 @@ impl InterfaceInvocationKernel {
         let authorization = match authorization {
             Ok(authorization) => authorization,
             Err(()) => {
+                run_completion_hooks(
+                    hook_plan,
+                    &hook_context,
+                    InterfaceInvocationTerminal::Cancelled,
+                )
+                .await;
                 return Err(receipt.fail(
                     InterfaceInvocationError::DeadlineElapsed,
                     InterfaceInvocationTerminal::Cancelled,
@@ -517,6 +592,13 @@ impl InterfaceInvocationKernel {
             }
         };
         if let Err(error) = authorization {
+            run_failure_hooks(hook_plan, &hook_context, error.classification()).await;
+            run_completion_hooks(
+                hook_plan,
+                &hook_context,
+                InterfaceInvocationTerminal::Rejected,
+            )
+            .await;
             return Err(receipt.fail(
                 InterfaceInvocationError::AuthorizationRejected(error),
                 InterfaceInvocationTerminal::Rejected,
@@ -536,6 +618,12 @@ impl InterfaceInvocationKernel {
             let admission = match admission {
                 Ok(admission) => admission,
                 Err(()) => {
+                    run_completion_hooks(
+                        hook_plan,
+                        &hook_context,
+                        InterfaceInvocationTerminal::Cancelled,
+                    )
+                    .await;
                     return Err(receipt.fail(
                         InterfaceInvocationError::DeadlineElapsed,
                         InterfaceInvocationTerminal::Cancelled,
@@ -543,6 +631,13 @@ impl InterfaceInvocationKernel {
                 }
             };
             if let Err(error) = admission {
+                run_failure_hooks(hook_plan, &hook_context, error.classification()).await;
+                run_completion_hooks(
+                    hook_plan,
+                    &hook_context,
+                    InterfaceInvocationTerminal::Rejected,
+                )
+                .await;
                 return Err(receipt.fail(
                     InterfaceInvocationError::AdmissionRejected(error),
                     InterfaceInvocationTerminal::Rejected,
@@ -550,7 +645,42 @@ impl InterfaceInvocationKernel {
             }
             receipt.stage(InterfaceInvocationStage::Admitted);
         }
+        if let Some(hook_plan) = hook_plan {
+            let before =
+                await_before_deadline(deadline, hook_plan.run_before(&hook_context, &mut input))
+                    .await;
+            match before {
+                Err(()) => {
+                    hook_plan
+                        .run_completion(&hook_context, InterfaceInvocationTerminal::Cancelled)
+                        .await;
+                    return Err(receipt.fail(
+                        InterfaceInvocationError::DeadlineElapsed,
+                        InterfaceInvocationTerminal::Cancelled,
+                    ));
+                }
+                Ok(Err(error)) => {
+                    hook_plan
+                        .run_failure(&hook_context, error.classification())
+                        .await;
+                    hook_plan
+                        .run_completion(&hook_context, InterfaceInvocationTerminal::Rejected)
+                        .await;
+                    return Err(receipt.fail(
+                        InterfaceInvocationError::BeforeHookRejected(error),
+                        InterfaceInvocationTerminal::Rejected,
+                    ));
+                }
+                Ok(Ok(())) => receipt.stage(InterfaceInvocationStage::BeforeHooksCompleted),
+            }
+        }
         let Some(handler) = snapshot.handler::<I, O>(&interface_id) else {
+            run_completion_hooks(
+                hook_plan,
+                &hook_context,
+                InterfaceInvocationTerminal::Rejected,
+            )
+            .await;
             return Err(receipt.fail(
                 InterfaceInvocationError::ContractMismatch,
                 InterfaceInvocationTerminal::Rejected,
@@ -567,6 +697,12 @@ impl InterfaceInvocationKernel {
         let target = match target {
             Ok(target) => target,
             Err(()) => {
+                run_completion_hooks(
+                    hook_plan,
+                    &hook_context,
+                    InterfaceInvocationTerminal::Cancelled,
+                )
+                .await;
                 return Err(receipt.fail(
                     InterfaceInvocationError::DeadlineElapsed,
                     InterfaceInvocationTerminal::Cancelled,
@@ -574,14 +710,57 @@ impl InterfaceInvocationKernel {
             }
         };
         match target {
-            Ok(value) => Ok(InterfaceInvocationOutcome {
-                value,
-                receipt: receipt.complete(),
-            }),
+            Ok(value) => {
+                if let Some(hook_plan) = hook_plan {
+                    hook_plan.run_after(&hook_context, &value).await;
+                    receipt.stage(InterfaceInvocationStage::AfterHooksCompleted);
+                    hook_plan
+                        .run_completion(&hook_context, InterfaceInvocationTerminal::Completed)
+                        .await;
+                }
+                Ok(InterfaceInvocationOutcome {
+                    value,
+                    receipt: receipt.complete(),
+                })
+            }
             Err(error) => {
+                if let Some(hook_plan) = hook_plan {
+                    hook_plan
+                        .run_failure(&hook_context, error.classification())
+                        .await;
+                    hook_plan
+                        .run_completion(&hook_context, InterfaceInvocationTerminal::Failed)
+                        .await;
+                }
                 Err(receipt.fail(target_error(error), InterfaceInvocationTerminal::Failed))
             }
         }
+    }
+}
+
+async fn run_failure_hooks<I, O>(
+    hook_plan: Option<&TypedInterfaceHookPlan<I, O>>,
+    context: &InterfaceHookContext,
+    classification: &str,
+) where
+    I: InterfaceContract,
+    O: InterfaceContract,
+{
+    if let Some(hook_plan) = hook_plan {
+        hook_plan.run_failure(context, classification).await;
+    }
+}
+
+async fn run_completion_hooks<I, O>(
+    hook_plan: Option<&TypedInterfaceHookPlan<I, O>>,
+    context: &InterfaceHookContext,
+    terminal: InterfaceInvocationTerminal,
+) where
+    I: InterfaceContract,
+    O: InterfaceContract,
+{
+    if let Some(hook_plan) = hook_plan {
+        hook_plan.run_completion(context, terminal).await;
     }
 }
 

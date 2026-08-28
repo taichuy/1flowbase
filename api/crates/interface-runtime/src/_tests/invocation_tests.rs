@@ -10,14 +10,15 @@ use crate::{
     ContractIdentity, DynamicInterfaceRegistry, GraphFingerprint, HandlerReference,
     InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceAuthorizationError,
     InterfaceAuthorizationFuture, InterfaceAuthorizationPort, InterfaceAuthorizationRequest,
-    InterfaceContract, InterfaceDefinition, InterfaceErrorPolicy, InterfaceHandler,
-    InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceInvocationError,
-    InterfaceInvocationKernel, InterfaceInvocationStage, InterfaceInvocationTerminal,
-    InterfaceLifecycle, InterfaceOwner, InterfaceProtocol, InterfaceScope,
-    InterfaceTargetAdmissionError, InterfaceTargetAdmissionFuture, InterfaceTargetAdmissionPort,
-    InterfaceTargetAdmissionRequest, InterfaceTargetError, InvocationEnvelope, InvocationId,
-    InvocationLineage, InvocationLineageError, PermissionIdentity, RegistryCompiler, RouteIdentity,
-    TargetReference,
+    InterfaceBeforeHook, InterfaceBeforeHookFuture, InterfaceCompletionHook,
+    InterfaceCompletionHookFuture, InterfaceContract, InterfaceDefinition, InterfaceErrorPolicy,
+    InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceHookContext,
+    InterfaceId, InterfaceInvocationError, InterfaceInvocationKernel, InterfaceInvocationStage,
+    InterfaceInvocationTerminal, InterfaceLifecycle, InterfaceOwner, InterfaceProtocol,
+    InterfaceScope, InterfaceTargetAdmissionError, InterfaceTargetAdmissionFuture,
+    InterfaceTargetAdmissionPort, InterfaceTargetAdmissionRequest, InterfaceTargetError,
+    InvocationEnvelope, InvocationId, InvocationLineage, InvocationLineageError,
+    PermissionIdentity, RegistryCompiler, RouteIdentity, TargetReference, TypedInterfaceHookPlan,
 };
 
 #[derive(Clone)]
@@ -142,6 +143,49 @@ impl InterfaceTargetAdmissionPort for Admission {
             } else {
                 Ok(())
             }
+        })
+    }
+}
+
+struct RecordingBeforeHook {
+    name: &'static str,
+    increment: u8,
+    events: Arc<Mutex<Vec<String>>>,
+}
+
+impl InterfaceBeforeHook<Input> for RecordingBeforeHook {
+    fn before<'a>(
+        &'a self,
+        _context: InterfaceHookContext,
+        input: &'a mut Input,
+    ) -> InterfaceBeforeHookFuture<'a> {
+        Box::pin(async move {
+            input.0 += self.increment;
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("before:{}", self.name));
+            Ok(())
+        })
+    }
+}
+
+struct RecordingCompletionHook {
+    name: &'static str,
+    events: Arc<Mutex<Vec<String>>>,
+}
+
+impl InterfaceCompletionHook for RecordingCompletionHook {
+    fn completed(
+        &self,
+        _context: InterfaceHookContext,
+        terminal: InterfaceInvocationTerminal,
+    ) -> InterfaceCompletionHookFuture<'_> {
+        Box::pin(async move {
+            self.events
+                .lock()
+                .unwrap()
+                .push(format!("completion:{}:{terminal:?}", self.name));
         })
     }
 }
@@ -457,6 +501,87 @@ async fn active_invocation_uses_its_frozen_snapshot_after_candidate_publish() {
     assert_ne!(
         old_outcome.receipt().registry_fingerprint(),
         new_outcome.receipt().registry_fingerprint()
+    );
+}
+
+#[tokio::test]
+async fn lcf_002_lcf_004_typed_hook_plan_runs_after_authorization_and_admission() {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let snapshot = compile_snapshot("graph:hooks", 3, false, Arc::new(Mutex::new(None)));
+    let plan =
+        TypedInterfaceHookPlan::<Input, Output>::new(GraphFingerprint::new("graph:hooks").unwrap())
+            .bind_before(Arc::new(RecordingBeforeHook {
+                name: "alpha",
+                increment: 1,
+                events: Arc::clone(&events),
+            }))
+            .bind_before(Arc::new(RecordingBeforeHook {
+                name: "beta",
+                increment: 2,
+                events: Arc::clone(&events),
+            }))
+            .bind_completion(Arc::new(RecordingCompletionHook {
+                name: "alpha",
+                events: Arc::clone(&events),
+            }))
+            .bind_completion(Arc::new(RecordingCompletionHook {
+                name: "beta",
+                events: Arc::clone(&events),
+            }));
+    let outcome = InterfaceInvocationKernel::with_target_admission(
+        Arc::new(Authorization { reject: false }),
+        Arc::new(Admission { reject: false }),
+    )
+    .invoke_with_hook_plan(snapshot, envelope(actor(true)), &plan)
+    .await
+    .unwrap();
+
+    assert_eq!(outcome.value(), &Output(8));
+    assert_eq!(
+        events.lock().unwrap().as_slice(),
+        [
+            "before:alpha",
+            "before:beta",
+            "completion:beta:Completed",
+            "completion:alpha:Completed",
+        ]
+    );
+    assert_eq!(
+        outcome.receipt().stages(),
+        &[
+            InterfaceInvocationStage::Resolved,
+            InterfaceInvocationStage::Authorized,
+            InterfaceInvocationStage::Admitted,
+            InterfaceInvocationStage::BeforeHooksCompleted,
+            InterfaceInvocationStage::Invoking,
+            InterfaceInvocationStage::AfterHooksCompleted,
+        ]
+    );
+}
+
+#[tokio::test]
+async fn lcf_006_completion_is_emitted_once_for_target_failure() {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let snapshot = compile_snapshot("graph:failed-hooks", 0, true, Arc::new(Mutex::new(None)));
+    let plan = TypedInterfaceHookPlan::<Input, Output>::new(
+        GraphFingerprint::new("graph:failed-hooks").unwrap(),
+    )
+    .bind_completion(Arc::new(RecordingCompletionHook {
+        name: "terminal",
+        events: Arc::clone(&events),
+    }));
+    let failure = InterfaceInvocationKernel::new(Arc::new(Authorization { reject: false }))
+        .invoke_with_hook_plan(snapshot, envelope(actor(true)), &plan)
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        failure.receipt().terminal(),
+        InterfaceInvocationTerminal::Failed
+    );
+    assert_eq!(
+        events.lock().unwrap().as_slice(),
+        ["completion:terminal:Failed"]
     );
 }
 
