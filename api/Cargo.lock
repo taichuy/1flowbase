@@ -3379,6 +3379,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "runtime-extension-sdk"
+version = "0.4.1"
+dependencies = [
+ "extension-contracts",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "runtime-profile"
 version = "0.4.1"
 dependencies = [

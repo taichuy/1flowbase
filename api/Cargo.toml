@@ -7,6 +7,7 @@ members = [
   "crates/orchestration-runtime",
   "crates/runtime-core",
   "crates/runtime-extension-host",
+  "crates/runtime-extension-sdk",
   "crates/runtime-profile",
   "crates/access-control",
   "crates/interface-runtime",

@@ -1,0 +1,10 @@
+[package]
+name = "runtime-extension-sdk"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+extension-contracts = { path = "../extension-contracts" }
+serde_json.workspace = true
+thiserror.workspace = true
