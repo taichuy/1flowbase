@@ -133,7 +133,6 @@ export function FrontstageNativeTrustedBlockPortalHost({
   );
   const mountedRenderInput = useRef<typeof renderInput | null>(null);
   const runtimeMotionTheme = useNativeBlockMotionTheme(providerScope?.theme);
-  const disableRuntimeWave = runtimeMotionTheme.token?.motion === false;
 
   useEffect(() => {
     const lifecycle = contribution?.createHandle() ?? null;
@@ -264,8 +263,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
       antdStylePrefix,
       { ...providerScope, theme: runtimeMotionTheme },
       providerWrapper,
-      surfaceLayoutEpoch,
-      disableRuntimeWave
+      surfaceLayoutEpoch
     ),
     surface.mountElement,
     renderEpoch
@@ -478,8 +476,7 @@ function wrapWithHostProviders(
   antdStylePrefix: string,
   providerScope?: FrontstageNativeTrustedBlockProviderScope,
   providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper,
-  surfaceLayoutEpoch = 'stable',
-  disableRuntimeWave = false
+  surfaceLayoutEpoch = 'stable'
 ): ReactNode {
   const getShadowContainer = () => context.shadowRoot;
   const getTargetContainer = () => context.scrollOwner;
@@ -492,7 +489,6 @@ function wrapWithHostProviders(
         locale={providerScope?.locale}
         prefixCls={isolatedPrefix}
         theme={providerScope?.theme}
-        wave={{ disabled: disableRuntimeWave }}
       >
         <NativeBlockSurfaceProvider
           scope={{

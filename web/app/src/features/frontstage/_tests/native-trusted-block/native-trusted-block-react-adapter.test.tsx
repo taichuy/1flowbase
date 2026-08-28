@@ -238,32 +238,31 @@ describe('frontstage native trusted block declarative portal host', () => {
     expect(unmounted).not.toHaveBeenCalled();
   });
 
-  test('I1927-AC-001 uses direct motion by default for native surfaces', async () => {
+  test('I1927-AC-001 injects the responsive motion budget into the native surface theme', async () => {
     const root = createBlockRoot();
 
     render(
       <FrontstageNativeTrustedBlockPortalHost
         root={root}
-        renderEpoch="motion:direct"
+        renderEpoch="motion:responsive"
         plan={createPlan()}
-        component={() => <output>direct motion</output>}
+        component={() => <output>responsive motion</output>}
         ctx={createContext()}
       />
     );
 
-    await shadowQueries(root).findByText('direct motion');
+    await shadowQueries(root).findByText('responsive motion');
     expect(providerRecords.configs.at(-1)?.theme).toEqual({
       token: expect.objectContaining({
-        motion: false,
-        motionDurationFast: '0s',
-        motionDurationMid: '0s',
-        motionDurationSlow: '0s'
+        motion: true,
+        motionDurationFast: '0.03s',
+        motionDurationMid: '0.05s',
+        motionDurationSlow: '0.08s'
       })
     });
-    expect(providerRecords.configs.at(-1)?.wave).toEqual({ disabled: true });
   });
 
-  test('I1927-AC-002 allows authors to opt in to responsive motion', async () => {
+  test('I1927-AC-002 preserves authored theme tokens over the responsive defaults', async () => {
     const root = createBlockRoot();
 
     render(
@@ -277,10 +276,7 @@ describe('frontstage native trusted block declarative portal host', () => {
           theme: {
             token: {
               colorPrimary: '#123456',
-              motion: true,
-              motionDurationFast: '0.08s',
-              motionDurationMid: '0.12s',
-              motionDurationSlow: '0.16s'
+              motionDurationMid: '0.24s'
             }
           }
         }}
@@ -291,16 +287,14 @@ describe('frontstage native trusted block declarative portal host', () => {
     expect(providerRecords.configs.at(-1)?.theme).toEqual({
       token: expect.objectContaining({
         colorPrimary: '#123456',
-        motion: true,
-        motionDurationFast: '0.08s',
-        motionDurationMid: '0.12s',
-        motionDurationSlow: '0.16s'
+        motionDurationFast: '0.03s',
+        motionDurationMid: '0.24s',
+        motionDurationSlow: '0.08s'
       })
     });
-    expect(providerRecords.configs.at(-1)?.wave).toEqual({ disabled: false });
   });
 
-  test('I1927-AC-003 forces direct motion over authored responsive motion without remounting', async () => {
+  test('I1927-AC-003 follows reduced-motion changes without remounting the block', async () => {
     const root = createBlockRoot();
     const mounted = vi.fn();
     let reduced = true;
@@ -336,16 +330,6 @@ describe('frontstage native trusted block declarative portal host', () => {
         plan={createPlan()}
         component={Block}
         ctx={createContext()}
-        providerScope={{
-          theme: {
-            token: {
-              motion: true,
-              motionDurationFast: '0.08s',
-              motionDurationMid: '0.12s',
-              motionDurationSlow: '0.16s'
-            }
-          }
-        }}
       />
     );
 
@@ -364,7 +348,6 @@ describe('frontstage native trusted block declarative portal host', () => {
         motionDurationSlow: '0s'
       })
     );
-    expect(providerRecords.configs.at(-1)?.wave).toEqual({ disabled: true });
 
     reduced = false;
     act(() => changeListener?.({ matches: false } as MediaQueryListEvent));
@@ -379,13 +362,12 @@ describe('frontstage native trusted block declarative portal host', () => {
       ).toEqual(
         expect.objectContaining({
           motion: true,
-          motionDurationFast: '0.08s',
-          motionDurationMid: '0.12s',
-          motionDurationSlow: '0.16s'
+          motionDurationFast: '0.03s',
+          motionDurationMid: '0.05s',
+          motionDurationSlow: '0.08s'
         })
       )
     );
-    expect(providerRecords.configs.at(-1)?.wave).toEqual({ disabled: false });
     expect(mounted).toHaveBeenCalledTimes(1);
   });
 
