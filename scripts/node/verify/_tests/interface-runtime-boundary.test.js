@@ -212,10 +212,13 @@ test('Delivery 1912 production slice consumes one compiled registry for HTTP and
   );
   assert.match(operation, /HostInfrastructureProvidersViewHandler\s*\{[\s\S]*query/u);
   assert.match(permissionMiddleware, /is_active_interface_route/u);
-  assert.match(permissionMiddleware, /extensions_mut\(\)\.insert\(context\.actor\)/u);
+  assert.match(
+    permissionMiddleware,
+    /extensions_mut\(\)\s*\.insert\(context\.interface_principal\(\)\)/u,
+  );
   assert.match(
     http,
-    /list_host_infrastructure_providers\([\s\S]*Extension\(actor\): Extension<domain::ActorContext>/u,
+    /list_host_infrastructure_providers\([\s\S]*Extension\(principal\): Extension<interface_runtime::UserPrincipal>/u,
   );
   assert.doesNotMatch(boot, /InterfaceOperationCatalog/u);
 });
