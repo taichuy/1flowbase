@@ -385,10 +385,13 @@ async fn executes_resolve_authorize_admit_invoke_and_records_terminal_receipt() 
 #[tokio::test]
 async fn rejects_authorization_admission_target_failure_and_elapsed_deadline() {
     let snapshot = compile_snapshot("graph:one", 0, false, Arc::new(Mutex::new(None)));
-    let denied = InterfaceInvocationKernel::new(Arc::new(Authorization { reject: true }))
-        .invoke::<Input, Output, TargetError>(Arc::clone(&snapshot), envelope(actor(true)))
-        .await
-        .unwrap_err();
+    let denied = InterfaceInvocationKernel::with_target_admission(
+        Arc::new(Authorization { reject: true }),
+        Arc::new(Admission { reject: false }),
+    )
+    .invoke::<Input, Output, TargetError>(Arc::clone(&snapshot), envelope(actor(true)))
+    .await
+    .unwrap_err();
     assert!(matches!(
         denied.error(),
         InterfaceInvocationError::AuthorizationRejected(_)
@@ -411,10 +414,13 @@ async fn rejects_authorization_admission_target_failure_and_elapsed_deadline() {
     ));
 
     let failed_snapshot = compile_snapshot("graph:failed", 0, true, Arc::new(Mutex::new(None)));
-    let failed = InterfaceInvocationKernel::new(Arc::new(Authorization { reject: false }))
-        .invoke::<Input, Output, TargetError>(failed_snapshot, envelope(actor(true)))
-        .await
-        .unwrap_err();
+    let failed = InterfaceInvocationKernel::with_target_admission(
+        Arc::new(Authorization { reject: false }),
+        Arc::new(Admission { reject: false }),
+    )
+    .invoke::<Input, Output, TargetError>(failed_snapshot, envelope(actor(true)))
+    .await
+    .unwrap_err();
     assert!(matches!(
         failed.error(),
         InterfaceInvocationError::TargetFailed(_)
@@ -452,21 +458,24 @@ async fn deadline_cancels_each_in_flight_stage() {
         Arc::new(Mutex::new(None)),
     );
     let deadline = Some(SystemTime::now() + Duration::from_millis(10));
-    let authorization = InterfaceInvocationKernel::new(Arc::new(SlowAuthorization))
-        .invoke::<Input, Output, TargetError>(
-            Arc::clone(&snapshot),
-            InvocationEnvelope::new(
-                InvocationLineage::root(InvocationId::now_v7()),
-                BindingId::new("http.invocation.read.v1").unwrap(),
-                InterfaceProtocol::Http,
-                AuthenticationAdapterReference::new("test.authn").unwrap(),
-                actor(true),
-                deadline,
-                Input(2),
-            ),
-        )
-        .await
-        .unwrap_err();
+    let authorization = InterfaceInvocationKernel::with_target_admission(
+        Arc::new(SlowAuthorization),
+        Arc::new(Admission { reject: false }),
+    )
+    .invoke::<Input, Output, TargetError>(
+        Arc::clone(&snapshot),
+        InvocationEnvelope::new(
+            InvocationLineage::root(InvocationId::now_v7()),
+            BindingId::new("http.invocation.read.v1").unwrap(),
+            InterfaceProtocol::Http,
+            AuthenticationAdapterReference::new("test.authn").unwrap(),
+            actor(true),
+            deadline,
+            Input(2),
+        ),
+    )
+    .await
+    .unwrap_err();
     assert!(matches!(
         authorization.error(),
         InterfaceInvocationError::DeadlineElapsed
@@ -532,21 +541,24 @@ async fn deadline_cancels_each_in_flight_stage() {
             Arc::new(SlowHandler),
         )
         .unwrap();
-    let handler = InterfaceInvocationKernel::new(Arc::new(Authorization { reject: false }))
-        .invoke::<Input, Output, TargetError>(
-            compiler.compile().unwrap(),
-            InvocationEnvelope::new(
-                InvocationLineage::root(InvocationId::now_v7()),
-                BindingId::new("http.invocation.read.v1").unwrap(),
-                InterfaceProtocol::Http,
-                AuthenticationAdapterReference::new("test.authn").unwrap(),
-                actor(true),
-                Some(SystemTime::now() + Duration::from_millis(10)),
-                Input(2),
-            ),
-        )
-        .await
-        .unwrap_err();
+    let handler = InterfaceInvocationKernel::with_target_admission(
+        Arc::new(Authorization { reject: false }),
+        Arc::new(Admission { reject: false }),
+    )
+    .invoke::<Input, Output, TargetError>(
+        compiler.compile().unwrap(),
+        InvocationEnvelope::new(
+            InvocationLineage::root(InvocationId::now_v7()),
+            BindingId::new("http.invocation.read.v1").unwrap(),
+            InterfaceProtocol::Http,
+            AuthenticationAdapterReference::new("test.authn").unwrap(),
+            actor(true),
+            Some(SystemTime::now() + Duration::from_millis(10)),
+            Input(2),
+        ),
+    )
+    .await
+    .unwrap_err();
     assert!(matches!(
         handler.error(),
         InterfaceInvocationError::DeadlineElapsed
@@ -578,7 +590,10 @@ async fn active_invocation_uses_its_frozen_snapshot_after_candidate_publish() {
     let active_snapshot = registry.snapshot();
     let new = compile_snapshot("graph:new", 8, false, Arc::new(Mutex::new(None)));
     registry.publish(new);
-    let kernel = InterfaceInvocationKernel::new(Arc::new(Authorization { reject: false }));
+    let kernel = InterfaceInvocationKernel::with_target_admission(
+        Arc::new(Authorization { reject: false }),
+        Arc::new(Admission { reject: false }),
+    );
 
     let old_outcome = kernel
         .invoke::<Input, Output, TargetError>(active_snapshot, envelope(actor(true)))
@@ -679,10 +694,13 @@ async fn lcf_006_completion_is_emitted_once_for_target_failure() {
         name: "terminal",
         events: Arc::clone(&events),
     }));
-    let failure = InterfaceInvocationKernel::new(Arc::new(Authorization { reject: false }))
-        .invoke_with_hook_plan::<Input, Output, TargetError>(snapshot, envelope(actor(true)), &plan)
-        .await
-        .unwrap_err();
+    let failure = InterfaceInvocationKernel::with_target_admission(
+        Arc::new(Authorization { reject: false }),
+        Arc::new(Admission { reject: false }),
+    )
+    .invoke_with_hook_plan::<Input, Output, TargetError>(snapshot, envelope(actor(true)), &plan)
+    .await
+    .unwrap_err();
 
     assert_eq!(
         failure.receipt().terminal(),
@@ -762,14 +780,17 @@ async fn dispatch_pin_retry_and_receipt_controls_are_immutable() {
         ),
         Input(2),
     );
-    let outcome = InterfaceInvocationKernel::new(Arc::new(Authorization { reject: false }))
-        .invoke_with_dispatch_target::<Input, Output, TargetError>(
-            snapshot,
-            envelope,
-            first_target.clone(),
-        )
-        .await
-        .unwrap();
+    let outcome = InterfaceInvocationKernel::with_target_admission(
+        Arc::new(Authorization { reject: false }),
+        Arc::new(Admission { reject: false }),
+    )
+    .invoke_with_dispatch_target::<Input, Output, TargetError>(
+        snapshot,
+        envelope,
+        first_target.clone(),
+    )
+    .await
+    .unwrap();
     let attempt = outcome.receipt().attempt().unwrap();
     assert_eq!(attempt.ordinal(), 1);
     assert_eq!(attempt.target(), &first_target);

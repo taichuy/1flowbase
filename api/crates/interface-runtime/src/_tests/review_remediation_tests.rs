@@ -186,7 +186,7 @@ async fn review_binding_identity_drives_resolve_and_rejects_protocol_or_adapter_
                 BindingId::new("http.review.multi.v1").unwrap(),
                 definition.identity().clone(),
                 definition.contracts().clone(),
-                ProtocolProjection::http(RouteIdentity::new("GET", "/review").unwrap()),
+                ProtocolProjection::http(RouteIdentity::new("GET", "/api/review").unwrap()),
             ),
             plan("review.http-authn", "review.authz"),
         )
@@ -292,7 +292,7 @@ fn review_registry_compiles_ordered_extension_plan_from_real_registrations() {
                 BindingId::new("http.review.extensions.v1").unwrap(),
                 definition.identity().clone(),
                 definition.contracts().clone(),
-                ProtocolProjection::http(RouteIdentity::new("GET", "/extensions").unwrap()),
+                ProtocolProjection::http(RouteIdentity::new("GET", "/api/extensions").unwrap()),
             ),
             plan("review.authn", "review.authz"),
         )
@@ -361,7 +361,7 @@ async fn review_live_server_stream_finishes_after_events_with_one_runtime_pinned
                 BindingId::new("http.review.stream.v1").unwrap(),
                 definition.identity().clone(),
                 definition.contracts().clone(),
-                ProtocolProjection::http(RouteIdentity::new("POST", "/stream").unwrap()),
+                ProtocolProjection::http(RouteIdentity::new("POST", "/api/stream").unwrap()),
             ),
             plan("review.authn", "review.authz"),
         )
