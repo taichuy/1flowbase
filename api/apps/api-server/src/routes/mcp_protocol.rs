@@ -22,7 +22,9 @@ use interface_runtime::{
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::require_session::{require_session, RequestCredential},
+    middleware::require_session::{
+        require_session, with_server_delegated_request_context, RequestContext, RequestCredential,
+    },
 };
 use interface_operation::{
     McpInvocationInput, McpInvocationOutput, McpInvocationTargetError, McpToolCallPort,
@@ -143,6 +145,7 @@ async fn handle_mcp_request(
     let snapshot = interface_operation::compile_registry(Arc::new(McpToolCallAdapter {
         state: Arc::clone(&state),
         headers: sanitized_headers,
+        user: context.user.clone(),
         actor: context.actor.clone(),
         catalog,
         scope,
@@ -220,6 +223,7 @@ async fn handle_mcp_request(
 struct McpToolCallAdapter {
     state: Arc<ApiState>,
     headers: HeaderMap,
+    user: domain::UserRecord,
     actor: domain::ActorContext,
     catalog: domain::McpCatalogSnapshot,
     scope: virtual_ui::VirtualMcpScope,
@@ -232,15 +236,19 @@ impl McpToolCallPort for McpToolCallAdapter {
         arguments: McpToolArguments,
     ) -> interface_operation::McpCallFuture<'_> {
         Box::pin(async move {
-            match virtual_ui::dispatch(
-                &self.state,
-                &self.headers,
-                &self.actor,
-                &self.catalog,
-                &self.scope,
-                &name,
-                arguments.into_value(),
-                None,
+            let context = RequestContext::server_delegation(self.user.clone(), self.actor.clone());
+            match with_server_delegated_request_context(
+                context,
+                virtual_ui::dispatch(
+                    &self.state,
+                    &self.headers,
+                    &self.actor,
+                    &self.catalog,
+                    &self.scope,
+                    &name,
+                    arguments.into_value(),
+                    None,
+                ),
             )
             .await?
             {

@@ -272,7 +272,7 @@ pub async fn invoke_providers_view(
         .await
     {
         Ok(outcome) => {
-            let receipt = outcome.receipt().clone();
+            let receipt = outcome.receipt().clone().projected();
             Ok((outcome.into_value(), receipt))
         }
         Err(failure) => Err(invocation_failure_api_error(failure.into_error())),
