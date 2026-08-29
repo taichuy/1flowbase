@@ -15,6 +15,15 @@ use serde_json::{Map, Value};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
+use interface_runtime::{
+    InterfaceInvocationError, InterfaceInvocationKernel, InterfaceProtocol, InvocationEnvelope,
+    InvocationId, InvocationLineage, PublicPrincipal,
+};
+
+use super::login_instances_interface::{
+    self, PublicLoginInstancesFuture, PublicLoginInstancesInput, PublicLoginInstancesOutput,
+    PublicLoginInstancesPort, PublicLoginInstancesTargetError,
+};
 use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -142,33 +151,83 @@ pub async fn list_login_instances(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<PublicLoginInstancesResponse>>, ApiError> {
-    let registry = state.authenticator_registry.as_ref();
-    let mut login_instances = state
-        .store
-        .list_authenticators()
-        .await?
-        .into_iter()
-        .filter_map(|authenticator| to_public_login_instance(authenticator, registry))
-        .collect::<Vec<_>>();
     let locale = crate::app_state::request_catalog_locale(&headers, None);
-    for instance in &mut login_instances {
-        instance.title = crate::app_state::project_canonical_display(
-            &state,
-            &locale,
-            "Password",
-            &instance.title,
-        )
-        .await?;
-    }
-    let default_authenticator_id = login_instances
-        .first()
-        .map(|instance| instance.id)
-        .unwrap_or(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID);
+    let snapshot =
+        login_instances_interface::compile_registry(Arc::new(PublicLoginInstancesAdapter {
+            state: Arc::clone(&state),
+        }))
+        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    let outcome = InterfaceInvocationKernel::new(Arc::new(
+        login_instances_interface::PublicLoginInstancesAuthorization,
+    ))
+    .invoke::<
+        PublicLoginInstancesInput,
+        PublicLoginInstancesOutput,
+        PublicLoginInstancesTargetError,
+    >(
+        snapshot,
+        InvocationEnvelope::with_principal(
+            InvocationLineage::root(InvocationId::now_v7()),
+            interface_runtime::InterfaceId::new(login_instances_interface::INTERFACE_ID)
+                .expect("static interface id is valid"),
+            InterfaceProtocol::Http,
+            PublicPrincipal::new(),
+            None,
+            PublicLoginInstancesInput { locale },
+        ),
+    )
+    .await
+    .map_err(|failure| public_login_instances_error(failure.into_error()))?;
+    let _receipt = outcome.receipt().clone().projected();
+    Ok(Json(ApiSuccess::new(outcome.into_value().0)))
+}
 
-    Ok(Json(ApiSuccess::new(PublicLoginInstancesResponse {
-        default_authenticator_id,
-        login_instances,
-    })))
+struct PublicLoginInstancesAdapter {
+    state: Arc<ApiState>,
+}
+
+impl PublicLoginInstancesPort for PublicLoginInstancesAdapter {
+    fn list(&self, input: PublicLoginInstancesInput) -> PublicLoginInstancesFuture<'_> {
+        Box::pin(async move {
+            let registry = self.state.authenticator_registry.as_ref();
+            let mut login_instances = self
+                .state
+                .store
+                .list_authenticators()
+                .await
+                .map_err(ApiError::from)?
+                .into_iter()
+                .filter_map(|authenticator| to_public_login_instance(authenticator, registry))
+                .collect::<Vec<_>>();
+            for instance in &mut login_instances {
+                instance.title = crate::app_state::project_canonical_display(
+                    &self.state,
+                    &input.locale,
+                    "Password",
+                    &instance.title,
+                )
+                .await?;
+            }
+            let default_authenticator_id = login_instances
+                .first()
+                .map(|instance| instance.id)
+                .unwrap_or(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID);
+            Ok(PublicLoginInstancesOutput(PublicLoginInstancesResponse {
+                default_authenticator_id,
+                login_instances,
+            }))
+        })
+    }
+}
+
+fn public_login_instances_error(error: InterfaceInvocationError) -> ApiError {
+    match error {
+        InterfaceInvocationError::TargetFailed(error) => error
+            .into_source::<PublicLoginInstancesTargetError>()
+            .map(|error| error.0)
+            .unwrap_or_else(|| anyhow::anyhow!("public login instances failed").into()),
+        error => anyhow::anyhow!(error.to_string()).into(),
+    }
 }
 
 #[utoipa::path(

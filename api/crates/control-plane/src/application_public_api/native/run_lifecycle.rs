@@ -86,6 +86,17 @@ where
         Ok(run)
     }
 
+    pub async fn create_native_run_for_actor(
+        &self,
+        actor: super::super::api_keys::ApplicationApiKeyActor,
+        request: NativeRunRequest,
+        protocol: TranslationProtocol,
+    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+        self.published_run_service()
+            .start_native_run_for_actor(actor, request, protocol)
+            .await
+    }
+
     pub async fn get_native_run(
         &self,
         command: GetNativeRunCommand,
@@ -95,9 +106,17 @@ where
             .authenticate_bearer_token(&command.bearer_token)
             .await
             .map_err(|_| NativeRunValidationError::NotAuthenticated)?;
+        self.get_native_run_for_actor(actor, command.run_id).await
+    }
+
+    pub async fn get_native_run_for_actor(
+        &self,
+        actor: super::super::api_keys::ApplicationApiKeyActor,
+        run_id: Uuid,
+    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
         let flow_run = self
             .repository
-            .get_published_flow_run(command.run_id)
+            .get_published_flow_run(run_id)
             .await
             .map_err(|_| NativeRunValidationError::NotFound)?
             .ok_or(NativeRunValidationError::NotFound)?;

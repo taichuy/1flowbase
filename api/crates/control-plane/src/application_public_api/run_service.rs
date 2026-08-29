@@ -109,7 +109,25 @@ where
         &self,
         command: CreateNativeRunCommand,
     ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
-        self.start_agentflow_run(command).await
+        let mut api_key_service = ApplicationApiKeyService::new(self.repository.clone());
+        if let Some(cache) = &self.last_used_cache {
+            api_key_service = api_key_service.with_last_used_cache(cache.clone());
+        }
+        let actor = api_key_service
+            .authenticate_bearer_token(&command.bearer_token)
+            .await
+            .map_err(|_| NativeRunValidationError::NotAuthenticated)?;
+        self.start_native_run_for_actor(actor, command.request, command.protocol)
+            .await
+    }
+
+    pub async fn start_native_run_for_actor(
+        &self,
+        actor: ApplicationApiKeyActor,
+        request: NativeRunRequest,
+        protocol: TranslationProtocol,
+    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+        self.start_agentflow_run(actor, request, protocol).await
     }
 
     pub async fn create_assistant_run(
@@ -216,21 +234,13 @@ where
 
     async fn start_agentflow_run(
         &self,
-        command: CreateNativeRunCommand,
+        actor: ApplicationApiKeyActor,
+        client_request: NativeRunRequest,
+        protocol: TranslationProtocol,
     ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
-        let mut api_key_service = ApplicationApiKeyService::new(self.repository.clone());
-        if let Some(cache) = &self.last_used_cache {
-            api_key_service = api_key_service.with_last_used_cache(cache.clone());
-        }
-        let actor = api_key_service
-            .authenticate_bearer_token(&command.bearer_token)
-            .await
-            .map_err(|_| NativeRunValidationError::NotAuthenticated)?;
         self.ensure_application_exists(&actor).await?;
 
         let publication = self.load_enabled_publication(&actor).await?;
-        let client_request = command.request;
-        let protocol = command.protocol;
         // The request model is workflow input. Only the LLM node selected by the
         // graph owns provider/model capability validation.
         let external_model_parameters = client_request.execution.model_parameters().cloned();

@@ -2,7 +2,10 @@ use std::sync::Arc;
 
 use axum::{
     extract::{Path, State},
-    http::{HeaderMap, StatusCode},
+    http::{
+        header::{AUTHORIZATION, COOKIE},
+        HeaderMap, StatusCode,
+    },
     routing::post,
     Json, Router,
 };
@@ -11,17 +14,50 @@ use domain::mcp_management::McpInstanceStatus;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use interface_runtime::{
+    InterfaceInvocationError, InterfaceInvocationKernel, InterfaceProtocol, InvocationEnvelope,
+    InvocationId, InvocationLineage,
+};
+
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
     middleware::require_session::{require_session, RequestCredential},
 };
+use interface_operation::{
+    McpInvocationInput, McpInvocationOutput, McpInvocationTargetError, McpToolCallPort,
+};
 
 mod input_schema;
+mod interface_operation;
 pub(crate) mod result_delivery;
 pub(crate) mod virtual_ui;
 
 pub(crate) const JSON_RPC_RESPONSE_MAX_BYTES: usize = 256 * 1024;
+
+pub(crate) struct McpToolArguments(Value);
+
+impl McpToolArguments {
+    fn from_protocol(value: Value) -> Result<Self, ()> {
+        if serde_json::to_vec(&value).map_or(true, |bytes| bytes.len() > 2 * 1024 * 1024) {
+            return Err(());
+        }
+        Ok(Self(value))
+    }
+
+    fn into_value(self) -> Value {
+        self.0
+    }
+}
+
+pub(crate) enum McpCallOutcome {
+    Success(Value),
+    Error {
+        code: i32,
+        message: &'static str,
+        data: Option<Value>,
+    },
+}
 
 #[derive(Deserialize)]
 struct JsonRpcRequest {
@@ -73,25 +109,14 @@ async fn handle_mcp_request(
             "mcp_instance",
         ))?;
     let scope = virtual_ui::VirtualMcpScope::single(instance_id);
-
-    let result = match request.method.as_str() {
-        "initialize" => {
-            json!({"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":instance.name,"version":env!("CARGO_PKG_VERSION")}})
-        }
-        "notifications/initialized" => {
-            return Ok(bounded_jsonrpc_response(
-                StatusCode::ACCEPTED,
-                JsonRpcResponse {
-                    jsonrpc: "2.0",
-                    id: request.id,
-                    result: None,
-                    error: None,
-                },
-            ));
-        }
-        "tools/list" => json!({"tools": virtual_ui::meta_tools(
-            scope.path_regex_enabled(&catalog)
-        )}),
+    let input = match request.method.as_str() {
+        "initialize" => McpInvocationInput::Initialize {
+            instance_name: instance.name.clone(),
+        },
+        "notifications/initialized" => McpInvocationInput::InitializedNotification,
+        "tools/list" => McpInvocationInput::ToolsList {
+            path_regex_enabled: scope.path_regex_enabled(&catalog),
+        },
         "tools/call" => {
             let Some(name) = request.params.get("name").and_then(Value::as_str) else {
                 return Ok(jsonrpc_error(request.id, -32602, "Invalid name"));
@@ -101,43 +126,152 @@ async fn handle_mcp_request(
                 .get("arguments")
                 .cloned()
                 .unwrap_or_else(|| json!({}));
-            match virtual_ui::dispatch(
-                &state,
-                &headers,
-                &context.actor,
-                &catalog,
-                &scope,
-                name,
+            let Ok(arguments) = McpToolArguments::from_protocol(arguments) else {
+                return Ok(jsonrpc_error(request.id, -32602, "Invalid arguments"));
+            };
+            McpInvocationInput::ToolCall {
+                name: name.to_string(),
                 arguments,
-                None,
-            )
-            .await?
-            {
-                virtual_ui::VirtualToolOutcome::Success(result) => result,
-                virtual_ui::VirtualToolOutcome::Error {
-                    code,
-                    message,
-                    data,
-                } => {
-                    return Ok(match data {
-                        Some(data) => jsonrpc_error_data(request.id, code, message, data),
-                        None => jsonrpc_error(request.id, code, message),
-                    });
-                }
             }
         }
         _ => return Ok(jsonrpc_error(request.id, -32601, "Method not found")),
     };
+    let mut sanitized_headers = headers;
+    sanitized_headers.remove(AUTHORIZATION);
+    sanitized_headers.remove(COOKIE);
+    sanitized_headers.remove("x-csrf-token");
+    let snapshot = interface_operation::compile_registry(Arc::new(McpToolCallAdapter {
+        state: Arc::clone(&state),
+        headers: sanitized_headers,
+        actor: context.actor.clone(),
+        catalog,
+        scope,
+    }))
+    .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    let outcome =
+        InterfaceInvocationKernel::new(Arc::new(interface_operation::McpInvocationAuthorization))
+            .invoke::<McpInvocationInput, McpInvocationOutput, McpInvocationTargetError>(
+                snapshot,
+                InvocationEnvelope::with_principal(
+                    InvocationLineage::root(InvocationId::now_v7()),
+                    interface_runtime::InterfaceId::new(interface_operation::INTERFACE_ID)
+                        .expect("static interface id is valid"),
+                    InterfaceProtocol::Mcp,
+                    context.interface_principal(),
+                    None,
+                    input,
+                ),
+            )
+            .await
+            .map_err(|failure| mcp_interface_error(failure.into_error()))?;
+    let _receipt = outcome.receipt().clone().projected();
+    match outcome.into_value() {
+        McpInvocationOutput::Initialized { instance_name } => Ok(bounded_jsonrpc_response(
+            StatusCode::OK,
+            JsonRpcResponse {
+                jsonrpc: "2.0",
+                id: request.id,
+                result: Some(
+                    json!({"protocolVersion":"2025-03-26","capabilities":{"tools":{}},"serverInfo":{"name":instance_name,"version":env!("CARGO_PKG_VERSION")}}),
+                ),
+                error: None,
+            },
+        )),
+        McpInvocationOutput::NotificationAccepted => Ok(bounded_jsonrpc_response(
+            StatusCode::ACCEPTED,
+            JsonRpcResponse {
+                jsonrpc: "2.0",
+                id: request.id,
+                result: None,
+                error: None,
+            },
+        )),
+        McpInvocationOutput::ToolsListed { path_regex_enabled } => Ok(bounded_jsonrpc_response(
+            StatusCode::OK,
+            JsonRpcResponse {
+                jsonrpc: "2.0",
+                id: request.id,
+                result: Some(json!({"tools": virtual_ui::meta_tools(path_regex_enabled)})),
+                error: None,
+            },
+        )),
+        McpInvocationOutput::ToolCalled(McpCallOutcome::Success(result)) => {
+            Ok(bounded_jsonrpc_response(
+                StatusCode::OK,
+                JsonRpcResponse {
+                    jsonrpc: "2.0",
+                    id: request.id,
+                    result: Some(result),
+                    error: None,
+                },
+            ))
+        }
+        McpInvocationOutput::ToolCalled(McpCallOutcome::Error {
+            code,
+            message,
+            data,
+        }) => Ok(match data {
+            Some(data) => jsonrpc_error_data(request.id, code, message, data),
+            None => jsonrpc_error(request.id, code, message),
+        }),
+    }
+}
 
-    Ok(bounded_jsonrpc_response(
-        StatusCode::OK,
-        JsonRpcResponse {
-            jsonrpc: "2.0",
-            id: request.id,
-            result: Some(result),
-            error: None,
-        },
-    ))
+struct McpToolCallAdapter {
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    actor: domain::ActorContext,
+    catalog: domain::McpCatalogSnapshot,
+    scope: virtual_ui::VirtualMcpScope,
+}
+
+impl McpToolCallPort for McpToolCallAdapter {
+    fn call(
+        &self,
+        name: String,
+        arguments: McpToolArguments,
+    ) -> interface_operation::McpCallFuture<'_> {
+        Box::pin(async move {
+            match virtual_ui::dispatch(
+                &self.state,
+                &self.headers,
+                &self.actor,
+                &self.catalog,
+                &self.scope,
+                &name,
+                arguments.into_value(),
+                None,
+            )
+            .await?
+            {
+                virtual_ui::VirtualToolOutcome::Success(value) => {
+                    Ok(McpCallOutcome::Success(value))
+                }
+                virtual_ui::VirtualToolOutcome::Error {
+                    code,
+                    message,
+                    data,
+                } => Ok(McpCallOutcome::Error {
+                    code,
+                    message,
+                    data,
+                }),
+            }
+        })
+    }
+}
+
+fn mcp_interface_error(error: InterfaceInvocationError) -> ApiError {
+    match error {
+        InterfaceInvocationError::TargetFailed(error) => error
+            .into_source::<McpInvocationTargetError>()
+            .map(|error| error.0)
+            .unwrap_or_else(|| anyhow::anyhow!("MCP interface target failed").into()),
+        InterfaceInvocationError::AuthorizationRejected(_) => {
+            control_plane::errors::ControlPlaneError::NotAuthenticated.into()
+        }
+        error => anyhow::anyhow!(error.to_string()).into(),
+    }
 }
 
 fn jsonrpc_error(

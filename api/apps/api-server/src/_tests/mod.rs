@@ -21,6 +21,7 @@ mod host_infrastructure;
 mod i18n_catalog;
 mod i18n_catalog_routes;
 mod interface_coverage_inventory;
+mod interface_vertical_slices;
 mod mcp_bundle_routes;
 mod mcp_client_credential_routes;
 mod mcp_management_debug_execute_routes;
