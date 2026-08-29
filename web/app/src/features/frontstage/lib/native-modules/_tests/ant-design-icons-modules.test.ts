@@ -3,9 +3,29 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
-import { collectAntDesignIconModuleSources } from '../../../../../../build/native-ant-design-icons-modules';
+import {
+  collectAntDesignIconModuleSources,
+  generateNativeAntDesignIconsModule
+} from '../../../../../../build/native-ant-design-icons-modules';
 
 describe('@ant-design/icons native module inventory', () => {
+  test('I1945-AC-004 keeps root namespace icon leaves lazy', () => {
+    const inventory = collectAntDesignIconModuleSources({
+      projectRoot: process.cwd()
+    });
+    const generatedModule = generateNativeAntDesignIconsModule(inventory);
+    const rootLoader = generatedModule.slice(
+      generatedModule.indexOf('async function loadRootModule()'),
+      generatedModule.indexOf(
+        'export const ANT_DESIGN_ICONS_MODULE_DEFINITIONS'
+      )
+    );
+
+    expect(rootLoader).toContain('Object.entries(leafLoaders)');
+    expect(rootLoader).toContain('lazy(load)');
+    expect(rootLoader).not.toContain('(await load()).default');
+  });
+
   test('I1945-AC-002/004 inventories every installed public icon leaf and excludes internal aliases', () => {
     const inventory = collectAntDesignIconModuleSources({
       projectRoot: process.cwd()

@@ -44,7 +44,7 @@ export function nativeAntDesignIconsModulesPlugin({
     },
     load(id) {
       return id === RESOLVED_VIRTUAL_ID
-        ? renderNativeAntDesignIconsModules(inventory)
+        ? generateNativeAntDesignIconsModule(inventory)
         : undefined;
     }
   };
@@ -132,10 +132,12 @@ function assertPublicLeafExport(exportsValue: unknown, packageRoot: string): voi
   }
 }
 
-function renderNativeAntDesignIconsModules(
+export function generateNativeAntDesignIconsModule(
   inventory: AntDesignIconModuleInventory
 ): string {
   return `
+import { lazy } from 'react';
+
 const leafLoaders = {${inventory.modules
     .map(
       ({ loaderSource, moduleSource }) =>
@@ -150,19 +152,18 @@ async function loadRootModule() {
     import('@ant-design/icons/es/components/Icon'),
     import('@ant-design/icons/es/components/IconFont'),
     import('@ant-design/icons/es/components/Context'),
-    import('@ant-design/icons/es/components/twoTonePrimaryColor'),
-    ...Object.entries(leafLoaders).map(async ([moduleSource, load]) => [
-      moduleSource.slice('@ant-design/icons/'.length),
-      (await load()).default
-    ])
-  ]).then(([iconModule, iconFontModule, contextModule, twoToneModule, ...icons]) =>
+    import('@ant-design/icons/es/components/twoTonePrimaryColor')
+  ]).then(([iconModule, iconFontModule, contextModule, twoToneModule]) =>
     Object.fromEntries([
       ['default', iconModule.default],
       ['createFromIconfontCN', iconFontModule.default],
       ['IconProvider', contextModule.default.Provider],
       ['getTwoToneColor', twoToneModule.getTwoToneColor],
       ['setTwoToneColor', twoToneModule.setTwoToneColor],
-      ...icons
+      ...Object.entries(leafLoaders).map(([moduleSource, load]) => [
+        moduleSource.slice('@ant-design/icons/'.length),
+        lazy(load)
+      ])
     ])
   );
   return rootModulePromise;

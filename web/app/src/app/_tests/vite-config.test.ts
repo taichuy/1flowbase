@@ -125,6 +125,7 @@ describe('vite config', () => {
     ];
 
     expect(source).toContain('optimizeDeps');
+    expect(source).toContain('exclude: nativeAntDesignEsModuleSources');
     for (const dependency of lazyOnlyDeps) {
       expect(source).toContain(`'${dependency}'`);
     }

@@ -149,7 +149,11 @@ export default defineConfig(({ mode }) => {
     ],
     define: reactDraggableBrowserDefines,
     optimizeDeps: {
+      exclude: nativeAntDesignEsModuleSources,
       include: [
+        ...nativeAntDesignIconsModuleInventory.modules.map(
+          ({ moduleSource }) => moduleSource
+        ),
         '@ant-design/x-markdown',
         '@dnd-kit/core',
         '@dnd-kit/modifiers',
