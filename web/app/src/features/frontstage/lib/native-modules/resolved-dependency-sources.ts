@@ -10,6 +10,12 @@ export function isFrontstageNativeReactResolvedDeclarationSource(
   return (
     FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES.includes(
       moduleSource as (typeof FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES)[number]
-    ) || moduleSource.startsWith('antd/es/')
+    ) ||
+    moduleSource.startsWith('antd/es/') ||
+    isDndKitPackageRoot(moduleSource)
   );
+}
+
+function isDndKitPackageRoot(moduleSource: string): boolean {
+  return /^@dnd-kit\/[^/]+$/u.test(moduleSource);
 }

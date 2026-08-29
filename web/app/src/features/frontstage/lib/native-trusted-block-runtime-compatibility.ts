@@ -1,6 +1,7 @@
 import antdPackageJson from 'antd/package.json';
 import antdStylePackageJson from 'antd-style/package.json';
 import appPackageJson from '../../../../package.json';
+import { DND_KIT_PACKAGES } from 'virtual:1flowbase-native-dnd-kit-modules';
 import {
   NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS,
   NATIVE_TRUSTED_BLOCK_PERMISSION,
@@ -10,7 +11,7 @@ import reactPackageJson from 'react/package.json';
 import uiPackageJson from '../../../../../packages/ui/package.json';
 
 export const FRONTSTAGE_NATIVE_TRUSTED_BLOCK_COMPATIBILITY_CONTRACT_VERSION =
-  '1.1.0';
+  '1.2.0';
 
 type FrontstageNativeTrustedBlockAllowedImport =
   (typeof NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS)[number];
@@ -18,6 +19,12 @@ type FrontstageNativeTrustedBlockAllowedImport =
 export interface FrontstageNativeTrustedBlockRuntimeCompatibilityModule {
   importSource: FrontstageNativeTrustedBlockAllowedImport;
   hostDependencyRange: string;
+  packageVersion: string;
+}
+
+export interface FrontstageNativeTrustedBlockRuntimeCompatibilityDomainPackage {
+  packageName: string;
+  hostDependencyRange: string | null;
   packageVersion: string;
 }
 
@@ -34,9 +41,18 @@ export interface FrontstageNativeTrustedBlockRuntimeCompatibilityManifest {
     FrontstageNativeTrustedBlockAllowedImport,
     FrontstageNativeTrustedBlockRuntimeCompatibilityModule
   >;
+  moduleDomains: {
+    '@dnd-kit': {
+      packages: FrontstageNativeTrustedBlockRuntimeCompatibilityDomainPackage[];
+    };
+  };
 }
 
 export function getFrontstageNativeTrustedBlockRuntimeCompatibility(): FrontstageNativeTrustedBlockRuntimeCompatibilityManifest {
+  const hostDependencies = appPackageJson.dependencies as Record<
+    string,
+    string | undefined
+  >;
   return {
     runtime: NATIVE_TRUSTED_BLOCK_RUNTIME,
     contractVersion:
@@ -67,6 +83,15 @@ export function getFrontstageNativeTrustedBlockRuntimeCompatibility(): Frontstag
         importSource: '@1flowbase/ui',
         hostDependencyRange: appPackageJson.dependencies['@1flowbase/ui'],
         packageVersion: uiPackageJson.version
+      }
+    },
+    moduleDomains: {
+      '@dnd-kit': {
+        packages: DND_KIT_PACKAGES.map(({ package_name, package_version }) => ({
+          packageName: package_name,
+          hostDependencyRange: hostDependencies[package_name] ?? null,
+          packageVersion: package_version
+        }))
       }
     }
   };

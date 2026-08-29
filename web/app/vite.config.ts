@@ -8,6 +8,10 @@ import {
   collectAntDesignEsModuleSources,
   nativeAntDesignEsModulesPlugin
 } from './build/native-antd-es-modules';
+import {
+  collectDndKitModuleSources,
+  nativeDndKitModulesPlugin
+} from './build/native-dnd-kit-modules';
 import { FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES } from './src/features/frontstage/lib/native-modules/resolved-dependency-sources';
 
 const reactDraggableBrowserDefines = {
@@ -17,6 +21,12 @@ const appRoot = fileURLToPath(new URL('.', import.meta.url));
 const nativeAntDesignEsModuleSources = collectAntDesignEsModuleSources().map(
   ({ moduleSource }) => moduleSource
 );
+const nativeDndKitModuleInventory = collectDndKitModuleSources({
+  projectRoot: appRoot
+});
+const nativeDndKitPackageRoots = [
+  ...new Set(nativeDndKitModuleInventory.map(({ packageName }) => packageName))
+];
 
 function manualChunks(id: string) {
   if (!id.includes('/node_modules/')) {
@@ -90,10 +100,12 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       nativeAntDesignEsModulesPlugin(),
+      nativeDndKitModulesPlugin({ inventory: nativeDndKitModuleInventory }),
       nativeModuleDeclarationsPlugin({
         moduleSources: [
           ...FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES,
-          ...nativeAntDesignEsModuleSources
+          ...nativeAntDesignEsModuleSources,
+          ...nativeDndKitPackageRoots
         ],
         projectRoot: appRoot
       }),

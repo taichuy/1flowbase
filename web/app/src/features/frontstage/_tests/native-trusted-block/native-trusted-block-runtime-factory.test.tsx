@@ -14,6 +14,10 @@ import {
 
 import antdPackageJson from 'antd/package.json';
 import antdStylePackageJson from 'antd-style/package.json';
+import dndKitCorePackageJson from '@dnd-kit/core/package.json';
+import dndKitModifiersPackageJson from '@dnd-kit/modifiers/package.json';
+import dndKitSortablePackageJson from '@dnd-kit/sortable/package.json';
+import dndKitUtilitiesPackageJson from '@dnd-kit/utilities/package.json';
 import appPackageJson from '../../../../../package.json';
 import reactPackageJson from 'react/package.json';
 import uiPackageJson from '../../../../../../packages/ui/package.json';
@@ -165,6 +169,55 @@ export default function Block() {
     expect(result.ok).toBe(true);
   });
 
+  test('I1929-AC-001/002/005 compiles and lazily resolves the installed @dnd-kit module domain', async () => {
+    const registry = createFrontstageNativeReactModuleRegistry();
+    const source = `import type { DragEndEvent } from '@dnd-kit/core';
+import { closestCenter, DndContext, PointerSensor, useSensor } from '@dnd-kit/core';
+import { arrayMove, horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+export default function Block() {
+  void (undefined as DragEndEvent | undefined);
+  void closestCenter;
+  void DndContext;
+  void PointerSensor;
+  void useSensor;
+  void arrayMove;
+  void horizontalListSortingStrategy;
+  void SortableContext;
+  void useSortable;
+  void CSS;
+  return <div />;
+}`;
+
+    expect(compileNativeReactComponent(source, registry.definitions).ok).toBe(
+      true
+    );
+    expect(
+      registry.definitions.find(
+        ({ module_source }) => module_source === '@dnd-kit/core/dist/index.js'
+      )
+    ).toEqual({
+      module_source: '@dnd-kit/core/dist/index.js',
+      exports: ['*']
+    });
+
+    const [first, second, internal] = await Promise.all([
+      registry.load('@dnd-kit/core'),
+      registry.load('@dnd-kit/core'),
+      registry.load('@dnd-kit/core/dist/index.js')
+    ]);
+    expect(first).toBe(second);
+    expect(first).toHaveProperty('DndContext');
+    expect(internal).toHaveProperty('DndContext');
+    await expect(registry.load('@dnd-kit/not-installed')).rejects.toMatchObject(
+      {
+        code: 'module_not_registered',
+        message: 'Frontend module is not registered: @dnd-kit/not-installed.'
+      }
+    );
+  });
+
   test('exposes a serializable host compatibility manifest for injected modules', () => {
     const manifest = getFrontstageNativeTrustedBlockRuntimeCompatibility();
 
@@ -199,9 +252,38 @@ export default function Block() {
           hostDependencyRange: appPackageJson.dependencies['@1flowbase/ui'],
           packageVersion: uiPackageJson.version
         }
+      },
+      moduleDomains: {
+        '@dnd-kit': {
+          packages: [
+            {
+              packageName: '@dnd-kit/core',
+              hostDependencyRange: appPackageJson.dependencies['@dnd-kit/core'],
+              packageVersion: dndKitCorePackageJson.version
+            },
+            {
+              packageName: '@dnd-kit/modifiers',
+              hostDependencyRange:
+                appPackageJson.dependencies['@dnd-kit/modifiers'],
+              packageVersion: dndKitModifiersPackageJson.version
+            },
+            {
+              packageName: '@dnd-kit/sortable',
+              hostDependencyRange:
+                appPackageJson.dependencies['@dnd-kit/sortable'],
+              packageVersion: dndKitSortablePackageJson.version
+            },
+            {
+              packageName: '@dnd-kit/utilities',
+              hostDependencyRange:
+                appPackageJson.dependencies['@dnd-kit/utilities'],
+              packageVersion: dndKitUtilitiesPackageJson.version
+            }
+          ]
+        }
       }
     });
-    expect(manifest.contractVersion).toBe('1.1.0');
+    expect(manifest.contractVersion).toBe('1.2.0');
   });
 
   test('evaluates valid non-JSX source through host modules and renders through the surface portal', async () => {

@@ -27,6 +27,24 @@ void (undefined as DividerClassNames);`
     expect(diagnostics).toEqual([]);
   });
 
+  test('I1929-AC-004 type-checks root and internal @dnd-kit imports from the generated inventory', () => {
+    const diagnostics = typeCheckSource({
+      extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+      source: `import type { DragEndEvent } from '@dnd-kit/core';
+import { DndContext } from '@dnd-kit/core/dist/index.js';
+import { arrayMove } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+const event = undefined as DragEndEvent | undefined;
+void event;
+void DndContext;
+void arrayMove;
+void CSS;`
+    });
+
+    expect(diagnostics).toEqual([]);
+  });
+
   test('AC-004 fails explicitly when a dependency declaration cannot resolve', () => {
     expect(() =>
       collectNativeModuleDeclarations({

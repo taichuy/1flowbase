@@ -7,6 +7,10 @@ import {
   ANTD_ES_MODULE_DEFINITIONS,
   loadAntDesignEsModule
 } from 'virtual:1flowbase-native-antd-es-modules';
+import {
+  DND_KIT_MODULE_DEFINITIONS,
+  loadDndKitModule
+} from 'virtual:1flowbase-native-dnd-kit-modules';
 
 import {
   createNativeReactModuleRegistry,
@@ -72,6 +76,11 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   ...ANTD_ES_MODULE_DEFINITIONS.map(({ module_source, exports }) =>
     registration(module_source, exports, async () => ({
       module: await loadAntDesignEsModule(module_source)
+    }))
+  ),
+  ...DND_KIT_MODULE_DEFINITIONS.map(({ module_source, exports }) =>
+    registration(module_source, exports, async () => ({
+      module: await loadDndKitModule(module_source)
     }))
   ),
   registration('antd-style', ANTD_STYLE_EXPORTS, async () => ({

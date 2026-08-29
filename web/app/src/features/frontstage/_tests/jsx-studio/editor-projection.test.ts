@@ -11,20 +11,22 @@ describe('Frontstage JSX editor projection', () => {
       catalogEntry: null
     });
 
-    expect([...projection.allowedImportSources]).toEqual([
-      'react',
-      'react/jsx-runtime',
-      'antd',
-      'antd-style',
-      '@1flowbase/ui',
-      '@1flowbase/block-sdk',
-      '@1flowbase/native-components',
-      '@ant-design/icons',
-      '@1flowbase/charts',
-      '@1flowbase/rich-text',
-      '@ant-design/x',
-      '@ant-design/x-markdown'
-    ]);
+    expect([...projection.allowedImportSources]).toEqual(
+      expect.arrayContaining([
+        'react',
+        'react/jsx-runtime',
+        'antd',
+        'antd-style',
+        '@1flowbase/ui',
+        '@1flowbase/block-sdk',
+        '@1flowbase/native-components',
+        '@ant-design/icons',
+        '@1flowbase/charts',
+        '@1flowbase/rich-text',
+        '@ant-design/x',
+        '@ant-design/x-markdown'
+      ])
+    );
     expect(projection.contextComment).toBe(createFrontstageContextComment());
     expect(projection.monacoExtraLibs).toEqual(
       expect.arrayContaining([
@@ -57,10 +59,27 @@ describe('Frontstage JSX editor projection', () => {
       })
     );
     expect(
-      projection.monacoExtraLibs.find(({ source }) => source === 'antd-style')
-        ?.content
+      projection.monacoExtraLibs
+        .filter(({ source }) => source === 'antd-style')
+        .map(({ content }) => content)
+        .join('\n')
     ).toContain(
       'export function useResponsive(): Partial<Record<ResponsiveKey, boolean>>;'
     );
+    expect(projection.allowedImportSources.has('@dnd-kit/core')).toBe(true);
+    expect(
+      projection.allowedImportSources.has('@dnd-kit/core/dist/index.js')
+    ).toBe(true);
+    expect(
+      projection.monacoExtraLibs
+        .filter(({ source }) => source === '@dnd-kit/core')
+        .map(({ content }) => content)
+        .join('\n')
+    ).toContain('DragEndEvent');
+    expect(
+      projection.monacoExtraLibs.find(
+        ({ source }) => source === '@dnd-kit/core/dist/index.js'
+      )?.content
+    ).toContain("export * from '@dnd-kit/core'");
   });
 });

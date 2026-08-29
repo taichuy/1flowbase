@@ -23,7 +23,8 @@ export {
   FRONTSTAGE_NATIVE_TRUSTED_BLOCK_COMPATIBILITY_CONTRACT_VERSION,
   getFrontstageNativeTrustedBlockRuntimeCompatibility,
   type FrontstageNativeTrustedBlockRuntimeCompatibilityManifest,
-  type FrontstageNativeTrustedBlockRuntimeCompatibilityModule
+  type FrontstageNativeTrustedBlockRuntimeCompatibilityModule,
+  type FrontstageNativeTrustedBlockRuntimeCompatibilityDomainPackage
 } from './native-trusted-block-runtime-compatibility';
 
 type InjectedModule = Record<string, unknown>;

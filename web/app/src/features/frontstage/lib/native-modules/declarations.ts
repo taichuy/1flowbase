@@ -58,11 +58,15 @@ export function createFrontendModuleExtraLib(
   moduleSource: string,
   exports: readonly string[]
 ): BlockSourceExtraLib {
+  const dndKitInternalModule = isDndKitInternalModule(moduleSource);
   return {
     source: moduleSource,
-    filePath: `file:///node_modules/${moduleSource}/index.d.ts`,
-    content:
-      moduleSource === '@1flowbase/block-sdk'
+    filePath: dndKitInternalModule
+      ? `file:///node_modules/.1flowbase-native/dnd-kit/${encodeURIComponent(moduleSource)}.d.ts`
+      : `file:///node_modules/${moduleSource}/index.d.ts`,
+    content: dndKitInternalModule
+      ? createDndKitInternalModuleDeclaration(moduleSource)
+      : moduleSource === '@1flowbase/block-sdk'
         ? BLOCK_SDK_DECLARATIONS
         : moduleSource === 'antd-style'
           ? `${ANTD_STYLE_DECLARATIONS}${createGenericModuleDeclarations(
@@ -71,6 +75,15 @@ export function createFrontendModuleExtraLib(
             )}`
           : createGenericModuleDeclarations(moduleSource, exports)
   };
+}
+
+function isDndKitInternalModule(moduleSource: string): boolean {
+  return /^@dnd-kit\/[^/]+\/.+/u.test(moduleSource);
+}
+
+function createDndKitInternalModuleDeclaration(moduleSource: string): string {
+  const packageRoot = moduleSource.split('/').slice(0, 2).join('/');
+  return `declare module '${moduleSource}' {\n  export * from '${packageRoot}';\n}\n`;
 }
 
 function createGenericModuleDeclarations(
