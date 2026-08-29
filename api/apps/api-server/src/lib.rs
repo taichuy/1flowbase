@@ -675,7 +675,7 @@ async fn app_and_runtime_host_from_config(
         settings_feature_registry: compiled_console_plan.settings_feature_registry.clone(),
         console_operation_registry: compiled_console_plan.console_operation_registry.clone(),
         infrastructure,
-        extension_boot_snapshot: Some(extension_boot_snapshot),
+        extension_boot_snapshot: Some(Arc::clone(&extension_boot_snapshot)),
         console_surface_registry: compiled_console_plan.console_surface_registry.clone(),
         file_storage_registry,
         runtime_engine,
@@ -706,6 +706,7 @@ async fn app_and_runtime_host_from_config(
         bootstrap_workspace_id: bootstrap_result.workspace_id,
         bootstrap_workspace_name: config.bootstrap_workspace_name.clone(),
     });
+    extension_boot_snapshot.publish_complete_catalog(&state)?;
     let builtin_mcp_interfaces =
         openapi_interface::build_openapi_capability_catalog(&state, bootstrap_result.workspace_id)
             .await

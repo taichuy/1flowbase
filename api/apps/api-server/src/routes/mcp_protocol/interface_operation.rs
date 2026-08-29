@@ -1,16 +1,16 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use interface_runtime::{
-    AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
-    AuthorizationOperation, BindingId, CompiledInterfaceRegistry, ContractIdentity,
-    ExtensionPlanFingerprint, GraphFingerprint, HandlerReference, InterfaceAccess,
-    InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceAuthorizationFuture,
-    InterfaceAuthorizationPort, InterfaceAuthorizationRequest, InterfaceContract,
-    InterfaceContracts, InterfaceDefinition, InterfaceErrorPolicy, InterfaceExecution,
-    InterfaceExecutionMode, InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture,
-    InterfaceId, InterfaceIdentity, InterfaceLifecycle, InterfaceOwner, InterfaceScope,
-    InterfaceTargetFailure, InterfaceVersion, InvocationAdapterPlan, ProtocolBinding,
-    ProtocolProjection, RegistryCompiler, RouteIdentity, TargetReference, UserPrincipal,
+    AuthenticationAdapterReference, AuthorizationAdapterReference, AuthorizationOperation,
+    BindingId, CompiledInterfaceRegistry, ContractIdentity, GraphFingerprint, HandlerReference,
+    InterfaceAccess, InterfaceAuditPolicy, InterfaceAuthenticationPolicy,
+    InterfaceAuthorizationFuture, InterfaceAuthorizationPort, InterfaceAuthorizationRequest,
+    InterfaceContract, InterfaceContracts, InterfaceDefinition, InterfaceErrorPolicy,
+    InterfaceExecution, InterfaceExecutionMode, InterfaceHandler, InterfaceHandlerContext,
+    InterfaceHandlerFuture, InterfaceId, InterfaceIdentity, InterfaceLifecycle, InterfaceOwner,
+    InterfaceScope, InterfaceTargetFailure, InterfaceVersion, InvocationAdapterPlan,
+    ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity, TargetReference,
+    UserPrincipal,
 };
 
 use super::{McpCallOutcome, McpToolArguments};
@@ -30,7 +30,21 @@ pub(super) enum McpInvocationInput {
     ToolCall {
         name: String,
         arguments: McpToolArguments,
+        context: McpToolInvocationContext,
     },
+}
+
+pub(super) struct McpForwardHeader {
+    pub(super) name: String,
+    pub(super) value: Vec<u8>,
+}
+
+pub(super) struct McpToolInvocationContext {
+    pub(super) headers: Vec<McpForwardHeader>,
+    pub(super) user: domain::UserRecord,
+    pub(super) actor: domain::ActorContext,
+    pub(super) catalog: domain::McpCatalogSnapshot,
+    pub(super) scope: crate::virtual_ui::VirtualMcpScope,
 }
 
 impl InterfaceContract for McpInvocationInput {
@@ -61,7 +75,12 @@ pub(super) type McpCallFuture<'a> =
     Pin<Box<dyn Future<Output = Result<McpCallOutcome, ApiError>> + Send + 'a>>;
 
 pub(super) trait McpToolCallPort: Send + Sync + 'static {
-    fn call(&self, name: String, arguments: McpToolArguments) -> McpCallFuture<'_>;
+    fn call(
+        &self,
+        name: String,
+        arguments: McpToolArguments,
+        context: McpToolInvocationContext,
+    ) -> McpCallFuture<'_>;
 }
 
 struct McpInvocationHandler {
@@ -88,17 +107,19 @@ impl InterfaceHandler<McpInvocationInput, McpInvocationOutput, McpInvocationTarg
                 McpInvocationInput::ToolsList { path_regex_enabled } => {
                     McpInvocationOutput::ToolsListed { path_regex_enabled }
                 }
-                McpInvocationInput::ToolCall { name, arguments } => {
-                    match tool_call.call(name, arguments).await {
-                        Ok(outcome) => McpInvocationOutput::ToolCalled(outcome),
-                        Err(error) => {
-                            return Err(InterfaceTargetFailure::new(
-                                "mcp_tool_call",
-                                McpInvocationTargetError(error),
-                            ));
-                        }
+                McpInvocationInput::ToolCall {
+                    name,
+                    arguments,
+                    context,
+                } => match tool_call.call(name, arguments, context).await {
+                    Ok(outcome) => McpInvocationOutput::ToolCalled(outcome),
+                    Err(error) => {
+                        return Err(InterfaceTargetFailure::new(
+                            "mcp_tool_call",
+                            McpInvocationTargetError(error),
+                        ));
                     }
-                }
+                },
             };
             Ok(output)
         })
@@ -108,6 +129,11 @@ impl InterfaceHandler<McpInvocationInput, McpInvocationOutput, McpInvocationTarg
 pub(super) struct McpInvocationAuthorization;
 
 impl InterfaceAuthorizationPort for McpInvocationAuthorization {
+    fn adapter_reference(&self) -> AuthorizationAdapterReference {
+        AuthorizationAdapterReference::new("api-server.mcp-user-api-key")
+            .expect("static adapter is valid")
+    }
+
     fn authorize(
         &self,
         request: InterfaceAuthorizationRequest,
@@ -148,16 +174,6 @@ pub(super) fn compile_registry(
         GraphFingerprint::new("graph:mcp-protocol-v1").expect("static graph is valid"),
         [operation.clone()],
         [owner.clone()],
-        InvocationAdapterPlan::new(
-            AuthenticationAdapterReference::new("api-server.user-api-key")
-                .expect("static adapter is valid"),
-            AuthorizationAdapterReference::new("api-server.mcp-user-api-key")
-                .expect("static adapter is valid"),
-            AdmissionAdapterReference::new("api-server.mcp-instance-enabled")
-                .expect("static adapter is valid"),
-            ExtensionPlanFingerprint::new("graph:mcp-protocol-hooks-v1")
-                .expect("static plan is valid"),
-        ),
     );
     compiler.register_definition(InterfaceDefinition::new(
         identity.clone(),
@@ -178,14 +194,21 @@ pub(super) fn compile_registry(
         InterfaceLifecycle::BootSnapshot,
         owner,
     ))?;
-    compiler.register_binding(ProtocolBinding::new(
-        BindingId::new("http.mcp.user-api-key.invoke.v1").expect("static binding is valid"),
-        identity,
-        contracts,
-        ProtocolProjection::http(
-            RouteIdentity::new("POST", "/api/mcp/:instance_id").expect("static route is valid"),
+    compiler.register_binding(
+        ProtocolBinding::new(
+            BindingId::new("mcp.user-api-key.invoke.v1").expect("static binding is valid"),
+            identity,
+            contracts,
+            ProtocolProjection::mcp("mcp.json-rpc"),
         ),
-    ))?;
+        InvocationAdapterPlan::new(
+            AuthenticationAdapterReference::new("api-server.user-api-key")
+                .expect("static adapter is valid"),
+            AuthorizationAdapterReference::new("api-server.mcp-user-api-key")
+                .expect("static adapter is valid"),
+            None,
+        ),
+    )?;
     compiler.bind_handler::<McpInvocationInput, McpInvocationOutput, McpInvocationTargetError, UserPrincipal>(
         &interface_id,
         HandlerReference::new(HANDLER_REFERENCE).expect("static handler is valid"),

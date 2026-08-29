@@ -152,11 +152,12 @@ pub async fn list_login_instances(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<PublicLoginInstancesResponse>>, ApiError> {
     let locale = crate::app_state::request_catalog_locale(&headers, None);
-    let snapshot =
-        login_instances_interface::compile_registry(Arc::new(PublicLoginInstancesAdapter {
-            state: Arc::clone(&state),
-        }))
-        .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    let snapshot = state
+        .extension_boot_snapshot
+        .as_ref()
+        .and_then(|boot| boot.interface_registry())
+        .ok_or_else(|| anyhow::anyhow!("interface registry is unavailable"))?
+        .snapshot();
     let outcome = InterfaceInvocationKernel::new(Arc::new(
         login_instances_interface::PublicLoginInstancesAuthorization,
     ))
@@ -168,9 +169,11 @@ pub async fn list_login_instances(
         snapshot,
         InvocationEnvelope::with_principal(
             InvocationLineage::root(InvocationId::now_v7()),
-            interface_runtime::InterfaceId::new(login_instances_interface::INTERFACE_ID)
-                .expect("static interface id is valid"),
+            interface_runtime::BindingId::new("http.public.auth.login-instances.v1")
+                .expect("static binding id is valid"),
             InterfaceProtocol::Http,
+            interface_runtime::AuthenticationAdapterReference::new("api-server.public")
+                .expect("static adapter is valid"),
             PublicPrincipal::new(),
             None,
             PublicLoginInstancesInput { locale },
@@ -183,15 +186,18 @@ pub async fn list_login_instances(
 }
 
 struct PublicLoginInstancesAdapter {
-    state: Arc<ApiState>,
+    state: std::sync::Weak<ApiState>,
 }
 
 impl PublicLoginInstancesPort for PublicLoginInstancesAdapter {
     fn list(&self, input: PublicLoginInstancesInput) -> PublicLoginInstancesFuture<'_> {
+        let state = self.state.clone();
         Box::pin(async move {
-            let registry = self.state.authenticator_registry.as_ref();
-            let mut login_instances = self
-                .state
+            let state = state
+                .upgrade()
+                .ok_or_else(|| ApiError::from(anyhow::anyhow!("API state is unavailable")))?;
+            let registry = state.authenticator_registry.as_ref();
+            let mut login_instances = state
                 .store
                 .list_authenticators()
                 .await
@@ -201,7 +207,7 @@ impl PublicLoginInstancesPort for PublicLoginInstancesAdapter {
                 .collect::<Vec<_>>();
             for instance in &mut login_instances {
                 instance.title = crate::app_state::project_canonical_display(
-                    &self.state,
+                    &state,
                     &input.locale,
                     "Password",
                     &instance.title,
@@ -218,6 +224,15 @@ impl PublicLoginInstancesPort for PublicLoginInstancesAdapter {
             }))
         })
     }
+}
+
+pub(crate) fn compile_public_login_instances_registry(
+    state: std::sync::Weak<ApiState>,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    login_instances_interface::compile_registry(Arc::new(PublicLoginInstancesAdapter { state }))
 }
 
 fn public_login_instances_error(error: InterfaceInvocationError) -> ApiError {

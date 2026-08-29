@@ -27,7 +27,8 @@ use crate::{
     },
 };
 use interface_operation::{
-    McpInvocationInput, McpInvocationOutput, McpInvocationTargetError, McpToolCallPort,
+    McpForwardHeader, McpInvocationInput, McpInvocationOutput, McpInvocationTargetError,
+    McpToolCallPort, McpToolInvocationContext,
 };
 
 mod input_schema;
@@ -111,7 +112,7 @@ async fn handle_mcp_request(
             "mcp_instance",
         ))?;
     let scope = virtual_ui::VirtualMcpScope::single(instance_id);
-    let input = match request.method.as_str() {
+    let mut input = match request.method.as_str() {
         "initialize" => McpInvocationInput::Initialize {
             instance_name: instance.name.clone(),
         },
@@ -134,6 +135,13 @@ async fn handle_mcp_request(
             McpInvocationInput::ToolCall {
                 name: name.to_string(),
                 arguments,
+                context: McpToolInvocationContext {
+                    headers: Vec::new(),
+                    user: context.user.clone(),
+                    actor: context.actor.clone(),
+                    catalog: catalog.clone(),
+                    scope: scope.clone(),
+                },
             }
         }
         _ => return Ok(jsonrpc_error(request.id, -32601, "Method not found")),
@@ -142,24 +150,34 @@ async fn handle_mcp_request(
     sanitized_headers.remove(AUTHORIZATION);
     sanitized_headers.remove(COOKIE);
     sanitized_headers.remove("x-csrf-token");
-    let snapshot = interface_operation::compile_registry(Arc::new(McpToolCallAdapter {
-        state: Arc::clone(&state),
-        headers: sanitized_headers,
-        user: context.user.clone(),
-        actor: context.actor.clone(),
-        catalog,
-        scope,
-    }))
-    .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+    if let McpInvocationInput::ToolCall { context, .. } = &mut input {
+        context.headers = sanitized_headers
+            .iter()
+            .map(|(name, value)| McpForwardHeader {
+                name: name.as_str().to_string(),
+                value: value.as_bytes().to_vec(),
+            })
+            .collect();
+    }
+    let snapshot = state
+        .extension_boot_snapshot
+        .as_ref()
+        .and_then(|boot| boot.interface_registry())
+        .ok_or_else(|| anyhow::anyhow!("interface registry is unavailable"))?
+        .snapshot();
     let outcome =
         InterfaceInvocationKernel::new(Arc::new(interface_operation::McpInvocationAuthorization))
             .invoke::<McpInvocationInput, McpInvocationOutput, McpInvocationTargetError>(
                 snapshot,
                 InvocationEnvelope::with_principal(
                     InvocationLineage::root(InvocationId::now_v7()),
-                    interface_runtime::InterfaceId::new(interface_operation::INTERFACE_ID)
-                        .expect("static interface id is valid"),
+                    interface_runtime::BindingId::new("mcp.user-api-key.invoke.v1")
+                        .expect("static binding id is valid"),
                     InterfaceProtocol::Mcp,
+                    interface_runtime::AuthenticationAdapterReference::new(
+                        "api-server.user-api-key",
+                    )
+                    .expect("static adapter is valid"),
                     context.interface_principal(),
                     None,
                     input,
@@ -221,12 +239,7 @@ async fn handle_mcp_request(
 }
 
 struct McpToolCallAdapter {
-    state: Arc<ApiState>,
-    headers: HeaderMap,
-    user: domain::UserRecord,
-    actor: domain::ActorContext,
-    catalog: domain::McpCatalogSnapshot,
-    scope: virtual_ui::VirtualMcpScope,
+    state: std::sync::Weak<ApiState>,
 }
 
 impl McpToolCallPort for McpToolCallAdapter {
@@ -234,17 +247,29 @@ impl McpToolCallPort for McpToolCallAdapter {
         &self,
         name: String,
         arguments: McpToolArguments,
+        context: McpToolInvocationContext,
     ) -> interface_operation::McpCallFuture<'_> {
+        let state = self.state.clone();
         Box::pin(async move {
-            let context = RequestContext::server_delegation(self.user.clone(), self.actor.clone());
+            let state = state
+                .upgrade()
+                .ok_or_else(|| anyhow::anyhow!("API state is unavailable"))?;
+            let mut headers = HeaderMap::new();
+            for header in context.headers {
+                let name = axum::http::HeaderName::from_bytes(header.name.as_bytes())?;
+                let value = axum::http::HeaderValue::from_bytes(&header.value)?;
+                headers.append(name, value);
+            }
+            let request_context =
+                RequestContext::server_delegation(context.user, context.actor.clone());
             match with_server_delegated_request_context(
-                context,
+                request_context,
                 virtual_ui::dispatch(
-                    &self.state,
-                    &self.headers,
-                    &self.actor,
-                    &self.catalog,
-                    &self.scope,
+                    &state,
+                    &headers,
+                    &context.actor,
+                    &context.catalog,
+                    &context.scope,
                     &name,
                     arguments.into_value(),
                     None,
@@ -267,6 +292,15 @@ impl McpToolCallPort for McpToolCallAdapter {
             }
         })
     }
+}
+
+pub(crate) fn compile_mcp_interface_registry(
+    state: std::sync::Weak<ApiState>,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    interface_operation::compile_registry(Arc::new(McpToolCallAdapter { state }))
 }
 
 fn mcp_interface_error(error: InterfaceInvocationError) -> ApiError {

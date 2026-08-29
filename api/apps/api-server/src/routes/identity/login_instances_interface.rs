@@ -1,16 +1,16 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use interface_runtime::{
-    AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
-    AuthorizationOperation, BindingId, CompiledInterfaceRegistry, ContractIdentity,
-    ExtensionPlanFingerprint, GraphFingerprint, HandlerReference, InterfaceAccess,
-    InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceAuthorizationFuture,
-    InterfaceAuthorizationPort, InterfaceAuthorizationRequest, InterfaceContract,
-    InterfaceContracts, InterfaceDefinition, InterfaceErrorPolicy, InterfaceExecution,
-    InterfaceExecutionMode, InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture,
-    InterfaceId, InterfaceIdentity, InterfaceLifecycle, InterfaceOwner, InterfaceScope,
-    InterfaceTargetFailure, InterfaceVersion, InvocationAdapterPlan, ProtocolBinding,
-    ProtocolProjection, PublicPrincipal, RegistryCompiler, RouteIdentity, TargetReference,
+    AuthenticationAdapterReference, AuthorizationAdapterReference, AuthorizationOperation,
+    BindingId, CompiledInterfaceRegistry, ContractIdentity, GraphFingerprint, HandlerReference,
+    InterfaceAccess, InterfaceAuditPolicy, InterfaceAuthenticationPolicy,
+    InterfaceAuthorizationFuture, InterfaceAuthorizationPort, InterfaceAuthorizationRequest,
+    InterfaceContract, InterfaceContracts, InterfaceDefinition, InterfaceErrorPolicy,
+    InterfaceExecution, InterfaceExecutionMode, InterfaceHandler, InterfaceHandlerContext,
+    InterfaceHandlerFuture, InterfaceId, InterfaceIdentity, InterfaceLifecycle, InterfaceOwner,
+    InterfaceScope, InterfaceTargetFailure, InterfaceVersion, InvocationAdapterPlan,
+    ProtocolBinding, ProtocolProjection, PublicPrincipal, RegistryCompiler, RouteIdentity,
+    TargetReference,
 };
 
 use super::auth::PublicLoginInstancesResponse;
@@ -89,6 +89,10 @@ impl
 pub(crate) struct PublicLoginInstancesAuthorization;
 
 impl InterfaceAuthorizationPort<PublicPrincipal> for PublicLoginInstancesAuthorization {
+    fn adapter_reference(&self) -> AuthorizationAdapterReference {
+        AuthorizationAdapterReference::new("api-server.public").expect("static adapter is valid")
+    }
+
     fn authorize(
         &self,
         _request: InterfaceAuthorizationRequest<PublicPrincipal>,
@@ -118,15 +122,6 @@ pub(crate) fn compile_registry(
             .expect("static graph fingerprint is valid"),
         [operation.clone()],
         [owner.clone()],
-        InvocationAdapterPlan::new(
-            AuthenticationAdapterReference::new("api-server.public")
-                .expect("static adapter is valid"),
-            AuthorizationAdapterReference::new("api-server.public")
-                .expect("static adapter is valid"),
-            AdmissionAdapterReference::new("api-server.public").expect("static adapter is valid"),
-            ExtensionPlanFingerprint::new("graph:public-login-instances-hooks-v1")
-                .expect("static extension plan is valid"),
-        ),
     );
     compiler.register_definition(InterfaceDefinition::new(
         identity.clone(),
@@ -148,15 +143,24 @@ pub(crate) fn compile_registry(
         InterfaceLifecycle::BootSnapshot,
         owner,
     ))?;
-    compiler.register_binding(ProtocolBinding::new(
-        BindingId::new("http.public.auth.login-instances.v1").expect("static binding is valid"),
-        identity,
-        contracts,
-        ProtocolProjection::http(
-            RouteIdentity::new("GET", "/api/public/auth/login-instances")
-                .expect("static route is valid"),
+    compiler.register_binding(
+        ProtocolBinding::new(
+            BindingId::new("http.public.auth.login-instances.v1").expect("static binding is valid"),
+            identity,
+            contracts,
+            ProtocolProjection::http(
+                RouteIdentity::new("GET", "/api/public/auth/login-instances")
+                    .expect("static route is valid"),
+            ),
         ),
-    ))?;
+        InvocationAdapterPlan::new(
+            AuthenticationAdapterReference::new("api-server.public")
+                .expect("static adapter is valid"),
+            AuthorizationAdapterReference::new("api-server.public")
+                .expect("static adapter is valid"),
+            None,
+        ),
+    )?;
     compiler.bind_handler::<
         PublicLoginInstancesInput,
         PublicLoginInstancesOutput,

@@ -7,18 +7,20 @@ use control_plane::{
     ports::RoleConsolePolicyReader,
 };
 use interface_runtime::{
-    AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
-    AuthorizationOperation, BindingId, CompiledInterfaceRegistry, ContractIdentity,
-    ExtensionPlanFingerprint, GraphFingerprint, HandlerReference, InterfaceAccess,
-    InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceAuthorizationError,
-    InterfaceAuthorizationFuture, InterfaceAuthorizationPort, InterfaceAuthorizationRequest,
-    InterfaceContract, InterfaceContracts, InterfaceDefinition, InterfaceErrorPolicy,
-    InterfaceExecution, InterfaceExecutionMode, InterfaceHandler, InterfaceHandlerContext,
-    InterfaceHandlerFuture, InterfaceId, InterfaceIdentity, InterfaceInvocationError,
-    InterfaceInvocationKernel, InterfaceLifecycle, InterfaceOwner, InterfaceProtocol,
-    InterfaceScope, InterfaceTargetFailure, InterfaceVersion, InvocationAdapterPlan,
-    InvocationEnvelope, InvocationId, InvocationLineage, PrincipalProfile, ProtocolBinding,
-    ProtocolProjection, RegistryCompiler, RouteIdentity, TargetReference, UserPrincipal,
+    AuthenticationAdapterReference, AuthorizationAdapterReference, AuthorizationOperation,
+    BindingId, CompiledInterfaceRegistry, ContractIdentity, GraphFingerprint, HandlerReference,
+    InterfaceAccess, InterfaceAuditPolicy, InterfaceAuthenticationPolicy,
+    InterfaceAuthorizationError, InterfaceAuthorizationFuture, InterfaceAuthorizationPort,
+    InterfaceAuthorizationRequest, InterfaceContract, InterfaceContracts, InterfaceDefinition,
+    InterfaceErrorPolicy, InterfaceExecution, InterfaceExecutionMode, InterfaceExtensionFact,
+    InterfaceExtensionIsolation, InterfaceExtensionPermission, InterfaceExtensionPoint,
+    InterfaceExtensionRegistration, InterfaceExtensionTier, InterfaceHandler,
+    InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceIdentity,
+    InterfaceInvocationError, InterfaceInvocationKernel, InterfaceLifecycle, InterfaceOwner,
+    InterfaceProtocol, InterfaceScope, InterfaceTargetFailure, InterfaceVersion,
+    InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage, PluginIdentity,
+    PrincipalProfile, ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity,
+    TargetReference, UserPrincipal,
 };
 use plugin_framework::extension_bus::{
     Cardinality, DeliverySemantics, EffectiveExtensionGraph, ExtensionPointKind, FailureSemantics,
@@ -41,6 +43,10 @@ pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID: &str =
 pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INTERFACE_VERSION: &str = "1";
 pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_BINDING_ID: &str =
     "http.host_infrastructure.providers.view.v1";
+pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_MCP_BINDING_ID: &str =
+    "mcp.host_infrastructure.providers.view.v1";
+pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INTERNAL_BINDING_ID: &str =
+    "internal.host_infrastructure.providers.view.v1";
 pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTION_ID: &str =
     "official.local-infra-host.interface-operation.host_infrastructure.providers.view";
 pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH: &str =
@@ -164,6 +170,11 @@ struct ConsoleInterfaceAuthorizationPort {
 }
 
 impl InterfaceAuthorizationPort for ConsoleInterfaceAuthorizationPort {
+    fn adapter_reference(&self) -> AuthorizationAdapterReference {
+        AuthorizationAdapterReference::new("api-server.console.compiled-operation")
+            .expect("static adapter is valid")
+    }
+
     fn authorize(
         &self,
         request: InterfaceAuthorizationRequest,
@@ -260,9 +271,18 @@ pub async fn invoke_providers_view(
             snapshot,
             InvocationEnvelope::with_principal(
                 InvocationLineage::root(InvocationId::now_v7()),
-                InterfaceId::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID)
-                    .expect("built-in interface identity must remain valid"),
+                BindingId::new(match protocol {
+                    InterfaceProtocol::Mcp => HOST_INFRASTRUCTURE_PROVIDERS_VIEW_MCP_BINDING_ID,
+                    InterfaceProtocol::Http => HOST_INFRASTRUCTURE_PROVIDERS_VIEW_BINDING_ID,
+                    InterfaceProtocol::Internal => {
+                        HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INTERNAL_BINDING_ID
+                    }
+                    InterfaceProtocol::Worker => HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INTERNAL_BINDING_ID,
+                })
+                    .expect("built-in binding identity must remain valid"),
                 protocol,
+                AuthenticationAdapterReference::new("api-server.console.require-session")
+                    .expect("static adapter is valid"),
                 principal,
                 None,
                 HostInfrastructureProvidersViewInput::new(),
@@ -295,10 +315,14 @@ fn invocation_failure_api_error(
             .into_source::<HostInfrastructureProvidersViewTargetError>()
             .map(|error| error.0)
             .unwrap_or_else(|| anyhow::anyhow!("host infrastructure providers view failed").into()),
-        InterfaceInvocationError::UnknownInterface => {
+        InterfaceInvocationError::UnknownBinding => {
             control_plane::errors::ControlPlaneError::NotFound("interface_operation").into()
         }
         InterfaceInvocationError::ContractMismatch
+        | InterfaceInvocationError::ProtocolBindingMismatch
+        | InterfaceInvocationError::AuthenticationAdapterMismatch
+        | InterfaceInvocationError::AuthorizationAdapterMismatch
+        | InterfaceInvocationError::AdmissionAdapterMismatch
         | InterfaceInvocationError::PrincipalProfileMismatch
         | InterfaceInvocationError::HookPlanFingerprintMismatch => {
             control_plane::errors::ControlPlaneError::Conflict("interface_contract").into()
@@ -336,15 +360,58 @@ pub(crate) fn compile_interface_registry(
             HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION,
         )?],
         [owner],
+    );
+    compiler.register_definition(definition.clone())?;
+    compiler.register_binding(
+        binding,
         InvocationAdapterPlan::new(
             AuthenticationAdapterReference::new("api-server.console.require-session")?,
             AuthorizationAdapterReference::new("api-server.console.compiled-operation")?,
-            AdmissionAdapterReference::new("api-server.interface.no-admission")?,
-            ExtensionPlanFingerprint::new("graph:providers-view-hooks")?,
+            None,
         ),
-    );
-    compiler.register_binding(binding)?;
-    compiler.register_definition(definition)?;
+    )?;
+    compiler.register_extension(
+        &interface_id,
+        100,
+        InterfaceExtensionRegistration::new(
+            PluginIdentity::new("api-server.providers-view-completion")?,
+            InterfaceExtensionTier::BuiltIn,
+            InterfaceExtensionPoint::Completion,
+            InterfaceExtensionPermission::ObserveCompletion,
+            InterfaceScope::System,
+            InterfaceExtensionIsolation::TrustedInProcess,
+            [
+                InterfaceExtensionFact::Terminal,
+                InterfaceExtensionFact::InvocationIdentity,
+            ],
+        )?,
+    )?;
+    compiler.register_binding(
+        ProtocolBinding::new(
+            BindingId::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_MCP_BINDING_ID)?,
+            definition.identity().clone(),
+            definition.contracts().clone(),
+            ProtocolProjection::mcp(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID),
+        ),
+        InvocationAdapterPlan::new(
+            AuthenticationAdapterReference::new("api-server.console.require-session")?,
+            AuthorizationAdapterReference::new("api-server.console.compiled-operation")?,
+            None,
+        ),
+    )?;
+    compiler.register_binding(
+        ProtocolBinding::new(
+            BindingId::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INTERNAL_BINDING_ID)?,
+            definition.identity().clone(),
+            definition.contracts().clone(),
+            ProtocolProjection::internal(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID),
+        ),
+        InvocationAdapterPlan::new(
+            AuthenticationAdapterReference::new("api-server.console.require-session")?,
+            AuthorizationAdapterReference::new("api-server.console.compiled-operation")?,
+            None,
+        ),
+    )?;
     compiler.bind_handler::<
         HostInfrastructureProvidersViewInput,
         HostInfrastructureProvidersViewOutput,

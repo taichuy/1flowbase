@@ -117,6 +117,14 @@ impl ExtensionBootSnapshot {
                 descriptors,
                 providers_view_query,
             )?;
+        let providers_extension_plan_fingerprint = interface_snapshot
+            .plan(&interface_runtime::BindingId::new(
+                crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_BINDING_ID,
+            )?)
+            .ok_or_else(|| anyhow::anyhow!("providers view invocation plan is absent"))?
+            .extension_plan()
+            .fingerprint()
+            .clone();
         let interface_registry = Arc::new(interface_runtime::DynamicInterfaceRegistry::new(
             interface_snapshot,
         ));
@@ -153,6 +161,7 @@ impl ExtensionBootSnapshot {
         let providers_view_hook_plan = Arc::new(
             interface_runtime::TypedInterfaceHookPlan::new(
                 interface_runtime::GraphFingerprint::new(graph.fingerprint().as_str())?,
+                providers_extension_plan_fingerprint,
             )
             .bind_completion(Arc::new(ProvidersViewCompletionObserver)),
         );
@@ -191,6 +200,54 @@ impl ExtensionBootSnapshot {
 
     pub fn interface_registry(&self) -> Option<&Arc<interface_runtime::DynamicInterfaceRegistry>> {
         self.interface_registry.as_ref()
+    }
+
+    pub(crate) fn publish_complete_catalog(
+        &self,
+        state: &Arc<crate::app_state::ApiState>,
+    ) -> anyhow::Result<()> {
+        let registry = self
+            .interface_registry
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("interface registry is absent"))?;
+        let mut compiler = interface_runtime::RegistryCompiler::new(
+            interface_runtime::GraphFingerprint::new(self.graph.fingerprint().as_str())?,
+            [
+                interface_runtime::AuthorizationOperation::new(
+                    crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION,
+                )?,
+                interface_runtime::AuthorizationOperation::new(
+                    "public.auth.login-instances.read",
+                )?,
+                interface_runtime::AuthorizationOperation::new("application.native.runs.create")?,
+                interface_runtime::AuthorizationOperation::new("mcp.tools.invoke")?,
+            ],
+            [
+                interface_runtime::InterfaceOwner::new(
+                    crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID,
+                )?,
+                interface_runtime::InterfaceOwner::new("api-server.public-auth")?,
+                interface_runtime::InterfaceOwner::new("api-server.application-public-api")?,
+                interface_runtime::InterfaceOwner::new("api-server.mcp-protocol")?,
+            ],
+        );
+        compiler.absorb_snapshot(registry.snapshot().as_ref())?;
+        compiler.absorb_snapshot(
+            crate::routes::auth::compile_public_login_instances_registry(Arc::downgrade(state))?
+                .as_ref(),
+        )?;
+        compiler.absorb_snapshot(
+            crate::routes::application_public_api::native::compile_native_interface_registry(
+                Arc::downgrade(state),
+            )?
+            .as_ref(),
+        )?;
+        compiler.absorb_snapshot(
+            crate::routes::mcp_protocol::compile_mcp_interface_registry(Arc::downgrade(state))?
+                .as_ref(),
+        )?;
+        registry.publish(compiler.compile()?);
+        Ok(())
     }
 
     pub(crate) fn providers_view_hook_plan(
