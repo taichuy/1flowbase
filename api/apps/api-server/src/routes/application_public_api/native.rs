@@ -63,6 +63,7 @@ use crate::{
             native_interface::{
                 self, ApplicationNativeRunFuture, ApplicationNativeRunInput,
                 ApplicationNativeRunOutput, ApplicationNativeRunPort,
+                ApplicationNativeRunStreamEvent, ApplicationNativeRunStreamFuture,
                 ApplicationNativeRunTargetError,
             },
             sse,
@@ -151,7 +152,7 @@ pub(crate) async fn public_mcp_runtime_invoker_for_actor(
 }
 
 struct NativeRunInterfaceAdapter {
-    state: Arc<ApiState>,
+    state: std::sync::Weak<ApiState>,
 }
 
 impl ApplicationNativeRunPort for NativeRunInterfaceAdapter {
@@ -160,31 +161,129 @@ impl ApplicationNativeRunPort for NativeRunInterfaceAdapter {
         principal: &'a interface_runtime::ApplicationPrincipal,
         input: ApplicationNativeRunInput,
     ) -> ApplicationNativeRunFuture<'a> {
-        let state = Arc::clone(&self.state);
-        let actor = control_plane::application_public_api::api_keys::ApplicationApiKeyActor {
-            api_key_id: principal.api_key_id(),
-            application_id: principal.application_id(),
-            creator_user_id: principal.authorized_actor().user_id,
-            tenant_id: principal.authorized_actor().tenant_id,
-            workspace_id: principal.workspace_id(),
-            actor: principal.authorized_actor().clone(),
-        };
+        let state = self.state.clone();
+        let actor = application_actor_from_principal(principal);
         Box::pin(async move {
+            let state = state.upgrade().ok_or_else(|| {
+                ApplicationNativeRunTargetError(native_error(
+                    NativeRunValidationError::InvalidState,
+                ))
+            })?;
             ApplicationNativeRunService::new(state.store.clone())
                 .with_last_used_cache(state.infrastructure.cache_store())
                 .create_native_run_for_actor(actor, input.request, input.protocol)
                 .await
                 .map(ApplicationNativeRunOutput)
+                .map_err(native_error)
                 .map_err(ApplicationNativeRunTargetError)
         })
     }
+
+    fn execute_blocking<'a>(
+        &'a self,
+        principal: &'a interface_runtime::ApplicationPrincipal,
+        input: ApplicationNativeRunInput,
+    ) -> ApplicationNativeRunFuture<'a> {
+        let state = self.state.clone();
+        let actor = application_actor_from_principal(principal);
+        Box::pin(async move {
+            let state = state.upgrade().ok_or_else(|| {
+                ApplicationNativeRunTargetError(native_error(
+                    NativeRunValidationError::InvalidState,
+                ))
+            })?;
+            let run = ApplicationNativeRunService::new(state.store.clone())
+                .with_last_used_cache(state.infrastructure.cache_store())
+                .create_native_run_for_actor(actor.clone(), input.request, input.protocol)
+                .await
+                .map_err(native_error)
+                .map_err(ApplicationNativeRunTargetError)?;
+            execute_blocking_native_run_for_actor(state, actor, run)
+                .await
+                .map(ApplicationNativeRunOutput)
+                .map_err(ApplicationNativeRunTargetError)
+        })
+    }
+
+    fn execute_stream<'a>(
+        &'a self,
+        principal: &'a interface_runtime::ApplicationPrincipal,
+        input: ApplicationNativeRunInput,
+    ) -> ApplicationNativeRunStreamFuture<'a> {
+        let state = self.state.clone();
+        let actor = application_actor_from_principal(principal);
+        Box::pin(async move {
+            let state = state.upgrade().ok_or_else(|| {
+                ApplicationNativeRunTargetError(native_error(
+                    NativeRunValidationError::InvalidState,
+                ))
+            })?;
+            let include_workflow_events =
+                include_workflow_events(&input.request).map_err(ApplicationNativeRunTargetError)?;
+            let run = ApplicationNativeRunService::new(state.store.clone())
+                .with_last_used_cache(state.infrastructure.cache_store())
+                .create_native_run_for_actor(actor.clone(), input.request, input.protocol)
+                .await
+                .map_err(native_error)
+                .map_err(ApplicationNativeRunTargetError)?;
+            let receiver = start_native_run_event_channel_for_actor(
+                state,
+                actor,
+                run.clone(),
+                include_workflow_events,
+            )
+            .await
+            .map_err(ApplicationNativeRunTargetError)?;
+            let (publisher, stream) = interface_runtime::interface_stream_channel(32);
+            tokio::spawn(async move {
+                let mut receiver = receiver;
+                while let Some(event) = receiver.recv().await {
+                    if publisher
+                        .emit(ApplicationNativeRunStreamEvent(event))
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+                let _ = publisher
+                    .finish(interface_runtime::InterfaceStreamTerminal::Completed(
+                        ApplicationNativeRunOutput(run),
+                    ))
+                    .await;
+            });
+            Ok(stream)
+        })
+    }
+}
+
+fn application_actor_from_principal(
+    principal: &interface_runtime::ApplicationPrincipal,
+) -> control_plane::application_public_api::api_keys::ApplicationApiKeyActor {
+    control_plane::application_public_api::api_keys::ApplicationApiKeyActor {
+        api_key_id: principal.api_key_id(),
+        application_id: principal.application_id(),
+        creator_user_id: principal.authorized_actor().user_id,
+        tenant_id: principal.authorized_actor().tenant_id,
+        workspace_id: principal.workspace_id(),
+        actor: principal.authorized_actor().clone(),
+    }
+}
+
+pub(crate) fn compile_native_interface_registry(
+    state: std::sync::Weak<ApiState>,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    native_interface::compile_registry(Arc::new(NativeRunInterfaceAdapter { state }))
 }
 
 fn native_interface_error(error: InterfaceInvocationError) -> NativeApiError {
     match error {
         InterfaceInvocationError::TargetFailed(error) => error
             .into_source::<ApplicationNativeRunTargetError>()
-            .map(|error| native_error(error.0))
+            .map(|error| error.0)
             .unwrap_or_else(|| {
                 NativeApiError::new(
                     StatusCode::INTERNAL_SERVER_ERROR,
@@ -204,7 +303,11 @@ fn native_interface_error(error: InterfaceInvocationError) -> NativeApiError {
                 "native run request was cancelled",
             )
         }
-        InterfaceInvocationError::UnknownInterface
+        InterfaceInvocationError::UnknownBinding
+        | InterfaceInvocationError::ProtocolBindingMismatch
+        | InterfaceInvocationError::AuthenticationAdapterMismatch
+        | InterfaceInvocationError::AuthorizationAdapterMismatch
+        | InterfaceInvocationError::AdmissionAdapterMismatch
         | InterfaceInvocationError::ContractMismatch
         | InterfaceInvocationError::PrincipalProfileMismatch
         | InterfaceInvocationError::HookPlanFingerprintMismatch
@@ -861,60 +964,98 @@ pub async fn create_native_run(
     );
     let request = translated.request;
     let response_mode = request.response_mode.clone();
-    let include_workflow_events = include_workflow_events(&request)?;
+    let _include_workflow_events = include_workflow_events(&request)?;
     let api_actor = ApplicationApiKeyService::new(state.store.clone())
         .with_last_used_cache(state.infrastructure.cache_store())
         .authenticate_bearer_token(&bearer_token)
         .await
         .map_err(|_| native_error(NativeRunValidationError::NotAuthenticated))?;
     let principal = interface_application_principal(&api_actor)?;
-    let snapshot = native_interface::compile_registry(Arc::new(NativeRunInterfaceAdapter {
-        state: Arc::clone(&state),
-    }))
-    .map_err(|_| {
-        NativeApiError::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            "interface_compile_failed",
-            "native run interface is unavailable",
-        )
-    })?;
-    let outcome = InterfaceInvocationKernel::new(Arc::new(
-        native_interface::ApplicationNativeRunAuthorization,
-    ))
-    .invoke::<
-        ApplicationNativeRunInput,
-        ApplicationNativeRunOutput,
-        ApplicationNativeRunTargetError,
-    >(
-        snapshot,
-        InvocationEnvelope::with_principal(
-            InvocationLineage::root(InvocationId::now_v7()),
-            interface_runtime::InterfaceId::new(native_interface::INTERFACE_ID)
-                .expect("static interface id is valid"),
-            InterfaceProtocol::Http,
-            principal,
-            None,
-            ApplicationNativeRunInput {
-                request,
-                protocol: TranslationProtocol::Native,
-            },
-        ),
-    )
-    .await
-    .map_err(|failure| native_interface_error(failure.into_error()))?;
-    let _receipt = outcome.receipt().clone().projected();
-    let run = outcome.into_value().0;
+    let application_id = principal.application_id();
+    let snapshot = state
+        .extension_boot_snapshot
+        .as_ref()
+        .and_then(|boot| boot.interface_registry())
+        .map(|registry| registry.snapshot())
+        .ok_or_else(|| {
+            NativeApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "interface_registry_unavailable",
+                "native run interface is unavailable",
+            )
+        })?;
     let _http_activity = state
         .runtime_activity
-        .start(run.application_id, ApplicationActivityKind::HttpRequest);
+        .start(application_id, ApplicationActivityKind::HttpRequest);
+    let binding_id = match response_mode.as_deref().unwrap_or("blocking") {
+        "streaming" => native_interface::STREAM_BINDING_ID,
+        "blocking" => native_interface::BLOCKING_BINDING_ID,
+        _ => native_interface::ASYNC_BINDING_ID,
+    };
+    let envelope = InvocationEnvelope::with_principal(
+        InvocationLineage::root(InvocationId::now_v7()),
+        interface_runtime::BindingId::new(binding_id).expect("static binding id is valid"),
+        InterfaceProtocol::Http,
+        interface_runtime::AuthenticationAdapterReference::new("api-server.application-api-key")
+            .expect("static adapter is valid"),
+        principal,
+        None,
+        ApplicationNativeRunInput {
+            request,
+            protocol: TranslationProtocol::Native,
+        },
+    );
+    let kernel = InterfaceInvocationKernel::new(Arc::new(
+        native_interface::ApplicationNativeRunAuthorization,
+    ));
 
     if response_mode.as_deref() == Some("streaming") {
-        return start_native_run_stream_for_actor(state, api_actor, run, include_workflow_events)
-            .await;
+        let invocation = kernel
+            .invoke_server_stream_with_dispatch_target::<
+                ApplicationNativeRunInput,
+                ApplicationNativeRunStreamEvent,
+                ApplicationNativeRunOutput,
+                ApplicationNativeRunTargetError,
+            >(
+                Arc::clone(&snapshot),
+                envelope,
+                native_runtime_target(&state, snapshot.as_ref(), binding_id, application_id),
+            )
+            .await
+            .map_err(|failure| native_interface_error(failure.into_error()))?;
+        let (events, completion) = invocation.into_parts();
+        tokio::spawn(async move {
+            if let Ok(terminal) = completion.complete().await {
+                let _receipt = terminal.receipt().clone().projected();
+            }
+        });
+        let sse_activity = state
+            .runtime_activity
+            .start(application_id, ApplicationActivityKind::SseConnection);
+        let stream = tokio_stream::wrappers::ReceiverStream::new(events).map(move |event| {
+            let _keep_alive = &sse_activity;
+            event.0
+        });
+        return Ok(Sse::new(stream)
+            .keep_alive(KeepAlive::default())
+            .into_response());
     }
 
     if response_mode.as_deref().unwrap_or("blocking") == "blocking" {
-        let run = execute_blocking_native_run_for_actor(state, api_actor, run).await?;
+        let outcome = kernel
+            .invoke_with_dispatch_target::<
+                ApplicationNativeRunInput,
+                ApplicationNativeRunOutput,
+                ApplicationNativeRunTargetError,
+            >(
+                Arc::clone(&snapshot),
+                envelope,
+                native_runtime_target(&state, snapshot.as_ref(), binding_id, application_id),
+            )
+            .await
+            .map_err(|failure| native_interface_error(failure.into_error()))?;
+        let _receipt = outcome.receipt().clone().projected();
+        let run = outcome.into_value().0;
         return Ok((
             StatusCode::CREATED,
             Json(ApiSuccess::new(to_native_run_response(run))),
@@ -922,11 +1063,60 @@ pub async fn create_native_run(
             .into_response());
     }
 
+    let outcome = kernel
+        .invoke::<ApplicationNativeRunInput, ApplicationNativeRunOutput, ApplicationNativeRunTargetError>(
+            snapshot,
+            envelope,
+        )
+        .await
+        .map_err(|failure| native_interface_error(failure.into_error()))?;
+    let _receipt = outcome.receipt().clone().projected();
+    let run = outcome.into_value().0;
+
     Ok((
         StatusCode::CREATED,
         Json(ApiSuccess::new(to_native_run_response(run))),
     )
         .into_response())
+}
+
+fn native_runtime_target(
+    state: &ApiState,
+    registry: &interface_runtime::CompiledInterfaceRegistry,
+    binding_id: &str,
+    application_id: Uuid,
+) -> interface_runtime::ExecutionTargetPin {
+    let plan = registry
+        .plan(&interface_runtime::BindingId::new(binding_id).expect("static binding id is valid"))
+        .expect("published Native binding must own a plan");
+    interface_runtime::ExecutionTargetPin::Runtime {
+        handler: plan.definition().handler_reference().clone(),
+        target: plan.definition().target_reference().clone(),
+        plugin: interface_runtime::PluginIdentity::new("builtin.orchestration-runtime")
+            .expect("runtime plugin identity is valid"),
+        artifact: interface_runtime::ArtifactIdentity::new(format!(
+            "api-server:{}",
+            env!("CARGO_PKG_VERSION")
+        ))
+        .expect("runtime artifact identity is valid"),
+        runtime: interface_runtime::RuntimeTargetIdentity::new(format!(
+            "orchestration-runtime.local.application:{application_id}"
+        ))
+        .expect("runtime target identity is valid"),
+        runtime_generation: interface_runtime::RuntimeGeneration::new(
+            state
+                .extension_boot_snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.fingerprint())
+                .unwrap_or("graph:unavailable"),
+        )
+        .expect("runtime generation identity is valid"),
+        worker_generation: interface_runtime::WorkerGeneration::new(format!(
+            "api-process:{}",
+            state.process_started_at.unix_timestamp_nanos()
+        ))
+        .expect("worker generation identity is valid"),
+    }
 }
 
 pub(crate) fn include_workflow_events(
@@ -961,17 +1151,54 @@ async fn start_native_run_stream_for_actor(
     run: NativeRunResult,
     include_workflow_events: sse::IncludeWorkflowEvents,
 ) -> Result<Response, NativeApiError> {
-    let mcp_runtime_invoker = public_mcp_runtime_invoker_for_actor(&state, &actor).await?;
-    start_native_run_stream_with_invoker(state, mcp_runtime_invoker, run, include_workflow_events)
-        .await
+    let application_id = run.application_id;
+    let receiver = start_native_run_event_channel_for_actor(
+        Arc::clone(&state),
+        actor,
+        run,
+        include_workflow_events,
+    )
+    .await?;
+    let sse_activity = state
+        .runtime_activity
+        .start(application_id, ApplicationActivityKind::SseConnection);
+    let stream = sse::NativeRunSseStream::new(receiver).map(move |event| {
+        let _keep_alive = &sse_activity;
+        event
+    });
+    Ok(Sse::new(stream)
+        .keep_alive(KeepAlive::default())
+        .into_response())
 }
 
-async fn start_native_run_stream_with_invoker(
+async fn start_native_run_event_channel_for_actor(
+    state: Arc<ApiState>,
+    actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+    run: NativeRunResult,
+    include_workflow_events: sse::IncludeWorkflowEvents,
+) -> Result<
+    mpsc::Receiver<Result<axum::response::sse::Event, std::convert::Infallible>>,
+    NativeApiError,
+> {
+    let mcp_runtime_invoker = public_mcp_runtime_invoker_for_actor(&state, &actor).await?;
+    start_native_run_event_channel_with_invoker(
+        state,
+        mcp_runtime_invoker,
+        run,
+        include_workflow_events,
+    )
+    .await
+}
+
+async fn start_native_run_event_channel_with_invoker(
     state: Arc<ApiState>,
     mcp_runtime_invoker: Arc<virtual_ui::ApiMcpRuntimeToolInvoker>,
     run: NativeRunResult,
     include_workflow_events: sse::IncludeWorkflowEvents,
-) -> Result<Response, NativeApiError> {
+) -> Result<
+    mpsc::Receiver<Result<axum::response::sse::Event, std::convert::Infallible>>,
+    NativeApiError,
+> {
     state
         .runtime_event_stream
         .open_run(
@@ -1043,17 +1270,7 @@ async fn start_native_run_stream_with_invoker(
         }
     });
 
-    let sse_activity = state
-        .runtime_activity
-        .start(run.application_id, ApplicationActivityKind::SseConnection);
-    let stream = sse::NativeRunSseStream::new(receiver).map(move |event| {
-        let _keep_alive = &sse_activity;
-        event
-    });
-
-    Ok(Sse::new(stream)
-        .keep_alive(KeepAlive::default())
-        .into_response())
+    Ok(receiver)
 }
 
 #[utoipa::path(
