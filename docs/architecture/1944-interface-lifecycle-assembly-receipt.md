@@ -4,13 +4,13 @@
 
 - Result: `QA_PASS`
 - Input: `beta@ff4cc74ab073256419884d3d96e0b3defcb36d45`
-- Fresh tested assembly: `beta@15ed16b4a61b273d4a644fedeb1b53bb7de8c988`
+- Fresh tested assembly: `beta@d3b28fce91507f28da8b2e34fbe8360a657df0ca`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
-- Fresh centralized QA: attempt 6, 16/16 rows complete, zero unrun rows
+- Fresh centralized QA: review-remediation attempt 7, 16/16 rows complete, zero unrun rows
 - Evidence root: `tmp/test-governance/1944-interface-lifecycle/`
 
 The IF-F08 commit is the commit containing this receipt. It changes documentation only; the
-tested product assembly remains `15ed16b4a61b273d4a644fedeb1b53bb7de8c988`.
+tested product assembly remains `d3b28fce91507f28da8b2e34fbe8360a657df0ca`.
 
 ## Work Packet ledger
 
@@ -34,15 +34,27 @@ QA fix packets, all inside the approved boundary:
 | `9e27b6234` | preserve MCP typed server delegation and Console projected receipt |
 | `dca6b0e01` | align the pre-typed Node fixture to `InvocationEnvelope::with_principal` |
 | `15ed16b4a` | align the same fixture to typed Console `UserPrincipal` transfer |
+| `cb0597381` | freeze the finite review-remediation acceptance matrix |
+| `7b7354d38` | make Binding identity drive resolve; compile per-binding adapters and ordered extensions |
+| `585a2e579` | move Native Runtime and server-stream terminal inside the Invocation lifecycle |
+| `1bd0be886` | publish the unified Dynamic Interface Registry at Composition Root |
+| `ed87ad79e` | replace source/self-report probes with behavioral assembly fixtures |
+| `281e6c58f` | bind the typed Hook Plan to the compiled Extension Plan fingerprint |
+| `204a79a2a` | align strict Admission and Route fixtures without weakening validation |
+| `42374780a` | preserve the typed MCP context module boundary |
+| `2f132b4db` | rebuild the catalog after test-state customization |
+| `c3ed93378` | publish the complete catalog for every router composition and authorize non-HTTP Providers projections through the canonical Console operation |
+| `d3b28fce9` | include the approved typed stream module in the controlled facade inventory |
 
 ## Final contract structure
 
 - Canonical `InterfaceDefinition` owns business invocation identity, versioned contracts,
   access/authentication/authorization/admission policies, owner and execution semantics.
-- `ProtocolBinding` independently owns the HTTP/MCP/protocol projection and binding identity.
-- `CompiledInvocationPlan` freezes definition, binding, adapter/handler/extension references,
-  graph and plan fingerprints. Registry compilation rejects duplicate, unknown, missing,
-  mismatched, inactive and illegal registrations.
+- `ProtocolBinding` independently owns the HTTP/MCP/protocol projection and binding identity;
+  adapters provide an explicit `BindingId`, and the Kernel rejects protocol/binding mismatch.
+- `CompiledInvocationPlan` freezes definition, binding, per-binding adapter plan, effective typed
+  Handler and the actual ordered Extension Plan plus graph/plan fingerprints. Registry compilation
+  rejects duplicate, unknown, missing, mismatched, inactive and illegal registrations.
 - `InvocationEnvelope<Input, Principal>` is typed over sealed `PublicPrincipal`, `UserPrincipal`
   and `ApplicationPrincipal`. Only trimmed `PrincipalSummary` reaches hooks and receipts.
 - Resolve-time pins definition/binding/graph/registry/hook plan. Dispatch-time pins attempt,
@@ -83,21 +95,21 @@ The approved points are `interface.definition`, `interface.authentication_adapte
 | AC | Status | Evidence |
 | --- | --- | --- |
 | ARC-AC-001 | PASS | 10-entry/9-family finite inventory and full API regression |
-| ARC-AC-002 | PASS | separate Definition/Binding/Compiled Plan compiler tests |
-| ARC-AC-003 | PASS | versioned input/output/stream/error/terminal contracts |
+| ARC-AC-002 | PASS | unified boot Catalog plus separate Definition/Binding/per-binding Compiled Plan tests |
+| ARC-AC-003 | PASS | Native async/blocking/server-stream bindings and versioned input/output/stream/error/terminal contracts |
 | ARC-AC-004 | PASS | sealed principal unit and compile-fail tests |
 | ARC-AC-005 | PASS | credential-boundary source fixture and four real adapters |
-| ARC-AC-006 | PASS | lifecycle stage-order and authorization/admission/hook tests |
-| ARC-AC-007 | PASS | retry/attempt/deadline/cancel/exactly-one-terminal tests |
-| ARC-AC-008 | PASS | resolve and dispatch pin/generation tests |
-| ARC-AC-009 | PASS | independent Protocol Binding and registry compiler tests |
+| ARC-AC-006 | PASS | Native Runtime executes before lifecycle terminal; stage-order and authorization/admission/hook tests |
+| ARC-AC-007 | PASS | live stream event → terminal → projection plus retry/deadline/cancel negatives |
+| ARC-AC-008 | PASS | Native dispatch freezes attempt and Runtime/worker generation; replacement negative |
+| ARC-AC-009 | PASS | Binding-first resolve, HTTP/MCP dual-binding and mismatch controlled negatives |
 | ARC-AC-010 | PASS | typed Handler ports and Node infrastructure-import negatives |
-| ARC-AC-011 | PASS | four-tier/nine-point extension compiler matrix |
+| ARC-AC-011 | PASS | four-tier/nine-point registrations compile into executable ordered plans |
 | ARC-AC-012 | PASS | completion/receipt versus outbox separation tests |
-| ARC-AC-013 | PASS | duplicate/missing/mismatch/inactive/illegal-point negatives |
-| ARC-AC-014 | PASS | four-path, nine-dimension route-equivalence fixture |
+| ARC-AC-013 | PASS | extension illegal-point and duplicate/missing/mismatch/inactive publish negatives |
+| ARC-AC-014 | PASS | behavioral boot/vertical fixtures plus full four-path API regression |
 | ARC-AC-015 | PASS | Cargo dependency and Node source-boundary controlled negatives |
-| ARC-AC-016 | PASS | fresh attempt 6, 16/16 rows, zero unrun |
+| ARC-AC-016 | PASS | fresh review-remediation attempt 7, 16/16 rows, zero unrun |
 
 ## Controlled negatives
 
@@ -114,7 +126,7 @@ runtime-generation replacement; and treating Interface completion as a persisted
 | --- | --- | --- |
 | QA-001 | PASS | paired source identity and cleanliness |
 | QA-002 | PASS | `cargo fmt --all --check` |
-| QA-003 | PASS | interface-runtime 20 unit + 2 compile-fail doc tests |
+| QA-003 | PASS | interface-runtime 23 unit + 2 compile-fail doc tests |
 | QA-004 | PASS | access-control 35 tests |
 | QA-005 | PASS | api-server 1199 tests, zero ignored |
 | QA-006 | PASS | Node boundary 5 tests |
@@ -129,9 +141,10 @@ runtime-generation replacement; and treating Interface completion as a persisted
 | QA-015 | PASS | diff check and paired final integrity |
 | QA-016 | PASS | 16/16 rows; unrun 0 |
 
-Fresh automated tests total `1974 passed`, `0 failed`. The only non-blocking warnings are the
-existing 19 dead-code warnings in `runtime-extension-host`; no warning was introduced by the
-#1944 typed interface files.
+Fresh automated tests total `1977 passed`, `0 failed`. Non-blocking warnings are the existing 19
+dead-code warnings in `runtime-extension-host` and one unused private Native stream helper exposed
+by workspace check. The latter is retained as a Warning because removing it would change the
+frozen assembly after full behavioral acceptance; it exposes no public API or runtime path.
 
 ## Compatibility and repository integrity
 
