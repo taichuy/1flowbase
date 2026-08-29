@@ -182,13 +182,19 @@ impl InterfaceAuthorizationPort for ConsoleInterfaceAuthorizationPort {
         let policy_reader = Arc::clone(&self.policy_reader);
         let console_registry = Arc::clone(&self.console_registry);
         Box::pin(async move {
-            let route = request.binding().projection().http_route().ok_or_else(|| {
-                InterfaceAuthorizationError::classified("console_route_unregistered")
-            })?;
+            // All protocol projections retain the canonical Console operation's authorization
+            // truth. Non-HTTP bindings do not manufacture an HTTP projection, but they must
+            // resolve the same compiled operation and policy group before dispatch.
+            let (method, path) = request
+                .binding()
+                .projection()
+                .http_route()
+                .map(|route| (route.method(), route.path()))
+                .unwrap_or(("GET", HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH));
             let access = crate::middleware::require_settings_feature_permission::compiled_console_route_access(
                 &console_registry,
-                route.method(),
-                route.path(),
+                method,
+                path,
             )
             .map_err(InterfaceAuthorizationError::classified)?;
             if request.principal().actor().is_root {

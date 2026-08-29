@@ -215,6 +215,11 @@ pub fn app() -> Router {
 }
 
 pub fn app_with_state(state: Arc<ApiState>) -> Router {
+    if let Some(snapshot) = &state.extension_boot_snapshot {
+        snapshot
+            .publish_complete_catalog(&state)
+            .expect("complete interface catalog must publish before router construction");
+    }
     base_router(true, false)
         .merge(console_router(state, true))
         .layer(development_cors_layer())
