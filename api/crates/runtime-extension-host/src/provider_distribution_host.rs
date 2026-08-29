@@ -47,11 +47,8 @@ impl ProviderDistributionHost {
             package.runtime_executable.clone(),
             package.manifest.runtime.limits.clone(),
         );
-        let rule_id = package.manifest.provider_distribution_rules[0]
-            .rule_id
-            .clone();
         self.loaded.insert(
-            rule_id,
+            plugin_id,
             Arc::new(LoadedRule {
                 package,
                 worker: Mutex::new(worker),
@@ -61,17 +58,7 @@ impl ProviderDistributionHost {
     }
 
     pub(crate) async fn unload(&mut self, plugin_id: &str) -> FrameworkResult<()> {
-        let rule_id = self.loaded.iter().find_map(|(rule_id, loaded)| {
-            (loaded
-                .package
-                .manifest
-                .versioned_plugin_id()
-                .ok()
-                .as_deref()
-                == Some(plugin_id))
-            .then(|| rule_id.clone())
-        });
-        if let Some(loaded) = rule_id.and_then(|rule_id| self.loaded.remove(&rule_id)) {
+        if let Some(loaded) = self.loaded.remove(plugin_id) {
             loaded.worker.lock().await.stop().await;
         }
         Ok(())

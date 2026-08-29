@@ -382,7 +382,7 @@ async fn drs_008_013_session_retry_executes_through_real_host_and_plugin_data() 
         "session-retry-distribution",
     );
     host.activate_provider_distribution_rule(RuntimePackageActivation {
-        plugin_id,
+        plugin_id: plugin_id.clone(),
         artifact: RuntimeArtifactReference::new("session-retry-distribution").unwrap(),
         source_identity: None,
         legacy_eligibility: None,
@@ -414,7 +414,7 @@ async fn drs_008_013_session_retry_executes_through_real_host_and_plugin_data() 
     let receipt = host
         .select_provider_distribution(RuntimeProviderDistributionRequest {
             request_id: RuntimeRequestId::new("distribution-1").unwrap(),
-            target: RuntimeTargetId::new("@taichuy/session_retry").unwrap(),
+            target: RuntimeTargetId::new(plugin_id).unwrap(),
             invocation,
             principal: RuntimeExecutionPrincipal {
                 workspace_id: "workspace-1".into(),
