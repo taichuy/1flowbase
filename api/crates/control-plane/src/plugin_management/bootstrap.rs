@@ -203,18 +203,6 @@ where
     }
 }
 
-impl RoutedPluginPackageKind {
-    fn as_plugin_type(self) -> &'static str {
-        match self {
-            Self::HostExtension => "host_extension",
-            Self::ModelProviderRuntime => "model_provider",
-            Self::DataSourceRuntime => "data_source",
-            Self::NetworkEgressProviderRuntime => "network_egress_provider",
-            Self::CapabilityPlugin => "capability_plugin",
-        }
-    }
-}
-
 fn safe_relative_path(root: &Path, relative: &str) -> Result<PathBuf> {
     let relative = Path::new(relative);
     if relative.is_absolute()

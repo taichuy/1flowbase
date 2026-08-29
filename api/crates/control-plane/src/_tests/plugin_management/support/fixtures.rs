@@ -597,6 +597,63 @@ pub(crate) fn build_capability_plugin_package_bytes() -> Vec<u8> {
     bytes
 }
 
+pub(crate) fn build_provider_distribution_package_bytes(version: &str) -> Vec<u8> {
+    let package_root =
+        std::env::temp_dir().join(format!("distribution-plugin-source-{}", Uuid::now_v7()));
+    fs::create_dir_all(package_root.join("bin")).unwrap();
+    fs::write(
+        package_root.join("manifest.yaml"),
+        format!(
+            r#"manifest_version: 1
+plugin_id: session_retry_distribution
+version: {version}
+publisher_namespace: taichuy
+vendor: Taichuy
+display_name: Session Retry Distribution
+description: Distribution fixture
+source_kind: official_registry
+trust_level: verified_official
+consumption_kind: runtime_extension
+execution_mode: stateful_runtime_worker
+slot_codes: [provider_distribution_rule]
+binding_targets: [workspace]
+selection_mode: assignment_then_select
+minimum_host_version: 0.4.1
+contract_version: 1flowbase.provider-distribution-rule/v1
+schema_version: 1flowbase.plugin.manifest/v1
+permissions:
+  network: none
+  secrets: none
+  storage: host_managed
+  mcp: none
+  subprocess: deny
+runtime:
+  protocol: stdio_json_worker
+  entry: bin/session-retry-distribution
+  capabilities: [runtime_host_call/v1]
+  limits: {{}}
+provider_distribution_rules:
+  - rule_id: "@taichuy/session_retry"
+    rule_version: {version}
+    contract_version: 1flowbase.provider-distribution-rule/v1
+    display_name: Session retry
+    handler: select
+    required_permissions: [plugin_data.read, plugin_data.write]
+    config_fields: {{}}
+"#
+        ),
+    )
+    .unwrap();
+    fs::write(
+        package_root.join("bin/session-retry-distribution"),
+        b"#!/bin/sh\nexit 0\n",
+    )
+    .unwrap();
+    let bytes = pack_tar_gz(&package_root);
+    let _ = fs::remove_dir_all(&package_root);
+    bytes
+}
+
 pub(crate) fn build_signed_openai_upload_package(version: &str) -> SignedUploadPackageFixture {
     let package_root =
         std::env::temp_dir().join(format!("uploaded-plugin-source-{}", Uuid::now_v7()));

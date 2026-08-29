@@ -5,9 +5,10 @@ use crate::{
     plugin_management::{
         AssignPluginCommand, EnablePluginCommand, ExtensionCatalogCategory,
         InstallExtensionNodePluginCommand, InstallOfficialPluginCommand, InstallPluginCommand,
-        InstallUploadedPluginCommand, OfficialPluginCatalogFilter, PluginCatalogFilter,
-        PluginCompatibilityOverride, PluginManagementService, PluginRiskOverride,
-        RefreshCurrentNodePluginArtifactCommand, PLUGIN_RISK_SIGNATURE_MISSING,
+        InstallResolvedOfficialPluginCommand, InstallUploadedPluginCommand,
+        OfficialPluginCatalogFilter, PluginCatalogFilter, PluginCompatibilityOverride,
+        PluginManagementService, PluginRiskOverride, RefreshCurrentNodePluginArtifactCommand,
+        PLUGIN_RISK_SIGNATURE_MISSING,
     },
     ports::{
         CreatePluginTaskInput, FrontendBlockCatalogRepository, JsDependencyRepository,
@@ -22,12 +23,175 @@ use uuid::Uuid;
 use super::support::{
     actor_with_permissions, build_capability_plugin_package_bytes,
     build_openai_compatible_package_bytes,
-    build_openai_compatible_package_bytes_with_runtime_entry, build_signed_openai_upload_package,
+    build_openai_compatible_package_bytes_with_runtime_entry,
+    build_provider_distribution_package_bytes, build_signed_openai_upload_package,
     create_capability_plugin_fixture, create_frontend_block_fixture,
     create_js_dependency_pack_fixture, create_provider_fixture,
     create_provider_fixture_with_node_contribution, requested_locales, seed_test_installation,
     MemoryOfficialPluginSource, MemoryPluginManagementRepository, MemoryProviderRuntime,
 };
+
+#[tokio::test]
+async fn extension_center_installs_and_activates_distribution_runtime_through_package_intake() {
+    let workspace_id = Uuid::now_v7();
+    let repository =
+        MemoryPluginManagementRepository::new(actor_with_permissions(workspace_id, &[]));
+    repository
+        .set_console_operation(
+            domain::ConsolePolicyGroup::settings_feature("system.extension-center").unwrap(),
+            "extension_center.install",
+        )
+        .await;
+    let runtime = MemoryProviderRuntime::default();
+    let install_root =
+        std::env::temp_dir().join(format!("distribution-node-registration-{}", Uuid::now_v7()));
+    let service = PluginManagementService::new(
+        repository.clone(),
+        runtime.clone(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    )
+    .for_extension_center_console_operation("extension_center.install");
+
+    let result = service
+        .install_extension_node_plugin(InstallExtensionNodePluginCommand {
+            actor_user_id: repository.actor.user_id,
+            category: ExtensionCatalogCategory::RuntimeExtensions,
+            file_name: "session-retry-distribution.1flowbasepkg".to_string(),
+            package_bytes: build_provider_distribution_package_bytes("1.0.0"),
+            source_kind: "official_registry".to_string(),
+        })
+        .await
+        .expect("distribution package should use the common install and activation lifecycle");
+
+    assert_eq!(
+        result.installation.metadata_json["plugin_type"],
+        "provider_distribution_rule"
+    );
+    assert_eq!(
+        result.installation.contract_version,
+        "1flowbase.provider-distribution-rule/v1"
+    );
+    assert_eq!(
+        runtime.loaded_installations().await,
+        vec![result.installation.id]
+    );
+    let _ = fs::remove_dir_all(install_root);
+}
+
+#[tokio::test]
+async fn extension_center_distribution_update_activates_new_version_and_retires_old_runtime() {
+    let workspace_id = Uuid::now_v7();
+    let repository =
+        MemoryPluginManagementRepository::new(actor_with_permissions(workspace_id, &[]));
+    repository
+        .set_console_operation(
+            domain::ConsolePolicyGroup::settings_feature("system.extension-center").unwrap(),
+            "extension_center.update",
+        )
+        .await;
+    let runtime = MemoryProviderRuntime::default();
+    let install_root = std::env::temp_dir().join(format!("distribution-update-{}", Uuid::now_v7()));
+    let service = PluginManagementService::new(
+        repository.clone(),
+        runtime.clone(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    )
+    .for_extension_center_console_operation("extension_center.update");
+
+    let first = service
+        .install_extension_node_plugin(InstallExtensionNodePluginCommand {
+            actor_user_id: repository.actor.user_id,
+            category: ExtensionCatalogCategory::RuntimeExtensions,
+            file_name: "session-retry-distribution-1.0.0.1flowbasepkg".to_string(),
+            package_bytes: build_provider_distribution_package_bytes("1.0.0"),
+            source_kind: "official_registry".to_string(),
+        })
+        .await
+        .unwrap();
+    let second = service
+        .install_extension_node_plugin(InstallExtensionNodePluginCommand {
+            actor_user_id: repository.actor.user_id,
+            category: ExtensionCatalogCategory::RuntimeExtensions,
+            file_name: "session-retry-distribution-1.1.0.1flowbasepkg".to_string(),
+            package_bytes: build_provider_distribution_package_bytes("1.1.0"),
+            source_kind: "official_registry".to_string(),
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(
+        runtime.loaded_installations().await,
+        vec![first.installation.id, second.installation.id]
+    );
+    assert_eq!(
+        runtime.unloaded_installations().await,
+        vec![first.installation.id]
+    );
+    let retired = repository
+        .get_installation(first.installation.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(retired.desired_state, domain::PluginDesiredState::Disabled);
+    let active = repository
+        .get_installation(second.installation.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        active.desired_state,
+        domain::PluginDesiredState::ActiveRequested
+    );
+    let _ = fs::remove_dir_all(install_root);
+}
+
+#[tokio::test]
+async fn official_catalog_type_mismatch_is_rejected_before_installation() {
+    let workspace_id = Uuid::now_v7();
+    let repository = MemoryPluginManagementRepository::new(actor_with_permissions(
+        workspace_id,
+        &["plugin_config.configure.all"],
+    ));
+    let install_root =
+        std::env::temp_dir().join(format!("catalog-type-mismatch-{}", Uuid::now_v7()));
+    let service = PluginManagementService::new(
+        repository.clone(),
+        MemoryProviderRuntime::default(),
+        Arc::new(MemoryOfficialPluginSource::default()),
+        &install_root,
+    );
+    let package_bytes = build_openai_compatible_package_bytes("0.1.0", false);
+
+    let error = service
+        .install_resolved_official_plugin(InstallResolvedOfficialPluginCommand {
+            actor_user_id: repository.actor.user_id,
+            plugin_id: "runtime-extensions:taichuy/session-retry-distribution".into(),
+            plugin_type: "provider_distribution_rule".into(),
+            minimum_host_version: "0.1.0".into(),
+            source_kind: "official_registry".into(),
+            file_name: "mismatched.1flowbasepkg".into(),
+            expected_checksum: format!("sha256:{:x}", Sha256::digest(&package_bytes)),
+            package_bytes,
+            compatibility_override: None,
+            risk_override: Some(PluginRiskOverride {
+                reason: "test acknowledges unsigned fixture".into(),
+                acknowledged_warnings: vec![PLUGIN_RISK_SIGNATURE_MISSING.into()],
+            }),
+        })
+        .await
+        .expect_err("catalog type must agree with the package manifest slot");
+
+    assert!(matches!(
+        error.downcast_ref::<ControlPlaneError>(),
+        Some(ControlPlaneError::Conflict(
+            "extension_catalog_package_mismatch"
+        ))
+    ));
+    assert!(repository.list_installations().await.unwrap().is_empty());
+    let _ = fs::remove_dir_all(install_root);
+}
 
 #[tokio::test]
 async fn uploaded_native_package_for_another_platform_is_rejected_before_install_side_effects() {

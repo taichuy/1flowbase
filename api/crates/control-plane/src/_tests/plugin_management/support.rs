@@ -63,8 +63,8 @@ mod source;
 
 pub(crate) use fixtures::{
     actor_with_permissions, build_capability_plugin_package_bytes,
-    create_capability_plugin_fixture, create_frontend_block_fixture,
-    create_js_dependency_pack_fixture, create_provider_fixture,
+    build_provider_distribution_package_bytes, create_capability_plugin_fixture,
+    create_frontend_block_fixture, create_js_dependency_pack_fixture, create_provider_fixture,
 };
 pub(super) use fixtures::{
     build_openai_compatible_package_bytes,

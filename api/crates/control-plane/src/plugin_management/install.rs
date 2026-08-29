@@ -247,7 +247,8 @@ where
         RoutedPluginPackageKind::HostExtension => domain::ExtensionCategory::HostExtensions,
         RoutedPluginPackageKind::ModelProviderRuntime
         | RoutedPluginPackageKind::DataSourceRuntime
-        | RoutedPluginPackageKind::NetworkEgressProviderRuntime => {
+        | RoutedPluginPackageKind::NetworkEgressProviderRuntime
+        | RoutedPluginPackageKind::ProviderDistributionRuleRuntime => {
             domain::ExtensionCategory::RuntimeExtensions
         }
         RoutedPluginPackageKind::CapabilityPlugin => domain::ExtensionCategory::CapabilityPlugins,
@@ -670,7 +671,7 @@ where
         if expected_category != command.category {
             return Err(ControlPlaneError::InvalidInput("extension_catalog_category").into());
         }
-        route_plugin_package(&intake.manifest)?;
+        let package_kind = route_plugin_package(&intake.manifest)?;
         let install = self
             .install_intake_result(
                 command.actor_user_id,
@@ -691,6 +692,27 @@ where
             installation_id: install.installation.id,
         })
         .await?;
+        if package_kind == RoutedPluginPackageKind::ProviderDistributionRuleRuntime {
+            let previous = self
+                .repository
+                .list_installations()
+                .await?
+                .into_iter()
+                .filter(|candidate| {
+                    candidate.id != install.installation.id
+                        && candidate.provider_code == install.installation.provider_code
+                        && candidate.metadata_json["plugin_type"] == "provider_distribution_rule"
+                        && candidate.desired_state == domain::PluginDesiredState::ActiveRequested
+                })
+                .collect::<Vec<_>>();
+            for candidate in previous {
+                self.disable_plugin(DisablePluginCommand {
+                    actor_user_id: command.actor_user_id,
+                    installation_id: candidate.id,
+                })
+                .await?;
+            }
+        }
         let installation = self
             .repository
             .get_installation(install.installation.id)
@@ -765,7 +787,11 @@ where
         );
         let risk_override =
             validate_plugin_risk_override(&risk_warnings, command.risk_override.as_ref())?;
-        self.ensure_console_package_kind(route_plugin_package(&intake.manifest)?)?;
+        let package_kind = route_plugin_package(&intake.manifest)?;
+        if package_kind.as_plugin_type() != entry.plugin_type {
+            return Err(ControlPlaneError::Conflict("extension_catalog_package_mismatch").into());
+        }
+        self.ensure_console_package_kind(package_kind)?;
         let result = async {
             let mut detail_json = json!({
                 "install_kind": "official_source",
@@ -847,7 +873,11 @@ where
         );
         let risk_override =
             validate_plugin_risk_override(&risk_warnings, command.risk_override.as_ref())?;
-        self.ensure_console_package_kind(route_plugin_package(&intake.manifest)?)?;
+        let package_kind = route_plugin_package(&intake.manifest)?;
+        if package_kind.as_plugin_type() != command.plugin_type {
+            return Err(ControlPlaneError::Conflict("extension_catalog_package_mismatch").into());
+        }
+        self.ensure_console_package_kind(package_kind)?;
         let mut detail_json = json!({
             "install_kind": "official_extension_catalog",
             "plugin_id": command.plugin_id,
@@ -961,6 +991,10 @@ where
         );
         let risk_override =
             validate_plugin_risk_override(&risk_warnings, command.risk_override.as_ref())?;
+        let package_kind = route_plugin_package(&intake.manifest)?;
+        if package_kind.as_plugin_type() != entry.plugin_type {
+            return Err(ControlPlaneError::Conflict("extension_catalog_package_mismatch").into());
+        }
         let mut detail_json = json!({
             "install_kind": "extension_center_official_install",
             "plugin_id": command.artifact_id,
@@ -1475,6 +1509,67 @@ where
                             plugin_install_audit_detail(&installation, &detail_json, false),
                         ))
                         .await;
+                    Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
+                        installation,
+                        true,
+                    ))
+                }
+                RoutedPluginPackageKind::ProviderDistributionRuleRuntime => {
+                    let manifest = load_plugin_manifest(&install_path)?;
+                    let mut metadata_json = json!({
+                        "plugin_type": "provider_distribution_rule",
+                        "slot_code": "provider_distribution_rule",
+                    });
+                    merge_install_detail_metadata(&mut metadata_json, &detail_json);
+                    let installation = commit_prepared_installation(
+                        &self.repository,
+                        &self.node_id,
+                        PreparedPluginInstallationInput {
+                            installation_id: Uuid::now_v7(),
+                            provider_code: stable_plugin_unique_identifier(&manifest.plugin_id),
+                            plugin_id: manifest.versioned_plugin_id().map_err(map_framework_error)?,
+                            plugin_version: manifest.version.clone(),
+                            contract_version: manifest.contract_version.clone(),
+                            protocol: manifest.runtime.protocol.clone(),
+                            display_name: manifest.display_name.clone(),
+                            source_kind: source_metadata.source_kind.clone(),
+                            trust_level: source_metadata.trust_level.clone(),
+                            verification_status: domain::PluginVerificationStatus::Valid,
+                            desired_state: domain::PluginDesiredState::Disabled,
+                            runtime_status: domain::PluginRuntimeStatus::Inactive,
+                            availability_status: derive_availability_status(
+                                domain::PluginDesiredState::Disabled,
+                                domain::PluginArtifactStatus::Ready,
+                                domain::PluginRuntimeStatus::Inactive,
+                            ),
+                            package_path: source_metadata
+                                .package_bytes
+                                .as_ref()
+                                .map(|_| package_archive_path.display().to_string()),
+                            installed_path: install_path.display().to_string(),
+                            checksum: source_metadata.checksum.clone(),
+                            manifest_fingerprint: Some(manifest_fingerprint),
+                            signature_status: source_metadata.signature_status.clone(),
+                            signature_algorithm: source_metadata.signature_algorithm.clone(),
+                            signing_key_id: source_metadata.signing_key_id.clone(),
+                            last_load_error: None,
+                            metadata_json,
+                            actor_user_id: command.actor_user_id,
+                        },
+                        &manifest,
+                        None,
+                    )
+                    .await?;
+                    self.repository
+                        .append_audit_log(&audit_log(
+                            Some(actor.current_workspace_id),
+                            Some(command.actor_user_id),
+                            "plugin_installation",
+                            Some(installation.id),
+                            "plugin.installed",
+                            plugin_install_audit_detail(&installation, &detail_json, false),
+                        ))
+                        .await?;
                     Ok::<(domain::PluginInstallationRecord, bool), anyhow::Error>((
                         installation,
                         true,

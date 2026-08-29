@@ -8,7 +8,21 @@ pub enum RoutedPluginPackageKind {
     ModelProviderRuntime,
     DataSourceRuntime,
     NetworkEgressProviderRuntime,
+    ProviderDistributionRuleRuntime,
     CapabilityPlugin,
+}
+
+impl RoutedPluginPackageKind {
+    pub fn as_plugin_type(self) -> &'static str {
+        match self {
+            Self::HostExtension => "host_extension",
+            Self::ModelProviderRuntime => "model_provider",
+            Self::DataSourceRuntime => "data_source",
+            Self::NetworkEgressProviderRuntime => "network_egress_provider",
+            Self::ProviderDistributionRuleRuntime => "provider_distribution_rule",
+            Self::CapabilityPlugin => "capability_plugin",
+        }
+    }
 }
 
 pub fn route_plugin_package(
@@ -17,25 +31,16 @@ pub fn route_plugin_package(
     match manifest.consumption_kind {
         PluginConsumptionKind::HostExtension => Ok(RoutedPluginPackageKind::HostExtension),
         PluginConsumptionKind::CapabilityPlugin => Ok(RoutedPluginPackageKind::CapabilityPlugin),
-        PluginConsumptionKind::RuntimeExtension => {
-            if manifest
-                .slot_codes
-                .iter()
-                .any(|slot| slot == "model_provider")
-            {
-                return Ok(RoutedPluginPackageKind::ModelProviderRuntime);
+        PluginConsumptionKind::RuntimeExtension => match manifest.slot_codes.as_slice() {
+            [slot] if slot == "model_provider" => Ok(RoutedPluginPackageKind::ModelProviderRuntime),
+            [slot] if slot == "data_source" => Ok(RoutedPluginPackageKind::DataSourceRuntime),
+            [slot] if slot == "network_egress_provider" => {
+                Ok(RoutedPluginPackageKind::NetworkEgressProviderRuntime)
             }
-            if manifest.slot_codes.iter().any(|slot| slot == "data_source") {
-                return Ok(RoutedPluginPackageKind::DataSourceRuntime);
+            [slot] if slot == "provider_distribution_rule" => {
+                Ok(RoutedPluginPackageKind::ProviderDistributionRuleRuntime)
             }
-            if manifest
-                .slot_codes
-                .iter()
-                .any(|slot| slot == "network_egress_provider")
-            {
-                return Ok(RoutedPluginPackageKind::NetworkEgressProviderRuntime);
-            }
-            Err(ControlPlaneError::InvalidInput("runtime_slot").into())
-        }
+            _ => Err(ControlPlaneError::InvalidInput("runtime_slot").into()),
+        },
     }
 }
