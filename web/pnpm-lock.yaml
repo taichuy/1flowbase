@@ -125,6 +125,9 @@ importers:
       '@1flowbase/ui':
         specifier: workspace:*
         version: link:../packages/ui
+      '@ant-design/colors':
+        specifier: ^8.0.1
+        version: 8.0.1
       '@ant-design/cssinjs':
         specifier: ^2.0.1
         version: 2.1.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)

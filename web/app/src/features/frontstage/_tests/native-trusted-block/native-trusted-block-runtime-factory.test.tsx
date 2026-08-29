@@ -12,6 +12,7 @@ import {
   NATIVE_TRUSTED_BLOCK_RUNTIME
 } from '@1flowbase/page-runtime';
 
+import antDesignColorsPackageJson from '@ant-design/colors/package.json';
 import antdPackageJson from 'antd/package.json';
 import antdStylePackageJson from 'antd-style/package.json';
 import dndKitCorePackageJson from '@dnd-kit/core/package.json';
@@ -33,6 +34,7 @@ import {
   getFrontstageNativeTrustedBlockRuntimeCompatibility
 } from '../../lib/native-trusted-block-runtime-factory';
 import { ANTD_STYLE_EXPORTS } from '../../lib/native-modules/antd-style-runtime';
+import { ANT_DESIGN_COLORS_EXPORTS } from '../../lib/native-modules/ant-design-colors-runtime';
 
 function createPlan(
   overrides: Partial<NativeTrustedBlockPreparePlan> = {}
@@ -121,6 +123,57 @@ describe('frontstage native trusted block runtime factory', () => {
       /import\s+\*\s+as\s+antdStyleModule\s+from\s+['"]antd-style['"]/u
     );
     expect(registrySource).toContain('loadAntdStyleModule');
+  });
+
+  test('I1932-AC-001/002/006 compiles and lazily resolves the @ant-design/colors package root only', async () => {
+    const registry = createFrontstageNativeReactModuleRegistry();
+    const source = `import { cyan, generate, presetPalettes } from '@ant-design/colors';
+
+export default function Block() {
+  void cyan;
+  void generate;
+  void presetPalettes;
+  return <div />;
+}`;
+
+    expect(compileNativeReactComponent(source, registry.definitions).ok).toBe(
+      true
+    );
+    expect(
+      registry.definitions.find(
+        ({ module_source }) => module_source === '@ant-design/colors'
+      )
+    ).toEqual({
+      module_source: '@ant-design/colors',
+      exports: ANT_DESIGN_COLORS_EXPORTS
+    });
+    const [first, second] = await Promise.all([
+      registry.load('@ant-design/colors'),
+      registry.load('@ant-design/colors')
+    ]);
+    expect(first).toBe(second);
+    expect(first).toEqual(
+      expect.objectContaining({
+        cyan: expect.any(Array),
+        generate: expect.any(Function),
+        presetPalettes: expect.any(Object)
+      })
+    );
+    await expect(
+      registry.load('@ant-design/colors/es/generate')
+    ).rejects.toMatchObject({ code: 'module_not_registered' });
+
+    const registrySource = readFileSync(
+      join(
+        process.cwd(),
+        'src/features/frontstage/lib/native-modules/registry.ts'
+      ),
+      'utf8'
+    );
+    expect(registrySource).not.toMatch(
+      /import\s+\*\s+as\s+antDesignColorsModule\s+from\s+['"]@ant-design\/colors['"]/u
+    );
+    expect(registrySource).toContain('loadAntDesignColorsModule');
   });
 
   test('AC-002 exposes every installed Ant Design ES module source', async () => {
@@ -253,6 +306,14 @@ export default function Block() {
           packageVersion: uiPackageJson.version
         }
       },
+      lazyModules: {
+        '@ant-design/colors': {
+          importSource: '@ant-design/colors',
+          hostDependencyRange:
+            appPackageJson.dependencies['@ant-design/colors'],
+          packageVersion: antDesignColorsPackageJson.version
+        }
+      },
       moduleDomains: {
         '@dnd-kit': {
           packages: [
@@ -283,7 +344,7 @@ export default function Block() {
         }
       }
     });
-    expect(manifest.contractVersion).toBe('1.2.0');
+    expect(manifest.contractVersion).toBe('1.3.0');
   });
 
   test('evaluates valid non-JSX source through host modules and renders through the surface portal', async () => {

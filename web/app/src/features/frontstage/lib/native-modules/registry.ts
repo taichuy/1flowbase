@@ -21,6 +21,10 @@ import {
   type NativeTrustedBlockInjectedModuleMap
 } from '@1flowbase/page-runtime';
 
+import {
+  ANT_DESIGN_COLORS_EXPORTS,
+  loadAntDesignColorsModule
+} from './ant-design-colors-runtime';
 import { ANTD_STYLE_EXPORTS, loadAntdStyleModule } from './antd-style-runtime';
 import { NativeBlockAffix } from './native-affix-runtime';
 import { NativeBlockAnchor } from './native-anchor-runtime';
@@ -83,6 +87,9 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
       module: await loadDndKitModule(module_source)
     }))
   ),
+  registration('@ant-design/colors', ANT_DESIGN_COLORS_EXPORTS, async () => ({
+    module: await loadAntDesignColorsModule()
+  })),
   registration('antd-style', ANTD_STYLE_EXPORTS, async () => ({
     module: await loadAntdStyleModule()
   })),

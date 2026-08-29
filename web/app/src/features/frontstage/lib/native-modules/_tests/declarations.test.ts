@@ -45,6 +45,21 @@ void CSS;`
     expect(diagnostics).toEqual([]);
   });
 
+  test('I1932-AC-003 type-checks @ant-design/colors from resolved package declarations', () => {
+    const diagnostics = typeCheckSource({
+      extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+      source: `import { cyan, generate, presetPalettes } from '@ant-design/colors';
+import type { Palette } from '@ant-design/colors';
+
+const generated: Palette = generate('#1677ff');
+void cyan;
+void generated;
+void presetPalettes;`
+    });
+
+    expect(diagnostics).toEqual([]);
+  });
+
   test('AC-004 fails explicitly when a dependency declaration cannot resolve', () => {
     expect(() =>
       collectNativeModuleDeclarations({

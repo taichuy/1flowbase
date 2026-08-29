@@ -1,7 +1,8 @@
 export const FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES = [
   'react',
   'react/jsx-runtime',
-  'antd'
+  'antd',
+  '@ant-design/colors'
 ] as const;
 
 export function isFrontstageNativeReactResolvedDeclarationSource(

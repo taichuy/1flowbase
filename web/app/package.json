@@ -15,6 +15,7 @@
     "@1flowbase/rich-text": "workspace:*",
     "@1flowbase/shared-types": "workspace:*",
     "@1flowbase/ui": "workspace:*",
+    "@ant-design/colors": "^8.0.1",
     "@ant-design/cssinjs": "^2.0.1",
     "@ant-design/icons": "^6.1.0",
     "@ant-design/x": "2.9.0",
