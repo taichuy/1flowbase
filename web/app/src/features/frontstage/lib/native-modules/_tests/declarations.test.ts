@@ -74,6 +74,22 @@ void output;`
     expect(diagnostics).toEqual([]);
   });
 
+  test('I1933-AC-004d type-checks dayjs plugins and runtime-only locales', () => {
+    const diagnostics = typeCheckSource({
+      extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+      source: `import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import zhCn from 'dayjs/locale/zh-cn';
+
+dayjs.extend(utc);
+dayjs.locale(zhCn.name);
+const output: string = dayjs.utc('2026-01-01').format('YYYY-MM-DD');
+void output;`
+    });
+
+    expect(diagnostics).toEqual([]);
+  });
+
   test('AC-004 fails explicitly when a dependency declaration cannot resolve', () => {
     expect(() =>
       collectNativeModuleDeclarations({

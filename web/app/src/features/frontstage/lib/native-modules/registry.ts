@@ -11,6 +11,10 @@ import {
   DND_KIT_MODULE_DEFINITIONS,
   loadDndKitModule
 } from 'virtual:1flowbase-native-dnd-kit-modules';
+import {
+  DAYJS_MODULE_DEFINITIONS,
+  loadDayjsModule
+} from 'virtual:1flowbase-native-dayjs-modules';
 
 import {
   createNativeReactModuleRegistry,
@@ -26,7 +30,6 @@ import {
   loadAntDesignColorsModule
 } from './ant-design-colors-runtime';
 import { ANTD_STYLE_EXPORTS, loadAntdStyleModule } from './antd-style-runtime';
-import { DAYJS_EXPORTS, loadDayjsModule } from './dayjs-runtime';
 import { NativeBlockAffix } from './native-affix-runtime';
 import { NativeBlockAnchor } from './native-anchor-runtime';
 import { NativeBlockDropdown } from './native-dropdown-runtime';
@@ -91,9 +94,11 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   registration('@ant-design/colors', ANT_DESIGN_COLORS_EXPORTS, async () => ({
     module: await loadAntDesignColorsModule()
   })),
-  registration('dayjs', DAYJS_EXPORTS, async () => ({
-    module: await loadDayjsModule()
-  })),
+  ...DAYJS_MODULE_DEFINITIONS.map(({ module_source, exports }) =>
+    registration(module_source, exports, async () => ({
+      module: await loadDayjsModule(module_source)
+    }))
+  ),
   registration('antd-style', ANTD_STYLE_EXPORTS, async () => ({
     module: await loadAntdStyleModule()
   })),

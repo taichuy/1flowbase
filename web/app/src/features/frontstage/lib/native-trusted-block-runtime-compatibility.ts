@@ -2,7 +2,7 @@ import antDesignColorsPackageJson from '@ant-design/colors/package.json';
 import antdPackageJson from 'antd/package.json';
 import antdStylePackageJson from 'antd-style/package.json';
 import appPackageJson from '../../../../package.json';
-import dayjsPackageJson from 'dayjs/package.json';
+import { DAYJS_PACKAGE } from 'virtual:1flowbase-native-dayjs-modules';
 import { DND_KIT_PACKAGES } from 'virtual:1flowbase-native-dnd-kit-modules';
 import {
   NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS,
@@ -13,7 +13,7 @@ import reactPackageJson from 'react/package.json';
 import uiPackageJson from '../../../../../packages/ui/package.json';
 
 export const FRONTSTAGE_NATIVE_TRUSTED_BLOCK_COMPATIBILITY_CONTRACT_VERSION =
-  '1.4.0';
+  '1.5.0';
 
 type FrontstageNativeTrustedBlockAllowedImport =
   (typeof NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS)[number];
@@ -47,11 +47,16 @@ export interface FrontstageNativeTrustedBlockRuntimeCompatibilityManifest {
   >;
   lazyModules: {
     '@ant-design/colors': FrontstageNativeTrustedBlockRuntimeCompatibilityModule<'@ant-design/colors'>;
-    dayjs: FrontstageNativeTrustedBlockRuntimeCompatibilityModule<'dayjs'>;
   };
   moduleDomains: {
     '@dnd-kit': {
       packages: FrontstageNativeTrustedBlockRuntimeCompatibilityDomainPackage[];
+    };
+    dayjs: {
+      packageName: string;
+      hostDependencyRange: string;
+      packageVersion: string;
+      moduleCount: number;
     };
   };
 }
@@ -98,11 +103,6 @@ export function getFrontstageNativeTrustedBlockRuntimeCompatibility(): Frontstag
         importSource: '@ant-design/colors',
         hostDependencyRange: appPackageJson.dependencies['@ant-design/colors'],
         packageVersion: antDesignColorsPackageJson.version
-      },
-      dayjs: {
-        importSource: 'dayjs',
-        hostDependencyRange: appPackageJson.dependencies.dayjs,
-        packageVersion: dayjsPackageJson.version
       }
     },
     moduleDomains: {
@@ -112,6 +112,12 @@ export function getFrontstageNativeTrustedBlockRuntimeCompatibility(): Frontstag
           hostDependencyRange: hostDependencies[package_name] ?? null,
           packageVersion: package_version
         }))
+      },
+      dayjs: {
+        packageName: DAYJS_PACKAGE.package_name,
+        hostDependencyRange: appPackageJson.dependencies.dayjs,
+        packageVersion: DAYJS_PACKAGE.package_version,
+        moduleCount: DAYJS_PACKAGE.module_count
       }
     }
   };

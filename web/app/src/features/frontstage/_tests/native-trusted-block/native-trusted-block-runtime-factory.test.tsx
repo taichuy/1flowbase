@@ -177,7 +177,7 @@ export default function Block() {
     expect(registrySource).toContain('loadAntDesignColorsModule');
   });
 
-  test('I1933-AC-001/003/004 compiles and lazily resolves the dayjs package root only', async () => {
+  test('I1933-AC-001/003/004b/004c compiles and lazily resolves the installed dayjs module domain', async () => {
     const registry = createFrontstageNativeReactModuleRegistry();
     const source = `import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
@@ -206,17 +206,32 @@ export default function Block() {
     expect(first).toBe(second);
     expect(first).toHaveProperty('default', expect.any(Function));
 
-    for (const deniedSource of ['dayjs/plugin/utc', 'dayjs/locale/zh-cn']) {
+    for (const allowedSource of [
+      'dayjs/plugin/utc',
+      'dayjs/plugin/utc.js',
+      'dayjs/locale/zh-cn',
+      'dayjs/locale/zh-cn.js'
+    ]) {
       expect(
         compileNativeReactComponent(
-          `import denied from '${deniedSource}'; export default () => <div>{String(denied)}</div>;`,
+          `import dependency from '${allowedSource}'; export default () => <div>{String(dependency)}</div>;`,
           registry.definitions
         ).ok
-      ).toBe(false);
-      await expect(registry.load(deniedSource)).rejects.toMatchObject({
-        code: 'module_not_registered'
-      });
+      ).toBe(true);
+      await expect(registry.load(allowedSource)).resolves.toHaveProperty(
+        'default'
+      );
     }
+
+    expect(
+      compileNativeReactComponent(
+        `import missing from 'dayjs/plugin/not-installed'; export default () => <div>{String(missing)}</div>;`,
+        registry.definitions
+      ).ok
+    ).toBe(false);
+    await expect(
+      registry.load('dayjs/plugin/not-installed')
+    ).rejects.toMatchObject({ code: 'module_not_registered' });
 
     const registrySource = readFileSync(
       join(
@@ -367,13 +382,6 @@ export default function Block() {
           hostDependencyRange:
             appPackageJson.dependencies['@ant-design/colors'],
           packageVersion: antDesignColorsPackageJson.version
-        },
-        dayjs: {
-          importSource: 'dayjs',
-          hostDependencyRange: (
-            appPackageJson.dependencies as Record<string, string>
-          ).dayjs,
-          packageVersion: dayjsPackageJson.version
         }
       },
       moduleDomains: {
@@ -403,10 +411,19 @@ export default function Block() {
               packageVersion: dndKitUtilitiesPackageJson.version
             }
           ]
+        },
+        dayjs: {
+          packageName: 'dayjs',
+          hostDependencyRange: (
+            appPackageJson.dependencies as Record<string, string>
+          ).dayjs,
+          packageVersion: dayjsPackageJson.version,
+          moduleCount: expect.any(Number)
         }
       }
     });
-    expect(manifest.contractVersion).toBe('1.4.0');
+    expect(manifest.moduleDomains.dayjs.moduleCount).toBeGreaterThan(100);
+    expect(manifest.contractVersion).toBe('1.5.0');
   });
 
   test('evaluates valid non-JSX source through host modules and renders through the surface portal', async () => {

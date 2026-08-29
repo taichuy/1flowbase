@@ -59,22 +59,31 @@ export function createFrontendModuleExtraLib(
   exports: readonly string[]
 ): BlockSourceExtraLib {
   const dndKitInternalModule = isDndKitInternalModule(moduleSource);
+  const dayjsRuntimeModule = moduleSource.startsWith('dayjs/');
   return {
     source: moduleSource,
     filePath: dndKitInternalModule
       ? `file:///node_modules/.1flowbase-native/dnd-kit/${encodeURIComponent(moduleSource)}.d.ts`
-      : `file:///node_modules/${moduleSource}/index.d.ts`,
+      : dayjsRuntimeModule
+        ? `file:///node_modules/.1flowbase-native/dayjs/${encodeURIComponent(moduleSource)}.d.ts`
+        : `file:///node_modules/${moduleSource}/index.d.ts`,
     content: dndKitInternalModule
       ? createDndKitInternalModuleDeclaration(moduleSource)
-      : moduleSource === '@1flowbase/block-sdk'
-        ? BLOCK_SDK_DECLARATIONS
-        : moduleSource === 'antd-style'
-          ? `${ANTD_STYLE_DECLARATIONS}${createGenericModuleDeclarations(
-              moduleSource,
-              exports.filter((exportName) => exportName !== 'useResponsive')
-            )}`
-          : createGenericModuleDeclarations(moduleSource, exports)
+      : dayjsRuntimeModule
+        ? createDayjsRuntimeModuleDeclaration(moduleSource)
+        : moduleSource === '@1flowbase/block-sdk'
+          ? BLOCK_SDK_DECLARATIONS
+          : moduleSource === 'antd-style'
+            ? `${ANTD_STYLE_DECLARATIONS}${createGenericModuleDeclarations(
+                moduleSource,
+                exports.filter((exportName) => exportName !== 'useResponsive')
+              )}`
+            : createGenericModuleDeclarations(moduleSource, exports)
   };
+}
+
+function createDayjsRuntimeModuleDeclaration(moduleSource: string): string {
+  return `declare module '${moduleSource}' {\n  const defaultExport: any;\n  export default defaultExport;\n}\n`;
 }
 
 function isDndKitInternalModule(moduleSource: string): boolean {

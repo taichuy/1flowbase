@@ -28,3 +28,19 @@ declare module 'virtual:1flowbase-native-dnd-kit-modules' {
     moduleSource: string
   ): Promise<Record<string, unknown>>;
 }
+
+declare module 'virtual:1flowbase-native-dayjs-modules' {
+  export const DAYJS_MODULE_DEFINITIONS: readonly {
+    module_source: string;
+    exports: string[];
+  }[];
+  export const DAYJS_DECLARATION_SOURCES: readonly string[];
+  export const DAYJS_PACKAGE: Readonly<{
+    package_name: string;
+    package_version: string;
+    module_count: number;
+  }>;
+  export function loadDayjsModule(
+    moduleSource: string
+  ): Promise<Record<string, unknown>>;
+}

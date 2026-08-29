@@ -12,6 +12,10 @@ import {
   collectDndKitModuleSources,
   nativeDndKitModulesPlugin
 } from './build/native-dnd-kit-modules';
+import {
+  collectDayjsModuleSources,
+  nativeDayjsModulesPlugin
+} from './build/native-dayjs-modules';
 import { FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES } from './src/features/frontstage/lib/native-modules/resolved-dependency-sources';
 
 const reactDraggableBrowserDefines = {
@@ -27,6 +31,12 @@ const nativeDndKitModuleInventory = collectDndKitModuleSources({
 const nativeDndKitPackageRoots = [
   ...new Set(nativeDndKitModuleInventory.map(({ packageName }) => packageName))
 ];
+const nativeDayjsModuleInventory = collectDayjsModuleSources({
+  projectRoot: appRoot
+});
+const nativeDayjsDeclarationSources = nativeDayjsModuleInventory
+  .filter(({ hasDeclaration }) => hasDeclaration)
+  .map(({ moduleSource }) => moduleSource);
 
 function manualChunks(id: string) {
   if (!id.includes('/node_modules/')) {
@@ -101,11 +111,13 @@ export default defineConfig(({ mode }) => {
     plugins: [
       nativeAntDesignEsModulesPlugin(),
       nativeDndKitModulesPlugin({ inventory: nativeDndKitModuleInventory }),
+      nativeDayjsModulesPlugin({ inventory: nativeDayjsModuleInventory }),
       nativeModuleDeclarationsPlugin({
         moduleSources: [
           ...FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES,
           ...nativeAntDesignEsModuleSources,
-          ...nativeDndKitPackageRoots
+          ...nativeDndKitPackageRoots,
+          ...nativeDayjsDeclarationSources
         ],
         projectRoot: appRoot
       }),
