@@ -99,6 +99,7 @@ test('Delivery 1944 exposes the approved typed interface facade without infrastr
     'invocation',
     'principal',
     'registry',
+    'stream',
     '_tests',
   ]);
   assert.deepEqual(publicModules, []);
