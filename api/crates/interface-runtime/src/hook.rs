@@ -12,7 +12,6 @@ pub struct InterfaceHookContext {
     principal: PrincipalSummary,
     invocation_id: InvocationId,
     graph_fingerprint: GraphFingerprint,
-    extension_plan_fingerprint: ExtensionPlanFingerprint,
     registry_fingerprint: RegistryFingerprint,
 }
 
@@ -119,6 +118,7 @@ where
     O: InterfaceContract,
 {
     graph_fingerprint: GraphFingerprint,
+    extension_plan_fingerprint: ExtensionPlanFingerprint,
     before: Vec<Arc<dyn InterfaceBeforeHook<I>>>,
     after: Vec<Arc<dyn InterfaceAfterHook<O>>>,
     failure: Vec<Arc<dyn InterfaceFailureHook>>,

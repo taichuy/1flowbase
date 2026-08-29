@@ -16,11 +16,10 @@ use crate::{
     InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceIdentity,
     InterfaceInvocationError, InterfaceInvocationKernel, InterfaceInvocationStage,
     InterfaceLifecycle, InterfaceOwner, InterfaceProtocol, InterfaceScope, InterfaceStreamHandler,
-    InterfaceStreamHandlerFuture, InterfaceStreamTerminal, InterfaceTargetFailure,
-    InterfaceVersion, InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage,
-    PluginIdentity, PrincipalProfile, ProtocolBinding, ProtocolProjection, RegistryCompiler,
-    RouteIdentity, RuntimeGeneration, RuntimeTargetIdentity, TargetReference, UserPrincipal,
-    WorkerGeneration,
+    InterfaceStreamHandlerFuture, InterfaceStreamTerminal, InterfaceVersion, InvocationAdapterPlan,
+    InvocationEnvelope, InvocationId, InvocationLineage, PluginIdentity, PrincipalProfile,
+    ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity, RuntimeGeneration,
+    RuntimeTargetIdentity, TargetReference, UserPrincipal, WorkerGeneration,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
