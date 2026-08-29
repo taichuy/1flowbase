@@ -956,6 +956,7 @@ struct NodePluginInspection {
     organization: String,
     artifact_id: String,
     plugin_id: String,
+    plugin_type: &'static str,
     version: String,
     minimum_host_version: String,
     signature_status: domain::ExtensionSignatureStatus,
@@ -1291,6 +1292,8 @@ async fn inspect_node_plugin(
     .await?;
     let manifest = intake.manifest.clone();
     let managed_schema = ManagedSchemaDeclaration::from_manifest(&manifest)?;
+    let plugin_type =
+        control_plane::plugin_management::route_plugin_package(&manifest)?.as_plugin_type();
     let artifact_id = manifest.plugin_code()?.to_string();
     let category = match manifest.consumption_kind {
         PluginConsumptionKind::HostExtension => ExtensionCatalogCategory::HostExtensions,
@@ -1302,6 +1305,7 @@ async fn inspect_node_plugin(
         organization: manifest.publisher_namespace,
         artifact_id,
         plugin_id: manifest.plugin_id,
+        plugin_type,
         version: manifest.version,
         minimum_host_version: manifest.minimum_host_version,
         signature_status: signature_status_from_intake(&intake.signature_status),
@@ -1470,11 +1474,30 @@ async fn install_or_update_official_extension(
             source_kind,
         )
         .await?;
+        let catalog_plugin_id = located
+            .entry
+            .source
+            .metadata
+            .get("plugin_id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+                "official_plugin_id",
+            ))?;
+        let catalog_plugin_type = located
+            .entry
+            .source
+            .metadata
+            .get("plugin_type")
+            .and_then(serde_json::Value::as_str)
+            .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+                "official_plugin_type",
+            ))?;
+        let manifest_plugin_id = format!("{}.{}", inspection.organization, inspection.plugin_id);
         if inspection.category != category
             || inspection.organization != located.entry.organization
             || inspection.version != located.entry.version
-            || inspection.artifact_id != located.entry.artifact
-            || inspection.plugin_id != located.entry.artifact
+            || manifest_plugin_id != catalog_plugin_id
+            || inspection.plugin_type != catalog_plugin_type
         {
             return Err(control_plane::errors::ControlPlaneError::InvalidInput(
                 "extension_artifact_identity",

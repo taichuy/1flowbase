@@ -49,6 +49,8 @@ impl EffectiveProviderDistributionSnapshot {
         contribution: ProviderDistributionRuleContribution,
     ) -> Result<Self> {
         let mut contributions = self.contributions.clone();
+        let stable_plugin_id = stable_runtime_plugin_id(plugin_id);
+        contributions.retain(|_, (owner, _)| stable_runtime_plugin_id(owner) != stable_plugin_id);
         if contributions
             .get(&contribution.rule_id)
             .is_some_and(|(owner, _)| owner != plugin_id)
@@ -144,6 +146,13 @@ impl EffectiveProviderDistributionSnapshot {
     }
 }
 
+fn stable_runtime_plugin_id(plugin_id: &str) -> &str {
+    plugin_id
+        .rsplit_once('@')
+        .map(|(stable, _)| stable)
+        .unwrap_or(plugin_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -229,5 +238,37 @@ mod tests {
         assert!(first
             .with_contribution("plugin-b@1", contribution("@taichuy/session_retry"),)
             .is_err());
+    }
+
+    #[test]
+    fn newer_version_of_same_runtime_replaces_the_frozen_rule_owner() {
+        let first = EffectiveProviderDistributionSnapshot::compile(BTreeMap::from([(
+            "@taichuy/session_retry".to_string(),
+            (
+                "session_retry_distribution@1.0.0".to_string(),
+                contribution("@taichuy/session_retry"),
+            ),
+        )]))
+        .unwrap();
+        let next = first
+            .with_contribution(
+                "session_retry_distribution@1.1.0",
+                ProviderDistributionRuleContribution {
+                    rule_version: "1.1.0".to_string(),
+                    ..contribution("@taichuy/session_retry")
+                },
+            )
+            .unwrap();
+
+        let target = next
+            .resolve_runtime(
+                "@taichuy/session_retry",
+                "1.1.0",
+                PROVIDER_DISTRIBUTION_RULE_CONTRACT_V1,
+                &BTreeMap::new(),
+                next.fingerprint(),
+            )
+            .unwrap();
+        assert_eq!(target, "session_retry_distribution@1.1.0");
     }
 }
