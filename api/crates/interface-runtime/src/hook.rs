@@ -3,8 +3,8 @@ use std::{future::Future, pin::Pin, sync::Arc};
 use thiserror::Error;
 
 use crate::{
-    GraphFingerprint, InterfaceContract, InterfaceInvocationTerminal, InvocationId,
-    PrincipalSummary, RegistryFingerprint,
+    ExtensionPlanFingerprint, GraphFingerprint, InterfaceContract, InterfaceInvocationTerminal,
+    InvocationId, PrincipalSummary, RegistryFingerprint,
 };
 
 #[derive(Clone, Debug)]
@@ -12,6 +12,7 @@ pub struct InterfaceHookContext {
     principal: PrincipalSummary,
     invocation_id: InvocationId,
     graph_fingerprint: GraphFingerprint,
+    extension_plan_fingerprint: ExtensionPlanFingerprint,
     registry_fingerprint: RegistryFingerprint,
 }
 
@@ -129,9 +130,13 @@ where
     I: InterfaceContract,
     O: InterfaceContract,
 {
-    pub fn new(graph_fingerprint: GraphFingerprint) -> Self {
+    pub fn new(
+        graph_fingerprint: GraphFingerprint,
+        extension_plan_fingerprint: ExtensionPlanFingerprint,
+    ) -> Self {
         Self {
             graph_fingerprint,
+            extension_plan_fingerprint,
             before: Vec::new(),
             after: Vec::new(),
             failure: Vec::new(),
@@ -161,6 +166,10 @@ where
 
     pub fn graph_fingerprint(&self) -> &GraphFingerprint {
         &self.graph_fingerprint
+    }
+
+    pub fn extension_plan_fingerprint(&self) -> &ExtensionPlanFingerprint {
+        &self.extension_plan_fingerprint
     }
 
     pub(crate) async fn run_before(

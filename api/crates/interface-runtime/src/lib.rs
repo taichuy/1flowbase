@@ -6,6 +6,7 @@ mod identity;
 mod invocation;
 mod principal;
 mod registry;
+mod stream;
 
 pub use hook::{
     InterfaceAfterHook, InterfaceAfterHookFuture, InterfaceBeforeHook, InterfaceBeforeHookError,
@@ -46,11 +47,17 @@ pub use registry::{
     InvocationAdapterPlan, ProtocolBinding, ProtocolProjection, RegistryCompilationError,
     RegistryCompiler,
 };
+pub use stream::{
+    interface_stream_channel, InterfaceEventStream, InterfaceStreamCompletion,
+    InterfaceStreamHandler, InterfaceStreamHandlerFuture, InterfaceStreamInvocation,
+    InterfaceStreamPublisher, InterfaceStreamTerminalOutcome,
+};
 
 #[cfg(test)]
 mod _tests;
 pub use extension::{
-    compile_effective_handler, InterfaceExtensionCompilationError, InterfaceExtensionFact,
-    InterfaceExtensionIsolation, InterfaceExtensionPermission, InterfaceExtensionPoint,
-    InterfaceExtensionRegistration, InterfaceExtensionTier, InterfaceHandlerCandidate,
+    compile_effective_handler, CompiledInterfaceExtensionPlan,
+    InterfaceExtensionCompilationError, InterfaceExtensionFact, InterfaceExtensionIsolation,
+    InterfaceExtensionPermission, InterfaceExtensionPoint, InterfaceExtensionRegistration,
+    InterfaceExtensionTier, InterfaceHandlerCandidate, OrderedInterfaceExtensionRegistration,
 };

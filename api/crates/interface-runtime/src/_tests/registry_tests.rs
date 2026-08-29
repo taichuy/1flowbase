@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use crate::{
     AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
-    AuthorizationOperation, BindingId, ContractIdentity, ExtensionPlanFingerprint,
-    GraphFingerprint, HandlerReference, InterfaceAccess, InterfaceAuditPolicy,
+    AuthorizationOperation, BindingId, ContractIdentity, GraphFingerprint, HandlerReference,
+    InterfaceAccess, InterfaceAuditPolicy,
     InterfaceAuthenticationPolicy, InterfaceContract, InterfaceContracts, InterfaceDefinition,
     InterfaceErrorPolicy, InterfaceExecution, InterfaceExecutionMode, InterfaceHandler,
     InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceIdentity,
@@ -116,8 +116,7 @@ fn adapter_plan() -> InvocationAdapterPlan {
     InvocationAdapterPlan::new(
         AuthenticationAdapterReference::new("test.authn").unwrap(),
         AuthorizationAdapterReference::new("test.authz").unwrap(),
-        AdmissionAdapterReference::new("test.admission").unwrap(),
-        ExtensionPlanFingerprint::new("graph:test-hooks").unwrap(),
+        Some(AdmissionAdapterReference::new("test.admission").unwrap()),
     )
 }
 
@@ -126,14 +125,13 @@ fn compiler() -> RegistryCompiler {
         GraphFingerprint::new("graph:test").unwrap(),
         [operation()],
         [owner()],
-        adapter_plan(),
     )
 }
 
 fn register_complete(compiler: &mut RegistryCompiler, id: &str, binding_id: &str, path: &str) {
     compiler.register_definition(definition(id)).unwrap();
     compiler
-        .register_binding(binding(binding_id, id, path))
+        .register_binding(binding(binding_id, id, path), adapter_plan())
         .unwrap();
     compiler
         .bind_handler::<Input, Output, TargetError, UserPrincipal>(
@@ -200,14 +198,14 @@ fn rejects_duplicate_interface_binding_and_projection_identity() {
             "http.test.read.v1",
             "test.read",
             "/api/console/test",
-        ))
+        ), adapter_plan())
         .unwrap();
     assert!(matches!(
         compiler.register_binding(binding(
             "http.test.read.v1",
             "test.read",
             "/api/console/other",
-        )),
+        ), adapter_plan()),
         Err(RegistryCompilationError::DuplicateBinding(_))
     ));
     assert!(matches!(
@@ -215,7 +213,7 @@ fn rejects_duplicate_interface_binding_and_projection_identity() {
             "http.test.other.v1",
             "test.read",
             "/api/console/test",
-        )),
+        ), adapter_plan()),
         Err(RegistryCompilationError::DuplicateProjection(_))
     ));
 }
@@ -231,7 +229,7 @@ fn rejects_missing_or_mismatched_typed_handler_and_missing_binding() {
             "http.test.missing.v1",
             "test.missing",
             "/api/console/missing",
-        ))
+        ), adapter_plan())
         .unwrap();
     assert!(matches!(
         missing.compile(),
@@ -247,7 +245,7 @@ fn rejects_missing_or_mismatched_typed_handler_and_missing_binding() {
             "http.test.mismatch.v1",
             "test.mismatch",
             "/api/console/mismatch",
-        ))
+        ), adapter_plan())
         .unwrap();
     mismatch
         .bind_handler::<Input, WrongOutput, TargetError, UserPrincipal>(
@@ -284,7 +282,6 @@ fn rejects_unknown_operation_inactive_owner_and_binding_contract_or_version_mism
         GraphFingerprint::new("graph:test").unwrap(),
         Vec::<AuthorizationOperation>::new(),
         [owner()],
-        adapter_plan(),
     );
     register_complete(
         &mut unknown_operation,
@@ -301,7 +298,6 @@ fn rejects_unknown_operation_inactive_owner_and_binding_contract_or_version_mism
         GraphFingerprint::new("graph:test").unwrap(),
         [operation()],
         Vec::<InterfaceOwner>::new(),
-        adapter_plan(),
     );
     register_complete(
         &mut inactive,
@@ -329,7 +325,7 @@ fn rejects_unknown_operation_inactive_owner_and_binding_contract_or_version_mism
             wrong_identity,
             contracts(),
             ProtocolProjection::http(RouteIdentity::new("GET", "/api/console/version").unwrap()),
-        ))
+        ), adapter_plan())
         .unwrap();
     version
         .bind_handler::<Input, Output, TargetError, UserPrincipal>(
@@ -358,7 +354,7 @@ fn rejects_unknown_operation_inactive_owner_and_binding_contract_or_version_mism
                 ContractIdentity::new("test-target-error", "1").unwrap(),
             ),
             ProtocolProjection::http(RouteIdentity::new("GET", "/api/console/contract").unwrap()),
-        ))
+        ), adapter_plan())
         .unwrap();
     contract
         .bind_handler::<Input, Output, TargetError, UserPrincipal>(
@@ -402,7 +398,7 @@ fn rejects_handler_bound_with_the_wrong_principal_profile() {
             "http.test.public.v1",
             "test.public",
             "/api/public/test",
-        ))
+        ), adapter_plan())
         .unwrap();
     compiler
         .bind_handler::<Input, Output, TargetError, UserPrincipal>(

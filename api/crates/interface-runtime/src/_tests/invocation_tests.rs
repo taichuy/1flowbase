@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::{
     AdmissionAdapterReference, ArtifactIdentity, AuthenticationAdapterReference,
     AuthorizationAdapterReference, AuthorizationOperation, BindingId, ContractIdentity,
-    DynamicInterfaceRegistry, ExecutionTargetPin, ExtensionPlanFingerprint, GraphFingerprint,
+    DynamicInterfaceRegistry, ExecutionTargetPin, GraphFingerprint,
     HandlerReference, IdempotencyKey, InterfaceAccess, InterfaceAuditPolicy,
     InterfaceAuthenticationPolicy, InterfaceAuthorizationError, InterfaceAuthorizationFuture,
     InterfaceAuthorizationPort, InterfaceAuthorizationRequest, InterfaceBeforeHook,
@@ -89,6 +89,10 @@ struct Authorization {
 }
 
 impl InterfaceAuthorizationPort for Authorization {
+    fn adapter_reference(&self) -> AuthorizationAdapterReference {
+        AuthorizationAdapterReference::new("test.authz").unwrap()
+    }
+
     fn authorize(
         &self,
         request: InterfaceAuthorizationRequest,
@@ -111,6 +115,10 @@ struct Admission {
 struct SlowAuthorization;
 
 impl InterfaceAuthorizationPort for SlowAuthorization {
+    fn adapter_reference(&self) -> AuthorizationAdapterReference {
+        AuthorizationAdapterReference::new("test.authz").unwrap()
+    }
+
     fn authorize(
         &self,
         _request: InterfaceAuthorizationRequest,
@@ -125,6 +133,10 @@ impl InterfaceAuthorizationPort for SlowAuthorization {
 struct SlowAdmission;
 
 impl InterfaceTargetAdmissionPort for SlowAdmission {
+    fn adapter_reference(&self) -> AdmissionAdapterReference {
+        AdmissionAdapterReference::new("test.admission").unwrap()
+    }
+
     fn admit(
         &self,
         _request: InterfaceTargetAdmissionRequest,
@@ -152,6 +164,10 @@ impl InterfaceHandler<Input, Output, TargetError> for SlowHandler {
 }
 
 impl InterfaceTargetAdmissionPort for Admission {
+    fn adapter_reference(&self) -> AdmissionAdapterReference {
+        AdmissionAdapterReference::new("test.admission").unwrap()
+    }
+
     fn admit(
         &self,
         _request: InterfaceTargetAdmissionRequest,
@@ -280,12 +296,14 @@ fn compiler(graph: &str) -> RegistryCompiler {
         GraphFingerprint::new(graph).unwrap(),
         [operation()],
         [owner()],
-        InvocationAdapterPlan::new(
-            AuthenticationAdapterReference::new("test.authn").unwrap(),
-            AuthorizationAdapterReference::new("test.authz").unwrap(),
-            AdmissionAdapterReference::new("test.admission").unwrap(),
-            ExtensionPlanFingerprint::new("graph:test-hooks").unwrap(),
-        ),
+    )
+}
+
+fn adapter_plan() -> InvocationAdapterPlan {
+    InvocationAdapterPlan::new(
+        AuthenticationAdapterReference::new("test.authn").unwrap(),
+        AuthorizationAdapterReference::new("test.authz").unwrap(),
+        Some(AdmissionAdapterReference::new("test.admission").unwrap()),
     )
 }
 
@@ -297,7 +315,7 @@ fn compile_snapshot(
 ) -> Arc<crate::CompiledInterfaceRegistry> {
     let mut compiler = compiler(graph);
     compiler.register_definition(definition()).unwrap();
-    compiler.register_binding(binding()).unwrap();
+    compiler.register_binding(binding(), adapter_plan()).unwrap();
     compiler
         .bind_handler::<Input, Output, TargetError, UserPrincipal>(
             &interface_id(),
@@ -315,8 +333,9 @@ fn compile_snapshot(
 fn envelope(actor: ActorContext) -> InvocationEnvelope<Input> {
     InvocationEnvelope::new(
         InvocationLineage::root(InvocationId::now_v7()),
-        interface_id(),
+        BindingId::new("http.invocation.read.v1").unwrap(),
         InterfaceProtocol::Http,
+        AuthenticationAdapterReference::new("test.authn").unwrap(),
         actor,
         None,
         Input(2),
@@ -406,8 +425,9 @@ async fn rejects_authorization_admission_target_failure_and_elapsed_deadline() {
 
     let elapsed = InvocationEnvelope::new(
         InvocationLineage::root(InvocationId::now_v7()),
-        interface_id(),
+        BindingId::new("http.invocation.read.v1").unwrap(),
         InterfaceProtocol::Http,
+        AuthenticationAdapterReference::new("test.authn").unwrap(),
         actor(true),
         Some(SystemTime::now() - Duration::from_secs(1)),
         Input(2),
@@ -436,8 +456,9 @@ async fn deadline_cancels_each_in_flight_stage() {
             Arc::clone(&snapshot),
             InvocationEnvelope::new(
                 InvocationLineage::root(InvocationId::now_v7()),
-                interface_id(),
+                BindingId::new("http.invocation.read.v1").unwrap(),
                 InterfaceProtocol::Http,
+                AuthenticationAdapterReference::new("test.authn").unwrap(),
                 actor(true),
                 deadline,
                 Input(2),
@@ -470,8 +491,9 @@ async fn deadline_cancels_each_in_flight_stage() {
         Arc::clone(&snapshot),
         InvocationEnvelope::new(
             InvocationLineage::root(InvocationId::now_v7()),
-            interface_id(),
+            BindingId::new("http.invocation.read.v1").unwrap(),
             InterfaceProtocol::Http,
+            AuthenticationAdapterReference::new("test.authn").unwrap(),
             actor(true),
             Some(SystemTime::now() + Duration::from_millis(10)),
             Input(2),
@@ -499,7 +521,7 @@ async fn deadline_cancels_each_in_flight_stage() {
 
     let mut compiler = compiler("graph:slow-handler");
     compiler.register_definition(definition()).unwrap();
-    compiler.register_binding(binding()).unwrap();
+    compiler.register_binding(binding(), adapter_plan()).unwrap();
     compiler
         .bind_handler::<Input, Output, TargetError, UserPrincipal>(
             &interface_id(),
@@ -512,8 +534,9 @@ async fn deadline_cancels_each_in_flight_stage() {
             compiler.compile().unwrap(),
             InvocationEnvelope::new(
                 InvocationLineage::root(InvocationId::now_v7()),
-                interface_id(),
+                BindingId::new("http.invocation.read.v1").unwrap(),
                 InterfaceProtocol::Http,
+                AuthenticationAdapterReference::new("test.authn").unwrap(),
                 actor(true),
                 Some(SystemTime::now() + Duration::from_millis(10)),
                 Input(2),
@@ -575,8 +598,15 @@ async fn active_invocation_uses_its_frozen_snapshot_after_candidate_publish() {
 async fn lcf_002_lcf_004_typed_hook_plan_runs_after_authorization_and_admission() {
     let events = Arc::new(Mutex::new(Vec::new()));
     let snapshot = compile_snapshot("graph:hooks", 3, false, Arc::new(Mutex::new(None)));
-    let plan =
-        TypedInterfaceHookPlan::<Input, Output>::new(GraphFingerprint::new("graph:hooks").unwrap())
+    let plan = TypedInterfaceHookPlan::<Input, Output>::new(
+        GraphFingerprint::new("graph:hooks").unwrap(),
+        snapshot
+            .plan(&BindingId::new("http.invocation.read.v1").unwrap())
+            .unwrap()
+            .extension_plan()
+            .fingerprint()
+            .clone(),
+    )
             .bind_before(Arc::new(RecordingBeforeHook {
                 name: "alpha",
                 increment: 1,
@@ -635,6 +665,12 @@ async fn lcf_006_completion_is_emitted_once_for_target_failure() {
     let snapshot = compile_snapshot("graph:failed-hooks", 0, true, Arc::new(Mutex::new(None)));
     let plan = TypedInterfaceHookPlan::<Input, Output>::new(
         GraphFingerprint::new("graph:failed-hooks").unwrap(),
+        snapshot
+            .plan(&BindingId::new("http.invocation.read.v1").unwrap())
+            .unwrap()
+            .extension_plan()
+            .fingerprint()
+            .clone(),
     )
     .bind_completion(Arc::new(RecordingCompletionHook {
         name: "terminal",
@@ -712,8 +748,9 @@ async fn dispatch_pin_retry_and_receipt_controls_are_immutable() {
     let idempotency_key = IdempotencyKey::new("request-1944").unwrap();
     let envelope = InvocationEnvelope::with_principal_and_controls(
         InvocationLineage::root(InvocationId::now_v7()),
-        interface_id(),
+        BindingId::new("http.invocation.read.v1").unwrap(),
         InterfaceProtocol::Http,
+        AuthenticationAdapterReference::new("test.authn").unwrap(),
         UserPrincipal::server_delegation(actor(true)),
         InvocationControls::new(
             None,
@@ -766,8 +803,9 @@ async fn explicit_cancellation_terminates_without_dispatch() {
     cancellation.cancel();
     let envelope = InvocationEnvelope::with_principal_and_controls(
         InvocationLineage::root(InvocationId::now_v7()),
-        interface_id(),
+        BindingId::new("http.invocation.read.v1").unwrap(),
         InterfaceProtocol::Http,
+        AuthenticationAdapterReference::new("test.authn").unwrap(),
         UserPrincipal::server_delegation(actor(true)),
         InvocationControls::new(None, cancellation, None),
         Input(2),

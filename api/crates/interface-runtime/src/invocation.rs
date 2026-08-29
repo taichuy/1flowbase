@@ -12,9 +12,11 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    ArtifactIdentity, BindingFingerprint, BindingId, CompiledInterfaceRegistry, ContractIdentity,
-    GraphFingerprint, HandlerReference, InterfaceContract, InterfaceDefinition,
-    InterfaceHandlerContext, InterfaceHookContext, InterfaceId, InterfaceTargetError,
+    AdmissionAdapterReference, ArtifactIdentity, AuthenticationAdapterReference,
+    AuthorizationAdapterReference, BindingFingerprint, BindingId, CompiledInterfaceRegistry,
+    ContractIdentity, GraphFingerprint, HandlerReference, InterfaceContract, InterfaceDefinition,
+    InterfaceHandlerContext, InterfaceHookContext, InterfaceId, InterfaceStreamCompletion,
+    InterfaceStreamInvocation, InterfaceStreamTerminalOutcome, InterfaceTargetError,
     InvocationPrincipal, PlanFingerprint, PluginIdentity, PrincipalSummary, ProtocolBinding,
     RegistryFingerprint, RuntimeGeneration, RuntimeTargetIdentity, TargetReference,
     TypedInterfaceHookPlan, UserPrincipal, WorkerGeneration,
@@ -279,6 +281,7 @@ pub enum InterfaceProtocol {
     Http,
     Mcp,
     Internal,
+    Worker,
 }
 
 pub struct InvocationEnvelope<I, P = UserPrincipal>
@@ -287,8 +290,9 @@ where
     P: InvocationPrincipal,
 {
     lineage: InvocationLineage,
-    interface_id: InterfaceId,
+    binding_id: BindingId,
     protocol: InterfaceProtocol,
+    authentication_adapter: AuthenticationAdapterReference,
     principal: P,
     controls: InvocationControls,
     input: I,
@@ -301,16 +305,18 @@ where
 {
     pub fn with_principal(
         lineage: InvocationLineage,
-        interface_id: InterfaceId,
+        binding_id: BindingId,
         protocol: InterfaceProtocol,
+        authentication_adapter: AuthenticationAdapterReference,
         principal: P,
         deadline: Option<SystemTime>,
         input: I,
     ) -> Self {
         Self::with_principal_and_controls(
             lineage,
-            interface_id,
+            binding_id,
             protocol,
+            authentication_adapter,
             principal,
             InvocationControls::new(deadline, InvocationCancellation::new(), None),
             input,
@@ -319,16 +325,18 @@ where
 
     pub fn with_principal_and_controls(
         lineage: InvocationLineage,
-        interface_id: InterfaceId,
+        binding_id: BindingId,
         protocol: InterfaceProtocol,
+        authentication_adapter: AuthenticationAdapterReference,
         principal: P,
         controls: InvocationControls,
         input: I,
     ) -> Self {
         Self {
             lineage,
-            interface_id,
+            binding_id,
             protocol,
+            authentication_adapter,
             principal,
             controls,
             input,
@@ -339,12 +347,16 @@ where
         &self.lineage
     }
 
-    pub fn interface_id(&self) -> &InterfaceId {
-        &self.interface_id
+    pub fn binding_id(&self) -> &BindingId {
+        &self.binding_id
     }
 
     pub fn protocol(&self) -> InterfaceProtocol {
         self.protocol
+    }
+
+    pub fn authentication_adapter(&self) -> &AuthenticationAdapterReference {
+        &self.authentication_adapter
     }
 
     pub fn principal(&self) -> &P {
@@ -366,16 +378,18 @@ where
 {
     pub fn new(
         lineage: InvocationLineage,
-        interface_id: InterfaceId,
+        binding_id: BindingId,
         protocol: InterfaceProtocol,
+        authentication_adapter: AuthenticationAdapterReference,
         actor: domain::ActorContext,
         deadline: Option<SystemTime>,
         input: I,
     ) -> Self {
         Self::with_principal(
             lineage,
-            interface_id,
+            binding_id,
             protocol,
+            authentication_adapter,
             UserPrincipal::server_delegation(actor),
             deadline,
             input,
@@ -473,6 +487,8 @@ pub trait InterfaceAuthorizationPort<P = UserPrincipal>: Send + Sync + 'static
 where
     P: InvocationPrincipal,
 {
+    fn adapter_reference(&self) -> AuthorizationAdapterReference;
+
     fn authorize(
         &self,
         request: InterfaceAuthorizationRequest<P>,
@@ -560,6 +576,8 @@ pub type InterfaceTargetAdmissionFuture<'a> =
     Pin<Box<dyn Future<Output = Result<(), InterfaceTargetAdmissionError>> + Send + 'a>>;
 
 pub trait InterfaceTargetAdmissionPort: Send + Sync + 'static {
+    fn adapter_reference(&self) -> AdmissionAdapterReference;
+
     fn admit(&self, request: InterfaceTargetAdmissionRequest)
         -> InterfaceTargetAdmissionFuture<'_>;
 }
@@ -632,7 +650,7 @@ impl ResolvedInvocationPin {
 pub struct InterfaceInvocationReceipt {
     invocation_id: InvocationId,
     parent_invocation_id: Option<InvocationId>,
-    interface_id: InterfaceId,
+    interface_id: Option<InterfaceId>,
     resolved: Option<ResolvedInvocationPin>,
     protocol: InterfaceProtocol,
     principal: PrincipalSummary,
@@ -654,8 +672,8 @@ impl InterfaceInvocationReceipt {
         self.parent_invocation_id
     }
 
-    pub fn interface_id(&self) -> &InterfaceId {
-        &self.interface_id
+    pub fn interface_id(&self) -> Option<&InterfaceId> {
+        self.interface_id.as_ref()
     }
 
     pub fn resolved(&self) -> Option<&ResolvedInvocationPin> {
@@ -719,8 +737,16 @@ impl InterfaceInvocationReceipt {
 
 #[derive(Debug, Error)]
 pub enum InterfaceInvocationError {
-    #[error("interface is not registered")]
-    UnknownInterface,
+    #[error("protocol binding is not registered")]
+    UnknownBinding,
+    #[error("envelope protocol does not match its binding projection")]
+    ProtocolBindingMismatch,
+    #[error("authentication adapter does not match the compiled invocation plan")]
+    AuthenticationAdapterMismatch,
+    #[error("authorization adapter does not match the compiled invocation plan")]
+    AuthorizationAdapterMismatch,
+    #[error("admission adapter does not match the compiled invocation plan")]
+    AdmissionAdapterMismatch,
     #[error("invocation contract does not match the registered interface")]
     ContractMismatch,
     #[error("invocation principal profile does not match the registered interface")]
@@ -1013,6 +1039,243 @@ where
             .await
     }
 
+    pub async fn invoke_server_stream_with_dispatch_target<I, S, O, E>(
+        &self,
+        snapshot: Arc<CompiledInterfaceRegistry>,
+        envelope: InvocationEnvelope<I, P>,
+        target: ExecutionTargetPin,
+    ) -> Result<InterfaceStreamInvocation<S, O, E>, InterfaceInvocationFailure>
+    where
+        I: InterfaceContract,
+        S: InterfaceContract,
+        O: InterfaceContract,
+        E: InterfaceContract,
+    {
+        let InvocationEnvelope {
+            lineage,
+            binding_id,
+            protocol,
+            authentication_adapter,
+            principal,
+            controls,
+            input,
+        } = envelope;
+        let mut receipt = ReceiptBuilder::new(
+            &snapshot,
+            lineage.invocation_id(),
+            lineage.parent_invocation_id(),
+            protocol,
+            principal.summary(),
+            &controls,
+        );
+        let interruption = if controls.cancellation.is_cancelled() {
+            Some(InvocationInterruption::Cancelled)
+        } else if controls
+            .deadline
+            .is_some_and(|deadline| deadline <= SystemTime::now())
+        {
+            Some(InvocationInterruption::DeadlineElapsed)
+        } else {
+            None
+        };
+        if let Some(interruption) = interruption {
+            return Err(receipt.fail(
+                interruption_error(interruption),
+                InterfaceInvocationTerminal::Cancelled,
+            ));
+        }
+        let Some(plan) = snapshot.plan(&binding_id).cloned() else {
+            return Err(receipt.fail(
+                InterfaceInvocationError::UnknownBinding,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        };
+        let definition = plan.definition().clone();
+        let binding = plan.binding().clone();
+        receipt.resolve(&plan);
+        receipt.stage(InterfaceInvocationStage::Resolved);
+        if binding.projection().protocol() != protocol {
+            return Err(receipt.fail(
+                InterfaceInvocationError::ProtocolBindingMismatch,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        }
+        if plan.adapter_plan().authentication() != &authentication_adapter {
+            return Err(receipt.fail(
+                InterfaceInvocationError::AuthenticationAdapterMismatch,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        }
+        if plan.adapter_plan().authorization() != &self.authorization.adapter_reference() {
+            return Err(receipt.fail(
+                InterfaceInvocationError::AuthorizationAdapterMismatch,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        }
+        let admission_reference = self
+            .target_admission
+            .as_ref()
+            .map(|admission| admission.adapter_reference());
+        if plan.adapter_plan().admission() != admission_reference.as_ref() {
+            return Err(receipt.fail(
+                InterfaceInvocationError::AdmissionAdapterMismatch,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        }
+        if definition.principal_profile() != P::PROFILE {
+            return Err(receipt.fail(
+                InterfaceInvocationError::PrincipalProfileMismatch,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        }
+        receipt.stage(InterfaceInvocationStage::PrincipalEstablished);
+        if definition.input_contract() != &contract_identity::<I>()
+            || definition.stream_event_contract() != Some(&contract_identity::<S>())
+            || definition.output_contract() != &contract_identity::<O>()
+            || definition.target_error_contract() != &contract_identity::<E>()
+        {
+            return Err(receipt.fail(
+                InterfaceInvocationError::ContractMismatch,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        }
+        let authorization = await_in_flight(
+            &controls,
+            self.authorization
+                .authorize(InterfaceAuthorizationRequest::new(
+                    principal.clone(),
+                    definition.clone(),
+                    binding.clone(),
+                    protocol,
+                )),
+        )
+        .await;
+        match authorization {
+            Err(interruption) => {
+                return Err(receipt.fail(
+                    interruption_error(interruption),
+                    InterfaceInvocationTerminal::Cancelled,
+                ));
+            }
+            Ok(Err(error)) => {
+                return Err(receipt.fail(
+                    InterfaceInvocationError::AuthorizationRejected(error),
+                    InterfaceInvocationTerminal::Rejected,
+                ));
+            }
+            Ok(Ok(())) => receipt.stage(InterfaceInvocationStage::Authorized),
+        }
+        if let Some(target_admission) = &self.target_admission {
+            let admission = await_in_flight(
+                &controls,
+                target_admission.admit(InterfaceTargetAdmissionRequest::new(
+                    principal.summary(),
+                    definition.clone(),
+                    binding,
+                    protocol,
+                )),
+            )
+            .await;
+            match admission {
+                Err(interruption) => {
+                    return Err(receipt.fail(
+                        interruption_error(interruption),
+                        InterfaceInvocationTerminal::Cancelled,
+                    ));
+                }
+                Ok(Err(error)) => {
+                    return Err(receipt.fail(
+                        InterfaceInvocationError::AdmissionRejected(error),
+                        InterfaceInvocationTerminal::Rejected,
+                    ));
+                }
+                Ok(Ok(())) => {}
+            }
+        }
+        receipt.stage(InterfaceInvocationStage::Admitted);
+        receipt.stage(InterfaceInvocationStage::Prepared);
+        let Some(handler) = snapshot.stream_handler::<I, S, O, E, P>(definition.interface_id())
+        else {
+            return Err(receipt.fail(
+                InterfaceInvocationError::ContractMismatch,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        };
+        let attempt = ExecutionAttempt::first(target);
+        receipt.dispatch(attempt.clone());
+        receipt.stage(InterfaceInvocationStage::Executing);
+        let context = InterfaceHandlerContext::new(
+            principal,
+            attempt,
+            lineage.invocation_id(),
+            snapshot.graph_fingerprint().clone(),
+            snapshot.fingerprint().clone(),
+        );
+        let stream = match await_in_flight(&controls, handler.invoke_stream(context, input)).await {
+            Err(interruption) => {
+                return Err(receipt.fail(
+                    interruption_error(interruption),
+                    InterfaceInvocationTerminal::Cancelled,
+                ));
+            }
+            Ok(Err(error)) => {
+                return Err(receipt.fail(
+                    target_error(error),
+                    InterfaceInvocationTerminal::Failed,
+                ));
+            }
+            Ok(Ok(stream)) => stream,
+        };
+        let completion = InterfaceStreamCompletion {
+            completion: Box::pin(async move {
+                let terminal = match await_in_flight(&controls, stream.terminal).await {
+                    Err(interruption) => {
+                        return Err(receipt.fail(
+                            interruption_error(interruption),
+                            InterfaceInvocationTerminal::Cancelled,
+                        ));
+                    }
+                    Ok(Err(_)) => {
+                        return Err(receipt.fail(
+                            InterfaceInvocationError::TargetFailed(
+                                InterfaceTargetError::classified("stream-terminal-missing"),
+                            ),
+                            InterfaceInvocationTerminal::Failed,
+                        ));
+                    }
+                    Ok(Ok(terminal)) => terminal,
+                };
+                match terminal {
+                    InterfaceStreamTerminal::Completed(_) => {
+                        receipt.stage(InterfaceInvocationStage::PostProcessed);
+                        Ok(InterfaceStreamTerminalOutcome {
+                            terminal,
+                            receipt: receipt.complete(),
+                        })
+                    }
+                    InterfaceStreamTerminal::Failed(error) => Err(receipt.fail(
+                        target_error(error),
+                        InterfaceInvocationTerminal::Failed,
+                    )),
+                    InterfaceStreamTerminal::Rejected { ref classification } => Err(receipt.fail(
+                        InterfaceInvocationError::AuthorizationRejected(
+                            InterfaceAuthorizationError::classified(classification),
+                        ),
+                        InterfaceInvocationTerminal::Rejected,
+                    )),
+                    InterfaceStreamTerminal::Cancelled => Err(receipt.fail(
+                        InterfaceInvocationError::Cancelled,
+                        InterfaceInvocationTerminal::Cancelled,
+                    )),
+                }
+            }),
+        };
+        Ok(InterfaceStreamInvocation {
+            events: stream.events,
+            completion,
+        })
+    }
+
     async fn invoke_internal<I, O, E>(
         &self,
         snapshot: Arc<CompiledInterfaceRegistry>,
@@ -1027,8 +1290,9 @@ where
     {
         let InvocationEnvelope {
             lineage,
-            interface_id,
+            binding_id,
             protocol,
+            authentication_adapter,
             principal,
             controls,
             mut input,
@@ -1037,7 +1301,6 @@ where
             &snapshot,
             lineage.invocation_id(),
             lineage.parent_invocation_id(),
-            interface_id.clone(),
             protocol,
             principal.summary(),
             &controls,
@@ -1084,7 +1347,7 @@ where
                 InterfaceInvocationTerminal::Rejected,
             ));
         }
-        let Some(plan) = snapshot.plan_for_interface(&interface_id).cloned() else {
+        let Some(plan) = snapshot.plan(&binding_id).cloned() else {
             run_completion_hooks(
                 &controls,
                 hook_plan,
@@ -1093,7 +1356,7 @@ where
             )
             .await;
             return Err(receipt.fail(
-                InterfaceInvocationError::UnknownInterface,
+                InterfaceInvocationError::UnknownBinding,
                 InterfaceInvocationTerminal::Rejected,
             ));
         };
@@ -1101,6 +1364,77 @@ where
         let binding = plan.binding().clone();
         receipt.resolve(&plan);
         receipt.stage(InterfaceInvocationStage::Resolved);
+        if binding.projection().protocol() != protocol {
+            run_completion_hooks(
+                &controls,
+                hook_plan,
+                &hook_context,
+                InterfaceInvocationTerminal::Rejected,
+            )
+            .await;
+            return Err(receipt.fail(
+                InterfaceInvocationError::ProtocolBindingMismatch,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        }
+        if plan.adapter_plan().authentication() != &authentication_adapter {
+            run_completion_hooks(
+                &controls,
+                hook_plan,
+                &hook_context,
+                InterfaceInvocationTerminal::Rejected,
+            )
+            .await;
+            return Err(receipt.fail(
+                InterfaceInvocationError::AuthenticationAdapterMismatch,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        }
+        if plan.adapter_plan().authorization() != &self.authorization.adapter_reference() {
+            run_completion_hooks(
+                &controls,
+                hook_plan,
+                &hook_context,
+                InterfaceInvocationTerminal::Rejected,
+            )
+            .await;
+            return Err(receipt.fail(
+                InterfaceInvocationError::AuthorizationAdapterMismatch,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        }
+        let admission_reference = self
+            .target_admission
+            .as_ref()
+            .map(|admission| admission.adapter_reference());
+        if plan.adapter_plan().admission() != admission_reference.as_ref() {
+            run_completion_hooks(
+                &controls,
+                hook_plan,
+                &hook_context,
+                InterfaceInvocationTerminal::Rejected,
+            )
+            .await;
+            return Err(receipt.fail(
+                InterfaceInvocationError::AdmissionAdapterMismatch,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        }
+        if hook_plan.is_some_and(|hooks| {
+            hooks.extension_plan_fingerprint() != plan.extension_plan().fingerprint()
+        }) {
+            run_completion_hooks(
+                &controls,
+                hook_plan,
+                &hook_context,
+                InterfaceInvocationTerminal::Rejected,
+            )
+            .await;
+            return Err(receipt.fail(
+                InterfaceInvocationError::HookPlanFingerprintMismatch,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        }
         if definition.principal_profile() != P::PROFILE {
             run_completion_hooks(
                 &controls,
@@ -1258,7 +1592,7 @@ where
             }
         }
         receipt.stage(InterfaceInvocationStage::Prepared);
-        let Some(handler) = snapshot.handler::<I, O, E, P>(&interface_id) else {
+        let Some(handler) = snapshot.handler::<I, O, E, P>(definition.interface_id()) else {
             run_completion_hooks(
                 &controls,
                 hook_plan,
@@ -1389,7 +1723,7 @@ async fn run_completion_hooks<I, O>(
 struct ReceiptBuilder {
     invocation_id: InvocationId,
     parent_invocation_id: Option<InvocationId>,
-    interface_id: InterfaceId,
+    interface_id: Option<InterfaceId>,
     resolved: Option<ResolvedInvocationPin>,
     protocol: InterfaceProtocol,
     principal: PrincipalSummary,
@@ -1405,7 +1739,6 @@ impl ReceiptBuilder {
         snapshot: &CompiledInterfaceRegistry,
         invocation_id: InvocationId,
         parent_invocation_id: Option<InvocationId>,
-        interface_id: InterfaceId,
         protocol: InterfaceProtocol,
         principal: PrincipalSummary,
         controls: &InvocationControls,
@@ -1413,7 +1746,7 @@ impl ReceiptBuilder {
         Self {
             invocation_id,
             parent_invocation_id,
-            interface_id,
+            interface_id: None,
             resolved: None,
             protocol,
             principal,
@@ -1436,6 +1769,7 @@ impl ReceiptBuilder {
     }
 
     fn resolve(&mut self, plan: &crate::CompiledInvocationPlan) {
+        self.interface_id = Some(plan.definition().interface_id().clone());
         self.resolved = Some(ResolvedInvocationPin {
             interface_version: plan.definition().version().clone(),
             binding_id: plan.binding().binding_id().clone(),

@@ -1,8 +1,12 @@
 use std::collections::BTreeSet;
 
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::{HandlerReference, InterfaceId, InterfaceScope, PluginIdentity, TargetReference};
+use crate::{
+    ExtensionPlanFingerprint, HandlerReference, InterfaceId, InterfaceScope, PluginIdentity,
+    TargetReference,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum InterfaceExtensionTier {
@@ -85,6 +89,91 @@ pub struct InterfaceExtensionRegistration {
     scope: InterfaceScope,
     isolation: InterfaceExtensionIsolation,
     facts: BTreeSet<InterfaceExtensionFact>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OrderedInterfaceExtensionRegistration {
+    order: u32,
+    registration: InterfaceExtensionRegistration,
+}
+
+impl OrderedInterfaceExtensionRegistration {
+    pub fn order(&self) -> u32 {
+        self.order
+    }
+
+    pub fn registration(&self) -> &InterfaceExtensionRegistration {
+        &self.registration
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CompiledInterfaceExtensionPlan {
+    registrations: Vec<OrderedInterfaceExtensionRegistration>,
+    fingerprint: ExtensionPlanFingerprint,
+}
+
+impl CompiledInterfaceExtensionPlan {
+    pub(crate) fn compile(
+        registrations: impl IntoIterator<Item = (u32, InterfaceExtensionRegistration)>,
+    ) -> Result<Self, InterfaceExtensionCompilationError> {
+        let mut registrations = registrations
+            .into_iter()
+            .map(|(order, registration)| OrderedInterfaceExtensionRegistration {
+                order,
+                registration,
+            })
+            .collect::<Vec<_>>();
+        registrations.sort_by(|left, right| {
+            left.order
+                .cmp(&right.order)
+                .then_with(|| left.registration.point.cmp(&right.registration.point))
+                .then_with(|| left.registration.plugin.cmp(&right.registration.plugin))
+        });
+        for pair in registrations.windows(2) {
+            if pair[0].order == pair[1].order
+                && pair[0].registration.point == pair[1].registration.point
+            {
+                return Err(InterfaceExtensionCompilationError::DuplicateOrder {
+                    order: pair[0].order,
+                    point: pair[0].registration.point,
+                });
+            }
+        }
+        let mut digest = Sha256::new();
+        for entry in &registrations {
+            for part in [
+                entry.order.to_string(),
+                entry.registration.plugin.as_str().to_owned(),
+                entry.registration.point.identity().to_owned(),
+                format!("{:?}", entry.registration.tier),
+                format!("{:?}", entry.registration.permission),
+                format!("{:?}", entry.registration.scope),
+                format!("{:?}", entry.registration.isolation),
+            ] {
+                digest.update([0]);
+                digest.update(part.as_bytes());
+            }
+            for fact in &entry.registration.facts {
+                digest.update([0]);
+                digest.update(format!("{fact:?}").as_bytes());
+            }
+        }
+        let fingerprint = ExtensionPlanFingerprint::new(format!("sha256:{:x}", digest.finalize()))
+            .expect("SHA-256 extension plan fingerprint must be a valid identity");
+        Ok(Self {
+            registrations,
+            fingerprint,
+        })
+    }
+
+    pub fn registrations(&self) -> &[OrderedInterfaceExtensionRegistration] {
+        &self.registrations
+    }
+
+    pub fn fingerprint(&self) -> &ExtensionPlanFingerprint {
+        &self.fingerprint
+    }
 }
 
 impl InterfaceExtensionRegistration {
@@ -204,6 +293,11 @@ pub enum InterfaceExtensionCompilationError {
     MissingEffectiveHandler(InterfaceId),
     #[error("interface {0} has more than one effective handler")]
     MultipleEffectiveHandlers(InterfaceId),
+    #[error("extension order {order} is duplicated for point {point:?}")]
+    DuplicateOrder {
+        order: u32,
+        point: InterfaceExtensionPoint,
+    },
 }
 
 fn validate_registration(

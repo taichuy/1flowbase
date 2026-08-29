@@ -8,11 +8,12 @@ use std::{
 
 use crate::{
     AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
-    AuthorizationOperation, BindingFingerprint, BindingId, ContractIdentity, ExecutionAttempt,
-    ExtensionPlanFingerprint, GraphFingerprint, HandlerReference, InterfaceId, InterfaceOwner,
-    InterfaceTargetFailure, InterfaceVersion, InvocationId, InvocationPrincipal, PlanFingerprint,
-    PrincipalProfile, PrincipalSummary, RegistryFingerprint, RouteIdentity, TargetReference,
-    UserPrincipal,
+    AuthorizationOperation, BindingFingerprint, BindingId, CompiledInterfaceExtensionPlan,
+    ContractIdentity, ExecutionAttempt, GraphFingerprint, HandlerReference, InterfaceExtensionPoint,
+    InterfaceExtensionRegistration, InterfaceHandlerCandidate, InterfaceId, InterfaceOwner,
+    InterfaceStreamHandler, InterfaceTargetFailure, InterfaceVersion, InvocationId,
+    InvocationPrincipal, PlanFingerprint, PluginIdentity, PrincipalProfile, PrincipalSummary,
+    RegistryFingerprint, RouteIdentity, TargetReference, UserPrincipal, compile_effective_handler,
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -96,8 +97,8 @@ impl InterfaceContracts {
 
     pub fn server_stream(
         input: ContractIdentity,
-        output: ContractIdentity,
         event: ContractIdentity,
+        output: ContractIdentity,
         target_error: ContractIdentity,
     ) -> Self {
         Self {
@@ -386,6 +387,7 @@ impl InterfaceDefinition {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ProtocolProjection {
     Http(RouteIdentity),
+    HttpVariant { route: RouteIdentity, variant: Arc<str> },
     Mcp { tool: Arc<str> },
     Internal { operation: Arc<str> },
     Worker { operation: Arc<str> },
@@ -398,6 +400,13 @@ impl ProtocolProjection {
 
     pub fn mcp(tool: impl Into<Arc<str>>) -> Self {
         Self::Mcp { tool: tool.into() }
+    }
+
+    pub fn http_variant(route: RouteIdentity, variant: impl Into<Arc<str>>) -> Self {
+        Self::HttpVariant {
+            route,
+            variant: variant.into(),
+        }
     }
 
     pub fn internal(operation: impl Into<Arc<str>>) -> Self {
@@ -414,17 +423,29 @@ impl ProtocolProjection {
 
     pub fn http_route(&self) -> Option<&RouteIdentity> {
         match self {
-            Self::Http(route) => Some(route),
+            Self::Http(route) | Self::HttpVariant { route, .. } => Some(route),
             Self::Mcp { .. } | Self::Internal { .. } | Self::Worker { .. } => None,
         }
     }
 
-    fn fingerprint_parts(&self) -> (&'static str, &str, Option<&str>) {
+    pub fn protocol(&self) -> crate::InterfaceProtocol {
         match self {
-            Self::Http(route) => ("http", route.method(), Some(route.path())),
-            Self::Mcp { tool } => ("mcp", tool, None),
-            Self::Internal { operation } => ("internal", operation, None),
-            Self::Worker { operation } => ("worker", operation, None),
+            Self::Http(_) | Self::HttpVariant { .. } => crate::InterfaceProtocol::Http,
+            Self::Mcp { .. } => crate::InterfaceProtocol::Mcp,
+            Self::Internal { .. } => crate::InterfaceProtocol::Internal,
+            Self::Worker { .. } => crate::InterfaceProtocol::Worker,
+        }
+    }
+
+    fn fingerprint_parts(&self) -> (&'static str, &str, Option<&str>, Option<&str>) {
+        match self {
+            Self::Http(route) => ("http", route.method(), Some(route.path()), None),
+            Self::HttpVariant { route, variant } => {
+                ("http-variant", route.method(), Some(route.path()), Some(variant))
+            }
+            Self::Mcp { tool } => ("mcp", tool, None, None),
+            Self::Internal { operation } => ("internal", operation, None, None),
+            Self::Worker { operation } => ("worker", operation, None, None),
         }
     }
 }
@@ -481,22 +502,19 @@ impl ProtocolBinding {
 pub struct InvocationAdapterPlan {
     authentication: AuthenticationAdapterReference,
     authorization: AuthorizationAdapterReference,
-    admission: AdmissionAdapterReference,
-    extension_plan: ExtensionPlanFingerprint,
+    admission: Option<AdmissionAdapterReference>,
 }
 
 impl InvocationAdapterPlan {
     pub fn new(
         authentication: AuthenticationAdapterReference,
         authorization: AuthorizationAdapterReference,
-        admission: AdmissionAdapterReference,
-        extension_plan: ExtensionPlanFingerprint,
+        admission: Option<AdmissionAdapterReference>,
     ) -> Self {
         Self {
             authentication,
             authorization,
             admission,
-            extension_plan,
         }
     }
 
@@ -508,12 +526,8 @@ impl InvocationAdapterPlan {
         &self.authorization
     }
 
-    pub fn admission(&self) -> &AdmissionAdapterReference {
-        &self.admission
-    }
-
-    pub fn extension_plan(&self) -> &ExtensionPlanFingerprint {
-        &self.extension_plan
+    pub fn admission(&self) -> Option<&AdmissionAdapterReference> {
+        self.admission.as_ref()
     }
 }
 
@@ -523,6 +537,7 @@ pub struct CompiledInvocationPlan {
     binding: ProtocolBinding,
     binding_fingerprint: BindingFingerprint,
     adapter_plan: InvocationAdapterPlan,
+    extension_plan: CompiledInterfaceExtensionPlan,
     fingerprint: PlanFingerprint,
 }
 
@@ -541,6 +556,10 @@ impl CompiledInvocationPlan {
 
     pub fn adapter_plan(&self) -> &InvocationAdapterPlan {
         &self.adapter_plan
+    }
+
+    pub fn extension_plan(&self) -> &CompiledInterfaceExtensionPlan {
+        &self.extension_plan
     }
 
     pub fn fingerprint(&self) -> &PlanFingerprint {
@@ -677,6 +696,44 @@ where
     handler: Arc<dyn InterfaceHandler<I, O, E, P>>,
 }
 
+struct TypedInterfaceStreamBinding<I, S, O, E, P>
+where
+    I: InterfaceContract,
+    S: InterfaceContract,
+    O: InterfaceContract,
+    E: InterfaceContract,
+    P: InvocationPrincipal,
+{
+    contracts: InterfaceContracts,
+    handler_reference: HandlerReference,
+    handler: Arc<dyn InterfaceStreamHandler<I, S, O, E, P>>,
+}
+
+impl<I, S, O, E, P> ErasedInterfaceBinding for TypedInterfaceStreamBinding<I, S, O, E, P>
+where
+    I: InterfaceContract,
+    S: InterfaceContract,
+    O: InterfaceContract,
+    E: InterfaceContract,
+    P: InvocationPrincipal,
+{
+    fn contracts(&self) -> &InterfaceContracts {
+        &self.contracts
+    }
+
+    fn handler_reference(&self) -> &HandlerReference {
+        &self.handler_reference
+    }
+
+    fn principal_profile(&self) -> PrincipalProfile {
+        P::PROFILE
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
 impl<I, O, E, P> ErasedInterfaceBinding for TypedInterfaceBinding<I, O, E, P>
 where
     I: InterfaceContract,
@@ -735,17 +792,19 @@ pub enum RegistryCompilationError {
     PrincipalProfileMismatch(InterfaceId),
     #[error("interface {0} already has a bound handler")]
     DuplicateHandler(InterfaceId),
+    #[error(transparent)]
+    Extension(#[from] crate::InterfaceExtensionCompilationError),
 }
 
 pub struct RegistryCompiler {
     graph_fingerprint: GraphFingerprint,
     known_operations: BTreeSet<AuthorizationOperation>,
     active_owners: BTreeSet<InterfaceOwner>,
-    adapter_plan: InvocationAdapterPlan,
     definitions: BTreeMap<InterfaceId, InterfaceDefinition>,
-    protocol_bindings: BTreeMap<BindingId, ProtocolBinding>,
+    protocol_bindings: BTreeMap<BindingId, (ProtocolBinding, InvocationAdapterPlan)>,
     routes: BTreeMap<RouteIdentity, BindingId>,
     handler_bindings: BTreeMap<InterfaceId, Arc<dyn ErasedInterfaceBinding>>,
+    extensions: BTreeMap<InterfaceId, Vec<(u32, InterfaceExtensionRegistration)>>,
 }
 
 impl RegistryCompiler {
@@ -753,17 +812,16 @@ impl RegistryCompiler {
         graph_fingerprint: GraphFingerprint,
         known_operations: impl IntoIterator<Item = AuthorizationOperation>,
         active_owners: impl IntoIterator<Item = InterfaceOwner>,
-        adapter_plan: InvocationAdapterPlan,
     ) -> Self {
         Self {
             graph_fingerprint,
             known_operations: known_operations.into_iter().collect(),
             active_owners: active_owners.into_iter().collect(),
-            adapter_plan,
             definitions: BTreeMap::new(),
             protocol_bindings: BTreeMap::new(),
             routes: BTreeMap::new(),
             handler_bindings: BTreeMap::new(),
+            extensions: BTreeMap::new(),
         }
     }
 
@@ -781,16 +839,59 @@ impl RegistryCompiler {
         Ok(())
     }
 
+    pub fn absorb_snapshot(
+        &mut self,
+        snapshot: &CompiledInterfaceRegistry,
+    ) -> Result<(), RegistryCompilationError> {
+        for definition in snapshot.definitions.values() {
+            self.register_definition(definition.clone())?;
+        }
+        for (binding_id, binding) in &snapshot.protocol_bindings {
+            let adapter_plan = snapshot
+                .plans
+                .get(binding_id)
+                .expect("compiled binding must own an invocation plan")
+                .adapter_plan()
+                .clone();
+            self.register_binding(binding.clone(), adapter_plan)?;
+        }
+        for (interface_id, handler) in &snapshot.handler_bindings {
+            if self
+                .handler_bindings
+                .insert(interface_id.clone(), Arc::clone(handler))
+                .is_some()
+            {
+                return Err(RegistryCompilationError::DuplicateHandler(
+                    interface_id.clone(),
+                ));
+            }
+        }
+        for definition in snapshot.definitions.values() {
+            let Some(plan) = snapshot.plan_for_interface(definition.interface_id()) else {
+                continue;
+            };
+            for entry in plan.extension_plan().registrations() {
+                self.register_extension(
+                    definition.interface_id(),
+                    entry.order(),
+                    entry.registration().clone(),
+                )?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn register_binding(
         &mut self,
         binding: ProtocolBinding,
+        adapter_plan: InvocationAdapterPlan,
     ) -> Result<(), RegistryCompilationError> {
         if self.protocol_bindings.contains_key(binding.binding_id()) {
             return Err(RegistryCompilationError::DuplicateBinding(
                 binding.binding_id().clone(),
             ));
         }
-        if let Some(route) = binding.projection().http_route() {
+        if let ProtocolProjection::Http(route) = binding.projection() {
             if let Some(existing) = self.routes.get(route) {
                 return Err(RegistryCompilationError::DuplicateProjection(
                     existing.clone(),
@@ -800,7 +901,23 @@ impl RegistryCompiler {
                 .insert(route.clone(), binding.binding_id().clone());
         }
         self.protocol_bindings
-            .insert(binding.binding_id().clone(), binding);
+            .insert(binding.binding_id().clone(), (binding, adapter_plan));
+        Ok(())
+    }
+
+    pub fn register_extension(
+        &mut self,
+        interface_id: &InterfaceId,
+        order: u32,
+        registration: InterfaceExtensionRegistration,
+    ) -> Result<(), RegistryCompilationError> {
+        if !self.definitions.contains_key(interface_id) {
+            return Err(RegistryCompilationError::UnknownInterface(interface_id.clone()));
+        }
+        self.extensions
+            .entry(interface_id.clone())
+            .or_default()
+            .push((order, registration));
         Ok(())
     }
 
@@ -834,6 +951,42 @@ impl RegistryCompiler {
         self.handler_bindings.insert(
             interface_id.clone(),
             Arc::new(TypedInterfaceBinding::<I, O, E, P> {
+                contracts,
+                handler_reference,
+                handler,
+            }),
+        );
+        Ok(())
+    }
+
+    pub fn bind_stream_handler<I, S, O, E, P>(
+        &mut self,
+        interface_id: &InterfaceId,
+        handler_reference: HandlerReference,
+        handler: Arc<dyn InterfaceStreamHandler<I, S, O, E, P>>,
+    ) -> Result<(), RegistryCompilationError>
+    where
+        I: InterfaceContract,
+        S: InterfaceContract,
+        O: InterfaceContract,
+        E: InterfaceContract,
+        P: InvocationPrincipal,
+    {
+        if !self.definitions.contains_key(interface_id) {
+            return Err(RegistryCompilationError::UnknownInterface(interface_id.clone()));
+        }
+        if self.handler_bindings.contains_key(interface_id) {
+            return Err(RegistryCompilationError::DuplicateHandler(interface_id.clone()));
+        }
+        let contracts = InterfaceContracts::server_stream(
+            contract_identity::<I>(),
+            contract_identity::<S>(),
+            contract_identity::<O>(),
+            contract_identity::<E>(),
+        );
+        self.handler_bindings.insert(
+            interface_id.clone(),
+            Arc::new(TypedInterfaceStreamBinding::<I, S, O, E, P> {
                 contracts,
                 handler_reference,
                 handler,
@@ -884,7 +1037,7 @@ impl RegistryCompiler {
             if !self
                 .protocol_bindings
                 .values()
-                .any(|binding| binding.interface_identity().interface_id() == interface_id)
+                .any(|(binding, _)| binding.interface_identity().interface_id() == interface_id)
             {
                 return Err(RegistryCompilationError::MissingBinding(
                     interface_id.clone(),
@@ -901,7 +1054,7 @@ impl RegistryCompiler {
             ));
         }
         let mut plans = BTreeMap::new();
-        for binding in self.protocol_bindings.values() {
+        for (binding, adapter_plan) in self.protocol_bindings.values() {
             let Some(definition) = self
                 .definitions
                 .get(binding.interface_identity().interface_id())
@@ -920,12 +1073,54 @@ impl RegistryCompiler {
                     binding.binding_id().clone(),
                 ));
             }
+            let typed_binding = self
+                .handler_bindings
+                .get(definition.interface_id())
+                .expect("definition handler was validated above");
+            let mut handler_candidates = vec![InterfaceHandlerCandidate::new(
+                PluginIdentity::new("builtin.interface-handler")
+                    .expect("built-in handler identity must be valid"),
+                typed_binding.handler_reference().clone(),
+                definition.target_reference().clone(),
+            )];
+            if let Some(registrations) = self.extensions.get(definition.interface_id()) {
+                handler_candidates.extend(
+                    registrations
+                        .iter()
+                        .filter(|(_, registration)| {
+                            registration.point() == InterfaceExtensionPoint::Handler
+                        })
+                        .map(|(_, registration)| {
+                            InterfaceHandlerCandidate::new(
+                                registration.plugin().clone(),
+                                definition.handler_reference().clone(),
+                                definition.target_reference().clone(),
+                            )
+                        }),
+                );
+            }
+            let effective_handler =
+                compile_effective_handler(definition.interface_id(), handler_candidates)?;
+            if effective_handler.handler() != definition.handler_reference()
+                || effective_handler.target() != definition.target_reference()
+            {
+                return Err(RegistryCompilationError::HandlerReferenceMismatch(
+                    definition.interface_id().clone(),
+                ));
+            }
+            let extension_plan = CompiledInterfaceExtensionPlan::compile(
+                self.extensions
+                    .get(definition.interface_id())
+                    .cloned()
+                    .unwrap_or_default(),
+            )?;
             let binding_fingerprint = binding_fingerprint(binding);
             let fingerprint = plan_fingerprint(
                 &self.graph_fingerprint,
                 definition,
                 &binding_fingerprint,
-                &self.adapter_plan,
+                adapter_plan,
+                extension_plan.fingerprint(),
             );
             plans.insert(
                 binding.binding_id().clone(),
@@ -933,7 +1128,8 @@ impl RegistryCompiler {
                     definition: definition.clone(),
                     binding: binding.clone(),
                     binding_fingerprint,
-                    adapter_plan: self.adapter_plan.clone(),
+                    adapter_plan: adapter_plan.clone(),
+                    extension_plan,
                     fingerprint,
                 },
             );
@@ -941,14 +1137,22 @@ impl RegistryCompiler {
         let fingerprint = registry_fingerprint(
             &self.graph_fingerprint,
             &self.definitions,
-            &self.protocol_bindings,
+            &self
+                .protocol_bindings
+                .iter()
+                .map(|(id, (binding, _))| (id.clone(), binding.clone()))
+                .collect(),
             &plans,
         );
         Ok(Arc::new(CompiledInterfaceRegistry {
             graph_fingerprint: self.graph_fingerprint,
             fingerprint,
             definitions: self.definitions,
-            protocol_bindings: self.protocol_bindings,
+            protocol_bindings: self
+                .protocol_bindings
+                .into_iter()
+                .map(|(id, (binding, _))| (id, binding))
+                .collect(),
             plans,
             routes: self.routes,
             handler_bindings: self.handler_bindings,
@@ -1042,6 +1246,24 @@ impl CompiledInterfaceRegistry {
             .get(interface_id)?
             .as_any()
             .downcast_ref::<TypedInterfaceBinding<I, O, E, P>>()
+            .map(|binding| Arc::clone(&binding.handler))
+    }
+
+    pub(crate) fn stream_handler<I, S, O, E, P>(
+        &self,
+        interface_id: &InterfaceId,
+    ) -> Option<Arc<dyn InterfaceStreamHandler<I, S, O, E, P>>>
+    where
+        I: InterfaceContract,
+        S: InterfaceContract,
+        O: InterfaceContract,
+        E: InterfaceContract,
+        P: InvocationPrincipal,
+    {
+        self.handler_bindings
+            .get(interface_id)?
+            .as_any()
+            .downcast_ref::<TypedInterfaceStreamBinding<I, S, O, E, P>>()
             .map(|binding| Arc::clone(&binding.handler))
     }
 }
@@ -1194,8 +1416,11 @@ fn binding_fingerprint(binding: &ProtocolBinding) -> BindingFingerprint {
         InterfaceExecutionMode::ServerStream => b"mode:server-stream".as_slice(),
         InterfaceExecutionMode::AsyncAck => b"mode:async-ack".as_slice(),
     });
-    let (kind, first, second) = binding.projection().fingerprint_parts();
-    for part in [Some(kind), Some(first), second].into_iter().flatten() {
+    let (kind, first, second, third) = binding.projection().fingerprint_parts();
+    for part in [Some(kind), Some(first), second, third]
+        .into_iter()
+        .flatten()
+    {
         digest.update([0]);
         digest.update(part.as_bytes());
     }
@@ -1208,6 +1433,7 @@ fn plan_fingerprint(
     definition: &InterfaceDefinition,
     binding_fingerprint: &BindingFingerprint,
     adapter_plan: &InvocationAdapterPlan,
+    extension_plan: &crate::ExtensionPlanFingerprint,
 ) -> PlanFingerprint {
     let mut digest = Sha256::new();
     for part in [
@@ -1220,12 +1446,16 @@ fn plan_fingerprint(
         definition.target_reference().as_str(),
         adapter_plan.authentication().as_str(),
         adapter_plan.authorization().as_str(),
-        adapter_plan.admission().as_str(),
-        adapter_plan.extension_plan().as_str(),
     ] {
         digest.update([0]);
         digest.update(part.as_bytes());
     }
+    if let Some(admission) = adapter_plan.admission() {
+        digest.update([0]);
+        digest.update(admission.as_str().as_bytes());
+    }
+    digest.update([0]);
+    digest.update(extension_plan.as_str().as_bytes());
     PlanFingerprint::new(format!("sha256:{:x}", digest.finalize()))
         .expect("SHA-256 plan fingerprint must be a valid identity")
 }
