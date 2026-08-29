@@ -38,6 +38,7 @@ pub struct LifecycleOutboxDispatcher<R> {
     worker_id: Uuid,
     claim_limit: u32,
     claim_lease: Duration,
+    delivery_deadline: StdDuration,
     poll_interval: StdDuration,
 }
 
@@ -57,6 +58,7 @@ where
             worker_id: Uuid::now_v7(),
             claim_limit: 32,
             claim_lease: Duration::seconds(30),
+            delivery_deadline: StdDuration::from_secs(10),
             poll_interval: StdDuration::from_millis(500),
         }
     }
@@ -68,17 +70,21 @@ where
             .await?;
         let count = facts.len();
         for fact in facts {
-            let delivery = self.delivery.deliver(&fact).await;
-            let terminal = if delivery.is_ok() {
-                self.repository
-                    .mark_lifecycle_fact_delivered(
-                        fact.event_id,
-                        &fact.subscriber_id,
-                        self.worker_id,
-                    )
-                    .await?;
-                CompletionTerminal::Succeeded
-            } else {
+            let (terminal, retry_error) =
+                match tokio::time::timeout(self.delivery_deadline, self.delivery.deliver(&fact))
+                    .await
+                {
+                    Ok(Ok(())) => (CompletionTerminal::Succeeded, None),
+                    Ok(Err(error)) => (CompletionTerminal::Failed, Some(error.to_string())),
+                    Err(_) => (
+                        CompletionTerminal::TimedOut,
+                        Some(format!(
+                            "lifecycle subscriber delivery exceeded {}ms deadline",
+                            self.delivery_deadline.as_millis()
+                        )),
+                    ),
+                };
+            if let Some(error) = retry_error {
                 let retry_delay = i64::from(fact.attempt_count.clamp(1, 60));
                 self.repository
                     .retry_lifecycle_fact(
@@ -86,12 +92,17 @@ where
                         &fact.subscriber_id,
                         self.worker_id,
                         OffsetDateTime::now_utc() + Duration::seconds(retry_delay),
-                        &delivery
-                            .expect_err("failed delivery must contain an error")
-                            .to_string(),
+                        &error,
                     )
                     .await?;
-                CompletionTerminal::Failed
+            } else {
+                self.repository
+                    .mark_lifecycle_fact_delivered(
+                        fact.event_id,
+                        &fact.subscriber_id,
+                        self.worker_id,
+                    )
+                    .await?;
             };
             self.completion.complete(CompletionOutcome::new(
                 LifecycleOperationId::new(fact.event_id.to_string())?,
@@ -254,6 +265,111 @@ mod tests {
         assert_eq!(
             completion.0.lock().unwrap().as_slice(),
             &[CompletionTerminal::Failed]
+        );
+    }
+
+    #[derive(Clone)]
+    struct BatchRepository {
+        records: Vec<LifecycleOutboxRecord>,
+        delivered: Arc<Mutex<Vec<String>>>,
+        retried: Arc<Mutex<Vec<String>>>,
+    }
+
+    #[async_trait]
+    impl LifecycleOutboxRepository for BatchRepository {
+        async fn record_lifecycle_fact(
+            &self,
+            _input: &RecordLifecycleFactInput,
+        ) -> Result<LifecycleOutboxRecord> {
+            anyhow::bail!("unused")
+        }
+
+        async fn claim_lifecycle_facts(
+            &self,
+            worker_id: Uuid,
+            _limit: u32,
+            _claim_lease: Duration,
+        ) -> Result<Vec<LifecycleOutboxRecord>> {
+            Ok(self
+                .records
+                .iter()
+                .cloned()
+                .map(|mut record| {
+                    record.claimed_by = Some(worker_id);
+                    record
+                })
+                .collect())
+        }
+
+        async fn mark_lifecycle_fact_delivered(
+            &self,
+            _event_id: Uuid,
+            subscriber_id: &str,
+            _worker_id: Uuid,
+        ) -> Result<LifecycleOutboxRecord> {
+            self.delivered
+                .lock()
+                .unwrap()
+                .push(subscriber_id.to_string());
+            Ok(self.records[0].clone())
+        }
+
+        async fn retry_lifecycle_fact(
+            &self,
+            _event_id: Uuid,
+            subscriber_id: &str,
+            _worker_id: Uuid,
+            _available_at: OffsetDateTime,
+            _error: &str,
+        ) -> Result<LifecycleOutboxRecord> {
+            self.retried.lock().unwrap().push(subscriber_id.to_string());
+            Ok(self.records[0].clone())
+        }
+    }
+
+    struct HangingFirstDelivery;
+
+    #[async_trait]
+    impl LifecycleFactDeliveryPort for HangingFirstDelivery {
+        async fn deliver(&self, fact: &LifecycleOutboxRecord) -> Result<()> {
+            if fact.subscriber_id == "subscriber-hung" {
+                std::future::pending::<()>().await;
+            }
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn hung_subscriber_times_out_and_does_not_block_later_delivery() {
+        let mut hung = repository().record;
+        hung.subscriber_id = "subscriber-hung".to_string();
+        let mut healthy = repository().record;
+        healthy.subscriber_id = "subscriber-healthy".to_string();
+        let repository = BatchRepository {
+            records: vec![hung, healthy],
+            delivered: Arc::new(Mutex::new(Vec::new())),
+            retried: Arc::new(Mutex::new(Vec::new())),
+        };
+        let completion = Arc::new(Completion::default());
+        let mut dispatcher = LifecycleOutboxDispatcher::new(
+            repository.clone(),
+            Arc::new(HangingFirstDelivery),
+            completion.clone(),
+        );
+        dispatcher.delivery_deadline = StdDuration::from_millis(10);
+
+        assert_eq!(dispatcher.run_once().await.unwrap(), 2);
+        assert_eq!(
+            repository.retried.lock().unwrap().as_slice(),
+            ["subscriber-hung"]
+        );
+        assert_eq!(
+            repository.delivered.lock().unwrap().as_slice(),
+            ["subscriber-healthy"]
+        );
+        assert_eq!(
+            completion.0.lock().unwrap().as_slice(),
+            &[CompletionTerminal::TimedOut, CompletionTerminal::Succeeded]
         );
     }
 }

@@ -37,31 +37,50 @@ test('durable delivery invokes frozen typed subscribers before acknowledgement',
   assert.doesNotMatch(delivery, /match \(handler_id, handler_version\)/u);
   assert.doesNotMatch(delivery, /match \([\s\S]*?subscriber\.handler_id/u);
   assert.doesNotMatch(delivery, /delivered durable lifecycle fact/u);
-  assert.match(dispatcher, /delivery\.deliver\(&fact\)\.await/u);
+  assert.match(dispatcher, /tokio::time::timeout\(/u);
+  assert.match(dispatcher, /self\.delivery\.deliver\(&fact\)/u);
   assert.match(dispatcher, /&fact\.subscriber_id/u);
 });
 
-test('composition injects one activated typed handler registry', () => {
+test('composition resolves active HostExtension entrypoint factories before registry binding', () => {
   const api = read('api/apps/api-server/src/lib.rs');
   const delivery = read('api/apps/api-server/src/host_extensions/lifecycle.rs');
+  const activation = read(
+    'api/apps/api-server/src/host_extensions/lifecycle_activation.rs'
+  );
   const registry = read(
     'api/crates/plugin-framework/src/extension_bus/lifecycle_handler_registry.rs'
   );
-  assert.match(api, /builtin_lifecycle_handler_bindings/u);
+  assert.match(api, /extend_active_host_extensions\(prepared_host_extensions\.graph_extensions\(\)\)/u);
+  assert.match(api, /production_lifecycle_handler_factories[\s\S]*?\.activate\(&active_host_extensions\)/u);
+  assert.doesNotMatch(api, /builtin_lifecycle_handler_bindings/u);
+  assert.match(activation, /contribution\.native\.library/u);
+  assert.match(activation, /contribution\.native\.entry_symbol/u);
+  assert.match(activation, /factory\(\)\?/u);
   assert.match(delivery, /LifecycleHandlerBinding::typed/u);
+  assert.match(delivery, /acme_lifecycle_subscriber_fixture/u);
   assert.match(registry, /TypedLifecycleSubscriberHandler/u);
   assert.match(registry, /invalid typed lifecycle fact/u);
   assert.doesNotMatch(registry, /serde_json::Value/u);
 });
 
-test('lifecycle contribution privileges are explicit for all plugin kinds', () => {
+test('durable lifecycle subscription is HostExtension-only until other transports exist', () => {
   const plan = read(
     'api/crates/plugin-framework/src/extension_bus/lifecycle_subscriber_plan.rs'
   );
   assert.match(plan, /ModuleKind::TrustedHost/u);
-  assert.match(plan, /ModuleKind::Runtime/u);
-  assert.match(plan, /ModuleKind::Capability/u);
+  assert.match(plan, /ModuleKind::Runtime \| ModuleKind::Capability \| ModuleKind::User => false/u);
   assert.match(plan, /LifecycleEscalation/u);
+});
+
+test('hung lifecycle handlers time out, retry, and cannot block the remaining batch', () => {
+  const dispatcher = read(
+    'api/crates/control-plane/src/lifecycle_outbox_dispatcher.rs'
+  );
+  assert.match(dispatcher, /delivery_deadline: StdDuration/u);
+  assert.match(dispatcher, /CompletionTerminal::TimedOut/u);
+  assert.match(dispatcher, /hung_subscriber_times_out_and_does_not_block_later_delivery/u);
+  assert.match(dispatcher, /subscriber-healthy/u);
 });
 
 test('outbox records per-subscriber durable state and aggregate completion', () => {
