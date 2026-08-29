@@ -16,6 +16,7 @@ use domain::{PluginDesiredState, PluginRuntimeStatus};
 use plugin_framework::{
     parse_host_extension_contribution_manifest, scan_host_extension_dropins_with_policy,
     HostExtensionContributionManifest, HostExtensionDropinPolicy, HostExtensionDropinScan,
+    PluginManifestV1,
 };
 
 #[cfg(test)]
@@ -37,11 +38,18 @@ pub struct HostExtensionStartupSummary {
 
 pub(crate) struct PreparedHostExtensionsAtStartup {
     pub(crate) contributions: Vec<ResolvedHostExtensionConsoleContribution>,
+    graph_extensions: Vec<(PluginManifestV1, HostExtensionContributionManifest)>,
     activation_candidates: Vec<domain::LocalPluginInstallationRecord>,
     pub(crate) summary: HostExtensionStartupSummary,
 }
 
 impl PreparedHostExtensionsAtStartup {
+    pub(crate) fn graph_extensions(
+        &self,
+    ) -> &[(PluginManifestV1, HostExtensionContributionManifest)] {
+        &self.graph_extensions
+    }
+
     pub(crate) fn take_contributions(&mut self) -> Vec<ResolvedHostExtensionConsoleContribution> {
         std::mem::take(&mut self.contributions)
     }
@@ -74,6 +82,7 @@ pub(crate) async fn prepare_host_extensions_at_startup(
         warnings: detected.warnings,
     };
     let mut contributions = Vec::new();
+    let mut graph_extensions = Vec::new();
     let mut activation_candidates = Vec::new();
 
     for installation in installations.into_iter().filter(|installation| {
@@ -99,17 +108,23 @@ pub(crate) async fn prepare_host_extensions_at_startup(
             Err(error) => return Err(error),
         };
 
-        let contribution = match validate_host_extension_installation(&local_installation) {
-            Ok(contribution) => contribution,
-            Err(error) => {
-                mark_host_extension_load_failed(store, api_node_id, &local_installation, &error)
+        let (manifest, contribution) =
+            match validate_host_extension_installation(&local_installation) {
+                Ok(package) => package,
+                Err(error) => {
+                    mark_host_extension_load_failed(
+                        store,
+                        api_node_id,
+                        &local_installation,
+                        &error,
+                    )
                     .await?;
-                summary.failed_count += 1;
-                continue;
-            }
-        };
-        let contribution = match resolve_linked_host_extension_console_contribution(
-            contribution,
+                    summary.failed_count += 1;
+                    continue;
+                }
+            };
+        let resolved = match resolve_linked_host_extension_console_contribution(
+            contribution.clone(),
             linked_host_console_route_sources(),
         ) {
             Ok(contribution) => contribution,
@@ -119,12 +134,14 @@ pub(crate) async fn prepare_host_extensions_at_startup(
                 return Err(error);
             }
         };
-        contributions.push(contribution);
+        contributions.push(resolved);
+        graph_extensions.push((manifest, contribution));
         activation_candidates.push(local_installation);
     }
 
     Ok(PreparedHostExtensionsAtStartup {
         contributions,
+        graph_extensions,
         activation_candidates,
         summary,
     })
@@ -235,7 +252,7 @@ fn is_current_node_artifact_conflict(error: &anyhow::Error) -> bool {
 
 fn validate_host_extension_installation(
     installation: &domain::LocalPluginInstallationRecord,
-) -> Result<HostExtensionContributionManifest> {
+) -> Result<(PluginManifestV1, HostExtensionContributionManifest)> {
     let install_root = Path::new(
         installation
             .local_path()
@@ -277,7 +294,7 @@ fn validate_host_extension_installation(
     }
     validate_native_library(install_root, &contribution)?;
 
-    Ok(contribution)
+    Ok((manifest, contribution))
 }
 
 fn validate_native_library(

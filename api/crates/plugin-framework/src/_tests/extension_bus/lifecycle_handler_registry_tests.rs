@@ -114,14 +114,6 @@ fn lifecycle_contribution_admission_is_bounded_by_plugin_kind() {
     for (kind, lifecycle) in [
         (ModuleKind::TrustedHost, LifecycleSemantics::BootSnapshot),
         (ModuleKind::TrustedHost, LifecycleSemantics::Invocation),
-        (ModuleKind::Runtime, LifecycleSemantics::RuntimeWorker),
-        (ModuleKind::Runtime, LifecycleSemantics::Invocation),
-        (
-            ModuleKind::Capability,
-            LifecycleSemantics::WorkspaceAssignment,
-        ),
-        (ModuleKind::Capability, LifecycleSemantics::UiMount),
-        (ModuleKind::Capability, LifecycleSemantics::Invocation),
     ] {
         plan(kind, lifecycle).unwrap();
     }
@@ -130,9 +122,17 @@ fn lifecycle_contribution_admission_is_bounded_by_plugin_kind() {
         (ModuleKind::TrustedHost, LifecycleSemantics::RuntimeWorker),
         (ModuleKind::TrustedHost, LifecycleSemantics::UiMount),
         (ModuleKind::Runtime, LifecycleSemantics::BootSnapshot),
+        (ModuleKind::Runtime, LifecycleSemantics::RuntimeWorker),
+        (ModuleKind::Runtime, LifecycleSemantics::Invocation),
         (ModuleKind::Runtime, LifecycleSemantics::WorkspaceAssignment),
         (ModuleKind::Capability, LifecycleSemantics::BootSnapshot),
         (ModuleKind::Capability, LifecycleSemantics::RuntimeWorker),
+        (
+            ModuleKind::Capability,
+            LifecycleSemantics::WorkspaceAssignment,
+        ),
+        (ModuleKind::Capability, LifecycleSemantics::UiMount),
+        (ModuleKind::Capability, LifecycleSemantics::Invocation),
         (ModuleKind::User, LifecycleSemantics::Invocation),
     ] {
         assert!(matches!(

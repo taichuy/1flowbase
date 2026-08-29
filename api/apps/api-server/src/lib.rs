@@ -332,11 +332,21 @@ async fn app_and_runtime_host_from_config(
         .clone()
         .with_runtime_table_name_policy(config.runtime_table_name_policy.clone());
     console_policy_migration::require_runtime_console_policy_cutover(&store).await?;
-    let extension_assembly = extension_bus::assemble_extension_graph_input(
+    let prepared_host_extensions = prepare_host_extensions_at_startup(
+        &store,
+        &config.api_node_id,
+        &config.provider_install_root,
+        &config.host_extension_dropin_root,
+        config.allow_unverified_filesystem_dropins,
+    )
+    .await?;
+    let mut extension_assembly = extension_bus::assemble_extension_graph_input(
         api_workspace_root()?,
         extension_bus::DEFAULT_PLUGIN_SET_PATH,
         Vec::new(),
     )?;
+    extension_assembly
+        .extend_active_host_extensions(prepared_host_extensions.graph_extensions())?;
     let extension_graph = Arc::new(extension_assembly.compile_graph()?);
     let lifecycle_plan = extension_assembly.compile_lifecycle_subscriber_plan(&extension_graph)?;
     let extension_boot_snapshot = Arc::new(extension_bus::ExtensionBootSnapshot::compile(
@@ -349,10 +359,10 @@ async fn app_and_runtime_host_from_config(
             ),
         ),
     )?);
-    let builtin_host_extensions = extension_assembly.into_host_extension_manifests();
-    let mut host_extension_registry =
+    let active_host_extensions = extension_assembly.into_host_extension_manifests();
+    let host_extension_registry =
         control_plane::host_extension_boot::register_builtin_host_extension_contributions(
-            &builtin_host_extensions,
+            &active_host_extensions,
         )?;
     let infrastructure = Arc::new(build_local_host_infrastructure_from_host_extensions(
         &host_extension_registry,
@@ -361,9 +371,10 @@ async fn app_and_runtime_host_from_config(
     let (lifecycle_delivery, lifecycle_publication_catalog) =
         host_extensions::lifecycle::ApiLifecycleFactDelivery::bind(
             &lifecycle_plan,
-            host_extensions::lifecycle::builtin_lifecycle_handler_bindings(
+            host_extensions::lifecycle::production_lifecycle_handler_factories(
                 infrastructure.event_bus(),
-            ),
+            )?
+            .activate(&active_host_extensions)?,
         )?;
     let store = store.with_lifecycle_publication_catalog(lifecycle_publication_catalog);
     tokio::spawn(
@@ -602,15 +613,7 @@ async fn app_and_runtime_host_from_config(
         &config.provider_install_root,
     )
     .await?;
-    let mut prepared_host_extensions = prepare_host_extensions_at_startup(
-        &store,
-        &config.api_node_id,
-        &config.provider_install_root,
-        &config.host_extension_dropin_root,
-        config.allow_unverified_filesystem_dropins,
-    )
-    .await?;
-    let mut console_host_extensions = builtin_host_extensions
+    let console_host_extensions = active_host_extensions
         .iter()
         .map(|(_, contribution)| {
             resolve_linked_host_extension_console_contribution(
@@ -619,14 +622,6 @@ async fn app_and_runtime_host_from_config(
             )
         })
         .collect::<Result<Vec<_>>>()?;
-    let prepared_contributions = prepared_host_extensions.take_contributions();
-    for resolved in &prepared_contributions {
-        control_plane::host_extension_boot::register_host_extension_contribution(
-            &mut host_extension_registry,
-            &resolved.contribution,
-        )?;
-    }
-    console_host_extensions.extend(prepared_contributions);
     let authenticator_registry = Arc::new(
         control_plane::auth::AuthenticatorRegistry::from_host_extensions(&host_extension_registry)?,
     );

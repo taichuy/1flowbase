@@ -75,6 +75,15 @@ infrastructure_providers: []
 routes: []
 workers: []
 migrations: []
+lifecycle_subscriptions:
+  - subscription_id: fixture-model-definition-committed
+    point_id: 1flowbase.application.runtime-event.after-commit
+    fact:
+      contract_id: model_definition.committed
+      contract_version: v1
+    handler:
+      contract_id: fixture-host.model-definition-committed
+      contract_version: v1
 "#
         ),
     )
@@ -230,6 +239,48 @@ async fn startup_loader_scans_dropins_and_pending_restart_rows_before_serving() 
 
     let _ = fs::remove_dir_all(dropin_root);
     let _ = fs::remove_dir_all(pending_root);
+}
+
+#[tokio::test]
+async fn pending_restart_package_enters_effective_graph_before_activation() {
+    let (state, _database_url) = test_api_state_with_database_url().await;
+    let installed_root =
+        create_current_node_host_extension_fixture(&state, "0.1.0", "uploaded").await;
+    seed_pending_restart_host_extension(&state, &installed_root, "0.1.0").await;
+
+    let prepared = crate::host_extension_loader::prepare_host_extensions_at_startup(
+        &state.store,
+        &state.api_node_id,
+        &state.provider_install_root,
+        &state.host_extension_dropin_root,
+        state.allow_unverified_filesystem_dropins,
+    )
+    .await
+    .unwrap();
+    assert_eq!(prepared.graph_extensions().len(), 1);
+    assert_eq!(
+        prepared.graph_extensions()[0].1.native.entry_symbol,
+        "oneflowbase_host_extension_entry_v1"
+    );
+
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut assembly = crate::extension_bus::assemble_extension_graph_input(
+        root,
+        crate::extension_bus::DEFAULT_PLUGIN_SET_PATH,
+        Vec::new(),
+    )
+    .unwrap();
+    assembly
+        .extend_active_host_extensions(prepared.graph_extensions())
+        .unwrap();
+    let graph = assembly.compile_graph().unwrap();
+    let plan = assembly.compile_lifecycle_subscriber_plan(&graph).unwrap();
+    assert!(plan.subscribers().iter().any(|subscriber| {
+        subscriber.contributor_module_id == "fixture_host_extension"
+            && subscriber.handler_id == "fixture-host.model-definition-committed"
+    }));
+
+    let _ = fs::remove_dir_all(installed_root);
 }
 
 #[tokio::test]

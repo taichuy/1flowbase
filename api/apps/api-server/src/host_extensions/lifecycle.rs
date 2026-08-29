@@ -10,6 +10,8 @@ use plugin_framework::extension_bus::{
     LifecycleHandlerFuture, TypedLifecycleSubscriberHandler,
 };
 
+use super::lifecycle_activation::HostExtensionLifecycleFactoryCatalog;
+
 pub(crate) const MODEL_DEFINITION_COMMITTED_HANDLER_ID: &str =
     "official.plugin-host.model-definition-committed";
 pub(crate) const MODEL_DEFINITION_COMMITTED_HANDLER_VERSION: &str = "v1";
@@ -45,7 +47,7 @@ impl TypedLifecycleSubscriberHandler<control_plane_contracts::ports::ModelDefini
     }
 }
 
-pub(crate) fn builtin_lifecycle_handler_bindings(
+fn official_plugin_host_lifecycle_bindings(
     event_bus: Arc<dyn EventBus>,
 ) -> Vec<LifecycleHandlerBinding> {
     vec![LifecycleHandlerBinding::typed::<
@@ -56,6 +58,22 @@ pub(crate) fn builtin_lifecycle_handler_bindings(
         MODEL_DEFINITION_COMMITTED_HANDLER_VERSION,
         Arc::new(ModelDefinitionCommittedHandler { event_bus }),
     )]
+}
+
+pub(crate) fn production_lifecycle_handler_factories(
+    event_bus: Arc<dyn EventBus>,
+) -> Result<HostExtensionLifecycleFactoryCatalog> {
+    let mut factories = HostExtensionLifecycleFactoryCatalog::default();
+    factories.register(
+        "builtin://official.plugin-host",
+        "builtin_plugin_host",
+        Arc::new(move || {
+            Ok(official_plugin_host_lifecycle_bindings(Arc::clone(
+                &event_bus,
+            )))
+        }),
+    )?;
+    Ok(factories)
 }
 
 pub(crate) struct ApiLifecycleFactDelivery {
@@ -173,11 +191,12 @@ mod tests {
         let graph = assembly.compile_graph().unwrap();
         let plan = assembly.compile_lifecycle_subscriber_plan(&graph).unwrap();
         let event_bus = Arc::new(storage_ephemeral::MemoryEventBus::new());
-        let (delivery, _) = ApiLifecycleFactDelivery::bind(
-            &plan,
-            builtin_lifecycle_handler_bindings(event_bus.clone() as Arc<dyn EventBus>),
-        )
-        .unwrap();
+        let bindings =
+            production_lifecycle_handler_factories(event_bus.clone() as Arc<dyn EventBus>)
+                .unwrap()
+                .activate(assembly.host_extension_manifests())
+                .unwrap();
+        let (delivery, _) = ApiLifecycleFactDelivery::bind(&plan, bindings).unwrap();
         let event_id = Uuid::now_v7();
         let transaction_id = Uuid::now_v7();
         let fact = AfterCommitFact::new(
@@ -219,7 +238,7 @@ mod tests {
 
     #[tokio::test]
     async fn independent_plugin_commit_delivery_retries_before_marking_delivered() {
-        let (assembly, fixture_root) = independent_plugin_fixture_assembly();
+        let assembly = independent_plugin_fixture_assembly();
         let graph = assembly.compile_graph().unwrap();
         let plan = assembly.compile_lifecycle_subscriber_plan(&graph).unwrap();
         let subscriber = &plan.subscribers()[0];
@@ -236,18 +255,35 @@ mod tests {
             fail: AtomicBool::new(true),
             received: Mutex::new(Vec::new()),
         });
-        let (delivery, publication_catalog) = ApiLifecycleFactDelivery::bind(
-            &plan,
-            vec![LifecycleHandlerBinding::typed::<
-                ModelDefinitionCommittedFact,
-                _,
-            >(
-                "acme.lifecycle-subscriber.model-definition-committed",
-                "v1",
-                Arc::clone(&plugin_handler),
-            )],
-        )
-        .unwrap();
+        let activated = Arc::new(AtomicBool::new(false));
+        let event_bus = Arc::new(storage_ephemeral::MemoryEventBus::new());
+        let mut factories =
+            production_lifecycle_handler_factories(event_bus as Arc<dyn EventBus>).unwrap();
+        let factory_handler = Arc::clone(&plugin_handler);
+        let factory_activated = Arc::clone(&activated);
+        factories
+            .register(
+                "builtin://acme.lifecycle-subscriber-host",
+                "acme_lifecycle_subscriber_fixture",
+                Arc::new(move || {
+                    factory_activated.store(true, Ordering::SeqCst);
+                    Ok(vec![LifecycleHandlerBinding::typed::<
+                        ModelDefinitionCommittedFact,
+                        _,
+                    >(
+                        "acme.lifecycle-subscriber.model-definition-committed",
+                        "v1",
+                        Arc::clone(&factory_handler),
+                    )])
+                }),
+            )
+            .unwrap();
+        let bindings = factories
+            .activate(assembly.host_extension_manifests())
+            .unwrap();
+        assert!(activated.load(Ordering::SeqCst));
+        let (delivery, publication_catalog) =
+            ApiLifecycleFactDelivery::bind(&plan, bindings).unwrap();
 
         let base_database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
             "postgres://postgres:1flowbase@127.0.0.1:35432/1flowbase".to_string()
@@ -304,9 +340,9 @@ mod tests {
             Arc::new(delivery),
             Arc::new(crate::ApiLifecycleDeliveryCompletion),
         );
-        assert_eq!(dispatcher.run_once().await.unwrap(), 1);
+        assert_eq!(dispatcher.run_once().await.unwrap(), 2);
         assert_eq!(
-            lifecycle_status(store.pool(), event_id).await,
+            lifecycle_status(store.pool(), event_id, &subscriber.subscriber_id).await,
             ("pending", "pending")
         );
         assert!(plugin_handler
@@ -325,7 +361,7 @@ mod tests {
         .unwrap();
         assert_eq!(dispatcher.run_once().await.unwrap(), 1);
         assert_eq!(
-            lifecycle_status(store.pool(), event_id).await,
+            lifecycle_status(store.pool(), event_id, &subscriber.subscriber_id).await,
             ("delivered", "delivered")
         );
         assert_eq!(
@@ -336,11 +372,13 @@ mod tests {
                 .as_slice(),
             [model.id]
         );
-
-        std::fs::remove_dir_all(fixture_root).unwrap();
     }
 
-    async fn lifecycle_status(pool: &sqlx::PgPool, event_id: Uuid) -> (&'static str, &'static str) {
+    async fn lifecycle_status(
+        pool: &sqlx::PgPool,
+        event_id: Uuid,
+        subscriber_id: &str,
+    ) -> (&'static str, &'static str) {
         let parent: String =
             sqlx::query_scalar("select status from lifecycle_outbox where event_id = $1")
                 .bind(event_id)
@@ -348,9 +386,10 @@ mod tests {
                 .await
                 .unwrap();
         let subscriber: String = sqlx::query_scalar(
-            "select status from lifecycle_outbox_deliveries where event_id = $1",
+            "select status from lifecycle_outbox_deliveries where event_id = $1 and subscriber_id = $2",
         )
         .bind(event_id)
+        .bind(subscriber_id)
         .fetch_one(pool)
         .await
         .unwrap();
@@ -368,48 +407,26 @@ mod tests {
         )
     }
 
-    fn independent_plugin_fixture_assembly() -> (
-        crate::extension_bus::ExtensionGraphInputAssembly,
-        std::path::PathBuf,
-    ) {
-        let root = std::env::temp_dir().join(format!(
-            "1flowbase-lifecycle-plugin-fixture-{}",
-            Uuid::now_v7().simple()
-        ));
-        let plugin = root.join("plugins/host-extensions/acme.lifecycle-subscriber-host");
-        std::fs::create_dir_all(&plugin).unwrap();
-        std::fs::create_dir_all(root.join("plugins/sets")).unwrap();
-        std::fs::write(
-            plugin.join("manifest.yaml"),
-            include_str!(
-                "../../../../plugins/fixtures/acme.lifecycle-subscriber-host/manifest.yaml"
-            ),
-        )
+    fn independent_plugin_fixture_assembly() -> crate::extension_bus::ExtensionGraphInputAssembly {
+        let root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let manifest = plugin_framework::parse_plugin_manifest(include_str!(
+            "../../../../plugins/fixtures/acme.lifecycle-subscriber-host/manifest.yaml"
+        ))
         .unwrap();
-        std::fs::write(
-            plugin.join("host-extension.yaml"),
-            include_str!(
+        let contribution =
+            plugin_framework::parse_host_extension_contribution_manifest(include_str!(
                 "../../../../plugins/fixtures/acme.lifecycle-subscriber-host/host-extension.yaml"
-            ),
-        )
-        .unwrap();
-        std::fs::write(
-            root.join("plugins/sets/fixture.yaml"),
-            r#"schema_version: 1flowbase.plugin-set/v1
-set_id: fixture
-host_extensions:
-  - acme.lifecycle-subscriber-host
-runtime_extensions: []
-capability_plugins: []
-"#,
-        )
-        .unwrap();
-        let assembly = crate::extension_bus::assemble_extension_graph_input(
+            ))
+            .unwrap();
+        let mut assembly = crate::extension_bus::assemble_extension_graph_input(
             &root,
-            "plugins/sets/fixture.yaml",
+            crate::extension_bus::DEFAULT_PLUGIN_SET_PATH,
             Vec::new(),
         )
         .unwrap();
-        (assembly, root)
+        assembly
+            .extend_active_host_extensions(&[(manifest, contribution)])
+            .unwrap();
+        assembly
     }
 }

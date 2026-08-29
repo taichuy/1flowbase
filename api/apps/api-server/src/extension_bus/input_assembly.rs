@@ -118,6 +118,47 @@ impl ExtensionGraphInputAssembly {
         compile_extension_graph(self.module_descriptors.clone()).map_err(anyhow::Error::from)
     }
 
+    pub(crate) fn extend_active_host_extensions(
+        &mut self,
+        extensions: &[(PluginManifestV1, HostExtensionContributionManifest)],
+    ) -> Result<()> {
+        let mut module_ids = self
+            .module_descriptors
+            .iter()
+            .map(|descriptor| descriptor.module_id.as_str().to_string())
+            .collect::<BTreeSet<_>>();
+        for (manifest, contribution) in extensions {
+            let module_id = manifest.plugin_code()?;
+            if manifest.consumption_kind != PluginConsumptionKind::HostExtension {
+                bail!("activated package {module_id} is not a HostExtension manifest");
+            }
+            if module_id != contribution.extension_id || manifest.version != contribution.version {
+                bail!(
+                    "activated HostExtension package identity/version does not match contribution {}@{}",
+                    contribution.extension_id,
+                    contribution.version
+                );
+            }
+            if !module_ids.insert(module_id.to_string()) {
+                bail!("activated HostExtension module is duplicated: {module_id}");
+            }
+            self.module_descriptors.push(derive_host_module_descriptor(
+                manifest,
+                contribution,
+                ModuleActivationDeclaration::Active,
+            )?);
+            self.interface_operations
+                .extend(contribution.interface_operations.iter().cloned());
+            self.host_extension_manifests
+                .push((manifest.clone(), contribution.clone()));
+        }
+        self.module_descriptors
+            .sort_by(|left, right| left.module_id.cmp(&right.module_id));
+        self.host_extension_manifests
+            .sort_by(|left, right| left.1.extension_id.cmp(&right.1.extension_id));
+        Ok(())
+    }
+
     pub fn compile_lifecycle_subscriber_plan(
         &self,
         graph: &EffectiveExtensionGraph,

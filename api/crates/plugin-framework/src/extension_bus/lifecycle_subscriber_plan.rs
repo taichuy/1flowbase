@@ -173,16 +173,9 @@ fn allows_lifecycle(module_kind: ModuleKind, lifecycle: LifecycleSemantics) -> b
             lifecycle,
             LifecycleSemantics::BootSnapshot | LifecycleSemantics::Invocation
         ),
-        ModuleKind::Runtime => matches!(
-            lifecycle,
-            LifecycleSemantics::RuntimeWorker | LifecycleSemantics::Invocation
-        ),
-        ModuleKind::Capability => matches!(
-            lifecycle,
-            LifecycleSemantics::WorkspaceAssignment
-                | LifecycleSemantics::UiMount
-                | LifecycleSemantics::Invocation
-        ),
-        ModuleKind::User => false,
+        // Runtime and Capability packages do not yet have an approved typed lifecycle
+        // transport. Accepting their descriptors here would manufacture an activation
+        // promise that the Runtime Host cannot bind without changing its stable wire.
+        ModuleKind::Runtime | ModuleKind::Capability | ModuleKind::User => false,
     }
 }
