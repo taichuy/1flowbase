@@ -81,7 +81,9 @@ pub async fn require_settings_feature_permission(
         request.method().as_str(),
         &path,
     ) {
-        request.extensions_mut().insert(context.actor);
+        request
+            .extensions_mut()
+            .insert(context.interface_principal());
         return Ok(next.run(request).await);
     }
     let access = compiled_console_route_access(

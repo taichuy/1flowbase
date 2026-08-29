@@ -5,7 +5,7 @@
 
 # Invariants
 
-- Adapter 完成 credential 解析后才能传入 `ActorContext`；本 crate 不读取 Cookie、Header、Session、API Key 或 MCP credential。
+- Adapter 完成 credential 解析后只能传入 sealed Public/User/Application Principal；User/Application 内的 `ActorContext` 继续是授权真值。本 crate 不读取 Cookie、Header、Session secret、API Key 原文或 MCP credential。
 - 调用顺序固定为 Resolve → Authorize → optional typed target admission → typed Before → Invoke → typed After / Failure → Completion。
 - 每次调用固定一个 Registry snapshot、Registry fingerprint 和 Effective Graph fingerprint。
 - Definition、Binding、Compiled Plan、Handler、Target、Authorization 使用独立 typed identity/port；Binding 不拥有业务语义，Plan 冻结 adapter/handler/extension identity；不暴露 Axum Handler、Host Registry、本机路径、数据库连接、SQL 或无限制 JSON invocation。

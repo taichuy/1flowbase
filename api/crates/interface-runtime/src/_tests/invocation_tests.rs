@@ -21,8 +21,8 @@ use crate::{
     InterfaceScope, InterfaceTargetAdmissionError, InterfaceTargetAdmissionFuture,
     InterfaceTargetAdmissionPort, InterfaceTargetAdmissionRequest, InterfaceTargetError,
     InterfaceVersion, InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage,
-    InvocationLineageError, ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity,
-    TargetReference, TypedInterfaceHookPlan,
+    InvocationLineageError, PrincipalProfile, ProtocolBinding, ProtocolProjection,
+    RegistryCompiler, RouteIdentity, TargetReference, TypedInterfaceHookPlan, UserPrincipal,
 };
 
 #[derive(Clone)]
@@ -75,7 +75,7 @@ impl InterfaceAuthorizationPort for Authorization {
         &self,
         request: InterfaceAuthorizationRequest,
     ) -> InterfaceAuthorizationFuture<'_> {
-        let reject = self.reject || !request.actor().is_root;
+        let reject = self.reject || !request.principal().actor().is_root;
         Box::pin(async move {
             if reject {
                 Err(InterfaceAuthorizationError::classified("permission_denied"))
@@ -226,6 +226,7 @@ fn definition() -> InterfaceDefinition {
             ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
         ),
         InterfaceAccess::new(
+            PrincipalProfile::User,
             InterfaceAuthenticationPolicy::Authenticated,
             operation(),
             InterfaceScope::System,
@@ -275,7 +276,7 @@ fn compile_snapshot(
     compiler.register_definition(definition()).unwrap();
     compiler.register_binding(binding()).unwrap();
     compiler
-        .bind_handler::<Input, Output>(
+        .bind_handler::<Input, Output, UserPrincipal>(
             &interface_id(),
             HandlerReference::new("invocation.handler").unwrap(),
             Arc::new(RecordingHandler {
@@ -466,7 +467,7 @@ async fn deadline_cancels_each_in_flight_stage() {
     compiler.register_definition(definition()).unwrap();
     compiler.register_binding(binding()).unwrap();
     compiler
-        .bind_handler::<Input, Output>(
+        .bind_handler::<Input, Output, UserPrincipal>(
             &interface_id(),
             HandlerReference::new("invocation.handler").unwrap(),
             Arc::new(SlowHandler),

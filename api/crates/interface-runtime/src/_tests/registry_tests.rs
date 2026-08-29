@@ -7,8 +7,9 @@ use crate::{
     InterfaceAuthenticationPolicy, InterfaceContract, InterfaceContracts, InterfaceDefinition,
     InterfaceErrorPolicy, InterfaceExecution, InterfaceHandler, InterfaceHandlerContext,
     InterfaceHandlerFuture, InterfaceId, InterfaceIdentity, InterfaceLifecycle, InterfaceOwner,
-    InterfaceScope, InterfaceTargetError, InterfaceVersion, InvocationAdapterPlan, ProtocolBinding,
-    ProtocolProjection, RegistryCompilationError, RegistryCompiler, RouteIdentity, TargetReference,
+    InterfaceScope, InterfaceTargetError, InterfaceVersion, InvocationAdapterPlan,
+    PrincipalProfile, ProtocolBinding, ProtocolProjection, RegistryCompilationError,
+    RegistryCompiler, RouteIdentity, TargetReference, UserPrincipal,
 };
 
 struct Input;
@@ -74,6 +75,7 @@ fn definition(id: &str) -> InterfaceDefinition {
             ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
         ),
         InterfaceAccess::new(
+            PrincipalProfile::User,
             InterfaceAuthenticationPolicy::Authenticated,
             operation(),
             InterfaceScope::System,
@@ -123,7 +125,7 @@ fn register_complete(compiler: &mut RegistryCompiler, id: &str, binding_id: &str
         .register_binding(binding(binding_id, id, path))
         .unwrap();
     compiler
-        .bind_handler::<Input, Output>(
+        .bind_handler::<Input, Output, UserPrincipal>(
             &InterfaceId::new(id).unwrap(),
             HandlerReference::new("test.handler").unwrap(),
             Arc::new(TestHandler),
@@ -237,7 +239,7 @@ fn rejects_missing_or_mismatched_typed_handler_and_missing_binding() {
         ))
         .unwrap();
     mismatch
-        .bind_handler::<Input, WrongOutput>(
+        .bind_handler::<Input, WrongOutput, UserPrincipal>(
             &InterfaceId::new("test.mismatch").unwrap(),
             HandlerReference::new("test.handler").unwrap(),
             Arc::new(WrongHandler),
@@ -253,7 +255,7 @@ fn rejects_missing_or_mismatched_typed_handler_and_missing_binding() {
         .register_definition(definition("test.unbound"))
         .unwrap();
     missing_binding
-        .bind_handler::<Input, Output>(
+        .bind_handler::<Input, Output, UserPrincipal>(
             &InterfaceId::new("test.unbound").unwrap(),
             HandlerReference::new("test.handler").unwrap(),
             Arc::new(TestHandler),
@@ -320,7 +322,7 @@ fn rejects_unknown_operation_inactive_owner_and_binding_contract_or_version_mism
         ))
         .unwrap();
     version
-        .bind_handler::<Input, Output>(
+        .bind_handler::<Input, Output, UserPrincipal>(
             &InterfaceId::new("test.version").unwrap(),
             HandlerReference::new("test.handler").unwrap(),
             Arc::new(TestHandler),
@@ -345,7 +347,7 @@ fn rejects_unknown_operation_inactive_owner_and_binding_contract_or_version_mism
         ))
         .unwrap();
     contract
-        .bind_handler::<Input, Output>(
+        .bind_handler::<Input, Output, UserPrincipal>(
             &InterfaceId::new("test.contract").unwrap(),
             HandlerReference::new("test.handler").unwrap(),
             Arc::new(TestHandler),
@@ -354,5 +356,51 @@ fn rejects_unknown_operation_inactive_owner_and_binding_contract_or_version_mism
     assert!(matches!(
         contract.compile(),
         Err(RegistryCompilationError::BindingContractMismatch(_))
+    ));
+}
+
+#[test]
+fn rejects_handler_bound_with_the_wrong_principal_profile() {
+    let mut compiler = compiler();
+    compiler
+        .register_definition(InterfaceDefinition::new(
+            identity("test.public"),
+            InterfaceContracts::unary(
+                ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
+                ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
+            ),
+            InterfaceAccess::new(
+                PrincipalProfile::Public,
+                InterfaceAuthenticationPolicy::Anonymous,
+                operation(),
+                InterfaceScope::System,
+            ),
+            InterfaceExecution::new(
+                HandlerReference::new("test.handler").unwrap(),
+                TargetReference::new("test.target").unwrap(),
+            ),
+            InterfaceAuditPolicy::ReadOnly,
+            InterfaceErrorPolicy::TypedTarget,
+            InterfaceLifecycle::BootSnapshot,
+            owner(),
+        ))
+        .unwrap();
+    compiler
+        .register_binding(binding(
+            "http.test.public.v1",
+            "test.public",
+            "/api/public/test",
+        ))
+        .unwrap();
+    compiler
+        .bind_handler::<Input, Output, UserPrincipal>(
+            &InterfaceId::new("test.public").unwrap(),
+            HandlerReference::new("test.handler").unwrap(),
+            Arc::new(TestHandler),
+        )
+        .unwrap();
+    assert!(matches!(
+        compiler.compile(),
+        Err(RegistryCompilationError::PrincipalProfileMismatch(_))
     ));
 }

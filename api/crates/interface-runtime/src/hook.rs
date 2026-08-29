@@ -1,16 +1,15 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
-use domain::ActorContext;
 use thiserror::Error;
 
 use crate::{
     GraphFingerprint, InterfaceContract, InterfaceInvocationTerminal, InvocationId,
-    RegistryFingerprint,
+    PrincipalSummary, RegistryFingerprint,
 };
 
 #[derive(Clone, Debug)]
 pub struct InterfaceHookContext {
-    actor: ActorContext,
+    principal: PrincipalSummary,
     invocation_id: InvocationId,
     graph_fingerprint: GraphFingerprint,
     registry_fingerprint: RegistryFingerprint,
@@ -18,21 +17,21 @@ pub struct InterfaceHookContext {
 
 impl InterfaceHookContext {
     pub(crate) fn new(
-        actor: ActorContext,
+        principal: PrincipalSummary,
         invocation_id: InvocationId,
         graph_fingerprint: GraphFingerprint,
         registry_fingerprint: RegistryFingerprint,
     ) -> Self {
         Self {
-            actor,
+            principal,
             invocation_id,
             graph_fingerprint,
             registry_fingerprint,
         }
     }
 
-    pub fn actor(&self) -> &ActorContext {
-        &self.actor
+    pub fn principal(&self) -> &PrincipalSummary {
+        &self.principal
     }
 
     pub fn invocation_id(&self) -> InvocationId {

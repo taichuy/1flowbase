@@ -10,10 +10,9 @@ use crate::{
     AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
     AuthorizationOperation, BindingFingerprint, BindingId, ContractIdentity,
     ExtensionPlanFingerprint, GraphFingerprint, HandlerReference, InterfaceId, InterfaceOwner,
-    InterfaceVersion, InvocationId, PlanFingerprint, RegistryFingerprint, RouteIdentity,
-    TargetReference,
+    InterfaceVersion, InvocationId, InvocationPrincipal, PlanFingerprint, PrincipalProfile,
+    PrincipalSummary, RegistryFingerprint, RouteIdentity, TargetReference, UserPrincipal,
 };
-use domain::ActorContext;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
@@ -95,6 +94,7 @@ impl InterfaceContracts {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InterfaceAccess {
+    principal_profile: PrincipalProfile,
     authentication: InterfaceAuthenticationPolicy,
     authorization_operation: AuthorizationOperation,
     scope: InterfaceScope,
@@ -102,15 +102,21 @@ pub struct InterfaceAccess {
 
 impl InterfaceAccess {
     pub fn new(
+        principal_profile: PrincipalProfile,
         authentication: InterfaceAuthenticationPolicy,
         authorization_operation: AuthorizationOperation,
         scope: InterfaceScope,
     ) -> Self {
         Self {
+            principal_profile,
             authentication,
             authorization_operation,
             scope,
         }
+    }
+
+    pub fn principal_profile(&self) -> PrincipalProfile {
+        self.principal_profile
     }
 
     pub fn authentication(&self) -> InterfaceAuthenticationPolicy {
@@ -210,6 +216,10 @@ impl InterfaceDefinition {
 
     pub fn authentication(&self) -> InterfaceAuthenticationPolicy {
         self.access.authentication()
+    }
+
+    pub fn principal_profile(&self) -> PrincipalProfile {
+        self.access.principal_profile()
     }
 
     pub fn audit(&self) -> InterfaceAuditPolicy {
@@ -406,30 +416,42 @@ impl CompiledInvocationPlan {
 }
 
 #[derive(Clone, Debug)]
-pub struct InterfaceHandlerContext {
-    actor: ActorContext,
+pub struct InterfaceHandlerContext<P = UserPrincipal>
+where
+    P: InvocationPrincipal,
+{
+    principal: P,
+    principal_summary: PrincipalSummary,
     invocation_id: InvocationId,
     graph_fingerprint: GraphFingerprint,
     registry_fingerprint: RegistryFingerprint,
 }
 
-impl InterfaceHandlerContext {
+impl<P> InterfaceHandlerContext<P>
+where
+    P: InvocationPrincipal,
+{
     pub(crate) fn new(
-        actor: ActorContext,
+        principal: P,
         invocation_id: InvocationId,
         graph_fingerprint: GraphFingerprint,
         registry_fingerprint: RegistryFingerprint,
     ) -> Self {
         Self {
-            actor,
+            principal_summary: principal.summary(),
+            principal,
             invocation_id,
             graph_fingerprint,
             registry_fingerprint,
         }
     }
 
-    pub fn actor(&self) -> &ActorContext {
-        &self.actor
+    pub fn principal(&self) -> &P {
+        &self.principal
+    }
+
+    pub fn principal_summary(&self) -> &PrincipalSummary {
+        &self.principal_summary
     }
 
     pub fn invocation_id(&self) -> InvocationId {
@@ -485,36 +507,40 @@ impl InterfaceTargetError {
 pub type InterfaceHandlerFuture<O> =
     Pin<Box<dyn Future<Output = Result<O, InterfaceTargetError>> + Send + 'static>>;
 
-pub trait InterfaceHandler<I, O>: Send + Sync + 'static
+pub trait InterfaceHandler<I, O, P = UserPrincipal>: Send + Sync + 'static
 where
     I: InterfaceContract,
     O: InterfaceContract,
+    P: InvocationPrincipal,
 {
-    fn invoke(&self, context: InterfaceHandlerContext, input: I) -> InterfaceHandlerFuture<O>;
+    fn invoke(&self, context: InterfaceHandlerContext<P>, input: I) -> InterfaceHandlerFuture<O>;
 }
 
 trait ErasedInterfaceBinding: Send + Sync {
     fn input_contract(&self) -> &ContractIdentity;
     fn output_contract(&self) -> &ContractIdentity;
     fn handler_reference(&self) -> &HandlerReference;
+    fn principal_profile(&self) -> PrincipalProfile;
     fn as_any(&self) -> &dyn Any;
 }
 
-struct TypedInterfaceBinding<I, O>
+struct TypedInterfaceBinding<I, O, P>
 where
     I: InterfaceContract,
     O: InterfaceContract,
+    P: InvocationPrincipal,
 {
     input_contract: ContractIdentity,
     output_contract: ContractIdentity,
     handler_reference: HandlerReference,
-    handler: Arc<dyn InterfaceHandler<I, O>>,
+    handler: Arc<dyn InterfaceHandler<I, O, P>>,
 }
 
-impl<I, O> ErasedInterfaceBinding for TypedInterfaceBinding<I, O>
+impl<I, O, P> ErasedInterfaceBinding for TypedInterfaceBinding<I, O, P>
 where
     I: InterfaceContract,
     O: InterfaceContract,
+    P: InvocationPrincipal,
 {
     fn input_contract(&self) -> &ContractIdentity {
         &self.input_contract
@@ -526,6 +552,10 @@ where
 
     fn handler_reference(&self) -> &HandlerReference {
         &self.handler_reference
+    }
+
+    fn principal_profile(&self) -> PrincipalProfile {
+        P::PROFILE
     }
 
     fn as_any(&self) -> &dyn Any {
@@ -561,6 +591,8 @@ pub enum RegistryCompilationError {
     ContractMismatch(InterfaceId),
     #[error("interface {0} handler reference does not match its binding")]
     HandlerReferenceMismatch(InterfaceId),
+    #[error("interface {0} principal profile does not match its typed handler")]
+    PrincipalProfileMismatch(InterfaceId),
     #[error("interface {0} already has a bound handler")]
     DuplicateHandler(InterfaceId),
 }
@@ -632,15 +664,16 @@ impl RegistryCompiler {
         Ok(())
     }
 
-    pub fn bind_handler<I, O>(
+    pub fn bind_handler<I, O, P>(
         &mut self,
         interface_id: &InterfaceId,
         handler_reference: HandlerReference,
-        handler: Arc<dyn InterfaceHandler<I, O>>,
+        handler: Arc<dyn InterfaceHandler<I, O, P>>,
     ) -> Result<(), RegistryCompilationError>
     where
         I: InterfaceContract,
         O: InterfaceContract,
+        P: InvocationPrincipal,
     {
         if !self.definitions.contains_key(interface_id) {
             return Err(RegistryCompilationError::UnknownInterface(
@@ -656,7 +689,7 @@ impl RegistryCompiler {
         let output_contract = contract_identity::<O>();
         self.handler_bindings.insert(
             interface_id.clone(),
-            Arc::new(TypedInterfaceBinding::<I, O> {
+            Arc::new(TypedInterfaceBinding::<I, O, P> {
                 input_contract,
                 output_contract,
                 handler_reference,
@@ -694,6 +727,11 @@ impl RegistryCompiler {
             }
             if binding.handler_reference() != definition.handler_reference() {
                 return Err(RegistryCompilationError::HandlerReferenceMismatch(
+                    interface_id.clone(),
+                ));
+            }
+            if binding.principal_profile() != definition.principal_profile() {
+                return Err(RegistryCompilationError::PrincipalProfileMismatch(
                     interface_id.clone(),
                 ));
             }
@@ -846,18 +884,19 @@ impl CompiledInterfaceRegistry {
             .find(|plan| plan.definition().interface_id() == interface_id)
     }
 
-    pub(crate) fn handler<I, O>(
+    pub(crate) fn handler<I, O, P>(
         &self,
         interface_id: &InterfaceId,
-    ) -> Option<Arc<dyn InterfaceHandler<I, O>>>
+    ) -> Option<Arc<dyn InterfaceHandler<I, O, P>>>
     where
         I: InterfaceContract,
         O: InterfaceContract,
+        P: InvocationPrincipal,
     {
         self.handler_bindings
             .get(interface_id)?
             .as_any()
-            .downcast_ref::<TypedInterfaceBinding<I, O>>()
+            .downcast_ref::<TypedInterfaceBinding<I, O, P>>()
             .map(|binding| Arc::clone(&binding.handler))
     }
 }
@@ -925,6 +964,11 @@ fn registry_fingerprint(
             match definition.authentication() {
                 InterfaceAuthenticationPolicy::Anonymous => "authn:anonymous",
                 InterfaceAuthenticationPolicy::Authenticated => "authn:authenticated",
+            },
+            match definition.principal_profile() {
+                PrincipalProfile::Public => "principal:public",
+                PrincipalProfile::User => "principal:user",
+                PrincipalProfile::Application => "principal:application",
             },
             match definition.audit() {
                 InterfaceAuditPolicy::ReadOnly => "audit:read-only",

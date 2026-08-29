@@ -60,6 +60,23 @@ impl RequestContext {
             RequestCredential::ServerDelegation => "server_delegation",
         }
     }
+
+    pub fn interface_principal(&self) -> interface_runtime::UserPrincipal {
+        let credential_kind = match &self.credential {
+            RequestCredential::CookieSession(_) => {
+                interface_runtime::UserCredentialKind::CookieSession
+            }
+            RequestCredential::UserApiKey { api_key_id } => {
+                interface_runtime::UserCredentialKind::UserApiKey {
+                    api_key_id: *api_key_id,
+                }
+            }
+            RequestCredential::ServerDelegation => {
+                interface_runtime::UserCredentialKind::ServerDelegation
+            }
+        };
+        interface_runtime::UserPrincipal::new(self.actor.clone(), credential_kind)
+    }
 }
 
 tokio::task_local! {

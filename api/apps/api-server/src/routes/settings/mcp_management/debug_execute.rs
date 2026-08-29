@@ -102,7 +102,7 @@ pub async fn execute(
     execute_with_server_bindings(
         state,
         headers,
-        context.actor.clone(),
+        context.interface_principal(),
         interface_entry,
         body,
         McpServerBoundInputs {
@@ -116,7 +116,7 @@ pub async fn execute(
 pub async fn execute_with_server_bindings(
     state: Arc<ApiState>,
     headers: HeaderMap,
-    actor: domain::ActorContext,
+    principal: interface_runtime::UserPrincipal,
     interface_entry: domain::McpInterfaceCatalogEntry,
     body: McpDebugExecuteBody,
     server_bound_inputs: McpServerBoundInputs,
@@ -132,7 +132,7 @@ pub async fn execute_with_server_bindings(
     {
         let (output, _receipt) = crate::routes::host_infrastructure::interface_operation::invoke_providers_view(
             Arc::clone(&state),
-            actor,
+            principal,
             interface_runtime::InterfaceProtocol::Mcp,
         )
         .await

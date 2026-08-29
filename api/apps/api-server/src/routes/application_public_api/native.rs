@@ -70,6 +70,24 @@ pub(crate) fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
     )
 }
 
+pub(crate) fn interface_application_principal(
+    actor: &control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+) -> Result<interface_runtime::ApplicationPrincipal, NativeApiError> {
+    interface_runtime::ApplicationPrincipal::new(
+        actor.application_id,
+        actor.api_key_id,
+        actor.workspace_id,
+        actor.actor.clone(),
+    )
+    .map_err(|_| {
+        NativeApiError::new(
+            StatusCode::UNAUTHORIZED,
+            "not_authenticated",
+            "invalid application API key identity",
+        )
+    })
+}
+
 pub(crate) async fn public_mcp_runtime_invoker(
     state: &Arc<ApiState>,
     bearer_token: &str,
@@ -307,6 +325,7 @@ pub async fn list_native_models(
         .authenticate_bearer_token(&bearer_token)
         .await
         .map_err(|_| native_error(NativeRunValidationError::NotAuthenticated))?;
+    let _principal = interface_application_principal(&actor)?;
     let publication = ApplicationPublicationService::new(state.store.clone())
         .load_active_publication(LoadActiveApplicationPublicationCommand {
             application_id: actor.application_id,

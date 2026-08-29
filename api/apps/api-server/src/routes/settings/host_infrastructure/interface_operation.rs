@@ -17,7 +17,8 @@ use interface_runtime::{
     InterfaceId, InterfaceIdentity, InterfaceInvocationError, InterfaceInvocationKernel,
     InterfaceLifecycle, InterfaceOwner, InterfaceProtocol, InterfaceScope, InterfaceTargetError,
     InterfaceVersion, InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage,
-    ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity, TargetReference,
+    PrincipalProfile, ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity,
+    TargetReference, UserPrincipal,
 };
 use plugin_framework::extension_bus::{
     Cardinality, DeliverySemantics, EffectiveExtensionGraph, ExtensionPointKind, FailureSemantics,
@@ -158,11 +159,11 @@ impl InterfaceAuthorizationPort for ConsoleInterfaceAuthorizationPort {
                 route.path(),
             )
             .map_err(InterfaceAuthorizationError::classified)?;
-            if request.actor().is_root {
+            if request.principal().actor().is_root {
                 return Ok(());
             }
             let policies = policy_reader
-                .load_role_console_policies_for_user(request.actor())
+                .load_role_console_policies_for_user(request.principal().actor())
                 .await
                 .map_err(|error| {
                     InterfaceAuthorizationError::with_source(
@@ -172,7 +173,7 @@ impl InterfaceAuthorizationPort for ConsoleInterfaceAuthorizationPort {
                 })?;
             if crate::middleware::require_settings_feature_permission::authorize_compiled_console_access(
                 &access,
-                request.actor(),
+                request.principal().actor(),
                 &policies,
             ) {
                 Ok(())
@@ -204,7 +205,7 @@ pub(crate) fn invocation_kernel(
 
 pub async fn invoke_providers_view(
     state: Arc<ApiState>,
-    actor: domain::ActorContext,
+    principal: UserPrincipal,
     protocol: InterfaceProtocol,
 ) -> Result<
     (
@@ -235,12 +236,12 @@ pub async fn invoke_providers_view(
             HostInfrastructureProvidersViewOutput,
         >(
             snapshot,
-            InvocationEnvelope::new(
+            InvocationEnvelope::with_principal(
                 InvocationLineage::root(InvocationId::now_v7()),
                 InterfaceId::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID)
                     .expect("built-in interface identity must remain valid"),
                 protocol,
-                actor,
+                principal,
                 None,
                 HostInfrastructureProvidersViewInput::new(),
             ),
@@ -275,6 +276,7 @@ fn invocation_failure_api_error(
             control_plane::errors::ControlPlaneError::NotFound("interface_operation").into()
         }
         InterfaceInvocationError::ContractMismatch
+        | InterfaceInvocationError::PrincipalProfileMismatch
         | InterfaceInvocationError::HookPlanFingerprintMismatch => {
             control_plane::errors::ControlPlaneError::Conflict("interface_contract").into()
         }
@@ -320,6 +322,7 @@ pub(crate) fn compile_interface_registry(
     compiler.bind_handler::<
         HostInfrastructureProvidersViewInput,
         HostInfrastructureProvidersViewOutput,
+        UserPrincipal,
     >(
         &interface_id,
         handler_reference,
@@ -450,6 +453,7 @@ fn definition_from_descriptor(
             )?,
         ),
         InterfaceAccess::new(
+            PrincipalProfile::User,
             InterfaceAuthenticationPolicy::Authenticated,
             AuthorizationOperation::new(&descriptor.required_core_permission)?,
             InterfaceScope::System,

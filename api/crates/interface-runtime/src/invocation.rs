@@ -1,13 +1,13 @@
 use std::{future::Future, pin::Pin, sync::Arc, time::SystemTime};
 
-use domain::ActorContext;
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
     CompiledInterfaceRegistry, ContractIdentity, GraphFingerprint, InterfaceContract,
     InterfaceDefinition, InterfaceHandlerContext, InterfaceHookContext, InterfaceId,
-    InterfaceTargetError, ProtocolBinding, RegistryFingerprint, TypedInterfaceHookPlan,
+    InterfaceTargetError, InvocationPrincipal, PrincipalSummary, ProtocolBinding,
+    RegistryFingerprint, TypedInterfaceHookPlan, UserPrincipal,
 };
 
 async fn await_before_deadline<T>(
@@ -95,27 +95,29 @@ pub enum InterfaceProtocol {
     Internal,
 }
 
-pub struct InvocationEnvelope<I>
+pub struct InvocationEnvelope<I, P = UserPrincipal>
 where
     I: InterfaceContract,
+    P: InvocationPrincipal,
 {
     lineage: InvocationLineage,
     interface_id: InterfaceId,
     protocol: InterfaceProtocol,
-    actor: ActorContext,
+    principal: P,
     deadline: Option<SystemTime>,
     input: I,
 }
 
-impl<I> InvocationEnvelope<I>
+impl<I, P> InvocationEnvelope<I, P>
 where
     I: InterfaceContract,
+    P: InvocationPrincipal,
 {
-    pub fn new(
+    pub fn with_principal(
         lineage: InvocationLineage,
         interface_id: InterfaceId,
         protocol: InterfaceProtocol,
-        actor: ActorContext,
+        principal: P,
         deadline: Option<SystemTime>,
         input: I,
     ) -> Self {
@@ -123,7 +125,7 @@ where
             lineage,
             interface_id,
             protocol,
-            actor,
+            principal,
             deadline,
             input,
         }
@@ -141,36 +143,69 @@ where
         self.protocol
     }
 
-    pub fn actor(&self) -> &ActorContext {
-        &self.actor
+    pub fn principal(&self) -> &P {
+        &self.principal
+    }
+
+    pub fn principal_summary(&self) -> PrincipalSummary {
+        self.principal.summary()
+    }
+}
+
+impl<I> InvocationEnvelope<I, UserPrincipal>
+where
+    I: InterfaceContract,
+{
+    pub fn new(
+        lineage: InvocationLineage,
+        interface_id: InterfaceId,
+        protocol: InterfaceProtocol,
+        actor: domain::ActorContext,
+        deadline: Option<SystemTime>,
+        input: I,
+    ) -> Self {
+        Self::with_principal(
+            lineage,
+            interface_id,
+            protocol,
+            UserPrincipal::server_delegation(actor),
+            deadline,
+            input,
+        )
     }
 }
 
 #[derive(Clone, Debug)]
-pub struct InterfaceAuthorizationRequest {
-    actor: ActorContext,
+pub struct InterfaceAuthorizationRequest<P = UserPrincipal>
+where
+    P: InvocationPrincipal,
+{
+    principal: P,
     definition: InterfaceDefinition,
     binding: ProtocolBinding,
     protocol: InterfaceProtocol,
 }
 
-impl InterfaceAuthorizationRequest {
+impl<P> InterfaceAuthorizationRequest<P>
+where
+    P: InvocationPrincipal,
+{
     fn new(
-        actor: ActorContext,
+        principal: P,
         definition: InterfaceDefinition,
         binding: ProtocolBinding,
         protocol: InterfaceProtocol,
     ) -> Self {
         Self {
-            actor,
+            principal,
             definition,
             binding,
             protocol,
         }
     }
 
-    pub fn actor(&self) -> &ActorContext {
-        &self.actor
+    pub fn principal(&self) -> &P {
+        &self.principal
     }
 
     pub fn definition(&self) -> &InterfaceDefinition {
@@ -226,14 +261,19 @@ impl InterfaceAuthorizationError {
 pub type InterfaceAuthorizationFuture<'a> =
     Pin<Box<dyn Future<Output = Result<(), InterfaceAuthorizationError>> + Send + 'a>>;
 
-pub trait InterfaceAuthorizationPort: Send + Sync + 'static {
-    fn authorize(&self, request: InterfaceAuthorizationRequest)
-        -> InterfaceAuthorizationFuture<'_>;
+pub trait InterfaceAuthorizationPort<P = UserPrincipal>: Send + Sync + 'static
+where
+    P: InvocationPrincipal,
+{
+    fn authorize(
+        &self,
+        request: InterfaceAuthorizationRequest<P>,
+    ) -> InterfaceAuthorizationFuture<'_>;
 }
 
 #[derive(Clone, Debug)]
 pub struct InterfaceTargetAdmissionRequest {
-    actor: ActorContext,
+    principal: PrincipalSummary,
     definition: InterfaceDefinition,
     binding: ProtocolBinding,
     protocol: InterfaceProtocol,
@@ -241,21 +281,21 @@ pub struct InterfaceTargetAdmissionRequest {
 
 impl InterfaceTargetAdmissionRequest {
     fn new(
-        actor: ActorContext,
+        principal: PrincipalSummary,
         definition: InterfaceDefinition,
         binding: ProtocolBinding,
         protocol: InterfaceProtocol,
     ) -> Self {
         Self {
-            actor,
+            principal,
             definition,
             binding,
             protocol,
         }
     }
 
-    pub fn actor(&self) -> &ActorContext {
-        &self.actor
+    pub fn principal(&self) -> &PrincipalSummary {
+        &self.principal
     }
 
     pub fn definition(&self) -> &InterfaceDefinition {
@@ -340,6 +380,7 @@ pub struct InterfaceInvocationReceipt {
     parent_invocation_id: Option<InvocationId>,
     interface_id: InterfaceId,
     protocol: InterfaceProtocol,
+    principal: PrincipalSummary,
     graph_fingerprint: GraphFingerprint,
     registry_fingerprint: RegistryFingerprint,
     stages: Vec<InterfaceInvocationStage>,
@@ -361,6 +402,10 @@ impl InterfaceInvocationReceipt {
 
     pub fn protocol(&self) -> InterfaceProtocol {
         self.protocol
+    }
+
+    pub fn principal(&self) -> &PrincipalSummary {
+        &self.principal
     }
 
     pub fn graph_fingerprint(&self) -> &GraphFingerprint {
@@ -386,6 +431,8 @@ pub enum InterfaceInvocationError {
     UnknownInterface,
     #[error("invocation contract does not match the registered interface")]
     ContractMismatch,
+    #[error("invocation principal profile does not match the registered interface")]
+    PrincipalProfileMismatch,
     #[error("hook plan fingerprint does not match the invocation snapshot")]
     HookPlanFingerprintMismatch,
     #[error(transparent)]
@@ -449,13 +496,19 @@ where
 pub type InterfaceInvocationResult<O> =
     Result<InterfaceInvocationOutcome<O>, InterfaceInvocationFailure>;
 
-pub struct InterfaceInvocationKernel {
-    authorization: Arc<dyn InterfaceAuthorizationPort>,
+pub struct InterfaceInvocationKernel<P = UserPrincipal>
+where
+    P: InvocationPrincipal,
+{
+    authorization: Arc<dyn InterfaceAuthorizationPort<P>>,
     target_admission: Option<Arc<dyn InterfaceTargetAdmissionPort>>,
 }
 
-impl InterfaceInvocationKernel {
-    pub fn new(authorization: Arc<dyn InterfaceAuthorizationPort>) -> Self {
+impl<P> InterfaceInvocationKernel<P>
+where
+    P: InvocationPrincipal,
+{
+    pub fn new(authorization: Arc<dyn InterfaceAuthorizationPort<P>>) -> Self {
         Self {
             authorization,
             target_admission: None,
@@ -463,7 +516,7 @@ impl InterfaceInvocationKernel {
     }
 
     pub fn with_target_admission(
-        authorization: Arc<dyn InterfaceAuthorizationPort>,
+        authorization: Arc<dyn InterfaceAuthorizationPort<P>>,
         target_admission: Arc<dyn InterfaceTargetAdmissionPort>,
     ) -> Self {
         Self {
@@ -475,7 +528,7 @@ impl InterfaceInvocationKernel {
     pub async fn invoke<I, O>(
         &self,
         snapshot: Arc<CompiledInterfaceRegistry>,
-        envelope: InvocationEnvelope<I>,
+        envelope: InvocationEnvelope<I, P>,
     ) -> InterfaceInvocationResult<O>
     where
         I: InterfaceContract,
@@ -487,7 +540,7 @@ impl InterfaceInvocationKernel {
     pub async fn invoke_with_hook_plan<I, O>(
         &self,
         snapshot: Arc<CompiledInterfaceRegistry>,
-        envelope: InvocationEnvelope<I>,
+        envelope: InvocationEnvelope<I, P>,
         hook_plan: &TypedInterfaceHookPlan<I, O>,
     ) -> InterfaceInvocationResult<O>
     where
@@ -501,7 +554,7 @@ impl InterfaceInvocationKernel {
     async fn invoke_internal<I, O>(
         &self,
         snapshot: Arc<CompiledInterfaceRegistry>,
-        envelope: InvocationEnvelope<I>,
+        envelope: InvocationEnvelope<I, P>,
         hook_plan: Option<&TypedInterfaceHookPlan<I, O>>,
     ) -> InterfaceInvocationResult<O>
     where
@@ -512,7 +565,7 @@ impl InterfaceInvocationKernel {
             lineage,
             interface_id,
             protocol,
-            actor,
+            principal,
             deadline,
             mut input,
         } = envelope;
@@ -522,9 +575,10 @@ impl InterfaceInvocationKernel {
             lineage.parent_invocation_id(),
             interface_id.clone(),
             protocol,
+            principal.summary(),
         );
         let hook_context = InterfaceHookContext::new(
-            actor.clone(),
+            principal.summary(),
             lineage.invocation_id(),
             snapshot.graph_fingerprint().clone(),
             snapshot.fingerprint().clone(),
@@ -568,6 +622,18 @@ impl InterfaceInvocationKernel {
         let definition = plan.definition().clone();
         let binding = plan.binding().clone();
         receipt.stage(InterfaceInvocationStage::Resolved);
+        if definition.principal_profile() != P::PROFILE {
+            run_completion_hooks(
+                hook_plan,
+                &hook_context,
+                InterfaceInvocationTerminal::Rejected,
+            )
+            .await;
+            return Err(receipt.fail(
+                InterfaceInvocationError::PrincipalProfileMismatch,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        }
         if definition.input_contract() != &contract_identity::<I>()
             || definition.output_contract() != &contract_identity::<O>()
         {
@@ -586,7 +652,7 @@ impl InterfaceInvocationKernel {
             deadline,
             self.authorization
                 .authorize(InterfaceAuthorizationRequest::new(
-                    actor.clone(),
+                    principal.clone(),
                     definition.clone(),
                     binding.clone(),
                     protocol,
@@ -626,7 +692,7 @@ impl InterfaceInvocationKernel {
             let admission = await_before_deadline(
                 deadline,
                 target_admission.admit(InterfaceTargetAdmissionRequest::new(
-                    actor.clone(),
+                    principal.summary(),
                     definition,
                     binding,
                     protocol,
@@ -692,7 +758,7 @@ impl InterfaceInvocationKernel {
                 Ok(Ok(())) => receipt.stage(InterfaceInvocationStage::BeforeHooksCompleted),
             }
         }
-        let Some(handler) = snapshot.handler::<I, O>(&interface_id) else {
+        let Some(handler) = snapshot.handler::<I, O, P>(&interface_id) else {
             run_completion_hooks(
                 hook_plan,
                 &hook_context,
@@ -706,7 +772,7 @@ impl InterfaceInvocationKernel {
         };
         receipt.stage(InterfaceInvocationStage::Invoking);
         let context = InterfaceHandlerContext::new(
-            actor,
+            principal,
             lineage.invocation_id(),
             snapshot.graph_fingerprint().clone(),
             snapshot.fingerprint().clone(),
@@ -787,6 +853,7 @@ struct ReceiptBuilder {
     parent_invocation_id: Option<InvocationId>,
     interface_id: InterfaceId,
     protocol: InterfaceProtocol,
+    principal: PrincipalSummary,
     graph_fingerprint: GraphFingerprint,
     registry_fingerprint: RegistryFingerprint,
     stages: Vec<InterfaceInvocationStage>,
@@ -799,12 +866,14 @@ impl ReceiptBuilder {
         parent_invocation_id: Option<InvocationId>,
         interface_id: InterfaceId,
         protocol: InterfaceProtocol,
+        principal: PrincipalSummary,
     ) -> Self {
         Self {
             invocation_id,
             parent_invocation_id,
             interface_id,
             protocol,
+            principal,
             graph_fingerprint: snapshot.graph_fingerprint().clone(),
             registry_fingerprint: snapshot.fingerprint().clone(),
             stages: Vec::new(),
@@ -836,6 +905,7 @@ impl ReceiptBuilder {
             parent_invocation_id: self.parent_invocation_id,
             interface_id: self.interface_id,
             protocol: self.protocol,
+            principal: self.principal,
             graph_fingerprint: self.graph_fingerprint,
             registry_fingerprint: self.registry_fingerprint,
             stages: self.stages,

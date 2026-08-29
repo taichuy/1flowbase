@@ -928,11 +928,11 @@ pub async fn clear_host_infrastructure_cache_domain(
 )]
 pub async fn list_host_infrastructure_providers(
     State(state): State<Arc<ApiState>>,
-    Extension(actor): Extension<domain::ActorContext>,
+    Extension(principal): Extension<interface_runtime::UserPrincipal>,
 ) -> Result<Json<ApiSuccess<Vec<HostInfrastructureProviderConfigResponse>>>, ApiError> {
     let (output, _receipt) = interface_operation::invoke_providers_view(
         Arc::clone(&state),
-        actor,
+        principal,
         interface_runtime::InterfaceProtocol::Http,
     )
     .await?;

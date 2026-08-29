@@ -3,6 +3,7 @@
 mod hook;
 mod identity;
 mod invocation;
+mod principal;
 mod registry;
 
 pub use hook::{
@@ -25,6 +26,10 @@ pub use invocation::{
     InterfaceProtocol, InterfaceTargetAdmissionError, InterfaceTargetAdmissionFuture,
     InterfaceTargetAdmissionPort, InterfaceTargetAdmissionRequest, InvocationEnvelope,
     InvocationId, InvocationLineage, InvocationLineageError,
+};
+pub use principal::{
+    ApplicationPrincipal, ApplicationPrincipalError, InvocationPrincipal, PrincipalProfile,
+    PrincipalSummary, PublicPrincipal, UserCredentialKind, UserPrincipal,
 };
 pub use registry::{
     CompiledInterfaceRegistry, CompiledInvocationPlan, DynamicInterfaceRegistry, InterfaceAccess,
