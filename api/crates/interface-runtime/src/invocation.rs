@@ -742,10 +742,7 @@ pub enum InterfaceInvocationError {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct InterfaceTargetFailure<E>
-where
-    E: InterfaceContract,
-{
+pub struct InterfaceTargetFailure<E> {
     classification: Arc<str>,
     error: E,
 }

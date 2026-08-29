@@ -37,6 +37,12 @@ impl InterfaceContract for PublicLoginInstancesOutput {
 
 pub(crate) struct PublicLoginInstancesTargetError(pub(crate) ApiError);
 
+impl From<ApiError> for PublicLoginInstancesTargetError {
+    fn from(error: ApiError) -> Self {
+        Self(error)
+    }
+}
+
 impl InterfaceContract for PublicLoginInstancesTargetError {
     const CONTRACT_ID: &'static str = "public-login-instances-error";
     const CONTRACT_VERSION: &'static str = "1";
