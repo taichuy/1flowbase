@@ -792,56 +792,56 @@ export function FrontStagePageTreeSidebar({
             setDropIndicator
           })
         )}
-        {canEdit ? (
-          <li className="frontstage-page-tree-sidebar__add-row">
-            <div
-              className="frontstage-page-tree-sidebar__actions"
-              onBlur={handleAddMenuBlur}
-              onMouseEnter={() => setIsAddMenuOpen(true)}
-              onMouseLeave={() => setIsAddMenuOpen(false)}
-            >
-              <Button
-                aria-expanded={isAddMenuOpen}
-                aria-haspopup="menu"
-                aria-label={i18nText('frontstage', 'auto.add_menu')}
-                className="frontstage-page-tree-sidebar__add-item-btn frontstage-add-action-button frontstage-add-action-button--full"
-                disabled={isOperationPending}
-                icon={<PlusOutlined />}
-                onClick={() => setIsAddMenuOpen(true)}
-                onFocus={() => setIsAddMenuOpen(true)}
-                size="small"
-              >
-                {i18nText('frontstage', 'auto.add_menu')}
-              </Button>
-              {isAddMenuOpen ? (
-                <div
-                  className="frontstage-page-tree-sidebar__add-menu"
-                  role="menu"
-                >
-                  <button
-                    className="frontstage-page-tree-sidebar__add-menu-item"
-                    onClick={handleAddGroup}
-                    role="menuitem"
-                    type="button"
-                  >
-                    <FolderAddOutlined aria-hidden />
-                    {i18nText('frontstage', 'auto.add_group')}
-                  </button>
-                  <button
-                    className="frontstage-page-tree-sidebar__add-menu-item"
-                    onClick={handleAddPage}
-                    role="menuitem"
-                    type="button"
-                  >
-                    <FileAddOutlined aria-hidden />
-                    {i18nText('frontstage', 'auto.add_page')}
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </li>
-        ) : null}
       </ul>
+      {canEdit ? (
+        <div className="frontstage-page-tree-sidebar__add-row">
+          <div
+            className="frontstage-page-tree-sidebar__actions"
+            onBlur={handleAddMenuBlur}
+            onMouseEnter={() => setIsAddMenuOpen(true)}
+            onMouseLeave={() => setIsAddMenuOpen(false)}
+          >
+            <Button
+              aria-expanded={isAddMenuOpen}
+              aria-haspopup="menu"
+              aria-label={i18nText('frontstage', 'auto.add_menu')}
+              className="frontstage-page-tree-sidebar__add-item-btn frontstage-add-action-button frontstage-add-action-button--full"
+              disabled={isOperationPending}
+              icon={<PlusOutlined />}
+              onClick={() => setIsAddMenuOpen(true)}
+              onFocus={() => setIsAddMenuOpen(true)}
+              size="small"
+            >
+              {i18nText('frontstage', 'auto.add_menu')}
+            </Button>
+            {isAddMenuOpen ? (
+              <div
+                className="frontstage-page-tree-sidebar__add-menu"
+                role="menu"
+              >
+                <button
+                  className="frontstage-page-tree-sidebar__add-menu-item"
+                  onClick={handleAddGroup}
+                  role="menuitem"
+                  type="button"
+                >
+                  <FolderAddOutlined aria-hidden />
+                  {i18nText('frontstage', 'auto.add_group')}
+                </button>
+                <button
+                  className="frontstage-page-tree-sidebar__add-menu-item"
+                  onClick={handleAddPage}
+                  role="menuitem"
+                  type="button"
+                >
+                  <FileAddOutlined aria-hidden />
+                  {i18nText('frontstage', 'auto.add_page')}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

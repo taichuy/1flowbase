@@ -95,6 +95,21 @@
 
 .section-page-layout--viewport .section-page-layout__rail {
   position: static;
+  height: 100%;
+  min-height: 0;
+}
+
+.section-page-layout--viewport
+  .section-page-layout__rail
+  .ant-layout-sider-children {
+  height: 100%;
+  min-height: 0;
+}
+
+.section-page-layout--viewport .section-page-layout__sidebar-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .section-page-layout--viewport .section-page-layout__content {
@@ -261,5 +276,17 @@
   }
   .section-page-layout--viewport .section-page-layout__content > * {
     height: auto;
+  }
+
+  .section-page-layout--viewport .section-page-layout__rail,
+  .section-page-layout--viewport
+    .section-page-layout__rail
+    .ant-layout-sider-children {
+    height: auto;
+    min-height: auto;
+  }
+
+  .section-page-layout--viewport .section-page-layout__sidebar-content {
+    overflow: visible;
   }
 }

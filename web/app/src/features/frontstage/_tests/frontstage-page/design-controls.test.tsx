@@ -637,7 +637,7 @@ describe('FrontStagePage - design controls', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('AC-002 places Add menu as the first tree row when the tree is empty', () => {
+  test('AC-002 keeps Add menu outside the scrollable tree when the tree is empty', () => {
     authenticate(['frontstage.page.design']);
     renderPage();
 
@@ -649,26 +649,33 @@ describe('FrontStagePage - design controls', () => {
 
     const tree = sidebar?.querySelector('.frontstage-page-tree-sidebar__tree');
     expect(tree).toBeInTheDocument();
-    expect(tree?.children).toHaveLength(1);
+    expect(tree?.children).toHaveLength(0);
     expect(
-      within(tree as HTMLElement).getByRole('button', { name: '添加菜单' })
+      within(tree as HTMLElement).queryByRole('button', { name: '添加菜单' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar as HTMLElement).getByRole('button', { name: '添加菜单' })
     ).toHaveClass(
       'frontstage-add-action-button',
       'frontstage-add-action-button--full'
     );
   });
 
-  test('AC-003 places Add menu after existing top-level nodes', () => {
+  test('AC-003 keeps Add menu fixed outside existing top-level nodes', () => {
     authenticate(['frontstage.page.design']);
     renderPage('page-1');
 
     activateDesignMode();
 
     const tree = document.querySelector('.frontstage-page-tree-sidebar__tree');
+    const sidebar = document.querySelector('.frontstage-page-tree-sidebar');
     expect(tree).toBeInTheDocument();
-    expect(tree?.children).toHaveLength(2);
+    expect(tree?.children).toHaveLength(1);
     expect(
-      within(tree?.lastElementChild as HTMLElement).getByRole('button', {
+      within(tree as HTMLElement).queryByRole('button', { name: '添加菜单' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar as HTMLElement).getByRole('button', {
         name: '添加菜单'
       })
     ).toBeInTheDocument();
