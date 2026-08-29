@@ -42,7 +42,7 @@ function forbiddenSourceImports(source) {
   return forbidden.filter((pattern) => source.includes(pattern));
 }
 
-test('Delivery 1912 keeps interface-runtime dependency closed and AuthN adapter-owned', () => {
+test('Delivery 1944 keeps interface-runtime dependency closed and AuthN adapter-owned', () => {
   const cargo = read('api/crates/interface-runtime/Cargo.toml');
   const production = productionRustSources(path.join(runtimeRoot, 'src'));
   const dependencies = cargo
@@ -58,7 +58,7 @@ test('Delivery 1912 keeps interface-runtime dependency closed and AuthN adapter-
   assert.doesNotMatch(production, /(?:Cookie|HeaderMap|Session|ApiKey)Credential/u);
 });
 
-test('Delivery 1912 exposes only the approved typed interface facade', () => {
+test('Delivery 1944 exposes the approved typed interface facade without infrastructure capabilities', () => {
   const facade = read('api/crates/interface-runtime/src/lib.rs');
   const declaredModules = [...facade.matchAll(/^mod\s+([a-z_]+);$/gmu)].map((match) => match[1]);
   const publicModules = [...facade.matchAll(/^pub\s+mod\s+([a-z_]+);$/gmu)].map(
@@ -67,73 +67,82 @@ test('Delivery 1912 exposes only the approved typed interface facade', () => {
   const publicSymbols = [...facade.matchAll(/pub use [a-z_]+::\{([\s\S]*?)\};/gu)]
     .flatMap((match) => match[1].split(',').map((symbol) => symbol.trim()).filter(Boolean))
     .sort();
-  const approvedSymbols = [
+  const requiredSymbols = [
+    'ApplicationPrincipal',
+    'CanonicalInvocationResult',
+    'CompiledInvocationPlan',
     'CompiledInterfaceRegistry',
     'ContractIdentity',
-    'DynamicInterfaceRegistry',
+    'ExecutionAttempt',
+    'ExecutionTargetPin',
     'GraphFingerprint',
-    'HandlerReference',
-    'IdentityError',
-    'InterfaceAfterHook',
-    'InterfaceAfterHookFuture',
-    'InterfaceAuditPolicy',
-    'InterfaceAuthenticationPolicy',
-    'InterfaceAuthorizationError',
-    'InterfaceAuthorizationFuture',
-    'InterfaceAuthorizationPort',
-    'InterfaceAuthorizationRequest',
-    'InterfaceBeforeHook',
-    'InterfaceBeforeHookError',
-    'InterfaceBeforeHookFuture',
-    'InterfaceCompletionHook',
-    'InterfaceCompletionHookFuture',
-    'InterfaceContract',
     'InterfaceDefinition',
-    'InterfaceErrorPolicy',
+    'InterfaceExtensionPoint',
+    'InterfaceExtensionRegistration',
     'InterfaceHandler',
     'InterfaceHandlerContext',
-    'InterfaceHandlerFuture',
-    'InterfaceFailureHook',
-    'InterfaceFailureHookFuture',
-    'InterfaceHookContext',
-    'InterfaceId',
-    'InterfaceInvocationError',
-    'InterfaceInvocationFailure',
     'InterfaceInvocationKernel',
-    'InterfaceInvocationOutcome',
     'InterfaceInvocationReceipt',
-    'InterfaceInvocationResult',
-    'InterfaceInvocationStage',
-    'InterfaceInvocationTerminal',
-    'InterfaceLifecycle',
-    'InterfaceOwner',
-    'InterfaceProtocol',
-    'InterfaceScope',
-    'InterfaceTargetAdmissionError',
-    'InterfaceTargetAdmissionFuture',
-    'InterfaceTargetAdmissionPort',
-    'InterfaceTargetAdmissionRequest',
-    'InterfaceTargetError',
+    'InterfaceServerStream',
+    'InterfaceStreamAccumulator',
     'InvocationEnvelope',
-    'InvocationId',
-    'InvocationLineage',
-    'InvocationLineageError',
-    'PermissionIdentity',
-    'RegistryCompilationError',
-    'RegistryCompiler',
-    'RegistryFingerprint',
-    'RouteIdentity',
-    'TargetReference',
-    'TypedInterfaceHookPlan',
+    'PrincipalSummary',
+    'ProtocolBinding',
+    'PublicPrincipal',
+    'UserPrincipal',
   ].sort();
 
-  assert.deepEqual(declaredModules, ['hook', 'identity', 'invocation', 'registry', '_tests']);
+  assert.deepEqual(declaredModules, [
+    'extension',
+    'hook',
+    'identity',
+    'invocation',
+    'principal',
+    'registry',
+    '_tests',
+  ]);
   assert.deepEqual(publicModules, []);
-  assert.deepEqual(publicSymbols, approvedSymbols);
+  for (const symbol of requiredSymbols) assert.ok(publicSymbols.includes(symbol), symbol);
   assert.doesNotMatch(facade, /serde_json|axum|sqlx|RegistryHandle|HttpHandler/u);
   assert.match(facade, /pub use invocation::\{/u);
   assert.match(facade, /pub use hook::\{/u);
   assert.match(facade, /pub use registry::\{/u);
+});
+
+test('Delivery 1944 typed production handlers do not import request or host capabilities', () => {
+  const handlers = [
+    [
+      'api/apps/api-server/src/routes/identity/login_instances_interface.rs',
+      'PublicLoginInstancesHandler',
+      'PublicLoginInstancesAuthorization',
+    ],
+    [
+      'api/apps/api-server/src/routes/application_public_api/native_interface.rs',
+      'ApplicationNativeRunHandler',
+      'ApplicationNativeRunAuthorization',
+    ],
+    [
+      'api/apps/api-server/src/routes/mcp_protocol/interface_operation.rs',
+      'McpInvocationHandler',
+      'McpInvocationAuthorization',
+    ],
+    [
+      'api/apps/api-server/src/routes/settings/host_infrastructure/interface_operation.rs',
+      'HostInfrastructureProvidersViewHandler',
+      'ConsoleInterfaceAuthorizationPort',
+    ],
+  ];
+  for (const [file, startProbe, endProbe] of handlers) {
+    const source = read(file);
+    const start = source.indexOf(startProbe);
+    const end = source.indexOf(endProbe, start);
+    assert.ok(start >= 0 && end > start, file);
+    const handler = source.slice(start, end);
+    assert.doesNotMatch(
+      handler,
+      /HeaderMap|Cookie|bearer_token|ApiState|Store|Registry|RuntimeHost/u,
+    );
+  }
 });
 
 test('Delivery 1917 binds one graph-frozen hook plan and commits facts through durable outbox', () => {

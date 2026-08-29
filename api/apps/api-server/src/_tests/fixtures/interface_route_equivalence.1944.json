@@ -1,0 +1,61 @@
+{
+  "issue": 1944,
+  "input_sha": "ff4cc74ab073256419884d3d96e0b3defcb36d45",
+  "approved_route_count": 4,
+  "dimensions": [
+    "allow_deny",
+    "row_scope",
+    "state_mutation",
+    "dto",
+    "error_status",
+    "stream_event_order",
+    "transaction_outbox",
+    "runtime_dispatch",
+    "audit_receipt"
+  ],
+  "routes": [
+    {
+      "id": "public.auth.login-instances",
+      "route": "GET /api/public/auth/login-instances",
+      "source": "routes/identity/auth.rs",
+      "kernel_probe": "PublicPrincipal::new()",
+      "behavior_test": "_tests/auth_routes.rs",
+      "behavior_probe": "public_auth_login_instances_lists_enabled_supported_instances_without_sensitive_options",
+      "status": "equivalent"
+    },
+    {
+      "id": "console.host-infrastructure.providers",
+      "route": "GET /api/console/settings/host-infrastructure/providers",
+      "source": "routes/settings/host_infrastructure/interface_operation.rs",
+      "kernel_probe": "invoke_providers_view",
+      "behavior_test": "_tests/host_infrastructure/host_infrastructure_config_routes.rs",
+      "behavior_probe": "invoke_providers_view",
+      "status": "equivalent"
+    },
+    {
+      "id": "application.native.runs",
+      "route": "POST /api/agent/v1/runs",
+      "source": "routes/application_public_api/native.rs",
+      "kernel_probe": "interface_application_principal(&api_actor)",
+      "behavior_test": "_tests/application_public_api/native_streaming.rs",
+      "behavior_probe": "native_streaming_create_returns_sse_started_and_terminal_events",
+      "status": "equivalent"
+    },
+    {
+      "id": "mcp.user-api-key.tools",
+      "route": "POST /api/mcp/:instance_id",
+      "source": "routes/mcp_protocol.rs",
+      "kernel_probe": "context.interface_principal()",
+      "behavior_test": "_tests/mcp_protocol_routes.rs",
+      "behavior_probe": "mcp_meta_tools_progressively_disclose_only_visible_instance_tools",
+      "status": "equivalent"
+    }
+  ],
+  "gap_ledger": [
+    "compatibility_http_websocket",
+    "api_ex",
+    "public_sign_in",
+    "internal_background",
+    "dynamic_route_expansion"
+  ]
+}

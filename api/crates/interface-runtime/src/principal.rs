@@ -88,6 +88,13 @@ pub trait InvocationPrincipal: sealed::Sealed + Clone + Send + Sync + 'static {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// Public callers intentionally have no `ActorContext` accessor.
+///
+/// ```compile_fail
+/// use interface_runtime::PublicPrincipal;
+/// let principal = PublicPrincipal::new();
+/// let _actor = principal.actor();
+/// ```
 pub struct PublicPrincipal;
 
 impl PublicPrincipal {
@@ -150,6 +157,12 @@ impl InvocationPrincipal for UserPrincipal {
 }
 
 #[derive(Clone, Debug)]
+/// Application identity cannot be constructed without all validated identities.
+///
+/// ```compile_fail
+/// use interface_runtime::ApplicationPrincipal;
+/// let _principal = ApplicationPrincipal {};
+/// ```
 pub struct ApplicationPrincipal {
     application_id: Uuid,
     api_key_id: Uuid,
