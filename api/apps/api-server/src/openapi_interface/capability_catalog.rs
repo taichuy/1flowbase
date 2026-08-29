@@ -419,8 +419,9 @@ fn activated_providers_view_entry(
         crate::routes::host_infrastructure::interface_operation::providers_view_definition(
             registry,
         )?;
-    let route = definition
-        .route()
+    let route = registry
+        .plan_for_interface(definition.interface_id())
+        .and_then(|plan| plan.binding().projection().http_route())
         .ok_or_else(|| anyhow::anyhow!("activated interface operation has no route projection"))?;
     if !interface.method.eq_ignore_ascii_case(route.method()) || interface.path != route.path() {
         return Err(anyhow::anyhow!(
@@ -443,7 +444,7 @@ fn activated_providers_view_entry(
             input_contract_version: definition.input_contract().version().to_string(),
             output_contract_id: definition.output_contract().contract_id().to_string(),
             output_contract_version: definition.output_contract().version().to_string(),
-            required_core_permission: definition.permission().as_str().to_string(),
+            required_core_permission: definition.authorization_operation().as_str().to_string(),
             auth_policy: definition.authentication(),
             audit_policy: definition.audit(),
             error_policy: definition.error(),
@@ -460,7 +461,8 @@ fn activated_providers_view_route_matches(
 ) -> bool {
     crate::routes::host_infrastructure::interface_operation::providers_view_definition(registry)
         .ok()
-        .and_then(|definition| definition.route())
+        .and_then(|definition| registry.plan_for_interface(definition.interface_id()))
+        .and_then(|plan| plan.binding().projection().http_route())
         .is_some_and(|route| {
             interface.method.eq_ignore_ascii_case(route.method()) && interface.path == route.path()
         })

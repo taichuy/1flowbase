@@ -11,8 +11,11 @@ pub use hook::{
     InterfaceFailureHook, InterfaceFailureHookFuture, InterfaceHookContext, TypedInterfaceHookPlan,
 };
 pub use identity::{
-    ContractIdentity, GraphFingerprint, HandlerReference, IdentityError, InterfaceId,
-    InterfaceOwner, PermissionIdentity, RegistryFingerprint, RouteIdentity, TargetReference,
+    AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
+    AuthorizationOperation, BindingFingerprint, BindingId, ContractIdentity,
+    ExtensionPlanFingerprint, GraphFingerprint, HandlerReference, IdentityError, InterfaceId,
+    InterfaceOwner, InterfaceVersion, PlanFingerprint, RegistryFingerprint, RouteIdentity,
+    TargetReference,
 };
 pub use invocation::{
     InterfaceAuthorizationError, InterfaceAuthorizationFuture, InterfaceAuthorizationPort,
@@ -24,10 +27,12 @@ pub use invocation::{
     InvocationId, InvocationLineage, InvocationLineageError,
 };
 pub use registry::{
-    CompiledInterfaceRegistry, DynamicInterfaceRegistry, InterfaceAuditPolicy,
-    InterfaceAuthenticationPolicy, InterfaceContract, InterfaceDefinition, InterfaceErrorPolicy,
-    InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceLifecycle,
-    InterfaceScope, InterfaceTargetError, RegistryCompilationError, RegistryCompiler,
+    CompiledInterfaceRegistry, CompiledInvocationPlan, DynamicInterfaceRegistry, InterfaceAccess,
+    InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceContract, InterfaceContracts,
+    InterfaceDefinition, InterfaceErrorPolicy, InterfaceExecution, InterfaceHandler,
+    InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceIdentity, InterfaceLifecycle,
+    InterfaceScope, InterfaceTargetError, InvocationAdapterPlan, ProtocolBinding,
+    ProtocolProjection, RegistryCompilationError, RegistryCompiler,
 };
 
 #[cfg(test)]

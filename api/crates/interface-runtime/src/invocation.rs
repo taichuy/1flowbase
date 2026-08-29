@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::{
     CompiledInterfaceRegistry, ContractIdentity, GraphFingerprint, InterfaceContract,
     InterfaceDefinition, InterfaceHandlerContext, InterfaceHookContext, InterfaceId,
-    InterfaceTargetError, RegistryFingerprint, TypedInterfaceHookPlan,
+    InterfaceTargetError, ProtocolBinding, RegistryFingerprint, TypedInterfaceHookPlan,
 };
 
 async fn await_before_deadline<T>(
@@ -150,6 +150,7 @@ where
 pub struct InterfaceAuthorizationRequest {
     actor: ActorContext,
     definition: InterfaceDefinition,
+    binding: ProtocolBinding,
     protocol: InterfaceProtocol,
 }
 
@@ -157,11 +158,13 @@ impl InterfaceAuthorizationRequest {
     fn new(
         actor: ActorContext,
         definition: InterfaceDefinition,
+        binding: ProtocolBinding,
         protocol: InterfaceProtocol,
     ) -> Self {
         Self {
             actor,
             definition,
+            binding,
             protocol,
         }
     }
@@ -172,6 +175,10 @@ impl InterfaceAuthorizationRequest {
 
     pub fn definition(&self) -> &InterfaceDefinition {
         &self.definition
+    }
+
+    pub fn binding(&self) -> &ProtocolBinding {
+        &self.binding
     }
 
     pub fn protocol(&self) -> InterfaceProtocol {
@@ -228,6 +235,7 @@ pub trait InterfaceAuthorizationPort: Send + Sync + 'static {
 pub struct InterfaceTargetAdmissionRequest {
     actor: ActorContext,
     definition: InterfaceDefinition,
+    binding: ProtocolBinding,
     protocol: InterfaceProtocol,
 }
 
@@ -235,11 +243,13 @@ impl InterfaceTargetAdmissionRequest {
     fn new(
         actor: ActorContext,
         definition: InterfaceDefinition,
+        binding: ProtocolBinding,
         protocol: InterfaceProtocol,
     ) -> Self {
         Self {
             actor,
             definition,
+            binding,
             protocol,
         }
     }
@@ -250,6 +260,10 @@ impl InterfaceTargetAdmissionRequest {
 
     pub fn definition(&self) -> &InterfaceDefinition {
         &self.definition
+    }
+
+    pub fn binding(&self) -> &ProtocolBinding {
+        &self.binding
     }
 
     pub fn protocol(&self) -> InterfaceProtocol {
@@ -539,7 +553,7 @@ impl InterfaceInvocationKernel {
                 InterfaceInvocationTerminal::Rejected,
             ));
         }
-        let Some(definition) = snapshot.definition(&interface_id).cloned() else {
+        let Some(plan) = snapshot.plan_for_interface(&interface_id).cloned() else {
             run_completion_hooks(
                 hook_plan,
                 &hook_context,
@@ -551,6 +565,8 @@ impl InterfaceInvocationKernel {
                 InterfaceInvocationTerminal::Rejected,
             ));
         };
+        let definition = plan.definition().clone();
+        let binding = plan.binding().clone();
         receipt.stage(InterfaceInvocationStage::Resolved);
         if definition.input_contract() != &contract_identity::<I>()
             || definition.output_contract() != &contract_identity::<O>()
@@ -572,6 +588,7 @@ impl InterfaceInvocationKernel {
                 .authorize(InterfaceAuthorizationRequest::new(
                     actor.clone(),
                     definition.clone(),
+                    binding.clone(),
                     protocol,
                 )),
         )
@@ -611,6 +628,7 @@ impl InterfaceInvocationKernel {
                 target_admission.admit(InterfaceTargetAdmissionRequest::new(
                     actor.clone(),
                     definition,
+                    binding,
                     protocol,
                 )),
             )

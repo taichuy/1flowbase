@@ -1,11 +1,14 @@
 use std::sync::Arc;
 
 use crate::{
-    ContractIdentity, GraphFingerprint, HandlerReference, InterfaceAuditPolicy,
-    InterfaceAuthenticationPolicy, InterfaceContract, InterfaceDefinition, InterfaceErrorPolicy,
-    InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId,
-    InterfaceLifecycle, InterfaceOwner, InterfaceScope, InterfaceTargetError, PermissionIdentity,
-    RegistryCompilationError, RegistryCompiler, RouteIdentity, TargetReference,
+    AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
+    AuthorizationOperation, BindingId, ContractIdentity, ExtensionPlanFingerprint,
+    GraphFingerprint, HandlerReference, InterfaceAccess, InterfaceAuditPolicy,
+    InterfaceAuthenticationPolicy, InterfaceContract, InterfaceContracts, InterfaceDefinition,
+    InterfaceErrorPolicy, InterfaceExecution, InterfaceHandler, InterfaceHandlerContext,
+    InterfaceHandlerFuture, InterfaceId, InterfaceIdentity, InterfaceLifecycle, InterfaceOwner,
+    InterfaceScope, InterfaceTargetError, InterfaceVersion, InvocationAdapterPlan, ProtocolBinding,
+    ProtocolProjection, RegistryCompilationError, RegistryCompiler, RouteIdentity, TargetReference,
 };
 
 struct Input;
@@ -48,62 +51,117 @@ impl InterfaceHandler<Input, WrongOutput> for WrongHandler {
     }
 }
 
-fn permission() -> PermissionIdentity {
-    PermissionIdentity::new("test.permission").unwrap()
+fn operation() -> AuthorizationOperation {
+    AuthorizationOperation::new("test.permission").unwrap()
 }
 
-fn definition(id: &str, path: &str) -> InterfaceDefinition {
-    InterfaceDefinition::new(
+fn owner() -> InterfaceOwner {
+    InterfaceOwner::new("test.owner").unwrap()
+}
+
+fn identity(id: &str) -> InterfaceIdentity {
+    InterfaceIdentity::new(
         InterfaceId::new(id).unwrap(),
-        ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
-        ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
-        Some(RouteIdentity::new("GET", path).unwrap()),
-        permission(),
-        InterfaceAuthenticationPolicy::Authenticated,
+        InterfaceVersion::new("1").unwrap(),
+    )
+}
+
+fn definition(id: &str) -> InterfaceDefinition {
+    InterfaceDefinition::new(
+        identity(id),
+        InterfaceContracts::unary(
+            ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
+            ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
+        ),
+        InterfaceAccess::new(
+            InterfaceAuthenticationPolicy::Authenticated,
+            operation(),
+            InterfaceScope::System,
+        ),
+        InterfaceExecution::new(
+            HandlerReference::new("test.handler").unwrap(),
+            TargetReference::new("test.target").unwrap(),
+        ),
         InterfaceAuditPolicy::ReadOnly,
         InterfaceErrorPolicy::TypedTarget,
-        InterfaceScope::System,
         InterfaceLifecycle::BootSnapshot,
-        HandlerReference::new("test.handler").unwrap(),
-        TargetReference::new("test.target").unwrap(),
-        InterfaceOwner::new("test.owner").unwrap(),
+        owner(),
+    )
+}
+
+fn binding(id: &str, interface_id: &str, path: &str) -> ProtocolBinding {
+    ProtocolBinding::new(
+        BindingId::new(id).unwrap(),
+        identity(interface_id),
+        ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
+        ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
+        ProtocolProjection::http(RouteIdentity::new("GET", path).unwrap()),
+    )
+}
+
+fn adapter_plan() -> InvocationAdapterPlan {
+    InvocationAdapterPlan::new(
+        AuthenticationAdapterReference::new("test.authn").unwrap(),
+        AuthorizationAdapterReference::new("test.authz").unwrap(),
+        AdmissionAdapterReference::new("test.admission").unwrap(),
+        ExtensionPlanFingerprint::new("graph:test-hooks").unwrap(),
     )
 }
 
 fn compiler() -> RegistryCompiler {
-    RegistryCompiler::new(GraphFingerprint::new("graph:test").unwrap(), [permission()])
+    RegistryCompiler::new(
+        GraphFingerprint::new("graph:test").unwrap(),
+        [operation()],
+        [owner()],
+        adapter_plan(),
+    )
+}
+
+fn register_complete(compiler: &mut RegistryCompiler, id: &str, binding_id: &str, path: &str) {
+    compiler.register_definition(definition(id)).unwrap();
+    compiler
+        .register_binding(binding(binding_id, id, path))
+        .unwrap();
+    compiler
+        .bind_handler::<Input, Output>(
+            &InterfaceId::new(id).unwrap(),
+            HandlerReference::new("test.handler").unwrap(),
+            Arc::new(TestHandler),
+        )
+        .unwrap();
 }
 
 #[test]
-fn compiles_typed_definition_and_handler_into_deterministic_snapshot() {
+fn compiles_definition_binding_and_plan_into_deterministic_snapshot() {
     let mut first = compiler();
-    first
-        .register_definition(definition("test.read", "/api/console/test"))
-        .unwrap();
-    first
-        .bind_handler::<Input, Output>(
-            &InterfaceId::new("test.read").unwrap(),
-            HandlerReference::new("test.handler").unwrap(),
-            Arc::new(TestHandler),
-        )
-        .unwrap();
+    register_complete(
+        &mut first,
+        "test.read",
+        "http.test.read.v1",
+        "/api/console/test",
+    );
     let first = first.compile().unwrap();
 
     let mut second = compiler();
-    second
-        .register_definition(definition("test.read", "/api/console/test"))
-        .unwrap();
-    second
-        .bind_handler::<Input, Output>(
-            &InterfaceId::new("test.read").unwrap(),
-            HandlerReference::new("test.handler").unwrap(),
-            Arc::new(TestHandler),
-        )
-        .unwrap();
+    register_complete(
+        &mut second,
+        "test.read",
+        "http.test.read.v1",
+        "/api/console/test",
+    );
     let second = second.compile().unwrap();
 
     assert_eq!(first.fingerprint(), second.fingerprint());
     assert_eq!(first.definitions().len(), 1);
+    assert_eq!(first.bindings().len(), 1);
+    let binding_id = BindingId::new("http.test.read.v1").unwrap();
+    let plan = first.plan(&binding_id).unwrap();
+    assert!(plan.binding_fingerprint().as_str().starts_with("sha256:"));
+    assert!(plan.fingerprint().as_str().starts_with("sha256:"));
+    assert_ne!(
+        plan.binding_fingerprint().as_str(),
+        plan.fingerprint().as_str()
+    );
     assert_eq!(
         first
             .definition_by_route(&RouteIdentity::new("GET", "/api/console/test").unwrap())
@@ -115,31 +173,52 @@ fn compiles_typed_definition_and_handler_into_deterministic_snapshot() {
 }
 
 #[test]
-fn rejects_duplicate_identity_and_route() {
-    let mut duplicate_identity = compiler();
-    duplicate_identity
-        .register_definition(definition("test.read", "/api/console/one"))
+fn rejects_duplicate_interface_binding_and_projection_identity() {
+    let mut compiler = compiler();
+    compiler
+        .register_definition(definition("test.read"))
         .unwrap();
     assert!(matches!(
-        duplicate_identity.register_definition(definition("test.read", "/api/console/two")),
+        compiler.register_definition(definition("test.read")),
         Err(RegistryCompilationError::DuplicateInterface(_))
     ));
-
-    let mut duplicate_route = compiler();
-    duplicate_route
-        .register_definition(definition("test.one", "/api/console/shared"))
+    compiler
+        .register_binding(binding(
+            "http.test.read.v1",
+            "test.read",
+            "/api/console/test",
+        ))
         .unwrap();
     assert!(matches!(
-        duplicate_route.register_definition(definition("test.two", "/api/console/shared")),
-        Err(RegistryCompilationError::DuplicateRoute { .. })
+        compiler.register_binding(binding(
+            "http.test.read.v1",
+            "test.read",
+            "/api/console/other",
+        )),
+        Err(RegistryCompilationError::DuplicateBinding(_))
+    ));
+    assert!(matches!(
+        compiler.register_binding(binding(
+            "http.test.other.v1",
+            "test.read",
+            "/api/console/test",
+        )),
+        Err(RegistryCompilationError::DuplicateProjection(_))
     ));
 }
 
 #[test]
-fn rejects_missing_handler_contract_mismatch_and_unknown_permission() {
+fn rejects_missing_or_mismatched_typed_handler_and_missing_binding() {
     let mut missing = compiler();
     missing
-        .register_definition(definition("test.missing", "/api/console/missing"))
+        .register_definition(definition("test.missing"))
+        .unwrap();
+    missing
+        .register_binding(binding(
+            "http.test.missing.v1",
+            "test.missing",
+            "/api/console/missing",
+        ))
         .unwrap();
     assert!(matches!(
         missing.compile(),
@@ -148,7 +227,14 @@ fn rejects_missing_handler_contract_mismatch_and_unknown_permission() {
 
     let mut mismatch = compiler();
     mismatch
-        .register_definition(definition("test.mismatch", "/api/console/mismatch"))
+        .register_definition(definition("test.mismatch"))
+        .unwrap();
+    mismatch
+        .register_binding(binding(
+            "http.test.mismatch.v1",
+            "test.mismatch",
+            "/api/console/mismatch",
+        ))
         .unwrap();
     mismatch
         .bind_handler::<Input, WrongOutput>(
@@ -162,22 +248,111 @@ fn rejects_missing_handler_contract_mismatch_and_unknown_permission() {
         Err(RegistryCompilationError::ContractMismatch(_))
     ));
 
-    let mut unknown_permission = RegistryCompiler::new(
-        GraphFingerprint::new("graph:test").unwrap(),
-        Vec::<PermissionIdentity>::new(),
-    );
-    unknown_permission
-        .register_definition(definition("test.unknown", "/api/console/unknown"))
+    let mut missing_binding = compiler();
+    missing_binding
+        .register_definition(definition("test.unbound"))
         .unwrap();
-    unknown_permission
+    missing_binding
         .bind_handler::<Input, Output>(
-            &InterfaceId::new("test.unknown").unwrap(),
+            &InterfaceId::new("test.unbound").unwrap(),
             HandlerReference::new("test.handler").unwrap(),
             Arc::new(TestHandler),
         )
         .unwrap();
     assert!(matches!(
-        unknown_permission.compile(),
-        Err(RegistryCompilationError::UnknownPermission(_))
+        missing_binding.compile(),
+        Err(RegistryCompilationError::MissingBinding(_))
+    ));
+}
+
+#[test]
+fn rejects_unknown_operation_inactive_owner_and_binding_contract_or_version_mismatch() {
+    let mut unknown_operation = RegistryCompiler::new(
+        GraphFingerprint::new("graph:test").unwrap(),
+        Vec::<AuthorizationOperation>::new(),
+        [owner()],
+        adapter_plan(),
+    );
+    register_complete(
+        &mut unknown_operation,
+        "test.unknown",
+        "http.test.unknown.v1",
+        "/api/console/unknown",
+    );
+    assert!(matches!(
+        unknown_operation.compile(),
+        Err(RegistryCompilationError::UnknownAuthorizationOperation(_))
+    ));
+
+    let mut inactive = RegistryCompiler::new(
+        GraphFingerprint::new("graph:test").unwrap(),
+        [operation()],
+        Vec::<InterfaceOwner>::new(),
+        adapter_plan(),
+    );
+    register_complete(
+        &mut inactive,
+        "test.inactive",
+        "http.test.inactive.v1",
+        "/api/console/inactive",
+    );
+    assert!(matches!(
+        inactive.compile(),
+        Err(RegistryCompilationError::InactiveOwner(_))
+    ));
+
+    let mut version = compiler();
+    version
+        .register_definition(definition("test.version"))
+        .unwrap();
+    let mut wrong_identity = identity("test.version");
+    wrong_identity = InterfaceIdentity::new(
+        wrong_identity.interface_id().clone(),
+        InterfaceVersion::new("2").unwrap(),
+    );
+    version
+        .register_binding(ProtocolBinding::new(
+            BindingId::new("http.test.version.v2").unwrap(),
+            wrong_identity,
+            ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
+            ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
+            ProtocolProjection::http(RouteIdentity::new("GET", "/api/console/version").unwrap()),
+        ))
+        .unwrap();
+    version
+        .bind_handler::<Input, Output>(
+            &InterfaceId::new("test.version").unwrap(),
+            HandlerReference::new("test.handler").unwrap(),
+            Arc::new(TestHandler),
+        )
+        .unwrap();
+    assert!(matches!(
+        version.compile(),
+        Err(RegistryCompilationError::BindingVersionMismatch(_))
+    ));
+
+    let mut contract = compiler();
+    contract
+        .register_definition(definition("test.contract"))
+        .unwrap();
+    contract
+        .register_binding(ProtocolBinding::new(
+            BindingId::new("http.test.contract.v1").unwrap(),
+            identity("test.contract"),
+            ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
+            ContractIdentity::new(WrongOutput::CONTRACT_ID, WrongOutput::CONTRACT_VERSION).unwrap(),
+            ProtocolProjection::http(RouteIdentity::new("GET", "/api/console/contract").unwrap()),
+        ))
+        .unwrap();
+    contract
+        .bind_handler::<Input, Output>(
+            &InterfaceId::new("test.contract").unwrap(),
+            HandlerReference::new("test.handler").unwrap(),
+            Arc::new(TestHandler),
+        )
+        .unwrap();
+    assert!(matches!(
+        contract.compile(),
+        Err(RegistryCompilationError::BindingContractMismatch(_))
     ));
 }

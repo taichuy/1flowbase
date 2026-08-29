@@ -7,14 +7,17 @@ use control_plane::{
     ports::RoleConsolePolicyReader,
 };
 use interface_runtime::{
-    CompiledInterfaceRegistry, ContractIdentity, GraphFingerprint, HandlerReference,
+    AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
+    AuthorizationOperation, BindingId, CompiledInterfaceRegistry, ContractIdentity,
+    ExtensionPlanFingerprint, GraphFingerprint, HandlerReference, InterfaceAccess,
     InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceAuthorizationError,
     InterfaceAuthorizationFuture, InterfaceAuthorizationPort, InterfaceAuthorizationRequest,
-    InterfaceContract, InterfaceDefinition, InterfaceErrorPolicy, InterfaceHandler,
-    InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceInvocationError,
-    InterfaceInvocationKernel, InterfaceLifecycle, InterfaceOwner, InterfaceProtocol,
-    InterfaceScope, InterfaceTargetError, InvocationEnvelope, InvocationId, InvocationLineage,
-    PermissionIdentity, RegistryCompiler, RouteIdentity, TargetReference,
+    InterfaceContract, InterfaceContracts, InterfaceDefinition, InterfaceErrorPolicy,
+    InterfaceExecution, InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture,
+    InterfaceId, InterfaceIdentity, InterfaceInvocationError, InterfaceInvocationKernel,
+    InterfaceLifecycle, InterfaceOwner, InterfaceProtocol, InterfaceScope, InterfaceTargetError,
+    InterfaceVersion, InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage,
+    ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity, TargetReference,
 };
 use plugin_framework::extension_bus::{
     Cardinality, DeliverySemantics, EffectiveExtensionGraph, ExtensionPointKind, FailureSemantics,
@@ -34,6 +37,9 @@ pub const INTERFACE_OPERATION_CONTRACT_ID: &str = "interface-operation";
 pub const INTERFACE_OPERATION_CONTRACT_VERSION: &str = "1";
 pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID: &str =
     "host_infrastructure.providers.view";
+pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INTERFACE_VERSION: &str = "1";
+pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_BINDING_ID: &str =
+    "http.host_infrastructure.providers.view.v1";
 pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTION_ID: &str =
     "official.local-infra-host.interface-operation.host_infrastructure.providers.view";
 pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH: &str =
@@ -143,7 +149,7 @@ impl InterfaceAuthorizationPort for ConsoleInterfaceAuthorizationPort {
         let policy_reader = Arc::clone(&self.policy_reader);
         let console_registry = Arc::clone(&self.console_registry);
         Box::pin(async move {
-            let route = request.definition().route().ok_or_else(|| {
+            let route = request.binding().projection().http_route().ok_or_else(|| {
                 InterfaceAuthorizationError::classified("console_route_unregistered")
             })?;
             let access = crate::middleware::require_settings_feature_permission::compiled_console_route_access(
@@ -290,16 +296,26 @@ pub(crate) fn compile_interface_registry(
     providers_view_query: Arc<dyn HostInfrastructureProvidersViewQuery>,
 ) -> Result<Arc<CompiledInterfaceRegistry>> {
     let descriptor = validate_active_providers_view(&graph, descriptors)?;
+    let binding = binding_from_descriptor(&descriptor)?;
     let definition = definition_from_descriptor(descriptor)?;
     let interface_id = definition.interface_id().clone();
     let handler_reference = definition.handler_reference().clone();
     let graph_fingerprint = GraphFingerprint::new(graph.fingerprint().as_str())?;
+    let owner = InterfaceOwner::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID)?;
     let mut compiler = RegistryCompiler::new(
         graph_fingerprint,
-        [PermissionIdentity::new(
+        [AuthorizationOperation::new(
             HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION,
         )?],
+        [owner],
+        InvocationAdapterPlan::new(
+            AuthenticationAdapterReference::new("api-server.console.require-session")?,
+            AuthorizationAdapterReference::new("api-server.console.compiled-operation")?,
+            AdmissionAdapterReference::new("api-server.interface.no-admission")?,
+            ExtensionPlanFingerprint::new("graph:providers-view-hooks")?,
+        ),
     );
+    compiler.register_binding(binding)?;
     compiler.register_definition(definition)?;
     compiler.bind_handler::<
         HostInfrastructureProvidersViewInput,
@@ -323,7 +339,11 @@ pub(crate) fn is_active_interface_route(state: &ApiState, method: &str, path: &s
         .is_some_and(|snapshot| {
             providers_view_definition(snapshot.as_ref())
                 .ok()
-                .and_then(InterfaceDefinition::route)
+                .and_then(|definition| {
+                    snapshot
+                        .plan_for_interface(definition.interface_id())
+                        .and_then(|plan| plan.binding().projection().http_route())
+                })
                 .is_some_and(|route| route.method() == method && route.path() == path)
         })
 }
@@ -355,8 +375,9 @@ pub fn validate_console_registry(
     console_registry: &ConsoleOperationRegistry,
 ) -> Result<()> {
     let definition = providers_view_definition(interface_registry)?;
-    let route = definition
-        .route()
+    let route = interface_registry
+        .plan_for_interface(definition.interface_id())
+        .and_then(|plan| plan.binding().projection().http_route())
         .ok_or_else(|| anyhow::anyhow!("host infrastructure providers view route is absent"))?;
     let access = console_registry.access_for_console_route(route.method(), route.path())?;
     if access.operation_id != definition.interface_id().as_str()
@@ -414,7 +435,45 @@ fn definition_from_descriptor(
     descriptor: HostExtensionInterfaceOperationManifest,
 ) -> Result<InterfaceDefinition> {
     Ok(InterfaceDefinition::new(
-        InterfaceId::new(&descriptor.operation_id)?,
+        InterfaceIdentity::new(
+            InterfaceId::new(&descriptor.operation_id)?,
+            InterfaceVersion::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INTERFACE_VERSION)?,
+        ),
+        InterfaceContracts::unary(
+            ContractIdentity::new(
+                &descriptor.input.contract_id,
+                &descriptor.input.contract_version,
+            )?,
+            ContractIdentity::new(
+                &descriptor.output.contract_id,
+                &descriptor.output.contract_version,
+            )?,
+        ),
+        InterfaceAccess::new(
+            InterfaceAuthenticationPolicy::Authenticated,
+            AuthorizationOperation::new(&descriptor.required_core_permission)?,
+            InterfaceScope::System,
+        ),
+        InterfaceExecution::new(
+            HandlerReference::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_HANDLER_REFERENCE)?,
+            TargetReference::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_REFERENCE)?,
+        ),
+        InterfaceAuditPolicy::ReadOnly,
+        InterfaceErrorPolicy::TypedTarget,
+        InterfaceLifecycle::BootSnapshot,
+        InterfaceOwner::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID)?,
+    ))
+}
+
+fn binding_from_descriptor(
+    descriptor: &HostExtensionInterfaceOperationManifest,
+) -> Result<ProtocolBinding> {
+    Ok(ProtocolBinding::new(
+        BindingId::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_BINDING_ID)?,
+        InterfaceIdentity::new(
+            InterfaceId::new(&descriptor.operation_id)?,
+            InterfaceVersion::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INTERFACE_VERSION)?,
+        ),
         ContractIdentity::new(
             &descriptor.input.contract_id,
             &descriptor.input.contract_version,
@@ -423,19 +482,10 @@ fn definition_from_descriptor(
             &descriptor.output.contract_id,
             &descriptor.output.contract_version,
         )?,
-        Some(RouteIdentity::new(
+        ProtocolProjection::http(RouteIdentity::new(
             descriptor.method.as_str(),
             &descriptor.path,
         )?),
-        PermissionIdentity::new(&descriptor.required_core_permission)?,
-        InterfaceAuthenticationPolicy::Authenticated,
-        InterfaceAuditPolicy::ReadOnly,
-        InterfaceErrorPolicy::TypedTarget,
-        InterfaceScope::System,
-        InterfaceLifecycle::BootSnapshot,
-        HandlerReference::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_HANDLER_REFERENCE)?,
-        TargetReference::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_REFERENCE)?,
-        InterfaceOwner::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID)?,
     ))
 }
 

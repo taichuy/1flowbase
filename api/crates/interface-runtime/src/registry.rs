@@ -7,8 +7,11 @@ use std::{
 };
 
 use crate::{
-    ContractIdentity, GraphFingerprint, HandlerReference, InterfaceId, InterfaceOwner,
-    InvocationId, PermissionIdentity, RegistryFingerprint, RouteIdentity, TargetReference,
+    AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
+    AuthorizationOperation, BindingFingerprint, BindingId, ContractIdentity,
+    ExtensionPlanFingerprint, GraphFingerprint, HandlerReference, InterfaceId, InterfaceOwner,
+    InterfaceVersion, InvocationId, PlanFingerprint, RegistryFingerprint, RouteIdentity,
+    TargetReference,
 };
 use domain::ActorContext;
 use sha2::{Digest, Sha256};
@@ -47,54 +50,17 @@ pub enum InterfaceLifecycle {
     BootSnapshot,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct InterfaceDefinition {
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct InterfaceIdentity {
     interface_id: InterfaceId,
-    input_contract: ContractIdentity,
-    output_contract: ContractIdentity,
-    route: Option<RouteIdentity>,
-    permission: PermissionIdentity,
-    authentication: InterfaceAuthenticationPolicy,
-    audit: InterfaceAuditPolicy,
-    error: InterfaceErrorPolicy,
-    scope: InterfaceScope,
-    lifecycle: InterfaceLifecycle,
-    handler_reference: HandlerReference,
-    target_reference: TargetReference,
-    owner: InterfaceOwner,
+    version: InterfaceVersion,
 }
 
-impl InterfaceDefinition {
-    #[allow(clippy::too_many_arguments)]
-    pub fn new(
-        interface_id: InterfaceId,
-        input_contract: ContractIdentity,
-        output_contract: ContractIdentity,
-        route: Option<RouteIdentity>,
-        permission: PermissionIdentity,
-        authentication: InterfaceAuthenticationPolicy,
-        audit: InterfaceAuditPolicy,
-        error: InterfaceErrorPolicy,
-        scope: InterfaceScope,
-        lifecycle: InterfaceLifecycle,
-        handler_reference: HandlerReference,
-        target_reference: TargetReference,
-        owner: InterfaceOwner,
-    ) -> Self {
+impl InterfaceIdentity {
+    pub fn new(interface_id: InterfaceId, version: InterfaceVersion) -> Self {
         Self {
             interface_id,
-            input_contract,
-            output_contract,
-            route,
-            permission,
-            authentication,
-            audit,
-            error,
-            scope,
-            lifecycle,
-            handler_reference,
-            target_reference,
-            owner,
+            version,
         }
     }
 
@@ -102,24 +68,148 @@ impl InterfaceDefinition {
         &self.interface_id
     }
 
-    pub fn input_contract(&self) -> &ContractIdentity {
-        &self.input_contract
+    pub fn version(&self) -> &InterfaceVersion {
+        &self.version
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InterfaceContracts {
+    input: ContractIdentity,
+    output: ContractIdentity,
+}
+
+impl InterfaceContracts {
+    pub fn unary(input: ContractIdentity, output: ContractIdentity) -> Self {
+        Self { input, output }
     }
 
-    pub fn output_contract(&self) -> &ContractIdentity {
-        &self.output_contract
+    pub fn input(&self) -> &ContractIdentity {
+        &self.input
     }
 
-    pub fn route(&self) -> Option<&RouteIdentity> {
-        self.route.as_ref()
+    pub fn output(&self) -> &ContractIdentity {
+        &self.output
     }
+}
 
-    pub fn permission(&self) -> &PermissionIdentity {
-        &self.permission
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InterfaceAccess {
+    authentication: InterfaceAuthenticationPolicy,
+    authorization_operation: AuthorizationOperation,
+    scope: InterfaceScope,
+}
+
+impl InterfaceAccess {
+    pub fn new(
+        authentication: InterfaceAuthenticationPolicy,
+        authorization_operation: AuthorizationOperation,
+        scope: InterfaceScope,
+    ) -> Self {
+        Self {
+            authentication,
+            authorization_operation,
+            scope,
+        }
     }
 
     pub fn authentication(&self) -> InterfaceAuthenticationPolicy {
         self.authentication
+    }
+
+    pub fn authorization_operation(&self) -> &AuthorizationOperation {
+        &self.authorization_operation
+    }
+
+    pub fn scope(&self) -> InterfaceScope {
+        self.scope
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InterfaceExecution {
+    handler_reference: HandlerReference,
+    target_reference: TargetReference,
+}
+
+impl InterfaceExecution {
+    pub fn new(handler_reference: HandlerReference, target_reference: TargetReference) -> Self {
+        Self {
+            handler_reference,
+            target_reference,
+        }
+    }
+
+    pub fn handler_reference(&self) -> &HandlerReference {
+        &self.handler_reference
+    }
+
+    pub fn target_reference(&self) -> &TargetReference {
+        &self.target_reference
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InterfaceDefinition {
+    identity: InterfaceIdentity,
+    contracts: InterfaceContracts,
+    access: InterfaceAccess,
+    execution: InterfaceExecution,
+    audit: InterfaceAuditPolicy,
+    error: InterfaceErrorPolicy,
+    lifecycle: InterfaceLifecycle,
+    owner: InterfaceOwner,
+}
+
+impl InterfaceDefinition {
+    pub fn new(
+        identity: InterfaceIdentity,
+        contracts: InterfaceContracts,
+        access: InterfaceAccess,
+        execution: InterfaceExecution,
+        audit: InterfaceAuditPolicy,
+        error: InterfaceErrorPolicy,
+        lifecycle: InterfaceLifecycle,
+        owner: InterfaceOwner,
+    ) -> Self {
+        Self {
+            identity,
+            contracts,
+            access,
+            execution,
+            audit,
+            error,
+            lifecycle,
+            owner,
+        }
+    }
+
+    pub fn identity(&self) -> &InterfaceIdentity {
+        &self.identity
+    }
+
+    pub fn interface_id(&self) -> &InterfaceId {
+        self.identity.interface_id()
+    }
+
+    pub fn version(&self) -> &InterfaceVersion {
+        self.identity.version()
+    }
+
+    pub fn input_contract(&self) -> &ContractIdentity {
+        self.contracts.input()
+    }
+
+    pub fn output_contract(&self) -> &ContractIdentity {
+        self.contracts.output()
+    }
+
+    pub fn authorization_operation(&self) -> &AuthorizationOperation {
+        self.access.authorization_operation()
+    }
+
+    pub fn authentication(&self) -> InterfaceAuthenticationPolicy {
+        self.access.authentication()
     }
 
     pub fn audit(&self) -> InterfaceAuditPolicy {
@@ -131,7 +221,7 @@ impl InterfaceDefinition {
     }
 
     pub fn scope(&self) -> InterfaceScope {
-        self.scope
+        self.access.scope()
     }
 
     pub fn lifecycle(&self) -> InterfaceLifecycle {
@@ -139,15 +229,179 @@ impl InterfaceDefinition {
     }
 
     pub fn handler_reference(&self) -> &HandlerReference {
-        &self.handler_reference
+        self.execution.handler_reference()
     }
 
     pub fn target_reference(&self) -> &TargetReference {
-        &self.target_reference
+        self.execution.target_reference()
     }
 
     pub fn owner(&self) -> &InterfaceOwner {
         &self.owner
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ProtocolProjection {
+    Http(RouteIdentity),
+    Mcp { tool: Arc<str> },
+    Internal { operation: Arc<str> },
+    Worker { operation: Arc<str> },
+}
+
+impl ProtocolProjection {
+    pub fn http(route: RouteIdentity) -> Self {
+        Self::Http(route)
+    }
+
+    pub fn mcp(tool: impl Into<Arc<str>>) -> Self {
+        Self::Mcp { tool: tool.into() }
+    }
+
+    pub fn internal(operation: impl Into<Arc<str>>) -> Self {
+        Self::Internal {
+            operation: operation.into(),
+        }
+    }
+
+    pub fn worker(operation: impl Into<Arc<str>>) -> Self {
+        Self::Worker {
+            operation: operation.into(),
+        }
+    }
+
+    pub fn http_route(&self) -> Option<&RouteIdentity> {
+        match self {
+            Self::Http(route) => Some(route),
+            Self::Mcp { .. } | Self::Internal { .. } | Self::Worker { .. } => None,
+        }
+    }
+
+    fn fingerprint_parts(&self) -> (&'static str, &str, Option<&str>) {
+        match self {
+            Self::Http(route) => ("http", route.method(), Some(route.path())),
+            Self::Mcp { tool } => ("mcp", tool, None),
+            Self::Internal { operation } => ("internal", operation, None),
+            Self::Worker { operation } => ("worker", operation, None),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProtocolBinding {
+    binding_id: BindingId,
+    interface_identity: InterfaceIdentity,
+    input_contract: ContractIdentity,
+    output_contract: ContractIdentity,
+    projection: ProtocolProjection,
+}
+
+impl ProtocolBinding {
+    pub fn new(
+        binding_id: BindingId,
+        interface_identity: InterfaceIdentity,
+        input_contract: ContractIdentity,
+        output_contract: ContractIdentity,
+        projection: ProtocolProjection,
+    ) -> Self {
+        Self {
+            binding_id,
+            interface_identity,
+            input_contract,
+            output_contract,
+            projection,
+        }
+    }
+
+    pub fn binding_id(&self) -> &BindingId {
+        &self.binding_id
+    }
+
+    pub fn interface_identity(&self) -> &InterfaceIdentity {
+        &self.interface_identity
+    }
+
+    pub fn input_contract(&self) -> &ContractIdentity {
+        &self.input_contract
+    }
+
+    pub fn output_contract(&self) -> &ContractIdentity {
+        &self.output_contract
+    }
+
+    pub fn projection(&self) -> &ProtocolProjection {
+        &self.projection
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InvocationAdapterPlan {
+    authentication: AuthenticationAdapterReference,
+    authorization: AuthorizationAdapterReference,
+    admission: AdmissionAdapterReference,
+    extension_plan: ExtensionPlanFingerprint,
+}
+
+impl InvocationAdapterPlan {
+    pub fn new(
+        authentication: AuthenticationAdapterReference,
+        authorization: AuthorizationAdapterReference,
+        admission: AdmissionAdapterReference,
+        extension_plan: ExtensionPlanFingerprint,
+    ) -> Self {
+        Self {
+            authentication,
+            authorization,
+            admission,
+            extension_plan,
+        }
+    }
+
+    pub fn authentication(&self) -> &AuthenticationAdapterReference {
+        &self.authentication
+    }
+
+    pub fn authorization(&self) -> &AuthorizationAdapterReference {
+        &self.authorization
+    }
+
+    pub fn admission(&self) -> &AdmissionAdapterReference {
+        &self.admission
+    }
+
+    pub fn extension_plan(&self) -> &ExtensionPlanFingerprint {
+        &self.extension_plan
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CompiledInvocationPlan {
+    definition: InterfaceDefinition,
+    binding: ProtocolBinding,
+    binding_fingerprint: BindingFingerprint,
+    adapter_plan: InvocationAdapterPlan,
+    fingerprint: PlanFingerprint,
+}
+
+impl CompiledInvocationPlan {
+    pub fn definition(&self) -> &InterfaceDefinition {
+        &self.definition
+    }
+
+    pub fn binding(&self) -> &ProtocolBinding {
+        &self.binding
+    }
+
+    pub fn binding_fingerprint(&self) -> &BindingFingerprint {
+        &self.binding_fingerprint
+    }
+
+    pub fn adapter_plan(&self) -> &InvocationAdapterPlan {
+        &self.adapter_plan
+    }
+
+    pub fn fingerprint(&self) -> &PlanFingerprint {
+        &self.fingerprint
     }
 }
 
@@ -283,14 +537,26 @@ where
 pub enum RegistryCompilationError {
     #[error("duplicate interface identity {0}")]
     DuplicateInterface(InterfaceId),
-    #[error("duplicate route {method} {path}")]
-    DuplicateRoute { method: String, path: String },
+    #[error("duplicate binding identity {0}")]
+    DuplicateBinding(BindingId),
+    #[error("duplicate protocol projection {0}")]
+    DuplicateProjection(BindingId),
     #[error("interface {0} has no bound handler")]
     MissingHandler(InterfaceId),
     #[error("handler is bound for unknown interface {0}")]
     UnknownInterface(InterfaceId),
-    #[error("interface {0} uses unknown permission")]
-    UnknownPermission(InterfaceId),
+    #[error("interface {0} uses unknown authorization operation")]
+    UnknownAuthorizationOperation(InterfaceId),
+    #[error("interface {0} owner is inactive")]
+    InactiveOwner(InterfaceId),
+    #[error("binding {0} references an unknown interface")]
+    BindingUnknownInterface(BindingId),
+    #[error("binding {0} interface version does not match its definition")]
+    BindingVersionMismatch(BindingId),
+    #[error("binding {0} contract does not match its definition")]
+    BindingContractMismatch(BindingId),
+    #[error("interface {0} has no protocol binding")]
+    MissingBinding(InterfaceId),
     #[error("interface {0} contract does not match its typed handler")]
     ContractMismatch(InterfaceId),
     #[error("interface {0} handler reference does not match its binding")]
@@ -301,23 +567,31 @@ pub enum RegistryCompilationError {
 
 pub struct RegistryCompiler {
     graph_fingerprint: GraphFingerprint,
-    known_permissions: BTreeSet<PermissionIdentity>,
+    known_operations: BTreeSet<AuthorizationOperation>,
+    active_owners: BTreeSet<InterfaceOwner>,
+    adapter_plan: InvocationAdapterPlan,
     definitions: BTreeMap<InterfaceId, InterfaceDefinition>,
-    routes: BTreeMap<RouteIdentity, InterfaceId>,
-    bindings: BTreeMap<InterfaceId, Arc<dyn ErasedInterfaceBinding>>,
+    protocol_bindings: BTreeMap<BindingId, ProtocolBinding>,
+    routes: BTreeMap<RouteIdentity, BindingId>,
+    handler_bindings: BTreeMap<InterfaceId, Arc<dyn ErasedInterfaceBinding>>,
 }
 
 impl RegistryCompiler {
     pub fn new(
         graph_fingerprint: GraphFingerprint,
-        known_permissions: impl IntoIterator<Item = PermissionIdentity>,
+        known_operations: impl IntoIterator<Item = AuthorizationOperation>,
+        active_owners: impl IntoIterator<Item = InterfaceOwner>,
+        adapter_plan: InvocationAdapterPlan,
     ) -> Self {
         Self {
             graph_fingerprint,
-            known_permissions: known_permissions.into_iter().collect(),
+            known_operations: known_operations.into_iter().collect(),
+            active_owners: active_owners.into_iter().collect(),
+            adapter_plan,
             definitions: BTreeMap::new(),
+            protocol_bindings: BTreeMap::new(),
             routes: BTreeMap::new(),
-            bindings: BTreeMap::new(),
+            handler_bindings: BTreeMap::new(),
         }
     }
 
@@ -330,18 +604,31 @@ impl RegistryCompiler {
                 definition.interface_id().clone(),
             ));
         }
-        if let Some(route) = definition.route() {
-            if self.routes.contains_key(route) {
-                return Err(RegistryCompilationError::DuplicateRoute {
-                    method: route.method().to_string(),
-                    path: route.path().to_string(),
-                });
-            }
-            self.routes
-                .insert(route.clone(), definition.interface_id().clone());
-        }
         self.definitions
             .insert(definition.interface_id().clone(), definition);
+        Ok(())
+    }
+
+    pub fn register_binding(
+        &mut self,
+        binding: ProtocolBinding,
+    ) -> Result<(), RegistryCompilationError> {
+        if self.protocol_bindings.contains_key(binding.binding_id()) {
+            return Err(RegistryCompilationError::DuplicateBinding(
+                binding.binding_id().clone(),
+            ));
+        }
+        if let Some(route) = binding.projection().http_route() {
+            if let Some(existing) = self.routes.get(route) {
+                return Err(RegistryCompilationError::DuplicateProjection(
+                    existing.clone(),
+                ));
+            }
+            self.routes
+                .insert(route.clone(), binding.binding_id().clone());
+        }
+        self.protocol_bindings
+            .insert(binding.binding_id().clone(), binding);
         Ok(())
     }
 
@@ -360,14 +647,14 @@ impl RegistryCompiler {
                 interface_id.clone(),
             ));
         }
-        if self.bindings.contains_key(interface_id) {
+        if self.handler_bindings.contains_key(interface_id) {
             return Err(RegistryCompilationError::DuplicateHandler(
                 interface_id.clone(),
             ));
         }
         let input_contract = contract_identity::<I>();
         let output_contract = contract_identity::<O>();
-        self.bindings.insert(
+        self.handler_bindings.insert(
             interface_id.clone(),
             Arc::new(TypedInterfaceBinding::<I, O> {
                 input_contract,
@@ -381,13 +668,21 @@ impl RegistryCompiler {
 
     pub fn compile(self) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError> {
         for (interface_id, definition) in &self.definitions {
-            if !self.known_permissions.contains(definition.permission()) {
-                return Err(RegistryCompilationError::UnknownPermission(
+            if !self
+                .known_operations
+                .contains(definition.authorization_operation())
+            {
+                return Err(RegistryCompilationError::UnknownAuthorizationOperation(
+                    interface_id.clone(),
+                ));
+            }
+            if !self.active_owners.contains(definition.owner()) {
+                return Err(RegistryCompilationError::InactiveOwner(
                     interface_id.clone(),
                 ));
             }
             let binding = self
-                .bindings
+                .handler_bindings
                 .get(interface_id)
                 .ok_or_else(|| RegistryCompilationError::MissingHandler(interface_id.clone()))?;
             if binding.input_contract() != definition.input_contract()
@@ -402,9 +697,18 @@ impl RegistryCompiler {
                     interface_id.clone(),
                 ));
             }
+            if !self
+                .protocol_bindings
+                .values()
+                .any(|binding| binding.interface_identity().interface_id() == interface_id)
+            {
+                return Err(RegistryCompilationError::MissingBinding(
+                    interface_id.clone(),
+                ));
+            }
         }
         if let Some(interface_id) = self
-            .bindings
+            .handler_bindings
             .keys()
             .find(|interface_id| !self.definitions.contains_key(*interface_id))
         {
@@ -412,13 +716,60 @@ impl RegistryCompiler {
                 interface_id.clone(),
             ));
         }
-        let fingerprint = registry_fingerprint(&self.graph_fingerprint, &self.definitions);
+        let mut plans = BTreeMap::new();
+        for binding in self.protocol_bindings.values() {
+            let Some(definition) = self
+                .definitions
+                .get(binding.interface_identity().interface_id())
+            else {
+                return Err(RegistryCompilationError::BindingUnknownInterface(
+                    binding.binding_id().clone(),
+                ));
+            };
+            if binding.interface_identity().version() != definition.version() {
+                return Err(RegistryCompilationError::BindingVersionMismatch(
+                    binding.binding_id().clone(),
+                ));
+            }
+            if binding.input_contract() != definition.input_contract()
+                || binding.output_contract() != definition.output_contract()
+            {
+                return Err(RegistryCompilationError::BindingContractMismatch(
+                    binding.binding_id().clone(),
+                ));
+            }
+            let binding_fingerprint = binding_fingerprint(binding);
+            let fingerprint = plan_fingerprint(
+                &self.graph_fingerprint,
+                definition,
+                &binding_fingerprint,
+                &self.adapter_plan,
+            );
+            plans.insert(
+                binding.binding_id().clone(),
+                CompiledInvocationPlan {
+                    definition: definition.clone(),
+                    binding: binding.clone(),
+                    binding_fingerprint,
+                    adapter_plan: self.adapter_plan.clone(),
+                    fingerprint,
+                },
+            );
+        }
+        let fingerprint = registry_fingerprint(
+            &self.graph_fingerprint,
+            &self.definitions,
+            &self.protocol_bindings,
+            &plans,
+        );
         Ok(Arc::new(CompiledInterfaceRegistry {
             graph_fingerprint: self.graph_fingerprint,
             fingerprint,
             definitions: self.definitions,
+            protocol_bindings: self.protocol_bindings,
+            plans,
             routes: self.routes,
-            bindings: self.bindings,
+            handler_bindings: self.handler_bindings,
         }))
     }
 }
@@ -427,8 +778,10 @@ pub struct CompiledInterfaceRegistry {
     graph_fingerprint: GraphFingerprint,
     fingerprint: RegistryFingerprint,
     definitions: BTreeMap<InterfaceId, InterfaceDefinition>,
-    routes: BTreeMap<RouteIdentity, InterfaceId>,
-    bindings: BTreeMap<InterfaceId, Arc<dyn ErasedInterfaceBinding>>,
+    protocol_bindings: BTreeMap<BindingId, ProtocolBinding>,
+    plans: BTreeMap<BindingId, CompiledInvocationPlan>,
+    routes: BTreeMap<RouteIdentity, BindingId>,
+    handler_bindings: BTreeMap<InterfaceId, Arc<dyn ErasedInterfaceBinding>>,
 }
 
 impl std::fmt::Debug for CompiledInterfaceRegistry {
@@ -462,7 +815,35 @@ impl CompiledInterfaceRegistry {
     pub fn definition_by_route(&self, route: &RouteIdentity) -> Option<&InterfaceDefinition> {
         self.routes
             .get(route)
-            .and_then(|interface_id| self.definitions.get(interface_id))
+            .and_then(|binding_id| self.plans.get(binding_id))
+            .map(CompiledInvocationPlan::definition)
+    }
+
+    pub fn bindings(&self) -> impl ExactSizeIterator<Item = &ProtocolBinding> {
+        self.protocol_bindings.values()
+    }
+
+    pub fn binding(&self, binding_id: &BindingId) -> Option<&ProtocolBinding> {
+        self.protocol_bindings.get(binding_id)
+    }
+
+    pub fn binding_by_route(&self, route: &RouteIdentity) -> Option<&ProtocolBinding> {
+        self.routes
+            .get(route)
+            .and_then(|binding_id| self.protocol_bindings.get(binding_id))
+    }
+
+    pub fn plan(&self, binding_id: &BindingId) -> Option<&CompiledInvocationPlan> {
+        self.plans.get(binding_id)
+    }
+
+    pub fn plan_for_interface(
+        &self,
+        interface_id: &InterfaceId,
+    ) -> Option<&CompiledInvocationPlan> {
+        self.plans
+            .values()
+            .find(|plan| plan.definition().interface_id() == interface_id)
     }
 
     pub(crate) fn handler<I, O>(
@@ -473,7 +854,7 @@ impl CompiledInterfaceRegistry {
         I: InterfaceContract,
         O: InterfaceContract,
     {
-        self.bindings
+        self.handler_bindings
             .get(interface_id)?
             .as_any()
             .downcast_ref::<TypedInterfaceBinding<I, O>>()
@@ -524,17 +905,20 @@ fn contract_identity<T: InterfaceContract>() -> ContractIdentity {
 fn registry_fingerprint(
     graph_fingerprint: &GraphFingerprint,
     definitions: &BTreeMap<InterfaceId, InterfaceDefinition>,
+    bindings: &BTreeMap<BindingId, ProtocolBinding>,
+    plans: &BTreeMap<BindingId, CompiledInvocationPlan>,
 ) -> RegistryFingerprint {
     let mut digest = Sha256::new();
     digest.update(graph_fingerprint.as_str().as_bytes());
     for definition in definitions.values() {
         for part in [
             definition.interface_id().as_str(),
+            definition.version().as_str(),
             definition.input_contract().contract_id(),
             definition.input_contract().version(),
             definition.output_contract().contract_id(),
             definition.output_contract().version(),
-            definition.permission().as_str(),
+            definition.authorization_operation().as_str(),
             definition.handler_reference().as_str(),
             definition.target_reference().as_str(),
             definition.owner().as_str(),
@@ -560,13 +944,72 @@ fn registry_fingerprint(
             digest.update([0]);
             digest.update(part.as_bytes());
         }
-        if let Some(route) = definition.route() {
-            digest.update([0]);
-            digest.update(route.method().as_bytes());
-            digest.update([0]);
-            digest.update(route.path().as_bytes());
-        }
+    }
+    for binding in bindings.values() {
+        digest.update([0]);
+        digest.update(binding.binding_id().as_str().as_bytes());
+        digest.update([0]);
+        digest.update(binding_fingerprint(binding).as_str().as_bytes());
+        digest.update([0]);
+        digest.update(
+            plans
+                .get(binding.binding_id())
+                .expect("every binding must have a compiled plan")
+                .fingerprint()
+                .as_str()
+                .as_bytes(),
+        );
     }
     RegistryFingerprint::new(format!("sha256:{:x}", digest.finalize()))
         .expect("SHA-256 registry fingerprint must be a valid identity")
+}
+
+fn binding_fingerprint(binding: &ProtocolBinding) -> BindingFingerprint {
+    let mut digest = Sha256::new();
+    for part in [
+        binding.binding_id().as_str(),
+        binding.interface_identity().interface_id().as_str(),
+        binding.interface_identity().version().as_str(),
+        binding.input_contract().contract_id(),
+        binding.input_contract().version(),
+        binding.output_contract().contract_id(),
+        binding.output_contract().version(),
+    ] {
+        digest.update([0]);
+        digest.update(part.as_bytes());
+    }
+    let (kind, first, second) = binding.projection().fingerprint_parts();
+    for part in [Some(kind), Some(first), second].into_iter().flatten() {
+        digest.update([0]);
+        digest.update(part.as_bytes());
+    }
+    BindingFingerprint::new(format!("sha256:{:x}", digest.finalize()))
+        .expect("SHA-256 binding fingerprint must be a valid identity")
+}
+
+fn plan_fingerprint(
+    graph_fingerprint: &GraphFingerprint,
+    definition: &InterfaceDefinition,
+    binding_fingerprint: &BindingFingerprint,
+    adapter_plan: &InvocationAdapterPlan,
+) -> PlanFingerprint {
+    let mut digest = Sha256::new();
+    for part in [
+        graph_fingerprint.as_str(),
+        definition.interface_id().as_str(),
+        definition.version().as_str(),
+        binding_fingerprint.as_str(),
+        definition.authorization_operation().as_str(),
+        definition.handler_reference().as_str(),
+        definition.target_reference().as_str(),
+        adapter_plan.authentication().as_str(),
+        adapter_plan.authorization().as_str(),
+        adapter_plan.admission().as_str(),
+        adapter_plan.extension_plan().as_str(),
+    ] {
+        digest.update([0]);
+        digest.update(part.as_bytes());
+    }
+    PlanFingerprint::new(format!("sha256:{:x}", digest.finalize()))
+        .expect("SHA-256 plan fingerprint must be a valid identity")
 }

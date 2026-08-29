@@ -40,12 +40,26 @@ macro_rules! identity {
 }
 
 identity!(InterfaceId, "interface identity");
-identity!(PermissionIdentity, "permission identity");
+identity!(InterfaceVersion, "interface version");
+identity!(BindingId, "binding identity");
+identity!(AuthorizationOperation, "authorization operation");
 identity!(HandlerReference, "handler reference");
 identity!(TargetReference, "target reference");
 identity!(InterfaceOwner, "interface owner");
 identity!(GraphFingerprint, "graph fingerprint");
 identity!(RegistryFingerprint, "registry fingerprint");
+identity!(BindingFingerprint, "binding fingerprint");
+identity!(PlanFingerprint, "plan fingerprint");
+identity!(
+    AuthenticationAdapterReference,
+    "authentication adapter reference"
+);
+identity!(
+    AuthorizationAdapterReference,
+    "authorization adapter reference"
+);
+identity!(AdmissionAdapterReference, "admission adapter reference");
+identity!(ExtensionPlanFingerprint, "extension plan fingerprint");
 
 fn validate_identity(value: &str, kind: &'static str) -> Result<(), IdentityError> {
     if value.is_empty() {

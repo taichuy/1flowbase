@@ -49,7 +49,14 @@ fn effective_graph_compiles_one_typed_registry_definition_and_handler() {
         HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
     );
     assert_eq!(
-        definition.route().unwrap().path(),
+        registry
+            .plan_for_interface(definition.interface_id())
+            .unwrap()
+            .binding()
+            .projection()
+            .http_route()
+            .unwrap()
+            .path(),
         HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PATH
     );
     assert_eq!(
@@ -151,7 +158,10 @@ fn registry_definition_projects_route_console_openapi_and_mcp_identity() {
             .unwrap();
     validate_console_registry(registry.as_ref(), &console_registry).unwrap();
 
-    let route = definition.route().unwrap();
+    let route = registry
+        .plan_for_interface(definition.interface_id())
+        .and_then(|plan| plan.binding().projection().http_route())
+        .unwrap();
     let access = console_registry
         .access_for_console_route(route.method(), route.path())
         .unwrap();

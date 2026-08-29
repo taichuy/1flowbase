@@ -357,7 +357,10 @@ mod tests {
                 registry.as_ref(),
             )
             .unwrap();
-        let route = definition.route().unwrap();
+        let route = registry
+            .plan_for_interface(definition.interface_id())
+            .and_then(|plan| plan.binding().projection().http_route())
+            .unwrap();
         let parameter_schema = json!({"type": "object", "properties": {}});
         let result_schema = json!({"type": "array", "items": {"type": "object"}});
         let entry = OpenApiCapabilityCatalogEntry {
@@ -384,7 +387,7 @@ mod tests {
                 input_contract_version: definition.input_contract().version().to_string(),
                 output_contract_id: definition.output_contract().contract_id().to_string(),
                 output_contract_version: definition.output_contract().version().to_string(),
-                required_core_permission: definition.permission().as_str().to_string(),
+                required_core_permission: definition.authorization_operation().as_str().to_string(),
                 auth_policy: definition.authentication(),
                 audit_policy: definition.audit(),
                 error_policy: definition.error(),

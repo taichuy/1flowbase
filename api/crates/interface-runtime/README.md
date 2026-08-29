@@ -1,6 +1,6 @@
 # interface-runtime
 
-`interface-runtime` owns the protocol-independent active interface contract for 1FlowBase. It compiles typed definitions and handler bindings into an immutable snapshot, publishes snapshots through `DynamicInterfaceRegistry`, and invokes a frozen snapshot through `InterfaceInvocationKernel`.
+`interface-runtime` owns the protocol-independent active interface contract for 1FlowBase. Canonical `InterfaceDefinition`, protocol `ProtocolBinding`, and immutable `CompiledInvocationPlan` are separate objects: business semantics, transport projection, and frozen execution wiring cannot overwrite one another. The compiler publishes their deterministic fingerprints through `DynamicInterfaceRegistry`, and `InterfaceInvocationKernel` invokes a frozen plan.
 
 The request boundary is an authenticated `domain::ActorContext`. HTTP and MCP adapters remain responsible for credential parsing. The kernel resolves the interface, authorizes it, optionally calls the typed target-admission seam, invokes the typed handler, and records a terminal receipt carrying the registry and effective-graph fingerprints.
 

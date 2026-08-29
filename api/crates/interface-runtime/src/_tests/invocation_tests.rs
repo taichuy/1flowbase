@@ -7,18 +7,22 @@ use domain::ActorContext;
 use uuid::Uuid;
 
 use crate::{
-    ContractIdentity, DynamicInterfaceRegistry, GraphFingerprint, HandlerReference,
+    AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
+    AuthorizationOperation, BindingId, ContractIdentity, DynamicInterfaceRegistry,
+    ExtensionPlanFingerprint, GraphFingerprint, HandlerReference, InterfaceAccess,
     InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceAuthorizationError,
     InterfaceAuthorizationFuture, InterfaceAuthorizationPort, InterfaceAuthorizationRequest,
     InterfaceBeforeHook, InterfaceBeforeHookFuture, InterfaceCompletionHook,
-    InterfaceCompletionHookFuture, InterfaceContract, InterfaceDefinition, InterfaceErrorPolicy,
-    InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceHookContext,
-    InterfaceId, InterfaceInvocationError, InterfaceInvocationKernel, InterfaceInvocationStage,
+    InterfaceCompletionHookFuture, InterfaceContract, InterfaceContracts, InterfaceDefinition,
+    InterfaceErrorPolicy, InterfaceExecution, InterfaceHandler, InterfaceHandlerContext,
+    InterfaceHandlerFuture, InterfaceHookContext, InterfaceId, InterfaceIdentity,
+    InterfaceInvocationError, InterfaceInvocationKernel, InterfaceInvocationStage,
     InterfaceInvocationTerminal, InterfaceLifecycle, InterfaceOwner, InterfaceProtocol,
     InterfaceScope, InterfaceTargetAdmissionError, InterfaceTargetAdmissionFuture,
     InterfaceTargetAdmissionPort, InterfaceTargetAdmissionRequest, InterfaceTargetError,
-    InvocationEnvelope, InvocationId, InvocationLineage, InvocationLineageError,
-    PermissionIdentity, RegistryCompiler, RouteIdentity, TargetReference, TypedInterfaceHookPlan,
+    InterfaceVersion, InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage,
+    InvocationLineageError, ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity,
+    TargetReference, TypedInterfaceHookPlan,
 };
 
 #[derive(Clone)]
@@ -202,32 +206,74 @@ fn interface_id() -> InterfaceId {
     InterfaceId::new("invocation.read").unwrap()
 }
 
+fn interface_identity() -> InterfaceIdentity {
+    InterfaceIdentity::new(interface_id(), InterfaceVersion::new("1").unwrap())
+}
+
+fn operation() -> AuthorizationOperation {
+    AuthorizationOperation::new("invocation.read").unwrap()
+}
+
+fn owner() -> InterfaceOwner {
+    InterfaceOwner::new("core").unwrap()
+}
+
+fn definition() -> InterfaceDefinition {
+    InterfaceDefinition::new(
+        interface_identity(),
+        InterfaceContracts::unary(
+            ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
+            ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
+        ),
+        InterfaceAccess::new(
+            InterfaceAuthenticationPolicy::Authenticated,
+            operation(),
+            InterfaceScope::System,
+        ),
+        InterfaceExecution::new(
+            HandlerReference::new("invocation.handler").unwrap(),
+            TargetReference::new("invocation.target").unwrap(),
+        ),
+        InterfaceAuditPolicy::ReadOnly,
+        InterfaceErrorPolicy::TypedTarget,
+        InterfaceLifecycle::BootSnapshot,
+        owner(),
+    )
+}
+
+fn binding() -> ProtocolBinding {
+    ProtocolBinding::new(
+        BindingId::new("http.invocation.read.v1").unwrap(),
+        interface_identity(),
+        ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
+        ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
+        ProtocolProjection::http(RouteIdentity::new("GET", "/api/console/invocation").unwrap()),
+    )
+}
+
+fn compiler(graph: &str) -> RegistryCompiler {
+    RegistryCompiler::new(
+        GraphFingerprint::new(graph).unwrap(),
+        [operation()],
+        [owner()],
+        InvocationAdapterPlan::new(
+            AuthenticationAdapterReference::new("test.authn").unwrap(),
+            AuthorizationAdapterReference::new("test.authz").unwrap(),
+            AdmissionAdapterReference::new("test.admission").unwrap(),
+            ExtensionPlanFingerprint::new("graph:test-hooks").unwrap(),
+        ),
+    )
+}
+
 fn compile_snapshot(
     graph: &str,
     increment: u8,
     fail: bool,
     seen_fingerprint: Arc<Mutex<Option<String>>>,
 ) -> Arc<crate::CompiledInterfaceRegistry> {
-    let permission = PermissionIdentity::new("invocation.read").unwrap();
-    let mut compiler =
-        RegistryCompiler::new(GraphFingerprint::new(graph).unwrap(), [permission.clone()]);
-    compiler
-        .register_definition(InterfaceDefinition::new(
-            interface_id(),
-            ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
-            ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
-            Some(RouteIdentity::new("GET", "/api/console/invocation").unwrap()),
-            permission,
-            InterfaceAuthenticationPolicy::Authenticated,
-            InterfaceAuditPolicy::ReadOnly,
-            InterfaceErrorPolicy::TypedTarget,
-            InterfaceScope::System,
-            InterfaceLifecycle::BootSnapshot,
-            HandlerReference::new("invocation.handler").unwrap(),
-            TargetReference::new("invocation.target").unwrap(),
-            InterfaceOwner::new("core").unwrap(),
-        ))
-        .unwrap();
+    let mut compiler = compiler(graph);
+    compiler.register_definition(definition()).unwrap();
+    compiler.register_binding(binding()).unwrap();
     compiler
         .bind_handler::<Input, Output>(
             &interface_id(),
@@ -416,28 +462,9 @@ async fn deadline_cancels_each_in_flight_stage() {
         ]
     );
 
-    let permission = PermissionIdentity::new("invocation.read").unwrap();
-    let mut compiler = RegistryCompiler::new(
-        GraphFingerprint::new("graph:slow-handler").unwrap(),
-        [permission.clone()],
-    );
-    compiler
-        .register_definition(InterfaceDefinition::new(
-            interface_id(),
-            ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
-            ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
-            Some(RouteIdentity::new("GET", "/api/console/invocation").unwrap()),
-            permission,
-            InterfaceAuthenticationPolicy::Authenticated,
-            InterfaceAuditPolicy::ReadOnly,
-            InterfaceErrorPolicy::TypedTarget,
-            InterfaceScope::System,
-            InterfaceLifecycle::BootSnapshot,
-            HandlerReference::new("invocation.handler").unwrap(),
-            TargetReference::new("invocation.target").unwrap(),
-            InterfaceOwner::new("core").unwrap(),
-        ))
-        .unwrap();
+    let mut compiler = compiler("graph:slow-handler");
+    compiler.register_definition(definition()).unwrap();
+    compiler.register_binding(binding()).unwrap();
     compiler
         .bind_handler::<Input, Output>(
             &interface_id(),
