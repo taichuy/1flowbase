@@ -119,10 +119,12 @@ impl CompiledInterfaceExtensionPlan {
     ) -> Result<Self, InterfaceExtensionCompilationError> {
         let mut registrations = registrations
             .into_iter()
-            .map(|(order, registration)| OrderedInterfaceExtensionRegistration {
-                order,
-                registration,
-            })
+            .map(
+                |(order, registration)| OrderedInterfaceExtensionRegistration {
+                    order,
+                    registration,
+                },
+            )
             .collect::<Vec<_>>();
         registrations.sort_by(|left, right| {
             left.order

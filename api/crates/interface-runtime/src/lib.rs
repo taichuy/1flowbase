@@ -56,8 +56,8 @@ pub use stream::{
 #[cfg(test)]
 mod _tests;
 pub use extension::{
-    compile_effective_handler, CompiledInterfaceExtensionPlan,
-    InterfaceExtensionCompilationError, InterfaceExtensionFact, InterfaceExtensionIsolation,
-    InterfaceExtensionPermission, InterfaceExtensionPoint, InterfaceExtensionRegistration,
-    InterfaceExtensionTier, InterfaceHandlerCandidate, OrderedInterfaceExtensionRegistration,
+    compile_effective_handler, CompiledInterfaceExtensionPlan, InterfaceExtensionCompilationError,
+    InterfaceExtensionFact, InterfaceExtensionIsolation, InterfaceExtensionPermission,
+    InterfaceExtensionPoint, InterfaceExtensionRegistration, InterfaceExtensionTier,
+    InterfaceHandlerCandidate, OrderedInterfaceExtensionRegistration,
 };

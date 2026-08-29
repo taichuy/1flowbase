@@ -9,24 +9,23 @@ use uuid::Uuid;
 use crate::{
     AdmissionAdapterReference, ArtifactIdentity, AuthenticationAdapterReference,
     AuthorizationAdapterReference, AuthorizationOperation, BindingId, ContractIdentity,
-    DynamicInterfaceRegistry, ExecutionTargetPin, GraphFingerprint,
-    HandlerReference, IdempotencyKey, InterfaceAccess, InterfaceAuditPolicy,
-    InterfaceAuthenticationPolicy, InterfaceAuthorizationError, InterfaceAuthorizationFuture,
-    InterfaceAuthorizationPort, InterfaceAuthorizationRequest, InterfaceBeforeHook,
-    InterfaceBeforeHookFuture, InterfaceCompletionHook, InterfaceCompletionHookFuture,
-    InterfaceContract, InterfaceContracts, InterfaceDefinition, InterfaceErrorPolicy,
-    InterfaceExecution, InterfaceExecutionMode, InterfaceHandler, InterfaceHandlerContext,
-    InterfaceHandlerFuture, InterfaceHookContext, InterfaceId, InterfaceIdentity,
-    InterfaceInvocationError, InterfaceInvocationKernel, InterfaceInvocationStage,
-    InterfaceInvocationTerminal, InterfaceLifecycle, InterfaceOwner, InterfaceProtocol,
-    InterfaceScope, InterfaceStreamAccumulator, InterfaceStreamStateError, InterfaceStreamTerminal,
-    InterfaceTargetAdmissionError, InterfaceTargetAdmissionFuture, InterfaceTargetAdmissionPort,
-    InterfaceTargetAdmissionRequest, InterfaceTargetFailure, InterfaceVersion,
-    InvocationAdapterPlan, InvocationCancellation, InvocationControls, InvocationEnvelope,
-    InvocationId, InvocationLineage, InvocationLineageError, PluginIdentity, PrincipalProfile,
-    ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity, RuntimeGeneration,
-    RuntimeTargetIdentity, TargetReference, TypedInterfaceHookPlan, UserPrincipal,
-    WorkerGeneration,
+    DynamicInterfaceRegistry, ExecutionTargetPin, GraphFingerprint, HandlerReference,
+    IdempotencyKey, InterfaceAccess, InterfaceAuditPolicy, InterfaceAuthenticationPolicy,
+    InterfaceAuthorizationError, InterfaceAuthorizationFuture, InterfaceAuthorizationPort,
+    InterfaceAuthorizationRequest, InterfaceBeforeHook, InterfaceBeforeHookFuture,
+    InterfaceCompletionHook, InterfaceCompletionHookFuture, InterfaceContract, InterfaceContracts,
+    InterfaceDefinition, InterfaceErrorPolicy, InterfaceExecution, InterfaceExecutionMode,
+    InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceHookContext,
+    InterfaceId, InterfaceIdentity, InterfaceInvocationError, InterfaceInvocationKernel,
+    InterfaceInvocationStage, InterfaceInvocationTerminal, InterfaceLifecycle, InterfaceOwner,
+    InterfaceProtocol, InterfaceScope, InterfaceStreamAccumulator, InterfaceStreamStateError,
+    InterfaceStreamTerminal, InterfaceTargetAdmissionError, InterfaceTargetAdmissionFuture,
+    InterfaceTargetAdmissionPort, InterfaceTargetAdmissionRequest, InterfaceTargetFailure,
+    InterfaceVersion, InvocationAdapterPlan, InvocationCancellation, InvocationControls,
+    InvocationEnvelope, InvocationId, InvocationLineage, InvocationLineageError, PluginIdentity,
+    PrincipalProfile, ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity,
+    RuntimeGeneration, RuntimeTargetIdentity, TargetReference, TypedInterfaceHookPlan,
+    UserPrincipal, WorkerGeneration,
 };
 
 #[derive(Clone)]
@@ -315,7 +314,9 @@ fn compile_snapshot(
 ) -> Arc<crate::CompiledInterfaceRegistry> {
     let mut compiler = compiler(graph);
     compiler.register_definition(definition()).unwrap();
-    compiler.register_binding(binding(), adapter_plan()).unwrap();
+    compiler
+        .register_binding(binding(), adapter_plan())
+        .unwrap();
     compiler
         .bind_handler::<Input, Output, TargetError, UserPrincipal>(
             &interface_id(),
@@ -521,7 +522,9 @@ async fn deadline_cancels_each_in_flight_stage() {
 
     let mut compiler = compiler("graph:slow-handler");
     compiler.register_definition(definition()).unwrap();
-    compiler.register_binding(binding(), adapter_plan()).unwrap();
+    compiler
+        .register_binding(binding(), adapter_plan())
+        .unwrap();
     compiler
         .bind_handler::<Input, Output, TargetError, UserPrincipal>(
             &interface_id(),
@@ -607,24 +610,24 @@ async fn lcf_002_lcf_004_typed_hook_plan_runs_after_authorization_and_admission(
             .fingerprint()
             .clone(),
     )
-            .bind_before(Arc::new(RecordingBeforeHook {
-                name: "alpha",
-                increment: 1,
-                events: Arc::clone(&events),
-            }))
-            .bind_before(Arc::new(RecordingBeforeHook {
-                name: "beta",
-                increment: 2,
-                events: Arc::clone(&events),
-            }))
-            .bind_completion(Arc::new(RecordingCompletionHook {
-                name: "alpha",
-                events: Arc::clone(&events),
-            }))
-            .bind_completion(Arc::new(RecordingCompletionHook {
-                name: "beta",
-                events: Arc::clone(&events),
-            }));
+    .bind_before(Arc::new(RecordingBeforeHook {
+        name: "alpha",
+        increment: 1,
+        events: Arc::clone(&events),
+    }))
+    .bind_before(Arc::new(RecordingBeforeHook {
+        name: "beta",
+        increment: 2,
+        events: Arc::clone(&events),
+    }))
+    .bind_completion(Arc::new(RecordingCompletionHook {
+        name: "alpha",
+        events: Arc::clone(&events),
+    }))
+    .bind_completion(Arc::new(RecordingCompletionHook {
+        name: "beta",
+        events: Arc::clone(&events),
+    }));
     let outcome = InterfaceInvocationKernel::with_target_admission(
         Arc::new(Authorization { reject: false }),
         Arc::new(Admission { reject: false }),

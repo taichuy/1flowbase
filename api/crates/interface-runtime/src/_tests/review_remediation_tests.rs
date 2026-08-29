@@ -15,12 +15,12 @@ use crate::{
     InterfaceExtensionRegistration, InterfaceExtensionTier, InterfaceHandler,
     InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceIdentity,
     InterfaceInvocationError, InterfaceInvocationKernel, InterfaceInvocationStage,
-    InterfaceLifecycle, InterfaceOwner, InterfaceProtocol, InterfaceScope,
-    InterfaceStreamHandler, InterfaceStreamHandlerFuture, InterfaceStreamTerminal,
-    InterfaceTargetFailure, InterfaceVersion, InvocationAdapterPlan, InvocationEnvelope,
-    InvocationId, InvocationLineage, PluginIdentity, PrincipalProfile, ProtocolBinding,
-    ProtocolProjection, RegistryCompiler, RouteIdentity, RuntimeGeneration, RuntimeTargetIdentity,
-    TargetReference, UserPrincipal, WorkerGeneration,
+    InterfaceLifecycle, InterfaceOwner, InterfaceProtocol, InterfaceScope, InterfaceStreamHandler,
+    InterfaceStreamHandlerFuture, InterfaceStreamTerminal, InterfaceTargetFailure,
+    InterfaceVersion, InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage,
+    PluginIdentity, PrincipalProfile, ProtocolBinding, ProtocolProjection, RegistryCompiler,
+    RouteIdentity, RuntimeGeneration, RuntimeTargetIdentity, TargetReference, UserPrincipal,
+    WorkerGeneration,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -118,8 +118,7 @@ fn contracts(mode: InterfaceExecutionMode) -> InterfaceContracts {
         InterfaceExecutionMode::Unary => InterfaceContracts::unary(input, output, error),
         InterfaceExecutionMode::ServerStream => InterfaceContracts::server_stream(
             input,
-            ContractIdentity::new(StreamEvent::CONTRACT_ID, StreamEvent::CONTRACT_VERSION)
-                .unwrap(),
+            ContractIdentity::new(StreamEvent::CONTRACT_ID, StreamEvent::CONTRACT_VERSION).unwrap(),
             output,
             error,
         ),
@@ -217,11 +216,18 @@ async fn review_binding_identity_drives_resolve_and_rejects_protocol_or_adapter_
     let outcome = kernel
         .invoke::<Input, Output, TargetError>(
             Arc::clone(&snapshot),
-            envelope("mcp.review.multi.v1", InterfaceProtocol::Mcp, "review.mcp-authn"),
+            envelope(
+                "mcp.review.multi.v1",
+                InterfaceProtocol::Mcp,
+                "review.mcp-authn",
+            ),
         )
         .await
         .unwrap();
-    assert_eq!(outcome.receipt().interface_id(), Some(definition.interface_id()));
+    assert_eq!(
+        outcome.receipt().interface_id(),
+        Some(definition.interface_id())
+    );
     assert_eq!(
         outcome.receipt().resolved().unwrap().binding_id().as_str(),
         "mcp.review.multi.v1"
@@ -230,7 +236,11 @@ async fn review_binding_identity_drives_resolve_and_rejects_protocol_or_adapter_
     let wrong_protocol = kernel
         .invoke::<Input, Output, TargetError>(
             Arc::clone(&snapshot),
-            envelope("mcp.review.multi.v1", InterfaceProtocol::Http, "review.mcp-authn"),
+            envelope(
+                "mcp.review.multi.v1",
+                InterfaceProtocol::Http,
+                "review.mcp-authn",
+            ),
         )
         .await
         .unwrap_err();
@@ -241,14 +251,34 @@ async fn review_binding_identity_drives_resolve_and_rejects_protocol_or_adapter_
 
     let wrong_authn = kernel
         .invoke::<Input, Output, TargetError>(
-            snapshot,
-            envelope("mcp.review.multi.v1", InterfaceProtocol::Mcp, "review.http-authn"),
+            Arc::clone(&snapshot),
+            envelope(
+                "mcp.review.multi.v1",
+                InterfaceProtocol::Mcp,
+                "review.http-authn",
+            ),
         )
         .await
         .unwrap_err();
     assert!(matches!(
         wrong_authn.error(),
         InterfaceInvocationError::AuthenticationAdapterMismatch
+    ));
+
+    let unknown_binding = kernel
+        .invoke::<Input, Output, TargetError>(
+            snapshot,
+            envelope(
+                "mcp.review.unknown.v1",
+                InterfaceProtocol::Mcp,
+                "review.mcp-authn",
+            ),
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        unknown_binding.error(),
+        InterfaceInvocationError::UnknownBinding
     ));
 }
 
@@ -314,7 +344,11 @@ fn review_registry_compiles_ordered_extension_plan_from_real_registrations() {
         .unwrap();
     assert_eq!(plan.extension_plan().registrations().len(), 2);
     assert_eq!(plan.extension_plan().registrations()[0].order(), 10);
-    assert!(plan.extension_plan().fingerprint().as_str().starts_with("sha256:"));
+    assert!(plan
+        .extension_plan()
+        .fingerprint()
+        .as_str()
+        .starts_with("sha256:"));
 }
 
 #[tokio::test]
@@ -353,7 +387,11 @@ async fn review_live_server_stream_finishes_after_events_with_one_runtime_pinned
     let invocation = InterfaceInvocationKernel::new(Arc::new(Authorization("review.authz")))
         .invoke_server_stream_with_dispatch_target::<Input, StreamEvent, Output, TargetError>(
             snapshot,
-            envelope("http.review.stream.v1", InterfaceProtocol::Http, "review.authn"),
+            envelope(
+                "http.review.stream.v1",
+                InterfaceProtocol::Http,
+                "review.authn",
+            ),
             target.clone(),
         )
         .await

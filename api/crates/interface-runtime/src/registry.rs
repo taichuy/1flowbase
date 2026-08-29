@@ -7,13 +7,14 @@ use std::{
 };
 
 use crate::{
-    AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
-    AuthorizationOperation, BindingFingerprint, BindingId, CompiledInterfaceExtensionPlan,
-    ContractIdentity, ExecutionAttempt, GraphFingerprint, HandlerReference, InterfaceExtensionPoint,
-    InterfaceExtensionRegistration, InterfaceHandlerCandidate, InterfaceId, InterfaceOwner,
-    InterfaceStreamHandler, InterfaceTargetFailure, InterfaceVersion, InvocationId,
-    InvocationPrincipal, PlanFingerprint, PluginIdentity, PrincipalProfile, PrincipalSummary,
-    RegistryFingerprint, RouteIdentity, TargetReference, UserPrincipal, compile_effective_handler,
+    compile_effective_handler, AdmissionAdapterReference, AuthenticationAdapterReference,
+    AuthorizationAdapterReference, AuthorizationOperation, BindingFingerprint, BindingId,
+    CompiledInterfaceExtensionPlan, ContractIdentity, ExecutionAttempt, GraphFingerprint,
+    HandlerReference, InterfaceExtensionPoint, InterfaceExtensionRegistration,
+    InterfaceHandlerCandidate, InterfaceId, InterfaceOwner, InterfaceStreamHandler,
+    InterfaceTargetFailure, InterfaceVersion, InvocationId, InvocationPrincipal, PlanFingerprint,
+    PluginIdentity, PrincipalProfile, PrincipalSummary, RegistryFingerprint, RouteIdentity,
+    TargetReference, UserPrincipal,
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -387,10 +388,19 @@ impl InterfaceDefinition {
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ProtocolProjection {
     Http(RouteIdentity),
-    HttpVariant { route: RouteIdentity, variant: Arc<str> },
-    Mcp { tool: Arc<str> },
-    Internal { operation: Arc<str> },
-    Worker { operation: Arc<str> },
+    HttpVariant {
+        route: RouteIdentity,
+        variant: Arc<str>,
+    },
+    Mcp {
+        tool: Arc<str>,
+    },
+    Internal {
+        operation: Arc<str>,
+    },
+    Worker {
+        operation: Arc<str>,
+    },
 }
 
 impl ProtocolProjection {
@@ -440,9 +450,12 @@ impl ProtocolProjection {
     fn fingerprint_parts(&self) -> (&'static str, &str, Option<&str>, Option<&str>) {
         match self {
             Self::Http(route) => ("http", route.method(), Some(route.path()), None),
-            Self::HttpVariant { route, variant } => {
-                ("http-variant", route.method(), Some(route.path()), Some(variant))
-            }
+            Self::HttpVariant { route, variant } => (
+                "http-variant",
+                route.method(),
+                Some(route.path()),
+                Some(variant),
+            ),
             Self::Mcp { tool } => ("mcp", tool, None, None),
             Self::Internal { operation } => ("internal", operation, None, None),
             Self::Worker { operation } => ("worker", operation, None, None),
@@ -912,7 +925,9 @@ impl RegistryCompiler {
         registration: InterfaceExtensionRegistration,
     ) -> Result<(), RegistryCompilationError> {
         if !self.definitions.contains_key(interface_id) {
-            return Err(RegistryCompilationError::UnknownInterface(interface_id.clone()));
+            return Err(RegistryCompilationError::UnknownInterface(
+                interface_id.clone(),
+            ));
         }
         self.extensions
             .entry(interface_id.clone())
@@ -973,10 +988,14 @@ impl RegistryCompiler {
         P: InvocationPrincipal,
     {
         if !self.definitions.contains_key(interface_id) {
-            return Err(RegistryCompilationError::UnknownInterface(interface_id.clone()));
+            return Err(RegistryCompilationError::UnknownInterface(
+                interface_id.clone(),
+            ));
         }
         if self.handler_bindings.contains_key(interface_id) {
-            return Err(RegistryCompilationError::DuplicateHandler(interface_id.clone()));
+            return Err(RegistryCompilationError::DuplicateHandler(
+                interface_id.clone(),
+            ));
         }
         let contracts = InterfaceContracts::server_stream(
             contract_identity::<I>(),

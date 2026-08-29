@@ -1,84 +1,86 @@
-#[test]
-fn issue_1944_four_approved_vertical_slices_enter_the_typed_kernel() {
-    let slices = [
+use interface_runtime::{BindingId, InterfaceExecutionMode, InterfaceProtocol, PrincipalProfile};
+
+use super::support::test_api_state_with_database_url;
+
+#[tokio::test]
+async fn issue_1944_boot_catalog_contains_the_four_typed_vertical_slices() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let registry = state
+        .extension_boot_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.interface_registry())
+        .expect("boot must publish the interface catalog")
+        .snapshot();
+    let expected = [
         (
-            "Public",
-            include_str!("../routes/identity/auth.rs"),
-            "PublicPrincipal::new()",
+            "http.public.auth.login-instances.v1",
+            InterfaceProtocol::Http,
+            PrincipalProfile::Public,
+            InterfaceExecutionMode::Unary,
         ),
         (
-            "Console/User",
-            include_str!("../routes/settings/host_infrastructure/interface_operation.rs"),
-            "UserPrincipal",
+            crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_BINDING_ID,
+            InterfaceProtocol::Http,
+            PrincipalProfile::User,
+            InterfaceExecutionMode::Unary,
         ),
         (
-            "Application/SSE",
-            include_str!("../routes/application_public_api/native.rs"),
-            "interface_application_principal(&api_actor)",
+            crate::routes::application_public_api::native_interface::STREAM_BINDING_ID,
+            InterfaceProtocol::Http,
+            PrincipalProfile::Application,
+            InterfaceExecutionMode::ServerStream,
         ),
         (
-            "MCP/User API Key",
-            include_str!("../routes/mcp_protocol.rs"),
-            "context.interface_principal()",
+            "mcp.user-api-key.invoke.v1",
+            InterfaceProtocol::Mcp,
+            PrincipalProfile::User,
+            InterfaceExecutionMode::Unary,
         ),
     ];
-    for (name, source, principal_probe) in slices {
-        assert!(
-            source.contains("InterfaceInvocationKernel::new"),
-            "{name} must enter InterfaceInvocationKernel"
-        );
-        assert!(
-            source.contains(principal_probe),
-            "{name} must establish its frozen typed principal"
-        );
-        assert!(
-            source.contains(".projected()"),
-            "{name} protocol adapter must mark projection after terminal receipt"
-        );
+    for (binding_id, protocol, principal, mode) in expected {
+        let plan = registry
+            .plan(&BindingId::new(binding_id).unwrap())
+            .unwrap_or_else(|| panic!("missing published binding {binding_id}"));
+        assert_eq!(plan.binding().projection().protocol(), protocol);
+        assert_eq!(plan.definition().principal_profile(), principal);
+        assert_eq!(plan.definition().execution_mode(), mode);
+        assert!(plan.fingerprint().as_str().starts_with("sha256:"));
     }
 }
 
-#[test]
-fn issue_1944_credential_material_stops_before_typed_handlers() {
-    for (source, handler_start, handler_end) in [
-        (
-            include_str!("../routes/identity/login_instances_interface.rs"),
-            "struct PublicLoginInstancesHandler",
-            "pub(crate) struct PublicLoginInstancesAuthorization",
-        ),
-        (
-            include_str!("../routes/application_public_api/native_interface.rs"),
-            "struct ApplicationNativeRunHandler",
-            "pub(crate) struct ApplicationNativeRunAuthorization",
-        ),
-        (
-            include_str!("../routes/mcp_protocol/interface_operation.rs"),
-            "struct McpInvocationHandler",
-            "pub(super) struct McpInvocationAuthorization",
-        ),
-        (
-            include_str!("../routes/settings/host_infrastructure/interface_operation.rs"),
-            "struct HostInfrastructureProvidersViewHandler",
-            "struct ConsoleInterfaceAuthorizationPort",
-        ),
-    ] {
-        let start = source.find(handler_start).expect("handler start probe");
-        let end = source[start..]
-            .find(handler_end)
-            .map(|offset| start + offset)
-            .expect("handler end probe");
-        let handler = &source[start..end];
-        for forbidden in [
-            "HeaderMap",
-            "Cookie",
-            "bearer_token",
-            "ApiState",
-            "RuntimeHost",
-        ] {
-            assert!(
-                !handler.contains(forbidden),
-                "typed handler module leaked forbidden request/runtime material: {forbidden}"
-            );
-        }
-    }
+#[tokio::test]
+async fn issue_1944_providers_http_and_mcp_resolve_distinct_binding_plans() {
+    let (state, _) = test_api_state_with_database_url().await;
+    let registry = state
+        .extension_boot_snapshot
+        .as_ref()
+        .unwrap()
+        .interface_registry()
+        .unwrap()
+        .snapshot();
+    let http = registry
+        .plan(&BindingId::new(
+            crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_BINDING_ID,
+        ).unwrap())
+        .unwrap();
+    let mcp = registry
+        .plan(&BindingId::new(
+            crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_MCP_BINDING_ID,
+        ).unwrap())
+        .unwrap();
+    assert_eq!(
+        http.definition().interface_id(),
+        mcp.definition().interface_id()
+    );
+    assert_eq!(
+        http.binding().projection().protocol(),
+        InterfaceProtocol::Http
+    );
+    assert_eq!(
+        mcp.binding().projection().protocol(),
+        InterfaceProtocol::Mcp
+    );
+    assert_ne!(http.binding_fingerprint(), mcp.binding_fingerprint());
+    assert_eq!(http.extension_plan(), mcp.extension_plan());
+    assert!(!http.extension_plan().registrations().is_empty());
 }

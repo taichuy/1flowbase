@@ -1219,10 +1219,7 @@ where
                 ));
             }
             Ok(Err(error)) => {
-                return Err(receipt.fail(
-                    target_error(error),
-                    InterfaceInvocationTerminal::Failed,
-                ));
+                return Err(receipt.fail(target_error(error), InterfaceInvocationTerminal::Failed));
             }
             Ok(Ok(stream)) => stream,
         };
@@ -1253,10 +1250,9 @@ where
                             receipt: receipt.complete(),
                         })
                     }
-                    InterfaceStreamTerminal::Failed(error) => Err(receipt.fail(
-                        target_error(error),
-                        InterfaceInvocationTerminal::Failed,
-                    )),
+                    InterfaceStreamTerminal::Failed(error) => {
+                        Err(receipt.fail(target_error(error), InterfaceInvocationTerminal::Failed))
+                    }
                     InterfaceStreamTerminal::Rejected { ref classification } => Err(receipt.fail(
                         InterfaceInvocationError::AuthorizationRejected(
                             InterfaceAuthorizationError::classified(classification),

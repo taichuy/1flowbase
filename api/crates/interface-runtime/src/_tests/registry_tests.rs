@@ -3,13 +3,13 @@ use std::sync::Arc;
 use crate::{
     AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
     AuthorizationOperation, BindingId, ContractIdentity, GraphFingerprint, HandlerReference,
-    InterfaceAccess, InterfaceAuditPolicy,
-    InterfaceAuthenticationPolicy, InterfaceContract, InterfaceContracts, InterfaceDefinition,
-    InterfaceErrorPolicy, InterfaceExecution, InterfaceExecutionMode, InterfaceHandler,
-    InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceIdentity,
-    InterfaceLifecycle, InterfaceOwner, InterfaceScope, InterfaceTargetFailure, InterfaceVersion,
-    InvocationAdapterPlan, PrincipalProfile, ProtocolBinding, ProtocolProjection,
-    RegistryCompilationError, RegistryCompiler, RouteIdentity, TargetReference, UserPrincipal,
+    InterfaceAccess, InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceContract,
+    InterfaceContracts, InterfaceDefinition, InterfaceErrorPolicy, InterfaceExecution,
+    InterfaceExecutionMode, InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture,
+    InterfaceId, InterfaceIdentity, InterfaceLifecycle, InterfaceOwner, InterfaceScope,
+    InterfaceTargetFailure, InterfaceVersion, InvocationAdapterPlan, PrincipalProfile,
+    ProtocolBinding, ProtocolProjection, RegistryCompilationError, RegistryCompiler, RouteIdentity,
+    TargetReference, UserPrincipal,
 };
 
 struct Input;
@@ -194,26 +194,23 @@ fn rejects_duplicate_interface_binding_and_projection_identity() {
         Err(RegistryCompilationError::DuplicateInterface(_))
     ));
     compiler
-        .register_binding(binding(
-            "http.test.read.v1",
-            "test.read",
-            "/api/console/test",
-        ), adapter_plan())
+        .register_binding(
+            binding("http.test.read.v1", "test.read", "/api/console/test"),
+            adapter_plan(),
+        )
         .unwrap();
     assert!(matches!(
-        compiler.register_binding(binding(
-            "http.test.read.v1",
-            "test.read",
-            "/api/console/other",
-        ), adapter_plan()),
+        compiler.register_binding(
+            binding("http.test.read.v1", "test.read", "/api/console/other",),
+            adapter_plan()
+        ),
         Err(RegistryCompilationError::DuplicateBinding(_))
     ));
     assert!(matches!(
-        compiler.register_binding(binding(
-            "http.test.other.v1",
-            "test.read",
-            "/api/console/test",
-        ), adapter_plan()),
+        compiler.register_binding(
+            binding("http.test.other.v1", "test.read", "/api/console/test",),
+            adapter_plan()
+        ),
         Err(RegistryCompilationError::DuplicateProjection(_))
     ));
 }
@@ -225,11 +222,14 @@ fn rejects_missing_or_mismatched_typed_handler_and_missing_binding() {
         .register_definition(definition("test.missing"))
         .unwrap();
     missing
-        .register_binding(binding(
-            "http.test.missing.v1",
-            "test.missing",
-            "/api/console/missing",
-        ), adapter_plan())
+        .register_binding(
+            binding(
+                "http.test.missing.v1",
+                "test.missing",
+                "/api/console/missing",
+            ),
+            adapter_plan(),
+        )
         .unwrap();
     assert!(matches!(
         missing.compile(),
@@ -241,11 +241,14 @@ fn rejects_missing_or_mismatched_typed_handler_and_missing_binding() {
         .register_definition(definition("test.mismatch"))
         .unwrap();
     mismatch
-        .register_binding(binding(
-            "http.test.mismatch.v1",
-            "test.mismatch",
-            "/api/console/mismatch",
-        ), adapter_plan())
+        .register_binding(
+            binding(
+                "http.test.mismatch.v1",
+                "test.mismatch",
+                "/api/console/mismatch",
+            ),
+            adapter_plan(),
+        )
         .unwrap();
     mismatch
         .bind_handler::<Input, WrongOutput, TargetError, UserPrincipal>(
@@ -320,12 +323,17 @@ fn rejects_unknown_operation_inactive_owner_and_binding_contract_or_version_mism
         InterfaceVersion::new("2").unwrap(),
     );
     version
-        .register_binding(ProtocolBinding::new(
-            BindingId::new("http.test.version.v2").unwrap(),
-            wrong_identity,
-            contracts(),
-            ProtocolProjection::http(RouteIdentity::new("GET", "/api/console/version").unwrap()),
-        ), adapter_plan())
+        .register_binding(
+            ProtocolBinding::new(
+                BindingId::new("http.test.version.v2").unwrap(),
+                wrong_identity,
+                contracts(),
+                ProtocolProjection::http(
+                    RouteIdentity::new("GET", "/api/console/version").unwrap(),
+                ),
+            ),
+            adapter_plan(),
+        )
         .unwrap();
     version
         .bind_handler::<Input, Output, TargetError, UserPrincipal>(
@@ -344,17 +352,22 @@ fn rejects_unknown_operation_inactive_owner_and_binding_contract_or_version_mism
         .register_definition(definition("test.contract"))
         .unwrap();
     contract
-        .register_binding(ProtocolBinding::new(
-            BindingId::new("http.test.contract.v1").unwrap(),
-            identity("test.contract"),
-            InterfaceContracts::unary(
-                ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
-                ContractIdentity::new(WrongOutput::CONTRACT_ID, WrongOutput::CONTRACT_VERSION)
-                    .unwrap(),
-                ContractIdentity::new("test-target-error", "1").unwrap(),
+        .register_binding(
+            ProtocolBinding::new(
+                BindingId::new("http.test.contract.v1").unwrap(),
+                identity("test.contract"),
+                InterfaceContracts::unary(
+                    ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
+                    ContractIdentity::new(WrongOutput::CONTRACT_ID, WrongOutput::CONTRACT_VERSION)
+                        .unwrap(),
+                    ContractIdentity::new("test-target-error", "1").unwrap(),
+                ),
+                ProtocolProjection::http(
+                    RouteIdentity::new("GET", "/api/console/contract").unwrap(),
+                ),
             ),
-            ProtocolProjection::http(RouteIdentity::new("GET", "/api/console/contract").unwrap()),
-        ), adapter_plan())
+            adapter_plan(),
+        )
         .unwrap();
     contract
         .bind_handler::<Input, Output, TargetError, UserPrincipal>(
@@ -394,11 +407,10 @@ fn rejects_handler_bound_with_the_wrong_principal_profile() {
         ))
         .unwrap();
     compiler
-        .register_binding(binding(
-            "http.test.public.v1",
-            "test.public",
-            "/api/public/test",
-        ), adapter_plan())
+        .register_binding(
+            binding("http.test.public.v1", "test.public", "/api/public/test"),
+            adapter_plan(),
+        )
         .unwrap();
     compiler
         .bind_handler::<Input, Output, TargetError, UserPrincipal>(

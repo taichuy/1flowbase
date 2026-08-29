@@ -52,7 +52,8 @@ where
         if terminal.is_none() {
             return Err(InterfaceStreamStateError::EventAfterTerminal);
         }
-        let result = self.events
+        let result = self
+            .events
             .send(event)
             .await
             .map_err(|_| InterfaceStreamStateError::EventAfterTerminal);
@@ -137,8 +138,12 @@ where
 {
     pub(crate) completion: Pin<
         Box<
-            dyn Future<Output = Result<InterfaceStreamTerminalOutcome<O, E>, InterfaceInvocationFailure>>
-                + Send,
+            dyn Future<
+                    Output = Result<
+                        InterfaceStreamTerminalOutcome<O, E>,
+                        InterfaceInvocationFailure,
+                    >,
+                > + Send,
         >,
     >,
 }
@@ -148,7 +153,9 @@ where
     O: InterfaceContract,
     E: InterfaceContract,
 {
-    pub async fn complete(self) -> Result<InterfaceStreamTerminalOutcome<O, E>, InterfaceInvocationFailure> {
+    pub async fn complete(
+        self,
+    ) -> Result<InterfaceStreamTerminalOutcome<O, E>, InterfaceInvocationFailure> {
         self.completion.await
     }
 }
