@@ -5,11 +5,11 @@ use crate::{
     AuthorizationOperation, BindingId, ContractIdentity, ExtensionPlanFingerprint,
     GraphFingerprint, HandlerReference, InterfaceAccess, InterfaceAuditPolicy,
     InterfaceAuthenticationPolicy, InterfaceContract, InterfaceContracts, InterfaceDefinition,
-    InterfaceErrorPolicy, InterfaceExecution, InterfaceHandler, InterfaceHandlerContext,
-    InterfaceHandlerFuture, InterfaceId, InterfaceIdentity, InterfaceLifecycle, InterfaceOwner,
-    InterfaceScope, InterfaceTargetError, InterfaceVersion, InvocationAdapterPlan,
-    PrincipalProfile, ProtocolBinding, ProtocolProjection, RegistryCompilationError,
-    RegistryCompiler, RouteIdentity, TargetReference, UserPrincipal,
+    InterfaceErrorPolicy, InterfaceExecution, InterfaceExecutionMode, InterfaceHandler,
+    InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceIdentity,
+    InterfaceLifecycle, InterfaceOwner, InterfaceScope, InterfaceTargetFailure, InterfaceVersion,
+    InvocationAdapterPlan, PrincipalProfile, ProtocolBinding, ProtocolProjection,
+    RegistryCompilationError, RegistryCompiler, RouteIdentity, TargetReference, UserPrincipal,
 };
 
 struct Input;
@@ -30,25 +30,31 @@ impl InterfaceContract for WrongOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+struct TargetError;
+impl InterfaceContract for TargetError {
+    const CONTRACT_ID: &'static str = "test-target-error";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
 struct TestHandler;
-impl InterfaceHandler<Input, Output> for TestHandler {
+impl InterfaceHandler<Input, Output, TargetError> for TestHandler {
     fn invoke(
         &self,
         _context: InterfaceHandlerContext,
         _input: Input,
-    ) -> InterfaceHandlerFuture<Output> {
+    ) -> InterfaceHandlerFuture<Output, TargetError> {
         Box::pin(async { Ok(Output) })
     }
 }
 
 struct WrongHandler;
-impl InterfaceHandler<Input, WrongOutput> for WrongHandler {
+impl InterfaceHandler<Input, WrongOutput, TargetError> for WrongHandler {
     fn invoke(
         &self,
         _context: InterfaceHandlerContext,
         _input: Input,
-    ) -> InterfaceHandlerFuture<WrongOutput> {
-        Box::pin(async { Err(InterfaceTargetError::classified("unused")) })
+    ) -> InterfaceHandlerFuture<WrongOutput, TargetError> {
+        Box::pin(async { Err(InterfaceTargetFailure::new("unused", TargetError)) })
     }
 }
 
@@ -58,6 +64,14 @@ fn operation() -> AuthorizationOperation {
 
 fn owner() -> InterfaceOwner {
     InterfaceOwner::new("test.owner").unwrap()
+}
+
+fn contracts() -> InterfaceContracts {
+    InterfaceContracts::unary(
+        ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
+        ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
+        ContractIdentity::new("test-target-error", "1").unwrap(),
+    )
 }
 
 fn identity(id: &str) -> InterfaceIdentity {
@@ -70,10 +84,7 @@ fn identity(id: &str) -> InterfaceIdentity {
 fn definition(id: &str) -> InterfaceDefinition {
     InterfaceDefinition::new(
         identity(id),
-        InterfaceContracts::unary(
-            ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
-            ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
-        ),
+        contracts(),
         InterfaceAccess::new(
             PrincipalProfile::User,
             InterfaceAuthenticationPolicy::Authenticated,
@@ -81,6 +92,7 @@ fn definition(id: &str) -> InterfaceDefinition {
             InterfaceScope::System,
         ),
         InterfaceExecution::new(
+            InterfaceExecutionMode::Unary,
             HandlerReference::new("test.handler").unwrap(),
             TargetReference::new("test.target").unwrap(),
         ),
@@ -95,8 +107,7 @@ fn binding(id: &str, interface_id: &str, path: &str) -> ProtocolBinding {
     ProtocolBinding::new(
         BindingId::new(id).unwrap(),
         identity(interface_id),
-        ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
-        ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
+        contracts(),
         ProtocolProjection::http(RouteIdentity::new("GET", path).unwrap()),
     )
 }
@@ -125,7 +136,7 @@ fn register_complete(compiler: &mut RegistryCompiler, id: &str, binding_id: &str
         .register_binding(binding(binding_id, id, path))
         .unwrap();
     compiler
-        .bind_handler::<Input, Output, UserPrincipal>(
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
             &InterfaceId::new(id).unwrap(),
             HandlerReference::new("test.handler").unwrap(),
             Arc::new(TestHandler),
@@ -239,7 +250,7 @@ fn rejects_missing_or_mismatched_typed_handler_and_missing_binding() {
         ))
         .unwrap();
     mismatch
-        .bind_handler::<Input, WrongOutput, UserPrincipal>(
+        .bind_handler::<Input, WrongOutput, TargetError, UserPrincipal>(
             &InterfaceId::new("test.mismatch").unwrap(),
             HandlerReference::new("test.handler").unwrap(),
             Arc::new(WrongHandler),
@@ -255,7 +266,7 @@ fn rejects_missing_or_mismatched_typed_handler_and_missing_binding() {
         .register_definition(definition("test.unbound"))
         .unwrap();
     missing_binding
-        .bind_handler::<Input, Output, UserPrincipal>(
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
             &InterfaceId::new("test.unbound").unwrap(),
             HandlerReference::new("test.handler").unwrap(),
             Arc::new(TestHandler),
@@ -316,13 +327,12 @@ fn rejects_unknown_operation_inactive_owner_and_binding_contract_or_version_mism
         .register_binding(ProtocolBinding::new(
             BindingId::new("http.test.version.v2").unwrap(),
             wrong_identity,
-            ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
-            ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
+            contracts(),
             ProtocolProjection::http(RouteIdentity::new("GET", "/api/console/version").unwrap()),
         ))
         .unwrap();
     version
-        .bind_handler::<Input, Output, UserPrincipal>(
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
             &InterfaceId::new("test.version").unwrap(),
             HandlerReference::new("test.handler").unwrap(),
             Arc::new(TestHandler),
@@ -341,13 +351,17 @@ fn rejects_unknown_operation_inactive_owner_and_binding_contract_or_version_mism
         .register_binding(ProtocolBinding::new(
             BindingId::new("http.test.contract.v1").unwrap(),
             identity("test.contract"),
-            ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
-            ContractIdentity::new(WrongOutput::CONTRACT_ID, WrongOutput::CONTRACT_VERSION).unwrap(),
+            InterfaceContracts::unary(
+                ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
+                ContractIdentity::new(WrongOutput::CONTRACT_ID, WrongOutput::CONTRACT_VERSION)
+                    .unwrap(),
+                ContractIdentity::new("test-target-error", "1").unwrap(),
+            ),
             ProtocolProjection::http(RouteIdentity::new("GET", "/api/console/contract").unwrap()),
         ))
         .unwrap();
     contract
-        .bind_handler::<Input, Output, UserPrincipal>(
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
             &InterfaceId::new("test.contract").unwrap(),
             HandlerReference::new("test.handler").unwrap(),
             Arc::new(TestHandler),
@@ -365,10 +379,7 @@ fn rejects_handler_bound_with_the_wrong_principal_profile() {
     compiler
         .register_definition(InterfaceDefinition::new(
             identity("test.public"),
-            InterfaceContracts::unary(
-                ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
-                ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
-            ),
+            contracts(),
             InterfaceAccess::new(
                 PrincipalProfile::Public,
                 InterfaceAuthenticationPolicy::Anonymous,
@@ -376,6 +387,7 @@ fn rejects_handler_bound_with_the_wrong_principal_profile() {
                 InterfaceScope::System,
             ),
             InterfaceExecution::new(
+                InterfaceExecutionMode::Unary,
                 HandlerReference::new("test.handler").unwrap(),
                 TargetReference::new("test.target").unwrap(),
             ),
@@ -393,7 +405,7 @@ fn rejects_handler_bound_with_the_wrong_principal_profile() {
         ))
         .unwrap();
     compiler
-        .bind_handler::<Input, Output, UserPrincipal>(
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
             &InterfaceId::new("test.public").unwrap(),
             HandlerReference::new("test.handler").unwrap(),
             Arc::new(TestHandler),

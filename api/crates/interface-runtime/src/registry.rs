@@ -8,10 +8,11 @@ use std::{
 
 use crate::{
     AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
-    AuthorizationOperation, BindingFingerprint, BindingId, ContractIdentity,
+    AuthorizationOperation, BindingFingerprint, BindingId, ContractIdentity, ExecutionAttempt,
     ExtensionPlanFingerprint, GraphFingerprint, HandlerReference, InterfaceId, InterfaceOwner,
-    InterfaceVersion, InvocationId, InvocationPrincipal, PlanFingerprint, PrincipalProfile,
-    PrincipalSummary, RegistryFingerprint, RouteIdentity, TargetReference, UserPrincipal,
+    InterfaceTargetFailure, InterfaceVersion, InvocationId, InvocationPrincipal, PlanFingerprint,
+    PrincipalProfile, PrincipalSummary, RegistryFingerprint, RouteIdentity, TargetReference,
+    UserPrincipal,
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -75,12 +76,49 @@ impl InterfaceIdentity {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InterfaceContracts {
     input: ContractIdentity,
-    output: ContractIdentity,
+    result: InterfaceResultContracts,
 }
 
 impl InterfaceContracts {
-    pub fn unary(input: ContractIdentity, output: ContractIdentity) -> Self {
-        Self { input, output }
+    pub fn unary(
+        input: ContractIdentity,
+        output: ContractIdentity,
+        target_error: ContractIdentity,
+    ) -> Self {
+        Self {
+            input,
+            result: InterfaceResultContracts::Unary {
+                output,
+                target_error,
+            },
+        }
+    }
+
+    pub fn server_stream(
+        input: ContractIdentity,
+        output: ContractIdentity,
+        event: ContractIdentity,
+        target_error: ContractIdentity,
+    ) -> Self {
+        Self {
+            input,
+            result: InterfaceResultContracts::ServerStream {
+                output,
+                event,
+                target_error,
+            },
+        }
+    }
+
+    pub fn async_ack(
+        input: ContractIdentity,
+        ack: ContractIdentity,
+        target_error: ContractIdentity,
+    ) -> Self {
+        Self {
+            input,
+            result: InterfaceResultContracts::AsyncAck { ack, target_error },
+        }
     }
 
     pub fn input(&self) -> &ContractIdentity {
@@ -88,8 +126,76 @@ impl InterfaceContracts {
     }
 
     pub fn output(&self) -> &ContractIdentity {
-        &self.output
+        self.result.output()
     }
+
+    pub fn stream_event(&self) -> Option<&ContractIdentity> {
+        self.result.stream_event()
+    }
+
+    pub fn target_error(&self) -> &ContractIdentity {
+        self.result.target_error()
+    }
+
+    pub fn mode(&self) -> InterfaceExecutionMode {
+        self.result.mode()
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InterfaceResultContracts {
+    Unary {
+        output: ContractIdentity,
+        target_error: ContractIdentity,
+    },
+    ServerStream {
+        output: ContractIdentity,
+        event: ContractIdentity,
+        target_error: ContractIdentity,
+    },
+    AsyncAck {
+        ack: ContractIdentity,
+        target_error: ContractIdentity,
+    },
+}
+
+impl InterfaceResultContracts {
+    fn output(&self) -> &ContractIdentity {
+        match self {
+            Self::Unary { output, .. } | Self::ServerStream { output, .. } => output,
+            Self::AsyncAck { ack, .. } => ack,
+        }
+    }
+
+    fn stream_event(&self) -> Option<&ContractIdentity> {
+        match self {
+            Self::ServerStream { event, .. } => Some(event),
+            Self::Unary { .. } | Self::AsyncAck { .. } => None,
+        }
+    }
+
+    fn target_error(&self) -> &ContractIdentity {
+        match self {
+            Self::Unary { target_error, .. }
+            | Self::ServerStream { target_error, .. }
+            | Self::AsyncAck { target_error, .. } => target_error,
+        }
+    }
+
+    fn mode(&self) -> InterfaceExecutionMode {
+        match self {
+            Self::Unary { .. } => InterfaceExecutionMode::Unary,
+            Self::ServerStream { .. } => InterfaceExecutionMode::ServerStream,
+            Self::AsyncAck { .. } => InterfaceExecutionMode::AsyncAck,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum InterfaceExecutionMode {
+    Unary,
+    ServerStream,
+    AsyncAck,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -134,16 +240,26 @@ impl InterfaceAccess {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InterfaceExecution {
+    mode: InterfaceExecutionMode,
     handler_reference: HandlerReference,
     target_reference: TargetReference,
 }
 
 impl InterfaceExecution {
-    pub fn new(handler_reference: HandlerReference, target_reference: TargetReference) -> Self {
+    pub fn new(
+        mode: InterfaceExecutionMode,
+        handler_reference: HandlerReference,
+        target_reference: TargetReference,
+    ) -> Self {
         Self {
+            mode,
             handler_reference,
             target_reference,
         }
+    }
+
+    pub fn mode(&self) -> InterfaceExecutionMode {
+        self.mode
     }
 
     pub fn handler_reference(&self) -> &HandlerReference {
@@ -206,8 +322,24 @@ impl InterfaceDefinition {
         self.contracts.input()
     }
 
+    pub fn contracts(&self) -> &InterfaceContracts {
+        &self.contracts
+    }
+
     pub fn output_contract(&self) -> &ContractIdentity {
         self.contracts.output()
+    }
+
+    pub fn stream_event_contract(&self) -> Option<&ContractIdentity> {
+        self.contracts.stream_event()
+    }
+
+    pub fn target_error_contract(&self) -> &ContractIdentity {
+        self.contracts.target_error()
+    }
+
+    pub fn execution_mode(&self) -> InterfaceExecutionMode {
+        self.execution.mode()
     }
 
     pub fn authorization_operation(&self) -> &AuthorizationOperation {
@@ -301,8 +433,7 @@ impl ProtocolProjection {
 pub struct ProtocolBinding {
     binding_id: BindingId,
     interface_identity: InterfaceIdentity,
-    input_contract: ContractIdentity,
-    output_contract: ContractIdentity,
+    contracts: InterfaceContracts,
     projection: ProtocolProjection,
 }
 
@@ -310,15 +441,13 @@ impl ProtocolBinding {
     pub fn new(
         binding_id: BindingId,
         interface_identity: InterfaceIdentity,
-        input_contract: ContractIdentity,
-        output_contract: ContractIdentity,
+        contracts: InterfaceContracts,
         projection: ProtocolProjection,
     ) -> Self {
         Self {
             binding_id,
             interface_identity,
-            input_contract,
-            output_contract,
+            contracts,
             projection,
         }
     }
@@ -332,11 +461,15 @@ impl ProtocolBinding {
     }
 
     pub fn input_contract(&self) -> &ContractIdentity {
-        &self.input_contract
+        self.contracts.input()
     }
 
     pub fn output_contract(&self) -> &ContractIdentity {
-        &self.output_contract
+        self.contracts.output()
+    }
+
+    pub fn contracts(&self) -> &InterfaceContracts {
+        &self.contracts
     }
 
     pub fn projection(&self) -> &ProtocolProjection {
@@ -422,6 +555,7 @@ where
 {
     principal: P,
     principal_summary: PrincipalSummary,
+    attempt: ExecutionAttempt,
     invocation_id: InvocationId,
     graph_fingerprint: GraphFingerprint,
     registry_fingerprint: RegistryFingerprint,
@@ -433,6 +567,7 @@ where
 {
     pub(crate) fn new(
         principal: P,
+        attempt: ExecutionAttempt,
         invocation_id: InvocationId,
         graph_fingerprint: GraphFingerprint,
         registry_fingerprint: RegistryFingerprint,
@@ -440,6 +575,7 @@ where
         Self {
             principal_summary: principal.summary(),
             principal,
+            attempt,
             invocation_id,
             graph_fingerprint,
             registry_fingerprint,
@@ -452,6 +588,10 @@ where
 
     pub fn principal_summary(&self) -> &PrincipalSummary {
         &self.principal_summary
+    }
+
+    pub fn attempt(&self) -> &ExecutionAttempt {
+        &self.attempt
     }
 
     pub fn invocation_id(&self) -> InvocationId {
@@ -504,50 +644,50 @@ impl InterfaceTargetError {
     }
 }
 
-pub type InterfaceHandlerFuture<O> =
-    Pin<Box<dyn Future<Output = Result<O, InterfaceTargetError>> + Send + 'static>>;
+pub type InterfaceHandlerFuture<O, E>
+    = Pin<Box<dyn Future<Output = Result<O, InterfaceTargetFailure<E>>> + Send + 'static>>
+where
+    E: InterfaceContract;
 
-pub trait InterfaceHandler<I, O, P = UserPrincipal>: Send + Sync + 'static
+pub trait InterfaceHandler<I, O, E, P = UserPrincipal>: Send + Sync + 'static
 where
     I: InterfaceContract,
     O: InterfaceContract,
+    E: InterfaceContract,
     P: InvocationPrincipal,
 {
-    fn invoke(&self, context: InterfaceHandlerContext<P>, input: I) -> InterfaceHandlerFuture<O>;
+    fn invoke(&self, context: InterfaceHandlerContext<P>, input: I)
+        -> InterfaceHandlerFuture<O, E>;
 }
 
 trait ErasedInterfaceBinding: Send + Sync {
-    fn input_contract(&self) -> &ContractIdentity;
-    fn output_contract(&self) -> &ContractIdentity;
+    fn contracts(&self) -> &InterfaceContracts;
     fn handler_reference(&self) -> &HandlerReference;
     fn principal_profile(&self) -> PrincipalProfile;
     fn as_any(&self) -> &dyn Any;
 }
 
-struct TypedInterfaceBinding<I, O, P>
+struct TypedInterfaceBinding<I, O, E, P>
 where
     I: InterfaceContract,
     O: InterfaceContract,
+    E: InterfaceContract,
     P: InvocationPrincipal,
 {
-    input_contract: ContractIdentity,
-    output_contract: ContractIdentity,
+    contracts: InterfaceContracts,
     handler_reference: HandlerReference,
-    handler: Arc<dyn InterfaceHandler<I, O, P>>,
+    handler: Arc<dyn InterfaceHandler<I, O, E, P>>,
 }
 
-impl<I, O, P> ErasedInterfaceBinding for TypedInterfaceBinding<I, O, P>
+impl<I, O, E, P> ErasedInterfaceBinding for TypedInterfaceBinding<I, O, E, P>
 where
     I: InterfaceContract,
     O: InterfaceContract,
+    E: InterfaceContract,
     P: InvocationPrincipal,
 {
-    fn input_contract(&self) -> &ContractIdentity {
-        &self.input_contract
-    }
-
-    fn output_contract(&self) -> &ContractIdentity {
-        &self.output_contract
+    fn contracts(&self) -> &InterfaceContracts {
+        &self.contracts
     }
 
     fn handler_reference(&self) -> &HandlerReference {
@@ -589,6 +729,8 @@ pub enum RegistryCompilationError {
     MissingBinding(InterfaceId),
     #[error("interface {0} contract does not match its typed handler")]
     ContractMismatch(InterfaceId),
+    #[error("interface {0} execution mode does not match its result contracts")]
+    ExecutionModeMismatch(InterfaceId),
     #[error("interface {0} handler reference does not match its binding")]
     HandlerReferenceMismatch(InterfaceId),
     #[error("interface {0} principal profile does not match its typed handler")]
@@ -664,15 +806,16 @@ impl RegistryCompiler {
         Ok(())
     }
 
-    pub fn bind_handler<I, O, P>(
+    pub fn bind_handler<I, O, E, P>(
         &mut self,
         interface_id: &InterfaceId,
         handler_reference: HandlerReference,
-        handler: Arc<dyn InterfaceHandler<I, O, P>>,
+        handler: Arc<dyn InterfaceHandler<I, O, E, P>>,
     ) -> Result<(), RegistryCompilationError>
     where
         I: InterfaceContract,
         O: InterfaceContract,
+        E: InterfaceContract,
         P: InvocationPrincipal,
     {
         if !self.definitions.contains_key(interface_id) {
@@ -685,13 +828,15 @@ impl RegistryCompiler {
                 interface_id.clone(),
             ));
         }
-        let input_contract = contract_identity::<I>();
-        let output_contract = contract_identity::<O>();
+        let contracts = InterfaceContracts::unary(
+            contract_identity::<I>(),
+            contract_identity::<O>(),
+            contract_identity::<E>(),
+        );
         self.handler_bindings.insert(
             interface_id.clone(),
-            Arc::new(TypedInterfaceBinding::<I, O, P> {
-                input_contract,
-                output_contract,
+            Arc::new(TypedInterfaceBinding::<I, O, E, P> {
+                contracts,
                 handler_reference,
                 handler,
             }),
@@ -718,10 +863,13 @@ impl RegistryCompiler {
                 .handler_bindings
                 .get(interface_id)
                 .ok_or_else(|| RegistryCompilationError::MissingHandler(interface_id.clone()))?;
-            if binding.input_contract() != definition.input_contract()
-                || binding.output_contract() != definition.output_contract()
-            {
+            if binding.contracts() != definition.contracts() {
                 return Err(RegistryCompilationError::ContractMismatch(
+                    interface_id.clone(),
+                ));
+            }
+            if definition.execution_mode() != definition.contracts.mode() {
+                return Err(RegistryCompilationError::ExecutionModeMismatch(
                     interface_id.clone(),
                 ));
             }
@@ -769,9 +917,7 @@ impl RegistryCompiler {
                     binding.binding_id().clone(),
                 ));
             }
-            if binding.input_contract() != definition.input_contract()
-                || binding.output_contract() != definition.output_contract()
-            {
+            if binding.contracts() != definition.contracts() {
                 return Err(RegistryCompilationError::BindingContractMismatch(
                     binding.binding_id().clone(),
                 ));
@@ -884,19 +1030,20 @@ impl CompiledInterfaceRegistry {
             .find(|plan| plan.definition().interface_id() == interface_id)
     }
 
-    pub(crate) fn handler<I, O, P>(
+    pub(crate) fn handler<I, O, E, P>(
         &self,
         interface_id: &InterfaceId,
-    ) -> Option<Arc<dyn InterfaceHandler<I, O, P>>>
+    ) -> Option<Arc<dyn InterfaceHandler<I, O, E, P>>>
     where
         I: InterfaceContract,
         O: InterfaceContract,
+        E: InterfaceContract,
         P: InvocationPrincipal,
     {
         self.handler_bindings
             .get(interface_id)?
             .as_any()
-            .downcast_ref::<TypedInterfaceBinding<I, O, P>>()
+            .downcast_ref::<TypedInterfaceBinding<I, O, E, P>>()
             .map(|binding| Arc::clone(&binding.handler))
     }
 }
@@ -957,6 +1104,8 @@ fn registry_fingerprint(
             definition.input_contract().version(),
             definition.output_contract().contract_id(),
             definition.output_contract().version(),
+            definition.target_error_contract().contract_id(),
+            definition.target_error_contract().version(),
             definition.authorization_operation().as_str(),
             definition.handler_reference().as_str(),
             definition.target_reference().as_str(),
@@ -984,9 +1133,20 @@ fn registry_fingerprint(
             match definition.lifecycle() {
                 InterfaceLifecycle::BootSnapshot => "lifecycle:boot-snapshot",
             },
+            match definition.execution_mode() {
+                InterfaceExecutionMode::Unary => "mode:unary",
+                InterfaceExecutionMode::ServerStream => "mode:server-stream",
+                InterfaceExecutionMode::AsyncAck => "mode:async-ack",
+            },
         ] {
             digest.update([0]);
             digest.update(part.as_bytes());
+        }
+        if let Some(event) = definition.stream_event_contract() {
+            digest.update([0]);
+            digest.update(event.contract_id().as_bytes());
+            digest.update([0]);
+            digest.update(event.version().as_bytes());
         }
     }
     for binding in bindings.values() {
@@ -1018,10 +1178,24 @@ fn binding_fingerprint(binding: &ProtocolBinding) -> BindingFingerprint {
         binding.input_contract().version(),
         binding.output_contract().contract_id(),
         binding.output_contract().version(),
+        binding.contracts().target_error().contract_id(),
+        binding.contracts().target_error().version(),
     ] {
         digest.update([0]);
         digest.update(part.as_bytes());
     }
+    if let Some(event) = binding.contracts().stream_event() {
+        digest.update([0]);
+        digest.update(event.contract_id().as_bytes());
+        digest.update([0]);
+        digest.update(event.version().as_bytes());
+    }
+    digest.update([0]);
+    digest.update(match binding.contracts().mode() {
+        InterfaceExecutionMode::Unary => b"mode:unary".as_slice(),
+        InterfaceExecutionMode::ServerStream => b"mode:server-stream".as_slice(),
+        InterfaceExecutionMode::AsyncAck => b"mode:async-ack".as_slice(),
+    });
     let (kind, first, second) = binding.projection().fingerprint_parts();
     for part in [Some(kind), Some(first), second].into_iter().flatten() {
         digest.update([0]);

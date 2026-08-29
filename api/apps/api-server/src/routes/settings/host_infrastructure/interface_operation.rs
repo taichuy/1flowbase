@@ -13,12 +13,12 @@ use interface_runtime::{
     InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceAuthorizationError,
     InterfaceAuthorizationFuture, InterfaceAuthorizationPort, InterfaceAuthorizationRequest,
     InterfaceContract, InterfaceContracts, InterfaceDefinition, InterfaceErrorPolicy,
-    InterfaceExecution, InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture,
-    InterfaceId, InterfaceIdentity, InterfaceInvocationError, InterfaceInvocationKernel,
-    InterfaceLifecycle, InterfaceOwner, InterfaceProtocol, InterfaceScope, InterfaceTargetError,
-    InterfaceVersion, InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage,
-    PrincipalProfile, ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity,
-    TargetReference, UserPrincipal,
+    InterfaceExecution, InterfaceExecutionMode, InterfaceHandler, InterfaceHandlerContext,
+    InterfaceHandlerFuture, InterfaceId, InterfaceIdentity, InterfaceInvocationError,
+    InterfaceInvocationKernel, InterfaceLifecycle, InterfaceOwner, InterfaceProtocol,
+    InterfaceScope, InterfaceTargetFailure, InterfaceVersion, InvocationAdapterPlan,
+    InvocationEnvelope, InvocationId, InvocationLineage, PrincipalProfile, ProtocolBinding,
+    ProtocolProjection, RegistryCompiler, RouteIdentity, TargetReference, UserPrincipal,
 };
 use plugin_framework::extension_bus::{
     Cardinality, DeliverySemantics, EffectiveExtensionGraph, ExtensionPointKind, FailureSemantics,
@@ -52,6 +52,9 @@ pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INPUT_CONTRACT_VERSION: &str = "1";
 pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OUTPUT_CONTRACT_ID: &str =
     "host-infrastructure-provider-config-list";
 pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OUTPUT_CONTRACT_VERSION: &str = "1";
+pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_ERROR_CONTRACT_ID: &str =
+    "host-infrastructure-provider-config-error";
+pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_ERROR_CONTRACT_VERSION: &str = "1";
 pub const INTERFACE_OPERATION_OWNER_MODULE_ID: &str = "1flowbase.boot-core";
 pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID: &str = "official.local-infra-host";
 pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONSOLE_OWNER_ID: &str = "boot-core";
@@ -110,14 +113,29 @@ struct HostInfrastructureProvidersViewHandler {
     query: Arc<dyn HostInfrastructureProvidersViewQuery>,
 }
 
-impl InterfaceHandler<HostInfrastructureProvidersViewInput, HostInfrastructureProvidersViewOutput>
-    for HostInfrastructureProvidersViewHandler
+struct HostInfrastructureProvidersViewTargetError(crate::error_response::ApiError);
+
+impl InterfaceContract for HostInfrastructureProvidersViewTargetError {
+    const CONTRACT_ID: &'static str = HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_ERROR_CONTRACT_ID;
+    const CONTRACT_VERSION: &'static str =
+        HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_ERROR_CONTRACT_VERSION;
+}
+
+impl
+    InterfaceHandler<
+        HostInfrastructureProvidersViewInput,
+        HostInfrastructureProvidersViewOutput,
+        HostInfrastructureProvidersViewTargetError,
+    > for HostInfrastructureProvidersViewHandler
 {
     fn invoke(
         &self,
         _context: InterfaceHandlerContext,
         _input: HostInfrastructureProvidersViewInput,
-    ) -> InterfaceHandlerFuture<HostInfrastructureProvidersViewOutput> {
+    ) -> InterfaceHandlerFuture<
+        HostInfrastructureProvidersViewOutput,
+        HostInfrastructureProvidersViewTargetError,
+    > {
         let query = Arc::clone(&self.query);
         Box::pin(async move {
             query
@@ -131,7 +149,10 @@ impl InterfaceHandler<HostInfrastructureProvidersViewInput, HostInfrastructurePr
                         .collect(),
                 })
                 .map_err(|error| {
-                    InterfaceTargetError::with_source("host_infrastructure_providers_view", error)
+                    InterfaceTargetFailure::new(
+                        "host_infrastructure_providers_view",
+                        HostInfrastructureProvidersViewTargetError(error),
+                    )
                 })
         })
     }
@@ -234,6 +255,7 @@ pub async fn invoke_providers_view(
         .invoke_with_hook_plan::<
             HostInfrastructureProvidersViewInput,
             HostInfrastructureProvidersViewOutput,
+            HostInfrastructureProvidersViewTargetError,
         >(
             snapshot,
             InvocationEnvelope::with_principal(
@@ -270,7 +292,8 @@ fn invocation_failure_api_error(
                 .into()
             }),
         InterfaceInvocationError::TargetFailed(error) => error
-            .into_source::<crate::error_response::ApiError>()
+            .into_source::<HostInfrastructureProvidersViewTargetError>()
+            .map(|error| error.0)
             .unwrap_or_else(|| anyhow::anyhow!("host infrastructure providers view failed").into()),
         InterfaceInvocationError::UnknownInterface => {
             control_plane::errors::ControlPlaneError::NotFound("interface_operation").into()
@@ -288,6 +311,9 @@ fn invocation_failure_api_error(
         }
         InterfaceInvocationError::DeadlineElapsed => {
             anyhow::anyhow!("interface invocation deadline elapsed").into()
+        }
+        InterfaceInvocationError::Cancelled => {
+            anyhow::anyhow!("interface invocation was cancelled").into()
         }
     }
 }
@@ -322,6 +348,7 @@ pub(crate) fn compile_interface_registry(
     compiler.bind_handler::<
         HostInfrastructureProvidersViewInput,
         HostInfrastructureProvidersViewOutput,
+        HostInfrastructureProvidersViewTargetError,
         UserPrincipal,
     >(
         &interface_id,
@@ -451,6 +478,10 @@ fn definition_from_descriptor(
                 &descriptor.output.contract_id,
                 &descriptor.output.contract_version,
             )?,
+            ContractIdentity::new(
+                HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_ERROR_CONTRACT_ID,
+                HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_ERROR_CONTRACT_VERSION,
+            )?,
         ),
         InterfaceAccess::new(
             PrincipalProfile::User,
@@ -459,6 +490,7 @@ fn definition_from_descriptor(
             InterfaceScope::System,
         ),
         InterfaceExecution::new(
+            InterfaceExecutionMode::Unary,
             HandlerReference::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_HANDLER_REFERENCE)?,
             TargetReference::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_REFERENCE)?,
         ),
@@ -478,14 +510,20 @@ fn binding_from_descriptor(
             InterfaceId::new(&descriptor.operation_id)?,
             InterfaceVersion::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INTERFACE_VERSION)?,
         ),
-        ContractIdentity::new(
-            &descriptor.input.contract_id,
-            &descriptor.input.contract_version,
-        )?,
-        ContractIdentity::new(
-            &descriptor.output.contract_id,
-            &descriptor.output.contract_version,
-        )?,
+        InterfaceContracts::unary(
+            ContractIdentity::new(
+                &descriptor.input.contract_id,
+                &descriptor.input.contract_version,
+            )?,
+            ContractIdentity::new(
+                &descriptor.output.contract_id,
+                &descriptor.output.contract_version,
+            )?,
+            ContractIdentity::new(
+                HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_ERROR_CONTRACT_ID,
+                HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_ERROR_CONTRACT_VERSION,
+            )?,
+        ),
         ProtocolProjection::http(RouteIdentity::new(
             descriptor.method.as_str(),
             &descriptor.path,

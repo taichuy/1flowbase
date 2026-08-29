@@ -60,6 +60,11 @@ identity!(
 );
 identity!(AdmissionAdapterReference, "admission adapter reference");
 identity!(ExtensionPlanFingerprint, "extension plan fingerprint");
+identity!(PluginIdentity, "plugin identity");
+identity!(ArtifactIdentity, "artifact identity");
+identity!(RuntimeTargetIdentity, "runtime target identity");
+identity!(RuntimeGeneration, "runtime generation");
+identity!(WorkerGeneration, "worker generation");
 
 fn validate_identity(value: &str, kind: &'static str) -> Result<(), IdentityError> {
     if value.is_empty() {

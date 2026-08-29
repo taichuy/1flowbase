@@ -12,20 +12,25 @@ pub use hook::{
     InterfaceFailureHook, InterfaceFailureHookFuture, InterfaceHookContext, TypedInterfaceHookPlan,
 };
 pub use identity::{
-    AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
-    AuthorizationOperation, BindingFingerprint, BindingId, ContractIdentity,
-    ExtensionPlanFingerprint, GraphFingerprint, HandlerReference, IdentityError, InterfaceId,
-    InterfaceOwner, InterfaceVersion, PlanFingerprint, RegistryFingerprint, RouteIdentity,
-    TargetReference,
+    AdmissionAdapterReference, ArtifactIdentity, AuthenticationAdapterReference,
+    AuthorizationAdapterReference, AuthorizationOperation, BindingFingerprint, BindingId,
+    ContractIdentity, ExtensionPlanFingerprint, GraphFingerprint, HandlerReference, IdentityError,
+    InterfaceId, InterfaceOwner, InterfaceVersion, PlanFingerprint, PluginIdentity,
+    RegistryFingerprint, RouteIdentity, RuntimeGeneration, RuntimeTargetIdentity, TargetReference,
+    WorkerGeneration,
 };
 pub use invocation::{
-    InterfaceAuthorizationError, InterfaceAuthorizationFuture, InterfaceAuthorizationPort,
-    InterfaceAuthorizationRequest, InterfaceInvocationError, InterfaceInvocationFailure,
-    InterfaceInvocationKernel, InterfaceInvocationOutcome, InterfaceInvocationReceipt,
-    InterfaceInvocationResult, InterfaceInvocationStage, InterfaceInvocationTerminal,
-    InterfaceProtocol, InterfaceTargetAdmissionError, InterfaceTargetAdmissionFuture,
-    InterfaceTargetAdmissionPort, InterfaceTargetAdmissionRequest, InvocationEnvelope,
-    InvocationId, InvocationLineage, InvocationLineageError,
+    CanonicalInvocationResult, ExecutionAttempt, ExecutionAttemptId, ExecutionTargetPin,
+    IdempotencyKey, IdempotencyKeyError, InterfaceAuthorizationError, InterfaceAuthorizationFuture,
+    InterfaceAuthorizationPort, InterfaceAuthorizationRequest, InterfaceInvocationError,
+    InterfaceInvocationFailure, InterfaceInvocationKernel, InterfaceInvocationOutcome,
+    InterfaceInvocationReceipt, InterfaceInvocationResult, InterfaceInvocationStage,
+    InterfaceInvocationTerminal, InterfaceProtocol, InterfaceServerStream, InterfaceStageRecord,
+    InterfaceStreamAccumulator, InterfaceStreamStateError, InterfaceStreamTerminal,
+    InterfaceTargetAdmissionError, InterfaceTargetAdmissionFuture, InterfaceTargetAdmissionPort,
+    InterfaceTargetAdmissionRequest, InterfaceTargetFailure, InvocationCancellation,
+    InvocationControls, InvocationEnvelope, InvocationId, InvocationLineage,
+    InvocationLineageError, ResolvedInvocationPin,
 };
 pub use principal::{
     ApplicationPrincipal, ApplicationPrincipalError, InvocationPrincipal, PrincipalProfile,
@@ -34,10 +39,11 @@ pub use principal::{
 pub use registry::{
     CompiledInterfaceRegistry, CompiledInvocationPlan, DynamicInterfaceRegistry, InterfaceAccess,
     InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceContract, InterfaceContracts,
-    InterfaceDefinition, InterfaceErrorPolicy, InterfaceExecution, InterfaceHandler,
-    InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceIdentity, InterfaceLifecycle,
-    InterfaceScope, InterfaceTargetError, InvocationAdapterPlan, ProtocolBinding,
-    ProtocolProjection, RegistryCompilationError, RegistryCompiler,
+    InterfaceDefinition, InterfaceErrorPolicy, InterfaceExecution, InterfaceExecutionMode,
+    InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceIdentity,
+    InterfaceLifecycle, InterfaceResultContracts, InterfaceScope, InterfaceTargetError,
+    InvocationAdapterPlan, ProtocolBinding, ProtocolProjection, RegistryCompilationError,
+    RegistryCompiler,
 };
 
 #[cfg(test)]

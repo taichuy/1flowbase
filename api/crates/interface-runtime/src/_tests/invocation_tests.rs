@@ -7,22 +7,26 @@ use domain::ActorContext;
 use uuid::Uuid;
 
 use crate::{
-    AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
-    AuthorizationOperation, BindingId, ContractIdentity, DynamicInterfaceRegistry,
-    ExtensionPlanFingerprint, GraphFingerprint, HandlerReference, InterfaceAccess,
-    InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceAuthorizationError,
-    InterfaceAuthorizationFuture, InterfaceAuthorizationPort, InterfaceAuthorizationRequest,
-    InterfaceBeforeHook, InterfaceBeforeHookFuture, InterfaceCompletionHook,
-    InterfaceCompletionHookFuture, InterfaceContract, InterfaceContracts, InterfaceDefinition,
-    InterfaceErrorPolicy, InterfaceExecution, InterfaceHandler, InterfaceHandlerContext,
+    AdmissionAdapterReference, ArtifactIdentity, AuthenticationAdapterReference,
+    AuthorizationAdapterReference, AuthorizationOperation, BindingId, ContractIdentity,
+    DynamicInterfaceRegistry, ExecutionTargetPin, ExtensionPlanFingerprint, GraphFingerprint,
+    HandlerReference, IdempotencyKey, InterfaceAccess, InterfaceAuditPolicy,
+    InterfaceAuthenticationPolicy, InterfaceAuthorizationError, InterfaceAuthorizationFuture,
+    InterfaceAuthorizationPort, InterfaceAuthorizationRequest, InterfaceBeforeHook,
+    InterfaceBeforeHookFuture, InterfaceCompletionHook, InterfaceCompletionHookFuture,
+    InterfaceContract, InterfaceContracts, InterfaceDefinition, InterfaceErrorPolicy,
+    InterfaceExecution, InterfaceExecutionMode, InterfaceHandler, InterfaceHandlerContext,
     InterfaceHandlerFuture, InterfaceHookContext, InterfaceId, InterfaceIdentity,
     InterfaceInvocationError, InterfaceInvocationKernel, InterfaceInvocationStage,
     InterfaceInvocationTerminal, InterfaceLifecycle, InterfaceOwner, InterfaceProtocol,
-    InterfaceScope, InterfaceTargetAdmissionError, InterfaceTargetAdmissionFuture,
-    InterfaceTargetAdmissionPort, InterfaceTargetAdmissionRequest, InterfaceTargetError,
-    InterfaceVersion, InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage,
-    InvocationLineageError, PrincipalProfile, ProtocolBinding, ProtocolProjection,
-    RegistryCompiler, RouteIdentity, TargetReference, TypedInterfaceHookPlan, UserPrincipal,
+    InterfaceScope, InterfaceStreamAccumulator, InterfaceStreamStateError, InterfaceStreamTerminal,
+    InterfaceTargetAdmissionError, InterfaceTargetAdmissionFuture, InterfaceTargetAdmissionPort,
+    InterfaceTargetAdmissionRequest, InterfaceTargetFailure, InterfaceVersion,
+    InvocationAdapterPlan, InvocationCancellation, InvocationControls, InvocationEnvelope,
+    InvocationId, InvocationLineage, InvocationLineageError, PluginIdentity, PrincipalProfile,
+    ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity, RuntimeGeneration,
+    RuntimeTargetIdentity, TargetReference, TypedInterfaceHookPlan, UserPrincipal,
+    WorkerGeneration,
 };
 
 #[derive(Clone)]
@@ -39,18 +43,32 @@ impl InterfaceContract for Output {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct TargetError;
+impl InterfaceContract for TargetError {
+    const CONTRACT_ID: &'static str = "invocation-target-error";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct StreamEvent(u8);
+impl InterfaceContract for StreamEvent {
+    const CONTRACT_ID: &'static str = "invocation-stream-event";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
 struct RecordingHandler {
     increment: u8,
     seen_fingerprint: Arc<Mutex<Option<String>>>,
     fail: bool,
 }
 
-impl InterfaceHandler<Input, Output> for RecordingHandler {
+impl InterfaceHandler<Input, Output, TargetError> for RecordingHandler {
     fn invoke(
         &self,
         context: InterfaceHandlerContext,
         input: Input,
-    ) -> InterfaceHandlerFuture<Output> {
+    ) -> InterfaceHandlerFuture<Output, TargetError> {
         let increment = self.increment;
         let seen_fingerprint = Arc::clone(&self.seen_fingerprint);
         let fingerprint = context.registry_fingerprint().as_str().to_string();
@@ -58,7 +76,7 @@ impl InterfaceHandler<Input, Output> for RecordingHandler {
         Box::pin(async move {
             *seen_fingerprint.lock().unwrap() = Some(fingerprint);
             if fail {
-                Err(InterfaceTargetError::classified("target_failed"))
+                Err(InterfaceTargetFailure::new("target_failed", TargetError))
             } else {
                 Ok(Output(input.0 + increment))
             }
@@ -120,12 +138,12 @@ impl InterfaceTargetAdmissionPort for SlowAdmission {
 
 struct SlowHandler;
 
-impl InterfaceHandler<Input, Output> for SlowHandler {
+impl InterfaceHandler<Input, Output, TargetError> for SlowHandler {
     fn invoke(
         &self,
         _context: InterfaceHandlerContext,
         input: Input,
-    ) -> InterfaceHandlerFuture<Output> {
+    ) -> InterfaceHandlerFuture<Output, TargetError> {
         Box::pin(async move {
             tokio::time::sleep(Duration::from_millis(50)).await;
             Ok(Output(input.0))
@@ -218,13 +236,18 @@ fn owner() -> InterfaceOwner {
     InterfaceOwner::new("core").unwrap()
 }
 
+fn contracts() -> InterfaceContracts {
+    InterfaceContracts::unary(
+        ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
+        ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
+        ContractIdentity::new("invocation-target-error", "1").unwrap(),
+    )
+}
+
 fn definition() -> InterfaceDefinition {
     InterfaceDefinition::new(
         interface_identity(),
-        InterfaceContracts::unary(
-            ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
-            ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
-        ),
+        contracts(),
         InterfaceAccess::new(
             PrincipalProfile::User,
             InterfaceAuthenticationPolicy::Authenticated,
@@ -232,6 +255,7 @@ fn definition() -> InterfaceDefinition {
             InterfaceScope::System,
         ),
         InterfaceExecution::new(
+            InterfaceExecutionMode::Unary,
             HandlerReference::new("invocation.handler").unwrap(),
             TargetReference::new("invocation.target").unwrap(),
         ),
@@ -246,8 +270,7 @@ fn binding() -> ProtocolBinding {
     ProtocolBinding::new(
         BindingId::new("http.invocation.read.v1").unwrap(),
         interface_identity(),
-        ContractIdentity::new(Input::CONTRACT_ID, Input::CONTRACT_VERSION).unwrap(),
-        ContractIdentity::new(Output::CONTRACT_ID, Output::CONTRACT_VERSION).unwrap(),
+        contracts(),
         ProtocolProjection::http(RouteIdentity::new("GET", "/api/console/invocation").unwrap()),
     )
 }
@@ -276,7 +299,7 @@ fn compile_snapshot(
     compiler.register_definition(definition()).unwrap();
     compiler.register_binding(binding()).unwrap();
     compiler
-        .bind_handler::<Input, Output, UserPrincipal>(
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
             &interface_id(),
             HandlerReference::new("invocation.handler").unwrap(),
             Arc::new(RecordingHandler {
@@ -310,18 +333,23 @@ async fn executes_resolve_authorize_admit_invoke_and_records_terminal_receipt() 
     );
 
     let outcome = kernel
-        .invoke::<Input, Output>(snapshot, envelope(actor(true)))
+        .invoke::<Input, Output, TargetError>(snapshot, envelope(actor(true)))
         .await
         .unwrap();
 
     assert_eq!(outcome.value(), &Output(5));
     assert_eq!(
-        outcome.receipt().stages(),
-        &[
+        outcome.receipt().stages().collect::<Vec<_>>(),
+        vec![
+            InterfaceInvocationStage::Received,
             InterfaceInvocationStage::Resolved,
+            InterfaceInvocationStage::PrincipalEstablished,
             InterfaceInvocationStage::Authorized,
             InterfaceInvocationStage::Admitted,
-            InterfaceInvocationStage::Invoking,
+            InterfaceInvocationStage::Prepared,
+            InterfaceInvocationStage::Dispatched,
+            InterfaceInvocationStage::Executing,
+            InterfaceInvocationStage::PostProcessed,
         ]
     );
     assert_eq!(
@@ -338,7 +366,7 @@ async fn executes_resolve_authorize_admit_invoke_and_records_terminal_receipt() 
 async fn rejects_authorization_admission_target_failure_and_elapsed_deadline() {
     let snapshot = compile_snapshot("graph:one", 0, false, Arc::new(Mutex::new(None)));
     let denied = InterfaceInvocationKernel::new(Arc::new(Authorization { reject: true }))
-        .invoke::<Input, Output>(Arc::clone(&snapshot), envelope(actor(true)))
+        .invoke::<Input, Output, TargetError>(Arc::clone(&snapshot), envelope(actor(true)))
         .await
         .unwrap_err();
     assert!(matches!(
@@ -354,7 +382,7 @@ async fn rejects_authorization_admission_target_failure_and_elapsed_deadline() {
         Arc::new(Authorization { reject: false }),
         Arc::new(Admission { reject: true }),
     )
-    .invoke::<Input, Output>(Arc::clone(&snapshot), envelope(actor(true)))
+    .invoke::<Input, Output, TargetError>(Arc::clone(&snapshot), envelope(actor(true)))
     .await
     .unwrap_err();
     assert!(matches!(
@@ -364,7 +392,7 @@ async fn rejects_authorization_admission_target_failure_and_elapsed_deadline() {
 
     let failed_snapshot = compile_snapshot("graph:failed", 0, true, Arc::new(Mutex::new(None)));
     let failed = InterfaceInvocationKernel::new(Arc::new(Authorization { reject: false }))
-        .invoke::<Input, Output>(failed_snapshot, envelope(actor(true)))
+        .invoke::<Input, Output, TargetError>(failed_snapshot, envelope(actor(true)))
         .await
         .unwrap_err();
     assert!(matches!(
@@ -385,7 +413,7 @@ async fn rejects_authorization_admission_target_failure_and_elapsed_deadline() {
         Input(2),
     );
     let cancelled = InterfaceInvocationKernel::new(Arc::new(Authorization { reject: false }))
-        .invoke::<Input, Output>(snapshot, elapsed)
+        .invoke::<Input, Output, TargetError>(snapshot, elapsed)
         .await
         .unwrap_err();
     assert_eq!(
@@ -404,7 +432,7 @@ async fn deadline_cancels_each_in_flight_stage() {
     );
     let deadline = Some(SystemTime::now() + Duration::from_millis(10));
     let authorization = InterfaceInvocationKernel::new(Arc::new(SlowAuthorization))
-        .invoke::<Input, Output>(
+        .invoke::<Input, Output, TargetError>(
             Arc::clone(&snapshot),
             InvocationEnvelope::new(
                 InvocationLineage::root(InvocationId::now_v7()),
@@ -426,15 +454,19 @@ async fn deadline_cancels_each_in_flight_stage() {
         InterfaceInvocationTerminal::Cancelled
     );
     assert_eq!(
-        authorization.receipt().stages(),
-        &[InterfaceInvocationStage::Resolved]
+        authorization.receipt().stages().collect::<Vec<_>>(),
+        vec![
+            InterfaceInvocationStage::Received,
+            InterfaceInvocationStage::Resolved,
+            InterfaceInvocationStage::PrincipalEstablished,
+        ]
     );
 
     let admission = InterfaceInvocationKernel::with_target_admission(
         Arc::new(Authorization { reject: false }),
         Arc::new(SlowAdmission),
     )
-    .invoke::<Input, Output>(
+    .invoke::<Input, Output, TargetError>(
         Arc::clone(&snapshot),
         InvocationEnvelope::new(
             InvocationLineage::root(InvocationId::now_v7()),
@@ -456,10 +488,12 @@ async fn deadline_cancels_each_in_flight_stage() {
         InterfaceInvocationTerminal::Cancelled
     );
     assert_eq!(
-        admission.receipt().stages(),
-        &[
+        admission.receipt().stages().collect::<Vec<_>>(),
+        vec![
+            InterfaceInvocationStage::Received,
             InterfaceInvocationStage::Resolved,
-            InterfaceInvocationStage::Authorized
+            InterfaceInvocationStage::PrincipalEstablished,
+            InterfaceInvocationStage::Authorized,
         ]
     );
 
@@ -467,14 +501,14 @@ async fn deadline_cancels_each_in_flight_stage() {
     compiler.register_definition(definition()).unwrap();
     compiler.register_binding(binding()).unwrap();
     compiler
-        .bind_handler::<Input, Output, UserPrincipal>(
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
             &interface_id(),
             HandlerReference::new("invocation.handler").unwrap(),
             Arc::new(SlowHandler),
         )
         .unwrap();
     let handler = InterfaceInvocationKernel::new(Arc::new(Authorization { reject: false }))
-        .invoke::<Input, Output>(
+        .invoke::<Input, Output, TargetError>(
             compiler.compile().unwrap(),
             InvocationEnvelope::new(
                 InvocationLineage::root(InvocationId::now_v7()),
@@ -496,11 +530,16 @@ async fn deadline_cancels_each_in_flight_stage() {
         InterfaceInvocationTerminal::Cancelled
     );
     assert_eq!(
-        handler.receipt().stages(),
-        &[
+        handler.receipt().stages().collect::<Vec<_>>(),
+        vec![
+            InterfaceInvocationStage::Received,
             InterfaceInvocationStage::Resolved,
+            InterfaceInvocationStage::PrincipalEstablished,
             InterfaceInvocationStage::Authorized,
-            InterfaceInvocationStage::Invoking,
+            InterfaceInvocationStage::Admitted,
+            InterfaceInvocationStage::Prepared,
+            InterfaceInvocationStage::Dispatched,
+            InterfaceInvocationStage::Executing,
         ]
     );
 }
@@ -516,11 +555,11 @@ async fn active_invocation_uses_its_frozen_snapshot_after_candidate_publish() {
     let kernel = InterfaceInvocationKernel::new(Arc::new(Authorization { reject: false }));
 
     let old_outcome = kernel
-        .invoke::<Input, Output>(active_snapshot, envelope(actor(true)))
+        .invoke::<Input, Output, TargetError>(active_snapshot, envelope(actor(true)))
         .await
         .unwrap();
     let new_outcome = kernel
-        .invoke::<Input, Output>(registry.snapshot(), envelope(actor(true)))
+        .invoke::<Input, Output, TargetError>(registry.snapshot(), envelope(actor(true)))
         .await
         .unwrap();
 
@@ -560,7 +599,7 @@ async fn lcf_002_lcf_004_typed_hook_plan_runs_after_authorization_and_admission(
         Arc::new(Authorization { reject: false }),
         Arc::new(Admission { reject: false }),
     )
-    .invoke_with_hook_plan(snapshot, envelope(actor(true)), &plan)
+    .invoke_with_hook_plan::<Input, Output, TargetError>(snapshot, envelope(actor(true)), &plan)
     .await
     .unwrap();
 
@@ -575,14 +614,17 @@ async fn lcf_002_lcf_004_typed_hook_plan_runs_after_authorization_and_admission(
         ]
     );
     assert_eq!(
-        outcome.receipt().stages(),
-        &[
+        outcome.receipt().stages().collect::<Vec<_>>(),
+        vec![
+            InterfaceInvocationStage::Received,
             InterfaceInvocationStage::Resolved,
+            InterfaceInvocationStage::PrincipalEstablished,
             InterfaceInvocationStage::Authorized,
             InterfaceInvocationStage::Admitted,
-            InterfaceInvocationStage::BeforeHooksCompleted,
-            InterfaceInvocationStage::Invoking,
-            InterfaceInvocationStage::AfterHooksCompleted,
+            InterfaceInvocationStage::Prepared,
+            InterfaceInvocationStage::Dispatched,
+            InterfaceInvocationStage::Executing,
+            InterfaceInvocationStage::PostProcessed,
         ]
     );
 }
@@ -599,7 +641,7 @@ async fn lcf_006_completion_is_emitted_once_for_target_failure() {
         events: Arc::clone(&events),
     }));
     let failure = InterfaceInvocationKernel::new(Arc::new(Authorization { reject: false }))
-        .invoke_with_hook_plan(snapshot, envelope(actor(true)), &plan)
+        .invoke_with_hook_plan::<Input, Output, TargetError>(snapshot, envelope(actor(true)), &plan)
         .await
         .unwrap_err();
 
@@ -623,4 +665,127 @@ fn parent_lineage_rejects_cycles() {
         lineage.child(root_id),
         Err(InvocationLineageError::Cycle(_))
     ));
+}
+
+#[test]
+fn stream_requires_exactly_one_terminal_and_rejects_events_after_terminal() {
+    let mut stream = InterfaceStreamAccumulator::<StreamEvent, Output, TargetError>::new();
+    stream.emit(StreamEvent(1)).unwrap();
+    assert_eq!(
+        stream.finish(InterfaceStreamTerminal::Completed(Output(2))),
+        Ok(())
+    );
+    assert_eq!(
+        stream.finish(InterfaceStreamTerminal::Cancelled),
+        Err(InterfaceStreamStateError::DuplicateTerminal)
+    );
+    assert_eq!(
+        stream.emit(StreamEvent(3)),
+        Err(InterfaceStreamStateError::EventAfterTerminal)
+    );
+    let stream = stream.into_stream().unwrap();
+    assert_eq!(stream.events(), &[StreamEvent(1)]);
+    assert_eq!(
+        stream.terminal(),
+        &InterfaceStreamTerminal::Completed(Output(2))
+    );
+
+    let empty = InterfaceStreamAccumulator::<StreamEvent, Output, TargetError>::new();
+    assert_eq!(
+        empty.into_stream(),
+        Err(InterfaceStreamStateError::MissingTerminal)
+    );
+}
+
+#[tokio::test]
+async fn dispatch_pin_retry_and_receipt_controls_are_immutable() {
+    let snapshot = compile_snapshot("graph:runtime-pin", 1, false, Arc::new(Mutex::new(None)));
+    let first_target = ExecutionTargetPin::Runtime {
+        handler: HandlerReference::new("invocation.handler").unwrap(),
+        target: TargetReference::new("invocation.target").unwrap(),
+        plugin: PluginIdentity::new("official.runtime").unwrap(),
+        artifact: ArtifactIdentity::new("sha256:artifact-one").unwrap(),
+        runtime: RuntimeTargetIdentity::new("runtime.local").unwrap(),
+        runtime_generation: RuntimeGeneration::new("generation:1").unwrap(),
+        worker_generation: WorkerGeneration::new("worker:1").unwrap(),
+    };
+    let idempotency_key = IdempotencyKey::new("request-1944").unwrap();
+    let envelope = InvocationEnvelope::with_principal_and_controls(
+        InvocationLineage::root(InvocationId::now_v7()),
+        interface_id(),
+        InterfaceProtocol::Http,
+        UserPrincipal::server_delegation(actor(true)),
+        InvocationControls::new(
+            None,
+            InvocationCancellation::new(),
+            Some(idempotency_key.clone()),
+        ),
+        Input(2),
+    );
+    let outcome = InterfaceInvocationKernel::new(Arc::new(Authorization { reject: false }))
+        .invoke_with_dispatch_target::<Input, Output, TargetError>(
+            snapshot,
+            envelope,
+            first_target.clone(),
+        )
+        .await
+        .unwrap();
+    let attempt = outcome.receipt().attempt().unwrap();
+    assert_eq!(attempt.ordinal(), 1);
+    assert_eq!(attempt.target(), &first_target);
+    assert_eq!(outcome.receipt().idempotency_key(), Some(&idempotency_key));
+    assert!(outcome.receipt().resolved().is_some());
+    let projected = outcome.receipt().clone().projected().projected();
+    assert_eq!(
+        projected
+            .stages()
+            .filter(|stage| *stage == InterfaceInvocationStage::Projected)
+            .count(),
+        1
+    );
+
+    let retry_target = ExecutionTargetPin::Runtime {
+        handler: HandlerReference::new("invocation.handler").unwrap(),
+        target: TargetReference::new("invocation.target").unwrap(),
+        plugin: PluginIdentity::new("official.runtime").unwrap(),
+        artifact: ArtifactIdentity::new("sha256:artifact-two").unwrap(),
+        runtime: RuntimeTargetIdentity::new("runtime.local").unwrap(),
+        runtime_generation: RuntimeGeneration::new("generation:2").unwrap(),
+        worker_generation: WorkerGeneration::new("worker:2").unwrap(),
+    };
+    let retry = attempt.retry(retry_target.clone());
+    assert_ne!(retry.attempt_id(), attempt.attempt_id());
+    assert_eq!(retry.ordinal(), 2);
+    assert_eq!(retry.target(), &retry_target);
+    assert_eq!(attempt.target(), &first_target);
+}
+
+#[tokio::test]
+async fn explicit_cancellation_terminates_without_dispatch() {
+    let cancellation = InvocationCancellation::new();
+    cancellation.cancel();
+    let envelope = InvocationEnvelope::with_principal_and_controls(
+        InvocationLineage::root(InvocationId::now_v7()),
+        interface_id(),
+        InterfaceProtocol::Http,
+        UserPrincipal::server_delegation(actor(true)),
+        InvocationControls::new(None, cancellation, None),
+        Input(2),
+    );
+    let failure = InterfaceInvocationKernel::new(Arc::new(Authorization { reject: false }))
+        .invoke::<Input, Output, TargetError>(
+            compile_snapshot("graph:cancelled", 1, false, Arc::new(Mutex::new(None))),
+            envelope,
+        )
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        failure.error(),
+        InterfaceInvocationError::Cancelled
+    ));
+    assert_eq!(
+        failure.receipt().terminal(),
+        InterfaceInvocationTerminal::Cancelled
+    );
+    assert!(failure.receipt().attempt().is_none());
 }

@@ -1,26 +1,57 @@
-use std::{future::Future, pin::Pin, sync::Arc, time::SystemTime};
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::SystemTime,
+};
 
 use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    CompiledInterfaceRegistry, ContractIdentity, GraphFingerprint, InterfaceContract,
-    InterfaceDefinition, InterfaceHandlerContext, InterfaceHookContext, InterfaceId,
-    InterfaceTargetError, InvocationPrincipal, PrincipalSummary, ProtocolBinding,
-    RegistryFingerprint, TypedInterfaceHookPlan, UserPrincipal,
+    ArtifactIdentity, BindingFingerprint, BindingId, CompiledInterfaceRegistry, ContractIdentity,
+    GraphFingerprint, HandlerReference, InterfaceContract, InterfaceDefinition,
+    InterfaceHandlerContext, InterfaceHookContext, InterfaceId, InterfaceTargetError,
+    InvocationPrincipal, PlanFingerprint, PluginIdentity, PrincipalSummary, ProtocolBinding,
+    RegistryFingerprint, RuntimeGeneration, RuntimeTargetIdentity, TargetReference,
+    TypedInterfaceHookPlan, UserPrincipal, WorkerGeneration,
 };
 
-async fn await_before_deadline<T>(
-    deadline: Option<SystemTime>,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum InvocationInterruption {
+    DeadlineElapsed,
+    Cancelled,
+}
+
+async fn await_in_flight<T>(
+    controls: &InvocationControls,
     future: impl Future<Output = T>,
-) -> Result<T, ()> {
-    let Some(deadline) = deadline else {
-        return Ok(future.await);
-    };
-    let remaining = deadline.duration_since(SystemTime::now()).map_err(|_| ())?;
-    tokio::time::timeout(remaining, future)
-        .await
-        .map_err(|_| ())
+) -> Result<T, InvocationInterruption> {
+    let cancellation = controls.cancellation.cancelled();
+    tokio::pin!(cancellation);
+    if controls.cancellation.is_cancelled() {
+        return Err(InvocationInterruption::Cancelled);
+    }
+    match controls.deadline {
+        Some(deadline) => {
+            let remaining = deadline
+                .duration_since(SystemTime::now())
+                .map_err(|_| InvocationInterruption::DeadlineElapsed)?;
+            tokio::select! {
+                _ = &mut cancellation => Err(InvocationInterruption::Cancelled),
+                result = tokio::time::timeout(remaining, future) => {
+                    result.map_err(|_| InvocationInterruption::DeadlineElapsed)
+                }
+            }
+        }
+        None => tokio::select! {
+            _ = &mut cancellation => Err(InvocationInterruption::Cancelled),
+            result = future => Ok(result),
+        },
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -37,6 +68,161 @@ impl InvocationId {
 
     pub fn value(self) -> Uuid {
         self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ExecutionAttemptId(Uuid);
+
+impl ExecutionAttemptId {
+    pub fn value(self) -> Uuid {
+        self.0
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ExecutionTargetPin {
+    BuiltIn {
+        handler: HandlerReference,
+        target: TargetReference,
+    },
+    Runtime {
+        handler: HandlerReference,
+        target: TargetReference,
+        plugin: PluginIdentity,
+        artifact: ArtifactIdentity,
+        runtime: RuntimeTargetIdentity,
+        runtime_generation: RuntimeGeneration,
+        worker_generation: WorkerGeneration,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExecutionAttempt {
+    attempt_id: ExecutionAttemptId,
+    ordinal: u32,
+    target: ExecutionTargetPin,
+}
+
+impl ExecutionAttempt {
+    fn first(target: ExecutionTargetPin) -> Self {
+        Self {
+            attempt_id: ExecutionAttemptId(Uuid::now_v7()),
+            ordinal: 1,
+            target,
+        }
+    }
+
+    pub fn retry(&self, target: ExecutionTargetPin) -> Self {
+        Self {
+            attempt_id: ExecutionAttemptId(Uuid::now_v7()),
+            ordinal: self.ordinal + 1,
+            target,
+        }
+    }
+
+    pub fn attempt_id(&self) -> ExecutionAttemptId {
+        self.attempt_id
+    }
+
+    pub fn ordinal(&self) -> u32 {
+        self.ordinal
+    }
+
+    pub fn target(&self) -> &ExecutionTargetPin {
+        &self.target
+    }
+}
+
+#[derive(Clone, Default)]
+pub struct InvocationCancellation {
+    cancelled: Arc<AtomicBool>,
+    notify: Arc<tokio::sync::Notify>,
+}
+
+impl std::fmt::Debug for InvocationCancellation {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("InvocationCancellation")
+            .field("cancelled", &self.is_cancelled())
+            .finish()
+    }
+}
+
+impl InvocationCancellation {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::Release);
+        self.notify.notify_waiters();
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::Acquire)
+    }
+
+    async fn cancelled(&self) {
+        let notified = self.notify.notified();
+        if self.is_cancelled() {
+            return;
+        }
+        notified.await;
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct IdempotencyKey(Arc<str>);
+
+impl IdempotencyKey {
+    pub fn new(value: impl AsRef<str>) -> Result<Self, IdempotencyKeyError> {
+        let value = value.as_ref().trim();
+        if value.is_empty() || value.len() > 256 {
+            return Err(IdempotencyKeyError);
+        }
+        Ok(Self(Arc::from(value)))
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.0.as_ref()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
+#[error("idempotency key must contain between 1 and 256 bytes")]
+pub struct IdempotencyKeyError;
+
+#[derive(Clone, Debug)]
+pub struct InvocationControls {
+    deadline: Option<SystemTime>,
+    cancellation: InvocationCancellation,
+    idempotency_key: Option<IdempotencyKey>,
+}
+
+impl InvocationControls {
+    pub fn new(
+        deadline: Option<SystemTime>,
+        cancellation: InvocationCancellation,
+        idempotency_key: Option<IdempotencyKey>,
+    ) -> Self {
+        Self {
+            deadline,
+            cancellation,
+            idempotency_key,
+        }
+    }
+
+    pub fn deadline(&self) -> Option<SystemTime> {
+        self.deadline
+    }
+
+    pub fn cancellation(&self) -> &InvocationCancellation {
+        &self.cancellation
+    }
+
+    pub fn idempotency_key(&self) -> Option<&IdempotencyKey> {
+        self.idempotency_key.as_ref()
     }
 }
 
@@ -104,7 +290,7 @@ where
     interface_id: InterfaceId,
     protocol: InterfaceProtocol,
     principal: P,
-    deadline: Option<SystemTime>,
+    controls: InvocationControls,
     input: I,
 }
 
@@ -121,12 +307,30 @@ where
         deadline: Option<SystemTime>,
         input: I,
     ) -> Self {
+        Self::with_principal_and_controls(
+            lineage,
+            interface_id,
+            protocol,
+            principal,
+            InvocationControls::new(deadline, InvocationCancellation::new(), None),
+            input,
+        )
+    }
+
+    pub fn with_principal_and_controls(
+        lineage: InvocationLineage,
+        interface_id: InterfaceId,
+        protocol: InterfaceProtocol,
+        principal: P,
+        controls: InvocationControls,
+        input: I,
+    ) -> Self {
         Self {
             lineage,
             interface_id,
             protocol,
             principal,
-            deadline,
+            controls,
             input,
         }
     }
@@ -149,6 +353,10 @@ where
 
     pub fn principal_summary(&self) -> PrincipalSummary {
         self.principal.summary()
+    }
+
+    pub fn controls(&self) -> &InvocationControls {
+        &self.controls
     }
 }
 
@@ -358,12 +566,32 @@ pub trait InterfaceTargetAdmissionPort: Send + Sync + 'static {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum InterfaceInvocationStage {
+    Received,
     Resolved,
+    PrincipalEstablished,
     Authorized,
     Admitted,
-    BeforeHooksCompleted,
-    Invoking,
-    AfterHooksCompleted,
+    Prepared,
+    Dispatched,
+    Executing,
+    PostProcessed,
+    Projected,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InterfaceStageRecord {
+    stage: InterfaceInvocationStage,
+    at: SystemTime,
+}
+
+impl InterfaceStageRecord {
+    pub fn stage(&self) -> InterfaceInvocationStage {
+        self.stage
+    }
+
+    pub fn at(&self) -> SystemTime {
+        self.at
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -375,16 +603,46 @@ pub enum InterfaceInvocationTerminal {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolvedInvocationPin {
+    interface_version: crate::InterfaceVersion,
+    binding_id: BindingId,
+    binding_fingerprint: BindingFingerprint,
+    plan_fingerprint: PlanFingerprint,
+}
+
+impl ResolvedInvocationPin {
+    pub fn interface_version(&self) -> &crate::InterfaceVersion {
+        &self.interface_version
+    }
+
+    pub fn binding_id(&self) -> &BindingId {
+        &self.binding_id
+    }
+
+    pub fn binding_fingerprint(&self) -> &BindingFingerprint {
+        &self.binding_fingerprint
+    }
+
+    pub fn plan_fingerprint(&self) -> &PlanFingerprint {
+        &self.plan_fingerprint
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct InterfaceInvocationReceipt {
     invocation_id: InvocationId,
     parent_invocation_id: Option<InvocationId>,
     interface_id: InterfaceId,
+    resolved: Option<ResolvedInvocationPin>,
     protocol: InterfaceProtocol,
     principal: PrincipalSummary,
     graph_fingerprint: GraphFingerprint,
     registry_fingerprint: RegistryFingerprint,
-    stages: Vec<InterfaceInvocationStage>,
+    stages: Vec<InterfaceStageRecord>,
+    attempt: Option<ExecutionAttempt>,
+    idempotency_key: Option<IdempotencyKey>,
     terminal: InterfaceInvocationTerminal,
+    terminal_at: SystemTime,
 }
 
 impl InterfaceInvocationReceipt {
@@ -398,6 +656,10 @@ impl InterfaceInvocationReceipt {
 
     pub fn interface_id(&self) -> &InterfaceId {
         &self.interface_id
+    }
+
+    pub fn resolved(&self) -> Option<&ResolvedInvocationPin> {
+        self.resolved.as_ref()
     }
 
     pub fn protocol(&self) -> InterfaceProtocol {
@@ -416,12 +678,42 @@ impl InterfaceInvocationReceipt {
         &self.registry_fingerprint
     }
 
-    pub fn stages(&self) -> &[InterfaceInvocationStage] {
+    pub fn stage_records(&self) -> &[InterfaceStageRecord] {
         &self.stages
+    }
+
+    pub fn stages(&self) -> impl ExactSizeIterator<Item = InterfaceInvocationStage> + '_ {
+        self.stages.iter().map(InterfaceStageRecord::stage)
+    }
+
+    pub fn attempt(&self) -> Option<&ExecutionAttempt> {
+        self.attempt.as_ref()
+    }
+
+    pub fn idempotency_key(&self) -> Option<&IdempotencyKey> {
+        self.idempotency_key.as_ref()
     }
 
     pub fn terminal(&self) -> InterfaceInvocationTerminal {
         self.terminal
+    }
+
+    pub fn terminal_at(&self) -> SystemTime {
+        self.terminal_at
+    }
+
+    pub fn projected(mut self) -> Self {
+        if !self
+            .stages
+            .iter()
+            .any(|record| record.stage == InterfaceInvocationStage::Projected)
+        {
+            self.stages.push(InterfaceStageRecord {
+                stage: InterfaceInvocationStage::Projected,
+                at: SystemTime::now(),
+            });
+        }
+        self
     }
 }
 
@@ -445,6 +737,161 @@ pub enum InterfaceInvocationError {
     TargetFailed(InterfaceTargetError),
     #[error("interface invocation deadline elapsed")]
     DeadlineElapsed,
+    #[error("interface invocation was cancelled")]
+    Cancelled,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InterfaceTargetFailure<E>
+where
+    E: InterfaceContract,
+{
+    classification: Arc<str>,
+    error: E,
+}
+
+impl<E> InterfaceTargetFailure<E>
+where
+    E: InterfaceContract,
+{
+    pub fn new(classification: impl AsRef<str>, error: E) -> Self {
+        Self {
+            classification: Arc::from(classification.as_ref()),
+            error,
+        }
+    }
+
+    pub fn classification(&self) -> &str {
+        self.classification.as_ref()
+    }
+
+    pub fn error(&self) -> &E {
+        &self.error
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum InterfaceStreamTerminal<O, E>
+where
+    O: InterfaceContract,
+    E: InterfaceContract,
+{
+    Completed(O),
+    Failed(InterfaceTargetFailure<E>),
+    Rejected { classification: Arc<str> },
+    Cancelled,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InterfaceServerStream<S, O, E>
+where
+    S: InterfaceContract,
+    O: InterfaceContract,
+    E: InterfaceContract,
+{
+    events: Vec<S>,
+    terminal: InterfaceStreamTerminal<O, E>,
+}
+
+impl<S, O, E> InterfaceServerStream<S, O, E>
+where
+    S: InterfaceContract,
+    O: InterfaceContract,
+    E: InterfaceContract,
+{
+    pub fn events(&self) -> &[S] {
+        &self.events
+    }
+
+    pub fn terminal(&self) -> &InterfaceStreamTerminal<O, E> {
+        &self.terminal
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+pub enum InterfaceStreamStateError {
+    #[error("stream terminal is missing")]
+    MissingTerminal,
+    #[error("stream already has a terminal")]
+    DuplicateTerminal,
+    #[error("stream event cannot follow its terminal")]
+    EventAfterTerminal,
+}
+
+pub struct InterfaceStreamAccumulator<S, O, E>
+where
+    S: InterfaceContract,
+    O: InterfaceContract,
+    E: InterfaceContract,
+{
+    events: Vec<S>,
+    terminal: Option<InterfaceStreamTerminal<O, E>>,
+}
+
+impl<S, O, E> Default for InterfaceStreamAccumulator<S, O, E>
+where
+    S: InterfaceContract,
+    O: InterfaceContract,
+    E: InterfaceContract,
+{
+    fn default() -> Self {
+        Self {
+            events: Vec::new(),
+            terminal: None,
+        }
+    }
+}
+
+impl<S, O, E> InterfaceStreamAccumulator<S, O, E>
+where
+    S: InterfaceContract,
+    O: InterfaceContract,
+    E: InterfaceContract,
+{
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn emit(&mut self, event: S) -> Result<(), InterfaceStreamStateError> {
+        if self.terminal.is_some() {
+            return Err(InterfaceStreamStateError::EventAfterTerminal);
+        }
+        self.events.push(event);
+        Ok(())
+    }
+
+    pub fn finish(
+        &mut self,
+        terminal: InterfaceStreamTerminal<O, E>,
+    ) -> Result<(), InterfaceStreamStateError> {
+        if self.terminal.is_some() {
+            return Err(InterfaceStreamStateError::DuplicateTerminal);
+        }
+        self.terminal = Some(terminal);
+        Ok(())
+    }
+
+    pub fn into_stream(self) -> Result<InterfaceServerStream<S, O, E>, InterfaceStreamStateError> {
+        Ok(InterfaceServerStream {
+            events: self.events,
+            terminal: self
+                .terminal
+                .ok_or(InterfaceStreamStateError::MissingTerminal)?,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum CanonicalInvocationResult<O, E, S>
+where
+    O: InterfaceContract,
+    E: InterfaceContract,
+    S: InterfaceContract,
+{
+    Unary(Result<O, InterfaceTargetFailure<E>>),
+    ServerStream(InterfaceServerStream<S, O, E>),
+    AsyncAck(O),
+    PlatformFailure { classification: Arc<str> },
 }
 
 #[derive(Debug)]
@@ -525,7 +972,7 @@ where
         }
     }
 
-    pub async fn invoke<I, O>(
+    pub async fn invoke<I, O, E>(
         &self,
         snapshot: Arc<CompiledInterfaceRegistry>,
         envelope: InvocationEnvelope<I, P>,
@@ -533,11 +980,28 @@ where
     where
         I: InterfaceContract,
         O: InterfaceContract,
+        E: InterfaceContract,
     {
-        self.invoke_internal(snapshot, envelope, None).await
+        self.invoke_internal::<I, O, E>(snapshot, envelope, None, None)
+            .await
     }
 
-    pub async fn invoke_with_hook_plan<I, O>(
+    pub async fn invoke_with_dispatch_target<I, O, E>(
+        &self,
+        snapshot: Arc<CompiledInterfaceRegistry>,
+        envelope: InvocationEnvelope<I, P>,
+        target: ExecutionTargetPin,
+    ) -> InterfaceInvocationResult<O>
+    where
+        I: InterfaceContract,
+        O: InterfaceContract,
+        E: InterfaceContract,
+    {
+        self.invoke_internal::<I, O, E>(snapshot, envelope, None, Some(target))
+            .await
+    }
+
+    pub async fn invoke_with_hook_plan<I, O, E>(
         &self,
         snapshot: Arc<CompiledInterfaceRegistry>,
         envelope: InvocationEnvelope<I, P>,
@@ -546,27 +1010,30 @@ where
     where
         I: InterfaceContract,
         O: InterfaceContract,
+        E: InterfaceContract,
     {
-        self.invoke_internal(snapshot, envelope, Some(hook_plan))
+        self.invoke_internal::<I, O, E>(snapshot, envelope, Some(hook_plan), None)
             .await
     }
 
-    async fn invoke_internal<I, O>(
+    async fn invoke_internal<I, O, E>(
         &self,
         snapshot: Arc<CompiledInterfaceRegistry>,
         envelope: InvocationEnvelope<I, P>,
         hook_plan: Option<&TypedInterfaceHookPlan<I, O>>,
+        dispatch_target: Option<ExecutionTargetPin>,
     ) -> InterfaceInvocationResult<O>
     where
         I: InterfaceContract,
         O: InterfaceContract,
+        E: InterfaceContract,
     {
         let InvocationEnvelope {
             lineage,
             interface_id,
             protocol,
             principal,
-            deadline,
+            controls,
             mut input,
         } = envelope;
         let mut receipt = ReceiptBuilder::new(
@@ -576,6 +1043,7 @@ where
             interface_id.clone(),
             protocol,
             principal.summary(),
+            &controls,
         );
         let hook_context = InterfaceHookContext::new(
             principal.summary(),
@@ -583,20 +1051,32 @@ where
             snapshot.graph_fingerprint().clone(),
             snapshot.fingerprint().clone(),
         );
-        if deadline.is_some_and(|deadline| deadline <= SystemTime::now()) {
+        let initial_interruption = if controls.cancellation.is_cancelled() {
+            Some(InvocationInterruption::Cancelled)
+        } else if controls
+            .deadline
+            .is_some_and(|deadline| deadline <= SystemTime::now())
+        {
+            Some(InvocationInterruption::DeadlineElapsed)
+        } else {
+            None
+        };
+        if let Some(interruption) = initial_interruption {
             run_completion_hooks(
+                &controls,
                 hook_plan,
                 &hook_context,
                 InterfaceInvocationTerminal::Cancelled,
             )
             .await;
             return Err(receipt.fail(
-                InterfaceInvocationError::DeadlineElapsed,
+                interruption_error(interruption),
                 InterfaceInvocationTerminal::Cancelled,
             ));
         }
         if hook_plan.is_some_and(|plan| plan.graph_fingerprint() != snapshot.graph_fingerprint()) {
             run_completion_hooks(
+                &controls,
                 hook_plan,
                 &hook_context,
                 InterfaceInvocationTerminal::Rejected,
@@ -609,6 +1089,7 @@ where
         }
         let Some(plan) = snapshot.plan_for_interface(&interface_id).cloned() else {
             run_completion_hooks(
+                &controls,
                 hook_plan,
                 &hook_context,
                 InterfaceInvocationTerminal::Rejected,
@@ -621,9 +1102,11 @@ where
         };
         let definition = plan.definition().clone();
         let binding = plan.binding().clone();
+        receipt.resolve(&plan);
         receipt.stage(InterfaceInvocationStage::Resolved);
         if definition.principal_profile() != P::PROFILE {
             run_completion_hooks(
+                &controls,
                 hook_plan,
                 &hook_context,
                 InterfaceInvocationTerminal::Rejected,
@@ -634,10 +1117,13 @@ where
                 InterfaceInvocationTerminal::Rejected,
             ));
         }
+        receipt.stage(InterfaceInvocationStage::PrincipalEstablished);
         if definition.input_contract() != &contract_identity::<I>()
             || definition.output_contract() != &contract_identity::<O>()
+            || definition.target_error_contract() != &contract_identity::<E>()
         {
             run_completion_hooks(
+                &controls,
                 hook_plan,
                 &hook_context,
                 InterfaceInvocationTerminal::Rejected,
@@ -648,8 +1134,8 @@ where
                 InterfaceInvocationTerminal::Rejected,
             ));
         }
-        let authorization = await_before_deadline(
-            deadline,
+        let authorization = await_in_flight(
+            &controls,
             self.authorization
                 .authorize(InterfaceAuthorizationRequest::new(
                     principal.clone(),
@@ -661,22 +1147,24 @@ where
         .await;
         let authorization = match authorization {
             Ok(authorization) => authorization,
-            Err(()) => {
+            Err(interruption) => {
                 run_completion_hooks(
+                    &controls,
                     hook_plan,
                     &hook_context,
                     InterfaceInvocationTerminal::Cancelled,
                 )
                 .await;
                 return Err(receipt.fail(
-                    InterfaceInvocationError::DeadlineElapsed,
+                    interruption_error(interruption),
                     InterfaceInvocationTerminal::Cancelled,
                 ));
             }
         };
         if let Err(error) = authorization {
-            run_failure_hooks(hook_plan, &hook_context, error.classification()).await;
+            run_failure_hooks(&controls, hook_plan, &hook_context, error.classification()).await;
             run_completion_hooks(
+                &controls,
                 hook_plan,
                 &hook_context,
                 InterfaceInvocationTerminal::Rejected,
@@ -689,34 +1177,37 @@ where
         }
         receipt.stage(InterfaceInvocationStage::Authorized);
         if let Some(target_admission) = &self.target_admission {
-            let admission = await_before_deadline(
-                deadline,
+            let admission = await_in_flight(
+                &controls,
                 target_admission.admit(InterfaceTargetAdmissionRequest::new(
                     principal.summary(),
-                    definition,
-                    binding,
+                    definition.clone(),
+                    binding.clone(),
                     protocol,
                 )),
             )
             .await;
             let admission = match admission {
                 Ok(admission) => admission,
-                Err(()) => {
+                Err(interruption) => {
                     run_completion_hooks(
+                        &controls,
                         hook_plan,
                         &hook_context,
                         InterfaceInvocationTerminal::Cancelled,
                     )
                     .await;
                     return Err(receipt.fail(
-                        InterfaceInvocationError::DeadlineElapsed,
+                        interruption_error(interruption),
                         InterfaceInvocationTerminal::Cancelled,
                     ));
                 }
             };
             if let Err(error) = admission {
-                run_failure_hooks(hook_plan, &hook_context, error.classification()).await;
+                run_failure_hooks(&controls, hook_plan, &hook_context, error.classification())
+                    .await;
                 run_completion_hooks(
+                    &controls,
                     hook_plan,
                     &hook_context,
                     InterfaceInvocationTerminal::Rejected,
@@ -727,39 +1218,52 @@ where
                     InterfaceInvocationTerminal::Rejected,
                 ));
             }
-            receipt.stage(InterfaceInvocationStage::Admitted);
         }
+        receipt.stage(InterfaceInvocationStage::Admitted);
         if let Some(hook_plan) = hook_plan {
             let before =
-                await_before_deadline(deadline, hook_plan.run_before(&hook_context, &mut input))
-                    .await;
+                await_in_flight(&controls, hook_plan.run_before(&hook_context, &mut input)).await;
             match before {
-                Err(()) => {
-                    hook_plan
-                        .run_completion(&hook_context, InterfaceInvocationTerminal::Cancelled)
-                        .await;
+                Err(interruption) => {
+                    run_completion_hooks(
+                        &controls,
+                        Some(hook_plan),
+                        &hook_context,
+                        InterfaceInvocationTerminal::Cancelled,
+                    )
+                    .await;
                     return Err(receipt.fail(
-                        InterfaceInvocationError::DeadlineElapsed,
+                        interruption_error(interruption),
                         InterfaceInvocationTerminal::Cancelled,
                     ));
                 }
                 Ok(Err(error)) => {
-                    hook_plan
-                        .run_failure(&hook_context, error.classification())
-                        .await;
-                    hook_plan
-                        .run_completion(&hook_context, InterfaceInvocationTerminal::Rejected)
-                        .await;
+                    run_failure_hooks(
+                        &controls,
+                        Some(hook_plan),
+                        &hook_context,
+                        error.classification(),
+                    )
+                    .await;
+                    run_completion_hooks(
+                        &controls,
+                        Some(hook_plan),
+                        &hook_context,
+                        InterfaceInvocationTerminal::Rejected,
+                    )
+                    .await;
                     return Err(receipt.fail(
                         InterfaceInvocationError::BeforeHookRejected(error),
                         InterfaceInvocationTerminal::Rejected,
                     ));
                 }
-                Ok(Ok(())) => receipt.stage(InterfaceInvocationStage::BeforeHooksCompleted),
+                Ok(Ok(())) => {}
             }
         }
-        let Some(handler) = snapshot.handler::<I, O, P>(&interface_id) else {
+        receipt.stage(InterfaceInvocationStage::Prepared);
+        let Some(handler) = snapshot.handler::<I, O, E, P>(&interface_id) else {
             run_completion_hooks(
+                &controls,
                 hook_plan,
                 &hook_context,
                 InterfaceInvocationTerminal::Rejected,
@@ -770,25 +1274,34 @@ where
                 InterfaceInvocationTerminal::Rejected,
             ));
         };
-        receipt.stage(InterfaceInvocationStage::Invoking);
+        let attempt = ExecutionAttempt::first(dispatch_target.unwrap_or_else(|| {
+            ExecutionTargetPin::BuiltIn {
+                handler: definition.handler_reference().clone(),
+                target: definition.target_reference().clone(),
+            }
+        }));
+        receipt.dispatch(attempt.clone());
+        receipt.stage(InterfaceInvocationStage::Executing);
         let context = InterfaceHandlerContext::new(
             principal,
+            attempt,
             lineage.invocation_id(),
             snapshot.graph_fingerprint().clone(),
             snapshot.fingerprint().clone(),
         );
-        let target = await_before_deadline(deadline, handler.invoke(context, input)).await;
+        let target = await_in_flight(&controls, handler.invoke(context, input)).await;
         let target = match target {
             Ok(target) => target,
-            Err(()) => {
+            Err(interruption) => {
                 run_completion_hooks(
+                    &controls,
                     hook_plan,
                     &hook_context,
                     InterfaceInvocationTerminal::Cancelled,
                 )
                 .await;
                 return Err(receipt.fail(
-                    InterfaceInvocationError::DeadlineElapsed,
+                    interruption_error(interruption),
                     InterfaceInvocationTerminal::Cancelled,
                 ));
             }
@@ -796,12 +1309,30 @@ where
         match target {
             Ok(value) => {
                 if let Some(hook_plan) = hook_plan {
-                    hook_plan.run_after(&hook_context, &value).await;
-                    receipt.stage(InterfaceInvocationStage::AfterHooksCompleted);
-                    hook_plan
-                        .run_completion(&hook_context, InterfaceInvocationTerminal::Completed)
+                    if let Err(interruption) =
+                        await_in_flight(&controls, hook_plan.run_after(&hook_context, &value)).await
+                    {
+                        run_completion_hooks(
+                            &controls,
+                            Some(hook_plan),
+                            &hook_context,
+                            InterfaceInvocationTerminal::Cancelled,
+                        )
                         .await;
+                        return Err(receipt.fail(
+                            interruption_error(interruption),
+                            InterfaceInvocationTerminal::Cancelled,
+                        ));
+                    }
+                    run_completion_hooks(
+                        &controls,
+                        Some(hook_plan),
+                        &hook_context,
+                        InterfaceInvocationTerminal::Completed,
+                    )
+                    .await;
                 }
+                receipt.stage(InterfaceInvocationStage::PostProcessed);
                 Ok(InterfaceInvocationOutcome {
                     value,
                     receipt: receipt.complete(),
@@ -809,12 +1340,20 @@ where
             }
             Err(error) => {
                 if let Some(hook_plan) = hook_plan {
-                    hook_plan
-                        .run_failure(&hook_context, error.classification())
-                        .await;
-                    hook_plan
-                        .run_completion(&hook_context, InterfaceInvocationTerminal::Failed)
-                        .await;
+                    run_failure_hooks(
+                        &controls,
+                        Some(hook_plan),
+                        &hook_context,
+                        error.classification(),
+                    )
+                    .await;
+                    run_completion_hooks(
+                        &controls,
+                        Some(hook_plan),
+                        &hook_context,
+                        InterfaceInvocationTerminal::Failed,
+                    )
+                    .await;
                 }
                 Err(receipt.fail(target_error(error), InterfaceInvocationTerminal::Failed))
             }
@@ -823,6 +1362,7 @@ where
 }
 
 async fn run_failure_hooks<I, O>(
+    controls: &InvocationControls,
     hook_plan: Option<&TypedInterfaceHookPlan<I, O>>,
     context: &InterfaceHookContext,
     classification: &str,
@@ -831,11 +1371,12 @@ async fn run_failure_hooks<I, O>(
     O: InterfaceContract,
 {
     if let Some(hook_plan) = hook_plan {
-        hook_plan.run_failure(context, classification).await;
+        let _ = await_in_flight(controls, hook_plan.run_failure(context, classification)).await;
     }
 }
 
 async fn run_completion_hooks<I, O>(
+    controls: &InvocationControls,
     hook_plan: Option<&TypedInterfaceHookPlan<I, O>>,
     context: &InterfaceHookContext,
     terminal: InterfaceInvocationTerminal,
@@ -844,7 +1385,7 @@ async fn run_completion_hooks<I, O>(
     O: InterfaceContract,
 {
     if let Some(hook_plan) = hook_plan {
-        hook_plan.run_completion(context, terminal).await;
+        let _ = await_in_flight(controls, hook_plan.run_completion(context, terminal)).await;
     }
 }
 
@@ -852,11 +1393,14 @@ struct ReceiptBuilder {
     invocation_id: InvocationId,
     parent_invocation_id: Option<InvocationId>,
     interface_id: InterfaceId,
+    resolved: Option<ResolvedInvocationPin>,
     protocol: InterfaceProtocol,
     principal: PrincipalSummary,
     graph_fingerprint: GraphFingerprint,
     registry_fingerprint: RegistryFingerprint,
-    stages: Vec<InterfaceInvocationStage>,
+    stages: Vec<InterfaceStageRecord>,
+    attempt: Option<ExecutionAttempt>,
+    idempotency_key: Option<IdempotencyKey>,
 }
 
 impl ReceiptBuilder {
@@ -867,21 +1411,45 @@ impl ReceiptBuilder {
         interface_id: InterfaceId,
         protocol: InterfaceProtocol,
         principal: PrincipalSummary,
+        controls: &InvocationControls,
     ) -> Self {
         Self {
             invocation_id,
             parent_invocation_id,
             interface_id,
+            resolved: None,
             protocol,
             principal,
             graph_fingerprint: snapshot.graph_fingerprint().clone(),
             registry_fingerprint: snapshot.fingerprint().clone(),
-            stages: Vec::new(),
+            stages: vec![InterfaceStageRecord {
+                stage: InterfaceInvocationStage::Received,
+                at: SystemTime::now(),
+            }],
+            attempt: None,
+            idempotency_key: controls.idempotency_key.clone(),
         }
     }
 
     fn stage(&mut self, stage: InterfaceInvocationStage) {
-        self.stages.push(stage);
+        self.stages.push(InterfaceStageRecord {
+            stage,
+            at: SystemTime::now(),
+        });
+    }
+
+    fn resolve(&mut self, plan: &crate::CompiledInvocationPlan) {
+        self.resolved = Some(ResolvedInvocationPin {
+            interface_version: plan.definition().version().clone(),
+            binding_id: plan.binding().binding_id().clone(),
+            binding_fingerprint: plan.binding_fingerprint().clone(),
+            plan_fingerprint: plan.fingerprint().clone(),
+        });
+    }
+
+    fn dispatch(&mut self, attempt: ExecutionAttempt) {
+        self.attempt = Some(attempt);
+        self.stage(InterfaceInvocationStage::Dispatched);
     }
 
     fn complete(self) -> InterfaceInvocationReceipt {
@@ -904,12 +1472,16 @@ impl ReceiptBuilder {
             invocation_id: self.invocation_id,
             parent_invocation_id: self.parent_invocation_id,
             interface_id: self.interface_id,
+            resolved: self.resolved,
             protocol: self.protocol,
             principal: self.principal,
             graph_fingerprint: self.graph_fingerprint,
             registry_fingerprint: self.registry_fingerprint,
             stages: self.stages,
+            attempt: self.attempt,
+            idempotency_key: self.idempotency_key,
             terminal,
+            terminal_at: SystemTime::now(),
         }
     }
 }
@@ -919,6 +1491,23 @@ fn contract_identity<T: InterfaceContract>() -> ContractIdentity {
         .expect("typed interface contract constants must be valid identities")
 }
 
-fn target_error(error: InterfaceTargetError) -> InterfaceInvocationError {
-    InterfaceInvocationError::TargetFailed(error)
+fn target_error<E>(error: InterfaceTargetFailure<E>) -> InterfaceInvocationError
+where
+    E: InterfaceContract,
+{
+    let InterfaceTargetFailure {
+        classification,
+        error,
+    } = error;
+    InterfaceInvocationError::TargetFailed(InterfaceTargetError::with_source(
+        classification.as_ref(),
+        error,
+    ))
+}
+
+fn interruption_error(interruption: InvocationInterruption) -> InterfaceInvocationError {
+    match interruption {
+        InvocationInterruption::DeadlineElapsed => InterfaceInvocationError::DeadlineElapsed,
+        InvocationInterruption::Cancelled => InterfaceInvocationError::Cancelled,
+    }
 }
