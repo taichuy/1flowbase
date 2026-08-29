@@ -190,7 +190,7 @@ test('Delivery 1912 production slice consumes one compiled registry for HTTP and
   assert.match(http, /invoke_providers_view/u);
   assert.match(mcp, /invoke_providers_view/u);
   assert.match(operation, /registry\.snapshot\(\)/u);
-  assert.match(operation, /InvocationEnvelope::new/u);
+  assert.match(operation, /InvocationEnvelope::with_principal/u);
   assert.match(operation, /InterfaceProtocol/u);
   assert.doesNotMatch(operation, /require_session|Cookie|HeaderMap/u);
   const contractDeclarations = [
