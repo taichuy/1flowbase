@@ -1,5 +1,6 @@
 //! Protocol-independent active interface definitions and invocation contracts.
 
+mod extension;
 mod hook;
 mod identity;
 mod invocation;
@@ -48,3 +49,8 @@ pub use registry::{
 
 #[cfg(test)]
 mod _tests;
+pub use extension::{
+    compile_effective_handler, InterfaceExtensionCompilationError, InterfaceExtensionFact,
+    InterfaceExtensionIsolation, InterfaceExtensionPermission, InterfaceExtensionPoint,
+    InterfaceExtensionRegistration, InterfaceExtensionTier, InterfaceHandlerCandidate,
+};
