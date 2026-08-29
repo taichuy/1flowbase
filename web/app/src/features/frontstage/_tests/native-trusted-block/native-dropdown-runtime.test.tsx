@@ -237,17 +237,14 @@ describe('native block Dropdown runtime adapter', () => {
     );
   });
 
-  test('I1915-AC-006 reactivates a controlled open Dropdown after a layout epoch change', async () => {
+  test('I1915-AC-006 keeps a controlled open Dropdown in one Top Layer across a layout epoch change', async () => {
     const registry = createFrontstageNativeReactModuleRegistry();
     const antdModule = await registry.load('antd');
     const Dropdown = antdModule.Dropdown as ComponentType<DropdownProps>;
     const root = document.createElement('div');
     document.body.append(root);
     const Block = () => (
-      <Dropdown
-        open
-        menu={{ items: [{ key: 'profile', label: 'Profile' }] }}
-      >
+      <Dropdown open menu={{ items: [{ key: 'profile', label: 'Profile' }] }}>
         <button type="button">Controlled menu</button>
       </Dropdown>
     );
@@ -285,8 +282,8 @@ describe('native block Dropdown runtime adapter', () => {
         'open'
       )
     );
-    expect(hidePopover).toHaveBeenCalledOnce();
-    expect(showPopover).toHaveBeenCalledTimes(2);
+    expect(hidePopover).not.toHaveBeenCalled();
+    expect(showPopover).toHaveBeenCalledOnce();
   });
 
   test('I1923-AC-001/002 keeps a fixed virtual trigger in viewport coordinates', async () => {
@@ -350,9 +347,9 @@ describe('native block Dropdown runtime adapter', () => {
         />
       );
       const shadowRoot = await waitFor(() => root.shadowRoot as ShadowRoot);
-      const anchor = within(
-        shadowRoot as unknown as HTMLElement
-      ).getByTestId('virtual-anchor');
+      const anchor = within(shadowRoot as unknown as HTMLElement).getByTestId(
+        'virtual-anchor'
+      );
 
       await waitFor(() => {
         expect(anchor.getBoundingClientRect()).toMatchObject({

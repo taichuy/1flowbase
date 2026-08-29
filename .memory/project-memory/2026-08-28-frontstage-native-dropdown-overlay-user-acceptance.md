@@ -1,12 +1,13 @@
 ---
 memory_type: project
 topic: Frontstage Native Block Dropdown Top Layer adapter
-summary: 用户确认 #1915 采用 Block-scoped Top Layer Overlay；#1923 已修复 ShadowRoot Selection 与 fixed virtual trigger；#1924 已让 Dropdown 级联 submenu 继承同一 Top Layer；#1928 将同一机制扩展到 AntD Menu。
+summary: 用户确认 Block-scoped Top Layer Overlay；#1931 已把 Dropdown/Menu 的组件级 layer 收敛为 surface 统一 Host，并覆盖通用 AntD rc-trigger 浮层。
 keywords:
   - issue 1915
   - issue 1923
   - issue 1924
   - issue 1928
+  - issue 1931
   - native dropdown
   - top layer
   - popover
@@ -19,15 +20,16 @@ match_when:
   - 处理 popup 被 overflow/contain 裁剪或 UI 模式切换后无法打开
   - 处理 Selection Range 虚拟锚点受 RGL transform 坐标偏移
 created_at: 2026-08-28 09
-updated_at: 2026-08-28 23
-last_verified_at: 2026-08-28 23
+updated_at: 2026-08-29 11
+last_verified_at: 2026-08-29 11
 decision_policy: verify_before_decision
-status: completed
+status: user-acceptance
 scope:
   - https://github.com/taichuy/1flowbase/issues/1915
   - https://github.com/taichuy/1flowbase/issues/1923
   - https://github.com/taichuy/1flowbase/issues/1924
   - https://github.com/taichuy/1flowbase/issues/1928
+  - https://github.com/taichuy/1flowbase/issues/1931
   - web/app/src/features/frontstage/lib/native-modules/native-dropdown-runtime.tsx
   - web/app/src/features/frontstage/lib/native-modules/native-overlay-layer.ts
   - web/app/src/features/frontstage/lib/native-modules/menu/native-menu-runtime.tsx
@@ -49,6 +51,8 @@ scope:
 
 #1928 将同一个容器能力扩展到原生 AntD `Menu`：Runtime registry 导出 `NativeBlockMenu`，默认把水平/垂直子菜单与 `popupRender` 放入当前 Block 的 Top Layer；作者显式 `getPopupContainer` 仍优先，AntD/rc-trigger 继续负责 placement 与视口翻转。Adapter 保留 `openKeys`、`onOpenChange`、ref 与静态成员合同，并在 layout epoch 变化时清理非受控展开状态。
 
+#1931 将组件级能力收敛为每个 Native Block surface 唯一的 `NativeOverlayHost`：顶层 ConfigProvider 默认把 Cascader、Select、TreeSelect、DatePicker、Tooltip、Popover 等 rc-trigger 浮层路由到同一个 ShadowRoot 内 Browser Top Layer；Dropdown/Menu 复用该 Host，不再创建第二层 owner。Host 观察容器内 popup 的实际可见性来控制 Top Layer，多个 popup 并存时保持开启，最后一个关闭或 surface 卸载时确定性回收；作者显式容器仍优先。
+
 ## 为什么这样做
 
 原 popup 留在 Block ShadowRoot 的普通渲染层，会被设计态 `overflow: clip` 和 `contain: layout paint` 裁剪；UI 模式切换时 rc-trigger 的 hover intent 还可能停留在 hidden 状态。Top Layer 负责视觉逃逸，adapter 的受控 open transition 与 overlay generation 负责确定性恢复，Ant Design 继续拥有 placement、flip、菜单和 Escape 语义。
@@ -66,3 +70,5 @@ scope:
 #1924 的认证 Chromium 边界 fixture 将设计态裁剪边界压到 `bottom=297`，submenu 实际延伸到 `bottom=362` 后仍完整可见；子菜单 DOM 父链包含当前 Block 的 NativeOverlayLayer，选择子项后 layer 回到 closed，且无 page error。用户已于 2026-08-28 确认修复，Issue 已关闭。
 
 #1928 的真实 Block `01a047b3-4e31-7250-93c2-c5bc73214fe8` 浏览器证据显示自定义 Menu popup 为 `761×245`，属于 open Top Layer 且完整位于视口内。触发器下方仅余 15px，因此 rc-trigger 正确向上翻转；这不是裁剪回归，也不应由 Runtime 强制改为向下。Issue 已进入用户验收。
+
+#1931 的真实 Block `2b6e34f3-2d9c-4504-a625-32305f312f0a` 浏览器证据显示 Cascader popup 进入 open Top Layer，并越过 Block 右边界；UI 模式往返后可再次打开，page/console errors 均为 0。定向回归 5 files / 30 tests、Native React foundation fast pack 180 tests、TypeScript、ESLint、Prettier 与 diff check 均通过。无日历截止日期；Issue 进入 `phase:user-acceptance`，等待用户刷新页面验收后关闭。

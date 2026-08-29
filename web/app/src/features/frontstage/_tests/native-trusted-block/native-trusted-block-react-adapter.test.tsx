@@ -422,7 +422,7 @@ describe('frontstage native trusted block declarative portal host', () => {
     dispose.mockRestore();
   });
 
-  test('D3R-AC-007 scopes providers, authored CSS, and popup containment to the block ShadowRoot', async () => {
+  test('I1931-AC-001/002 scopes styles to the ShadowRoot and default popups to the Block top layer', async () => {
     const root = createBlockRoot();
     const receivedContainment: unknown[] = [];
     const Block: FrontstageNativeTrustedBlockReactComponent = ({
@@ -453,7 +453,40 @@ describe('frontstage native trusted block declarative portal host', () => {
       expect.objectContaining({ container: shadowRoot })
     ]);
     const config = providerRecords.configs[0];
-    expect((config.getPopupContainer as () => ShadowRoot)()).toBe(shadowRoot);
+    const popupContainer = (config.getPopupContainer as () => HTMLElement)();
+    expect(popupContainer).toBeInstanceOf(HTMLElement);
+    expect(popupContainer.parentNode).toBe(shadowRoot);
+    expect(popupContainer).toHaveAttribute(
+      'data-flowbase-native-overlay-layer',
+      'native-block-1'
+    );
+    expect(popupContainer).toHaveAttribute('popover', 'manual');
+    const popup = document.createElement('div');
+    popup.textContent = 'Cascader options';
+    const nestedPopup = document.createElement('div');
+    nestedPopup.textContent = 'Cascader nested options';
+    popupContainer.append(popup, nestedPopup);
+    await waitFor(() =>
+      expect(popupContainer).toHaveAttribute(
+        'data-flowbase-native-overlay-state',
+        'open'
+      )
+    );
+    popup.remove();
+    await new Promise<void>((resolve) =>
+      popupContainer.ownerDocument.defaultView?.queueMicrotask(resolve)
+    );
+    expect(popupContainer).toHaveAttribute(
+      'data-flowbase-native-overlay-state',
+      'open'
+    );
+    nestedPopup.remove();
+    await waitFor(() =>
+      expect(popupContainer).toHaveAttribute(
+        'data-flowbase-native-overlay-state',
+        'closed'
+      )
+    );
     expect((config.getTargetContainer as () => Window)()).toBe(window);
     expect(receivedContainment).toEqual([
       expect.objectContaining({

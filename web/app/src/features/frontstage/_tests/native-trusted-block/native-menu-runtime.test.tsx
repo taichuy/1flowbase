@@ -76,7 +76,12 @@ describe('native block Menu runtime adapter', () => {
       return node as HTMLElement;
     });
     expect(layer).toHaveAttribute('popover', 'manual');
-    expect(layer).toHaveAttribute('data-flowbase-native-overlay-state', 'open');
+    await waitFor(() =>
+      expect(layer).toHaveAttribute(
+        'data-flowbase-native-overlay-state',
+        'open'
+      )
+    );
     expect(showPopover).toHaveBeenCalledOnce();
     await waitFor(() =>
       expect(within(layer).getByText('Custom popup panel')).toBeVisible()
@@ -125,7 +130,7 @@ describe('native block Menu runtime adapter', () => {
     );
     expect(
       shadowRoot.querySelector('[data-flowbase-native-overlay-layer]')
-    ).toBeNull();
+    ).toHaveAttribute('data-flowbase-native-overlay-state', 'closed');
     expect(showPopover).not.toHaveBeenCalled();
   });
 

@@ -46,6 +46,10 @@ import {
   resolveNativeBlockScrollOwner
 } from './native-modules/native-block-surface-context';
 import { useNativeBlockMotionTheme } from './native-modules/native-motion-runtime';
+import {
+  createNativeOverlayHost,
+  type NativeOverlayHost
+} from './native-modules/native-overlay-host';
 
 export interface FrontstageNativeTrustedBlockReactComponentProps {
   plan: NativeTrustedBlockPreparePlan;
@@ -126,6 +130,10 @@ export function FrontstageNativeTrustedBlockPortalHost({
 }: FrontstageNativeTrustedBlockPortalHostProps): ReactNode {
   const [surface, setSurface] =
     useState<NativeTrustedBlockPortalSurface | null>(null);
+  const [overlayHostState, setOverlayHostState] = useState<{
+    surface: NativeTrustedBlockPortalSurface;
+    host: NativeOverlayHost;
+  } | null>(null);
   const lifecycleRef = useRef<TrustedFrontendContributionHandle | null>(null);
   const renderInput = useMemo(
     () => ({ plan, BlockComponent, ctx, moduleAssets, providerScope }),
@@ -211,6 +219,18 @@ export function FrontstageNativeTrustedBlockPortalHost({
         : null,
     [ctx, externalAssetScope, surface]
   );
+  const overlayHost =
+    overlayHostState?.surface === surface ? overlayHostState.host : null;
+
+  useLayoutEffect(() => {
+    if (!surface) return;
+    const host = createNativeOverlayHost({
+      blockId: plan.blockId,
+      targetRoot: surface.shadowRoot
+    });
+    setOverlayHostState({ surface, host });
+    return () => host.dispose();
+  }, [plan.blockId, surface]);
 
   useLayoutEffect(
     () => () => externalAssetScope?.dispose(),
@@ -227,7 +247,8 @@ export function FrontstageNativeTrustedBlockPortalHost({
     !styleCache ||
     !antdStylePrefix ||
     !portalContainment ||
-    !blockContext
+    !blockContext ||
+    !overlayHost
   ) {
     return null;
   }
@@ -261,6 +282,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
       styleCache,
       moduleSources,
       antdStylePrefix,
+      overlayHost,
       { ...providerScope, theme: runtimeMotionTheme },
       providerWrapper,
       surfaceLayoutEpoch
@@ -474,17 +496,18 @@ function wrapWithHostProviders(
   styleCache: ReturnType<typeof createCache>,
   moduleSources: readonly string[],
   antdStylePrefix: string,
+  overlayHost: NativeOverlayHost,
   providerScope?: FrontstageNativeTrustedBlockProviderScope,
   providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper,
   surfaceLayoutEpoch = 'stable'
 ): ReactNode {
-  const getShadowContainer = () => context.shadowRoot;
+  const getPopupContainer = () => overlayHost.getPopupContainer();
   const getTargetContainer = () => context.scrollOwner;
   const isolatedPrefix = createShadowStylePrefix(context.plan.blockId);
   const hostChildren = (
     <StyleProvider cache={styleCache} container={context.shadowRoot}>
       <ConfigProvider
-        getPopupContainer={getShadowContainer}
+        getPopupContainer={getPopupContainer}
         getTargetContainer={getTargetContainer}
         locale={providerScope?.locale}
         prefixCls={isolatedPrefix}
@@ -494,7 +517,8 @@ function wrapWithHostProviders(
           scope={{
             targetRoot: context.shadowRoot,
             scrollOwner: context.scrollOwner,
-            layoutEpoch: surfaceLayoutEpoch
+            layoutEpoch: surfaceLayoutEpoch,
+            overlayHost
           }}
         >
           <AntdApp>{children}</AntdApp>

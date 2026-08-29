@@ -5,10 +5,13 @@ import {
   type ReactNode
 } from 'react';
 
+import type { NativeOverlayHost } from './native-overlay-host';
+
 export interface NativeBlockSurfaceScope {
   targetRoot: ShadowRoot;
   scrollOwner: HTMLElement | Window;
   layoutEpoch: string;
+  overlayHost: NativeOverlayHost;
 }
 
 const NativeBlockSurfaceContext = createContext<NativeBlockSurfaceScope | null>(
@@ -33,7 +36,9 @@ export function useNativeBlockSurface(): NativeBlockSurfaceScope | null {
   return useContext(NativeBlockSurfaceContext);
 }
 
-export function resolveNativeBlockScrollOwner(root: Element): HTMLElement | Window {
+export function resolveNativeBlockScrollOwner(
+  root: Element
+): HTMLElement | Window {
   let candidate = root.parentElement;
   while (candidate) {
     if (candidate.hasAttribute('data-flowbase-frontstage-scroll-owner')) {
