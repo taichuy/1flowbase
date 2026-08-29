@@ -9,8 +9,8 @@
 - Fresh centralized QA: review-remediation attempt 7, 16/16 rows complete, zero unrun rows
 - Evidence root: `tmp/test-governance/1944-interface-lifecycle/`
 
-The IF-F08 commit is the commit containing this receipt. It changes documentation only; the
-tested product assembly remains `d3b28fce91507f28da8b2e34fbe8360a657df0ca`.
+The IF-F08 receipt commits are documentation-only; the tested product assembly remains
+`d3b28fce91507f28da8b2e34fbe8360a657df0ca`.
 
 ## Work Packet ledger
 
@@ -153,6 +153,7 @@ frozen assembly after full behavioral acceptance; it exposes no public API or ru
   route-equivalence tests.
 - Runtime behavior, stream order, stdio wire and plugin manifests: preserved by runtime suites,
   official Node suites, 9 executable builds and real Host conformance.
-- Main repository ended at the tested assembly with only the two protected private memory changes.
+- QA ended at the tested product assembly with only the two protected private memory changes;
+  documentation-only Receipt commits follow that assembly.
 - Official plugin repository ended clean at `8bf11605b02a0df8dd01271875f1ec3d182c0d3a`.
 - No push was performed. #1944 and #1893 remain open. Root acceptance criteria were not settled.
