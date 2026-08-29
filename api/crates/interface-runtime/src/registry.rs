@@ -644,10 +644,8 @@ impl InterfaceTargetError {
     }
 }
 
-pub type InterfaceHandlerFuture<O, E>
-    = Pin<Box<dyn Future<Output = Result<O, InterfaceTargetFailure<E>>> + Send + 'static>>
-where
-    E: InterfaceContract;
+pub type InterfaceHandlerFuture<O, E: InterfaceContract> =
+    Pin<Box<dyn Future<Output = Result<O, InterfaceTargetFailure<E>>> + Send + 'static>>;
 
 pub trait InterfaceHandler<I, O, E, P = UserPrincipal>: Send + Sync + 'static
 where
