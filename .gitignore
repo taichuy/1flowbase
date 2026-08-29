@@ -63,6 +63,7 @@ web/app/.env.local
 web/app/.env.*.local
 .claude/*
 .agents/skills/fuck-my-shit-mountain/*
+.agents/skills/archify/
 docker/1flowbase.code-workspace
 docs/private/*
 docs/ziliao/*
