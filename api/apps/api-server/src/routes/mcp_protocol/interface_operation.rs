@@ -9,8 +9,7 @@ use interface_runtime::{
     InterfaceExecution, InterfaceExecutionMode, InterfaceHandler, InterfaceHandlerContext,
     InterfaceHandlerFuture, InterfaceId, InterfaceIdentity, InterfaceLifecycle, InterfaceOwner,
     InterfaceScope, InterfaceTargetFailure, InterfaceVersion, InvocationAdapterPlan,
-    ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity, TargetReference,
-    UserPrincipal,
+    ProtocolBinding, ProtocolProjection, RegistryCompiler, TargetReference, UserPrincipal,
 };
 
 use super::{McpCallOutcome, McpToolArguments};
@@ -44,7 +43,7 @@ pub(super) struct McpToolInvocationContext {
     pub(super) user: domain::UserRecord,
     pub(super) actor: domain::ActorContext,
     pub(super) catalog: domain::McpCatalogSnapshot,
-    pub(super) scope: crate::virtual_ui::VirtualMcpScope,
+    pub(super) scope: crate::routes::mcp_protocol::virtual_ui::VirtualMcpScope,
 }
 
 impl InterfaceContract for McpInvocationInput {
