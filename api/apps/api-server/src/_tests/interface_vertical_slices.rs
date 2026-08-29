@@ -5,6 +5,12 @@ use super::support::test_api_state_with_database_url;
 #[tokio::test]
 async fn issue_1944_boot_catalog_contains_the_four_typed_vertical_slices() {
     let (state, _) = test_api_state_with_database_url().await;
+    state
+        .extension_boot_snapshot
+        .as_ref()
+        .unwrap()
+        .publish_complete_catalog(&state)
+        .unwrap();
     let registry = state
         .extension_boot_snapshot
         .as_ref()
@@ -51,6 +57,12 @@ async fn issue_1944_boot_catalog_contains_the_four_typed_vertical_slices() {
 #[tokio::test]
 async fn issue_1944_providers_http_and_mcp_resolve_distinct_binding_plans() {
     let (state, _) = test_api_state_with_database_url().await;
+    state
+        .extension_boot_snapshot
+        .as_ref()
+        .unwrap()
+        .publish_complete_catalog(&state)
+        .unwrap();
     let registry = state
         .extension_boot_snapshot
         .as_ref()

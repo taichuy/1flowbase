@@ -231,7 +231,12 @@ impl ExtensionBootSnapshot {
                 interface_runtime::InterfaceOwner::new("api-server.mcp-protocol")?,
             ],
         );
-        compiler.absorb_snapshot(registry.snapshot().as_ref())?;
+        compiler.absorb_interface(
+            registry.snapshot().as_ref(),
+            &interface_runtime::InterfaceId::new(
+                crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID,
+            )?,
+        )?;
         compiler.absorb_snapshot(
             crate::routes::auth::compile_public_login_instances_registry(Arc::downgrade(state))?
                 .as_ref(),

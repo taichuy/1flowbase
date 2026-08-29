@@ -856,10 +856,27 @@ impl RegistryCompiler {
         &mut self,
         snapshot: &CompiledInterfaceRegistry,
     ) -> Result<(), RegistryCompilationError> {
-        for definition in snapshot.definitions.values() {
-            self.register_definition(definition.clone())?;
+        for interface_id in snapshot.definitions.keys() {
+            self.absorb_interface(snapshot, interface_id)?;
         }
-        for (binding_id, binding) in &snapshot.protocol_bindings {
+        Ok(())
+    }
+
+    pub fn absorb_interface(
+        &mut self,
+        snapshot: &CompiledInterfaceRegistry,
+        interface_id: &InterfaceId,
+    ) -> Result<(), RegistryCompilationError> {
+        let definition = snapshot
+            .definitions
+            .get(interface_id)
+            .ok_or_else(|| RegistryCompilationError::UnknownInterface(interface_id.clone()))?;
+        self.register_definition(definition.clone())?;
+        for (binding_id, binding) in snapshot
+            .protocol_bindings
+            .iter()
+            .filter(|(_, binding)| binding.interface_identity().interface_id() == interface_id)
+        {
             let adapter_plan = snapshot
                 .plans
                 .get(binding_id)
@@ -868,28 +885,24 @@ impl RegistryCompiler {
                 .clone();
             self.register_binding(binding.clone(), adapter_plan)?;
         }
-        for (interface_id, handler) in &snapshot.handler_bindings {
-            if self
-                .handler_bindings
-                .insert(interface_id.clone(), Arc::clone(handler))
-                .is_some()
-            {
-                return Err(RegistryCompilationError::DuplicateHandler(
-                    interface_id.clone(),
-                ));
-            }
+        let handler = snapshot
+            .handler_bindings
+            .get(interface_id)
+            .ok_or_else(|| RegistryCompilationError::MissingHandler(interface_id.clone()))?;
+        if self
+            .handler_bindings
+            .insert(interface_id.clone(), Arc::clone(handler))
+            .is_some()
+        {
+            return Err(RegistryCompilationError::DuplicateHandler(
+                interface_id.clone(),
+            ));
         }
-        for definition in snapshot.definitions.values() {
-            let Some(plan) = snapshot.plan_for_interface(definition.interface_id()) else {
-                continue;
-            };
-            for entry in plan.extension_plan().registrations() {
-                self.register_extension(
-                    definition.interface_id(),
-                    entry.order(),
-                    entry.registration().clone(),
-                )?;
-            }
+        let plan = snapshot
+            .plan_for_interface(interface_id)
+            .ok_or_else(|| RegistryCompilationError::MissingBinding(interface_id.clone()))?;
+        for entry in plan.extension_plan().registrations() {
+            self.register_extension(interface_id, entry.order(), entry.registration().clone())?;
         }
         Ok(())
     }

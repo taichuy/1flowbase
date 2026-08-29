@@ -344,9 +344,6 @@ async fn test_state_with_runtime_profile_state(
         bootstrap_workspace_id: bootstrap.workspace_id,
         bootstrap_workspace_name: config.bootstrap_workspace_name.clone(),
     });
-    extension_boot_snapshot
-        .publish_complete_catalog(&state)
-        .expect("test complete interface catalog should publish");
     (state, config.database_url)
 }
 

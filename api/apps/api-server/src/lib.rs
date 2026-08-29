@@ -274,6 +274,11 @@ fn console_router_with_assembly(
 }
 
 pub fn app_with_state_and_config(state: Arc<ApiState>, config: &ApiConfig) -> Router {
+    if let Some(snapshot) = &state.extension_boot_snapshot {
+        snapshot
+            .publish_complete_catalog(&state)
+            .expect("complete interface catalog must publish before router construction");
+    }
     let interface_snapshot = state
         .extension_boot_snapshot
         .as_ref()

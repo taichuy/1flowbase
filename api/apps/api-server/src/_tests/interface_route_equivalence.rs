@@ -5,6 +5,12 @@ use super::support::test_api_state_with_database_url;
 #[tokio::test]
 async fn issue_1944_native_response_modes_are_distinct_published_contracts() {
     let (state, _) = test_api_state_with_database_url().await;
+    state
+        .extension_boot_snapshot
+        .as_ref()
+        .unwrap()
+        .publish_complete_catalog(&state)
+        .unwrap();
     let registry = state
         .extension_boot_snapshot
         .as_ref()
