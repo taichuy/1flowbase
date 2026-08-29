@@ -20,6 +20,7 @@ import dndKitModifiersPackageJson from '@dnd-kit/modifiers/package.json';
 import dndKitSortablePackageJson from '@dnd-kit/sortable/package.json';
 import dndKitUtilitiesPackageJson from '@dnd-kit/utilities/package.json';
 import appPackageJson from '../../../../../package.json';
+import dayjsPackageJson from 'dayjs/package.json';
 import reactPackageJson from 'react/package.json';
 import uiPackageJson from '../../../../../../packages/ui/package.json';
 
@@ -176,6 +177,60 @@ export default function Block() {
     expect(registrySource).toContain('loadAntDesignColorsModule');
   });
 
+  test('I1933-AC-001/003/004 compiles and lazily resolves the dayjs package root only', async () => {
+    const registry = createFrontstageNativeReactModuleRegistry();
+    const source = `import dayjs from 'dayjs';
+import type { Dayjs } from 'dayjs';
+
+export default function Block() {
+  const start: Dayjs = dayjs('2026-01-01');
+  return <div>{start.add(1, 'day').format('YYYY-MM-DD')}</div>;
+}`;
+
+    expect(compileNativeReactComponent(source, registry.definitions).ok).toBe(
+      true
+    );
+    expect(
+      registry.definitions.find(
+        ({ module_source }) => module_source === 'dayjs'
+      )
+    ).toEqual({
+      module_source: 'dayjs',
+      exports: ['default']
+    });
+
+    const [first, second] = await Promise.all([
+      registry.load('dayjs'),
+      registry.load('dayjs')
+    ]);
+    expect(first).toBe(second);
+    expect(first).toHaveProperty('default', expect.any(Function));
+
+    for (const deniedSource of ['dayjs/plugin/utc', 'dayjs/locale/zh-cn']) {
+      expect(
+        compileNativeReactComponent(
+          `import denied from '${deniedSource}'; export default () => <div>{String(denied)}</div>;`,
+          registry.definitions
+        ).ok
+      ).toBe(false);
+      await expect(registry.load(deniedSource)).rejects.toMatchObject({
+        code: 'module_not_registered'
+      });
+    }
+
+    const registrySource = readFileSync(
+      join(
+        process.cwd(),
+        'src/features/frontstage/lib/native-modules/registry.ts'
+      ),
+      'utf8'
+    );
+    expect(registrySource).not.toMatch(
+      /import\s+\*\s+as\s+dayjsModule\s+from\s+['"]dayjs['"]/u
+    );
+    expect(registrySource).toContain('loadDayjsModule');
+  });
+
   test('AC-002 exposes every installed Ant Design ES module source', async () => {
     const registry = createFrontstageNativeReactModuleRegistry();
 
@@ -312,6 +367,13 @@ export default function Block() {
           hostDependencyRange:
             appPackageJson.dependencies['@ant-design/colors'],
           packageVersion: antDesignColorsPackageJson.version
+        },
+        dayjs: {
+          importSource: 'dayjs',
+          hostDependencyRange: (
+            appPackageJson.dependencies as Record<string, string>
+          ).dayjs,
+          packageVersion: dayjsPackageJson.version
         }
       },
       moduleDomains: {
@@ -344,7 +406,7 @@ export default function Block() {
         }
       }
     });
-    expect(manifest.contractVersion).toBe('1.3.0');
+    expect(manifest.contractVersion).toBe('1.4.0');
   });
 
   test('evaluates valid non-JSX source through host modules and renders through the surface portal', async () => {

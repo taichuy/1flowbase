@@ -38,6 +38,7 @@
     "antd": "^6.1.1",
     "antd-style": "^4.1.0",
     "copy-to-clipboard": "^4.0.2",
+    "dayjs": "^1.11.20",
     "echarts": "6.1.0",
     "i18next": "^26.3.0",
     "i18next-resources-to-backend": "^1.2.1",

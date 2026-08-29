@@ -194,6 +194,9 @@ importers:
       copy-to-clipboard:
         specifier: ^4.0.2
         version: 4.0.2
+      dayjs:
+        specifier: ^1.11.20
+        version: 1.11.20
       echarts:
         specifier: 6.1.0
         version: 6.1.0

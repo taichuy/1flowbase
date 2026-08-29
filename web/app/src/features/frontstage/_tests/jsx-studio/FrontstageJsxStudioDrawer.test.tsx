@@ -682,8 +682,8 @@ describe('FrontstageJsxStudioDrawer', () => {
     expect(screen.queryByText('代码诊断')).not.toBeInTheDocument();
 
     blockCodeHook.useFrontstageBlockCode.mockReturnValue({
-      code: "import dayjs from 'dayjs';",
-      draft: "import dayjs from 'dayjs';",
+      code: "import lodash from 'lodash';",
+      draft: "import lodash from 'lodash';",
       dirty: false,
       loading: false,
       saving: false,
@@ -702,7 +702,7 @@ describe('FrontstageJsxStudioDrawer', () => {
         [
           expect.objectContaining({
             code: 'import_denied',
-            message: "Import source 'dayjs' is not allowed.",
+            message: "Import source 'lodash' is not allowed.",
             startLineNumber: 1,
             startColumn: 1
           })

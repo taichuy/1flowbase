@@ -60,6 +60,20 @@ void presetPalettes;`
     expect(diagnostics).toEqual([]);
   });
 
+  test('I1933-AC-002 type-checks the dayjs default export and Dayjs type', () => {
+    const diagnostics = typeCheckSource({
+      extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+      source: `import dayjs from 'dayjs';
+import type { Dayjs } from 'dayjs';
+
+const start: Dayjs = dayjs('2026-01-01');
+const output: string = start.add(1, 'day').format('YYYY-MM-DD');
+void output;`
+    });
+
+    expect(diagnostics).toEqual([]);
+  });
+
   test('AC-004 fails explicitly when a dependency declaration cannot resolve', () => {
     expect(() =>
       collectNativeModuleDeclarations({

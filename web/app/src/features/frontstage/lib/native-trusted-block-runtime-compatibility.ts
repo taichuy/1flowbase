@@ -2,6 +2,7 @@ import antDesignColorsPackageJson from '@ant-design/colors/package.json';
 import antdPackageJson from 'antd/package.json';
 import antdStylePackageJson from 'antd-style/package.json';
 import appPackageJson from '../../../../package.json';
+import dayjsPackageJson from 'dayjs/package.json';
 import { DND_KIT_PACKAGES } from 'virtual:1flowbase-native-dnd-kit-modules';
 import {
   NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS,
@@ -12,7 +13,7 @@ import reactPackageJson from 'react/package.json';
 import uiPackageJson from '../../../../../packages/ui/package.json';
 
 export const FRONTSTAGE_NATIVE_TRUSTED_BLOCK_COMPATIBILITY_CONTRACT_VERSION =
-  '1.3.0';
+  '1.4.0';
 
 type FrontstageNativeTrustedBlockAllowedImport =
   (typeof NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS)[number];
@@ -46,6 +47,7 @@ export interface FrontstageNativeTrustedBlockRuntimeCompatibilityManifest {
   >;
   lazyModules: {
     '@ant-design/colors': FrontstageNativeTrustedBlockRuntimeCompatibilityModule<'@ant-design/colors'>;
+    dayjs: FrontstageNativeTrustedBlockRuntimeCompatibilityModule<'dayjs'>;
   };
   moduleDomains: {
     '@dnd-kit': {
@@ -96,6 +98,11 @@ export function getFrontstageNativeTrustedBlockRuntimeCompatibility(): Frontstag
         importSource: '@ant-design/colors',
         hostDependencyRange: appPackageJson.dependencies['@ant-design/colors'],
         packageVersion: antDesignColorsPackageJson.version
+      },
+      dayjs: {
+        importSource: 'dayjs',
+        hostDependencyRange: appPackageJson.dependencies.dayjs,
+        packageVersion: dayjsPackageJson.version
       }
     },
     moduleDomains: {

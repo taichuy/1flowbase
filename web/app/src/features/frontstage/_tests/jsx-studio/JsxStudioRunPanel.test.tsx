@@ -46,16 +46,21 @@ function source(label: string): string {
 }
 
 function createCompiler() {
-  return vi.fn(async ({
-    source: currentSource,
-    moduleDefinitions = []
-  }: {
-    source: string;
-    moduleDefinitions?: Parameters<typeof compileNativeReactComponent>[1];
-  }) => {
-    const result = compileNativeReactComponent(currentSource, moduleDefinitions);
-    return result as NativeReactBrowserCompileResult;
-  });
+  return vi.fn(
+    async ({
+      source: currentSource,
+      moduleDefinitions = []
+    }: {
+      source: string;
+      moduleDefinitions?: Parameters<typeof compileNativeReactComponent>[1];
+    }) => {
+      const result = compileNativeReactComponent(
+        currentSource,
+        moduleDefinitions
+      );
+      return result as NativeReactBrowserCompileResult;
+    }
+  );
 }
 
 function renderPanel({
@@ -247,22 +252,20 @@ describe('JsxStudioRunPanel Native React run revision', () => {
           phase: 'compile',
           code: 'import_denied',
           path: 'source.imports[0]',
-          message: "Import source 'dayjs' is not allowed."
+          message: "Import source 'lodash' is not allowed."
         }
       ]
     });
 
     renderPanel({
-      code: "import dayjs from 'dayjs'; export default () => <div />;",
+      code: "import lodash from 'lodash'; export default () => <div />;",
       revision: 'run:external-npm-unavailable',
       nativeCompiler: compiler
     });
 
     expect(await screen.findByText('运行失败')).toBeInTheDocument();
     expect(
-      screen.getByText(
-        /Import source 'dayjs' is not allowed\./u
-      )
+      screen.getByText(/Import source 'lodash' is not allowed\./u)
     ).toBeInTheDocument();
     expect(compiler).toHaveBeenCalledWith(
       expect.objectContaining({ moduleDefinitions: expect.any(Array) })

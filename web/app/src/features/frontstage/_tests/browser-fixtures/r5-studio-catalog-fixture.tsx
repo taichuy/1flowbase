@@ -36,10 +36,10 @@ const APPROVED_SOURCE = `${CATALOG_MODULE_SOURCES.map(
 export default function FixtureBlock() {
   return <div>Approved Catalog imports</div>;
 }`;
-const DENIED_SOURCE = `import dayjs from 'dayjs';
+const DENIED_SOURCE = `import lodash from 'lodash';
 
 export default function FixtureBlock() {
-  return <div>{String(dayjs)}</div>;
+  return <div>{String(lodash)}</div>;
 }`;
 
 const builtinEntry = createCatalogEntry({
@@ -86,7 +86,10 @@ const consoleBlock = {
   sourceId: 'r7-console-block',
   codeRef: 'r7-console-code',
   sourceCodeRef: 'r7-console-code',
-  catalog: { providerCode: '1flowbase', installationId: 'builtin-installation' },
+  catalog: {
+    providerCode: '1flowbase',
+    installationId: 'builtin-installation'
+  },
   contribution: {
     pluginId: 'builtin-frontstage',
     pluginVersion: '5.0.0',
@@ -211,7 +214,6 @@ function R5StudioCatalogFixture() {
             revision="r7:browser-console"
           />
         </section>
-
       </main>
       <style>{`
         html, body, #root { min-height: 100%; margin: 0; }

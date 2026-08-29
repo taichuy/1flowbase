@@ -26,6 +26,7 @@ import {
   loadAntDesignColorsModule
 } from './ant-design-colors-runtime';
 import { ANTD_STYLE_EXPORTS, loadAntdStyleModule } from './antd-style-runtime';
+import { DAYJS_EXPORTS, loadDayjsModule } from './dayjs-runtime';
 import { NativeBlockAffix } from './native-affix-runtime';
 import { NativeBlockAnchor } from './native-anchor-runtime';
 import { NativeBlockDropdown } from './native-dropdown-runtime';
@@ -89,6 +90,9 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   ),
   registration('@ant-design/colors', ANT_DESIGN_COLORS_EXPORTS, async () => ({
     module: await loadAntDesignColorsModule()
+  })),
+  registration('dayjs', DAYJS_EXPORTS, async () => ({
+    module: await loadDayjsModule()
   })),
   registration('antd-style', ANTD_STYLE_EXPORTS, async () => ({
     module: await loadAntdStyleModule()
