@@ -60,6 +60,20 @@ void presetPalettes;`
     expect(diagnostics).toEqual([]);
   });
 
+  test('I1945-AC-001 type-checks public @ant-design/icons leaf defaults', () => {
+    const diagnostics = typeCheckSource({
+      extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+      source: `import ClockCircleOutlined from '@ant-design/icons/ClockCircleOutlined';
+import type { ComponentProps } from 'react';
+
+const props: ComponentProps<typeof ClockCircleOutlined> = { spin: true };
+const icon = <ClockCircleOutlined {...props} />;
+void icon;`
+    });
+
+    expect(diagnostics).toEqual([]);
+  });
+
   test('I1933-AC-002 type-checks the dayjs default export and Dayjs type', () => {
     const diagnostics = typeCheckSource({
       extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,

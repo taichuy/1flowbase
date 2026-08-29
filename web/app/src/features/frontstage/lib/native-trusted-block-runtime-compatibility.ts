@@ -2,6 +2,7 @@ import antDesignColorsPackageJson from '@ant-design/colors/package.json';
 import antdPackageJson from 'antd/package.json';
 import antdStylePackageJson from 'antd-style/package.json';
 import appPackageJson from '../../../../package.json';
+import { ANT_DESIGN_ICONS_PACKAGE } from 'virtual:1flowbase-native-ant-design-icons-modules';
 import { DAYJS_PACKAGE } from 'virtual:1flowbase-native-dayjs-modules';
 import { DND_KIT_PACKAGES } from 'virtual:1flowbase-native-dnd-kit-modules';
 import {
@@ -13,7 +14,7 @@ import reactPackageJson from 'react/package.json';
 import uiPackageJson from '../../../../../packages/ui/package.json';
 
 export const FRONTSTAGE_NATIVE_TRUSTED_BLOCK_COMPATIBILITY_CONTRACT_VERSION =
-  '1.5.0';
+  '1.6.0';
 
 type FrontstageNativeTrustedBlockAllowedImport =
   (typeof NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS)[number];
@@ -49,6 +50,12 @@ export interface FrontstageNativeTrustedBlockRuntimeCompatibilityManifest {
     '@ant-design/colors': FrontstageNativeTrustedBlockRuntimeCompatibilityModule<'@ant-design/colors'>;
   };
   moduleDomains: {
+    '@ant-design/icons': {
+      packageName: string;
+      hostDependencyRange: string;
+      packageVersion: string;
+      moduleCount: number;
+    };
     '@dnd-kit': {
       packages: FrontstageNativeTrustedBlockRuntimeCompatibilityDomainPackage[];
     };
@@ -106,6 +113,12 @@ export function getFrontstageNativeTrustedBlockRuntimeCompatibility(): Frontstag
       }
     },
     moduleDomains: {
+      '@ant-design/icons': {
+        packageName: ANT_DESIGN_ICONS_PACKAGE.package_name,
+        hostDependencyRange: appPackageJson.dependencies['@ant-design/icons'],
+        packageVersion: ANT_DESIGN_ICONS_PACKAGE.package_version,
+        moduleCount: ANT_DESIGN_ICONS_PACKAGE.module_count
+      },
       '@dnd-kit': {
         packages: DND_KIT_PACKAGES.map(({ package_name, package_version }) => ({
           packageName: package_name,

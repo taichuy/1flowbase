@@ -1,4 +1,3 @@
-import * as antDesignIconsModule from '@ant-design/icons';
 import * as antdModule from 'antd';
 import * as ReactModule from 'react';
 import * as ReactJsxRuntimeModule from 'react/jsx-runtime';
@@ -7,6 +6,10 @@ import {
   ANTD_ES_MODULE_DEFINITIONS,
   loadAntDesignEsModule
 } from 'virtual:1flowbase-native-antd-es-modules';
+import {
+  ANT_DESIGN_ICONS_MODULE_DEFINITIONS,
+  loadAntDesignIconsModule
+} from 'virtual:1flowbase-native-ant-design-icons-modules';
 import {
   DND_KIT_MODULE_DEFINITIONS,
   loadDndKitModule
@@ -119,12 +122,10 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
       return { module, styles: [{ css: style.default }] };
     }
   ),
-  registration(
-    '@ant-design/icons',
-    Object.keys(antDesignIconsModule),
-    async () => ({
-      module: antDesignIconsModule
-    })
+  ...ANT_DESIGN_ICONS_MODULE_DEFINITIONS.map(({ module_source, exports }) =>
+    registration(module_source, exports, async () => ({
+      module: await loadAntDesignIconsModule(module_source)
+    }))
   ),
   registration('@1flowbase/charts', ['EChart'], async () => ({
     module: await import('@1flowbase/charts')

@@ -9,6 +9,10 @@ import {
   nativeAntDesignEsModulesPlugin
 } from './build/native-antd-es-modules';
 import {
+  collectAntDesignIconModuleSources,
+  nativeAntDesignIconsModulesPlugin
+} from './build/native-ant-design-icons-modules';
+import {
   collectDndKitModuleSources,
   nativeDndKitModulesPlugin
 } from './build/native-dnd-kit-modules';
@@ -25,6 +29,8 @@ const appRoot = fileURLToPath(new URL('.', import.meta.url));
 const nativeAntDesignEsModuleSources = collectAntDesignEsModuleSources().map(
   ({ moduleSource }) => moduleSource
 );
+const nativeAntDesignIconsModuleInventory =
+  collectAntDesignIconModuleSources({ projectRoot: appRoot });
 const nativeDndKitModuleInventory = collectDndKitModuleSources({
   projectRoot: appRoot
 });
@@ -51,6 +57,10 @@ function manualChunks(id: string) {
     return 'flow-vendor';
   }
 
+  if (isLazyAntDesignIconModule(id)) {
+    return;
+  }
+
   if (
     id.includes('/antd/') ||
     id.includes('/@ant-design/') ||
@@ -67,6 +77,17 @@ function manualChunks(id: string) {
   ) {
     return 'react-vendor';
   }
+}
+
+function isLazyAntDesignIconModule(id: string): boolean {
+  return (
+    /\/node_modules\/@ant-design\/icons\/es\/(?:index\.js|icons\/(?:index\.js|[^/]+\.js))$/u.test(
+      id
+    ) ||
+    /\/node_modules\/@ant-design\/icons-svg\/(?:es|lib)\/asn\/[^/]+\.js$/u.test(
+      id
+    )
+  );
 }
 
 function parseAllowedHosts(value?: string) {
@@ -110,6 +131,9 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       nativeAntDesignEsModulesPlugin(),
+      nativeAntDesignIconsModulesPlugin({
+        inventory: nativeAntDesignIconsModuleInventory
+      }),
       nativeDndKitModulesPlugin({ inventory: nativeDndKitModuleInventory }),
       nativeDayjsModulesPlugin({ inventory: nativeDayjsModuleInventory }),
       nativeModuleDeclarationsPlugin({

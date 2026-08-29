@@ -13,6 +13,7 @@ import {
 } from '@1flowbase/page-runtime';
 
 import antDesignColorsPackageJson from '@ant-design/colors/package.json';
+import antDesignIconsPackageJson from '@ant-design/icons/package.json';
 import antdPackageJson from 'antd/package.json';
 import antdStylePackageJson from 'antd-style/package.json';
 import dndKitCorePackageJson from '@dnd-kit/core/package.json';
@@ -91,6 +92,65 @@ describe('frontstage native trusted block runtime factory', () => {
       registry.definitions.find(({ module_source }) => module_source === 'antd')
         ?.exports
     ).not.toContain('RemovedComponent');
+  });
+
+  test('I1945-AC-001/003/004 compiles and lazily resolves public @ant-design/icons leaves', async () => {
+    const registry = createFrontstageNativeReactModuleRegistry();
+    const source = `import ClockCircleOutlined from '@ant-design/icons/ClockCircleOutlined';
+
+export default function Block() {
+  return <ClockCircleOutlined />;
+}`;
+
+    expect(compileNativeReactComponent(source, registry.definitions).ok).toBe(
+      true
+    );
+    expect(
+      registry.definitions.find(
+        ({ module_source }) =>
+          module_source === '@ant-design/icons/ClockCircleOutlined'
+      )
+    ).toEqual({
+      module_source: '@ant-design/icons/ClockCircleOutlined',
+      exports: ['default']
+    });
+
+    const [first, second] = await Promise.all([
+      registry.load('@ant-design/icons/ClockCircleOutlined'),
+      registry.load('@ant-design/icons/ClockCircleOutlined')
+    ]);
+    expect(first).toBe(second);
+    expect(first.default).toBeTypeOf('object');
+
+    const rootModule = await registry.load('@ant-design/icons');
+    expect(rootModule.ClockCircleOutlined).toBe(first.default);
+    expect(rootModule.createFromIconfontCN).toBeTypeOf('function');
+    expect(rootModule.IconProvider).toBeTypeOf('object');
+
+    const registrySource = readFileSync(
+      join(
+        process.cwd(),
+        'src/features/frontstage/lib/native-modules/registry.ts'
+      ),
+      'utf8'
+    );
+    expect(registrySource).not.toMatch(
+      /import\s+\*\s+as\s+antDesignIconsModule\s+from\s+['"]@ant-design\/icons['"]/u
+    );
+    expect(registrySource).toContain('loadAntDesignIconsModule');
+
+    expect(
+      compileNativeReactComponent(
+        `import missing from '@ant-design/icons/NotInstalledOutlined'; export default missing;`,
+        registry.definitions
+      ).ok
+    ).toBe(false);
+    expect(
+      compileNativeReactComponent(
+        `import internal from '@ant-design/icons/es/icons/ClockCircleOutlined'; export default internal;`,
+        registry.definitions
+      ).ok
+    ).toBe(false);
   });
 
   test('I1907-AC-003/006 exposes a stable lazy antd-style module contract', async () => {
@@ -385,6 +445,13 @@ export default function Block() {
         }
       },
       moduleDomains: {
+        '@ant-design/icons': {
+          packageName: '@ant-design/icons',
+          hostDependencyRange:
+            appPackageJson.dependencies['@ant-design/icons'],
+          packageVersion: antDesignIconsPackageJson.version,
+          moduleCount: expect.any(Number)
+        },
         '@dnd-kit': {
           packages: [
             {
@@ -422,8 +489,11 @@ export default function Block() {
         }
       }
     });
+    expect(
+      manifest.moduleDomains['@ant-design/icons'].moduleCount
+    ).toBeGreaterThan(800);
     expect(manifest.moduleDomains.dayjs.moduleCount).toBeGreaterThan(100);
-    expect(manifest.contractVersion).toBe('1.5.0');
+    expect(manifest.contractVersion).toBe('1.6.0');
   });
 
   test('evaluates valid non-JSX source through host modules and renders through the surface portal', async () => {
