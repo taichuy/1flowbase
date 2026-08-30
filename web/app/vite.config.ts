@@ -114,6 +114,7 @@ function parseAllowedOrigins(value?: string) {
 
 export default defineConfig(({ mode }) => {
   const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
+  const isRemoteDebug = mode === 'remote-debug';
   const devServerPort = Number.parseInt(env.VITE_DEV_SERVER_PORT || '3100', 10);
   const devAllowedHosts = parseAllowedHosts(env.VITE_DEV_ALLOWED_HOSTS);
   const devCorsAllowedOrigins = parseAllowedOrigins(
@@ -180,6 +181,7 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       chunkSizeWarningLimit: 3500,
+      sourcemap: isRemoteDebug,
       rollupOptions: {
         output: {
           manualChunks

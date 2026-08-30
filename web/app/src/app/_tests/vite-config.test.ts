@@ -6,6 +6,25 @@ import appPackageJson from '../../../package.json';
 import richTextPackageJson from '../../../../packages/rich-text/package.json';
 
 describe('vite config', () => {
+  test('AC-001 AC-002 keeps local dev bundleless and exposes stable remote preview', async () => {
+    expect(appPackageJson.scripts).toEqual(
+      expect.objectContaining({
+        dev: 'vite',
+        'dev:remote':
+          'vite build --mode remote-debug && vite preview --mode remote-debug --host 0.0.0.0 --port 3100 --strictPort',
+        'dev:remote:experimental': 'vite --experimentalBundle'
+      })
+    );
+
+    const source = await readFile(
+      path.resolve(process.cwd(), 'vite.config.ts'),
+      'utf8'
+    );
+
+    expect(source).toContain("const isRemoteDebug = mode === 'remote-debug'");
+    expect(source).toContain('sourcemap: isRemoteDebug');
+  });
+
   test('AC-001 resolves Vditor and its rich-text runtime assets from one exact version', () => {
     expect(appPackageJson.dependencies.vditor).toBe('3.11.2');
     expect(richTextPackageJson.dependencies.vditor).toBe(
