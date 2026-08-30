@@ -28,10 +28,7 @@ type DevRuntimeReceipt = {
   transitions: Array<{ state: DevRuntimeState; at: string }>;
 };
 
-function transitionRuntime(
-  receipt: DevRuntimeReceipt,
-  state: DevRuntimeState
-) {
+function transitionRuntime(receipt: DevRuntimeReceipt, state: DevRuntimeState) {
   receipt.state = state;
   receipt.transitions.push({ state, at: new Date().toISOString() });
 }
@@ -161,10 +158,7 @@ function hmrProbeSource(probeFile: string | null) {
   `;
 }
 
-async function warmRuntime(
-  server: ViteDevServer,
-  receipt: DevRuntimeReceipt
-) {
+async function warmRuntime(server: ViteDevServer, receipt: DevRuntimeReceipt) {
   transitionRuntime(receipt, 'Warming');
   try {
     await Promise.all([
@@ -235,7 +229,10 @@ function oneFlowbaseDevRuntimePlugin({
   );
   const hmrProbeFile =
     command === 'serve'
-      ? path.join(runtimeDirectory, `hmr-probe-${process.pid}.mjs`)
+      ? path.join(
+          runtimeDirectory,
+          `hmr-probe-${process.pid}-${crypto.randomUUID()}.mjs`
+        )
       : null;
   if (hmrProbeFile) {
     fs.mkdirSync(runtimeDirectory, { recursive: true });
@@ -271,7 +268,10 @@ function oneFlowbaseDevRuntimePlugin({
       attachRecoveryProbeMiddleware(server, receipt);
       attachPreReadyTrafficGate(server, receipt);
       transitionRuntime(receipt, 'Optimizing');
-      server.httpServer?.once('listening', () => void warmRuntime(server, receipt));
+      server.httpServer?.once(
+        'listening',
+        () => void warmRuntime(server, receipt)
+      );
       server.httpServer?.once('close', () => {
         if (hmrProbeFile && fs.existsSync(hmrProbeFile)) {
           fs.unlinkSync(hmrProbeFile);
