@@ -1,8 +1,9 @@
 import { StyleProvider, createCache } from '@ant-design/cssinjs';
-import { App as AntdApp, ConfigProvider } from 'antd';
+import { App as AntdApp, ConfigProvider, Skeleton } from 'antd';
 import type { ConfigProviderProps } from 'antd/es/config-provider';
 import {
   Component,
+  Suspense,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -60,6 +61,22 @@ export interface FrontstageNativeTrustedBlockReactComponentProps {
 
 export type FrontstageNativeTrustedBlockReactComponent =
   ComponentType<FrontstageNativeTrustedBlockReactComponentProps>;
+
+function NativeBlockModuleLoadingShell() {
+  return (
+    <div
+      aria-busy="true"
+      data-testid="native-block-module-loading-shell"
+      style={{ width: '100%' }}
+    >
+      <Skeleton
+        active
+        title={{ width: '32%' }}
+        paragraph={{ rows: 3, width: ['94%', '78%', '58%'] }}
+      />
+    </div>
+  );
+}
 
 export interface FrontstageNativeTrustedBlockProviderScope {
   theme?: ConfigProviderProps['theme'];
@@ -262,17 +279,19 @@ export function FrontstageNativeTrustedBlockPortalHost({
     portalContainment
   };
   const content = (
-    <FrontstageNativeTrustedBlockErrorBoundary
-      context={{ ...providerContext, blockId: plan.blockId }}
-      onRuntimeError={onRuntimeError}
-    >
-      <BlockComponent
-        plan={plan}
-        props={plan.props}
-        ctx={blockContext}
-        portalContainment={portalContainment}
-      />
-    </FrontstageNativeTrustedBlockErrorBoundary>
+    <Suspense fallback={<NativeBlockModuleLoadingShell />}>
+      <FrontstageNativeTrustedBlockErrorBoundary
+        context={{ ...providerContext, blockId: plan.blockId }}
+        onRuntimeError={onRuntimeError}
+      >
+        <BlockComponent
+          plan={plan}
+          props={plan.props}
+          ctx={blockContext}
+          portalContainment={portalContainment}
+        />
+      </FrontstageNativeTrustedBlockErrorBoundary>
+    </Suspense>
   );
 
   return createPortal(

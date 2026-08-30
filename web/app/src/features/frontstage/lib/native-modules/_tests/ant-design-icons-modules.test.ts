@@ -17,8 +17,10 @@ describe('@ant-design/icons native module inventory', () => {
     });
     const generatedModule = generateNativeAntDesignIconsLoadersModule(inventory);
 
-    expect(generatedModule).toContain('Object.entries(leafLoaders)');
-    expect(generatedModule).toContain('lazy(load)');
+    expect(generatedModule).toContain('Object.keys(leafLoaders)');
+    expect(generatedModule).toContain(
+      'lazy(() => loadLeafModule(moduleSource))'
+    );
     expect(generatedModule).not.toContain('(await load()).default');
   });
 
@@ -45,6 +47,24 @@ describe('@ant-design/icons native module inventory', () => {
 
     expect(generatedModule).toContain('loaderDomainPromise ??=');
     expect(generatedModule).toContain('loaderDomainPromise = undefined');
+  });
+
+  test('I1950-AC-003 coalesces icon leaf module flights and evicts rejected flights', () => {
+    const inventory = collectAntDesignIconModuleSources({
+      projectRoot: process.cwd()
+    });
+    const generatedModule =
+      generateNativeAntDesignIconsLoadersModule(inventory);
+
+    expect(generatedModule).toContain('const leafModuleFlights = new Map()');
+    expect(generatedModule).toContain('leafModuleFlights.get(moduleSource)');
+    expect(generatedModule).toContain(
+      'leafModuleFlights.set(moduleSource, flight)'
+    );
+    expect(generatedModule).toContain('leafModuleFlights.delete(moduleSource)');
+    expect(generatedModule).toContain(
+      'lazy(() => loadLeafModule(moduleSource))'
+    );
   });
 
   test('I1945-AC-002/004 inventories every installed public icon leaf and excludes internal aliases', () => {

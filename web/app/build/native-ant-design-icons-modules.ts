@@ -192,6 +192,23 @@ const leafLoaders = {${inventory.modules
     )
     .join('')}\n};
 
+const leafModuleFlights = new Map();
+
+function loadLeafModule(moduleSource) {
+  const current = leafModuleFlights.get(moduleSource);
+  if (current) return current;
+  const load = leafLoaders[moduleSource];
+  if (!load) throw new Error('@ant-design/icons module is not installed or public: ' + moduleSource + '.');
+  const flight = load().catch((error) => {
+    if (leafModuleFlights.get(moduleSource) === flight) {
+      leafModuleFlights.delete(moduleSource);
+    }
+    throw error;
+  });
+  leafModuleFlights.set(moduleSource, flight);
+  return flight;
+}
+
 let rootModulePromise;
 
 async function loadRootModule() {
@@ -208,9 +225,9 @@ async function loadRootModule() {
         ['IconProvider', contextModule.default.Provider],
         ['getTwoToneColor', twoToneModule.getTwoToneColor],
         ['setTwoToneColor', twoToneModule.setTwoToneColor],
-        ...Object.entries(leafLoaders).map(([moduleSource, load]) => [
+        ...Object.keys(leafLoaders).map((moduleSource) => [
           moduleSource.slice('@ant-design/icons/'.length),
-          lazy(load)
+          lazy(() => loadLeafModule(moduleSource))
         ])
       ])
     )
@@ -223,9 +240,7 @@ async function loadRootModule() {
 
 export async function loadAntDesignIconsModuleFromDomain(moduleSource) {
   if (moduleSource === '@ant-design/icons') return loadRootModule();
-  const load = leafLoaders[moduleSource];
-  if (!load) throw new Error('@ant-design/icons module is not installed or public: ' + moduleSource + '.');
-  return load();
+  return loadLeafModule(moduleSource);
 }
 `;
 }

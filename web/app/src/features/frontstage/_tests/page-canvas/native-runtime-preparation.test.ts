@@ -337,7 +337,7 @@ describe('FrontstageNativePreparationScheduler', () => {
     });
   });
 
-  test('D3-AC-001 cancels dormant work and rejects stale generation completion', async () => {
+  test('D3-AC-001/I1950-AC-004 cancels dormant work and rejects stale generation completion', async () => {
     const scheduler = new FrontstageNativePreparationScheduler(1);
     const first = deferred<FrontstageNativePreparedRuntime>();
     const second = deferred<FrontstageNativePreparedRuntime>();

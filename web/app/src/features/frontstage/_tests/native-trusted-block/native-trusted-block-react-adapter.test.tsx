@@ -2,7 +2,15 @@ import { fireEvent, render, waitFor, within } from '@testing-library/react';
 import { createStyles } from 'antd-style';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { act, useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  act,
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode
+} from 'react';
 import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -58,6 +66,11 @@ vi.mock('antd', async () => {
     },
     App({ children }: { children?: ReactNode }) {
       return React.createElement(React.Fragment, null, children);
+    },
+    Skeleton() {
+      return React.createElement('div', {
+        'data-testid': 'runtime-suspense-skeleton'
+      });
     }
   };
 });
@@ -180,6 +193,77 @@ describe('frontstage native trusted block declarative portal host', () => {
     expect(source).not.toMatch(/\bcreateRoot\b/u);
     expect(source).not.toContain('.render(');
     expect(source).not.toContain('.unmount(');
+  });
+
+  test('I1950-AC-001 contains a lazy component suspension inside its native runtime cell', async () => {
+    const stableRoot = createBlockRoot();
+    const lazyRoot = createBlockRoot();
+    let resolveLazyBlock:
+      | ((module: {
+          default: FrontstageNativeTrustedBlockReactComponent;
+        }) => void)
+      | undefined;
+    const LazyBlock = lazy(
+      () =>
+        new Promise<{
+          default: FrontstageNativeTrustedBlockReactComponent;
+        }>((resolve) => {
+          resolveLazyBlock = resolve;
+        })
+    );
+    const StableBlock: FrontstageNativeTrustedBlockReactComponent = () => (
+      <output data-testid="stable-block">stable</output>
+    );
+
+    render(
+      <Suspense fallback={<div data-testid="page-suspense-fallback" />}>
+        <FrontstageNativeTrustedBlockPortalHost
+          root={stableRoot}
+          renderEpoch="stable:1"
+          plan={createPlan({ blockId: 'stable' })}
+          component={StableBlock}
+          ctx={createContext()}
+        />
+        <FrontstageNativeTrustedBlockPortalHost
+          root={lazyRoot}
+          renderEpoch="lazy:1"
+          plan={createPlan({ blockId: 'lazy' })}
+          component={LazyBlock}
+          ctx={createContext()}
+        />
+      </Suspense>
+    );
+
+    await waitFor(() => expect(lazyRoot.shadowRoot).not.toBeNull());
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-testid="page-suspense-fallback"]') ??
+          lazyRoot.shadowRoot?.querySelector(
+            '[data-testid="native-block-module-loading-shell"]'
+          )
+      ).not.toBeNull()
+    );
+    expect(
+      document.querySelector('[data-testid="page-suspense-fallback"]')
+    ).toBeNull();
+    expect(
+      await shadowQueries(lazyRoot).findByTestId(
+        'native-block-module-loading-shell'
+      )
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      resolveLazyBlock?.({
+        default: () => <output data-testid="lazy-block">lazy</output>
+      });
+    });
+
+    expect(
+      await shadowQueries(lazyRoot).findByTestId('lazy-block')
+    ).toHaveTextContent('lazy');
+    expect(
+      shadowQueries(stableRoot).getByTestId('stable-block')
+    ).toHaveTextContent('stable');
   });
 
   test('D3R-AC-001 preserves component identity across plan, context, and theme updates', async () => {
