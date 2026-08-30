@@ -2,15 +2,29 @@
 
 ## Result and identities
 
-- Result: `QA_PASS`
+- Result: `QA_PENDING` for the XR executable-contribution assembly
 - Input: `beta@ff4cc74ab073256419884d3d96e0b3defcb36d45`
-- Fresh tested assembly: `beta@a3c78798320b5e2af8bc8b2f9b35cb8fe3977b31`
+- Previous fresh tested assembly: `beta@a3c78798320b5e2af8bc8b2f9b35cb8fe3977b31`
+- XR input: `beta@965d62e9514f1b3e25fdf2a4284cc3bb41cfbf2e`
+- XR assembly: pending XR-F05 freeze
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
 - Fresh centralized QA: executable-extension remediation attempt 11, 16/16 rows complete, zero unrun rows
 - Evidence root: `tmp/test-governance/1944-interface-lifecycle/`
 
-The IF-F08 receipt commits are documentation-only; the tested product assembly remains
-`a3c78798320b5e2af8bc8b2f9b35cb8fe3977b31`.
+The earlier QA evidence remains valid only for the previous product assembly. It does not settle
+RR-12 through RR-16; the XR assembly requires one fresh centralized QA after XR-F05 is frozen.
+
+## XR executable-contribution packet ledger
+
+| Packet | Commit | Status | Principal write set |
+| --- | --- | --- | --- |
+| XR-F01 | `3817d8f0d` | ASSEMBLED | RR-12–RR-16 matrix and controlled fixtures |
+| XR-F02 | `b12754554` | ASSEMBLED | Hook input/output contract identity and publish-time validation |
+| XR-F03/XR-F04 | `d26433d03` | ASSEMBLED | Definition/AuthN activation and ordered AuthZ/Admission executable plans |
+| XR-F05 | pending | ACTIVE | production composition, boundaries, ADR, rules and receipt |
+| XR-F06 | pending | READY | frozen assembly and fresh centralized QA |
+
+No ARC acceptance criterion is settled by this pre-QA ledger.
 
 ## Work Packet ledger
 

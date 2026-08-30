@@ -147,10 +147,11 @@ ProtocolBinding（协议投影）
 
 CompiledInvocationPlan（发布后的不可变执行计划）
 ├─ definition + binding fingerprint
-├─ principal/authentication adapter reference
-├─ authorization/admission adapter reference
+├─ activated authentication adapter + activation identity
+├─ core + ordered extension authorization/admission executable plans
 ├─ typed handler binding
-└─ ordered extension plan + fingerprint
+├─ typed hook executable plan
+└─ graph/registry/plan fingerprints
 ```
 
 要求：
@@ -159,7 +160,9 @@ CompiledInvocationPlan（发布后的不可变执行计划）
 - input/output/event/error 必须是 typed contract 或经 schema compiler 验证的 SDK contract，不接受无边界 `serde_json::Value` handler；
 - binding 只能投影 canonical field，不得创建后端不存在的字段别名；
 - 事务边界和业务一致性仍由 Application/Domain owner 持有；Interface 只声明调用者可观察的幂等语义，Kernel 不开启万能事务；
-- Definition、binding、handler、permission、Hook plan 分开拥有，编译后共同形成 deterministic plan fingerprint；
+- Definition contribution 是 canonical RegistryCompiler 的 typed 输入，在 publish 前生成 Definition 及必需 Binding，不建立第二套 Registry，也不在请求时注入 Route；
+- Definition、binding、authentication activation、handler、decision 与 Hook plan 分开拥有，编译后共同形成 deterministic plan fingerprint；
+- erased Hook plan 必须暴露稳定 input/output `ContractIdentity`，RegistryCompiler 在 publish 时与 Definition 校验，不延迟到请求 downcast；
 - duplicate identity/binding、unknown permission、missing handler、contract mismatch、inactive owner 和非法 extension point 必须在 publish 前 fail closed。
 
 核心对象的唯一 owner 固定如下：
@@ -180,6 +183,8 @@ CompiledInvocationPlan（发布后的不可变执行计划）
 ### 3. Caller Identity 与 Authentication
 
 Interface resolve 先通过不可信协议元数据找到 Definition 和 execution profile，再由该 profile 的 Authentication Adapter 解析凭证。Adapter 不把原始凭证传入 Handler 或普通插件。
+
+Authentication registration 只是声明；BuiltIn/HostExtension 的 concrete factory 由 `api-server` Composition Root 激活。发布时必须严格配对 registration、adapter identity、activation identity 和 Principal profile，Protocol Adapter 只能从冻结 Binding/Plan 取得 factory 后建立 sealed Principal。缺失、多余、重复、未激活或 identity mismatch 都阻止 catalog publish。
 
 统一的是 lifecycle engine，不是一个万能 caller enum。Envelope 对 Principal 类型参数化：
 
@@ -356,6 +361,8 @@ handler/artifact identity（如适用）
 ```
 
 Built-in、HostExtension、RuntimeExtension、CapabilityPlugin 分别可以进入哪些 point，将在 Interface contract 确认后形成独立能力矩阵。安全不能只依赖 manifest permission：Host/Kernel 必须把权限转化为实际可注入的窄 Port、typed facts 和 process/wire 边界。
+
+Authorization 和 Admission registration 必须在 publish 时与 typed executable binding 一一配对，其顺序、Graph、contract、permission 全部冻结进 Compiled Plan。Kernel 对 unary/server-stream 执行相同链路：core Authorization 先决策，extension Authorization 只能附加 veto；core Admission 先决策，extension Admission 只能附加 reject。任一 required extension deny/reject/error/timeout/unavailable 均 fail closed，插件 allow 不能覆盖 core deny。普通 Runtime/Capability extension 只获得 `PrincipalSummary` 和 point 授权的 typed facts；零 contribution 时保持现有 core 决策行为。
 
 ### 8. 时空可组合身份
 

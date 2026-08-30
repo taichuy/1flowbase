@@ -1,4 +1,6 @@
-use interface_runtime::{BindingId, InterfaceExecutionMode, InterfaceProtocol, PrincipalProfile};
+use interface_runtime::{
+    BindingId, InterfaceExecutionMode, InterfaceExtensionPoint, InterfaceProtocol, PrincipalProfile,
+};
 
 use super::support::test_api_state_with_database_url;
 
@@ -45,6 +47,12 @@ async fn issue_1944_boot_catalog_contains_the_four_typed_vertical_slices() {
         assert_eq!(plan.binding().projection().protocol(), protocol);
         assert_eq!(plan.definition().principal_profile(), principal);
         assert_eq!(plan.definition().execution_mode(), mode);
+        assert_eq!(plan.authentication().principal_profile(), principal);
+        assert_eq!(
+            plan.authentication().adapter(),
+            plan.adapter_plan().authentication()
+        );
+        assert!(!plan.authentication().activation().as_str().is_empty());
         assert!(plan.fingerprint().as_str().starts_with("sha256:"));
     }
 }
@@ -90,4 +98,21 @@ async fn issue_1944_providers_http_and_mcp_resolve_distinct_binding_plans() {
     assert_ne!(http.binding_fingerprint(), mcp.binding_fingerprint());
     assert_eq!(http.extension_plan(), mcp.extension_plan());
     assert!(!http.extension_plan().registrations().is_empty());
+    let points = http
+        .extension_plan()
+        .registrations()
+        .iter()
+        .map(|entry| entry.registration().point())
+        .collect::<Vec<_>>();
+    for required in [
+        InterfaceExtensionPoint::Definition,
+        InterfaceExtensionPoint::AuthenticationAdapter,
+        InterfaceExtensionPoint::Authorization,
+        InterfaceExtensionPoint::Admission,
+    ] {
+        assert!(
+            points.contains(&required),
+            "missing executable point {required:?}"
+        );
+    }
 }
