@@ -17,6 +17,11 @@ import {
 
 export type { PasswordSignInResponse, PublicLoginInstance };
 
+const loginInstanceFlights = new Map<
+  string,
+  Promise<PublicLoginInstancesResponse>
+>();
+
 export function getAuthApiBaseUrl(
   locationLike: ApiBaseUrlLocation | undefined = typeof window !== 'undefined'
     ? window.location
@@ -57,7 +62,16 @@ export function signInWithPassword(
 export function fetchLoginInstances(
   baseUrl = getAuthApiBaseUrl()
 ): Promise<PublicLoginInstancesResponse> {
-  return requestFetchPublicLoginInstances(baseUrl);
+  const existingFlight = loginInstanceFlights.get(baseUrl);
+  if (existingFlight) return existingFlight;
+
+  const flight = requestFetchPublicLoginInstances(baseUrl).finally(() => {
+    if (loginInstanceFlights.get(baseUrl) === flight) {
+      loginInstanceFlights.delete(baseUrl);
+    }
+  });
+  loginInstanceFlights.set(baseUrl, flight);
+  return flight;
 }
 
 export function fetchCurrentSession(

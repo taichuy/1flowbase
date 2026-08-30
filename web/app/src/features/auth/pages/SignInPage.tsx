@@ -18,8 +18,13 @@ import {
   fetchLoginInstances,
   type PublicLoginInstance
 } from '../api/session';
-import { HeroAnimation } from '../components/HeroAnimation';
 import { BuiltinPasswordSignIn } from '../components/BuiltinPasswordSignIn';
+
+const HeroAnimation = lazy(() =>
+  import('../components/HeroAnimation').then((module) => ({
+    default: module.HeroAnimation
+  }))
+);
 
 const PublicAuthBlock = lazy(() =>
   import('../components/PublicAuthBlock').then((module) => ({
@@ -128,7 +133,9 @@ export function SignInPage({ authenticatorId }: SignInPageProps) {
 
   return (
     <div className="auth-sign-in-page">
-      <HeroAnimation />
+      <Suspense fallback={null}>
+        <HeroAnimation />
+      </Suspense>
       <div
         className="auth-sign-in-panel"
         style={{
