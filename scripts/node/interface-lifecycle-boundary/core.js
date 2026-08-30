@@ -40,7 +40,7 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
       violations.push(`${name} stream route bypasses the compiled invocation plan`);
     }
   }
-  if ((workflowExtension.match(/boot_snapshot\.authenticate\(/gu) || []).length !== 1) {
+  if ((workflowExtension.match(/\.authenticate\(/gu) || []).length !== 1) {
     violations.push('/api/ex must have exactly one frozen Authentication owner');
   }
   if (workflowExtension.includes('require_session(&state') || workflowExtension.includes('require_csrf(&headers')) {

@@ -58,7 +58,7 @@ fn workflow_extension_publishes_one_typed_user_plan() {
 fn workflow_extension_route_has_one_frozen_authentication_and_execution_owner() {
     let source = include_str!("../../routes/application_public_api/ex.rs");
 
-    assert_eq!(source.matches("boot_snapshot.authenticate(").count(), 1);
+    assert_eq!(source.matches(".authenticate(").count(), 1);
     assert!(!source.contains("require_session(&state"));
     assert!(!source.contains("require_csrf(&headers"));
     assert_eq!(

@@ -10,7 +10,7 @@ pub enum IdentityError {
     UnsupportedCharacter { kind: &'static str },
     #[error("route method must contain only ASCII alphabetic characters")]
     InvalidMethod,
-    #[error("route path must be an absolute API path")]
+    #[error("route path must be an absolute static protocol path")]
     InvalidRoutePath,
 }
 
@@ -129,7 +129,14 @@ impl RouteIdentity {
             return Err(IdentityError::InvalidMethod);
         }
         let path = path.as_ref().trim();
-        if !path.starts_with("/api/") || path.contains('?') || path.contains('#') {
+        if !path.starts_with('/')
+            || path.starts_with("//")
+            || path.contains('?')
+            || path.contains('#')
+            || path
+                .bytes()
+                .any(|byte| byte.is_ascii_control() || byte.is_ascii_whitespace())
+        {
             return Err(IdentityError::InvalidRoutePath);
         }
         Ok(Self {
