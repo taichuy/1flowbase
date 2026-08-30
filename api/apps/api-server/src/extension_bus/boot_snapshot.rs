@@ -242,6 +242,12 @@ impl ExtensionBootSnapshot {
             .as_ref(),
         )?;
         compiler.absorb_snapshot(
+            crate::routes::application_public_api::compatibility_interface::compile_registry(
+                Arc::downgrade(state),
+            )?
+            .as_ref(),
+        )?;
+        compiler.absorb_snapshot(
             crate::routes::mcp_protocol::compile_mcp_interface_registry(Arc::downgrade(state))?
                 .as_ref(),
         )?;

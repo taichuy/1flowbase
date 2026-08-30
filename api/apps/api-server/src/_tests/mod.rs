@@ -5,6 +5,7 @@ mod auth_center_routes;
 mod auth_routes;
 mod authentication_activation_tests;
 mod billing_routes;
+mod compatibility_interface_tests;
 mod config_tests;
 mod console_navigation_routes;
 mod console_policy_migration_tests;

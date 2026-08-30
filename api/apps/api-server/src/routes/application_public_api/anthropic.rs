@@ -46,7 +46,7 @@ use crate::{
     app_state::ApiState,
     provider_runtime::ApiProviderRuntime,
     routes::application_public_api::{
-        callback_adapter::correlate_anthropic_callback, compat_sse,
+        callback_adapter::correlate_anthropic_callback, compat_sse, compatibility_interface,
         llm_tool_visibility::external_llm_tool_calls, native,
         tool_callback_ids::encode_anthropic_callback_tool_use_id,
     },
@@ -247,15 +247,24 @@ pub async fn create_message(
         route = "messages",
         translation_decision_count, "anthropic compatible request translated"
     );
-    let run = create_native_run(state.clone(), bearer_token.clone(), request).await?;
-
     if response_mode.as_deref() == Some("streaming") {
+        let run = create_native_run(state.clone(), bearer_token.clone(), request).await?;
         return compat_sse::start_anthropic_run_stream(state, bearer_token, run, model)
             .await
             .map_err(Into::into);
     }
 
-    let run = native::execute_blocking_native_run(state, bearer_token, run).await?;
+    let run = compatibility_interface::invoke_blocking(
+        state,
+        compatibility_interface::ANTHROPIC_MESSAGES_BINDING_ID,
+        bearer_token,
+        compatibility_interface::CompatibilityBlockingInput {
+            request,
+            protocol: TranslationProtocol::AnthropicMessages,
+            provider_transport: None,
+        },
+    )
+    .await?;
     Ok(Json(to_anthropic_response(run, model)?).into_response())
 }
 

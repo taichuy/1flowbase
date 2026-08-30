@@ -768,6 +768,15 @@ pub(crate) async fn execute_blocking_native_run_for_actor(
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
     run: NativeRunResult,
 ) -> Result<NativeRunResult, NativeApiError> {
+    execute_blocking_native_run_for_actor_with_provider_transport(state, actor, run, None).await
+}
+
+pub(crate) async fn execute_blocking_native_run_for_actor_with_provider_transport(
+    state: Arc<ApiState>,
+    actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+    run: NativeRunResult,
+    provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
+) -> Result<NativeRunResult, NativeApiError> {
     let _execution_activity = state.runtime_activity.start(
         run.application_id,
         ApplicationActivityKind::ApplicationExecution,
@@ -793,7 +802,7 @@ pub(crate) async fn execute_blocking_native_run_for_actor(
         runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
             application_id: run.application_id,
             flow_run_id: run.id,
-            provider_transport_slot: None,
+            provider_transport_slot,
         }),
     )
     .await;
@@ -1015,7 +1024,7 @@ pub async fn create_native_run(
         .start(application_id, ApplicationActivityKind::HttpRequest);
     let authentication_activation = activated_authentication.activation().clone();
     let dispatch_target =
-        native_runtime_target(&state, snapshot.as_ref(), &binding_id, application_id);
+        application_runtime_target(&state, snapshot.as_ref(), &binding_id, application_id);
     let envelope = InvocationEnvelope::with_principal(
         InvocationLineage::root(InvocationId::now_v7()),
         binding_id.clone(),
@@ -1105,7 +1114,7 @@ pub async fn create_native_run(
         .into_response())
 }
 
-fn native_runtime_target(
+pub(crate) fn application_runtime_target(
     state: &ApiState,
     registry: &interface_runtime::CompiledInterfaceRegistry,
     binding_id: &interface_runtime::BindingId,

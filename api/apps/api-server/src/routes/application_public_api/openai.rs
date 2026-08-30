@@ -54,7 +54,7 @@ use crate::{
     provider_runtime::ApiProviderRuntime,
     routes::application_public_api::{
         callback_adapter::{correlate_openai_chat_callback, correlate_openai_responses_callback},
-        compat_sse,
+        compat_sse, compatibility_interface,
         llm_tool_visibility::external_llm_tool_calls,
         native,
         tool_callback_ids::encode_openai_callback_tool_call_id,
@@ -229,26 +229,60 @@ pub async fn create_chat_completion(
     );
     let model = request.model.clone().unwrap_or_default();
     let response_mode = request.response_mode.clone();
-    let run = match create_native_run(
-        state.clone(),
-        credential.token.clone(),
-        request,
-        TranslationProtocol::OpenAiChat,
-    )
-    .await
-    {
-        Ok(run) => run,
-        Err(error) => {
-            warn!(
-                route = "chat_completions",
-                auth_source = credential.source,
-                status = error.status.as_u16(),
-                code = error.code,
-                "openai compatible native run validation failed"
-            );
-            return Err(error.into());
-        }
+    let binding_id = if uri.path() == "/chat/completions" {
+        compatibility_interface::OPENAI_CHAT_ROOT_BINDING_ID
+    } else {
+        compatibility_interface::OPENAI_CHAT_BINDING_ID
     };
+
+    if response_mode.as_deref() == Some("streaming") {
+        let run = match create_native_run(
+            state.clone(),
+            credential.token.clone(),
+            request,
+            TranslationProtocol::OpenAiChat,
+        )
+        .await
+        {
+            Ok(run) => run,
+            Err(error) => {
+                warn!(
+                    route = "chat_completions",
+                    auth_source = credential.source,
+                    status = error.status.as_u16(),
+                    code = error.code,
+                    "openai compatible native run validation failed"
+                );
+                return Err(error.into());
+            }
+        };
+
+        info!(
+            route = "chat_completions",
+            auth_source = credential.source,
+            application_id = %run.application_id,
+            flow_run_id = %run.id,
+            response_mode = "streaming",
+            model = %model,
+            translation_decision_count,
+            "openai compatible chat completion accepted"
+        );
+        return compat_sse::start_openai_run_stream(state, credential.token, run, model)
+            .await
+            .map_err(Into::into);
+    }
+
+    let run = compatibility_interface::invoke_blocking(
+        state,
+        binding_id,
+        credential.token,
+        compatibility_interface::CompatibilityBlockingInput {
+            request,
+            protocol: TranslationProtocol::OpenAiChat,
+            provider_transport: None,
+        },
+    )
+    .await?;
 
     info!(
         route = "chat_completions",
@@ -261,13 +295,6 @@ pub async fn create_chat_completion(
         "openai compatible chat completion accepted"
     );
 
-    if response_mode.as_deref() == Some("streaming") {
-        return compat_sse::start_openai_run_stream(state, credential.token, run, model)
-            .await
-            .map_err(Into::into);
-    }
-
-    let run = native::execute_blocking_native_run(state, credential.token, run).await?;
     let completion_id = compat_sse::openai_chat_completion_id_from_run_id(run.id);
     Ok(Json(to_openai_response(run, model, completion_id)?).into_response())
 }
@@ -296,6 +323,7 @@ pub async fn create_response(
     create_response_for_endpoint(
         state,
         headers,
+        uri.path().to_string(),
         uri.query().map(ToOwned::to_owned),
         body,
         OpenAiResponsesEndpoint::Responses,
@@ -327,6 +355,7 @@ pub async fn create_response_compact(
     create_response_for_endpoint(
         state,
         headers,
+        uri.path().to_string(),
         uri.query().map(ToOwned::to_owned),
         body,
         OpenAiResponsesEndpoint::ResponsesCompact,
@@ -337,6 +366,7 @@ pub async fn create_response_compact(
 async fn create_response_for_endpoint(
     state: Arc<ApiState>,
     headers: HeaderMap,
+    route_path: String,
     raw_query: Option<String>,
     body: Bytes,
     endpoint: OpenAiResponsesEndpoint,
@@ -344,6 +374,7 @@ async fn create_response_for_endpoint(
     match dispatch_response_for_endpoint(
         state,
         headers,
+        route_path,
         raw_query,
         body,
         endpoint,
@@ -370,6 +401,7 @@ pub(crate) async fn prepare_typed_response_turn(
     match dispatch_response_for_endpoint(
         state,
         headers,
+        "/v1/responses".to_string(),
         None,
         body,
         OpenAiResponsesEndpoint::Responses,
@@ -391,6 +423,7 @@ pub(crate) async fn prepare_typed_response_turn(
 async fn dispatch_response_for_endpoint(
     state: Arc<ApiState>,
     headers: HeaderMap,
+    route_path: String,
     raw_query: Option<String>,
     body: Bytes,
     endpoint: OpenAiResponsesEndpoint,
@@ -630,8 +663,54 @@ async fn dispatch_response_for_endpoint(
     }
     let model = request.model.clone().unwrap_or_default();
     let response_mode = request.response_mode.clone();
+    let blocking_binding_id = match endpoint {
+        OpenAiResponsesEndpoint::ResponsesCompact => {
+            compatibility_interface::OPENAI_RESPONSES_COMPACT_BINDING_ID
+        }
+        OpenAiResponsesEndpoint::Responses if route_path == "/responses" => {
+            compatibility_interface::OPENAI_RESPONSES_ROOT_BINDING_ID
+        }
+        OpenAiResponsesEndpoint::Responses => compatibility_interface::OPENAI_RESPONSES_BINDING_ID,
+    };
     match operation {
         AiNativeOperation::Generate(_) => {
+            if response_mode.as_deref() != Some("streaming") {
+                let run = compatibility_interface::invoke_blocking(
+                    state,
+                    blocking_binding_id,
+                    credential.token,
+                    compatibility_interface::CompatibilityBlockingInput {
+                        request,
+                        protocol: TranslationProtocol::OpenAiResponses,
+                        provider_transport: Some(
+                            compatibility_interface::CompatibilityProviderTransport {
+                                operation,
+                                payload: provider_transport_payload,
+                            },
+                        ),
+                    },
+                )
+                .await?;
+                info!(
+                    route,
+                    auth_source = credential.source,
+                    application_id = %run.application_id,
+                    flow_run_id = %run.id,
+                    response_mode = "blocking",
+                    model = %model,
+                    translation_decision_count,
+                    "openai responses compatible request accepted"
+                );
+                return Ok(OpenAiResponseDispatch::Http(
+                    Json(to_openai_responses_response(
+                        run,
+                        model,
+                        previous_response_id,
+                    )?)
+                    .into_response(),
+                ));
+            }
+
             let run = match create_native_run(
                 state.clone(),
                 credential.token.clone(),
@@ -672,48 +751,30 @@ async fn dispatch_response_for_endpoint(
                 "openai responses compatible request accepted"
             );
 
-            if response_mode.as_deref() == Some("streaming") {
-                return match delivery {
-                    OpenAiResponseDelivery::Http => compat_sse::start_openai_response_stream(
-                        state,
-                        credential.token.clone(),
-                        run,
-                        model,
-                        previous_response_id,
-                        provider_transport_slot,
-                    )
-                    .await
-                    .map(OpenAiResponseDispatch::Http)
-                    .map_err(Into::into),
-                    OpenAiResponseDelivery::TypedEvents => Ok(OpenAiResponseDispatch::TypedEvents(
-                        Box::new(PreparedOpenAiResponseTurn {
-                            model,
-                            previous_response_id,
-                            runtime: compat_sse::PreparedCompatibleTurn::start(
-                                run,
-                                provider_transport_slot,
-                                credential.token.clone(),
-                            ),
-                        }),
-                    )),
-                };
-            }
-
-            let run = native::execute_blocking_native_run_with_provider_transport(
-                state,
-                credential.token,
-                run,
-                provider_transport_slot,
-            )
-            .await?;
-            Ok(OpenAiResponseDispatch::Http(
-                Json(to_openai_responses_response(
+            match delivery {
+                OpenAiResponseDelivery::Http => compat_sse::start_openai_response_stream(
+                    state,
+                    credential.token.clone(),
                     run,
                     model,
                     previous_response_id,
-                )?)
-                .into_response(),
-            ))
+                    provider_transport_slot,
+                )
+                .await
+                .map(OpenAiResponseDispatch::Http)
+                .map_err(Into::into),
+                OpenAiResponseDelivery::TypedEvents => Ok(OpenAiResponseDispatch::TypedEvents(
+                    Box::new(PreparedOpenAiResponseTurn {
+                        model,
+                        previous_response_id,
+                        runtime: compat_sse::PreparedCompatibleTurn::start(
+                            run,
+                            provider_transport_slot,
+                            credential.token.clone(),
+                        ),
+                    }),
+                )),
+            }
         }
         AiNativeOperation::CountTokens => Err(openai_invalid_request(
             "operation",
@@ -734,25 +795,20 @@ async fn dispatch_response_for_endpoint(
                     ProviderCompactProfile::ResponsesCompactionV2
                 }
             };
-            let run = create_native_run(
-                state.clone(),
-                credential.token.clone(),
-                request,
-                TranslationProtocol::OpenAiResponses,
-            )
-            .await?;
-            let provider_transport_slot = stage_openai_provider_transport(
-                state.infrastructure.provider_transport_store().as_ref(),
-                run.id,
-                operation,
-                provider_transport_payload,
-            )
-            .await?;
-            let run = native::execute_blocking_native_run_with_provider_transport(
+            let run = compatibility_interface::invoke_blocking(
                 state,
+                blocking_binding_id,
                 credential.token,
-                run,
-                provider_transport_slot,
+                compatibility_interface::CompatibilityBlockingInput {
+                    request,
+                    protocol: TranslationProtocol::OpenAiResponses,
+                    provider_transport: Some(
+                        compatibility_interface::CompatibilityProviderTransport {
+                            operation,
+                            payload: provider_transport_payload,
+                        },
+                    ),
+                },
             )
             .await?;
             let result = match run.operation_terminal.as_ref() {
