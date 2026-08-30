@@ -27,13 +27,13 @@ use crate::{
     InterfaceIdentity, InterfaceInvocationError, InterfaceInvocationKernel,
     InterfaceInvocationStage, InterfaceInvocationTerminal, InterfaceLifecycle, InterfaceOwner,
     InterfaceProtocol, InterfaceScope, InterfaceStreamHandler, InterfaceStreamHandlerFuture,
-    InterfaceStreamTerminal, InterfaceTargetAdmissionError, InterfaceTargetAdmissionFuture,
-    InterfaceTargetAdmissionPort, InterfaceTargetAdmissionRequest, InterfaceVersion,
-    InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage, PluginIdentity,
-    PrincipalProfile, ProtocolBinding, ProtocolProjection, RegistryCompilationError,
-    RegistryCompiler, RouteIdentity, RuntimeGeneration, RuntimeTargetIdentity, TargetReference,
-    TypedInterfaceAdmissionPlan, TypedInterfaceAuthorizationPlan,
-    TypedInterfaceDefinitionContribution, TypedInterfaceHookPlan, UserPrincipal, WorkerGeneration,
+    InterfaceStreamTerminal, InterfaceTargetAdmissionFuture, InterfaceTargetAdmissionPort,
+    InterfaceTargetAdmissionRequest, InterfaceVersion, InvocationAdapterPlan, InvocationEnvelope,
+    InvocationId, InvocationLineage, PluginIdentity, PrincipalProfile, ProtocolBinding,
+    ProtocolProjection, RegistryCompilationError, RegistryCompiler, RouteIdentity,
+    RuntimeGeneration, RuntimeTargetIdentity, TargetReference, TypedInterfaceAdmissionPlan,
+    TypedInterfaceAuthorizationPlan, TypedInterfaceDefinitionContribution, TypedInterfaceHookPlan,
+    UserPrincipal, WorkerGeneration,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -940,25 +940,29 @@ fn rr13_definition_contribution_is_real_registry_input_and_metadata_only_fails()
             )],
         )
         .unwrap();
-    let mut compiler = compiler();
-    compiler.register_definition_contribution(0, registration.clone(), Arc::new(contribution));
-    activate_authentication(&mut compiler, &contributed, "review.authn");
-    compiler
+    let mut contribution_compiler = compiler();
+    contribution_compiler.register_definition_contribution(
+        0,
+        registration.clone(),
+        Arc::new(contribution),
+    );
+    activate_authentication(&mut contribution_compiler, &contributed, "review.authn");
+    contribution_compiler
         .bind_handler::<Input, Output, TargetError, UserPrincipal>(
             contributed.interface_id(),
             contributed.handler_reference().clone(),
             Arc::new(UnaryHandler),
         )
         .unwrap();
-    let snapshot = compiler.compile().unwrap();
+    let snapshot = contribution_compiler.compile().unwrap();
     assert_eq!(snapshot.definitions().len(), 1);
     assert_eq!(snapshot.bindings().len(), 1);
 
     let inert = definition("review.inert-definition", InterfaceExecutionMode::Unary);
-    let mut compiler = compiler();
-    compiler.register_definition(inert.clone()).unwrap();
-    activate_authentication(&mut compiler, &inert, "review.authn");
-    compiler
+    let mut inert_compiler = compiler();
+    inert_compiler.register_definition(inert.clone()).unwrap();
+    activate_authentication(&mut inert_compiler, &inert, "review.authn");
+    inert_compiler
         .register_binding(
             ProtocolBinding::new(
                 BindingId::new("http.review.inert-definition.v1").unwrap(),
@@ -969,10 +973,10 @@ fn rr13_definition_contribution_is_real_registry_input_and_metadata_only_fails()
             plan("review.authn", "review.authz"),
         )
         .unwrap();
-    compiler
+    inert_compiler
         .register_extension(inert.interface_id(), 0, registration)
         .unwrap();
-    compiler
+    inert_compiler
         .bind_handler::<Input, Output, TargetError, UserPrincipal>(
             inert.interface_id(),
             inert.handler_reference().clone(),
@@ -980,7 +984,7 @@ fn rr13_definition_contribution_is_real_registry_input_and_metadata_only_fails()
         )
         .unwrap();
     assert!(matches!(
-        compiler.compile(),
+        inert_compiler.compile(),
         Err(RegistryCompilationError::MissingDefinitionContribution(_))
     ));
 }
@@ -1530,7 +1534,7 @@ async fn rr15_rr16_extension_timeout_and_admission_reject_fail_closed() {
         DecisionBehavior::Delay,
         DecisionBehavior::Allow,
     );
-    let envelope = InvocationEnvelope::new(
+    let deadline_envelope = InvocationEnvelope::new(
         InvocationLineage::root(InvocationId::now_v7()),
         BindingId::new("http.review.decision-unary.v1").unwrap(),
         InterfaceProtocol::Http,
@@ -1547,7 +1551,7 @@ async fn rr15_rr16_extension_timeout_and_admission_reject_fail_closed() {
         }),
         Arc::new(RecordingCoreAdmission(Arc::clone(&events))),
     )
-    .invoke::<Input, Output, TargetError>(snapshot, envelope)
+    .invoke::<Input, Output, TargetError>(snapshot, deadline_envelope)
     .await
     .unwrap_err();
     assert!(matches!(

@@ -3,8 +3,8 @@ use std::marker::PhantomData;
 use thiserror::Error;
 
 use crate::{
-    InterfaceContract, InterfaceContracts, InterfaceDefinition, InterfaceExecutionMode,
-    InvocationAdapterPlan, InvocationPrincipal, PrincipalProfile, ProtocolBinding,
+    InterfaceContract, InterfaceContracts, InterfaceDefinition, InvocationAdapterPlan,
+    InvocationPrincipal, PrincipalProfile, ProtocolBinding,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
