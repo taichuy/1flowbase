@@ -443,6 +443,7 @@ async function profileScenario({
       state: "visible",
       timeout,
     });
+    const readyDurationMs = Date.now() - startedAt;
     await page
       .waitForLoadState("networkidle", { timeout: Math.min(timeout, 5_000) })
       .catch(() => {});
@@ -468,6 +469,7 @@ async function profileScenario({
     }
     return {
       phase,
+      readyDurationMs,
       durationMs: Date.now() - startedAt,
       finalUrl,
       consoleErrors,
@@ -599,11 +601,12 @@ function attachProfileGates(profile, budgets, scenario, history = {}) {
           ] || [],
       }),
       duration: evaluateBudget({
-        value: profile.durationMs || 0,
+        value: profile.readyDurationMs ?? profile.durationMs ?? 0,
         absoluteMax: budgets.duration_ms_max ?? Number.MAX_SAFE_INTEGER,
         history:
-          history[profileHistoryKey(scenario, profile.phase, "durationMs")] ||
-          [],
+          history[
+            profileHistoryKey(scenario, profile.phase, "readyDurationMs")
+          ] || [],
       }),
       pending: evaluateBudget({
         value: profile.pendingRequests?.length || 0,
@@ -674,6 +677,7 @@ function updateHistory(history, profiles) {
       moduleRequestCount: profile.moduleRequestCount || 0,
       decodedBytes: profile.decodedBytes || 0,
       durationMs: profile.durationMs || 0,
+      readyDurationMs: profile.readyDurationMs ?? profile.durationMs ?? 0,
       pendingRequests: profile.pendingRequests?.length || 0,
       failedRequests: profile.failedRequests.length,
       runtimeErrors:
@@ -1009,12 +1013,14 @@ async function runSmoke({
           page,
           webBaseUrl,
         });
+        const recoveryPage = await context.newPage();
         const recovery = await profileScenario({
-          page,
+          page: recoveryPage,
           phase: "recovery",
           url: targetUrl,
           scenario,
         });
+        await recoveryPage.close();
         profiles.push({
           scenario: scenario.id,
           recoveryTransitions,
@@ -1050,6 +1056,9 @@ async function runSmoke({
           ...attachProfileGates(
             {
               phase: "concurrent",
+              readyDurationMs: Math.max(
+                ...concurrentProfiles.map((profile) => profile.readyDurationMs),
+              ),
               durationMs: Math.max(
                 ...concurrentProfiles.map((profile) => profile.durationMs),
               ),
@@ -1228,6 +1237,7 @@ module.exports = {
   buildSourceGraph,
   cacheIdentity,
   createIsolatedViteCacheDirectory,
+  attachProfileGates,
   evaluateBudget,
   isActionableConsoleError,
   main,

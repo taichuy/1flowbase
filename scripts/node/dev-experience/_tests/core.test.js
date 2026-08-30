@@ -5,6 +5,7 @@ const path = require("node:path");
 const test = require("node:test");
 
 const {
+  attachProfileGates,
   cacheIdentity,
   createIsolatedViteCacheDirectory,
   evaluateBudget,
@@ -17,6 +18,32 @@ const {
   summarizeResources,
   updateHistory,
 } = require("../core.js");
+
+test("DV-F01 readiness SLO excludes post-ready network settling", () => {
+  const profile = attachProfileGates(
+    {
+      phase: "cold",
+      readyDurationMs: 7_000,
+      durationMs: 9_000,
+      moduleRequestCount: 1,
+      decodedBytes: 1,
+      failedRequests: [],
+      consoleErrors: [],
+      pageErrors: [],
+      pendingRequests: [],
+    },
+    {
+      cold_module_requests_max: 10,
+      decoded_bytes_max: 10,
+      duration_ms_max: 8_000,
+      failed_modules_max: 0,
+      runtime_errors_max: 0,
+    },
+    "public-incognito-root",
+  );
+
+  assert.equal(profile.gates.duration.ok, true);
+});
 
 test("DV-F01 runtime errors exclude Chromium resource status noise", () => {
   assert.equal(
