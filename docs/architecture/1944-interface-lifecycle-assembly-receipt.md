@@ -2,17 +2,17 @@
 
 ## Result and identities
 
-- Result: `QA_PENDING` for the XR executable-contribution assembly
+- Result: `QA_PASS`
 - Input: `beta@ff4cc74ab073256419884d3d96e0b3defcb36d45`
 - Previous fresh tested assembly: `beta@a3c78798320b5e2af8bc8b2f9b35cb8fe3977b31`
 - XR input: `beta@965d62e9514f1b3e25fdf2a4284cc3bb41cfbf2e`
-- XR assembly: pending XR-F05 freeze
+- Fresh tested XR product assembly: `beta@4b31cc86c2d7e74e053ac5c0b7976031265d7091`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
-- Fresh centralized QA: executable-extension remediation attempt 11, 16/16 rows complete, zero unrun rows
+- Fresh centralized QA: executable-contribution XR attempt 16, 16/16 rows complete, zero unrun rows
 - Evidence root: `tmp/test-governance/1944-interface-lifecycle/`
 
-The earlier QA evidence remains valid only for the previous product assembly. It does not settle
-RR-12 through RR-16; the XR assembly requires one fresh centralized QA after XR-F05 is frozen.
+XR attempt 16 is the sole valid fresh centralized QA for RR-12 through RR-16 and supersedes the
+earlier product assembly receipt for final #1944 acceptance review.
 
 ## XR executable-contribution packet ledger
 
@@ -21,10 +21,13 @@ RR-12 through RR-16; the XR assembly requires one fresh centralized QA after XR-
 | XR-F01 | `3817d8f0d` | ASSEMBLED | RR-12–RR-16 matrix and controlled fixtures |
 | XR-F02 | `b12754554` | ASSEMBLED | Hook input/output contract identity and publish-time validation |
 | XR-F03/XR-F04 | `d26433d03` | ASSEMBLED | Definition/AuthN activation and ordered AuthZ/Admission executable plans |
-| XR-F05 | pending | ACTIVE | production composition, boundaries, ADR, rules and receipt |
-| XR-F06 | pending | READY | frozen assembly and fresh centralized QA |
+| XR-F05 | `461e981fe` | ASSEMBLED | production composition, boundaries, ADR, rules and receipt |
+| XR-F06 | `4b31cc86c` | PASS | frozen replacement assembly and fresh centralized QA |
 
-No ARC acceptance criterion is settled by this pre-QA ledger.
+QA fix commits inside the approved XR boundary: `f35b3b261` removed fixture shadowing and warnings;
+`d14311934` aligned ordered registration evidence; `65470db64` completed typed route/error assembly;
+`4b31cc86c` aligned the exact public-facade inventory. ARC statuses below are candidates for user
+acceptance; Root AC is not formally settled by this Delivery receipt.
 
 ## Work Packet ledger
 
@@ -72,9 +75,16 @@ QA fix packets, all inside the approved boundary:
 - `ProtocolBinding` independently owns the HTTP/MCP/protocol projection and binding identity;
   adapters provide an explicit `BindingId`, and the Kernel rejects protocol/binding mismatch.
 - `CompiledInvocationPlan` freezes definition, binding, per-binding adapter plan, the concrete
-  effective typed Handler, concrete typed lifecycle Hook bindings and the actual ordered Extension
-  Plan plus graph/plan fingerprints. Registry publication rejects missing, extra, misordered or
-  graph-mismatched executable bindings as well as duplicate, unknown, inactive and illegal input.
+  activated Authentication identity, core adapter references, ordered typed Authorization and
+  Admission veto bindings, the concrete effective typed Handler, typed lifecycle Hook bindings and
+  the actual ordered Extension Plan plus graph/plan fingerprints. Registry publication rejects
+  missing, extra, misordered, permission/contract or graph-mismatched executable bindings as well
+  as duplicate, unknown, inactive and illegal input.
+- Typed Definition contributions compile into the same canonical registry and contribute their
+  required Protocol Bindings before publication. `api-server` Composition Root owns trusted
+  Authentication factories; Protocol Adapters resolve only the factory frozen by the binding plan
+  before constructing a sealed Principal. Core business Authorization/Admission remain mandatory;
+  ordered extension decisions are additive fail-closed vetoes and cannot replace a core denial.
 - `InvocationEnvelope<Input, Principal>` is typed over sealed `PublicPrincipal`, `UserPrincipal`
   and `ApplicationPrincipal`. Only trimmed `PrincipalSummary` reaches hooks and receipts.
 - Resolve-time pins definition/binding/graph/registry/hook plan. Dispatch-time pins attempt,
@@ -125,17 +135,17 @@ fail registry publication.
 | ARC-AC-003 | PASS | Native async/blocking/server-stream bindings and versioned input/output/stream/error/terminal contracts |
 | ARC-AC-004 | PASS | sealed principal unit and compile-fail tests |
 | ARC-AC-005 | PASS | credential-boundary source fixture and four real adapters |
-| ARC-AC-006 | PASS | unary and server-stream automatically execute the compiled Before/After/Failure/Completion plan; Native Runtime executes before terminal |
+| ARC-AC-006 | PASS | unary and server-stream automatically execute core + ordered AuthZ/Admission and compiled Before/After/Failure/Completion plans; Native Runtime executes before terminal |
 | ARC-AC-007 | PASS | live stream event → terminal → projection plus retry/deadline/cancel negatives |
 | ARC-AC-008 | PASS | Native dispatch freezes attempt and Runtime/worker generation; replacement negative |
 | ARC-AC-009 | PASS | Binding-first resolve, HTTP/MCP dual-binding and mismatch controlled negatives |
 | ARC-AC-010 | PASS | typed Handler ports and Node infrastructure-import negatives |
-| ARC-AC-011 | PASS | four-tier/nine-point capability matrix plus concrete ordered Hook bindings and a real exactly-one contributed Handler |
+| ARC-AC-011 | PASS | four-tier/nine-point capability matrix; real Definition/AuthN/AuthZ/Admission/Hook bindings and exactly-one contributed Handler |
 | ARC-AC-012 | PASS | completion/receipt versus outbox separation tests |
 | ARC-AC-013 | PASS | extension illegal-point and duplicate/missing/mismatch/inactive publish negatives |
 | ARC-AC-014 | PASS | behavioral boot/vertical fixtures plus full four-path API regression |
 | ARC-AC-015 | PASS | Cargo dependency and Node source-boundary controlled negatives |
-| ARC-AC-016 | PASS | fresh executable-extension remediation attempt 11, 16/16 rows, zero unrun |
+| ARC-AC-016 | PASS | fresh executable-contribution XR attempt 16, 16/16 rows, zero unrun |
 
 ## Controlled negatives
 
@@ -146,16 +156,26 @@ Handler infrastructure imports; Runtime/Capability authentication registration;
 `interface-runtime` forbidden dependencies; multiple stream terminals; attempt reuse; dispatched
 runtime-generation replacement; and treating Interface completion as a persisted Domain Event.
 
+## XR acceptance evidence
+
+| Requirement | Status | Direct evidence |
+| --- | --- | --- |
+| RR-12 | PASS | unary and stream wrong input/output Hook contracts fail in `RegistryCompiler::compile()` |
+| RR-13 | PASS | typed Definition contribution materializes Definition/Binding; metadata-only, duplicate and inactive contributions fail publication |
+| RR-14 | PASS | four Composition Root Authentication factories are resolved from frozen plans; missing, duplicate and identity/profile mismatch fail publication |
+| RR-15 | PASS | unary/stream execute core then ordered Authorization vetoes; core deny dominates and extension deny/error/deadline fail closed |
+| RR-16 | PASS | unary/stream execute core then ordered Admission vetoes; missing/extra/order/Graph/contract and reject/error/deadline cases fail closed |
+
 ## Fresh centralized QA receipt
 
 | Row | Result | Count / command class |
 | --- | --- | --- |
 | QA-001 | PASS | paired source identity and cleanliness |
 | QA-002 | PASS | `cargo fmt --all --check` |
-| QA-003 | PASS | interface-runtime 25 unit + 2 compile-fail doc tests |
+| QA-003 | PASS | interface-runtime 32 unit + 2 compile-fail doc tests |
 | QA-004 | PASS | access-control 35 tests |
 | QA-005 | PASS | api-server 1199 tests, zero ignored |
-| QA-006 | PASS | Node boundary 5 tests |
+| QA-006 | PASS | Node boundary 6 tests |
 | QA-007 | PASS | runtime-core 32, orchestration-runtime 388, runtime-extension-host 59 tests; its 2 ignored real-Host tests executed in QA-010 |
 | QA-008 | PASS | official plugin Node 153 tests |
 | QA-009 | PASS | 9 official executable `cargo build --locked` commands |
@@ -167,7 +187,7 @@ runtime-generation replacement; and treating Interface completion as a persisted
 | QA-015 | PASS | diff check and paired final integrity |
 | QA-016 | PASS | 16/16 rows; unrun 0 |
 
-Fresh automated tests total `1979 passed`, `0 failed`. The only non-blocking warnings are the
+Fresh automated tests total `1987 passed`, `0 failed`. The only non-blocking warnings are the
 existing 19 private dead-code warnings in `runtime-extension-host`; the #1944 boot import and
 unused Native stream helper warnings were removed before the final frozen assembly.
 
@@ -178,7 +198,7 @@ unused Native stream helper warnings were removed before the final frozen assemb
   route-equivalence tests.
 - Runtime behavior, stream order, stdio wire and plugin manifests: preserved by runtime suites,
   official Node suites, 9 executable builds and real Host conformance.
-- QA ended at the tested product assembly with only the two protected private memory changes;
-  documentation-only Receipt commits follow that assembly.
+- QA ended at XR tested product assembly `4b31cc86c` with only the two protected private memory
+  changes; documentation-only Receipt commits follow that assembly.
 - Official plugin repository ended clean at `8bf11605b02a0df8dd01271875f1ec3d182c0d3a`.
 - No push was performed. #1944 and #1893 remain open. Root acceptance criteria were not settled.
