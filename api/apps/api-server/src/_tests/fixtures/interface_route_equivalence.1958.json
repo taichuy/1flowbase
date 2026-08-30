@@ -1,0 +1,12 @@
+{
+  "issue": 1958,
+  "input_sha": "c2bd2c58f7e3e90bdb110b6fc0245c690ed3fbb4",
+  "cases": [
+    {"id":"compat.openai.chat.blocking","packet":"CI-M02","before_owner":"openai::create_chat_completion","target_binding":"http.compat.openai.chat-completions.blocking.v1","preserve":["dto_error","application_principal","run_transaction","runtime_dispatch"]},
+    {"id":"compat.openai.responses.blocking","packet":"CI-M02","before_owner":"openai::create_response_for_endpoint","target_binding":"http.compat.openai.responses.blocking.v1","preserve":["dto_error","application_principal","transport_context","runtime_dispatch"]},
+    {"id":"compat.anthropic.messages.blocking","packet":"CI-M02","before_owner":"anthropic::create_message","target_binding":"http.compat.anthropic.messages.blocking.v1","preserve":["dto_error","application_principal","translation","runtime_dispatch"]},
+    {"id":"compat.stream.sse-websocket","packet":"CI-M03","before_owner":"compat_sse/native_websocket/responses_websocket","target_binding":"typed server-stream or WebSocket binding variant","preserve":["event_order","disconnect_cancel","terminal","attempt_generation"]},
+    {"id":"public.auth.sign-in","packet":"CI-M04","before_owner":"AuthKernel::login + SessionIssuer","target_binding":"http.public.auth.sign-in.v1","preserve":["credential_validation","transaction","session_cookie","audit"]},
+    {"id":"workflow-extension.ex","packet":"CI-M05","before_owner":"WorkflowExtensionRunService","target_binding":"http.workflow-extension.invoke.v1","preserve":["user_principal","csrf_row_scope","sync_async","runtime_dispatch"]}
+  ]
+}

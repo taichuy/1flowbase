@@ -1,0 +1,95 @@
+{
+  "issue": 1958,
+  "input_sha": "c2bd2c58f7e3e90bdb110b6fc0245c690ed3fbb4",
+  "frozen": true,
+  "entries": [
+    {
+      "id": "compat.openai.chat.blocking",
+      "status": "migrate",
+      "method_or_tool": "POST /v1/chat/completions",
+      "owner": "OpenAI protocol adapter -> ApplicationNativeRunService -> OrchestrationRuntimeService",
+      "source_anchor": "routes/application_public_api/openai.rs",
+      "source_probe": "create_chat_completion",
+      "packet": "CI-M02"
+    },
+    {
+      "id": "compat.openai.responses.blocking",
+      "status": "migrate",
+      "method_or_tool": "POST /v1/responses | /v1/responses/compact",
+      "owner": "Responses protocol adapter -> ApplicationNativeRunService -> OrchestrationRuntimeService",
+      "source_anchor": "routes/application_public_api/openai.rs",
+      "source_probe": "create_response_for_endpoint",
+      "packet": "CI-M02"
+    },
+    {
+      "id": "compat.anthropic.messages.blocking",
+      "status": "migrate",
+      "method_or_tool": "POST /v1/messages",
+      "owner": "Anthropic protocol adapter -> ApplicationNativeRunService -> OrchestrationRuntimeService",
+      "source_anchor": "routes/application_public_api/anthropic.rs",
+      "source_probe": "create_message",
+      "packet": "CI-M02"
+    },
+    {
+      "id": "compat.stream.sse-websocket",
+      "status": "migrate",
+      "method_or_tool": "OpenAI/Anthropic SSE; GET /v1/responses; GET /api/agent/v1/runs/websocket",
+      "owner": "compat_sse/native_websocket/responses_websocket adapters -> pinned Runtime execution",
+      "source_anchor": "routes/application_public_api/compat_sse.rs",
+      "source_probe": "start_compatible_turn_stream",
+      "packet": "CI-M03"
+    },
+    {
+      "id": "public.auth.sign-in",
+      "status": "migrate",
+      "method_or_tool": "POST /api/public/auth/sign-in",
+      "owner": "AuthKernel -> authenticator -> SessionIssuer",
+      "source_anchor": "routes/identity/auth.rs",
+      "source_probe": "AuthKernel::new",
+      "packet": "CI-M04"
+    },
+    {
+      "id": "workflow-extension.ex",
+      "status": "migrate",
+      "method_or_tool": "ANY /api/ex/*slug",
+      "owner": "WorkflowExtensionRunService -> OrchestrationRuntimeService -> RuntimeExecutionPort",
+      "source_anchor": "routes/application_public_api/ex.rs",
+      "source_probe": "invoke_workflow_extension",
+      "packet": "CI-M05"
+    },
+    {
+      "id": "internal.workflow-schedule",
+      "status": "hold",
+      "method_or_tool": "workflow schedule timer + task queue consume",
+      "owner": "WorkflowScheduleTriggerService/worker; Internal/System Principal and durable acknowledgement unresolved",
+      "source_anchor": "workers/workflow_schedule.rs",
+      "source_probe": "consume_one_workflow_schedule_run",
+      "packet": "HOLD"
+    }
+  ],
+  "equivalence_dimensions": [
+    "method_path_and_protocol",
+    "request_response_dto_and_error",
+    "authentication_count_and_principal",
+    "authorization_row_scope_and_csrf",
+    "deadline_cancel_idempotency_and_retry",
+    "transaction_side_effect_audit_and_outbox",
+    "runtime_attempt_target_and_generation",
+    "stream_event_and_terminal_order",
+    "plugin_manifest_wire_result_and_error"
+  ],
+  "acceptance_matrix": [
+    {"id":"CIM-AC-001","fixture":"finite inventory, status and source anchors"},
+    {"id":"CIM-AC-002","fixture":"blocking protocol binding and DTO/error equivalence"},
+    {"id":"CIM-AC-003","fixture":"SSE/WebSocket ordered events, cancel and terminal"},
+    {"id":"CIM-AC-004","fixture":"sign-in authenticator/session/cookie/audit equivalence"},
+    {"id":"CIM-AC-005","fixture":"/api/ex auth/CSRF/scope/sync/async/runtime equivalence"},
+    {"id":"CIM-AC-006","fixture":"exactly-one Authentication, Handler and execution path"},
+    {"id":"CIM-AC-007","fixture":"Application/Domain/Runtime owner and forbidden-edge gates"},
+    {"id":"CIM-AC-008","fixture":"legacy execution branch and fallback residue gate"},
+    {"id":"CIM-AC-009","fixture":"migration/API/permission/plugin zero unexpected diff"},
+    {"id":"CIM-AC-010","fixture":"Internal/background HOLD and no-registration gate"},
+    {"id":"CIM-AC-011","fixture":"Graph/Registry/factory/handler publish negatives"},
+    {"id":"CIM-AC-012","fixture":"fresh frozen assembly manifest with failed=0 and unrun=0"}
+  ]
+}
