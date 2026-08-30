@@ -1,8 +1,6 @@
-import {
-  EditOutlined,
-  PushpinFilled,
-  PushpinOutlined
-} from '@ant-design/icons';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import PushpinFilled from '@ant-design/icons/es/icons/PushpinFilled';
+import PushpinOutlined from '@ant-design/icons/es/icons/PushpinOutlined';
 import { Button, Input, Modal, Space, Typography } from 'antd';
 import { useState } from 'react';
 

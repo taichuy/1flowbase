@@ -1,4 +1,6 @@
-import { DownOutlined, RightOutlined, ToolOutlined } from '@ant-design/icons';
+import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
+import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
+import ToolOutlined from '@ant-design/icons/es/icons/ToolOutlined';
 import { Badge, Tag, Tooltip, Typography } from 'antd';
 import {
   ReactNode,

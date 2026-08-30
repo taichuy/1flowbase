@@ -1,4 +1,6 @@
-import { FolderOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
+import FolderOutlined from '@ant-design/icons/es/icons/FolderOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import SaveOutlined from '@ant-design/icons/es/icons/SaveOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   App,

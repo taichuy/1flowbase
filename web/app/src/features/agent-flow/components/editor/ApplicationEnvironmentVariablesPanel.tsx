@@ -1,10 +1,8 @@
-import {
-  CloseOutlined,
-  CodeOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  PlusOutlined
-} from '@ant-design/icons';
+import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
+import CodeOutlined from '@ant-design/icons/es/icons/CodeOutlined';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import {
   Button,
   Empty,
@@ -200,7 +198,9 @@ export function ApplicationEnvironmentVariablesPanel({
 
   const editingVariable =
     editingIndex === null ? null : draftVariables[editingIndex];
-  const modalTitle = editingVariable ? i18nText("agentFlow", "auto.edit_environment_variables") : i18nText("agentFlow", "auto.add_environment_variables");
+  const modalTitle = editingVariable
+    ? i18nText('agentFlow', 'auto.edit_environment_variables')
+    : i18nText('agentFlow', 'auto.add_environment_variables');
 
   const existingNames = useMemo(
     () =>
@@ -253,7 +253,7 @@ export function ApplicationEnvironmentVariablesPanel({
       parsedValue = parseVariableValue(values.value_type, values.value);
       validateParsedValue(values.value_type, parsedValue);
     } catch {
-      setValueError(i18nText("agentFlow", "auto.variable_value_match_type"));
+      setValueError(i18nText('agentFlow', 'auto.variable_value_match_type'));
       return;
     }
 
@@ -285,17 +285,26 @@ export function ApplicationEnvironmentVariablesPanel({
 
   return (
     <section
-      aria-label={i18nText("agentFlow", "auto.environment_variables")}
+      aria-label={i18nText('agentFlow', 'auto.environment_variables')}
       className="agent-flow-editor__environment-variables-panel"
     >
       <header className="agent-flow-editor__system-variables-header">
         <div className="agent-flow-editor__system-variables-heading">
-          <Typography.Title level={3}>{i18nText("agentFlow", "auto.environment_variables")}</Typography.Title>
+          <Typography.Title level={3}>
+            {i18nText('agentFlow', 'auto.environment_variables')}
+          </Typography.Title>
           <Typography.Text type="secondary">
-            {i18nText("agentFlow", "auto.environment_variables_belong_application_referenced_any_node_canvas_through_env")}</Typography.Text>
+            {i18nText(
+              'agentFlow',
+              'auto.environment_variables_belong_application_referenced_any_node_canvas_through_env'
+            )}
+          </Typography.Text>
         </div>
         <Button
-          aria-label={i18nText("agentFlow", "auto.turn_off_environment_variables")}
+          aria-label={i18nText(
+            'agentFlow',
+            'auto.turn_off_environment_variables'
+          )}
           icon={<CloseOutlined />}
           type="text"
           onClick={onClose}
@@ -308,7 +317,8 @@ export function ApplicationEnvironmentVariablesPanel({
             type="primary"
             onClick={openCreateModal}
           >
-            {i18nText("agentFlow", "auto.add_environment_variables")}</Button>
+            {i18nText('agentFlow', 'auto.add_environment_variables')}
+          </Button>
         </div>
         <div
           aria-busy={loading}
@@ -348,9 +358,11 @@ export function ApplicationEnvironmentVariablesPanel({
                   ) : null}
                 </div>
                 <Space size={2}>
-                  <Tooltip title={i18nText("agentFlow", "auto.edit_alt")}>
+                  <Tooltip title={i18nText('agentFlow', 'auto.edit_alt')}>
                     <Button
-                      aria-label={i18nText("agentFlow", "auto.edit", { value1: variable.name })}
+                      aria-label={i18nText('agentFlow', 'auto.edit', {
+                        value1: variable.name
+                      })}
                       icon={<EditOutlined />}
                       size="small"
                       type="text"
@@ -358,14 +370,19 @@ export function ApplicationEnvironmentVariablesPanel({
                     />
                   </Tooltip>
                   <Popconfirm
-                    title={i18nText("agentFlow", "auto.delete_environment_variables")}
-                    okText={i18nText("agentFlow", "auto.delete")}
-                    cancelText={i18nText("agentFlow", "auto.cancel")}
+                    title={i18nText(
+                      'agentFlow',
+                      'auto.delete_environment_variables'
+                    )}
+                    okText={i18nText('agentFlow', 'auto.delete')}
+                    cancelText={i18nText('agentFlow', 'auto.cancel')}
                     onConfirm={() => deleteVariable(index)}
                   >
-                    <Tooltip title={i18nText("agentFlow", "auto.delete")}>
+                    <Tooltip title={i18nText('agentFlow', 'auto.delete')}>
                       <Button
-                        aria-label={i18nText("agentFlow", "auto.delete_item", { value1: variable.name })}
+                        aria-label={i18nText('agentFlow', 'auto.delete_item', {
+                          value1: variable.name
+                        })}
                         danger
                         icon={<DeleteOutlined />}
                         size="small"
@@ -383,8 +400,8 @@ export function ApplicationEnvironmentVariablesPanel({
         title={modalTitle}
         open={modalOpen}
         confirmLoading={loading}
-        okText={i18nText("agentFlow", "auto.save")}
-        cancelText={i18nText("agentFlow", "auto.cancel")}
+        okText={i18nText('agentFlow', 'auto.save')}
+        cancelText={i18nText('agentFlow', 'auto.cancel')}
         width={420}
         onCancel={() => setModalOpen(false)}
         onOk={() => {
@@ -394,17 +411,30 @@ export function ApplicationEnvironmentVariablesPanel({
         <Form form={form} layout="vertical">
           <Form.Item
             name="name"
-            label={i18nText("agentFlow", "auto.name")}
+            label={i18nText('agentFlow', 'auto.name')}
             rules={[
-              { required: true, message: i18nText("agentFlow", "auto.enter_variable_name") },
+              {
+                required: true,
+                message: i18nText('agentFlow', 'auto.enter_variable_name')
+              },
               {
                 pattern: /^[A-Za-z][A-Za-z0-9]*$/,
-                message: i18nText("agentFlow", "auto.supports_letters_starting_letters_including_uppercase_lowercase_letters_numbers")
+                message: i18nText(
+                  'agentFlow',
+                  'auto.supports_letters_starting_letters_including_uppercase_lowercase_letters_numbers'
+                )
               },
               {
                 validator(_, value) {
                   if (value && existingNames.has(value)) {
-                    return Promise.reject(new Error(i18nText("agentFlow", "auto.variable_name_already_exists")));
+                    return Promise.reject(
+                      new Error(
+                        i18nText(
+                          'agentFlow',
+                          'auto.variable_name_already_exists'
+                        )
+                      )
+                    );
                   }
                   return Promise.resolve();
                 }
@@ -415,8 +445,13 @@ export function ApplicationEnvironmentVariablesPanel({
           </Form.Item>
           <Form.Item
             name="value_type"
-            label={i18nText("agentFlow", "auto.type")}
-            rules={[{ required: true, message: i18nText("agentFlow", "auto.please_select_type") }]}
+            label={i18nText('agentFlow', 'auto.type')}
+            rules={[
+              {
+                required: true,
+                message: i18nText('agentFlow', 'auto.please_select_type')
+              }
+            ]}
           >
             <Select
               options={valueTypeOptions}
@@ -425,7 +460,7 @@ export function ApplicationEnvironmentVariablesPanel({
           </Form.Item>
           <Form.Item
             name="value"
-            label={i18nText("agentFlow", "auto.value")}
+            label={i18nText('agentFlow', 'auto.value')}
             validateStatus={valueError ? 'error' : undefined}
             help={valueError ?? undefined}
             rules={[
@@ -436,7 +471,11 @@ export function ApplicationEnvironmentVariablesPanel({
                     value === null ||
                     (typeof value === 'string' && value.trim().length === 0)
                   ) {
-                    return Promise.reject(new Error(i18nText("agentFlow", "auto.enter_variable_value")));
+                    return Promise.reject(
+                      new Error(
+                        i18nText('agentFlow', 'auto.enter_variable_value')
+                      )
+                    );
                   }
 
                   return Promise.resolve();
@@ -449,7 +488,10 @@ export function ApplicationEnvironmentVariablesPanel({
               onValueErrorChange={setValueError}
             />
           </Form.Item>
-          <Form.Item name="description" label={i18nText("agentFlow", "auto.description")}>
+          <Form.Item
+            name="description"
+            label={i18nText('agentFlow', 'auto.description')}
+          >
             <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} />
           </Form.Item>
         </Form>

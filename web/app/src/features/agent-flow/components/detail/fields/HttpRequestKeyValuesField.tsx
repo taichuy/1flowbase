@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components */
 
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button } from 'antd';
 import type { FlowBinding, NamedBindingEntry } from '@1flowbase/flow-schema';
 import { useRef } from 'react';
@@ -23,13 +24,15 @@ export function namedBindingEntriesFromValue(
     (value as { kind?: unknown }).kind === 'named_bindings' &&
     Array.isArray((value as { value?: unknown }).value)
   ) {
-    return ((value as { value: unknown[] }).value as HttpRequestKeyValueEntry[]);
+    return (value as { value: unknown[] }).value as HttpRequestKeyValueEntry[];
   }
 
   return [];
 }
 
-export function toNamedBinding(entries: HttpRequestKeyValueEntry[]): FlowBinding {
+export function toNamedBinding(
+  entries: HttpRequestKeyValueEntry[]
+): FlowBinding {
   return {
     kind: 'named_bindings',
     value: entries.map((entry) => ({

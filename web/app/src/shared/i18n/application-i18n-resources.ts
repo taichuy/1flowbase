@@ -1,0 +1,79 @@
+import agentFlowZhHans from '../../features/agent-flow/i18n/zh_Hans.json';
+import agentFlowEnUS from '../../features/agent-flow/i18n/en_US.json';
+import appZhHans from '../../app/i18n/zh_Hans.json';
+import appEnUS from '../../app/i18n/en_US.json';
+import appShellZhHans from '../../app-shell/i18n/zh_Hans.json';
+import appShellEnUS from '../../app-shell/i18n/en_US.json';
+import applicationsZhHans from '../../features/applications/i18n/zh_Hans.json';
+import applicationsEnUS from '../../features/applications/i18n/en_US.json';
+import embeddedAppsZhHans from '../../features/embedded-apps/i18n/zh_Hans.json';
+import embeddedAppsEnUS from '../../features/embedded-apps/i18n/en_US.json';
+import frontstageZhHans from '../../features/frontstage/i18n/zh_Hans.json';
+import frontstageEnUS from '../../features/frontstage/i18n/en_US.json';
+import meZhHans from '../../features/me/i18n/zh_Hans.json';
+import meEnUS from '../../features/me/i18n/en_US.json';
+import schemaUiZhHans from '../../shared/schema-ui/v1/i18n/zh_Hans.json';
+import schemaUiEnUS from '../../shared/schema-ui/v1/i18n/en_US.json';
+import settingsApplicationManagementZhHans from '../../features/settings/components/application-management/i18n/zh_Hans.json';
+import settingsApplicationManagementEnUS from '../../features/settings/components/application-management/i18n/en_US.json';
+import settingsSystemBackupsZhHans from '../../features/settings/components/system-backups/i18n/zh_Hans.json';
+import settingsSystemBackupsEnUS from '../../features/settings/components/system-backups/i18n/en_US.json';
+import settingsMcpManagementZhHans from '../../features/settings/components/mcp-management/i18n/zh_Hans.json';
+import settingsMcpManagementEnUS from '../../features/settings/components/mcp-management/i18n/en_US.json';
+import settingsUiManagementZhHans from '../../features/settings/components/ui-management/i18n/zh_Hans.json';
+import settingsUiManagementEnUS from '../../features/settings/components/ui-management/i18n/en_US.json';
+import settingsBillingZhHans from '../../features/settings/components/billing/i18n/zh_Hans.json';
+import settingsBillingEnUS from '../../features/settings/components/billing/i18n/en_US.json';
+import settingsZhHans from '../../features/settings/i18n/zh_Hans.json';
+import settingsEnUS from '../../features/settings/i18n/en_US.json';
+import sharedZhHans from './resources/zh_Hans.json';
+import sharedEnUS from './resources/en_US.json';
+import sharedUiZhHans from '../../shared/ui/i18n/zh_Hans.json';
+import sharedUiEnUS from '../../shared/ui/i18n/en_US.json';
+import templatesZhHans from '../../features/templates/i18n/zh_Hans.json';
+import workflowZhHans from '../../features/workflow/i18n/zh_Hans.json';
+import workflowEnUS from '../../features/workflow/i18n/en_US.json';
+import templatesEnUS from '../../features/templates/i18n/en_US.json';
+
+export const applicationTranslationResources = {
+  zh_Hans: {
+    agentFlow: agentFlowZhHans,
+    app: appZhHans,
+    appShell: appShellZhHans,
+    applications: applicationsZhHans,
+    embeddedApps: embeddedAppsZhHans,
+    frontstage: frontstageZhHans,
+    me: meZhHans,
+    schemaUi: schemaUiZhHans,
+    settingsApplicationManagement: settingsApplicationManagementZhHans,
+    settingsSystemBackups: settingsSystemBackupsZhHans,
+    settingsMcpManagement: settingsMcpManagementZhHans,
+    settingsUiManagement: settingsUiManagementZhHans,
+    settingsBilling: settingsBillingZhHans,
+    settings: settingsZhHans,
+    shared: sharedZhHans,
+    sharedUi: sharedUiZhHans,
+    templates: templatesZhHans,
+    workflow: workflowZhHans
+  },
+  en_US: {
+    agentFlow: agentFlowEnUS,
+    app: appEnUS,
+    appShell: appShellEnUS,
+    applications: applicationsEnUS,
+    embeddedApps: embeddedAppsEnUS,
+    frontstage: frontstageEnUS,
+    me: meEnUS,
+    schemaUi: schemaUiEnUS,
+    settingsApplicationManagement: settingsApplicationManagementEnUS,
+    settingsSystemBackups: settingsSystemBackupsEnUS,
+    settingsMcpManagement: settingsMcpManagementEnUS,
+    settingsUiManagement: settingsUiManagementEnUS,
+    settingsBilling: settingsBillingEnUS,
+    settings: settingsEnUS,
+    shared: sharedEnUS,
+    sharedUi: sharedUiEnUS,
+    templates: templatesEnUS,
+    workflow: workflowEnUS
+  }
+} as const;

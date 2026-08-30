@@ -1,4 +1,4 @@
-import { ReloadOutlined } from '@ant-design/icons';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import { Button } from 'antd';
 import type { ReactNode } from 'react';
 import { useMemo, useState } from 'react';

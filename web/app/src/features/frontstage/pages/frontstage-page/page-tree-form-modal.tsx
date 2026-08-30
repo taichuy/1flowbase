@@ -1,4 +1,5 @@
-import { CloseOutlined, PlusOutlined } from '@ant-design/icons';
+import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Form, Input, Modal, Popover, Space } from 'antd';
 import type { FormInstance } from 'antd';
 

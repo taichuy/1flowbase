@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 
-import { QuestionCircleOutlined } from '@ant-design/icons';
+import QuestionCircleOutlined from '@ant-design/icons/es/icons/QuestionCircleOutlined';
 import {
   Alert,
   Button,

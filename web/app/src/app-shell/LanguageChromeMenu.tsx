@@ -1,4 +1,4 @@
-import { TranslationOutlined } from '@ant-design/icons';
+import TranslationOutlined from '@ant-design/icons/es/icons/TranslationOutlined';
 import type { MenuProps } from 'antd';
 import { Menu } from 'antd';
 import { useTranslation } from 'react-i18next';
@@ -28,7 +28,9 @@ export function LanguageChromeMenu() {
     }
 
     const nextPreferredLocale =
-      PROFILE_LOCALE_BY_MENU_KEY[key as keyof typeof PROFILE_LOCALE_BY_MENU_KEY];
+      PROFILE_LOCALE_BY_MENU_KEY[
+        key as keyof typeof PROFILE_LOCALE_BY_MENU_KEY
+      ];
 
     writeLocalePreferenceToStorage(nextPreferredLocale);
 
@@ -36,7 +38,10 @@ export function LanguageChromeMenu() {
       return;
     }
 
-    const optimisticMeta = mergeLocalePreferenceMeta(me.meta, nextPreferredLocale);
+    const optimisticMeta = mergeLocalePreferenceMeta(
+      me.meta,
+      nextPreferredLocale
+    );
 
     setMe({
       ...me,
@@ -71,9 +76,14 @@ export function LanguageChromeMenu() {
         {
           key: 'language',
           label: (
-            <span className="app-shell-language-block" aria-label={t('language.trigger')}>
+            <span
+              className="app-shell-language-block"
+              aria-label={t('language.trigger')}
+            >
               <TranslationOutlined />
-              <span className="app-shell-language-label">{t('language.current')}</span>
+              <span className="app-shell-language-label">
+                {t('language.current')}
+              </span>
             </span>
           ),
           popupClassName: 'app-shell-language-popup',

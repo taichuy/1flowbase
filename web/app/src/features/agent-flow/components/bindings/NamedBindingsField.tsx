@@ -1,4 +1,4 @@
-import { DeleteOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import { Button, Input, Select } from 'antd';
 
 import type { FlowSelectorOption } from '../../lib/selector-options';
@@ -27,9 +27,9 @@ export function NamedBindingsField({
   value,
   options,
   nameOptions,
-  namePlaceholder = i18nText("agentFlow", "auto.variable_name"),
+  namePlaceholder = i18nText('agentFlow', 'auto.variable_name'),
   selectorLabel = 'selector',
-  addButtonLabel = i18nText("agentFlow", "auto.add_new_variable"),
+  addButtonLabel = i18nText('agentFlow', 'auto.add_new_variable'),
   onChange
 }: NamedBindingsFieldProps) {
   const { itemKeys, insertItemKey, removeItemKey } = useStableListItemKeys(
@@ -90,7 +90,9 @@ export function NamedBindingsField({
             />
           </div>
           <Button
-            aria-label={i18nText("agentFlow", "auto.delete_variable", { value1: entry.name || index + 1 })}
+            aria-label={i18nText('agentFlow', 'auto.delete_variable', {
+              value1: entry.name || index + 1
+            })}
             className="agent-flow-binding-row__delete"
             danger
             icon={<DeleteOutlined />}

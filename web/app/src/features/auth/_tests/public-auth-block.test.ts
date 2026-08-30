@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const { apiFetch } = vi.hoisted(() => ({ apiFetch: vi.fn() }));
 
-vi.mock('@1flowbase/api-client', async () => {
-  const actual = await vi.importActual<typeof import('@1flowbase/api-client')>(
-    '@1flowbase/api-client'
-  );
+vi.mock('@1flowbase/api-client/auth', async () => {
+  const actual = await vi.importActual<
+    typeof import('@1flowbase/api-client/auth')
+  >('@1flowbase/api-client/auth');
   return { ...actual, apiFetch };
 });
 

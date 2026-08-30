@@ -1,8 +1,6 @@
-import {
-  CheckOutlined,
-  CopyOutlined,
-  FullscreenOutlined
-} from '@ant-design/icons';
+import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
+import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
+import FullscreenOutlined from '@ant-design/icons/es/icons/FullscreenOutlined';
 import { App, Button, Modal, Tooltip } from 'antd';
 import {
   useCallback,
@@ -148,9 +146,9 @@ export function TemplatedTextField({
   async function handleCopy() {
     try {
       await copy(draftValue);
-      message.success(i18nText("agentFlow", "auto.copied"));
+      message.success(i18nText('agentFlow', 'auto.copied'));
     } catch {
-      message.error(i18nText("agentFlow", "auto.copy_failed"));
+      message.error(i18nText('agentFlow', 'auto.copy_failed'));
     }
   }
 
@@ -196,7 +194,7 @@ export function TemplatedTextField({
           placeholder={placeholder}
           onChange={scheduleDraftCommit}
         />
-        <Tooltip title={i18nText("agentFlow", "auto.insert_variable")}>
+        <Tooltip title={i18nText('agentFlow', 'auto.insert_variable')}>
           <Button
             className="agent-flow-templated-text-field__input-action"
             type="text"
@@ -207,7 +205,7 @@ export function TemplatedTextField({
               </span>
             }
             disabled={options.length === 0}
-            aria-label={i18nText("agentFlow", "auto.insert_variable")}
+            aria-label={i18nText('agentFlow', 'auto.insert_variable')}
             onClick={() => editorRef.current?.openVariablePicker()}
           />
         </Tooltip>
@@ -245,7 +243,7 @@ export function TemplatedTextField({
               <span className="agent-flow-templated-text-field__action agent-flow-templated-text-field__counter">
                 {draftValue.length}
               </span>
-              <Tooltip title={i18nText("agentFlow", "auto.insert_variable")}>
+              <Tooltip title={i18nText('agentFlow', 'auto.insert_variable')}>
                 <Button
                   className="agent-flow-templated-text-field__action"
                   type="text"
@@ -256,27 +254,31 @@ export function TemplatedTextField({
                     </span>
                   }
                   disabled={options.length === 0}
-                  aria-label={i18nText("agentFlow", "auto.insert_variable")}
+                  aria-label={i18nText('agentFlow', 'auto.insert_variable')}
                   onClick={() => editorRef.current?.openVariablePicker()}
                 />
               </Tooltip>
-              <Tooltip title={i18nText("agentFlow", "auto.copy_content")}>
+              <Tooltip title={i18nText('agentFlow', 'auto.copy_content')}>
                 <Button
                   className="agent-flow-templated-text-field__action"
                   type="text"
                   size="small"
                   icon={copied ? <CheckOutlined /> : <CopyOutlined />}
-                  aria-label={i18nText("agentFlow", "auto.copy_alt", { value1: label })}
+                  aria-label={i18nText('agentFlow', 'auto.copy_alt', {
+                    value1: label
+                  })}
                   onClick={handleCopy}
                 />
               </Tooltip>
-              <Tooltip title={i18nText("agentFlow", "auto.enlargeedit")}>
+              <Tooltip title={i18nText('agentFlow', 'auto.enlargeedit')}>
                 <Button
                   className="agent-flow-templated-text-field__action"
                   type="text"
                   size="small"
                   icon={<FullscreenOutlined />}
-                  aria-label={i18nText("agentFlow", "auto.zoom_edit", { value1: label })}
+                  aria-label={i18nText('agentFlow', 'auto.zoom_edit', {
+                    value1: label
+                  })}
                   onClick={() => setExpanded(true)}
                 />
               </Tooltip>
@@ -312,7 +314,9 @@ export function TemplatedTextField({
             ref={expandedEditorRef}
             value={draftValue}
             options={options}
-            ariaLabel={i18nText("agentFlow", "auto.zoom_edit_alt", { value1: ariaLabel })}
+            ariaLabel={i18nText('agentFlow', 'auto.zoom_edit_alt', {
+              value1: ariaLabel
+            })}
             placeholder={placeholder}
             onChange={scheduleDraftCommit}
           />

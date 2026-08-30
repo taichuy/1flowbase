@@ -4,7 +4,7 @@ import type {
   ConsoleAvailableRole,
   ConsoleMe,
   ConsoleSessionActor
-} from '@1flowbase/api-client';
+} from '@1flowbase/api-client/auth';
 
 export interface AuthSnapshot {
   csrfToken: string;

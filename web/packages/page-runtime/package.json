@@ -11,6 +11,10 @@
     "./module-registry": {
       "types": "./dist/native-react-compiler/module-registry/contracts.d.ts",
       "default": "./src/native-react-compiler/module-registry/contracts.ts"
+    },
+    "./source-contract": {
+      "types": "./dist/native-react-compiler/source-contract.d.ts",
+      "default": "./src/native-react-compiler/source-contract.ts"
     }
   },
   "dependencies": {

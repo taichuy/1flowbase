@@ -1,4 +1,4 @@
-import { CloseOutlined } from '@ant-design/icons';
+import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import { Button, Space, Typography } from 'antd';
 import type { ReactNode } from 'react';
 
@@ -57,7 +57,10 @@ export function AgentFlowDockPanel({
         <Space size={4} wrap>
           {actions}
           <Button
-            aria-label={closeLabel ?? i18nText("agentFlow", "auto.close", { value1: title })}
+            aria-label={
+              closeLabel ??
+              i18nText('agentFlow', 'auto.close', { value1: title })
+            }
             icon={<CloseOutlined />}
             size="small"
             type="text"

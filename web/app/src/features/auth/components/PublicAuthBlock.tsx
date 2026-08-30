@@ -1,4 +1,4 @@
-import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
+import { BlockUiLoadingShell } from '@1flowbase/block-renderer/loading-shell';
 import {
   diagnoseLegacyBlockModuleSource,
   sha256Text,
@@ -6,7 +6,7 @@ import {
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
 import type { BlockContextSeed } from '@1flowbase/page-protocol';
-import { Space } from 'antd';
+import Space from 'antd/es/space';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {

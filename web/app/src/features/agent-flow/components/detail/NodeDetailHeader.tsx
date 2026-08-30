@@ -1,4 +1,5 @@
-import { BookOutlined, CloseOutlined } from '@ant-design/icons';
+import BookOutlined from '@ant-design/icons/es/icons/BookOutlined';
+import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import { Button, Divider, Space, Tooltip } from 'antd';
 
 import type { CanvasNodeSchema } from '../../../../shared/schema-ui/v1/contracts/canvas-node-schema';
@@ -13,10 +14,7 @@ import { NodeRunButton } from './NodeRunButton';
 import { getAgentFlowNodeTypeIcon } from '../../lib/node-type-icons';
 import { i18nText } from '../../../../shared/i18n/text';
 
-function findHeaderField(
-  schema: CanvasNodeSchema,
-  path: string
-) {
+function findHeaderField(schema: CanvasNodeSchema, path: string) {
   return schema.detail.header.blocks.find(
     (block) => block.kind === 'field' && block.path === path
   );
@@ -103,9 +101,12 @@ export function NodeDetailHeader({
             onCopy={detailActions.duplicateSelectedNode}
             onDelete={detailActions.deleteSelectedNode}
           />
-          <Divider orientation="vertical" className="agent-flow-node-detail__divider" />
+          <Divider
+            orientation="vertical"
+            className="agent-flow-node-detail__divider"
+          />
           <Button
-            aria-label={i18nText("agentFlow", "auto.close_node_details")}
+            aria-label={i18nText('agentFlow', 'auto.close_node_details')}
             icon={<CloseOutlined />}
             type="text"
             onClick={onClose}

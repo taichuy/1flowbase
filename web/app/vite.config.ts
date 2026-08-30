@@ -30,8 +30,29 @@ const appRoot = fileURLToPath(new URL('.', import.meta.url));
 const nativeAntDesignEsModuleSources = collectAntDesignEsModuleSources().map(
   ({ moduleSource }) => moduleSource
 );
-const nativeAntDesignIconsModuleInventory =
-  collectAntDesignIconModuleSources({ projectRoot: appRoot });
+const devCriticalAntDesignModules = [
+  'antd/es/alert',
+  'antd/es/app',
+  'antd/es/button',
+  'antd/es/config-provider',
+  'antd/es/input',
+  'antd/es/skeleton',
+  'antd/es/space',
+  'antd/es/spin',
+  'antd/es/theme',
+  'antd/es/theme/themes/default',
+  'antd/es/typography'
+] as const;
+const deferredNativeAntDesignEsModuleSources =
+  nativeAntDesignEsModuleSources.filter(
+    (moduleSource) =>
+      !devCriticalAntDesignModules.includes(
+        moduleSource as (typeof devCriticalAntDesignModules)[number]
+      )
+  );
+const nativeAntDesignIconsModuleInventory = collectAntDesignIconModuleSources({
+  projectRoot: appRoot
+});
 const nativeDndKitModuleInventory = collectDndKitModuleSources({
   projectRoot: appRoot
 });
@@ -153,14 +174,21 @@ export default defineConfig(({ command, mode }) => {
     ],
     define: reactDraggableBrowserDefines,
     optimizeDeps: {
+      rolldownOptions: {
+        output: {
+          minify: true
+        }
+      },
       exclude: [
-        '@ant-design/icons',
         '@ant-design/icons-svg',
         'dayjs',
         ...nativeDndKitPackageRoots,
-        ...nativeAntDesignEsModuleSources
+        ...deferredNativeAntDesignEsModuleSources
       ],
       include: [
+        '@1flowbase/api-client/auth',
+        '@ant-design/icons',
+        ...devCriticalAntDesignModules,
         '@ant-design/x-markdown',
         '@lexical/react/LexicalComposer',
         '@lexical/react/LexicalComposerContext',
@@ -209,6 +237,7 @@ export default defineConfig(({ command, mode }) => {
       strictPort: true,
       warmup: {
         clientFiles: [
+          './src/bootstrap.ts',
           './src/main.tsx',
           './src/app/router.tsx',
           './src/features/frontstage/pages/FrontStagePage.tsx',
@@ -250,15 +279,23 @@ export default defineConfig(({ command, mode }) => {
       alias: {
         ...(command === 'serve'
           ? {
-              '@ant-design/icons-svg/lib/asn':
-                '@ant-design/icons-svg/es/asn'
+              '@ant-design/icons-svg/lib/asn': '@ant-design/icons-svg/es/asn'
             }
           : {}),
         '@1flowbase/shared-types': fileURLToPath(
           new URL('../packages/shared-types/src/index.ts', import.meta.url)
         ),
+        '@1flowbase/api-client/auth': fileURLToPath(
+          new URL('../packages/api-client/src/auth/index.ts', import.meta.url)
+        ),
         '@1flowbase/api-client': fileURLToPath(
           new URL('../packages/api-client/src/index.ts', import.meta.url)
+        ),
+        '@1flowbase/block-renderer/loading-shell': fileURLToPath(
+          new URL(
+            '../packages/block-renderer/src/BlockUiLoadingShell.tsx',
+            import.meta.url
+          )
         ),
         '@1flowbase/block-renderer': fileURLToPath(
           new URL('../packages/block-renderer/src/index.tsx', import.meta.url)
@@ -268,6 +305,9 @@ export default defineConfig(({ command, mode }) => {
             '../../scripts/node/testing/contracts/model-providers',
             import.meta.url
           )
+        ),
+        '@1flowbase/ui/app-theme-provider': fileURLToPath(
+          new URL('../packages/ui/src/app-theme-provider.tsx', import.meta.url)
         ),
         '@1flowbase/ui': fileURLToPath(
           new URL('../packages/ui/src/index.tsx', import.meta.url)
@@ -281,6 +321,12 @@ export default defineConfig(({ command, mode }) => {
         '@1flowbase/page-runtime/module-registry': fileURLToPath(
           new URL(
             '../packages/page-runtime/src/native-react-compiler/module-registry/contracts.ts',
+            import.meta.url
+          )
+        ),
+        '@1flowbase/page-runtime/source-contract': fileURLToPath(
+          new URL(
+            '../packages/page-runtime/src/native-react-compiler/source-contract.ts',
             import.meta.url
           )
         ),

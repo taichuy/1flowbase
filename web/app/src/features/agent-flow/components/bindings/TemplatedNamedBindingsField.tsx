@@ -1,9 +1,5 @@
-import { DeleteOutlined } from '@ant-design/icons';
-import {
-  Button,
-  Input,
-  Select
-} from 'antd';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import { Button, Input, Select } from 'antd';
 import type {
   NamedBindingEntry,
   NamedBindingExpression
@@ -45,13 +41,13 @@ const parameterValueTypeOptions: Array<{
   label: string;
   value: ParameterValueType;
 }> = [
-  { label: i18nText("agentFlow", "auto.string"), value: 'string' },
-  { label: i18nText("agentFlow", "auto.number"), value: 'number' },
-  { label: i18nText("agentFlow", "auto.boolean"), value: 'boolean' },
-  { label: i18nText("agentFlow", "auto.object"), value: 'object' },
-  { label: i18nText("agentFlow", "auto.array"), value: 'array' },
+  { label: i18nText('agentFlow', 'auto.string'), value: 'string' },
+  { label: i18nText('agentFlow', 'auto.number'), value: 'number' },
+  { label: i18nText('agentFlow', 'auto.boolean'), value: 'boolean' },
+  { label: i18nText('agentFlow', 'auto.object'), value: 'object' },
+  { label: i18nText('agentFlow', 'auto.array'), value: 'array' },
   { label: 'JSON', value: 'json' },
-  { label: i18nText("agentFlow", "auto.unknown"), value: 'unknown' }
+  { label: i18nText('agentFlow', 'auto.unknown'), value: 'unknown' }
 ];
 
 function isParameterNameValid(name: string) {
@@ -131,15 +127,11 @@ function createConstantExpression(
 
 function isSelectorOnlyValueType(valueType: ParameterValueType | undefined) {
   return (
-    valueType === 'array' ||
-    valueType === 'object' ||
-    valueType === 'json'
+    valueType === 'array' || valueType === 'object' || valueType === 'json'
   );
 }
 
-function expressionToSingleLineText(
-  expression: NamedBindingExpression | null
-) {
+function expressionToSingleLineText(expression: NamedBindingExpression | null) {
   if (expression?.kind === 'selector') {
     return createTemplateSelectorToken(expression.selector);
   }
@@ -211,9 +203,7 @@ function optionMatchesValueType(
 
   if (optionValueType === 'json') {
     return (
-      valueType === 'json' ||
-      valueType === 'object' ||
-      valueType === 'array'
+      valueType === 'json' || valueType === 'object' || valueType === 'array'
     );
   }
 
@@ -435,8 +425,8 @@ export function TemplatedNamedBindingsField({
         label={entryLabel}
         options={selectorOptions}
         placeholder={i18nText(
-          "agentFlow",
-          "auto.enter_text_enter_reference_variable"
+          'agentFlow',
+          'auto.enter_text_enter_reference_variable'
         )}
         value={expressionToSingleLineText(expression)}
         onChange={(nextValue) => {
@@ -460,7 +450,7 @@ export function TemplatedNamedBindingsField({
       {value.map((entry, index) => {
         const entryLabel =
           entry.name ||
-          i18nText("agentFlow", "auto.variable", { value1: index + 1 });
+          i18nText('agentFlow', 'auto.variable', { value1: index + 1 });
         const expression = getNamedBindingExpression(entry);
         const valueType =
           normalizeParameterValueType(entry.valueType) ??
@@ -480,10 +470,8 @@ export function TemplatedNamedBindingsField({
             <div className="agent-flow-templated-binding-row__name">
               <Input
                 aria-label={`${ariaLabel}-${index}-name`}
-                placeholder={i18nText("agentFlow", "auto.variable_name")}
-                status={
-                  isParameterNameValid(entry.name) ? undefined : 'error'
-                }
+                placeholder={i18nText('agentFlow', 'auto.variable_name')}
+                status={isParameterNameValid(entry.name) ? undefined : 'error'}
                 value={entry.name}
                 onChange={(event) =>
                   updateEntry(index, { ...entry, name: event.target.value })
@@ -495,7 +483,7 @@ export function TemplatedNamedBindingsField({
                 allowClear
                 aria-label={`${ariaLabel}-${index}-type`}
                 options={parameterValueTypeOptions}
-                placeholder={i18nText("agentFlow", "auto.please_select_type")}
+                placeholder={i18nText('agentFlow', 'auto.please_select_type')}
                 value={valueType}
                 onChange={(nextValue) => {
                   const nextValueType = normalizeParameterValueType(nextValue);
@@ -523,7 +511,7 @@ export function TemplatedNamedBindingsField({
               )}
             </div>
             <Button
-              aria-label={i18nText("agentFlow", "auto.delete_variable", {
+              aria-label={i18nText('agentFlow', 'auto.delete_variable', {
                 value1: entry.name || index + 1
               })}
               className="agent-flow-templated-binding-row__delete"
@@ -552,7 +540,7 @@ export function TemplatedNamedBindingsField({
           ]);
         }}
       >
-        {i18nText("agentFlow", "auto.add_new_variable")}
+        {i18nText('agentFlow', 'auto.add_new_variable')}
       </Button>
     </div>
   );

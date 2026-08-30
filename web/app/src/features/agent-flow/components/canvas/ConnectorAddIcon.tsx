@@ -1,4 +1,4 @@
-import { PlusOutlined } from '@ant-design/icons';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 
 export function ConnectorAddIcon({ className }: { className?: string }) {
   return (

@@ -1,9 +1,9 @@
-import * as antdModule from 'antd';
 import * as ReactModule from 'react';
 import * as ReactJsxRuntimeModule from 'react/jsx-runtime';
-import * as uiModule from '@1flowbase/ui';
 import {
+  ANTD_ROOT_EXPORTS,
   ANTD_ES_MODULE_DEFINITIONS,
+  loadAntDesignRootModule,
   loadAntDesignEsModule
 } from 'virtual:1flowbase-native-antd-es-modules';
 import {
@@ -33,22 +33,36 @@ import {
   loadAntDesignColorsModule
 } from './ant-design-colors-runtime';
 import { ANTD_STYLE_EXPORTS, loadAntdStyleModule } from './antd-style-runtime';
-import { NativeBlockAffix } from './native-affix-runtime';
-import { NativeBlockAnchor } from './native-anchor-runtime';
-import { NativeBlockDropdown } from './native-dropdown-runtime';
-import { NativeBlockMessage } from './native-message-runtime';
-import { NativeBlockMenu } from './menu/native-menu-runtime';
 
 type ModuleNamespace = Record<string, unknown>;
 
-const nativeAntdModule = {
-  ...antdModule,
-  Affix: NativeBlockAffix,
-  Anchor: NativeBlockAnchor,
-  Dropdown: NativeBlockDropdown,
-  Menu: NativeBlockMenu,
-  message: NativeBlockMessage
-};
+const UI_MODULE_EXPORTS = ['AppShell', 'AppThemeProvider'] as const;
+
+async function loadNativeAntDesignModule(): Promise<ModuleNamespace> {
+  const [
+    antdModule,
+    { NativeBlockAffix },
+    { NativeBlockAnchor },
+    { NativeBlockDropdown },
+    { NativeBlockMessage },
+    { NativeBlockMenu }
+  ] = await Promise.all([
+    loadAntDesignRootModule(),
+    import('./native-affix-runtime'),
+    import('./native-anchor-runtime'),
+    import('./native-dropdown-runtime'),
+    import('./native-message-runtime'),
+    import('./menu/native-menu-runtime')
+  ]);
+  return {
+    ...antdModule,
+    Affix: NativeBlockAffix,
+    Anchor: NativeBlockAnchor,
+    Dropdown: NativeBlockDropdown,
+    Menu: NativeBlockMenu,
+    message: NativeBlockMessage
+  };
+}
 
 const ANT_DESIGN_X_EXPORTS = [
   'Actions',
@@ -81,8 +95,8 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
     Object.keys(ReactJsxRuntimeModule),
     async () => ({ module: ReactJsxRuntimeModule })
   ),
-  registration('antd', Object.keys(antdModule), async () => ({
-    module: nativeAntdModule
+  registration('antd', ANTD_ROOT_EXPORTS, async () => ({
+    module: await loadNativeAntDesignModule()
   })),
   ...ANTD_ES_MODULE_DEFINITIONS.map(({ module_source, exports }) =>
     registration(module_source, exports, async () => ({
@@ -112,8 +126,8 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   registration('antd-style', ANTD_STYLE_EXPORTS, async () => ({
     module: await loadAntdStyleModule()
   })),
-  registration('@1flowbase/ui', Object.keys(uiModule), async () => ({
-    module: uiModule
+  registration('@1flowbase/ui', UI_MODULE_EXPORTS, async () => ({
+    module: await import('@1flowbase/ui')
   })),
   registration('@1flowbase/block-sdk', ['blockSdkVersion'], async () => ({
     module: await import('@1flowbase/block-sdk')

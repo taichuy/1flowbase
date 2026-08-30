@@ -1,14 +1,12 @@
-import {
-  ArrowDownOutlined,
-  ArrowUpOutlined,
-  DeleteOutlined,
-  DragOutlined,
-  EditOutlined,
-  FileAddOutlined,
-  FolderAddOutlined,
-  MenuOutlined,
-  PlusOutlined
-} from '@ant-design/icons';
+import ArrowDownOutlined from '@ant-design/icons/es/icons/ArrowDownOutlined';
+import ArrowUpOutlined from '@ant-design/icons/es/icons/ArrowUpOutlined';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import DragOutlined from '@ant-design/icons/es/icons/DragOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import FileAddOutlined from '@ant-design/icons/es/icons/FileAddOutlined';
+import FolderAddOutlined from '@ant-design/icons/es/icons/FolderAddOutlined';
+import MenuOutlined from '@ant-design/icons/es/icons/MenuOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { App, Button, Dropdown, Form, Space } from 'antd';
 import { useEffect, useState, type ReactNode } from 'react';
 

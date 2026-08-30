@@ -1,4 +1,4 @@
-import { PlusOutlined } from '@ant-design/icons';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { useMemo, useState } from 'react';
 
 import { pageTreeIconNames } from './metadata';

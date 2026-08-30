@@ -1,13 +1,11 @@
-import {
-  ApiOutlined,
-  AppstoreOutlined,
-  ApartmentOutlined,
-  CodeOutlined,
-  DatabaseOutlined,
-  FileTextOutlined,
-  PlayCircleOutlined,
-  SettingOutlined
-} from '@ant-design/icons';
+import ApiOutlined from '@ant-design/icons/es/icons/ApiOutlined';
+import AppstoreOutlined from '@ant-design/icons/es/icons/AppstoreOutlined';
+import ApartmentOutlined from '@ant-design/icons/es/icons/ApartmentOutlined';
+import CodeOutlined from '@ant-design/icons/es/icons/CodeOutlined';
+import DatabaseOutlined from '@ant-design/icons/es/icons/DatabaseOutlined';
+import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
+import PlayCircleOutlined from '@ant-design/icons/es/icons/PlayCircleOutlined';
+import SettingOutlined from '@ant-design/icons/es/icons/SettingOutlined';
 import { Button, Tooltip } from 'antd';
 import type { CSSProperties, ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';

@@ -1,4 +1,5 @@
-import { CheckOutlined, CopyOutlined } from '@ant-design/icons';
+import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
+import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
 import { useQuery } from '@tanstack/react-query';
 import { App, Button, Tooltip } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';

@@ -1,12 +1,10 @@
-import {
-  DeleteOutlined,
-  UploadOutlined,
-  EditOutlined,
-  LeftOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-  RightOutlined
-} from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import LeftOutlined from '@ant-design/icons/es/icons/LeftOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
+import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -756,10 +754,7 @@ export function McpToolsTab({
             >
               <Select<McpToolsRouteState['execution_target_kind']>
                 allowClear
-                aria-label={i18nText(
-                  'settingsMcpManagement',
-                  'auto.tool_type'
-                )}
+                aria-label={i18nText('settingsMcpManagement', 'auto.tool_type')}
                 placeholder={i18nText(
                   'settingsMcpManagement',
                   'auto.tool_type'
@@ -1051,10 +1046,7 @@ export function McpToolsTab({
             >
               <Input />
             </Form.Item>
-            <Form.Item
-              name="full_description"
-              label="full_description"
-            >
+            <Form.Item name="full_description" label="full_description">
               <MarkdownIrEditor ariaLabel="full_description" />
             </Form.Item>
           </div>

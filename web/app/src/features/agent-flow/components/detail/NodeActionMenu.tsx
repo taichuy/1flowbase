@@ -1,4 +1,4 @@
-import { MoreOutlined } from '@ant-design/icons';
+import MoreOutlined from '@ant-design/icons/es/icons/MoreOutlined';
 import { Button, Dropdown } from 'antd';
 import { i18nText } from '../../../../shared/i18n/text';
 
@@ -18,24 +18,28 @@ export function NodeActionMenu({
         items: [
           {
             key: 'locate',
-            label: i18nText("agentFlow", "auto.locate_node"),
+            label: i18nText('agentFlow', 'auto.locate_node'),
             onClick: onLocate
           },
           {
             key: 'copy',
-            label: i18nText("agentFlow", "auto.copy_node"),
+            label: i18nText('agentFlow', 'auto.copy_node'),
             onClick: onCopy
           },
           {
             key: 'delete',
-            label: i18nText("agentFlow", "auto.delete_node"),
+            label: i18nText('agentFlow', 'auto.delete_node'),
             danger: true,
             onClick: onDelete
           }
         ]
       }}
     >
-      <Button aria-label={i18nText("agentFlow", "auto.more_actions_alt")} icon={<MoreOutlined />} type="text" />
+      <Button
+        aria-label={i18nText('agentFlow', 'auto.more_actions_alt')}
+        icon={<MoreOutlined />}
+        type="text"
+      />
     </Dropdown>
   );
 }

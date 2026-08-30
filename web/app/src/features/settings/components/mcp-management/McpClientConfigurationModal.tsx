@@ -1,4 +1,6 @@
-import { DeleteOutlined, KeyOutlined, SaveOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import KeyOutlined from '@ant-design/icons/es/icons/KeyOutlined';
+import SaveOutlined from '@ant-design/icons/es/icons/SaveOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Alert, App, Button, Form, Input, Space, Tabs, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
@@ -284,10 +286,7 @@ export function McpClientConfigurationModal({
     <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
       <Space orientation="vertical" size="small" style={{ width: '100%' }}>
         <Typography.Title level={5} style={{ margin: 0 }}>
-          {i18nText(
-            'settingsMcpManagement',
-            'auto.install_update_commands'
-          )}
+          {i18nText('settingsMcpManagement', 'auto.install_update_commands')}
         </Typography.Title>
         {commands?.install ? (
           <McpCommandMarkdownPreview

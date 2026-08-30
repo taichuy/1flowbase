@@ -2,7 +2,8 @@ import type {
   SchemaBlock,
   CanvasNodeSchema
 } from '../../../../shared/schema-ui/v1/contracts/canvas-node-schema';
-import { PlusOutlined, QuestionCircleOutlined } from '@ant-design/icons';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import QuestionCircleOutlined from '@ant-design/icons/es/icons/QuestionCircleOutlined';
 import { SchemaRenderer } from '../../../../shared/schema-ui/v1/runtime/SchemaRenderer';
 import { evaluateSchemaRule } from '../../../../shared/schema-ui/v1/runtime/rule-evaluator';
 import type { SchemaAdapter } from '../../../../shared/schema-ui/v1/registry/create-renderer-registry';
@@ -288,9 +289,7 @@ export function NodeInspector({
                       data-testid={`inspector-field-${childBlock.path}`}
                     >
                       {!hasEmbeddedLabel(childBlock.renderer) && (
-                        <div
-                          className="agent-flow-editor__inspector-field-label-header"
-                        >
+                        <div className="agent-flow-editor__inspector-field-label-header">
                           <Typography.Text
                             strong
                             className="agent-flow-editor__inspector-field-label"

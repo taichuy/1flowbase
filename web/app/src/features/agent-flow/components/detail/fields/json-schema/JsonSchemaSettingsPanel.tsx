@@ -1,4 +1,5 @@
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Checkbox, Input, Select, Tabs, Typography } from 'antd';
 import {
   Suspense,

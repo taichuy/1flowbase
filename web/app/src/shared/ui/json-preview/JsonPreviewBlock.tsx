@@ -1,9 +1,7 @@
-import {
-  CheckOutlined,
-  CopyOutlined,
-  DownOutlined,
-  FullscreenOutlined
-} from '@ant-design/icons';
+import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
+import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
+import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
+import FullscreenOutlined from '@ant-design/icons/es/icons/FullscreenOutlined';
 import { App, Button, Modal, Tooltip } from 'antd';
 import type { ReactNode } from 'react';
 import { Suspense, lazy, useMemo, useState } from 'react';

@@ -1,15 +1,13 @@
-import {
-  CopyOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  LinkOutlined,
-  MoreOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-  SearchOutlined,
-  SettingOutlined,
-  UploadOutlined
-} from '@ant-design/icons';
+import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import LinkOutlined from '@ant-design/icons/es/icons/LinkOutlined';
+import MoreOutlined from '@ant-design/icons/es/icons/MoreOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
+import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
+import SettingOutlined from '@ant-design/icons/es/icons/SettingOutlined';
+import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import type { ConsoleMcpInstance } from '@1flowbase/api-client';
 import {
   Button,
@@ -197,8 +195,7 @@ export function McpInstanceTable({
                   else if (key === 'copy') onCopy(record);
                   else if (key === 'restore_default') {
                     onRestoreDefault(record);
-                  }
-                  else if (key === 'delete') {
+                  } else if (key === 'delete') {
                     Modal.confirm({
                       title: i18nText(
                         'settings',

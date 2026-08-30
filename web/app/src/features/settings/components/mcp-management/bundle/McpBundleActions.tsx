@@ -1,4 +1,4 @@
-import { UploadOutlined } from '@ant-design/icons';
+import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { App, Button, Modal, Space } from 'antd';
 import { useCallback, useRef, useState } from 'react';

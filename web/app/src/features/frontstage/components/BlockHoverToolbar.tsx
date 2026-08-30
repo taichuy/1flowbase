@@ -1,10 +1,8 @@
-import {
-  CodeOutlined,
-  DeleteOutlined,
-  DragOutlined,
-  MenuOutlined,
-  ReloadOutlined
-} from '@ant-design/icons';
+import CodeOutlined from '@ant-design/icons/es/icons/CodeOutlined';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import DragOutlined from '@ant-design/icons/es/icons/DragOutlined';
+import MenuOutlined from '@ant-design/icons/es/icons/MenuOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import { App as AntdApp, Button, Divider, Tooltip } from 'antd';
 import type { FC, MouseEvent } from 'react';
 import { useState } from 'react';

@@ -1,8 +1,8 @@
-import { theme as antdTheme } from 'antd';
 import type { ThemeConfig } from 'antd';
+import defaultAlgorithm from 'antd/es/theme/themes/default';
 
 export const emeraldLightTheme: ThemeConfig = {
-  algorithm: antdTheme.defaultAlgorithm,
+  algorithm: defaultAlgorithm,
   token: {
     colorPrimary: '#00ab73',
     colorSuccess: '#19b36b',

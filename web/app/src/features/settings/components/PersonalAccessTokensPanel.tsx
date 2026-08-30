@@ -14,7 +14,8 @@ import {
   Typography,
   App
 } from 'antd';
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 
 import { useAuthStore } from '../../../state/auth-store';
 import { formatDateTime as formatLocalizedDateTime } from '../../../shared/i18n/format';
@@ -354,13 +355,14 @@ export function PersonalAccessTokensPanel() {
           <DataTableFilterForm
             ariaLabel={i18nText('settings', 'auto.translation_catalog_filter')}
             resetLabel={i18nText('settings', 'auto.reset')}
-            submitLabel={i18nText('settings', 'auto.translation_catalog_filter')}
+            submitLabel={i18nText(
+              'settings',
+              'auto.translation_catalog_filter'
+            )}
             onReset={resetFilters}
             onSubmit={applyFilters}
           >
-            <DataTableFilterField
-              label={i18nText('settings', 'auto.status')}
-            >
+            <DataTableFilterField label={i18nText('settings', 'auto.status')}>
               <Select<PersonalAccessTokenStatusFilter>
                 aria-label={i18nText('settings', 'auto.status')}
                 value={statusFilterDraft}

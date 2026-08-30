@@ -1,4 +1,4 @@
-import { DeleteOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
 import { Alert, Button, Modal, Tooltip, Typography, Upload } from 'antd';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { i18nText } from '../../../../shared/i18n/text';

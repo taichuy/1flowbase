@@ -6,6 +6,7 @@ declare module 'virtual:1flowbase-native-module-declarations' {
 }
 
 declare module 'virtual:1flowbase-native-antd-es-modules' {
+  export const ANTD_ROOT_EXPORTS: readonly string[];
   export const ANTD_ES_MODULE_DEFINITIONS: readonly {
     module_source: string;
     exports: string[];
@@ -13,6 +14,7 @@ declare module 'virtual:1flowbase-native-antd-es-modules' {
   export function loadAntDesignEsModule(
     moduleSource: string
   ): Promise<Record<string, unknown>>;
+  export function loadAntDesignRootModule(): Promise<Record<string, unknown>>;
 }
 
 declare module 'virtual:1flowbase-native-ant-design-icons-modules' {

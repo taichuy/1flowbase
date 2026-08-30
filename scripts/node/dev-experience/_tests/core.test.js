@@ -6,7 +6,9 @@ const test = require("node:test");
 
 const {
   cacheIdentity,
+  createIsolatedViteCacheDirectory,
   evaluateBudget,
+  isActionableConsoleError,
   parseOptimizeDepsInclude,
   reachableComponentSets,
   robustLimit,
@@ -15,6 +17,37 @@ const {
   summarizeResources,
   updateHistory,
 } = require("../core.js");
+
+test("DV-F01 runtime errors exclude Chromium resource status noise", () => {
+  assert.equal(
+    isActionableConsoleError(
+      "Failed to load resource: the server responded with a status of 401 ()",
+    ),
+    false,
+  );
+  assert.equal(
+    isActionableConsoleError("Failed to fetch dynamically imported module"),
+    true,
+  );
+  assert.equal(isActionableConsoleError("application runtime failed"), true);
+});
+
+test("DV-F01 isolated fresh cache stays inside the app module resolution domain", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "dev-experience-root-"));
+  const cacheDirectory = createIsolatedViteCacheDirectory(root);
+  try {
+    assert.equal(
+      path.dirname(cacheDirectory),
+      path.join(root, "web", "app", "node_modules"),
+    );
+    assert.match(
+      path.basename(cacheDirectory),
+      /^\.vite-dev-experience-cache-/u,
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test("DV-F01 optimize dependency fixture rejects names outside optimizeDeps include", () => {
   const source = `
@@ -31,7 +64,14 @@ test("DV-F01 runtime fixtures resolve real page and workflow identities", async 
         {
           id: "group-1",
           kind: "group",
-          children: [{ id: "page-1", kind: "page", children: [] }],
+          children: [
+            {
+              id: "page-1",
+              kind: "page",
+              slug: "task-planning-ft",
+              children: [],
+            },
+          ],
         },
       ],
     },
@@ -64,7 +104,7 @@ test("DV-F01 runtime fixtures resolve real page and workflow identities", async 
     scenarios: [
       {
         fixture_kind: "frontstage_page",
-        path_template: "/frontstage/pages/:page_id",
+        path_template: "/:slug/pages/:page_id",
       },
       {
         fixture_kind: "workflow_application",
@@ -73,7 +113,7 @@ test("DV-F01 runtime fixtures resolve real page and workflow identities", async 
     ],
   });
 
-  assert.equal(scenarios[0].fixture_path, "/frontstage/pages/page-1");
+  assert.equal(scenarios[0].fixture_path, "/task-planning-ft/pages/page-1");
   assert.equal(
     scenarios[1].fixture_path,
     "/applications/workflow-1/orchestration",

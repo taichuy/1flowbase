@@ -11,13 +11,11 @@ import {
   Tooltip,
   App
 } from 'antd';
-import {
-  DeleteOutlined,
-  EditOutlined,
-  EyeOutlined,
-  PlusOutlined,
-  ReloadOutlined
-} from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import EyeOutlined from '@ant-design/icons/es/icons/EyeOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import type { ColumnsType } from 'antd/es/table';
 
 import { useAuthStore } from '../../../state/auth-store';

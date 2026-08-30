@@ -16,14 +16,12 @@ import {
   Tag,
   Typography
 } from 'antd';
-import {
-  CheckCircleOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  KeyOutlined,
-  StopOutlined,
-  UserAddOutlined
-} from '@ant-design/icons';
+import CheckCircleOutlined from '@ant-design/icons/es/icons/CheckCircleOutlined';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import KeyOutlined from '@ant-design/icons/es/icons/KeyOutlined';
+import StopOutlined from '@ant-design/icons/es/icons/StopOutlined';
+import UserAddOutlined from '@ant-design/icons/es/icons/UserAddOutlined';
 
 import { useAuthStore } from '../../../state/auth-store';
 import {
@@ -101,7 +99,9 @@ export function MemberManagementPanel({
     onSuccess: async () => {
       createForm.resetFields();
       setCreateModalOpen(false);
-      await queryClient.invalidateQueries({ queryKey: settingsMembersQueryKey });
+      await queryClient.invalidateQueries({
+        queryKey: settingsMembersQueryKey
+      });
     }
   });
 
@@ -114,7 +114,9 @@ export function MemberManagementPanel({
       return disableSettingsMember(memberId, csrfToken);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: settingsMembersQueryKey });
+      await queryClient.invalidateQueries({
+        queryKey: settingsMembersQueryKey
+      });
     }
   });
 
@@ -127,7 +129,9 @@ export function MemberManagementPanel({
       return enableSettingsMember(memberId, csrfToken);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: settingsMembersQueryKey });
+      await queryClient.invalidateQueries({
+        queryKey: settingsMembersQueryKey
+      });
     }
   });
 
@@ -140,7 +144,9 @@ export function MemberManagementPanel({
       return deleteSettingsMember(memberId, csrfToken);
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: settingsMembersQueryKey });
+      await queryClient.invalidateQueries({
+        queryKey: settingsMembersQueryKey
+      });
     }
   });
 
@@ -157,7 +163,9 @@ export function MemberManagementPanel({
       );
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: settingsMembersQueryKey });
+      await queryClient.invalidateQueries({
+        queryKey: settingsMembersQueryKey
+      });
     }
   });
 
@@ -198,7 +206,9 @@ export function MemberManagementPanel({
       return member;
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: settingsMembersQueryKey });
+      await queryClient.invalidateQueries({
+        queryKey: settingsMembersQueryKey
+      });
       setProfileEditMember(null);
       profileForm.resetFields();
     }
@@ -219,7 +229,9 @@ export function MemberManagementPanel({
       );
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: settingsMembersQueryKey });
+      await queryClient.invalidateQueries({
+        queryKey: settingsMembersQueryKey
+      });
       passwordForm.resetFields();
       setPasswordEditMember(null);
       setAnonymous();
@@ -280,27 +292,21 @@ export function MemberManagementPanel({
     [passwordForm]
   );
 
-  const roleOptions = useMemo(
-    () => {
-      const options = (rolesQuery.data ?? []).map((role) => ({
-        label: role.name,
-        value: role.code
-      }));
+  const roleOptions = useMemo(() => {
+    const options = (rolesQuery.data ?? []).map((role) => ({
+      label: role.name,
+      value: role.code
+    }));
 
-      if (
-        profileEditMember?.role_codes.includes('root') &&
-        !options.some((option) => option.value === 'root')
-      ) {
-        return [
-          { label: 'root', value: 'root', disabled: true },
-          ...options
-        ];
-      }
+    if (
+      profileEditMember?.role_codes.includes('root') &&
+      !options.some((option) => option.value === 'root')
+    ) {
+      return [{ label: 'root', value: 'root', disabled: true }, ...options];
+    }
 
-      return options;
-    },
-    [profileEditMember, rolesQuery.data]
-  );
+    return options;
+  }, [profileEditMember, rolesQuery.data]);
 
   const handleRoleSelectionChange = useCallback(
     (roleCodes: string[]) => {
@@ -320,7 +326,7 @@ export function MemberManagementPanel({
   const columns = useMemo(
     () => [
       {
-        title: i18nText("settings", "auto.avatar"),
+        title: i18nText('settings', 'auto.avatar'),
         key: 'avatar',
         width: 72,
         align: 'center' as const,
@@ -334,7 +340,7 @@ export function MemberManagementPanel({
         )
       },
       {
-        title: i18nText("settings", "auto.account_number"),
+        title: i18nText('settings', 'auto.account_number'),
         dataIndex: 'account',
         key: 'account',
         width: 160,
@@ -345,29 +351,25 @@ export function MemberManagementPanel({
         )
       },
       {
-        title: i18nText("settings", "auto.name_alt"),
+        title: i18nText('settings', 'auto.name_alt'),
         dataIndex: 'name',
         key: 'name',
         width: 160,
         render: (name: SettingsMember['name']) => (
-          <Typography.Text style={{ fontSize: 14 }}>
-            {name}
-          </Typography.Text>
+          <Typography.Text style={{ fontSize: 14 }}>{name}</Typography.Text>
         )
       },
       {
-        title: i18nText("settings", "auto.nickname"),
+        title: i18nText('settings', 'auto.nickname'),
         dataIndex: 'nickname',
         key: 'nickname',
         width: 160,
         render: (nickname: SettingsMember['nickname']) => (
-          <Typography.Text style={{ fontSize: 14 }}>
-            {nickname}
-          </Typography.Text>
+          <Typography.Text style={{ fontSize: 14 }}>{nickname}</Typography.Text>
         )
       },
       {
-        title: i18nText("settings", "auto.contact_information"),
+        title: i18nText('settings', 'auto.contact_information'),
         key: 'contact',
         render: (_: unknown, member: SettingsMember) => (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -383,19 +385,21 @@ export function MemberManagementPanel({
         )
       },
       {
-        title: i18nText("settings", "auto.status"),
+        title: i18nText('settings', 'auto.status'),
         key: 'status',
         width: 80,
         render: (_: unknown, member: SettingsMember) => (
           <Tag color={member.status === 'active' ? 'green' : 'default'}>
-            {member.status === 'active' ? i18nText("settings", "auto.enabled") : i18nText("settings", "auto.deactivate")}
+            {member.status === 'active'
+              ? i18nText('settings', 'auto.enabled')
+              : i18nText('settings', 'auto.deactivate')}
           </Tag>
         )
       },
       ...(canManageMembers
         ? [
             {
-              title: i18nText("settings", "auto.operation"),
+              title: i18nText('settings', 'auto.operation'),
               key: 'action',
               width: 240,
               render: (_: unknown, member: SettingsMember) => {
@@ -409,7 +413,8 @@ export function MemberManagementPanel({
                       icon={<EditOutlined />}
                       onClick={() => handleOpenProfileEdit(member)}
                     >
-                      {i18nText("settings", "auto.edit")}</Button>
+                      {i18nText('settings', 'auto.edit')}
+                    </Button>
                     {isRootMember ? (
                       <Button
                         size="small"
@@ -422,23 +427,29 @@ export function MemberManagementPanel({
                             : undefined
                         }
                       >
-                        {i18nText("settings", "auto.reset_password")}</Button>
+                        {i18nText('settings', 'auto.reset_password')}
+                      </Button>
                     ) : (
                       <Popconfirm
-                        title={i18nText("settings", "auto.reset_password")}
-                        description={i18nText("settings", "auto.reset_password_temporary_password_needs_changed_immediately_user_logs", { value1: member.name })}
+                        title={i18nText('settings', 'auto.reset_password')}
+                        description={i18nText(
+                          'settings',
+                          'auto.reset_password_temporary_password_needs_changed_immediately_user_logs',
+                          { value1: member.name }
+                        )}
                         onConfirm={() =>
                           resetPasswordMutation.mutate(member.id)
                         }
-                        okText={i18nText("settings", "auto.confirm_reset")}
-                        cancelText={i18nText("settings", "auto.cancel")}
+                        okText={i18nText('settings', 'auto.confirm_reset')}
+                        cancelText={i18nText('settings', 'auto.cancel')}
                       >
                         <Button
                           size="small"
                           icon={<KeyOutlined />}
                           loading={resetPasswordMutation.isPending}
                         >
-                          {i18nText("settings", "auto.reset_password")}</Button>
+                          {i18nText('settings', 'auto.reset_password')}
+                        </Button>
                       </Popconfirm>
                     )}
                     {member.status === 'active' ? (
@@ -450,14 +461,25 @@ export function MemberManagementPanel({
                           icon={<StopOutlined />}
                           disabled
                         >
-                          {i18nText("settings", "auto.deactivate")}</Button>
+                          {i18nText('settings', 'auto.deactivate')}
+                        </Button>
                       ) : (
                         <Popconfirm
-                          title={i18nText("settings", "auto.deactivate_account")}
-                          description={i18nText("settings", "auto.sure_want_deactivate_s_account_deactivation_user_able_log", { value1: member.name })}
+                          title={i18nText(
+                            'settings',
+                            'auto.deactivate_account'
+                          )}
+                          description={i18nText(
+                            'settings',
+                            'auto.sure_want_deactivate_s_account_deactivation_user_able_log',
+                            { value1: member.name }
+                          )}
                           onConfirm={() => disableMutation.mutate(member.id)}
-                          okText={i18nText("settings", "auto.confirm_deactivation")}
-                          cancelText={i18nText("settings", "auto.cancel")}
+                          okText={i18nText(
+                            'settings',
+                            'auto.confirm_deactivation'
+                          )}
+                          cancelText={i18nText('settings', 'auto.cancel')}
                           okButtonProps={{
                             color: 'orange',
                             variant: 'solid'
@@ -470,16 +492,21 @@ export function MemberManagementPanel({
                             icon={<StopOutlined />}
                             loading={disableMutation.isPending}
                           >
-                            {i18nText("settings", "auto.deactivate")}</Button>
+                            {i18nText('settings', 'auto.deactivate')}
+                          </Button>
                         </Popconfirm>
                       )
                     ) : (
                       <Popconfirm
-                        title={i18nText("settings", "auto.restore_account")}
-                        description={i18nText("settings", "auto.sure_want_restore_s_account_user_able_log", { value1: member.name })}
+                        title={i18nText('settings', 'auto.restore_account')}
+                        description={i18nText(
+                          'settings',
+                          'auto.sure_want_restore_s_account_user_able_log',
+                          { value1: member.name }
+                        )}
                         onConfirm={() => enableMutation.mutate(member.id)}
-                        okText={i18nText("settings", "auto.confirm_restore")}
-                        cancelText={i18nText("settings", "auto.cancel")}
+                        okText={i18nText('settings', 'auto.confirm_restore')}
+                        cancelText={i18nText('settings', 'auto.cancel')}
                         okButtonProps={{
                           color: 'green',
                           variant: 'solid'
@@ -492,7 +519,8 @@ export function MemberManagementPanel({
                           icon={<CheckCircleOutlined />}
                           loading={enableMutation.isPending}
                         >
-                          {i18nText("settings", "auto.restore")}</Button>
+                          {i18nText('settings', 'auto.restore')}
+                        </Button>
                       </Popconfirm>
                     )}
                     {isRootMember || isCurrentUser ? (
@@ -502,14 +530,19 @@ export function MemberManagementPanel({
                         icon={<DeleteOutlined />}
                         disabled
                       >
-                        {i18nText("settings", "auto.delete")}</Button>
+                        {i18nText('settings', 'auto.delete')}
+                      </Button>
                     ) : (
                       <Popconfirm
-                        title={i18nText("settings", "auto.delete_member")}
-                        description={i18nText("settings", "auto.sure_want_delete_member_account_physical_delete", { value1: member.name })}
+                        title={i18nText('settings', 'auto.delete_member')}
+                        description={i18nText(
+                          'settings',
+                          'auto.sure_want_delete_member_account_physical_delete',
+                          { value1: member.name }
+                        )}
                         onConfirm={() => deleteMutation.mutate(member.id)}
-                        okText={i18nText("settings", "auto.confirm_delete")}
-                        cancelText={i18nText("settings", "auto.cancel")}
+                        okText={i18nText('settings', 'auto.confirm_delete')}
+                        cancelText={i18nText('settings', 'auto.cancel')}
                         okButtonProps={{ danger: true }}
                       >
                         <Button
@@ -518,7 +551,8 @@ export function MemberManagementPanel({
                           icon={<DeleteOutlined />}
                           loading={deleteMutation.isPending}
                         >
-                          {i18nText("settings", "auto.delete")}</Button>
+                          {i18nText('settings', 'auto.delete')}
+                        </Button>
                       </Popconfirm>
                     )}
                   </Space>
@@ -551,7 +585,8 @@ export function MemberManagementPanel({
               icon={<UserAddOutlined />}
               onClick={() => setCreateModalOpen(true)}
             >
-              {i18nText("settings", "auto.create_new_user")}</Button>
+              {i18nText('settings', 'auto.create_new_user')}
+            </Button>
           </div>
         ) : null}
 
@@ -565,11 +600,15 @@ export function MemberManagementPanel({
         />
 
         <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-          {i18nText("settings", "auto.resetting_password_reset_target_account_password_temporary_password_require_user")}</Typography.Text>
+          {i18nText(
+            'settings',
+            'auto.resetting_password_reset_target_account_password_temporary_password_require_user'
+          )}
+        </Typography.Text>
 
         {/* Create Member Modal */}
         <Modal
-          title={i18nText("settings", "auto.create_new_user")}
+          title={i18nText('settings', 'auto.create_new_user')}
           open={createModalOpen}
           onCancel={() => {
             setCreateModalOpen(false);
@@ -577,8 +616,8 @@ export function MemberManagementPanel({
           }}
           onOk={() => createForm.submit()}
           confirmLoading={createMutation.isPending}
-          okText={i18nText("settings", "auto.create")}
-          cancelText={i18nText("settings", "auto.cancel")}
+          okText={i18nText('settings', 'auto.create')}
+          cancelText={i18nText('settings', 'auto.cancel')}
           width={600}
           destroyOnHidden
         >
@@ -596,54 +635,89 @@ export function MemberManagementPanel({
               }}
             >
               <Form.Item
-                label={i18nText("settings", "auto.account_number")}
+                label={i18nText('settings', 'auto.account_number')}
                 name="account"
-                rules={[{ required: true, message: i18nText("settings", "auto.enter_account_number") }]}
-              >
-                <Input />
-              </Form.Item>
-              <Form.Item
-                label={i18nText("settings", "auto.name_alt")}
-                name="name"
-                rules={[{ required: true, message: i18nText("settings", "auto.enter_full_name") }]}
-              >
-                <Input />
-              </Form.Item>
-              <Form.Item
-                label={i18nText("settings", "auto.email")}
-                name="email"
                 rules={[
-                  { required: true, message: i18nText("settings", "auto.enter_email") },
-                  { type: 'email', message: i18nText("settings", "auto.enter_valid_email_address") }
+                  {
+                    required: true,
+                    message: i18nText('settings', 'auto.enter_account_number')
+                  }
                 ]}
               >
                 <Input />
               </Form.Item>
-              <Form.Item label={i18nText("settings", "auto.mobile_phone_number")} name="phone">
-                <Input />
-              </Form.Item>
               <Form.Item
-                label={i18nText("settings", "auto.nickname")}
-                name="nickname"
-                rules={[{ required: true, message: i18nText("settings", "auto.enter_nickname") }]}
+                label={i18nText('settings', 'auto.name_alt')}
+                name="name"
+                rules={[
+                  {
+                    required: true,
+                    message: i18nText('settings', 'auto.enter_full_name')
+                  }
+                ]}
               >
                 <Input />
               </Form.Item>
               <Form.Item
-                label={i18nText("settings", "auto.initial_password")}
+                label={i18nText('settings', 'auto.email')}
+                name="email"
+                rules={[
+                  {
+                    required: true,
+                    message: i18nText('settings', 'auto.enter_email')
+                  },
+                  {
+                    type: 'email',
+                    message: i18nText(
+                      'settings',
+                      'auto.enter_valid_email_address'
+                    )
+                  }
+                ]}
+              >
+                <Input />
+              </Form.Item>
+              <Form.Item
+                label={i18nText('settings', 'auto.mobile_phone_number')}
+                name="phone"
+              >
+                <Input />
+              </Form.Item>
+              <Form.Item
+                label={i18nText('settings', 'auto.nickname')}
+                name="nickname"
+                rules={[
+                  {
+                    required: true,
+                    message: i18nText('settings', 'auto.enter_nickname')
+                  }
+                ]}
+              >
+                <Input />
+              </Form.Item>
+              <Form.Item
+                label={i18nText('settings', 'auto.initial_password')}
                 name="password"
                 initialValue={TEMP_PASSWORD}
-                rules={[{ required: true, message: i18nText("settings", "auto.enter_initial_password") }]}
+                rules={[
+                  {
+                    required: true,
+                    message: i18nText('settings', 'auto.enter_initial_password')
+                  }
+                ]}
               >
                 <Input.Password />
               </Form.Item>
             </div>
-            <Form.Item label={i18nText("settings", "auto.personal_introduction")} name="introduction">
+            <Form.Item
+              label={i18nText('settings', 'auto.personal_introduction')}
+              name="introduction"
+            >
               <Input.TextArea rows={2} />
             </Form.Item>
             <div style={{ display: 'flex', gap: 24 }}>
               <Form.Item
-                label={i18nText("settings", "auto.email_login")}
+                label={i18nText('settings', 'auto.email_login')}
                 name="email_login_enabled"
                 valuePropName="checked"
                 initialValue
@@ -651,7 +725,7 @@ export function MemberManagementPanel({
                 <Switch />
               </Form.Item>
               <Form.Item
-                label={i18nText("settings", "auto.mobile_login")}
+                label={i18nText('settings', 'auto.mobile_login')}
                 name="phone_login_enabled"
                 valuePropName="checked"
                 initialValue={false}
@@ -666,8 +740,10 @@ export function MemberManagementPanel({
         <Modal
           title={
             profileEditMember
-              ? i18nText("settings", "auto.edit_user_profile", { value1: profileEditMember.name })
-              : i18nText("settings", "auto.edit_profile")
+              ? i18nText('settings', 'auto.edit_user_profile', {
+                  value1: profileEditMember.name
+                })
+              : i18nText('settings', 'auto.edit_profile')
           }
           open={Boolean(profileEditMember)}
           onCancel={() => {
@@ -676,8 +752,8 @@ export function MemberManagementPanel({
           }}
           onOk={() => profileForm.submit()}
           confirmLoading={updateMemberMutation.isPending}
-          okText={i18nText("settings", "auto.save")}
-          cancelText={i18nText("settings", "auto.cancel")}
+          okText={i18nText('settings', 'auto.save')}
+          cancelText={i18nText('settings', 'auto.cancel')}
           width={560}
           destroyOnHidden
         >
@@ -695,45 +771,73 @@ export function MemberManagementPanel({
               }}
             >
               <Form.Item
-                label={i18nText("settings", "auto.name_alt")}
+                label={i18nText('settings', 'auto.name_alt')}
                 name="name"
-                rules={[{ required: true, message: i18nText("settings", "auto.enter_full_name") }]}
-              >
-                <Input />
-              </Form.Item>
-              <Form.Item
-                label={i18nText("settings", "auto.nickname")}
-                name="nickname"
-                rules={[{ required: true, message: i18nText("settings", "auto.enter_nickname") }]}
-              >
-                <Input />
-              </Form.Item>
-              <Form.Item
-                label={i18nText("settings", "auto.email")}
-                name="email"
                 rules={[
-                  { required: true, message: i18nText("settings", "auto.enter_email") },
-                  { type: 'email', message: i18nText("settings", "auto.enter_valid_email_address") }
+                  {
+                    required: true,
+                    message: i18nText('settings', 'auto.enter_full_name')
+                  }
                 ]}
               >
                 <Input />
               </Form.Item>
-              <Form.Item label={i18nText("settings", "auto.mobile_phone_number")} name="phone">
+              <Form.Item
+                label={i18nText('settings', 'auto.nickname')}
+                name="nickname"
+                rules={[
+                  {
+                    required: true,
+                    message: i18nText('settings', 'auto.enter_nickname')
+                  }
+                ]}
+              >
+                <Input />
+              </Form.Item>
+              <Form.Item
+                label={i18nText('settings', 'auto.email')}
+                name="email"
+                rules={[
+                  {
+                    required: true,
+                    message: i18nText('settings', 'auto.enter_email')
+                  },
+                  {
+                    type: 'email',
+                    message: i18nText(
+                      'settings',
+                      'auto.enter_valid_email_address'
+                    )
+                  }
+                ]}
+              >
+                <Input />
+              </Form.Item>
+              <Form.Item
+                label={i18nText('settings', 'auto.mobile_phone_number')}
+                name="phone"
+              >
                 <Input />
               </Form.Item>
             </div>
             {canManageRoleBindings ? (
-              <Form.Item label={i18nText("settings", "auto.role")} name="role_codes">
+              <Form.Item
+                label={i18nText('settings', 'auto.role')}
+                name="role_codes"
+              >
                 <Select
                   mode="multiple"
                   options={roleOptions}
                   loading={rolesQuery.isLoading}
                   onChange={handleRoleSelectionChange}
-                  placeholder={i18nText("settings", "auto.select_role")}
+                  placeholder={i18nText('settings', 'auto.select_role')}
                 />
               </Form.Item>
             ) : null}
-            <Form.Item label={i18nText("settings", "auto.personal_introduction")} name="introduction">
+            <Form.Item
+              label={i18nText('settings', 'auto.personal_introduction')}
+              name="introduction"
+            >
               <Input.TextArea rows={3} />
             </Form.Item>
           </Form>
@@ -741,7 +845,7 @@ export function MemberManagementPanel({
 
         {/* Change Password Modal */}
         <Modal
-          title={i18nText("settings", "auto.reset_password")}
+          title={i18nText('settings', 'auto.reset_password')}
           open={Boolean(passwordEditMember)}
           onCancel={() => {
             setPasswordEditMember(null);
@@ -749,8 +853,8 @@ export function MemberManagementPanel({
           }}
           onOk={() => passwordForm.submit()}
           confirmLoading={changePasswordMutation.isPending}
-          okText={i18nText("settings", "auto.confirm_reset")}
-          cancelText={i18nText("settings", "auto.cancel")}
+          okText={i18nText('settings', 'auto.confirm_reset')}
+          cancelText={i18nText('settings', 'auto.cancel')}
           width={480}
           destroyOnHidden
         >
@@ -761,32 +865,49 @@ export function MemberManagementPanel({
             style={{ marginTop: 16 }}
           >
             <Form.Item
-              label={i18nText("settings", "auto.current_password")}
+              label={i18nText('settings', 'auto.current_password')}
               name="old_password"
-              rules={[{ required: true, message: i18nText("settings", "auto.enter_current_password") }]}
+              rules={[
+                {
+                  required: true,
+                  message: i18nText('settings', 'auto.enter_current_password')
+                }
+              ]}
             >
               <Input.Password />
             </Form.Item>
             <Form.Item
-              label={i18nText("settings", "auto.new_password")}
+              label={i18nText('settings', 'auto.new_password')}
               name="new_password"
-              rules={[{ required: true, message: i18nText("settings", "auto.enter_new_password") }]}
+              rules={[
+                {
+                  required: true,
+                  message: i18nText('settings', 'auto.enter_new_password')
+                }
+              ]}
             >
               <Input.Password />
             </Form.Item>
             <Form.Item
-              label={i18nText("settings", "auto.confirm_new_password")}
+              label={i18nText('settings', 'auto.confirm_new_password')}
               name="confirm_password"
               dependencies={['new_password']}
               rules={[
-                { required: true, message: i18nText("settings", "auto.enter_new_password_again") },
+                {
+                  required: true,
+                  message: i18nText('settings', 'auto.enter_new_password_again')
+                },
                 ({ getFieldValue }) => ({
                   validator(_, value) {
                     if (!value || value === getFieldValue('new_password')) {
                       return Promise.resolve();
                     }
 
-                    return Promise.reject(new Error(i18nText("settings", "auto.passwords_do_not_match")));
+                    return Promise.reject(
+                      new Error(
+                        i18nText('settings', 'auto.passwords_do_not_match')
+                      )
+                    );
                   }
                 })
               ]}
@@ -795,7 +916,6 @@ export function MemberManagementPanel({
             </Form.Item>
           </Form>
         </Modal>
-
       </div>
     </SettingsSectionSurface>
   );

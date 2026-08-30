@@ -1,4 +1,5 @@
-import { CloseOutlined, CodeOutlined } from '@ant-design/icons';
+import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
+import CodeOutlined from '@ant-design/icons/es/icons/CodeOutlined';
 import { Button, Tag, Tooltip, Typography } from 'antd';
 
 import type { AgentFlowPageReference } from '../../../api/runtime';

@@ -1,5 +1,3 @@
-import { ArrowLeftOutlined } from '@ant-design/icons';
-import { Alert, Button, Input, Space, Typography } from 'antd';
 import { useState, type FormEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 
@@ -41,54 +39,62 @@ export function BuiltinPasswordSignIn({
   };
 
   return (
-    <Space
+    <div
+      className="builtin-password-sign-in"
       data-testid="builtin-password-sign-in"
-      orientation="vertical"
-      size="middle"
-      style={{ width: '100%' }}
     >
       {authenticatorSelector ? (
-        <Button
+        <button
           aria-label={t('sign_in.back_to_login_options')}
-          icon={<ArrowLeftOutlined aria-hidden="true" />}
+          className="builtin-password-sign-in__back"
           onClick={authenticatorSelector.request}
-          style={{ alignSelf: 'flex-start' }}
-          type="text"
-        />
+          type="button"
+        >
+          <span aria-hidden="true">←</span>
+        </button>
       ) : null}
-      <Typography.Title level={2} style={{ margin: 0, textAlign: 'center' }}>
+      <h2 className="builtin-password-sign-in__title">
         {t('sign_in.fallback_title')}
-      </Typography.Title>
+      </h2>
       {failed ? (
-        <Alert
-          type="error"
-          showIcon
-          title={t('sign_in.fallback_authentication_failed')}
-        />
+        <div className="builtin-password-sign-in__error" role="alert">
+          {t('sign_in.fallback_authentication_failed')}
+        </div>
       ) : null}
-      <form onSubmit={submit} style={{ display: 'grid', gap: 12 }}>
-        <label style={{ display: 'grid', gap: 6 }}>
+      <form
+        aria-label="Escape password sign in"
+        className="builtin-password-sign-in__form"
+        onSubmit={submit}
+      >
+        <label className="builtin-password-sign-in__field">
           {t('sign_in.fallback_identifier_label')}
-          <Input
+          <input
             required
             autoComplete="username"
+            className="builtin-password-sign-in__input"
             value={identifier}
             onChange={(event) => setIdentifier(event.target.value)}
           />
         </label>
-        <label style={{ display: 'grid', gap: 6 }}>
+        <label className="builtin-password-sign-in__field">
           {t('sign_in.fallback_password_label')}
-          <Input.Password
+          <input
             required
             autoComplete="current-password"
+            className="builtin-password-sign-in__input"
+            type="password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
         </label>
-        <Button htmlType="submit" type="primary" block loading={pending}>
+        <button
+          className="builtin-password-sign-in__submit"
+          disabled={pending}
+          type="submit"
+        >
           {t('sign_in.fallback_submit')}
-        </Button>
+        </button>
       </form>
-    </Space>
+    </div>
   );
 }

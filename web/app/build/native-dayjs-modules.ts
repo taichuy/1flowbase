@@ -43,10 +43,17 @@ export function nativeDayjsModulesPlugin({
     configResolved(config) {
       command = config.command;
     },
-    resolveId(id) {
-      return id === NATIVE_DAYJS_MODULES_VIRTUAL_ID
-        ? RESOLVED_VIRTUAL_ID
-        : demandDomain.resolveId(id);
+    async resolveId(id, importer, options) {
+      if (id === NATIVE_DAYJS_MODULES_VIRTUAL_ID) return RESOLVED_VIRTUAL_ID;
+      const demandResolvedId = demandDomain.resolveId(id);
+      if (demandResolvedId) return demandResolvedId;
+      if (command !== 'serve') return null;
+      const devModuleSource = resolveDayjsDevModuleSource(inventory, id);
+      if (!devModuleSource) return null;
+      return this.resolve(devModuleSource, importer, {
+        ...options,
+        skipSelf: true
+      });
     },
     load(id) {
       if (id === RESOLVED_VIRTUAL_ID) {
@@ -57,6 +64,25 @@ export function nativeDayjsModulesPlugin({
       return demandDomain.load(id, command);
     }
   };
+}
+
+export function resolveDayjsDevModuleSource(
+  inventory: readonly DayjsModuleSource[],
+  moduleSource: string
+): string | null {
+  const entry = inventory.find(
+    (candidate) => candidate.moduleSource === moduleSource
+  );
+  if (
+    !entry ||
+    entry.devLoaderSource === moduleSource ||
+    (moduleSource !== 'dayjs' &&
+      !moduleSource.startsWith('dayjs/plugin/') &&
+      !moduleSource.startsWith('dayjs/locale/'))
+  ) {
+    return null;
+  }
+  return entry.devLoaderSource;
 }
 
 export function collectDayjsModuleSources({

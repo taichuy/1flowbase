@@ -1,9 +1,7 @@
-import {
-  EditOutlined,
-  LayoutOutlined,
-  MenuOutlined,
-  TableOutlined
-} from '@ant-design/icons';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import LayoutOutlined from '@ant-design/icons/es/icons/LayoutOutlined';
+import MenuOutlined from '@ant-design/icons/es/icons/MenuOutlined';
+import TableOutlined from '@ant-design/icons/es/icons/TableOutlined';
 import { Dropdown, Select, Switch, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import type { FC } from 'react';

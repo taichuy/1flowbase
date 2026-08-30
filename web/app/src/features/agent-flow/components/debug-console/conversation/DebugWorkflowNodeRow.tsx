@@ -1,10 +1,8 @@
-import {
-  CheckCircleFilled,
-  DownOutlined,
-  LoadingOutlined,
-  RightOutlined,
-  WarningFilled
-} from '@ant-design/icons';
+import CheckCircleFilled from '@ant-design/icons/es/icons/CheckCircleFilled';
+import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
+import LoadingOutlined from '@ant-design/icons/es/icons/LoadingOutlined';
+import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
+import WarningFilled from '@ant-design/icons/es/icons/WarningFilled';
 import { Tag, Tooltip, Typography } from 'antd';
 import type { ReactNode } from 'react';
 

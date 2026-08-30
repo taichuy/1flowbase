@@ -1,4 +1,4 @@
-import { CheckCircleOutlined } from '@ant-design/icons';
+import CheckCircleOutlined from '@ant-design/icons/es/icons/CheckCircleOutlined';
 import { Alert, Button, Input, Space, Typography } from 'antd';
 
 import type {

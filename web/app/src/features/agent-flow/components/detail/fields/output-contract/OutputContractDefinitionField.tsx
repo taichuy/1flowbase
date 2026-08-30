@@ -1,8 +1,6 @@
-import {
-  DeleteOutlined,
-  FileTextOutlined,
-  PlusOutlined
-} from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Empty, Input, Select, Tooltip, Typography } from 'antd';
 import { useRef, useState } from 'react';
 

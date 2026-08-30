@@ -1,5 +1,7 @@
 import { ApiClientError } from '@1flowbase/api-client';
-import { GlobalOutlined, PlusOutlined, UndoOutlined } from '@ant-design/icons';
+import GlobalOutlined from '@ant-design/icons/es/icons/GlobalOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import UndoOutlined from '@ant-design/icons/es/icons/UndoOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,

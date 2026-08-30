@@ -1,4 +1,3 @@
-import { theme } from 'antd';
 import React, { useEffect, useRef } from 'react';
 import { i18nText } from '../../../shared/i18n/text';
 
@@ -40,7 +39,6 @@ interface Ripple {
 }
 
 export function HeroAnimation() {
-  const { token } = theme.useToken();
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const mouseRef = useRef({ x: -1000, y: -1000, vx: 0, vy: 0 });
@@ -405,72 +403,73 @@ export function HeroAnimation() {
           justifyContent: 'center'
         }}
       >
-      <div
-        className="hero-shape shape-1"
-        style={{
-          position: 'absolute',
-          width: '600px',
-          height: '600px',
-          borderRadius: '50%',
-          background:
-            'radial-gradient(circle at center, rgba(0, 208, 132, 0.14) 0%, transparent 70%)',
-          top: '-10%',
-          left: '-10%',
-          filter: 'blur(60px)',
-          pointerEvents: 'none'
-        }}
-      />
-      <div
-        className="hero-shape shape-2"
-        style={{
-          position: 'absolute',
-          width: '800px',
-          height: '800px',
-          borderRadius: '50%',
-          background:
-            'radial-gradient(circle at center, rgba(0, 162, 255, 0.12) 0%, transparent 70%)',
-          bottom: '-20%',
-          right: '-10%',
-          filter: 'blur(80px)',
-          pointerEvents: 'none'
-        }}
-      />
-      <div
-        className="hero-shape shape-3"
-        style={{
-          position: 'absolute',
-          width: '400px',
-          height: '400px',
-          borderRadius: '50%',
-          background:
-            'radial-gradient(circle at center, rgba(52, 211, 153, 0.07) 0%, transparent 70%)',
-          top: '40%',
-          left: '60%',
-          filter: 'blur(50px)',
-          pointerEvents: 'none'
-        }}
-      />
+        <div
+          className="hero-shape shape-1"
+          style={{
+            position: 'absolute',
+            width: '600px',
+            height: '600px',
+            borderRadius: '50%',
+            background:
+              'radial-gradient(circle at center, rgba(0, 208, 132, 0.14) 0%, transparent 70%)',
+            top: '-10%',
+            left: '-10%',
+            filter: 'blur(60px)',
+            pointerEvents: 'none'
+          }}
+        />
+        <div
+          className="hero-shape shape-2"
+          style={{
+            position: 'absolute',
+            width: '800px',
+            height: '800px',
+            borderRadius: '50%',
+            background:
+              'radial-gradient(circle at center, rgba(0, 162, 255, 0.12) 0%, transparent 70%)',
+            bottom: '-20%',
+            right: '-10%',
+            filter: 'blur(80px)',
+            pointerEvents: 'none'
+          }}
+        />
+        <div
+          className="hero-shape shape-3"
+          style={{
+            position: 'absolute',
+            width: '400px',
+            height: '400px',
+            borderRadius: '50%',
+            background:
+              'radial-gradient(circle at center, rgba(52, 211, 153, 0.07) 0%, transparent 70%)',
+            top: '40%',
+            left: '60%',
+            filter: 'blur(50px)',
+            pointerEvents: 'none'
+          }}
+        />
 
-      <div
-        className="hero-text-block"
-        style={{
-          zIndex: 1,
-          textAlign: 'center',
-          padding: `0 clamp(12px, 6vw, 80px)`,
-          width: '100%',
-          marginTop: '-15vh',
-          pointerEvents: 'none'
-        }}
-      >
-        <div className="hero-tagline" aria-label="brand name and slogan">
-          <div className="hero-text-line hero-title-line">1flowbase</div>
-          <div className="hero-text-line hero-slogan-line">
-            {i18nText("auth", "auto.product_tagline")}</div>
+        <div
+          className="hero-text-block"
+          style={{
+            zIndex: 1,
+            textAlign: 'center',
+            padding: `0 clamp(12px, 6vw, 80px)`,
+            width: '100%',
+            marginTop: '-15vh',
+            pointerEvents: 'none'
+          }}
+        >
+          <div className="hero-tagline" aria-label="brand name and slogan">
+            <div className="hero-text-line hero-title-line">1flowbase</div>
+            <div className="hero-text-line hero-slogan-line">
+              {i18nText('auth', 'auto.product_tagline')}
+            </div>
+          </div>
         </div>
-      </div>
 
-      <style>
-        {`
+        <style>
+          {`
           .hero-text-block {
             animation: fadeIn 1.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
           }
@@ -483,14 +482,14 @@ export function HeroAnimation() {
             align-items: center;
             gap: clamp(0.5rem, 1vw, 1.5rem);
             line-height: 1.2;
-            font-family: ${token.fontFamily};
+            font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
           }
 
           .hero-title-line {
             font-size: var(--hero-title-size);
             font-weight: 800;
             letter-spacing: -0.02em;
-            background: linear-gradient(135deg, #a3f5d5 0%, #008f5f 55%, ${token.colorText} 95%);
+            background: linear-gradient(135deg, #a3f5d5 0%, #008f5f 55%, #16211d 95%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -503,7 +502,7 @@ export function HeroAnimation() {
             font-size: var(--hero-slogan-size);
             font-weight: 400;
             letter-spacing: 0.06em;
-            color: ${token.colorTextSecondary};
+            color: #55645d;
             margin: 0;
             line-height: 1.15;
           }
@@ -545,7 +544,7 @@ export function HeroAnimation() {
             }
           }
         `}
-      </style>
+        </style>
       </div>
     </>
   );

@@ -1,4 +1,4 @@
-import { CaretRightOutlined } from '@ant-design/icons';
+import CaretRightOutlined from '@ant-design/icons/es/icons/CaretRightOutlined';
 import { Button, Tooltip } from 'antd';
 import { i18nText } from '../../../../shared/i18n/text';
 

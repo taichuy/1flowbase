@@ -1,4 +1,6 @@
-import { DeleteOutlined, DragOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import DragOutlined from '@ant-design/icons/es/icons/DragOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import {
   closestCenter,
   DndContext,

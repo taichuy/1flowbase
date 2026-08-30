@@ -1,21 +1,11 @@
 import { useState } from 'react';
 
-import {
-  Button,
-  Checkbox,
-  Flex,
-  Space,
-  Table,
-  Tag,
-  Typography
-} from 'antd';
+import { Button, Checkbox, Flex, Space, Table, Tag, Typography } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import {
-  CloudServerOutlined,
-  DatabaseOutlined,
-  PlusOutlined,
-  ReloadOutlined
-} from '@ant-design/icons';
+import CloudServerOutlined from '@ant-design/icons/es/icons/CloudServerOutlined';
+import DatabaseOutlined from '@ant-design/icons/es/icons/DatabaseOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 
 import type {
   CreateSettingsDataSourceInput,
@@ -97,9 +87,7 @@ export function DataSourcePanel({
       width: 120,
       render: (status: string) => (
         <Tag color={status === 'ready' ? 'success' : 'default'}>
-          {status === 'ready'
-            ? i18nText('settings', 'auto.ready')
-            : status}
+          {status === 'ready' ? i18nText('settings', 'auto.ready') : status}
         </Tag>
       )
     },
@@ -121,9 +109,7 @@ export function DataSourcePanel({
       title: i18nText('settings', 'auto.default_policy'),
       key: 'default_policy',
       width: 180,
-      render: (_, dataSource) => (
-        <Tag>{defaultApiPolicyLabel(dataSource)}</Tag>
-      )
+      render: (_, dataSource) => <Tag>{defaultApiPolicyLabel(dataSource)}</Tag>
     },
     {
       title: i18nText('settings', 'auto.operation'),

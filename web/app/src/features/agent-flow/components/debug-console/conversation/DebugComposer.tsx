@@ -1,4 +1,4 @@
-import { SendOutlined } from '@ant-design/icons';
+import SendOutlined from '@ant-design/icons/es/icons/SendOutlined';
 import { Sender } from '@ant-design/x';
 import { Flex, Tooltip } from 'antd';
 import type { ReactNode } from 'react';

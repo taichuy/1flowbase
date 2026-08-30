@@ -1,21 +1,19 @@
-import {
-  ArrowDownOutlined,
-  ArrowUpOutlined,
-  DeleteOutlined,
-  DownOutlined,
-  DragOutlined,
-  EditOutlined,
-  EyeInvisibleOutlined,
-  EyeOutlined,
-  FileAddOutlined,
-  FileTextOutlined,
-  FolderAddOutlined,
-  FolderOutlined,
-  InfoCircleOutlined,
-  MenuOutlined,
-  PlusOutlined,
-  RightOutlined
-} from '@ant-design/icons';
+import ArrowDownOutlined from '@ant-design/icons/es/icons/ArrowDownOutlined';
+import ArrowUpOutlined from '@ant-design/icons/es/icons/ArrowUpOutlined';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
+import DragOutlined from '@ant-design/icons/es/icons/DragOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import EyeInvisibleOutlined from '@ant-design/icons/es/icons/EyeInvisibleOutlined';
+import EyeOutlined from '@ant-design/icons/es/icons/EyeOutlined';
+import FileAddOutlined from '@ant-design/icons/es/icons/FileAddOutlined';
+import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
+import FolderAddOutlined from '@ant-design/icons/es/icons/FolderAddOutlined';
+import FolderOutlined from '@ant-design/icons/es/icons/FolderOutlined';
+import InfoCircleOutlined from '@ant-design/icons/es/icons/InfoCircleOutlined';
+import MenuOutlined from '@ant-design/icons/es/icons/MenuOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
 import { Button, Typography, Dropdown, Tooltip, Switch } from 'antd';
 import { useState } from 'react';
 import type { DragEvent, FocusEvent } from 'react';

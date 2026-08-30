@@ -1,4 +1,4 @@
-import { CheckOutlined } from '@ant-design/icons';
+import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
 import { Button, Pagination, Select, Table } from 'antd';
 import { useCallback, useMemo } from 'react';
 import type { Key, MouseEvent, ReactNode, ThHTMLAttributes } from 'react';

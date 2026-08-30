@@ -1,8 +1,15 @@
-import { Button, Space, Typography, theme } from 'antd';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState
+} from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { useNavigate } from '@tanstack/react-router';
+import { diagnoseLegacyBlockModuleSource } from '@1flowbase/page-runtime/source-contract';
 
 import { useAuthStore } from '../../../state/auth-store';
 import {
@@ -13,7 +20,12 @@ import {
 } from '../api/session';
 import { HeroAnimation } from '../components/HeroAnimation';
 import { BuiltinPasswordSignIn } from '../components/BuiltinPasswordSignIn';
-import { PublicAuthBlock } from '../components/PublicAuthBlock';
+
+const PublicAuthBlock = lazy(() =>
+  import('../components/PublicAuthBlock').then((module) => ({
+    default: module.PublicAuthBlock
+  }))
+);
 
 import './sign-in-page.css';
 
@@ -24,7 +36,6 @@ interface SignInPageProps {
 export function SignInPage({ authenticatorId }: SignInPageProps) {
   const navigate = useNavigate();
   const { t } = useTranslation('auth');
-  const { token } = theme.useToken();
   const setAuthenticated = useAuthStore((state) => state.setAuthenticated);
   const [loginInstances, setLoginInstances] = useState<PublicLoginInstance[]>(
     []
@@ -37,6 +48,10 @@ export function SignInPage({ authenticatorId }: SignInPageProps) {
         ? loginInstances[0]
         : (loginInstances.find((item) => item.id === authenticatorId) ?? null),
     [authenticatorId, loginInstances]
+  );
+  const selectedInstanceUsesLegacyContract = Boolean(
+    selectedLoginInstance &&
+    diagnoseLegacyBlockModuleSource(selectedLoginInstance.public_ui_block)
   );
 
   useEffect(() => {
@@ -124,22 +139,14 @@ export function SignInPage({ authenticatorId }: SignInPageProps) {
           zIndex: 10
         }}
       >
-        <Space orientation="vertical" size="large" style={{ width: '100%' }}>
+        <div className="auth-sign-in-content">
           {loginInstances.length > 1 && !selectedLoginInstance ? (
-            <Space
-              className="auth-sign-in-selector"
-              orientation="vertical"
-              size={12}
-              style={{ width: '100%' }}
-            >
+            <div className="auth-sign-in-selector">
               {loginInstances.map((instance) => (
-                <Button
+                <button
                   key={instance.id}
-                  block
                   className="auth-sign-in-selector-button"
-                  shape="round"
-                  size="large"
-                  type="primary"
+                  type="button"
                   onClick={() =>
                     void navigate({
                       to: '/sign-in',
@@ -148,34 +155,45 @@ export function SignInPage({ authenticatorId }: SignInPageProps) {
                   }
                 >
                   {instance.title}
-                </Button>
+                </button>
               ))}
-            </Space>
+            </div>
           ) : null}
-          {!loading && selectedLoginInstance ? (
-            <PublicAuthBlock
-              key={selectedLoginInstance.id}
-              instance={selectedLoginInstance}
+          {!loading &&
+          selectedLoginInstance &&
+          selectedInstanceUsesLegacyContract ? (
+            <BuiltinPasswordSignIn
               authenticatorSelector={authenticatorSelector}
               onAuthenticated={handleAuthenticated}
             />
           ) : null}
+          {!loading &&
+          selectedLoginInstance &&
+          !selectedInstanceUsesLegacyContract ? (
+            <Suspense fallback={null}>
+              <PublicAuthBlock
+                key={selectedLoginInstance.id}
+                instance={selectedLoginInstance}
+                authenticatorSelector={authenticatorSelector}
+                onAuthenticated={handleAuthenticated}
+              />
+            </Suspense>
+          ) : null}
           {!loading && (discoveryFailed || loginInstances.length === 0) ? (
             <BuiltinPasswordSignIn onAuthenticated={handleAuthenticated} />
           ) : null}
-        </Space>
+        </div>
 
         <div style={{ textAlign: 'center', marginTop: 48 }}>
-          <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+          <span className="auth-sign-in-footer">
             <a
               href="https://1flowbase.taichuy.com/"
               target="_blank"
               rel="noreferrer"
-              style={{ color: token.colorLink, textDecoration: 'none' }}
             >
               {t('sign_in.footer')}
             </a>
-          </Typography.Text>
+          </span>
         </div>
       </div>
     </div>

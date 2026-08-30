@@ -2,7 +2,8 @@ import { describe, expect, test } from 'vitest';
 
 import {
   collectDayjsModuleSources,
-  generateNativeDayjsDevModules
+  generateNativeDayjsDevModules,
+  resolveDayjsDevModuleSource
 } from '../../../../../../build/native-dayjs-modules';
 
 describe('dayjs native module inventory', () => {
@@ -66,5 +67,24 @@ describe('dayjs native module inventory', () => {
       ])
     );
     expect(declaredSources).not.toContain('dayjs/locale/zh-cn');
+  });
+
+  test('DV-F06 maps third-party CommonJS plugin imports to the ESM development entry', () => {
+    const inventory = collectDayjsModuleSources({
+      projectRoot: process.cwd()
+    });
+
+    expect(
+      resolveDayjsDevModuleSource(inventory, 'dayjs/plugin/advancedFormat.js')
+    ).toBe('dayjs/esm/plugin/advancedFormat/index.js');
+    expect(
+      resolveDayjsDevModuleSource(inventory, 'dayjs/plugin/duration')
+    ).toBe('dayjs/esm/plugin/duration/index.js');
+    expect(resolveDayjsDevModuleSource(inventory, 'dayjs')).toBe(
+      'dayjs/esm/index.js'
+    );
+    expect(
+      resolveDayjsDevModuleSource(inventory, 'dayjs/esm/plugin/utc/index.js')
+    ).toBeNull();
   });
 });

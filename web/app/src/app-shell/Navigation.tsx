@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router';
-import { MenuOutlined } from '@ant-design/icons';
+import MenuOutlined from '@ant-design/icons/es/icons/MenuOutlined';
 import { Button, Drawer, Menu, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
@@ -400,9 +400,9 @@ export function Navigation({
                 ? [mobileSelectedFrontstagePageId]
                 : selectedDynamicRoute
                   ? [selectedDynamicRoute.id]
-                : routes.some((route) => route.id === selectedKey)
-                  ? [selectedKey]
-                  : []
+                  : routes.some((route) => route.id === selectedKey)
+                    ? [selectedKey]
+                    : []
             }
             defaultOpenKeys={
               selectedTopbarNode

@@ -1,4 +1,4 @@
-import { apiFetch } from '@1flowbase/api-client';
+import { apiFetch } from '@1flowbase/api-client/auth';
 import type {
   BlockHostEffectHandler,
   BlockHostInterfaceEffect,

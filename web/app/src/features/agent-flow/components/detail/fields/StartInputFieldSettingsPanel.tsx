@@ -1,4 +1,5 @@
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Input, InputNumber, Select, Switch, Typography } from 'antd';
 import type { RefObject } from 'react';
 

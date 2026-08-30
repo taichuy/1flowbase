@@ -14,11 +14,13 @@ vi.mock('../api/session', () => ({
 import { AppProviders } from '../../../app/AppProviders';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
 import { AuthBootstrap } from '../components/AuthBootstrap';
+import { resetAuthSessionDiscovery } from '../api/auth-session-discovery';
 
 describe('AuthBootstrap', () => {
   beforeEach(() => {
     fetchCurrentSession.mockReset();
     fetchCurrentMe.mockReset();
+    resetAuthSessionDiscovery();
     resetAuthStore();
   });
 

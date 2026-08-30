@@ -8,20 +8,18 @@ import {
   type ConsoleAssistantPreference,
   type ConsoleAssistantSettings
 } from '@1flowbase/api-client';
-import {
-  CheckOutlined,
-  BranchesOutlined,
-  ClockCircleOutlined,
-  CloseOutlined,
-  CopyOutlined,
-  ExclamationCircleOutlined,
-  HistoryOutlined,
-  LoadingOutlined,
-  PlusOutlined,
-  SelectOutlined,
-  SettingOutlined,
-  WarningOutlined
-} from '@ant-design/icons';
+import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
+import BranchesOutlined from '@ant-design/icons/es/icons/BranchesOutlined';
+import ClockCircleOutlined from '@ant-design/icons/es/icons/ClockCircleOutlined';
+import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
+import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
+import ExclamationCircleOutlined from '@ant-design/icons/es/icons/ExclamationCircleOutlined';
+import HistoryOutlined from '@ant-design/icons/es/icons/HistoryOutlined';
+import LoadingOutlined from '@ant-design/icons/es/icons/LoadingOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import SelectOutlined from '@ant-design/icons/es/icons/SelectOutlined';
+import SettingOutlined from '@ant-design/icons/es/icons/SettingOutlined';
+import WarningOutlined from '@ant-design/icons/es/icons/WarningOutlined';
 import { Conversations, Sender } from '@ant-design/x';
 import {
   App,
@@ -140,10 +138,7 @@ function AssistantConversationSubtitle({
             </span>
           </Tooltip>
           <Tooltip
-            title={i18nText(
-              'appShell',
-              'auto.assistant_copy_conversation_id'
-            )}
+            title={i18nText('appShell', 'auto.assistant_copy_conversation_id')}
           >
             <Button
               aria-label={i18nText(

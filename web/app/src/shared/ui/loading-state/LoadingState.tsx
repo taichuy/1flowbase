@@ -1,5 +1,6 @@
-import { LoadingOutlined } from '@ant-design/icons';
-import { Skeleton, Spin } from 'antd';
+import LoadingOutlined from '@ant-design/icons/es/icons/LoadingOutlined';
+import Skeleton from 'antd/es/skeleton';
+import Spin from 'antd/es/spin';
 
 import './loading-state.css';
 
@@ -24,7 +25,12 @@ export function LoadingState({
     .join(' ');
 
   return (
-    <div className={classNames} role="status" aria-live="polite" aria-label="thinking">
+    <div
+      className={classNames}
+      role="status"
+      aria-live="polite"
+      aria-label="thinking"
+    >
       <Spin
         spinning
         description="thinking"
@@ -35,7 +41,10 @@ export function LoadingState({
           <Skeleton
             active
             title={{ width: compact ? '38%' : '28%' }}
-            paragraph={{ rows: compact ? 3 : 5, width: ['92%', '84%', '76%', '68%', '52%'] }}
+            paragraph={{
+              rows: compact ? 3 : 5,
+              width: ['92%', '84%', '76%', '68%', '52%']
+            }}
           />
         </div>
       </Spin>

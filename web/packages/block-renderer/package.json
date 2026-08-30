@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./src/index.tsx"
+    },
+    "./loading-shell": {
+      "types": "./dist/BlockUiLoadingShell.d.ts",
+      "default": "./src/BlockUiLoadingShell.tsx"
     }
   },
   "dependencies": {

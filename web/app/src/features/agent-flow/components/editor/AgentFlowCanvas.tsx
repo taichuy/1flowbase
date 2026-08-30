@@ -1,11 +1,9 @@
 import '@xyflow/react/dist/style.css';
 
-import {
-  AimOutlined,
-  ApartmentOutlined,
-  MinusOutlined,
-  PlusOutlined
-} from '@ant-design/icons';
+import AimOutlined from '@ant-design/icons/es/icons/AimOutlined';
+import ApartmentOutlined from '@ant-design/icons/es/icons/ApartmentOutlined';
+import MinusOutlined from '@ant-design/icons/es/icons/MinusOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button } from 'antd';
 import {
   Background,

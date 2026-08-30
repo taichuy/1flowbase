@@ -62,7 +62,10 @@ function listJavaScriptFiles(directory: string, prefix = ''): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const relativePath = `${prefix}${entry.name}`;
     if (entry.isDirectory()) {
-      return listJavaScriptFiles(path.join(directory, entry.name), `${relativePath}/`);
+      return listJavaScriptFiles(
+        path.join(directory, entry.name),
+        `${relativePath}/`
+      );
     }
     return entry.isFile() && entry.name.endsWith('.js') ? [relativePath] : [];
   });
@@ -71,6 +74,9 @@ function listJavaScriptFiles(directory: string, prefix = ''): string[] {
 function renderNativeAntDesignEsModules(
   moduleSources: readonly AntDesignEsModuleSource[]
 ): string {
+  const rootExports = Object.keys(
+    antdRequire('antd') as Record<string, unknown>
+  ).sort((left, right) => left.localeCompare(right));
   const loaders = Object.fromEntries(
     moduleSources.map(({ moduleSource, loaderSource }) => [
       moduleSource,
@@ -79,12 +85,27 @@ function renderNativeAntDesignEsModules(
   );
   return `
 const loaders = {${Object.entries(loaders)
-  .map(([moduleSource, loader]) => `\n  ${JSON.stringify(moduleSource)}: ${loader},`)
-  .join('')}\n};
+    .map(
+      ([moduleSource, loader]) =>
+        `\n  ${JSON.stringify(moduleSource)}: ${loader},`
+    )
+    .join('')}\n};
 
 export const ANTD_ES_MODULE_DEFINITIONS = Object.freeze(
   Object.keys(loaders).map((module_source) => ({ module_source, exports: ['*'] }))
 );
+
+export const ANTD_ROOT_EXPORTS = Object.freeze(${JSON.stringify(rootExports)});
+
+let rootModulePromise;
+
+export function loadAntDesignRootModule() {
+  rootModulePromise ??= import('antd').catch((error) => {
+    rootModulePromise = undefined;
+    throw error;
+  });
+  return rootModulePromise;
+}
 
 export async function loadAntDesignEsModule(moduleSource) {
   const load = loaders[moduleSource];

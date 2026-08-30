@@ -1,15 +1,19 @@
-import '../features/workflow/register';
+import { Suspense, lazy } from 'react';
 
-import { AppProviders } from './AppProviders';
-import { AppRouterProvider } from './router';
 import { AuthBootstrap } from '../features/auth/components/AuthBootstrap';
+
+const ApplicationRuntimeBootstrap = lazy(() =>
+  import('./ApplicationRuntimeBootstrap').then((module) => ({
+    default: module.ApplicationRuntimeBootstrap
+  }))
+);
 
 export function App() {
   return (
-    <AppProviders>
-      <AuthBootstrap>
-        <AppRouterProvider />
-      </AuthBootstrap>
-    </AppProviders>
+    <AuthBootstrap>
+      <Suspense fallback={null}>
+        <ApplicationRuntimeBootstrap />
+      </Suspense>
+    </AuthBootstrap>
   );
 }

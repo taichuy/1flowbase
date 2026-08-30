@@ -1,4 +1,5 @@
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Input } from 'antd';
 import type { IfElseBranchDocument } from '@1flowbase/flow-schema';
 
@@ -51,7 +52,7 @@ export function IfElseBranchesField({
       type="dashed"
       onClick={appendElseIf}
     >
-      {i18nText("agentFlow", "auto.add_else_if")}
+      {i18nText('agentFlow', 'auto.add_else_if')}
     </Button>
   );
 
@@ -60,7 +61,11 @@ export function IfElseBranchesField({
     const nextElseIf = createElseIfBranch(branches);
     const withoutElse = branches.filter((branch) => branch.kind !== 'else');
 
-    onChange(elseBranch ? [...withoutElse, nextElseIf, elseBranch] : [...branches, nextElseIf]);
+    onChange(
+      elseBranch
+        ? [...withoutElse, nextElseIf, elseBranch]
+        : [...branches, nextElseIf]
+    );
   }
 
   function deleteElseIf(branchId: string) {
@@ -78,7 +83,7 @@ export function IfElseBranchesField({
           >
             <div className="agent-flow-if-else-branches__header">
               <Input
-                aria-label={i18nText("agentFlow", "auto.branch_name", {
+                aria-label={i18nText('agentFlow', 'auto.branch_name', {
                   value1: branchLabel(branch)
                 })}
                 className="agent-flow-if-else-branches__title"
@@ -95,7 +100,7 @@ export function IfElseBranchesField({
               />
               {branch.kind === 'else_if' ? (
                 <Button
-                  aria-label={i18nText("agentFlow", "auto.delete_branch", {
+                  aria-label={i18nText('agentFlow', 'auto.delete_branch', {
                     value1: branch.title
                   })}
                   danger

@@ -1,9 +1,7 @@
-import {
-  BranchesOutlined,
-  CopyOutlined,
-  FileTextOutlined,
-  HistoryOutlined
-} from '@ant-design/icons';
+import BranchesOutlined from '@ant-design/icons/es/icons/BranchesOutlined';
+import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
+import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
+import HistoryOutlined from '@ant-design/icons/es/icons/HistoryOutlined';
 import { App, Button, Space, Tooltip } from 'antd';
 import type { ReactNode } from 'react';
 

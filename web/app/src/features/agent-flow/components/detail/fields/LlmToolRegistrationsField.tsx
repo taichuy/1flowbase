@@ -1,5 +1,7 @@
 import type { FlowNodeDocument } from '@1flowbase/flow-schema';
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Checkbox, Input, Select, Switch, Typography } from 'antd';
 import { useReducer, useRef } from 'react';
 

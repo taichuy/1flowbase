@@ -13,7 +13,7 @@ import {
   type PasswordSignInResponse,
   type PublicLoginInstance,
   type PublicLoginInstancesResponse
-} from '@1flowbase/api-client';
+} from '@1flowbase/api-client/auth';
 
 export type { PasswordSignInResponse, PublicLoginInstance };
 

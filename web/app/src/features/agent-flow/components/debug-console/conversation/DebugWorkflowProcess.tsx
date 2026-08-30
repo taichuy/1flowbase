@@ -1,7 +1,8 @@
 import { Think, ThoughtChain } from '@ant-design/x';
 import type { ThoughtChainItemType } from '@ant-design/x';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { DownOutlined, RightOutlined } from '@ant-design/icons';
+import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
+import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
 import { Typography } from 'antd';
 
 import type { AgentFlowTraceItem } from '../../../api/runtime';

@@ -1,4 +1,5 @@
-import { CloseOutlined, LoadingOutlined } from '@ant-design/icons';
+import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
+import LoadingOutlined from '@ant-design/icons/es/icons/LoadingOutlined';
 import { App, Tabs, Tooltip } from 'antd';
 
 import { i18nText } from '../../../../../shared/i18n/text';
@@ -30,10 +31,7 @@ export function FrontstageBlockCodeTabs({
     }
     modal.confirm({
       title: i18nText('frontstage', 'auto.block_tab_close_dirty_title'),
-      content: i18nText(
-        'frontstage',
-        'auto.block_tab_close_dirty_description'
-      ),
+      content: i18nText('frontstage', 'auto.block_tab_close_dirty_description'),
       okText: i18nText('frontstage', 'auto.close'),
       cancelText: i18nText('frontstage', 'auto.cancel'),
       onOk: () => onClose(blockId)

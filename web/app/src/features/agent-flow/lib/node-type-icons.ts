@@ -1,24 +1,22 @@
 import { createElement, type CSSProperties, type ReactNode } from 'react';
 
-import {
-  ApiOutlined,
-  BlockOutlined,
-  BranchesOutlined,
-  DatabaseOutlined,
-  EditOutlined,
-  FileTextOutlined,
-  MessageOutlined,
-  MergeCellsOutlined,
-  PlaySquareOutlined,
-  QuestionCircleOutlined,
-  ReloadOutlined,
-  SearchOutlined,
-  SwapOutlined,
-  SyncOutlined,
-  ThunderboltOutlined,
-  ToolOutlined,
-  WarningOutlined
-} from '@ant-design/icons';
+import ApiOutlined from '@ant-design/icons/es/icons/ApiOutlined';
+import BlockOutlined from '@ant-design/icons/es/icons/BlockOutlined';
+import BranchesOutlined from '@ant-design/icons/es/icons/BranchesOutlined';
+import DatabaseOutlined from '@ant-design/icons/es/icons/DatabaseOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
+import MessageOutlined from '@ant-design/icons/es/icons/MessageOutlined';
+import MergeCellsOutlined from '@ant-design/icons/es/icons/MergeCellsOutlined';
+import PlaySquareOutlined from '@ant-design/icons/es/icons/PlaySquareOutlined';
+import QuestionCircleOutlined from '@ant-design/icons/es/icons/QuestionCircleOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
+import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
+import SwapOutlined from '@ant-design/icons/es/icons/SwapOutlined';
+import SyncOutlined from '@ant-design/icons/es/icons/SyncOutlined';
+import ThunderboltOutlined from '@ant-design/icons/es/icons/ThunderboltOutlined';
+import ToolOutlined from '@ant-design/icons/es/icons/ToolOutlined';
+import WarningOutlined from '@ant-design/icons/es/icons/WarningOutlined';
 
 const CODE_NODE_ICON_STYLE: CSSProperties = {
   display: 'inline-block',

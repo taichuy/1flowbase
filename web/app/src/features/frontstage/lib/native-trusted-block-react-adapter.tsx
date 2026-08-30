@@ -1,5 +1,7 @@
 import { StyleProvider, createCache } from '@ant-design/cssinjs';
-import { App as AntdApp, ConfigProvider, Skeleton } from 'antd';
+import AntdApp from 'antd/es/app';
+import ConfigProvider from 'antd/es/config-provider';
+import Skeleton from 'antd/es/skeleton';
 import type { ConfigProviderProps } from 'antd/es/config-provider';
 import {
   Component,

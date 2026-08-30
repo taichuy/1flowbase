@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import {
-  ArrowLeftOutlined,
-  DatabaseOutlined,
-  CloudServerOutlined,
-  HomeOutlined
-} from '@ant-design/icons';
+import ArrowLeftOutlined from '@ant-design/icons/es/icons/ArrowLeftOutlined';
+import DatabaseOutlined from '@ant-design/icons/es/icons/DatabaseOutlined';
+import CloudServerOutlined from '@ant-design/icons/es/icons/CloudServerOutlined';
+import HomeOutlined from '@ant-design/icons/es/icons/HomeOutlined';
 import { Alert, Breadcrumb, Button, Flex, Tag, Typography, App } from 'antd';
 
 import { useAuthStore } from '../../../../state/auth-store';

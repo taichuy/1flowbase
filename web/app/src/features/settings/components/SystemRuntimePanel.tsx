@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import {
-  CloudServerOutlined,
-  ClusterOutlined,
-  DashboardOutlined,
-  ExclamationCircleOutlined,
-  GlobalOutlined
-} from '@ant-design/icons';
+import CloudServerOutlined from '@ant-design/icons/es/icons/CloudServerOutlined';
+import ClusterOutlined from '@ant-design/icons/es/icons/ClusterOutlined';
+import DashboardOutlined from '@ant-design/icons/es/icons/DashboardOutlined';
+import ExclamationCircleOutlined from '@ant-design/icons/es/icons/ExclamationCircleOutlined';
+import GlobalOutlined from '@ant-design/icons/es/icons/GlobalOutlined';
 import { useQuery } from '@tanstack/react-query';
 import {
   Alert,
