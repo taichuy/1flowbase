@@ -554,8 +554,19 @@ fn review_registry_compiles_ordered_extension_plan_from_real_registrations() {
     let plan = snapshot
         .plan(&BindingId::new("http.review.extensions.v1").unwrap())
         .unwrap();
-    assert_eq!(plan.extension_plan().registrations().len(), 2);
-    assert_eq!(plan.extension_plan().registrations()[0].order(), 10);
+    assert_eq!(plan.extension_plan().registrations().len(), 3);
+    assert_eq!(
+        plan.extension_plan()
+            .registrations()
+            .iter()
+            .map(|entry| (entry.order(), entry.registration().point()))
+            .collect::<Vec<_>>(),
+        vec![
+            (1, InterfaceExtensionPoint::AuthenticationAdapter),
+            (10, InterfaceExtensionPoint::Before),
+            (20, InterfaceExtensionPoint::After),
+        ]
+    );
     assert!(plan
         .extension_plan()
         .fingerprint()
