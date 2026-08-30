@@ -14,7 +14,3 @@ declare module 'virtual:1flowbase-page-tree-icons' {
 }
 
 declare module 'virtual:1flowbase-dev-hmr-probe' {}
-
-declare var __ONEFLOWBASE_DEV_HMR_RECEIPT__:
-  | { token: string; sentAt: number; receivedAt: number }
-  | undefined;

@@ -1,7 +1,9 @@
 import { PlusOutlined } from '@ant-design/icons';
 import { useMemo, useState } from 'react';
 
-import { PageTreeIcon, pageTreeIconNames } from './registry';
+import { pageTreeIconNames } from './metadata';
+import { PageTreeIcon } from './registry';
+import { iconWindow } from './window';
 
 const COLUMN_COUNT = 9;
 const CELL_SIZE = 44;
@@ -19,16 +21,17 @@ function PageTreeIconPicker({
 }: PageTreeIconPickerProps) {
   const [scrollTop, setScrollTop] = useState(0);
   const rowCount = Math.ceil(pageTreeIconNames.length / COLUMN_COUNT);
-  const visibleRows = Math.ceil(VIEWPORT_HEIGHT / CELL_SIZE);
-  const startRow = Math.max(
-    0,
-    Math.floor(scrollTop / CELL_SIZE) - OVERSCAN_ROWS
-  );
-  const endRow = Math.min(rowCount, startRow + visibleRows + OVERSCAN_ROWS * 2);
+  const { startRow, startIndex, endIndex } = iconWindow({
+    itemCount: pageTreeIconNames.length,
+    scrollTop,
+    columnCount: COLUMN_COUNT,
+    cellSize: CELL_SIZE,
+    viewportHeight: VIEWPORT_HEIGHT,
+    overscanRows: OVERSCAN_ROWS
+  });
   const visibleIcons = useMemo(
-    () =>
-      pageTreeIconNames.slice(startRow * COLUMN_COUNT, endRow * COLUMN_COUNT),
-    [endRow, startRow]
+    () => pageTreeIconNames.slice(startIndex, endIndex),
+    [endIndex, startIndex]
   );
 
   return (

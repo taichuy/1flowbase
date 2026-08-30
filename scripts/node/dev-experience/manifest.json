@@ -3,8 +3,10 @@
   "scenarios": [
     {
       "id": "frontstage-demo-page",
-      "path_template": "/demo/pages/:page_id",
-      "fixture_path": "/demo/pages/dev-experience-fixture",
+      "path_template": "/frontstage/pages/:page_id",
+      "fixture_kind": "frontstage_page",
+      "ready_selector": "[data-testid=\"frontstage-page-workspace\"]",
+      "expected_path_prefix": "/frontstage/pages/",
       "phases": [
         "cold",
         "warm",
@@ -16,18 +18,37 @@
       "budgets": {
         "cold_module_requests_max": 1999,
         "decoded_bytes_max": 157286399,
-        "failed_modules_max": 0
+        "failed_modules_max": 0,
+        "runtime_errors_max": 0
       }
     },
     {
       "id": "settings",
       "path_template": "/settings",
+      "fixture_kind": "static",
       "fixture_path": "/settings",
+      "ready_selector": "[data-testid=\"section-page-layout\"]",
+      "expected_path_prefix": "/settings",
       "phases": ["cold", "warm", "recovery"],
       "budgets": {
         "cold_module_requests_max": 1999,
         "decoded_bytes_max": 157286399,
-        "failed_modules_max": 0
+        "failed_modules_max": 0,
+        "runtime_errors_max": 0
+      }
+    },
+    {
+      "id": "workflow-editor",
+      "path_template": "/applications/:application_id/orchestration",
+      "fixture_kind": "workflow_application",
+      "ready_selector": "[data-testid=\"workflow-editor-body\"]",
+      "expected_path_prefix": "/applications/",
+      "phases": ["cold", "warm", "recovery"],
+      "budgets": {
+        "cold_module_requests_max": 1999,
+        "decoded_bytes_max": 157286399,
+        "failed_modules_max": 0,
+        "runtime_errors_max": 0
       }
     }
   ]
