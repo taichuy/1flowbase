@@ -896,7 +896,9 @@ async fn call(
             match debug_execute::execute_with_server_bindings(
                 state.clone(),
                 headers.clone(),
-                interface_runtime::UserPrincipal::server_delegation(actor.clone()),
+                crate::extension_bus::ConsoleAuthenticationCredential::ServerDelegation(
+                    actor.clone(),
+                ),
                 interface,
                 body,
                 McpServerBoundInputs {

@@ -359,6 +359,9 @@ async fn app_and_runtime_host_from_config(
         .extend_active_host_extensions(prepared_host_extensions.graph_extensions())?;
     let extension_graph = Arc::new(extension_assembly.compile_graph()?);
     let lifecycle_plan = extension_assembly.compile_lifecycle_subscriber_plan(&extension_graph)?;
+    let host_authentication_factories =
+        extension_bus::production_host_extension_authentication_factories()
+            .activate(extension_assembly.host_extension_manifests())?;
     let extension_boot_snapshot = Arc::new(extension_bus::ExtensionBootSnapshot::compile(
         Arc::clone(&extension_graph),
         extension_assembly.interface_operations(),
@@ -368,6 +371,7 @@ async fn app_and_runtime_host_from_config(
                 config.api_node_id.clone(),
             ),
         ),
+        host_authentication_factories,
     )?);
     let active_host_extensions = extension_assembly.into_host_extension_manifests();
     let host_extension_registry =

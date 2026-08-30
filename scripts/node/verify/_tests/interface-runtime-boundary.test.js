@@ -148,6 +148,30 @@ test('Delivery 1944 routes cannot inject decision or hook plans and plugin decis
   assert.match(decision, /principal:\s*PrincipalSummary/u);
 });
 
+test('Delivery 1944 protocol adapters authenticate through the frozen factory before constructing envelopes', () => {
+  const activation = read(
+    'api/apps/api-server/src/extension_bus/authentication_activation.rs',
+  );
+  const boot = read('api/apps/api-server/src/extension_bus/boot_snapshot.rs');
+  const routes = [
+    'api/apps/api-server/src/routes/identity/auth.rs',
+    'api/apps/api-server/src/routes/application_public_api/native.rs',
+    'api/apps/api-server/src/routes/mcp_protocol.rs',
+    'api/apps/api-server/src/routes/settings/host_infrastructure/interface_operation.rs',
+  ].map(read).join('\n');
+  const runtime = productionRustSources(path.join(runtimeRoot, 'src'));
+
+  assert.match(activation, /factory\.authenticate\(Box::new\(credential\)\)\.await/u);
+  assert.match(activation, /HostExtensionAuthenticationFactoryCatalog/u);
+  assert.match(boot, /authentication_factories\s*\.validate_registry\(&candidate\)/u);
+  assert.doesNotMatch(routes, /establish_principal/u);
+  assert.match(routes, /\.authenticate\(/u);
+  assert.doesNotMatch(
+    runtime,
+    /HeaderMap|Cookie|bearer_token|session_secret|ApplicationApiKeyAuthenticationCredential|McpUserApiKeyAuthenticationCredential/u,
+  );
+});
+
 test('Delivery 1944 typed production handlers do not import request or host capabilities', () => {
   const handlers = [
     [

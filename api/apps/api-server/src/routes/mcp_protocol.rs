@@ -9,7 +9,7 @@ use axum::{
     routing::post,
     Json, Router,
 };
-use control_plane::mcp_management::McpManagementService;
+use control_plane::{mcp_management::McpManagementService, ports::AuthRepository};
 use domain::mcp_management::McpInstanceStatus;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -22,9 +22,7 @@ use interface_runtime::{
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::require_session::{
-        require_session, with_server_delegated_request_context, RequestContext, RequestCredential,
-    },
+    middleware::require_session::{with_server_delegated_request_context, RequestContext},
 };
 use interface_operation::{
     McpForwardHeader, McpInvocationInput, McpInvocationOutput, McpInvocationTargetError,
@@ -91,16 +89,41 @@ async fn handle_mcp_request(
     headers: HeaderMap,
     Json(request): Json<JsonRpcRequest>,
 ) -> Result<(StatusCode, Json<JsonRpcResponse>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    if !matches!(context.credential, RequestCredential::UserApiKey { .. }) {
-        return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
-    }
+    let boot_snapshot = state
+        .extension_boot_snapshot
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("extension boot snapshot is unavailable"))?;
+    let snapshot = boot_snapshot
+        .interface_registry()
+        .ok_or_else(|| anyhow::anyhow!("interface registry is unavailable"))?
+        .snapshot();
+    let binding_id = interface_runtime::BindingId::new("mcp.user-api-key.invoke.v1")
+        .expect("static binding id is valid");
+    let activated_authentication = snapshot
+        .authentication(&binding_id)
+        .ok_or_else(|| anyhow::anyhow!("MCP authentication activation is unavailable"))?;
+    let principal: interface_runtime::UserPrincipal = boot_snapshot
+        .authenticate(
+            activated_authentication,
+            crate::extension_bus::McpUserApiKeyAuthenticationCredential {
+                state: Arc::clone(&state),
+                headers: headers.clone(),
+            },
+        )
+        .await
+        .map_err(|_| control_plane::errors::ControlPlaneError::NotAuthenticated)?;
+    let actor = principal.actor().clone();
+    let user = state
+        .store
+        .find_user_by_id(actor.user_id)
+        .await?
+        .ok_or(control_plane::errors::ControlPlaneError::NotAuthenticated)?;
     if request.jsonrpc != "2.0" {
         return Ok(jsonrpc_error(request.id, -32600, "Invalid Request"));
     }
 
     let catalog = McpManagementService::new(state.store.clone())
-        .read_catalog_for_actor(&context.actor)
+        .read_catalog_for_actor(&actor)
         .await?;
     let instance = catalog
         .instances
@@ -137,8 +160,8 @@ async fn handle_mcp_request(
                 arguments,
                 context: McpToolInvocationContext {
                     headers: Vec::new(),
-                    user: context.user.clone(),
-                    actor: context.actor.clone(),
+                    user: user.clone(),
+                    actor: actor.clone(),
                     catalog: catalog.clone(),
                     scope: scope.clone(),
                 },
@@ -159,21 +182,6 @@ async fn handle_mcp_request(
             })
             .collect();
     }
-    let boot_snapshot = state
-        .extension_boot_snapshot
-        .as_ref()
-        .ok_or_else(|| anyhow::anyhow!("extension boot snapshot is unavailable"))?;
-    let snapshot = boot_snapshot
-        .interface_registry()
-        .ok_or_else(|| anyhow::anyhow!("interface registry is unavailable"))?
-        .snapshot();
-    let binding_id = interface_runtime::BindingId::new("mcp.user-api-key.invoke.v1")
-        .expect("static binding id is valid");
-    let activated_authentication = snapshot
-        .authentication(&binding_id)
-        .ok_or_else(|| anyhow::anyhow!("MCP authentication activation is unavailable"))?;
-    let principal = boot_snapshot
-        .establish_principal(activated_authentication, context.interface_principal())?;
     let authentication_activation = activated_authentication.activation().clone();
     let outcome =
         InterfaceInvocationKernel::new(Arc::new(interface_operation::McpInvocationAuthorization))

@@ -265,7 +265,7 @@ pub(crate) fn invocation_kernel(
 
 pub async fn invoke_providers_view(
     state: Arc<ApiState>,
-    principal: UserPrincipal,
+    credential: crate::extension_bus::ConsoleAuthenticationCredential,
     protocol: InterfaceProtocol,
 ) -> Result<
     (
@@ -298,8 +298,9 @@ pub async fn invoke_providers_view(
     let activated_authentication = snapshot.authentication(&binding_id).ok_or(
         control_plane::errors::ControlPlaneError::NotFound("authentication_activation"),
     )?;
-    let principal = boot_snapshot
-        .establish_principal(activated_authentication, principal)
+    let principal: UserPrincipal = boot_snapshot
+        .authenticate(activated_authentication, credential)
+        .await
         .map_err(|_| {
             control_plane::errors::ControlPlaneError::NotFound("authentication_activation")
         })?;

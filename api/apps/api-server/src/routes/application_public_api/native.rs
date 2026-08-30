@@ -968,13 +968,6 @@ pub async fn create_native_run(
     let request = translated.request;
     let response_mode = request.response_mode.clone();
     let _include_workflow_events = include_workflow_events(&request)?;
-    let api_actor = ApplicationApiKeyService::new(state.store.clone())
-        .with_last_used_cache(state.infrastructure.cache_store())
-        .authenticate_bearer_token(&bearer_token)
-        .await
-        .map_err(|_| native_error(NativeRunValidationError::NotAuthenticated))?;
-    let principal = interface_application_principal(&api_actor)?;
-    let application_id = principal.application_id();
     let boot_snapshot = state.extension_boot_snapshot.as_ref().ok_or_else(|| {
         NativeApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -992,9 +985,6 @@ pub async fn create_native_run(
                 "native run interface is unavailable",
             )
         })?;
-    let _http_activity = state
-        .runtime_activity
-        .start(application_id, ApplicationActivityKind::HttpRequest);
     let binding_id = match response_mode.as_deref().unwrap_or("blocking") {
         "streaming" => native_interface::STREAM_BINDING_ID,
         "blocking" => native_interface::BLOCKING_BINDING_ID,
@@ -1009,15 +999,20 @@ pub async fn create_native_run(
             "native authentication activation is unavailable",
         )
     })?;
-    let principal = boot_snapshot
-        .establish_principal(activated_authentication, principal)
-        .map_err(|_| {
-            NativeApiError::new(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "authentication_activation_unavailable",
-                "native authentication activation is unavailable",
-            )
-        })?;
+    let principal: interface_runtime::ApplicationPrincipal = boot_snapshot
+        .authenticate(
+            activated_authentication,
+            crate::extension_bus::ApplicationApiKeyAuthenticationCredential {
+                state: Arc::clone(&state),
+                bearer_token,
+            },
+        )
+        .await
+        .map_err(|_| native_error(NativeRunValidationError::NotAuthenticated))?;
+    let application_id = principal.application_id();
+    let _http_activity = state
+        .runtime_activity
+        .start(application_id, ApplicationActivityKind::HttpRequest);
     let authentication_activation = activated_authentication.activation().clone();
     let dispatch_target =
         native_runtime_target(&state, snapshot.as_ref(), &binding_id, application_id);

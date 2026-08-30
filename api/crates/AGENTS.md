@@ -47,7 +47,7 @@
 - 跨 Host / Runtime 的稳定协议放 `extension-contracts`；安装、registry 和扩展图放 `plugin-framework`。
 - lifecycle subscriber 的 typed handler binding/registry 由 `plugin-framework` 编译，`api-server` Composition Root 从 active HostExtension 的 native entrypoint factory 注入 binding；delivery adapter 不得按 handler id 硬编码插件实现或以 EventBus enqueue 代替 handler 完成。RuntimeExtension/CapabilityPlugin 在稳定 lifecycle transport 落地前不得声明 durable lifecycle subscriber。
 - RuntimeExtension 加载与进程生命周期放 `runtime-extension-host`；执行编排放 `orchestration-runtime`。
-- `interface-runtime` 只接收 Adapter 建立的 sealed `PublicPrincipal`、`UserPrincipal` 或 `ApplicationPrincipal`；User/Application 内的 `ActorContext` 是授权真值，Public 不伪造 Actor。Cookie/Header/Session/API Key 原文留在 HTTP/MCP Adapter。Effective Extension Graph 是声明输入，compiled Dynamic Interface Registry 是 active definition 真值。
+- `interface-runtime` 只接收 Authentication Adapter factory 完成认证后建立的 sealed `PublicPrincipal`、`UserPrincipal` 或 `ApplicationPrincipal`；User/Application 内的 `ActorContext` 是授权真值，Public 不伪造 Actor。Cookie/Header/Session/API Key 原文只作为 `api-server` BuiltIn/可信 HostExtension factory 的瞬时 typed credential，不进入 Kernel、Receipt 或普通插件。Effective Extension Graph 是声明输入，compiled Dynamic Interface Registry 是 active definition 真值。
 - `RuntimeBackend` 必须组合 Execution、Observation、Provider、DataSource、Capability、Network Egress 六个窄 Port；必需方法不提供默认失败实现。
 - `orchestration-runtime` 只持有 `RuntimeExecutionPort`；完整 `RuntimeBackend` 仅停留在 `api-server` composition root 与业务能力装配层，窄 Port 必须由该层从 exactly-one Slot Backend 内部投影，装配构造器不得接收第二个独立 Port 来源。
 - Provider Distribution Rule 属于 `RuntimeExecutionPort` 的 typed operation，不新增第七 Port；Host 只执行插件 decision，`orchestration-runtime` 独占 eligible target 校验、retry 与 Provider invocation。

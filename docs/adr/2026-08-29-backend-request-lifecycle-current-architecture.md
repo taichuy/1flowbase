@@ -184,7 +184,9 @@ CompiledInvocationPlan（发布后的不可变执行计划）
 
 Interface resolve 先通过不可信协议元数据找到 Definition 和 execution profile，再由该 profile 的 Authentication Adapter 解析凭证。Adapter 不把原始凭证传入 Handler 或普通插件。
 
-Authentication registration 只是声明；BuiltIn/HostExtension 的 concrete factory 由 `api-server` Composition Root 激活。发布时必须严格配对 registration、adapter identity、activation identity 和 Principal profile，Protocol Adapter 只能从冻结 Binding/Plan 取得 factory 后建立 sealed Principal。缺失、多余、重复、未激活或 identity mismatch 都阻止 catalog publish。
+Authentication registration 只是声明；BuiltIn/HostExtension 的 concrete factory 由 `api-server` Composition Root 从可信 native entrypoint catalog 激活。factory 接收协议层的短生命周期 typed credential（例如 Header、Bearer 或 server delegation），调用既有认证 owner，并返回 sealed Principal；它不是对已构造 Principal 的 downcast 检查。发布时必须双向严格配对 registration、factory、adapter identity、activation identity、Principal profile 和 credential contract，Protocol Adapter 只能从冻结 Binding/Plan 取得 factory、完成认证后再构造 Envelope。缺失、多余、重复、未激活或 identity mismatch 都阻止 catalog/router publish。
+
+原始 credential 只存在于 `api-server` Authentication Adapter 的瞬时调用中；不得进入 `interface-runtime`、Compiled Plan、Envelope、Receipt、Handler、Application/Domain 或普通 Runtime/Capability extension。RuntimeExtension 与 CapabilityPlugin 不能注册 Authentication factory。
 
 统一的是 lifecycle engine，不是一个万能 caller enum。Envelope 对 Principal 类型参数化：
 

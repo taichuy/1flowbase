@@ -2,17 +2,19 @@
 
 ## Result and identities
 
-- Result: `QA_PASS`
+- Result: `QA_PENDING`
 - Input: `beta@ff4cc74ab073256419884d3d96e0b3defcb36d45`
 - Previous fresh tested assembly: `beta@a3c78798320b5e2af8bc8b2f9b35cb8fe3977b31`
 - XR input: `beta@965d62e9514f1b3e25fdf2a4284cc3bb41cfbf2e`
 - Fresh tested XR product assembly: `beta@4b31cc86c2d7e74e053ac5c0b7976031265d7091`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
-- Fresh centralized QA: executable-contribution XR attempt 16, 16/16 rows complete, zero unrun rows
+- Previous centralized QA: executable-contribution XR attempt 16, 16/16 rows complete, zero unrun rows; superseded as architecture acceptance evidence by the reopened RR-14 finding
 - Evidence root: `tmp/test-governance/1944-interface-lifecycle/`
 
-XR attempt 16 is the sole valid fresh centralized QA for RR-12 through RR-16 and supersedes the
-earlier product assembly receipt for final #1944 acceptance review.
+XR attempt 16 remains valid compatibility evidence for product assembly `4b31cc86c`, but it cannot
+settle RR-14, ARC-AC-006, ARC-AC-011 or the Authentication portion of ARC-AC-013. XR-A01 froze the
+replacement matrix; XR-A02 is assembling a credential-consuming factory Port. A new QA receipt
+may be written only after XR-A02 is committed and the replacement assembly is frozen.
 
 ## XR executable-contribution packet ledger
 
@@ -23,6 +25,9 @@ earlier product assembly receipt for final #1944 acceptance review.
 | XR-F03/XR-F04 | `d26433d03` | ASSEMBLED | Definition/AuthN activation and ordered AuthZ/Admission executable plans |
 | XR-F05 | `461e981fe` | ASSEMBLED | production composition, boundaries, ADR, rules and receipt |
 | XR-F06 | `4b31cc86c` | PASS | frozen replacement assembly and fresh centralized QA |
+| XR-A01 | `c1bbe59fe` | ASSEMBLED | RR-14 real credential-to-Principal factory matrix and controlled fixtures |
+| XR-A02 | pending | ACTIVE | Composition Root factory Port, four production adapters and publish boundaries |
+| XR-A03 | pending | READY | replacement assembly and one complete fresh centralized QA |
 
 QA fix commits inside the approved XR boundary: `f35b3b261` removed fixture shadowing and warnings;
 `d14311934` aligned ordered registration evidence; `65470db64` completed typed route/error assembly;
@@ -135,14 +140,14 @@ fail registry publication.
 | ARC-AC-003 | PASS | Native async/blocking/server-stream bindings and versioned input/output/stream/error/terminal contracts |
 | ARC-AC-004 | PASS | sealed principal unit and compile-fail tests |
 | ARC-AC-005 | PASS | credential-boundary source fixture and four real adapters |
-| ARC-AC-006 | PASS | unary and server-stream automatically execute core + ordered AuthZ/Admission and compiled Before/After/Failure/Completion plans; Native Runtime executes before terminal |
+| ARC-AC-006 | PENDING | lifecycle execution is assembled, but Authentication must be proven inside the frozen adapter-to-Principal chain on the replacement assembly |
 | ARC-AC-007 | PASS | live stream event → terminal → projection plus retry/deadline/cancel negatives |
 | ARC-AC-008 | PASS | Native dispatch freezes attempt and Runtime/worker generation; replacement negative |
 | ARC-AC-009 | PASS | Binding-first resolve, HTTP/MCP dual-binding and mismatch controlled negatives |
 | ARC-AC-010 | PASS | typed Handler ports and Node infrastructure-import negatives |
-| ARC-AC-011 | PASS | four-tier/nine-point capability matrix; real Definition/AuthN/AuthZ/Admission/Hook bindings and exactly-one contributed Handler |
+| ARC-AC-011 | PENDING | Definition/AuthZ/Admission/Hook/Handler bindings are assembled; real BuiltIn/HostExtension Authentication factory execution awaits replacement QA |
 | ARC-AC-012 | PASS | completion/receipt versus outbox separation tests |
-| ARC-AC-013 | PASS | extension illegal-point and duplicate/missing/mismatch/inactive publish negatives |
+| ARC-AC-013 | PENDING | existing compiler negatives pass; missing/extra Authentication factory publication fixtures await replacement QA |
 | ARC-AC-014 | PASS | behavioral boot/vertical fixtures plus full four-path API regression |
 | ARC-AC-015 | PASS | Cargo dependency and Node source-boundary controlled negatives |
 | ARC-AC-016 | PASS | fresh executable-contribution XR attempt 16, 16/16 rows, zero unrun |
@@ -162,7 +167,7 @@ runtime-generation replacement; and treating Interface completion as a persisted
 | --- | --- | --- |
 | RR-12 | PASS | unary and stream wrong input/output Hook contracts fail in `RegistryCompiler::compile()` |
 | RR-13 | PASS | typed Definition contribution materializes Definition/Binding; metadata-only, duplicate and inactive contributions fail publication |
-| RR-14 | PASS | four Composition Root Authentication factories are resolved from frozen plans; missing, duplicate and identity/profile mismatch fail publication |
+| RR-14 | PENDING | previous factories only validated already-built Principals; replacement must prove frozen-plan factory selection, real credential authentication, trusted HostExtension success/reject, and bidirectional missing/extra/mismatch publication failure |
 | RR-15 | PASS | unary/stream execute core then ordered Authorization vetoes; core deny dominates and extension deny/error/deadline fail closed |
 | RR-16 | PASS | unary/stream execute core then ordered Admission vetoes; missing/extra/order/Graph/contract and reject/error/deadline cases fail closed |
 
@@ -187,9 +192,9 @@ runtime-generation replacement; and treating Interface completion as a persisted
 | QA-015 | PASS | diff check and paired final integrity |
 | QA-016 | PASS | 16/16 rows; unrun 0 |
 
-Fresh automated tests total `1987 passed`, `0 failed`. The only non-blocking warnings are the
-existing 19 private dead-code warnings in `runtime-extension-host`; the #1944 boot import and
-unused Native stream helper warnings were removed before the final frozen assembly.
+The superseded compatibility run recorded `1987 passed`, `0 failed`. No test has run against the
+XR-A02 worktree. The next valid result must come from one complete fresh centralized run after the
+replacement product assembly is frozen.
 
 ## Compatibility and repository integrity
 

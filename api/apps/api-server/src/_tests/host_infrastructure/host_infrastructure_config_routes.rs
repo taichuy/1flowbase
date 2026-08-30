@@ -208,6 +208,7 @@ async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pendi
                     state.api_node_id.clone(),
                 ),
             ),
+            Vec::new(),
         )
         .unwrap(),
     );
@@ -227,11 +228,13 @@ async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pendi
     let typed_payload = serde_json::to_value(
         crate::routes::host_infrastructure::interface_operation::invoke_providers_view(
             Arc::clone(&state),
-            interface_runtime::UserPrincipal::server_delegation(domain::ActorContext::root(
-                uuid::Uuid::now_v7(),
-                state.bootstrap_workspace_id,
-                "root",
-            )),
+            crate::extension_bus::ConsoleAuthenticationCredential::ServerDelegation(
+                domain::ActorContext::root(
+                    uuid::Uuid::now_v7(),
+                    state.bootstrap_workspace_id,
+                    "root",
+                ),
+            ),
             interface_runtime::InterfaceProtocol::Internal,
         )
         .await
@@ -289,7 +292,7 @@ async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pendi
     let mcp_result = match crate::routes::mcp_management::debug_execute::execute_with_server_bindings(
         Arc::clone(&state),
         HeaderMap::new(),
-        interface_runtime::UserPrincipal::server_delegation(actor),
+        crate::extension_bus::ConsoleAuthenticationCredential::ServerDelegation(actor),
         mcp_interface,
         crate::routes::mcp_management::McpDebugExecuteBody {
             interface_id: crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID.to_string(),

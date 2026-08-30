@@ -165,8 +165,12 @@ pub async fn list_login_instances(
     let activated_authentication = snapshot
         .authentication(&binding_id)
         .ok_or_else(|| anyhow::anyhow!("public authentication activation is unavailable"))?;
-    let principal =
-        boot_snapshot.establish_principal(activated_authentication, PublicPrincipal::new())?;
+    let principal: PublicPrincipal = boot_snapshot
+        .authenticate(
+            activated_authentication,
+            crate::extension_bus::PublicAuthenticationCredential,
+        )
+        .await?;
     let authentication_activation = activated_authentication.activation().clone();
     let outcome = InterfaceInvocationKernel::new(Arc::new(
         login_instances_interface::PublicLoginInstancesAuthorization,

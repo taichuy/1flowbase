@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use access_control::{ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup};
 use axum::{
-    extract::{Extension, Path, Query, State},
+    extract::{Path, Query, State},
     http::HeaderMap,
     Json, Router,
 };
@@ -928,11 +928,14 @@ pub async fn clear_host_infrastructure_cache_domain(
 )]
 pub async fn list_host_infrastructure_providers(
     State(state): State<Arc<ApiState>>,
-    Extension(principal): Extension<interface_runtime::UserPrincipal>,
+    headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<HostInfrastructureProviderConfigResponse>>>, ApiError> {
     let (output, _receipt) = interface_operation::invoke_providers_view(
         Arc::clone(&state),
-        principal,
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
         interface_runtime::InterfaceProtocol::Http,
     )
     .await?;

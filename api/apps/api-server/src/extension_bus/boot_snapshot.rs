@@ -11,8 +11,8 @@ use serde::Serialize;
 use storage_durable_postgres::MainDurableStore;
 
 use super::{
-    AuthenticationAdapterFactoryRegistry, INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID,
-    INTERFACE_COMPLETION_HOOK_POINT_ID,
+    AuthenticationAdapterFactoryBinding, AuthenticationAdapterFactoryRegistry,
+    INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID, INTERFACE_COMPLETION_HOOK_POINT_ID,
 };
 const INTERFACE_COMPLETION_CONTEXT_CONTRACT_ID: &str = "interface-invocation-completion";
 const INTERFACE_COMPLETION_CONTEXT_CONTRACT_VERSION: &str = "1";
@@ -99,6 +99,7 @@ impl ExtensionBootSnapshot {
         providers_view_query: Arc<
             dyn crate::routes::host_infrastructure::interface_operation::HostInfrastructureProvidersViewQuery,
         >,
+        host_authentication_factories: Vec<AuthenticationAdapterFactoryBinding>,
     ) -> anyhow::Result<Self> {
         let hook_contract = HookPointContract {
             context: ContractDescriptor::new(
@@ -149,10 +150,12 @@ impl ExtensionBootSnapshot {
         let interface_registry = Arc::new(interface_runtime::DynamicInterfaceRegistry::new(
             interface_snapshot,
         ));
+        let mut authentication_factories = AuthenticationAdapterFactoryRegistry::built_in()?;
+        authentication_factories.extend(host_authentication_factories)?;
         Ok(Self {
             graph,
             interface_registry: Some(interface_registry),
-            authentication_factories: AuthenticationAdapterFactoryRegistry::built_in()?,
+            authentication_factories,
         })
     }
 
@@ -167,6 +170,7 @@ impl ExtensionBootSnapshot {
             Arc::new(
                 crate::routes::host_infrastructure::interface_operation::UnavailableHostInfrastructureProvidersViewQuery,
             ),
+            Vec::new(),
         )
     }
 
@@ -242,16 +246,18 @@ impl ExtensionBootSnapshot {
         Ok(())
     }
 
-    pub(crate) fn establish_principal<P>(
+    pub(crate) async fn authenticate<C, P>(
         &self,
         activation: &interface_runtime::ActivatedAuthenticationAdapter,
-        principal: P,
+        credential: C,
     ) -> anyhow::Result<P>
     where
+        C: std::any::Any + Send + 'static,
         P: interface_runtime::InvocationPrincipal,
     {
         self.authentication_factories
-            .establish(activation, principal)
+            .authenticate(activation, credential)
+            .await
     }
 
     pub fn effective_plan(&self) -> EffectiveExtensionPlan<'_> {

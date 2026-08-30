@@ -263,6 +263,7 @@ async fn test_state_with_runtime_profile_state(
                     config.api_node_id.clone(),
                 ),
             ),
+            Vec::new(),
         )
         .expect("test extension boot snapshot should compile"),
     );

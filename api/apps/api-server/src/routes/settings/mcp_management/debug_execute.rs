@@ -100,9 +100,9 @@ pub async fn execute(
         .await
         .map_err(|error| McpDebugExecuteError::Api(error.0))?;
     execute_with_server_bindings(
-        state,
-        headers,
-        context.interface_principal(),
+        Arc::clone(&state),
+        headers.clone(),
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
         interface_entry,
         body,
         McpServerBoundInputs {
@@ -116,7 +116,7 @@ pub async fn execute(
 pub async fn execute_with_server_bindings(
     state: Arc<ApiState>,
     headers: HeaderMap,
-    principal: interface_runtime::UserPrincipal,
+    credential: crate::extension_bus::ConsoleAuthenticationCredential,
     interface_entry: domain::McpInterfaceCatalogEntry,
     body: McpDebugExecuteBody,
     server_bound_inputs: McpServerBoundInputs,
@@ -132,7 +132,7 @@ pub async fn execute_with_server_bindings(
     {
         let (output, _receipt) = crate::routes::host_infrastructure::interface_operation::invoke_providers_view(
             Arc::clone(&state),
-            principal,
+            credential,
             interface_runtime::InterfaceProtocol::Mcp,
         )
         .await
