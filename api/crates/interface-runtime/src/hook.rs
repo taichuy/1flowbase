@@ -3,8 +3,9 @@ use std::{any::Any, future::Future, pin::Pin, sync::Arc};
 use thiserror::Error;
 
 use crate::{
-    GraphFingerprint, InterfaceContract, InterfaceExtensionPoint, InterfaceInvocationTerminal,
-    InvocationId, PluginIdentity, PrincipalSummary, RegistryFingerprint,
+    ContractIdentity, GraphFingerprint, InterfaceContract, InterfaceExtensionPoint,
+    InterfaceInvocationTerminal, InvocationId, PluginIdentity, PrincipalSummary,
+    RegistryFingerprint,
 };
 
 #[derive(Clone, Debug)]
@@ -118,6 +119,8 @@ where
     O: InterfaceContract,
 {
     graph_fingerprint: GraphFingerprint,
+    input_contract: ContractIdentity,
+    output_contract: ContractIdentity,
     bindings: Vec<(PluginIdentity, InterfaceExtensionPoint)>,
     before: Vec<Arc<dyn InterfaceBeforeHook<I>>>,
     after: Vec<Arc<dyn InterfaceAfterHook<O>>>,
@@ -133,6 +136,8 @@ where
     fn clone(&self) -> Self {
         Self {
             graph_fingerprint: self.graph_fingerprint.clone(),
+            input_contract: self.input_contract.clone(),
+            output_contract: self.output_contract.clone(),
             bindings: self.bindings.clone(),
             before: self.before.clone(),
             after: self.after.clone(),
@@ -150,6 +155,8 @@ where
     pub fn new(graph_fingerprint: GraphFingerprint) -> Self {
         Self {
             graph_fingerprint,
+            input_contract: typed_contract_identity::<I>(),
+            output_contract: typed_contract_identity::<O>(),
             bindings: Vec::new(),
             before: Vec::new(),
             after: Vec::new(),
@@ -205,6 +212,14 @@ where
         &self.graph_fingerprint
     }
 
+    pub fn input_contract(&self) -> &ContractIdentity {
+        &self.input_contract
+    }
+
+    pub fn output_contract(&self) -> &ContractIdentity {
+        &self.output_contract
+    }
+
     pub(crate) fn bindings(&self) -> &[(PluginIdentity, InterfaceExtensionPoint)] {
         &self.bindings
     }
@@ -245,6 +260,8 @@ where
 
 pub(crate) trait ErasedInterfaceHookPlan: Send + Sync {
     fn graph_fingerprint(&self) -> &GraphFingerprint;
+    fn input_contract(&self) -> &ContractIdentity;
+    fn output_contract(&self) -> &ContractIdentity;
     fn bindings(&self) -> &[(PluginIdentity, InterfaceExtensionPoint)];
     fn as_any(&self) -> &dyn Any;
 }
@@ -258,6 +275,14 @@ where
         self.graph_fingerprint()
     }
 
+    fn input_contract(&self) -> &ContractIdentity {
+        self.input_contract()
+    }
+
+    fn output_contract(&self) -> &ContractIdentity {
+        self.output_contract()
+    }
+
     fn bindings(&self) -> &[(PluginIdentity, InterfaceExtensionPoint)] {
         self.bindings()
     }
@@ -265,4 +290,9 @@ where
     fn as_any(&self) -> &dyn Any {
         self
     }
+}
+
+fn typed_contract_identity<T: InterfaceContract>() -> ContractIdentity {
+    ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
+        .expect("typed hook contract constants must be valid identities")
 }

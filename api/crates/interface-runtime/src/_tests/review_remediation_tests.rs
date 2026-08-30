@@ -40,6 +40,20 @@ impl InterfaceContract for Output {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+struct WrongInput;
+impl InterfaceContract for WrongInput {
+    const CONTRACT_ID: &'static str = "review-wrong-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct WrongOutput;
+impl InterfaceContract for WrongOutput {
+    const CONTRACT_ID: &'static str = "review-wrong-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct StreamEvent(u8);
 impl InterfaceContract for StreamEvent {
     const CONTRACT_ID: &'static str = "review-stream-event";
@@ -223,6 +237,78 @@ fn envelope(binding: &str, protocol: InterfaceProtocol, authn: &str) -> Invocati
         None,
         Input(4),
     )
+}
+
+#[test]
+fn rr12_hook_contract_mismatch_fails_registry_compilation_for_unary_and_stream() {
+    for (mode, wrong_input) in [
+        (InterfaceExecutionMode::Unary, true),
+        (InterfaceExecutionMode::Unary, false),
+        (InterfaceExecutionMode::ServerStream, true),
+        (InterfaceExecutionMode::ServerStream, false),
+    ] {
+        let mut compiler = compiler();
+        let value = if mode == InterfaceExecutionMode::Unary {
+            "review.hook-contract-unary"
+        } else {
+            "review.hook-contract-stream"
+        };
+        let definition = definition(value, mode);
+        compiler.register_definition(definition.clone()).unwrap();
+        compiler
+            .register_binding(
+                ProtocolBinding::new(
+                    BindingId::new(format!("http.{value}.v1")).unwrap(),
+                    definition.identity().clone(),
+                    definition.contracts().clone(),
+                    ProtocolProjection::http(
+                        RouteIdentity::new("POST", format!("/api/{value}")).unwrap(),
+                    ),
+                ),
+                plan("review.authn", "review.authz"),
+            )
+            .unwrap();
+        if mode == InterfaceExecutionMode::Unary {
+            compiler
+                .bind_handler::<Input, Output, TargetError, UserPrincipal>(
+                    definition.interface_id(),
+                    definition.handler_reference().clone(),
+                    Arc::new(UnaryHandler),
+                )
+                .unwrap();
+        } else {
+            compiler
+                .bind_stream_handler::<Input, StreamEvent, Output, TargetError, UserPrincipal>(
+                    definition.interface_id(),
+                    definition.handler_reference().clone(),
+                    Arc::new(StreamingHandler),
+                )
+                .unwrap();
+        }
+        if wrong_input {
+            compiler
+                .bind_hook_plan(
+                    definition.interface_id(),
+                    Arc::new(TypedInterfaceHookPlan::<WrongInput, Output>::new(
+                        GraphFingerprint::new("graph:review").unwrap(),
+                    )),
+                )
+                .unwrap();
+        } else {
+            compiler
+                .bind_hook_plan(
+                    definition.interface_id(),
+                    Arc::new(TypedInterfaceHookPlan::<Input, WrongOutput>::new(
+                        GraphFingerprint::new("graph:review").unwrap(),
+                    )),
+                )
+                .unwrap();
+        }
+        assert!(matches!(
+            compiler.compile(),
+            Err(RegistryCompilationError::HookContractMismatch(_))
+        ));
+    }
 }
 
 #[tokio::test]

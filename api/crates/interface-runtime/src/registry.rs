@@ -859,6 +859,8 @@ pub enum RegistryCompilationError {
     DuplicateExtensionHandler(InterfaceId, PluginIdentity),
     #[error("interface {0} executable extension graph fingerprint does not match the compiler")]
     ExtensionGraphFingerprintMismatch(InterfaceId),
+    #[error("interface {0} executable hook input/output contract does not match its definition")]
+    HookContractMismatch(InterfaceId),
     #[error(transparent)]
     Extension(#[from] crate::InterfaceExtensionCompilationError),
 }
@@ -1378,6 +1380,17 @@ impl RegistryCompiler {
             if let Some(hooks) = hooks {
                 if hooks.graph_fingerprint() != &self.graph_fingerprint {
                     return Err(RegistryCompilationError::ExtensionGraphFingerprintMismatch(
+                        interface_id.clone(),
+                    ));
+                }
+                let definition = self
+                    .definitions
+                    .get(interface_id)
+                    .expect("hook binding interface definition was registered");
+                if hooks.input_contract() != definition.input_contract()
+                    || hooks.output_contract() != definition.output_contract()
+                {
+                    return Err(RegistryCompilationError::HookContractMismatch(
                         interface_id.clone(),
                     ));
                 }
