@@ -168,7 +168,7 @@ test('Delivery 1944 protocol adapters authenticate through the frozen factory be
   assert.match(routes, /\.authenticate\(/u);
   assert.doesNotMatch(
     runtime,
-    /HeaderMap|Cookie|bearer_token|session_secret|ApplicationApiKeyAuthenticationCredential|McpUserApiKeyAuthenticationCredential/u,
+    /axum::http::HeaderMap|bearer_token|session_secret|ApplicationApiKeyAuthenticationCredential|McpUserApiKeyAuthenticationCredential/u,
   );
 });
 
@@ -285,7 +285,11 @@ test('Delivery 1912 production slice consumes one compiled registry for HTTP and
   );
   assert.match(
     http,
-    /list_host_infrastructure_providers\([\s\S]*Extension\(principal\): Extension<interface_runtime::UserPrincipal>/u,
+    /list_host_infrastructure_providers\([\s\S]*headers: HeaderMap[\s\S]*ConsoleAuthenticationCredential::Protocol/u,
+  );
+  assert.doesNotMatch(
+    http,
+    /Extension\(principal\): Extension<interface_runtime::UserPrincipal>/u,
   );
   assert.doesNotMatch(boot, /InterfaceOperationCatalog/u);
 });
