@@ -1,18 +1,16 @@
 use std::sync::Arc;
 
+use crate::{
+    app_state::ApiState,
+    routes::application_public_api::{
+        compatibility_interface,
+        native::{bearer_token, NativeApiError},
+    },
+};
 use axum::{
     extract::{ws::WebSocketUpgrade, State},
     http::HeaderMap,
     response::Response,
-};
-use control_plane::application_public_api::{
-    api_keys::{ApplicationApiKeyActor, ApplicationApiKeyService},
-    native::NativeRunValidationError,
-};
-
-use crate::{
-    app_state::ApiState,
-    routes::application_public_api::native::{bearer_token, native_error, NativeApiError},
 };
 
 mod actor;
@@ -25,8 +23,15 @@ mod turn_bridge;
 const NATIVE_WEBSOCKET_PROTOCOL: &str = "1flowbase.native.v1";
 
 pub(crate) struct NativeWebSocketAuthorization {
-    pub(crate) bearer_token: String,
-    pub(crate) actor: ApplicationApiKeyActor,
+    pub(crate) principal: interface_runtime::ApplicationPrincipal,
+}
+
+impl NativeWebSocketAuthorization {
+    pub(crate) fn actor(
+        &self,
+    ) -> control_plane::application_public_api::api_keys::ApplicationApiKeyActor {
+        compatibility_interface::application_actor(&self.principal)
+    }
 }
 
 #[utoipa::path(
@@ -47,15 +52,13 @@ pub(crate) async fn upgrade(
 ) -> Result<Response, NativeApiError> {
     let token = bearer_token(&headers)?;
     require_native_websocket_protocol(&headers)?;
-    let actor = ApplicationApiKeyService::new(state.store.clone())
-        .with_last_used_cache(state.infrastructure.cache_store())
-        .authenticate_bearer_token(&token)
-        .await
-        .map_err(|_| native_error(NativeRunValidationError::NotAuthenticated))?;
-    let authorization = Arc::new(NativeWebSocketAuthorization {
-        bearer_token: token,
-        actor,
-    });
+    let principal = compatibility_interface::authenticate_application_principal(
+        state.clone(),
+        compatibility_interface::NATIVE_WEBSOCKET_STREAM_BINDING_ID,
+        token,
+    )
+    .await?;
+    let authorization = Arc::new(NativeWebSocketAuthorization { principal });
     Ok(websocket
         .protocols([NATIVE_WEBSOCKET_PROTOCOL])
         .on_upgrade(move |socket| async move {

@@ -87,11 +87,17 @@ pub(super) struct OpenAiCredential {
 pub(crate) struct PreparedOpenAiResponseTurn {
     model: String,
     previous_response_id: Option<String>,
-    runtime: compat_sse::PreparedCompatibleTurn,
+    runtime: compatibility_interface::CompatibilityTypedStreamInvocation,
 }
 
 impl PreparedOpenAiResponseTurn {
-    pub(crate) fn into_parts(self) -> (String, Option<String>, compat_sse::PreparedCompatibleTurn) {
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        String,
+        Option<String>,
+        compatibility_interface::CompatibilityTypedStreamInvocation,
+    ) {
         (self.model, self.previous_response_id, self.runtime)
     }
 }
@@ -163,14 +169,32 @@ pub async fn create_chat_completion(
         .map_err(|error| openai_invalid_request(error.param, error.message))?
     {
         let callback_task_id = resume.callback_task_id;
+        let resume_binding_id = if response_mode.as_deref() == Some("streaming") {
+            if uri.path() == "/chat/completions" {
+                compatibility_interface::OPENAI_CHAT_ROOT_STREAM_BINDING_ID
+            } else {
+                compatibility_interface::OPENAI_CHAT_STREAM_BINDING_ID
+            }
+        } else if uri.path() == "/chat/completions" {
+            compatibility_interface::OPENAI_CHAT_ROOT_BINDING_ID
+        } else {
+            compatibility_interface::OPENAI_CHAT_BINDING_ID
+        };
+        let principal = compatibility_interface::authenticate_application_principal(
+            state.clone(),
+            resume_binding_id,
+            credential.token.clone(),
+        )
+        .await?;
+        let actor = compatibility_interface::application_actor(&principal);
         let command = openai_resume_command(
-            &credential.token,
+            "",
             callback_task_id,
             PublishedCallbackResumeSource::OpenAiChat,
             resume.tool_results,
             response_mode.clone(),
         );
-        match compat_sse::prepare_compatible_resume(state.clone(), command).await {
+        match compat_sse::prepare_compatible_resume_for_actor(state.clone(), actor, command).await {
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan))
                 if response_mode.as_deref() == Some("streaming") =>
             {
@@ -178,18 +202,34 @@ pub async fn create_chat_completion(
                     plan.initial_run.id,
                     callback_task_id,
                 );
-                return compat_sse::start_openai_chat_resume_stream(
+                return compatibility_interface::invoke_stream_with_principal(
                     state,
-                    plan.initial_run,
-                    model,
-                    completion_id,
-                    plan.command,
+                    resume_binding_id,
+                    principal,
+                    compatibility_interface::CompatibilityBlockingInput {
+                        command: compatibility_interface::CompatibilityInvocationCommand::Resume {
+                            initial_run: plan.initial_run,
+                            command: plan.command,
+                        },
+                    },
+                    compat_sse::openai_chat_resume_interface_projection(model, completion_id),
                 )
                 .await
                 .map_err(Into::into);
             }
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
-                let run = execute_openai_tool_resume(state, plan.command).await?;
+                let run = compatibility_interface::invoke_blocking_with_principal(
+                    state,
+                    resume_binding_id,
+                    principal,
+                    compatibility_interface::CompatibilityBlockingInput {
+                        command: compatibility_interface::CompatibilityInvocationCommand::Resume {
+                            initial_run: plan.initial_run,
+                            command: plan.command,
+                        },
+                    },
+                )
+                .await?;
                 let completion_id = compat_sse::openai_chat_completion_id_from_callback_task(
                     run.id,
                     callback_task_id,
@@ -236,40 +276,26 @@ pub async fn create_chat_completion(
     };
 
     if response_mode.as_deref() == Some("streaming") {
-        let run = match create_native_run(
-            state.clone(),
-            credential.token.clone(),
-            request,
-            TranslationProtocol::OpenAiChat,
+        let stream_binding_id = if uri.path() == "/chat/completions" {
+            compatibility_interface::OPENAI_CHAT_ROOT_STREAM_BINDING_ID
+        } else {
+            compatibility_interface::OPENAI_CHAT_STREAM_BINDING_ID
+        };
+        return compatibility_interface::invoke_stream(
+            state,
+            stream_binding_id,
+            credential.token,
+            compatibility_interface::CompatibilityBlockingInput {
+                command: compatibility_interface::CompatibilityInvocationCommand::Start {
+                    request,
+                    protocol: TranslationProtocol::OpenAiChat,
+                    provider_transport: None,
+                },
+            },
+            compat_sse::openai_chat_interface_projection(model),
         )
         .await
-        {
-            Ok(run) => run,
-            Err(error) => {
-                warn!(
-                    route = "chat_completions",
-                    auth_source = credential.source,
-                    status = error.status.as_u16(),
-                    code = error.code,
-                    "openai compatible native run validation failed"
-                );
-                return Err(error.into());
-            }
-        };
-
-        info!(
-            route = "chat_completions",
-            auth_source = credential.source,
-            application_id = %run.application_id,
-            flow_run_id = %run.id,
-            response_mode = "streaming",
-            model = %model,
-            translation_decision_count,
-            "openai compatible chat completion accepted"
-        );
-        return compat_sse::start_openai_run_stream(state, credential.token, run, model)
-            .await
-            .map_err(Into::into);
+        .map_err(Into::into);
     }
 
     let run = compatibility_interface::invoke_blocking(
@@ -277,9 +303,11 @@ pub async fn create_chat_completion(
         binding_id,
         credential.token,
         compatibility_interface::CompatibilityBlockingInput {
-            request,
-            protocol: TranslationProtocol::OpenAiChat,
-            provider_transport: None,
+            command: compatibility_interface::CompatibilityInvocationCommand::Start {
+                request,
+                protocol: TranslationProtocol::OpenAiChat,
+                provider_transport: None,
+            },
         },
     )
     .await?;
@@ -379,6 +407,7 @@ async fn create_response_for_endpoint(
         body,
         endpoint,
         OpenAiResponseDelivery::Http,
+        None,
     )
     .await?
     {
@@ -395,6 +424,7 @@ async fn create_response_for_endpoint(
 
 pub(crate) async fn prepare_typed_response_turn(
     state: Arc<ApiState>,
+    principal: interface_runtime::ApplicationPrincipal,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<PreparedOpenAiResponseTurn, OpenAiRouteError> {
@@ -406,6 +436,7 @@ pub(crate) async fn prepare_typed_response_turn(
         body,
         OpenAiResponsesEndpoint::Responses,
         OpenAiResponseDelivery::TypedEvents,
+        Some(principal),
     )
     .await?
     {
@@ -428,37 +459,32 @@ async fn dispatch_response_for_endpoint(
     body: Bytes,
     endpoint: OpenAiResponsesEndpoint,
     delivery: OpenAiResponseDelivery,
+    preauthenticated_principal: Option<interface_runtime::ApplicationPrincipal>,
 ) -> Result<OpenAiResponseDispatch, OpenAiRouteError> {
     let route = match endpoint {
         OpenAiResponsesEndpoint::Responses => "responses",
         OpenAiResponsesEndpoint::ResponsesCompact => "responses_compact",
     };
-    let credential = match openai_credential(&headers) {
-        Ok(credential) => credential,
-        Err(error) => {
-            warn!(
-                route,
-                status = error.status.as_u16(),
-                code = error.code,
-                "openai responses compatible authentication failed"
-            );
-            return Err(error.into());
-        }
+    let credential = if preauthenticated_principal.is_none() {
+        Some(match openai_credential(&headers) {
+            Ok(credential) => credential,
+            Err(error) => {
+                warn!(
+                    route,
+                    status = error.status.as_u16(),
+                    code = error.code,
+                    "openai responses compatible authentication failed"
+                );
+                return Err(error.into());
+            }
+        })
+    } else {
+        None
     };
-    if compact::has_codex_turn_metadata(&headers) {
-        if let Err(error) =
-            authenticate_openai_response_credential(state.as_ref(), &credential).await
-        {
-            warn!(
-                route,
-                auth_source = credential.source,
-                status = error.status.as_u16(),
-                code = error.code,
-                "openai responses Codex metadata request authentication failed"
-            );
-            return Err(error.into());
-        }
-    }
+    let auth_source = credential
+        .as_ref()
+        .map(|credential| credential.source)
+        .unwrap_or("frozen_websocket_principal");
     let request_context = match compact::responses_request_context(&headers, endpoint) {
         Ok(context) => context,
         Err(error) => {
@@ -488,16 +514,6 @@ async fn dispatch_response_for_endpoint(
             .insert("stream".to_string(), Value::Bool(true));
     }
     let previous_response_id = optional_string_field(&value, "previous_response_id")?;
-    let previous_response = load_previous_response_context(
-        state.clone(),
-        &credential.token,
-        previous_response_id.as_deref(),
-    )
-    .await?;
-    let previous_flow_run_id = previous_response
-        .as_ref()
-        .map(|previous| previous.flow_run_id);
-    let previous_translation_context = previous_response.map(|previous| previous.translation);
     let response_mode = value
         .get("stream")
         .and_then(Value::as_bool)
@@ -508,19 +524,74 @@ async fn dispatch_response_for_endpoint(
         .and_then(Value::as_str)
         .unwrap_or_default()
         .to_string();
+    let authentication_binding_id = match (endpoint, &delivery, response_mode.as_deref()) {
+        (_, OpenAiResponseDelivery::TypedEvents, _) => {
+            compatibility_interface::OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID
+        }
+        (OpenAiResponsesEndpoint::ResponsesCompact, _, _) => {
+            compatibility_interface::OPENAI_RESPONSES_COMPACT_BINDING_ID
+        }
+        (OpenAiResponsesEndpoint::Responses, _, Some("streaming"))
+            if route_path == "/responses" =>
+        {
+            compatibility_interface::OPENAI_RESPONSES_ROOT_STREAM_BINDING_ID
+        }
+        (OpenAiResponsesEndpoint::Responses, _, Some("streaming")) => {
+            compatibility_interface::OPENAI_RESPONSES_STREAM_BINDING_ID
+        }
+        (OpenAiResponsesEndpoint::Responses, _, _) if route_path == "/responses" => {
+            compatibility_interface::OPENAI_RESPONSES_ROOT_BINDING_ID
+        }
+        (OpenAiResponsesEndpoint::Responses, _, _) => {
+            compatibility_interface::OPENAI_RESPONSES_BINDING_ID
+        }
+    };
+    let principal = match preauthenticated_principal {
+        Some(principal) => principal,
+        None => {
+            let token = credential
+                .as_ref()
+                .expect("HTTP credential was extracted")
+                .token
+                .clone();
+            compatibility_interface::authenticate_application_principal(
+                state.clone(),
+                authentication_binding_id,
+                token,
+            )
+            .await?
+        }
+    };
+    let application_actor = compatibility_interface::application_actor(&principal);
+    let previous_response = load_previous_response_context_for_actor(
+        state.clone(),
+        application_actor.clone(),
+        previous_response_id.as_deref(),
+    )
+    .await?;
+    let previous_flow_run_id = previous_response
+        .as_ref()
+        .map(|previous| previous.flow_run_id);
+    let previous_translation_context = previous_response.map(|previous| previous.translation);
     if endpoint == OpenAiResponsesEndpoint::Responses {
         if let Some(resume) =
             correlate_openai_responses_callback(&value, previous_response_id.as_deref())
                 .map_err(|error| openai_invalid_request(error.param, error.message))?
         {
             let command = openai_resume_command(
-                &credential.token,
+                "",
                 resume.callback_task_id,
                 PublishedCallbackResumeSource::OpenAiResponses,
                 resume.tool_results,
                 response_mode.clone(),
             );
-            match compat_sse::prepare_compatible_resume(state.clone(), command).await {
+            match compat_sse::prepare_compatible_resume_for_actor(
+                state.clone(),
+                application_actor.clone(),
+                command,
+            )
+            .await
+            {
                 Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
                     ensure_openai_responses_resume_matches_previous_response(
                         state.as_ref(),
@@ -529,34 +600,60 @@ async fn dispatch_response_for_endpoint(
                     )
                     .await?;
                     if response_mode.as_deref() == Some("streaming") {
+                        let input = compatibility_interface::CompatibilityBlockingInput {
+                            command:
+                                compatibility_interface::CompatibilityInvocationCommand::Resume {
+                                    initial_run: plan.initial_run,
+                                    command: plan.command,
+                                },
+                        };
                         return match delivery {
                             OpenAiResponseDelivery::Http => {
-                                compat_sse::start_openai_response_resume_stream(
+                                compatibility_interface::invoke_stream_with_principal(
                                     state,
-                                    plan.initial_run,
-                                    model,
-                                    previous_response_id,
-                                    plan.command,
+                                    authentication_binding_id,
+                                    principal,
+                                    input,
+                                    compat_sse::openai_responses_interface_projection(
+                                        model,
+                                        previous_response_id,
+                                    ),
                                 )
                                 .await
                                 .map(OpenAiResponseDispatch::Http)
                                 .map_err(Into::into)
                             }
                             OpenAiResponseDelivery::TypedEvents => {
+                                let runtime = compatibility_interface::invoke_typed_stream_with_principal(
+                                    state,
+                                    compatibility_interface::OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID,
+                                    principal,
+                                    input,
+                                )
+                                .await?;
                                 Ok(OpenAiResponseDispatch::TypedEvents(Box::new(
                                     PreparedOpenAiResponseTurn {
                                         model,
                                         previous_response_id,
-                                        runtime: compat_sse::PreparedCompatibleTurn::resume(
-                                            plan.initial_run,
-                                            plan.command,
-                                        ),
+                                        runtime,
                                     },
                                 )))
                             }
                         };
                     }
-                    let run = execute_openai_tool_resume(state, plan.command).await?;
+                    let run = compatibility_interface::invoke_blocking_with_principal(
+                        state,
+                        authentication_binding_id,
+                        principal,
+                        compatibility_interface::CompatibilityBlockingInput {
+                            command:
+                                compatibility_interface::CompatibilityInvocationCommand::Resume {
+                                    initial_run: plan.initial_run,
+                                    command: plan.command,
+                                },
+                        },
+                    )
+                    .await?;
                     return Ok(OpenAiResponseDispatch::Http(
                         Json(to_openai_responses_response(
                             run,
@@ -675,25 +772,27 @@ async fn dispatch_response_for_endpoint(
     match operation {
         AiNativeOperation::Generate(_) => {
             if response_mode.as_deref() != Some("streaming") {
-                let run = compatibility_interface::invoke_blocking(
+                let run = compatibility_interface::invoke_blocking_with_principal(
                     state,
                     blocking_binding_id,
-                    credential.token,
+                    principal,
                     compatibility_interface::CompatibilityBlockingInput {
-                        request,
-                        protocol: TranslationProtocol::OpenAiResponses,
-                        provider_transport: Some(
-                            compatibility_interface::CompatibilityProviderTransport {
-                                operation,
-                                payload: provider_transport_payload,
-                            },
-                        ),
+                        command: compatibility_interface::CompatibilityInvocationCommand::Start {
+                            request,
+                            protocol: TranslationProtocol::OpenAiResponses,
+                            provider_transport: Some(
+                                compatibility_interface::CompatibilityProviderTransport {
+                                    operation,
+                                    payload: provider_transport_payload,
+                                },
+                            ),
+                        },
                     },
                 )
                 .await?;
                 info!(
                     route,
-                    auth_source = credential.source,
+                    auth_source,
                     application_id = %run.application_id,
                     flow_run_id = %run.id,
                     response_mode = "blocking",
@@ -711,70 +810,61 @@ async fn dispatch_response_for_endpoint(
                 ));
             }
 
-            let run = match create_native_run(
-                state.clone(),
-                credential.token.clone(),
-                request,
-                TranslationProtocol::OpenAiResponses,
-            )
-            .await
-            {
-                Ok(run) => run,
-                Err(error) => {
-                    warn!(
-                        route,
-                        auth_source = credential.source,
-                        status = error.status.as_u16(),
-                        code = error.code,
-                        "openai responses compatible native run validation failed"
-                    );
-                    return Err(error.into());
-                }
-            };
+            if matches!(delivery, OpenAiResponseDelivery::Http) {
+                let stream_binding_id = if route_path == "/responses" {
+                    compatibility_interface::OPENAI_RESPONSES_ROOT_STREAM_BINDING_ID
+                } else {
+                    compatibility_interface::OPENAI_RESPONSES_STREAM_BINDING_ID
+                };
+                let projection =
+                    compat_sse::openai_responses_interface_projection(model, previous_response_id);
+                let response = compatibility_interface::invoke_stream_with_principal(
+                    state,
+                    stream_binding_id,
+                    principal,
+                    compatibility_interface::CompatibilityBlockingInput {
+                        command: compatibility_interface::CompatibilityInvocationCommand::Start {
+                            request,
+                            protocol: TranslationProtocol::OpenAiResponses,
+                            provider_transport: Some(
+                                compatibility_interface::CompatibilityProviderTransport {
+                                    operation,
+                                    payload: provider_transport_payload,
+                                },
+                            ),
+                        },
+                    },
+                    projection,
+                )
+                .await?;
+                return Ok(OpenAiResponseDispatch::Http(response));
+            }
 
-            let provider_transport_slot = stage_openai_provider_transport(
-                state.infrastructure.provider_transport_store().as_ref(),
-                run.id,
-                operation,
-                provider_transport_payload,
+            let runtime = compatibility_interface::invoke_typed_stream_with_principal(
+                state,
+                compatibility_interface::OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID,
+                principal,
+                compatibility_interface::CompatibilityBlockingInput {
+                    command: compatibility_interface::CompatibilityInvocationCommand::Start {
+                        request,
+                        protocol: TranslationProtocol::OpenAiResponses,
+                        provider_transport: Some(
+                            compatibility_interface::CompatibilityProviderTransport {
+                                operation,
+                                payload: provider_transport_payload,
+                            },
+                        ),
+                    },
+                },
             )
             .await?;
-
-            info!(
-                route,
-                auth_source = credential.source,
-                application_id = %run.application_id,
-                flow_run_id = %run.id,
-                response_mode = response_mode.as_deref().unwrap_or("blocking"),
-                model = %model,
-                translation_decision_count,
-                "openai responses compatible request accepted"
-            );
-
-            match delivery {
-                OpenAiResponseDelivery::Http => compat_sse::start_openai_response_stream(
-                    state,
-                    credential.token.clone(),
-                    run,
+            Ok(OpenAiResponseDispatch::TypedEvents(Box::new(
+                PreparedOpenAiResponseTurn {
                     model,
                     previous_response_id,
-                    provider_transport_slot,
-                )
-                .await
-                .map(OpenAiResponseDispatch::Http)
-                .map_err(Into::into),
-                OpenAiResponseDelivery::TypedEvents => Ok(OpenAiResponseDispatch::TypedEvents(
-                    Box::new(PreparedOpenAiResponseTurn {
-                        model,
-                        previous_response_id,
-                        runtime: compat_sse::PreparedCompatibleTurn::start(
-                            run,
-                            provider_transport_slot,
-                            credential.token.clone(),
-                        ),
-                    }),
-                )),
-            }
+                    runtime,
+                },
+            )))
         }
         AiNativeOperation::CountTokens => Err(openai_invalid_request(
             "operation",
@@ -795,19 +885,21 @@ async fn dispatch_response_for_endpoint(
                     ProviderCompactProfile::ResponsesCompactionV2
                 }
             };
-            let run = compatibility_interface::invoke_blocking(
+            let run = compatibility_interface::invoke_blocking_with_principal(
                 state,
                 blocking_binding_id,
-                credential.token,
+                principal,
                 compatibility_interface::CompatibilityBlockingInput {
-                    request,
-                    protocol: TranslationProtocol::OpenAiResponses,
-                    provider_transport: Some(
-                        compatibility_interface::CompatibilityProviderTransport {
-                            operation,
-                            payload: provider_transport_payload,
-                        },
-                    ),
+                    command: compatibility_interface::CompatibilityInvocationCommand::Start {
+                        request,
+                        protocol: TranslationProtocol::OpenAiResponses,
+                        provider_transport: Some(
+                            compatibility_interface::CompatibilityProviderTransport {
+                                operation,
+                                payload: provider_transport_payload,
+                            },
+                        ),
+                    },
                 },
             )
             .await?;
@@ -818,7 +910,7 @@ async fn dispatch_response_for_endpoint(
 
             info!(
                 route,
-                auth_source = credential.source,
+                auth_source,
                 compaction_profile = profile.as_str(),
                 response_mode = response_mode.as_deref().unwrap_or("blocking"),
                 model = %model,
@@ -1191,9 +1283,9 @@ async fn ensure_openai_responses_resume_matches_previous_response(
     Ok(())
 }
 
-async fn load_previous_response_context(
+async fn load_previous_response_context_for_actor(
     state: Arc<ApiState>,
-    bearer_token: &str,
+    actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
     previous_response_id: Option<&str>,
 ) -> Result<Option<LoadedOpenAiPreviousResponseContext>, OpenAiRouteError> {
     let Some(response_id) = previous_response_id else {
@@ -1203,27 +1295,18 @@ async fn load_previous_response_context(
         .with_last_used_cache(state.infrastructure.cache_store());
     let run = match run_id_from_response_id(response_id) {
         Ok(run_id) => match service
-            .get_native_run(GetNativeRunCommand {
-                bearer_token: bearer_token.to_string(),
-                run_id,
-            })
+            .get_native_run_for_actor(actor.clone(), run_id)
             .await
         {
             Ok(run) => run,
             Err(NativeRunValidationError::NotFound) => service
-                .get_native_run_by_provider_response_id(GetNativeRunByProviderResponseIdCommand {
-                    bearer_token: bearer_token.to_string(),
-                    provider_response_id: response_id.to_string(),
-                })
+                .get_native_run_by_provider_response_id_for_actor(actor.clone(), response_id)
                 .await
                 .map_err(native::native_error)?,
             Err(error) => return Err(native::native_error(error).into()),
         },
         Err(_) => service
-            .get_native_run_by_provider_response_id(GetNativeRunByProviderResponseIdCommand {
-                bearer_token: bearer_token.to_string(),
-                provider_response_id: response_id.to_string(),
-            })
+            .get_native_run_by_provider_response_id_for_actor(actor, response_id)
             .await
             .map_err(native::native_error)?,
     };

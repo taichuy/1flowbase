@@ -76,6 +76,10 @@ pub(crate) enum CompatibleResumeAdmission {
 enum CompatibleTurnAction {
     Start,
     Resume(ResumePublishedCallbackCommand),
+    ResumeForActor {
+        command: ResumePublishedCallbackCommand,
+        actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+    },
 }
 
 pub(crate) struct PreparedCompatibleTurn {
@@ -151,20 +155,26 @@ impl CompatibleTurnAction {
     fn name(&self) -> &'static str {
         match self {
             Self::Start => "start",
-            Self::Resume(_) => "resume",
+            Self::Resume(_) | Self::ResumeForActor { .. } => "resume",
         }
     }
 
     fn resumed_callback_task_id(&self) -> Option<uuid::Uuid> {
         match self {
             Self::Start => None,
-            Self::Resume(command) => Some(callback_task_id_from_resume_command(command)),
+            Self::Resume(command) | Self::ResumeForActor { command, .. } => {
+                Some(callback_task_id_from_resume_command(command))
+            }
         }
     }
 }
 
-enum CompatibleProtocolProjection {
+pub(crate) enum CompatibleProtocolProjection {
     OpenAiChat(OpenAiChatStreamMapper),
+    OpenAiChatDeferred {
+        model: String,
+        mapper: Option<OpenAiChatStreamMapper>,
+    },
     OpenAiResponses(OpenAiResponseStreamMapper),
     AnthropicMessages(AnthropicStreamMapper),
 }
@@ -236,15 +246,15 @@ impl From<RuntimeEventEnvelope> for CompatibleRuntimeEventView {
 }
 
 impl CompatibleProtocolProjection {
-    fn name(&self) -> &'static str {
+    pub(crate) fn name(&self) -> &'static str {
         match self {
-            Self::OpenAiChat(_) => OPENAI_CHAT_SSE_PROJECTION,
+            Self::OpenAiChat(_) | Self::OpenAiChatDeferred { .. } => OPENAI_CHAT_SSE_PROJECTION,
             Self::OpenAiResponses(_) => OPENAI_RESPONSES_SSE_PROJECTION,
             Self::AnthropicMessages(_) => ANTHROPIC_SSE_PROJECTION,
         }
     }
 
-    fn runtime_event_to_sse(
+    pub(crate) fn runtime_event_to_sse(
         &mut self,
         run: &NativeRunResult,
         envelope: RuntimeEventEnvelope,
@@ -252,10 +262,46 @@ impl CompatibleProtocolProjection {
         let event = CompatibleRuntimeEventView::from(envelope);
         match self {
             Self::OpenAiChat(mapper) => mapper.runtime_event_to_sse(run, event),
+            Self::OpenAiChatDeferred { model, mapper } => mapper
+                .get_or_insert_with(|| {
+                    OpenAiChatStreamMapper::new(
+                        model.clone(),
+                        openai_chat_completion_id_from_run_id(run.id),
+                    )
+                })
+                .runtime_event_to_sse(run, event),
             Self::OpenAiResponses(mapper) => mapper.runtime_event_to_sse(run, event),
             Self::AnthropicMessages(mapper) => mapper.runtime_event_to_sse(run, event),
         }
     }
+}
+
+pub(crate) fn openai_chat_interface_projection(model: String) -> CompatibleProtocolProjection {
+    CompatibleProtocolProjection::OpenAiChatDeferred {
+        model,
+        mapper: None,
+    }
+}
+
+pub(crate) fn openai_chat_resume_interface_projection(
+    model: String,
+    completion_id: String,
+) -> CompatibleProtocolProjection {
+    CompatibleProtocolProjection::OpenAiChat(OpenAiChatStreamMapper::new(model, completion_id))
+}
+
+pub(crate) fn openai_responses_interface_projection(
+    model: String,
+    previous_response_id: Option<String>,
+) -> CompatibleProtocolProjection {
+    CompatibleProtocolProjection::OpenAiResponses(OpenAiResponseStreamMapper::new(
+        model,
+        previous_response_id,
+    ))
+}
+
+pub(crate) fn anthropic_interface_projection(model: String) -> CompatibleProtocolProjection {
+    CompatibleProtocolProjection::AnthropicMessages(AnthropicStreamMapper::new(model))
 }
 
 pub(crate) async fn prepare_compatible_resume(
@@ -296,6 +342,75 @@ pub(crate) async fn prepare_compatible_resume(
             CompatibleResumeAdmission::StartNewTurnFromHistory
         }
     })
+}
+
+pub(crate) async fn prepare_compatible_resume_for_actor(
+    state: Arc<ApiState>,
+    actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+    command: ResumePublishedCallbackCommand,
+) -> Result<CompatibleResumeAdmission, NativeApiError> {
+    let mcp_runtime_invoker = native::public_mcp_runtime_invoker_for_actor(&state, &actor).await?;
+    let runtime_service = OrchestrationRuntimeService::new(
+        state.store.clone(),
+        ApiProviderRuntime::new(state.provider_runtime.clone()),
+        state.runtime_engine.clone(),
+        state.provider_secret_master_key.clone(),
+    )
+    .with_node_artifact_context(
+        state.api_node_id.clone(),
+        state.provider_install_root.clone(),
+    )
+    .with_file_storage_registry(state.file_storage_registry.clone())
+    .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
+    .with_llm_routing_counter_store(state.infrastructure.cache_store())
+    .with_provider_request_log_queue(state.infrastructure.task_queue())
+    .with_runtime_event_stream(state.runtime_event_stream.clone());
+    let prepared =
+        ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)
+            .with_last_used_cache(state.infrastructure.cache_store())
+            .prepare_callback_resume_for_actor(actor, &command)
+            .await
+            .map_err(service_error)?;
+    Ok(match prepared {
+        PreparedPublishedCallbackResume::Resume { initial_run } => {
+            CompatibleResumeAdmission::Resume(Box::new(CompatibleResumePlan {
+                initial_run: *initial_run,
+                command,
+            }))
+        }
+        PreparedPublishedCallbackResume::StartNewTurnFromHistory => {
+            CompatibleResumeAdmission::StartNewTurnFromHistory
+        }
+    })
+}
+
+pub(crate) async fn execute_compatible_resume_for_actor(
+    state: Arc<ApiState>,
+    actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+    command: ResumePublishedCallbackCommand,
+) -> Result<NativeRunResult, NativeApiError> {
+    let mcp_runtime_invoker = native::public_mcp_runtime_invoker_for_actor(&state, &actor).await?;
+    let runtime_service = OrchestrationRuntimeService::new(
+        state.store.clone(),
+        ApiProviderRuntime::new(state.provider_runtime.clone()),
+        state.runtime_engine.clone(),
+        state.provider_secret_master_key.clone(),
+    )
+    .with_node_artifact_context(
+        state.api_node_id.clone(),
+        state.provider_install_root.clone(),
+    )
+    .with_file_storage_registry(state.file_storage_registry.clone())
+    .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
+    .with_llm_routing_counter_store(state.infrastructure.cache_store())
+    .with_provider_request_log_queue(state.infrastructure.task_queue())
+    .with_runtime_event_stream(state.runtime_event_stream.clone());
+    ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)
+        .with_last_used_cache(state.infrastructure.cache_store())
+        .resume_callback_for_actor(actor, command)
+        .await
+        .map(|result| result.run)
+        .map_err(service_error)
 }
 
 #[derive(Debug, Default)]
@@ -624,6 +739,49 @@ pub(crate) async fn start_compatible_typed_turn_stream(
     prepared: PreparedCompatibleTurn,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
     let opened = open_compatible_turn(state.clone(), prepared).await?;
+    opened_compatible_typed_stream(state, opened)
+}
+
+pub(crate) async fn start_compatible_typed_start_stream_for_actor(
+    state: Arc<ApiState>,
+    initial_run: NativeRunResult,
+    provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
+    actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+) -> Result<CompatibleTypedTurnStream, NativeApiError> {
+    let mcp_runtime_invoker = native::public_mcp_runtime_invoker_for_actor(&state, &actor).await?;
+    let opened = open_compatible_turn_with_invoker(
+        state.clone(),
+        initial_run,
+        CompatibleTurnAction::Start,
+        provider_transport_slot,
+        mcp_runtime_invoker,
+    )
+    .await?;
+    opened_compatible_typed_stream(state, opened)
+}
+
+pub(crate) async fn start_compatible_typed_resume_stream_for_actor(
+    state: Arc<ApiState>,
+    initial_run: NativeRunResult,
+    command: ResumePublishedCallbackCommand,
+    actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+) -> Result<CompatibleTypedTurnStream, NativeApiError> {
+    let mcp_runtime_invoker = native::public_mcp_runtime_invoker_for_actor(&state, &actor).await?;
+    let opened = open_compatible_turn_with_invoker(
+        state.clone(),
+        initial_run,
+        CompatibleTurnAction::ResumeForActor { command, actor },
+        None,
+        mcp_runtime_invoker,
+    )
+    .await?;
+    opened_compatible_typed_stream(state, opened)
+}
+
+fn opened_compatible_typed_stream(
+    state: Arc<ApiState>,
+    opened: OpenedCompatibleTurn,
+) -> Result<CompatibleTypedTurnStream, NativeApiError> {
     let OpenedCompatibleTurn {
         initial_run,
         from_sequence,
@@ -694,6 +852,25 @@ async fn open_compatible_turn(
         bearer_token,
     } = prepared;
     let mcp_runtime_invoker = native::public_mcp_runtime_invoker(&state, &bearer_token).await?;
+    open_compatible_turn_with_invoker(
+        state,
+        initial_run,
+        action,
+        provider_transport_slot,
+        mcp_runtime_invoker,
+    )
+    .await
+}
+
+async fn open_compatible_turn_with_invoker(
+    state: Arc<ApiState>,
+    initial_run: NativeRunResult,
+    action: CompatibleTurnAction,
+    provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
+    mcp_runtime_invoker: Arc<
+        dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
+    >,
+) -> Result<OpenedCompatibleTurn, NativeApiError> {
     let turn_action = action.name();
     if let Err(error) = state
         .runtime_event_stream
@@ -796,6 +973,38 @@ async fn open_compatible_turn(
                 )
                 .with_last_used_cache(background_state.infrastructure.cache_store())
                 .resume_callback(command)
+                .await
+                {
+                    Ok(result) => {
+                        append_compatible_resume_terminal_event(&background_state, &result.run)
+                            .await
+                    }
+                    Err(error) => {
+                        warn!(
+                            flow_run_id = %background_run.id,
+                            error = %error,
+                            "compatible callback resume failed"
+                        );
+                        let _ = background_state
+                            .runtime_event_stream
+                            .append_terminal_if_missing_and_close(
+                                background_run.id,
+                                debug_stream_events::flow_failed(
+                                    background_run.id,
+                                    json!({ "message": error.to_string() }),
+                                ),
+                            )
+                            .await;
+                    }
+                }
+            }
+            CompatibleTurnAction::ResumeForActor { command, actor } => {
+                match ApplicationPublishedCallbackResumeService::new(
+                    background_state.store.clone(),
+                    runtime_service,
+                )
+                .with_last_used_cache(background_state.infrastructure.cache_store())
+                .resume_callback_for_actor(actor, command)
                 .await
                 {
                     Ok(result) => {

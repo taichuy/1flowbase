@@ -204,7 +204,7 @@ pub(crate) async fn run_connection(
 ) {
     let (mut sender, mut receiver) = socket.split();
     let _connection_activity = state.runtime_activity.start(
-        authorization.actor.application_id,
+        authorization.principal.application_id(),
         ApplicationActivityKind::WebSocketConnection,
     );
     let bridge = Arc::new(ResponsesTurnBridge::new(state, authorization));

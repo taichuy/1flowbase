@@ -6,10 +6,7 @@ use control_plane::application_public_api::{
         PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
         ResumePublishedCallbackCommand,
     },
-    native::{
-        ApplicationNativeRunService, CancelNativeRunCommand, CreateNativeRunCommand,
-        GetNativeRunCommand,
-    },
+    native::ApplicationNativeRunService,
     protocol_translation::TranslationProtocol,
 };
 use serde_json::{json, Value};
@@ -26,9 +23,10 @@ use crate::{
     app_state::ApiState,
     routes::application_public_api::{
         compat_sse::{
-            prepare_compatible_resume, start_compatible_typed_attach_stream,
-            start_compatible_typed_turn_stream, CompatibleResumeAdmission, PreparedCompatibleTurn,
+            prepare_compatible_resume_for_actor, start_compatible_typed_attach_stream,
+            CompatibleResumeAdmission,
         },
+        compatibility_interface,
         native::{
             include_workflow_event_visibility, include_workflow_events, native_error,
             parse_native_run_request,
@@ -138,10 +136,7 @@ impl NativeTurnBridge {
         let run = ApplicationNativeRunService::new(self.state.store.clone())
             .with_last_used_cache(self.state.infrastructure.cache_store())
             .with_runtime_event_stream(self.state.runtime_event_stream.clone())
-            .cancel_native_run(CancelNativeRunCommand {
-                bearer_token: self.authorization.bearer_token.clone(),
-                run_id,
-            })
+            .cancel_native_run_for_actor(self.authorization.actor(), run_id)
             .await
             .map_err(native_error)?;
         Ok(json!({
@@ -176,33 +171,20 @@ impl NativeTurnBridge {
             ));
         }
         let visibility = include_workflow_events(&translated.request)?;
-        let run = ApplicationNativeRunService::new(self.state.store.clone())
-            .with_last_used_cache(self.state.infrastructure.cache_store())
-            .create_native_run(CreateNativeRunCommand {
-                bearer_token: self.authorization.bearer_token.clone(),
-                request: translated.request,
-                protocol: TranslationProtocol::Native,
-            })
-            .await
-            .map_err(native_error)?;
-        frames
-            .send(
-                json!({
-                    "type": "run.accepted",
-                    "request_id": request_id,
-                    "run_id": run.id,
-                    "application_id": run.application_id,
-                })
-                .to_string(),
-            )
-            .await
-            .map_err(|_| NativeTurnBridgeError::WriterClosed)?;
-        let stream = start_compatible_typed_turn_stream(
+        let invocation = compatibility_interface::invoke_typed_stream_with_principal(
             self.state.clone(),
-            PreparedCompatibleTurn::start(run, None, self.authorization.bearer_token.clone()),
+            compatibility_interface::NATIVE_WEBSOCKET_STREAM_BINDING_ID,
+            self.authorization.principal.clone(),
+            compatibility_interface::CompatibilityBlockingInput {
+                command: compatibility_interface::CompatibilityInvocationCommand::Start {
+                    request: translated.request,
+                    protocol: TranslationProtocol::Native,
+                    provider_transport: None,
+                },
+            },
         )
         .await?;
-        self.project_stream(request_id, visibility, stream, frames)
+        self.project_interface_stream(request_id, visibility, invocation, frames, true)
             .await
     }
 
@@ -216,7 +198,7 @@ impl NativeTurnBridge {
         frames: mpsc::Sender<String>,
     ) -> Result<(), NativeTurnBridgeError> {
         let command = ResumePublishedCallbackCommand {
-            bearer_token: self.authorization.bearer_token.clone(),
+            bearer_token: String::new(),
             target: PublishedCallbackResumeTarget::FlowRun {
                 flow_run_id: run_id,
                 callback_task_id,
@@ -225,8 +207,12 @@ impl NativeTurnBridge {
             response_payload,
             response_mode: Some("streaming".to_string()),
         };
-        let CompatibleResumeAdmission::Resume(plan) =
-            prepare_compatible_resume(self.state.clone(), command).await?
+        let CompatibleResumeAdmission::Resume(plan) = prepare_compatible_resume_for_actor(
+            self.state.clone(),
+            self.authorization.actor(),
+            command,
+        )
+        .await?
         else {
             return Err(Self::rejected(
                 "resume_requires_new_turn",
@@ -234,12 +220,19 @@ impl NativeTurnBridge {
             ));
         };
         let visibility = include_workflow_event_visibility(stream_options.include_workflow_events)?;
-        let stream = start_compatible_typed_turn_stream(
+        let invocation = compatibility_interface::invoke_typed_stream_with_principal(
             self.state.clone(),
-            PreparedCompatibleTurn::resume(plan.initial_run, plan.command),
+            compatibility_interface::NATIVE_WEBSOCKET_STREAM_BINDING_ID,
+            self.authorization.principal.clone(),
+            compatibility_interface::CompatibilityBlockingInput {
+                command: compatibility_interface::CompatibilityInvocationCommand::Resume {
+                    initial_run: plan.initial_run,
+                    command: plan.command,
+                },
+            },
         )
         .await?;
-        self.project_stream(request_id, visibility, stream, frames)
+        self.project_interface_stream(request_id, visibility, invocation, frames, false)
             .await
     }
 
@@ -253,10 +246,7 @@ impl NativeTurnBridge {
     ) -> Result<(), NativeTurnBridgeError> {
         let run = ApplicationNativeRunService::new(self.state.store.clone())
             .with_last_used_cache(self.state.infrastructure.cache_store())
-            .get_native_run(GetNativeRunCommand {
-                bearer_token: self.authorization.bearer_token.clone(),
-                run_id,
-            })
+            .get_native_run_for_actor(self.authorization.actor(), run_id)
             .await
             .map_err(native_error)?;
         let visibility = include_workflow_event_visibility(stream_options.include_workflow_events)?;
@@ -289,6 +279,55 @@ impl NativeTurnBridge {
                     .map_err(|_| NativeTurnBridgeError::WriterClosed)?;
             }
             if projector.has_terminal() {
+                return Ok(());
+            }
+        }
+        Err(NativeTurnBridgeError::MissingTerminal)
+    }
+
+    async fn project_interface_stream(
+        &self,
+        request_id: String,
+        visibility: crate::routes::application_public_api::sse::IncludeWorkflowEvents,
+        invocation: compatibility_interface::CompatibilityTypedStreamInvocation,
+        frames: mpsc::Sender<String>,
+        emit_accepted: bool,
+    ) -> Result<(), NativeTurnBridgeError> {
+        let (mut events, completion) = invocation.into_parts();
+        let mut projector = NativeWebSocketProjector::new(request_id.clone(), visibility);
+        let mut accepted = false;
+        while let Some(input) = events.recv().await {
+            let (run, envelope) = input.into_parts();
+            if emit_accepted && !accepted {
+                frames
+                    .send(
+                        json!({
+                            "type": "run.accepted",
+                            "request_id": request_id,
+                            "run_id": run.id,
+                            "application_id": run.application_id,
+                        })
+                        .to_string(),
+                    )
+                    .await
+                    .map_err(|_| NativeTurnBridgeError::WriterClosed)?;
+                accepted = true;
+            }
+            if let Some(frame) = projector
+                .project(&run, envelope)
+                .map_err(|error| Self::rejected("projection_failed", error.to_string()))?
+            {
+                frames
+                    .send(frame)
+                    .await
+                    .map_err(|_| NativeTurnBridgeError::WriterClosed)?;
+            }
+            if projector.has_terminal() {
+                let terminal = completion
+                    .complete()
+                    .await
+                    .map_err(|error| Self::rejected("interface_terminal", format!("{error:?}")))?;
+                let _receipt = terminal.receipt().clone().projected();
                 return Ok(());
             }
         }

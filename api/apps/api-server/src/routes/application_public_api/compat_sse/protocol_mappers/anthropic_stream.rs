@@ -28,7 +28,7 @@ impl AnthropicMessageStopReason {
     }
 }
 
-pub(in crate::routes::application_public_api::compat_sse) struct AnthropicStreamMapper {
+pub(crate) struct AnthropicStreamMapper {
     model: String,
     message_id: String,
     next_content_index: u32,

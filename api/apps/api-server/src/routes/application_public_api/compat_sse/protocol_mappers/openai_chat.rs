@@ -7,7 +7,7 @@ enum OpenAiChatStreamState {
     Terminal,
 }
 
-pub(in crate::routes::application_public_api::compat_sse) struct OpenAiChatStreamMapper {
+pub(crate) struct OpenAiChatStreamMapper {
     model: String,
     chat_completion_id: String,
     state: OpenAiChatStreamState,

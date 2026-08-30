@@ -1,18 +1,12 @@
 use std::sync::Arc;
 
-use axum::{
-    body::Bytes,
-    http::{header::AUTHORIZATION, HeaderMap, HeaderValue},
-};
+use axum::{body::Bytes, http::HeaderMap};
 use serde_json::Value;
 use thiserror::Error;
 use tokio::sync::mpsc;
 
 use super::{projector::ResponsesWebSocketProjector, ResponsesWebSocketAuthorization};
-use crate::{
-    app_state::ApiState,
-    routes::application_public_api::{compat_sse, openai},
-};
+use crate::{app_state::ApiState, routes::application_public_api::openai};
 
 #[derive(Debug, Error)]
 pub(crate) enum ResponsesTurnBridgeError {
@@ -54,25 +48,21 @@ impl ResponsesTurnBridge {
         response: Value,
         frames: mpsc::Sender<String>,
     ) -> Result<(), ResponsesTurnBridgeError> {
-        let mut headers = HeaderMap::new();
-        let bearer = HeaderValue::from_str(&format!("Bearer {}", self.authorization.bearer_token))
-            .map_err(|_| ResponsesTurnBridgeError::InvalidAuthenticatedCredential)?;
-        headers.insert(AUTHORIZATION, bearer);
-
         // The authenticated actor is retained for the entire socket lifetime.
         // Do not reinterpret any client frame as authentication context.
-        let _authenticated_actor = &self.authorization.actor;
         let body = serde_json::to_vec(&response)
             .map(Bytes::from)
             .map_err(|_| ResponsesTurnBridgeError::IngressRejected)?;
-        let prepared = openai::prepare_typed_response_turn(self.state.clone(), headers, body)
-            .await
-            .map_err(|_| ResponsesTurnBridgeError::IngressRejected)?;
+        let prepared = openai::prepare_typed_response_turn(
+            self.state.clone(),
+            self.authorization.principal.clone(),
+            HeaderMap::new(),
+            body,
+        )
+        .await
+        .map_err(|_| ResponsesTurnBridgeError::IngressRejected)?;
         let (model, previous_response_id, runtime) = prepared.into_parts();
-        let stream = compat_sse::start_compatible_typed_turn_stream(self.state.clone(), runtime)
-            .await
-            .map_err(|_| ResponsesTurnBridgeError::TypedStreamRejected)?;
-        let (_initial_run, mut events) = stream.into_parts();
+        let (mut events, completion) = runtime.into_parts();
         let mut projector = ResponsesWebSocketProjector::new(model, previous_response_id);
         while let Some(input) = events.recv().await {
             let (run_snapshot, envelope) = input.into_parts();
@@ -86,6 +76,11 @@ impl ResponsesTurnBridge {
                     .map_err(|_| ResponsesTurnBridgeError::SocketWriterClosed)?;
             }
             if projector.has_terminal() {
+                let terminal = completion
+                    .complete()
+                    .await
+                    .map_err(|_| ResponsesTurnBridgeError::TypedStreamRejected)?;
+                let _receipt = terminal.receipt().clone().projected();
                 return Ok(());
             }
         }

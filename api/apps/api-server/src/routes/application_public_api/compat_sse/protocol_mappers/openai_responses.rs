@@ -13,7 +13,7 @@ enum OpenAiResponseStreamState {
     Terminal,
 }
 
-pub(in crate::routes::application_public_api::compat_sse) struct OpenAiResponseStreamMapper {
+pub(crate) struct OpenAiResponseStreamMapper {
     model: String,
     previous_response_id: Option<String>,
     active_output_item: Option<OpenAiResponseOutputItemKind>,

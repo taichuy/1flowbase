@@ -124,7 +124,22 @@ where
         &self,
         command: &ResumePublishedCallbackCommand,
     ) -> Result<PreparedPublishedCallbackResume> {
-        let context = self.resolve_resume_context(command).await?;
+        let actor = self
+            .api_key_service()
+            .authenticate_bearer_token(&command.bearer_token)
+            .await
+            .map_err(|_| ControlPlaneError::NotAuthenticated)?;
+        self.prepare_callback_resume_for_actor(actor, command).await
+    }
+
+    pub async fn prepare_callback_resume_for_actor(
+        &self,
+        actor: super::api_keys::ApplicationApiKeyActor,
+        command: &ResumePublishedCallbackCommand,
+    ) -> Result<PreparedPublishedCallbackResume> {
+        let context = self
+            .resolve_resume_context_for_actor(actor, command)
+            .await?;
         if let Some(existing) = self
             .repository
             .get_published_callback_resume_attempt(context.callback_task.id)
@@ -143,10 +158,25 @@ where
 
     pub async fn resume_callback(
         &self,
+        command: ResumePublishedCallbackCommand,
+    ) -> Result<ResumePublishedCallbackResult> {
+        let actor = self
+            .api_key_service()
+            .authenticate_bearer_token(&command.bearer_token)
+            .await
+            .map_err(|_| ControlPlaneError::NotAuthenticated)?;
+        self.resume_callback_for_actor(actor, command).await
+    }
+
+    pub async fn resume_callback_for_actor(
+        &self,
+        actor: super::api_keys::ApplicationApiKeyActor,
         mut command: ResumePublishedCallbackCommand,
     ) -> Result<ResumePublishedCallbackResult> {
         command.response_payload = escape_json_nul_characters(command.response_payload);
-        let context = self.resolve_resume_context(&command).await?;
+        let context = self
+            .resolve_resume_context_for_actor(actor, &command)
+            .await?;
         let actor = context.actor;
         let callback_task = context.callback_task;
         let flow_run = context.flow_run;
@@ -292,15 +322,11 @@ where
         Ok(ResumePublishedCallbackResult { run, attempt })
     }
 
-    async fn resolve_resume_context(
+    async fn resolve_resume_context_for_actor(
         &self,
+        actor: super::api_keys::ApplicationApiKeyActor,
         command: &ResumePublishedCallbackCommand,
     ) -> Result<PublishedCallbackResumeContext> {
-        let actor = self
-            .api_key_service()
-            .authenticate_bearer_token(&command.bearer_token)
-            .await
-            .map_err(|_| ControlPlaneError::NotAuthenticated)?;
         let callback_task_id = match &command.target {
             PublishedCallbackResumeTarget::FlowRun {
                 callback_task_id, ..

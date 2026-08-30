@@ -8,16 +8,14 @@
 
 use std::sync::Arc;
 
+use crate::{
+    app_state::ApiState,
+    routes::application_public_api::{compatibility_interface, openai, openai::OpenAiRouteError},
+};
 use axum::{
     extract::{ws::WebSocketUpgrade, State},
     http::HeaderMap,
     response::Response,
-};
-use control_plane::application_public_api::api_keys::ApplicationApiKeyActor;
-
-use crate::{
-    app_state::ApiState,
-    routes::application_public_api::{openai, openai::OpenAiRouteError},
 };
 
 mod actor;
@@ -30,8 +28,7 @@ mod turn_bridge;
 
 /// Authentication context handed to the connection owner after HTTP upgrade.
 pub(crate) struct ResponsesWebSocketAuthorization {
-    pub(crate) bearer_token: String,
-    pub(crate) actor: ApplicationApiKeyActor,
+    pub(crate) principal: interface_runtime::ApplicationPrincipal,
 }
 
 /// Upgrades an authenticated OpenAI Responses request to WebSocket transport.
@@ -45,12 +42,13 @@ pub(crate) async fn upgrade(
 ) -> Result<Response, OpenAiRouteError> {
     let credential = openai::openai_credential(&headers)?;
     auth::require_responses_websocket_beta(&headers)?;
-    let actor =
-        openai::authenticate_openai_response_credential(state.as_ref(), &credential).await?;
-    let authorization = ResponsesWebSocketAuthorization {
-        bearer_token: credential.token,
-        actor,
-    };
+    let principal = compatibility_interface::authenticate_application_principal(
+        state.clone(),
+        compatibility_interface::OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID,
+        credential.token,
+    )
+    .await?;
+    let authorization = ResponsesWebSocketAuthorization { principal };
 
     Ok(websocket.on_upgrade(move |socket| async move {
         actor::run_connection(socket, state, Arc::new(authorization)).await;

@@ -138,7 +138,16 @@ where
             .authenticate_bearer_token(&command.bearer_token)
             .await
             .map_err(|_| NativeRunValidationError::NotAuthenticated)?;
-        let provider_response_id = command.provider_response_id.trim();
+        self.get_native_run_by_provider_response_id_for_actor(actor, &command.provider_response_id)
+            .await
+    }
+
+    pub async fn get_native_run_by_provider_response_id_for_actor(
+        &self,
+        actor: super::super::api_keys::ApplicationApiKeyActor,
+        provider_response_id: &str,
+    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
+        let provider_response_id = provider_response_id.trim();
         if provider_response_id.is_empty() {
             return Err(NativeRunValidationError::NotFound);
         }
@@ -191,9 +200,18 @@ where
             .await
             .map_err(|_| NativeRunValidationError::NotAuthenticated)?;
 
+        self.cancel_native_run_for_actor(actor, command.run_id)
+            .await
+    }
+
+    pub async fn cancel_native_run_for_actor(
+        &self,
+        actor: super::super::api_keys::ApplicationApiKeyActor,
+        run_id: Uuid,
+    ) -> std::result::Result<NativeRunResult, NativeRunValidationError> {
         let flow_run = self
             .repository
-            .get_published_flow_run(command.run_id)
+            .get_published_flow_run(run_id)
             .await
             .map_err(|_| NativeRunValidationError::NotFound)?
             .ok_or(NativeRunValidationError::NotFound)?;

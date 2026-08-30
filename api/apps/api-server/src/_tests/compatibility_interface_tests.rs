@@ -1,13 +1,16 @@
 use std::sync::Weak;
 
-use interface_runtime::{BindingId, InterfaceProtocol, ProtocolProjection};
+use interface_runtime::{BindingId, InterfaceExecutionMode, InterfaceProtocol, ProtocolProjection};
 
 use crate::{
     app_state::ApiState,
     routes::application_public_api::compatibility_interface::{
-        self, ANTHROPIC_MESSAGES_BINDING_ID, OPENAI_CHAT_BINDING_ID, OPENAI_CHAT_ROOT_BINDING_ID,
+        self, ANTHROPIC_MESSAGES_BINDING_ID, ANTHROPIC_MESSAGES_STREAM_BINDING_ID,
+        NATIVE_WEBSOCKET_STREAM_BINDING_ID, OPENAI_CHAT_BINDING_ID, OPENAI_CHAT_ROOT_BINDING_ID,
+        OPENAI_CHAT_ROOT_STREAM_BINDING_ID, OPENAI_CHAT_STREAM_BINDING_ID,
         OPENAI_RESPONSES_BINDING_ID, OPENAI_RESPONSES_COMPACT_BINDING_ID,
-        OPENAI_RESPONSES_ROOT_BINDING_ID,
+        OPENAI_RESPONSES_ROOT_BINDING_ID, OPENAI_RESPONSES_ROOT_STREAM_BINDING_ID,
+        OPENAI_RESPONSES_STREAM_BINDING_ID, OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID,
     },
 };
 
@@ -22,6 +25,13 @@ fn blocking_compatibility_bindings_publish_as_typed_http_plans() {
         OPENAI_RESPONSES_ROOT_BINDING_ID,
         OPENAI_RESPONSES_COMPACT_BINDING_ID,
         ANTHROPIC_MESSAGES_BINDING_ID,
+        OPENAI_CHAT_STREAM_BINDING_ID,
+        OPENAI_CHAT_ROOT_STREAM_BINDING_ID,
+        OPENAI_RESPONSES_STREAM_BINDING_ID,
+        OPENAI_RESPONSES_ROOT_STREAM_BINDING_ID,
+        ANTHROPIC_MESSAGES_STREAM_BINDING_ID,
+        NATIVE_WEBSOCKET_STREAM_BINDING_ID,
+        OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID,
     ];
 
     assert_eq!(registry.bindings().len(), expected.len());
@@ -36,7 +46,7 @@ fn blocking_compatibility_bindings_publish_as_typed_http_plans() {
         );
         assert!(matches!(
             plan.binding().projection(),
-            ProtocolProjection::Http { .. }
+            ProtocolProjection::Http { .. } | ProtocolProjection::HttpVariant { .. }
         ));
         assert_eq!(
             plan.authentication().adapter().as_str(),
@@ -50,6 +60,12 @@ fn blocking_compatibility_bindings_publish_as_typed_http_plans() {
             plan.effective_handler().handler(),
             plan.definition().handler_reference()
         );
+        let expected_mode = if raw_binding_id.contains(".stream.") {
+            InterfaceExecutionMode::ServerStream
+        } else {
+            InterfaceExecutionMode::Unary
+        };
+        assert_eq!(plan.definition().execution_mode(), expected_mode);
     }
 }
 
@@ -64,10 +80,14 @@ fn blocking_compatibility_routes_select_frozen_binding_constants() {
         "OPENAI_RESPONSES_BINDING_ID",
         "OPENAI_RESPONSES_ROOT_BINDING_ID",
         "OPENAI_RESPONSES_COMPACT_BINDING_ID",
+        "OPENAI_CHAT_STREAM_BINDING_ID",
+        "OPENAI_RESPONSES_STREAM_BINDING_ID",
     ] {
         assert!(source.contains(binding), "route must select {binding}");
     }
     assert!(anthropic.contains("ANTHROPIC_MESSAGES_BINDING_ID"));
+    assert!(anthropic.contains("ANTHROPIC_MESSAGES_STREAM_BINDING_ID"));
     assert!(source.contains("compatibility_interface::invoke_blocking"));
+    assert!(source.contains("compatibility_interface::invoke_stream"));
     assert!(anthropic.contains("compatibility_interface::invoke_blocking"));
 }

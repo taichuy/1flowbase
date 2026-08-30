@@ -193,27 +193,56 @@ pub async fn create_message(
     if let Some(resume) = correlate_anthropic_callback(&value)
         .map_err(|error| anthropic_tool_result_error(error.message))?
     {
+        let resume_binding_id = if response_mode.as_deref() == Some("streaming") {
+            compatibility_interface::ANTHROPIC_MESSAGES_STREAM_BINDING_ID
+        } else {
+            compatibility_interface::ANTHROPIC_MESSAGES_BINDING_ID
+        };
+        let principal = compatibility_interface::authenticate_application_principal(
+            state.clone(),
+            resume_binding_id,
+            bearer_token.clone(),
+        )
+        .await?;
+        let actor = compatibility_interface::application_actor(&principal);
         let command = anthropic_resume_command(
-            &bearer_token,
+            "",
             resume.callback_task_id,
             resume.tool_results,
             response_mode.clone(),
         );
-        match compat_sse::prepare_compatible_resume(state.clone(), command).await {
+        match compat_sse::prepare_compatible_resume_for_actor(state.clone(), actor, command).await {
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan))
                 if response_mode.as_deref() == Some("streaming") =>
             {
-                return compat_sse::start_anthropic_resume_stream(
+                return compatibility_interface::invoke_stream_with_principal(
                     state,
-                    plan.initial_run,
-                    model,
-                    plan.command,
+                    resume_binding_id,
+                    principal,
+                    compatibility_interface::CompatibilityBlockingInput {
+                        command: compatibility_interface::CompatibilityInvocationCommand::Resume {
+                            initial_run: plan.initial_run,
+                            command: plan.command,
+                        },
+                    },
+                    compat_sse::anthropic_interface_projection(model),
                 )
                 .await
                 .map_err(Into::into);
             }
             Ok(compat_sse::CompatibleResumeAdmission::Resume(plan)) => {
-                let run = execute_anthropic_tool_resume(state, plan.command).await?;
+                let run = compatibility_interface::invoke_blocking_with_principal(
+                    state,
+                    resume_binding_id,
+                    principal,
+                    compatibility_interface::CompatibilityBlockingInput {
+                        command: compatibility_interface::CompatibilityInvocationCommand::Resume {
+                            initial_run: plan.initial_run,
+                            command: plan.command,
+                        },
+                    },
+                )
+                .await?;
                 return Ok(Json(to_anthropic_response(run, model)?).into_response());
             }
             Ok(compat_sse::CompatibleResumeAdmission::StartNewTurnFromHistory) => {
@@ -248,10 +277,21 @@ pub async fn create_message(
         translation_decision_count, "anthropic compatible request translated"
     );
     if response_mode.as_deref() == Some("streaming") {
-        let run = create_native_run(state.clone(), bearer_token.clone(), request).await?;
-        return compat_sse::start_anthropic_run_stream(state, bearer_token, run, model)
-            .await
-            .map_err(Into::into);
+        return compatibility_interface::invoke_stream(
+            state,
+            compatibility_interface::ANTHROPIC_MESSAGES_STREAM_BINDING_ID,
+            bearer_token,
+            compatibility_interface::CompatibilityBlockingInput {
+                command: compatibility_interface::CompatibilityInvocationCommand::Start {
+                    request,
+                    protocol: TranslationProtocol::AnthropicMessages,
+                    provider_transport: None,
+                },
+            },
+            compat_sse::anthropic_interface_projection(model),
+        )
+        .await
+        .map_err(Into::into);
     }
 
     let run = compatibility_interface::invoke_blocking(
@@ -259,9 +299,11 @@ pub async fn create_message(
         compatibility_interface::ANTHROPIC_MESSAGES_BINDING_ID,
         bearer_token,
         compatibility_interface::CompatibilityBlockingInput {
-            request,
-            protocol: TranslationProtocol::AnthropicMessages,
-            provider_transport: None,
+            command: compatibility_interface::CompatibilityInvocationCommand::Start {
+                request,
+                protocol: TranslationProtocol::AnthropicMessages,
+                provider_transport: None,
+            },
         },
     )
     .await?;
