@@ -2,13 +2,14 @@
 
 ## Result and identities
 
-- Result: `QA_PENDING`
+- Result: `QA_PASS`
 - Input: `beta@ff4cc74ab073256419884d3d96e0b3defcb36d45`
 - Previous fresh tested assembly: `beta@a3c78798320b5e2af8bc8b2f9b35cb8fe3977b31`
 - XR input: `beta@965d62e9514f1b3e25fdf2a4284cc3bb41cfbf2e`
 - Fresh tested XR product assembly: `beta@4b31cc86c2d7e74e053ac5c0b7976031265d7091`
 - Authentication closure input: `beta@efa5df40dfc11e9b703d5ecfa1446f3a9dfb28d3`
-- Current untested product assembly: `beta@50bf34b87108af8bbd65bf54bc1aee3c8bd7cb6a`
+- Fresh tested Authentication product assembly: `beta@50bf34b87108af8bbd65bf54bc1aee3c8bd7cb6a`
+- Fresh tested main assembly: `beta@c6728eebd509da8cd6866b00663ca5fc97d68bcc`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
 - Previous centralized QA: executable-contribution XR attempt 16, 16/16 rows complete, zero unrun rows; superseded as architecture acceptance evidence by the reopened RR-14 finding
 - Evidence root: `tmp/test-governance/1944-interface-lifecycle/`
@@ -35,6 +36,11 @@ frozen snapshot and counting SessionStore before constructing the Router, then l
 same final Router and resets the counter before asserting one Authentication lookup. Attempt 23 is
 invalidated in full and the replacement QA must again restart at QA-001.
 
+XR-A06 attempt 24 froze `c6728eebd509da8cd6866b00663ca5fc97d68bcc` over product assembly
+`50bf34b87108af8bbd65bf54bc1aee3c8bd7cb6a` and completed QA-001 through QA-016 against that
+unchanged identity: 16 PASS, 0 FAIL, 0 UNRUN and 1994 automated tests passed. The official plugin
+repository remained clean at `8bf11605b02a0df8dd01271875f1ec3d182c0d3a`.
+
 ## XR executable-contribution packet ledger
 
 | Packet | Commit | Status | Principal write set |
@@ -51,7 +57,7 @@ invalidated in full and the replacement QA must again restart at QA-001.
 | XR-A05 | `2d97d3559` | ASSEMBLED | middleware/Route ownership and manifest→Graph→Registry→factory→Route assembly |
 | XR-A05-F1 | `b85b9a705` | ASSEMBLED | own the resolved frozen activation before moving the registry snapshot into Kernel |
 | XR-A05-F2 | `50bf34b87` | ASSEMBLED | construct the RR-14 real Route fixture only after installing its frozen snapshot and counting store |
-| XR-A06 | pending | ACTIVE | replacement frozen assembly and QA-001–QA-016 restart with command-captured SHA |
+| XR-A06 | `c6728eebd` | PASS | attempt 24 replacement frozen assembly; QA-001–QA-016 complete with command-captured SHA |
 
 QA fix commits inside the approved XR boundary: `f35b3b261` removed fixture shadowing and warnings;
 `d14311934` aligned ordered registration evidence; `65470db64` completed typed route/error assembly;
@@ -164,17 +170,17 @@ fail registry publication.
 | ARC-AC-003 | PASS | Native async/blocking/server-stream bindings and versioned input/output/stream/error/terminal contracts |
 | ARC-AC-004 | PASS | sealed principal unit and compile-fail tests |
 | ARC-AC-005 | PASS | credential-boundary source fixture and four real adapters |
-| ARC-AC-006 | PENDING | lifecycle execution is assembled, but Authentication must be proven inside the frozen adapter-to-Principal chain on the replacement assembly |
+| ARC-AC-006 | PASS | real Console Route selects the frozen HostExtension factory before Principal construction and performs one session lookup per request |
 | ARC-AC-007 | PASS | live stream event → terminal → projection plus retry/deadline/cancel negatives |
 | ARC-AC-008 | PASS | Native dispatch freezes attempt and Runtime/worker generation; replacement negative |
 | ARC-AC-009 | PASS | Binding-first resolve, HTTP/MCP dual-binding and mismatch controlled negatives |
 | ARC-AC-010 | PASS | typed Handler ports and Node infrastructure-import negatives |
-| ARC-AC-011 | PENDING | Definition/AuthZ/Admission/Hook/Handler bindings are assembled; real BuiltIn/HostExtension Authentication factory execution awaits replacement QA |
+| ARC-AC-011 | PASS | manifest→Effective Graph→Registry→native factory catalog→static Route HostExtension Authentication executes in the production composition path |
 | ARC-AC-012 | PASS | completion/receipt versus outbox separation tests |
-| ARC-AC-013 | PENDING | existing compiler negatives pass; missing/extra Authentication factory publication fixtures await replacement QA |
+| ARC-AC-013 | PASS | missing/extra/mismatched Authentication factories and missing trusted native activation fail publication; success/reject/credential mismatch fixtures pass |
 | ARC-AC-014 | PASS | behavioral boot/vertical fixtures plus full four-path API regression |
 | ARC-AC-015 | PASS | Cargo dependency and Node source-boundary controlled negatives |
-| ARC-AC-016 | PENDING | latest Authentication attempt 21 failed frozen-identity integrity and left QA-016 unrun; XR-A06 must restart all rows |
+| ARC-AC-016 | PASS | attempt 24 completed all 16 centralized rows against unchanged `c6728eebd`; unrun=0 |
 
 ## Controlled negatives
 
@@ -191,7 +197,7 @@ runtime-generation replacement; and treating Interface completion as a persisted
 | --- | --- | --- |
 | RR-12 | PASS | unary and stream wrong input/output Hook contracts fail in `RegistryCompiler::compile()` |
 | RR-13 | PASS | typed Definition contribution materializes Definition/Binding; metadata-only, duplicate and inactive contributions fail publication |
-| RR-14 | PENDING | previous factories only validated already-built Principals; replacement must prove frozen-plan factory selection, real credential authentication, trusted HostExtension success/reject, and bidirectional missing/extra/mismatch publication failure |
+| RR-14 | PASS | frozen-plan factory selection consumes real credentials; the trusted HostExtension Route succeeds/rejects with one lookup and bidirectional missing/extra/mismatch publication fails closed |
 | RR-15 | PASS | unary/stream execute core then ordered Authorization vetoes; core deny dominates and extension deny/error/deadline fail closed |
 | RR-16 | PASS | unary/stream execute core then ordered Admission vetoes; missing/extra/order/Graph/contract and reject/error/deadline cases fail closed |
 
@@ -199,18 +205,14 @@ runtime-generation replacement; and treating Interface completion as a persisted
 
 | Row | Result | Count / command class |
 | --- | --- | --- |
-| QA-001–QA-014 | SUPERSEDED | attempt 21 recorded 14 passing rows and 1992 automated tests, but branch drift prevents binding them to one frozen candidate |
-| QA-015 | FAIL | start `1f6e68335b59837c93a655ce810eaa59a89af6b4`; end `2b08d777940be1e60b3ee8ac96a88c6b4d7bf60b` plus unrelated dirty files |
-| QA-016 | UNRUN | attempt 21 stopped after final-integrity failure |
-| attempt 22 QA-001–QA-004 | INVALIDATED PASS | identity/fmt/interface-runtime/access-control passed on `c740e28d9`; superseded by the compile fix |
-| attempt 22 QA-005 | FAIL | `api-server` compile rejected a borrowed activation surviving the snapshot move |
-| attempt 22 QA-006–QA-016 | UNRUN | batch stopped at the first product Blocking |
-| XR-A06 QA-001–QA-016 | PENDING | must run from the beginning against one command-captured unchanged SHA |
+| QA-001–QA-016 | PASS | attempt 24: 16/16 rows, 1994 passed / 0 failed, unrun=0 |
+| Contract/compiler/access | PASS | interface-runtime 32 + 2 doctests; access-control 35; Node boundaries 7 |
+| API/vertical routes | PASS | api-server 1204, including real RR-14 HostExtension Route and four production families |
+| Runtime/plugins/deploy | PASS | runtime suites 479; official Node 153; Host conformance 2; deploy/rollback 80; 9 builds; 4 Compose configs |
+| Integrity | PASS | fmt/check/locked-offline metadata/diff/migration zero-diff and paired frozen identity/cleanliness |
 
-The superseded XR compatibility run recorded `1987 passed`, `0 failed`; Authentication attempt 21
-recorded `1992 passed`, `0 failed` before its integrity failure. No test has run against
-`b85b9a705c98acece4e5f138c345a911a9d704cb`. The next valid result must come from one complete
-fresh centralized run after XR-A06 freezes the replacement assembly.
+Attempt 24 is the sole promoted Authentication-closure result. Attempts 21–23 remain historical,
+explicitly invalidated evidence and do not contribute partial rows to the promoted receipt.
 
 ## Compatibility and repository integrity
 
@@ -219,7 +221,9 @@ fresh centralized run after XR-A06 freezes the replacement assembly.
   route-equivalence tests.
 - Runtime behavior, stream order, stdio wire and plugin manifests: preserved by runtime suites,
   official Node suites, 9 executable builds and real Host conformance.
-- Latest QA attempt did not end at its frozen candidate and is explicitly `QA_FAIL`; no compatibility
-  conclusion is promoted from that attempt. XR-A06 must re-establish paired identity and cleanliness.
+- Attempt 24 began and ended at `c6728eebd509da8cd6866b00663ca5fc97d68bcc`; only the two protected
+  private memory changes were present in the main worktree.
 - Official plugin repository ended clean at `8bf11605b02a0df8dd01271875f1ec3d182c0d3a`.
+- Warnings: 19 existing private Runtime Host dead-code warnings; one private test-support `extend`
+  warning; existing 1729-line `review_remediation_tests.rs` organization warning.
 - No push was performed. #1944 and #1893 remain open. Root acceptance criteria were not settled.
