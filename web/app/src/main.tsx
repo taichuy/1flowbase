@@ -6,6 +6,10 @@ import { initializeMonacoEditor } from './app/monaco-editor';
 import './styles/tokens.css';
 import './styles/globals.css';
 
+if (import.meta.env.DEV) {
+  void import('virtual:1flowbase-dev-hmr-probe');
+}
+
 initializeMonacoEditor();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

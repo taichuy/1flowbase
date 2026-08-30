@@ -93,7 +93,11 @@ function getServiceDefinitions(repoRoot) {
       port: webPort,
       startupTimeoutMs: FRONTEND_COLD_STARTUP_TIMEOUT_MS,
       readinessProbe: {
-        path: '/@vite/client',
+        path: '/__1flowbase_dev_ready',
+        expectedJson: {
+          schema_version: '1flowbase.dev-runtime-readiness/v1',
+          state: 'Ready',
+        },
       },
       envFile: webAppEnvFile,
       envExampleFile: webAppEnvExampleFile,

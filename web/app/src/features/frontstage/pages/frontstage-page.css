@@ -121,12 +121,24 @@
   max-width: calc(100vw - 48px);
 }
 
-.frontstage-page-tree-form__icon-popover .frontstage-page-tree-form__icon-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(36px, 1fr));
-  gap: 8px;
-  max-height: 320px;
+.frontstage-page-tree-form__icon-viewport {
+  height: 320px;
   overflow: auto;
+  contain: strict;
+}
+
+.frontstage-page-tree-form__icon-spacer {
+  position: relative;
+}
+
+.frontstage-page-tree-form__icon-popover .frontstage-page-tree-form__icon-grid {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(9, 36px);
+  gap: 8px;
   padding: 4px;
 }
 

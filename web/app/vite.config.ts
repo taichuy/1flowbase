@@ -3,6 +3,8 @@ import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite';
 
+import { oneFlowbaseDevRuntimePlugin } from './vite/dev-runtime';
+
 const reactDraggableBrowserDefines = {
   'process.env.DRAGGABLE_DEBUG': 'false'
 };
@@ -60,7 +62,7 @@ function parseAllowedOrigins(value?: string) {
   return origins.length > 0 ? origins : undefined;
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
   const devServerPort = Number.parseInt(env.VITE_DEV_SERVER_PORT || '3100', 10);
   const devAllowedHosts = parseAllowedHosts(env.VITE_DEV_ALLOWED_HOSTS);
@@ -77,10 +79,15 @@ export default defineConfig(({ mode }) => {
   ).replace(/\/$/, '');
 
   return {
-    plugins: [react()],
+    ...(env.VITE_DEV_CACHE_DIR ? { cacheDir: env.VITE_DEV_CACHE_DIR } : {}),
+    plugins: [
+      oneFlowbaseDevRuntimePlugin({ root: process.cwd(), mode, command }),
+      react()
+    ],
     define: reactDraggableBrowserDefines,
     optimizeDeps: {
       include: [
+        '@ant-design/icons',
         '@ant-design/x-markdown',
         '@dnd-kit/core',
         '@dnd-kit/modifiers',
@@ -98,6 +105,7 @@ export default defineConfig(({ mode }) => {
         '@monaco-editor/react',
         '@scalar/api-reference-react',
         '@xyflow/react',
+        'antd',
         'copy-to-clipboard',
         'echarts',
         'lexical',
@@ -129,6 +137,14 @@ export default defineConfig(({ mode }) => {
           ? devServerPort
           : 3100,
       strictPort: true,
+      warmup: {
+        clientFiles: [
+          './src/main.tsx',
+          './src/app/router.tsx',
+          './src/features/frontstage/pages/FrontStagePage.tsx',
+          './src/features/settings/pages/SettingsPage.tsx'
+        ]
+      },
       fs: {
         allow: [
           searchForWorkspaceRoot(process.cwd()),
