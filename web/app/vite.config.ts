@@ -112,7 +112,7 @@ function parseAllowedOrigins(value?: string) {
   return origins.length > 0 ? origins : undefined;
 }
 
-export default defineConfig(({ mode }) => {
+export default defineConfig(({ command, mode }) => {
   const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
   const isRemoteDebug = mode === 'remote-debug';
   const devServerPort = Number.parseInt(env.VITE_DEV_SERVER_PORT || '3100', 10);
@@ -150,16 +150,15 @@ export default defineConfig(({ mode }) => {
     ],
     define: reactDraggableBrowserDefines,
     optimizeDeps: {
-      exclude: nativeAntDesignEsModuleSources,
+      exclude: [
+        '@ant-design/icons',
+        '@ant-design/icons-svg',
+        'dayjs',
+        ...nativeDndKitPackageRoots,
+        ...nativeAntDesignEsModuleSources
+      ],
       include: [
-        ...nativeAntDesignIconsModuleInventory.modules.map(
-          ({ moduleSource }) => moduleSource
-        ),
         '@ant-design/x-markdown',
-        '@dnd-kit/core',
-        '@dnd-kit/modifiers',
-        '@dnd-kit/sortable',
-        '@dnd-kit/utilities',
         '@lexical/react/LexicalComposer',
         '@lexical/react/LexicalComposerContext',
         '@lexical/react/LexicalContentEditable',
@@ -237,6 +236,12 @@ export default defineConfig(({ mode }) => {
     },
     resolve: {
       alias: {
+        ...(command === 'serve'
+          ? {
+              '@ant-design/icons-svg/lib/asn':
+                '@ant-design/icons-svg/es/asn'
+            }
+          : {}),
         '@1flowbase/shared-types': fileURLToPath(
           new URL('../packages/shared-types/src/index.ts', import.meta.url)
         ),

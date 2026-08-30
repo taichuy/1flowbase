@@ -3,14 +3,22 @@ import path from 'node:path';
 
 import type { Plugin } from 'vite';
 
+import {
+  createDemandResolvedModuleDomain,
+  generateDemandResolvedLoaderRuntime
+} from './native-demand-resolved-modules';
+
 export const NATIVE_DND_KIT_MODULES_VIRTUAL_ID =
   'virtual:1flowbase-native-dnd-kit-modules';
+export const NATIVE_DND_KIT_LEAF_VIRTUAL_PREFIX =
+  'virtual:1flowbase-native-dnd-kit-leaf/';
 
 const RESOLVED_VIRTUAL_ID = `\0${NATIVE_DND_KIT_MODULES_VIRTUAL_ID}`;
 const DND_KIT_SCOPE = '@dnd-kit';
 const JAVASCRIPT_EXTENSIONS = ['.js', '.mjs', '.cjs'] as const;
 
 export interface DndKitModuleSource {
+  devLoaderSource: string;
   loaderSource: string;
   moduleSource: string;
   packageName: string;
@@ -22,18 +30,30 @@ export function nativeDndKitModulesPlugin({
 }: {
   inventory: readonly DndKitModuleSource[];
 }): Plugin {
+  let command: 'build' | 'serve' = 'build';
+  const demandDomain = createDemandResolvedModuleDomain({
+    errorLabel: '@dnd-kit module',
+    modules: inventory,
+    virtualPrefix: NATIVE_DND_KIT_LEAF_VIRTUAL_PREFIX
+  });
   return {
     name: '1flowbase-native-dnd-kit-modules',
     enforce: 'pre',
+    configResolved(config) {
+      command = config.command;
+    },
     resolveId(id) {
       return id === NATIVE_DND_KIT_MODULES_VIRTUAL_ID
         ? RESOLVED_VIRTUAL_ID
-        : undefined;
+        : demandDomain.resolveId(id);
     },
     load(id) {
-      return id === RESOLVED_VIRTUAL_ID
-        ? renderNativeDndKitModules(inventory)
-        : undefined;
+      if (id === RESOLVED_VIRTUAL_ID) {
+        return command === 'serve'
+          ? generateNativeDndKitDevModules(inventory)
+          : renderNativeDndKitModules(inventory);
+      }
+      return demandDomain.load(id, command);
     }
   };
 }
@@ -60,6 +80,7 @@ export function collectDndKitModuleSources({
     }
 
     const packageEntry = {
+      devLoaderSource: `${manifest.name}/${manifest.moduleEntry}`,
       loaderSource: manifest.name,
       moduleSource: manifest.name,
       packageName: manifest.name,
@@ -78,6 +99,7 @@ export function collectDndKitModuleSources({
       }
       for (const moduleSource of aliases) {
         inventory.set(moduleSource, {
+          devLoaderSource: `${manifest.name}/${manifest.moduleEntry}`,
           loaderSource,
           moduleSource,
           packageName: manifest.name,
@@ -93,6 +115,7 @@ export function collectDndKitModuleSources({
 }
 
 function readPackageManifest(packageRoot: string): {
+  moduleEntry: string;
   name: string;
   version: string;
 } {
@@ -102,6 +125,8 @@ function readPackageManifest(packageRoot: string): {
   if (
     typeof value.name !== 'string' ||
     !value.name.startsWith(`${DND_KIT_SCOPE}/`) ||
+    typeof value.module !== 'string' ||
+    value.module.length === 0 ||
     typeof value.version !== 'string' ||
     value.version.length === 0
   ) {
@@ -109,7 +134,11 @@ function readPackageManifest(packageRoot: string): {
       `[native-dnd-kit-modules] Invalid package manifest at '${packageRoot}'.`
     );
   }
-  return { name: value.name, version: value.version };
+  return {
+    moduleEntry: value.module.replace(/^\.\//u, ''),
+    name: value.name,
+    version: value.version
+  };
 }
 
 function listJavaScriptFiles(directory: string, prefix = ''): string[] {
@@ -139,6 +168,19 @@ function withoutJavaScriptExtension(moduleSource: string): string {
 function renderNativeDndKitModules(
   inventory: readonly DndKitModuleSource[]
 ): string {
+  return generateNativeDndKitModules(inventory, 'build');
+}
+
+export function generateNativeDndKitDevModules(
+  inventory: readonly DndKitModuleSource[]
+): string {
+  return generateNativeDndKitModules(inventory, 'serve');
+}
+
+function generateNativeDndKitModules(
+  inventory: readonly DndKitModuleSource[],
+  command: 'build' | 'serve'
+): string {
   const packages = [
     ...new Map(
       inventory.map(({ packageName, packageVersion }) => [
@@ -147,24 +189,24 @@ function renderNativeDndKitModules(
       ])
     ).values()
   ];
+  const loaderRuntime = generateDemandResolvedLoaderRuntime({
+    command,
+    errorLabel: '@dnd-kit module',
+    modules: inventory,
+    virtualPrefix: NATIVE_DND_KIT_LEAF_VIRTUAL_PREFIX
+  });
+
   return `
-const loaders = {${inventory
-    .map(
-      ({ loaderSource, moduleSource }) =>
-        `\n  ${JSON.stringify(moduleSource)}: () => import(${JSON.stringify(loaderSource)}),`
-    )
-    .join('')}\n};
+${loaderRuntime.preamble}
 
 export const DND_KIT_MODULE_DEFINITIONS = Object.freeze(
-  Object.keys(loaders).map((module_source) => ({ module_source, exports: ['*'] }))
+  ${JSON.stringify(loaderRuntime.moduleSources)}.map((module_source) => ({ module_source, exports: ['*'] }))
 );
 
 export const DND_KIT_PACKAGES = Object.freeze(${JSON.stringify(packages)});
 
 export async function loadDndKitModule(moduleSource) {
-  const load = loaders[moduleSource];
-  if (!load) throw new Error('@dnd-kit module is not installed or resolvable: ' + moduleSource + '.');
-  return load();
+  ${loaderRuntime.loadBody}
 }
 `;
 }

@@ -120,10 +120,6 @@ describe('vite config', () => {
     );
     const lazyOnlyDeps = [
       '@ant-design/x-markdown',
-      '@dnd-kit/core',
-      '@dnd-kit/modifiers',
-      '@dnd-kit/sortable',
-      '@dnd-kit/utilities',
       '@lexical/react/LexicalComposer',
       '@lexical/react/LexicalComposerContext',
       '@lexical/react/LexicalContentEditable',
@@ -144,7 +140,13 @@ describe('vite config', () => {
     ];
 
     expect(source).toContain('optimizeDeps');
-    expect(source).toContain('exclude: nativeAntDesignEsModuleSources');
+    expect(source).toContain("'@ant-design/icons'");
+    expect(source).toContain("'@ant-design/icons-svg'");
+    expect(source).toContain("command === 'serve'");
+    expect(source).toContain("'@ant-design/icons-svg/es/asn'");
+    expect(source).not.toContain(
+      '...nativeAntDesignIconsModuleInventory.modules.map'
+    );
     for (const dependency of lazyOnlyDeps) {
       expect(source).toContain(`'${dependency}'`);
     }

@@ -4,13 +4,63 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 import {
+  NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX,
   NATIVE_ANT_DESIGN_ICONS_LOADERS_VIRTUAL_ID,
   collectAntDesignIconModuleSources,
+  generateNativeAntDesignIconsDevLoadersModule,
   generateNativeAntDesignIconsLoadersModule,
-  generateNativeAntDesignIconsModule
+  generateNativeAntDesignIconsModule,
+  nativeAntDesignIconsModulesPlugin
 } from '../../../../../../build/native-ant-design-icons-modules';
 
 describe('@ant-design/icons native module inventory', () => {
+  test('I1953-AC-001/003 keeps bare icon leaves behind demand-resolved virtual modules', () => {
+    const inventory = collectAntDesignIconModuleSources({
+      projectRoot: process.cwd()
+    });
+    const generatedModule = generateNativeAntDesignIconsLoadersModule(inventory);
+
+    expect(generatedModule).toContain(
+      `import(${JSON.stringify(`${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}ClockCircleOutlined`)})`
+    );
+    expect(generatedModule).not.toContain(
+      `import(${JSON.stringify('@ant-design/icons/ClockCircleOutlined')})`
+    );
+  });
+
+  test('I1953-AC-004 resolves only installed icon leaf virtual modules', () => {
+    const inventory = collectAntDesignIconModuleSources({
+      projectRoot: process.cwd()
+    });
+    const plugin = nativeAntDesignIconsModulesPlugin({ inventory });
+    const resolveId = plugin.resolveId as (id: string) => string | undefined;
+    const load = plugin.load as (id: string) => string | undefined;
+    const leafId = `${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}ClockCircleOutlined`;
+    const resolvedLeafId = resolveId(leafId);
+
+    expect(resolvedLeafId).toBeTruthy();
+    expect(load(resolvedLeafId!)).toContain(
+      `export { default } from ${JSON.stringify('@ant-design/icons/ClockCircleOutlined')}`
+    );
+    expect(() =>
+      resolveId(`${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}MissingOutlined`)
+    ).toThrow(/not installed or public/u);
+  });
+
+  test('I1953-AC-001/003 keeps the dev loader import edge count independent from catalog size', () => {
+    const inventory = collectAntDesignIconModuleSources({
+      projectRoot: process.cwd()
+    });
+    const generatedModule = generateNativeAntDesignIconsDevLoadersModule(
+      inventory
+    );
+
+    expect(generatedModule).toContain('const leafModuleSources = new Set(');
+    expect(generatedModule).toContain('/* @vite-ignore */');
+    expect(generatedModule.match(/import\(/gu)).toHaveLength(5);
+    expect(generatedModule).not.toContain('const leafLoaders');
+  });
+
   test('I1945-AC-004 keeps root namespace icon leaves lazy', () => {
     const inventory = collectAntDesignIconModuleSources({
       projectRoot: process.cwd()

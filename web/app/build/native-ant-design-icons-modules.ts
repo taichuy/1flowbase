@@ -7,6 +7,8 @@ export const NATIVE_ANT_DESIGN_ICONS_MODULES_VIRTUAL_ID =
   'virtual:1flowbase-native-ant-design-icons-modules';
 export const NATIVE_ANT_DESIGN_ICONS_LOADERS_VIRTUAL_ID =
   'virtual:1flowbase-native-ant-design-icons-loaders';
+export const NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX =
+  'virtual:1flowbase-native-ant-design-icon-leaf/';
 
 const RESOLVED_VIRTUAL_ID =
   `\0${NATIVE_ANT_DESIGN_ICONS_MODULES_VIRTUAL_ID}`;
@@ -19,6 +21,12 @@ const ROOT_EXPORTS = [
   'createFromIconfontCN',
   'getTwoToneColor',
   'setTwoToneColor'
+] as const;
+export const NATIVE_ANT_DESIGN_ICONS_SHARED_MODULE_SOURCES = [
+  '@ant-design/icons/es/components/Icon',
+  '@ant-design/icons/es/components/IconFont',
+  '@ant-design/icons/es/components/Context',
+  '@ant-design/icons/es/components/twoTonePrimaryColor'
 ] as const;
 
 export interface AntDesignIconModuleSource {
@@ -38,15 +46,34 @@ export function nativeAntDesignIconsModulesPlugin({
 }: {
   inventory: AntDesignIconModuleInventory;
 }): Plugin {
+  let command: 'build' | 'serve' = 'build';
+  const leafModuleSources = new Map(
+    inventory.modules.map(({ moduleSource }) => [
+      toLeafVirtualId(moduleSource),
+      moduleSource
+    ])
+  );
+
   return {
     name: '1flowbase-native-ant-design-icons-modules',
     enforce: 'pre',
+    configResolved(config) {
+      command = config.command;
+    },
     resolveId(id) {
       if (id === NATIVE_ANT_DESIGN_ICONS_MODULES_VIRTUAL_ID) {
         return RESOLVED_VIRTUAL_ID;
       }
       if (id === NATIVE_ANT_DESIGN_ICONS_LOADERS_VIRTUAL_ID) {
         return RESOLVED_LOADERS_VIRTUAL_ID;
+      }
+      if (id.startsWith(NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX)) {
+        if (!leafModuleSources.has(id)) {
+          throw new Error(
+            '@ant-design/icons module is not installed or public: ' + id + '.'
+          );
+        }
+        return `\0${id}`;
       }
       return undefined;
     },
@@ -55,7 +82,18 @@ export function nativeAntDesignIconsModulesPlugin({
         return generateNativeAntDesignIconsModule(inventory);
       }
       if (id === RESOLVED_LOADERS_VIRTUAL_ID) {
-        return generateNativeAntDesignIconsLoadersModule(inventory);
+        return command === 'serve'
+          ? generateNativeAntDesignIconsDevLoadersModule(inventory)
+          : generateNativeAntDesignIconsLoadersModule(inventory);
+      }
+      if (id.startsWith(`\0${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}`)) {
+        const moduleSource = leafModuleSources.get(id.slice(1));
+        if (!moduleSource) {
+          throw new Error(
+            '@ant-design/icons module is not installed or public: ' + id + '.'
+          );
+        }
+        return `export { default } from ${JSON.stringify(moduleSource)};`;
       }
       return undefined;
     }
@@ -182,23 +220,51 @@ export async function loadAntDesignIconsModule(moduleSource) {
 export function generateNativeAntDesignIconsLoadersModule(
   inventory: AntDesignIconModuleInventory
 ): string {
+  return generateNativeAntDesignIconsLoaderDomain(inventory, 'build');
+}
+
+export function generateNativeAntDesignIconsDevLoadersModule(
+  inventory: AntDesignIconModuleInventory
+): string {
+  return generateNativeAntDesignIconsLoaderDomain(inventory, 'serve');
+}
+
+function generateNativeAntDesignIconsLoaderDomain(
+  inventory: AntDesignIconModuleInventory,
+  command: 'build' | 'serve'
+): string {
+  const leafIndex =
+    command === 'build'
+      ? `const leafLoaders = {${inventory.modules
+          .map(
+            ({ loaderSource, moduleSource }) =>
+              `\n  ${JSON.stringify(moduleSource)}: () => import(${JSON.stringify(toLeafVirtualId(loaderSource))}),`
+          )
+          .join('')}\n};`
+      : `const leafModuleSources = new Set(${JSON.stringify(inventory.modules.map(({ moduleSource }) => moduleSource))});`;
+  const leafLoad =
+    command === 'build'
+      ? `const load = leafLoaders[moduleSource];
+  if (!load) throw new Error('@ant-design/icons module is not installed or public: ' + moduleSource + '.');`
+      : `if (!leafModuleSources.has(moduleSource)) throw new Error('@ant-design/icons module is not installed or public: ' + moduleSource + '.');
+  const leafId = ${JSON.stringify(`/@id/__x00__${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}`)} + moduleSource.slice('@ant-design/icons/'.length);
+  const load = () => import(/* @vite-ignore */ leafId);`;
+  const rootLeafSources =
+    command === 'build'
+      ? 'Object.keys(leafLoaders)'
+      : '[...leafModuleSources]';
+
   return `
 import { lazy } from 'react';
 
-const leafLoaders = {${inventory.modules
-    .map(
-      ({ loaderSource, moduleSource }) =>
-        `\n  ${JSON.stringify(moduleSource)}: () => import(${JSON.stringify(loaderSource)}),`
-    )
-    .join('')}\n};
+${leafIndex}
 
 const leafModuleFlights = new Map();
 
 function loadLeafModule(moduleSource) {
   const current = leafModuleFlights.get(moduleSource);
   if (current) return current;
-  const load = leafLoaders[moduleSource];
-  if (!load) throw new Error('@ant-design/icons module is not installed or public: ' + moduleSource + '.');
+  ${leafLoad}
   const flight = load().catch((error) => {
     if (leafModuleFlights.get(moduleSource) === flight) {
       leafModuleFlights.delete(moduleSource);
@@ -213,10 +279,9 @@ let rootModulePromise;
 
 async function loadRootModule() {
   rootModulePromise ??= Promise.all([
-    import('@ant-design/icons/es/components/Icon'),
-    import('@ant-design/icons/es/components/IconFont'),
-    import('@ant-design/icons/es/components/Context'),
-    import('@ant-design/icons/es/components/twoTonePrimaryColor')
+    ${NATIVE_ANT_DESIGN_ICONS_SHARED_MODULE_SOURCES.map(
+      (moduleSource) => `import(${JSON.stringify(moduleSource)})`
+    ).join(',\n    ')}
   ])
     .then(([iconModule, iconFontModule, contextModule, twoToneModule]) =>
       Object.fromEntries([
@@ -225,7 +290,7 @@ async function loadRootModule() {
         ['IconProvider', contextModule.default.Provider],
         ['getTwoToneColor', twoToneModule.getTwoToneColor],
         ['setTwoToneColor', twoToneModule.setTwoToneColor],
-        ...Object.keys(leafLoaders).map((moduleSource) => [
+        ...${rootLeafSources}.map((moduleSource) => [
           moduleSource.slice('@ant-design/icons/'.length),
           lazy(() => loadLeafModule(moduleSource))
         ])
@@ -243,4 +308,8 @@ export async function loadAntDesignIconsModuleFromDomain(moduleSource) {
   return loadLeafModule(moduleSource);
 }
 `;
+}
+
+function toLeafVirtualId(moduleSource: string): string {
+  return `${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}${moduleSource.slice(`${PACKAGE_NAME}/`.length)}`;
 }

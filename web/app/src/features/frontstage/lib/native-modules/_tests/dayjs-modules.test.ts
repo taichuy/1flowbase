@@ -1,8 +1,27 @@
 import { describe, expect, test } from 'vitest';
 
-import { collectDayjsModuleSources } from '../../../../../../build/native-dayjs-modules';
+import {
+  collectDayjsModuleSources,
+  generateNativeDayjsDevModules
+} from '../../../../../../build/native-dayjs-modules';
 
 describe('dayjs native module inventory', () => {
+  test('I1953-AC-001/003 keeps dev imports independent from the dayjs catalog size', () => {
+    const inventory = collectDayjsModuleSources({
+      projectRoot: process.cwd()
+    });
+    const generatedModule = generateNativeDayjsDevModules(inventory);
+
+    expect(generatedModule).toContain('const moduleSourceSet = new Set(');
+    expect(generatedModule).toContain('/* @vite-ignore */');
+    expect(generatedModule.match(/import\(/gu)).toHaveLength(1);
+    expect(generatedModule).not.toContain('const loaders');
+    expect(
+      inventory.find(({ moduleSource }) => moduleSource === 'dayjs/plugin/utc')
+        ?.devLoaderSource
+    ).toBe('dayjs/esm/plugin/utc/index.js');
+  });
+
   test('I1933-AC-004a/004b inventories the package root and every resolvable JavaScript subpath', () => {
     const inventory = collectDayjsModuleSources({
       projectRoot: process.cwd()

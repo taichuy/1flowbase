@@ -3,9 +3,28 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
-import { collectDndKitModuleSources } from '../../../../../../build/native-dnd-kit-modules';
+import {
+  collectDndKitModuleSources,
+  generateNativeDndKitDevModules
+} from '../../../../../../build/native-dnd-kit-modules';
 
 describe('@dnd-kit native module inventory', () => {
+  test('I1953-AC-001/003 keeps dev imports independent from the dnd-kit catalog size', () => {
+    const inventory = collectDndKitModuleSources({
+      projectRoot: process.cwd()
+    });
+    const generatedModule = generateNativeDndKitDevModules(inventory);
+
+    expect(generatedModule).toContain('const moduleSourceSet = new Set(');
+    expect(generatedModule).toContain('/* @vite-ignore */');
+    expect(generatedModule.match(/import\(/gu)).toHaveLength(1);
+    expect(generatedModule).not.toContain('const loaders');
+    expect(
+      inventory.find(({ moduleSource }) => moduleSource === '@dnd-kit/core')
+        ?.devLoaderSource
+    ).toBe('@dnd-kit/core/dist/core.esm.js');
+  });
+
   test('I1929-AC-002/003 discovers every installed package root and resolvable JavaScript subpath', () => {
     const inventory = collectDndKitModuleSources({
       projectRoot: process.cwd()
@@ -43,7 +62,11 @@ describe('@dnd-kit native module inventory', () => {
       mkdirSync(join(packageRoot, 'dist'), { recursive: true });
       writeFileSync(
         join(packageRoot, 'package.json'),
-        JSON.stringify({ name: '@dnd-kit/future-package', version: '1.2.3' })
+        JSON.stringify({
+          name: '@dnd-kit/future-package',
+          version: '1.2.3',
+          module: './dist/future-package.esm.js'
+        })
       );
       writeFileSync(
         join(packageRoot, 'dist/index.js'),
@@ -53,12 +76,16 @@ describe('@dnd-kit native module inventory', () => {
       expect(collectDndKitModuleSources({ projectRoot })).toEqual(
         expect.arrayContaining([
           {
+            devLoaderSource:
+              '@dnd-kit/future-package/dist/future-package.esm.js',
             loaderSource: '@dnd-kit/future-package',
             moduleSource: '@dnd-kit/future-package',
             packageName: '@dnd-kit/future-package',
             packageVersion: '1.2.3'
           },
           {
+            devLoaderSource:
+              '@dnd-kit/future-package/dist/future-package.esm.js',
             loaderSource: '@dnd-kit/future-package/dist/index.js',
             moduleSource: '@dnd-kit/future-package/dist/index.js',
             packageName: '@dnd-kit/future-package',

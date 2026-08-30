@@ -3,14 +3,22 @@ import path from 'node:path';
 
 import type { Plugin } from 'vite';
 
+import {
+  createDemandResolvedModuleDomain,
+  generateDemandResolvedLoaderRuntime
+} from './native-demand-resolved-modules';
+
 export const NATIVE_DAYJS_MODULES_VIRTUAL_ID =
   'virtual:1flowbase-native-dayjs-modules';
+export const NATIVE_DAYJS_LEAF_VIRTUAL_PREFIX =
+  'virtual:1flowbase-native-dayjs-leaf/';
 
 const RESOLVED_VIRTUAL_ID = `\0${NATIVE_DAYJS_MODULES_VIRTUAL_ID}`;
 const DAYJS_PACKAGE_NAME = 'dayjs';
 const JAVASCRIPT_EXTENSIONS = ['.js', '.mjs', '.cjs'] as const;
 
 export interface DayjsModuleSource {
+  devLoaderSource: string;
   hasDeclaration: boolean;
   loaderSource: string;
   moduleSource: string;
@@ -23,18 +31,30 @@ export function nativeDayjsModulesPlugin({
 }: {
   inventory: readonly DayjsModuleSource[];
 }): Plugin {
+  let command: 'build' | 'serve' = 'build';
+  const demandDomain = createDemandResolvedModuleDomain({
+    errorLabel: 'dayjs module',
+    modules: inventory,
+    virtualPrefix: NATIVE_DAYJS_LEAF_VIRTUAL_PREFIX
+  });
   return {
     name: '1flowbase-native-dayjs-modules',
     enforce: 'pre',
+    configResolved(config) {
+      command = config.command;
+    },
     resolveId(id) {
       return id === NATIVE_DAYJS_MODULES_VIRTUAL_ID
         ? RESOLVED_VIRTUAL_ID
-        : undefined;
+        : demandDomain.resolveId(id);
     },
     load(id) {
-      return id === RESOLVED_VIRTUAL_ID
-        ? renderNativeDayjsModules(inventory)
-        : undefined;
+      if (id === RESOLVED_VIRTUAL_ID) {
+        return command === 'serve'
+          ? generateNativeDayjsDevModules(inventory)
+          : renderNativeDayjsModules(inventory);
+      }
+      return demandDomain.load(id, command);
     }
   };
 }
@@ -52,6 +72,7 @@ export function collectDayjsModuleSources({
   const manifest = readPackageManifest(packageRoot);
   const inventory = new Map<string, DayjsModuleSource>();
   const rootEntry: DayjsModuleSource = {
+    devLoaderSource: 'dayjs/esm/index.js',
     hasDeclaration: true,
     loaderSource: DAYJS_PACKAGE_NAME,
     moduleSource: DAYJS_PACKAGE_NAME,
@@ -72,6 +93,7 @@ export function collectDayjsModuleSources({
     const hasDeclaration = hasAdjacentDeclaration(packageRoot, relativeFile);
     for (const moduleSource of aliases) {
       inventory.set(moduleSource, {
+        devLoaderSource: toDayjsDevLoaderSource(loaderSource),
         hasDeclaration,
         loaderSource,
         moduleSource,
@@ -145,23 +167,47 @@ function withoutJavaScriptExtension(moduleSource: string): string {
   return extension ? moduleSource.slice(0, -extension.length) : moduleSource;
 }
 
+function toDayjsDevLoaderSource(loaderSource: string): string {
+  if (loaderSource === 'dayjs/dayjs.min.js') return 'dayjs/esm/index.js';
+  const plugin = /^dayjs\/plugin\/([^/]+)\.js$/u.exec(loaderSource);
+  if (plugin) return `dayjs/esm/plugin/${plugin[1]}/index.js`;
+  const locale = /^dayjs\/locale\/([^/]+)\.js$/u.exec(loaderSource);
+  if (locale) return `dayjs/esm/locale/${locale[1]}.js`;
+  return loaderSource;
+}
+
 function renderNativeDayjsModules(
   inventory: readonly DayjsModuleSource[]
+): string {
+  return generateNativeDayjsModules(inventory, 'build');
+}
+
+export function generateNativeDayjsDevModules(
+  inventory: readonly DayjsModuleSource[]
+): string {
+  return generateNativeDayjsModules(inventory, 'serve');
+}
+
+function generateNativeDayjsModules(
+  inventory: readonly DayjsModuleSource[],
+  command: 'build' | 'serve'
 ): string {
   const packageIdentity = inventory[0];
   if (!packageIdentity) {
     throw new Error('[native-dayjs-modules] Module inventory is empty.');
   }
+  const loaderRuntime = generateDemandResolvedLoaderRuntime({
+    command,
+    errorLabel: 'dayjs module',
+    modules: inventory,
+    virtualPrefix: NATIVE_DAYJS_LEAF_VIRTUAL_PREFIX
+  });
+
   return `
-const loaders = {${inventory
-    .map(
-      ({ loaderSource, moduleSource }) =>
-        `\n  ${JSON.stringify(moduleSource)}: () => import(${JSON.stringify(loaderSource)}),`
-    )
-    .join('')}\n};
+${loaderRuntime.preamble}
 
 export const DAYJS_MODULE_DEFINITIONS = Object.freeze(
-  Object.keys(loaders).map((module_source) => ({
+  ${JSON.stringify(loaderRuntime.moduleSources)}.map((module_source) => ({
     module_source,
     exports: module_source === 'dayjs' ? ['default'] : ['*']
   }))
@@ -180,9 +226,7 @@ export const DAYJS_PACKAGE = Object.freeze(${JSON.stringify({
   })});
 
 export async function loadDayjsModule(moduleSource) {
-  const load = loaders[moduleSource];
-  if (!load) throw new Error('dayjs module is not installed or resolvable: ' + moduleSource + '.');
-  return load();
+  ${loaderRuntime.loadBody}
 }
 `;
 }
