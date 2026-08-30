@@ -37,11 +37,12 @@ fn public_sign_in_publishes_one_typed_mutation_plan() {
 
 #[test]
 fn public_sign_in_route_projects_cookie_after_terminal_receipt() {
-    let source = include_str!("../routes/identity/auth.rs");
-    let receipt = source
+    let route = include_str!("../routes/identity/auth.rs");
+    let handler = include_str!("../routes/identity/sign_in_interface.rs");
+    let receipt = route
         .find("outcome.receipt().clone().projected()")
         .expect("route must project the terminal receipt");
-    let cookie = source
+    let cookie = route
         .find("Cookie::build")
         .expect("route must preserve cookie projection");
 
@@ -49,5 +50,6 @@ fn public_sign_in_route_projects_cookie_after_terminal_receipt() {
         receipt < cookie,
         "terminal receipt must precede protocol projection"
     );
-    assert_eq!(source.matches(".login(").count(), 1);
+    assert_eq!(route.matches(".login(").count(), 0);
+    assert_eq!(handler.matches(".login(").count(), 1);
 }
