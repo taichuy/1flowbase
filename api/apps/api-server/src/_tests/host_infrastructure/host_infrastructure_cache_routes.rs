@@ -33,7 +33,7 @@ async fn host_infrastructure_cache_routes_reveal_and_clear_with_audit() {
         .set_json(
             "application-logs:run:1",
             json!({ "flow_run": { "status": "succeeded" } }),
-            Some(time::Duration::seconds(60)),
+            Some(time::Duration::hours(1)),
         )
         .await
         .unwrap();

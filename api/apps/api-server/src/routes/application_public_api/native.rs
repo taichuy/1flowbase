@@ -1145,32 +1145,6 @@ pub(crate) fn include_workflow_event_visibility(
     }
 }
 
-async fn start_native_run_stream_for_actor(
-    state: Arc<ApiState>,
-    actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
-    run: NativeRunResult,
-    include_workflow_events: sse::IncludeWorkflowEvents,
-) -> Result<Response, NativeApiError> {
-    let application_id = run.application_id;
-    let receiver = start_native_run_event_channel_for_actor(
-        Arc::clone(&state),
-        actor,
-        run,
-        include_workflow_events,
-    )
-    .await?;
-    let sse_activity = state
-        .runtime_activity
-        .start(application_id, ApplicationActivityKind::SseConnection);
-    let stream = sse::NativeRunSseStream::new(receiver).map(move |event| {
-        let _keep_alive = &sse_activity;
-        event
-    });
-    Ok(Sse::new(stream)
-        .keep_alive(KeepAlive::default())
-        .into_response())
-}
-
 async fn start_native_run_event_channel_for_actor(
     state: Arc<ApiState>,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,

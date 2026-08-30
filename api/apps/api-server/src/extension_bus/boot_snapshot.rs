@@ -11,10 +11,6 @@ use serde::Serialize;
 use storage_durable_postgres::MainDurableStore;
 
 use super::{INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID, INTERFACE_COMPLETION_HOOK_POINT_ID};
-use crate::routes::host_infrastructure::interface_operation::{
-    HostInfrastructureProvidersViewInput, HostInfrastructureProvidersViewOutput,
-};
-
 const INTERFACE_COMPLETION_CONTEXT_CONTRACT_ID: &str = "interface-invocation-completion";
 const INTERFACE_COMPLETION_CONTEXT_CONTRACT_VERSION: &str = "1";
 
