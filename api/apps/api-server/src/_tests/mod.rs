@@ -41,6 +41,7 @@ mod official_i18n_catalog_source;
 mod plugin_routes;
 mod provider_request_log_worker;
 mod provider_runtime;
+mod public_sign_in_interface_tests;
 mod role_catalog_full_profile_routes;
 mod role_routes;
 mod route_docs;

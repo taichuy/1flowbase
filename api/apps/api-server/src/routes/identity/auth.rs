@@ -24,6 +24,9 @@ use super::login_instances_interface::{
     self, PublicLoginInstancesFuture, PublicLoginInstancesInput, PublicLoginInstancesOutput,
     PublicLoginInstancesPort, PublicLoginInstancesTargetError,
 };
+use super::sign_in_interface::{
+    self, PublicSignInInput, PublicSignInOutput, PublicSignInTargetError,
+};
 use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -269,19 +272,52 @@ pub async fn sign_in(
     State(state): State<Arc<ApiState>>,
     Json(body): Json<LoginBody>,
 ) -> Result<(CookieJar, Json<ApiSuccess<LoginResponse>>), ApiError> {
-    let kernel = AuthKernel::new(
-        state.store.clone(),
-        SessionIssuer::new(state.session_store.clone(), state.session_ttl_days),
-    );
-    let result = kernel
-        .login(LoginCommand {
-            authenticator_id: body
-                .authenticator_id
-                .unwrap_or(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID),
-            identifier: body.identifier,
-            password: body.password,
-        })
+    let boot_snapshot = state
+        .extension_boot_snapshot
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("extension boot snapshot is unavailable"))?;
+    let snapshot = boot_snapshot
+        .interface_registry()
+        .ok_or_else(|| anyhow::anyhow!("interface registry is unavailable"))?
+        .snapshot();
+    let binding_id = interface_runtime::BindingId::new(sign_in_interface::BINDING_ID)
+        .expect("static binding id is valid");
+    let activated = snapshot
+        .authentication(&binding_id)
+        .ok_or_else(|| anyhow::anyhow!("public authentication activation is unavailable"))?;
+    let principal: PublicPrincipal = boot_snapshot
+        .authenticate(
+            activated,
+            crate::extension_bus::PublicAuthenticationCredential,
+        )
         .await?;
+    let authentication_activation = activated.activation().clone();
+    let outcome =
+        InterfaceInvocationKernel::new(Arc::new(sign_in_interface::PublicSignInAuthorization))
+            .invoke::<PublicSignInInput, PublicSignInOutput, PublicSignInTargetError>(
+                snapshot,
+                InvocationEnvelope::with_principal(
+                    InvocationLineage::root(InvocationId::now_v7()),
+                    binding_id,
+                    InterfaceProtocol::Http,
+                    interface_runtime::AuthenticationAdapterReference::new("api-server.public")
+                        .expect("static adapter is valid"),
+                    authentication_activation,
+                    principal,
+                    None,
+                    PublicSignInInput(LoginCommand {
+                        authenticator_id: body
+                            .authenticator_id
+                            .unwrap_or(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID),
+                        identifier: body.identifier,
+                        password: body.password,
+                    }),
+                ),
+            )
+            .await
+            .map_err(|failure| public_sign_in_error(failure.into_error()))?;
+    let _receipt = outcome.receipt().clone().projected();
+    let result = outcome.into_value().0;
 
     let cookie = Cookie::build((state.cookie_name.clone(), result.session.session_id.clone()))
         .http_only(true)
@@ -299,6 +335,16 @@ pub async fn sign_in(
             current_workspace_id: result.session.current_workspace_id.to_string(),
         })),
     ))
+}
+
+fn public_sign_in_error(error: InterfaceInvocationError) -> ApiError {
+    match error {
+        InterfaceInvocationError::TargetFailed(error) => error
+            .into_source::<PublicSignInTargetError>()
+            .map(|error| error.0)
+            .unwrap_or_else(|| anyhow::anyhow!("public sign-in failed").into()),
+        error => anyhow::anyhow!(error.to_string()).into(),
+    }
 }
 
 #[utoipa::path(

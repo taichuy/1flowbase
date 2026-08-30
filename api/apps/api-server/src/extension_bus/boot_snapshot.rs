@@ -213,6 +213,7 @@ impl ExtensionBootSnapshot {
                 interface_runtime::AuthorizationOperation::new(
                     "public.auth.login-instances.read",
                 )?,
+                interface_runtime::AuthorizationOperation::new("public.auth.sign-in")?,
                 interface_runtime::AuthorizationOperation::new("application.native.runs.create")?,
                 interface_runtime::AuthorizationOperation::new("mcp.tools.invoke")?,
             ],
@@ -234,6 +235,9 @@ impl ExtensionBootSnapshot {
         compiler.absorb_snapshot(
             crate::routes::auth::compile_public_login_instances_registry(Arc::downgrade(state))?
                 .as_ref(),
+        )?;
+        compiler.absorb_snapshot(
+            crate::routes::sign_in_interface::compile_registry(Arc::downgrade(state))?.as_ref(),
         )?;
         compiler.absorb_snapshot(
             crate::routes::application_public_api::native::compile_native_interface_registry(
