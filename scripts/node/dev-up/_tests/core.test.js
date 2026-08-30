@@ -110,7 +110,11 @@ test('getServiceDefinitions uses repo default ports and explicit backend binarie
   assert.deepEqual(services['api-server'].args, ['run', '-p', 'api-server', '--bin', 'api-server']);
   assert.deepEqual(services['plugin-runner'].args, ['run', '-p', 'plugin-runner', '--bin', 'plugin-runner']);
   assert.deepEqual(services.web.readinessProbe, {
-    path: '/@vite/client',
+    path: '/__1flowbase_dev_ready',
+    expectedJson: {
+      schema_version: '1flowbase.dev-runtime-readiness/v1',
+      state: 'Ready',
+    },
   });
   assert.deepEqual(services['api-server'].readinessProbe, {
     path: '/health',

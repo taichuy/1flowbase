@@ -1,7 +1,23 @@
-import * as AntIcons from '@ant-design/icons';
+import {
+  ArrowDownOutlined,
+  ArrowUpOutlined,
+  DeleteOutlined,
+  DownOutlined,
+  DragOutlined,
+  EditOutlined,
+  EyeInvisibleOutlined,
+  EyeOutlined,
+  FileAddOutlined,
+  FileTextOutlined,
+  FolderAddOutlined,
+  FolderOutlined,
+  InfoCircleOutlined,
+  MenuOutlined,
+  PlusOutlined,
+  RightOutlined
+} from '@ant-design/icons';
 import { Button, Typography, Dropdown, Tooltip, Switch } from 'antd';
 import { useState } from 'react';
-import type { ElementType } from 'react';
 import type { DragEvent, FocusEvent } from 'react';
 import type { MenuProps } from 'antd';
 
@@ -14,6 +30,7 @@ import { FrontstageNodeActionButton } from './FrontstageNodeActionButton';
 import './frontstage-page-tree-sidebar.css';
 import './frontstage-add-action.css';
 import { i18nText } from '../../../shared/i18n/text';
+import { PageTreeIcon } from '../lib/page-tree-icons/registry';
 
 type FrontStagePageTreeSidebarProps = {
   pageTree: FrontStageTreeNode[];
@@ -54,39 +71,10 @@ const ROOT_PAGE_GROUP_VALUE = '__frontstage_root__';
 
 type MenuClickInfo = Parameters<NonNullable<MenuProps['onClick']>>[0];
 
-type AntIconComponent = ElementType<{ className?: string }>;
 type PageTreeDropIndicator = {
   targetNodeId: string;
   position: 'before' | 'inside' | 'after';
 };
-
-const antIconComponents = AntIcons as Record<string, unknown>;
-const pageTreeIconMap = Object.fromEntries(
-  Object.entries(antIconComponents).filter(
-    (entry): entry is [string, AntIconComponent] =>
-      /(?:Outlined|Filled|TwoTone)$/.test(entry[0]) &&
-      (typeof entry[1] === 'function' ||
-        (typeof entry[1] === 'object' && entry[1] !== null))
-  )
-);
-const {
-  ArrowDownOutlined,
-  ArrowUpOutlined,
-  DeleteOutlined,
-  DownOutlined,
-  DragOutlined,
-  EditOutlined,
-  EyeInvisibleOutlined,
-  EyeOutlined,
-  FileAddOutlined,
-  FileTextOutlined,
-  FolderAddOutlined,
-  FolderOutlined,
-  InfoCircleOutlined,
-  MenuOutlined,
-  PlusOutlined,
-  RightOutlined
-} = pageTreeIconMap as Record<string, AntIconComponent>;
 
 function getNodeTitle(node: FrontStageTreeNode) {
   if (node.title) {
@@ -120,18 +108,7 @@ function findParentId(
 }
 
 function renderNodeIcon(node: FrontStageTreeNode) {
-  if (!node.icon) {
-    return null;
-  }
-
-  const IconComponent =
-    pageTreeIconMap[node.icon as keyof typeof pageTreeIconMap];
-
-  if (!IconComponent) {
-    return null;
-  }
-
-  return <IconComponent />;
+  return <PageTreeIcon name={node.icon} />;
 }
 
 function renderTreeNode({

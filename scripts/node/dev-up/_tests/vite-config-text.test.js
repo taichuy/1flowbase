@@ -23,3 +23,21 @@ test('vite config keeps the workspace root while extending fs allow list for sha
   assert.match(viteConfigSource, /searchForWorkspaceRoot\(process\.cwd\(\)\)/u);
   assert.match(viteConfigSource, /new URL\('\.\.\/\.\.\/scripts', import\.meta\.url\)/u);
 });
+
+test('DV-F04 vite config exposes lifecycle readiness after bounded warmup', () => {
+  const viteConfigSource = fs.readFileSync(viteConfigPath, 'utf8');
+  const runtimeSource = fs.readFileSync(
+    path.resolve(path.dirname(viteConfigPath), 'vite', 'dev-runtime.ts'),
+    'utf8'
+  );
+
+  assert.match(viteConfigSource, /oneFlowbaseDevRuntimePlugin/u);
+  assert.match(viteConfigSource, /warmup:\s*\{/u);
+  assert.match(runtimeSource, /\/__1flowbase_dev_ready/u);
+  assert.match(runtimeSource, /'Scanning'/u);
+  assert.match(runtimeSource, /'Optimizing'/u);
+  assert.match(runtimeSource, /'Warming'/u);
+  assert.match(runtimeSource, /'Ready'/u);
+  assert.match(runtimeSource, /'Degraded'/u);
+  assert.doesNotMatch(runtimeSource, /allowedHosts|cors|cloudflare|access token/iu);
+});

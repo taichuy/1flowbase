@@ -21,6 +21,7 @@ import {
   nativeDayjsModulesPlugin
 } from './build/native-dayjs-modules';
 import { FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES } from './src/features/frontstage/lib/native-modules/resolved-dependency-sources';
+import { oneFlowbaseDevRuntimePlugin } from './vite/dev-runtime';
 
 const reactDraggableBrowserDefines = {
   'process.env.DRAGGABLE_DEBUG': 'false'
@@ -130,7 +131,9 @@ export default defineConfig(({ command, mode }) => {
   ).replace(/\/$/, '');
 
   return {
+    ...(env.VITE_DEV_CACHE_DIR ? { cacheDir: env.VITE_DEV_CACHE_DIR } : {}),
     plugins: [
+      oneFlowbaseDevRuntimePlugin({ root: process.cwd(), mode, command }),
       nativeAntDesignEsModulesPlugin(),
       nativeAntDesignIconsModulesPlugin({
         inventory: nativeAntDesignIconsModuleInventory
@@ -171,6 +174,7 @@ export default defineConfig(({ command, mode }) => {
         '@monaco-editor/react',
         '@scalar/api-reference-react',
         '@xyflow/react',
+        'antd',
         'copy-to-clipboard',
         'echarts',
         'lexical',
@@ -203,6 +207,14 @@ export default defineConfig(({ command, mode }) => {
           ? devServerPort
           : 3100,
       strictPort: true,
+      warmup: {
+        clientFiles: [
+          './src/main.tsx',
+          './src/app/router.tsx',
+          './src/features/frontstage/pages/FrontStagePage.tsx',
+          './src/features/settings/pages/SettingsPage.tsx'
+        ]
+      },
       fs: {
         allow: [
           searchForWorkspaceRoot(process.cwd()),
