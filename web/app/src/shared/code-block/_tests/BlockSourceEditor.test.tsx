@@ -20,7 +20,11 @@ vi.mock('@monaco-editor/react', () => ({
   }
 }));
 
-test('AC-001 accepts React default imports supported by the Native React runtime', () => {
+vi.mock('../monaco-runtime', () => ({
+  loadMonacoEditorModule: () => import('@monaco-editor/react')
+}));
+
+test('AC-001 accepts React default imports supported by the Native React runtime', async () => {
   const setCompilerOptions = vi.fn();
   const monaco = {
     languages: {
@@ -41,6 +45,7 @@ test('AC-001 accepts React default imports supported by the Native React runtime
       onChange={vi.fn()}
     />
   );
+  await waitFor(() => expect(editorHarness.props).not.toBeNull());
   act(() => editorHarness.props?.beforeMount?.(monaco));
 
   expect(setCompilerOptions).toHaveBeenCalledWith(

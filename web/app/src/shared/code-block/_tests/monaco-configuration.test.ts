@@ -24,13 +24,13 @@ vi.mock('monaco-editor/esm/vs/language/typescript/ts.worker?worker', () => ({
   default: class TypeScriptWorker {}
 }));
 
-import { initializeMonacoEditor } from '../monaco-editor';
+import { initializeMonacoEditor } from '../monaco-configuration';
 
 beforeEach(() => {
   monacoHarness.config.mockClear();
 });
 
-test('AC-001 initializes Monaco from bundled assets instead of the public CDN', () => {
+test('AC-002 initializes Monaco from bundled assets instead of the public CDN', () => {
   initializeMonacoEditor();
 
   expect(monacoHarness.config).toHaveBeenCalledOnce();

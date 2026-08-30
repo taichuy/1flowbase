@@ -1,11 +1,10 @@
-import Editor, {
-  type BeforeMount,
-  type Monaco,
-  type OnMount
-} from '@monaco-editor/react';
-import { useCallback, useEffect, useRef } from 'react';
+import type { BeforeMount, Monaco, OnMount } from '@monaco-editor/react';
+import { Suspense, lazy, useCallback, useEffect, useRef } from 'react';
 
 import type { BlockSourceExtraLib } from './extra-lib';
+import { loadMonacoEditorModule } from './monaco-runtime';
+
+const Editor = lazy(loadMonacoEditorModule);
 
 export interface BlockSourceEditorProps {
   ariaLabel: string;
@@ -158,37 +157,39 @@ export function BlockSourceEditor({
 
   return (
     <div aria-label={ariaLabel} role="group" style={{ height }}>
-      <Editor
-        height="100%"
-        language="typescript"
-        path={path}
-        value={value}
-        beforeMount={configureMonaco}
-        onMount={(editor, monaco) => {
-          editorRef.current = editor;
-          monacoRef.current = monaco;
-          registerExtraLibs(monaco);
-          registerDiagnostics(editor, monaco);
-          onMount?.(editor, monaco);
-        }}
-        onChange={(nextValue) => {
-          const modelPath = editorRef.current?.getModel()?.uri.toString();
-          if (modelPath) onChange(nextValue ?? '', modelPath);
-        }}
-        options={{
-          ariaLabel,
-          automaticLayout: true,
-          editContext: false,
-          fontSize: 13,
-          lineNumbersMinChars: 3,
-          minimap: { enabled: false },
-          padding: { top: 12, bottom: 12 },
-          readOnly,
-          scrollBeyondLastLine: false,
-          tabSize: 2,
-          wordWrap: 'on'
-        }}
-      />
+      <Suspense fallback={null}>
+        <Editor
+          height="100%"
+          language="typescript"
+          path={path}
+          value={value}
+          beforeMount={configureMonaco}
+          onMount={(editor, monaco) => {
+            editorRef.current = editor;
+            monacoRef.current = monaco;
+            registerExtraLibs(monaco);
+            registerDiagnostics(editor, monaco);
+            onMount?.(editor, monaco);
+          }}
+          onChange={(nextValue) => {
+            const modelPath = editorRef.current?.getModel()?.uri.toString();
+            if (modelPath) onChange(nextValue ?? '', modelPath);
+          }}
+          options={{
+            ariaLabel,
+            automaticLayout: true,
+            editContext: false,
+            fontSize: 13,
+            lineNumbersMinChars: 3,
+            minimap: { enabled: false },
+            padding: { top: 12, bottom: 12 },
+            readOnly,
+            scrollBeyondLastLine: false,
+            tabSize: 2,
+            wordWrap: 'on'
+          }}
+        />
+      </Suspense>
     </div>
   );
 }

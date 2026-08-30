@@ -15,6 +15,10 @@ vi.mock('@monaco-editor/react', () => ({
   }
 }));
 
+vi.mock('../../../../shared/code-block/monaco-runtime', () => ({
+  loadMonacoEditorModule: () => import('@monaco-editor/react')
+}));
+
 test('AC-001/AC-002 scopes Space to Monaco without disabling the canvas shortcut', async () => {
   render(
     <ReactFlowProvider>
