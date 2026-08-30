@@ -101,3 +101,18 @@ test('verify repo tooling target includes frontstage governance hygiene', () => 
     'frontstage-governance-hygiene',
   ]);
 });
+
+test('DV-F05 verify repo frontend includes the static dev experience gate', () => {
+  const commands = buildRepoCommands({
+    repoRoot: '/repo-root',
+    env: { PATH: process.env.PATH },
+    target: 'frontend',
+  });
+
+  const command = commands.find((item) => item.label === 'repo-dev-experience');
+  assert.ok(command);
+  assert.deepEqual(command.args, [
+    '/repo-root/scripts/node/tooling.js',
+    'dev-experience',
+  ]);
+});
