@@ -291,7 +291,8 @@ fn native_interface_error(error: InterfaceInvocationError) -> NativeApiError {
                     "native run interface target failed",
                 )
             }),
-        InterfaceInvocationError::AuthorizationRejected(_) => NativeApiError::new(
+        InterfaceInvocationError::AuthorizationRejected(_)
+        | InterfaceInvocationError::AuthorizationContributionRejected(_) => NativeApiError::new(
             StatusCode::FORBIDDEN,
             "forbidden",
             "native run interface authorization rejected",
@@ -306,12 +307,14 @@ fn native_interface_error(error: InterfaceInvocationError) -> NativeApiError {
         InterfaceInvocationError::UnknownBinding
         | InterfaceInvocationError::ProtocolBindingMismatch
         | InterfaceInvocationError::AuthenticationAdapterMismatch
+        | InterfaceInvocationError::AuthenticationActivationMismatch
         | InterfaceInvocationError::AuthorizationAdapterMismatch
         | InterfaceInvocationError::AdmissionAdapterMismatch
         | InterfaceInvocationError::ContractMismatch
         | InterfaceInvocationError::PrincipalProfileMismatch
         | InterfaceInvocationError::HookPlanFingerprintMismatch
         | InterfaceInvocationError::AdmissionRejected(_)
+        | InterfaceInvocationError::AdmissionContributionRejected(_)
         | InterfaceInvocationError::BeforeHookRejected(_) => NativeApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             "interface_contract_error",
@@ -1016,9 +1019,11 @@ pub async fn create_native_run(
             )
         })?;
     let authentication_activation = activated_authentication.activation().clone();
+    let dispatch_target =
+        native_runtime_target(&state, snapshot.as_ref(), &binding_id, application_id);
     let envelope = InvocationEnvelope::with_principal(
         InvocationLineage::root(InvocationId::now_v7()),
-        binding_id,
+        binding_id.clone(),
         InterfaceProtocol::Http,
         interface_runtime::AuthenticationAdapterReference::new("api-server.application-api-key")
             .expect("static adapter is valid"),
@@ -1044,7 +1049,7 @@ pub async fn create_native_run(
             >(
                 Arc::clone(&snapshot),
                 envelope,
-                native_runtime_target(&state, snapshot.as_ref(), binding_id, application_id),
+                dispatch_target.clone(),
             )
             .await
             .map_err(|failure| native_interface_error(failure.into_error()))?;
@@ -1075,7 +1080,7 @@ pub async fn create_native_run(
             >(
                 Arc::clone(&snapshot),
                 envelope,
-                native_runtime_target(&state, snapshot.as_ref(), binding_id, application_id),
+                dispatch_target,
             )
             .await
             .map_err(|failure| native_interface_error(failure.into_error()))?;
@@ -1108,11 +1113,11 @@ pub async fn create_native_run(
 fn native_runtime_target(
     state: &ApiState,
     registry: &interface_runtime::CompiledInterfaceRegistry,
-    binding_id: &str,
+    binding_id: &interface_runtime::BindingId,
     application_id: Uuid,
 ) -> interface_runtime::ExecutionTargetPin {
     let plan = registry
-        .plan(&interface_runtime::BindingId::new(binding_id).expect("static binding id is valid"))
+        .plan(binding_id)
         .expect("published Native binding must own a plan");
     interface_runtime::ExecutionTargetPin::Runtime {
         handler: plan.definition().handler_reference().clone(),

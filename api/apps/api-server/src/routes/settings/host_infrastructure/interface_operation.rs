@@ -345,6 +345,12 @@ fn invocation_failure_api_error(
                 )
                 .into()
             }),
+        InterfaceInvocationError::AuthorizationContributionRejected(_) => {
+            control_plane::errors::ControlPlaneError::PermissionDenied(
+                "console_operation_permission_denied",
+            )
+            .into()
+        }
         InterfaceInvocationError::TargetFailed(error) => error
             .into_source::<HostInfrastructureProvidersViewTargetError>()
             .map(|error| error.0)
@@ -355,6 +361,7 @@ fn invocation_failure_api_error(
         InterfaceInvocationError::ContractMismatch
         | InterfaceInvocationError::ProtocolBindingMismatch
         | InterfaceInvocationError::AuthenticationAdapterMismatch
+        | InterfaceInvocationError::AuthenticationActivationMismatch
         | InterfaceInvocationError::AuthorizationAdapterMismatch
         | InterfaceInvocationError::AdmissionAdapterMismatch
         | InterfaceInvocationError::PrincipalProfileMismatch
@@ -365,6 +372,9 @@ fn invocation_failure_api_error(
             anyhow::anyhow!(error.to_string()).into()
         }
         InterfaceInvocationError::AdmissionRejected(error) => {
+            anyhow::anyhow!(error.to_string()).into()
+        }
+        InterfaceInvocationError::AdmissionContributionRejected(error) => {
             anyhow::anyhow!(error.to_string()).into()
         }
         InterfaceInvocationError::DeadlineElapsed => {
