@@ -181,9 +181,6 @@ fn rr14_host_extension_authentication_manifest_without_native_factory_fails_acti
 #[tokio::test]
 async fn rr14_real_host_extension_route_authenticates_once_through_frozen_factory() {
     let (mut state, _) = test_api_state_with_database_url().await;
-    let login_app = crate::app_with_state(Arc::clone(&state));
-    let (cookie, _) = login_and_capture_cookie(&login_app, "root", "change-me").await;
-    drop(login_app);
 
     let manifest = plugin_framework::parse_plugin_manifest(include_str!(
         "../../../../plugins/fixtures/acme.authentication-host/manifest.yaml"
@@ -247,6 +244,8 @@ async fn rr14_real_host_extension_route_authenticates_once_through_frozen_factor
     });
 
     let app = crate::app_with_state(Arc::clone(&state));
+    let (cookie, _) = login_and_capture_cookie(&app, "root", "change-me").await;
+    gets.store(0, Ordering::SeqCst);
     let response = app
         .clone()
         .oneshot(
