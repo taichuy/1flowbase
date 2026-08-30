@@ -64,9 +64,12 @@ test('Delivery 1944 exposes the approved typed interface facade without infrastr
   const publicModules = [...facade.matchAll(/^pub\s+mod\s+([a-z_]+);$/gmu)].map(
     (match) => match[1],
   );
-  const publicSymbols = [...facade.matchAll(/pub use [a-z_]+::\{([\s\S]*?)\};/gu)]
-    .flatMap((match) => match[1].split(',').map((symbol) => symbol.trim()).filter(Boolean))
-    .sort();
+  const groupedPublicSymbols = [...facade.matchAll(/pub use [a-z_]+::\{([\s\S]*?)\};/gu)]
+    .flatMap((match) => match[1].split(',').map((symbol) => symbol.trim()).filter(Boolean));
+  const singlePublicSymbols = [
+    ...facade.matchAll(/^pub use [a-z_]+::([A-Z][A-Za-z0-9_]+);$/gmu),
+  ].map((match) => match[1]);
+  const publicSymbols = [...groupedPublicSymbols, ...singlePublicSymbols].sort();
   const requiredSymbols = [
     'ActivatedAuthenticationAdapter',
     'ApplicationPrincipal',
