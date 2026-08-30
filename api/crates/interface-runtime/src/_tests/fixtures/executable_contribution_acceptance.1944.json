@@ -26,8 +26,8 @@
     {
       "id": "RR-14",
       "owner": "api-server.CompositionRoot",
-      "positive": ["public_authentication_activation", "user_authentication_activation", "application_authentication_activation", "mcp_user_api_key_activation"],
-      "negative": ["authentication_registration_without_factory", "duplicate_authentication_activation", "inactive_authentication_activation", "authentication_binding_identity_mismatch", "runtime_authentication_registration", "capability_authentication_registration"],
+      "positive": ["public_factory_establishes_principal", "console_factory_authenticates_session_or_user_api_key", "application_factory_authenticates_bearer", "mcp_factory_requires_user_api_key", "active_host_extension_factory_authenticates_and_rejects"],
+      "negative": ["authentication_registration_without_factory", "authentication_factory_without_registration", "duplicate_authentication_activation", "inactive_authentication_activation", "authentication_binding_identity_mismatch", "authentication_factory_credential_contract_mismatch", "runtime_authentication_registration", "capability_authentication_registration"],
       "failure_phase": "router_catalog_publish"
     },
     {

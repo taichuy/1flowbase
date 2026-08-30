@@ -1,0 +1,39 @@
+{
+  "schema_version": "1flowbase.authentication-factory-acceptance/v1",
+  "delivery": 1944,
+  "remediation_input": "1fc1d16a4836e0b15d8838c7ea51e839f2fc4482",
+  "execution_policy": {
+    "tests_before_replacement_assembly_freeze": 0,
+    "fresh_centralized_qa_after_freeze": true
+  },
+  "owner_chain": [
+    "frozen_protocol_binding",
+    "activated_authentication_identity",
+    "api_server_composition_root_factory",
+    "protocol_credential_input",
+    "sealed_principal"
+  ],
+  "positive": [
+    "public_factory_establishes_public_principal",
+    "console_factory_authenticates_cookie_or_user_api_key",
+    "application_factory_authenticates_bearer_token",
+    "mcp_factory_rejects_non_user_api_key_credentials",
+    "active_trusted_host_extension_factory_is_assembled",
+    "host_extension_factory_success_and_rejection_are_executed"
+  ],
+  "negative": [
+    "compiled_registration_without_factory_fails_catalog_publish",
+    "factory_without_compiled_registration_fails_catalog_publish",
+    "duplicate_factory_fails_assembly",
+    "adapter_activation_plugin_tier_profile_mismatch_fails_publish",
+    "credential_contract_mismatch_fails_before_factory_execution",
+    "runtime_or_capability_factory_registration_is_forbidden"
+  ],
+  "boundaries": [
+    "raw_credential_is_owned_only_by_api_server_authentication_adapter",
+    "raw_credential_is_not_stored_in_interface_runtime_or_receipt",
+    "host_extension_factory_requires_trusted_native_composition_root_registration",
+    "route_resolves_factory_from_frozen_binding_before_authentication",
+    "external_authentication_results_remain_unchanged"
+  ]
+}
