@@ -8,7 +8,7 @@
 - XR input: `beta@965d62e9514f1b3e25fdf2a4284cc3bb41cfbf2e`
 - Fresh tested XR product assembly: `beta@4b31cc86c2d7e74e053ac5c0b7976031265d7091`
 - Authentication closure input: `beta@efa5df40dfc11e9b703d5ecfa1446f3a9dfb28d3`
-- Current untested product assembly: `beta@2d97d35593ffc2c0d960ea03e46d6d845b264308`
+- Current untested product assembly: `beta@b85b9a705c98acece4e5f138c345a911a9d704cb`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
 - Previous centralized QA: executable-contribution XR attempt 16, 16/16 rows complete, zero unrun rows; superseded as architecture acceptance evidence by the reopened RR-14 finding
 - Evidence root: `tmp/test-governance/1944-interface-lifecycle/`
@@ -20,6 +20,12 @@ Authentication attempt 21 is `QA_FAIL`: it started at the real candidate
 unrun, and its manually typed receipt SHA was invalid. XR-A04/XR-A05 replace that candidate. A new
 QA receipt may be written only after XR-A06 captures the complete assembly with `git rev-parse
 HEAD` and QA-001 through QA-016 run against that unchanged identity.
+
+XR-A06 attempt 22 froze `c740e28d9135d9dd0958bb619a601b485a8848e2` and passed QA-001 through
+QA-004, then QA-005 found a Rust ownership compile error in the new Providers adapter: the Route
+borrowed the resolved activation from the snapshot and later moved the snapshot into the Kernel.
+`b85b9a705c98acece4e5f138c345a911a9d704cb` owns a clone of that already-frozen typed activation;
+attempt 22 is invalidated in full and the replacement QA must restart at QA-001.
 
 ## XR executable-contribution packet ledger
 
@@ -35,6 +41,7 @@ HEAD` and QA-001 through QA-016 run against that unchanged identity.
 | XR-A03 | `1f6e68335` | QA_FAIL | attempt 21: 14 PASS / 1 FAIL / 1 UNRUN because frozen identity drifted |
 | XR-A04 | `258705de1` | ASSEMBLED | Console single-owner AuthN and installable HostExtension AuthN closure fixtures |
 | XR-A05 | `2d97d3559` | ASSEMBLED | middleware/Route ownership and manifest→Graph→Registry→factory→Route assembly |
+| XR-A05-F1 | `b85b9a705` | ASSEMBLED | own the resolved frozen activation before moving the registry snapshot into Kernel |
 | XR-A06 | pending | ACTIVE | replacement frozen assembly and QA-001–QA-016 restart with command-captured SHA |
 
 QA fix commits inside the approved XR boundary: `f35b3b261` removed fixture shadowing and warnings;
@@ -186,11 +193,14 @@ runtime-generation replacement; and treating Interface completion as a persisted
 | QA-001–QA-014 | SUPERSEDED | attempt 21 recorded 14 passing rows and 1992 automated tests, but branch drift prevents binding them to one frozen candidate |
 | QA-015 | FAIL | start `1f6e68335b59837c93a655ce810eaa59a89af6b4`; end `2b08d777940be1e60b3ee8ac96a88c6b4d7bf60b` plus unrelated dirty files |
 | QA-016 | UNRUN | attempt 21 stopped after final-integrity failure |
+| attempt 22 QA-001–QA-004 | INVALIDATED PASS | identity/fmt/interface-runtime/access-control passed on `c740e28d9`; superseded by the compile fix |
+| attempt 22 QA-005 | FAIL | `api-server` compile rejected a borrowed activation surviving the snapshot move |
+| attempt 22 QA-006–QA-016 | UNRUN | batch stopped at the first product Blocking |
 | XR-A06 QA-001–QA-016 | PENDING | must run from the beginning against one command-captured unchanged SHA |
 
 The superseded XR compatibility run recorded `1987 passed`, `0 failed`; Authentication attempt 21
 recorded `1992 passed`, `0 failed` before its integrity failure. No test has run against
-`2d97d35593ffc2c0d960ea03e46d6d845b264308`. The next valid result must come from one complete
+`b85b9a705c98acece4e5f138c345a911a9d704cb`. The next valid result must come from one complete
 fresh centralized run after XR-A06 freezes the replacement assembly.
 
 ## Compatibility and repository integrity
