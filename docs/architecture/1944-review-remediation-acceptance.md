@@ -20,6 +20,9 @@
 | RR-06 | Native async create, blocking execution and streaming execution have separate bindings/contracts | async completes after create; blocking completes after Runtime terminal; streaming uses a versioned server-stream event contract |
 | RR-07 | Streaming Receipt remains Executing while events flow and reaches exactly one terminal before Projected | live stream fixture observes event → terminal receipt → adapter projection order and a dispatch-time Runtime target pin |
 | RR-08 | Existing external API, authorization, DTO, SSE order, Runtime behavior, migrations and official plugin contracts remain unchanged | full centralized Test Batch plus existing route/runtime/plugin suites |
+| RR-09 | Every lifecycle registration has a concrete typed executable binding owned by the compiled plan; missing bindings fail publish | Completion registration without binding fails; ordinary `invoke` executes a bound Completion hook without Route injection |
+| RR-10 | Unary and server-stream consume the same frozen Before/After/Failure/Completion rules | stream fixture observes Before → events → terminal → After → Completion before projection |
+| RR-11 | A Handler contribution binds a real typed implementation and becomes the exactly-one effective target | one HostExtension handler executes; missing binding or multiple effective contributions fail compilation |
 
 ## Work packets
 
@@ -29,6 +32,8 @@
 4. `RR-F04`: Native async/blocking/server-stream lifecycle with terminal-before-projection.
 5. `RR-F05`: replace source-string/equivalence self-report fixtures with behavioral assembly and
    lifecycle fixtures; update Receipt and Ledger truth.
+6. `RR-F06`: compile concrete typed extension bindings into every plan, make Kernel consumption
+   non-optional for unary/stream, and compile a real exactly-one contributed Handler.
 
 All fixtures are assembled before execution. No per-packet test, per-layer QA or partial rerun may
 settle these rows. After the remediation assembly is frozen, the complete #1944 centralized Test

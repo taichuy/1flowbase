@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use domain::ActorContext;
 use uuid::Uuid;
@@ -14,12 +14,16 @@ use crate::{
     InterfaceExtensionIsolation, InterfaceExtensionPermission, InterfaceExtensionPoint,
     InterfaceExtensionRegistration, InterfaceExtensionTier, InterfaceHandler,
     InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceIdentity,
-    InterfaceInvocationError, InterfaceInvocationKernel, InterfaceInvocationStage,
+    InterfaceAfterHook, InterfaceAfterHookFuture, InterfaceBeforeHook,
+    InterfaceBeforeHookFuture, InterfaceCompletionHook, InterfaceCompletionHookFuture,
+    InterfaceHookContext, InterfaceInvocationError, InterfaceInvocationKernel,
+    InterfaceInvocationStage, InterfaceInvocationTerminal,
     InterfaceLifecycle, InterfaceOwner, InterfaceProtocol, InterfaceScope, InterfaceStreamHandler,
     InterfaceStreamHandlerFuture, InterfaceStreamTerminal, InterfaceVersion, InvocationAdapterPlan,
     InvocationEnvelope, InvocationId, InvocationLineage, PluginIdentity, PrincipalProfile,
-    ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity, RuntimeGeneration,
-    RuntimeTargetIdentity, TargetReference, UserPrincipal, WorkerGeneration,
+    ProtocolBinding, ProtocolProjection, RegistryCompilationError, RegistryCompiler, RouteIdentity,
+    RuntimeGeneration, RuntimeTargetIdentity, TargetReference, TypedInterfaceHookPlan,
+    UserPrincipal, WorkerGeneration,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -58,6 +62,53 @@ impl InterfaceHandler<Input, Output, TargetError> for UnaryHandler {
         input: Input,
     ) -> InterfaceHandlerFuture<Output, TargetError> {
         Box::pin(async move { Ok(Output(input.0)) })
+    }
+}
+
+struct ContributedUnaryHandler;
+impl InterfaceHandler<Input, Output, TargetError> for ContributedUnaryHandler {
+    fn invoke(
+        &self,
+        _context: InterfaceHandlerContext,
+        input: Input,
+    ) -> InterfaceHandlerFuture<Output, TargetError> {
+        Box::pin(async move { Ok(Output(input.0 + 40)) })
+    }
+}
+
+struct RecordingBefore(Arc<Mutex<Vec<&'static str>>>);
+impl InterfaceBeforeHook<Input> for RecordingBefore {
+    fn before<'a>(
+        &'a self,
+        _context: InterfaceHookContext,
+        _input: &'a mut Input,
+    ) -> InterfaceBeforeHookFuture<'a> {
+        self.0.lock().unwrap().push("before");
+        Box::pin(async { Ok(()) })
+    }
+}
+
+struct RecordingAfter(Arc<Mutex<Vec<&'static str>>>);
+impl InterfaceAfterHook<Output> for RecordingAfter {
+    fn after<'a>(
+        &'a self,
+        _context: InterfaceHookContext,
+        _output: &'a Output,
+    ) -> InterfaceAfterHookFuture<'a> {
+        self.0.lock().unwrap().push("after");
+        Box::pin(async {})
+    }
+}
+
+struct RecordingCompletion(Arc<Mutex<Vec<&'static str>>>);
+impl InterfaceCompletionHook for RecordingCompletion {
+    fn completed(
+        &self,
+        _context: InterfaceHookContext,
+        _terminal: InterfaceInvocationTerminal,
+    ) -> InterfaceCompletionHookFuture<'_> {
+        self.0.lock().unwrap().push("completion");
+        Box::pin(async {})
     }
 }
 
@@ -336,6 +387,25 @@ fn review_registry_compiles_ordered_extension_plan_from_real_registrations() {
             Arc::new(UnaryHandler),
         )
         .unwrap();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    compiler
+        .bind_hook_plan(
+            definition.interface_id(),
+            Arc::new(
+                TypedInterfaceHookPlan::<Input, Output>::new(
+                    GraphFingerprint::new("graph:review").unwrap(),
+                )
+                .bind_before(
+                    PluginIdentity::new("review.before").unwrap(),
+                    Arc::new(RecordingBefore(Arc::clone(&events))),
+                )
+                .bind_after(
+                    PluginIdentity::new("review.after").unwrap(),
+                    Arc::new(RecordingAfter(events)),
+                ),
+            ),
+        )
+        .unwrap();
 
     let snapshot = compiler.compile().unwrap();
     let plan = snapshot
@@ -348,6 +418,179 @@ fn review_registry_compiles_ordered_extension_plan_from_real_registrations() {
         .fingerprint()
         .as_str()
         .starts_with("sha256:"));
+}
+
+#[tokio::test]
+async fn review_compiled_completion_binding_is_mandatory_and_cannot_be_skipped_by_invoke() {
+    let mut compiler = compiler();
+    let definition = definition("review.completion", InterfaceExecutionMode::Unary);
+    compiler.register_definition(definition.clone()).unwrap();
+    compiler
+        .register_binding(
+            ProtocolBinding::new(
+                BindingId::new("http.review.completion.v1").unwrap(),
+                definition.identity().clone(),
+                definition.contracts().clone(),
+                ProtocolProjection::http(RouteIdentity::new("POST", "/api/completion").unwrap()),
+            ),
+            plan("review.authn", "review.authz"),
+        )
+        .unwrap();
+    let plugin = PluginIdentity::new("review.completion-hook").unwrap();
+    compiler
+        .register_extension(
+            definition.interface_id(),
+            10,
+            InterfaceExtensionRegistration::new(
+                plugin.clone(),
+                InterfaceExtensionTier::HostExtension,
+                InterfaceExtensionPoint::Completion,
+                InterfaceExtensionPermission::ObserveCompletion,
+                InterfaceScope::Workspace,
+                InterfaceExtensionIsolation::TrustedInProcess,
+                [InterfaceExtensionFact::Terminal],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    compiler
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
+            definition.interface_id(),
+            HandlerReference::new("review.completion.handler").unwrap(),
+            Arc::new(UnaryHandler),
+        )
+        .unwrap();
+    let missing = compiler.compile().unwrap_err();
+    assert!(matches!(
+        missing,
+        RegistryCompilationError::MissingExecutableExtension(_, _, InterfaceExtensionPoint::Completion)
+    ));
+
+    let mut compiler = compiler();
+    compiler.register_definition(definition.clone()).unwrap();
+    compiler
+        .register_binding(
+            ProtocolBinding::new(
+                BindingId::new("http.review.completion.v1").unwrap(),
+                definition.identity().clone(),
+                definition.contracts().clone(),
+                ProtocolProjection::http(RouteIdentity::new("POST", "/api/completion").unwrap()),
+            ),
+            plan("review.authn", "review.authz"),
+        )
+        .unwrap();
+    compiler
+        .register_extension(
+            definition.interface_id(),
+            10,
+            InterfaceExtensionRegistration::new(
+                plugin.clone(),
+                InterfaceExtensionTier::HostExtension,
+                InterfaceExtensionPoint::Completion,
+                InterfaceExtensionPermission::ObserveCompletion,
+                InterfaceScope::Workspace,
+                InterfaceExtensionIsolation::TrustedInProcess,
+                [InterfaceExtensionFact::Terminal],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    compiler
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
+            definition.interface_id(),
+            HandlerReference::new("review.completion.handler").unwrap(),
+            Arc::new(UnaryHandler),
+        )
+        .unwrap();
+    let events = Arc::new(Mutex::new(Vec::new()));
+    compiler
+        .bind_hook_plan(
+            definition.interface_id(),
+            Arc::new(
+                TypedInterfaceHookPlan::<Input, Output>::new(
+                    GraphFingerprint::new("graph:review").unwrap(),
+                )
+                .bind_completion(plugin, Arc::new(RecordingCompletion(Arc::clone(&events)))),
+            ),
+        )
+        .unwrap();
+    let snapshot = compiler.compile().unwrap();
+    InterfaceInvocationKernel::new(Arc::new(Authorization("review.authz")))
+        .invoke::<Input, Output, TargetError>(
+            snapshot,
+            envelope(
+                "http.review.completion.v1",
+                InterfaceProtocol::Http,
+                "review.authn",
+            ),
+        )
+        .await
+        .unwrap();
+    assert_eq!(events.lock().unwrap().as_slice(), ["completion"]);
+}
+
+#[tokio::test]
+async fn review_host_extension_handler_is_the_real_exactly_one_effective_target() {
+    let mut compiler = compiler();
+    let definition = definition("review.handler-extension", InterfaceExecutionMode::Unary);
+    compiler.register_definition(definition.clone()).unwrap();
+    compiler
+        .register_binding(
+            ProtocolBinding::new(
+                BindingId::new("http.review.handler-extension.v1").unwrap(),
+                definition.identity().clone(),
+                definition.contracts().clone(),
+                ProtocolProjection::http(RouteIdentity::new("POST", "/api/handler-extension").unwrap()),
+            ),
+            plan("review.authn", "review.authz"),
+        )
+        .unwrap();
+    let plugin = PluginIdentity::new("review.handler-plugin").unwrap();
+    compiler
+        .register_extension(
+            definition.interface_id(),
+            10,
+            InterfaceExtensionRegistration::new(
+                plugin.clone(),
+                InterfaceExtensionTier::HostExtension,
+                InterfaceExtensionPoint::Handler,
+                InterfaceExtensionPermission::Handle,
+                InterfaceScope::Workspace,
+                InterfaceExtensionIsolation::TrustedInProcess,
+                [InterfaceExtensionFact::TypedInput],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    compiler
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
+            definition.interface_id(),
+            HandlerReference::new("review.handler-extension.handler").unwrap(),
+            Arc::new(UnaryHandler),
+        )
+        .unwrap();
+    compiler
+        .bind_extension_handler::<Input, Output, TargetError, UserPrincipal>(
+            definition.interface_id(),
+            plugin,
+            HandlerReference::new("review.handler-plugin.invoke").unwrap(),
+            TargetReference::new("review.handler-plugin.target").unwrap(),
+            Arc::new(ContributedUnaryHandler),
+        )
+        .unwrap();
+    let snapshot = compiler.compile().unwrap();
+    let outcome = InterfaceInvocationKernel::new(Arc::new(Authorization("review.authz")))
+        .invoke::<Input, Output, TargetError>(
+            snapshot,
+            envelope(
+                "http.review.handler-extension.v1",
+                InterfaceProtocol::Http,
+                "review.authn",
+            ),
+        )
+        .await
+        .unwrap();
+    assert_eq!(outcome.value(), &Output(44));
 }
 
 #[tokio::test]
@@ -366,11 +609,74 @@ async fn review_live_server_stream_finishes_after_events_with_one_runtime_pinned
             plan("review.authn", "review.authz"),
         )
         .unwrap();
+    for (order, plugin, point, permission, facts) in [
+        (
+            10,
+            "review.stream-before",
+            InterfaceExtensionPoint::Before,
+            InterfaceExtensionPermission::ObserveInput,
+            vec![InterfaceExtensionFact::TypedInput],
+        ),
+        (
+            20,
+            "review.stream-after",
+            InterfaceExtensionPoint::After,
+            InterfaceExtensionPermission::ObserveOutput,
+            vec![InterfaceExtensionFact::TypedOutput],
+        ),
+        (
+            30,
+            "review.stream-completion",
+            InterfaceExtensionPoint::Completion,
+            InterfaceExtensionPermission::ObserveCompletion,
+            vec![InterfaceExtensionFact::Terminal],
+        ),
+    ] {
+        compiler
+            .register_extension(
+                definition.interface_id(),
+                order,
+                InterfaceExtensionRegistration::new(
+                    PluginIdentity::new(plugin).unwrap(),
+                    InterfaceExtensionTier::HostExtension,
+                    point,
+                    permission,
+                    InterfaceScope::Workspace,
+                    InterfaceExtensionIsolation::TrustedInProcess,
+                    facts,
+                )
+                .unwrap(),
+            )
+            .unwrap();
+    }
     compiler
         .bind_stream_handler::<Input, StreamEvent, Output, TargetError, UserPrincipal>(
             definition.interface_id(),
             HandlerReference::new("review.stream.handler").unwrap(),
             Arc::new(StreamingHandler),
+        )
+        .unwrap();
+    let lifecycle = Arc::new(Mutex::new(Vec::new()));
+    compiler
+        .bind_hook_plan(
+            definition.interface_id(),
+            Arc::new(
+                TypedInterfaceHookPlan::<Input, Output>::new(
+                    GraphFingerprint::new("graph:review").unwrap(),
+                )
+                .bind_before(
+                    PluginIdentity::new("review.stream-before").unwrap(),
+                    Arc::new(RecordingBefore(Arc::clone(&lifecycle))),
+                )
+                .bind_after(
+                    PluginIdentity::new("review.stream-after").unwrap(),
+                    Arc::new(RecordingAfter(Arc::clone(&lifecycle))),
+                )
+                .bind_completion(
+                    PluginIdentity::new("review.stream-completion").unwrap(),
+                    Arc::new(RecordingCompletion(Arc::clone(&lifecycle))),
+                ),
+            ),
         )
         .unwrap();
     let snapshot = compiler.compile().unwrap();
@@ -397,6 +703,7 @@ async fn review_live_server_stream_finishes_after_events_with_one_runtime_pinned
         .unwrap();
     let (mut events, completion) = invocation.into_parts();
     assert_eq!(events.recv().await, Some(StreamEvent(4)));
+    lifecycle.lock().unwrap().push("event");
     assert!(events.recv().await.is_none());
     let terminal = completion.complete().await.unwrap();
     assert!(matches!(
@@ -404,6 +711,10 @@ async fn review_live_server_stream_finishes_after_events_with_one_runtime_pinned
         InterfaceStreamTerminal::Completed(Output(5))
     ));
     assert_eq!(terminal.receipt().attempt().unwrap().target(), &target);
+    assert_eq!(
+        lifecycle.lock().unwrap().as_slice(),
+        ["before", "event", "after", "completion"]
+    );
     assert_eq!(
         terminal.receipt().stages().collect::<Vec<_>>(),
         vec![
