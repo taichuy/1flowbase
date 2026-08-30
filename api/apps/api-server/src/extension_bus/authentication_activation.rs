@@ -157,14 +157,7 @@ impl AuthenticationAdapterFactoryRegistry {
         &mut self,
         bindings: impl IntoIterator<Item = AuthenticationAdapterFactoryBinding>,
     ) -> Result<()> {
-        for binding in bindings {
-            let adapter = binding.factory.adapter().clone();
-            self.factories.retain(|_, factory| {
-                factory.tier() != InterfaceExtensionTier::BuiltIn || factory.adapter() != &adapter
-            });
-            self.register(binding)?;
-        }
-        Ok(())
+        self.extend(bindings)
     }
 
     fn register(&mut self, binding: AuthenticationAdapterFactoryBinding) -> Result<()> {

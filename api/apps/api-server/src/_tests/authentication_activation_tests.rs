@@ -12,13 +12,13 @@ use control_plane::ports::SessionStore;
 use interface_runtime::{
     ActivatedAuthenticationAdapter, AuthenticationActivationIdentity,
     AuthenticationAdapterReference, InterfaceExtensionTier, PluginIdentity, PrincipalProfile,
-    UserPrincipal,
+    PublicPrincipal, UserPrincipal,
 };
 use tower::ServiceExt;
 
 use crate::extension_bus::{
     AuthenticationAdapterFactoryBinding, AuthenticationAdapterFactoryRegistry,
-    HostExtensionAuthenticationFactoryCatalog,
+    HostExtensionAuthenticationFactoryCatalog, PublicAuthenticationCredential,
 };
 
 use super::support::{login_and_capture_cookie, test_api_state_with_database_url};
@@ -131,8 +131,8 @@ async fn rr14_trusted_host_extension_factory_is_assembled_and_executes_success_r
     let bindings = catalog.activate(&[(manifest, contribution)]).unwrap();
     assert_eq!(bindings.len(), 1);
 
-    let mut registry = AuthenticationAdapterFactoryRegistry::default();
-    registry.extend(bindings).unwrap();
+    let mut registry = AuthenticationAdapterFactoryRegistry::built_in().unwrap();
+    registry.activate_host_extensions(bindings).unwrap();
     let principal: UserPrincipal = registry
         .authenticate(&host_activation(), HostCredential("accepted"))
         .await
@@ -158,6 +158,18 @@ async fn rr14_trusted_host_extension_factory_is_assembled_and_executes_success_r
         .to_string()
         .contains("credential contract mismatch"));
     assert_eq!(calls.load(Ordering::SeqCst), 2);
+
+    let public_activation = ActivatedAuthenticationAdapter::new(
+        PluginIdentity::new("api-server.public-authentication").unwrap(),
+        InterfaceExtensionTier::BuiltIn,
+        AuthenticationAdapterReference::new("api-server.public").unwrap(),
+        AuthenticationActivationIdentity::new("api-server.public.activation.v1").unwrap(),
+        PrincipalProfile::Public,
+    );
+    let _: PublicPrincipal = registry
+        .authenticate(&public_activation, PublicAuthenticationCredential)
+        .await
+        .expect("HostExtension activation must preserve unrelated built-in factories");
 }
 
 #[test]
