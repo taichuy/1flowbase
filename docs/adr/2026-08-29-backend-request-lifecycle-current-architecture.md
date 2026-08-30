@@ -12,6 +12,8 @@ Accepted and implemented on `beta` for #1944（Canonical Interface 生产闭环�
 - Fresh QA Assembly：`beta@c6728eebd509da8cd6866b00663ca5fc97d68bcc`
 - 文档 HEAD：`beta@f1d7cc5566ec13991cdd1641944d17874bc62243`
 - 正式证据：[`1944-interface-lifecycle-assembly-receipt.md`](../architecture/1944-interface-lifecycle-assembly-receipt.md)
+- Compatibility Route Family 迁移：[#1958](https://github.com/taichuy/1flowbase/issues/1958)，候选证据见
+  [`1958-compatibility-interface-migration-assembly-receipt.md`](../architecture/1958-compatibility-interface-migration-assembly-receipt.md)
 
 ## Context
 
@@ -148,6 +150,29 @@ Static Protocol Route
 - HostExtension Authentication 是可安装的可信 native 扩展，必须经过 manifest → Effective Graph → factory catalog → Registry → static Route；
 - 普通 RuntimeExtension/CapabilityPlugin 不能获取原始 credential，也不能注册 Authentication factory；
 - 零 contribution 时保持 BuiltIn 行为；缺失、多余、重复或 identity/contract 不匹配时在 publish 前 fail closed。
+
+### #1958 Compatibility Route Family 迁移候选
+
+#1958 在不改变协议和业务 owner 的前提下，把以下外部入口纵向装配到同一 Dynamic
+Interface Registry。该列表描述已装配候选，不提前代表集中 QA 或 Root AC 已结算：
+
+| Route family | Frozen binding / Principal | 保持不变的 owner |
+| --- | --- | --- |
+| OpenAI Chat / Responses / Compact blocking | typed HTTP binding / `ApplicationPrincipal` | 原 translation、Application Native、Runtime 与 HTTP projection |
+| OpenAI / Anthropic SSE | typed server-stream binding / `ApplicationPrincipal` | 原 event mapper、disconnect、terminal 与 Runtime generation |
+| Native / Responses WebSocket | typed server-stream binding / socket-retained `ApplicationPrincipal` | 原 frame DTO、resume/cancel 与 terminal projection |
+| Public sign-in mutation | typed unary binding / `PublicPrincipal` | `AuthKernel`、`SessionIssuer`、transaction、audit 与 Set-Cookie |
+| `/api/ex/*` sync/async | typed unary binding / `UserPrincipal` | session/API-key、CSRF、row scope、`WorkflowExtensionRunService` 与 Runtime dispatch |
+
+迁移后的生产约束：
+
+- 每个请求只从冻结 Binding 选择一次 Authentication factory；Route 不再直接重复认证；
+- compatibility blocking/stream 与 `/api/ex/*` 只存在一个 typed Handler 和一个业务执行路径；
+- SSE/WebSocket 只保留 sealed Principal/Actor，不在 stream 开始后用 raw bearer 重新认证；
+- Terminal Receipt 在 HTTP/SSE/WebSocket projection 前完成；
+- 旧 raw-token stream wrapper、route-local blocking/resume helper 和静默 fallback 不进入生产编译；
+- Internal/background worker 继续 HOLD，直到 Internal/System Principal、durable retry 和
+  acknowledgement 语义由独立 Delivery 批准。
 
 ## Decision
 

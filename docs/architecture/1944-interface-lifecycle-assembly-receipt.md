@@ -138,9 +138,12 @@ QA fix packets, all inside the approved boundary:
 | Application native run + SSE | PASS | Application/API-key/workspace/Actor identity, runtime dispatch and SSE event ordering |
 | MCP User API key | PASS | User API-key principal, JSON-RPC result/error/continuation behavior and server-delegated internal authorization without raw credentials |
 
-Compatibility APIs, `/api/ex`, WebSocket variants, sign-in mutation and background workers
-remain regression-only entries. They were not silently migrated and have no fallback or double
-write.
+Compatibility APIs、`/api/ex`、WebSocket variants 与 sign-in mutation 已由后续 Delivery
+[#1958](https://github.com/taichuy/1flowbase/issues/1958) 装配为 Canonical Interface 候选；其
+candidate-bound QA 和结算状态只以
+[`1958-compatibility-interface-migration-assembly-receipt.md`](1958-compatibility-interface-migration-assembly-receipt.md)
+为准。Internal/background workers 继续 HOLD，未伪造 Principal、retry 或 acknowledgement
+语义。
 
 ## Interface Extension Space
 
