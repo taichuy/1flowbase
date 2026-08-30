@@ -263,7 +263,7 @@ pub(crate) fn invocation_kernel(
     )))
 }
 
-pub async fn invoke_providers_view(
+pub(crate) async fn invoke_providers_view(
     state: Arc<ApiState>,
     credential: crate::extension_bus::ConsoleAuthenticationCredential,
     protocol: InterfaceProtocol,

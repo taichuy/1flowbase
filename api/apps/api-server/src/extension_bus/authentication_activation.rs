@@ -349,6 +349,13 @@ pub(crate) struct HostExtensionAuthenticationFactoryCatalog {
 }
 
 impl HostExtensionAuthenticationFactoryCatalog {
+    #[cfg_attr(
+        not(test),
+        allow(
+            dead_code,
+            reason = "production registration Port; the baseline installs no authentication HostExtension"
+        )
+    )]
     pub(crate) fn register(
         &mut self,
         library: impl Into<String>,
