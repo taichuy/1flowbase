@@ -4,7 +4,9 @@ import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 import {
+  NATIVE_ANT_DESIGN_ICONS_LOADERS_VIRTUAL_ID,
   collectAntDesignIconModuleSources,
+  generateNativeAntDesignIconsLoadersModule,
   generateNativeAntDesignIconsModule
 } from '../../../../../../build/native-ant-design-icons-modules';
 
@@ -13,17 +15,36 @@ describe('@ant-design/icons native module inventory', () => {
     const inventory = collectAntDesignIconModuleSources({
       projectRoot: process.cwd()
     });
-    const generatedModule = generateNativeAntDesignIconsModule(inventory);
-    const rootLoader = generatedModule.slice(
-      generatedModule.indexOf('async function loadRootModule()'),
-      generatedModule.indexOf(
-        'export const ANT_DESIGN_ICONS_MODULE_DEFINITIONS'
-      )
-    );
+    const generatedModule = generateNativeAntDesignIconsLoadersModule(inventory);
 
-    expect(rootLoader).toContain('Object.entries(leafLoaders)');
-    expect(rootLoader).toContain('lazy(load)');
-    expect(rootLoader).not.toContain('(await load()).default');
+    expect(generatedModule).toContain('Object.entries(leafLoaders)');
+    expect(generatedModule).toContain('lazy(load)');
+    expect(generatedModule).not.toContain('(await load()).default');
+  });
+
+  test('I1949-AC-001 keeps the icon leaf loader table outside the registry entry module', () => {
+    const inventory = collectAntDesignIconModuleSources({
+      projectRoot: process.cwd()
+    });
+    const generatedModule = generateNativeAntDesignIconsModule(inventory);
+
+    expect(generatedModule).not.toContain('const leafLoaders');
+    expect(generatedModule).not.toContain(
+      "import { lazy } from 'react'"
+    );
+    expect(generatedModule).toContain(
+      `import(${JSON.stringify(NATIVE_ANT_DESIGN_ICONS_LOADERS_VIRTUAL_ID)})`
+    );
+  });
+
+  test('I1949-AC-003 shares the loader-domain flight and clears rejected initialization', () => {
+    const inventory = collectAntDesignIconModuleSources({
+      projectRoot: process.cwd()
+    });
+    const generatedModule = generateNativeAntDesignIconsModule(inventory);
+
+    expect(generatedModule).toContain('loaderDomainPromise ??=');
+    expect(generatedModule).toContain('loaderDomainPromise = undefined');
   });
 
   test('I1945-AC-002/004 inventories every installed public icon leaf and excludes internal aliases', () => {

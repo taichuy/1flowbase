@@ -5,9 +5,13 @@ import type { Plugin } from 'vite';
 
 export const NATIVE_ANT_DESIGN_ICONS_MODULES_VIRTUAL_ID =
   'virtual:1flowbase-native-ant-design-icons-modules';
+export const NATIVE_ANT_DESIGN_ICONS_LOADERS_VIRTUAL_ID =
+  'virtual:1flowbase-native-ant-design-icons-loaders';
 
 const RESOLVED_VIRTUAL_ID =
   `\0${NATIVE_ANT_DESIGN_ICONS_MODULES_VIRTUAL_ID}`;
+const RESOLVED_LOADERS_VIRTUAL_ID =
+  `\0${NATIVE_ANT_DESIGN_ICONS_LOADERS_VIRTUAL_ID}`;
 const PACKAGE_NAME = '@ant-design/icons';
 const ROOT_EXPORTS = [
   'default',
@@ -38,14 +42,22 @@ export function nativeAntDesignIconsModulesPlugin({
     name: '1flowbase-native-ant-design-icons-modules',
     enforce: 'pre',
     resolveId(id) {
-      return id === NATIVE_ANT_DESIGN_ICONS_MODULES_VIRTUAL_ID
-        ? RESOLVED_VIRTUAL_ID
-        : undefined;
+      if (id === NATIVE_ANT_DESIGN_ICONS_MODULES_VIRTUAL_ID) {
+        return RESOLVED_VIRTUAL_ID;
+      }
+      if (id === NATIVE_ANT_DESIGN_ICONS_LOADERS_VIRTUAL_ID) {
+        return RESOLVED_LOADERS_VIRTUAL_ID;
+      }
+      return undefined;
     },
     load(id) {
-      return id === RESOLVED_VIRTUAL_ID
-        ? generateNativeAntDesignIconsModule(inventory)
-        : undefined;
+      if (id === RESOLVED_VIRTUAL_ID) {
+        return generateNativeAntDesignIconsModule(inventory);
+      }
+      if (id === RESOLVED_LOADERS_VIRTUAL_ID) {
+        return generateNativeAntDesignIconsLoadersModule(inventory);
+      }
+      return undefined;
     }
   };
 }
@@ -136,37 +148,14 @@ export function generateNativeAntDesignIconsModule(
   inventory: AntDesignIconModuleInventory
 ): string {
   return `
-import { lazy } from 'react';
+let loaderDomainPromise;
 
-const leafLoaders = {${inventory.modules
-    .map(
-      ({ loaderSource, moduleSource }) =>
-        `\n  ${JSON.stringify(moduleSource)}: () => import(${JSON.stringify(loaderSource)}),`
-    )
-    .join('')}\n};
-
-let rootModulePromise;
-
-async function loadRootModule() {
-  rootModulePromise ??= Promise.all([
-    import('@ant-design/icons/es/components/Icon'),
-    import('@ant-design/icons/es/components/IconFont'),
-    import('@ant-design/icons/es/components/Context'),
-    import('@ant-design/icons/es/components/twoTonePrimaryColor')
-  ]).then(([iconModule, iconFontModule, contextModule, twoToneModule]) =>
-    Object.fromEntries([
-      ['default', iconModule.default],
-      ['createFromIconfontCN', iconFontModule.default],
-      ['IconProvider', contextModule.default.Provider],
-      ['getTwoToneColor', twoToneModule.getTwoToneColor],
-      ['setTwoToneColor', twoToneModule.setTwoToneColor],
-      ...Object.entries(leafLoaders).map(([moduleSource, load]) => [
-        moduleSource.slice('@ant-design/icons/'.length),
-        lazy(load)
-      ])
-    ])
-  );
-  return rootModulePromise;
+async function loadLoaderDomain() {
+  loaderDomainPromise ??= import(${JSON.stringify(NATIVE_ANT_DESIGN_ICONS_LOADERS_VIRTUAL_ID)}).catch((error) => {
+    loaderDomainPromise = undefined;
+    throw error;
+  });
+  return loaderDomainPromise;
 }
 
 export const ANT_DESIGN_ICONS_MODULE_DEFINITIONS = Object.freeze([
@@ -184,6 +173,55 @@ export const ANT_DESIGN_ICONS_PACKAGE = Object.freeze(${JSON.stringify({
   })});
 
 export async function loadAntDesignIconsModule(moduleSource) {
+  const loaderDomain = await loadLoaderDomain();
+  return loaderDomain.loadAntDesignIconsModuleFromDomain(moduleSource);
+}
+`;
+}
+
+export function generateNativeAntDesignIconsLoadersModule(
+  inventory: AntDesignIconModuleInventory
+): string {
+  return `
+import { lazy } from 'react';
+
+const leafLoaders = {${inventory.modules
+    .map(
+      ({ loaderSource, moduleSource }) =>
+        `\n  ${JSON.stringify(moduleSource)}: () => import(${JSON.stringify(loaderSource)}),`
+    )
+    .join('')}\n};
+
+let rootModulePromise;
+
+async function loadRootModule() {
+  rootModulePromise ??= Promise.all([
+    import('@ant-design/icons/es/components/Icon'),
+    import('@ant-design/icons/es/components/IconFont'),
+    import('@ant-design/icons/es/components/Context'),
+    import('@ant-design/icons/es/components/twoTonePrimaryColor')
+  ])
+    .then(([iconModule, iconFontModule, contextModule, twoToneModule]) =>
+      Object.fromEntries([
+        ['default', iconModule.default],
+        ['createFromIconfontCN', iconFontModule.default],
+        ['IconProvider', contextModule.default.Provider],
+        ['getTwoToneColor', twoToneModule.getTwoToneColor],
+        ['setTwoToneColor', twoToneModule.setTwoToneColor],
+        ...Object.entries(leafLoaders).map(([moduleSource, load]) => [
+          moduleSource.slice('@ant-design/icons/'.length),
+          lazy(load)
+        ])
+      ])
+    )
+    .catch((error) => {
+      rootModulePromise = undefined;
+      throw error;
+    });
+  return rootModulePromise;
+}
+
+export async function loadAntDesignIconsModuleFromDomain(moduleSource) {
   if (moduleSource === '@ant-design/icons') return loadRootModule();
   const load = leafLoaders[moduleSource];
   if (!load) throw new Error('@ant-design/icons module is not installed or public: ' + moduleSource + '.');

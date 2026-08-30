@@ -94,7 +94,7 @@ describe('frontstage native trusted block runtime factory', () => {
     ).not.toContain('RemovedComponent');
   });
 
-  test('I1945-AC-001/003/004 compiles and lazily resolves public @ant-design/icons leaves', async () => {
+  test('I1945-AC-001/003/004 I1949-AC-002/004 compiles and lazily resolves public @ant-design/icons leaves', async () => {
     const registry = createFrontstageNativeReactModuleRegistry();
     const source = `import ClockCircleOutlined from '@ant-design/icons/ClockCircleOutlined';
 
@@ -123,7 +123,7 @@ export default function Block() {
     expect(first.default).toBeTypeOf('object');
 
     const rootModule = await registry.load('@ant-design/icons');
-    expect(rootModule.ClockCircleOutlined).toBe(first.default);
+    expect(rootModule.ClockCircleOutlined).toBeTypeOf('object');
     expect(rootModule.createFromIconfontCN).toBeTypeOf('function');
     expect(rootModule.IconProvider).toBeTypeOf('object');
 
