@@ -1,15 +1,17 @@
 use std::sync::Arc;
 
 use crate::{
-    AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
-    AuthorizationOperation, BindingId, ContractIdentity, GraphFingerprint, HandlerReference,
-    InterfaceAccess, InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceContract,
-    InterfaceContracts, InterfaceDefinition, InterfaceErrorPolicy, InterfaceExecution,
-    InterfaceExecutionMode, InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture,
-    InterfaceId, InterfaceIdentity, InterfaceLifecycle, InterfaceOwner, InterfaceScope,
-    InterfaceTargetFailure, InterfaceVersion, InvocationAdapterPlan, PrincipalProfile,
-    ProtocolBinding, ProtocolProjection, RegistryCompilationError, RegistryCompiler, RouteIdentity,
-    TargetReference, UserPrincipal,
+    ActivatedAuthenticationAdapter, AdmissionAdapterReference, AuthenticationActivationIdentity,
+    AuthenticationAdapterReference, AuthorizationAdapterReference, AuthorizationOperation,
+    BindingId, ContractIdentity, GraphFingerprint, HandlerReference, InterfaceAccess,
+    InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceContract, InterfaceContracts,
+    InterfaceDefinition, InterfaceErrorPolicy, InterfaceExecution, InterfaceExecutionMode,
+    InterfaceExtensionIsolation, InterfaceExtensionPermission, InterfaceExtensionPoint,
+    InterfaceExtensionRegistration, InterfaceExtensionTier, InterfaceHandler,
+    InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceIdentity,
+    InterfaceLifecycle, InterfaceOwner, InterfaceScope, InterfaceTargetFailure, InterfaceVersion,
+    InvocationAdapterPlan, PrincipalProfile, ProtocolBinding, ProtocolProjection,
+    RegistryCompilationError, RegistryCompiler, RouteIdentity, TargetReference, UserPrincipal,
 };
 
 struct Input;
@@ -128,8 +130,40 @@ fn compiler() -> RegistryCompiler {
     )
 }
 
+fn activate_authentication(
+    compiler: &mut RegistryCompiler,
+    interface_id: &str,
+    profile: PrincipalProfile,
+) {
+    let plugin = crate::PluginIdentity::new("test.authentication").unwrap();
+    compiler
+        .register_authentication_adapter(
+            &InterfaceId::new(interface_id).unwrap(),
+            1,
+            InterfaceExtensionRegistration::new(
+                plugin.clone(),
+                InterfaceExtensionTier::BuiltIn,
+                InterfaceExtensionPoint::AuthenticationAdapter,
+                InterfaceExtensionPermission::Authenticate,
+                InterfaceScope::System,
+                InterfaceExtensionIsolation::TrustedInProcess,
+                [],
+            )
+            .unwrap(),
+            ActivatedAuthenticationAdapter::new(
+                plugin,
+                InterfaceExtensionTier::BuiltIn,
+                AuthenticationAdapterReference::new("test.authn").unwrap(),
+                AuthenticationActivationIdentity::new("test.authn.activation.v1").unwrap(),
+                profile,
+            ),
+        )
+        .unwrap();
+}
+
 fn register_complete(compiler: &mut RegistryCompiler, id: &str, binding_id: &str, path: &str) {
     compiler.register_definition(definition(id)).unwrap();
+    activate_authentication(compiler, id, PrincipalProfile::User);
     compiler
         .register_binding(binding(binding_id, id, path), adapter_plan())
         .unwrap();
@@ -317,6 +351,7 @@ fn rejects_unknown_operation_inactive_owner_and_binding_contract_or_version_mism
     version
         .register_definition(definition("test.version"))
         .unwrap();
+    activate_authentication(&mut version, "test.version", PrincipalProfile::User);
     let mut wrong_identity = identity("test.version");
     wrong_identity = InterfaceIdentity::new(
         wrong_identity.interface_id().clone(),
@@ -351,6 +386,7 @@ fn rejects_unknown_operation_inactive_owner_and_binding_contract_or_version_mism
     contract
         .register_definition(definition("test.contract"))
         .unwrap();
+    activate_authentication(&mut contract, "test.contract", PrincipalProfile::User);
     contract
         .register_binding(
             ProtocolBinding::new(

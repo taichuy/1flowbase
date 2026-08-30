@@ -972,10 +972,15 @@ pub async fn create_native_run(
         .map_err(|_| native_error(NativeRunValidationError::NotAuthenticated))?;
     let principal = interface_application_principal(&api_actor)?;
     let application_id = principal.application_id();
-    let snapshot = state
-        .extension_boot_snapshot
-        .as_ref()
-        .and_then(|boot| boot.interface_registry())
+    let boot_snapshot = state.extension_boot_snapshot.as_ref().ok_or_else(|| {
+        NativeApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "interface_registry_unavailable",
+            "native run interface is unavailable",
+        )
+    })?;
+    let snapshot = boot_snapshot
+        .interface_registry()
         .map(|registry| registry.snapshot())
         .ok_or_else(|| {
             NativeApiError::new(
@@ -992,12 +997,32 @@ pub async fn create_native_run(
         "blocking" => native_interface::BLOCKING_BINDING_ID,
         _ => native_interface::ASYNC_BINDING_ID,
     };
+    let binding_id =
+        interface_runtime::BindingId::new(binding_id).expect("static binding id is valid");
+    let activated_authentication = snapshot.authentication(&binding_id).ok_or_else(|| {
+        NativeApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "authentication_activation_unavailable",
+            "native authentication activation is unavailable",
+        )
+    })?;
+    let principal = boot_snapshot
+        .establish_principal(activated_authentication, principal)
+        .map_err(|_| {
+            NativeApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "authentication_activation_unavailable",
+                "native authentication activation is unavailable",
+            )
+        })?;
+    let authentication_activation = activated_authentication.activation().clone();
     let envelope = InvocationEnvelope::with_principal(
         InvocationLineage::root(InvocationId::now_v7()),
-        interface_runtime::BindingId::new(binding_id).expect("static binding id is valid"),
+        binding_id,
         InterfaceProtocol::Http,
         interface_runtime::AuthenticationAdapterReference::new("api-server.application-api-key")
             .expect("static adapter is valid"),
+        authentication_activation,
         principal,
         None,
         ApplicationNativeRunInput {

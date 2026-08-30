@@ -1,6 +1,8 @@
+mod authentication_activation;
 mod boot_snapshot;
 mod input_assembly;
 
+pub(crate) use authentication_activation::AuthenticationAdapterFactoryRegistry;
 pub(crate) use boot_snapshot::DurableHostInfrastructureProvidersViewQuery;
 pub use boot_snapshot::{
     EffectiveExtensionPlan, ExtensionBootSnapshot, EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1,

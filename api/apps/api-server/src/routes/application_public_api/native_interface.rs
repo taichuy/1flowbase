@@ -265,6 +265,33 @@ pub(crate) fn compile_registry(
             InterfaceLifecycle::BootSnapshot,
             owner.clone(),
         ))?;
+        compiler.register_authentication_adapter(
+            &id,
+            1,
+            interface_runtime::InterfaceExtensionRegistration::new(
+                interface_runtime::PluginIdentity::new("api-server.application-authentication")
+                    .expect("static plugin is valid"),
+                interface_runtime::InterfaceExtensionTier::BuiltIn,
+                interface_runtime::InterfaceExtensionPoint::AuthenticationAdapter,
+                interface_runtime::InterfaceExtensionPermission::Authenticate,
+                InterfaceScope::Workspace,
+                interface_runtime::InterfaceExtensionIsolation::TrustedInProcess,
+                [],
+            )
+            .expect("built-in authentication registration is valid"),
+            interface_runtime::ActivatedAuthenticationAdapter::new(
+                interface_runtime::PluginIdentity::new("api-server.application-authentication")
+                    .expect("static plugin is valid"),
+                interface_runtime::InterfaceExtensionTier::BuiltIn,
+                AuthenticationAdapterReference::new("api-server.application-api-key")
+                    .expect("static adapter is valid"),
+                interface_runtime::AuthenticationActivationIdentity::new(
+                    "api-server.application-api-key.activation.v1",
+                )
+                .expect("static activation is valid"),
+                interface_runtime::PrincipalProfile::Application,
+            ),
+        )?;
         compiler.register_binding(
             ProtocolBinding::new(
                 BindingId::new(binding_id).expect("static binding is valid"),

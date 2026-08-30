@@ -68,7 +68,9 @@ test('Delivery 1944 exposes the approved typed interface facade without infrastr
     .flatMap((match) => match[1].split(',').map((symbol) => symbol.trim()).filter(Boolean))
     .sort();
   const requiredSymbols = [
+    'ActivatedAuthenticationAdapter',
     'ApplicationPrincipal',
+    'AuthenticationActivationIdentity',
     'CanonicalInvocationResult',
     'CompiledInvocationPlan',
     'CompiledInterfaceRegistry',
@@ -77,6 +79,8 @@ test('Delivery 1944 exposes the approved typed interface facade without infrastr
     'ExecutionTargetPin',
     'GraphFingerprint',
     'InterfaceDefinition',
+    'InterfaceAdmissionContribution',
+    'InterfaceAuthorizationContribution',
     'InterfaceExtensionPoint',
     'InterfaceExtensionRegistration',
     'InterfaceHandler',
@@ -89,10 +93,16 @@ test('Delivery 1944 exposes the approved typed interface facade without infrastr
     'PrincipalSummary',
     'ProtocolBinding',
     'PublicPrincipal',
+    'TypedInterfaceAdmissionPlan',
+    'TypedInterfaceAuthorizationPlan',
+    'TypedInterfaceDefinitionContribution',
     'UserPrincipal',
   ].sort();
 
   assert.deepEqual(declaredModules, [
+    'authentication',
+    'contribution',
+    'decision',
     'extension',
     'hook',
     'identity',
@@ -108,6 +118,31 @@ test('Delivery 1944 exposes the approved typed interface facade without infrastr
   assert.match(facade, /pub use invocation::\{/u);
   assert.match(facade, /pub use hook::\{/u);
   assert.match(facade, /pub use registry::\{/u);
+});
+
+test('Delivery 1944 routes cannot inject decision or hook plans and plugin decisions only see bounded facts', () => {
+  const kernel = read('api/crates/interface-runtime/src/invocation.rs');
+  const decision = read('api/crates/interface-runtime/src/decision.rs');
+  const routes = [
+    'api/apps/api-server/src/routes/identity/auth.rs',
+    'api/apps/api-server/src/routes/application_public_api/native.rs',
+    'api/apps/api-server/src/routes/mcp_protocol.rs',
+    'api/apps/api-server/src/routes/settings/host_infrastructure/interface_operation.rs',
+  ].map(read).join('\n');
+
+  assert.doesNotMatch(
+    kernel,
+    /pub async fn invoke_with_(?:hook|authorization|admission)_plan/u,
+  );
+  assert.doesNotMatch(
+    routes,
+    /invoke_with_(?:hook|authorization|admission)_plan/u,
+  );
+  assert.doesNotMatch(
+    decision,
+    /ActorContext|Cookie|HeaderMap|bearer_token|ApiState|MainDurableStore|HostInfrastructureRegistry|RuntimeHost/u,
+  );
+  assert.match(decision, /principal:\s*PrincipalSummary/u);
 });
 
 test('Delivery 1944 typed production handlers do not import request or host capabilities', () => {

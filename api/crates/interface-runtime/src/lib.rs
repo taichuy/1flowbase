@@ -1,5 +1,8 @@
 //! Protocol-independent active interface definitions and invocation contracts.
 
+mod authentication;
+mod contribution;
+mod decision;
 mod extension;
 mod hook;
 mod identity;
@@ -14,8 +17,9 @@ pub use hook::{
     InterfaceFailureHook, InterfaceFailureHookFuture, InterfaceHookContext, TypedInterfaceHookPlan,
 };
 pub use identity::{
-    AdmissionAdapterReference, ArtifactIdentity, AuthenticationAdapterReference,
-    AuthorizationAdapterReference, AuthorizationOperation, BindingFingerprint, BindingId,
+    AdmissionAdapterReference, ArtifactIdentity, AuthenticationActivationIdentity,
+    AuthenticationAdapterReference, AuthorizationAdapterReference,
+    AuthorizationDecisionFingerprint, AuthorizationOperation, BindingFingerprint, BindingId,
     ContractIdentity, ExtensionPlanFingerprint, GraphFingerprint, HandlerReference, IdentityError,
     InterfaceId, InterfaceOwner, InterfaceVersion, PlanFingerprint, PluginIdentity,
     RegistryFingerprint, RouteIdentity, RuntimeGeneration, RuntimeTargetIdentity, TargetReference,
@@ -55,6 +59,18 @@ pub use stream::{
 
 #[cfg(test)]
 mod _tests;
+pub use authentication::ActivatedAuthenticationAdapter;
+pub use contribution::{
+    ContributedProtocolBinding, DefinitionContributionBindingError,
+    TypedInterfaceDefinitionContribution, TypedInterfaceStreamDefinitionContribution,
+};
+pub use decision::{
+    InterfaceAdmissionContribution, InterfaceAdmissionContributionError,
+    InterfaceAdmissionContributionFuture, InterfaceAdmissionContributionRequest,
+    InterfaceAuthorizationContribution, InterfaceAuthorizationContributionError,
+    InterfaceAuthorizationContributionFuture, InterfaceAuthorizationContributionRequest,
+    TypedInterfaceAdmissionPlan, TypedInterfaceAuthorizationPlan,
+};
 pub use extension::{
     compile_effective_handler, CompiledInterfaceExtensionPlan, InterfaceExtensionCompilationError,
     InterfaceExtensionFact, InterfaceExtensionIsolation, InterfaceExtensionPermission,

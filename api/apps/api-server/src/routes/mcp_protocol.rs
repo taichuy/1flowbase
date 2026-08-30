@@ -159,26 +159,36 @@ async fn handle_mcp_request(
             })
             .collect();
     }
-    let snapshot = state
+    let boot_snapshot = state
         .extension_boot_snapshot
         .as_ref()
-        .and_then(|boot| boot.interface_registry())
+        .ok_or_else(|| anyhow::anyhow!("extension boot snapshot is unavailable"))?;
+    let snapshot = boot_snapshot
+        .interface_registry()
         .ok_or_else(|| anyhow::anyhow!("interface registry is unavailable"))?
         .snapshot();
+    let binding_id = interface_runtime::BindingId::new("mcp.user-api-key.invoke.v1")
+        .expect("static binding id is valid");
+    let activated_authentication = snapshot
+        .authentication(&binding_id)
+        .ok_or_else(|| anyhow::anyhow!("MCP authentication activation is unavailable"))?;
+    let principal = boot_snapshot
+        .establish_principal(activated_authentication, context.interface_principal())?;
+    let authentication_activation = activated_authentication.activation().clone();
     let outcome =
         InterfaceInvocationKernel::new(Arc::new(interface_operation::McpInvocationAuthorization))
             .invoke::<McpInvocationInput, McpInvocationOutput, McpInvocationTargetError>(
                 snapshot,
                 InvocationEnvelope::with_principal(
                     InvocationLineage::root(InvocationId::now_v7()),
-                    interface_runtime::BindingId::new("mcp.user-api-key.invoke.v1")
-                        .expect("static binding id is valid"),
+                    binding_id,
                     InterfaceProtocol::Mcp,
                     interface_runtime::AuthenticationAdapterReference::new(
                         "api-server.user-api-key",
                     )
                     .expect("static adapter is valid"),
-                    context.interface_principal(),
+                    authentication_activation,
+                    principal,
                     None,
                     input,
                 ),

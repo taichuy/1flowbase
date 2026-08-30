@@ -6,16 +6,20 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use crate::contribution::ErasedDefinitionContribution;
+use crate::decision::ErasedInterfaceDecisionPlan;
 use crate::hook::ErasedInterfaceHookPlan;
 use crate::{
-    compile_effective_handler, AdmissionAdapterReference, AuthenticationAdapterReference,
-    AuthorizationAdapterReference, AuthorizationOperation, BindingFingerprint, BindingId,
-    CompiledInterfaceExtensionPlan, ContractIdentity, ExecutionAttempt, GraphFingerprint,
-    HandlerReference, InterfaceExtensionPoint, InterfaceExtensionRegistration,
-    InterfaceHandlerCandidate, InterfaceId, InterfaceOwner, InterfaceStreamHandler,
-    InterfaceTargetFailure, InterfaceVersion, InvocationId, InvocationPrincipal, PlanFingerprint,
-    PluginIdentity, PrincipalProfile, PrincipalSummary, RegistryFingerprint, RouteIdentity,
-    TargetReference, TypedInterfaceHookPlan, UserPrincipal,
+    compile_effective_handler, ActivatedAuthenticationAdapter, AdmissionAdapterReference,
+    AuthenticationAdapterReference, AuthorizationAdapterReference, AuthorizationOperation,
+    BindingFingerprint, BindingId, CompiledInterfaceExtensionPlan, ContractIdentity,
+    ExecutionAttempt, GraphFingerprint, HandlerReference, InterfaceExtensionPoint,
+    InterfaceExtensionRegistration, InterfaceHandlerCandidate, InterfaceId, InterfaceOwner,
+    InterfaceStreamHandler, InterfaceTargetFailure, InterfaceVersion, InvocationId,
+    InvocationPrincipal, PlanFingerprint, PluginIdentity, PrincipalProfile, PrincipalSummary,
+    RegistryFingerprint, RouteIdentity, TargetReference, TypedInterfaceAdmissionPlan,
+    TypedInterfaceAuthorizationPlan, TypedInterfaceDefinitionContribution, TypedInterfaceHookPlan,
+    TypedInterfaceStreamDefinitionContribution, UserPrincipal,
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -551,8 +555,11 @@ pub struct CompiledInvocationPlan {
     binding: ProtocolBinding,
     binding_fingerprint: BindingFingerprint,
     adapter_plan: InvocationAdapterPlan,
+    authentication: ActivatedAuthenticationAdapter,
     extension_plan: CompiledInterfaceExtensionPlan,
     executable_extensions: Option<Arc<dyn ErasedInterfaceHookPlan>>,
+    authorization_extensions: Option<Arc<dyn ErasedInterfaceDecisionPlan>>,
+    admission_extensions: Option<Arc<dyn ErasedInterfaceDecisionPlan>>,
     effective_handler: InterfaceHandlerCandidate,
     fingerprint: PlanFingerprint,
 }
@@ -565,6 +572,7 @@ impl std::fmt::Debug for CompiledInvocationPlan {
             .field("binding", &self.binding)
             .field("binding_fingerprint", &self.binding_fingerprint)
             .field("adapter_plan", &self.adapter_plan)
+            .field("authentication", &self.authentication)
             .field("extension_plan", &self.extension_plan)
             .field("effective_handler", &self.effective_handler)
             .field("fingerprint", &self.fingerprint)
@@ -589,6 +597,10 @@ impl CompiledInvocationPlan {
         &self.adapter_plan
     }
 
+    pub fn authentication(&self) -> &ActivatedAuthenticationAdapter {
+        &self.authentication
+    }
+
     pub fn extension_plan(&self) -> &CompiledInterfaceExtensionPlan {
         &self.extension_plan
     }
@@ -610,6 +622,25 @@ impl CompiledInvocationPlan {
             .as_ref()?
             .as_any()
             .downcast_ref::<TypedInterfaceHookPlan<I, O>>()
+    }
+
+    pub(crate) fn authorization_plan<I, O>(&self) -> Option<&TypedInterfaceAuthorizationPlan<I, O>>
+    where
+        I: InterfaceContract,
+        O: InterfaceContract,
+    {
+        self.authorization_extensions
+            .as_ref()?
+            .as_any()
+            .downcast_ref()
+    }
+
+    pub(crate) fn admission_plan<I, O>(&self) -> Option<&TypedInterfaceAdmissionPlan<I, O>>
+    where
+        I: InterfaceContract,
+        O: InterfaceContract,
+    {
+        self.admission_extensions.as_ref()?.as_any().downcast_ref()
     }
 
     pub fn fingerprint(&self) -> &PlanFingerprint {
@@ -861,6 +892,20 @@ pub enum RegistryCompilationError {
     ExtensionGraphFingerprintMismatch(InterfaceId),
     #[error("interface {0} executable hook input/output contract does not match its definition")]
     HookContractMismatch(InterfaceId),
+    #[error("interface {0} executable {1:?} decision contract does not match its definition")]
+    DecisionContractMismatch(InterfaceId, InterfaceExtensionPoint),
+    #[error("interface {0} definition registration has no typed contribution binding")]
+    MissingDefinitionContribution(InterfaceId),
+    #[error("interface {0} has an unregistered typed definition contribution binding")]
+    UnexpectedDefinitionContribution(InterfaceId),
+    #[error("interface {0} authentication registration has no activated adapter binding")]
+    MissingAuthenticationActivation(InterfaceId),
+    #[error("interface {0} has an unregistered authentication activation binding")]
+    UnexpectedAuthenticationActivation(InterfaceId),
+    #[error("interface {0} authentication adapter is activated more than once")]
+    DuplicateAuthenticationActivation(InterfaceId),
+    #[error("interface {0} authentication activation identity does not match its registration or binding")]
+    AuthenticationActivationMismatch(InterfaceId),
     #[error(transparent)]
     Extension(#[from] crate::InterfaceExtensionCompilationError),
 }
@@ -869,6 +914,12 @@ pub struct RegistryCompiler {
     graph_fingerprint: GraphFingerprint,
     known_operations: BTreeSet<AuthorizationOperation>,
     active_owners: BTreeSet<InterfaceOwner>,
+    definition_contributions: Vec<(
+        u32,
+        InterfaceExtensionRegistration,
+        Arc<dyn ErasedDefinitionContribution>,
+    )>,
+    compiled_definition_contributions: BTreeMap<InterfaceId, PluginIdentity>,
     definitions: BTreeMap<InterfaceId, InterfaceDefinition>,
     protocol_bindings: BTreeMap<BindingId, (ProtocolBinding, InvocationAdapterPlan)>,
     routes: BTreeMap<RouteIdentity, BindingId>,
@@ -876,10 +927,22 @@ pub struct RegistryCompiler {
     extension_handler_bindings:
         BTreeMap<InterfaceId, BTreeMap<PluginIdentity, ContributedInterfaceHandlerBinding>>,
     hook_bindings: BTreeMap<InterfaceId, Arc<dyn ErasedInterfaceHookPlan>>,
+    authorization_bindings: BTreeMap<InterfaceId, Arc<dyn ErasedInterfaceDecisionPlan>>,
+    admission_bindings: BTreeMap<InterfaceId, Arc<dyn ErasedInterfaceDecisionPlan>>,
     extensions: BTreeMap<InterfaceId, Vec<(u32, InterfaceExtensionRegistration)>>,
+    authentication_activations:
+        BTreeMap<(InterfaceId, AuthenticationAdapterReference), ActivatedAuthenticationAdapter>,
 }
 
 impl RegistryCompiler {
+    fn has_interface_input(&self, interface_id: &InterfaceId) -> bool {
+        self.definitions.contains_key(interface_id)
+            || self
+                .definition_contributions
+                .iter()
+                .any(|(_, _, binding)| binding.definition().interface_id() == interface_id)
+    }
+
     pub fn new(
         graph_fingerprint: GraphFingerprint,
         known_operations: impl IntoIterator<Item = AuthorizationOperation>,
@@ -889,14 +952,76 @@ impl RegistryCompiler {
             graph_fingerprint,
             known_operations: known_operations.into_iter().collect(),
             active_owners: active_owners.into_iter().collect(),
+            definition_contributions: Vec::new(),
+            compiled_definition_contributions: BTreeMap::new(),
             definitions: BTreeMap::new(),
             protocol_bindings: BTreeMap::new(),
             routes: BTreeMap::new(),
             handler_bindings: BTreeMap::new(),
             extension_handler_bindings: BTreeMap::new(),
             hook_bindings: BTreeMap::new(),
+            authorization_bindings: BTreeMap::new(),
+            admission_bindings: BTreeMap::new(),
             extensions: BTreeMap::new(),
+            authentication_activations: BTreeMap::new(),
         }
+    }
+
+    pub fn register_definition_contribution<I, O, E, P>(
+        &mut self,
+        order: u32,
+        registration: InterfaceExtensionRegistration,
+        contribution: Arc<TypedInterfaceDefinitionContribution<I, O, E, P>>,
+    ) where
+        I: InterfaceContract,
+        O: InterfaceContract,
+        E: InterfaceContract,
+        P: InvocationPrincipal,
+    {
+        self.definition_contributions
+            .push((order, registration, contribution));
+    }
+
+    pub fn register_stream_definition_contribution<I, S, O, E, P>(
+        &mut self,
+        order: u32,
+        registration: InterfaceExtensionRegistration,
+        contribution: Arc<TypedInterfaceStreamDefinitionContribution<I, S, O, E, P>>,
+    ) where
+        I: InterfaceContract,
+        S: InterfaceContract,
+        O: InterfaceContract,
+        E: InterfaceContract,
+        P: InvocationPrincipal,
+    {
+        self.definition_contributions
+            .push((order, registration, contribution));
+    }
+
+    pub fn bind_authentication_activation(
+        &mut self,
+        interface_id: InterfaceId,
+        activation: ActivatedAuthenticationAdapter,
+    ) -> Result<(), RegistryCompilationError> {
+        let key = (interface_id.clone(), activation.adapter().clone());
+        if self.authentication_activations.contains_key(&key) {
+            return Err(RegistryCompilationError::DuplicateAuthenticationActivation(
+                interface_id,
+            ));
+        }
+        self.authentication_activations.insert(key, activation);
+        Ok(())
+    }
+
+    pub fn register_authentication_adapter(
+        &mut self,
+        interface_id: &InterfaceId,
+        order: u32,
+        registration: InterfaceExtensionRegistration,
+        activation: ActivatedAuthenticationAdapter,
+    ) -> Result<(), RegistryCompilationError> {
+        self.register_extension(interface_id, order, registration)?;
+        self.bind_authentication_activation(interface_id.clone(), activation)
     }
 
     pub fn register_definition(
@@ -933,6 +1058,10 @@ impl RegistryCompiler {
             .get(interface_id)
             .ok_or_else(|| RegistryCompilationError::UnknownInterface(interface_id.clone()))?;
         self.register_definition(definition.clone())?;
+        if let Some(plugin) = snapshot.definition_contributions.get(interface_id) {
+            self.compiled_definition_contributions
+                .insert(interface_id.clone(), plugin.clone());
+        }
         for (binding_id, binding) in snapshot
             .protocol_bindings
             .iter()
@@ -945,6 +1074,16 @@ impl RegistryCompiler {
                 .adapter_plan()
                 .clone();
             self.register_binding(binding.clone(), adapter_plan)?;
+            let authentication = snapshot
+                .plans
+                .get(binding_id)
+                .expect("compiled binding must own an invocation plan")
+                .authentication()
+                .clone();
+            self.authentication_activations.insert(
+                (interface_id.clone(), authentication.adapter().clone()),
+                authentication,
+            );
         }
         let plan = snapshot
             .plan_for_interface(interface_id)
@@ -965,6 +1104,14 @@ impl RegistryCompiler {
         if let Some(hooks) = &plan.executable_extensions {
             self.hook_bindings
                 .insert(interface_id.clone(), Arc::clone(hooks));
+        }
+        if let Some(authorization) = &plan.authorization_extensions {
+            self.authorization_bindings
+                .insert(interface_id.clone(), Arc::clone(authorization));
+        }
+        if let Some(admission) = &plan.admission_extensions {
+            self.admission_bindings
+                .insert(interface_id.clone(), Arc::clone(admission));
         }
         if plan.effective_handler().plugin().as_str() != "builtin.interface-handler" {
             self.extension_handler_bindings
@@ -1015,7 +1162,7 @@ impl RegistryCompiler {
         order: u32,
         registration: InterfaceExtensionRegistration,
     ) -> Result<(), RegistryCompilationError> {
-        if !self.definitions.contains_key(interface_id) {
+        if !self.has_interface_input(interface_id) {
             return Err(RegistryCompilationError::UnknownInterface(
                 interface_id.clone(),
             ));
@@ -1036,7 +1183,7 @@ impl RegistryCompiler {
         I: InterfaceContract,
         O: InterfaceContract,
     {
-        if !self.definitions.contains_key(interface_id) {
+        if !self.has_interface_input(interface_id) {
             return Err(RegistryCompilationError::UnknownInterface(
                 interface_id.clone(),
             ));
@@ -1047,6 +1194,58 @@ impl RegistryCompiler {
             ));
         }
         self.hook_bindings.insert(interface_id.clone(), hooks);
+        Ok(())
+    }
+
+    pub fn bind_authorization_plan<I, O>(
+        &mut self,
+        interface_id: &InterfaceId,
+        plan: Arc<TypedInterfaceAuthorizationPlan<I, O>>,
+    ) -> Result<(), RegistryCompilationError>
+    where
+        I: InterfaceContract,
+        O: InterfaceContract,
+    {
+        if !self.has_interface_input(interface_id) {
+            return Err(RegistryCompilationError::UnknownInterface(
+                interface_id.clone(),
+            ));
+        }
+        if self
+            .authorization_bindings
+            .insert(interface_id.clone(), plan)
+            .is_some()
+        {
+            return Err(RegistryCompilationError::DuplicateHookPlan(
+                interface_id.clone(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn bind_admission_plan<I, O>(
+        &mut self,
+        interface_id: &InterfaceId,
+        plan: Arc<TypedInterfaceAdmissionPlan<I, O>>,
+    ) -> Result<(), RegistryCompilationError>
+    where
+        I: InterfaceContract,
+        O: InterfaceContract,
+    {
+        if !self.has_interface_input(interface_id) {
+            return Err(RegistryCompilationError::UnknownInterface(
+                interface_id.clone(),
+            ));
+        }
+        if self
+            .admission_bindings
+            .insert(interface_id.clone(), plan)
+            .is_some()
+        {
+            return Err(RegistryCompilationError::DuplicateHookPlan(
+                interface_id.clone(),
+            ));
+        }
         Ok(())
     }
 
@@ -1113,7 +1312,7 @@ impl RegistryCompiler {
         target: TargetReference,
         binding: Arc<dyn ErasedInterfaceBinding>,
     ) -> Result<(), RegistryCompilationError> {
-        if !self.definitions.contains_key(interface_id) {
+        if !self.has_interface_input(interface_id) {
             return Err(RegistryCompilationError::UnknownInterface(
                 interface_id.clone(),
             ));
@@ -1151,7 +1350,7 @@ impl RegistryCompiler {
         E: InterfaceContract,
         P: InvocationPrincipal,
     {
-        if !self.definitions.contains_key(interface_id) {
+        if !self.has_interface_input(interface_id) {
             return Err(RegistryCompilationError::UnknownInterface(
                 interface_id.clone(),
             ));
@@ -1190,7 +1389,7 @@ impl RegistryCompiler {
         E: InterfaceContract,
         P: InvocationPrincipal,
     {
-        if !self.definitions.contains_key(interface_id) {
+        if !self.has_interface_input(interface_id) {
             return Err(RegistryCompilationError::UnknownInterface(
                 interface_id.clone(),
             ));
@@ -1217,7 +1416,30 @@ impl RegistryCompiler {
         Ok(())
     }
 
-    pub fn compile(self) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError> {
+    pub fn compile(mut self) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError> {
+        for (order, registration, contribution) in
+            std::mem::take(&mut self.definition_contributions)
+        {
+            let definition = contribution.definition().clone();
+            let interface_id = definition.interface_id().clone();
+            if registration.point() != InterfaceExtensionPoint::Definition {
+                return Err(RegistryCompilationError::UnexpectedExecutableExtension(
+                    interface_id,
+                    registration.plugin().clone(),
+                    registration.point(),
+                ));
+            }
+            self.register_definition(definition)?;
+            for binding in contribution.bindings() {
+                self.register_binding(binding.binding().clone(), binding.adapter_plan().clone())?;
+            }
+            self.compiled_definition_contributions
+                .insert(interface_id.clone(), registration.plugin().clone());
+            self.extensions
+                .entry(interface_id)
+                .or_default()
+                .push((order, registration));
+        }
         for (interface_id, definition) in &self.definitions {
             if !self
                 .known_operations
@@ -1273,6 +1495,89 @@ impl RegistryCompiler {
                 return Err(RegistryCompilationError::MissingBinding(
                     interface_id.clone(),
                 ));
+            }
+            let registrations = self
+                .extensions
+                .get(interface_id)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            let definition_registration = registrations
+                .iter()
+                .find(|(_, registration)| {
+                    registration.point() == InterfaceExtensionPoint::Definition
+                })
+                .map(|(_, registration)| registration);
+            match (
+                definition_registration,
+                self.compiled_definition_contributions.get(interface_id),
+            ) {
+                (Some(registration), Some(plugin)) if registration.plugin() == plugin => {}
+                (Some(_), None) => {
+                    return Err(RegistryCompilationError::MissingDefinitionContribution(
+                        interface_id.clone(),
+                    ));
+                }
+                (None, Some(_)) => {
+                    return Err(RegistryCompilationError::UnexpectedDefinitionContribution(
+                        interface_id.clone(),
+                    ));
+                }
+                (Some(_), Some(_)) => {
+                    return Err(RegistryCompilationError::UnexpectedDefinitionContribution(
+                        interface_id.clone(),
+                    ));
+                }
+                (None, None) => {}
+            }
+            let authentication_registrations = registrations
+                .iter()
+                .filter(|(_, registration)| {
+                    registration.point() == InterfaceExtensionPoint::AuthenticationAdapter
+                })
+                .map(|(_, registration)| registration)
+                .collect::<Vec<_>>();
+            if authentication_registrations.len() != 1 {
+                return Err(RegistryCompilationError::MissingAuthenticationActivation(
+                    interface_id.clone(),
+                ));
+            }
+            let registration = authentication_registrations[0];
+            let referenced_adapters = self
+                .protocol_bindings
+                .values()
+                .filter(|(binding, _)| binding.interface_identity().interface_id() == interface_id)
+                .map(|(_, plan)| plan.authentication())
+                .collect::<BTreeSet<_>>();
+            for adapter in &referenced_adapters {
+                let activation = self
+                    .authentication_activations
+                    .get(&(interface_id.clone(), (*adapter).clone()))
+                    .ok_or_else(|| {
+                        RegistryCompilationError::MissingAuthenticationActivation(
+                            interface_id.clone(),
+                        )
+                    })?;
+                if activation.plugin() != registration.plugin()
+                    || activation.tier() != registration.tier()
+                    || activation.principal_profile() != definition.principal_profile()
+                {
+                    return Err(RegistryCompilationError::AuthenticationActivationMismatch(
+                        interface_id.clone(),
+                    ));
+                }
+            }
+            if self
+                .authentication_activations
+                .keys()
+                .any(|(candidate, adapter)| {
+                    candidate == interface_id && !referenced_adapters.contains(adapter)
+                })
+            {
+                return Err(
+                    RegistryCompilationError::UnexpectedAuthenticationActivation(
+                        interface_id.clone(),
+                    ),
+                );
             }
         }
         if let Some(interface_id) = self
@@ -1471,6 +1776,29 @@ impl RegistryCompiler {
                 ));
             }
         }
+        for (interface_id, definition) in &self.definitions {
+            let registrations = self
+                .extensions
+                .get(interface_id)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            validate_decision_binding(
+                interface_id,
+                definition,
+                registrations,
+                InterfaceExtensionPoint::Authorization,
+                self.authorization_bindings.get(interface_id),
+                &self.graph_fingerprint,
+            )?;
+            validate_decision_binding(
+                interface_id,
+                definition,
+                registrations,
+                InterfaceExtensionPoint::Admission,
+                self.admission_bindings.get(interface_id),
+                &self.graph_fingerprint,
+            )?;
+        }
         let mut plans = BTreeMap::new();
         for (binding, adapter_plan) in self.protocol_bindings.values() {
             let Some(definition) = self
@@ -1495,6 +1823,14 @@ impl RegistryCompiler {
                 .get(definition.interface_id())
                 .expect("effective handler was compiled above")
                 .clone();
+            let authentication = self
+                .authentication_activations
+                .get(&(
+                    definition.interface_id().clone(),
+                    adapter_plan.authentication().clone(),
+                ))
+                .expect("authentication activation was validated above")
+                .clone();
             let extension_plan = CompiledInterfaceExtensionPlan::compile(
                 self.extensions
                     .get(definition.interface_id())
@@ -1507,6 +1843,7 @@ impl RegistryCompiler {
                 definition,
                 &binding_fingerprint,
                 adapter_plan,
+                &authentication,
                 extension_plan.fingerprint(),
                 &effective_handler,
             );
@@ -1517,9 +1854,18 @@ impl RegistryCompiler {
                     binding: binding.clone(),
                     binding_fingerprint,
                     adapter_plan: adapter_plan.clone(),
+                    authentication,
                     extension_plan,
                     executable_extensions: self
                         .hook_bindings
+                        .get(definition.interface_id())
+                        .cloned(),
+                    authorization_extensions: self
+                        .authorization_bindings
+                        .get(definition.interface_id())
+                        .cloned(),
+                    admission_extensions: self
+                        .admission_bindings
                         .get(definition.interface_id())
                         .cloned(),
                     effective_handler,
@@ -1541,6 +1887,7 @@ impl RegistryCompiler {
             graph_fingerprint: self.graph_fingerprint,
             fingerprint,
             definitions: self.definitions,
+            definition_contributions: self.compiled_definition_contributions,
             protocol_bindings: self
                 .protocol_bindings
                 .into_iter()
@@ -1557,6 +1904,7 @@ pub struct CompiledInterfaceRegistry {
     graph_fingerprint: GraphFingerprint,
     fingerprint: RegistryFingerprint,
     definitions: BTreeMap<InterfaceId, InterfaceDefinition>,
+    definition_contributions: BTreeMap<InterfaceId, PluginIdentity>,
     protocol_bindings: BTreeMap<BindingId, ProtocolBinding>,
     plans: BTreeMap<BindingId, CompiledInvocationPlan>,
     routes: BTreeMap<RouteIdentity, BindingId>,
@@ -1581,6 +1929,15 @@ impl CompiledInterfaceRegistry {
 
     pub fn fingerprint(&self) -> &RegistryFingerprint {
         &self.fingerprint
+    }
+
+    pub fn authentication(
+        &self,
+        binding_id: &BindingId,
+    ) -> Option<&ActivatedAuthenticationAdapter> {
+        self.plans
+            .get(binding_id)
+            .map(CompiledInvocationPlan::authentication)
     }
 
     pub fn definitions(&self) -> impl ExactSizeIterator<Item = &InterfaceDefinition> {
@@ -1699,6 +2056,83 @@ impl DynamicInterfaceRegistry {
 fn contract_identity<T: InterfaceContract>() -> ContractIdentity {
     ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
         .expect("typed interface contract constants must be valid identities")
+}
+
+fn validate_decision_binding(
+    interface_id: &InterfaceId,
+    definition: &InterfaceDefinition,
+    registrations: &[(u32, InterfaceExtensionRegistration)],
+    point: InterfaceExtensionPoint,
+    executable: Option<&Arc<dyn ErasedInterfaceDecisionPlan>>,
+    graph: &GraphFingerprint,
+) -> Result<(), RegistryCompilationError> {
+    let mut registered = registrations
+        .iter()
+        .filter(|(_, registration)| registration.point() == point)
+        .map(|(order, registration)| (*order, registration.plugin().clone()))
+        .collect::<Vec<_>>();
+    registered.sort();
+    let registered = registered
+        .into_iter()
+        .map(|(_, plugin)| plugin)
+        .collect::<Vec<_>>();
+    let Some(executable) = executable else {
+        if let Some(plugin) = registered.first() {
+            return Err(RegistryCompilationError::MissingExecutableExtension(
+                interface_id.clone(),
+                plugin.clone(),
+                point,
+            ));
+        }
+        return Ok(());
+    };
+    if executable.graph_fingerprint() != graph {
+        return Err(RegistryCompilationError::ExtensionGraphFingerprintMismatch(
+            interface_id.clone(),
+        ));
+    }
+    if executable.input_contract() != definition.input_contract()
+        || executable.output_contract() != definition.output_contract()
+    {
+        return Err(RegistryCompilationError::DecisionContractMismatch(
+            interface_id.clone(),
+            point,
+        ));
+    }
+    let bound = executable.plugin_bindings();
+    if let Some(plugin) = registered
+        .iter()
+        .find(|plugin| !bound.contains(plugin))
+        .or_else(|| registered.get(bound.len()))
+    {
+        return Err(RegistryCompilationError::MissingExecutableExtension(
+            interface_id.clone(),
+            plugin.clone(),
+            point,
+        ));
+    }
+    if let Some(plugin) = bound
+        .iter()
+        .find(|plugin| !registered.contains(plugin))
+        .or_else(|| bound.get(registered.len()))
+    {
+        return Err(RegistryCompilationError::UnexpectedExecutableExtension(
+            interface_id.clone(),
+            plugin.clone(),
+            point,
+        ));
+    }
+    if registered != bound {
+        return Err(RegistryCompilationError::MissingExecutableExtension(
+            interface_id.clone(),
+            registered
+                .first()
+                .expect("mismatched non-empty decision bindings")
+                .clone(),
+            point,
+        ));
+    }
+    Ok(())
 }
 
 fn registry_fingerprint(
@@ -1826,6 +2260,7 @@ fn plan_fingerprint(
     definition: &InterfaceDefinition,
     binding_fingerprint: &BindingFingerprint,
     adapter_plan: &InvocationAdapterPlan,
+    authentication: &ActivatedAuthenticationAdapter,
     extension_plan: &crate::ExtensionPlanFingerprint,
     effective_handler: &InterfaceHandlerCandidate,
 ) -> PlanFingerprint {
@@ -1839,6 +2274,7 @@ fn plan_fingerprint(
         definition.handler_reference().as_str(),
         definition.target_reference().as_str(),
         adapter_plan.authentication().as_str(),
+        authentication.activation().as_str(),
         adapter_plan.authorization().as_str(),
         effective_handler.plugin().as_str(),
         effective_handler.handler().as_str(),

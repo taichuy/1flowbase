@@ -51,6 +51,14 @@ identity!(RegistryFingerprint, "registry fingerprint");
 identity!(BindingFingerprint, "binding fingerprint");
 identity!(PlanFingerprint, "plan fingerprint");
 identity!(
+    AuthenticationActivationIdentity,
+    "authentication activation identity"
+);
+identity!(
+    AuthorizationDecisionFingerprint,
+    "authorization decision fingerprint"
+);
+identity!(
     AuthenticationAdapterReference,
     "authentication adapter reference"
 );

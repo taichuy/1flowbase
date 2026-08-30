@@ -10,7 +10,10 @@ use plugin_framework::extension_bus::{
 use serde::Serialize;
 use storage_durable_postgres::MainDurableStore;
 
-use super::{INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID, INTERFACE_COMPLETION_HOOK_POINT_ID};
+use super::{
+    AuthenticationAdapterFactoryRegistry, INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID,
+    INTERFACE_COMPLETION_HOOK_POINT_ID,
+};
 const INTERFACE_COMPLETION_CONTEXT_CONTRACT_ID: &str = "interface-invocation-completion";
 const INTERFACE_COMPLETION_CONTEXT_CONTRACT_VERSION: &str = "1";
 
@@ -66,6 +69,7 @@ pub const EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1: &str = "1flowbase.effective-extens
 pub struct ExtensionBootSnapshot {
     graph: Arc<EffectiveExtensionGraph>,
     interface_registry: Option<Arc<interface_runtime::DynamicInterfaceRegistry>>,
+    authentication_factories: AuthenticationAdapterFactoryRegistry,
 }
 
 impl std::fmt::Debug for ExtensionBootSnapshot {
@@ -84,6 +88,8 @@ impl ExtensionBootSnapshot {
         Self {
             graph,
             interface_registry: None,
+            authentication_factories: AuthenticationAdapterFactoryRegistry::built_in()
+                .expect("built-in authentication factories must be valid"),
         }
     }
 
@@ -146,6 +152,7 @@ impl ExtensionBootSnapshot {
         Ok(Self {
             graph,
             interface_registry: Some(interface_registry),
+            authentication_factories: AuthenticationAdapterFactoryRegistry::built_in()?,
         })
     }
 
@@ -228,8 +235,23 @@ impl ExtensionBootSnapshot {
             crate::routes::mcp_protocol::compile_mcp_interface_registry(Arc::downgrade(state))?
                 .as_ref(),
         )?;
-        registry.publish(compiler.compile()?);
+        let candidate = compiler.compile()?;
+        self.authentication_factories
+            .validate_registry(&candidate)?;
+        registry.publish(candidate);
         Ok(())
+    }
+
+    pub(crate) fn establish_principal<P>(
+        &self,
+        activation: &interface_runtime::ActivatedAuthenticationAdapter,
+        principal: P,
+    ) -> anyhow::Result<P>
+    where
+        P: interface_runtime::InvocationPrincipal,
+    {
+        self.authentication_factories
+            .establish(activation, principal)
     }
 
     pub fn effective_plan(&self) -> EffectiveExtensionPlan<'_> {

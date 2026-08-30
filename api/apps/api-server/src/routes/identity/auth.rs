@@ -152,12 +152,22 @@ pub async fn list_login_instances(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<PublicLoginInstancesResponse>>, ApiError> {
     let locale = crate::app_state::request_catalog_locale(&headers, None);
-    let snapshot = state
+    let boot_snapshot = state
         .extension_boot_snapshot
         .as_ref()
-        .and_then(|boot| boot.interface_registry())
+        .ok_or_else(|| anyhow::anyhow!("extension boot snapshot is unavailable"))?;
+    let snapshot = boot_snapshot
+        .interface_registry()
         .ok_or_else(|| anyhow::anyhow!("interface registry is unavailable"))?
         .snapshot();
+    let binding_id = interface_runtime::BindingId::new("http.public.auth.login-instances.v1")
+        .expect("static binding id is valid");
+    let activated_authentication = snapshot
+        .authentication(&binding_id)
+        .ok_or_else(|| anyhow::anyhow!("public authentication activation is unavailable"))?;
+    let principal =
+        boot_snapshot.establish_principal(activated_authentication, PublicPrincipal::new())?;
+    let authentication_activation = activated_authentication.activation().clone();
     let outcome = InterfaceInvocationKernel::new(Arc::new(
         login_instances_interface::PublicLoginInstancesAuthorization,
     ))
@@ -169,12 +179,12 @@ pub async fn list_login_instances(
         snapshot,
         InvocationEnvelope::with_principal(
             InvocationLineage::root(InvocationId::now_v7()),
-            interface_runtime::BindingId::new("http.public.auth.login-instances.v1")
-                .expect("static binding id is valid"),
+            binding_id,
             InterfaceProtocol::Http,
             interface_runtime::AuthenticationAdapterReference::new("api-server.public")
                 .expect("static adapter is valid"),
-            PublicPrincipal::new(),
+            authentication_activation,
+            principal,
             None,
             PublicLoginInstancesInput { locale },
         ),

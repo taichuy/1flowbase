@@ -127,6 +127,28 @@ impl InterfaceContract for HostInfrastructureProvidersViewTargetError {
         HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_ERROR_CONTRACT_VERSION;
 }
 
+struct ProvidersViewAuthorizationGuard;
+
+impl interface_runtime::InterfaceAuthorizationContribution for ProvidersViewAuthorizationGuard {
+    fn authorize(
+        &self,
+        _request: interface_runtime::InterfaceAuthorizationContributionRequest,
+    ) -> interface_runtime::InterfaceAuthorizationContributionFuture<'_> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
+struct ProvidersViewAdmissionGuard;
+
+impl interface_runtime::InterfaceAdmissionContribution for ProvidersViewAdmissionGuard {
+    fn admit(
+        &self,
+        _request: interface_runtime::InterfaceAdmissionContributionRequest,
+    ) -> interface_runtime::InterfaceAdmissionContributionFuture<'_> {
+        Box::pin(async { Ok(()) })
+    }
+}
+
 impl
     InterfaceHandler<
         HostInfrastructureProvidersViewInput,
@@ -265,6 +287,23 @@ pub async fn invoke_providers_view(
         Arc::clone(&state.console_policy_reader),
         Arc::clone(&state.console_operation_registry),
     );
+    let binding_id = BindingId::new(match protocol {
+        InterfaceProtocol::Mcp => HOST_INFRASTRUCTURE_PROVIDERS_VIEW_MCP_BINDING_ID,
+        InterfaceProtocol::Http => HOST_INFRASTRUCTURE_PROVIDERS_VIEW_BINDING_ID,
+        InterfaceProtocol::Internal | InterfaceProtocol::Worker => {
+            HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INTERNAL_BINDING_ID
+        }
+    })
+    .expect("built-in binding identity must remain valid");
+    let activated_authentication = snapshot.authentication(&binding_id).ok_or(
+        control_plane::errors::ControlPlaneError::NotFound("authentication_activation"),
+    )?;
+    let principal = boot_snapshot
+        .establish_principal(activated_authentication, principal)
+        .map_err(|_| {
+            control_plane::errors::ControlPlaneError::NotFound("authentication_activation")
+        })?;
+    let authentication_activation = activated_authentication.activation().clone();
     match kernel
         .invoke::<
             HostInfrastructureProvidersViewInput,
@@ -274,18 +313,11 @@ pub async fn invoke_providers_view(
             snapshot,
             InvocationEnvelope::with_principal(
                 InvocationLineage::root(InvocationId::now_v7()),
-                BindingId::new(match protocol {
-                    InterfaceProtocol::Mcp => HOST_INFRASTRUCTURE_PROVIDERS_VIEW_MCP_BINDING_ID,
-                    InterfaceProtocol::Http => HOST_INFRASTRUCTURE_PROVIDERS_VIEW_BINDING_ID,
-                    InterfaceProtocol::Internal => {
-                        HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INTERNAL_BINDING_ID
-                    }
-                    InterfaceProtocol::Worker => HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INTERNAL_BINDING_ID,
-                })
-                    .expect("built-in binding identity must remain valid"),
+                binding_id,
                 protocol,
                 AuthenticationAdapterReference::new("api-server.console.require-session")
                     .expect("static adapter is valid"),
+                authentication_activation,
                 principal,
                 None,
                 HostInfrastructureProvidersViewInput::new(),
@@ -363,19 +395,144 @@ pub(crate) fn compile_interface_registry(
     let graph_fingerprint = GraphFingerprint::new(graph.fingerprint().as_str())?;
     let owner = InterfaceOwner::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID)?;
     let mut compiler = RegistryCompiler::new(
-        graph_fingerprint,
+        graph_fingerprint.clone(),
         [AuthorizationOperation::new(
             HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION,
         )?],
         [owner],
     );
-    compiler.register_definition(definition.clone())?;
-    compiler.register_binding(
-        binding,
+    let adapter_plan = || {
         InvocationAdapterPlan::new(
-            AuthenticationAdapterReference::new("api-server.console.require-session")?,
-            AuthorizationAdapterReference::new("api-server.console.compiled-operation")?,
+            AuthenticationAdapterReference::new("api-server.console.require-session")
+                .expect("static authentication adapter is valid"),
+            AuthorizationAdapterReference::new("api-server.console.compiled-operation")
+                .expect("static authorization adapter is valid"),
             None,
+        )
+    };
+    let definition_contribution = interface_runtime::TypedInterfaceDefinitionContribution::<
+        HostInfrastructureProvidersViewInput,
+        HostInfrastructureProvidersViewOutput,
+        HostInfrastructureProvidersViewTargetError,
+        UserPrincipal,
+    >::new(
+        definition.clone(),
+        [
+            interface_runtime::ContributedProtocolBinding::new(binding, adapter_plan()),
+            interface_runtime::ContributedProtocolBinding::new(
+                ProtocolBinding::new(
+                    BindingId::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_MCP_BINDING_ID)?,
+                    definition.identity().clone(),
+                    definition.contracts().clone(),
+                    ProtocolProjection::mcp(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID),
+                ),
+                adapter_plan(),
+            ),
+            interface_runtime::ContributedProtocolBinding::new(
+                ProtocolBinding::new(
+                    BindingId::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INTERNAL_BINDING_ID)?,
+                    definition.identity().clone(),
+                    definition.contracts().clone(),
+                    ProtocolProjection::internal(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID),
+                ),
+                adapter_plan(),
+            ),
+        ],
+    )?;
+    compiler.register_definition_contribution(
+        0,
+        InterfaceExtensionRegistration::new(
+            PluginIdentity::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID)?,
+            InterfaceExtensionTier::HostExtension,
+            InterfaceExtensionPoint::Definition,
+            InterfaceExtensionPermission::Define,
+            InterfaceScope::System,
+            InterfaceExtensionIsolation::TrustedInProcess,
+            [
+                InterfaceExtensionFact::DefinitionIdentity,
+                InterfaceExtensionFact::BindingIdentity,
+            ],
+        )?,
+        Arc::new(definition_contribution),
+    );
+    compiler.register_authentication_adapter(
+        &interface_id,
+        1,
+        InterfaceExtensionRegistration::new(
+            PluginIdentity::new("api-server.console-authentication")?,
+            InterfaceExtensionTier::BuiltIn,
+            InterfaceExtensionPoint::AuthenticationAdapter,
+            InterfaceExtensionPermission::Authenticate,
+            InterfaceScope::System,
+            InterfaceExtensionIsolation::TrustedInProcess,
+            [],
+        )?,
+        interface_runtime::ActivatedAuthenticationAdapter::new(
+            PluginIdentity::new("api-server.console-authentication")?,
+            InterfaceExtensionTier::BuiltIn,
+            AuthenticationAdapterReference::new("api-server.console.require-session")?,
+            interface_runtime::AuthenticationActivationIdentity::new(
+                "api-server.console.require-session.activation.v1",
+            )?,
+            interface_runtime::PrincipalProfile::User,
+        ),
+    )?;
+    let authorization_plugin = PluginIdentity::new("api-server.providers-view-authorization")?;
+    compiler.register_extension(
+        &interface_id,
+        10,
+        InterfaceExtensionRegistration::new(
+            authorization_plugin.clone(),
+            InterfaceExtensionTier::HostExtension,
+            InterfaceExtensionPoint::Authorization,
+            InterfaceExtensionPermission::Authorize,
+            InterfaceScope::System,
+            InterfaceExtensionIsolation::TrustedInProcess,
+            [
+                InterfaceExtensionFact::DefinitionIdentity,
+                InterfaceExtensionFact::PrincipalSummary,
+            ],
+        )?,
+    )?;
+    compiler.bind_authorization_plan(
+        &interface_id,
+        Arc::new(
+            interface_runtime::TypedInterfaceAuthorizationPlan::<
+                HostInfrastructureProvidersViewInput,
+                HostInfrastructureProvidersViewOutput,
+            >::new(graph_fingerprint.clone())
+            .bind(
+                authorization_plugin,
+                Arc::new(ProvidersViewAuthorizationGuard),
+            ),
+        ),
+    )?;
+    let admission_plugin = PluginIdentity::new("api-server.providers-view-admission")?;
+    compiler.register_extension(
+        &interface_id,
+        20,
+        InterfaceExtensionRegistration::new(
+            admission_plugin.clone(),
+            InterfaceExtensionTier::HostExtension,
+            InterfaceExtensionPoint::Admission,
+            InterfaceExtensionPermission::Admit,
+            InterfaceScope::System,
+            InterfaceExtensionIsolation::TrustedInProcess,
+            [
+                InterfaceExtensionFact::DefinitionIdentity,
+                InterfaceExtensionFact::PrincipalSummary,
+                InterfaceExtensionFact::AuthorizationDecision,
+            ],
+        )?,
+    )?;
+    compiler.bind_admission_plan(
+        &interface_id,
+        Arc::new(
+            interface_runtime::TypedInterfaceAdmissionPlan::<
+                HostInfrastructureProvidersViewInput,
+                HostInfrastructureProvidersViewOutput,
+            >::new(graph_fingerprint)
+            .bind(admission_plugin, Arc::new(ProvidersViewAdmissionGuard)),
         ),
     )?;
     compiler.register_extension(
@@ -393,32 +550,6 @@ pub(crate) fn compile_interface_registry(
                 InterfaceExtensionFact::InvocationIdentity,
             ],
         )?,
-    )?;
-    compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_MCP_BINDING_ID)?,
-            definition.identity().clone(),
-            definition.contracts().clone(),
-            ProtocolProjection::mcp(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID),
-        ),
-        InvocationAdapterPlan::new(
-            AuthenticationAdapterReference::new("api-server.console.require-session")?,
-            AuthorizationAdapterReference::new("api-server.console.compiled-operation")?,
-            None,
-        ),
-    )?;
-    compiler.register_binding(
-        ProtocolBinding::new(
-            BindingId::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INTERNAL_BINDING_ID)?,
-            definition.identity().clone(),
-            definition.contracts().clone(),
-            ProtocolProjection::internal(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID),
-        ),
-        InvocationAdapterPlan::new(
-            AuthenticationAdapterReference::new("api-server.console.require-session")?,
-            AuthorizationAdapterReference::new("api-server.console.compiled-operation")?,
-            None,
-        ),
     )?;
     compiler.bind_handler::<
         HostInfrastructureProvidersViewInput,

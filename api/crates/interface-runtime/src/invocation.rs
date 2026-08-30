@@ -12,9 +12,12 @@ use thiserror::Error;
 use uuid::Uuid;
 
 use crate::{
-    AdmissionAdapterReference, ArtifactIdentity, AuthenticationAdapterReference,
-    AuthorizationAdapterReference, BindingFingerprint, BindingId, CompiledInterfaceRegistry,
-    ContractIdentity, GraphFingerprint, HandlerReference, InterfaceContract, InterfaceDefinition,
+    AdmissionAdapterReference, ArtifactIdentity, AuthenticationActivationIdentity,
+    AuthenticationAdapterReference, AuthorizationAdapterReference,
+    AuthorizationDecisionFingerprint, BindingFingerprint, BindingId, CompiledInterfaceRegistry,
+    ContractIdentity, GraphFingerprint, HandlerReference, InterfaceAdmissionContributionError,
+    InterfaceAdmissionContributionRequest, InterfaceAuthorizationContributionError,
+    InterfaceAuthorizationContributionRequest, InterfaceContract, InterfaceDefinition,
     InterfaceHandlerContext, InterfaceHookContext, InterfaceId, InterfaceStreamCompletion,
     InterfaceStreamInvocation, InterfaceStreamTerminalOutcome, InterfaceTargetError,
     InvocationPrincipal, PlanFingerprint, PluginIdentity, PrincipalSummary, ProtocolBinding,
@@ -298,6 +301,7 @@ where
     binding_id: BindingId,
     protocol: InterfaceProtocol,
     authentication_adapter: AuthenticationAdapterReference,
+    authentication_activation: AuthenticationActivationIdentity,
     principal: P,
     controls: InvocationControls,
     input: I,
@@ -313,6 +317,7 @@ where
         binding_id: BindingId,
         protocol: InterfaceProtocol,
         authentication_adapter: AuthenticationAdapterReference,
+        authentication_activation: AuthenticationActivationIdentity,
         principal: P,
         deadline: Option<SystemTime>,
         input: I,
@@ -322,6 +327,7 @@ where
             binding_id,
             protocol,
             authentication_adapter,
+            authentication_activation,
             principal,
             InvocationControls::new(deadline, InvocationCancellation::new(), None),
             input,
@@ -333,6 +339,7 @@ where
         binding_id: BindingId,
         protocol: InterfaceProtocol,
         authentication_adapter: AuthenticationAdapterReference,
+        authentication_activation: AuthenticationActivationIdentity,
         principal: P,
         controls: InvocationControls,
         input: I,
@@ -342,6 +349,7 @@ where
             binding_id,
             protocol,
             authentication_adapter,
+            authentication_activation,
             principal,
             controls,
             input,
@@ -362,6 +370,10 @@ where
 
     pub fn authentication_adapter(&self) -> &AuthenticationAdapterReference {
         &self.authentication_adapter
+    }
+
+    pub fn authentication_activation(&self) -> &AuthenticationActivationIdentity {
+        &self.authentication_activation
     }
 
     pub fn principal(&self) -> &P {
@@ -386,6 +398,7 @@ where
         binding_id: BindingId,
         protocol: InterfaceProtocol,
         authentication_adapter: AuthenticationAdapterReference,
+        authentication_activation: AuthenticationActivationIdentity,
         actor: domain::ActorContext,
         deadline: Option<SystemTime>,
         input: I,
@@ -395,6 +408,7 @@ where
             binding_id,
             protocol,
             authentication_adapter,
+            authentication_activation,
             UserPrincipal::server_delegation(actor),
             deadline,
             input,
@@ -659,6 +673,7 @@ pub struct InterfaceInvocationReceipt {
     resolved: Option<ResolvedInvocationPin>,
     protocol: InterfaceProtocol,
     principal: PrincipalSummary,
+    authorization_decision: Option<AuthorizationDecisionFingerprint>,
     graph_fingerprint: GraphFingerprint,
     registry_fingerprint: RegistryFingerprint,
     stages: Vec<InterfaceStageRecord>,
@@ -691,6 +706,10 @@ impl InterfaceInvocationReceipt {
 
     pub fn principal(&self) -> &PrincipalSummary {
         &self.principal
+    }
+
+    pub fn authorization_decision(&self) -> Option<&AuthorizationDecisionFingerprint> {
+        self.authorization_decision.as_ref()
     }
 
     pub fn graph_fingerprint(&self) -> &GraphFingerprint {
@@ -748,6 +767,8 @@ pub enum InterfaceInvocationError {
     ProtocolBindingMismatch,
     #[error("authentication adapter does not match the compiled invocation plan")]
     AuthenticationAdapterMismatch,
+    #[error("authentication activation does not match the compiled invocation plan")]
+    AuthenticationActivationMismatch,
     #[error("authorization adapter does not match the compiled invocation plan")]
     AuthorizationAdapterMismatch,
     #[error("admission adapter does not match the compiled invocation plan")]
@@ -761,7 +782,11 @@ pub enum InterfaceInvocationError {
     #[error(transparent)]
     AuthorizationRejected(InterfaceAuthorizationError),
     #[error(transparent)]
+    AuthorizationContributionRejected(InterfaceAuthorizationContributionError),
+    #[error(transparent)]
     AdmissionRejected(InterfaceTargetAdmissionError),
+    #[error(transparent)]
+    AdmissionContributionRejected(InterfaceAdmissionContributionError),
     #[error(transparent)]
     BeforeHookRejected(crate::InterfaceBeforeHookError),
     #[error(transparent)]
@@ -1046,6 +1071,7 @@ where
             binding_id,
             protocol,
             authentication_adapter,
+            authentication_activation,
             principal,
             controls,
             mut input,
@@ -1106,6 +1132,12 @@ where
         if plan.adapter_plan().authentication() != &authentication_adapter {
             return Err(receipt.fail(
                 InterfaceInvocationError::AuthenticationAdapterMismatch,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        }
+        if plan.authentication().activation() != &authentication_activation {
+            return Err(receipt.fail(
+                InterfaceInvocationError::AuthenticationActivationMismatch,
                 InterfaceInvocationTerminal::Rejected,
             ));
         }
@@ -1187,15 +1219,58 @@ where
                     InterfaceInvocationTerminal::Rejected,
                 ));
             }
-            Ok(Ok(())) => receipt.stage(InterfaceInvocationStage::Authorized),
+            Ok(Ok(())) => {}
         }
+        if let Some(extensions) = plan.authorization_plan::<I, O>() {
+            match await_in_flight(
+                &controls,
+                extensions.run(InterfaceAuthorizationContributionRequest::new(
+                    principal.summary(),
+                    definition.clone(),
+                    binding.clone(),
+                    protocol,
+                )),
+            )
+            .await
+            {
+                Err(interruption) => {
+                    return Err(receipt.fail(
+                        interruption_error(interruption),
+                        InterfaceInvocationTerminal::Cancelled,
+                    ));
+                }
+                Ok(Err(error)) => {
+                    run_failure_hooks(
+                        &controls,
+                        hook_plan.as_ref(),
+                        &hook_context,
+                        error.classification(),
+                    )
+                    .await;
+                    run_completion_hooks(
+                        &controls,
+                        hook_plan.as_ref(),
+                        &hook_context,
+                        InterfaceInvocationTerminal::Rejected,
+                    )
+                    .await;
+                    return Err(receipt.fail(
+                        InterfaceInvocationError::AuthorizationContributionRejected(error),
+                        InterfaceInvocationTerminal::Rejected,
+                    ));
+                }
+                Ok(Ok(())) => {}
+            }
+        }
+        let authorization_decision = authorization_decision_fingerprint(&plan);
+        receipt.authorized(authorization_decision.clone());
         if let Some(target_admission) = &self.target_admission {
             let admission = await_in_flight(
                 &controls,
                 target_admission.admit(InterfaceTargetAdmissionRequest::new(
                     principal.summary(),
                     definition.clone(),
-                    binding,
+                    binding.clone(),
                     protocol,
                 )),
             )
@@ -1231,6 +1306,48 @@ where
                     .await;
                     return Err(receipt.fail(
                         InterfaceInvocationError::AdmissionRejected(error),
+                        InterfaceInvocationTerminal::Rejected,
+                    ));
+                }
+                Ok(Ok(())) => {}
+            }
+        }
+        if let Some(extensions) = plan.admission_plan::<I, O>() {
+            match await_in_flight(
+                &controls,
+                extensions.run(InterfaceAdmissionContributionRequest::new(
+                    principal.summary(),
+                    definition.clone(),
+                    binding.clone(),
+                    protocol,
+                    authorization_decision,
+                )),
+            )
+            .await
+            {
+                Err(interruption) => {
+                    return Err(receipt.fail(
+                        interruption_error(interruption),
+                        InterfaceInvocationTerminal::Cancelled,
+                    ));
+                }
+                Ok(Err(error)) => {
+                    run_failure_hooks(
+                        &controls,
+                        hook_plan.as_ref(),
+                        &hook_context,
+                        error.classification(),
+                    )
+                    .await;
+                    run_completion_hooks(
+                        &controls,
+                        hook_plan.as_ref(),
+                        &hook_context,
+                        InterfaceInvocationTerminal::Rejected,
+                    )
+                    .await;
+                    return Err(receipt.fail(
+                        InterfaceInvocationError::AdmissionContributionRejected(error),
                         InterfaceInvocationTerminal::Rejected,
                     ));
                 }
@@ -1477,6 +1594,7 @@ where
             binding_id,
             protocol,
             authentication_adapter,
+            authentication_activation,
             principal,
             controls,
             mut input,
@@ -1566,6 +1684,19 @@ where
             .await;
             return Err(receipt.fail(
                 InterfaceInvocationError::AuthenticationAdapterMismatch,
+                InterfaceInvocationTerminal::Rejected,
+            ));
+        }
+        if plan.authentication().activation() != &authentication_activation {
+            run_completion_hooks(
+                &controls,
+                hook_plan,
+                &hook_context,
+                InterfaceInvocationTerminal::Rejected,
+            )
+            .await;
+            return Err(receipt.fail(
+                InterfaceInvocationError::AuthenticationActivationMismatch,
                 InterfaceInvocationTerminal::Rejected,
             ));
         }
@@ -1670,7 +1801,44 @@ where
                 InterfaceInvocationTerminal::Rejected,
             ));
         }
-        receipt.stage(InterfaceInvocationStage::Authorized);
+        if let Some(extensions) = plan.authorization_plan::<I, O>() {
+            let authorization = await_in_flight(
+                &controls,
+                extensions.run(InterfaceAuthorizationContributionRequest::new(
+                    principal.summary(),
+                    definition.clone(),
+                    binding.clone(),
+                    protocol,
+                )),
+            )
+            .await;
+            match authorization {
+                Err(interruption) => {
+                    return Err(receipt.fail(
+                        interruption_error(interruption),
+                        InterfaceInvocationTerminal::Cancelled,
+                    ));
+                }
+                Ok(Err(error)) => {
+                    run_failure_hooks(&controls, hook_plan, &hook_context, error.classification())
+                        .await;
+                    run_completion_hooks(
+                        &controls,
+                        hook_plan,
+                        &hook_context,
+                        InterfaceInvocationTerminal::Rejected,
+                    )
+                    .await;
+                    return Err(receipt.fail(
+                        InterfaceInvocationError::AuthorizationContributionRejected(error),
+                        InterfaceInvocationTerminal::Rejected,
+                    ));
+                }
+                Ok(Ok(())) => {}
+            }
+        }
+        let authorization_decision = authorization_decision_fingerprint(&plan);
+        receipt.authorized(authorization_decision.clone());
         if let Some(target_admission) = &self.target_admission {
             let admission = await_in_flight(
                 &controls,
@@ -1712,6 +1880,43 @@ where
                     InterfaceInvocationError::AdmissionRejected(error),
                     InterfaceInvocationTerminal::Rejected,
                 ));
+            }
+        }
+        if let Some(extensions) = plan.admission_plan::<I, O>() {
+            let admission = await_in_flight(
+                &controls,
+                extensions.run(InterfaceAdmissionContributionRequest::new(
+                    principal.summary(),
+                    definition.clone(),
+                    binding.clone(),
+                    protocol,
+                    authorization_decision,
+                )),
+            )
+            .await;
+            match admission {
+                Err(interruption) => {
+                    return Err(receipt.fail(
+                        interruption_error(interruption),
+                        InterfaceInvocationTerminal::Cancelled,
+                    ));
+                }
+                Ok(Err(error)) => {
+                    run_failure_hooks(&controls, hook_plan, &hook_context, error.classification())
+                        .await;
+                    run_completion_hooks(
+                        &controls,
+                        hook_plan,
+                        &hook_context,
+                        InterfaceInvocationTerminal::Rejected,
+                    )
+                    .await;
+                    return Err(receipt.fail(
+                        InterfaceInvocationError::AdmissionContributionRejected(error),
+                        InterfaceInvocationTerminal::Rejected,
+                    ));
+                }
+                Ok(Ok(())) => {}
             }
         }
         receipt.stage(InterfaceInvocationStage::Admitted);
@@ -1899,6 +2104,7 @@ struct ReceiptBuilder {
     resolved: Option<ResolvedInvocationPin>,
     protocol: InterfaceProtocol,
     principal: PrincipalSummary,
+    authorization_decision: Option<AuthorizationDecisionFingerprint>,
     graph_fingerprint: GraphFingerprint,
     registry_fingerprint: RegistryFingerprint,
     stages: Vec<InterfaceStageRecord>,
@@ -1922,6 +2128,7 @@ impl ReceiptBuilder {
             resolved: None,
             protocol,
             principal,
+            authorization_decision: None,
             graph_fingerprint: snapshot.graph_fingerprint().clone(),
             registry_fingerprint: snapshot.fingerprint().clone(),
             stages: vec![InterfaceStageRecord {
@@ -1938,6 +2145,11 @@ impl ReceiptBuilder {
             stage,
             at: SystemTime::now(),
         });
+    }
+
+    fn authorized(&mut self, fingerprint: AuthorizationDecisionFingerprint) {
+        self.authorization_decision = Some(fingerprint);
+        self.stage(InterfaceInvocationStage::Authorized);
     }
 
     fn resolve(&mut self, plan: &crate::CompiledInvocationPlan) {
@@ -1978,6 +2190,7 @@ impl ReceiptBuilder {
             resolved: self.resolved,
             protocol: self.protocol,
             principal: self.principal,
+            authorization_decision: self.authorization_decision,
             graph_fingerprint: self.graph_fingerprint,
             registry_fingerprint: self.registry_fingerprint,
             stages: self.stages,
@@ -1992,6 +2205,13 @@ impl ReceiptBuilder {
 fn contract_identity<T: InterfaceContract>() -> ContractIdentity {
     ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
         .expect("typed interface contract constants must be valid identities")
+}
+
+fn authorization_decision_fingerprint(
+    plan: &crate::CompiledInvocationPlan,
+) -> AuthorizationDecisionFingerprint {
+    AuthorizationDecisionFingerprint::new(format!("{}:allow", plan.fingerprint().as_str()))
+        .expect("compiled plan fingerprint must produce a valid authorization decision identity")
 }
 
 fn target_error<E>(error: InterfaceTargetFailure<E>) -> InterfaceInvocationError

@@ -7,7 +7,8 @@ use domain::ActorContext;
 use uuid::Uuid;
 
 use crate::{
-    AdmissionAdapterReference, ArtifactIdentity, AuthenticationAdapterReference,
+    ActivatedAuthenticationAdapter, AdmissionAdapterReference, ArtifactIdentity,
+    AuthenticationActivationIdentity, AuthenticationAdapterReference,
     AuthorizationAdapterReference, AuthorizationOperation, BindingId, ContractIdentity,
     DynamicInterfaceRegistry, ExecutionTargetPin, GraphFingerprint, HandlerReference,
     IdempotencyKey, InterfaceAccess, InterfaceAuditPolicy, InterfaceAuthenticationPolicy,
@@ -308,6 +309,33 @@ fn adapter_plan() -> InvocationAdapterPlan {
     )
 }
 
+fn activate_authentication(compiler: &mut RegistryCompiler) {
+    let plugin = PluginIdentity::new("test.authentication").unwrap();
+    compiler
+        .register_authentication_adapter(
+            &interface_id(),
+            1,
+            InterfaceExtensionRegistration::new(
+                plugin.clone(),
+                InterfaceExtensionTier::BuiltIn,
+                InterfaceExtensionPoint::AuthenticationAdapter,
+                InterfaceExtensionPermission::Authenticate,
+                InterfaceScope::System,
+                InterfaceExtensionIsolation::TrustedInProcess,
+                [],
+            )
+            .unwrap(),
+            ActivatedAuthenticationAdapter::new(
+                plugin,
+                InterfaceExtensionTier::BuiltIn,
+                AuthenticationAdapterReference::new("test.authn").unwrap(),
+                AuthenticationActivationIdentity::new("test.authn.activation.v1").unwrap(),
+                PrincipalProfile::User,
+            ),
+        )
+        .unwrap();
+}
+
 fn compile_snapshot(
     graph: &str,
     increment: u8,
@@ -316,6 +344,7 @@ fn compile_snapshot(
 ) -> Arc<crate::CompiledInterfaceRegistry> {
     let mut compiler = compiler(graph);
     compiler.register_definition(definition()).unwrap();
+    activate_authentication(&mut compiler);
     compiler
         .register_binding(binding(), adapter_plan())
         .unwrap();
@@ -342,6 +371,7 @@ fn compile_snapshot_with_hooks(
 ) -> Arc<crate::CompiledInterfaceRegistry> {
     let mut compiler = compiler(graph);
     compiler.register_definition(definition()).unwrap();
+    activate_authentication(&mut compiler);
     compiler
         .register_binding(binding(), adapter_plan())
         .unwrap();
@@ -398,6 +428,7 @@ fn envelope(actor: ActorContext) -> InvocationEnvelope<Input> {
         BindingId::new("http.invocation.read.v1").unwrap(),
         InterfaceProtocol::Http,
         AuthenticationAdapterReference::new("test.authn").unwrap(),
+        AuthenticationActivationIdentity::new("test.authn.activation.v1").unwrap(),
         actor,
         None,
         Input(2),
@@ -496,6 +527,7 @@ async fn rejects_authorization_admission_target_failure_and_elapsed_deadline() {
         BindingId::new("http.invocation.read.v1").unwrap(),
         InterfaceProtocol::Http,
         AuthenticationAdapterReference::new("test.authn").unwrap(),
+        AuthenticationActivationIdentity::new("test.authn.activation.v1").unwrap(),
         actor(true),
         Some(SystemTime::now() - Duration::from_secs(1)),
         Input(2),
@@ -530,6 +562,7 @@ async fn deadline_cancels_each_in_flight_stage() {
             BindingId::new("http.invocation.read.v1").unwrap(),
             InterfaceProtocol::Http,
             AuthenticationAdapterReference::new("test.authn").unwrap(),
+            AuthenticationActivationIdentity::new("test.authn.activation.v1").unwrap(),
             actor(true),
             deadline,
             Input(2),
@@ -565,6 +598,7 @@ async fn deadline_cancels_each_in_flight_stage() {
             BindingId::new("http.invocation.read.v1").unwrap(),
             InterfaceProtocol::Http,
             AuthenticationAdapterReference::new("test.authn").unwrap(),
+            AuthenticationActivationIdentity::new("test.authn.activation.v1").unwrap(),
             actor(true),
             Some(SystemTime::now() + Duration::from_millis(10)),
             Input(2),
@@ -592,6 +626,7 @@ async fn deadline_cancels_each_in_flight_stage() {
 
     let mut compiler = compiler("graph:slow-handler");
     compiler.register_definition(definition()).unwrap();
+    activate_authentication(&mut compiler);
     compiler
         .register_binding(binding(), adapter_plan())
         .unwrap();
@@ -613,6 +648,7 @@ async fn deadline_cancels_each_in_flight_stage() {
             BindingId::new("http.invocation.read.v1").unwrap(),
             InterfaceProtocol::Http,
             AuthenticationAdapterReference::new("test.authn").unwrap(),
+            AuthenticationActivationIdentity::new("test.authn.activation.v1").unwrap(),
             actor(true),
             Some(SystemTime::now() + Duration::from_millis(10)),
             Input(2),
@@ -870,6 +906,7 @@ async fn dispatch_pin_retry_and_receipt_controls_are_immutable() {
         BindingId::new("http.invocation.read.v1").unwrap(),
         InterfaceProtocol::Http,
         AuthenticationAdapterReference::new("test.authn").unwrap(),
+        AuthenticationActivationIdentity::new("test.authn.activation.v1").unwrap(),
         UserPrincipal::server_delegation(actor(true)),
         InvocationControls::new(
             None,
@@ -928,6 +965,7 @@ async fn explicit_cancellation_terminates_without_dispatch() {
         BindingId::new("http.invocation.read.v1").unwrap(),
         InterfaceProtocol::Http,
         AuthenticationAdapterReference::new("test.authn").unwrap(),
+        AuthenticationActivationIdentity::new("test.authn.activation.v1").unwrap(),
         UserPrincipal::server_delegation(actor(true)),
         InvocationControls::new(None, cancellation, None),
         Input(2),

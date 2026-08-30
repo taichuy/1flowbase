@@ -1,28 +1,39 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    time::{Duration, SystemTime},
+};
 
 use domain::ActorContext;
 use uuid::Uuid;
 
 use crate::{
-    interface_stream_channel, AdmissionAdapterReference, ArtifactIdentity,
-    AuthenticationAdapterReference, AuthorizationAdapterReference, AuthorizationOperation,
-    BindingId, ContractIdentity, ExecutionTargetPin, GraphFingerprint, HandlerReference,
-    InterfaceAccess, InterfaceAfterHook, InterfaceAfterHookFuture, InterfaceAuditPolicy,
-    InterfaceAuthenticationPolicy, InterfaceAuthorizationFuture, InterfaceAuthorizationPort,
-    InterfaceAuthorizationRequest, InterfaceBeforeHook, InterfaceBeforeHookFuture,
-    InterfaceCompletionHook, InterfaceCompletionHookFuture, InterfaceContract, InterfaceContracts,
-    InterfaceDefinition, InterfaceErrorPolicy, InterfaceExecution, InterfaceExecutionMode,
-    InterfaceExtensionFact, InterfaceExtensionIsolation, InterfaceExtensionPermission,
-    InterfaceExtensionPoint, InterfaceExtensionRegistration, InterfaceExtensionTier,
-    InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceHookContext,
-    InterfaceId, InterfaceIdentity, InterfaceInvocationError, InterfaceInvocationKernel,
+    interface_stream_channel, ActivatedAuthenticationAdapter, AdmissionAdapterReference,
+    ArtifactIdentity, AuthenticationActivationIdentity, AuthenticationAdapterReference,
+    AuthorizationAdapterReference, AuthorizationOperation, BindingId, ContractIdentity,
+    ContributedProtocolBinding, ExecutionTargetPin, GraphFingerprint, HandlerReference,
+    InterfaceAccess, InterfaceAdmissionContribution, InterfaceAdmissionContributionError,
+    InterfaceAdmissionContributionFuture, InterfaceAdmissionContributionRequest,
+    InterfaceAfterHook, InterfaceAfterHookFuture, InterfaceAuditPolicy,
+    InterfaceAuthenticationPolicy, InterfaceAuthorizationContribution,
+    InterfaceAuthorizationContributionError, InterfaceAuthorizationContributionFuture,
+    InterfaceAuthorizationContributionRequest, InterfaceAuthorizationFuture,
+    InterfaceAuthorizationPort, InterfaceAuthorizationRequest, InterfaceBeforeHook,
+    InterfaceBeforeHookFuture, InterfaceCompletionHook, InterfaceCompletionHookFuture,
+    InterfaceContract, InterfaceContracts, InterfaceDefinition, InterfaceErrorPolicy,
+    InterfaceExecution, InterfaceExecutionMode, InterfaceExtensionFact,
+    InterfaceExtensionIsolation, InterfaceExtensionPermission, InterfaceExtensionPoint,
+    InterfaceExtensionRegistration, InterfaceExtensionTier, InterfaceHandler,
+    InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceHookContext, InterfaceId,
+    InterfaceIdentity, InterfaceInvocationError, InterfaceInvocationKernel,
     InterfaceInvocationStage, InterfaceInvocationTerminal, InterfaceLifecycle, InterfaceOwner,
     InterfaceProtocol, InterfaceScope, InterfaceStreamHandler, InterfaceStreamHandlerFuture,
-    InterfaceStreamTerminal, InterfaceVersion, InvocationAdapterPlan, InvocationEnvelope,
-    InvocationId, InvocationLineage, PluginIdentity, PrincipalProfile, ProtocolBinding,
-    ProtocolProjection, RegistryCompilationError, RegistryCompiler, RouteIdentity,
-    RuntimeGeneration, RuntimeTargetIdentity, TargetReference, TypedInterfaceHookPlan,
-    UserPrincipal, WorkerGeneration,
+    InterfaceStreamTerminal, InterfaceTargetAdmissionError, InterfaceTargetAdmissionFuture,
+    InterfaceTargetAdmissionPort, InterfaceTargetAdmissionRequest, InterfaceVersion,
+    InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage, PluginIdentity,
+    PrincipalProfile, ProtocolBinding, ProtocolProjection, RegistryCompilationError,
+    RegistryCompiler, RouteIdentity, RuntimeGeneration, RuntimeTargetIdentity, TargetReference,
+    TypedInterfaceAdmissionPlan, TypedInterfaceAuthorizationPlan,
+    TypedInterfaceDefinitionContribution, TypedInterfaceHookPlan, UserPrincipal, WorkerGeneration,
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -227,12 +238,44 @@ fn compiler() -> RegistryCompiler {
     )
 }
 
+fn activate_authentication(
+    compiler: &mut RegistryCompiler,
+    definition: &InterfaceDefinition,
+    adapter: &str,
+) {
+    let plugin = PluginIdentity::new("review.authentication").unwrap();
+    compiler
+        .register_authentication_adapter(
+            definition.interface_id(),
+            1,
+            InterfaceExtensionRegistration::new(
+                plugin.clone(),
+                InterfaceExtensionTier::BuiltIn,
+                InterfaceExtensionPoint::AuthenticationAdapter,
+                InterfaceExtensionPermission::Authenticate,
+                definition.scope(),
+                InterfaceExtensionIsolation::TrustedInProcess,
+                [],
+            )
+            .unwrap(),
+            ActivatedAuthenticationAdapter::new(
+                plugin,
+                InterfaceExtensionTier::BuiltIn,
+                AuthenticationAdapterReference::new(adapter).unwrap(),
+                AuthenticationActivationIdentity::new(format!("{adapter}.activation.v1")).unwrap(),
+                definition.principal_profile(),
+            ),
+        )
+        .unwrap();
+}
+
 fn envelope(binding: &str, protocol: InterfaceProtocol, authn: &str) -> InvocationEnvelope<Input> {
     InvocationEnvelope::new(
         InvocationLineage::root(InvocationId::now_v7()),
         BindingId::new(binding).unwrap(),
         protocol,
         AuthenticationAdapterReference::new(authn).unwrap(),
+        AuthenticationActivationIdentity::new(format!("{authn}.activation.v1")).unwrap(),
         actor(),
         None,
         Input(4),
@@ -255,6 +298,7 @@ fn rr12_hook_contract_mismatch_fails_registry_compilation_for_unary_and_stream()
         };
         let definition = definition(value, mode);
         compiler.register_definition(definition.clone()).unwrap();
+        activate_authentication(&mut compiler, &definition, "review.authn");
         compiler
             .register_binding(
                 ProtocolBinding::new(
@@ -316,6 +360,19 @@ async fn review_binding_identity_drives_resolve_and_rejects_protocol_or_adapter_
     let mut compiler = compiler();
     let definition = definition("review.multi", InterfaceExecutionMode::Unary);
     compiler.register_definition(definition.clone()).unwrap();
+    activate_authentication(&mut compiler, &definition, "review.http-authn");
+    compiler
+        .bind_authentication_activation(
+            definition.interface_id().clone(),
+            ActivatedAuthenticationAdapter::new(
+                PluginIdentity::new("review.authentication").unwrap(),
+                InterfaceExtensionTier::BuiltIn,
+                AuthenticationAdapterReference::new("review.mcp-authn").unwrap(),
+                AuthenticationActivationIdentity::new("review.mcp-authn.activation.v1").unwrap(),
+                PrincipalProfile::User,
+            ),
+        )
+        .unwrap();
     compiler
         .register_binding(
             ProtocolBinding::new(
@@ -422,6 +479,7 @@ fn review_registry_compiles_ordered_extension_plan_from_real_registrations() {
     let mut compiler = compiler();
     let definition = definition("review.extensions", InterfaceExecutionMode::Unary);
     compiler.register_definition(definition.clone()).unwrap();
+    activate_authentication(&mut compiler, &definition, "review.authn");
     compiler
         .register_binding(
             ProtocolBinding::new(
@@ -512,6 +570,7 @@ async fn review_compiled_completion_binding_is_mandatory_and_cannot_be_skipped_b
     missing_compiler
         .register_definition(definition.clone())
         .unwrap();
+    activate_authentication(&mut missing_compiler, &definition, "review.authn");
     missing_compiler
         .register_binding(
             ProtocolBinding::new(
@@ -559,6 +618,7 @@ async fn review_compiled_completion_binding_is_mandatory_and_cannot_be_skipped_b
 
     let mut compiler = compiler();
     compiler.register_definition(definition.clone()).unwrap();
+    activate_authentication(&mut compiler, &definition, "review.authn");
     compiler
         .register_binding(
             ProtocolBinding::new(
@@ -624,6 +684,7 @@ fn handler_extension_compiler(plugins: &[&str], bind_executables: bool) -> Regis
     let mut compiler = compiler();
     let definition = definition("review.handler-extension", InterfaceExecutionMode::Unary);
     compiler.register_definition(definition.clone()).unwrap();
+    activate_authentication(&mut compiler, &definition, "review.authn");
     compiler
         .register_binding(
             ProtocolBinding::new(
@@ -713,6 +774,7 @@ async fn review_live_server_stream_finishes_after_events_with_one_runtime_pinned
     let mut compiler = compiler();
     let definition = definition("review.stream", InterfaceExecutionMode::ServerStream);
     compiler.register_definition(definition.clone()).unwrap();
+    activate_authentication(&mut compiler, &definition, "review.authn");
     compiler
         .register_binding(
             ProtocolBinding::new(
@@ -844,4 +906,809 @@ async fn review_live_server_stream_finishes_after_events_with_one_runtime_pinned
             InterfaceInvocationStage::PostProcessed,
         ]
     );
+}
+
+#[test]
+fn rr13_definition_contribution_is_real_registry_input_and_metadata_only_fails() {
+    let contributed = definition("review.contributed", InterfaceExecutionMode::Unary);
+    let binding = ProtocolBinding::new(
+        BindingId::new("http.review.contributed.v1").unwrap(),
+        contributed.identity().clone(),
+        contributed.contracts().clone(),
+        ProtocolProjection::http(RouteIdentity::new("POST", "/api/contributed").unwrap()),
+    );
+    let plugin = PluginIdentity::new("review.definition-contributor").unwrap();
+    let registration = InterfaceExtensionRegistration::new(
+        plugin,
+        InterfaceExtensionTier::HostExtension,
+        InterfaceExtensionPoint::Definition,
+        InterfaceExtensionPermission::Define,
+        InterfaceScope::Workspace,
+        InterfaceExtensionIsolation::TrustedInProcess,
+        [
+            InterfaceExtensionFact::DefinitionIdentity,
+            InterfaceExtensionFact::BindingIdentity,
+        ],
+    )
+    .unwrap();
+    let contribution =
+        TypedInterfaceDefinitionContribution::<Input, Output, TargetError, UserPrincipal>::new(
+            contributed.clone(),
+            [ContributedProtocolBinding::new(
+                binding,
+                plan("review.authn", "review.authz"),
+            )],
+        )
+        .unwrap();
+    let mut compiler = compiler();
+    compiler.register_definition_contribution(0, registration.clone(), Arc::new(contribution));
+    activate_authentication(&mut compiler, &contributed, "review.authn");
+    compiler
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
+            contributed.interface_id(),
+            contributed.handler_reference().clone(),
+            Arc::new(UnaryHandler),
+        )
+        .unwrap();
+    let snapshot = compiler.compile().unwrap();
+    assert_eq!(snapshot.definitions().len(), 1);
+    assert_eq!(snapshot.bindings().len(), 1);
+
+    let inert = definition("review.inert-definition", InterfaceExecutionMode::Unary);
+    let mut compiler = compiler();
+    compiler.register_definition(inert.clone()).unwrap();
+    activate_authentication(&mut compiler, &inert, "review.authn");
+    compiler
+        .register_binding(
+            ProtocolBinding::new(
+                BindingId::new("http.review.inert-definition.v1").unwrap(),
+                inert.identity().clone(),
+                inert.contracts().clone(),
+                ProtocolProjection::http(RouteIdentity::new("POST", "/api/inert").unwrap()),
+            ),
+            plan("review.authn", "review.authz"),
+        )
+        .unwrap();
+    compiler
+        .register_extension(inert.interface_id(), 0, registration)
+        .unwrap();
+    compiler
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
+            inert.interface_id(),
+            inert.handler_reference().clone(),
+            Arc::new(UnaryHandler),
+        )
+        .unwrap();
+    assert!(matches!(
+        compiler.compile(),
+        Err(RegistryCompilationError::MissingDefinitionContribution(_))
+    ));
+}
+
+#[test]
+fn rr14_authentication_activation_missing_duplicate_and_identity_mismatch_fail_closed() {
+    let definition = definition(
+        "review.authentication-negative",
+        InterfaceExecutionMode::Unary,
+    );
+    let mut missing = compiler();
+    missing.register_definition(definition.clone()).unwrap();
+    missing
+        .register_binding(
+            ProtocolBinding::new(
+                BindingId::new("http.review.authentication-negative.v1").unwrap(),
+                definition.identity().clone(),
+                definition.contracts().clone(),
+                ProtocolProjection::http(RouteIdentity::new("POST", "/api/auth-negative").unwrap()),
+            ),
+            plan("review.authn", "review.authz"),
+        )
+        .unwrap();
+    missing
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
+            definition.interface_id(),
+            definition.handler_reference().clone(),
+            Arc::new(UnaryHandler),
+        )
+        .unwrap();
+    assert!(matches!(
+        missing.compile(),
+        Err(RegistryCompilationError::MissingAuthenticationActivation(_))
+    ));
+
+    let mut mismatch = compiler();
+    mismatch.register_definition(definition.clone()).unwrap();
+    mismatch
+        .register_binding(
+            ProtocolBinding::new(
+                BindingId::new("http.review.authentication-negative.v1").unwrap(),
+                definition.identity().clone(),
+                definition.contracts().clone(),
+                ProtocolProjection::http(RouteIdentity::new("POST", "/api/auth-negative").unwrap()),
+            ),
+            plan("review.authn", "review.authz"),
+        )
+        .unwrap();
+    let registration = InterfaceExtensionRegistration::new(
+        PluginIdentity::new("review.authentication").unwrap(),
+        InterfaceExtensionTier::BuiltIn,
+        InterfaceExtensionPoint::AuthenticationAdapter,
+        InterfaceExtensionPermission::Authenticate,
+        InterfaceScope::Workspace,
+        InterfaceExtensionIsolation::TrustedInProcess,
+        [],
+    )
+    .unwrap();
+    mismatch
+        .register_authentication_adapter(
+            definition.interface_id(),
+            1,
+            registration,
+            ActivatedAuthenticationAdapter::new(
+                PluginIdentity::new("review.wrong-authentication").unwrap(),
+                InterfaceExtensionTier::BuiltIn,
+                AuthenticationAdapterReference::new("review.authn").unwrap(),
+                AuthenticationActivationIdentity::new("review.authn.activation.v1").unwrap(),
+                PrincipalProfile::User,
+            ),
+        )
+        .unwrap();
+    assert!(matches!(
+        mismatch.bind_authentication_activation(
+            definition.interface_id().clone(),
+            ActivatedAuthenticationAdapter::new(
+                PluginIdentity::new("review.wrong-authentication").unwrap(),
+                InterfaceExtensionTier::BuiltIn,
+                AuthenticationAdapterReference::new("review.authn").unwrap(),
+                AuthenticationActivationIdentity::new("review.duplicate.activation.v1").unwrap(),
+                PrincipalProfile::User,
+            )
+        ),
+        Err(RegistryCompilationError::DuplicateAuthenticationActivation(
+            _
+        ))
+    ));
+    mismatch
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
+            definition.interface_id(),
+            definition.handler_reference().clone(),
+            Arc::new(UnaryHandler),
+        )
+        .unwrap();
+    assert!(matches!(
+        mismatch.compile(),
+        Err(RegistryCompilationError::AuthenticationActivationMismatch(
+            _
+        ))
+    ));
+}
+
+#[derive(Clone, Copy)]
+enum DecisionBehavior {
+    Allow,
+    Reject,
+    Delay,
+}
+
+struct RecordingAuthorizationContribution {
+    events: Arc<Mutex<Vec<&'static str>>>,
+    behavior: DecisionBehavior,
+}
+
+impl InterfaceAuthorizationContribution for RecordingAuthorizationContribution {
+    fn authorize(
+        &self,
+        _request: InterfaceAuthorizationContributionRequest,
+    ) -> InterfaceAuthorizationContributionFuture<'_> {
+        self.events.lock().unwrap().push("extension-authorization");
+        Box::pin(async move {
+            match self.behavior {
+                DecisionBehavior::Allow => Ok(()),
+                DecisionBehavior::Reject => {
+                    Err(InterfaceAuthorizationContributionError::classified(
+                        "extension-authorization-deny",
+                    ))
+                }
+                DecisionBehavior::Delay => {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    Ok(())
+                }
+            }
+        })
+    }
+}
+
+struct RecordingAdmissionContribution {
+    events: Arc<Mutex<Vec<&'static str>>>,
+    behavior: DecisionBehavior,
+}
+
+impl InterfaceAdmissionContribution for RecordingAdmissionContribution {
+    fn admit(
+        &self,
+        _request: InterfaceAdmissionContributionRequest,
+    ) -> InterfaceAdmissionContributionFuture<'_> {
+        self.events.lock().unwrap().push("extension-admission");
+        Box::pin(async move {
+            match self.behavior {
+                DecisionBehavior::Allow => Ok(()),
+                DecisionBehavior::Reject => Err(InterfaceAdmissionContributionError::classified(
+                    "extension-admission-reject",
+                )),
+                DecisionBehavior::Delay => {
+                    tokio::time::sleep(Duration::from_secs(1)).await;
+                    Ok(())
+                }
+            }
+        })
+    }
+}
+
+struct RecordingCoreAuthorization {
+    events: Arc<Mutex<Vec<&'static str>>>,
+    reject: bool,
+}
+
+impl InterfaceAuthorizationPort for RecordingCoreAuthorization {
+    fn adapter_reference(&self) -> AuthorizationAdapterReference {
+        AuthorizationAdapterReference::new("review.authz").unwrap()
+    }
+
+    fn authorize(
+        &self,
+        _request: InterfaceAuthorizationRequest,
+    ) -> InterfaceAuthorizationFuture<'_> {
+        self.events.lock().unwrap().push("core-authorization");
+        Box::pin(async move {
+            if self.reject {
+                Err(crate::InterfaceAuthorizationError::classified("core-deny"))
+            } else {
+                Ok(())
+            }
+        })
+    }
+}
+
+struct RecordingCoreAdmission(Arc<Mutex<Vec<&'static str>>>);
+
+impl InterfaceTargetAdmissionPort for RecordingCoreAdmission {
+    fn adapter_reference(&self) -> AdmissionAdapterReference {
+        AdmissionAdapterReference::new("review.admission").unwrap()
+    }
+
+    fn admit(
+        &self,
+        _request: InterfaceTargetAdmissionRequest,
+    ) -> InterfaceTargetAdmissionFuture<'_> {
+        self.0.lock().unwrap().push("core-admission");
+        Box::pin(async { Ok(()) })
+    }
+}
+
+struct DecisionUnaryHandler(Arc<Mutex<Vec<&'static str>>>);
+
+impl InterfaceHandler<Input, Output, TargetError> for DecisionUnaryHandler {
+    fn invoke(
+        &self,
+        _context: InterfaceHandlerContext,
+        input: Input,
+    ) -> InterfaceHandlerFuture<Output, TargetError> {
+        self.0.lock().unwrap().push("handler");
+        Box::pin(async move { Ok(Output(input.0)) })
+    }
+}
+
+struct DecisionStreamHandler(Arc<Mutex<Vec<&'static str>>>);
+
+impl InterfaceStreamHandler<Input, StreamEvent, Output, TargetError> for DecisionStreamHandler {
+    fn invoke_stream(
+        &self,
+        _context: InterfaceHandlerContext,
+        input: Input,
+    ) -> InterfaceStreamHandlerFuture<StreamEvent, Output, TargetError> {
+        self.0.lock().unwrap().push("handler");
+        Box::pin(async move {
+            let (publisher, stream) = interface_stream_channel(2);
+            tokio::spawn(async move {
+                publisher.emit(StreamEvent(input.0)).await.unwrap();
+                publisher
+                    .finish(InterfaceStreamTerminal::Completed(Output(input.0)))
+                    .await
+                    .unwrap();
+            });
+            Ok(stream)
+        })
+    }
+}
+
+fn decision_snapshot(
+    mode: InterfaceExecutionMode,
+    events: Arc<Mutex<Vec<&'static str>>>,
+    authorization: DecisionBehavior,
+    admission: DecisionBehavior,
+) -> Arc<crate::CompiledInterfaceRegistry> {
+    let value = if mode == InterfaceExecutionMode::Unary {
+        "review.decision-unary"
+    } else {
+        "review.decision-stream"
+    };
+    let definition = definition(value, mode);
+    let mut compiler = compiler();
+    compiler.register_definition(definition.clone()).unwrap();
+    activate_authentication(&mut compiler, &definition, "review.authn");
+    compiler
+        .register_binding(
+            ProtocolBinding::new(
+                BindingId::new(format!("http.{value}.v1")).unwrap(),
+                definition.identity().clone(),
+                definition.contracts().clone(),
+                ProtocolProjection::http(
+                    RouteIdentity::new("POST", format!("/api/{value}")).unwrap(),
+                ),
+            ),
+            InvocationAdapterPlan::new(
+                AuthenticationAdapterReference::new("review.authn").unwrap(),
+                AuthorizationAdapterReference::new("review.authz").unwrap(),
+                Some(AdmissionAdapterReference::new("review.admission").unwrap()),
+            ),
+        )
+        .unwrap();
+    let authorization_plugin = PluginIdentity::new("review.authorization-veto").unwrap();
+    compiler
+        .register_extension(
+            definition.interface_id(),
+            10,
+            InterfaceExtensionRegistration::new(
+                authorization_plugin.clone(),
+                InterfaceExtensionTier::HostExtension,
+                InterfaceExtensionPoint::Authorization,
+                InterfaceExtensionPermission::Authorize,
+                InterfaceScope::Workspace,
+                InterfaceExtensionIsolation::TrustedInProcess,
+                [
+                    InterfaceExtensionFact::DefinitionIdentity,
+                    InterfaceExtensionFact::PrincipalSummary,
+                ],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    compiler
+        .bind_authorization_plan(
+            definition.interface_id(),
+            Arc::new(
+                TypedInterfaceAuthorizationPlan::<Input, Output>::new(
+                    GraphFingerprint::new("graph:review").unwrap(),
+                )
+                .bind(
+                    authorization_plugin,
+                    Arc::new(RecordingAuthorizationContribution {
+                        events: Arc::clone(&events),
+                        behavior: authorization,
+                    }),
+                ),
+            ),
+        )
+        .unwrap();
+    let admission_plugin = PluginIdentity::new("review.admission-veto").unwrap();
+    compiler
+        .register_extension(
+            definition.interface_id(),
+            20,
+            InterfaceExtensionRegistration::new(
+                admission_plugin.clone(),
+                InterfaceExtensionTier::HostExtension,
+                InterfaceExtensionPoint::Admission,
+                InterfaceExtensionPermission::Admit,
+                InterfaceScope::Workspace,
+                InterfaceExtensionIsolation::TrustedInProcess,
+                [
+                    InterfaceExtensionFact::DefinitionIdentity,
+                    InterfaceExtensionFact::PrincipalSummary,
+                    InterfaceExtensionFact::AuthorizationDecision,
+                ],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    compiler
+        .bind_admission_plan(
+            definition.interface_id(),
+            Arc::new(
+                TypedInterfaceAdmissionPlan::<Input, Output>::new(
+                    GraphFingerprint::new("graph:review").unwrap(),
+                )
+                .bind(
+                    admission_plugin,
+                    Arc::new(RecordingAdmissionContribution {
+                        events: Arc::clone(&events),
+                        behavior: admission,
+                    }),
+                ),
+            ),
+        )
+        .unwrap();
+    let before_plugin = PluginIdentity::new("review.decision-before").unwrap();
+    compiler
+        .register_extension(
+            definition.interface_id(),
+            30,
+            InterfaceExtensionRegistration::new(
+                before_plugin.clone(),
+                InterfaceExtensionTier::HostExtension,
+                InterfaceExtensionPoint::Before,
+                InterfaceExtensionPermission::ObserveInput,
+                InterfaceScope::Workspace,
+                InterfaceExtensionIsolation::TrustedInProcess,
+                [InterfaceExtensionFact::TypedInput],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    compiler
+        .bind_hook_plan(
+            definition.interface_id(),
+            Arc::new(
+                TypedInterfaceHookPlan::<Input, Output>::new(
+                    GraphFingerprint::new("graph:review").unwrap(),
+                )
+                .bind_before(
+                    before_plugin,
+                    Arc::new(RecordingBefore(Arc::clone(&events))),
+                ),
+            ),
+        )
+        .unwrap();
+    if mode == InterfaceExecutionMode::Unary {
+        compiler
+            .bind_handler::<Input, Output, TargetError, UserPrincipal>(
+                definition.interface_id(),
+                definition.handler_reference().clone(),
+                Arc::new(DecisionUnaryHandler(events)),
+            )
+            .unwrap();
+    } else {
+        compiler
+            .bind_stream_handler::<Input, StreamEvent, Output, TargetError, UserPrincipal>(
+                definition.interface_id(),
+                definition.handler_reference().clone(),
+                Arc::new(DecisionStreamHandler(events)),
+            )
+            .unwrap();
+    }
+    compiler.compile().unwrap()
+}
+
+#[tokio::test]
+async fn rr15_rr16_unary_and_stream_execute_core_then_ordered_veto_then_hook_handler() {
+    for mode in [
+        InterfaceExecutionMode::Unary,
+        InterfaceExecutionMode::ServerStream,
+    ] {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let snapshot = decision_snapshot(
+            mode,
+            Arc::clone(&events),
+            DecisionBehavior::Allow,
+            DecisionBehavior::Allow,
+        );
+        let kernel = InterfaceInvocationKernel::with_target_admission(
+            Arc::new(RecordingCoreAuthorization {
+                events: Arc::clone(&events),
+                reject: false,
+            }),
+            Arc::new(RecordingCoreAdmission(Arc::clone(&events))),
+        );
+        let binding = if mode == InterfaceExecutionMode::Unary {
+            "http.review.decision-unary.v1"
+        } else {
+            "http.review.decision-stream.v1"
+        };
+        if mode == InterfaceExecutionMode::Unary {
+            let outcome = kernel
+                .invoke::<Input, Output, TargetError>(
+                    Arc::clone(&snapshot),
+                    envelope(binding, InterfaceProtocol::Http, "review.authn"),
+                )
+                .await
+                .unwrap();
+            assert!(outcome.receipt().authorization_decision().is_some());
+        } else {
+            let invocation = kernel
+                .invoke_server_stream_with_dispatch_target::<
+                    Input,
+                    StreamEvent,
+                    Output,
+                    TargetError,
+                >(
+                    snapshot,
+                    envelope(binding, InterfaceProtocol::Http, "review.authn"),
+                    ExecutionTargetPin::BuiltIn {
+                        handler: HandlerReference::new("review.decision-stream.handler").unwrap(),
+                        target: TargetReference::new("review.decision-stream.target").unwrap(),
+                    },
+                )
+                .await
+                .unwrap();
+            let (mut stream, completion) = invocation.into_parts();
+            assert_eq!(stream.recv().await, Some(StreamEvent(4)));
+            assert!(stream.recv().await.is_none());
+            assert!(completion
+                .complete()
+                .await
+                .unwrap()
+                .receipt()
+                .authorization_decision()
+                .is_some());
+        }
+        assert_eq!(
+            events.lock().unwrap().as_slice(),
+            [
+                "core-authorization",
+                "extension-authorization",
+                "core-admission",
+                "extension-admission",
+                "before",
+                "handler",
+            ]
+        );
+    }
+}
+
+#[tokio::test]
+async fn rr15_core_deny_dominates_plugin_allow_and_extension_failures_fail_closed() {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let snapshot = decision_snapshot(
+        InterfaceExecutionMode::Unary,
+        Arc::clone(&events),
+        DecisionBehavior::Allow,
+        DecisionBehavior::Allow,
+    );
+    let failure = InterfaceInvocationKernel::with_target_admission(
+        Arc::new(RecordingCoreAuthorization {
+            events: Arc::clone(&events),
+            reject: true,
+        }),
+        Arc::new(RecordingCoreAdmission(Arc::clone(&events))),
+    )
+    .invoke::<Input, Output, TargetError>(
+        snapshot,
+        envelope(
+            "http.review.decision-unary.v1",
+            InterfaceProtocol::Http,
+            "review.authn",
+        ),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(
+        failure.error(),
+        InterfaceInvocationError::AuthorizationRejected(_)
+    ));
+    assert_eq!(events.lock().unwrap().as_slice(), ["core-authorization"]);
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let snapshot = decision_snapshot(
+        InterfaceExecutionMode::Unary,
+        Arc::clone(&events),
+        DecisionBehavior::Reject,
+        DecisionBehavior::Allow,
+    );
+    let failure = InterfaceInvocationKernel::with_target_admission(
+        Arc::new(RecordingCoreAuthorization {
+            events: Arc::clone(&events),
+            reject: false,
+        }),
+        Arc::new(RecordingCoreAdmission(Arc::clone(&events))),
+    )
+    .invoke::<Input, Output, TargetError>(
+        snapshot,
+        envelope(
+            "http.review.decision-unary.v1",
+            InterfaceProtocol::Http,
+            "review.authn",
+        ),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(
+        failure.error(),
+        InterfaceInvocationError::AuthorizationContributionRejected(_)
+    ));
+    assert_eq!(
+        events.lock().unwrap().as_slice(),
+        ["core-authorization", "extension-authorization"]
+    );
+}
+
+#[tokio::test]
+async fn rr15_rr16_extension_timeout_and_admission_reject_fail_closed() {
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let snapshot = decision_snapshot(
+        InterfaceExecutionMode::Unary,
+        Arc::clone(&events),
+        DecisionBehavior::Delay,
+        DecisionBehavior::Allow,
+    );
+    let envelope = InvocationEnvelope::new(
+        InvocationLineage::root(InvocationId::now_v7()),
+        BindingId::new("http.review.decision-unary.v1").unwrap(),
+        InterfaceProtocol::Http,
+        AuthenticationAdapterReference::new("review.authn").unwrap(),
+        AuthenticationActivationIdentity::new("review.authn.activation.v1").unwrap(),
+        actor(),
+        Some(SystemTime::now() + Duration::from_millis(10)),
+        Input(4),
+    );
+    let failure = InterfaceInvocationKernel::with_target_admission(
+        Arc::new(RecordingCoreAuthorization {
+            events: Arc::clone(&events),
+            reject: false,
+        }),
+        Arc::new(RecordingCoreAdmission(Arc::clone(&events))),
+    )
+    .invoke::<Input, Output, TargetError>(snapshot, envelope)
+    .await
+    .unwrap_err();
+    assert!(matches!(
+        failure.error(),
+        InterfaceInvocationError::DeadlineElapsed
+    ));
+
+    let events = Arc::new(Mutex::new(Vec::new()));
+    let snapshot = decision_snapshot(
+        InterfaceExecutionMode::Unary,
+        Arc::clone(&events),
+        DecisionBehavior::Allow,
+        DecisionBehavior::Reject,
+    );
+    let failure = InterfaceInvocationKernel::with_target_admission(
+        Arc::new(RecordingCoreAuthorization {
+            events: Arc::clone(&events),
+            reject: false,
+        }),
+        Arc::new(RecordingCoreAdmission(Arc::clone(&events))),
+    )
+    .invoke::<Input, Output, TargetError>(
+        snapshot,
+        envelope(
+            "http.review.decision-unary.v1",
+            InterfaceProtocol::Http,
+            "review.authn",
+        ),
+    )
+    .await
+    .unwrap_err();
+    assert!(matches!(
+        failure.error(),
+        InterfaceInvocationError::AdmissionContributionRejected(_)
+    ));
+}
+
+fn bare_decision_compiler(value: &str) -> (RegistryCompiler, InterfaceDefinition) {
+    let definition = definition(value, InterfaceExecutionMode::Unary);
+    let mut compiler = compiler();
+    compiler.register_definition(definition.clone()).unwrap();
+    activate_authentication(&mut compiler, &definition, "review.authn");
+    compiler
+        .register_binding(
+            ProtocolBinding::new(
+                BindingId::new(format!("http.{value}.v1")).unwrap(),
+                definition.identity().clone(),
+                definition.contracts().clone(),
+                ProtocolProjection::http(
+                    RouteIdentity::new("POST", format!("/api/{value}")).unwrap(),
+                ),
+            ),
+            plan("review.authn", "review.authz"),
+        )
+        .unwrap();
+    compiler
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
+            definition.interface_id(),
+            definition.handler_reference().clone(),
+            Arc::new(UnaryHandler),
+        )
+        .unwrap();
+    (compiler, definition)
+}
+
+#[test]
+fn rr15_rr16_decision_bindings_fail_publish_when_missing_extra_or_contract_mismatched() {
+    let (mut missing, definition) = bare_decision_compiler("review.authz-missing");
+    let plugin = PluginIdentity::new("review.authz-missing-plugin").unwrap();
+    missing
+        .register_extension(
+            definition.interface_id(),
+            10,
+            InterfaceExtensionRegistration::new(
+                plugin,
+                InterfaceExtensionTier::HostExtension,
+                InterfaceExtensionPoint::Authorization,
+                InterfaceExtensionPermission::Authorize,
+                InterfaceScope::Workspace,
+                InterfaceExtensionIsolation::TrustedInProcess,
+                [InterfaceExtensionFact::PrincipalSummary],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    assert!(matches!(
+        missing.compile(),
+        Err(RegistryCompilationError::MissingExecutableExtension(
+            _,
+            _,
+            InterfaceExtensionPoint::Authorization
+        ))
+    ));
+
+    let (mut extra, definition) = bare_decision_compiler("review.admission-extra");
+    extra
+        .bind_admission_plan(
+            definition.interface_id(),
+            Arc::new(
+                TypedInterfaceAdmissionPlan::<Input, Output>::new(
+                    GraphFingerprint::new("graph:review").unwrap(),
+                )
+                .bind(
+                    PluginIdentity::new("review.admission-extra-plugin").unwrap(),
+                    Arc::new(RecordingAdmissionContribution {
+                        events: Arc::new(Mutex::new(Vec::new())),
+                        behavior: DecisionBehavior::Allow,
+                    }),
+                ),
+            ),
+        )
+        .unwrap();
+    assert!(matches!(
+        extra.compile(),
+        Err(RegistryCompilationError::UnexpectedExecutableExtension(
+            _,
+            _,
+            InterfaceExtensionPoint::Admission
+        ))
+    ));
+
+    let (mut mismatch, definition) = bare_decision_compiler("review.authz-contract");
+    let plugin = PluginIdentity::new("review.authz-contract-plugin").unwrap();
+    mismatch
+        .register_extension(
+            definition.interface_id(),
+            10,
+            InterfaceExtensionRegistration::new(
+                plugin.clone(),
+                InterfaceExtensionTier::HostExtension,
+                InterfaceExtensionPoint::Authorization,
+                InterfaceExtensionPermission::Authorize,
+                InterfaceScope::Workspace,
+                InterfaceExtensionIsolation::TrustedInProcess,
+                [InterfaceExtensionFact::PrincipalSummary],
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    mismatch
+        .bind_authorization_plan(
+            definition.interface_id(),
+            Arc::new(
+                TypedInterfaceAuthorizationPlan::<WrongInput, Output>::new(
+                    GraphFingerprint::new("graph:review").unwrap(),
+                )
+                .bind(
+                    plugin,
+                    Arc::new(RecordingAuthorizationContribution {
+                        events: Arc::new(Mutex::new(Vec::new())),
+                        behavior: DecisionBehavior::Allow,
+                    }),
+                ),
+            ),
+        )
+        .unwrap();
+    assert!(matches!(
+        mismatch.compile(),
+        Err(RegistryCompilationError::DecisionContractMismatch(
+            _,
+            InterfaceExtensionPoint::Authorization
+        ))
+    ));
 }
