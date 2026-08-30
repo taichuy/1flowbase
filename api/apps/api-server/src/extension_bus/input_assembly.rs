@@ -46,6 +46,10 @@ pub const INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID: &str =
     "1flowbase.boot-core.interface.completion.observer";
 pub const INTERFACE_LIFECYCLE_HOOK_CONTRACT_ID: &str = "interface-lifecycle-hook";
 pub const INTERFACE_LIFECYCLE_HOOK_CONTRACT_VERSION: &str = "1";
+pub const INTERFACE_AUTHENTICATION_ADAPTER_POINT_ID: &str =
+    "1flowbase.interface.authentication-adapter";
+pub const INTERFACE_AUTHENTICATION_ADAPTER_CONTRACT_ID: &str = "interface-authentication-adapter";
+pub const INTERFACE_AUTHENTICATION_ADAPTER_CONTRACT_VERSION: &str = "1";
 pub use control_plane::ports::{
     RUNTIME_EVENT_AFTER_COMMIT_CONTRACT_ID, RUNTIME_EVENT_AFTER_COMMIT_POINT_ID,
     RUNTIME_EVENT_DIAGNOSTIC_CONTRACT_ID, RUNTIME_EVENT_DIAGNOSTIC_POINT_ID,
@@ -307,6 +311,7 @@ fn boot_core_descriptor() -> Result<ModuleDescriptor> {
             runtime_event_diagnostic_extension_point()?,
             runtime_event_after_commit_extension_point()?,
             interface_operation_extension_point()?,
+            interface_authentication_adapter_extension_point()?,
             interface_completion_hook_extension_point()?,
             frontend_block_contribution_extension_point()?,
         ],
@@ -321,6 +326,26 @@ fn boot_core_descriptor() -> Result<ModuleDescriptor> {
             mode: ContributionMode::Append,
             ordering: ContributionOrdering::default(),
         }],
+    })
+}
+
+fn interface_authentication_adapter_extension_point() -> Result<ExtensionPointDescriptor> {
+    Ok(ExtensionPointDescriptor {
+        point_id: ExtensionPointId::new(INTERFACE_AUTHENTICATION_ADAPTER_POINT_ID)?,
+        owner_module_id: ModuleId::new(BOOT_CORE_MODULE_ID)?,
+        point_kind: ExtensionPointKind::Contribution,
+        contract: ContractDescriptor::new(
+            INTERFACE_AUTHENTICATION_ADAPTER_CONTRACT_ID,
+            INTERFACE_AUTHENTICATION_ADAPTER_CONTRACT_VERSION,
+        )?,
+        scope: ScopeSemantics::System,
+        cardinality: Cardinality::Many,
+        ordering: OrderingSemantics::Lexicographic,
+        failure: FailureSemantics::FailClosed,
+        delivery: DeliverySemantics::Synchronous,
+        lifecycle: LifecycleSemantics::BootSnapshot,
+        allowed_permissions: BTreeSet::new(),
+        override_policy: OverridePolicy::Sealed,
     })
 }
 
@@ -565,6 +590,19 @@ fn derive_host_module_descriptor(
             required_permissions: BTreeSet::from([PermissionCode::new(
                 operation.required_core_permission.clone(),
             )?]),
+            mode: ContributionMode::Append,
+            ordering: ContributionOrdering::default(),
+        });
+    }
+    for authentication in &contribution.interface_authentication_adapters {
+        descriptor.contributions.push(ContributionDescriptor {
+            contribution_id: ContributionId::new(authentication.contribution_id.clone())?,
+            contributor_module_id: ModuleId::new(contribution.extension_id.as_str())?,
+            point_id: ExtensionPointId::new(INTERFACE_AUTHENTICATION_ADAPTER_POINT_ID)?,
+            contract_version: plugin_framework::extension_bus::ContractVersion::new(
+                INTERFACE_AUTHENTICATION_ADAPTER_CONTRACT_VERSION,
+            )?,
+            required_permissions: BTreeSet::new(),
             mode: ContributionMode::Append,
             ordering: ContributionOrdering::default(),
         });

@@ -15,7 +15,10 @@ use interface_runtime::{
     AuthenticationAdapterReference, CompiledInterfaceRegistry, InterfaceExtensionTier,
     InvocationPrincipal, PluginIdentity, PrincipalProfile,
 };
-use plugin_framework::{HostExtensionContributionManifest, PluginManifestV1};
+use plugin_framework::{
+    HostExtensionContributionManifest, HostExtensionInterfaceAuthenticationManifest,
+    HostExtensionInterfaceAuthenticationPrincipalProfile, PluginManifestV1,
+};
 
 use crate::{
     app_state::ApiState,
@@ -150,6 +153,20 @@ impl AuthenticationAdapterFactoryRegistry {
         Ok(())
     }
 
+    pub(crate) fn activate_host_extensions(
+        &mut self,
+        bindings: impl IntoIterator<Item = AuthenticationAdapterFactoryBinding>,
+    ) -> Result<()> {
+        for binding in bindings {
+            let adapter = binding.factory.adapter().clone();
+            self.factories.retain(|_, factory| {
+                factory.tier() != InterfaceExtensionTier::BuiltIn || factory.adapter() != &adapter
+            });
+            self.register(binding)?;
+        }
+        Ok(())
+    }
+
     fn register(&mut self, binding: AuthenticationAdapterFactoryBinding) -> Result<()> {
         let activation = binding.factory.activation().clone();
         if self
@@ -225,6 +242,10 @@ impl AuthenticationAdapterFactoryRegistry {
 }
 
 pub(crate) struct PublicAuthenticationCredential;
+
+pub(crate) const CONSOLE_SESSION_CREDENTIAL_CONTRACT_ID: &str =
+    "api-server.console-session-credential";
+pub(crate) const CONSOLE_SESSION_CREDENTIAL_CONTRACT_VERSION: &str = "1";
 
 pub(crate) enum ConsoleAuthenticationCredential {
     Protocol {
@@ -340,8 +361,11 @@ fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactor
     ])
 }
 
-type HostExtensionAuthenticationFactory =
-    Arc<dyn Fn() -> Result<Vec<AuthenticationAdapterFactoryBinding>> + Send + Sync>;
+type HostExtensionAuthenticationFactory = Arc<
+    dyn Fn(&HostExtensionContributionManifest) -> Result<Vec<AuthenticationAdapterFactoryBinding>>
+        + Send
+        + Sync,
+>;
 
 #[derive(Default)]
 pub(crate) struct HostExtensionAuthenticationFactoryCatalog {
@@ -379,13 +403,22 @@ impl HostExtensionAuthenticationFactoryCatalog {
     ) -> Result<Vec<AuthenticationAdapterFactoryBinding>> {
         let mut bindings = Vec::new();
         for (_, contribution) in active_extensions {
+            if contribution.interface_authentication_adapters.is_empty() {
+                continue;
+            }
             let key = (
                 contribution.native.library.clone(),
                 contribution.native.entry_symbol.clone(),
             );
-            if let Some(factory) = self.factories.get(&key) {
-                bindings.extend(factory()?);
-            }
+            let factory = self.factories.get(&key).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "active HostExtension {} has Interface Authentication contributions but no activation factory for {}::{}",
+                    contribution.extension_id,
+                    key.0,
+                    key.1
+                )
+            })?;
+            bindings.extend(factory(contribution)?);
         }
         Ok(bindings)
     }
@@ -393,5 +426,70 @@ impl HostExtensionAuthenticationFactoryCatalog {
 
 pub(crate) fn production_host_extension_authentication_factories(
 ) -> HostExtensionAuthenticationFactoryCatalog {
-    HostExtensionAuthenticationFactoryCatalog::default()
+    let mut catalog = HostExtensionAuthenticationFactoryCatalog::default();
+    catalog
+        .register(
+            "builtin://official.identity-host",
+            "builtin_identity_host",
+            Arc::new(identity_host_authentication_factories),
+        )
+        .expect("built-in identity HostExtension Authentication factory must be unique");
+    catalog
+}
+
+pub(crate) fn activated_host_authentication(
+    extension_id: &str,
+    descriptor: &HostExtensionInterfaceAuthenticationManifest,
+) -> Result<ActivatedAuthenticationAdapter> {
+    let profile = match descriptor.principal_profile {
+        HostExtensionInterfaceAuthenticationPrincipalProfile::Public => PrincipalProfile::Public,
+        HostExtensionInterfaceAuthenticationPrincipalProfile::User => PrincipalProfile::User,
+        HostExtensionInterfaceAuthenticationPrincipalProfile::Application => {
+            PrincipalProfile::Application
+        }
+    };
+    activation(
+        extension_id,
+        InterfaceExtensionTier::HostExtension,
+        &descriptor.adapter_id,
+        &descriptor.activation_id,
+        profile,
+    )
+}
+
+fn identity_host_authentication_factories(
+    contribution: &HostExtensionContributionManifest,
+) -> Result<Vec<AuthenticationAdapterFactoryBinding>> {
+    contribution
+        .interface_authentication_adapters
+        .iter()
+        .map(|descriptor| {
+            if descriptor.credential.contract_id != CONSOLE_SESSION_CREDENTIAL_CONTRACT_ID
+                || descriptor.credential.contract_version
+                    != CONSOLE_SESSION_CREDENTIAL_CONTRACT_VERSION
+                || descriptor.principal_profile
+                    != HostExtensionInterfaceAuthenticationPrincipalProfile::User
+            {
+                bail!(
+                    "identity HostExtension does not implement requested Authentication credential contract"
+                );
+            }
+            AuthenticationAdapterFactoryBinding::typed(
+                activated_host_authentication(&contribution.extension_id, descriptor)?,
+                |credential: ConsoleAuthenticationCredential| async move {
+                    match credential {
+                        ConsoleAuthenticationCredential::Protocol { state, headers } => {
+                            let context = require_session(&state, &headers)
+                                .await
+                                .map_err(|error| error.0)?;
+                            Ok(context.interface_principal())
+                        }
+                        ConsoleAuthenticationCredential::ServerDelegation(actor) => {
+                            Ok(interface_runtime::UserPrincipal::server_delegation(actor))
+                        }
+                    }
+                },
+            )
+        })
+        .collect()
 }

@@ -186,6 +186,19 @@ Interface resolve 先通过不可信协议元数据找到 Definition 和 executi
 
 Authentication registration 只是声明；BuiltIn/HostExtension 的 concrete factory 由 `api-server` Composition Root 从可信 native entrypoint catalog 激活。factory 接收协议层的短生命周期 typed credential（例如 Header、Bearer 或 server delegation），调用既有认证 owner，并返回 sealed Principal；它不是对已构造 Principal 的 downcast 检查。发布时必须双向严格配对 registration、factory、adapter identity、activation identity、Principal profile 和 credential contract，Protocol Adapter 只能从冻结 Binding/Plan 取得 factory、完成认证后再构造 Envelope。缺失、多余、重复、未激活或 identity mismatch 都阻止 catalog/router publish。
 
+可信 HostExtension 的 Authentication contribution 是 `1flowbase.host-extension/v1` 的 typed、
+向后兼容 boot input。它声明目标 Interface/version、完整 Binding identity 集、adapter/activation
+identity、Principal profile 与 credential contract，并作为
+`1flowbase.interface.authentication-adapter` contribution 进入 Effective Graph。Composition Root
+只为已编译进宿主的 trusted native entrypoint 提供 concrete factory；Graph registration、native
+factory 与 canonical Registry 必须在 router publish 前双向一致。该 contribution 只选择既有静态
+Protocol Route 的 Authentication owner，不动态创建 Axum Route，也不建立第二套 Definition Registry。
+
+active Console Interface Route 在通用 Console middleware 调用 `require_session` 前移交 frozen
+factory；credential rejection 与成功 Principal 都由该 factory 首次产生。核心权限仍由 Kernel 的
+core Authorization 决定。未迁移的 Console Route 继续使用既有 middleware，因此零 contribution
+时外部认证、权限、CSRF 与 DTO 行为不变。
+
 原始 credential 只存在于 `api-server` Authentication Adapter 的瞬时调用中；不得进入 `interface-runtime`、Compiled Plan、Envelope、Receipt、Handler、Application/Domain 或普通 Runtime/Capability extension。RuntimeExtension 与 CapabilityPlugin 不能注册 Authentication factory。
 
 统一的是 lifecycle engine，不是一个万能 caller enum。Envelope 对 Principal 类型参数化：

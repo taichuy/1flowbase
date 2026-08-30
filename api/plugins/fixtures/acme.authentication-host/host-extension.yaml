@@ -1,0 +1,28 @@
+schema_version: 1flowbase.host-extension/v1
+extension_id: acme.authentication-host
+version: 0.1.0
+bootstrap_phase: boot
+native:
+  abi_version: 1flowbase.host.native/v1
+  library: builtin://official.identity-host
+  entry_symbol: builtin_identity_host
+owned_resources: []
+extends_resources: [identity]
+infrastructure_providers: []
+interface_authentication_adapters:
+  - contribution_id: acme.authentication-host.interface-authentication.host-infrastructure-providers-view
+    interface_id: host_infrastructure.providers.view
+    interface_version: "1"
+    binding_ids:
+      - http.host_infrastructure.providers.view.v1
+      - mcp.host_infrastructure.providers.view.v1
+      - internal.host_infrastructure.providers.view.v1
+    adapter_id: api-server.console.require-session
+    activation_id: acme.authentication-host.console-session.activation.v1
+    principal_profile: user
+    credential:
+      contract_id: api-server.console-session-credential
+      contract_version: "1"
+routes: []
+workers: []
+migrations: []

@@ -55,6 +55,33 @@ migrations: []
 }
 
 #[test]
+fn rr14_host_extension_parses_typed_interface_authentication_contribution() {
+    let manifest = parse_host_extension_contribution_manifest(include_str!(
+        "../../../../plugins/fixtures/acme.authentication-host/host-extension.yaml"
+    ))
+    .unwrap();
+    let authentication = manifest.interface_authentication_adapters.first().unwrap();
+
+    assert_eq!(
+        authentication.contribution_id,
+        "acme.authentication-host.interface-authentication.host-infrastructure-providers-view"
+    );
+    assert_eq!(
+        authentication.interface_id,
+        "host_infrastructure.providers.view"
+    );
+    assert_eq!(authentication.binding_ids.len(), 3);
+    assert_eq!(
+        authentication.principal_profile,
+        plugin_framework::HostExtensionInterfaceAuthenticationPrincipalProfile::User
+    );
+    assert_eq!(
+        authentication.credential.contract_id,
+        "api-server.console-session-credential"
+    );
+}
+
+#[test]
 fn ac_001_host_extension_console_contribution_compiles_with_core_registry() {
     let manifest = parse_host_extension_contribution_manifest(&host_extension_console_manifest())
         .expect("valid HostExtension console contribution should parse");

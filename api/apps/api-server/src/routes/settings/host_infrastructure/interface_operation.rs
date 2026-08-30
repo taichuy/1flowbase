@@ -1,4 +1,4 @@
-use std::{future::Future, pin::Pin, sync::Arc};
+use std::{collections::BTreeSet, future::Future, pin::Pin, sync::Arc};
 
 use access_control::{ConsoleAuthorization, ConsoleOperationRegistry, ConsolePolicyGroup};
 use anyhow::{bail, Result};
@@ -27,6 +27,8 @@ use plugin_framework::extension_bus::{
     LifecycleSemantics, ModuleKind, OrderingSemantics, OverridePolicy, ScopeSemantics,
 };
 use plugin_framework::{
+    HostExtensionContributionManifest, HostExtensionInterfaceAuthenticationManifest,
+    HostExtensionInterfaceAuthenticationPrincipalProfile,
     HostExtensionInterfaceOperationAuditPolicy, HostExtensionInterfaceOperationAuthPolicy,
     HostExtensionInterfaceOperationErrorPolicy, HostExtensionInterfaceOperationManifest,
     HostExtensionInterfaceOperationMethod,
@@ -301,9 +303,7 @@ pub(crate) async fn invoke_providers_view(
     let principal: UserPrincipal = boot_snapshot
         .authenticate(activated_authentication, credential)
         .await
-        .map_err(|_| {
-            control_plane::errors::ControlPlaneError::NotFound("authentication_activation")
-        })?;
+        .map_err(crate::error_response::ApiError::from)?;
     let authentication_activation = activated_authentication.activation().clone();
     match kernel
         .invoke::<
@@ -316,8 +316,7 @@ pub(crate) async fn invoke_providers_view(
                 InvocationLineage::root(InvocationId::now_v7()),
                 binding_id,
                 protocol,
-                AuthenticationAdapterReference::new("api-server.console.require-session")
-                    .expect("static adapter is valid"),
+                activated_authentication.adapter().clone(),
                 authentication_activation,
                 principal,
                 None,
@@ -390,6 +389,10 @@ fn invocation_failure_api_error(
 pub(crate) fn compile_interface_registry(
     graph: Arc<EffectiveExtensionGraph>,
     descriptors: &[HostExtensionInterfaceOperationManifest],
+    active_extensions: &[(
+        plugin_framework::PluginManifestV1,
+        HostExtensionContributionManifest,
+    )],
     providers_view_query: Arc<dyn HostInfrastructureProvidersViewQuery>,
     providers_view_hooks: Arc<
         interface_runtime::TypedInterfaceHookPlan<
@@ -402,6 +405,8 @@ pub(crate) fn compile_interface_registry(
     let binding = binding_from_descriptor(&descriptor)?;
     let definition = definition_from_descriptor(descriptor)?;
     let interface_id = definition.interface_id().clone();
+    let activated_authentication =
+        providers_view_authentication(&graph, active_extensions, &interface_id)?;
     let handler_reference = definition.handler_reference().clone();
     let graph_fingerprint = GraphFingerprint::new(graph.fingerprint().as_str())?;
     let owner = InterfaceOwner::new(HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID)?;
@@ -470,23 +475,15 @@ pub(crate) fn compile_interface_registry(
         &interface_id,
         1,
         InterfaceExtensionRegistration::new(
-            PluginIdentity::new("api-server.console-authentication")?,
-            InterfaceExtensionTier::BuiltIn,
+            activated_authentication.plugin().clone(),
+            activated_authentication.tier(),
             InterfaceExtensionPoint::AuthenticationAdapter,
             InterfaceExtensionPermission::Authenticate,
             InterfaceScope::System,
             InterfaceExtensionIsolation::TrustedInProcess,
             [],
         )?,
-        interface_runtime::ActivatedAuthenticationAdapter::new(
-            PluginIdentity::new("api-server.console-authentication")?,
-            InterfaceExtensionTier::BuiltIn,
-            AuthenticationAdapterReference::new("api-server.console.require-session")?,
-            interface_runtime::AuthenticationActivationIdentity::new(
-                "api-server.console.require-session.activation.v1",
-            )?,
-            interface_runtime::PrincipalProfile::User,
-        ),
+        activated_authentication,
     )?;
     let authorization_plugin = PluginIdentity::new("api-server.providers-view-authorization")?;
     compiler.register_extension(
@@ -815,4 +812,111 @@ fn validate_active_providers_view(
         bail!("host infrastructure providers view contribution contract mismatch");
     }
     Ok(descriptor)
+}
+
+fn providers_view_authentication(
+    graph: &EffectiveExtensionGraph,
+    active_extensions: &[(
+        plugin_framework::PluginManifestV1,
+        HostExtensionContributionManifest,
+    )],
+    interface_id: &InterfaceId,
+) -> Result<interface_runtime::ActivatedAuthenticationAdapter> {
+    let mut candidates = active_extensions.iter().flat_map(|(_, contribution)| {
+        contribution
+            .interface_authentication_adapters
+            .iter()
+            .filter(move |descriptor| descriptor.interface_id == interface_id.as_str())
+            .map(move |descriptor| (contribution, descriptor))
+    });
+    let Some((contribution, descriptor)) = candidates.next() else {
+        return Ok(interface_runtime::ActivatedAuthenticationAdapter::new(
+            PluginIdentity::new("api-server.console-authentication")?,
+            InterfaceExtensionTier::BuiltIn,
+            AuthenticationAdapterReference::new("api-server.console.require-session")?,
+            interface_runtime::AuthenticationActivationIdentity::new(
+                "api-server.console.require-session.activation.v1",
+            )?,
+            PrincipalProfile::User,
+        ));
+    };
+    if candidates.next().is_some() {
+        bail!("providers view Authentication contribution is not unique");
+    }
+    validate_providers_view_authentication_descriptor(graph, contribution, descriptor)?;
+    crate::extension_bus::activated_host_authentication(&contribution.extension_id, descriptor)
+}
+
+fn validate_providers_view_authentication_descriptor(
+    graph: &EffectiveExtensionGraph,
+    contribution: &HostExtensionContributionManifest,
+    descriptor: &HostExtensionInterfaceAuthenticationManifest,
+) -> Result<()> {
+    let expected_bindings = BTreeSet::from([
+        HOST_INFRASTRUCTURE_PROVIDERS_VIEW_BINDING_ID,
+        HOST_INFRASTRUCTURE_PROVIDERS_VIEW_MCP_BINDING_ID,
+        HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INTERNAL_BINDING_ID,
+    ]);
+    let actual_bindings = descriptor
+        .binding_ids
+        .iter()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if descriptor.interface_version != HOST_INFRASTRUCTURE_PROVIDERS_VIEW_INTERFACE_VERSION
+        || actual_bindings != expected_bindings
+        || descriptor.adapter_id != "api-server.console.require-session"
+        || descriptor.principal_profile
+            != HostExtensionInterfaceAuthenticationPrincipalProfile::User
+        || descriptor.credential.contract_id
+            != crate::extension_bus::CONSOLE_SESSION_CREDENTIAL_CONTRACT_ID
+        || descriptor.credential.contract_version
+            != crate::extension_bus::CONSOLE_SESSION_CREDENTIAL_CONTRACT_VERSION
+    {
+        bail!("providers view Authentication contribution contract mismatch");
+    }
+    let point = graph
+        .points()
+        .iter()
+        .find(|point| {
+            point.descriptor().point_id.as_str()
+                == crate::extension_bus::INTERFACE_AUTHENTICATION_ADAPTER_POINT_ID
+        })
+        .ok_or_else(|| {
+            anyhow::anyhow!("Interface Authentication extension point is unavailable")
+        })?;
+    let point_descriptor = point.descriptor();
+    if point_descriptor.owner_module_id.as_str() != crate::extension_bus::BOOT_CORE_MODULE_ID
+        || point_descriptor.point_kind != ExtensionPointKind::Contribution
+        || point_descriptor.contract.contract_id.as_str()
+            != crate::extension_bus::INTERFACE_AUTHENTICATION_ADAPTER_CONTRACT_ID
+        || point_descriptor.contract.contract_version.as_str()
+            != crate::extension_bus::INTERFACE_AUTHENTICATION_ADAPTER_CONTRACT_VERSION
+        || point_descriptor.scope != ScopeSemantics::System
+        || point_descriptor.cardinality != Cardinality::Many
+        || point_descriptor.ordering != OrderingSemantics::Lexicographic
+        || point_descriptor.failure != FailureSemantics::FailClosed
+        || point_descriptor.delivery != DeliverySemantics::Synchronous
+        || point_descriptor.lifecycle != LifecycleSemantics::BootSnapshot
+        || point_descriptor.override_policy != OverridePolicy::Sealed
+    {
+        bail!("Interface Authentication extension point contract mismatch");
+    }
+    let mut graph_contributions = point.contributions().iter().filter(|candidate| {
+        candidate.descriptor().contribution_id.as_str() == descriptor.contribution_id
+    });
+    let graph_contribution = graph_contributions.next().ok_or_else(|| {
+        anyhow::anyhow!("HostExtension Authentication contribution is not active")
+    })?;
+    if graph_contributions.next().is_some()
+        || graph_contribution
+            .descriptor()
+            .contributor_module_id
+            .as_str()
+            != contribution.extension_id
+        || graph_contribution.provenance().module_kind() != ModuleKind::TrustedHost
+        || graph_contribution.provenance().module_id().as_str() != contribution.extension_id
+    {
+        bail!("HostExtension Authentication contribution graph identity mismatch");
+    }
+    Ok(())
 }

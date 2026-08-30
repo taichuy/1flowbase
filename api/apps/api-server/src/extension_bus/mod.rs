@@ -5,10 +5,11 @@ mod input_assembly;
 #[cfg(test)]
 pub(crate) use authentication_activation::HostExtensionAuthenticationFactoryCatalog;
 pub(crate) use authentication_activation::{
-    production_host_extension_authentication_factories, ApplicationApiKeyAuthenticationCredential,
-    AuthenticationAdapterFactoryBinding, AuthenticationAdapterFactoryRegistry,
-    ConsoleAuthenticationCredential, McpUserApiKeyAuthenticationCredential,
-    PublicAuthenticationCredential,
+    activated_host_authentication, production_host_extension_authentication_factories,
+    ApplicationApiKeyAuthenticationCredential, AuthenticationAdapterFactoryBinding,
+    AuthenticationAdapterFactoryRegistry, ConsoleAuthenticationCredential,
+    McpUserApiKeyAuthenticationCredential, PublicAuthenticationCredential,
+    CONSOLE_SESSION_CREDENTIAL_CONTRACT_ID, CONSOLE_SESSION_CREDENTIAL_CONTRACT_VERSION,
 };
 pub(crate) use boot_snapshot::DurableHostInfrastructureProvidersViewQuery;
 pub use boot_snapshot::{
@@ -19,6 +20,8 @@ pub use input_assembly::{
     assemble_extension_graph_input, ExtensionGraphInputAssembly, ModuleActivationFact,
     BOOT_CORE_MODULE_ID, CACHE_STORE_CONTRACT_ID, CACHE_STORE_CONTRACT_VERSION,
     CACHE_STORE_EXTENSION_POINT_ID, DEFAULT_PLUGIN_SET_PATH,
+    INTERFACE_AUTHENTICATION_ADAPTER_CONTRACT_ID,
+    INTERFACE_AUTHENTICATION_ADAPTER_CONTRACT_VERSION, INTERFACE_AUTHENTICATION_ADAPTER_POINT_ID,
     INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID, INTERFACE_COMPLETION_HOOK_POINT_ID,
     INTERFACE_LIFECYCLE_HOOK_CONTRACT_ID, INTERFACE_LIFECYCLE_HOOK_CONTRACT_VERSION,
     MODEL_PROVIDER_CONTRACT_ID, MODEL_PROVIDER_CONTRACT_VERSION, MODEL_PROVIDER_EXTENSION_POINT_ID,

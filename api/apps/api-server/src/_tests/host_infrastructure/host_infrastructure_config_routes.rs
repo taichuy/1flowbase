@@ -202,6 +202,7 @@ async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pendi
         crate::extension_bus::ExtensionBootSnapshot::compile(
             Arc::new(extension_assembly.compile_graph().unwrap()),
             extension_assembly.interface_operations(),
+            extension_assembly.host_extension_manifests(),
             Arc::new(
                 crate::extension_bus::DurableHostInfrastructureProvidersViewQuery::new(
                     state.store.clone(),

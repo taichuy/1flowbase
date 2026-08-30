@@ -365,6 +365,7 @@ async fn app_and_runtime_host_from_config(
     let extension_boot_snapshot = Arc::new(extension_bus::ExtensionBootSnapshot::compile(
         Arc::clone(&extension_graph),
         extension_assembly.interface_operations(),
+        extension_assembly.host_extension_manifests(),
         Arc::new(
             extension_bus::DurableHostInfrastructureProvidersViewQuery::new(
                 store.clone(),

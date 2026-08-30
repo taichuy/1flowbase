@@ -143,6 +143,27 @@ pub struct HostExtensionInterfaceOperationManifest {
     pub error_policy: HostExtensionInterfaceOperationErrorPolicy,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HostExtensionInterfaceAuthenticationPrincipalProfile {
+    Public,
+    User,
+    Application,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostExtensionInterfaceAuthenticationManifest {
+    pub contribution_id: String,
+    pub interface_id: String,
+    pub interface_version: String,
+    pub binding_ids: Vec<String>,
+    pub adapter_id: String,
+    pub activation_id: String,
+    pub principal_profile: HostExtensionInterfaceAuthenticationPrincipalProfile,
+    pub credential: HostExtensionInterfaceOperationContractManifest,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, Default)]
 #[serde(deny_unknown_fields)]
 pub struct HostExtensionConsoleSurfacesManifest {
@@ -280,6 +301,8 @@ pub struct HostExtensionContributionManifest {
     pub scope_providers: Vec<ScopeProviderContributionManifest>,
     #[serde(default)]
     pub interface_operations: Vec<HostExtensionInterfaceOperationManifest>,
+    #[serde(default)]
+    pub interface_authentication_adapters: Vec<HostExtensionInterfaceAuthenticationManifest>,
     pub routes: Vec<HostExtensionRouteManifest>,
     #[serde(default)]
     pub settings_features: Vec<SettingsFeatureRegistration>,
@@ -440,6 +463,73 @@ fn validate_host_extension_contribution_manifest(
         validate_non_empty(
             &operation.required_core_permission,
             "interface_operations[].required_core_permission",
+        )?;
+    }
+    let mut authentication_contribution_ids = BTreeSet::new();
+    let mut authentication_targets = BTreeSet::new();
+    for authentication in &manifest.interface_authentication_adapters {
+        validate_non_empty(
+            &authentication.contribution_id,
+            "interface_authentication_adapters[].contribution_id",
+        )?;
+        validate_extension_owned_id(
+            &manifest.extension_id,
+            &authentication.contribution_id,
+            "interface_authentication_adapters[].contribution_id",
+        )?;
+        if !authentication_contribution_ids.insert(authentication.contribution_id.as_str()) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "interface_authentication_adapters[].contribution_id must be unique",
+            ));
+        }
+        validate_non_empty(
+            &authentication.interface_id,
+            "interface_authentication_adapters[].interface_id",
+        )?;
+        validate_non_empty(
+            &authentication.interface_version,
+            "interface_authentication_adapters[].interface_version",
+        )?;
+        if !authentication_targets.insert((
+            authentication.interface_id.as_str(),
+            authentication.interface_version.as_str(),
+        )) {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "interface_authentication_adapters[] interface identity must be unique",
+            ));
+        }
+        if authentication.binding_ids.is_empty() {
+            return Err(PluginFrameworkError::invalid_provider_package(
+                "interface_authentication_adapters[].binding_ids must not be empty",
+            ));
+        }
+        let mut binding_ids = BTreeSet::new();
+        for binding_id in &authentication.binding_ids {
+            validate_non_empty(
+                binding_id,
+                "interface_authentication_adapters[].binding_ids[]",
+            )?;
+            if !binding_ids.insert(binding_id.as_str()) {
+                return Err(PluginFrameworkError::invalid_provider_package(
+                    "interface_authentication_adapters[].binding_ids must be unique",
+                ));
+            }
+        }
+        validate_non_empty(
+            &authentication.adapter_id,
+            "interface_authentication_adapters[].adapter_id",
+        )?;
+        validate_non_empty(
+            &authentication.activation_id,
+            "interface_authentication_adapters[].activation_id",
+        )?;
+        validate_non_empty(
+            &authentication.credential.contract_id,
+            "interface_authentication_adapters[].credential.contract_id",
+        )?;
+        validate_non_empty(
+            &authentication.credential.contract_version,
+            "interface_authentication_adapters[].credential.contract_version",
         )?;
     }
     validate_auth_provider_contributions(manifest)?;

@@ -96,6 +96,10 @@ impl ExtensionBootSnapshot {
     pub(crate) fn compile(
         graph: Arc<EffectiveExtensionGraph>,
         descriptors: &[plugin_framework::HostExtensionInterfaceOperationManifest],
+        active_extensions: &[(
+            plugin_framework::PluginManifestV1,
+            plugin_framework::HostExtensionContributionManifest,
+        )],
         providers_view_query: Arc<
             dyn crate::routes::host_infrastructure::interface_operation::HostInfrastructureProvidersViewQuery,
         >,
@@ -144,6 +148,7 @@ impl ExtensionBootSnapshot {
             crate::routes::host_infrastructure::interface_operation::compile_interface_registry(
                 Arc::clone(&graph),
                 descriptors,
+                active_extensions,
                 providers_view_query,
                 Arc::clone(&providers_view_hook_plan),
             )?;
@@ -151,7 +156,7 @@ impl ExtensionBootSnapshot {
             interface_snapshot,
         ));
         let mut authentication_factories = AuthenticationAdapterFactoryRegistry::built_in()?;
-        authentication_factories.extend(host_authentication_factories)?;
+        authentication_factories.activate_host_extensions(host_authentication_factories)?;
         Ok(Self {
             graph,
             interface_registry: Some(interface_registry),
@@ -167,6 +172,7 @@ impl ExtensionBootSnapshot {
         Self::compile(
             graph,
             descriptors,
+            &[],
             Arc::new(
                 crate::routes::host_infrastructure::interface_operation::UnavailableHostInfrastructureProvidersViewQuery,
             ),

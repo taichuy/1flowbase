@@ -67,7 +67,7 @@ pub(crate) fn authorize_compiled_console_access(
 
 pub async fn require_settings_feature_permission(
     State(state): State<Arc<ApiState>>,
-    mut request: Request<Body>,
+    request: Request<Body>,
     next: Next,
 ) -> Result<Response, ApiError> {
     let path = request.uri().path().to_string();
@@ -75,17 +75,17 @@ pub async fn require_settings_feature_permission(
         return Ok(next.run(request).await);
     }
 
-    let context = require_session(&state, request.headers()).await?;
     if crate::routes::host_infrastructure::interface_operation::is_active_interface_route(
         state.as_ref(),
         request.method().as_str(),
         &path,
     ) {
-        request
-            .extensions_mut()
-            .insert(context.interface_principal());
+        // The frozen Interface binding owns credential -> Principal authentication. Running the
+        // legacy Console middleware first would bypass that activation on rejection and duplicate
+        // session/API-key reads on success.
         return Ok(next.run(request).await);
     }
+    let context = require_session(&state, request.headers()).await?;
     let access = compiled_console_route_access(
         &state.console_operation_registry,
         request.method().as_str(),

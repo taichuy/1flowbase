@@ -257,6 +257,7 @@ async fn test_state_with_runtime_profile_state(
                     .expect("test extension graph should compile"),
             ),
             extension_assembly.interface_operations(),
+            extension_assembly.host_extension_manifests(),
             Arc::new(
                 crate::extension_bus::DurableHostInfrastructureProvidersViewQuery::new(
                     store.clone(),

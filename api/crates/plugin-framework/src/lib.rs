@@ -39,6 +39,8 @@ pub use host_contract::{HostContractCode, RuntimeSlotCode, StorageImplementation
 pub use host_extension_contribution::{
     parse_host_extension_contribution_manifest, AuthProviderContributionManifest,
     HostExtensionBootstrapPhase, HostExtensionContributionManifest,
+    HostExtensionInterfaceAuthenticationManifest,
+    HostExtensionInterfaceAuthenticationPrincipalProfile,
     HostExtensionInterfaceOperationAuditPolicy, HostExtensionInterfaceOperationAuthPolicy,
     HostExtensionInterfaceOperationContractManifest, HostExtensionInterfaceOperationErrorPolicy,
     HostExtensionInterfaceOperationManifest, HostExtensionInterfaceOperationMethod,
