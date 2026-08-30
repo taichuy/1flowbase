@@ -287,7 +287,7 @@ fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactor
                     ConsoleAuthenticationCredential::Protocol { state, headers } => {
                         let context = require_session(&state, &headers)
                             .await
-                            .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+                            .map_err(|error| error.0)?;
                         Ok(context.interface_principal())
                     }
                     ConsoleAuthenticationCredential::ServerDelegation(actor) => {
@@ -307,7 +307,7 @@ fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactor
             |credential: McpUserApiKeyAuthenticationCredential| async move {
                 let context = require_session(&credential.state, &credential.headers)
                     .await
-                    .map_err(|error| anyhow::anyhow!(error.to_string()))?;
+                    .map_err(|error| error.0)?;
                 if !matches!(context.credential, RequestCredential::UserApiKey { .. }) {
                     bail!("MCP interface authentication requires a user API key");
                 }

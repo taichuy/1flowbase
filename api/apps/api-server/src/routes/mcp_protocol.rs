@@ -9,7 +9,7 @@ use axum::{
     routing::post,
     Json, Router,
 };
-use control_plane::{mcp_management::McpManagementService, ports::AuthRepository};
+use control_plane::mcp_management::McpManagementService;
 use domain::mcp_management::McpInstanceStatus;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};

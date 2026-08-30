@@ -2,11 +2,13 @@ mod authentication_activation;
 mod boot_snapshot;
 mod input_assembly;
 
+#[cfg(test)]
+pub(crate) use authentication_activation::HostExtensionAuthenticationFactoryCatalog;
 pub(crate) use authentication_activation::{
     production_host_extension_authentication_factories, ApplicationApiKeyAuthenticationCredential,
     AuthenticationAdapterFactoryBinding, AuthenticationAdapterFactoryRegistry,
-    ConsoleAuthenticationCredential, HostExtensionAuthenticationFactoryCatalog,
-    McpUserApiKeyAuthenticationCredential, PublicAuthenticationCredential,
+    ConsoleAuthenticationCredential, McpUserApiKeyAuthenticationCredential,
+    PublicAuthenticationCredential,
 };
 pub(crate) use boot_snapshot::DurableHostInfrastructureProvidersViewQuery;
 pub use boot_snapshot::{
