@@ -12,6 +12,7 @@ pub(crate) mod responses_websocket;
 pub mod sse;
 pub(crate) mod stream_terminal_fallback;
 pub(crate) mod tool_callback_ids;
+pub(crate) mod workflow_extension_interface;
 
 use std::sync::Arc;
 

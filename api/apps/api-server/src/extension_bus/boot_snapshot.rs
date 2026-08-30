@@ -216,6 +216,7 @@ impl ExtensionBootSnapshot {
                 interface_runtime::AuthorizationOperation::new("public.auth.sign-in")?,
                 interface_runtime::AuthorizationOperation::new("application.native.runs.create")?,
                 interface_runtime::AuthorizationOperation::new("mcp.tools.invoke")?,
+                interface_runtime::AuthorizationOperation::new("workflow-extension.invoke")?,
             ],
             [
                 interface_runtime::InterfaceOwner::new(
@@ -224,6 +225,7 @@ impl ExtensionBootSnapshot {
                 interface_runtime::InterfaceOwner::new("api-server.public-auth")?,
                 interface_runtime::InterfaceOwner::new("api-server.application-public-api")?,
                 interface_runtime::InterfaceOwner::new("api-server.mcp-protocol")?,
+                interface_runtime::InterfaceOwner::new("api-server.workflow-extension")?,
             ],
         );
         compiler.absorb_interface(
@@ -254,6 +256,12 @@ impl ExtensionBootSnapshot {
         compiler.absorb_snapshot(
             crate::routes::mcp_protocol::compile_mcp_interface_registry(Arc::downgrade(state))?
                 .as_ref(),
+        )?;
+        compiler.absorb_snapshot(
+            crate::routes::application_public_api::ex::compile_workflow_extension_registry(
+                Arc::downgrade(state),
+            )?
+            .as_ref(),
         )?;
         let candidate = compiler.compile()?;
         self.authentication_factories

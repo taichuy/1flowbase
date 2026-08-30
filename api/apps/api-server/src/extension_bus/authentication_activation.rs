@@ -252,6 +252,10 @@ pub(crate) enum ConsoleAuthenticationCredential {
         state: Arc<ApiState>,
         headers: HeaderMap,
     },
+    ProtocolWithCsrf {
+        state: Arc<ApiState>,
+        headers: HeaderMap,
+    },
     ServerDelegation(domain::ActorContext),
 }
 
@@ -309,6 +313,16 @@ fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactor
                         let context = require_session(&state, &headers)
                             .await
                             .map_err(|error| error.0)?;
+                        Ok(context.interface_principal())
+                    }
+                    ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers } => {
+                        let context = require_session(&state, &headers)
+                            .await
+                            .map_err(|error| error.0)?;
+                        if matches!(context.credential, RequestCredential::CookieSession(_)) {
+                            crate::middleware::require_csrf::require_csrf(&headers, &context)
+                                .map_err(|error| error.0)?;
+                        }
                         Ok(context.interface_principal())
                     }
                     ConsoleAuthenticationCredential::ServerDelegation(actor) => {
@@ -482,6 +496,16 @@ fn identity_host_authentication_factories(
                             let context = require_session(&state, &headers)
                                 .await
                                 .map_err(|error| error.0)?;
+                            Ok(context.interface_principal())
+                        }
+                        ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers } => {
+                            let context = require_session(&state, &headers)
+                                .await
+                                .map_err(|error| error.0)?;
+                            if matches!(context.credential, RequestCredential::CookieSession(_)) {
+                                crate::middleware::require_csrf::require_csrf(&headers, &context)
+                                    .map_err(|error| error.0)?;
+                            }
                             Ok(context.interface_principal())
                         }
                         ConsoleAuthenticationCredential::ServerDelegation(actor) => {
