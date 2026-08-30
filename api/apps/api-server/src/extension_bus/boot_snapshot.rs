@@ -70,14 +70,6 @@ pub const EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1: &str = "1flowbase.effective-extens
 pub struct ExtensionBootSnapshot {
     graph: Arc<EffectiveExtensionGraph>,
     interface_registry: Option<Arc<interface_runtime::DynamicInterfaceRegistry>>,
-    providers_view_hook_plan: Option<
-        Arc<
-            interface_runtime::TypedInterfaceHookPlan<
-                HostInfrastructureProvidersViewInput,
-                HostInfrastructureProvidersViewOutput,
-            >,
-        >,
-    >,
 }
 
 impl std::fmt::Debug for ExtensionBootSnapshot {
@@ -86,10 +78,6 @@ impl std::fmt::Debug for ExtensionBootSnapshot {
             .debug_struct("ExtensionBootSnapshot")
             .field("graph_fingerprint", &self.graph.fingerprint().as_str())
             .field("has_interface_registry", &self.interface_registry.is_some())
-            .field(
-                "has_providers_view_hook_plan",
-                &self.providers_view_hook_plan.is_some(),
-            )
             .finish()
     }
 }
@@ -100,7 +88,6 @@ impl ExtensionBootSnapshot {
         Self {
             graph,
             interface_registry: None,
-            providers_view_hook_plan: None,
         }
     }
 
@@ -111,23 +98,6 @@ impl ExtensionBootSnapshot {
             dyn crate::routes::host_infrastructure::interface_operation::HostInfrastructureProvidersViewQuery,
         >,
     ) -> anyhow::Result<Self> {
-        let interface_snapshot =
-            crate::routes::host_infrastructure::interface_operation::compile_interface_registry(
-                Arc::clone(&graph),
-                descriptors,
-                providers_view_query,
-            )?;
-        let providers_extension_plan_fingerprint = interface_snapshot
-            .plan(&interface_runtime::BindingId::new(
-                crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_BINDING_ID,
-            )?)
-            .ok_or_else(|| anyhow::anyhow!("providers view invocation plan is absent"))?
-            .extension_plan()
-            .fingerprint()
-            .clone();
-        let interface_registry = Arc::new(interface_runtime::DynamicInterfaceRegistry::new(
-            interface_snapshot,
-        ));
         let hook_contract = HookPointContract {
             context: ContractDescriptor::new(
                 INTERFACE_COMPLETION_CONTEXT_CONTRACT_ID,
@@ -161,14 +131,25 @@ impl ExtensionBootSnapshot {
         let providers_view_hook_plan = Arc::new(
             interface_runtime::TypedInterfaceHookPlan::new(
                 interface_runtime::GraphFingerprint::new(graph.fingerprint().as_str())?,
-                providers_extension_plan_fingerprint,
             )
-            .bind_completion(Arc::new(ProvidersViewCompletionObserver)),
+            .bind_completion(
+                interface_runtime::PluginIdentity::new("api-server.providers-view-completion")?,
+                Arc::new(ProvidersViewCompletionObserver),
+            ),
         );
+        let interface_snapshot =
+            crate::routes::host_infrastructure::interface_operation::compile_interface_registry(
+                Arc::clone(&graph),
+                descriptors,
+                providers_view_query,
+                Arc::clone(&providers_view_hook_plan),
+            )?;
+        let interface_registry = Arc::new(interface_runtime::DynamicInterfaceRegistry::new(
+            interface_snapshot,
+        ));
         Ok(Self {
             graph,
             interface_registry: Some(interface_registry),
-            providers_view_hook_plan: Some(providers_view_hook_plan),
         })
     }
 
@@ -253,19 +234,6 @@ impl ExtensionBootSnapshot {
         )?;
         registry.publish(compiler.compile()?);
         Ok(())
-    }
-
-    pub(crate) fn providers_view_hook_plan(
-        &self,
-    ) -> Option<
-        &Arc<
-            interface_runtime::TypedInterfaceHookPlan<
-                HostInfrastructureProvidersViewInput,
-                HostInfrastructureProvidersViewOutput,
-            >,
-        >,
-    > {
-        self.providers_view_hook_plan.as_ref()
     }
 
     pub fn effective_plan(&self) -> EffectiveExtensionPlan<'_> {

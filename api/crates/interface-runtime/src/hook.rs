@@ -1,10 +1,10 @@
-use std::{future::Future, pin::Pin, sync::Arc};
+use std::{any::Any, future::Future, pin::Pin, sync::Arc};
 
 use thiserror::Error;
 
 use crate::{
-    ExtensionPlanFingerprint, GraphFingerprint, InterfaceContract, InterfaceInvocationTerminal,
-    InvocationId, PrincipalSummary, RegistryFingerprint,
+    GraphFingerprint, InterfaceContract, InterfaceExtensionPoint, InterfaceInvocationTerminal,
+    InvocationId, PluginIdentity, PrincipalSummary, RegistryFingerprint,
 };
 
 #[derive(Clone, Debug)]
@@ -118,11 +118,28 @@ where
     O: InterfaceContract,
 {
     graph_fingerprint: GraphFingerprint,
-    extension_plan_fingerprint: ExtensionPlanFingerprint,
+    bindings: Vec<(PluginIdentity, InterfaceExtensionPoint)>,
     before: Vec<Arc<dyn InterfaceBeforeHook<I>>>,
     after: Vec<Arc<dyn InterfaceAfterHook<O>>>,
     failure: Vec<Arc<dyn InterfaceFailureHook>>,
     completion: Vec<Arc<dyn InterfaceCompletionHook>>,
+}
+
+impl<I, O> Clone for TypedInterfaceHookPlan<I, O>
+where
+    I: InterfaceContract,
+    O: InterfaceContract,
+{
+    fn clone(&self) -> Self {
+        Self {
+            graph_fingerprint: self.graph_fingerprint.clone(),
+            bindings: self.bindings.clone(),
+            before: self.before.clone(),
+            after: self.after.clone(),
+            failure: self.failure.clone(),
+            completion: self.completion.clone(),
+        }
+    }
 }
 
 impl<I, O> TypedInterfaceHookPlan<I, O>
@@ -130,13 +147,10 @@ where
     I: InterfaceContract,
     O: InterfaceContract,
 {
-    pub fn new(
-        graph_fingerprint: GraphFingerprint,
-        extension_plan_fingerprint: ExtensionPlanFingerprint,
-    ) -> Self {
+    pub fn new(graph_fingerprint: GraphFingerprint) -> Self {
         Self {
             graph_fingerprint,
-            extension_plan_fingerprint,
+            bindings: Vec::new(),
             before: Vec::new(),
             after: Vec::new(),
             failure: Vec::new(),
@@ -144,22 +158,45 @@ where
         }
     }
 
-    pub fn bind_before(mut self, hook: Arc<dyn InterfaceBeforeHook<I>>) -> Self {
+    pub fn bind_before(
+        mut self,
+        plugin: PluginIdentity,
+        hook: Arc<dyn InterfaceBeforeHook<I>>,
+    ) -> Self {
+        self.bindings
+            .push((plugin, InterfaceExtensionPoint::Before));
         self.before.push(hook);
         self
     }
 
-    pub fn bind_after(mut self, hook: Arc<dyn InterfaceAfterHook<O>>) -> Self {
+    pub fn bind_after(
+        mut self,
+        plugin: PluginIdentity,
+        hook: Arc<dyn InterfaceAfterHook<O>>,
+    ) -> Self {
+        self.bindings.push((plugin, InterfaceExtensionPoint::After));
         self.after.push(hook);
         self
     }
 
-    pub fn bind_failure(mut self, hook: Arc<dyn InterfaceFailureHook>) -> Self {
+    pub fn bind_failure(
+        mut self,
+        plugin: PluginIdentity,
+        hook: Arc<dyn InterfaceFailureHook>,
+    ) -> Self {
+        self.bindings
+            .push((plugin, InterfaceExtensionPoint::Failure));
         self.failure.push(hook);
         self
     }
 
-    pub fn bind_completion(mut self, hook: Arc<dyn InterfaceCompletionHook>) -> Self {
+    pub fn bind_completion(
+        mut self,
+        plugin: PluginIdentity,
+        hook: Arc<dyn InterfaceCompletionHook>,
+    ) -> Self {
+        self.bindings
+            .push((plugin, InterfaceExtensionPoint::Completion));
         self.completion.push(hook);
         self
     }
@@ -168,8 +205,8 @@ where
         &self.graph_fingerprint
     }
 
-    pub fn extension_plan_fingerprint(&self) -> &ExtensionPlanFingerprint {
-        &self.extension_plan_fingerprint
+    pub(crate) fn bindings(&self) -> &[(PluginIdentity, InterfaceExtensionPoint)] {
+        &self.bindings
     }
 
     pub(crate) async fn run_before(
@@ -203,5 +240,29 @@ where
         for hook in self.completion.iter().rev() {
             hook.completed(context.clone(), terminal).await;
         }
+    }
+}
+
+pub(crate) trait ErasedInterfaceHookPlan: Send + Sync {
+    fn graph_fingerprint(&self) -> &GraphFingerprint;
+    fn bindings(&self) -> &[(PluginIdentity, InterfaceExtensionPoint)];
+    fn as_any(&self) -> &dyn Any;
+}
+
+impl<I, O> ErasedInterfaceHookPlan for TypedInterfaceHookPlan<I, O>
+where
+    I: InterfaceContract,
+    O: InterfaceContract,
+{
+    fn graph_fingerprint(&self) -> &GraphFingerprint {
+        self.graph_fingerprint()
+    }
+
+    fn bindings(&self) -> &[(PluginIdentity, InterfaceExtensionPoint)] {
+        self.bindings()
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }

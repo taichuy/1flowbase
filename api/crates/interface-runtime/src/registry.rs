@@ -6,6 +6,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use crate::hook::ErasedInterfaceHookPlan;
 use crate::{
     compile_effective_handler, AdmissionAdapterReference, AuthenticationAdapterReference,
     AuthorizationAdapterReference, AuthorizationOperation, BindingFingerprint, BindingId,
@@ -14,7 +15,7 @@ use crate::{
     InterfaceHandlerCandidate, InterfaceId, InterfaceOwner, InterfaceStreamHandler,
     InterfaceTargetFailure, InterfaceVersion, InvocationId, InvocationPrincipal, PlanFingerprint,
     PluginIdentity, PrincipalProfile, PrincipalSummary, RegistryFingerprint, RouteIdentity,
-    TargetReference, UserPrincipal,
+    TargetReference, TypedInterfaceHookPlan, UserPrincipal,
 };
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -544,14 +545,31 @@ impl InvocationAdapterPlan {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct CompiledInvocationPlan {
     definition: InterfaceDefinition,
     binding: ProtocolBinding,
     binding_fingerprint: BindingFingerprint,
     adapter_plan: InvocationAdapterPlan,
     extension_plan: CompiledInterfaceExtensionPlan,
+    executable_extensions: Option<Arc<dyn ErasedInterfaceHookPlan>>,
+    effective_handler: InterfaceHandlerCandidate,
     fingerprint: PlanFingerprint,
+}
+
+impl std::fmt::Debug for CompiledInvocationPlan {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("CompiledInvocationPlan")
+            .field("definition", &self.definition)
+            .field("binding", &self.binding)
+            .field("binding_fingerprint", &self.binding_fingerprint)
+            .field("adapter_plan", &self.adapter_plan)
+            .field("extension_plan", &self.extension_plan)
+            .field("effective_handler", &self.effective_handler)
+            .field("fingerprint", &self.fingerprint)
+            .finish()
+    }
 }
 
 impl CompiledInvocationPlan {
@@ -573,6 +591,25 @@ impl CompiledInvocationPlan {
 
     pub fn extension_plan(&self) -> &CompiledInterfaceExtensionPlan {
         &self.extension_plan
+    }
+
+    pub fn effective_handler(&self) -> &InterfaceHandlerCandidate {
+        &self.effective_handler
+    }
+
+    pub fn has_executable_extensions(&self) -> bool {
+        self.executable_extensions.is_some()
+    }
+
+    pub(crate) fn hook_plan<I, O>(&self) -> Option<&TypedInterfaceHookPlan<I, O>>
+    where
+        I: InterfaceContract,
+        O: InterfaceContract,
+    {
+        self.executable_extensions
+            .as_ref()?
+            .as_any()
+            .downcast_ref::<TypedInterfaceHookPlan<I, O>>()
     }
 
     pub fn fingerprint(&self) -> &PlanFingerprint {
@@ -722,6 +759,13 @@ where
     handler: Arc<dyn InterfaceStreamHandler<I, S, O, E, P>>,
 }
 
+#[derive(Clone)]
+struct ContributedInterfaceHandlerBinding {
+    plugin: PluginIdentity,
+    target: TargetReference,
+    binding: Arc<dyn ErasedInterfaceBinding>,
+}
+
 impl<I, S, O, E, P> ErasedInterfaceBinding for TypedInterfaceStreamBinding<I, S, O, E, P>
 where
     I: InterfaceContract,
@@ -805,6 +849,16 @@ pub enum RegistryCompilationError {
     PrincipalProfileMismatch(InterfaceId),
     #[error("interface {0} already has a bound handler")]
     DuplicateHandler(InterfaceId),
+    #[error("interface {0} already has a bound executable hook plan")]
+    DuplicateHookPlan(InterfaceId),
+    #[error("interface {0} extension {1} point {2:?} has no executable binding")]
+    MissingExecutableExtension(InterfaceId, PluginIdentity, InterfaceExtensionPoint),
+    #[error("interface {0} extension {1} point {2:?} has an unregistered executable binding")]
+    UnexpectedExecutableExtension(InterfaceId, PluginIdentity, InterfaceExtensionPoint),
+    #[error("interface {0} extension handler {1} is bound more than once")]
+    DuplicateExtensionHandler(InterfaceId, PluginIdentity),
+    #[error("interface {0} executable extension graph fingerprint does not match the compiler")]
+    ExtensionGraphFingerprintMismatch(InterfaceId),
     #[error(transparent)]
     Extension(#[from] crate::InterfaceExtensionCompilationError),
 }
@@ -817,6 +871,9 @@ pub struct RegistryCompiler {
     protocol_bindings: BTreeMap<BindingId, (ProtocolBinding, InvocationAdapterPlan)>,
     routes: BTreeMap<RouteIdentity, BindingId>,
     handler_bindings: BTreeMap<InterfaceId, Arc<dyn ErasedInterfaceBinding>>,
+    extension_handler_bindings:
+        BTreeMap<InterfaceId, BTreeMap<PluginIdentity, ContributedInterfaceHandlerBinding>>,
+    hook_bindings: BTreeMap<InterfaceId, Arc<dyn ErasedInterfaceHookPlan>>,
     extensions: BTreeMap<InterfaceId, Vec<(u32, InterfaceExtensionRegistration)>>,
 }
 
@@ -834,6 +891,8 @@ impl RegistryCompiler {
             protocol_bindings: BTreeMap::new(),
             routes: BTreeMap::new(),
             handler_bindings: BTreeMap::new(),
+            extension_handler_bindings: BTreeMap::new(),
+            hook_bindings: BTreeMap::new(),
             extensions: BTreeMap::new(),
         }
     }
@@ -885,6 +944,9 @@ impl RegistryCompiler {
                 .clone();
             self.register_binding(binding.clone(), adapter_plan)?;
         }
+        let plan = snapshot
+            .plan_for_interface(interface_id)
+            .ok_or_else(|| RegistryCompilationError::MissingBinding(interface_id.clone()))?;
         let handler = snapshot
             .handler_bindings
             .get(interface_id)
@@ -898,9 +960,23 @@ impl RegistryCompiler {
                 interface_id.clone(),
             ));
         }
-        let plan = snapshot
-            .plan_for_interface(interface_id)
-            .ok_or_else(|| RegistryCompilationError::MissingBinding(interface_id.clone()))?;
+        if let Some(hooks) = &plan.executable_extensions {
+            self.hook_bindings
+                .insert(interface_id.clone(), Arc::clone(hooks));
+        }
+        if plan.effective_handler().plugin().as_str() != "builtin.interface-handler" {
+            self.extension_handler_bindings
+                .entry(interface_id.clone())
+                .or_default()
+                .insert(
+                    plan.effective_handler().plugin().clone(),
+                    ContributedInterfaceHandlerBinding {
+                        plugin: plan.effective_handler().plugin().clone(),
+                        target: plan.effective_handler().target().clone(),
+                        binding: Arc::clone(handler),
+                    },
+                );
+        }
         for entry in plan.extension_plan().registrations() {
             self.register_extension(interface_id, entry.order(), entry.registration().clone())?;
         }
@@ -946,6 +1022,118 @@ impl RegistryCompiler {
             .entry(interface_id.clone())
             .or_default()
             .push((order, registration));
+        Ok(())
+    }
+
+    pub fn bind_hook_plan<I, O>(
+        &mut self,
+        interface_id: &InterfaceId,
+        hooks: Arc<TypedInterfaceHookPlan<I, O>>,
+    ) -> Result<(), RegistryCompilationError>
+    where
+        I: InterfaceContract,
+        O: InterfaceContract,
+    {
+        if !self.definitions.contains_key(interface_id) {
+            return Err(RegistryCompilationError::UnknownInterface(
+                interface_id.clone(),
+            ));
+        }
+        if self.hook_bindings.contains_key(interface_id) {
+            return Err(RegistryCompilationError::DuplicateHookPlan(
+                interface_id.clone(),
+            ));
+        }
+        self.hook_bindings.insert(interface_id.clone(), hooks);
+        Ok(())
+    }
+
+    pub fn bind_extension_handler<I, O, E, P>(
+        &mut self,
+        interface_id: &InterfaceId,
+        plugin: PluginIdentity,
+        handler_reference: HandlerReference,
+        target: TargetReference,
+        handler: Arc<dyn InterfaceHandler<I, O, E, P>>,
+    ) -> Result<(), RegistryCompilationError>
+    where
+        I: InterfaceContract,
+        O: InterfaceContract,
+        E: InterfaceContract,
+        P: InvocationPrincipal,
+    {
+        let binding: Arc<dyn ErasedInterfaceBinding> =
+            Arc::new(TypedInterfaceBinding::<I, O, E, P> {
+                contracts: InterfaceContracts::unary(
+                    contract_identity::<I>(),
+                    contract_identity::<O>(),
+                    contract_identity::<E>(),
+                ),
+                handler_reference,
+                handler,
+            });
+        self.insert_extension_handler(interface_id, plugin, target, binding)
+    }
+
+    pub fn bind_extension_stream_handler<I, S, O, E, P>(
+        &mut self,
+        interface_id: &InterfaceId,
+        plugin: PluginIdentity,
+        handler_reference: HandlerReference,
+        target: TargetReference,
+        handler: Arc<dyn InterfaceStreamHandler<I, S, O, E, P>>,
+    ) -> Result<(), RegistryCompilationError>
+    where
+        I: InterfaceContract,
+        S: InterfaceContract,
+        O: InterfaceContract,
+        E: InterfaceContract,
+        P: InvocationPrincipal,
+    {
+        let binding: Arc<dyn ErasedInterfaceBinding> =
+            Arc::new(TypedInterfaceStreamBinding::<I, S, O, E, P> {
+                contracts: InterfaceContracts::server_stream(
+                    contract_identity::<I>(),
+                    contract_identity::<S>(),
+                    contract_identity::<O>(),
+                    contract_identity::<E>(),
+                ),
+                handler_reference,
+                handler,
+            });
+        self.insert_extension_handler(interface_id, plugin, target, binding)
+    }
+
+    fn insert_extension_handler(
+        &mut self,
+        interface_id: &InterfaceId,
+        plugin: PluginIdentity,
+        target: TargetReference,
+        binding: Arc<dyn ErasedInterfaceBinding>,
+    ) -> Result<(), RegistryCompilationError> {
+        if !self.definitions.contains_key(interface_id) {
+            return Err(RegistryCompilationError::UnknownInterface(
+                interface_id.clone(),
+            ));
+        }
+        let bindings = self
+            .extension_handler_bindings
+            .entry(interface_id.clone())
+            .or_default();
+        if bindings.contains_key(&plugin) {
+            return Err(RegistryCompilationError::DuplicateExtensionHandler(
+                interface_id.clone(),
+                plugin,
+            ));
+        }
+        bindings.insert(
+            plugin.clone(),
+            ContributedInterfaceHandlerBinding {
+                plugin,
+                target,
+                binding,
+            },
+        );
         Ok(())
     }
 
@@ -1042,29 +1230,38 @@ impl RegistryCompiler {
                     interface_id.clone(),
                 ));
             }
-            let binding = self
-                .handler_bindings
-                .get(interface_id)
-                .ok_or_else(|| RegistryCompilationError::MissingHandler(interface_id.clone()))?;
-            if binding.contracts() != definition.contracts() {
-                return Err(RegistryCompilationError::ContractMismatch(
-                    interface_id.clone(),
-                ));
-            }
             if definition.execution_mode() != definition.contracts.mode() {
                 return Err(RegistryCompilationError::ExecutionModeMismatch(
                     interface_id.clone(),
                 ));
             }
-            if binding.handler_reference() != definition.handler_reference() {
-                return Err(RegistryCompilationError::HandlerReferenceMismatch(
-                    interface_id.clone(),
-                ));
-            }
-            if binding.principal_profile() != definition.principal_profile() {
-                return Err(RegistryCompilationError::PrincipalProfileMismatch(
-                    interface_id.clone(),
-                ));
+            let has_contributed_handler =
+                self.extensions
+                    .get(interface_id)
+                    .is_some_and(|registrations| {
+                        registrations.iter().any(|(_, registration)| {
+                            registration.point() == InterfaceExtensionPoint::Handler
+                        })
+                    });
+            if !has_contributed_handler {
+                let binding = self.handler_bindings.get(interface_id).ok_or_else(|| {
+                    RegistryCompilationError::MissingHandler(interface_id.clone())
+                })?;
+                if binding.contracts() != definition.contracts() {
+                    return Err(RegistryCompilationError::ContractMismatch(
+                        interface_id.clone(),
+                    ));
+                }
+                if binding.handler_reference() != definition.handler_reference() {
+                    return Err(RegistryCompilationError::HandlerReferenceMismatch(
+                        interface_id.clone(),
+                    ));
+                }
+                if binding.principal_profile() != definition.principal_profile() {
+                    return Err(RegistryCompilationError::PrincipalProfileMismatch(
+                        interface_id.clone(),
+                    ));
+                }
             }
             if !self
                 .protocol_bindings
@@ -1084,6 +1281,182 @@ impl RegistryCompiler {
             return Err(RegistryCompilationError::UnknownInterface(
                 interface_id.clone(),
             ));
+        }
+        let mut effective_handler_bindings = BTreeMap::new();
+        let mut effective_handlers = BTreeMap::new();
+        for (interface_id, definition) in &self.definitions {
+            let registrations = self
+                .extensions
+                .get(interface_id)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            let handler_plugins = registrations
+                .iter()
+                .filter(|(_, registration)| {
+                    registration.point() == InterfaceExtensionPoint::Handler
+                })
+                .map(|(_, registration)| registration.plugin().clone())
+                .collect::<Vec<_>>();
+            let contributed = self.extension_handler_bindings.get(interface_id);
+            let (effective, binding) = if handler_plugins.is_empty() {
+                if let Some((plugin, _)) = contributed.and_then(|bindings| bindings.iter().next()) {
+                    return Err(RegistryCompilationError::UnexpectedExecutableExtension(
+                        interface_id.clone(),
+                        plugin.clone(),
+                        InterfaceExtensionPoint::Handler,
+                    ));
+                }
+                let binding = self
+                    .handler_bindings
+                    .get(interface_id)
+                    .expect("definition handler was validated above");
+                (
+                    InterfaceHandlerCandidate::new(
+                        PluginIdentity::new("builtin.interface-handler")
+                            .expect("built-in handler identity must be valid"),
+                        binding.handler_reference().clone(),
+                        definition.target_reference().clone(),
+                    ),
+                    Arc::clone(binding),
+                )
+            } else {
+                let mut candidates = Vec::with_capacity(handler_plugins.len());
+                for plugin in &handler_plugins {
+                    let executable = contributed
+                        .and_then(|bindings| bindings.get(plugin))
+                        .ok_or_else(|| {
+                            RegistryCompilationError::MissingExecutableExtension(
+                                interface_id.clone(),
+                                plugin.clone(),
+                                InterfaceExtensionPoint::Handler,
+                            )
+                        })?;
+                    if executable.binding.contracts() != definition.contracts() {
+                        return Err(RegistryCompilationError::ContractMismatch(
+                            interface_id.clone(),
+                        ));
+                    }
+                    if executable.binding.principal_profile() != definition.principal_profile() {
+                        return Err(RegistryCompilationError::PrincipalProfileMismatch(
+                            interface_id.clone(),
+                        ));
+                    }
+                    candidates.push(InterfaceHandlerCandidate::new(
+                        executable.plugin.clone(),
+                        executable.binding.handler_reference().clone(),
+                        executable.target.clone(),
+                    ));
+                }
+                if let Some((plugin, _)) = contributed.and_then(|bindings| {
+                    bindings
+                        .iter()
+                        .find(|(plugin, _)| !handler_plugins.contains(plugin))
+                }) {
+                    return Err(RegistryCompilationError::UnexpectedExecutableExtension(
+                        interface_id.clone(),
+                        plugin.clone(),
+                        InterfaceExtensionPoint::Handler,
+                    ));
+                }
+                let effective = compile_effective_handler(interface_id, candidates)?;
+                let executable = contributed
+                    .and_then(|bindings| bindings.get(effective.plugin()))
+                    .expect("effective contributed handler was validated above");
+                (effective, Arc::clone(&executable.binding))
+            };
+            effective_handlers.insert(interface_id.clone(), effective);
+            effective_handler_bindings.insert(interface_id.clone(), binding);
+        }
+
+        for interface_id in self.definitions.keys() {
+            let registrations = self
+                .extensions
+                .get(interface_id)
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            let hooks = self.hook_bindings.get(interface_id);
+            if let Some(hooks) = hooks {
+                if hooks.graph_fingerprint() != &self.graph_fingerprint {
+                    return Err(RegistryCompilationError::ExtensionGraphFingerprintMismatch(
+                        interface_id.clone(),
+                    ));
+                }
+                for point in [
+                    InterfaceExtensionPoint::Before,
+                    InterfaceExtensionPoint::After,
+                    InterfaceExtensionPoint::Failure,
+                    InterfaceExtensionPoint::Completion,
+                ] {
+                    let mut registered = registrations
+                        .iter()
+                        .filter(|(_, registration)| registration.point() == point)
+                        .map(|(order, registration)| (*order, registration.plugin().clone()))
+                        .collect::<Vec<_>>();
+                    registered.sort();
+                    let registered = registered
+                        .into_iter()
+                        .map(|(_, plugin)| plugin)
+                        .collect::<Vec<_>>();
+                    let bound = hooks
+                        .bindings()
+                        .iter()
+                        .filter(|(_, bound_point)| *bound_point == point)
+                        .map(|(plugin, _)| plugin.clone())
+                        .collect::<Vec<_>>();
+                    if let Some(plugin) = registered
+                        .iter()
+                        .find(|plugin| !bound.contains(plugin))
+                        .or_else(|| registered.get(bound.len()))
+                    {
+                        return Err(RegistryCompilationError::MissingExecutableExtension(
+                            interface_id.clone(),
+                            plugin.clone(),
+                            point,
+                        ));
+                    }
+                    if let Some(plugin) = bound
+                        .iter()
+                        .find(|plugin| !registered.contains(plugin))
+                        .or_else(|| bound.get(registered.len()))
+                    {
+                        return Err(RegistryCompilationError::UnexpectedExecutableExtension(
+                            interface_id.clone(),
+                            plugin.clone(),
+                            point,
+                        ));
+                    }
+                    if registered != bound {
+                        let plugin = registered
+                            .iter()
+                            .zip(&bound)
+                            .find_map(|(registered, bound)| {
+                                (registered != bound).then(|| registered.clone())
+                            })
+                            .expect("different hook order must have a mismatched entry");
+                        return Err(RegistryCompilationError::MissingExecutableExtension(
+                            interface_id.clone(),
+                            plugin,
+                            point,
+                        ));
+                    }
+                }
+            } else if let Some((_, registration)) =
+                registrations.iter().find(|(_, registration)| {
+                    matches!(
+                        registration.point(),
+                        InterfaceExtensionPoint::Before
+                            | InterfaceExtensionPoint::After
+                            | InterfaceExtensionPoint::Failure
+                            | InterfaceExtensionPoint::Completion
+                    )
+                })
+            {
+                return Err(RegistryCompilationError::MissingExecutableExtension(
+                    interface_id.clone(),
+                    registration.plugin().clone(),
+                    registration.point(),
+                ));
+            }
         }
         let mut plans = BTreeMap::new();
         for (binding, adapter_plan) in self.protocol_bindings.values() {
@@ -1105,41 +1478,10 @@ impl RegistryCompiler {
                     binding.binding_id().clone(),
                 ));
             }
-            let typed_binding = self
-                .handler_bindings
+            let effective_handler = effective_handlers
                 .get(definition.interface_id())
-                .expect("definition handler was validated above");
-            let mut handler_candidates = vec![InterfaceHandlerCandidate::new(
-                PluginIdentity::new("builtin.interface-handler")
-                    .expect("built-in handler identity must be valid"),
-                typed_binding.handler_reference().clone(),
-                definition.target_reference().clone(),
-            )];
-            if let Some(registrations) = self.extensions.get(definition.interface_id()) {
-                handler_candidates.extend(
-                    registrations
-                        .iter()
-                        .filter(|(_, registration)| {
-                            registration.point() == InterfaceExtensionPoint::Handler
-                        })
-                        .map(|(_, registration)| {
-                            InterfaceHandlerCandidate::new(
-                                registration.plugin().clone(),
-                                definition.handler_reference().clone(),
-                                definition.target_reference().clone(),
-                            )
-                        }),
-                );
-            }
-            let effective_handler =
-                compile_effective_handler(definition.interface_id(), handler_candidates)?;
-            if effective_handler.handler() != definition.handler_reference()
-                || effective_handler.target() != definition.target_reference()
-            {
-                return Err(RegistryCompilationError::HandlerReferenceMismatch(
-                    definition.interface_id().clone(),
-                ));
-            }
+                .expect("effective handler was compiled above")
+                .clone();
             let extension_plan = CompiledInterfaceExtensionPlan::compile(
                 self.extensions
                     .get(definition.interface_id())
@@ -1153,6 +1495,7 @@ impl RegistryCompiler {
                 &binding_fingerprint,
                 adapter_plan,
                 extension_plan.fingerprint(),
+                &effective_handler,
             );
             plans.insert(
                 binding.binding_id().clone(),
@@ -1162,6 +1505,11 @@ impl RegistryCompiler {
                     binding_fingerprint,
                     adapter_plan: adapter_plan.clone(),
                     extension_plan,
+                    executable_extensions: self
+                        .hook_bindings
+                        .get(definition.interface_id())
+                        .cloned(),
+                    effective_handler,
                     fingerprint,
                 },
             );
@@ -1187,7 +1535,7 @@ impl RegistryCompiler {
                 .collect(),
             plans,
             routes: self.routes,
-            handler_bindings: self.handler_bindings,
+            handler_bindings: effective_handler_bindings,
         }))
     }
 }
@@ -1466,6 +1814,7 @@ fn plan_fingerprint(
     binding_fingerprint: &BindingFingerprint,
     adapter_plan: &InvocationAdapterPlan,
     extension_plan: &crate::ExtensionPlanFingerprint,
+    effective_handler: &InterfaceHandlerCandidate,
 ) -> PlanFingerprint {
     let mut digest = Sha256::new();
     for part in [
@@ -1478,6 +1827,9 @@ fn plan_fingerprint(
         definition.target_reference().as_str(),
         adapter_plan.authentication().as_str(),
         adapter_plan.authorization().as_str(),
+        effective_handler.plugin().as_str(),
+        effective_handler.handler().as_str(),
+        effective_handler.target().as_str(),
     ] {
         digest.update([0]);
         digest.update(part.as_bytes());

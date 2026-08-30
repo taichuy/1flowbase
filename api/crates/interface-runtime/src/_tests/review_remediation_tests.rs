@@ -7,21 +7,20 @@ use crate::{
     interface_stream_channel, AdmissionAdapterReference, ArtifactIdentity,
     AuthenticationAdapterReference, AuthorizationAdapterReference, AuthorizationOperation,
     BindingId, ContractIdentity, ExecutionTargetPin, GraphFingerprint, HandlerReference,
-    InterfaceAccess, InterfaceAuditPolicy, InterfaceAuthenticationPolicy,
-    InterfaceAuthorizationFuture, InterfaceAuthorizationPort, InterfaceAuthorizationRequest,
-    InterfaceContract, InterfaceContracts, InterfaceDefinition, InterfaceErrorPolicy,
-    InterfaceExecution, InterfaceExecutionMode, InterfaceExtensionFact,
-    InterfaceExtensionIsolation, InterfaceExtensionPermission, InterfaceExtensionPoint,
-    InterfaceExtensionRegistration, InterfaceExtensionTier, InterfaceHandler,
-    InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceIdentity,
-    InterfaceAfterHook, InterfaceAfterHookFuture, InterfaceBeforeHook,
-    InterfaceBeforeHookFuture, InterfaceCompletionHook, InterfaceCompletionHookFuture,
-    InterfaceHookContext, InterfaceInvocationError, InterfaceInvocationKernel,
-    InterfaceInvocationStage, InterfaceInvocationTerminal,
-    InterfaceLifecycle, InterfaceOwner, InterfaceProtocol, InterfaceScope, InterfaceStreamHandler,
-    InterfaceStreamHandlerFuture, InterfaceStreamTerminal, InterfaceVersion, InvocationAdapterPlan,
-    InvocationEnvelope, InvocationId, InvocationLineage, PluginIdentity, PrincipalProfile,
-    ProtocolBinding, ProtocolProjection, RegistryCompilationError, RegistryCompiler, RouteIdentity,
+    InterfaceAccess, InterfaceAfterHook, InterfaceAfterHookFuture, InterfaceAuditPolicy,
+    InterfaceAuthenticationPolicy, InterfaceAuthorizationFuture, InterfaceAuthorizationPort,
+    InterfaceAuthorizationRequest, InterfaceBeforeHook, InterfaceBeforeHookFuture,
+    InterfaceCompletionHook, InterfaceCompletionHookFuture, InterfaceContract, InterfaceContracts,
+    InterfaceDefinition, InterfaceErrorPolicy, InterfaceExecution, InterfaceExecutionMode,
+    InterfaceExtensionFact, InterfaceExtensionIsolation, InterfaceExtensionPermission,
+    InterfaceExtensionPoint, InterfaceExtensionRegistration, InterfaceExtensionTier,
+    InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceHookContext,
+    InterfaceId, InterfaceIdentity, InterfaceInvocationError, InterfaceInvocationKernel,
+    InterfaceInvocationStage, InterfaceInvocationTerminal, InterfaceLifecycle, InterfaceOwner,
+    InterfaceProtocol, InterfaceScope, InterfaceStreamHandler, InterfaceStreamHandlerFuture,
+    InterfaceStreamTerminal, InterfaceVersion, InvocationAdapterPlan, InvocationEnvelope,
+    InvocationId, InvocationLineage, PluginIdentity, PrincipalProfile, ProtocolBinding,
+    ProtocolProjection, RegistryCompilationError, RegistryCompiler, RouteIdentity,
     RuntimeGeneration, RuntimeTargetIdentity, TargetReference, TypedInterfaceHookPlan,
     UserPrincipal, WorkerGeneration,
 };
@@ -463,7 +462,11 @@ async fn review_compiled_completion_binding_is_mandatory_and_cannot_be_skipped_b
     let missing = compiler.compile().unwrap_err();
     assert!(matches!(
         missing,
-        RegistryCompilationError::MissingExecutableExtension(_, _, InterfaceExtensionPoint::Completion)
+        RegistryCompilationError::MissingExecutableExtension(
+            _,
+            _,
+            InterfaceExtensionPoint::Completion
+        )
     ));
 
     let mut compiler = compiler();
@@ -529,8 +532,7 @@ async fn review_compiled_completion_binding_is_mandatory_and_cannot_be_skipped_b
     assert_eq!(events.lock().unwrap().as_slice(), ["completion"]);
 }
 
-#[tokio::test]
-async fn review_host_extension_handler_is_the_real_exactly_one_effective_target() {
+fn handler_extension_compiler(plugins: &[&str], bind_executables: bool) -> RegistryCompiler {
     let mut compiler = compiler();
     let definition = definition("review.handler-extension", InterfaceExecutionMode::Unary);
     compiler.register_definition(definition.clone()).unwrap();
@@ -540,44 +542,69 @@ async fn review_host_extension_handler_is_the_real_exactly_one_effective_target(
                 BindingId::new("http.review.handler-extension.v1").unwrap(),
                 definition.identity().clone(),
                 definition.contracts().clone(),
-                ProtocolProjection::http(RouteIdentity::new("POST", "/api/handler-extension").unwrap()),
+                ProtocolProjection::http(
+                    RouteIdentity::new("POST", "/api/handler-extension").unwrap(),
+                ),
             ),
             plan("review.authn", "review.authz"),
         )
         .unwrap();
-    let plugin = PluginIdentity::new("review.handler-plugin").unwrap();
-    compiler
-        .register_extension(
-            definition.interface_id(),
-            10,
-            InterfaceExtensionRegistration::new(
-                plugin.clone(),
-                InterfaceExtensionTier::HostExtension,
-                InterfaceExtensionPoint::Handler,
-                InterfaceExtensionPermission::Handle,
-                InterfaceScope::Workspace,
-                InterfaceExtensionIsolation::TrustedInProcess,
-                [InterfaceExtensionFact::TypedInput],
+    for (index, plugin) in plugins.iter().enumerate() {
+        let plugin = PluginIdentity::new(plugin).unwrap();
+        compiler
+            .register_extension(
+                definition.interface_id(),
+                10 + index as u32,
+                InterfaceExtensionRegistration::new(
+                    plugin.clone(),
+                    InterfaceExtensionTier::HostExtension,
+                    InterfaceExtensionPoint::Handler,
+                    InterfaceExtensionPermission::Handle,
+                    InterfaceScope::Workspace,
+                    InterfaceExtensionIsolation::TrustedInProcess,
+                    [InterfaceExtensionFact::TypedInput],
+                )
+                .unwrap(),
             )
-            .unwrap(),
-        )
-        .unwrap();
+            .unwrap();
+        if bind_executables {
+            compiler
+                .bind_extension_handler::<Input, Output, TargetError, UserPrincipal>(
+                    definition.interface_id(),
+                    plugin.clone(),
+                    HandlerReference::new(format!("{}.invoke", plugin.as_str())).unwrap(),
+                    TargetReference::new(format!("{}.target", plugin.as_str())).unwrap(),
+                    Arc::new(ContributedUnaryHandler),
+                )
+                .unwrap();
+        }
+    }
     compiler
-        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
-            definition.interface_id(),
-            HandlerReference::new("review.handler-extension.handler").unwrap(),
-            Arc::new(UnaryHandler),
+}
+
+#[tokio::test]
+async fn review_host_extension_handler_is_the_real_exactly_one_effective_target() {
+    let missing = handler_extension_compiler(&["review.handler-missing"], false)
+        .compile()
+        .unwrap_err();
+    assert!(matches!(
+        missing,
+        RegistryCompilationError::MissingExecutableExtension(
+            _,
+            _,
+            InterfaceExtensionPoint::Handler
         )
-        .unwrap();
-    compiler
-        .bind_extension_handler::<Input, Output, TargetError, UserPrincipal>(
-            definition.interface_id(),
-            plugin,
-            HandlerReference::new("review.handler-plugin.invoke").unwrap(),
-            TargetReference::new("review.handler-plugin.target").unwrap(),
-            Arc::new(ContributedUnaryHandler),
+    ));
+    let multiple = handler_extension_compiler(&["review.handler-one", "review.handler-two"], true)
+        .compile()
+        .unwrap_err();
+    assert!(matches!(
+        multiple,
+        RegistryCompilationError::Extension(
+            crate::InterfaceExtensionCompilationError::MultipleEffectiveHandlers(_)
         )
-        .unwrap();
+    ));
+    let compiler = handler_extension_compiler(&["review.handler-plugin"], true);
     let snapshot = compiler.compile().unwrap();
     let outcome = InterfaceInvocationKernel::new(Arc::new(Authorization("review.authz")))
         .invoke::<Input, Output, TargetError>(

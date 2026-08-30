@@ -15,6 +15,8 @@ use crate::{
     InterfaceAuthorizationRequest, InterfaceBeforeHook, InterfaceBeforeHookFuture,
     InterfaceCompletionHook, InterfaceCompletionHookFuture, InterfaceContract, InterfaceContracts,
     InterfaceDefinition, InterfaceErrorPolicy, InterfaceExecution, InterfaceExecutionMode,
+    InterfaceExtensionFact, InterfaceExtensionIsolation, InterfaceExtensionPermission,
+    InterfaceExtensionPoint, InterfaceExtensionRegistration, InterfaceExtensionTier,
     InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceHookContext,
     InterfaceId, InterfaceIdentity, InterfaceInvocationError, InterfaceInvocationKernel,
     InterfaceInvocationStage, InterfaceInvocationTerminal, InterfaceLifecycle, InterfaceOwner,
@@ -331,6 +333,65 @@ fn compile_snapshot(
     compiler.compile().unwrap()
 }
 
+fn compile_snapshot_with_hooks(
+    graph: &str,
+    increment: u8,
+    fail: bool,
+    hooks: Arc<TypedInterfaceHookPlan<Input, Output>>,
+    registrations: Vec<(u32, InterfaceExtensionRegistration)>,
+) -> Arc<crate::CompiledInterfaceRegistry> {
+    let mut compiler = compiler(graph);
+    compiler.register_definition(definition()).unwrap();
+    compiler
+        .register_binding(binding(), adapter_plan())
+        .unwrap();
+    for (order, registration) in registrations {
+        compiler
+            .register_extension(&interface_id(), order, registration)
+            .unwrap();
+    }
+    compiler
+        .bind_handler::<Input, Output, TargetError, UserPrincipal>(
+            &interface_id(),
+            HandlerReference::new("invocation.handler").unwrap(),
+            Arc::new(RecordingHandler {
+                increment,
+                seen_fingerprint: Arc::new(Mutex::new(None)),
+                fail,
+            }),
+        )
+        .unwrap();
+    compiler.bind_hook_plan(&interface_id(), hooks).unwrap();
+    compiler.compile().unwrap()
+}
+
+fn hook_registration(
+    plugin: &str,
+    point: InterfaceExtensionPoint,
+) -> InterfaceExtensionRegistration {
+    let (permission, fact) = match point {
+        InterfaceExtensionPoint::Before => (
+            InterfaceExtensionPermission::MutateInput,
+            InterfaceExtensionFact::TypedInput,
+        ),
+        InterfaceExtensionPoint::Completion => (
+            InterfaceExtensionPermission::ObserveCompletion,
+            InterfaceExtensionFact::Terminal,
+        ),
+        _ => unreachable!(),
+    };
+    InterfaceExtensionRegistration::new(
+        PluginIdentity::new(plugin).unwrap(),
+        InterfaceExtensionTier::HostExtension,
+        point,
+        permission,
+        InterfaceScope::System,
+        InterfaceExtensionIsolation::TrustedInProcess,
+        [fact],
+    )
+    .unwrap()
+}
+
 fn envelope(actor: ActorContext) -> InvocationEnvelope<Input> {
     InvocationEnvelope::new(
         InvocationLineage::root(InvocationId::now_v7()),
@@ -615,39 +676,67 @@ async fn active_invocation_uses_its_frozen_snapshot_after_candidate_publish() {
 #[tokio::test]
 async fn lcf_002_lcf_004_typed_hook_plan_runs_after_authorization_and_admission() {
     let events = Arc::new(Mutex::new(Vec::new()));
-    let snapshot = compile_snapshot("graph:hooks", 3, false, Arc::new(Mutex::new(None)));
-    let plan = TypedInterfaceHookPlan::<Input, Output>::new(
-        GraphFingerprint::new("graph:hooks").unwrap(),
-        snapshot
-            .plan(&BindingId::new("http.invocation.read.v1").unwrap())
-            .unwrap()
-            .extension_plan()
-            .fingerprint()
-            .clone(),
-    )
-    .bind_before(Arc::new(RecordingBeforeHook {
-        name: "alpha",
-        increment: 1,
-        events: Arc::clone(&events),
-    }))
-    .bind_before(Arc::new(RecordingBeforeHook {
-        name: "beta",
-        increment: 2,
-        events: Arc::clone(&events),
-    }))
-    .bind_completion(Arc::new(RecordingCompletionHook {
-        name: "alpha",
-        events: Arc::clone(&events),
-    }))
-    .bind_completion(Arc::new(RecordingCompletionHook {
-        name: "beta",
-        events: Arc::clone(&events),
-    }));
+    let plan =
+        TypedInterfaceHookPlan::<Input, Output>::new(GraphFingerprint::new("graph:hooks").unwrap())
+            .bind_before(
+                PluginIdentity::new("hook.before-alpha").unwrap(),
+                Arc::new(RecordingBeforeHook {
+                    name: "alpha",
+                    increment: 1,
+                    events: Arc::clone(&events),
+                }),
+            )
+            .bind_before(
+                PluginIdentity::new("hook.before-beta").unwrap(),
+                Arc::new(RecordingBeforeHook {
+                    name: "beta",
+                    increment: 2,
+                    events: Arc::clone(&events),
+                }),
+            )
+            .bind_completion(
+                PluginIdentity::new("hook.completion-alpha").unwrap(),
+                Arc::new(RecordingCompletionHook {
+                    name: "alpha",
+                    events: Arc::clone(&events),
+                }),
+            )
+            .bind_completion(
+                PluginIdentity::new("hook.completion-beta").unwrap(),
+                Arc::new(RecordingCompletionHook {
+                    name: "beta",
+                    events: Arc::clone(&events),
+                }),
+            );
+    let snapshot = compile_snapshot_with_hooks(
+        "graph:hooks",
+        3,
+        false,
+        Arc::new(plan),
+        vec![
+            (
+                10,
+                hook_registration("hook.before-alpha", InterfaceExtensionPoint::Before),
+            ),
+            (
+                20,
+                hook_registration("hook.before-beta", InterfaceExtensionPoint::Before),
+            ),
+            (
+                30,
+                hook_registration("hook.completion-alpha", InterfaceExtensionPoint::Completion),
+            ),
+            (
+                40,
+                hook_registration("hook.completion-beta", InterfaceExtensionPoint::Completion),
+            ),
+        ],
+    );
     let outcome = InterfaceInvocationKernel::with_target_admission(
         Arc::new(Authorization { reject: false }),
         Arc::new(Admission { reject: false }),
     )
-    .invoke_with_hook_plan::<Input, Output, TargetError>(snapshot, envelope(actor(true)), &plan)
+    .invoke::<Input, Output, TargetError>(snapshot, envelope(actor(true)))
     .await
     .unwrap();
 
@@ -680,25 +769,34 @@ async fn lcf_002_lcf_004_typed_hook_plan_runs_after_authorization_and_admission(
 #[tokio::test]
 async fn lcf_006_completion_is_emitted_once_for_target_failure() {
     let events = Arc::new(Mutex::new(Vec::new()));
-    let snapshot = compile_snapshot("graph:failed-hooks", 0, true, Arc::new(Mutex::new(None)));
     let plan = TypedInterfaceHookPlan::<Input, Output>::new(
         GraphFingerprint::new("graph:failed-hooks").unwrap(),
-        snapshot
-            .plan(&BindingId::new("http.invocation.read.v1").unwrap())
-            .unwrap()
-            .extension_plan()
-            .fingerprint()
-            .clone(),
     )
-    .bind_completion(Arc::new(RecordingCompletionHook {
-        name: "terminal",
-        events: Arc::clone(&events),
-    }));
+    .bind_completion(
+        PluginIdentity::new("hook.completion-terminal").unwrap(),
+        Arc::new(RecordingCompletionHook {
+            name: "terminal",
+            events: Arc::clone(&events),
+        }),
+    );
+    let snapshot = compile_snapshot_with_hooks(
+        "graph:failed-hooks",
+        0,
+        true,
+        Arc::new(plan),
+        vec![(
+            10,
+            hook_registration(
+                "hook.completion-terminal",
+                InterfaceExtensionPoint::Completion,
+            ),
+        )],
+    );
     let failure = InterfaceInvocationKernel::with_target_admission(
         Arc::new(Authorization { reject: false }),
         Arc::new(Admission { reject: false }),
     )
-    .invoke_with_hook_plan::<Input, Output, TargetError>(snapshot, envelope(actor(true)), &plan)
+    .invoke::<Input, Output, TargetError>(snapshot, envelope(actor(true)))
     .await
     .unwrap_err();
 

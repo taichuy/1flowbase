@@ -261,15 +261,12 @@ pub async fn invoke_providers_view(
         .ok_or(control_plane::errors::ControlPlaneError::NotFound(
             "interface_operation",
         ))?;
-    let hook_plan = boot_snapshot.providers_view_hook_plan().ok_or(
-        control_plane::errors::ControlPlaneError::NotFound("interface_hook_plan"),
-    )?;
     let kernel = invocation_kernel(
         Arc::clone(&state.console_policy_reader),
         Arc::clone(&state.console_operation_registry),
     );
     match kernel
-        .invoke_with_hook_plan::<
+        .invoke::<
             HostInfrastructureProvidersViewInput,
             HostInfrastructureProvidersViewOutput,
             HostInfrastructureProvidersViewTargetError,
@@ -293,7 +290,6 @@ pub async fn invoke_providers_view(
                 None,
                 HostInfrastructureProvidersViewInput::new(),
             ),
-            hook_plan,
         )
         .await
     {
@@ -352,6 +348,12 @@ pub(crate) fn compile_interface_registry(
     graph: Arc<EffectiveExtensionGraph>,
     descriptors: &[HostExtensionInterfaceOperationManifest],
     providers_view_query: Arc<dyn HostInfrastructureProvidersViewQuery>,
+    providers_view_hooks: Arc<
+        interface_runtime::TypedInterfaceHookPlan<
+            HostInfrastructureProvidersViewInput,
+            HostInfrastructureProvidersViewOutput,
+        >,
+    >,
 ) -> Result<Arc<CompiledInterfaceRegistry>> {
     let descriptor = validate_active_providers_view(&graph, descriptors)?;
     let binding = binding_from_descriptor(&descriptor)?;
@@ -430,6 +432,7 @@ pub(crate) fn compile_interface_registry(
             query: providers_view_query,
         }),
     )?;
+    compiler.bind_hook_plan(&interface_id, providers_view_hooks)?;
     Ok(compiler.compile()?)
 }
 
