@@ -8,7 +8,7 @@
 - XR input: `beta@965d62e9514f1b3e25fdf2a4284cc3bb41cfbf2e`
 - Fresh tested XR product assembly: `beta@4b31cc86c2d7e74e053ac5c0b7976031265d7091`
 - Authentication closure input: `beta@efa5df40dfc11e9b703d5ecfa1446f3a9dfb28d3`
-- Current untested product assembly: `beta@b85b9a705c98acece4e5f138c345a911a9d704cb`
+- Current untested product assembly: `beta@50bf34b87108af8bbd65bf54bc1aee3c8bd7cb6a`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
 - Previous centralized QA: executable-contribution XR attempt 16, 16/16 rows complete, zero unrun rows; superseded as architecture acceptance evidence by the reopened RR-14 finding
 - Evidence root: `tmp/test-governance/1944-interface-lifecycle/`
@@ -27,6 +27,14 @@ borrowed the resolved activation from the snapshot and later moved the snapshot 
 `b85b9a705c98acece4e5f138c345a911a9d704cb` owns a clone of that already-frozen typed activation;
 attempt 22 is invalidated in full and the replacement QA must restart at QA-001.
 
+XR-A06 attempt 23 froze `4bc643706f1085b4c053b50991f13f11462ed8b9`, passed QA-001 through
+QA-004, then QA-005 found that the new real-Route fixture constructed a Router before mutating its
+uniquely owned `ApiState`. The retained Router state made `Arc::get_mut` fail before the request was
+sent; this was a fixture assembly defect, not a product response failure. `50bf34b87` installs the
+frozen snapshot and counting SessionStore before constructing the Router, then logs in through that
+same final Router and resets the counter before asserting one Authentication lookup. Attempt 23 is
+invalidated in full and the replacement QA must again restart at QA-001.
+
 ## XR executable-contribution packet ledger
 
 | Packet | Commit | Status | Principal write set |
@@ -42,6 +50,7 @@ attempt 22 is invalidated in full and the replacement QA must restart at QA-001.
 | XR-A04 | `258705de1` | ASSEMBLED | Console single-owner AuthN and installable HostExtension AuthN closure fixtures |
 | XR-A05 | `2d97d3559` | ASSEMBLED | middleware/Route ownership and manifest→Graph→Registry→factory→Route assembly |
 | XR-A05-F1 | `b85b9a705` | ASSEMBLED | own the resolved frozen activation before moving the registry snapshot into Kernel |
+| XR-A05-F2 | `50bf34b87` | ASSEMBLED | construct the RR-14 real Route fixture only after installing its frozen snapshot and counting store |
 | XR-A06 | pending | ACTIVE | replacement frozen assembly and QA-001–QA-016 restart with command-captured SHA |
 
 QA fix commits inside the approved XR boundary: `f35b3b261` removed fixture shadowing and warnings;
