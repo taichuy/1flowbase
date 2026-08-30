@@ -10,8 +10,6 @@ use crate::{app_state::ApiState, routes::application_public_api::openai};
 
 #[derive(Debug, Error)]
 pub(crate) enum ResponsesTurnBridgeError {
-    #[error("authenticated credential cannot be represented as an Authorization header")]
-    InvalidAuthenticatedCredential,
     #[error("Responses ingress rejected the turn")]
     IngressRejected,
     #[error("Responses typed runtime stream could not be opened")]

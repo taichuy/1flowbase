@@ -56,3 +56,42 @@ async fn issue_1944_native_response_modes_are_distinct_published_contracts() {
         );
     }
 }
+
+#[test]
+fn issue_1958_migrated_routes_have_no_production_compatibility_bypass() {
+    let compatibility_stream = include_str!("../routes/application_public_api/compat_sse.rs");
+    let openai = include_str!("../routes/application_public_api/openai.rs");
+    let anthropic = include_str!("../routes/application_public_api/anthropic.rs");
+    let workflow_extension = include_str!("../routes/application_public_api/ex.rs");
+
+    for legacy in [
+        "PreparedCompatibleTurn",
+        "start_compatible_turn_stream",
+        "start_openai_run_stream",
+        "start_openai_response_stream",
+        "start_anthropic_run_stream",
+        "authenticate_openai_response_credential",
+        "execute_openai_tool_resume",
+        "execute_anthropic_tool_resume",
+    ] {
+        assert!(
+            !compatibility_stream.contains(legacy)
+                && !openai.contains(legacy)
+                && !anthropic.contains(legacy),
+            "legacy production compatibility owner remains: {legacy}"
+        );
+    }
+    assert!(!compatibility_stream.contains("public_mcp_runtime_invoker(&state"));
+    assert!(openai.contains("compatibility_interface::invoke_blocking"));
+    assert!(openai.contains("compatibility_interface::invoke_stream"));
+    assert!(anthropic.contains("compatibility_interface::invoke_blocking"));
+    assert!(anthropic.contains("compatibility_interface::invoke_stream"));
+    assert_eq!(
+        workflow_extension
+            .matches("boot_snapshot.authenticate(")
+            .count(),
+        1
+    );
+    assert!(!workflow_extension.contains("require_session(&state"));
+    assert!(!workflow_extension.contains("require_csrf(&headers"));
+}

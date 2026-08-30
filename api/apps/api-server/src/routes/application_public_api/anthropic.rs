@@ -9,8 +9,8 @@ use axum::{
 };
 use control_plane::application_public_api::{
     callback_resume::{
-        ApplicationPublishedCallbackResumeService, PublishedCallbackResumeSource,
-        PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
+        PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
+        ResumePublishedCallbackCommand,
     },
     client_protocol_envelope::{
         capture_client_protocol_envelope, capture_client_protocol_query,
@@ -30,7 +30,6 @@ use control_plane::application_public_api::{
         TranslationSafeRepresentation,
     },
 };
-use control_plane::orchestration_runtime::OrchestrationRuntimeService;
 use domain::AiNativeOperation;
 use orchestration_runtime::execution_state::NativeOperationTerminal;
 use plugin_framework::provider_contract::ProtocolContextEnvelope;
@@ -44,7 +43,6 @@ mod token_count;
 
 use crate::{
     app_state::ApiState,
-    provider_runtime::ApiProviderRuntime,
     routes::application_public_api::{
         callback_adapter::correlate_anthropic_callback, compat_sse, compatibility_interface,
         llm_tool_visibility::external_llm_tool_calls, native,
@@ -485,37 +483,6 @@ async fn create_native_run(
     )
     .await?;
     Ok(run)
-}
-
-async fn execute_anthropic_tool_resume(
-    state: Arc<ApiState>,
-    command: ResumePublishedCallbackCommand,
-) -> Result<NativeRunResult, AnthropicRouteError> {
-    let mcp_runtime_invoker =
-        native::public_mcp_runtime_invoker(&state, &command.bearer_token).await?;
-    let runtime_service = OrchestrationRuntimeService::new(
-        state.store.clone(),
-        ApiProviderRuntime::new(state.provider_runtime.clone()),
-        state.runtime_engine.clone(),
-        state.provider_secret_master_key.clone(),
-    )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_file_storage_registry(state.file_storage_registry.clone())
-    .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
-    .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue())
-    .with_provider_transport_store(state.infrastructure.provider_transport_store())
-    .with_runtime_event_stream(state.runtime_event_stream.clone());
-    let result =
-        ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)
-            .with_last_used_cache(state.infrastructure.cache_store())
-            .resume_callback(command)
-            .await
-            .map_err(native::service_error)?;
-    Ok(result.run)
 }
 
 fn anthropic_resume_command(

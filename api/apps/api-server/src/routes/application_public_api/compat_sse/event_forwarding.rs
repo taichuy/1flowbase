@@ -133,6 +133,7 @@ async fn forward_ordered_typed_events(
     false
 }
 
+#[cfg(test)]
 pub(super) struct SubscribedCompatibleRuntimeEventStream<F> {
     pub(super) state: Arc<ApiState>,
     pub(super) initial_run: NativeRunResult,
@@ -144,6 +145,7 @@ pub(super) struct SubscribedCompatibleRuntimeEventStream<F> {
     pub(super) mapper: F,
 }
 
+#[cfg(test)]
 pub(super) async fn send_subscribed_compatible_runtime_event_stream<F>(
     stream: SubscribedCompatibleRuntimeEventStream<F>,
 ) where
@@ -380,6 +382,7 @@ pub(super) async fn send_subscribed_compatible_runtime_event_stream<F>(
 }
 
 #[cfg(test)]
+#[cfg(test)]
 pub(super) async fn send_compatible_runtime_event_stream<F>(
     state: Arc<ApiState>,
     initial_run: NativeRunResult,
@@ -413,6 +416,7 @@ pub(super) async fn send_compatible_runtime_event_stream<F>(
     .await;
 }
 
+#[cfg(test)]
 async fn durable_sequence_for_ignored_waiting_callback(
     state: &ApiState,
     run_id: uuid::Uuid,
@@ -426,6 +430,7 @@ async fn durable_sequence_for_ignored_waiting_callback(
         .ok()?
 }
 
+#[cfg(test)]
 fn log_compatible_sse_closed(
     sse_projection: &'static str,
     run: &NativeRunResult,
@@ -447,6 +452,7 @@ fn log_compatible_sse_closed(
     );
 }
 
+#[cfg(test)]
 fn durable_record_to_runtime_event_envelope(
     record: domain::RuntimeEventRecord,
 ) -> RuntimeEventEnvelope {
@@ -485,6 +491,7 @@ fn durable_record_to_runtime_event_envelope(
     }
 }
 
+#[cfg(test)]
 fn compat_payload_i64(payload: &Value, key: &str) -> Option<i64> {
     payload.get(key).and_then(|value| {
         value
@@ -493,6 +500,7 @@ fn compat_payload_i64(payload: &Value, key: &str) -> Option<i64> {
     })
 }
 
+#[cfg(test)]
 fn compat_payload_string(payload: &Value, key: &str) -> Option<String> {
     payload
         .get(key)
@@ -500,6 +508,7 @@ fn compat_payload_string(payload: &Value, key: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+#[cfg(test)]
 struct CompatibleRuntimeEventsForward<'a, F> {
     state: &'a ApiState,
     initial_run: &'a NativeRunResult,
@@ -512,6 +521,7 @@ struct CompatibleRuntimeEventsForward<'a, F> {
     events: Vec<RuntimeEventEnvelope>,
 }
 
+#[cfg(test)]
 enum CompatibleForwardOutcome {
     Open,
     Terminal { event_type: String },
@@ -533,6 +543,7 @@ pub(super) fn take_ordered_compatible_event(
     Some(event)
 }
 
+#[cfg(test)]
 async fn forward_compatible_runtime_events<F>(
     forward: CompatibleRuntimeEventsForward<'_, F>,
 ) -> CompatibleForwardOutcome
@@ -612,6 +623,7 @@ where
     CompatibleForwardOutcome::Open
 }
 
+#[cfg(test)]
 async fn forward_compatible_runtime_events_without_resume_durable_prefix<F>(
     forward: CompatibleRuntimeEventsForward<'_, F>,
 ) -> CompatibleForwardOutcome
@@ -661,6 +673,7 @@ where
     CompatibleForwardOutcome::Open
 }
 
+#[cfg(test)]
 async fn forward_single_compatible_runtime_event<F>(
     state: &ApiState,
     initial_run: &NativeRunResult,
@@ -727,6 +740,7 @@ where
     CompatibleForwardOutcome::Open
 }
 
+#[cfg(test)]
 struct CompatibleDurableRuntimeEventsForward<'a, F> {
     state: &'a ApiState,
     initial_run: &'a NativeRunResult,
@@ -737,6 +751,7 @@ struct CompatibleDurableRuntimeEventsForward<'a, F> {
     last_forwarded_durable_sequence: &'a mut i64,
 }
 
+#[cfg(test)]
 async fn drain_compatible_durable_runtime_events<F>(
     forward: CompatibleDurableRuntimeEventsForward<'_, F>,
 ) -> CompatibleForwardOutcome
@@ -804,6 +819,7 @@ where
     .await
 }
 
+#[cfg(test)]
 async fn send_compatible_sse_events(
     sender: &mpsc::Sender<Result<Event, Infallible>>,
     events: Vec<Result<Event, Infallible>>,
@@ -845,6 +861,7 @@ pub(super) async fn append_compatible_resume_terminal_event(
         .await;
 }
 
+#[cfg(test)]
 struct CompatibleTerminalFallback<'a, F> {
     state: &'a ApiState,
     initial_run: &'a NativeRunResult,
@@ -856,6 +873,7 @@ struct CompatibleTerminalFallback<'a, F> {
     ignored_waiting_callback_task_id: Option<uuid::Uuid>,
 }
 
+#[cfg(test)]
 enum CompatibleTerminalFallbackOutcome {
     NotTerminal,
     Sent { event_type: String },
@@ -863,6 +881,7 @@ enum CompatibleTerminalFallbackOutcome {
     IgnoredWaitingCallback,
 }
 
+#[cfg(test)]
 async fn emit_compatible_terminal_fallback<F>(
     fallback: CompatibleTerminalFallback<'_, F>,
 ) -> CompatibleTerminalFallbackOutcome

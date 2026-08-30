@@ -1,4 +1,9 @@
-use std::{collections::HashSet, convert::Infallible, sync::Arc, time::Duration};
+use std::{convert::Infallible, sync::Arc, time::Duration};
+
+#[cfg(test)]
+use control_plane::ports::OrchestrationRuntimeRepository;
+#[cfg(test)]
+use std::collections::HashSet;
 
 use axum::response::{
     sse::{Event, KeepAlive, Sse},
@@ -19,11 +24,13 @@ use control_plane::{
     orchestration_runtime::{
         debug_stream_events, OrchestrationRuntimeService, StartPublishedFlowRunCommand,
     },
-    ports::{OrchestrationRuntimeRepository, RuntimeEventEnvelope, RuntimeEventPayload},
+    ports::{RuntimeEventEnvelope, RuntimeEventPayload},
 };
 use serde_json::{json, Value};
 use tokio::sync::mpsc;
-use tracing::{debug, info, warn};
+use tracing::warn;
+#[cfg(test)]
+use tracing::{debug, info};
 
 use crate::routes::application_public_api::tool_callback_ids::{
     encode_anthropic_callback_tool_use_id, encode_openai_callback_tool_call_id,
@@ -48,20 +55,13 @@ mod tests;
 
 use event_forwarding::{
     append_compatible_resume_terminal_event, is_answer_presentation_delta,
-    send_subscribed_compatible_runtime_event_stream, send_subscribed_compatible_typed_event_stream,
-    SubscribedCompatibleRuntimeEventStream, SubscribedCompatibleTypedEventStream,
+    send_subscribed_compatible_typed_event_stream, SubscribedCompatibleTypedEventStream,
 };
 #[cfg(test)]
 use event_forwarding::{send_compatible_runtime_event_stream, take_ordered_compatible_event};
 #[cfg(test)]
 use protocol_mappers::anthropic_completed_run_to_sse;
 use protocol_mappers::{AnthropicStreamMapper, OpenAiChatStreamMapper, OpenAiResponseStreamMapper};
-
-type CompatRunSseStream = tokio_stream::wrappers::ReceiverStream<Result<Event, Infallible>>;
-
-const OPENAI_CHAT_SSE_PROJECTION: &str = "openai_chat";
-const OPENAI_RESPONSES_SSE_PROJECTION: &str = "openai_responses";
-const ANTHROPIC_SSE_PROJECTION: &str = "anthropic";
 
 pub(crate) struct CompatibleResumePlan {
     pub(crate) initial_run: NativeRunResult,
@@ -75,46 +75,10 @@ pub(crate) enum CompatibleResumeAdmission {
 
 enum CompatibleTurnAction {
     Start,
-    Resume(ResumePublishedCallbackCommand),
     ResumeForActor {
         command: ResumePublishedCallbackCommand,
         actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
     },
-}
-
-pub(crate) struct PreparedCompatibleTurn {
-    initial_run: NativeRunResult,
-    action: CompatibleTurnAction,
-    provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
-    bearer_token: String,
-}
-
-impl PreparedCompatibleTurn {
-    pub(crate) fn start(
-        initial_run: NativeRunResult,
-        provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
-        bearer_token: String,
-    ) -> Self {
-        Self {
-            initial_run,
-            action: CompatibleTurnAction::Start,
-            provider_transport_slot,
-            bearer_token,
-        }
-    }
-
-    pub(crate) fn resume(
-        initial_run: NativeRunResult,
-        command: ResumePublishedCallbackCommand,
-    ) -> Self {
-        let bearer_token = command.bearer_token.clone();
-        Self {
-            initial_run,
-            action: CompatibleTurnAction::Resume(command),
-            provider_transport_slot: None,
-            bearer_token,
-        }
-    }
 }
 
 /// One cursor-ordered runtime fact. Payload identity never participates in
@@ -147,7 +111,6 @@ struct OpenedCompatibleTurn {
     from_sequence: Option<i64>,
     ignored_waiting_callback_task_id: Option<uuid::Uuid>,
     subscription: control_plane::ports::RuntimeEventSubscription,
-    turn_action: &'static str,
     execution: tokio::task::JoinHandle<()>,
 }
 
@@ -155,14 +118,14 @@ impl CompatibleTurnAction {
     fn name(&self) -> &'static str {
         match self {
             Self::Start => "start",
-            Self::Resume(_) | Self::ResumeForActor { .. } => "resume",
+            Self::ResumeForActor { .. } => "resume",
         }
     }
 
     fn resumed_callback_task_id(&self) -> Option<uuid::Uuid> {
         match self {
             Self::Start => None,
-            Self::Resume(command) | Self::ResumeForActor { command, .. } => {
+            Self::ResumeForActor { command, .. } => {
                 Some(callback_task_id_from_resume_command(command))
             }
         }
@@ -246,14 +209,6 @@ impl From<RuntimeEventEnvelope> for CompatibleRuntimeEventView {
 }
 
 impl CompatibleProtocolProjection {
-    pub(crate) fn name(&self) -> &'static str {
-        match self {
-            Self::OpenAiChat(_) | Self::OpenAiChatDeferred { .. } => OPENAI_CHAT_SSE_PROJECTION,
-            Self::OpenAiResponses(_) => OPENAI_RESPONSES_SSE_PROJECTION,
-            Self::AnthropicMessages(_) => ANTHROPIC_SSE_PROJECTION,
-        }
-    }
-
     pub(crate) fn runtime_event_to_sse(
         &mut self,
         run: &NativeRunResult,
@@ -302,46 +257,6 @@ pub(crate) fn openai_responses_interface_projection(
 
 pub(crate) fn anthropic_interface_projection(model: String) -> CompatibleProtocolProjection {
     CompatibleProtocolProjection::AnthropicMessages(AnthropicStreamMapper::new(model))
-}
-
-pub(crate) async fn prepare_compatible_resume(
-    state: Arc<ApiState>,
-    command: ResumePublishedCallbackCommand,
-) -> Result<CompatibleResumeAdmission, NativeApiError> {
-    let mcp_runtime_invoker =
-        native::public_mcp_runtime_invoker(&state, &command.bearer_token).await?;
-    let runtime_service = OrchestrationRuntimeService::new(
-        state.store.clone(),
-        ApiProviderRuntime::new(state.provider_runtime.clone()),
-        state.runtime_engine.clone(),
-        state.provider_secret_master_key.clone(),
-    )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_file_storage_registry(state.file_storage_registry.clone())
-    .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
-    .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue())
-    .with_runtime_event_stream(state.runtime_event_stream.clone());
-    let prepared =
-        ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)
-            .with_last_used_cache(state.infrastructure.cache_store())
-            .prepare_callback_resume(&command)
-            .await
-            .map_err(service_error)?;
-    Ok(match prepared {
-        PreparedPublishedCallbackResume::Resume { initial_run } => {
-            CompatibleResumeAdmission::Resume(Box::new(CompatibleResumePlan {
-                initial_run: *initial_run,
-                command,
-            }))
-        }
-        PreparedPublishedCallbackResume::StartNewTurnFromHistory => {
-            CompatibleResumeAdmission::StartNewTurnFromHistory
-        }
-    })
 }
 
 pub(crate) async fn prepare_compatible_resume_for_actor(
@@ -413,6 +328,7 @@ pub(crate) async fn execute_compatible_resume_for_actor(
         .map_err(service_error)
 }
 
+#[cfg(test)]
 #[derive(Debug, Default)]
 struct CompatibleStreamStats {
     emitted_public_event: bool,
@@ -420,6 +336,7 @@ struct CompatibleStreamStats {
     forwarded_event_identities: HashSet<CompatiblePublicEventIdentity>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct CompatiblePublicEventIdentity {
     event_type: String,
@@ -431,6 +348,7 @@ struct CompatiblePublicEventIdentity {
     source_output_key: Option<String>,
 }
 
+#[cfg(test)]
 impl CompatibleStreamStats {
     fn emitted_content(&self) -> bool {
         self.emitted_content_bytes > 0
@@ -467,6 +385,7 @@ impl CompatibleStreamStats {
     }
 }
 
+#[cfg(test)]
 fn compatible_public_event_identity(
     event: &RuntimeEventEnvelope,
 ) -> Option<CompatiblePublicEventIdentity> {
@@ -501,6 +420,7 @@ fn compatible_public_event_identity(
     })
 }
 
+#[cfg(test)]
 fn presentation_value_identity(presentation: Option<&Value>, key: &str) -> Option<String> {
     presentation
         .and_then(|value| value.get(key))
@@ -508,44 +428,6 @@ fn presentation_value_identity(presentation: Option<&Value>, key: &str) -> Optio
             Value::String(text) => text.clone(),
             other => other.to_string(),
         })
-}
-
-pub(crate) async fn start_openai_run_stream(
-    state: Arc<ApiState>,
-    bearer_token: String,
-    run: NativeRunResult,
-    model: String,
-) -> Result<Response, NativeApiError> {
-    let mapper = OpenAiChatStreamMapper::new(model, openai_chat_completion_id_from_run_id(run.id));
-    start_compatible_turn_stream(
-        state,
-        run,
-        CompatibleTurnAction::Start,
-        None,
-        bearer_token,
-        CompatibleProtocolProjection::OpenAiChat(mapper),
-    )
-    .await
-}
-
-pub(crate) async fn start_openai_response_stream(
-    state: Arc<ApiState>,
-    bearer_token: String,
-    run: NativeRunResult,
-    model: String,
-    previous_response_id: Option<String>,
-    provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
-) -> Result<Response, NativeApiError> {
-    let mapper = OpenAiResponseStreamMapper::new(model, previous_response_id);
-    start_compatible_turn_stream(
-        state,
-        run,
-        CompatibleTurnAction::Start,
-        provider_transport_slot,
-        bearer_token,
-        CompatibleProtocolProjection::OpenAiResponses(mapper),
-    )
-    .await
 }
 
 /// Compact is a unary provider operation, so its completed Responses event is
@@ -577,82 +459,6 @@ pub(crate) fn openai_compact_sse_response(response: Value) -> Result<Response, N
     )
 }
 
-pub(crate) async fn start_openai_chat_resume_stream(
-    state: Arc<ApiState>,
-    run: NativeRunResult,
-    model: String,
-    chat_completion_id: String,
-    command: ResumePublishedCallbackCommand,
-) -> Result<Response, NativeApiError> {
-    let bearer_token = command.bearer_token.clone();
-    let mapper = OpenAiChatStreamMapper::new(model, chat_completion_id);
-    start_compatible_turn_stream(
-        state,
-        run,
-        CompatibleTurnAction::Resume(command),
-        None,
-        bearer_token,
-        CompatibleProtocolProjection::OpenAiChat(mapper),
-    )
-    .await
-}
-
-pub(crate) async fn start_openai_response_resume_stream(
-    state: Arc<ApiState>,
-    run: NativeRunResult,
-    model: String,
-    previous_response_id: Option<String>,
-    command: ResumePublishedCallbackCommand,
-) -> Result<Response, NativeApiError> {
-    let bearer_token = command.bearer_token.clone();
-    let mapper = OpenAiResponseStreamMapper::new(model, previous_response_id);
-    start_compatible_turn_stream(
-        state,
-        run,
-        CompatibleTurnAction::Resume(command),
-        None,
-        bearer_token,
-        CompatibleProtocolProjection::OpenAiResponses(mapper),
-    )
-    .await
-}
-
-pub(crate) async fn start_anthropic_run_stream(
-    state: Arc<ApiState>,
-    bearer_token: String,
-    run: NativeRunResult,
-    model: String,
-) -> Result<Response, NativeApiError> {
-    let mapper = AnthropicStreamMapper::new(model);
-    start_compatible_turn_stream(
-        state,
-        run,
-        CompatibleTurnAction::Start,
-        None,
-        bearer_token,
-        CompatibleProtocolProjection::AnthropicMessages(mapper),
-    )
-    .await
-}
-
-pub(crate) async fn start_anthropic_resume_stream(
-    state: Arc<ApiState>,
-    run: NativeRunResult,
-    model: String,
-    command: ResumePublishedCallbackCommand,
-) -> Result<Response, NativeApiError> {
-    let bearer_token = command.bearer_token.clone();
-    start_compatible_turn_stream(
-        state,
-        run,
-        CompatibleTurnAction::Resume(command),
-        None,
-        bearer_token,
-        CompatibleProtocolProjection::AnthropicMessages(AnthropicStreamMapper::new(model)),
-    )
-    .await
-}
-
 #[cfg(test)]
 fn test_projected_events_response(events: Vec<Result<Event, Infallible>>) -> Response {
     Sse::new(tokio_stream::iter(events))
@@ -662,84 +468,6 @@ fn test_projected_events_response(events: Vec<Result<Event, Infallible>>) -> Res
                 .text("heartbeat"),
         )
         .into_response()
-}
-
-async fn start_compatible_turn_stream(
-    state: Arc<ApiState>,
-    run: NativeRunResult,
-    action: CompatibleTurnAction,
-    provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
-    bearer_token: String,
-    mut projection: CompatibleProtocolProjection,
-) -> Result<Response, NativeApiError> {
-    let sse_projection = projection.name();
-    let opened = open_compatible_turn(
-        state.clone(),
-        PreparedCompatibleTurn {
-            initial_run: run,
-            action,
-            provider_transport_slot,
-            bearer_token,
-        },
-    )
-    .await?;
-    let OpenedCompatibleTurn {
-        initial_run,
-        from_sequence,
-        ignored_waiting_callback_task_id,
-        subscription,
-        turn_action,
-        execution,
-    } = opened;
-
-    let (sender, receiver) = mpsc::channel(32);
-    let execution_sender_guard = sender.clone();
-    tokio::spawn(async move {
-        let _execution_sender_guard = execution_sender_guard;
-        if let Err(error) = execution.await {
-            warn!(error = %error, "compatible public API turn task did not exit cleanly");
-        }
-    });
-    tokio::spawn(send_subscribed_compatible_runtime_event_stream(
-        SubscribedCompatibleRuntimeEventStream {
-            state: state.clone(),
-            initial_run: initial_run.clone(),
-            sse_projection,
-            from_sequence,
-            ignored_waiting_callback_task_id,
-            subscription,
-            sender,
-            mapper: move |run: &NativeRunResult, envelope: RuntimeEventEnvelope| {
-                projection.runtime_event_to_sse(run, envelope)
-            },
-        },
-    ));
-
-    info!(
-        flow_run_id = %initial_run.id,
-        application_id = %initial_run.application_id,
-        sse_projection = %sse_projection,
-        turn_action,
-        heartbeat_interval_secs = 10_u64,
-        heartbeat_text = "heartbeat",
-        "compatible public API stream opened"
-    );
-
-    Ok(Sse::new(CompatRunSseStream::new(receiver))
-        .keep_alive(
-            KeepAlive::new()
-                .interval(Duration::from_secs(10))
-                .text("heartbeat"),
-        )
-        .into_response())
-}
-
-pub(crate) async fn start_compatible_typed_turn_stream(
-    state: Arc<ApiState>,
-    prepared: PreparedCompatibleTurn,
-) -> Result<CompatibleTypedTurnStream, NativeApiError> {
-    let opened = open_compatible_turn(state.clone(), prepared).await?;
-    opened_compatible_typed_stream(state, opened)
 }
 
 pub(crate) async fn start_compatible_typed_start_stream_for_actor(
@@ -787,7 +515,6 @@ fn opened_compatible_typed_stream(
         from_sequence,
         ignored_waiting_callback_task_id,
         subscription,
-        turn_action: _,
         execution,
     } = opened;
     let (sender, events) = mpsc::channel(32);
@@ -839,27 +566,6 @@ pub(crate) async fn start_compatible_typed_attach_stream(
         initial_run,
         events,
     })
-}
-
-async fn open_compatible_turn(
-    state: Arc<ApiState>,
-    prepared: PreparedCompatibleTurn,
-) -> Result<OpenedCompatibleTurn, NativeApiError> {
-    let PreparedCompatibleTurn {
-        initial_run,
-        action,
-        provider_transport_slot,
-        bearer_token,
-    } = prepared;
-    let mcp_runtime_invoker = native::public_mcp_runtime_invoker(&state, &bearer_token).await?;
-    open_compatible_turn_with_invoker(
-        state,
-        initial_run,
-        action,
-        provider_transport_slot,
-        mcp_runtime_invoker,
-    )
-    .await
 }
 
 async fn open_compatible_turn_with_invoker(
@@ -966,38 +672,6 @@ async fn open_compatible_turn_with_invoker(
                     }
                 }
             }
-            CompatibleTurnAction::Resume(command) => {
-                match ApplicationPublishedCallbackResumeService::new(
-                    background_state.store.clone(),
-                    runtime_service,
-                )
-                .with_last_used_cache(background_state.infrastructure.cache_store())
-                .resume_callback(command)
-                .await
-                {
-                    Ok(result) => {
-                        append_compatible_resume_terminal_event(&background_state, &result.run)
-                            .await
-                    }
-                    Err(error) => {
-                        warn!(
-                            flow_run_id = %background_run.id,
-                            error = %error,
-                            "compatible callback resume failed"
-                        );
-                        let _ = background_state
-                            .runtime_event_stream
-                            .append_terminal_if_missing_and_close(
-                                background_run.id,
-                                debug_stream_events::flow_failed(
-                                    background_run.id,
-                                    json!({ "message": error.to_string() }),
-                                ),
-                            )
-                            .await;
-                    }
-                }
-            }
             CompatibleTurnAction::ResumeForActor { command, actor } => {
                 match ApplicationPublishedCallbackResumeService::new(
                     background_state.store.clone(),
@@ -1038,7 +712,6 @@ async fn open_compatible_turn_with_invoker(
         from_sequence,
         ignored_waiting_callback_task_id,
         subscription,
-        turn_action,
         execution,
     })
 }
@@ -1062,3 +735,7 @@ pub(crate) fn openai_chat_completion_id_from_callback_task(
 ) -> String {
     format!("chatcmpl-{run_id}-{callback_task_id}")
 }
+#[cfg(test)]
+const OPENAI_CHAT_SSE_PROJECTION: &str = "openai_chat";
+#[cfg(test)]
+const ANTHROPIC_SSE_PROJECTION: &str = "anthropic";

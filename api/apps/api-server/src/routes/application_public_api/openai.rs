@@ -10,8 +10,8 @@ use axum::{
 use control_plane::application_public_api::{
     api_keys::ApplicationApiKeyService,
     callback_resume::{
-        ApplicationPublishedCallbackResumeService, PublishedCallbackResumeSource,
-        PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
+        PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
+        ResumePublishedCallbackCommand,
     },
     client_protocol_envelope::{
         capture_client_protocol_envelope, capture_client_protocol_query,
@@ -24,9 +24,7 @@ use control_plane::application_public_api::{
         OpenAiResponsesEndpoint,
     },
     native::{
-        ApplicationNativeRunService, CreateNativeRunCommand,
-        GetNativeRunByProviderResponseIdCommand, GetNativeRunCommand, NativeRunRequest,
-        NativeRunResult, NativeRunStatus, NativeRunValidationError,
+        ApplicationNativeRunService, NativeRunResult, NativeRunStatus, NativeRunValidationError,
     },
     protocol_translation::{
         TranslationDecisionKind, TranslationProtocol, TranslationReport,
@@ -35,11 +33,7 @@ use control_plane::application_public_api::{
     publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
     run_service::ApplicationPublishedRunControlRepository,
 };
-use control_plane::orchestration_runtime::OrchestrationRuntimeService;
-use control_plane::ports::{
-    ProviderContinuationSlotId, ProviderTransportPayload, ProviderTransportSlotId,
-    ProviderTransportStore,
-};
+use control_plane::ports::{ProviderContinuationSlotId, ProviderTransportPayload};
 use domain::{AiNativeCompactProfile, AiNativeOperation};
 use orchestration_runtime::execution_state::NativeOperationTerminal;
 use plugin_framework::provider_contract::{
@@ -51,7 +45,6 @@ use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
-    provider_runtime::ApiProviderRuntime,
     routes::application_public_api::{
         callback_adapter::{correlate_openai_chat_callback, correlate_openai_responses_callback},
         compat_sse, compatibility_interface,
@@ -963,34 +956,6 @@ async fn dispatch_response_for_endpoint(
     }
 }
 
-async fn stage_openai_provider_transport(
-    store: &dyn ProviderTransportStore,
-    flow_run_id: Uuid,
-    operation: AiNativeOperation,
-    payload: Option<ProviderTransportPayload>,
-) -> Result<Option<ProviderTransportSlotId>, OpenAiRouteError> {
-    if matches!(operation, AiNativeOperation::CountTokens) {
-        return Ok(None);
-    }
-    let Some(payload) = payload else {
-        return Ok(None);
-    };
-    let slot = ProviderTransportSlotId::for_flow_run(flow_run_id);
-    store.put(slot, payload).await.map_err(|error| {
-        warn!(
-            flow_run_id = %flow_run_id,
-            error = %error,
-            "openai responses provider transport staging failed"
-        );
-        OpenAiRouteError::Native(native::NativeApiError::new(
-            StatusCode::SERVICE_UNAVAILABLE,
-            "provider_transport_staging_failed",
-            "provider transport is temporarily unavailable",
-        ))
-    })?;
-    Ok(Some(slot))
-}
-
 #[utoipa::path(
     get,
     path = "/v1/models",
@@ -1105,20 +1070,6 @@ pub(super) fn openai_credential(
         })
 }
 
-pub(super) async fn authenticate_openai_response_credential(
-    state: &ApiState,
-    credential: &OpenAiCredential,
-) -> Result<
-    control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
-    native::NativeApiError,
-> {
-    ApplicationApiKeyService::new(state.store.clone())
-        .with_last_used_cache(state.infrastructure.cache_store())
-        .authenticate_bearer_token(&credential.token)
-        .await
-        .map_err(|_| native::native_error(NativeRunValidationError::NotAuthenticated))
-}
-
 fn openai_protocol_context_from_ingress(
     policy: ClientProtocolIngressPolicy,
     raw_query: Option<&str>,
@@ -1185,62 +1136,6 @@ fn warn_openai_route_error(route: &'static str, error: &OpenAiRouteError, messag
             warn!(route, code = "required_action_not_supported", "{message}")
         }
     }
-}
-
-async fn create_native_run(
-    state: Arc<ApiState>,
-    bearer_token: String,
-    request: NativeRunRequest,
-    protocol: TranslationProtocol,
-) -> Result<NativeRunResult, native::NativeApiError> {
-    let protocol_context = request.client_protocol_envelope.clone();
-    let run = ApplicationNativeRunService::new(state.store.clone())
-        .with_last_used_cache(state.infrastructure.cache_store())
-        .create_native_run(CreateNativeRunCommand {
-            bearer_token,
-            request,
-            protocol,
-        })
-        .await
-        .map_err(native::native_error)?;
-    native::stage_client_protocol_context(
-        state.infrastructure.provider_transport_store().as_ref(),
-        &run,
-        protocol_context,
-    )
-    .await?;
-    Ok(run)
-}
-
-async fn execute_openai_tool_resume(
-    state: Arc<ApiState>,
-    command: ResumePublishedCallbackCommand,
-) -> Result<NativeRunResult, OpenAiRouteError> {
-    let mcp_runtime_invoker =
-        native::public_mcp_runtime_invoker(&state, &command.bearer_token).await?;
-    let runtime_service = OrchestrationRuntimeService::new(
-        state.store.clone(),
-        ApiProviderRuntime::new(state.provider_runtime.clone()),
-        state.runtime_engine.clone(),
-        state.provider_secret_master_key.clone(),
-    )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_file_storage_registry(state.file_storage_registry.clone())
-    .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
-    .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue())
-    .with_provider_transport_store(state.infrastructure.provider_transport_store())
-    .with_runtime_event_stream(state.runtime_event_stream.clone());
-    let result =
-        ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)
-            .with_last_used_cache(state.infrastructure.cache_store())
-            .resume_callback(command)
-            .await
-            .map_err(native::service_error)?;
-    Ok(result.run)
 }
 
 fn openai_resume_command(

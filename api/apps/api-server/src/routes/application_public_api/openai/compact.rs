@@ -15,10 +15,6 @@ use crate::routes::application_public_api::native;
 
 const CODEX_TURN_METADATA_HEADER: &str = "x-codex-turn-metadata";
 
-pub(super) fn has_codex_turn_metadata(headers: &HeaderMap) -> bool {
-    headers.contains_key(CODEX_TURN_METADATA_HEADER)
-}
-
 /// Captures the trusted Codex turn header after the route has authenticated
 /// the application key. Its value stays in the translation context only; it
 /// is never copied into the Native request or a persisted run payload.

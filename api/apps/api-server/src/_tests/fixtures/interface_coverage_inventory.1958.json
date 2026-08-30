@@ -36,7 +36,7 @@
       "method_or_tool": "OpenAI/Anthropic SSE; GET /v1/responses; GET /api/agent/v1/runs/websocket",
       "owner": "compat_sse/native_websocket/responses_websocket adapters -> pinned Runtime execution",
       "source_anchor": "routes/application_public_api/compat_sse.rs",
-      "source_probe": "start_compatible_turn_stream",
+      "source_probe": "start_compatible_typed_start_stream_for_actor",
       "packet": "CI-M03"
     },
     {
