@@ -7,14 +7,19 @@
 - Previous fresh tested assembly: `beta@a3c78798320b5e2af8bc8b2f9b35cb8fe3977b31`
 - XR input: `beta@965d62e9514f1b3e25fdf2a4284cc3bb41cfbf2e`
 - Fresh tested XR product assembly: `beta@4b31cc86c2d7e74e053ac5c0b7976031265d7091`
+- Authentication closure input: `beta@efa5df40dfc11e9b703d5ecfa1446f3a9dfb28d3`
+- Current untested product assembly: `beta@2d97d35593ffc2c0d960ea03e46d6d845b264308`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
 - Previous centralized QA: executable-contribution XR attempt 16, 16/16 rows complete, zero unrun rows; superseded as architecture acceptance evidence by the reopened RR-14 finding
 - Evidence root: `tmp/test-governance/1944-interface-lifecycle/`
 
-XR attempt 16 remains valid compatibility evidence for product assembly `4b31cc86c`, but it cannot
-settle RR-14, ARC-AC-006, ARC-AC-011 or the Authentication portion of ARC-AC-013. XR-A01 froze the
-replacement matrix; XR-A02 is assembling a credential-consuming factory Port. A new QA receipt
-may be written only after XR-A02 is committed and the replacement assembly is frozen.
+XR attempt 16 remains valid historical compatibility evidence for product assembly `4b31cc86c`,
+but it cannot settle RR-14, ARC-AC-006, ARC-AC-011 or the Authentication portion of ARC-AC-013.
+Authentication attempt 21 is `QA_FAIL`: it started at the real candidate
+`1f6e68335b59837c93a655ce810eaa59a89af6b4`, ended after unrelated branch drift, left QA-016
+unrun, and its manually typed receipt SHA was invalid. XR-A04/XR-A05 replace that candidate. A new
+QA receipt may be written only after XR-A06 captures the complete assembly with `git rev-parse
+HEAD` and QA-001 through QA-016 run against that unchanged identity.
 
 ## XR executable-contribution packet ledger
 
@@ -26,11 +31,11 @@ may be written only after XR-A02 is committed and the replacement assembly is fr
 | XR-F05 | `461e981fe` | ASSEMBLED | production composition, boundaries, ADR, rules and receipt |
 | XR-F06 | `4b31cc86c` | PASS | frozen replacement assembly and fresh centralized QA |
 | XR-A01 | `c1bbe59fe` | ASSEMBLED | RR-14 real credential-to-Principal factory matrix and controlled fixtures |
-| XR-A02 | pending | ACTIVE | Composition Root factory Port, four production adapters and publish boundaries |
-| XR-A03 | pending | READY | replacement assembly and one complete fresh centralized QA |
-| XR-A04 | pending | ACTIVE | Console single-owner AuthN and installable HostExtension AuthN closure fixtures |
-| XR-A05 | pending | READY | middleware/Route ownership and manifest→Graph→Registry→factory→Route assembly |
-| XR-A06 | pending | READY | replacement frozen assembly and QA-001–QA-016 restart with command-captured SHA |
+| XR-A02 | `e7df1aae4` | ASSEMBLED | Composition Root credential-consuming factory Port and four production adapters |
+| XR-A03 | `1f6e68335` | QA_FAIL | attempt 21: 14 PASS / 1 FAIL / 1 UNRUN because frozen identity drifted |
+| XR-A04 | `258705de1` | ASSEMBLED | Console single-owner AuthN and installable HostExtension AuthN closure fixtures |
+| XR-A05 | `2d97d3559` | ASSEMBLED | middleware/Route ownership and manifest→Graph→Registry→factory→Route assembly |
+| XR-A06 | pending | ACTIVE | replacement frozen assembly and QA-001–QA-016 restart with command-captured SHA |
 
 QA fix commits inside the approved XR boundary: `f35b3b261` removed fixture shadowing and warnings;
 `d14311934` aligned ordered registration evidence; `65470db64` completed typed route/error assembly;
@@ -153,7 +158,7 @@ fail registry publication.
 | ARC-AC-013 | PENDING | existing compiler negatives pass; missing/extra Authentication factory publication fixtures await replacement QA |
 | ARC-AC-014 | PASS | behavioral boot/vertical fixtures plus full four-path API regression |
 | ARC-AC-015 | PASS | Cargo dependency and Node source-boundary controlled negatives |
-| ARC-AC-016 | PASS | fresh executable-contribution XR attempt 16, 16/16 rows, zero unrun |
+| ARC-AC-016 | PENDING | latest Authentication attempt 21 failed frozen-identity integrity and left QA-016 unrun; XR-A06 must restart all rows |
 
 ## Controlled negatives
 
@@ -178,26 +183,15 @@ runtime-generation replacement; and treating Interface completion as a persisted
 
 | Row | Result | Count / command class |
 | --- | --- | --- |
-| QA-001 | PASS | paired source identity and cleanliness |
-| QA-002 | PASS | `cargo fmt --all --check` |
-| QA-003 | PASS | interface-runtime 32 unit + 2 compile-fail doc tests |
-| QA-004 | PASS | access-control 35 tests |
-| QA-005 | PASS | api-server 1199 tests, zero ignored |
-| QA-006 | PASS | Node boundary 6 tests |
-| QA-007 | PASS | runtime-core 32, orchestration-runtime 388, runtime-extension-host 59 tests; its 2 ignored real-Host tests executed in QA-010 |
-| QA-008 | PASS | official plugin Node 153 tests |
-| QA-009 | PASS | 9 official executable `cargo build --locked` commands |
-| QA-010 | PASS | 2 ignored real-Host conformance tests explicitly executed |
-| QA-011 | PASS | migration tree equals input; zero migration diff |
-| QA-012 | PASS | dev-up/deploy/rollback 79 tests and 4 compose configs |
-| QA-013 | PASS | `cargo check --workspace` |
-| QA-014 | PASS | `cargo metadata --locked --offline` |
-| QA-015 | PASS | diff check and paired final integrity |
-| QA-016 | PASS | 16/16 rows; unrun 0 |
+| QA-001–QA-014 | SUPERSEDED | attempt 21 recorded 14 passing rows and 1992 automated tests, but branch drift prevents binding them to one frozen candidate |
+| QA-015 | FAIL | start `1f6e68335b59837c93a655ce810eaa59a89af6b4`; end `2b08d777940be1e60b3ee8ac96a88c6b4d7bf60b` plus unrelated dirty files |
+| QA-016 | UNRUN | attempt 21 stopped after final-integrity failure |
+| XR-A06 QA-001–QA-016 | PENDING | must run from the beginning against one command-captured unchanged SHA |
 
-The superseded compatibility run recorded `1987 passed`, `0 failed`. No test has run against the
-XR-A02 worktree. The next valid result must come from one complete fresh centralized run after the
-replacement product assembly is frozen.
+The superseded XR compatibility run recorded `1987 passed`, `0 failed`; Authentication attempt 21
+recorded `1992 passed`, `0 failed` before its integrity failure. No test has run against
+`2d97d35593ffc2c0d960ea03e46d6d845b264308`. The next valid result must come from one complete
+fresh centralized run after XR-A06 freezes the replacement assembly.
 
 ## Compatibility and repository integrity
 
@@ -206,7 +200,7 @@ replacement product assembly is frozen.
   route-equivalence tests.
 - Runtime behavior, stream order, stdio wire and plugin manifests: preserved by runtime suites,
   official Node suites, 9 executable builds and real Host conformance.
-- QA ended at XR tested product assembly `4b31cc86c` with only the two protected private memory
-  changes; documentation-only Receipt commits follow that assembly.
+- Latest QA attempt did not end at its frozen candidate and is explicitly `QA_FAIL`; no compatibility
+  conclusion is promoted from that attempt. XR-A06 must re-establish paired identity and cleanliness.
 - Official plugin repository ended clean at `8bf11605b02a0df8dd01271875f1ec3d182c0d3a`.
 - No push was performed. #1944 and #1893 remain open. Root acceptance criteria were not settled.
