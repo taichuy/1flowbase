@@ -421,10 +421,12 @@ fn review_registry_compiles_ordered_extension_plan_from_real_registrations() {
 
 #[tokio::test]
 async fn review_compiled_completion_binding_is_mandatory_and_cannot_be_skipped_by_invoke() {
-    let mut compiler = compiler();
+    let mut missing_compiler = compiler();
     let definition = definition("review.completion", InterfaceExecutionMode::Unary);
-    compiler.register_definition(definition.clone()).unwrap();
-    compiler
+    missing_compiler
+        .register_definition(definition.clone())
+        .unwrap();
+    missing_compiler
         .register_binding(
             ProtocolBinding::new(
                 BindingId::new("http.review.completion.v1").unwrap(),
@@ -436,7 +438,7 @@ async fn review_compiled_completion_binding_is_mandatory_and_cannot_be_skipped_b
         )
         .unwrap();
     let plugin = PluginIdentity::new("review.completion-hook").unwrap();
-    compiler
+    missing_compiler
         .register_extension(
             definition.interface_id(),
             10,
@@ -452,14 +454,14 @@ async fn review_compiled_completion_binding_is_mandatory_and_cannot_be_skipped_b
             .unwrap(),
         )
         .unwrap();
-    compiler
+    missing_compiler
         .bind_handler::<Input, Output, TargetError, UserPrincipal>(
             definition.interface_id(),
             HandlerReference::new("review.completion.handler").unwrap(),
             Arc::new(UnaryHandler),
         )
         .unwrap();
-    let missing = compiler.compile().unwrap_err();
+    let missing = missing_compiler.compile().unwrap_err();
     assert!(matches!(
         missing,
         RegistryCompilationError::MissingExecutableExtension(
