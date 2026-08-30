@@ -49,6 +49,13 @@
 14. `XR-A02`: bind real BuiltIn/HostExtension Authentication factories at Composition Root and
     migrate the four production adapters to factory-first authentication.
 15. `XR-A03`: freeze the replacement assembly and run the complete fresh centralized Test Batch.
+16. `XR-A04`: freeze the post-audit RR-14 matrix for Console single-owner Authentication and the
+    installable HostExtension manifest/Graph/Registry/factory/Route closure; do not run tests.
+17. `XR-A05`: make the frozen factory the first and only Authentication owner for active Console
+    Interface routes, and bind trusted HostExtension Authentication contributions through the
+    Effective Graph and canonical Registry without dynamic routes or a second registry.
+18. `XR-A06`: freeze a new product assembly and run QA-001 through QA-016 from the beginning while
+    requiring the command-captured `git rev-parse HEAD` identity to remain unchanged.
 
 All fixtures are assembled before execution. No per-packet test, per-layer QA or partial rerun may
 settle these rows. After the remediation assembly is frozen, the complete #1944 centralized Test

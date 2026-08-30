@@ -28,6 +28,9 @@ may be written only after XR-A02 is committed and the replacement assembly is fr
 | XR-A01 | `c1bbe59fe` | ASSEMBLED | RR-14 real credential-to-Principal factory matrix and controlled fixtures |
 | XR-A02 | pending | ACTIVE | Composition Root factory Port, four production adapters and publish boundaries |
 | XR-A03 | pending | READY | replacement assembly and one complete fresh centralized QA |
+| XR-A04 | pending | ACTIVE | Console single-owner AuthN and installable HostExtension AuthN closure fixtures |
+| XR-A05 | pending | READY | middleware/Route ownership and manifest→Graph→Registry→factory→Route assembly |
+| XR-A06 | pending | READY | replacement frozen assembly and QA-001–QA-016 restart with command-captured SHA |
 
 QA fix commits inside the approved XR boundary: `f35b3b261` removed fixture shadowing and warnings;
 `d14311934` aligned ordered registration evidence; `65470db64` completed typed route/error assembly;
