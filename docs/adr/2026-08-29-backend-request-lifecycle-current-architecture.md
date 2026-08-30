@@ -2,16 +2,20 @@
 
 ## Status
 
-Accepted for #1944 implementation（已冻结方向；实现与验收证据由 Work Packet Ledger 管理）
+Accepted and implemented on `beta` for #1944（Canonical Interface 生产闭环已落地；全量 Route 迁移不在本 ADR 内）
 
 - 日期：2026-08-29
 - 关联 Root：[#1893](https://github.com/taichuy/1flowbase/issues/1893)
 - 集中架构审核：[#1944](https://github.com/taichuy/1flowbase/issues/1944)
-- 源码基线：`beta@ff4cc74ab073256419884d3d96e0b3defcb36d45`
+- 讨论输入：`beta@ff4cc74ab073256419884d3d96e0b3defcb36d45`
+- 产品 Assembly：`beta@50bf34b87108af8bbd65bf54bc1aee3c8bd7cb6a`
+- Fresh QA Assembly：`beta@c6728eebd509da8cd6866b00663ca5fc97d68bcc`
+- 文档 HEAD：`beta@f1d7cc5566ec13991cdd1641944d17874bc62243`
+- 正式证据：[`1944-interface-lifecycle-assembly-receipt.md`](../architecture/1944-interface-lifecycle-assembly-receipt.md)
 
 ## Context
 
-1flowbase 已有 HTTP、SSE、MCP、内部调用、后台任务、Domain Event、Lifecycle Outbox 和 Runtime Worker 等入口。当前认证、`ActorContext`、权限、Handler、事务、Runtime 与响应投影分散在 middleware、Route、Control Plane 和 Runtime adapter 中，只有少量生产接口进入 `InterfaceInvocationKernel`。
+1flowbase 已有 HTTP、SSE、MCP、内部调用、后台任务、Domain Event、Lifecycle Outbox 和 Runtime Worker 等入口。在 #1944 之前，认证、`ActorContext`、权限、Handler、事务、Runtime 与响应投影分散在 middleware、Route、Control Plane 和 Runtime adapter 中，只有少量生产接口进入 `InterfaceInvocationKernel`。
 
 现有 `interface-runtime` 已提供重要基础：
 
@@ -21,7 +25,7 @@ Accepted for #1944 implementation（已冻结方向；实现与验收证据由 W
 - invocation lineage、deadline、AuthZ、admission、typed hooks、handler 和 terminal receipt；
 - HTTP、MCP、Internal 三种 protocol identity。
 
-这些基础尚未构成覆盖后端输入输出的完整 contract：
+以下是本 ADR 动工前的缺口，#1944 已对其完成闭环：
 
 - `InterfaceDefinition` 只有 unary input/output，未声明 stream event、完整 error、idempotency、transaction、deadline/cancellation policy；
 - `InterfaceAuthenticationPolicy` 声明 Anonymous/Authenticated，但 `InvocationEnvelope` 必须携带 `ActorContext`，匿名和非用户主体没有闭合；
@@ -36,7 +40,7 @@ Accepted for #1944 implementation（已冻结方向；实现与验收证据由 W
 2. **Interface first**：后端输入、输出、stream、error 和 terminal 由协议无关 Interface contract 管理；
 3. **时空可组合性**：插件贡献必须拥有明确 phase/scope 和被冻结的 Graph/Catalog/plugin/artifact/invocation 身份。
 
-当前通用请求流不是一条统一管线，而是多个入口族各自装配：
+全部后端 Route 仍不是同一个物理函数。已迁移的生产路径通过 Canonical Interface 发布和执行，尚未迁移的 Route 保留原有兼容链：
 
 ```mermaid
 flowchart LR
@@ -69,7 +73,43 @@ flowchart LR
     Typed --> Projection
 ```
 
-因此本 ADR 的目标不是声称现状已经统一，也不是一次性替换全部 Route；目标是先形成唯一可编译的 Interface 语义目录，再按功能等价证据迁移调用路径。
+因此本 ADR 的实施结果是形成唯一可编译的 Interface 语义目录和通用 Invocation Lifecycle，而不是一次性替换全部 Route。后续 Route 仍必须按功能等价证据逐项迁移。
+
+## Current Implementation
+
+### 当前已闭合的生产链
+
+```text
+Static Protocol Route
+→ Frozen Protocol Binding
+→ Activated BuiltIn/Trusted HostExtension Authentication Factory
+→ credential → sealed Public/User/Application Principal
+→ Compiled Invocation Plan
+→ Core Authorization → ordered extension vetoes
+→ Core Admission → ordered extension vetoes
+→ Before Hooks
+→ exactly-one typed Handler
+→ After / Failure / Completion
+→ Terminal Receipt
+→ Protocol Projection
+```
+
+生产证据覆盖四类纵向路径：
+
+| 入口族 | Principal / 协议 | 已验证的闭环 |
+| --- | --- | --- |
+| Public login instances | `PublicPrincipal` / HTTP | Definition、Binding、AuthN、Handler、DTO/error projection |
+| Console host infrastructure providers | `UserPrincipal` / HTTP + MCP + Internal binding | 单一 AuthN owner、Core AuthZ、HostExtension factory、一次 session lookup |
+| Application Native | `ApplicationPrincipal` / async、blocking、server-stream | Runtime dispatch、stream event、terminal、attempt/generation 冻结 |
+| MCP User API key | `UserPrincipal` / MCP JSON-RPC | User API key AuthN、canonical result/error/continuation projection |
+
+关键边界：
+
+- 这四类路径证明同一套 contract/lifecycle 可跨协议工作，不表示所有旧 Route 已迁移；
+- 激活的 Console Interface Route 在旧 `require_session` middleware 之前分流，frozen factory 是唯一 Authentication owner；
+- HostExtension Authentication 是可安装的可信 native 扩展，必须经过 manifest → Effective Graph → factory catalog → Registry → static Route；
+- 普通 RuntimeExtension/CapabilityPlugin 不能获取原始 credential，也不能注册 Authentication factory；
+- 零 contribution 时保持 BuiltIn 行为；缺失、多余、重复或 identity/contract 不匹配时在 publish 前 fail closed。
 
 ## Decision
 
@@ -514,19 +554,21 @@ typed phase/point 让插件的“空间”可编译，snapshot/generation/receip
 - idempotency contract 只能声明调用者可观察语义，真实 transaction invariant 仍由 Application/Domain/Repository 执行；Kernel 不得自行开启万能事务。
 - before hook mutation 是高风险能力，必须按字段/能力显式授权；若无法建立窄 mutation contract，应退回 observe/decision-only。
 - 迁移期间不得长期双跑旧 Handler 和新 Kernel；允许测试 fixture 比较，不允许生产双写或模糊 fallback。
-- 本 ADR 仍为 Proposed，可在实施前调整 contract；一旦 SDK、外部 API 或持久化 receipt 发布，版本和兼容策略必须独立 ADR 决策。
+- 本 ADR 已被 #1944 的生产闭环采用；后续 SDK、外部 contract 或持久化 receipt 若进入公开兼容面，版本和兼容策略必须独立 ADR 决策。
 
 ## Evidence
 
-- `api/crates/interface-runtime/src/registry.rs:17-65`：现有 typed contract、Definition、auth/audit/error/scope/lifecycle。
-- `api/crates/interface-runtime/src/registry.rs:282-482`：Registry compiler、handler/permission/contract negative 与 compiled snapshot。
-- `api/crates/interface-runtime/src/invocation.rs:26-147`：Invocation lineage、protocol 和当前 Actor-only Envelope。
-- `api/crates/interface-runtime/src/invocation.rs:305-430`：当前 stage、terminal、receipt 和 error inventory。
-- `api/crates/interface-runtime/src/invocation.rs:438-738`：Resolve、AuthZ、admission、hooks、deadline、handler 与 terminal 执行顺序。
-- `api/crates/interface-runtime/src/hook.rs:11-199`：typed before/after/failure/completion Hook Plan。
-- `api/apps/api-server/src/lib.rs:199-303`：当前 HTTP Router families 与 middleware 装配。
-- `api/apps/api-server/src/middleware/require_session.rs:11-157`：当前 Cookie/user API key/server delegation 与 ActorContext 构建。
-- `api/apps/api-server/src/middleware/require_settings_feature_permission.rs:68-112`：Console compiled AuthZ 与 typed Interface 分支。
-- `api/apps/api-server/src/routes/settings/host_infrastructure/interface_operation.rs:187-285`：当前 HTTP/MCP 共用 typed Interface 的生产示例。
+- `api/crates/interface-runtime/src/registry.rs:282`：`InterfaceDefinition`。
+- `api/crates/interface-runtime/src/registry.rs:472`：`ProtocolBinding`。
+- `api/crates/interface-runtime/src/registry.rs:553`：`CompiledInvocationPlan`。
+- `api/crates/interface-runtime/src/invocation.rs:295`：Principal-profile typed `InvocationEnvelope`。
+- `api/crates/interface-runtime/src/invocation.rs:605-751`：stage、terminal、receipt 和 Projected 语义。
+- `api/crates/interface-runtime/src/invocation.rs:1028-2066`：unary/server-stream 的 Resolve、AuthZ、Admission、Hook、deadline、Handler 与 terminal 执行顺序。
+- `api/apps/api-server/src/extension_bus/boot_snapshot.rs:69`：冻结 `ExtensionBootSnapshot`。
+- `api/apps/api-server/src/extension_bus/authentication_activation.rs:427`：生产 HostExtension Authentication factory catalog。
+- `api/apps/api-server/src/middleware/require_settings_feature_permission.rs:78`：激活 Console Interface Route 在旧 AuthN middleware 前分流。
+- `api/apps/api-server/src/routes/settings/host_infrastructure/interface_operation.rs:268`：HTTP/MCP/Internal 共用 typed Interface 的生产调用。
+- `api/apps/api-server/src/_tests/authentication_activation_tests.rs:181`：HostExtension manifest → Graph → factory → Registry → Router 及单次 AuthN 的真实 fixture。
+- `docs/architecture/1944-interface-lifecycle-assembly-receipt.md`：四类生产路径、RR/ARC 与 Fresh QA 的候选结算证据。
 
-本轮只替换 ADR 讨论稿，不修改产品代码、测试、数据库、外部 contract 或运行时行为，不启动 QA。
+本次更新只同步当前架构事实，不修改产品代码、测试、数据库、外部 contract 或运行时行为。
