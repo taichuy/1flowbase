@@ -3,13 +3,21 @@ const http = require("node:http");
 const net = require("node:net");
 const fs = require("node:fs");
 const path = require("node:path");
-const { spawn } = require("node:child_process");
+const { execFileSync, spawn } = require("node:child_process");
 
 const {
   getRepoRoot,
   resolveOutputDir,
 } = require("../testing/warning-capture.js");
-const { loadPlaywright } = require("../page-debug/core.js");
+const {
+  buildChromiumLaunchOptions,
+  loadPlaywright,
+} = require("../page-debug/core.js");
+const {
+  loadRootCredentials,
+  openTemporaryConsoleSession,
+} = require("../page-debug/auth.js");
+const { getServiceDefinitions } = require("../dev-up/services.js");
 
 const DEFAULT_MANIFEST_PATH = path.join(__dirname, "manifest.json");
 const DEFAULT_WEB_BASE_URL = "http://127.0.0.1:3100";
@@ -86,6 +94,56 @@ function buildSourceGraph(sourceRoot) {
     }
   }
   return graph;
+}
+
+function reachableModules(graph, entryFile) {
+  const visited = new Set();
+  const pending = [entryFile];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current || visited.has(current) || !graph.has(current)) continue;
+    visited.add(current);
+    pending.push(...graph.get(current));
+  }
+  return [...visited].sort();
+}
+
+function routeGraphProfiles(graph, repoRoot) {
+  const entries = {
+    router: "web/app/src/app/router.tsx",
+    frontstage: "web/app/src/features/frontstage/pages/FrontStagePage.tsx",
+    settings: "web/app/src/features/settings/pages/SettingsPage.tsx",
+    workflow: "web/app/src/features/workflow/pages/WorkflowEditorPage.tsx",
+  };
+  return Object.fromEntries(
+    Object.entries(entries).map(([route, relativePath]) => {
+      const modules = reachableModules(graph, path.join(repoRoot, relativePath));
+      return [
+        route,
+        {
+          entry: relativePath,
+          reachableModuleCount: modules.length,
+          reachableModules: modules.map((filePath) =>
+            normalizePath(path.relative(repoRoot, filePath)),
+          ),
+        },
+      ];
+    }),
+  );
+}
+
+function highFanoutOwners(graph, repoRoot, limit = 20) {
+  return [...graph.entries()]
+    .map(([filePath, dependencies]) => ({
+      file: normalizePath(path.relative(repoRoot, filePath)),
+      directDependencies: dependencies.length,
+    }))
+    .sort(
+      (left, right) =>
+        right.directDependencies - left.directDependencies ||
+        left.file.localeCompare(right.file),
+    )
+    .slice(0, limit);
 }
 
 function stronglyConnectedComponents(graph) {
@@ -278,6 +336,8 @@ function analyzeStatic({ repoRoot = getRepoRoot() } = {}) {
       edges: [...graph.values()].reduce((sum, edges) => sum + edges.length, 0),
       stronglyConnectedComponents: components.length,
       maxReachableComponents: Math.max(0, ...reachable.map((set) => set.size)),
+      routes: routeGraphProfiles(graph, repoRoot),
+      highFanoutOwners: highFanoutOwners(graph, repoRoot),
     },
   };
 }
@@ -296,6 +356,7 @@ function summarizeResources(entries, failedRequests = []) {
     transferSize: entry.transferSize || 0,
     encodedBodySize: entry.encodedBodySize || 0,
     decodedBodySize: entry.decodedBodySize || 0,
+    duration: entry.duration || 0,
     initiatorType: entry.initiatorType || "other",
   }));
   return {
@@ -311,13 +372,24 @@ function summarizeResources(entries, failedRequests = []) {
       (sum, resource) => sum + resource.decodedBodySize,
       0,
     ),
+    transformDurationMs: resources
+      .filter((resource) => resource.category === "module")
+      .reduce((sum, resource) => sum + resource.duration, 0),
     failedRequests,
     resources,
   };
 }
 
-async function profileScenario({ page, url, phase, timeout = 60_000 }) {
+async function profileScenario({
+  page,
+  url,
+  phase,
+  scenario,
+  timeout = 60_000,
+}) {
   const failedRequests = [];
+  const consoleErrors = [];
+  const pageErrors = [];
   const onRequestFailed = (request) =>
     failedRequests.push({
       url: request.url(),
@@ -335,11 +407,21 @@ async function profileScenario({ page, url, phase, timeout = 60_000 }) {
       });
     }
   };
+  const onConsole = (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  };
+  const onPageError = (error) => pageErrors.push(error.message || String(error));
   page.on("requestfailed", onRequestFailed);
   page.on("response", onResponse);
+  page.on("console", onConsole);
+  page.on("pageerror", onPageError);
   try {
     const startedAt = Date.now();
     await page.goto(url, { waitUntil: "domcontentloaded", timeout });
+    await page.waitForSelector(scenario.ready_selector, {
+      state: "visible",
+      timeout,
+    });
     await page.waitForLoadState("networkidle", { timeout }).catch(() => {});
     const entries = await page.evaluate(() =>
       performance.getEntriesByType("resource").map((entry) => ({
@@ -348,16 +430,28 @@ async function profileScenario({ page, url, phase, timeout = 60_000 }) {
         transferSize: entry.transferSize,
         encodedBodySize: entry.encodedBodySize,
         decodedBodySize: entry.decodedBodySize,
+        duration: entry.duration,
       })),
     );
+    const finalUrl = page.url();
+    if (!new URL(finalUrl).pathname.startsWith(scenario.expected_path_prefix)) {
+      pageErrors.push(
+        `unexpected final path ${new URL(finalUrl).pathname}; expected ${scenario.expected_path_prefix}`,
+      );
+    }
     return {
       phase,
       durationMs: Date.now() - startedAt,
+      finalUrl,
+      consoleErrors,
+      pageErrors,
       ...summarizeResources(entries, failedRequests),
     };
   } finally {
     page.off("requestfailed", onRequestFailed);
     page.off("response", onResponse);
+    page.off("console", onConsole);
+    page.off("pageerror", onPageError);
   }
 }
 
@@ -386,7 +480,36 @@ async function profileHmrTransport({ page, webBaseUrl, timeout = 10_000 }) {
     durationMs: receipt.receivedAt - response.sentAt,
     roundTripMs: Date.now() - requestStartedAt,
     failedRequests: [],
+    consoleErrors: [],
+    pageErrors: [],
   };
+}
+
+async function triggerRuntimeRecovery({ page, webBaseUrl, timeout = 30_000 }) {
+  const baseUrl = webBaseUrl.replace(/\/$/u, "");
+  const degraded = await page.evaluate(async (probeUrl) => {
+    const response = await fetch(probeUrl, { method: "POST", cache: "no-store" });
+    return { status: response.status, body: await response.json() };
+  }, `${baseUrl}/__1flowbase_dev_recovery_probe`);
+  if (degraded.status !== 202 || degraded.body.state !== "Degraded") {
+    throw new Error(`runtime recovery probe did not enter Degraded: ${JSON.stringify(degraded)}`);
+  }
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeout) {
+    const readiness = await page.evaluate(async (readyUrl) => {
+      const response = await fetch(readyUrl, { cache: "no-store" });
+      return { status: response.status, body: await response.json() };
+    }, `${baseUrl}/__1flowbase_dev_ready`);
+    if (readiness.status === 200 && readiness.body.state === "Ready") {
+      const states = readiness.body.transitions.map((entry) => entry.state);
+      if (!states.slice(-3).every((state, index) => state === ["Degraded", "Warming", "Ready"][index])) {
+        throw new Error(`runtime recovery transition mismatch: ${states.join(" -> ")}`);
+      }
+      return readiness.body.transitions.slice(-3);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("runtime recovery probe timed out before Ready");
 }
 
 function profileHistoryKey(scenario, phase, metric) {
@@ -420,6 +543,15 @@ function attachProfileGates(profile, budgets, scenario, history = {}) {
             profileHistoryKey(scenario, profile.phase, "failedRequests")
           ] || [],
       }),
+      runtimeErrors: evaluateBudget({
+        value:
+          (profile.consoleErrors?.length || 0) +
+          (profile.pageErrors?.length || 0),
+        absoluteMax: budgets.runtime_errors_max,
+        history:
+          history[profileHistoryKey(scenario, profile.phase, "runtimeErrors")] ||
+          [],
+      }),
     },
   };
 }
@@ -432,14 +564,39 @@ function writeReport({ repoRoot, result, env = process.env }) {
   return reportPath;
 }
 
-function readHistory({ repoRoot, env = process.env }) {
+function buildReferenceIdentity(repoRoot, manifestPath) {
+  const identityHash = crypto.createHash("sha256");
+  for (const filePath of [
+    manifestPath,
+    path.join(repoRoot, "web", "app", "vite.config.ts"),
+  ]) {
+    identityHash.update(fs.readFileSync(filePath));
+  }
+  identityHash.update(
+    JSON.stringify({
+      node: process.version,
+      platform: process.platform,
+      arch: process.arch,
+    }),
+  );
+  return identityHash.digest("hex");
+}
+
+function readHistory({
+  repoRoot,
+  referenceIdentity,
+  env = process.env,
+}) {
   const reportPath = path.join(
     resolveOutputDir(repoRoot, env),
     "dev-experience-profile.json",
   );
   if (!fs.existsSync(reportPath)) return {};
   try {
-    return readJson(reportPath).history || {};
+    const report = readJson(reportPath);
+    return report.referenceIdentity === referenceIdentity
+      ? report.history || {}
+      : {};
   } catch (_error) {
     return {};
   }
@@ -454,6 +611,9 @@ function updateHistory(history, profiles) {
       moduleRequestCount: profile.moduleRequestCount || 0,
       decodedBytes: profile.decodedBytes || 0,
       failedRequests: profile.failedRequests.length,
+      runtimeErrors:
+        (profile.consoleErrors?.length || 0) +
+        (profile.pageErrors?.length || 0),
     };
     for (const [metric, value] of Object.entries(metrics)) {
       const key = profileHistoryKey(profile.scenario, profile.phase, metric);
@@ -585,6 +745,93 @@ async function stopIsolatedVite(runtime) {
   }
 }
 
+function apiBaseUrlForRepo(repoRoot) {
+  const service = getServiceDefinitions(repoRoot)["api-server"];
+  return `http://${service.probeHost || "127.0.0.1"}:${service.port}`;
+}
+
+function flattenPageTree(nodes) {
+  return nodes.flatMap((node) => [
+    node,
+    ...flattenPageTree(Array.isArray(node.children) ? node.children : []),
+  ]);
+}
+
+async function requestData(requestContext, apiPath) {
+  const response = await requestContext.get(apiPath);
+  if (!response.ok()) {
+    throw new Error(
+      `Dev experience fixture request failed: GET ${apiPath} -> ${response.status()} ${await response.text()}`,
+    );
+  }
+  const payload = await response.json();
+  return payload?.data;
+}
+
+async function resolveScenarioFixtures({
+  playwright,
+  apiBaseUrl,
+  storageStatePath,
+  scenarios,
+}) {
+  const requestContext = await playwright.request.newContext({
+    baseURL: apiBaseUrl,
+    storageState: storageStatePath,
+  });
+  try {
+    let pages = null;
+    let applications = null;
+    const resolved = [];
+    for (const scenario of scenarios) {
+      if (scenario.fixture_kind === "static") {
+        resolved.push({ ...scenario, fixture_path: scenario.fixture_path });
+        continue;
+      }
+      if (scenario.fixture_kind === "frontstage_page") {
+        pages ||= flattenPageTree(
+          (await requestData(requestContext, "/api/console/frontstage/pages")) ||
+            [],
+        );
+        const page = pages.find((candidate) => candidate.kind === "page");
+        if (!page) {
+          throw new Error(
+            "Dev experience requires at least one existing Frontstage page fixture",
+          );
+        }
+        resolved.push({
+          ...scenario,
+          fixture_path: scenario.path_template.replace(":page_id", page.id),
+        });
+        continue;
+      }
+      if (scenario.fixture_kind === "workflow_application") {
+        applications ||=
+          (await requestData(requestContext, "/api/console/applications")) || [];
+        const application = applications.find(
+          (candidate) => candidate.application_type === "workflow",
+        );
+        if (!application) {
+          throw new Error(
+            "Dev experience requires at least one existing workflow application fixture",
+          );
+        }
+        resolved.push({
+          ...scenario,
+          fixture_path: scenario.path_template.replace(
+            ":application_id",
+            application.id,
+          ),
+        });
+        continue;
+      }
+      throw new Error(`Unknown dev experience fixture kind: ${scenario.fixture_kind}`);
+    }
+    return resolved;
+  } finally {
+    await requestContext.dispose();
+  }
+}
+
 async function runSmoke({
   repoRoot = getRepoRoot(),
   manifestPath = DEFAULT_MANIFEST_PATH,
@@ -593,18 +840,48 @@ async function runSmoke({
 } = {}) {
   const manifest = readJson(manifestPath);
   const playwright = loadPlaywright(repoRoot);
-  const browser = await playwright.chromium.launch({ headless: true });
-  const profiles = [];
-  const history = readHistory({ repoRoot, env });
+  const outputDir = resolveOutputDir(repoRoot, env);
+  fs.mkdirSync(outputDir, { recursive: true });
+  const storageStatePath = path.join(outputDir, "dev-experience-storage-state.json");
+  const apiBaseUrl = apiBaseUrlForRepo(repoRoot);
+  const credentials = loadRootCredentials({ repoRoot, sourceEnv: env });
+  const temporarySession = await openTemporaryConsoleSession({
+    playwright,
+    apiBaseUrl,
+    account: credentials.account,
+    password: credentials.password,
+    storageStatePath,
+  });
+  let scenarios;
+  let browser;
   try {
-    for (const scenario of manifest.scenarios) {
+    scenarios = await resolveScenarioFixtures({
+      playwright,
+      apiBaseUrl,
+      storageStatePath,
+      scenarios: manifest.scenarios,
+    });
+    browser = await playwright.chromium.launch(
+      buildChromiumLaunchOptions({ headless: true, env }),
+    );
+  } catch (error) {
+    await temporarySession.dispose();
+    if (fs.existsSync(storageStatePath)) fs.unlinkSync(storageStatePath);
+    throw error;
+  }
+  const profiles = [];
+  const referenceIdentity = buildReferenceIdentity(repoRoot, manifestPath);
+  const history = readHistory({ repoRoot, referenceIdentity, env });
+  try {
+    for (const scenario of scenarios) {
       const targetUrl = `${webBaseUrl.replace(/\/$/u, "")}${scenario.fixture_path}`;
-      const context = await browser.newContext();
+      const context = await browser.newContext({ storageState: storageStatePath });
       const page = await context.newPage();
       const cold = await profileScenario({
         page,
         phase: "cold",
         url: targetUrl,
+        scenario,
       });
       profiles.push({
         scenario: scenario.id,
@@ -614,6 +891,7 @@ async function runSmoke({
         page,
         phase: "warm",
         url: targetUrl,
+        scenario,
       });
       profiles.push({
         scenario: scenario.id,
@@ -626,11 +904,35 @@ async function runSmoke({
           ...attachProfileGates(hmr, scenario.budgets, scenario.id, history),
         });
       }
+      if (scenario.phases.includes("recovery")) {
+        const recoveryTransitions = await triggerRuntimeRecovery({
+          page,
+          webBaseUrl,
+        });
+        const recovery = await profileScenario({
+          page,
+          phase: "recovery",
+          url: targetUrl,
+          scenario,
+        });
+        profiles.push({
+          scenario: scenario.id,
+          recoveryTransitions,
+          ...attachProfileGates(
+            recovery,
+            scenario.budgets,
+            scenario.id,
+            history,
+          ),
+        });
+      }
       await context.close();
 
       if (scenario.phases.includes("concurrent")) {
         const contexts = await Promise.all(
-          Array.from({ length: 4 }, () => browser.newContext()),
+          Array.from({ length: 4 }, () =>
+            browser.newContext({ storageState: storageStatePath }),
+          ),
         );
         const concurrentProfiles = await Promise.all(
           contexts.map(async (candidateContext) => {
@@ -639,6 +941,7 @@ async function runSmoke({
               page: candidatePage,
               phase: "concurrent",
               url: targetUrl,
+              scenario,
             });
           }),
         );
@@ -661,6 +964,25 @@ async function runSmoke({
               failedRequests: concurrentProfiles.flatMap(
                 (profile) => profile.failedRequests,
               ),
+              consoleErrors: concurrentProfiles.flatMap(
+                (profile) => profile.consoleErrors,
+              ),
+              pageErrors: concurrentProfiles.flatMap(
+                (profile) => profile.pageErrors,
+              ),
+              requestCount: Math.max(
+                ...concurrentProfiles.map((profile) => profile.requestCount),
+              ),
+              transferBytes: Math.max(
+                ...concurrentProfiles.map((profile) => profile.transferBytes),
+              ),
+              transformDurationMs: Math.max(
+                ...concurrentProfiles.map(
+                  (profile) => profile.transformDurationMs,
+                ),
+              ),
+              finalUrls: concurrentProfiles.map((profile) => profile.finalUrl),
+              resources: concurrentProfiles.map((profile) => profile.resources),
             },
             scenario.budgets,
             scenario.id,
@@ -672,43 +994,27 @@ async function runSmoke({
         );
       }
 
-      if (scenario.phases.includes("recovery")) {
-        const recoveryContext = await browser.newContext();
-        const recoveryPage = await recoveryContext.newPage();
-        const recovery = await profileScenario({
-          page: recoveryPage,
-          phase: "recovery",
-          url: targetUrl,
-        });
-        profiles.push({
-          scenario: scenario.id,
-          ...attachProfileGates(
-            recovery,
-            scenario.budgets,
-            scenario.id,
-            history,
-          ),
-        });
-        await recoveryContext.close();
-      }
     }
 
     if (
-      manifest.scenarios.some((scenario) =>
+      scenarios.some((scenario) =>
         scenario.phases.includes("cache-rebuild"),
       )
     ) {
       const isolated = await startIsolatedVite(repoRoot);
       try {
-        for (const scenario of manifest.scenarios.filter((candidate) =>
+        for (const scenario of scenarios.filter((candidate) =>
           candidate.phases.includes("cache-rebuild"),
         )) {
-          const context = await browser.newContext();
+          const context = await browser.newContext({
+            storageState: storageStatePath,
+          });
           const page = await context.newPage();
           const profile = await profileScenario({
             page,
             phase: "cache-rebuild",
             url: `${isolated.baseUrl}${scenario.fixture_path}`,
+            scenario,
           });
           profiles.push({
             scenario: scenario.id,
@@ -727,10 +1033,31 @@ async function runSmoke({
       }
     }
   } finally {
-    await browser.close();
+    try {
+      await browser.close();
+    } finally {
+      await temporarySession.dispose();
+      if (fs.existsSync(storageStatePath)) fs.unlinkSync(storageStatePath);
+    }
   }
+  const staticResult = analyzeStatic({ repoRoot });
   const result = {
     schemaVersion: manifest.schema_version,
+    candidateSha: execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    }).trim(),
+    generatedAt: new Date().toISOString(),
+    environment: {
+      node: process.version,
+      platform: process.platform,
+      arch: process.arch,
+      browser: "chromium",
+      webBaseUrl,
+      apiBaseUrl,
+    },
+    referenceIdentity,
+    staticGraph: staticResult.graph,
     ok: profiles.every((profile) =>
       Object.values(profile.gates).every((gate) => gate.ok),
     ),
@@ -794,10 +1121,12 @@ module.exports = {
   reachableComponentSets,
   readHistory,
   robustLimit,
+  resolveScenarioFixtures,
   runSmoke,
   startIsolatedVite,
   stopIsolatedVite,
   stronglyConnectedComponents,
   summarizeResources,
+  triggerRuntimeRecovery,
   updateHistory,
 };

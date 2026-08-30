@@ -176,6 +176,8 @@ node scripts/node/vite-lazy-deps-gate.js --smoke --web-base-url http://127.0.0.1
 开发服务器生命周期与模块图性能门禁。默认静态检查源码模块图、禁止高扇出图标 namespace
 导入，并验证 `antd` 与 `@ant-design/icons` 预打包配置；`--smoke` 对真实开发服务器
 记录冷 / 热路由请求数、传输量、解码体积和失败请求到 `tmp/test-governance/`。
+Smoke 会复用 `page-debug` 的临时 console session owner，从当前数据库选择已有 Frontstage
+页面和 Workflow 应用，逐路由断言 ready selector、最终 URL、console/page error，并在结束时回收 session。
 
 ```bash
 node scripts/node/dev-experience.js

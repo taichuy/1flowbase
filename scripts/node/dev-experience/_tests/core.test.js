@@ -10,6 +10,7 @@ const {
   parseOptimizeDepsInclude,
   reachableComponentSets,
   robustLimit,
+  resolveScenarioFixtures,
   stronglyConnectedComponents,
   summarizeResources,
   updateHistory,
@@ -21,6 +22,72 @@ test("DV-F01 optimize dependency fixture rejects names outside optimizeDeps incl
     export default { optimizeDeps: { include: ['react'] } };
   `;
   assert.deepEqual(parseOptimizeDepsInclude(source), ["react"]);
+});
+
+test("DV-F01 runtime fixtures resolve real page and workflow identities", async () => {
+  const responses = {
+    "/api/console/frontstage/pages": {
+      data: [
+        {
+          id: "group-1",
+          kind: "group",
+          children: [{ id: "page-1", kind: "page", children: [] }],
+        },
+      ],
+    },
+    "/api/console/applications": {
+      data: [
+        { id: "agent-1", application_type: "agent_flow" },
+        { id: "workflow-1", application_type: "workflow" },
+      ],
+    },
+  };
+  const scenarios = await resolveScenarioFixtures({
+    playwright: {
+      request: {
+        async newContext() {
+          return {
+            async get(apiPath) {
+              return {
+                ok: () => true,
+                status: () => 200,
+                json: async () => responses[apiPath],
+              };
+            },
+            async dispose() {},
+          };
+        },
+      },
+    },
+    apiBaseUrl: "http://127.0.0.1:7800",
+    storageStatePath: "/tmp/storage.json",
+    scenarios: [
+      {
+        fixture_kind: "frontstage_page",
+        path_template: "/frontstage/pages/:page_id",
+      },
+      {
+        fixture_kind: "workflow_application",
+        path_template: "/applications/:application_id/orchestration",
+      },
+    ],
+  });
+
+  assert.equal(scenarios[0].fixture_path, "/frontstage/pages/page-1");
+  assert.equal(
+    scenarios[1].fixture_path,
+    "/applications/workflow-1/orchestration",
+  );
+});
+
+test("DV-F01 robust regression activates after five same-reference samples", () => {
+  const history = [100, 101, 102, 103, 104];
+  const accepted = evaluateBudget({ value: 103, absoluteMax: 1999, history });
+  const rejected = evaluateBudget({ value: 140, absoluteMax: 1999, history });
+
+  assert.equal(accepted.historyStatus, "active");
+  assert.equal(accepted.ok, true);
+  assert.equal(rejected.ok, false);
 });
 
 test("DV-F01 Tarjan SCC and condensation reachability preserve cycles", () => {

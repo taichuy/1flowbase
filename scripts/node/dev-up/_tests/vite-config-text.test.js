@@ -39,5 +39,9 @@ test('DV-F04 vite config exposes lifecycle readiness after bounded warmup', () =
   assert.match(runtimeSource, /'Warming'/u);
   assert.match(runtimeSource, /'Ready'/u);
   assert.match(runtimeSource, /'Degraded'/u);
+  assert.match(runtimeSource, /attachPreReadyTrafficGate/u);
+  assert.match(runtimeSource, /response\.statusCode = 503/u);
+  assert.match(runtimeSource, /fs\.writeFileSync/u);
+  assert.match(runtimeSource, /RECOVERY_PROBE_PATH/u);
   assert.doesNotMatch(runtimeSource, /allowedHosts|cors|cloudflare|access token/iu);
 });

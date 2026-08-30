@@ -6,10 +6,9 @@ import type {
   ReactNode
 } from 'react';
 
-import {
-  pageTreeIconLoaders,
-  pageTreeIconNames
-} from 'virtual:1flowbase-page-tree-icons';
+import { pageTreeIconLoaders } from 'virtual:1flowbase-page-tree-icons';
+
+import { IconComponentCache } from './cache';
 
 type PageTreeIconProps = {
   name?: string | null;
@@ -27,7 +26,9 @@ type LazyPageTreeIcon = LazyExoticComponent<
 >;
 
 const MAX_CACHED_ICONS = 128;
-const componentCache = new Map<string, LazyPageTreeIcon>();
+const componentCache = new IconComponentCache<LazyPageTreeIcon>(
+  MAX_CACHED_ICONS
+);
 
 function loadIcon(name: string) {
   const loader = pageTreeIconLoaders[name];
@@ -35,21 +36,9 @@ function loadIcon(name: string) {
     return null;
   }
 
-  const cached = componentCache.get(name);
-  if (cached) {
-    componentCache.delete(name);
-    componentCache.set(name, cached);
-    return cached;
-  }
-
-  const component = lazy(async () => ({ default: await loader() }));
-  componentCache.set(name, component);
-  while (componentCache.size > MAX_CACHED_ICONS) {
-    const oldest = componentCache.keys().next().value;
-    if (!oldest) break;
-    componentCache.delete(oldest);
-  }
-  return component;
+  return componentCache.getOrCreate(name, () =>
+    lazy(async () => ({ default: await loader() }))
+  );
 }
 
 function PageTreeIcon({
@@ -74,5 +63,5 @@ function PageTreeIcon({
   );
 }
 
-export { PageTreeIcon, pageTreeIconNames };
+export { PageTreeIcon };
 export type { PageTreeIconProps };

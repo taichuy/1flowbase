@@ -10,6 +10,7 @@ const HMR_PROBE_ID = 'virtual:1flowbase-dev-hmr-probe';
 const RESOLVED_HMR_PROBE_ID = `\0${HMR_PROBE_ID}`;
 const READY_PATH = '/__1flowbase_dev_ready';
 const HMR_PROBE_PATH = '/__1flowbase_dev_hmr_probe';
+const RECOVERY_PROBE_PATH = '/__1flowbase_dev_recovery_probe';
 
 type DevRuntimeState =
   | 'Scanning'
@@ -17,6 +18,23 @@ type DevRuntimeState =
   | 'Warming'
   | 'Ready'
   | 'Degraded';
+
+type DevRuntimeReceipt = {
+  state: DevRuntimeState;
+  cacheIdentity: string;
+  startedAt: string;
+  readyAt: string | null;
+  error: string | null;
+  transitions: Array<{ state: DevRuntimeState; at: string }>;
+};
+
+function transitionRuntime(
+  receipt: DevRuntimeReceipt,
+  state: DevRuntimeState
+) {
+  receipt.state = state;
+  receipt.transitions.push({ state, at: new Date().toISOString() });
+}
 
 function pageTreeIconNames(root: string) {
   const iconsDirectory = path.join(
@@ -94,13 +112,7 @@ function devCacheIdentity(root: string, mode: string) {
 
 function attachReadinessMiddleware(
   server: ViteDevServer,
-  receipt: {
-    state: DevRuntimeState;
-    cacheIdentity: string;
-    startedAt: string;
-    readyAt: string | null;
-    error: string | null;
-  }
+  receipt: DevRuntimeReceipt
 ) {
   server.middlewares.use(READY_PATH, (_request, response) => {
     response.statusCode = receipt.state === 'Ready' ? 200 : 503;
@@ -115,15 +127,15 @@ function attachReadinessMiddleware(
   });
 }
 
-function attachHmrProbeMiddleware(server: ViteDevServer) {
+function attachHmrProbeMiddleware(server: ViteDevServer, probeFile: string) {
   server.middlewares.use(HMR_PROBE_PATH, (_request, response) => {
     const token = crypto.randomUUID();
     const sentAt = Date.now();
-    server.ws.send({
-      type: 'custom',
-      event: '1flowbase:dev-hmr-probe',
-      data: { token, sentAt }
-    });
+    fs.writeFileSync(
+      probeFile,
+      `export const generation = ${JSON.stringify(token)};\n`,
+      'utf8'
+    );
     response.statusCode = 200;
     response.setHeader('content-type', 'application/json; charset=utf-8');
     response.setHeader('cache-control', 'no-store');
@@ -131,12 +143,16 @@ function attachHmrProbeMiddleware(server: ViteDevServer) {
   });
 }
 
-function hmrProbeSource() {
+function hmrProbeSource(probeFile: string | null) {
+  if (!probeFile) return 'export {};';
+  const probeImport = `/@fs/${probeFile.replace(/\\/gu, '/')}`;
   return `
+    import { generation } from ${JSON.stringify(probeImport)};
+    globalThis.__ONEFLOWBASE_DEV_HMR_GENERATION__ = generation;
     if (import.meta.hot) {
-      import.meta.hot.on('1flowbase:dev-hmr-probe', (receipt) => {
+      import.meta.hot.accept(${JSON.stringify(probeImport)}, (module) => {
         globalThis.__ONEFLOWBASE_DEV_HMR_RECEIPT__ = {
-          ...receipt,
+          token: module.generation,
           receivedAt: Date.now()
         };
       });
@@ -145,30 +161,62 @@ function hmrProbeSource() {
   `;
 }
 
-function warmRuntime(
+async function warmRuntime(
   server: ViteDevServer,
-  receipt: {
-    state: DevRuntimeState;
-    readyAt: string | null;
-    error: string | null;
-  }
+  receipt: DevRuntimeReceipt
 ) {
-  receipt.state = 'Warming';
-  Promise.all([
-    server.transformRequest('/src/main.tsx'),
-    server.transformRequest('/src/app/router.tsx')
-  ])
-    .then(() => {
-      receipt.state = 'Ready';
-      receipt.readyAt = new Date().toISOString();
-    })
-    .catch((error: unknown) => {
-      receipt.state = 'Degraded';
-      receipt.error = error instanceof Error ? error.message : String(error);
-      server.config.logger.error(
-        `[1flowbase-dev-runtime] warmup failed: ${receipt.error}`
-      );
-    });
+  transitionRuntime(receipt, 'Warming');
+  try {
+    await Promise.all([
+      server.transformRequest('/src/main.tsx'),
+      server.transformRequest('/src/app/router.tsx')
+    ]);
+    receipt.error = null;
+    receipt.readyAt = new Date().toISOString();
+    transitionRuntime(receipt, 'Ready');
+  } catch (error: unknown) {
+    receipt.error = error instanceof Error ? error.message : String(error);
+    transitionRuntime(receipt, 'Degraded');
+    server.config.logger.error(
+      `[1flowbase-dev-runtime] warmup failed: ${receipt.error}`
+    );
+  }
+}
+
+function attachRecoveryProbeMiddleware(
+  server: ViteDevServer,
+  receipt: DevRuntimeReceipt
+) {
+  server.middlewares.use(RECOVERY_PROBE_PATH, (_request, response) => {
+    receipt.error = 'controlled recovery probe';
+    transitionRuntime(receipt, 'Degraded');
+    response.statusCode = 202;
+    response.setHeader('content-type', 'application/json; charset=utf-8');
+    response.setHeader('cache-control', 'no-store');
+    response.end(JSON.stringify({ state: receipt.state }));
+    setImmediate(() => void warmRuntime(server, receipt));
+  });
+}
+
+function attachPreReadyTrafficGate(
+  server: ViteDevServer,
+  receipt: DevRuntimeReceipt
+) {
+  server.middlewares.use((_request, response, next) => {
+    if (receipt.state === 'Ready') {
+      next();
+      return;
+    }
+    response.statusCode = 503;
+    response.setHeader('content-type', 'application/json; charset=utf-8');
+    response.setHeader('cache-control', 'no-store');
+    response.end(
+      JSON.stringify({
+        schema_version: '1flowbase.dev-runtime-readiness/v1',
+        state: receipt.state
+      })
+    );
+  });
 }
 
 function oneFlowbaseDevRuntimePlugin({
@@ -180,6 +228,19 @@ function oneFlowbaseDevRuntimePlugin({
   mode: string;
   command: 'serve' | 'build';
 }): Plugin {
+  const runtimeDirectory = path.join(
+    path.resolve(root, '..', '..'),
+    'tmp',
+    'dev-runtime'
+  );
+  const hmrProbeFile =
+    command === 'serve'
+      ? path.join(runtimeDirectory, `hmr-probe-${process.pid}.mjs`)
+      : null;
+  if (hmrProbeFile) {
+    fs.mkdirSync(runtimeDirectory, { recursive: true });
+    fs.writeFileSync(hmrProbeFile, 'export const generation = "boot";\n');
+  }
   return {
     name: '1flowbase-dev-runtime',
     enforce: 'pre',
@@ -191,7 +252,7 @@ function oneFlowbaseDevRuntimePlugin({
     load(id) {
       if (id === RESOLVED_ICON_REGISTRY_ID)
         return iconRegistrySource(root, command);
-      if (id === RESOLVED_HMR_PROBE_ID) return hmrProbeSource();
+      if (id === RESOLVED_HMR_PROBE_ID) return hmrProbeSource(hmrProbeFile);
       return null;
     },
     configureServer(server) {
@@ -200,12 +261,22 @@ function oneFlowbaseDevRuntimePlugin({
         cacheIdentity: devCacheIdentity(root, mode),
         startedAt: new Date().toISOString(),
         readyAt: null,
-        error: null
+        error: null,
+        transitions: [
+          { state: 'Scanning' as DevRuntimeState, at: new Date().toISOString() }
+        ]
       };
       attachReadinessMiddleware(server, receipt);
-      attachHmrProbeMiddleware(server);
-      receipt.state = 'Optimizing';
-      server.httpServer?.once('listening', () => warmRuntime(server, receipt));
+      if (hmrProbeFile) attachHmrProbeMiddleware(server, hmrProbeFile);
+      attachRecoveryProbeMiddleware(server, receipt);
+      attachPreReadyTrafficGate(server, receipt);
+      transitionRuntime(receipt, 'Optimizing');
+      server.httpServer?.once('listening', () => void warmRuntime(server, receipt));
+      server.httpServer?.once('close', () => {
+        if (hmrProbeFile && fs.existsSync(hmrProbeFile)) {
+          fs.unlinkSync(hmrProbeFile);
+        }
+      });
     }
   };
 }
@@ -214,6 +285,7 @@ export {
   ICON_REGISTRY_ID,
   HMR_PROBE_ID,
   HMR_PROBE_PATH,
+  RECOVERY_PROBE_PATH,
   READY_PATH,
   devCacheIdentity,
   iconRegistrySource,
