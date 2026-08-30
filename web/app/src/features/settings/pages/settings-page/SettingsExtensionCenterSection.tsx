@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from '@tanstack/react-router';
@@ -55,13 +63,24 @@ import {
   settingsI18nCatalogQueryKey
 } from '../../api/i18n-catalog';
 import { settingsMcpCatalogQueryKey } from '../../api/mcp-management';
-import {
-  ExtensionApplicationFlow,
-  type ExtensionApplicationTarget
-} from '../../components/extension-center/ExtensionApplicationFlow';
+import type { ExtensionApplicationTarget } from '../../components/extension-center/ExtensionApplicationFlow';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
-import { PricingCatalogPanel } from '../../components/billing/PricingCatalogPanel';
-import { UiComponentCatalogPanel } from '../../components/extension-center/UiComponentCatalogPanel';
+
+const PricingCatalogPanel = lazy(() =>
+  import('../../components/billing/PricingCatalogPanel').then((module) => ({
+    default: module.PricingCatalogPanel
+  }))
+);
+const UiComponentCatalogPanel = lazy(() =>
+  import('../../components/extension-center/UiComponentCatalogPanel').then(
+    (module) => ({ default: module.UiComponentCatalogPanel })
+  )
+);
+const ExtensionApplicationFlow = lazy(() =>
+  import('../../components/extension-center/ExtensionApplicationFlow').then(
+    (module) => ({ default: module.ExtensionApplicationFlow })
+  )
+);
 
 type ExtensionRow = SettingsInstalledExtension | SettingsExtensionCatalogEntry;
 type UpdateState =
@@ -220,13 +239,19 @@ export function SettingsExtensionCenterSection(props: {
   canManageUiComponents?: boolean;
 }) {
   if (props.category === 'model-pricing') {
-    return <PricingCatalogPanel />;
+    return (
+      <Suspense fallback={null}>
+        <PricingCatalogPanel />
+      </Suspense>
+    );
   }
   if (props.category === 'ui-components') {
     return (
-      <UiComponentCatalogPanel
-        canManage={props.canManageUiComponents ?? false}
-      />
+      <Suspense fallback={null}>
+        <UiComponentCatalogPanel
+          canManage={props.canManageUiComponents ?? false}
+        />
+      </Suspense>
     );
   }
   return (
@@ -1360,12 +1385,16 @@ function GenericExtensionCenterSection({
           {t('auto.translation_catalog_update_choice_description')}
         </Typography.Paragraph>
       </Modal>
-      <ExtensionApplicationFlow
-        target={applicationTarget}
-        csrfToken={csrfToken ?? ''}
-        onClose={closeApplicationFlow}
-        onApplied={invalidateExtensionApplicationState}
-      />
+      {applicationTarget ? (
+        <Suspense fallback={null}>
+          <ExtensionApplicationFlow
+            target={applicationTarget}
+            csrfToken={csrfToken ?? ''}
+            onClose={closeApplicationFlow}
+            onApplied={invalidateExtensionApplicationState}
+          />
+        </Suspense>
+      ) : null}
     </SettingsSectionSurface>
   );
 }

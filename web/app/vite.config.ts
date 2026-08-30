@@ -20,6 +20,7 @@ import {
   collectDayjsModuleSources,
   nativeDayjsModulesPlugin
 } from './build/native-dayjs-modules';
+import { resolveProductionModulePreloadDependencies } from './build/production-module-preload';
 import { FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES } from './src/features/frontstage/lib/native-modules/resolved-dependency-sources';
 import { oneFlowbaseDevRuntimePlugin } from './vite/dev-runtime';
 
@@ -65,52 +66,6 @@ const nativeDayjsModuleInventory = collectDayjsModuleSources({
 const nativeDayjsDeclarationSources = nativeDayjsModuleInventory
   .filter(({ hasDeclaration }) => hasDeclaration)
   .map(({ moduleSource }) => moduleSource);
-
-function manualChunks(id: string) {
-  if (!id.includes('/node_modules/')) {
-    return;
-  }
-
-  if (id.includes('/monaco-editor/') || id.includes('/@monaco-editor/')) {
-    return 'monaco-vendor';
-  }
-
-  if (id.includes('/@xyflow/')) {
-    return 'flow-vendor';
-  }
-
-  if (isLazyAntDesignIconModule(id)) {
-    return;
-  }
-
-  if (
-    id.includes('/antd/') ||
-    id.includes('/@ant-design/') ||
-    id.includes('/rc-')
-  ) {
-    return 'antd-vendor';
-  }
-
-  if (
-    id.includes('/react/') ||
-    id.includes('/react-dom/') ||
-    id.includes('/scheduler/') ||
-    id.includes('/@tanstack/')
-  ) {
-    return 'react-vendor';
-  }
-}
-
-function isLazyAntDesignIconModule(id: string): boolean {
-  return (
-    /\/node_modules\/@ant-design\/icons\/es\/(?:index\.js|icons\/(?:index\.js|[^/]+\.js))$/u.test(
-      id
-    ) ||
-    /\/node_modules\/@ant-design\/icons-svg\/(?:es|lib)\/asn\/[^/]+\.js$/u.test(
-      id
-    )
-  );
-}
 
 function parseAllowedHosts(value?: string) {
   const hosts = String(value || '')
@@ -212,12 +167,10 @@ export default defineConfig(({ command, mode }) => {
     },
     build: {
       chunkSizeWarningLimit: 3500,
-      sourcemap: isRemoteDebug,
-      rollupOptions: {
-        output: {
-          manualChunks
-        }
-      }
+      modulePreload: {
+        resolveDependencies: resolveProductionModulePreloadDependencies
+      },
+      sourcemap: isRemoteDebug
     },
     server: {
       host: '0.0.0.0',

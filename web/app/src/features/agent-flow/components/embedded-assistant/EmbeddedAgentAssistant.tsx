@@ -1,9 +1,14 @@
 import { Menu, Tooltip } from 'antd';
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import type { ConsoleAssistantClientTools } from '@1flowbase/api-client';
 
 import { i18nText } from '../../../../shared/i18n/text';
-import { EmbeddedAgentAssistantPreview } from './EmbeddedAgentAssistantPreview';
+
+const EmbeddedAgentAssistantPreview = lazy(() =>
+  import('./EmbeddedAgentAssistantPreview').then((module) => ({
+    default: module.EmbeddedAgentAssistantPreview
+  }))
+);
 
 export function EmbeddedAgentAssistant({
   clientTools,
@@ -56,12 +61,14 @@ export function EmbeddedAgentAssistant({
         />
       </Tooltip>
       {previewMounted ? (
-        <EmbeddedAgentAssistantPreview
-          clientTools={clientTools}
-          open={open}
-          pageKey={pageKey}
-          onClose={() => setOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <EmbeddedAgentAssistantPreview
+            clientTools={clientTools}
+            open={open}
+            pageKey={pageKey}
+            onClose={() => setOpen(false)}
+          />
+        </Suspense>
       ) : null}
     </>
   );
