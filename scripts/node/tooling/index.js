@@ -29,6 +29,7 @@ const {
 const { main: runSchemaHygiene } = require("../schema-hygiene/core.js");
 const { main: runSecurityRisk } = require("../security-risk/core.js");
 const { main: runViteLazyDepsGate } = require("../vite-lazy-deps-gate/core.js");
+const { main: runDevExperience } = require("../dev-experience/core.js");
 const { main: runPageDebug } = require("../page-debug/core.js");
 const { main: runApiDebug } = require("../api-debug/core.js");
 const { main: runMockUiSync } = require("../mock-ui-sync/core.js");
@@ -47,6 +48,7 @@ const TOOLING_COMMANDS = new Set([
   "check-rust-backend",
   "claude-skill-sync",
   "console-route-registry-hygiene",
+  "dev-experience",
   "frontstage-governance-hygiene",
   "foundation-contracts",
   "gate-router",
@@ -131,7 +133,7 @@ function parseToolingCliArgs(argv) {
 
 function usage(writeStdout = (text) => process.stdout.write(text)) {
   writeStdout(
-    "Usage: node scripts/node/tooling <api-debug|capacity-report|check-rust-backend|check-style-boundary|claude-skill-sync|console-route-registry-hygiene|foundation-contracts|frontstage-governance-hygiene|gate-router|growth-table-report|hotspot-review|i18n-hygiene|log-query-contract-report|mock-ui-sync|page-debug|raw-jsonb-report|repo-hygiene|runtime-gate|schema-hygiene|security-risk|vite-lazy-deps-gate> [args]\n",
+    "Usage: node scripts/node/tooling <api-debug|capacity-report|check-rust-backend|check-style-boundary|claude-skill-sync|console-route-registry-hygiene|dev-experience|foundation-contracts|frontstage-governance-hygiene|gate-router|growth-table-report|hotspot-review|i18n-hygiene|log-query-contract-report|mock-ui-sync|page-debug|raw-jsonb-report|repo-hygiene|runtime-gate|schema-hygiene|security-risk|vite-lazy-deps-gate> [args]\n",
   );
 }
 
@@ -185,6 +187,13 @@ async function main(argv = [], deps = {}) {
     return (
       deps.runFrontstageGovernanceHygieneImpl || runFrontstageGovernanceHygiene
     )(options.rest, deps);
+  }
+
+  if (options.command === "dev-experience") {
+    return (deps.runDevExperienceImpl || runDevExperience)(
+      options.rest,
+      deps,
+    );
   }
 
   if (options.command === "foundation-contracts") {

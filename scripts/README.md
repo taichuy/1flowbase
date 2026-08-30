@@ -171,6 +171,17 @@ node scripts/node/vite-lazy-deps-gate.js --smoke --web-base-url http://127.0.0.1
 默认只跑静态检查；`--smoke` 才启动 Playwright 并访问 manifest 中的路径，捕获 Vite dev
 `504 Outdated Optimize Dep` 和 `Failed to fetch dynamically imported module`。
 
+### `node scripts/node/dev-experience.js`
+
+开发服务器生命周期与模块图性能门禁。默认静态检查源码模块图、禁止高扇出图标 namespace
+导入，并验证 `antd` 与 `@ant-design/icons` 预打包配置；`--smoke` 对真实开发服务器
+记录冷 / 热路由请求数、传输量、解码体积和失败请求到 `tmp/test-governance/`。
+
+```bash
+node scripts/node/dev-experience.js
+node scripts/node/dev-experience.js --smoke --web-base-url http://127.0.0.1:3100
+```
+
 ## Verification Scripts
 
 ### `node scripts/node/verify.js <backend|ci|coverage|repo> [args]`
@@ -310,6 +321,7 @@ node scripts/node/verify-state-protocols.js --skip-live-acp
 
 - `check-style-boundary`
 - `claude-skill-sync`
+- `dev-experience`
 - `i18n-hygiene`
 - `mock-ui-sync`
 - `page-debug`

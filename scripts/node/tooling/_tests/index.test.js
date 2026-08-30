@@ -253,6 +253,19 @@ test("tooling index dispatches vite-lazy-deps-gate subcommand", async () => {
   assert.deepEqual(capturedArgv, ["--smoke"]);
 });
 
+test("tooling index dispatches dev-experience subcommand", async () => {
+  let received = null;
+  const status = await main(["dev-experience", "--smoke"], {
+    runDevExperienceImpl(argv) {
+      received = argv;
+      return 0;
+    },
+  });
+
+  assert.equal(status, 0);
+  assert.deepEqual(received, ["--smoke"]);
+});
+
 test("tooling index dispatches gate-router subcommand", async () => {
   let capturedArgv = null;
 
