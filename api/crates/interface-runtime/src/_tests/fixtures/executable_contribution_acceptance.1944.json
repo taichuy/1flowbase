@@ -1,0 +1,64 @@
+{
+  "schema_version": "1flowbase.interface-executable-contribution-acceptance/v1",
+  "delivery": 1944,
+  "input_head": "965d62e9514f1b3e25fdf2a4284cc3bb41cfbf2e",
+  "previous_tested_assembly": "a3c78798320b5e2af8bc8b2f9b35cb8fe3977b31",
+  "execution_policy": {
+    "packet_order": ["XR-F01", "XR-F02", "XR-F03", "XR-F04", "XR-F05", "XR-F06"],
+    "tests_before_xr_f06": 0,
+    "fresh_centralized_qa_runs_after_freeze": 1
+  },
+  "acceptance_rows": [
+    {
+      "id": "RR-12",
+      "owner": "interface-runtime.RegistryCompiler",
+      "positive": ["unary_hook_contract_publish", "server_stream_hook_contract_publish"],
+      "negative": ["hook_input_contract_mismatch", "hook_output_contract_mismatch"],
+      "failure_phase": "compile_publish"
+    },
+    {
+      "id": "RR-13",
+      "owner": "interface-runtime.RegistryCompiler",
+      "positive": ["typed_definition_contributes_definition_and_binding"],
+      "negative": ["definition_registration_without_binding", "duplicate_definition_identity_version", "inactive_definition_owner", "unknown_authorization_operation", "definition_binding_contract_conflict"],
+      "failure_phase": "compile_publish"
+    },
+    {
+      "id": "RR-14",
+      "owner": "api-server.CompositionRoot",
+      "positive": ["public_authentication_activation", "user_authentication_activation", "application_authentication_activation", "mcp_user_api_key_activation"],
+      "negative": ["authentication_registration_without_factory", "duplicate_authentication_activation", "inactive_authentication_activation", "authentication_binding_identity_mismatch", "runtime_authentication_registration", "capability_authentication_registration"],
+      "failure_phase": "router_catalog_publish"
+    },
+    {
+      "id": "RR-15",
+      "owner": "interface-runtime.CompiledInvocationPlan",
+      "positive": ["unary_ordered_authorization_veto", "server_stream_ordered_authorization_veto", "zero_extension_core_authorization_equivalence"],
+      "negative": ["authorization_registration_without_executable", "authorization_executable_without_registration", "authorization_order_mismatch", "authorization_graph_mismatch", "authorization_contract_mismatch", "authorization_permission_mismatch", "core_deny_plugin_allow", "plugin_authorization_deny", "plugin_authorization_error", "plugin_authorization_timeout"],
+      "failure_phase": "compile_or_invocation_fail_closed"
+    },
+    {
+      "id": "RR-16",
+      "owner": "interface-runtime.CompiledInvocationPlan",
+      "positive": ["unary_authorization_admission_hook_handler_order", "server_stream_authorization_admission_hook_handler_order", "in_flight_snapshot_keeps_old_decision_plan", "zero_extension_core_admission_equivalence"],
+      "negative": ["admission_registration_without_executable", "admission_executable_without_registration", "admission_order_mismatch", "admission_graph_mismatch", "admission_contract_mismatch", "admission_facts_mismatch", "plugin_admission_reject", "plugin_admission_error", "plugin_admission_timeout", "route_plan_injection_source_boundary", "plugin_sensitive_context_source_boundary"],
+      "failure_phase": "compile_or_invocation_fail_closed"
+    }
+  ],
+  "production_verticals": [
+    "public_login_instances",
+    "console_host_infrastructure_providers",
+    "application_native_async_blocking_server_stream",
+    "mcp_user_api_key_invocation"
+  ],
+  "compatibility_invariants": [
+    "external_contract_unchanged",
+    "authorization_row_scope_csrf_unchanged",
+    "runtime_attempt_generation_unchanged",
+    "receipt_contains_no_raw_credential",
+    "zero_contribution_behavior_equivalent",
+    "no_double_write_fallback_or_second_registry",
+    "migration_zero_diff",
+    "official_plugins_zero_diff"
+  ]
+}

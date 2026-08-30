@@ -23,6 +23,11 @@
 | RR-09 | Every lifecycle registration has a concrete typed executable binding owned by the compiled plan; missing bindings fail publish | Completion registration without binding fails; ordinary `invoke` executes a bound Completion hook without Route injection |
 | RR-10 | Unary and server-stream consume the same frozen Before/After/Failure/Completion rules | stream fixture observes Before → events → terminal → After → Completion before projection |
 | RR-11 | A Handler contribution binds a real typed implementation and becomes the exactly-one effective target | one HostExtension handler executes; missing binding or multiple effective contributions fail compilation |
+| RR-12 | An erased Hook Plan exposes stable typed input/output contract identities and mismatches fail during `RegistryCompiler::compile()` | wrong-input and wrong-output Hook Plans fail publication for unary and server-stream Definitions |
+| RR-13 | A Definition registration is executable compilation input that contributes a typed Definition and required Protocol Bindings into the canonical Registry | metadata-only, duplicate identity/version, inactive owner, unknown operation and binding/contract conflict fixtures fail publication |
+| RR-14 | BuiltIn/HostExtension Authentication contributions bind an activation owned by the Composition Root and the Protocol Adapter resolves that frozen activation before establishing a sealed Principal | missing, extra, duplicate, inactive and identity-mismatched activation fixtures fail before router/catalog publication; forbidden Runtime/Capability tiers remain rejected |
+| RR-15 | The Compiled Plan owns ordered executable Authorization veto contributions after the mandatory core decision | unary and server-stream prove core-deny dominance, ordered allow, and extension deny/error/deadline fail closed; binding/permission/Graph/contract mismatches fail publication |
+| RR-16 | The Compiled Plan owns ordered executable Admission veto contributions after mandatory target admission | unary and server-stream prove Authorization → core Admission → ordered extension Admission → Hook → Handler; missing/extra/order/facts/contract mismatches and reject/error/deadline fail closed |
 
 ## Work packets
 
@@ -34,6 +39,12 @@
    lifecycle fixtures; update Receipt and Ledger truth.
 6. `RR-F06`: compile concrete typed extension bindings into every plan, make Kernel consumption
    non-optional for unary/stream, and compile a real exactly-one contributed Handler.
+7. `XR-F01`: freeze RR-12 through RR-16 and their controlled fixture inventory.
+8. `XR-F02`: publish-time Hook input/output contract identity.
+9. `XR-F03`: executable Definition contribution and activated Authentication binding.
+10. `XR-F04`: ordered Authorization/Admission executable veto plans.
+11. `XR-F05`: four production vertical paths, source boundaries and architecture receipts.
+12. `XR-F06`: freeze the replacement assembly and run the complete fresh centralized Test Batch.
 
 All fixtures are assembled before execution. No per-packet test, per-layer QA or partial rerun may
 settle these rows. After the remediation assembly is frozen, the complete #1944 centralized Test
