@@ -117,6 +117,22 @@ debounced.flush();`
     expect(diagnostics).toEqual([]);
   });
 
+  test('I1952-AC-001/005 type-checks the clsx default and named exports', () => {
+    const diagnostics = typeCheckSource({
+      extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+      source: `import clsxDefault, { clsx as clsxNamed } from 'clsx';
+import type { ClassValue } from 'clsx';
+
+const input: ClassValue = { active: true, hidden: false };
+const defaultResult: string = clsxDefault('base', input);
+const namedResult: string = clsxNamed(['nested', input]);
+void defaultResult;
+void namedResult;`
+    });
+
+    expect(diagnostics).toEqual([]);
+  });
+
   test('AC-004 fails explicitly when a dependency declaration cannot resolve', () => {
     expect(() =>
       collectNativeModuleDeclarations({

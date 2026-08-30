@@ -6,6 +6,15 @@ const ANTD_STYLE_DECLARATIONS = `declare module 'antd-style' {
 }
 `;
 
+const CLSX_DECLARATIONS = `declare module 'clsx' {
+  export type ClassValue = ClassArray | ClassDictionary | string | number | bigint | null | boolean | undefined;
+  export type ClassDictionary = Record<string, any>;
+  export type ClassArray = ClassValue[];
+  export function clsx(...inputs: ClassValue[]): string;
+  export default clsx;
+}
+`;
+
 const BLOCK_SDK_DECLARATIONS = `declare module '@1flowbase/block-sdk' {
   export type BlockContextRecord = Record<string, unknown>;
   export interface BlockContextIdentity { readonly id: string; readonly displayName?: string; }
@@ -73,6 +82,8 @@ export function createFrontendModuleExtraLib(
         ? createDayjsRuntimeModuleDeclaration(moduleSource)
         : moduleSource === '@1flowbase/block-sdk'
           ? BLOCK_SDK_DECLARATIONS
+          : moduleSource === 'clsx'
+            ? CLSX_DECLARATIONS
           : moduleSource === 'antd-style'
             ? `${ANTD_STYLE_DECLARATIONS}${createGenericModuleDeclarations(
                 moduleSource,

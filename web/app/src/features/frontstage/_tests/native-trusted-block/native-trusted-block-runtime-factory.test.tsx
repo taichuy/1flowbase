@@ -390,6 +390,70 @@ export default function Block() {
     }
   });
 
+  test('I1952-AC-001/002/003/004 compiles and lazily resolves the clsx package root only', async () => {
+    const registry = createFrontstageNativeReactModuleRegistry();
+    const source = `import clsxDefault, { clsx as clsxNamed } from 'clsx';
+
+export default function Block() {
+  void clsxDefault;
+  void clsxNamed;
+  return <div />;
+}`;
+
+    expect(compileNativeReactComponent(source, registry.definitions).ok).toBe(
+      true
+    );
+    expect(
+      registry.definitions.find(
+        ({ module_source }) => module_source === 'clsx'
+      )
+    ).toEqual({
+      module_source: 'clsx',
+      exports: ['default', 'clsx']
+    });
+
+    const [first, second] = await Promise.all([
+      registry.load('clsx'),
+      registry.load('clsx')
+    ]);
+    expect(first).toBe(second);
+    expect(first.default).toBe(first.clsx);
+
+    const clsx = first.clsx as (...inputs: unknown[]) => string;
+    expect(
+      clsx(
+        'base',
+        false,
+        'active',
+        null,
+        undefined,
+        ['nested', { chosen: true, hidden: false }]
+      )
+    ).toBe('base active nested chosen');
+
+    expect(
+      compileNativeReactComponent(
+        `import clsx from 'clsx/lite'; export default clsx;`,
+        registry.definitions
+      ).ok
+    ).toBe(false);
+    await expect(registry.load('clsx/lite')).rejects.toMatchObject({
+      code: 'module_not_registered'
+    });
+
+    const registrySource = readFileSync(
+      join(
+        process.cwd(),
+        'src/features/frontstage/lib/native-modules/registry.ts'
+      ),
+      'utf8'
+    );
+    expect(registrySource).toContain("import('clsx')");
+    expect(registrySource).not.toMatch(
+      /import\s+.*\s+from\s+['"]clsx['"]/u
+    );
+  });
+
   test('AC-002 exposes every installed Ant Design ES module source', async () => {
     const registry = createFrontstageNativeReactModuleRegistry();
 
