@@ -297,11 +297,11 @@ pub(crate) async fn invoke_providers_view(
         }
     })
     .expect("built-in binding identity must remain valid");
-    let activated_authentication = snapshot.authentication(&binding_id).ok_or(
+    let activated_authentication = snapshot.authentication(&binding_id).cloned().ok_or(
         control_plane::errors::ControlPlaneError::NotFound("authentication_activation"),
     )?;
     let principal: UserPrincipal = boot_snapshot
-        .authenticate(activated_authentication, credential)
+        .authenticate(&activated_authentication, credential)
         .await
         .map_err(crate::error_response::ApiError::from)?;
     let authentication_activation = activated_authentication.activation().clone();
