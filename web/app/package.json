@@ -43,6 +43,7 @@
     "i18next": "^26.3.0",
     "i18next-resources-to-backend": "^1.2.1",
     "lexical": "^0.43.0",
+    "lodash": "^4.18.1",
     "monaco-editor": "^0.55.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

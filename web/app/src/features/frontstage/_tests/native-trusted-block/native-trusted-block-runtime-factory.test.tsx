@@ -306,6 +306,90 @@ export default function Block() {
     expect(registrySource).toContain('loadDayjsModule');
   });
 
+  test('I1951-AC-001/002/003/004 compiles and lazily resolves lodash/debounce only', async () => {
+    vi.useFakeTimers();
+    try {
+      const registry = createFrontstageNativeReactModuleRegistry();
+      const source = `import debounce from 'lodash/debounce';
+
+export default function Block() {
+  void debounce;
+  return <div />;
+}`;
+
+      expect(compileNativeReactComponent(source, registry.definitions).ok).toBe(
+        true
+      );
+      expect(
+        registry.definitions.find(
+          ({ module_source }) => module_source === 'lodash/debounce'
+        )
+      ).toEqual({
+        module_source: 'lodash/debounce',
+        exports: ['default']
+      });
+
+      const [first, second] = await Promise.all([
+        registry.load('lodash/debounce'),
+        registry.load('lodash/debounce')
+      ]);
+      expect(first).toBe(second);
+
+      const debounce = first.default as (
+        callback: () => string,
+        wait: number
+      ) => {
+        (): string | undefined;
+        cancel(): void;
+        flush(): string | undefined;
+      };
+      const callback = vi.fn(() => 'completed');
+      const debounced = debounce(callback, 100);
+
+      debounced();
+      debounced();
+      await vi.advanceTimersByTimeAsync(99);
+      expect(callback).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(callback).toHaveBeenCalledTimes(1);
+
+      debounced();
+      debounced.cancel();
+      await vi.advanceTimersByTimeAsync(100);
+      expect(callback).toHaveBeenCalledTimes(1);
+
+      debounced();
+      expect(debounced.flush()).toBe('completed');
+      expect(callback).toHaveBeenCalledTimes(2);
+
+      for (const deniedSource of ['lodash', 'lodash/throttle']) {
+        expect(
+          compileNativeReactComponent(
+            `import dependency from '${deniedSource}'; export default dependency;`,
+            registry.definitions
+          ).ok
+        ).toBe(false);
+        await expect(registry.load(deniedSource)).rejects.toMatchObject({
+          code: 'module_not_registered'
+        });
+      }
+
+      const registrySource = readFileSync(
+        join(
+          process.cwd(),
+          'src/features/frontstage/lib/native-modules/registry.ts'
+        ),
+        'utf8'
+      );
+      expect(registrySource).toContain("import('lodash/debounce')");
+      expect(registrySource).not.toMatch(
+        /import\s+.*\s+from\s+['"]lodash(?:\/debounce)?['"]/u
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('AC-002 exposes every installed Ant Design ES module source', async () => {
     const registry = createFrontstageNativeReactModuleRegistry();
 

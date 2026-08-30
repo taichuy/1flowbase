@@ -102,6 +102,10 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
       module: await loadDayjsModule(module_source)
     }))
   ),
+  registration('lodash/debounce', ['default'], async () => {
+    const debounceModule = await import('lodash/debounce');
+    return { module: { default: debounceModule.default } };
+  }),
   registration('antd-style', ANTD_STYLE_EXPORTS, async () => ({
     module: await loadAntdStyleModule()
   })),

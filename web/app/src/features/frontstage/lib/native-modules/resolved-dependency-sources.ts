@@ -3,7 +3,8 @@ export const FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES = [
   'react/jsx-runtime',
   'antd',
   '@ant-design/colors',
-  'dayjs'
+  'dayjs',
+  'lodash/debounce'
 ] as const;
 
 export function isFrontstageNativeReactResolvedDeclarationSource(

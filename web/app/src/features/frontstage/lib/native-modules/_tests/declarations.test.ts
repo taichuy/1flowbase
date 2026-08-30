@@ -104,6 +104,19 @@ void output;`
     expect(diagnostics).toEqual([]);
   });
 
+  test('I1951-AC-001 type-checks the lodash/debounce default export', () => {
+    const diagnostics = typeCheckSource({
+      extraLibs: FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS,
+      source: `import debounce from 'lodash/debounce';
+
+const debounced = debounce((value: string) => value, 100);
+debounced.cancel();
+debounced.flush();`
+    });
+
+    expect(diagnostics).toEqual([]);
+  });
+
   test('AC-004 fails explicitly when a dependency declaration cannot resolve', () => {
     expect(() =>
       collectNativeModuleDeclarations({
