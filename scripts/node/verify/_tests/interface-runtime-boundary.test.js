@@ -158,10 +158,14 @@ test('Delivery 1917 binds one graph-frozen hook plan and commits facts through d
     'api/crates/storage/durable/postgres/migrations/20260828100000_create_lifecycle_outbox.sql',
   );
   const runtimeCargo = read('api/crates/interface-runtime/Cargo.toml');
+  const kernel = read('api/crates/interface-runtime/src/invocation.rs');
 
   assert.match(boot, /compile_hook_plans/u);
   assert.match(boot, /TypedInterfaceHookPlan::new/u);
-  assert.match(operation, /invoke_with_hook_plan/u);
+  assert.match(operation, /compiler\.bind_hook_plan/u);
+  assert.match(operation, /\.invoke::<\s*HostInfrastructureProvidersViewInput/u);
+  assert.doesNotMatch(operation, /invoke_with_hook_plan/u);
+  assert.doesNotMatch(kernel, /pub async fn invoke_with_hook_plan/u);
   assert.match(transaction, /record_lifecycle_fact_in_transaction\(&mut tx/u);
   assert.match(transaction, /tx\.commit\(\)\.await/u);
   assert.ok(
