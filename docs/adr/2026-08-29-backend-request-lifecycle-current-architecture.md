@@ -40,6 +40,44 @@ Accepted and implemented on `beta` for #1944（Canonical Interface 生产闭环�
 2. **Interface first**：后端输入、输出、stream、error 和 terminal 由协议无关 Interface contract 管理；
 3. **时空可组合性**：插件贡献必须拥有明确 phase/scope 和被冻结的 Graph/Catalog/plugin/artifact/invocation 身份。
 
+### 统一逻辑架构
+
+所有已接入 Canonical Interface 的请求，无论来自 HTTP、SSE、MCP、Internal 还是 Worker，在协议边界之后都进入同一套逻辑架构：
+
+```mermaid
+flowchart TB
+    Sources["Request Sources<br/>HTTP / SSE / WebSocket / MCP / Internal / Worker"]
+    Adapters["Protocol Adapters<br/>解析协议、提取短生命周期 Credential、投影结果"]
+
+    subgraph Canonical["Canonical Interface Plane"]
+        Resolve["Binding Resolve<br/>binding_id + protocol"]
+        Plan["Frozen Compiled Invocation Plan<br/>Definition + Binding + AuthN + AuthZ + Admission + Hooks + Handler"]
+        AuthN["PrincipalEstablished<br/>Credential → sealed Principal"]
+        AuthZ["Authorized<br/>Core decision → ordered extension vetoes"]
+        Admission["Admitted<br/>Core decision → ordered extension vetoes"]
+        Before["Prepared<br/>typed Before Hooks"]
+        Dispatch["Dispatched<br/>freeze Attempt / Target / Generation"]
+        Terminal["Terminal Receipt<br/>Completed / Rejected / Failed / Cancelled"]
+    end
+
+    Graph["Boot Snapshot / Effective Extension Graph"] --> Plan
+    Sources --> Adapters --> Resolve --> Plan --> AuthN --> AuthZ --> Admission --> Before --> Dispatch
+    Dispatch --> Handler["exactly-one Typed Handler"]
+    Handler --> App["Application Use Case"] --> Domain["Domain Invariant"]
+    Domain --> Execution["Repository / Transaction / Orchestration / RuntimeExecutionPort"]
+    Execution --> Post["PostProcessed<br/>After / Failure / Completion"] --> Terminal
+    Resolve -. reject / cancel .-> Terminal
+    AuthN -. reject / cancel .-> Terminal
+    AuthZ -. reject / cancel .-> Terminal
+    Admission -. reject / cancel .-> Terminal
+    Before -. reject / cancel .-> Terminal
+    Terminal --> Projection["Protocol Projection<br/>HTTP / Stream / MCP / Internal Result"]
+```
+
+这张图是统一架构；协议差异只存在于 Adapter/Projection，业务差异只存在于 typed Handler 之后。Interface Plane 统一身份、权限、准入、插件阶段、执行计划和终态，不统一 Cookie、HTTP 对象、数据库事务或 Runtime Host。
+
+### 当前迁移状态（不是总架构）
+
 全部后端 Route 仍不是同一个物理函数。已迁移的生产路径通过 Canonical Interface 发布和执行，尚未迁移的 Route 保留原有兼容链：
 
 ```mermaid
