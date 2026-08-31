@@ -494,6 +494,24 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-application-runtime-archive",
+            &[
+                "applications.runtime.archive.run.export",
+                "applications.runtime.archive.runs.export",
+                "applications.runtime.archive.upload-sessions.create",
+                "applications.runtime.archive.upload-chunks.upsert",
+                "applications.runtime.archive.upload-sessions.complete",
+                "applications.runtime.archive.import-jobs.get",
+            ],
+            &["api-server.console-application-runtime-archive"],
+            crate::routes::application_runtime::archive::interface::compile_registry(
+                crate::routes::application_runtime::archive::interface::dependencies(
+                    state.store.clone(),
+                    state.file_storage_registry.clone(),
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-application-orchestration",
             &[
                 "applications.orchestration.get",

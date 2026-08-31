@@ -48,7 +48,7 @@ pub(super) struct CreateRunArchiveImportJobInput<'a> {
     pub(super) run_count: i32,
 }
 pub(super) async fn create_run_archive_import_job(
-    state: &Arc<ApiState>,
+    store: &storage_durable_postgres::MainDurableStore,
     input: CreateRunArchiveImportJobInput<'_>,
 ) -> Result<Uuid, ApiError> {
     let job_id = Uuid::now_v7();
@@ -77,13 +77,13 @@ pub(super) async fn create_run_archive_import_job(
     .bind(input.archive_version)
     .bind(input.archive_sha256)
     .bind(input.run_count)
-    .execute(state.store.pool())
+    .execute(store.pool())
     .await?;
     Ok(job_id)
 }
 
 pub(super) async fn mark_run_archive_import_job_processing(
-    state: &Arc<ApiState>,
+    store: &storage_durable_postgres::MainDurableStore,
     job_id: Uuid,
 ) -> Result<(), ApiError> {
     sqlx::query(
@@ -96,13 +96,13 @@ pub(super) async fn mark_run_archive_import_job_processing(
         "#,
     )
     .bind(job_id)
-    .execute(state.store.pool())
+    .execute(store.pool())
     .await?;
     Ok(())
 }
 
 pub(super) async fn mark_run_archive_import_job_succeeded(
-    state: &Arc<ApiState>,
+    store: &storage_durable_postgres::MainDurableStore,
     job_id: Uuid,
     run_mappings: Vec<(String, Uuid)>,
 ) -> Result<(), ApiError> {
@@ -129,13 +129,13 @@ pub(super) async fn mark_run_archive_import_job_succeeded(
     .bind(job_id)
     .bind(i32::try_from(run_mappings.len()).unwrap_or(i32::MAX))
     .bind(result_payload)
-    .execute(state.store.pool())
+    .execute(store.pool())
     .await?;
     Ok(())
 }
 
 pub(super) async fn mark_run_archive_import_job_failed(
-    state: &Arc<ApiState>,
+    store: &storage_durable_postgres::MainDurableStore,
     job_id: Uuid,
     message: String,
 ) -> Result<(), ApiError> {
@@ -151,13 +151,13 @@ pub(super) async fn mark_run_archive_import_job_failed(
     )
     .bind(job_id)
     .bind(serde_json::json!({ "message": message }))
-    .execute(state.store.pool())
+    .execute(store.pool())
     .await?;
     Ok(())
 }
 
 pub(super) async fn mark_upload_session_completed(
-    state: &Arc<ApiState>,
+    store: &storage_durable_postgres::MainDurableStore,
     session_id: Uuid,
 ) -> Result<(), ApiError> {
     sqlx::query(
@@ -170,7 +170,7 @@ pub(super) async fn mark_upload_session_completed(
         "#,
     )
     .bind(session_id)
-    .execute(state.store.pool())
+    .execute(store.pool())
     .await?;
     Ok(())
 }
@@ -205,7 +205,7 @@ pub(super) async fn refresh_run_archive_upload_session_received_bytes(
 }
 
 pub(super) async fn load_run_archive_upload_session(
-    state: &Arc<ApiState>,
+    store: &storage_durable_postgres::MainDurableStore,
     application_id: Uuid,
     session_id: Uuid,
 ) -> Result<RunArchiveUploadSessionRow, ApiError> {
@@ -230,7 +230,7 @@ pub(super) async fn load_run_archive_upload_session(
     )
     .bind(session_id)
     .bind(application_id)
-    .fetch_optional(state.store.pool())
+    .fetch_optional(store.pool())
     .await?
     .ok_or(ControlPlaneError::NotFound("run_archive_upload_session"))?;
 
@@ -250,7 +250,7 @@ pub(super) async fn load_run_archive_upload_session(
 }
 
 pub(super) async fn cleanup_run_archive_upload_chunks(
-    state: &Arc<ApiState>,
+    store: &storage_durable_postgres::MainDurableStore,
     session_id: Uuid,
 ) -> Result<(), ApiError> {
     sqlx::query(
@@ -260,13 +260,13 @@ pub(super) async fn cleanup_run_archive_upload_chunks(
         "#,
     )
     .bind(session_id)
-    .execute(state.store.pool())
+    .execute(store.pool())
     .await?;
     Ok(())
 }
 
 pub(super) async fn load_upload_session_archive_bytes(
-    state: &Arc<ApiState>,
+    store: &storage_durable_postgres::MainDurableStore,
     session_id: Uuid,
 ) -> Result<Vec<u8>, ApiError> {
     let chunks = sqlx::query(
@@ -278,7 +278,7 @@ pub(super) async fn load_upload_session_archive_bytes(
         "#,
     )
     .bind(session_id)
-    .fetch_all(state.store.pool())
+    .fetch_all(store.pool())
     .await?;
     if chunks.is_empty() {
         return Err(ControlPlaneError::InvalidInput("archive_chunks").into());
@@ -296,7 +296,7 @@ pub(super) async fn load_upload_session_archive_bytes(
 }
 
 pub(super) async fn load_run_archive_import_job(
-    state: &Arc<ApiState>,
+    store: &storage_durable_postgres::MainDurableStore,
     application_id: Uuid,
     job_id: Uuid,
 ) -> Result<RunArchiveImportJobRow, ApiError> {
@@ -324,7 +324,7 @@ pub(super) async fn load_run_archive_import_job(
     )
     .bind(job_id)
     .bind(application_id)
-    .fetch_optional(state.store.pool())
+    .fetch_optional(store.pool())
     .await?
     .ok_or(ControlPlaneError::NotFound("run_archive_import_job"))?;
 
@@ -347,7 +347,7 @@ pub(super) async fn load_run_archive_import_job(
 }
 
 pub(super) async fn to_import_job_response(
-    state: &Arc<ApiState>,
+    store: &storage_durable_postgres::MainDurableStore,
     row: RunArchiveImportJobRow,
 ) -> Result<RunArchiveImportJobResponse, ApiError> {
     let mapping_rows = sqlx::query(
@@ -360,7 +360,7 @@ pub(super) async fn to_import_job_response(
         "#,
     )
     .bind(row.job_id)
-    .fetch_all(state.store.pool())
+    .fetch_all(store.pool())
     .await?;
     let source_to_target_run_ids = mapping_rows
         .into_iter()

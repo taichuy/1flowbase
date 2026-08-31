@@ -1,13 +1,13 @@
 use super::*;
 
 pub(super) async fn rebuild_imported_run_trace_projections(
-    state: &Arc<ApiState>,
+    store: &storage_durable_postgres::MainDurableStore,
     application_id: Uuid,
     run_mappings: &[(String, Uuid)],
 ) -> Vec<serde_json::Value> {
     let mut warnings = Vec::new();
     for (source_run_id, target_run_id) in run_mappings {
-        match ensure_application_run_trace_projection_status(state, application_id, *target_run_id)
+        match ensure_application_run_trace_projection_status(store, application_id, *target_run_id)
             .await
         {
             Ok(status) => {
@@ -32,7 +32,7 @@ pub(super) async fn rebuild_imported_run_trace_projections(
 }
 
 pub(super) async fn update_run_archive_import_job_projection_warnings(
-    state: &Arc<ApiState>,
+    store: &storage_durable_postgres::MainDurableStore,
     job_id: Uuid,
     run_mappings: &[(String, Uuid)],
     warnings: Vec<serde_json::Value>,
@@ -57,7 +57,7 @@ pub(super) async fn update_run_archive_import_job_projection_warnings(
     )
     .bind(job_id)
     .bind(result_payload)
-    .execute(state.store.pool())
+    .execute(store.pool())
     .await?;
     Ok(())
 }

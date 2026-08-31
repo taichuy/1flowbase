@@ -15,23 +15,23 @@ struct ImportedRunFinalUpdate {
 }
 
 pub(crate) async fn restore_run_archive_v1(
-    state: Arc<ApiState>,
+    store: storage_durable_postgres::MainDurableStore,
     application: &domain::ApplicationRecord,
     actor: domain::ActorContext,
     job_id: Uuid,
     archive: RunArchiveV1Response,
 ) -> Result<(), ApiError> {
-    mark_run_archive_import_job_processing(&state, job_id).await?;
+    mark_run_archive_import_job_processing(&store, job_id).await?;
     if archive.archive_version != RUN_ARCHIVE_VERSION {
         return Err(ControlPlaneError::InvalidInput("archive_version").into());
     }
 
-    let editor_state = FlowService::new(state.store.for_actor(actor.clone()))
+    let editor_state = FlowService::new(store.for_actor(actor.clone()))
         .get_or_create_editor_state(actor.user_id, application.id)
         .await?;
     let mut run_mappings = Vec::with_capacity(archive.entries.len());
     let mut final_run_updates = Vec::with_capacity(archive.entries.len());
-    let mut tx = state.store.pool().begin().await?;
+    let mut tx = store.pool().begin().await?;
 
     for entry in archive.entries {
         let source_run_id = Uuid::parse_str(&entry.source_run_id)
@@ -551,7 +551,7 @@ pub(crate) async fn restore_run_archive_v1(
     tx.commit().await?;
     for update in final_run_updates {
         <_ as OrchestrationRuntimeRepository>::update_flow_run_payloads(
-            &state.store,
+            &store,
             &UpdateFlowRunPayloadsInput {
                 flow_run_id: update.target_run_id,
                 input_payload: update.input_payload.clone(),
@@ -561,7 +561,7 @@ pub(crate) async fn restore_run_archive_v1(
         )
         .await?;
         <_ as OrchestrationRuntimeRepository>::update_flow_run(
-            &state.store,
+            &store,
             &UpdateFlowRunInput {
                 flow_run_id: update.target_run_id,
                 status: update.status,
@@ -573,13 +573,13 @@ pub(crate) async fn restore_run_archive_v1(
         .await?;
     }
     let imported_run_mappings = run_mappings.clone();
-    mark_run_archive_import_job_succeeded(&state, job_id, run_mappings).await?;
+    mark_run_archive_import_job_succeeded(&store, job_id, run_mappings).await?;
     let projection_warnings =
-        rebuild_imported_run_trace_projections(&state, application.id, &imported_run_mappings)
+        rebuild_imported_run_trace_projections(&store, application.id, &imported_run_mappings)
             .await;
     if !projection_warnings.is_empty() {
         update_run_archive_import_job_projection_warnings(
-            &state,
+            &store,
             job_id,
             &imported_run_mappings,
             projection_warnings,

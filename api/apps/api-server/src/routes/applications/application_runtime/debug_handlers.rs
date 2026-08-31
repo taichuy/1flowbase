@@ -1,14 +1,3 @@
-async fn ensure_application_non_crud_operation(
-    state: &Arc<ApiState>,
-    actor: &domain::ActorContext,
-    application_id: Uuid,
-    operation: ApplicationNonCrudConsoleOperation,
-) -> Result<domain::ApplicationRecord, ApiError> {
-    Ok(ApplicationService::new(state.store.for_actor(actor.clone()))
-        .load_application_for_non_crud_console_operation(actor.user_id, application_id, operation)
-        .await?)
-}
-
 fn parse_runtime_event_cursor(run_id: Uuid, event_id: &str) -> Option<i64> {
     if let Ok(sequence) = event_id.parse::<i64>() {
         return Some(sequence);

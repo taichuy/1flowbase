@@ -84,26 +84,6 @@ fn download_response(
         .map_err(ApiError::from)
 }
 
-async fn build_application_run_trace_export_document(
-    state: Arc<ApiState>,
-    workspace_id: Uuid,
-    application: &domain::ApplicationRecord,
-    application_id: Uuid,
-    run_id: Uuid,
-    exported_at: OffsetDateTime,
-) -> Result<ApplicationRunTraceExportDocument, ApiError> {
-    interface_trace_exports::build_application_run_trace_export_document(
-        state.store.clone(),
-        state.file_storage_registry.clone(),
-        workspace_id,
-        application,
-        application_id,
-        run_id,
-        exported_at,
-    )
-    .await
-}
-
 fn safe_filename_segment(value: &str) -> String {
     let mut segment = String::new();
     let mut last_was_separator = false;

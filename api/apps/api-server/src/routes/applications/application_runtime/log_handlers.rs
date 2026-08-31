@@ -90,13 +90,13 @@ pub async fn list_application_run_conversation_messages(
 }
 
 async fn ensure_application_run_trace_projection_status(
-    state: &Arc<ApiState>,
+    store: &storage_durable_postgres::MainDurableStore,
     application_id: Uuid,
     flow_run_id: Uuid,
 ) -> Result<domain::ApplicationRunTraceProjectionStatusRecord, ApiError> {
     let status =
         <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
-            &state.store,
+            store,
             flow_run_id,
             APPLICATION_RUN_TRACE_PROJECTION_VERSION,
         )
@@ -115,7 +115,7 @@ async fn ensure_application_run_trace_projection_status(
 
     let source_watermark =
         <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source_watermark(
-            &state.store,
+            store,
             application_id,
             flow_run_id,
         )
@@ -127,14 +127,14 @@ async fn ensure_application_run_trace_projection_status(
 
     let source =
         <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_source(
-            &state.store,
+            store,
             application_id,
             flow_run_id,
         )
         .await?
         .ok_or(ControlPlaneError::NotFound("flow_run"))?;
     let runtime_events = <_ as OrchestrationRuntimeRepository>::list_runtime_events(
-        &state.store,
+        store,
         flow_run_id,
         0,
     )
@@ -143,13 +143,13 @@ async fn ensure_application_run_trace_projection_status(
         enrich_application_run_detail_visible_internal_llm_route_traces(source, &runtime_events);
     let projection = build_application_run_trace_projection(&source)?;
     <_ as OrchestrationRuntimeRepository>::replace_application_run_trace_projection(
-        &state.store,
+        store,
         &projection,
     )
     .await?;
 
     <_ as OrchestrationRuntimeRepository>::get_application_run_trace_projection_status(
-        &state.store,
+        store,
         flow_run_id,
         APPLICATION_RUN_TRACE_PROJECTION_VERSION,
     )

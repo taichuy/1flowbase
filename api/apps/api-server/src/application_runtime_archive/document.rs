@@ -11,7 +11,8 @@ where
     Ok(serde_json::from_value(field_value)?)
 }
 pub(super) async fn build_run_archive_v1_document(
-    state: Arc<ApiState>,
+    store: storage_durable_postgres::MainDurableStore,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     workspace_id: Uuid,
     actor_user_id: Uuid,
     application: &domain::ApplicationRecord,
@@ -21,7 +22,8 @@ pub(super) async fn build_run_archive_v1_document(
     let mut entries = Vec::with_capacity(run_ids.len());
     for run_id in &run_ids {
         let entry = build_run_archive_v1_entry(
-            state.clone(),
+            store.clone(),
+            file_storage_registry.clone(),
             workspace_id,
             application,
             application.id,
@@ -69,15 +71,17 @@ pub(super) async fn build_run_archive_v1_document(
 }
 
 async fn build_run_archive_v1_entry(
-    state: Arc<ApiState>,
+    store: storage_durable_postgres::MainDurableStore,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     workspace_id: Uuid,
     application: &domain::ApplicationRecord,
     application_id: Uuid,
     run_id: Uuid,
     exported_at: OffsetDateTime,
 ) -> Result<RunArchiveV1EntryResponse, ApiError> {
-    let export_document = build_application_run_trace_export_document(
-        state.clone(),
+    let export_document = interface_trace_exports::build_application_run_trace_export_document(
+        store.clone(),
+        file_storage_registry,
         workspace_id,
         application,
         application_id,
@@ -101,7 +105,7 @@ async fn build_run_archive_v1_entry(
     normalize_run_archive_trace_tree_projection_status(&mut trace_tree);
     let export_warnings = required_json_field(&export_value, "export_warnings")?;
     let detail = <_ as OrchestrationRuntimeRepository>::get_application_run_detail(
-        &state.store,
+        &store,
         application_id,
         run_id,
     )
@@ -109,7 +113,7 @@ async fn build_run_archive_v1_entry(
     .ok_or(ControlPlaneError::NotFound("flow_run"))?;
     let compiled_plan = match detail.flow_run.compiled_plan_id {
         Some(compiled_plan_id) => {
-            <_ as OrchestrationRuntimeRepository>::get_compiled_plan(&state.store, compiled_plan_id)
+            <_ as OrchestrationRuntimeRepository>::get_compiled_plan(&store, compiled_plan_id)
                 .await?
                 .map(serde_json::to_value)
                 .transpose()?
@@ -117,16 +121,16 @@ async fn build_run_archive_v1_entry(
         None => None,
     };
     let runtime_spans = records_to_json_values(
-        <_ as OrchestrationRuntimeRepository>::list_runtime_spans(&state.store, run_id).await?,
+        <_ as OrchestrationRuntimeRepository>::list_runtime_spans(&store, run_id).await?,
     )?;
     let runtime_events = records_to_json_values(
-        <_ as OrchestrationRuntimeRepository>::list_runtime_events(&state.store, run_id, 0).await?,
+        <_ as OrchestrationRuntimeRepository>::list_runtime_events(&store, run_id, 0).await?,
     )?;
     let runtime_items = records_to_json_values(
-        <_ as OrchestrationRuntimeRepository>::list_runtime_items(&state.store, run_id).await?,
+        <_ as OrchestrationRuntimeRepository>::list_runtime_items(&store, run_id).await?,
     )?;
     let context_projections = archive_json_rows(
-        &state.store,
+        &store,
         r#"
         select to_jsonb(projections) as value
           from runtime_context_projections projections
@@ -136,7 +140,7 @@ async fn build_run_archive_v1_entry(
     )
     .await?;
     let canonical_contents = archive_json_rows(
-        &state.store,
+        &store,
         r#"
         select to_jsonb(contents) as value
           from runtime_canonical_contents contents
@@ -155,36 +159,32 @@ async fn build_run_archive_v1_entry(
     )
     .await?;
     let invocation_context_bindings = archive_json_rows(
-        &state.store,
+        &store,
         "select to_jsonb(bindings) as value from runtime_invocation_context_bindings bindings where flow_run_id = $1 order by created_at, invocation_span_id",
         run_id,
     )
     .await?;
     let recovery_history = archive_json_rows(
-        &state.store,
+        &store,
         "select to_jsonb(recovery) as value from flow_run_recovery_history recovery where flow_run_id = $1 order by sequence, id",
         run_id,
     )
     .await?;
     let resume_claims = archive_json_rows(
-        &state.store,
+        &store,
         "select to_jsonb(claims) as value from flow_run_resume_claims claims where flow_run_id = $1 order by created_at, id",
         run_id,
     )
     .await?;
     let usage_ledger = records_to_json_values(
-        <_ as OrchestrationRuntimeRepository>::list_usage_ledger(&state.store, run_id).await?,
+        <_ as OrchestrationRuntimeRepository>::list_usage_ledger(&store, run_id).await?,
     )?;
     let model_failover_attempts = records_to_json_values(
-        <_ as OrchestrationRuntimeRepository>::list_model_failover_attempt_ledger(
-            &state.store,
-            run_id,
-        )
-        .await?,
+        <_ as OrchestrationRuntimeRepository>::list_model_failover_attempt_ledger(&store, run_id)
+            .await?,
     )?;
     let capability_invocations = records_to_json_values(
-        <_ as OrchestrationRuntimeRepository>::list_capability_invocations(&state.store, run_id)
-            .await?,
+        <_ as OrchestrationRuntimeRepository>::list_capability_invocations(&store, run_id).await?,
     )?;
 
     Ok(RunArchiveV1EntryResponse {
