@@ -180,6 +180,21 @@ pub(crate) async fn resolve_official_source_label(
     resolve_request_text(state, locale, key).await
 }
 
+pub(crate) async fn resolve_official_source_label_with(
+    store: &MainDurableStore,
+    bootstrap_workspace_id: uuid::Uuid,
+    locale: &CatalogLocale,
+    source_kind: &str,
+    fallback: String,
+) -> Result<String, ApiError> {
+    let key = match source_kind {
+        "official_registry" => "Official source",
+        "mirror_registry" => "Mirror source",
+        _ => return Ok(fallback),
+    };
+    resolve_request_text_with(store, bootstrap_workspace_id, locale, key).await
+}
+
 pub fn compile_core_settings_feature_registry() -> Result<
     Arc<access_control::SettingsFeatureRegistry>,
     access_control::SettingsFeatureRegistryError,

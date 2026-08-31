@@ -803,6 +803,32 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-network-plugins",
+            &[
+                "network_egress_plugins.official_catalog.view",
+                "network_egress_plugins.families.view",
+                "network_egress_plugins.families.switch",
+                "network_egress_plugins.families.uninstall",
+                "network_egress_plugins.install.official",
+                "network_egress_plugins.install.upload",
+            ],
+            &["api-server.console-network-plugins"],
+            crate::routes::network_center::plugins::plugins_interface::compile_registry(
+                crate::routes::network_center::plugins::plugins_interface::NetworkPluginDependencies {
+                    store: state.store.clone(),
+                    provider_runtime: state.provider_runtime.clone(),
+                    official_plugin_source: state.official_plugin_source.clone(),
+                    official_catalog_source: state.official_extension_catalog_source.clone(),
+                    cache_store: state.infrastructure.cache_store(),
+                    provider_install_root: state.provider_install_root.clone(),
+                    provider_secret_master_key: state.provider_secret_master_key.clone(),
+                    api_node_id: state.api_node_id.clone(),
+                    bootstrap_workspace_id: state.bootstrap_workspace_id,
+                    allow_uploaded_host_extensions: state.allow_uploaded_host_extensions,
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",

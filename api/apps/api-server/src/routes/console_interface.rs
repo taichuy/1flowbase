@@ -58,6 +58,25 @@ impl ConsoleLocaleHints {
         domain::CatalogLocale::new(resolved.resolved_locale)
             .expect("runtime profile must resolve a supported catalog locale")
     }
+
+    pub(crate) fn resolve_meta(
+        &self,
+        query_locale: Option<String>,
+        preferred_locale: Option<String>,
+    ) -> crate::routes::system::LocaleMetaResponse {
+        runtime_profile::resolve_locale(runtime_profile::LocaleResolutionInput {
+            query_locale,
+            explicit_header_locale: self.explicit_header_locale.clone(),
+            user_preferred_locale: preferred_locale,
+            accept_language: self.accept_language.clone(),
+            fallback_locale: runtime_profile::FALLBACK_LOCALE,
+            supported_locales: runtime_profile::SUPPORTED_LOCALES
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
+        })
+        .into()
+    }
 }
 
 const AUTHENTICATION_ADAPTER: &str = "api-server.console.require-session";

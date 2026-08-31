@@ -5,10 +5,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json,
 };
-use control_plane::network_egress::{
-    NetworkEgressProviderService, NetworkEgressProviderTypeView, NetworkEgressProviderView,
-};
-use control_plane::network_egress_secret::ProviderRegistryNetworkEgressSecretResolver;
+use control_plane::network_egress::{NetworkEgressProviderTypeView, NetworkEgressProviderView};
 use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
@@ -17,7 +14,6 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_get, console_patch, console_post, ConsoleRouteAssembly,
@@ -151,19 +147,6 @@ pub(crate) fn route_assembly_with_plugin_upload_max_bytes(
         ))
         .merge(pools::route_assembly())
         .merge(routes::route_assembly())
-}
-
-pub(super) fn service(state: &ApiState) -> crate::app_state::ApiNetworkEgressProviderService {
-    NetworkEgressProviderService::new(
-        state.store.clone(),
-        ApiProviderRuntime::new(state.provider_runtime.clone()),
-        ProviderRegistryNetworkEgressSecretResolver::new(
-            state.store.clone(),
-            state.provider_secret_master_key.clone(),
-        ),
-        state.provider_secret_master_key.clone(),
-        state.api_node_id.clone(),
-    )
 }
 
 pub(super) fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, ApiError> {

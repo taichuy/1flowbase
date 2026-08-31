@@ -6,25 +6,21 @@ use axum::{
     http::{HeaderMap, StatusCode},
     middleware, Json,
 };
-use control_plane::plugin_management::{
-    official_plugin_host_compatibility, DeletePluginFamilyCommand, InstallUploadedPluginCommand,
-    PluginCatalogFilter,
-};
+use control_plane::plugin_management::official_plugin_host_compatibility;
 use control_plane::ports::NetworkEgressRepository;
 use utoipa::ToSchema;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::{
         console_route_assembly::{console_delete, console_get, console_post, ConsoleRouteAssembly},
         plugins::{
-            enforce_plugin_upload_limit, read_upload_file, requested_locales, resolve_locale_meta,
-            to_install_response, InstallOfficialPluginBody, InstallPluginResponse,
-            OfficialPluginArtifactResponse, OfficialPluginCatalogPageResponse,
-            OfficialPluginCatalogQuery, PluginUploadMultipartBody,
+            enforce_plugin_upload_limit, read_upload_file, requested_locales, to_install_response,
+            InstallOfficialPluginBody, InstallPluginResponse, OfficialPluginArtifactResponse,
+            OfficialPluginCatalogPageResponse, OfficialPluginCatalogQuery,
+            PluginUploadMultipartBody,
         },
     },
 };
@@ -85,7 +81,7 @@ pub struct NetworkEgressPluginFamilyResponse {
 }
 
 impl NetworkEgressPluginFamilyResponse {
-    fn contains_installed_version(&self, target_version: &str) -> bool {
+    pub(super) fn contains_installed_version(&self, target_version: &str) -> bool {
         self.installed_versions
             .iter()
             .any(|version| version.plugin_version == target_version)
@@ -100,6 +96,8 @@ pub struct SwitchNetworkEgressPluginVersionBody {
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     route_assembly_with_plugin_upload_max_bytes(crate::config::DEFAULT_PLUGIN_UPLOAD_MAX_BYTES)
 }
+
+pub(crate) mod plugins_interface;
 
 pub(crate) fn route_assembly_with_plugin_upload_max_bytes(
     plugin_upload_max_bytes: usize,
@@ -162,15 +160,6 @@ pub(crate) fn route_assembly_with_plugin_upload_max_bytes(
         )
 }
 
-fn service(
-    state: &ApiState,
-    actor: &domain::ActorContext,
-    operation_id: &'static str,
-) -> crate::app_state::ApiPluginManagementService {
-    crate::routes::plugins::base_service(state, actor)
-        .for_network_egress_provider_console_operation(operation_id)
-}
-
 #[utoipa::path(
     get,
     path = "/api/console/settings/network-center/proxy-plugins/official-catalog",
@@ -183,74 +172,18 @@ pub async fn list_official_catalog(
     headers: HeaderMap,
     Query(query): Query<OfficialPluginCatalogQuery>,
 ) -> Result<Json<ApiSuccess<NetworkEgressOfficialPluginCatalogResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let locale_meta = resolve_locale_meta(
-        &headers,
-        query.locale.clone(),
-        context.user.preferred_locale,
-    );
-    let local_catalog = service(
-        &state,
-        &context.actor,
-        "network_egress_plugins.official_catalog.view",
-    )
-    .list_catalog(
-        context.user.id,
-        PluginCatalogFilter {
-            plugin_type: Some(NETWORK_EGRESS_PROVIDER_PLUGIN_TYPE.to_string()),
-        },
-        requested_locales(&locale_meta),
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-plugins.official-catalog.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        plugins_interface::NetworkPluginInput::ListOfficial { query, locale },
     )
     .await?;
-    let installed = project_plugin_families(local_catalog.entries)?;
-    let filter = official_filter(&query);
-    let page = state
-        .official_extension_catalog_source
-        .search_for_workspace(
-            context.actor.current_workspace_id,
-            "runtime-extensions",
-            crate::official_extension_catalog::OfficialExtensionCatalogSearchQuery {
-                slot_code: Some(NETWORK_EGRESS_PROVIDER_PLUGIN_TYPE.to_string()),
-                q: filter.search_query,
-                limit: filter.limit,
-                cursor: query.cursor,
-            },
-        )
-        .await?;
-    let entries = page
-        .entries
-        .into_iter()
-        .filter_map(
-            |entry| match project_catalog_entry(&state, entry, &installed) {
-                Ok(Some(entry)) => Some(Ok(entry)),
-                Ok(None) => None,
-                Err(error) => Some(Err(error)),
-            },
-        )
-        .collect::<anyhow::Result<Vec<_>>>()?;
-    let locale = domain::CatalogLocale::new(locale_meta.resolved_locale.clone())
-        .expect("runtime profile must resolve a supported catalog locale");
-    let source_label = crate::app_state::resolve_official_source_label(
-        &state,
-        &locale,
-        &page.source_kind,
-        page.source_kind.clone(),
-    )
-    .await?;
-    Ok(Json(ApiSuccess::new(
-        NetworkEgressOfficialPluginCatalogResponse {
-            source_kind: page.source_kind,
-            source_label,
-            registry_url: page.snapshot_locator,
-            source_freshness: "fresh".to_string(),
-            locale_meta,
-            page: OfficialPluginCatalogPageResponse {
-                limit: filter.limit,
-                next_cursor: page.next_cursor,
-            },
-            entries,
-        },
-    )))
+    let plugins_interface::NetworkPluginOutput::Official(catalog) = output else {
+        unreachable!("network plugin catalog binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(catalog)))
 }
 
 #[utoipa::path(
@@ -263,27 +196,18 @@ pub async fn list_plugin_families(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<NetworkEgressPluginFamilyResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let catalog = service(
-        &state,
-        &context.actor,
-        "network_egress_plugins.families.view",
-    )
-    .list_catalog(
-        context.user.id,
-        PluginCatalogFilter {
-            plugin_type: Some(NETWORK_EGRESS_PROVIDER_PLUGIN_TYPE.to_string()),
-        },
-        requested_locales(&resolve_locale_meta(
-            &headers,
-            None,
-            context.user.preferred_locale,
-        )),
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-plugins.families.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        plugins_interface::NetworkPluginInput::ListFamilies { locale },
     )
     .await?;
-    let mut families = project_plugin_families(catalog.entries)?;
-    mark_referenced_versions_not_uninstallable(&state, &mut families).await?;
-    Ok(Json(ApiSuccess::new(families.into_values().collect())))
+    let plugins_interface::NetworkPluginOutput::Families(families) = output else {
+        unreachable!("network plugin families binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(families)))
 }
 
 #[utoipa::path(
@@ -299,48 +223,21 @@ pub async fn switch_plugin_version(
     headers: HeaderMap,
     Json(body): Json<SwitchNetworkEgressPluginVersionBody>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let installation_id: uuid::Uuid = body
-        .installation_id
-        .parse()
-        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("installation_id"))?;
-    let catalog = service(
-        &state,
-        &context.actor,
-        "network_egress_plugins.families.switch",
-    )
-    .list_catalog(
-        context.user.id,
-        PluginCatalogFilter {
-            plugin_type: Some(NETWORK_EGRESS_PROVIDER_PLUGIN_TYPE.to_string()),
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-plugins.switch-version.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        plugins_interface::NetworkPluginInput::SwitchVersion {
+            provider_code,
+            body,
+            locale,
         },
-        requested_locales(&resolve_locale_meta(
-            &headers,
-            None,
-            context.user.preferred_locale,
-        )),
     )
     .await?;
-    let families = project_plugin_families(catalog.entries)?;
-    let family =
-        families
-            .get(&provider_code)
-            .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                "network_egress_plugin_family",
-            ))?;
-    if !family
-        .installed_versions
-        .iter()
-        .any(|version| version.installation_id == installation_id.to_string())
-    {
-        return Err(
-            control_plane::errors::ControlPlaneError::InvalidInput("installation_id").into(),
-        );
-    }
-    super::service(&state)
-        .activate_version(installation_id)
-        .await?;
+    let plugins_interface::NetworkPluginOutput::Empty = output else {
+        unreachable!("network plugin switch binding returned a different output")
+    };
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -355,54 +252,21 @@ pub async fn uninstall_plugin_version(
     Path((provider_code, installation_id)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let installation_id: uuid::Uuid = installation_id
-        .parse()
-        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("installation_id"))?;
-    let catalog = service(
-        &state,
-        &context.actor,
-        "network_egress_plugins.families.uninstall",
-    )
-    .list_catalog(
-        context.user.id,
-        PluginCatalogFilter {
-            plugin_type: Some(NETWORK_EGRESS_PROVIDER_PLUGIN_TYPE.to_string()),
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-plugins.uninstall-version.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        plugins_interface::NetworkPluginInput::UninstallVersion {
+            provider_code,
+            installation_id,
+            locale,
         },
-        requested_locales(&resolve_locale_meta(
-            &headers,
-            None,
-            context.user.preferred_locale,
-        )),
     )
     .await?;
-    let families = project_plugin_families(catalog.entries)?;
-    let family =
-        families
-            .get(&provider_code)
-            .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                "network_egress_plugin_family",
-            ))?;
-    let version = family
-        .installed_versions
-        .iter()
-        .find(|version| version.installation_id == installation_id.to_string())
-        .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
-            "installation_id",
-        ))?;
-    if !version.can_uninstall {
-        return Err(control_plane::errors::ControlPlaneError::Conflict(
-            "network_egress_plugin_version_uninstall_blocked",
-        )
-        .into());
-    }
-    control_plane::plugin_management::ExtensionInstallationService::new(
-        state.store.clone(),
-        &state.provider_install_root,
-    )
-    .delete_local_installation(&state.api_node_id, installation_id)
-    .await?;
+    let plugins_interface::NetworkPluginOutput::Empty = output else {
+        unreachable!("network plugin uninstall version binding returned a different output")
+    };
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -417,55 +281,20 @@ pub async fn uninstall_plugin_family(
     Path(provider_code): Path<String>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let catalog = service(
-        &state,
-        &context.actor,
-        "network_egress_plugins.families.uninstall",
-    )
-    .list_catalog(
-        context.user.id,
-        PluginCatalogFilter {
-            plugin_type: Some(NETWORK_EGRESS_PROVIDER_PLUGIN_TYPE.to_string()),
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-plugins.uninstall-family.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        plugins_interface::NetworkPluginInput::UninstallFamily {
+            provider_code,
+            locale,
         },
-        requested_locales(&resolve_locale_meta(
-            &headers,
-            None,
-            context.user.preferred_locale,
-        )),
     )
     .await?;
-    let families = project_plugin_families(catalog.entries)?;
-    let family =
-        families
-            .get(&provider_code)
-            .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                "network_egress_plugin_family",
-            ))?;
-    if state
-        .store
-        .list_network_egress_providers()
-        .await?
-        .into_iter()
-        .filter_map(|provider| provider.extension_family)
-        .any(|provider_family| provider_family.artifact_id() == family.provider_code)
-    {
-        return Err(control_plane::errors::ControlPlaneError::Conflict(
-            "network_egress_plugin_family_uninstall_blocked",
-        )
-        .into());
-    }
-    service(
-        &state,
-        &context.actor,
-        "network_egress_plugins.families.uninstall",
-    )
-    .delete_family(DeletePluginFamilyCommand {
-        actor_user_id: context.user.id,
-        provider_code,
-    })
-    .await?;
+    let plugins_interface::NetworkPluginOutput::Empty = output else {
+        unreachable!("network plugin uninstall family binding returned a different output")
+    };
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -481,28 +310,17 @@ pub async fn install_official_plugin(
     headers: HeaderMap,
     Json(body): Json<InstallOfficialPluginBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<InstallPluginResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let command = crate::routes::plugins::resolved_official_plugin_install_command(
-        &state,
-        context.user.id,
-        context.actor.current_workspace_id,
-        body.plugin_id,
-        crate::routes::plugins::to_compatibility_override(body.compatibility_override),
-        crate::routes::plugins::to_risk_override(body.risk_override),
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-plugins.install-official.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        plugins_interface::NetworkPluginInput::InstallOfficial(body),
     )
     .await?;
-    let result = service(
-        &state,
-        &context.actor,
-        "network_egress_plugins.install.official",
-    )
-    .install_resolved_official_plugin(command)
-    .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_install_response(result))),
-    ))
+    let plugins_interface::NetworkPluginOutput::Installed(result) = output else {
+        unreachable!("network plugin install binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(result))))
 }
 
 #[utoipa::path(
@@ -517,32 +335,29 @@ pub async fn install_uploaded_plugin(
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<ApiSuccess<InstallPluginResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
     let (file_name, package_bytes) = read_upload_file(&mut multipart).await?;
-    let result = service(
-        &state,
-        &context.actor,
-        "network_egress_plugins.install.upload",
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-plugins.install-upload.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        plugins_interface::NetworkPluginInput::InstallUploaded {
+            file_name,
+            package_bytes,
+        },
     )
-    .install_uploaded_network_egress_provider(InstallUploadedPluginCommand {
-        actor_user_id: context.user.id,
-        file_name,
-        package_bytes,
-    })
     .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_install_response(result))),
-    ))
+    let plugins_interface::NetworkPluginOutput::Installed(result) = output else {
+        unreachable!("network plugin upload binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(result))))
 }
 
-struct OfficialFilter {
-    search_query: Option<String>,
-    limit: usize,
+pub(super) struct OfficialFilter {
+    pub(super) search_query: Option<String>,
+    pub(super) limit: usize,
 }
 
-fn official_filter(query: &OfficialPluginCatalogQuery) -> OfficialFilter {
+pub(super) fn official_filter(query: &OfficialPluginCatalogQuery) -> OfficialFilter {
     OfficialFilter {
         search_query: query
             .q
@@ -580,8 +395,8 @@ fn metadata_optional(
         .map(str::to_string)
 }
 
-fn project_catalog_entry(
-    state: &ApiState,
+pub(super) fn project_catalog_entry(
+    source: &dyn crate::official_extension_catalog::OfficialExtensionCatalogSourcePort,
     entry: crate::official_extension_catalog::OfficialExtensionCatalogEntry,
     installed: &HashMap<String, NetworkEgressPluginFamilyResponse>,
 ) -> anyhow::Result<Option<NetworkEgressOfficialPluginCatalogEntryResponse>> {
@@ -592,9 +407,7 @@ fn project_catalog_entry(
     }
     let plugin_id = metadata_required(&entry, "plugin_id")?;
     let provider_code = metadata_required(&entry, "provider_code")?;
-    let descriptor = state
-        .official_extension_catalog_source
-        .resolve_artifact(&entry)?;
+    let descriptor = source.resolve_artifact(&entry)?;
     let checksum = descriptor.expected_checksum.ok_or_else(|| {
         anyhow::anyhow!("official network-egress catalog entry is missing checksum")
     })?;
@@ -666,7 +479,7 @@ fn project_catalog_entry(
     }))
 }
 
-fn project_plugin_families(
+pub(super) fn project_plugin_families(
     entries: Vec<control_plane::plugin_management::PluginCatalogEntry>,
 ) -> anyhow::Result<HashMap<String, NetworkEgressPluginFamilyResponse>> {
     let mut versions = HashMap::<String, Vec<NetworkEgressPluginInstalledVersionResponse>>::new();
@@ -719,12 +532,11 @@ fn project_plugin_families(
     Ok(families)
 }
 
-async fn mark_referenced_versions_not_uninstallable(
-    state: &ApiState,
+pub(super) async fn mark_referenced_versions_not_uninstallable(
+    store: &storage_durable_postgres::MainDurableStore,
     families: &mut HashMap<String, NetworkEgressPluginFamilyResponse>,
 ) -> anyhow::Result<()> {
-    let referenced_families = state
-        .store
+    let referenced_families = store
         .list_network_egress_providers()
         .await?
         .into_iter()
