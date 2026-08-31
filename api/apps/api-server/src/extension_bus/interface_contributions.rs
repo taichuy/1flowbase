@@ -256,6 +256,12 @@ pub(crate) fn production_interface_contributions(
             crate::routes::role_access_interface::compile_registry(console_role_access)?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-assistant-settings",
+            &["assistant.settings.get", "assistant.settings.update"],
+            &["api-server.console-assistant-settings"],
+            crate::routes::assistant::interface::compile_registry(state.store.clone())?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-applications",
             &[
                 "applications.list",
