@@ -151,24 +151,15 @@ pub(crate) async fn public_mcp_runtime_invoker_for_actor(
     ))
 }
 
-struct NativeRunInterfaceAdapter {
-    state: std::sync::Weak<ApiState>,
-}
-
-impl ApplicationNativeRunPort for NativeRunInterfaceAdapter {
+impl ApplicationNativeRunPort for ApiState {
     fn create<'a>(
         &'a self,
         principal: &'a interface_runtime::ApplicationPrincipal,
         input: ApplicationNativeRunInput,
     ) -> ApplicationNativeRunFuture<'a> {
-        let state = self.state.clone();
+        let state = Arc::new(self.clone());
         let actor = application_actor_from_principal(principal);
         Box::pin(async move {
-            let state = state.upgrade().ok_or_else(|| {
-                ApplicationNativeRunTargetError(native_error(
-                    NativeRunValidationError::InvalidState,
-                ))
-            })?;
             ApplicationNativeRunService::new(state.store.clone())
                 .with_last_used_cache(state.infrastructure.cache_store())
                 .create_native_run_for_actor(actor, input.request, input.protocol)
@@ -184,14 +175,9 @@ impl ApplicationNativeRunPort for NativeRunInterfaceAdapter {
         principal: &'a interface_runtime::ApplicationPrincipal,
         input: ApplicationNativeRunInput,
     ) -> ApplicationNativeRunFuture<'a> {
-        let state = self.state.clone();
+        let state = Arc::new(self.clone());
         let actor = application_actor_from_principal(principal);
         Box::pin(async move {
-            let state = state.upgrade().ok_or_else(|| {
-                ApplicationNativeRunTargetError(native_error(
-                    NativeRunValidationError::InvalidState,
-                ))
-            })?;
             let run = ApplicationNativeRunService::new(state.store.clone())
                 .with_last_used_cache(state.infrastructure.cache_store())
                 .create_native_run_for_actor(actor.clone(), input.request, input.protocol)
@@ -210,14 +196,9 @@ impl ApplicationNativeRunPort for NativeRunInterfaceAdapter {
         principal: &'a interface_runtime::ApplicationPrincipal,
         input: ApplicationNativeRunInput,
     ) -> ApplicationNativeRunStreamFuture<'a> {
-        let state = self.state.clone();
+        let state = Arc::new(self.clone());
         let actor = application_actor_from_principal(principal);
         Box::pin(async move {
-            let state = state.upgrade().ok_or_else(|| {
-                ApplicationNativeRunTargetError(native_error(
-                    NativeRunValidationError::InvalidState,
-                ))
-            })?;
             let include_workflow_events =
                 include_workflow_events(&input.request).map_err(ApplicationNativeRunTargetError)?;
             let run = ApplicationNativeRunService::new(state.store.clone())
@@ -271,12 +252,12 @@ fn application_actor_from_principal(
 }
 
 pub(crate) fn compile_native_interface_registry(
-    state: std::sync::Weak<ApiState>,
+    port: Arc<dyn ApplicationNativeRunPort>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {
-    native_interface::compile_registry(Arc::new(NativeRunInterfaceAdapter { state }))
+    native_interface::compile_registry(port)
 }
 
 fn native_interface_error(error: InterfaceInvocationError) -> NativeApiError {

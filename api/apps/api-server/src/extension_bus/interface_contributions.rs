@@ -141,7 +141,7 @@ pub(crate) fn production_interface_contributions() -> [InterfaceRegistryContribu
             "api-server.native-runs",
             &["application.native.runs.create"],
             &["api-server.application-public-api"],
-            crate::routes::application_public_api::native::compile_native_interface_registry,
+            compile_native_runs,
         ),
         InterfaceRegistryContribution::new(
             "api-server.compatibility",
@@ -162,4 +162,13 @@ pub(crate) fn production_interface_contributions() -> [InterfaceRegistryContribu
             crate::routes::application_public_api::ex::compile_workflow_extension_registry,
         ),
     ]
+}
+
+fn compile_native_runs(
+    state: std::sync::Weak<crate::app_state::ApiState>,
+) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError> {
+    let state = state
+        .upgrade()
+        .expect("native contribution is assembled while API state is alive");
+    crate::routes::application_public_api::native::compile_native_interface_registry(state)
 }
