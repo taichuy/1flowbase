@@ -780,6 +780,29 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-network-center",
+            &[
+                "network_egress_providers.list",
+                "network_egress_proxy_types.list",
+                "network_egress_providers.create",
+                "network_egress_providers.lifecycle.update",
+                "network_egress_providers.sync",
+                "network_egress_routes.list",
+                "network_egress_routes.create",
+                "network_egress_routes.update",
+                "network_egress_routes.delete",
+            ],
+            &["api-server.console-network-center"],
+            crate::routes::network_center::core_interface::compile_registry(
+                crate::routes::network_center::core_interface::NetworkCenterDependencies {
+                    store: state.store.clone(),
+                    provider_runtime: state.provider_runtime.clone(),
+                    secret_key: state.provider_secret_master_key.clone(),
+                    api_node_id: state.api_node_id.clone(),
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",

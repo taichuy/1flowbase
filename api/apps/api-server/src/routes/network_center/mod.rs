@@ -6,12 +6,7 @@ use axum::{
     Json,
 };
 use control_plane::network_egress::{
-    CreateNetworkEgressProviderCommand, NetworkEgressProviderService,
-    NetworkEgressProviderTypeView, NetworkEgressProviderView,
-    UpdateNetworkEgressProviderLifecycleCommand,
-};
-use control_plane::network_egress_route::{
-    CreateNetworkEgressRouteCommand, NetworkEgressRouteService, UpdateNetworkEgressRouteCommand,
+    NetworkEgressProviderService, NetworkEgressProviderTypeView, NetworkEgressProviderView,
 };
 use control_plane::network_egress_secret::ProviderRegistryNetworkEgressSecretResolver;
 use serde::{Deserialize, Serialize};
@@ -22,7 +17,6 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::console_route_assembly::{
@@ -30,6 +24,7 @@ use crate::{
     },
 };
 
+pub(crate) mod core_interface;
 pub mod plugins;
 pub mod pools;
 pub(crate) mod pools_interface;
@@ -158,7 +153,7 @@ pub(crate) fn route_assembly_with_plugin_upload_max_bytes(
         .merge(routes::route_assembly())
 }
 
-fn service(state: &ApiState) -> crate::app_state::ApiNetworkEgressProviderService {
+pub(super) fn service(state: &ApiState) -> crate::app_state::ApiNetworkEgressProviderService {
     NetworkEgressProviderService::new(
         state.store.clone(),
         ApiProviderRuntime::new(state.provider_runtime.clone()),
@@ -171,23 +166,19 @@ fn service(state: &ApiState) -> crate::app_state::ApiNetworkEgressProviderServic
     )
 }
 
-fn route_service(state: &ApiState) -> crate::app_state::ApiNetworkEgressRouteService {
-    NetworkEgressRouteService::new(state.store.clone())
-}
-
-fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, ApiError> {
+pub(super) fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(value)
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
 }
 
-fn parse_uuids(values: Vec<String>, field: &'static str) -> Result<Vec<Uuid>, ApiError> {
+pub(super) fn parse_uuids(values: Vec<String>, field: &'static str) -> Result<Vec<Uuid>, ApiError> {
     values
         .into_iter()
         .map(|value| parse_uuid(&value, field))
         .collect()
 }
 
-fn lifecycle(value: &str) -> Result<domain::NetworkEgressProviderLifecycle, ApiError> {
+pub(super) fn lifecycle(value: &str) -> Result<domain::NetworkEgressProviderLifecycle, ApiError> {
     match value {
         "draft" => Ok(domain::NetworkEgressProviderLifecycle::Draft),
         "active" => Ok(domain::NetworkEgressProviderLifecycle::Active),
@@ -196,7 +187,7 @@ fn lifecycle(value: &str) -> Result<domain::NetworkEgressProviderLifecycle, ApiE
     }
 }
 
-fn consumer_selector(
+pub(super) fn consumer_selector(
     consumer_kind: String,
     consumer_reference: Option<String>,
 ) -> Result<domain::NetworkEgressConsumerSelector, ApiError> {
@@ -245,7 +236,9 @@ pub(super) fn response(view: NetworkEgressProviderView) -> NetworkEgressProvider
     }
 }
 
-fn type_response(view: NetworkEgressProviderTypeView) -> NetworkEgressProviderTypeResponse {
+pub(super) fn type_response(
+    view: NetworkEgressProviderTypeView,
+) -> NetworkEgressProviderTypeResponse {
     NetworkEgressProviderTypeResponse {
         installation_id: view.installation_id.map(|id| id.to_string()),
         provider_code: view.provider_code,
@@ -255,7 +248,7 @@ fn type_response(view: NetworkEgressProviderTypeView) -> NetworkEgressProviderTy
     }
 }
 
-fn route_response(route: domain::NetworkEgressRoute) -> NetworkEgressRouteResponse {
+pub(super) fn route_response(route: domain::NetworkEgressRoute) -> NetworkEgressRouteResponse {
     NetworkEgressRouteResponse {
         id: route.id.to_string(),
         consumer_kind: route.selector.consumer_kind().to_string(),
@@ -283,11 +276,17 @@ pub async fn list_network_egress_providers(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<NetworkEgressProviderResponse>>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let providers = service(&state).list().await?;
-    Ok(Json(ApiSuccess::new(
-        providers.into_iter().map(response).collect(),
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-providers.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        core_interface::NetworkCenterInput::ListProviders,
+    )
+    .await?;
+    let core_interface::NetworkCenterOutput::Providers(providers) = output else {
+        unreachable!("network providers binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(providers)))
 }
 
 #[utoipa::path(
@@ -300,11 +299,17 @@ pub async fn list_network_egress_provider_types(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<NetworkEgressProviderTypeResponse>>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let types = service(&state).list_types().await?;
-    Ok(Json(ApiSuccess::new(
-        types.into_iter().map(type_response).collect(),
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-provider-types.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        core_interface::NetworkCenterInput::ListProviderTypes,
+    )
+    .await?;
+    let core_interface::NetworkCenterOutput::ProviderTypes(types) = output else {
+        unreachable!("network provider types binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(types)))
 }
 
 #[utoipa::path(
@@ -319,21 +324,17 @@ pub async fn create_network_egress_provider(
     headers: HeaderMap,
     Json(body): Json<CreateNetworkEgressProviderBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<NetworkEgressProviderResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let provider = service(&state)
-        .create(CreateNetworkEgressProviderCommand {
-            actor_user_id: context.user.id,
-            installation_id: parse_uuid(&body.installation_id, "installation_id")?,
-            display_name: body.display_name,
-            description: body.description,
-            secret_json: body.config,
-        })
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(response(provider))),
-    ))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-providers.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        core_interface::NetworkCenterInput::CreateProvider(body),
+    )
+    .await?;
+    let core_interface::NetworkCenterOutput::Provider(provider) = output else {
+        unreachable!("network provider create binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(provider))))
 }
 
 #[utoipa::path(
@@ -350,16 +351,17 @@ pub async fn update_network_egress_provider_lifecycle(
     Path(id): Path<String>,
     Json(body): Json<UpdateNetworkEgressProviderLifecycleBody>,
 ) -> Result<Json<ApiSuccess<NetworkEgressProviderResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let provider = service(&state)
-        .update_lifecycle(UpdateNetworkEgressProviderLifecycleCommand {
-            actor_user_id: context.user.id,
-            provider_id: parse_uuid(&id, "provider_id")?,
-            lifecycle: lifecycle(&body.lifecycle)?,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(response(provider))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-providers.lifecycle.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        core_interface::NetworkCenterInput::UpdateProviderLifecycle { id, body },
+    )
+    .await?;
+    let core_interface::NetworkCenterOutput::Provider(provider) = output else {
+        unreachable!("network provider lifecycle binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(provider)))
 }
 
 #[utoipa::path(
@@ -374,12 +376,17 @@ pub async fn sync_network_egress_provider(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<ApiSuccess<NetworkEgressProviderResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let provider = service(&state)
-        .sync(context.user.id, parse_uuid(&id, "provider_id")?)
-        .await?;
-    Ok(Json(ApiSuccess::new(response(provider))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-providers.sync.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        core_interface::NetworkCenterInput::SyncProvider { id },
+    )
+    .await?;
+    let core_interface::NetworkCenterOutput::Provider(provider) = output else {
+        unreachable!("network provider sync binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(provider)))
 }
 
 #[utoipa::path(
@@ -392,13 +399,17 @@ pub async fn list_network_egress_routes(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<NetworkEgressRouteResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let routes = route_service(&state)
-        .list(context.actor.current_workspace_id)
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        routes.into_iter().map(route_response).collect(),
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-routes.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        core_interface::NetworkCenterInput::ListRoutes,
+    )
+    .await?;
+    let core_interface::NetworkCenterOutput::Routes(routes) = output else {
+        unreachable!("network routes binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(routes)))
 }
 
 #[utoipa::path(
@@ -413,21 +424,17 @@ pub async fn create_network_egress_route(
     headers: HeaderMap,
     Json(body): Json<CreateNetworkEgressRouteBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<NetworkEgressRouteResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let route = route_service(&state)
-        .create(CreateNetworkEgressRouteCommand {
-            actor_user_id: context.user.id,
-            workspace_id: context.actor.current_workspace_id,
-            selector: consumer_selector(body.consumer_kind, body.consumer_reference)?,
-            pool_member_ids: parse_uuids(body.pool_member_ids, "pool_member_ids")?,
-            enabled: body.enabled,
-        })
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(route_response(route))),
-    ))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-routes.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        core_interface::NetworkCenterInput::CreateRoute(body),
+    )
+    .await?;
+    let core_interface::NetworkCenterOutput::Route(route) = output else {
+        unreachable!("network route create binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(route))))
 }
 
 #[utoipa::path(
@@ -444,18 +451,17 @@ pub async fn update_network_egress_route(
     Path(route_id): Path<String>,
     Json(body): Json<UpdateNetworkEgressRouteBody>,
 ) -> Result<Json<ApiSuccess<NetworkEgressRouteResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let route = route_service(&state)
-        .update(UpdateNetworkEgressRouteCommand {
-            actor_user_id: context.user.id,
-            workspace_id: context.actor.current_workspace_id,
-            route_id: parse_uuid(&route_id, "route_id")?,
-            pool_member_ids: parse_uuids(body.pool_member_ids, "pool_member_ids")?,
-            enabled: body.enabled,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(route_response(route))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-routes.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        core_interface::NetworkCenterInput::UpdateRoute { route_id, body },
+    )
+    .await?;
+    let core_interface::NetworkCenterOutput::Route(route) = output else {
+        unreachable!("network route update binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(route)))
 }
 
 #[utoipa::path(
@@ -470,15 +476,16 @@ pub async fn delete_network_egress_route(
     headers: HeaderMap,
     Path(route_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    route_service(&state)
-        .delete(
-            context.user.id,
-            context.actor.current_workspace_id,
-            parse_uuid(&route_id, "route_id")?,
-        )
-        .await?;
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-routes.delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        core_interface::NetworkCenterInput::DeleteRoute { route_id },
+    )
+    .await?;
+    let core_interface::NetworkCenterOutput::Deleted = output else {
+        unreachable!("network route delete binding returned a different output")
+    };
     Ok(StatusCode::NO_CONTENT)
 }
 
