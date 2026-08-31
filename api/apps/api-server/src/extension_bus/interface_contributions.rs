@@ -173,6 +173,8 @@ pub(crate) fn production_interface_contributions(
             state.store.clone(),
             state.infrastructure.cache_store(),
         );
+    let console_workflow_schedule =
+        crate::routes::application_api::interface_schedule::port(state.store.clone());
 
     Ok(vec![
         InterfaceRegistryContribution::new(
@@ -309,6 +311,17 @@ pub(crate) fn production_interface_contributions(
             &["api-server.console-application-publication"],
             crate::routes::application_api::interface_publication::compile_registry(
                 console_application_publication,
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-workflow-schedule",
+            &[
+                "applications.workflow-schedule.get",
+                "applications.workflow-schedule.replace",
+            ],
+            &["api-server.console-workflow-schedule"],
+            crate::routes::application_api::interface_schedule::compile_registry(
+                console_workflow_schedule,
             )?,
         ),
         InterfaceRegistryContribution::new(

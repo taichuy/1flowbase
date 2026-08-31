@@ -56,6 +56,7 @@ use crate::{
 
 pub(crate) mod interface_keys;
 pub(crate) mod interface_publication;
+pub(crate) mod interface_schedule;
 
 const PUBLIC_RUNS_PATH: &str = "/api/agent/v1/runs";
 
@@ -985,16 +986,15 @@ pub async fn get_workflow_schedule_trigger(
     headers: HeaderMap,
     Path(application_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<Option<WorkflowScheduleTriggerResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let trigger = WorkflowScheduleTriggerService::new(state.store.for_actor(context.actor.clone()))
-        .get_trigger(GetWorkflowScheduleTriggerCommand {
-            actor_user_id: context.user.id,
-            application_id,
-        })
-        .await?
-        .map(to_workflow_schedule_trigger_response);
-
-    Ok(Json(ApiSuccess::new(trigger)))
+    let output: interface_schedule::WorkflowScheduleOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.workflow-schedule.get.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+            interface_schedule::WorkflowScheduleInput::Get { application_id },
+        )
+        .await?;
+    Ok(Json(ApiSuccess::new(output.into_optional()?)))
 }
 
 #[utoipa::path(
@@ -1018,22 +1018,21 @@ pub async fn replace_workflow_schedule_trigger(
     Path(application_id): Path<Uuid>,
     Json(body): Json<WorkflowScheduleTriggerBody>,
 ) -> Result<Json<ApiSuccess<WorkflowScheduleTriggerResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let trigger = WorkflowScheduleTriggerService::new(state.store.for_actor(context.actor.clone()))
-        .replace_trigger(ReplaceWorkflowScheduleTriggerCommand {
-            actor_user_id: context.user.id,
-            application_id,
-            enabled: body.enabled,
-            cron: body.cron,
-            timezone: body.timezone,
-            input_payload: body.input_payload,
-        })
+    let output: interface_schedule::WorkflowScheduleOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.workflow-schedule.replace.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+                state,
+                headers,
+            },
+            interface_schedule::WorkflowScheduleInput::Replace {
+                application_id,
+                body,
+            },
+        )
         .await?;
-
-    Ok(Json(ApiSuccess::new(
-        to_workflow_schedule_trigger_response(trigger),
-    )))
+    Ok(Json(ApiSuccess::new(output.into_required()?)))
 }
 
 #[utoipa::path(
