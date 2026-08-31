@@ -17,10 +17,7 @@ use control_plane::{
             ApplicationPublishedCallbackResumeService, PublishedCallbackResumeSource,
             PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
         },
-        model_catalog::{
-            extract_agent_model_catalog_from_start_node, AgentModelCapabilities,
-            AgentModelDescriptor, AgentModelReasoning,
-        },
+        model_catalog::{AgentModelCapabilities, AgentModelDescriptor, AgentModelReasoning},
         native::{
             translate_native_run_request, ApplicationNativeRunService, CancelNativeRunCommand,
             GetNativeRunCommand, NativeRunRequest, NativeRunResult, NativeRunStatus,
@@ -30,7 +27,6 @@ use control_plane::{
             TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol,
             TranslationReport, TranslationSafeRepresentation,
         },
-        publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
         run_service::native_result_from_run_detail,
     },
     file_management::{FileUploadService, UploadFileCommand},
@@ -66,6 +62,10 @@ use crate::{
                 ApplicationNativeRunStreamEvent, ApplicationNativeRunStreamFuture,
                 ApplicationNativeRunTargetError,
             },
+            native_read_interface::{
+                self, NativeGetRunInput, NativeGetRunOutput, NativeModelsInput, NativeModelsOutput,
+                NativeReadTargetError,
+            },
             sse,
             stream_terminal_fallback::recover_missing_stream_terminal_winner,
         },
@@ -80,24 +80,6 @@ pub(crate) fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
         state.provider_runtime.clone(),
         state.runtime_activity.clone(),
     )
-}
-
-pub(crate) fn interface_application_principal(
-    actor: &control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
-) -> Result<interface_runtime::ApplicationPrincipal, NativeApiError> {
-    interface_runtime::ApplicationPrincipal::new(
-        actor.application_id,
-        actor.api_key_id,
-        actor.workspace_id,
-        actor.actor.clone(),
-    )
-    .map_err(|_| {
-        NativeApiError::new(
-            StatusCode::UNAUTHORIZED,
-            "not_authenticated",
-            "invalid application API key identity",
-        )
-    })
 }
 
 pub(crate) async fn public_mcp_runtime_invoker(
@@ -238,7 +220,7 @@ impl ApplicationNativeRunPort for ApiState {
     }
 }
 
-fn application_actor_from_principal(
+pub(crate) fn application_actor_from_principal(
     principal: &interface_runtime::ApplicationPrincipal,
 ) -> control_plane::application_public_api::api_keys::ApplicationApiKeyActor {
     control_plane::application_public_api::api_keys::ApplicationApiKeyActor {
@@ -500,28 +482,14 @@ pub async fn list_native_models(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<NativeModelListResponse>, NativeApiError> {
-    let bearer_token = bearer_token(&headers)?;
-    let actor = ApplicationApiKeyService::new(state.store.clone())
-        .with_last_used_cache(state.infrastructure.cache_store())
-        .authenticate_bearer_token(&bearer_token)
-        .await
-        .map_err(|_| native_error(NativeRunValidationError::NotAuthenticated))?;
-    let _principal = interface_application_principal(&actor)?;
-    let publication = ApplicationPublicationService::new(state.store.clone())
-        .load_active_publication(LoadActiveApplicationPublicationCommand {
-            application_id: actor.application_id,
-        })
-        .await
-        .map_err(|_| native_error(NativeRunValidationError::ApplicationNotPublished))?;
-    let models = extract_agent_model_catalog_from_start_node(&publication.document_snapshot)
-        .into_iter()
-        .map(NativeModelObject::from)
-        .collect();
-
-    Ok(Json(NativeModelListResponse {
-        object: "list",
-        data: models,
-    }))
+    let output = invoke_native_read::<NativeModelsInput, NativeModelsOutput>(
+        &state,
+        bearer_token(&headers)?,
+        native_read_interface::MODELS_BINDING_ID,
+        NativeModelsInput,
+    )
+    .await?;
+    Ok(Json(output.0))
 }
 
 pub(crate) fn native_error(error: NativeRunValidationError) -> NativeApiError {
@@ -1278,17 +1246,97 @@ pub async fn get_native_run(
     headers: HeaderMap,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<NativeRunResponse>>, NativeApiError> {
-    let bearer_token = bearer_token(&headers)?;
-    let run = ApplicationNativeRunService::new(state.store.clone())
-        .with_last_used_cache(state.infrastructure.cache_store())
-        .get_native_run(GetNativeRunCommand {
-            bearer_token,
-            run_id,
-        })
-        .await
-        .map_err(native_error)?;
+    let output = invoke_native_read::<NativeGetRunInput, NativeGetRunOutput>(
+        &state,
+        bearer_token(&headers)?,
+        native_read_interface::GET_RUN_BINDING_ID,
+        NativeGetRunInput(run_id),
+    )
+    .await?;
+    Ok(Json(ApiSuccess::new(output.0)))
+}
 
-    Ok(Json(ApiSuccess::new(to_native_run_response(run))))
+async fn invoke_native_read<I, O>(
+    state: &Arc<ApiState>,
+    bearer_token: String,
+    binding_id: &str,
+    input: I,
+) -> Result<O, NativeApiError>
+where
+    I: interface_runtime::InterfaceContract,
+    O: interface_runtime::InterfaceContract,
+{
+    let boot_snapshot = state.extension_boot_snapshot.as_ref().ok_or_else(|| {
+        NativeApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "interface_registry_unavailable",
+            "native read interface is unavailable",
+        )
+    })?;
+    let snapshot = boot_snapshot
+        .interface_registry()
+        .map(|registry| registry.snapshot())
+        .ok_or_else(|| {
+            NativeApiError::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "interface_registry_unavailable",
+                "native read interface is unavailable",
+            )
+        })?;
+    let binding_id = interface_runtime::BindingId::new(binding_id)
+        .expect("static native read binding id is valid");
+    let activated = snapshot.authentication(&binding_id).ok_or_else(|| {
+        NativeApiError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "authentication_activation_unavailable",
+            "native read authentication is unavailable",
+        )
+    })?;
+    let principal: interface_runtime::ApplicationPrincipal = boot_snapshot
+        .authenticate(
+            activated,
+            crate::extension_bus::ApplicationApiKeyAuthenticationCredential {
+                state: Arc::clone(state),
+                bearer_token,
+            },
+        )
+        .await
+        .map_err(|_| native_error(NativeRunValidationError::NotAuthenticated))?;
+    let authentication_activation = activated.activation().clone();
+    let outcome =
+        InterfaceInvocationKernel::new(Arc::new(native_read_interface::NativeReadAuthorization))
+            .invoke::<I, O, NativeReadTargetError>(
+                snapshot,
+                InvocationEnvelope::with_principal(
+                    InvocationLineage::root(InvocationId::now_v7()),
+                    binding_id,
+                    InterfaceProtocol::Http,
+                    interface_runtime::AuthenticationAdapterReference::new(
+                        "api-server.application-api-key",
+                    )
+                    .unwrap(),
+                    authentication_activation,
+                    principal,
+                    None,
+                    input,
+                ),
+            )
+            .await
+            .map_err(|failure| match failure.into_error() {
+                InterfaceInvocationError::TargetFailed(error) => error
+                    .into_source::<NativeReadTargetError>()
+                    .map(|error| error.0)
+                    .unwrap_or_else(|| {
+                        NativeApiError::new(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            "native_read_failed",
+                            "native read interface target failed",
+                        )
+                    }),
+                error => native_interface_error(error),
+            })?;
+    let _receipt = outcome.receipt().clone().projected();
+    Ok(outcome.into_value())
 }
 
 #[utoipa::path(

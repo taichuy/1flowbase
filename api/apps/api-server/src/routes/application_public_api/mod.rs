@@ -6,6 +6,7 @@ pub mod ex;
 pub(crate) mod llm_tool_visibility;
 pub mod native;
 pub(crate) mod native_interface;
+pub(crate) mod native_read_interface;
 pub(crate) mod native_websocket;
 pub mod openai;
 pub(crate) mod responses_websocket;

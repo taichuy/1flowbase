@@ -169,6 +169,20 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.native-read",
+            &[
+                "application.native.models.list",
+                "application.native.runs.read",
+            ],
+            &["api-server.application-public-api"],
+            crate::routes::application_public_api::native_read_interface::compile_registry(
+                crate::routes::application_public_api::native_read_interface::native_read_port(
+                    state.store.clone(),
+                    state.infrastructure.cache_store(),
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.compatibility",
             &["application.native.runs.create"],
             &["api-server.application-public-api"],
