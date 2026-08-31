@@ -49,6 +49,7 @@ use crate::{
     },
 };
 
+pub(crate) mod catalog_logs_interface;
 mod clear_request_log_continuation;
 mod dto;
 pub(crate) mod icons;
@@ -887,15 +888,18 @@ pub async fn list_catalog(
     headers: HeaderMap,
     Query(query): Query<ModelProviderCatalogQuery>,
 ) -> Result<Json<ApiSuccess<ModelProviderCatalogResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let locale_meta = resolve_locale_meta(&headers, query.locale, context.user.preferred_locale);
-    let catalog = settings_service(&state, &context.actor, "model_providers.catalog.view")
-        .list_catalog(context.user.id, requested_locales(&locale_meta))
-        .await?;
-    Ok(Json(ApiSuccess::new(to_catalog_view_response(
-        locale_meta,
-        catalog,
-    ))))
+    let locale = catalog_logs_interface::ProviderLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.catalog.view.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        catalog_logs_interface::ProviderCatalogLogsInput::Catalog { query, locale },
+    )
+    .await?;
+    let catalog_logs_interface::ProviderCatalogLogsOutput::Catalog(response) = output else {
+        unreachable!("provider catalog binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -909,43 +913,17 @@ pub async fn list_request_logs(
     headers: HeaderMap,
     Query(query): Query<ModelProviderRequestLogsQuery>,
 ) -> Result<Json<ApiSuccess<ModelProviderRequestLogsPageResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let page = settings_service(&state, &context.actor, "model_providers.request_logs.view")
-        .list_request_logs(ListModelProviderRequestLogsCommand {
-            actor: context.actor,
-            flow_run_id: query.flow_run_id,
-            user_id: query.user_id,
-            application_name: query.application_name,
-            provider_instance_id: query.provider_instance_id,
-            model_id: query.model_id,
-            status: query.status,
-            zero_output_only: query.zero_output_only,
-            started_after: query
-                .started_after
-                .as_deref()
-                .map(parse_rfc3339_time)
-                .transpose()?,
-            started_before: query
-                .started_before
-                .as_deref()
-                .map(parse_rfc3339_time)
-                .transpose()?,
-            page: query.page.unwrap_or(1),
-            page_size: query.page_size.unwrap_or(20),
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        ModelProviderRequestLogsPageResponse {
-            items: page
-                .items
-                .into_iter()
-                .map(to_request_log_response)
-                .collect(),
-            total_count: page.total_count,
-            page: page.page,
-            page_size: page.page_size,
-        },
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.request-logs.view.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        catalog_logs_interface::ProviderCatalogLogsInput::ListLogs(query),
+    )
+    .await?;
+    let catalog_logs_interface::ProviderCatalogLogsOutput::Logs(response) = output else {
+        unreachable!("provider request logs binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -965,26 +943,17 @@ pub async fn delete_selected_request_logs(
     headers: HeaderMap,
     Json(body): Json<DeleteModelProviderRequestLogsBody>,
 ) -> Result<Json<ApiSuccess<DeleteModelProviderRequestLogsResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let attempt_ids = body
-        .attempt_ids
-        .iter()
-        .map(|attempt_id| parse_uuid(attempt_id, "attempt_ids"))
-        .collect::<Result<Vec<_>, _>>()?;
-    let deleted_count = settings_service(
-        &state,
-        &context.actor,
-        "model_providers.request_logs.delete",
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.request-logs.delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        catalog_logs_interface::ProviderCatalogLogsInput::DeleteLogs(body),
     )
-    .delete_selected_request_logs(DeleteSelectedModelProviderRequestLogsCommand {
-        actor: context.actor,
-        attempt_ids,
-    })
     .await?;
-    Ok(Json(ApiSuccess::new(
-        DeleteModelProviderRequestLogsResponse { deleted_count },
-    )))
+    let catalog_logs_interface::ProviderCatalogLogsOutput::Deleted(response) = output else {
+        unreachable!("provider request logs delete binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -1004,40 +973,17 @@ pub async fn clear_request_logs_batch(
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<ApiSuccess<ClearModelProviderRequestLogsResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let body: ClearModelProviderRequestLogsBody = serde_json::from_value(body).map_err(|_| {
-        control_plane::errors::ControlPlaneError::InvalidInput("clear_request_logs")
-    })?;
-    let workspace_id = context.actor.current_workspace_id;
-    let continuation = match body.continuation_token.as_deref() {
-        Some(token) => ClearModelProviderRequestLogsContinuation::Continue {
-            snapshot_created_before: clear_request_log_continuation::verify(
-                &state.provider_secret_master_key,
-                workspace_id,
-                token,
-            )?,
-        },
-        None => ClearModelProviderRequestLogsContinuation::Start,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.request-logs.clear.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        catalog_logs_interface::ProviderCatalogLogsInput::ClearLogs(body),
+    )
+    .await?;
+    let catalog_logs_interface::ProviderCatalogLogsOutput::Cleared(response) = output else {
+        unreachable!("provider request logs clear binding returned a different output")
     };
-    let result = settings_service(&state, &context.actor, "model_providers.request_logs.clear")
-        .clear_request_logs_batch(ClearModelProviderRequestLogsBatchCommand {
-            actor: context.actor,
-            continuation,
-        })
-        .await?;
-    let continuation_token = clear_request_log_continuation::issue(
-        &state.provider_secret_master_key,
-        workspace_id,
-        result.snapshot_created_before,
-    )?;
-    Ok(Json(ApiSuccess::new(
-        ClearModelProviderRequestLogsResponse {
-            deleted_count: result.deleted_count,
-            has_more: result.has_more,
-            continuation_token,
-        },
-    )))
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 fn to_request_log_response(

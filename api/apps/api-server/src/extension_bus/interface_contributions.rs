@@ -656,6 +656,26 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-provider-catalog-logs",
+            &[
+                "model_providers.catalog.view",
+                "model_providers.request_logs.view",
+                "model_providers.request_logs.delete",
+                "model_providers.request_logs.clear",
+            ],
+            &["api-server.console-provider-catalog-logs"],
+            crate::routes::model_providers::catalog_logs_interface::compile_registry(
+                crate::routes::model_providers::catalog_logs_interface::ProviderCatalogLogsDependencies {
+                    store: state.store.clone(),
+                    provider_runtime: state.provider_runtime.clone(),
+                    secret_key: state.provider_secret_master_key.clone(),
+                    api_node_id: state.api_node_id.clone(),
+                    install_root: state.provider_install_root.clone(),
+                    cache_store: state.infrastructure.cache_store(),
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-runs",
             &["application.native.runs.create"],
             &["api-server.application-public-api"],
