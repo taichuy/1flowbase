@@ -450,21 +450,6 @@ pub async fn list_agent_flow_data_source_options(
     Ok(Json(ApiSuccess::new(options)))
 }
 
-pub(super) fn service(
-    state: &ApiState,
-    actor: &domain::ActorContext,
-) -> crate::app_state::ApiDataSourceService {
-    DataSourceService::for_data_model_settings(
-        state.store.for_actor(actor.clone()),
-        ApiProviderRuntime::new(state.provider_runtime.clone()),
-        state.provider_secret_master_key.clone(),
-    )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-}
-
 fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(raw)
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())

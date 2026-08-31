@@ -3,7 +3,7 @@ use std::sync::Arc;
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
     extract::{Path, Query, State},
-    http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode},
     Json, Router,
 };
 use control_plane::model_definition::{
@@ -27,7 +27,6 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::{
         console_route_assembly::{console_get, ConsoleRouteAssembly},
@@ -35,6 +34,9 @@ use crate::{
     },
     runtime_registry_sync::ApiRuntimeRegistrySync,
 };
+
+#[path = "model_definitions_interface.rs"]
+pub(crate) mod interface;
 
 const STATE_MODEL_RESOURCE: ResourceCrudDescriptor =
     ResourceCrudDescriptor::new("state_model", "id");
@@ -377,31 +379,6 @@ fn default_true() -> bool {
     true
 }
 
-fn request_catalog_locale(
-    headers: &HeaderMap,
-    preferred_locale: Option<String>,
-) -> domain::CatalogLocale {
-    let resolved = runtime_profile::resolve_locale(runtime_profile::LocaleResolutionInput {
-        query_locale: None,
-        explicit_header_locale: headers
-            .get("x-1flowbase-locale")
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string),
-        user_preferred_locale: preferred_locale,
-        accept_language: headers
-            .get(ACCEPT_LANGUAGE)
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string),
-        fallback_locale: runtime_profile::FALLBACK_LOCALE,
-        supported_locales: runtime_profile::SUPPORTED_LOCALES
-            .iter()
-            .map(|value| value.to_string())
-            .collect(),
-    });
-    domain::CatalogLocale::new(resolved.resolved_locale)
-        .expect("runtime profile must resolve a supported catalog locale")
-}
-
 fn to_record_capabilities_response(
     capabilities: domain::DataModelRecordCapabilities,
 ) -> DataModelRecordCapabilitiesResponse {
@@ -655,31 +632,6 @@ fn parse_field_kind(raw: &str) -> Result<domain::ModelFieldKind, ApiError> {
     }
 }
 
-fn mutation_service(
-    state: &ApiState,
-    operation_id: &'static str,
-) -> crate::app_state::ApiModelDefinitionMutationService {
-    ModelDefinitionMutationService::for_console_operation(
-        state.store.clone(),
-        ApiRuntimeRegistrySync::new(state.store.clone(), state.runtime_engine.registry().clone()),
-        domain::ConsolePolicyGroup::settings_feature("system.data-models")
-            .expect("compiled data-model settings group must be valid"),
-        operation_id,
-    )
-}
-
-fn settings_service(
-    state: &ApiState,
-    operation_id: &'static str,
-) -> crate::app_state::ApiModelDefinitionService {
-    ModelDefinitionService::for_console_operation(
-        state.store.clone(),
-        domain::ConsolePolicyGroup::settings_feature("system.data-models")
-            .expect("compiled data-model settings group must be valid"),
-        operation_id,
-    )
-}
-
 #[utoipa::path(
     get,
     path = "/api/console/settings/data-models/model-definitions",
@@ -690,43 +642,18 @@ pub async fn list_models(
     headers: HeaderMap,
     Query(query): Query<ListModelsQuery>,
 ) -> Result<helpers::ApiJson<Vec<ModelDefinitionResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let mut models = settings_service(&state, access_control::MODEL_DEFINITIONS_LIST_OPERATION_ID)
-        .list_models(context.user.id)
-        .await?;
-    if let Some(data_source_id) = query.data_source_id.as_deref() {
-        if data_source_id == "main" {
-            models.retain(|model| {
-                model.source_kind == domain::DataModelSourceKind::MainSource
-                    && model.data_source_instance_id.is_none()
-            });
-        } else {
-            let data_source_id = helpers::parse_uuid(data_source_id, "data_source_id")?;
-            models.retain(|model| {
-                model.source_kind == domain::DataModelSourceKind::ExternalSource
-                    && model.data_source_instance_id == Some(data_source_id)
-            });
-        }
-    }
-    let filter = parse_resource_filter(query.filter.as_deref())?;
-    models = STATE_MODEL_RESOURCE.filter_records(models, filter.as_ref())?;
-    let locale = request_catalog_locale(&headers, context.user.preferred_locale);
-    let resolver = CatalogResolver::new(state.store.clone(), state.bootstrap_workspace_id);
-    for model in &mut models {
-        project_system_metadata_titles(&resolver, state.bootstrap_workspace_id, &locale, model)
-            .await?;
-        project_attachments_model_titles(&resolver, state.bootstrap_workspace_id, &locale, model)
-            .await?;
-    }
-
-    Ok(helpers::ok(
-        models
-            .into_iter()
-            .map(|model| {
-                to_model_definition_response(model, state.runtime_engine.template_catalog())
-            })
-            .collect(),
-    ))
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-definitions.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::ModelDefinitionsInput::List { query, locale },
+    )
+    .await?;
+    let interface::ModelDefinitionsOutput::Models(models) = output else {
+        unreachable!("model definitions list binding returned a different output")
+    };
+    Ok(helpers::ok(models))
 }
 
 #[utoipa::path(
@@ -740,40 +667,15 @@ pub async fn list_compatible_templates(
     headers: HeaderMap,
     Query(query): Query<CompatibleTemplateCatalogQuery>,
 ) -> Result<Json<ApiSuccess<Vec<CompatibleTemplateCatalogEntryResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let templates = if query.data_source_id == "main" {
-        let source = plugin_framework::DataModelTemplateSource {
-            kind: plugin_framework::DataModelSourceKind::MainSource,
-            provider: None,
-        };
-        let capabilities =
-            runtime_core::general_data_model_template::source_capabilities(&source, None);
-        state
-            .runtime_engine
-            .template_catalog()
-            .compatible_templates(&source, capabilities.iter().map(String::as_str))
-            .into_iter()
-            .map(|template| compatible_template_response(template.descriptor()))
-            .collect()
-    } else {
-        let instance_id = helpers::parse_uuid(&query.data_source_id, "data_source_id")?;
-        let data_source_service = super::data_sources::service(&state, &context.actor);
-        let resource_key = query.resource_key.as_deref().ok_or(
-            control_plane::errors::ControlPlaneError::InvalidInput("resource_key"),
-        )?;
-        data_source_service
-            .compatible_data_model_templates(
-                control_plane::data_source::ListCompatibleDataModelTemplatesCommand {
-                    actor_user_id: context.user.id,
-                    workspace_id: context.actor.current_workspace_id,
-                    instance_id,
-                    resource_key: resource_key.to_owned(),
-                },
-            )
-            .await?
-            .into_iter()
-            .map(|view| compatible_template_response(&view.descriptor))
-            .collect()
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-definitions.templates.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::ModelDefinitionsInput::ListCompatibleTemplates(query),
+    )
+    .await?;
+    let interface::ModelDefinitionsOutput::Templates(templates) = output else {
+        unreachable!("model templates binding returned a different output")
     };
     Ok(Json(ApiSuccess::new(templates)))
 }
@@ -787,22 +689,17 @@ pub async fn list_agent_flow_options(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<AgentFlowDataModelOptionResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let models = ModelDefinitionService::for_console_operation(
-        state.store.clone(),
-        domain::ConsolePolicyGroup::other("other.agent-flow")
-            .expect("compiled agent-flow policy group must be valid"),
-        "agent_flow.data_model_options.list",
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-definitions.agent-flow-options.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::ModelDefinitionsInput::ListAgentFlowOptions,
     )
-    .list_models(context.user.id)
     .await?;
-
-    Ok(Json(ApiSuccess::new(
-        models
-            .into_iter()
-            .map(to_agent_flow_data_model_option_response)
-            .collect(),
-    )))
+    let interface::ModelDefinitionsOutput::AgentFlowOptions(options) = output else {
+        unreachable!("model agent-flow options binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(options)))
 }
 
 #[utoipa::path(
@@ -816,40 +713,17 @@ pub async fn create_model(
     headers: HeaderMap,
     Json(body): Json<CreateModelDefinitionBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ModelDefinitionResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let scope_kind = parse_scope_kind(&body.scope_kind)?;
-    let requested_status = body.status.as_deref().map(parse_model_status).transpose()?;
-
-    let mutation_service = mutation_service(
-        &state,
-        access_control::MODEL_DEFINITIONS_CREATE_OPERATION_ID,
-    );
-    let model = mutation_service
-        .create_model(CreateModelDefinitionCommand {
-            actor_user_id: context.user.id,
-            scope_kind,
-            data_source_instance_id: None,
-            external_resource_key: None,
-            external_table_id: None,
-            external_capabilities: None,
-            template_provider: body.template_provider,
-            template_code: body.template_code,
-            template_version: body.template_version,
-            code: body.code,
-            title: body.title,
-            description: body.description,
-            status: requested_status,
-        })
-        .await?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_model_definition_response(
-            model,
-            state.runtime_engine.template_catalog(),
-        ))),
-    ))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-definitions.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ModelDefinitionsInput::Create(body),
+    )
+    .await?;
+    let interface::ModelDefinitionsOutput::Model(model) = output else {
+        unreachable!("model create binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(model))))
 }
 
 #[utoipa::path(
@@ -863,20 +737,17 @@ pub async fn get_advisor_findings(
     headers: HeaderMap,
     Path(model_id): Path<String>,
 ) -> Result<Json<ApiSuccess<Vec<DataModelAdvisorFindingResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let findings = settings_service(
-        &state,
-        access_control::MODEL_DEFINITIONS_ADVISOR_VIEW_OPERATION_ID,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-definitions.advisor-findings.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::ModelDefinitionsInput::AdvisorFindings { model_id },
     )
-    .advisor_findings(context.user.id, helpers::parse_uuid(&model_id, "model_id")?)
     .await?;
-
-    Ok(Json(ApiSuccess::new(
-        findings
-            .into_iter()
-            .map(to_advisor_finding_response)
-            .collect(),
-    )))
+    let interface::ModelDefinitionsOutput::AdvisorFindings(findings) = output else {
+        unreachable!("model advisor binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(findings)))
 }
 
 #[utoipa::path(
@@ -890,14 +761,17 @@ pub async fn list_scope_grants(
     headers: HeaderMap,
     Path(model_id): Path<String>,
 ) -> Result<Json<ApiSuccess<Vec<ScopeGrantResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let grants = settings_service(&state, access_control::MODEL_SCOPE_GRANTS_LIST_OPERATION_ID)
-        .list_scope_grants(context.user.id, helpers::parse_uuid(&model_id, "model_id")?)
-        .await?;
-
-    Ok(Json(ApiSuccess::new(
-        grants.into_iter().map(to_scope_grant_response).collect(),
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-definitions.scope-grants.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::ModelDefinitionsInput::ListScopeGrants { model_id },
+    )
+    .await?;
+    let interface::ModelDefinitionsOutput::ScopeGrants(grants) = output else {
+        unreachable!("model scope-grants binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(grants)))
 }
 
 #[utoipa::path(
@@ -913,59 +787,17 @@ pub async fn update_model(
     Path(model_id): Path<String>,
     Json(body): Json<UpdateModelDefinitionBody>,
 ) -> Result<Json<ApiSuccess<ModelDefinitionResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    let model_id = helpers::parse_uuid(&model_id, "model_id")?;
-    let requested_status = body.status.as_deref().map(parse_model_status).transpose()?;
-    let mutation_service = mutation_service(
-        &state,
-        access_control::MODEL_DEFINITIONS_UPDATE_OPERATION_ID,
-    );
-    let mut model = None;
-    if body.title.is_some() || body.description.is_some() || body.external_table_id.is_some() {
-        let current_model = settings_service(
-            &state,
-            access_control::MODEL_DEFINITIONS_UPDATE_OPERATION_ID,
-        )
-        .get_model(context.user.id, model_id)
-        .await?;
-        let title = match body.title {
-            Some(title) => title,
-            None => current_model.title,
-        };
-        let description = body.description.unwrap_or(current_model.description);
-        model = Some(
-            mutation_service
-                .update_model(UpdateModelDefinitionCommand {
-                    actor_user_id: context.user.id,
-                    model_id,
-                    external_table_id: body.external_table_id.or(current_model.external_table_id),
-                    title,
-                    description,
-                })
-                .await?,
-        );
-    }
-    if let Some(status) = requested_status {
-        model = Some(
-            mutation_service
-                .update_model_status(UpdateModelDefinitionStatusCommand {
-                    actor_user_id: context.user.id,
-                    model_id,
-                    status,
-                })
-                .await?,
-        );
-    }
-    let model = model.ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
-        "model_update",
-    ))?;
-
-    Ok(Json(ApiSuccess::new(to_model_definition_response(
-        model,
-        state.runtime_engine.template_catalog(),
-    ))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-definitions.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ModelDefinitionsInput::Update { model_id, body },
+    )
+    .await?;
+    let interface::ModelDefinitionsOutput::Model(model) = output else {
+        unreachable!("model update binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(model)))
 }
 
 #[utoipa::path(
@@ -983,20 +815,19 @@ pub async fn delete_model(
     Path(model_id): Path<String>,
     Query(query): Query<ConfirmationQuery>,
 ) -> Result<Json<ApiSuccess<serde_json::Value>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    mutation_service(
-        &state,
-        access_control::MODEL_DEFINITIONS_DELETE_OPERATION_ID,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-definitions.delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ModelDefinitionsInput::Delete {
+            model_id,
+            confirmed: query.confirmed.unwrap_or(false),
+        },
     )
-    .delete_model(DeleteModelDefinitionCommand {
-        actor_user_id: context.user.id,
-        model_id: helpers::parse_uuid(&model_id, "model_id")?,
-        confirmed: query.confirmed.unwrap_or(false),
-    })
     .await?;
-
+    let interface::ModelDefinitionsOutput::Deleted = output else {
+        unreachable!("model delete binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(
         serde_json::json!({ "deleted": true }),
     )))
@@ -1013,44 +844,17 @@ pub async fn batch_delete_models(
     headers: HeaderMap,
     Json(body): Json<BatchDeleteModelDefinitionsBody>,
 ) -> Result<Json<ApiSuccess<BatchDeletedResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    let models = settings_service(
-        &state,
-        access_control::MODEL_DEFINITIONS_DELETE_OPERATION_ID,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-definitions.batch-delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ModelDefinitionsInput::BatchDelete(body),
     )
-    .list_models(context.user.id)
     .await?;
-    let model_ids = STATE_MODEL_RESOURCE.select_batch_ids(
-        models,
-        ResourceBatchSelection::new(body.filter_by_tk, body.filter),
-        |value| {
-            Uuid::parse_str(&value)
-                .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("model_id"))
-        },
-        |model| model.id,
-    )?;
-
-    let deleted_ids = mutation_service(
-        &state,
-        access_control::MODEL_DEFINITIONS_DELETE_OPERATION_ID,
-    )
-    .batch_delete_models(BatchDeleteModelDefinitionsCommand {
-        actor_user_id: context.user.id,
-        model_ids,
-        confirmed: body.confirmed,
-    })
-    .await?;
-
-    Ok(Json(ApiSuccess::new(BatchDeletedResponse {
-        deleted: true,
-        deleted_count: deleted_ids.len(),
-        deleted_ids: deleted_ids
-            .into_iter()
-            .map(|model_id| model_id.to_string())
-            .collect(),
-    })))
+    let interface::ModelDefinitionsOutput::BatchDeleted(response) = output else {
+        unreachable!("model batch-delete binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -1066,41 +870,18 @@ pub async fn create_field(
     Path(model_id): Path<String>,
     Json(body): Json<CreateModelFieldBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ModelFieldResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let model_id = helpers::parse_uuid(&model_id, "model_id")?;
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-definitions.fields.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ModelDefinitionsInput::CreateField { model_id, body },
+    )
+    .await?;
+    let interface::ModelDefinitionsOutput::Field(field) = output else {
+        unreachable!("model field create binding returned a different output")
+    };
 
-    let field = mutation_service(&state, access_control::MODEL_FIELDS_CREATE_OPERATION_ID)
-        .add_field(AddModelFieldCommand {
-            actor_user_id: context.user.id,
-            model_id,
-            code: body.code,
-            title: body.title,
-            description: body.description,
-            external_field_key: body.external_field_key,
-            field_kind: parse_field_kind(&body.field_kind)?,
-            is_required: body.is_required,
-            api_required: body.api_required,
-            is_unique: body.is_unique,
-            default_value: body.default_value,
-            display_interface: body.display_interface,
-            display_options: body.display_options,
-            relation_target_model_id: body
-                .relation_target_model_id
-                .as_deref()
-                .map(|value| helpers::parse_uuid(value, "relation_target_model_id"))
-                .transpose()?,
-            relation_options: body.relation_options,
-        })
-        .await?;
-    let model = settings_service(&state, access_control::MODEL_FIELDS_CREATE_OPERATION_ID)
-        .get_model(context.user.id, model_id)
-        .await?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_model_field_response(&model, field))),
-    ))
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(field))))
 }
 
 #[utoipa::path(
@@ -1119,34 +900,21 @@ pub async fn update_field(
     Path((model_id, field_id)): Path<(String, String)>,
     Json(body): Json<UpdateModelFieldBody>,
 ) -> Result<Json<ApiSuccess<ModelFieldResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let model_id = helpers::parse_uuid(&model_id, "model_id")?;
-    let field_id = helpers::parse_uuid(&field_id, "field_id")?;
-
-    let field = mutation_service(&state, access_control::MODEL_FIELDS_UPDATE_OPERATION_ID)
-        .update_field(UpdateModelFieldCommand {
-            actor_user_id: context.user.id,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-definitions.fields.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ModelDefinitionsInput::UpdateField {
             model_id,
             field_id,
-            title: body.title,
-            description: body.description,
-            is_required: body.is_required,
-            api_required: body.api_required,
-            is_unique: body.is_unique,
-            default_value: body.default_value,
-            display_interface: body.display_interface,
-            display_options: body.display_options,
-            relation_options: body.relation_options,
-        })
-        .await?;
-    let model = settings_service(&state, access_control::MODEL_FIELDS_UPDATE_OPERATION_ID)
-        .get_model(context.user.id, model_id)
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_model_field_response(
-        &model, field,
-    ))))
+            body,
+        },
+    )
+    .await?;
+    let interface::ModelDefinitionsOutput::Field(field) = output else {
+        unreachable!("model field update binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(field)))
 }
 
 #[utoipa::path(
@@ -1165,17 +933,20 @@ pub async fn delete_field(
     Path((model_id, field_id)): Path<(String, String)>,
     Query(query): Query<ConfirmationQuery>,
 ) -> Result<Json<ApiSuccess<serde_json::Value>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    mutation_service(&state, access_control::MODEL_FIELDS_DELETE_OPERATION_ID)
-        .delete_field(DeleteModelFieldCommand {
-            actor_user_id: context.user.id,
-            model_id: helpers::parse_uuid(&model_id, "model_id")?,
-            field_id: helpers::parse_uuid(&field_id, "field_id")?,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-definitions.fields.delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ModelDefinitionsInput::DeleteField {
+            model_id,
+            field_id,
             confirmed: query.confirmed.unwrap_or(false),
-        })
-        .await?;
+        },
+    )
+    .await?;
+    let interface::ModelDefinitionsOutput::Deleted = output else {
+        unreachable!("model field delete binding returned a different output")
+    };
 
     Ok(Json(ApiSuccess::new(
         serde_json::json!({ "deleted": true }),
@@ -1195,28 +966,18 @@ pub async fn create_scope_grant(
     Path(model_id): Path<String>,
     Json(body): Json<CreateScopeGrantBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ScopeGrantResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    let grant = settings_service(
-        &state,
-        access_control::MODEL_SCOPE_GRANTS_CREATE_OPERATION_ID,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-definitions.scope-grants.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ModelDefinitionsInput::CreateScopeGrant { model_id, body },
     )
-    .create_scope_grant(CreateScopeDataModelGrantCommand {
-        actor_user_id: context.user.id,
-        scope_kind: parse_scope_kind(&body.scope_kind)?,
-        scope_id: body.scope_id,
-        data_model_id: helpers::parse_uuid(&model_id, "model_id")?,
-        enabled: body.enabled,
-        permission_profile: body.permission_profile,
-        confirm_unsafe_external_source_system_all: body.confirm_unsafe_external_source_system_all,
-    })
     .await?;
+    let interface::ModelDefinitionsOutput::ScopeGrant(grant) = output else {
+        unreachable!("scope grant create binding returned a different output")
+    };
 
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_scope_grant_response(grant))),
-    ))
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(grant))))
 }
 
 #[utoipa::path(
@@ -1235,27 +996,19 @@ pub async fn update_scope_grant(
     Path((model_id, grant_id)): Path<(String, String)>,
     Json(body): Json<UpdateScopeGrantBody>,
 ) -> Result<Json<ApiSuccess<ScopeGrantResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    if body.enabled.is_none() && body.permission_profile.is_none() {
-        return Err(
-            control_plane::errors::ControlPlaneError::InvalidInput("scope_grant_update").into(),
-        );
-    }
-
-    let grant = settings_service(
-        &state,
-        access_control::MODEL_SCOPE_GRANTS_UPDATE_OPERATION_ID,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-definitions.scope-grants.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ModelDefinitionsInput::UpdateScopeGrant {
+            model_id,
+            grant_id,
+            body,
+        },
     )
-    .update_scope_grant(UpdateScopeDataModelGrantCommand {
-        actor_user_id: context.user.id,
-        data_model_id: helpers::parse_uuid(&model_id, "model_id")?,
-        grant_id: helpers::parse_uuid(&grant_id, "grant_id")?,
-        enabled: body.enabled,
-        permission_profile: body.permission_profile,
-        confirm_unsafe_external_source_system_all: body.confirm_unsafe_external_source_system_all,
-    })
     .await?;
-
-    Ok(Json(ApiSuccess::new(to_scope_grant_response(grant))))
+    let interface::ModelDefinitionsOutput::ScopeGrant(grant) = output else {
+        unreachable!("scope grant update binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(grant)))
 }
