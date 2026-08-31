@@ -1,6 +1,7 @@
 mod authentication_activation;
 mod boot_snapshot;
 mod input_assembly;
+mod interface_contributions;
 
 #[cfg(test)]
 pub(crate) use authentication_activation::HostExtensionAuthenticationFactoryCatalog;
@@ -31,4 +32,7 @@ pub use input_assembly::{
     RUNTIME_EVENT_AFTER_COMMIT_POINT_ID, RUNTIME_EVENT_DIAGNOSTIC_CONTRACT_ID,
     RUNTIME_EVENT_DIAGNOSTIC_POINT_ID, RUNTIME_EVENT_LANE_CONTRACT_VERSION,
     RUNTIME_EVENT_REQUIRED_CONTRACT_ID, RUNTIME_EVENT_REQUIRED_POINT_ID,
+};
+pub(crate) use interface_contributions::{
+    production_interface_contributions, InterfaceContributionCollector,
 };

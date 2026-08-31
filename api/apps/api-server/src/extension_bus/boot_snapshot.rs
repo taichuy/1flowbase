@@ -12,8 +12,9 @@ use storage_durable_postgres::MainDurableStore;
 
 use super::{
     input_assembly::ExtensionGraphInputAssembly,
-    production_host_extension_authentication_factories, AuthenticationAdapterFactoryBinding,
-    AuthenticationAdapterFactoryRegistry, INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID,
+    production_host_extension_authentication_factories, production_interface_contributions,
+    AuthenticationAdapterFactoryBinding, AuthenticationAdapterFactoryRegistry,
+    InterfaceContributionCollector, INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID,
     INTERFACE_COMPLETION_HOOK_POINT_ID,
 };
 const INTERFACE_COMPLETION_CONTEXT_CONTRACT_ID: &str = "interface-invocation-completion";
@@ -226,66 +227,25 @@ impl ExtensionBootSnapshot {
             .interface_registry
             .as_ref()
             .ok_or_else(|| anyhow::anyhow!("interface registry is absent"))?;
-        let mut compiler = interface_runtime::RegistryCompiler::new(
+        let mut collector = InterfaceContributionCollector::new(
             interface_runtime::GraphFingerprint::new(self.graph.fingerprint().as_str())?,
-            [
-                interface_runtime::AuthorizationOperation::new(
-                    crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION,
-                )?,
-                interface_runtime::AuthorizationOperation::new(
-                    "public.auth.login-instances.read",
-                )?,
-                interface_runtime::AuthorizationOperation::new("public.auth.sign-in")?,
-                interface_runtime::AuthorizationOperation::new("application.native.runs.create")?,
-                interface_runtime::AuthorizationOperation::new("mcp.tools.invoke")?,
-                interface_runtime::AuthorizationOperation::new("workflow-extension.invoke")?,
-            ],
-            [
-                interface_runtime::InterfaceOwner::new(
-                    crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID,
-                )?,
-                interface_runtime::InterfaceOwner::new("api-server.public-auth")?,
-                interface_runtime::InterfaceOwner::new("api-server.application-public-api")?,
-                interface_runtime::InterfaceOwner::new("api-server.mcp-protocol")?,
-                interface_runtime::InterfaceOwner::new("api-server.workflow-extension")?,
-            ],
         );
-        compiler.absorb_interface(
-            registry.snapshot().as_ref(),
-            &interface_runtime::InterfaceId::new(
+        collector.absorb_published_interface(
+            registry.snapshot(),
+            interface_runtime::InterfaceId::new(
                 crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID,
             )?,
-        )?;
-        compiler.absorb_snapshot(
-            crate::routes::auth::compile_public_login_instances_registry(Arc::downgrade(state))?
-                .as_ref(),
-        )?;
-        compiler.absorb_snapshot(
-            crate::routes::sign_in_interface::compile_registry(Arc::downgrade(state))?.as_ref(),
-        )?;
-        compiler.absorb_snapshot(
-            crate::routes::application_public_api::native::compile_native_interface_registry(
-                Arc::downgrade(state),
-            )?
-            .as_ref(),
-        )?;
-        compiler.absorb_snapshot(
-            crate::routes::application_public_api::compatibility_interface::compile_registry(
-                Arc::downgrade(state),
-            )?
-            .as_ref(),
-        )?;
-        compiler.absorb_snapshot(
-            crate::routes::mcp_protocol::compile_mcp_interface_registry(Arc::downgrade(state))?
-                .as_ref(),
-        )?;
-        compiler.absorb_snapshot(
-            crate::routes::application_public_api::ex::compile_workflow_extension_registry(
-                Arc::downgrade(state),
-            )?
-            .as_ref(),
-        )?;
-        let candidate = compiler.compile()?;
+            interface_runtime::AuthorizationOperation::new(
+                crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_PERMISSION,
+            )?,
+            interface_runtime::InterfaceOwner::new(
+                crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID,
+            )?,
+        );
+        for contribution in production_interface_contributions() {
+            collector.add(contribution)?;
+        }
+        let candidate = collector.compile(Arc::downgrade(state))?;
         self.authentication_factories
             .validate_registry(&candidate)?;
         registry.publish(candidate);

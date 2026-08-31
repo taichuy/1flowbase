@@ -23,6 +23,7 @@ mod host_extensions;
 mod host_infrastructure;
 mod i18n_catalog;
 mod i18n_catalog_routes;
+mod interface_contribution_collector;
 mod interface_coverage_inventory;
 mod interface_route_equivalence;
 mod interface_vertical_slices;
