@@ -128,7 +128,11 @@ async fn isolated_database(base_url: &str) -> postgres_test_support::PostgresTes
         .unwrap()
 }
 
-async fn fixture() -> Fixture {
+async fn fixture_state() -> (
+    Arc<ApiState>,
+    ApiConfig,
+    postgres_test_support::PostgresTestSchema,
+) {
     let mut config = test_config();
     let database = isolated_database(&config.database_url).await;
     config.database_url = database.database_url().to_owned();
@@ -163,18 +167,25 @@ async fn fixture() -> Fixture {
     let mut runtime_backend_slot = runtime_core::runtime_backend::RuntimeBackendSlot::default();
     runtime_backend_slot.bind(runtime_host).unwrap();
     let api_workspace_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let extension_graph = api_server::extension_bus::assemble_extension_graph_input(
+    let extension_assembly = api_server::extension_bus::assemble_extension_graph_input(
         &api_workspace_root,
         api_server::extension_bus::DEFAULT_PLUGIN_SET_PATH,
         Vec::new(),
     )
-    .unwrap()
-    .compile_graph()
     .unwrap();
+    let extension_graph = Arc::new(extension_assembly.compile_graph().unwrap());
+    let extension_boot_snapshot = Arc::new(
+        api_server::extension_bus::compile_extension_boot_snapshot(
+            Arc::clone(&extension_graph),
+            &extension_assembly,
+            store.clone(),
+            config.api_node_id.clone(),
+        )
+        .unwrap(),
+    );
     let runtime_backend = runtime_backend_slot.backend().unwrap();
     let provider_runtime = Arc::new(
-        ApiRuntimeServices::new_with_runtime_backend(runtime_backend, Arc::new(extension_graph))
-            .unwrap(),
+        ApiRuntimeServices::new_with_runtime_backend(runtime_backend, extension_graph).unwrap(),
     );
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
     let registry = runtime_core::runtime_model_registry::RuntimeModelRegistry::default();
@@ -230,7 +241,7 @@ async fn fixture() -> Fixture {
         api_runtime_profile: Arc::new(
             HostApiRuntimeProfileCollector::new(process_started_at).unwrap(),
         ),
-        extension_boot_snapshot: None,
+        extension_boot_snapshot: Some(extension_boot_snapshot),
         runtime_host_system: Arc::new(UnreachableRuntimeHost),
         official_plugin_source: Arc::new(NoopPluginSource),
         official_mcp_bundle_source: Arc::new(NoopMcpSource),
@@ -259,8 +270,13 @@ async fn fixture() -> Fixture {
         bootstrap_workspace_id: bootstrap.workspace_id,
         bootstrap_workspace_name: config.bootstrap_workspace_name.clone(),
     });
+    (state, config, database)
+}
+
+async fn fixture() -> Fixture {
+    let (state, config, database) = fixture_state().await;
     Fixture {
-        app: app_with_state_and_config(state.clone(), &config),
+        app: app_with_state_and_config(state, &config),
         _database: database,
     }
 }
@@ -313,7 +329,11 @@ async fn get(app: &Router, path: &str, cookie: &str) -> (StatusCode, Value) {
     )
 }
 
-async fn login(app: &Router, identifier: &str, password: &str) -> (String, String) {
+async fn sign_in(
+    app: &Router,
+    identifier: &str,
+    password: &str,
+) -> (StatusCode, Option<String>, Value) {
     let response = app
         .clone()
         .oneshot(
@@ -328,16 +348,66 @@ async fn login(app: &Router, identifier: &str, password: &str) -> (String, Strin
         )
         .await
         .unwrap();
-    let cookie = response.headers()["set-cookie"]
-        .to_str()
-        .unwrap()
-        .to_string();
-    let payload: Value =
-        serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let status = response.status();
+    let cookie = response
+        .headers()
+        .get("set-cookie")
+        .and_then(|value| value.to_str().ok())
+        .map(ToOwned::to_owned);
+    let bytes = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let payload = serde_json::from_slice::<Value>(&bytes).unwrap_or_else(
+        |_| json!({ "non_json_body": String::from_utf8_lossy(&bytes).into_owned() }),
+    );
+    (status, cookie, payload)
+}
+
+async fn login(app: &Router, identifier: &str, password: &str) -> (String, String) {
+    let (status, cookie, payload) = sign_in(app, identifier, password).await;
+    assert_eq!(status, StatusCode::OK, "sign-in failed: {payload}");
+    let cookie = cookie.unwrap_or_else(|| panic!("sign-in response omitted Set-Cookie: {payload}"));
     (
         cookie,
         payload["data"]["csrf_token"].as_str().unwrap().into(),
     )
+}
+
+#[tokio::test]
+async fn sign_in_projects_cookie_only_after_complete_interface_boot() {
+    let fixture = fixture().await;
+
+    let (status, cookie, payload) = sign_in(&fixture.app, "root", "change-me").await;
+    assert_eq!(status, StatusCode::OK, "{payload}");
+    assert!(
+        cookie.is_some(),
+        "successful sign-in must project Set-Cookie"
+    );
+    assert!(payload["data"]["csrf_token"].as_str().is_some());
+
+    let (status, cookie, payload) = sign_in(&fixture.app, "root", "invalid-password").await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED, "{payload}");
+    assert!(
+        cookie.is_none(),
+        "rejected sign-in must not project Set-Cookie"
+    );
+}
+
+#[tokio::test]
+async fn sign_in_fails_closed_without_extension_boot_snapshot() {
+    let (mut state, config, database) = fixture_state().await;
+    Arc::get_mut(&mut state)
+        .expect("fixture state must be uniquely owned before router assembly")
+        .extension_boot_snapshot = None;
+    let app = app_with_state_and_config(state, &config);
+
+    let (status, cookie, payload) = sign_in(&app, "root", "change-me").await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{payload}");
+    assert_eq!(payload["code"], "internal_error");
+    assert_eq!(payload["message"], "extension boot snapshot is unavailable");
+    assert!(
+        cookie.is_none(),
+        "fail-closed sign-in must not project Set-Cookie"
+    );
+    drop(database);
 }
 
 async fn create_member(app: &Router, cookie: &str, csrf: &str, account: &str, password: &str) {

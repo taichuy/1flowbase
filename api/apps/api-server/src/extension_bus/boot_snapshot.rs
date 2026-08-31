@@ -11,8 +11,10 @@ use serde::Serialize;
 use storage_durable_postgres::MainDurableStore;
 
 use super::{
-    AuthenticationAdapterFactoryBinding, AuthenticationAdapterFactoryRegistry,
-    INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID, INTERFACE_COMPLETION_HOOK_POINT_ID,
+    input_assembly::ExtensionGraphInputAssembly,
+    production_host_extension_authentication_factories, AuthenticationAdapterFactoryBinding,
+    AuthenticationAdapterFactoryRegistry, INTERFACE_COMPLETION_HOOK_CONTRIBUTION_ID,
+    INTERFACE_COMPLETION_HOOK_POINT_ID,
 };
 const INTERFACE_COMPLETION_CONTEXT_CONTRACT_ID: &str = "interface-invocation-completion";
 const INTERFACE_COMPLETION_CONTEXT_CONTRACT_VERSION: &str = "1";
@@ -70,6 +72,26 @@ pub struct ExtensionBootSnapshot {
     graph: Arc<EffectiveExtensionGraph>,
     interface_registry: Option<Arc<interface_runtime::DynamicInterfaceRegistry>>,
     authentication_factories: AuthenticationAdapterFactoryRegistry,
+}
+
+pub fn compile_extension_boot_snapshot(
+    graph: Arc<EffectiveExtensionGraph>,
+    assembly: &ExtensionGraphInputAssembly,
+    store: MainDurableStore,
+    api_node_id: String,
+) -> anyhow::Result<ExtensionBootSnapshot> {
+    let host_authentication_factories = production_host_extension_authentication_factories()
+        .activate(assembly.host_extension_manifests())?;
+    ExtensionBootSnapshot::compile(
+        graph,
+        assembly.interface_operations(),
+        assembly.host_extension_manifests(),
+        Arc::new(DurableHostInfrastructureProvidersViewQuery::new(
+            store,
+            api_node_id,
+        )),
+        host_authentication_factories,
+    )
 }
 
 impl std::fmt::Debug for ExtensionBootSnapshot {
