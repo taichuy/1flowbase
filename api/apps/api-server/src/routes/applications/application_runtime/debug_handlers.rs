@@ -829,11 +829,25 @@ pub async fn get_runtime_debug_artifact(
     headers: HeaderMap,
     Path((id, artifact_id)): Path<(Uuid, Uuid)>,
 ) -> Result<axum::response::Response, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-
-    load_runtime_debug_artifact_response(state, context.actor.current_workspace_id, id, artifact_id)
-        .await
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.debug-artifact.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_debug_artifacts::ApplicationRuntimeDebugArtifactsInput::Get {
+            application_id: id,
+            artifact_id,
+        },
+    )
+    .await?;
+    let interface_debug_artifacts::ApplicationRuntimeDebugArtifactsOutput::Content(content) = output
+    else {
+        unreachable!("runtime debug artifact binding returned a different output")
+    };
+    axum::response::Response::builder()
+        .status(StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, content.content_type)
+        .body(axum::body::Body::from(content.bytes))
+        .map_err(ApiError::from)
 }
 
 #[utoipa::path(
@@ -857,35 +871,20 @@ pub async fn resolve_runtime_debug_artifacts(
     Path(id): Path<Uuid>,
     Json(body): Json<ResolveRuntimeDebugArtifactsBody>,
 ) -> Result<Json<ApiSuccess<ResolveRuntimeDebugArtifactsResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-
-    if body.artifact_refs.len() > RUNTIME_DEBUG_ARTIFACT_RESOLVE_MAX_REFS {
-        return Err(ControlPlaneError::InvalidInput("artifact_refs").into());
-    }
-
-    let mut seen = HashSet::new();
-    let mut artifacts = Vec::new();
-    for artifact_id in body.artifact_refs {
-        if !seen.insert(artifact_id) {
-            continue;
-        }
-
-        let value = load_runtime_debug_artifact_json_value(
-            state.clone(),
-            context.actor.current_workspace_id,
-            id,
-            artifact_id,
-        )
-        .await?;
-        artifacts.push(RuntimeDebugArtifactValueResponse {
-            artifact_ref: artifact_id.to_string(),
-            content_type: "application/json".to_string(),
-            value,
-        });
-    }
-
-    Ok(Json(ApiSuccess::new(
-        ResolveRuntimeDebugArtifactsResponse { artifacts },
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.debug-artifacts.resolve.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_debug_artifacts::ApplicationRuntimeDebugArtifactsInput::Resolve {
+            application_id: id,
+            body,
+        },
+    )
+    .await?;
+    let interface_debug_artifacts::ApplicationRuntimeDebugArtifactsOutput::Resolved(response) =
+        output
+    else {
+        unreachable!("runtime debug artifacts resolve binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }

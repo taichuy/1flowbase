@@ -11,11 +11,35 @@ use control_plane::{
     },
 };
 use serde_json::Value;
+use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use crate::{app_state::ApiState, error_response::ApiError};
 
 const APPLICATION_INPUT_QUERY_KEYS: &[&str] = &["query", "question", "prompt", "message", "input"];
+
+#[derive(Clone)]
+pub(crate) struct RuntimeDebugArtifactReadDependencies {
+    store: MainDurableStore,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+}
+
+impl RuntimeDebugArtifactReadDependencies {
+    pub(crate) fn new(
+        store: MainDurableStore,
+        file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    ) -> Self {
+        Self {
+            store,
+            file_storage_registry,
+        }
+    }
+}
+
+pub(crate) struct RuntimeDebugArtifactContent {
+    pub(crate) content_type: String,
+    pub(crate) bytes: Vec<u8>,
+}
 
 pub(crate) fn application_run_query(payload: &Value) -> Option<String> {
     if let Some(query) = string_field(payload, "query") {
@@ -236,8 +260,31 @@ pub(crate) async fn load_runtime_debug_artifact_response(
     application_id: Uuid,
     artifact_id: Uuid,
 ) -> Result<Response<Body>, ApiError> {
+    let content = load_runtime_debug_artifact_content(
+        &RuntimeDebugArtifactReadDependencies::new(
+            state.store.clone(),
+            state.file_storage_registry.clone(),
+        ),
+        workspace_id,
+        application_id,
+        artifact_id,
+    )
+    .await?;
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(CONTENT_TYPE, content.content_type)
+        .body(Body::from(content.bytes))
+        .map_err(ApiError::from)
+}
+
+pub(crate) async fn load_runtime_debug_artifact_content(
+    dependencies: &RuntimeDebugArtifactReadDependencies,
+    workspace_id: Uuid,
+    application_id: Uuid,
+    artifact_id: Uuid,
+) -> Result<RuntimeDebugArtifactContent, ApiError> {
     let artifact = <_ as OrchestrationRuntimeRepository>::get_runtime_debug_artifact(
-        &state.store,
+        &dependencies.store,
         &GetRuntimeDebugArtifactInput {
             workspace_id,
             application_id,
@@ -247,13 +294,13 @@ pub(crate) async fn load_runtime_debug_artifact_response(
     .await?
     .ok_or(ControlPlaneError::NotFound("runtime_debug_artifact"))?;
     let storage =
-        <_ as FileManagementRepository>::get_file_storage(&state.store, artifact.storage_id)
+        <_ as FileManagementRepository>::get_file_storage(&dependencies.store, artifact.storage_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("file_storage"))?;
     if !storage.enabled {
         return Err(ControlPlaneError::Conflict("file_storage_disabled").into());
     }
-    let driver = state
+    let driver = dependencies
         .file_storage_registry
         .get(&storage.driver_type)
         .ok_or(ControlPlaneError::Conflict("storage_driver_not_registered"))?;
@@ -265,11 +312,10 @@ pub(crate) async fn load_runtime_debug_artifact_response(
         .await?;
     let content_type = object.content_type.unwrap_or(artifact.content_type);
 
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(CONTENT_TYPE, content_type)
-        .body(Body::from(object.bytes))
-        .map_err(ApiError::from)
+    Ok(RuntimeDebugArtifactContent {
+        content_type,
+        bytes: object.bytes,
+    })
 }
 
 pub(crate) async fn load_runtime_debug_artifact_json_value(
@@ -278,8 +324,26 @@ pub(crate) async fn load_runtime_debug_artifact_json_value(
     application_id: Uuid,
     artifact_id: Uuid,
 ) -> Result<Value, ApiError> {
+    load_runtime_debug_artifact_json_value_with_dependencies(
+        &RuntimeDebugArtifactReadDependencies::new(
+            state.store.clone(),
+            state.file_storage_registry.clone(),
+        ),
+        workspace_id,
+        application_id,
+        artifact_id,
+    )
+    .await
+}
+
+pub(crate) async fn load_runtime_debug_artifact_json_value_with_dependencies(
+    dependencies: &RuntimeDebugArtifactReadDependencies,
+    workspace_id: Uuid,
+    application_id: Uuid,
+    artifact_id: Uuid,
+) -> Result<Value, ApiError> {
     let artifact = <_ as OrchestrationRuntimeRepository>::get_runtime_debug_artifact(
-        &state.store,
+        &dependencies.store,
         &GetRuntimeDebugArtifactInput {
             workspace_id,
             application_id,
@@ -289,13 +353,13 @@ pub(crate) async fn load_runtime_debug_artifact_json_value(
     .await?
     .ok_or(ControlPlaneError::NotFound("runtime_debug_artifact"))?;
     let storage =
-        <_ as FileManagementRepository>::get_file_storage(&state.store, artifact.storage_id)
+        <_ as FileManagementRepository>::get_file_storage(&dependencies.store, artifact.storage_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("file_storage"))?;
     if !storage.enabled {
         return Err(ControlPlaneError::Conflict("file_storage_disabled").into());
     }
-    let driver = state
+    let driver = dependencies
         .file_storage_registry
         .get(&storage.driver_type)
         .ok_or(ControlPlaneError::Conflict("storage_driver_not_registered"))?;

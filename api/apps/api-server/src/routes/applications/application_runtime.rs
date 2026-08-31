@@ -60,6 +60,7 @@ pub(crate) mod application_monitoring;
 pub(crate) mod archive;
 pub(crate) mod debug_variable_cache;
 pub(crate) mod debug_variable_snapshot;
+pub(crate) mod interface_debug_artifacts;
 pub(crate) mod interface_debug_variables;
 pub(crate) mod interface_runtime_reads;
 pub(crate) mod interface_trace_exports;
@@ -78,9 +79,10 @@ pub use debug_variable_snapshot::{get_debug_variable_snapshot, DebugVariableSnap
 use runtime_debug_artifacts::{
     application_run_model, application_run_query, count_llm_tool_callback_trace_items,
     enrich_application_run_detail_visible_internal_llm_route_traces,
-    enrich_node_last_run_visible_internal_llm_route_traces, load_runtime_debug_artifact_json_value,
-    load_runtime_debug_artifact_response, offload_application_run_detail_artifacts,
-    RuntimeDebugArtifactPreviewRequest,
+    enrich_node_last_run_visible_internal_llm_route_traces, load_runtime_debug_artifact_content,
+    load_runtime_debug_artifact_json_value_with_dependencies,
+    offload_application_run_detail_artifacts, RuntimeDebugArtifactContent,
+    RuntimeDebugArtifactPreviewRequest, RuntimeDebugArtifactReadDependencies,
 };
 
 pub(super) const APPLICATION_RUN_LOG_DEFAULT_TIME_RANGE_DAYS: i64 = 7;
