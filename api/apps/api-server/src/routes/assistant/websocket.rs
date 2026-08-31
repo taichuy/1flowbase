@@ -6,14 +6,7 @@ use axum::{
     response::Response,
     Json,
 };
-use control_plane::{
-    application_public_api::run_service::{
-        ApplicationPublishedFlowRunRepository, ListAssistantConversationsInput,
-    },
-    auth::hash_api_key_token,
-    orchestration_runtime::{CancelFlowRunCommand, OrchestrationRuntimeService},
-    ports::{CacheStore, OrchestrationRuntimeRepository},
-};
+use control_plane::{auth::hash_api_key_token, ports::CacheStore};
 use futures_util::{SinkExt, StreamExt};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -22,24 +15,20 @@ use tokio::{sync::broadcast, sync::mpsc, task::JoinHandle};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use super::conversation_events::{
-    AssistantConversationEventScope, AssistantConversationSummaryResponse,
+use super::websocket_interface::{
+    AssistantConversationSubscription, AssistantWebSocketCommandInput,
+    AssistantWebSocketCommandOutput, AssistantWebSocketRun, BINDING_ID,
 };
 use super::websocket_ticket_interface::{
     AssistantWebSocketTicket, ASSISTANT_WEBSOCKET_PROTOCOL, ASSISTANT_WEBSOCKET_TICKET_PREFIX,
 };
 use super::{
-    abort_assistant_execution, api_provider_runtime, assistant_preference_for_target,
-    launch_assistant_execution, prepare_assistant_execution, run_dependencies, ApiError, ApiState,
-    AssistantClientToolBridge, AssistantClientToolId, AssistantConversationPageResponse,
-    RequestContext, StartAssistantRunBody,
+    assistant_preference_for_target, ApiError, ApiState, AssistantClientToolBridge,
+    AssistantClientToolId, AssistantConversationPageResponse, RequestContext,
+    StartAssistantRunBody,
 };
 use crate::{
-    middleware::require_session::require_session,
-    response::ApiSuccess,
-    routes::{
-        application_public_api::native_websocket::schema::sequence_from_event_id, debug_run_stream,
-    },
+    middleware::require_session::require_session, response::ApiSuccess, routes::debug_run_stream,
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -274,7 +263,21 @@ impl AssistantWebSocketCommand {
     }
 }
 
-fn enabled_client_tools_for_connection(
+async fn invoke_command_interface(
+    state: Arc<ApiState>,
+    authorization: &AssistantWebSocketAuthorization,
+    input: AssistantWebSocketCommandInput,
+) -> Result<AssistantWebSocketCommandOutput, ApiError> {
+    crate::routes::console_interface::invoke_with_principal(
+        state,
+        BINDING_ID,
+        authorization.context.interface_principal(),
+        input,
+    )
+    .await
+}
+
+pub(super) fn enabled_client_tools_for_connection(
     preference: &[AssistantClientToolId],
     declared: &[AssistantClientToolId],
 ) -> Vec<AssistantClientToolId> {
@@ -358,31 +361,42 @@ async fn run_connection(
                         }
                         Message::Text(text) => match serde_json::from_str::<AssistantWebSocketCommand>(text.as_str()) {
                             Ok(AssistantWebSocketCommand::ClientToolResult { request_id, call_id, result, is_error }) => {
-                                let connection_id = client_tool_bridge.connection_id();
-                                let sessions = state
-                                    .assistant_client_sessions
-                                    .lock()
-                                    .unwrap_or_else(|poisoned| poisoned.into_inner())
-                                    .values()
-                                    .cloned()
-                                    .collect::<Vec<_>>();
-                                let mut completed = false;
-                                for session in sessions {
-                                    if session.complete_for_connection(connection_id, call_id, result.clone(), is_error).await {
-                                        completed = true;
-                                        break;
+                                match invoke_command_interface(
+                                    state.clone(),
+                                    authorization.as_ref(),
+                                    AssistantWebSocketCommandInput::ClientToolResult {
+                                        connection_id: client_tool_bridge.connection_id(),
+                                        call_id,
+                                        result,
+                                        is_error,
+                                    },
+                                ).await {
+                                    Ok(AssistantWebSocketCommandOutput::ClientToolResult { completed: true }) => {
+                                        let _ = sender.send(Message::Text(json!({"type":"command.accepted","request_id":request_id,"command":"client_tool.result","call_id":call_id}).to_string())).await;
                                     }
-                                }
-                                if completed {
-                                    let _ = sender.send(Message::Text(json!({"type":"command.accepted","request_id":request_id,"command":"client_tool.result","call_id":call_id}).to_string())).await;
-                                } else {
-                                    let _ = sender.send(command_error(Some(&request_id), "unknown_client_tool_call", "client tool call is not pending")).await;
+                                    Ok(AssistantWebSocketCommandOutput::ClientToolResult { completed: false }) => {
+                                        let _ = sender.send(command_error(Some(&request_id), "unknown_client_tool_call", "client tool call is not pending")).await;
+                                    }
+                                    Ok(_) => {
+                                        let _ = sender.send(command_error(Some(&request_id), "assistant_command_failed", "client tool result returned an invalid output")).await;
+                                    }
+                                    Err(error) => {
+                                        let _ = sender.send(command_error(Some(&request_id), "assistant_command_failed", error.0.to_string())).await;
+                                    }
                                 }
                                 active = Some((task, frames));
                             }
                             Ok(AssistantWebSocketCommand::Cancel { request_id, run_id }) => {
-                                match cancel_run(&state, &authorization, run_id).await {
-                                    Ok(()) => { let _ = sender.send(Message::Text(json!({"type":"command.accepted","request_id":request_id,"command":"run.cancel","run_id":run_id}).to_string())).await; }
+                                match invoke_command_interface(
+                                    state.clone(),
+                                    authorization.as_ref(),
+                                    AssistantWebSocketCommandInput::Cancel {
+                                        application_id: authorization.application_id,
+                                        run_id,
+                                    },
+                                ).await {
+                                    Ok(AssistantWebSocketCommandOutput::Cancelled) => { let _ = sender.send(Message::Text(json!({"type":"command.accepted","request_id":request_id,"command":"run.cancel","run_id":run_id}).to_string())).await; }
+                                    Ok(_) => { let _ = sender.send(command_error(Some(&request_id), "assistant_cancel_failed", "run.cancel returned an invalid output")).await; }
                                     Err(error) => { let _ = sender.send(command_error(Some(&request_id), "assistant_cancel_failed", error.0.to_string())).await; }
                                 }
                                 active = Some((task, frames));
@@ -440,14 +454,24 @@ async fn run_connection(
                             ))
                             .await;
                     }
-                    Ok(AssistantWebSocketCommand::ClientToolResult { request_id, .. }) => {
-                        let _ = sender
-                            .send(command_error(
-                                Some(&request_id),
-                                "unknown_client_tool_call",
-                                "client tool call is not pending",
-                            ))
-                            .await;
+                    Ok(command @ AssistantWebSocketCommand::ClientToolResult { .. }) => {
+                        let state = state.clone();
+                        let authorization = authorization.clone();
+                        let command_client_tool_bridge = client_tool_bridge.clone();
+                        let (frame_sender, frame_receiver) = mpsc::channel(32);
+                        active = Some((
+                            tokio::spawn(async move {
+                                execute_command(
+                                    state,
+                                    authorization,
+                                    command,
+                                    frame_sender,
+                                    command_client_tool_bridge,
+                                )
+                                .await
+                            }),
+                            frame_receiver,
+                        ));
                     }
                     Ok(command) => {
                         let state = state.clone();
@@ -501,56 +525,56 @@ async fn execute_command(
     frames: mpsc::Sender<String>,
     client_tool_bridge: AssistantClientToolBridge,
 ) -> Result<(), ApiError> {
-    let command = match command {
+    match command {
         AssistantWebSocketCommand::SubscribeConversations { request_id } => {
-            return execute_conversation_subscription(state, authorization, request_id, frames)
-                .await;
+            let output = invoke_command_interface(
+                state.clone(),
+                authorization.as_ref(),
+                AssistantWebSocketCommandInput::SubscribeConversations {
+                    application_id: authorization.application_id,
+                },
+            )
+            .await?;
+            let AssistantWebSocketCommandOutput::ConversationSubscription(subscription) = output
+            else {
+                return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                    "assistant_command_output",
+                )
+                .into());
+            };
+            return project_conversation_subscription(
+                state,
+                authorization,
+                request_id,
+                frames,
+                subscription,
+            )
+            .await;
         }
-        command => command,
-    };
-
-    let (request_id, run_id, from_sequence) = match command {
         AssistantWebSocketCommand::Create {
             request_id,
             request,
             client_tool_ids,
         } => {
-            if request.application_id != authorization.application_id {
-                return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
-                    "assistant_application_id",
+            let output = invoke_command_interface(
+                state.clone(),
+                authorization.as_ref(),
+                AssistantWebSocketCommandInput::Create {
+                    application_id: authorization.application_id,
+                    request,
+                    request_headers: authorization.request_headers.clone(),
+                    client_tool_ids,
+                    client_tool_bridge,
+                },
+            )
+            .await?;
+            let AssistantWebSocketCommandOutput::Run(run) = output else {
+                return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                    "assistant_command_output",
                 )
                 .into());
-            }
-            let execution = prepare_assistant_execution(
-                &state.store,
-                &authorization.request_headers,
-                &authorization.context.actor,
-                request,
-            )
-            .await?;
-            let enabled_client_tools = enabled_client_tools_for_connection(
-                &execution.enabled_client_tools,
-                &client_tool_ids,
-            );
-            tracing::debug!(
-                application_id = %authorization.application_id,
-                declared_client_tools = ?client_tool_ids,
-                preferred_client_tools = ?execution.enabled_client_tools,
-                enabled_client_tools = ?enabled_client_tools,
-                "Assistant WebSocket client tool selection"
-            );
-            let client_tool_bridge = Arc::new(
-                client_tool_bridge
-                    .for_tools(enabled_client_tools, client_tool_ids)
-                    .await,
-            );
-            let run_id = launch_assistant_execution(
-                run_dependencies(state.clone()),
-                execution,
-                Some(client_tool_bridge),
-            )
-            .await?;
-            (request_id, run_id, None)
+            };
+            project_run_stream(state, request_id, frames, run).await
         }
         AssistantWebSocketCommand::Attach {
             request_id,
@@ -558,56 +582,91 @@ async fn execute_command(
             after_event_id,
             client_tool_ids,
         } => {
-            let run = state
-                .store
-                .get_flow_run(authorization.application_id, run_id)
-                .await?
-                .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                    "flow_run",
-                ))?;
-            if run.created_by != authorization.context.user.id {
-                return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
-                    "assistant_run",
+            let output = invoke_command_interface(
+                state.clone(),
+                authorization.as_ref(),
+                AssistantWebSocketCommandInput::Attach {
+                    application_id: authorization.application_id,
+                    run_id,
+                    after_event_id,
+                    client_tool_ids,
+                    client_tool_bridge,
+                },
+            )
+            .await?;
+            let AssistantWebSocketCommandOutput::Run(run) = output else {
+                return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                    "assistant_command_output",
                 )
                 .into());
+            };
+            project_run_stream(state, request_id, frames, run).await
+        }
+        AssistantWebSocketCommand::ClientToolResult {
+            request_id,
+            call_id,
+            result,
+            is_error,
+        } => {
+            let output = invoke_command_interface(
+                state,
+                authorization.as_ref(),
+                AssistantWebSocketCommandInput::ClientToolResult {
+                    connection_id: client_tool_bridge.connection_id(),
+                    call_id,
+                    result,
+                    is_error,
+                },
+            )
+            .await?;
+            let AssistantWebSocketCommandOutput::ClientToolResult { completed } = output else {
+                return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                    "assistant_command_output",
+                )
+                .into());
+            };
+            if completed {
+                frames
+                    .send(
+                        json!({"type":"command.accepted","request_id":request_id,"command":"client_tool.result","call_id":call_id}).to_string(),
+                    )
+                    .await
+                    .map_err(|_| control_plane::errors::ControlPlaneError::Conflict("assistant_websocket"))?;
+            } else {
+                frames
+                    .send(
+                        command_error(
+                            Some(&request_id),
+                            "unknown_client_tool_call",
+                            "client tool call is not pending",
+                        )
+                        .into_text()
+                        .unwrap_or_default(),
+                    )
+                    .await
+                    .map_err(|_| {
+                        control_plane::errors::ControlPlaneError::Conflict("assistant_websocket")
+                    })?;
             }
-            let from_sequence = sequence_from_event_id(run_id, after_event_id.as_deref())
-                .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("event_id"))?;
-            let session = state
-                .assistant_client_sessions
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .get(&run_id)
-                .cloned()
-                .ok_or(control_plane::errors::ControlPlaneError::Conflict(
-                    "assistant_client_session",
-                ))?;
-            session
-                .replace_connection(&client_tool_bridge, client_tool_ids)
-                .await;
-            (request_id, run_id, from_sequence)
+            Ok(())
         }
         AssistantWebSocketCommand::Cancel { .. } => {
-            return Err(
-                control_plane::errors::ControlPlaneError::InvalidInput("assistant_command").into(),
-            )
+            Err(control_plane::errors::ControlPlaneError::InvalidInput("assistant_command").into())
         }
-        AssistantWebSocketCommand::ClientToolResult { .. } => {
-            return Err(
-                control_plane::errors::ControlPlaneError::InvalidInput("assistant_command").into(),
-            )
-        }
-        AssistantWebSocketCommand::SubscribeConversations { .. } => {
-            return Err(
-                control_plane::errors::ControlPlaneError::InvalidInput("assistant_command").into(),
-            )
-        }
-    };
+    }
+}
+
+async fn project_run_stream(
+    state: Arc<ApiState>,
+    request_id: String,
+    frames: mpsc::Sender<String>,
+    run: AssistantWebSocketRun,
+) -> Result<(), ApiError> {
     let (event_sender, mut events) = mpsc::channel::<Value>(32);
     tokio::spawn(debug_run_stream::send_runtime_event_websocket_stream(
         state.runtime_event_stream.clone(),
-        run_id,
-        from_sequence,
+        run.run_id,
+        run.from_sequence,
         event_sender,
     ));
     while let Some(mut event) = events.recv().await {
@@ -633,19 +692,15 @@ async fn execute_command(
     Ok(())
 }
 
-async fn execute_conversation_subscription(
+async fn project_conversation_subscription(
     state: Arc<ApiState>,
     authorization: Arc<AssistantWebSocketAuthorization>,
     request_id: String,
     frames: mpsc::Sender<String>,
+    subscription: AssistantConversationSubscription,
 ) -> Result<(), ApiError> {
-    let scope = AssistantConversationEventScope {
-        workspace_id: authorization.context.actor.current_workspace_id,
-        application_id: authorization.application_id,
-        actor_user_id: authorization.context.user.id,
-    };
-    let mut events = state.assistant_conversation_events.subscribe(scope);
-    send_conversation_snapshot(&state, scope, &request_id, &frames).await?;
+    let mut events = subscription.events;
+    send_conversation_snapshot(subscription.snapshot, &request_id, &frames).await?;
 
     loop {
         match events.recv().await {
@@ -657,7 +712,24 @@ async fn execute_conversation_subscription(
                 })?;
             }
             Err(broadcast::error::RecvError::Lagged(_)) => {
-                send_conversation_snapshot(&state, scope, &request_id, &frames).await?;
+                let output = invoke_command_interface(
+                    state.clone(),
+                    authorization.as_ref(),
+                    AssistantWebSocketCommandInput::SubscribeConversations {
+                        application_id: authorization.application_id,
+                    },
+                )
+                .await?;
+                let AssistantWebSocketCommandOutput::ConversationSubscription(subscription) =
+                    output
+                else {
+                    return Err(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "assistant_command_output",
+                    )
+                    .into());
+                };
+                events = subscription.events;
+                send_conversation_snapshot(subscription.snapshot, &request_id, &frames).await?;
             }
             Err(broadcast::error::RecvError::Closed) => return Ok(()),
         }
@@ -665,31 +737,10 @@ async fn execute_conversation_subscription(
 }
 
 async fn send_conversation_snapshot(
-    state: &ApiState,
-    scope: AssistantConversationEventScope,
+    snapshot: AssistantConversationPageResponse,
     request_id: &str,
     frames: &mpsc::Sender<String>,
 ) -> Result<(), ApiError> {
-    let page = state
-        .store
-        .list_assistant_conversations(&ListAssistantConversationsInput {
-            workspace_id: scope.workspace_id,
-            application_id: scope.application_id,
-            actor_user_id: scope.actor_user_id,
-            page: 1,
-            page_size: 20,
-        })
-        .await?;
-    let snapshot = AssistantConversationPageResponse {
-        items: page
-            .items
-            .into_iter()
-            .map(AssistantConversationSummaryResponse::from)
-            .collect(),
-        total: page.total,
-        page: page.page,
-        page_size: page.page_size,
-    };
     frames
         .send(
             json!({
@@ -703,48 +754,6 @@ async fn send_conversation_snapshot(
         .map_err(|_| {
             control_plane::errors::ControlPlaneError::Conflict("assistant_websocket").into()
         })
-}
-
-async fn cancel_run(
-    state: &Arc<ApiState>,
-    authorization: &AssistantWebSocketAuthorization,
-    run_id: Uuid,
-) -> Result<(), ApiError> {
-    let run = state
-        .store
-        .get_flow_run(authorization.application_id, run_id)
-        .await?
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-            "flow_run",
-        ))?;
-    if run.created_by != authorization.context.user.id {
-        return Err(
-            control_plane::errors::ControlPlaneError::PermissionDenied("assistant_run").into(),
-        );
-    }
-    abort_assistant_execution(state, run_id);
-    let runtime = OrchestrationRuntimeService::new(
-        state.store.clone(),
-        api_provider_runtime(state),
-        state.runtime_engine.clone(),
-        state.provider_secret_master_key.clone(),
-    )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_file_storage_registry(state.file_storage_registry.clone())
-    .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue())
-    .with_runtime_event_stream(state.runtime_event_stream.clone());
-    runtime
-        .cancel_flow_run(CancelFlowRunCommand {
-            actor_user_id: authorization.context.user.id,
-            application_id: authorization.application_id,
-            flow_run_id: run_id,
-        })
-        .await?;
-    Ok(())
 }
 
 fn command_error(request_id: Option<&str>, code: &str, message: impl Into<String>) -> Message {

@@ -50,6 +50,7 @@ pub mod conversation_events;
 pub(crate) mod interface;
 mod run_activity;
 pub(crate) mod websocket;
+pub(crate) mod websocket_interface;
 pub(crate) mod websocket_ticket_interface;
 
 pub use client_tools::AssistantClientToolBridge;
@@ -69,7 +70,6 @@ use crate::{
     },
     response::ApiSuccess,
     routes::{
-        application_public_api::native::api_provider_runtime,
         console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
         debug_run_stream,
         mcp_protocol::virtual_ui,
@@ -1033,13 +1033,7 @@ async fn publish_assistant_conversation_summary(
 }
 
 pub(super) fn abort_assistant_execution(state: &ApiState, run_id: Uuid) -> bool {
-    let handle = abort_registered_assistant_execution(&state.assistant_executions, run_id);
-    if let Some(handle) = handle {
-        handle.abort();
-        true
-    } else {
-        false
-    }
+    abort_assistant_execution_in(&state.assistant_executions, run_id)
 }
 
 fn abort_registered_assistant_execution(
@@ -1050,6 +1044,19 @@ fn abort_registered_assistant_execution(
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
         .remove(&run_id)
+}
+
+pub(crate) fn abort_assistant_execution_in(
+    executions: &Mutex<HashMap<Uuid, tokio::task::AbortHandle>>,
+    run_id: Uuid,
+) -> bool {
+    let handle = abort_registered_assistant_execution(executions, run_id);
+    if let Some(handle) = handle {
+        handle.abort();
+        true
+    } else {
+        false
+    }
 }
 
 pub(crate) async fn prepare_assistant_execution(
