@@ -1,4 +1,6 @@
-use std::sync::Arc;
+use std::{convert::Infallible, sync::Arc};
+
+use axum::response::sse::Event;
 
 use control_plane::{
     application_public_api::run_service::{
@@ -14,11 +16,14 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::{
-    assistant_preference_for_actor, assistant_run_capabilities, available_targets, read_preference,
-    validate_preference, AssistantConversationMessageResponse, AssistantConversationPageResponse,
-    AssistantConversationResponse, AssistantPageReferenceBody, AssistantPreferenceBody,
-    AssistantRunActivityPageResponse, AssistantRunActivityQuery, AssistantSettingsResponse,
-    CreateAssistantConversationBody, ListAssistantConversationsQuery, ASSISTANT_META_KEY,
+    assistant_preference_for_actor, assistant_run_capabilities, available_targets,
+    execute_assistant_run, launch_assistant_execution, prepare_assistant_execution,
+    read_preference, validate_preference, AssistantConversationMessageResponse,
+    AssistantConversationPageResponse, AssistantConversationResponse, AssistantPageReferenceBody,
+    AssistantPreferenceBody, AssistantRunActivityPageResponse, AssistantRunActivityQuery,
+    AssistantRunDependencies, AssistantRunResponse, AssistantSettingsResponse,
+    CreateAssistantConversationBody, ListAssistantConversationsQuery, StartAssistantRunBody,
+    ASSISTANT_META_KEY,
 };
 use super::{
     conversation_events::{
@@ -31,7 +36,7 @@ use crate::{
     error_response::ApiError,
     routes::console_interface::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
-        ConsoleInterfaceTargetError,
+        ConsoleInterfaceTargetError, ConsoleServerStreamFuture, ConsoleServerStreamPort,
     },
 };
 
@@ -88,6 +93,37 @@ impl InterfaceContract for AssistantConversationsOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+pub(crate) struct AssistantRunInput {
+    pub(crate) body: StartAssistantRunBody,
+    pub(crate) headers: axum::http::HeaderMap,
+}
+
+impl InterfaceContract for AssistantRunInput {
+    const CONTRACT_ID: &'static str = "console-assistant-run-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+pub(crate) struct AssistantRunOutput(pub(crate) AssistantRunResponse);
+
+impl InterfaceContract for AssistantRunOutput {
+    const CONTRACT_ID: &'static str = "console-assistant-run-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+pub(crate) struct AssistantRunStreamEvent(pub(crate) Result<Event, Infallible>);
+
+impl InterfaceContract for AssistantRunStreamEvent {
+    const CONTRACT_ID: &'static str = "console-assistant-run-stream-event";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+pub(crate) struct AssistantRunStreamOutput(pub(crate) Uuid);
+
+impl InterfaceContract for AssistantRunStreamOutput {
+    const CONTRACT_ID: &'static str = "console-assistant-run-stream-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
 struct AssistantSettingsAdapter {
     store: MainDurableStore,
 }
@@ -95,6 +131,10 @@ struct AssistantSettingsAdapter {
 struct AssistantConversationsAdapter {
     store: MainDurableStore,
     conversation_events: Arc<AssistantConversationEventHub>,
+}
+
+struct AssistantRunAdapter {
+    dependencies: AssistantRunDependencies,
 }
 
 pub(crate) fn settings_port(
@@ -111,6 +151,10 @@ pub(crate) fn conversations_port(
         store,
         conversation_events,
     })
+}
+
+pub(crate) fn runs_port(dependencies: AssistantRunDependencies) -> Arc<AssistantRunAdapter> {
+    Arc::new(AssistantRunAdapter { dependencies })
 }
 
 impl AssistantSettingsAdapter {
@@ -491,6 +535,79 @@ impl ConsoleInterfacePort<AssistantConversationsInput, AssistantConversationsOut
     }
 }
 
+impl ConsoleInterfacePort<AssistantRunInput, AssistantRunOutput> for AssistantRunAdapter {
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: AssistantRunInput,
+    ) -> ConsoleInterfaceFuture<'a, AssistantRunOutput> {
+        Box::pin(async move {
+            execute_assistant_run(&self.dependencies, principal, input.body, input.headers)
+                .await
+                .map(AssistantRunOutput)
+                .map_err(ConsoleInterfaceTargetError)
+        })
+    }
+}
+
+impl ConsoleServerStreamPort<AssistantRunInput, AssistantRunStreamEvent, AssistantRunStreamOutput>
+    for AssistantRunAdapter
+{
+    fn execute_stream(
+        &self,
+        principal: &UserPrincipal,
+        input: AssistantRunInput,
+    ) -> ConsoleServerStreamFuture<AssistantRunStreamEvent, AssistantRunStreamOutput> {
+        let dependencies = self.dependencies.clone();
+        let actor = principal.actor().clone();
+        Box::pin(async move {
+            let execution = prepare_assistant_execution(
+                &dependencies.store,
+                &input.headers,
+                &actor,
+                input.body,
+            )
+            .await
+            .map_err(ConsoleInterfaceTargetError)
+            .map_err(|error| {
+                interface_runtime::InterfaceTargetFailure::new("console_interface", error)
+            })?;
+            let run_id = launch_assistant_execution(dependencies.clone(), execution, None)
+                .await
+                .map_err(ConsoleInterfaceTargetError)
+                .map_err(|error| {
+                    interface_runtime::InterfaceTargetFailure::new("console_interface", error)
+                })?;
+            let (publisher, stream) = interface_runtime::interface_stream_channel(32);
+            let (sender, mut receiver) = tokio::sync::mpsc::channel(32);
+            tokio::spawn(crate::routes::debug_run_stream::send_runtime_event_stream(
+                dependencies.runtime_event_stream.clone(),
+                Arc::new(dependencies.store.clone()),
+                run_id,
+                None,
+                sender,
+            ));
+            tokio::spawn(async move {
+                while let Some(event) = receiver.recv().await {
+                    if publisher
+                        .emit(AssistantRunStreamEvent(event))
+                        .await
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+                let _ = publisher
+                    .finish(interface_runtime::InterfaceStreamTerminal::Completed(
+                        AssistantRunStreamOutput(run_id),
+                    ))
+                    .await;
+            });
+            Ok(stream)
+        })
+    }
+}
+
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     ConsoleInterfaceDeclaration {
         interface_id: "assistant.settings.get",
@@ -546,6 +663,24 @@ pub(crate) const CONVERSATION_DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     },
 ];
 
+pub(crate) const RUN_DECLARATIONS: &[ConsoleInterfaceDeclaration] =
+    &[ConsoleInterfaceDeclaration {
+        interface_id: "assistant.runs.create",
+        binding_id: "http.console.assistant.runs.create.v1",
+        method: "POST",
+        path: "/api/console/assistant/runs",
+        mutating: true,
+    }];
+
+pub(crate) const RUN_STREAM_DECLARATIONS: &[ConsoleInterfaceDeclaration] =
+    &[ConsoleInterfaceDeclaration {
+        interface_id: "assistant.runs.stream.create",
+        binding_id: "http.console.assistant.runs.stream.v1",
+        method: "POST",
+        path: "/api/console/assistant/runs/stream",
+        mutating: true,
+    }];
+
 pub(crate) fn compile_registry(
     store: MainDurableStore,
 ) -> Result<
@@ -590,6 +725,38 @@ fn compile_conversations_registry_with_port(
         "graph:console-assistant-conversations-v1",
         CONVERSATION_DECLARATIONS,
         port,
+    )
+}
+
+/// Compiles the unary embedded Assistant run binding for contribution assembly.
+/// Shared boot wiring deliberately lives outside this Assistant-local packet.
+pub(crate) fn compile_runs_registry(
+    dependencies: AssistantRunDependencies,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    console_interface::compile_registry(
+        "api-server.console-assistant-runs",
+        "graph:console-assistant-runs-v1",
+        RUN_DECLARATIONS,
+        runs_port(dependencies),
+    )
+}
+
+/// Compiles the typed server-stream embedded Assistant run binding for contribution assembly.
+/// Shared boot wiring deliberately lives outside this Assistant-local packet.
+pub(crate) fn compile_run_stream_registry(
+    dependencies: AssistantRunDependencies,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    console_interface::compile_server_stream_registry(
+        "api-server.console-assistant-run-stream",
+        "graph:console-assistant-run-stream-v1",
+        RUN_STREAM_DECLARATIONS,
+        runs_port(dependencies),
     )
 }
 

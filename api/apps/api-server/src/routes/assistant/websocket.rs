@@ -30,7 +30,7 @@ use super::websocket_ticket_interface::{
 };
 use super::{
     abort_assistant_execution, api_provider_runtime, assistant_preference_for_target,
-    launch_assistant_execution, prepare_assistant_execution, ApiError, ApiState,
+    launch_assistant_execution, prepare_assistant_execution, run_dependencies, ApiError, ApiState,
     AssistantClientToolBridge, AssistantClientToolId, AssistantConversationPageResponse,
     RequestContext, StartAssistantRunBody,
 };
@@ -522,9 +522,9 @@ async fn execute_command(
                 .into());
             }
             let execution = prepare_assistant_execution(
-                &state,
+                &state.store,
                 &authorization.request_headers,
-                &authorization.context,
+                &authorization.context.actor,
                 request,
             )
             .await?;
@@ -544,9 +544,12 @@ async fn execute_command(
                     .for_tools(enabled_client_tools, client_tool_ids)
                     .await,
             );
-            let run_id =
-                launch_assistant_execution(state.clone(), execution, Some(client_tool_bridge))
-                    .await?;
+            let run_id = launch_assistant_execution(
+                run_dependencies(state.clone()),
+                execution,
+                Some(client_tool_bridge),
+            )
+            .await?;
             (request_id, run_id, None)
         }
         AssistantWebSocketCommand::Attach {

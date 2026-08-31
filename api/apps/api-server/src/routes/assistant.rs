@@ -1,4 +1,9 @@
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    future::Future,
+    pin::Pin,
+    sync::{Arc, Mutex},
+};
 
 use axum::{
     extract::{Path, Query, State},
@@ -13,9 +18,9 @@ use control_plane::{
         native::{NativeExecution, NativeObject, NativeRequestMetadata, NativeRunRequest},
         publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
         run_service::{
-            assistant_conversation_native_history_to_values, native_result_from_run_detail,
-            ApplicationPublishedFlowRunRepository, ApplicationPublishedRunService,
-            AssistantPageReference, CreateAssistantConversationInput, CreateAssistantRunCommand,
+            assistant_conversation_native_history_to_values, ApplicationPublishedFlowRunRepository,
+            ApplicationPublishedRunService, AssistantPageReference,
+            CreateAssistantConversationInput, CreateAssistantRunCommand,
             ASSISTANT_PAGE_REFERENCE_MAX_COUNT, ASSISTANT_PAGE_REFERENCE_MAX_TOTAL_BYTES,
         },
     },
@@ -25,7 +30,10 @@ use control_plane::{
         spawn_runtime_debug_event_persister, wait_for_runtime_debug_event_persister,
         OrchestrationRuntimeService, StartPublishedFlowRunCommand,
     },
-    ports::{OrchestrationRuntimeRepository, RuntimeEventCloseReason, RuntimeEventStreamPolicy},
+    ports::{
+        CacheStore, OrchestrationRuntimeRepository, RuntimeEventCloseReason, RuntimeEventStream,
+        RuntimeEventStreamPolicy, TaskQueue,
+    },
 };
 use domain::mcp_management::McpInstanceStatus;
 use serde::{Deserialize, Serialize};
@@ -270,6 +278,85 @@ struct PreparedAssistantExecution {
     mcp_instance_ids: Vec<String>,
     enabled_client_tools: Vec<AssistantClientToolId>,
     request_headers: HeaderMap,
+}
+
+/// Explicit dependencies for embedded Assistant run execution.
+///
+/// The frozen interface adapter owns these narrow runtime services rather than
+/// retaining the API composition state, so the lifecycle can be invoked from
+/// HTTP and future non-HTTP Console transports through the same boundary.
+#[derive(Clone)]
+pub(crate) struct AssistantRunDependencies {
+    store: MainDurableStore,
+    provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
+    runtime_activity: Arc<crate::runtime_activity::ApplicationRuntimeActivityTracker>,
+    runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
+    provider_secret_master_key: String,
+    api_node_id: String,
+    provider_install_root: String,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    cache_store: Arc<dyn CacheStore>,
+    task_queue: Arc<dyn TaskQueue>,
+    runtime_event_stream: Arc<dyn RuntimeEventStream>,
+    conversation_events: Arc<conversation_events::AssistantConversationEventHub>,
+    assistant_executions: Arc<Mutex<HashMap<Uuid, tokio::task::AbortHandle>>>,
+    assistant_client_sessions: Arc<Mutex<HashMap<Uuid, Arc<AssistantClientToolBridge>>>>,
+    runtime_tool_invoker_factory: Arc<dyn AssistantRuntimeToolInvokerFactory>,
+}
+
+pub(crate) trait AssistantRuntimeToolInvokerFactory: Send + Sync + 'static {
+    fn for_actor<'a>(
+        &'a self,
+        actor: &'a domain::ActorContext,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<virtual_ui::RuntimeInternalToolInvokerFactory, ApiError>>
+                + Send
+                + 'a,
+        >,
+    >;
+}
+
+struct StateAssistantRuntimeToolInvokerFactory {
+    state: Arc<ApiState>,
+}
+
+impl AssistantRuntimeToolInvokerFactory for StateAssistantRuntimeToolInvokerFactory {
+    fn for_actor<'a>(
+        &'a self,
+        actor: &'a domain::ActorContext,
+    ) -> Pin<
+        Box<
+            dyn Future<Output = Result<virtual_ui::RuntimeInternalToolInvokerFactory, ApiError>>
+                + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(crate::runtime_internal_tool_invoker_factory(
+            &self.state,
+            actor,
+        ))
+    }
+}
+
+pub(crate) fn run_dependencies(state: Arc<ApiState>) -> AssistantRunDependencies {
+    AssistantRunDependencies {
+        store: state.store.clone(),
+        provider_runtime: state.provider_runtime.clone(),
+        runtime_activity: state.runtime_activity.clone(),
+        runtime_engine: state.runtime_engine.clone(),
+        provider_secret_master_key: state.provider_secret_master_key.clone(),
+        api_node_id: state.api_node_id.clone(),
+        provider_install_root: state.provider_install_root.clone(),
+        file_storage_registry: state.file_storage_registry.clone(),
+        cache_store: state.infrastructure.cache_store(),
+        task_queue: state.infrastructure.task_queue(),
+        runtime_event_stream: state.runtime_event_stream.clone(),
+        conversation_events: state.assistant_conversation_events.clone(),
+        assistant_executions: state.assistant_executions.clone(),
+        assistant_client_sessions: state.assistant_client_sessions.clone(),
+        runtime_tool_invoker_factory: Arc::new(StateAssistantRuntimeToolInvokerFactory { state }),
+    }
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
@@ -527,61 +614,17 @@ pub async fn start_run(
     headers: HeaderMap,
     Json(body): Json<StartAssistantRunBody>,
 ) -> Result<Json<ApiSuccess<AssistantRunResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    context.cookie_session()?;
-    require_csrf(&headers, &context)?;
-    let execution = prepare_assistant_execution(&state, &headers, &context, body).await?;
-    let mcp_runtime_invoker = Arc::new(
-        virtual_ui::ApiMcpRuntimeToolInvoker::new(
-            crate::runtime_internal_tool_invoker_factory(&state, &execution.actor).await?,
-            execution.request_headers.clone(),
-            execution.actor.clone(),
-            execution.mcp_instance_ids.clone(),
-        )
-        .await?,
-    );
-    let runtime = OrchestrationRuntimeService::new(
-        state.store.clone(),
-        api_provider_runtime(&state),
-        state.runtime_engine.clone(),
-        state.provider_secret_master_key.clone(),
-    )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_file_storage_registry(state.file_storage_registry.clone())
-    .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
-    .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue());
-    let detail = runtime
-        .start_published_flow_run(StartPublishedFlowRunCommand {
-            application_id: execution.application_id,
-            flow_run_id: execution.flow_run_id,
-            provider_transport_slot: None,
-        })
-        .await?;
-    publish_assistant_conversation_summary(
-        &state,
-        AssistantConversationEventScope {
-            workspace_id: context.actor.current_workspace_id,
-            application_id: execution.application_id,
-            actor_user_id: context.user.id,
+    let interface::AssistantRunOutput(response) = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.assistant.runs.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::CookieSessionWithCsrf {
+            state: Arc::clone(&state),
+            headers: headers.clone(),
         },
-        execution.conversation_id,
-        AssistantConversationEventKind::Updated,
+        interface::AssistantRunInput { body, headers },
     )
-    .await;
-    let native_result = native_result_from_run_detail(&detail, json!({}));
-    Ok(Json(ApiSuccess::new(AssistantRunResponse {
-        id: detail.flow_run.id,
-        application_id: execution.application_id,
-        conversation_id: execution.conversation_id,
-        status: detail.flow_run.status.as_str().to_string(),
-        answer: native_result.answer,
-        output_payload: detail.flow_run.output_payload,
-        error_payload: detail.flow_run.error_payload,
-    })))
+    .await?;
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -606,48 +649,63 @@ pub async fn start_run_stream(
     let context = require_session(&state, &headers).await?;
     context.cookie_session()?;
     require_csrf(&headers, &context)?;
-    let execution = prepare_assistant_execution(&state, &headers, &context, body).await?;
-    let run_id = launch_assistant_execution(state.clone(), execution, None).await?;
+    let stream = crate::routes::console_interface::invoke_server_stream_with_principal::<
+        interface::AssistantRunInput,
+        interface::AssistantRunStreamEvent,
+        interface::AssistantRunStreamOutput,
+    >(
+        Arc::clone(&state),
+        "http.console.assistant.runs.stream.v1",
+        context.interface_principal(),
+        interface::AssistantRunInput { body, headers },
+    )
+    .await?;
     let (sender, receiver) = mpsc::channel(32);
-    tokio::spawn(debug_run_stream::send_runtime_event_stream(
-        state.runtime_event_stream.clone(),
-        Arc::new(state.store.clone()),
-        run_id,
-        None,
-        sender,
-    ));
+    let (mut events, completion) = stream.into_parts();
+    tokio::spawn(async move {
+        while let Some(interface::AssistantRunStreamEvent(event)) = events.recv().await {
+            if sender.send(event).await.is_err() {
+                return;
+            }
+        }
+    });
+    tokio::spawn(async move {
+        let _ = completion.complete().await;
+    });
 
     Ok(Sse::new(debug_run_stream::DebugRunSseStream::new(receiver))
         .keep_alive(KeepAlive::default()))
 }
 
-async fn launch_assistant_execution(
-    state: Arc<ApiState>,
+pub(crate) async fn launch_assistant_execution(
+    dependencies: AssistantRunDependencies,
     execution: PreparedAssistantExecution,
     client_tool_bridge: Option<Arc<AssistantClientToolBridge>>,
 ) -> Result<Uuid, ApiError> {
     let run_id = execution.flow_run_id;
     let application_id = execution.application_id;
-    state
+    dependencies
         .runtime_event_stream
         .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
         .await?;
     let persister_handle = spawn_runtime_debug_event_persister(
-        state.store.clone(),
-        state.runtime_event_stream.clone(),
+        dependencies.store.clone(),
+        dependencies.runtime_event_stream.clone(),
         run_id,
     );
-    state
+    dependencies
         .runtime_event_stream
         .append(run_id, debug_stream_events::flow_accepted(run_id))
         .await?;
-    state
+    dependencies
         .runtime_event_stream
         .append(run_id, debug_stream_events::heartbeat())
         .await?;
 
     spawn_assistant_conversation_projection(
-        state.clone(),
+        dependencies.store.clone(),
+        dependencies.runtime_event_stream.clone(),
+        dependencies.conversation_events.clone(),
         AssistantConversationEventScope {
             workspace_id: execution.actor.current_workspace_id,
             application_id,
@@ -658,7 +716,7 @@ async fn launch_assistant_execution(
     );
 
     if let Some(client) = client_tool_bridge.as_ref() {
-        state
+        dependencies
             .assistant_client_sessions
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -670,7 +728,10 @@ async fn launch_assistant_execution(
         dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
     > = Arc::new(
         virtual_ui::ApiMcpRuntimeToolInvoker::new(
-            crate::runtime_internal_tool_invoker_factory(&state, &execution.actor).await?,
+            dependencies
+                .runtime_tool_invoker_factory
+                .for_actor(&execution.actor)
+                .await?,
             execution.request_headers.clone(),
             execution.actor.clone(),
             execution.mcp_instance_ids.clone(),
@@ -682,29 +743,32 @@ async fn launch_assistant_execution(
         mcp_runtime_invoker,
         client_tool_bridge.clone(),
     ));
-    let background_state = state.clone();
-    let execution_registry = state.assistant_executions.clone();
-    let client_session_registry = state.assistant_client_sessions.clone();
+    let background_dependencies = dependencies.clone();
+    let execution_registry = dependencies.assistant_executions.clone();
+    let client_session_registry = dependencies.assistant_client_sessions.clone();
     let (start_sender, start_receiver) = oneshot::channel();
     let execution_handle = tokio::spawn(async move {
         if start_receiver.await.is_err() {
             return;
         }
         let runtime = OrchestrationRuntimeService::new(
-            background_state.store.clone(),
-            api_provider_runtime(&background_state),
-            background_state.runtime_engine.clone(),
-            background_state.provider_secret_master_key.clone(),
+            background_dependencies.store.clone(),
+            crate::provider_runtime::ApiProviderRuntime::new_with_activity(
+                background_dependencies.provider_runtime.clone(),
+                background_dependencies.runtime_activity.clone(),
+            ),
+            background_dependencies.runtime_engine.clone(),
+            background_dependencies.provider_secret_master_key.clone(),
         )
         .with_node_artifact_context(
-            background_state.api_node_id.clone(),
-            background_state.provider_install_root.clone(),
+            background_dependencies.api_node_id.clone(),
+            background_dependencies.provider_install_root.clone(),
         )
-        .with_file_storage_registry(background_state.file_storage_registry.clone())
+        .with_file_storage_registry(background_dependencies.file_storage_registry.clone())
         .with_runtime_internal_tool_invoker(assistant_runtime_tool_invoker)
-        .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
-        .with_provider_request_log_queue(background_state.infrastructure.task_queue())
-        .with_runtime_event_stream(background_state.runtime_event_stream.clone());
+        .with_llm_routing_counter_store(background_dependencies.cache_store.clone())
+        .with_provider_request_log_queue(background_dependencies.task_queue.clone())
+        .with_runtime_event_stream(background_dependencies.runtime_event_stream.clone());
         let result = async {
             let detail = runtime
                 .start_published_flow_run(StartPublishedFlowRunCommand {
@@ -728,21 +792,21 @@ async fn launch_assistant_execution(
                 ) =>
             {
                 project_runtime_event_stream_terminal(
-                    background_state.runtime_event_stream.clone(),
+                    background_dependencies.runtime_event_stream.clone(),
                     &detail.flow_run,
                 )
                 .await;
             }
             Ok(_) => {}
             Err(error) => {
-                match background_state
+                match background_dependencies
                     .store
                     .get_flow_run(application_id, run_id)
                     .await
                 {
                     Ok(Some(winner)) => {
                         project_runtime_event_stream_terminal(
-                            background_state.runtime_event_stream.clone(),
+                            background_dependencies.runtime_event_stream.clone(),
                             &winner,
                         )
                         .await;
@@ -780,7 +844,7 @@ async fn launch_assistant_execution(
             client_session.close().await;
         }
     });
-    state
+    dependencies
         .assistant_executions
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -791,15 +855,88 @@ async fn launch_assistant_execution(
     Ok(run_id)
 }
 
+pub(crate) async fn execute_assistant_run(
+    dependencies: &AssistantRunDependencies,
+    principal: &interface_runtime::UserPrincipal,
+    body: StartAssistantRunBody,
+    headers: HeaderMap,
+) -> Result<AssistantRunResponse, ApiError> {
+    let execution =
+        prepare_assistant_execution(&dependencies.store, &headers, principal.actor(), body).await?;
+    let mcp_runtime_invoker = Arc::new(
+        virtual_ui::ApiMcpRuntimeToolInvoker::new(
+            dependencies
+                .runtime_tool_invoker_factory
+                .for_actor(&execution.actor)
+                .await?,
+            execution.request_headers.clone(),
+            execution.actor.clone(),
+            execution.mcp_instance_ids.clone(),
+        )
+        .await?,
+    );
+    let runtime = OrchestrationRuntimeService::new(
+        dependencies.store.clone(),
+        crate::provider_runtime::ApiProviderRuntime::new_with_activity(
+            dependencies.provider_runtime.clone(),
+            dependencies.runtime_activity.clone(),
+        ),
+        dependencies.runtime_engine.clone(),
+        dependencies.provider_secret_master_key.clone(),
+    )
+    .with_node_artifact_context(
+        dependencies.api_node_id.clone(),
+        dependencies.provider_install_root.clone(),
+    )
+    .with_file_storage_registry(dependencies.file_storage_registry.clone())
+    .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
+    .with_llm_routing_counter_store(dependencies.cache_store.clone())
+    .with_provider_request_log_queue(dependencies.task_queue.clone());
+    let detail = runtime
+        .start_published_flow_run(StartPublishedFlowRunCommand {
+            application_id: execution.application_id,
+            flow_run_id: execution.flow_run_id,
+            provider_transport_slot: None,
+        })
+        .await?;
+    publish_assistant_conversation_summary(
+        &dependencies.store,
+        &dependencies.conversation_events,
+        AssistantConversationEventScope {
+            workspace_id: principal.actor().current_workspace_id,
+            application_id: execution.application_id,
+            actor_user_id: principal.actor().user_id,
+        },
+        execution.conversation_id,
+        AssistantConversationEventKind::Updated,
+    )
+    .await;
+    let native_result =
+        control_plane::application_public_api::run_service::native_result_from_run_detail(
+            &detail,
+            json!({}),
+        );
+    Ok(AssistantRunResponse {
+        id: detail.flow_run.id,
+        application_id: execution.application_id,
+        conversation_id: execution.conversation_id,
+        status: detail.flow_run.status.as_str().to_string(),
+        answer: native_result.answer,
+        output_payload: detail.flow_run.output_payload,
+        error_payload: detail.flow_run.error_payload,
+    })
+}
+
 fn spawn_assistant_conversation_projection(
-    state: Arc<ApiState>,
+    store: MainDurableStore,
+    runtime_event_stream: Arc<dyn RuntimeEventStream>,
+    conversation_events: Arc<conversation_events::AssistantConversationEventHub>,
     scope: AssistantConversationEventScope,
     conversation_id: Uuid,
     run_id: Uuid,
 ) {
     tokio::spawn(async move {
-        let Ok(mut subscription) = state.runtime_event_stream.subscribe(run_id, Some(0)).await
-        else {
+        let Ok(mut subscription) = runtime_event_stream.subscribe(run_id, Some(0)).await else {
             tracing::warn!(
                 application_id = %scope.application_id,
                 flow_run_id = %run_id,
@@ -813,7 +950,8 @@ fn spawn_assistant_conversation_projection(
                 RuntimeEventCloseReason::from_terminal_event_type(&event.event_type).is_some();
             if should_publish_assistant_conversation_event(&event.event_type) {
                 publish_assistant_conversation_summary(
-                    &state,
+                    &store,
+                    &conversation_events,
                     scope,
                     conversation_id,
                     AssistantConversationEventKind::Updated,
@@ -830,7 +968,8 @@ fn spawn_assistant_conversation_projection(
                 RuntimeEventCloseReason::from_terminal_event_type(&event.event_type).is_some();
             if should_publish_assistant_conversation_event(&event.event_type) {
                 publish_assistant_conversation_summary(
-                    &state,
+                    &store,
+                    &conversation_events,
                     scope,
                     conversation_id,
                     AssistantConversationEventKind::Updated,
@@ -859,13 +998,13 @@ fn should_publish_assistant_conversation_event(event_type: &str) -> bool {
 }
 
 async fn publish_assistant_conversation_summary(
-    state: &ApiState,
+    store: &MainDurableStore,
+    conversation_events: &conversation_events::AssistantConversationEventHub,
     scope: AssistantConversationEventScope,
     conversation_id: Uuid,
     kind: AssistantConversationEventKind,
 ) {
-    match state
-        .store
+    match store
         .get_assistant_conversation_summary(
             scope.workspace_id,
             scope.application_id,
@@ -874,7 +1013,7 @@ async fn publish_assistant_conversation_summary(
         )
         .await
     {
-        Ok(Some(summary)) => state.assistant_conversation_events.publish(
+        Ok(Some(summary)) => conversation_events.publish(
             scope,
             kind,
             AssistantConversationSummaryResponse::from(summary),
@@ -913,10 +1052,10 @@ fn abort_registered_assistant_execution(
         .remove(&run_id)
 }
 
-async fn prepare_assistant_execution(
-    state: &Arc<ApiState>,
+pub(crate) async fn prepare_assistant_execution(
+    store: &MainDurableStore,
     headers: &HeaderMap,
-    context: &RequestContext,
+    actor: &domain::ActorContext,
     body: StartAssistantRunBody,
 ) -> Result<PreparedAssistantExecution, ApiError> {
     if body.query.trim().is_empty() {
@@ -953,15 +1092,14 @@ async fn prepare_assistant_execution(
         })
         .collect::<Result<Vec<_>, _>>()?;
     let application_id = body.application_id;
-    let preference = assistant_preference_for_target(state, context, application_id).await?;
+    let preference = assistant_preference_for_actor(store, actor, application_id).await?;
     let assistant_conversation_id = match body.conversation_id {
         Some(conversation_id) => {
-            if state
-                .store
+            if store
                 .get_assistant_conversation(
-                    context.actor.current_workspace_id,
+                    actor.current_workspace_id,
                     application_id,
-                    context.user.id,
+                    actor.user_id,
                     conversation_id,
                 )
                 .await?
@@ -972,8 +1110,7 @@ async fn prepare_assistant_execution(
                 )
                 .into());
             }
-            if state
-                .store
+            if store
                 .has_active_assistant_conversation_run(conversation_id)
                 .await?
             {
@@ -985,13 +1122,12 @@ async fn prepare_assistant_execution(
             conversation_id
         }
         None => {
-            state
-                .store
+            store
                 .create_assistant_conversation(&CreateAssistantConversationInput {
                     conversation_id: Uuid::now_v7(),
-                    workspace_id: context.actor.current_workspace_id,
+                    workspace_id: actor.current_workspace_id,
                     application_id,
-                    actor_user_id: context.user.id,
+                    actor_user_id: actor.user_id,
                     seed_legacy_flow_run_id: None,
                 })
                 .await?
@@ -999,22 +1135,21 @@ async fn prepare_assistant_execution(
         }
     };
     let history = assistant_conversation_native_history_to_values(
-        state
-            .store
+        store
             .list_assistant_conversation_native_history(
-                context.actor.current_workspace_id,
+                actor.current_workspace_id,
                 application_id,
-                context.user.id,
+                actor.user_id,
                 assistant_conversation_id,
             )
             .await?,
     );
     let execution = assistant_execution(&preference)?;
     let inputs = NativeObject::default();
-    let flow_run = ApplicationPublishedRunService::new(state.store.clone())
+    let flow_run = ApplicationPublishedRunService::new(store.clone())
         .create_assistant_run(CreateAssistantRunCommand {
-            actor_user_id: context.user.id,
-            workspace_id: context.actor.current_workspace_id,
+            actor_user_id: actor.user_id,
+            workspace_id: actor.current_workspace_id,
             application_id,
             assistant_conversation_id: Some(assistant_conversation_id),
             page_references,
@@ -1044,7 +1179,7 @@ async fn prepare_assistant_execution(
     Ok(PreparedAssistantExecution {
         application_id,
         conversation_id: assistant_conversation_id,
-        actor: context.actor.clone(),
+        actor: actor.clone(),
         flow_run_id: flow_run.id,
         mcp_instance_ids: preference.mcp_instance_ids,
         enabled_client_tools: preference.enabled_client_tools,
