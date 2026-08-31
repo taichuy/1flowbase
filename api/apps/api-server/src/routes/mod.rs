@@ -35,7 +35,9 @@ pub use settings_group::{
     host_infrastructure, i18n_catalog, mcp_management, members, navigation, permissions, roles,
     system, system_backups, ui_management, workspace, workspaces,
 };
-pub(crate) use settings_group::{membership_interface, role_access_interface};
+pub(crate) use settings_group::{
+    auth_center_interface, membership_interface, role_access_interface,
+};
 
 pub const PUBLIC_API_PATH_PREFIX: &str = "/api/public/";
 

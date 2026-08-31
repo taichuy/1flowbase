@@ -5,11 +5,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json, Router,
 };
-use control_plane::auth::settings::{
-    AuthCenterSettingsOverview, AuthCenterSettingsService, CopyAuthCenterAuthenticatorCommand,
-    CreateAuthCenterAuthenticatorCommand, UpdateAuthCenterAuthenticatorConfigCommand,
-    UpdateAuthCenterAuthenticatorPublicUiBlockCommand, AUTH_CENTER_HOST_CONFIG_KEYS,
-};
+use control_plane::auth::settings::{AuthCenterSettingsOverview, AUTH_CENTER_HOST_CONFIG_KEYS};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use utoipa::ToSchema;
@@ -18,8 +14,6 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::require_csrf::require_csrf,
-    middleware::require_session::require_session,
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_delete, console_get, console_post, console_put, ConsoleRouteAssembly,
@@ -284,7 +278,7 @@ fn auth_center_config_response_values(
     values
 }
 
-fn to_auth_center_authenticator_response(
+pub(crate) fn to_auth_center_authenticator_response(
     authenticator: domain::AuthenticatorRecord,
     registry: &control_plane::auth::AuthenticatorRegistry,
 ) -> AuthCenterAuthenticatorResponse {
@@ -332,7 +326,7 @@ fn to_auth_center_authenticator_response(
     }
 }
 
-fn auth_center_overview_response(
+pub(crate) fn auth_center_overview_response(
     overview: AuthCenterSettingsOverview,
     registry: &control_plane::auth::AuthenticatorRegistry,
 ) -> AuthCenterOverviewResponse {
@@ -391,6 +385,62 @@ async fn localize_overview_response(
     Ok(())
 }
 
+pub(crate) async fn localize_authenticator_response_with(
+    store: &storage_durable_postgres::MainDurableStore,
+    bootstrap_workspace_id: Uuid,
+    locale: &domain::CatalogLocale,
+    response: &mut AuthCenterAuthenticatorResponse,
+) -> Result<(), ApiError> {
+    if response.id == domain::PASSWORD_LOCAL_AUTHENTICATOR_ID {
+        response.title = crate::app_state::project_canonical_display_with(
+            store,
+            bootstrap_workspace_id,
+            locale,
+            "Password",
+            &response.title,
+        )
+        .await?;
+        response
+            .config_values
+            .insert("title".to_owned(), Value::String(response.title.clone()));
+        if let Some(public_variables) = &mut response.public_variables {
+            public_variables.insert("title".to_owned(), Value::String(response.title.clone()));
+        }
+    }
+    for variable in &mut response.context_variables {
+        let key = match variable.member_path.as_str() {
+            "inputs.authenticator_id" => Some("Authenticator ID"),
+            "inputs.authenticator_selection_available" => Some("Authenticator selection available"),
+            "inputs.auth_event" => Some("Authentication event"),
+            "api" => Some("API"),
+            _ => None,
+        };
+        if let Some(key) = key {
+            variable.label = crate::app_state::resolve_request_text_with(
+                store,
+                bootstrap_workspace_id,
+                locale,
+                key,
+            )
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+pub(crate) async fn localize_overview_response_with(
+    store: &storage_durable_postgres::MainDurableStore,
+    bootstrap_workspace_id: Uuid,
+    locale: &domain::CatalogLocale,
+    response: &mut AuthCenterOverviewResponse,
+) -> Result<(), ApiError> {
+    for authenticator in &mut response.authenticators {
+        localize_authenticator_response_with(store, bootstrap_workspace_id, locale, authenticator)
+            .await?;
+    }
+    Ok(())
+}
+
 async fn localized_authenticator_response(
     state: &ApiState,
     headers: &HeaderMap,
@@ -417,17 +467,20 @@ pub async fn get_auth_center_overview(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<AuthCenterOverviewResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let overview = AuthCenterSettingsService::with_registry(
-        state.store.clone(),
-        state.authenticator_registry.clone(),
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.auth-center.overview.view.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::auth_center_interface::AuthCenterInput::Overview { locale },
     )
-    .overview(&context.actor)
     .await?;
-    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
-    let mut response =
-        auth_center_overview_response(overview, state.authenticator_registry.as_ref());
-    localize_overview_response(&state, &locale, &mut response).await?;
+    let crate::routes::auth_center_interface::AuthCenterOutput::Overview(response) = output else {
+        return Err(anyhow::anyhow!("auth center overview output contract mismatch").into());
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -454,31 +507,21 @@ pub async fn create_auth_center_authenticator(
     ),
     ApiError,
 > {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let authenticator = AuthCenterSettingsService::with_registry(
-        state.store.clone(),
-        state.authenticator_registry.clone(),
-    )
-    .create_authenticator(
-        &context.actor,
-        CreateAuthCenterAuthenticatorCommand {
-            auth_type: body.auth_type,
-            title: body.title,
-            description: body.description,
-            enabled: body.enabled,
-            sort_order: body.sort_order,
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.auth-center.authenticators.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
         },
+        crate::routes::auth_center_interface::AuthCenterInput::Create { locale, body },
     )
     .await?;
-    let response = localized_authenticator_response(
-        &state,
-        &headers,
-        context.user.preferred_locale,
-        authenticator,
-    )
-    .await?;
-
+    let crate::routes::auth_center_interface::AuthCenterOutput::Authenticator(response) = output
+    else {
+        return Err(anyhow::anyhow!("auth center create output contract mismatch").into());
+    };
     Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }
 
@@ -507,29 +550,21 @@ pub async fn copy_auth_center_authenticator(
     ),
     ApiError,
 > {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let authenticator = AuthCenterSettingsService::with_registry(
-        state.store.clone(),
-        state.authenticator_registry.clone(),
-    )
-    .copy_authenticator(
-        &context.actor,
-        CopyAuthCenterAuthenticatorCommand {
-            source_id: id,
-            title: body.title,
-            sort_order: body.sort_order,
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.auth-center.authenticators.copy.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
         },
+        crate::routes::auth_center_interface::AuthCenterInput::Copy { locale, id, body },
     )
     .await?;
-    let response = localized_authenticator_response(
-        &state,
-        &headers,
-        context.user.preferred_locale,
-        authenticator,
-    )
-    .await?;
-
+    let crate::routes::auth_center_interface::AuthCenterOutput::Authenticator(response) = output
+    else {
+        return Err(anyhow::anyhow!("auth center copy output contract mismatch").into());
+    };
     Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }
 
@@ -550,13 +585,18 @@ pub async fn delete_auth_center_authenticator(
     Path(id): Path<Uuid>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    AuthCenterSettingsService::with_registry(
-        state.store.clone(),
-        state.authenticator_registry.clone(),
+    crate::routes::console_interface::invoke::<
+        _,
+        crate::routes::auth_center_interface::AuthCenterOutput,
+    >(
+        Arc::clone(&state),
+        "http.console.auth-center.authenticators.delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::auth_center_interface::AuthCenterInput::Delete { id },
     )
-    .delete_authenticator(&context.actor, id)
     .await?;
     Ok(StatusCode::NO_CONTENT)
 }
@@ -577,18 +617,20 @@ pub async fn reorder_auth_center_authenticators(
     headers: HeaderMap,
     Json(body): Json<ReorderAuthCenterAuthenticatorsBody>,
 ) -> Result<Json<ApiSuccess<AuthCenterOverviewResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let overview = AuthCenterSettingsService::with_registry(
-        state.store.clone(),
-        state.authenticator_registry.clone(),
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.auth-center.authenticators.order.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::auth_center_interface::AuthCenterInput::Reorder { locale, body },
     )
-    .reorder_authenticators(&context.actor, &body.ids)
     .await?;
-    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
-    let mut response =
-        auth_center_overview_response(overview, state.authenticator_registry.as_ref());
-    localize_overview_response(&state, &locale, &mut response).await?;
+    let crate::routes::auth_center_interface::AuthCenterOutput::Overview(response) = output else {
+        return Err(anyhow::anyhow!("auth center reorder output contract mismatch").into());
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -607,22 +649,21 @@ pub async fn enable_auth_center_authenticator(
     Path(id): Path<Uuid>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<AuthCenterAuthenticatorResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let authenticator = AuthCenterSettingsService::with_registry(
-        state.store.clone(),
-        state.authenticator_registry.clone(),
-    )
-    .enable_authenticator(&context.actor, id)
-    .await?;
-    let response = localized_authenticator_response(
-        &state,
-        &headers,
-        context.user.preferred_locale,
-        authenticator,
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.auth-center.authenticators.enable.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::auth_center_interface::AuthCenterInput::Enable { locale, id },
     )
     .await?;
-
+    let crate::routes::auth_center_interface::AuthCenterOutput::Authenticator(response) = output
+    else {
+        return Err(anyhow::anyhow!("auth center enable output contract mismatch").into());
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -644,32 +685,21 @@ pub async fn update_auth_center_authenticator_config(
     headers: HeaderMap,
     Json(body): Json<UpdateAuthCenterAuthenticatorConfigBody>,
 ) -> Result<Json<ApiSuccess<AuthCenterAuthenticatorResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let authenticator = AuthCenterSettingsService::with_registry(
-        state.store.clone(),
-        state.authenticator_registry.clone(),
-    )
-    .update_authenticator_config(
-        &context.actor,
-        UpdateAuthCenterAuthenticatorConfigCommand {
-            authenticator_id: id,
-            title: body.title,
-            enabled: body.enabled,
-            description: body.description,
-            self_registration_enabled: body.self_registration_enabled,
-            extension_config: body.extension_config,
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.auth-center.authenticators.update.config.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
         },
+        crate::routes::auth_center_interface::AuthCenterInput::UpdateConfig { locale, id, body },
     )
     .await?;
-    let response = localized_authenticator_response(
-        &state,
-        &headers,
-        context.user.preferred_locale,
-        authenticator,
-    )
-    .await?;
-
+    let crate::routes::auth_center_interface::AuthCenterOutput::Authenticator(response) = output
+    else {
+        return Err(anyhow::anyhow!("auth center update output contract mismatch").into());
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -691,27 +721,24 @@ pub async fn update_auth_center_authenticator_public_ui_block(
     headers: HeaderMap,
     Json(body): Json<UpdateAuthCenterAuthenticatorPublicUiBlockBody>,
 ) -> Result<Json<ApiSuccess<AuthCenterAuthenticatorResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let authenticator = AuthCenterSettingsService::with_registry(
-        state.store.clone(),
-        state.authenticator_registry.clone(),
-    )
-    .update_authenticator_public_ui_block(
-        &context.actor,
-        UpdateAuthCenterAuthenticatorPublicUiBlockCommand {
-            authenticator_id: id,
-            public_ui_block: body.public_ui_block,
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.auth-center.authenticators.update.public-ui-block.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::auth_center_interface::AuthCenterInput::UpdatePublicUiBlock {
+            locale,
+            id,
+            body,
         },
     )
     .await?;
-    let response = localized_authenticator_response(
-        &state,
-        &headers,
-        context.user.preferred_locale,
-        authenticator,
-    )
-    .await?;
-
+    let crate::routes::auth_center_interface::AuthCenterOutput::Authenticator(response) = output
+    else {
+        return Err(anyhow::anyhow!("auth center public UI output contract mismatch").into());
+    };
     Ok(Json(ApiSuccess::new(response)))
 }

@@ -150,6 +150,11 @@ pub(crate) fn production_interface_contributions(
         state.settings_feature_registry.inventory().features.clone(),
         state.bootstrap_workspace_id,
     );
+    let console_auth_center = crate::routes::auth_center_interface::auth_center_port(
+        state.store.clone(),
+        Arc::clone(&state.authenticator_registry),
+        state.bootstrap_workspace_id,
+    );
 
     Ok(vec![
         InterfaceRegistryContribution::new(
@@ -236,6 +241,21 @@ pub(crate) fn production_interface_contributions(
             ],
             &["api-server.console-role-access"],
             crate::routes::role_access_interface::compile_registry(console_role_access)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-auth-center",
+            &[
+                "auth_center.overview.view",
+                "auth_center.authenticators.create",
+                "auth_center.authenticators.order",
+                "auth_center.authenticators.enable",
+                "auth_center.authenticators.copy",
+                "auth_center.authenticators.update.config",
+                "auth_center.authenticators.update.public-ui-block",
+                "auth_center.authenticators.delete",
+            ],
+            &["api-server.console-auth-center"],
+            crate::routes::auth_center_interface::compile_registry(console_auth_center)?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.native-runs",
