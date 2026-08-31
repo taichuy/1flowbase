@@ -248,5 +248,17 @@ pub(crate) fn production_interface_contributions(
                 ),
             )?,
         ),
+        InterfaceRegistryContribution::new(
+            "api-server.runtime-model-operations",
+            &["runtime.models.invoke"],
+            &["api-server.runtime-models"],
+            crate::routes::runtime_models::compile_runtime_model_interface_registry(
+                crate::routes::runtime_models::runtime_model_operation_port(
+                    state.store.clone(),
+                    Arc::clone(&state.runtime_engine),
+                    state.infrastructure.cache_store(),
+                ),
+            )?,
+        ),
     ])
 }

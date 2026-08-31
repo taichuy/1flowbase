@@ -10,7 +10,8 @@ pub(crate) use authentication_activation::{
     ApplicationApiKeyAuthenticationCredential, AuthenticationAdapterFactoryBinding,
     AuthenticationAdapterFactoryRegistry, ConsoleAuthenticationCredential,
     McpUserApiKeyAuthenticationCredential, PublicAuthenticationCredential,
-    CONSOLE_SESSION_CREDENTIAL_CONTRACT_ID, CONSOLE_SESSION_CREDENTIAL_CONTRACT_VERSION,
+    RuntimeModelAuthenticationCredential, CONSOLE_SESSION_CREDENTIAL_CONTRACT_ID,
+    CONSOLE_SESSION_CREDENTIAL_CONTRACT_VERSION,
 };
 pub(crate) use boot_snapshot::DurableHostInfrastructureProvidersViewQuery;
 pub use boot_snapshot::{

@@ -51,6 +51,7 @@ mod role_routes;
 mod route_docs;
 mod runtime_event_stream;
 mod runtime_i18n_catalog_routes;
+mod runtime_model_interface_tests;
 mod session_routes;
 mod settings_feature_data_models_routes;
 mod settings_feature_explicit_namespace_routes;

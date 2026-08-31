@@ -262,6 +262,14 @@ pub(crate) struct ApplicationApiKeyAuthenticationCredential {
     pub(crate) bearer_token: String,
 }
 
+pub(crate) struct RuntimeModelAuthenticationCredential {
+    pub(crate) state: Arc<ApiState>,
+    pub(crate) headers: HeaderMap,
+    pub(crate) method: plugin_framework::DataModelOperationMethod,
+    pub(crate) model_code: String,
+    pub(crate) path: String,
+}
+
 fn activation(
     plugin: &str,
     tier: InterfaceExtensionTier,
@@ -290,6 +298,32 @@ fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactor
             )?,
             |_credential: PublicAuthenticationCredential| async {
                 Ok(interface_runtime::PublicPrincipal::new())
+            },
+        )?,
+        AuthenticationAdapterFactoryBinding::typed(
+            activation(
+                "api-server.runtime-model-authentication",
+                InterfaceExtensionTier::BuiltIn,
+                "api-server.runtime-user",
+                "api-server.runtime-user.activation.v1",
+                PrincipalProfile::User,
+            )?,
+            |credential: RuntimeModelAuthenticationCredential| async move {
+                let context = require_session(&credential.state, &credential.headers)
+                    .await
+                    .map_err(|error| error.0)?;
+                if crate::routes::runtime_models::runtime_operation_requires_csrf(
+                    credential.state.as_ref(),
+                    &context.actor,
+                    credential.method,
+                    &credential.model_code,
+                    &credential.path,
+                )? && matches!(context.credential, RequestCredential::CookieSession(_))
+                {
+                    crate::middleware::require_csrf::require_csrf(&credential.headers, &context)
+                        .map_err(|error| error.0)?;
+                }
+                Ok(context.interface_principal())
             },
         )?,
         AuthenticationAdapterFactoryBinding::typed(

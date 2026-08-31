@@ -6,11 +6,11 @@ use std::{
 
 use axum::{
     body::Bytes,
-    extract::{OriginalUri, Path, Query, State},
-    http::{HeaderMap, Method, StatusCode, Uri},
-    response::{IntoResponse, Response},
+    extract::{OriginalUri, Path, State},
+    http::{HeaderMap, Method},
+    response::Response,
     routing::any,
-    Json, Router,
+    Router,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -20,17 +20,17 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::{ApiError, ApiServiceUnavailable},
-    middleware::{
-        require_csrf::require_csrf,
-        require_session::{require_session, RequestContext},
-    },
-    response::ApiSuccess,
 };
 use control_plane::resource_crud::parse_resource_filter_expr;
 use control_plane::{
     audit::audit_log,
-    ports::{AuthRepository, OrchestrationRuntimeRepository},
+    ports::{AuthRepository, CacheStore, OrchestrationRuntimeRepository},
 };
+use interface_runtime::{UserCredentialKind, UserPrincipal};
+use runtime_core::runtime_engine::RuntimeEngine;
+use storage_durable_postgres::MainDurableStore;
+
+mod interface;
 
 fn map_runtime_error(error: anyhow::Error) -> ApiError {
     if let Some(runtime_core::runtime_acl::RuntimeAclError::PermissionDenied(reason)) =
@@ -300,7 +300,7 @@ fn apply_application_run_count_tokens_results(
 }
 
 async fn enrich_application_run_count_tokens_results(
-    state: &ApiState,
+    adapter: &RuntimeModelOperationAdapter,
     model_code: &str,
     records: &mut [Value],
 ) -> Result<(), ApiError> {
@@ -317,7 +317,7 @@ async fn enrich_application_run_count_tokens_results(
                 .and_then(|value| Uuid::parse_str(value).ok())
         })
         .collect::<Vec<_>>();
-    let results = state
+    let results = adapter
         .store
         .list_application_run_count_tokens_results(&flow_run_ids)
         .await?;
@@ -332,6 +332,210 @@ pub fn router() -> Router<Arc<ApiState>> {
     )
 }
 
+struct RuntimeModelOperationAdapter {
+    store: MainDurableStore,
+    runtime_engine: Arc<RuntimeEngine>,
+    cache_store: Arc<dyn CacheStore>,
+}
+
+pub(crate) fn runtime_model_operation_port(
+    store: MainDurableStore,
+    runtime_engine: Arc<RuntimeEngine>,
+    cache_store: Arc<dyn CacheStore>,
+) -> Arc<dyn interface::RuntimeModelOperationPort> {
+    Arc::new(RuntimeModelOperationAdapter {
+        store,
+        runtime_engine,
+        cache_store,
+    })
+}
+
+pub(crate) fn compile_runtime_model_interface_registry(
+    port: Arc<dyn interface::RuntimeModelOperationPort>,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    interface::compile_registry(port)
+}
+
+#[cfg(test)]
+pub(crate) fn compile_runtime_model_interface_registry_for_test() -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    interface::compile_registry_for_test()
+}
+
+impl interface::RuntimeModelOperationPort for RuntimeModelOperationAdapter {
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: interface::RuntimeModelOperationInput,
+    ) -> std::pin::Pin<
+        Box<
+            dyn std::future::Future<
+                    Output = Result<
+                        interface::RuntimeModelOperationOutput,
+                        interface::RuntimeModelOperationTargetError,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async move {
+            execute_runtime_model_operation(self, principal, input)
+                .await
+                .map_err(interface::RuntimeModelOperationTargetError)
+        })
+    }
+}
+
+async fn execute_runtime_model_operation(
+    adapter: &RuntimeModelOperationAdapter,
+    principal: &UserPrincipal,
+    input: interface::RuntimeModelOperationInput,
+) -> Result<interface::RuntimeModelOperationOutput, ApiError> {
+    let resolved = resolve_runtime_operation_for_dependencies(
+        adapter,
+        principal.actor(),
+        input.method,
+        &input.model_code,
+        &input.path,
+    )
+    .map_err(map_runtime_error)?;
+    let credential = RuntimeCredential::from_principal(principal);
+    let record_id = match resolved.handler {
+        ResolvedRuntimeOperationHandler::Core(
+            runtime_core::general_data_model_template::CoreGeneralOperationHandler::GetRecord
+            | runtime_core::general_data_model_template::CoreGeneralOperationHandler::UpdateRecord
+            | runtime_core::general_data_model_template::CoreGeneralOperationHandler::DeleteRecord,
+        )
+        | ResolvedRuntimeOperationHandler::Ordered(
+            runtime_core::ordered_tree_template::CoreOrderedTreeOperationHandler::GetRecord,
+        ) => Some(resolved.path_parameters.get("id").cloned().ok_or(
+            control_plane::errors::ControlPlaneError::InvalidInput("runtime_path"),
+        )?),
+        _ => None,
+    };
+    let status_and_data = match resolved.handler {
+        ResolvedRuntimeOperationHandler::Core(
+            runtime_core::general_data_model_template::CoreGeneralOperationHandler::ListRecords,
+        )
+        | ResolvedRuntimeOperationHandler::Ordered(
+            runtime_core::ordered_tree_template::CoreOrderedTreeOperationHandler::ListRecords,
+        ) => {
+            let query = parse_runtime_list_query(input.query.as_deref())?;
+            let data = serde_json::to_value(
+                list_records(adapter, credential, input.model_code, query, &resolved).await?,
+            )?;
+            (interface::RuntimeModelOperationStatus::Ok, data)
+        }
+        ResolvedRuntimeOperationHandler::Core(
+            runtime_core::general_data_model_template::CoreGeneralOperationHandler::GetRecord,
+        )
+        | ResolvedRuntimeOperationHandler::Ordered(
+            runtime_core::ordered_tree_template::CoreOrderedTreeOperationHandler::GetRecord,
+        ) => (
+            interface::RuntimeModelOperationStatus::Ok,
+            get_record(
+                adapter,
+                credential,
+                input.model_code,
+                record_id.unwrap_or_default(),
+                &resolved,
+            )
+            .await?,
+        ),
+        ResolvedRuntimeOperationHandler::Core(
+            runtime_core::general_data_model_template::CoreGeneralOperationHandler::CreateRecord,
+        ) => (
+            interface::RuntimeModelOperationStatus::Created,
+            create_record(
+                adapter,
+                credential,
+                input.model_code,
+                parse_runtime_payload(&input.body)?,
+                &resolved,
+            )
+            .await?,
+        ),
+        ResolvedRuntimeOperationHandler::Core(
+            runtime_core::general_data_model_template::CoreGeneralOperationHandler::UpdateRecord,
+        ) => (
+            interface::RuntimeModelOperationStatus::Ok,
+            update_record(
+                adapter,
+                credential,
+                input.model_code,
+                record_id.unwrap_or_default(),
+                parse_runtime_payload(&input.body)?,
+                &resolved,
+            )
+            .await?,
+        ),
+        ResolvedRuntimeOperationHandler::Core(
+            runtime_core::general_data_model_template::CoreGeneralOperationHandler::DeleteRecord,
+        ) => (
+            interface::RuntimeModelOperationStatus::Ok,
+            delete_record(
+                adapter,
+                credential,
+                input.model_code,
+                record_id.unwrap_or_default(),
+                &resolved,
+            )
+            .await?,
+        ),
+        ResolvedRuntimeOperationHandler::Ordered(_) | ResolvedRuntimeOperationHandler::External => {
+            execute_descriptor_model_operation(
+                adapter,
+                credential,
+                input.model_code,
+                input.query.as_deref(),
+                &input.body,
+                &resolved,
+            )
+            .await?
+        }
+    };
+    Ok(interface::RuntimeModelOperationOutput {
+        status: status_and_data.0,
+        data: status_and_data.1,
+    })
+}
+
+fn parse_runtime_payload(body: &[u8]) -> Result<Value, ApiError> {
+    serde_json::from_slice(body)
+        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("payload").into())
+}
+
+fn parse_runtime_query(raw: Option<&str>) -> std::collections::BTreeMap<String, String> {
+    form_urlencoded::parse(raw.unwrap_or_default().as_bytes())
+        .map(|(key, value)| (key.into_owned(), value.into_owned()))
+        .collect()
+}
+
+fn parse_runtime_list_query(raw: Option<&str>) -> Result<RuntimeListQueryParams, ApiError> {
+    let mut values = parse_runtime_query(raw);
+    let parse_number = |value: Option<String>| -> Result<Option<i64>, ApiError> {
+        value
+            .map(|value| {
+                value.parse::<i64>().map_err(|_| {
+                    control_plane::errors::ControlPlaneError::InvalidInput("query").into()
+                })
+            })
+            .transpose()
+    };
+    Ok(RuntimeListQueryParams {
+        filter: values.remove("filter"),
+        sort: values.remove("sort"),
+        expand: values.remove("expand"),
+        page: parse_number(values.remove("page"))?,
+        page_size: parse_number(values.remove("page_size"))?,
+    })
+}
+
 async fn dispatch_runtime_operation(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
@@ -340,160 +544,50 @@ async fn dispatch_runtime_operation(
     OriginalUri(uri): OriginalUri,
     body: Bytes,
 ) -> Response {
-    let resolved =
-        match resolve_runtime_operation(&state, &headers, &model_code, &method, &uri).await {
-            Ok(resolved) => resolved,
-            Err(error) => return error.into_response(),
-        };
-    let record_id = match resolved.handler {
-        ResolvedRuntimeOperationHandler::Core(
-            runtime_core::general_data_model_template::CoreGeneralOperationHandler::GetRecord
-            | runtime_core::general_data_model_template::CoreGeneralOperationHandler::UpdateRecord
-            | runtime_core::general_data_model_template::CoreGeneralOperationHandler::DeleteRecord,
-        ) => match resolved.path_parameters.get("id").cloned() {
-            Some(record_id) => Some(record_id),
-            None => {
-                return ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
-                    "runtime_path",
-                ))
-                .into_response()
-            }
-        },
-        ResolvedRuntimeOperationHandler::Ordered(
-            runtime_core::ordered_tree_template::CoreOrderedTreeOperationHandler::GetRecord,
-        ) => match resolved.path_parameters.get("id").cloned() {
-            Some(record_id) => Some(record_id),
-            None => {
-                return ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
-                    "runtime_path",
-                ))
-                .into_response()
-            }
-        },
-        _ => None,
-    };
-
-    match resolved.handler {
-        ResolvedRuntimeOperationHandler::Core(
-            runtime_core::general_data_model_template::CoreGeneralOperationHandler::ListRecords,
-        ) => {
-            let query = match Query::<RuntimeListQueryParams>::try_from_uri(&uri) {
-                Ok(query) => query,
-                Err(_) => {
-                    return ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
-                        "query",
-                    ))
-                    .into_response()
-                }
-            };
-            list_records(State(state), headers, Path(model_code), query, resolved)
-                .await
-                .into_response()
-        }
-        ResolvedRuntimeOperationHandler::Core(
-            runtime_core::general_data_model_template::CoreGeneralOperationHandler::GetRecord,
-        ) => get_record(
-            State(state),
-            headers,
-            Path((model_code, record_id.unwrap_or_default())),
-            resolved,
-        )
-        .await
-        .into_response(),
-        ResolvedRuntimeOperationHandler::Core(
-            runtime_core::general_data_model_template::CoreGeneralOperationHandler::CreateRecord,
-        ) => match serde_json::from_slice::<Value>(&body) {
-            Ok(payload) => create_record(
-                State(state),
-                headers,
-                Path(model_code),
-                Json(payload),
-                resolved,
-            )
-            .await
-            .into_response(),
-            Err(_) => ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
-                "payload",
-            ))
-            .into_response(),
-        },
-        ResolvedRuntimeOperationHandler::Core(
-            runtime_core::general_data_model_template::CoreGeneralOperationHandler::UpdateRecord,
-        ) => match serde_json::from_slice::<Value>(&body) {
-            Ok(payload) => update_record(
-                State(state),
-                headers,
-                Path((model_code, record_id.unwrap_or_default())),
-                Json(payload),
-                resolved,
-            )
-            .await
-            .into_response(),
-            Err(_) => ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
-                "payload",
-            ))
-            .into_response(),
-        },
-        ResolvedRuntimeOperationHandler::Core(
-            runtime_core::general_data_model_template::CoreGeneralOperationHandler::DeleteRecord,
-        ) => delete_record(
-            State(state),
-            headers,
-            Path((model_code, record_id.unwrap_or_default())),
-            resolved,
-        )
-        .await
-        .into_response(),
-        ResolvedRuntimeOperationHandler::Ordered(
-            runtime_core::ordered_tree_template::CoreOrderedTreeOperationHandler::ListRecords,
-        ) => {
-            let query = match Query::<RuntimeListQueryParams>::try_from_uri(&uri) {
-                Ok(query) => query,
-                Err(_) => {
-                    return ApiError::from(control_plane::errors::ControlPlaneError::InvalidInput(
-                        "query",
-                    ))
-                    .into_response()
-                }
-            };
-            list_records(State(state), headers, Path(model_code), query, resolved)
-                .await
-                .into_response()
-        }
-        ResolvedRuntimeOperationHandler::Ordered(
-            runtime_core::ordered_tree_template::CoreOrderedTreeOperationHandler::GetRecord,
-        ) => get_record(
-            State(state),
-            headers,
-            Path((model_code, record_id.unwrap_or_default())),
-            resolved,
-        )
-        .await
-        .into_response(),
-        ResolvedRuntimeOperationHandler::Ordered(_) | ResolvedRuntimeOperationHandler::External => {
-            execute_descriptor_model_operation(state, headers, model_code, uri, body, resolved)
-                .await
-                .into_response()
-        }
-    }
+    interface::invoke(state, headers, method, model_code, uri, body).await
 }
 
-async fn resolve_runtime_operation(
+fn resolve_runtime_operation_for_actor(
     state: &ApiState,
-    headers: &HeaderMap,
+    actor: &domain::ActorContext,
+    method: plugin_framework::DataModelOperationMethod,
     model_code: &str,
-    method: &Method,
-    uri: &Uri,
-) -> Result<ResolvedRuntimeOperation, ApiError> {
-    let credential = authenticate_runtime_request(state, headers).await?;
-    let template = state
-        .runtime_engine
-        .template_for_model(model_code, credential.actor().current_workspace_id)
-        .map_err(map_runtime_error)?;
-    let method = descriptor_method(method).ok_or(
-        control_plane::errors::ControlPlaneError::NotFound("runtime_operation"),
-    )?;
-    let matched = template.match_operation(method, uri.path()).ok_or(
+    path: &str,
+) -> anyhow::Result<ResolvedRuntimeOperation> {
+    resolve_runtime_operation_with_engine(
+        state.runtime_engine.as_ref(),
+        actor,
+        method,
+        model_code,
+        path,
+    )
+}
+
+fn resolve_runtime_operation_for_dependencies(
+    adapter: &RuntimeModelOperationAdapter,
+    actor: &domain::ActorContext,
+    method: plugin_framework::DataModelOperationMethod,
+    model_code: &str,
+    path: &str,
+) -> anyhow::Result<ResolvedRuntimeOperation> {
+    resolve_runtime_operation_with_engine(
+        adapter.runtime_engine.as_ref(),
+        actor,
+        method,
+        model_code,
+        path,
+    )
+}
+
+fn resolve_runtime_operation_with_engine(
+    runtime_engine: &RuntimeEngine,
+    actor: &domain::ActorContext,
+    method: plugin_framework::DataModelOperationMethod,
+    model_code: &str,
+    path: &str,
+) -> anyhow::Result<ResolvedRuntimeOperation> {
+    let template = runtime_engine.template_for_model(model_code, actor.current_workspace_id)?;
+    let matched = template.match_operation(method, path).ok_or(
         control_plane::errors::ControlPlaneError::NotFound("runtime_operation"),
     )?;
     let handler = runtime_core::general_data_model_template::CoreGeneralOperationHandler::from_ref(
@@ -521,29 +615,37 @@ async fn resolve_runtime_operation(
     })
 }
 
+pub(crate) fn runtime_operation_requires_csrf(
+    state: &ApiState,
+    actor: &domain::ActorContext,
+    method: plugin_framework::DataModelOperationMethod,
+    model_code: &str,
+    path: &str,
+) -> anyhow::Result<bool> {
+    Ok(
+        resolve_runtime_operation_for_actor(state, actor, method, model_code, path)?.data_action
+            != runtime_core::runtime_acl::RuntimeDataAction::View,
+    )
+}
+
 async fn execute_descriptor_model_operation(
-    state: Arc<ApiState>,
-    headers: HeaderMap,
+    adapter: &RuntimeModelOperationAdapter,
+    credential: RuntimeCredential,
     model_code: String,
-    uri: Uri,
-    body: Bytes,
-    operation: ResolvedRuntimeOperation,
-) -> Result<(StatusCode, Json<ApiSuccess<Value>>), ApiError> {
+    raw_query: Option<&str>,
+    body: &[u8],
+    operation: &ResolvedRuntimeOperation,
+) -> Result<(interface::RuntimeModelOperationStatus, Value), ApiError> {
     let (credential, scope_grant) =
-        runtime_authorization(&state, &headers, &model_code, &operation).await?;
-    if operation.data_action != runtime_core::runtime_acl::RuntimeDataAction::View {
-        require_session_csrf_for_write(&headers, &credential)?;
-    }
+        runtime_authorization(adapter, credential, &model_code, operation).await?;
     let payload = if body.is_empty() {
         serde_json::json!({})
     } else {
         serde_json::from_slice(&body)
             .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("payload"))?
     };
-    let query = Query::<std::collections::BTreeMap<String, String>>::try_from_uri(&uri)
-        .map(|query| serde_json::to_value(query.0))
-        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("query"))??;
-    let result = state
+    let query = serde_json::to_value(parse_runtime_query(raw_query))?;
+    let result = adapter
         .runtime_engine
         .execute_model_operation(runtime_core::runtime_engine::RuntimeModelOperationInput {
             actor: credential.actor().clone(),
@@ -556,25 +658,25 @@ async fn execute_descriptor_model_operation(
         })
         .await;
     if let Err(error) = &result {
-        append_api_key_engine_acl_denied_audit(&state, &credential, &model_code, &operation, error)
+        append_api_key_engine_acl_denied_audit(adapter, &credential, &model_code, operation, error)
             .await?;
     }
     let output = result.map_err(map_runtime_error)?;
     append_api_key_runtime_audit(
-        &state,
+        adapter,
         &credential,
         &model_code,
-        &operation,
+        operation,
         "state_model.api_key_runtime_operation_executed",
         None,
     )
     .await?;
     let status = if operation.operation_code == "create_record" {
-        StatusCode::CREATED
+        interface::RuntimeModelOperationStatus::Created
     } else {
-        StatusCode::OK
+        interface::RuntimeModelOperationStatus::Ok
     };
-    Ok((status, Json(ApiSuccess::new(output))))
+    Ok((status, output))
 }
 
 fn descriptor_method(method: &Method) -> Option<plugin_framework::DataModelOperationMethod> {
@@ -634,24 +736,24 @@ fn parse_expand(expand: Option<&str>) -> Vec<String> {
 }
 
 async fn load_runtime_scope_grant(
-    state: &ApiState,
+    adapter: &RuntimeModelOperationAdapter,
     actor: &domain::ActorContext,
     data_model_id: uuid::Uuid,
     action: runtime_core::runtime_acl::RuntimeDataAction,
 ) -> Result<Option<runtime_core::runtime_acl::RuntimeScopeGrant>, ApiError> {
     Ok(
-        control_plane::model_definition::ModelDefinitionService::new(state.store.clone())
+        control_plane::model_definition::ModelDefinitionService::new(adapter.store.clone())
             .load_runtime_scope_grant(actor, data_model_id, action)
             .await?,
     )
 }
 
 fn resolve_runtime_model(
-    state: &ApiState,
+    adapter: &RuntimeModelOperationAdapter,
     actor: &domain::ActorContext,
     model_code: &str,
 ) -> Option<runtime_core::model_metadata::ModelMetadata> {
-    state
+    adapter
         .runtime_engine
         .registry()
         .get(
@@ -660,7 +762,7 @@ fn resolve_runtime_model(
             model_code,
         )
         .or_else(|| {
-            state.runtime_engine.registry().get(
+            adapter.runtime_engine.registry().get(
                 domain::DataModelScopeKind::System,
                 domain::SYSTEM_SCOPE_ID,
                 model_code,
@@ -669,15 +771,29 @@ fn resolve_runtime_model(
 }
 
 enum RuntimeCredential {
-    Session(Box<RequestContext>),
-    ApiKey(Box<control_plane::auth::ApiKeyActor>),
+    Session(domain::ActorContext),
+    ApiKey {
+        api_key_id: Uuid,
+        actor: domain::ActorContext,
+    },
 }
 
 impl RuntimeCredential {
+    fn from_principal(principal: &UserPrincipal) -> Self {
+        match principal.credential_kind() {
+            UserCredentialKind::UserApiKey { api_key_id } => Self::ApiKey {
+                api_key_id,
+                actor: principal.actor().clone(),
+            },
+            UserCredentialKind::CookieSession | UserCredentialKind::ServerDelegation => {
+                Self::Session(principal.actor().clone())
+            }
+        }
+    }
+
     fn actor(&self) -> &domain::ActorContext {
         match self {
-            Self::Session(context) => &context.actor,
-            Self::ApiKey(context) => &context.actor,
+            Self::Session(actor) | Self::ApiKey { actor, .. } => actor,
         }
     }
 
@@ -687,7 +803,7 @@ impl RuntimeCredential {
         permissions.sort();
 
         match self {
-            Self::Session(_context) => serde_json::json!({
+            Self::Session(_) => serde_json::json!({
                 "kind": "session",
                 "user_id": actor.user_id,
                 "tenant_id": actor.tenant_id,
@@ -696,10 +812,10 @@ impl RuntimeCredential {
                 "is_root": actor.is_root,
                 "permissions": permissions,
             }),
-            Self::ApiKey(context) => serde_json::json!({
+            Self::ApiKey { api_key_id, .. } => serde_json::json!({
                 "kind": "api_key",
-                "api_key_id": context.api_key.id,
-                "key_kind": context.api_key.key_kind.as_str(),
+                "api_key_id": api_key_id,
+                "key_kind": "user_api_key",
                 "user_id": actor.user_id,
                 "tenant_id": actor.tenant_id,
                 "workspace_id": actor.current_workspace_id,
@@ -712,11 +828,11 @@ impl RuntimeCredential {
 }
 
 fn runtime_records_cacheable_metadata(
-    state: &ApiState,
+    adapter: &RuntimeModelOperationAdapter,
     actor: &domain::ActorContext,
     model_code: &str,
 ) -> Option<runtime_core::model_metadata::ModelMetadata> {
-    let runtime_model = state
+    let runtime_model = adapter
         .runtime_engine
         .registry()
         .get_runtime_model(
@@ -725,7 +841,7 @@ fn runtime_records_cacheable_metadata(
             model_code,
         )
         .or_else(|| {
-            state.runtime_engine.registry().get_runtime_model(
+            adapter.runtime_engine.registry().get_runtime_model(
                 domain::DataModelScopeKind::System,
                 domain::SYSTEM_SCOPE_ID,
                 model_code,
@@ -745,13 +861,12 @@ fn runtime_records_version_key(metadata: &runtime_core::model_metadata::ModelMet
 }
 
 async fn runtime_records_cache_version(
-    state: &ApiState,
+    adapter: &RuntimeModelOperationAdapter,
     metadata: &runtime_core::model_metadata::ModelMetadata,
 ) -> String {
     let key = runtime_records_version_key(metadata);
-    state
-        .infrastructure
-        .cache_store()
+    adapter
+        .cache_store
         .get_json(&key)
         .await
         .ok()
@@ -761,13 +876,12 @@ async fn runtime_records_cache_version(
 }
 
 async fn bump_runtime_records_cache_version(
-    state: &ApiState,
+    adapter: &RuntimeModelOperationAdapter,
     metadata: &runtime_core::model_metadata::ModelMetadata,
 ) {
     let key = runtime_records_version_key(metadata);
-    let _ = state
-        .infrastructure
-        .cache_store()
+    let _ = adapter
+        .cache_store
         .set_json(
             &key,
             serde_json::json!(uuid::Uuid::now_v7().to_string()),
@@ -877,10 +991,12 @@ fn runtime_records_get_cache_key(
     )
 }
 
-async fn cached_runtime_list_response(state: &ApiState, key: &str) -> Option<RuntimeListResponse> {
-    state
-        .infrastructure
-        .cache_store()
+async fn cached_runtime_list_response(
+    adapter: &RuntimeModelOperationAdapter,
+    key: &str,
+) -> Option<RuntimeListResponse> {
+    adapter
+        .cache_store
         .get_json(key)
         .await
         .ok()
@@ -888,91 +1004,63 @@ async fn cached_runtime_list_response(state: &ApiState, key: &str) -> Option<Run
         .and_then(|value| serde_json::from_value(value).ok())
 }
 
-async fn cache_runtime_list_response(state: &ApiState, key: &str, response: &RuntimeListResponse) {
+async fn cache_runtime_list_response(
+    adapter: &RuntimeModelOperationAdapter,
+    key: &str,
+    response: &RuntimeListResponse,
+) {
     let Ok(value) = serde_json::to_value(response) else {
         return;
     };
-    let _ = state
-        .infrastructure
-        .cache_store()
+    let _ = adapter
+        .cache_store
         .set_json(key, value, Some(time::Duration::seconds(30)))
         .await;
 }
 
-async fn cached_runtime_record(state: &ApiState, key: &str) -> Option<Value> {
-    state
-        .infrastructure
-        .cache_store()
-        .get_json(key)
-        .await
-        .ok()
-        .flatten()
+async fn cached_runtime_record(adapter: &RuntimeModelOperationAdapter, key: &str) -> Option<Value> {
+    adapter.cache_store.get_json(key).await.ok().flatten()
 }
 
-async fn cache_runtime_record(state: &ApiState, key: &str, record: &Value) {
-    let _ = state
-        .infrastructure
-        .cache_store()
+async fn cache_runtime_record(adapter: &RuntimeModelOperationAdapter, key: &str, record: &Value) {
+    let _ = adapter
+        .cache_store
         .set_json(key, record.clone(), Some(time::Duration::seconds(60)))
         .await;
 }
 
-fn bearer_token(headers: &HeaderMap) -> Option<&str> {
-    let value = headers
-        .get(axum::http::header::AUTHORIZATION)?
-        .to_str()
-        .ok()?;
-    value.strip_prefix("Bearer ")
-}
-
-async fn authenticate_runtime_request(
-    state: &ApiState,
-    headers: &HeaderMap,
-) -> Result<RuntimeCredential, ApiError> {
-    if let Some(token) = bearer_token(headers) {
-        let api_key = control_plane::auth::ApiKeyService::new(state.store.clone())
-            .authenticate_bearer_token(token)
-            .await?;
-        return Ok(RuntimeCredential::ApiKey(Box::new(api_key)));
-    }
-
-    Ok(RuntimeCredential::Session(Box::new(
-        require_session(state, headers).await?,
-    )))
-}
-
 async fn append_api_key_runtime_audit(
-    state: &ApiState,
+    adapter: &RuntimeModelOperationAdapter,
     credential: &RuntimeCredential,
     model_code: &str,
     operation: &ResolvedRuntimeOperation,
     event_code: &str,
     reason: Option<&str>,
 ) -> Result<(), ApiError> {
-    let RuntimeCredential::ApiKey(api_key) = credential else {
+    let RuntimeCredential::ApiKey { api_key_id, actor } = credential else {
         return Ok(());
     };
     let model_id =
-        resolve_runtime_model(state, credential.actor(), model_code).map(|model| model.model_id);
-    let workspace_id = if api_key.actor.current_workspace_id == domain::SYSTEM_SCOPE_ID {
+        resolve_runtime_model(adapter, credential.actor(), model_code).map(|model| model.model_id);
+    let workspace_id = if actor.current_workspace_id == domain::SYSTEM_SCOPE_ID {
         None
     } else {
-        Some(api_key.actor.current_workspace_id)
+        Some(actor.current_workspace_id)
     };
     AuthRepository::append_audit_log(
-        &state.store,
+        &adapter.store,
         &audit_log(
             workspace_id,
-            Some(api_key.actor.user_id),
+            Some(actor.user_id),
             "state_model",
             model_id,
             event_code,
             serde_json::json!({
-                "api_key_id": api_key.api_key.id,
+                "api_key_id": api_key_id,
                 "model_code": model_code,
                 "action": operation.audit_action(),
-                "scope_kind": api_key.api_key.scope_kind.as_str(),
-                "scope_id": api_key.api_key.scope_id,
+                "scope_kind": if actor.current_workspace_id == domain::SYSTEM_SCOPE_ID { "system" } else { "workspace" },
+                "scope_id": actor.current_workspace_id,
                 "reason": reason,
             }),
         ),
@@ -982,7 +1070,7 @@ async fn append_api_key_runtime_audit(
 }
 
 async fn append_api_key_engine_acl_denied_audit(
-    state: &ApiState,
+    adapter: &RuntimeModelOperationAdapter,
     credential: &RuntimeCredential,
     model_code: &str,
     operation: &ResolvedRuntimeOperation,
@@ -990,7 +1078,7 @@ async fn append_api_key_engine_acl_denied_audit(
 ) -> Result<(), ApiError> {
     if let Some(reason) = runtime_acl_denial_reason(error) {
         append_api_key_runtime_audit(
-            state,
+            adapter,
             credential,
             model_code,
             operation,
@@ -1004,8 +1092,8 @@ async fn append_api_key_engine_acl_denied_audit(
 }
 
 async fn runtime_authorization(
-    state: &ApiState,
-    headers: &HeaderMap,
+    adapter: &RuntimeModelOperationAdapter,
+    credential: RuntimeCredential,
     model_code: &str,
     operation: &ResolvedRuntimeOperation,
 ) -> Result<
@@ -1015,12 +1103,11 @@ async fn runtime_authorization(
     ),
     ApiError,
 > {
-    let credential = authenticate_runtime_request(state, headers).await?;
-    let Some(model) = resolve_runtime_model(state, credential.actor(), model_code) else {
+    let Some(model) = resolve_runtime_model(adapter, credential.actor(), model_code) else {
         return Ok((credential, None));
     };
     let scope_grant = load_runtime_scope_grant(
-        state,
+        adapter,
         credential.actor(),
         model.model_id,
         operation.data_action,
@@ -1029,29 +1116,19 @@ async fn runtime_authorization(
     Ok((credential, scope_grant))
 }
 
-fn require_session_csrf_for_write(
-    headers: &HeaderMap,
-    credential: &RuntimeCredential,
-) -> Result<(), ApiError> {
-    if let RuntimeCredential::Session(context) = credential {
-        require_csrf(headers, context)?;
-    }
-    Ok(())
-}
-
 async fn list_records(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Path(model_code): Path<String>,
-    Query(query): Query<RuntimeListQueryParams>,
-    operation: ResolvedRuntimeOperation,
-) -> Result<Json<ApiSuccess<RuntimeListResponse>>, ApiError> {
+    adapter: &RuntimeModelOperationAdapter,
+    credential: RuntimeCredential,
+    model_code: String,
+    query: RuntimeListQueryParams,
+    operation: &ResolvedRuntimeOperation,
+) -> Result<RuntimeListResponse, ApiError> {
     let (credential, scope_grant) =
-        runtime_authorization(&state, &headers, &model_code, &operation).await?;
+        runtime_authorization(adapter, credential, &model_code, operation).await?;
     let cache_metadata =
-        runtime_records_cacheable_metadata(&state, credential.actor(), &model_code);
+        runtime_records_cacheable_metadata(adapter, credential.actor(), &model_code);
     let cache_key = if let Some(metadata) = &cache_metadata {
-        let version = runtime_records_cache_version(&state, metadata).await;
+        let version = runtime_records_cache_version(adapter, metadata).await;
         Some(runtime_records_list_cache_key(
             metadata,
             &credential,
@@ -1063,11 +1140,11 @@ async fn list_records(
         None
     };
     if let Some(cache_key) = &cache_key {
-        if let Some(response) = cached_runtime_list_response(&state, cache_key).await {
+        if let Some(response) = cached_runtime_list_response(adapter, cache_key).await {
             let mut response = runtime_list_response(&model_code, response.items, response.total);
-            enrich_application_run_count_tokens_results(&state, &model_code, &mut response.items)
+            enrich_application_run_count_tokens_results(adapter, &model_code, &mut response.items)
                 .await?;
-            return Ok(Json(ApiSuccess::new(response)));
+            return Ok(response);
         }
     }
     let filter = parse_filter(query.filter.as_deref())?;
@@ -1075,7 +1152,7 @@ async fn list_records(
     let expand_relations = parse_expand(query.expand.as_deref());
     let page = query.page.unwrap_or(1);
     let page_size = query.page_size.unwrap_or(20);
-    let result = state
+    let result = adapter
         .runtime_engine
         .list_records(runtime_core::runtime_engine::RuntimeListInput {
             actor: credential.actor().clone(),
@@ -1092,10 +1169,10 @@ async fn list_records(
         Ok(result) => result,
         Err(error) => {
             append_api_key_engine_acl_denied_audit(
-                &state,
+                adapter,
                 &credential,
                 &model_code,
-                &operation,
+                operation,
                 &error,
             )
             .await?;
@@ -1104,26 +1181,27 @@ async fn list_records(
     };
 
     let mut response = runtime_list_response(&model_code, result.items, result.total);
-    enrich_application_run_count_tokens_results(&state, &model_code, &mut response.items).await?;
+    enrich_application_run_count_tokens_results(adapter, &model_code, &mut response.items).await?;
     if let Some(cache_key) = &cache_key {
-        cache_runtime_list_response(&state, cache_key, &response).await;
+        cache_runtime_list_response(adapter, cache_key, &response).await;
     }
 
-    Ok(Json(ApiSuccess::new(response)))
+    Ok(response)
 }
 
 async fn get_record(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Path((model_code, record_id)): Path<(String, String)>,
-    operation: ResolvedRuntimeOperation,
-) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    adapter: &RuntimeModelOperationAdapter,
+    credential: RuntimeCredential,
+    model_code: String,
+    record_id: String,
+    operation: &ResolvedRuntimeOperation,
+) -> Result<Value, ApiError> {
     let (credential, scope_grant) =
-        runtime_authorization(&state, &headers, &model_code, &operation).await?;
+        runtime_authorization(adapter, credential, &model_code, operation).await?;
     let cache_metadata =
-        runtime_records_cacheable_metadata(&state, credential.actor(), &model_code);
+        runtime_records_cacheable_metadata(adapter, credential.actor(), &model_code);
     let cache_key = if let Some(metadata) = &cache_metadata {
-        let version = runtime_records_cache_version(&state, metadata).await;
+        let version = runtime_records_cache_version(adapter, metadata).await;
         Some(runtime_records_get_cache_key(
             metadata,
             &credential,
@@ -1135,18 +1213,18 @@ async fn get_record(
         None
     };
     if let Some(cache_key) = &cache_key {
-        if let Some(record) = cached_runtime_record(&state, cache_key).await {
+        if let Some(record) = cached_runtime_record(adapter, cache_key).await {
             let mut record = runtime_record_response(&model_code, record);
             enrich_application_run_count_tokens_results(
-                &state,
+                adapter,
                 &model_code,
                 std::slice::from_mut(&mut record),
             )
             .await?;
-            return Ok(Json(ApiSuccess::new(record)));
+            return Ok(record);
         }
     }
-    let record = state
+    let record = adapter
         .runtime_engine
         .get_record(runtime_core::runtime_engine::RuntimeGetInput {
             actor: credential.actor().clone(),
@@ -1161,10 +1239,10 @@ async fn get_record(
         ))?,
         Err(error) => {
             append_api_key_engine_acl_denied_audit(
-                &state,
+                adapter,
                 &credential,
                 &model_code,
-                &operation,
+                operation,
                 &error,
             )
             .await?;
@@ -1173,32 +1251,31 @@ async fn get_record(
     };
     let mut record = runtime_record_response(&model_code, record);
     enrich_application_run_count_tokens_results(
-        &state,
+        adapter,
         &model_code,
         std::slice::from_mut(&mut record),
     )
     .await?;
     if let Some(cache_key) = &cache_key {
-        cache_runtime_record(&state, cache_key, &record).await;
+        cache_runtime_record(adapter, cache_key, &record).await;
     }
 
-    Ok(Json(ApiSuccess::new(record)))
+    Ok(record)
 }
 
 async fn create_record(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Path(model_code): Path<String>,
-    Json(payload): Json<Value>,
-    operation: ResolvedRuntimeOperation,
-) -> Result<(StatusCode, Json<ApiSuccess<Value>>), ApiError> {
+    adapter: &RuntimeModelOperationAdapter,
+    credential: RuntimeCredential,
+    model_code: String,
+    payload: Value,
+    operation: &ResolvedRuntimeOperation,
+) -> Result<Value, ApiError> {
     let (credential, scope_grant) =
-        runtime_authorization(&state, &headers, &model_code, &operation).await?;
-    require_session_csrf_for_write(&headers, &credential)?;
+        runtime_authorization(adapter, credential, &model_code, operation).await?;
     let cache_metadata =
-        runtime_records_cacheable_metadata(&state, credential.actor(), &model_code);
+        runtime_records_cacheable_metadata(adapter, credential.actor(), &model_code);
 
-    let result = state
+    let result = adapter
         .runtime_engine
         .create_record(runtime_core::runtime_engine::RuntimeCreateInput {
             actor: credential.actor().clone(),
@@ -1210,34 +1287,34 @@ async fn create_record(
     let record = match result {
         Ok(record) => {
             append_api_key_runtime_audit(
-                &state,
+                adapter,
                 &credential,
                 &model_code,
-                &operation,
+                operation,
                 "state_model.api_key_runtime_write_succeeded",
                 None,
             )
             .await?;
             if let Some(metadata) = &cache_metadata {
-                bump_runtime_records_cache_version(&state, metadata).await;
+                bump_runtime_records_cache_version(adapter, metadata).await;
             }
             record
         }
         Err(error) => {
             let reason = error.to_string();
             append_api_key_engine_acl_denied_audit(
-                &state,
+                adapter,
                 &credential,
                 &model_code,
-                &operation,
+                operation,
                 &error,
             )
             .await?;
             append_api_key_runtime_audit(
-                &state,
+                adapter,
                 &credential,
                 &model_code,
-                &operation,
+                operation,
                 "state_model.api_key_runtime_write_failed",
                 Some(&reason),
             )
@@ -1246,23 +1323,23 @@ async fn create_record(
         }
     };
 
-    Ok((StatusCode::CREATED, Json(ApiSuccess::new(record))))
+    Ok(record)
 }
 
 async fn update_record(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Path((model_code, record_id)): Path<(String, String)>,
-    Json(payload): Json<Value>,
-    operation: ResolvedRuntimeOperation,
-) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    adapter: &RuntimeModelOperationAdapter,
+    credential: RuntimeCredential,
+    model_code: String,
+    record_id: String,
+    payload: Value,
+    operation: &ResolvedRuntimeOperation,
+) -> Result<Value, ApiError> {
     let (credential, scope_grant) =
-        runtime_authorization(&state, &headers, &model_code, &operation).await?;
-    require_session_csrf_for_write(&headers, &credential)?;
+        runtime_authorization(adapter, credential, &model_code, operation).await?;
     let cache_metadata =
-        runtime_records_cacheable_metadata(&state, credential.actor(), &model_code);
+        runtime_records_cacheable_metadata(adapter, credential.actor(), &model_code);
 
-    let result = state
+    let result = adapter
         .runtime_engine
         .update_record(runtime_core::runtime_engine::RuntimeUpdateInput {
             actor: credential.actor().clone(),
@@ -1275,34 +1352,34 @@ async fn update_record(
     let record = match result {
         Ok(record) => {
             append_api_key_runtime_audit(
-                &state,
+                adapter,
                 &credential,
                 &model_code,
-                &operation,
+                operation,
                 "state_model.api_key_runtime_write_succeeded",
                 None,
             )
             .await?;
             if let Some(metadata) = &cache_metadata {
-                bump_runtime_records_cache_version(&state, metadata).await;
+                bump_runtime_records_cache_version(adapter, metadata).await;
             }
             record
         }
         Err(error) => {
             let reason = error.to_string();
             append_api_key_engine_acl_denied_audit(
-                &state,
+                adapter,
                 &credential,
                 &model_code,
-                &operation,
+                operation,
                 &error,
             )
             .await?;
             append_api_key_runtime_audit(
-                &state,
+                adapter,
                 &credential,
                 &model_code,
-                &operation,
+                operation,
                 "state_model.api_key_runtime_write_failed",
                 Some(&reason),
             )
@@ -1311,22 +1388,22 @@ async fn update_record(
         }
     };
 
-    Ok(Json(ApiSuccess::new(record)))
+    Ok(record)
 }
 
 async fn delete_record(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Path((model_code, record_id)): Path<(String, String)>,
-    operation: ResolvedRuntimeOperation,
-) -> Result<Json<ApiSuccess<Value>>, ApiError> {
+    adapter: &RuntimeModelOperationAdapter,
+    credential: RuntimeCredential,
+    model_code: String,
+    record_id: String,
+    operation: &ResolvedRuntimeOperation,
+) -> Result<Value, ApiError> {
     let (credential, scope_grant) =
-        runtime_authorization(&state, &headers, &model_code, &operation).await?;
-    require_session_csrf_for_write(&headers, &credential)?;
+        runtime_authorization(adapter, credential, &model_code, operation).await?;
     let cache_metadata =
-        runtime_records_cacheable_metadata(&state, credential.actor(), &model_code);
+        runtime_records_cacheable_metadata(adapter, credential.actor(), &model_code);
 
-    let delete_result = state
+    let delete_result = adapter
         .runtime_engine
         .delete_record(runtime_core::runtime_engine::RuntimeDeleteInput {
             actor: credential.actor().clone(),
@@ -1338,34 +1415,34 @@ async fn delete_record(
     let result = match delete_result {
         Ok(result) => {
             append_api_key_runtime_audit(
-                &state,
+                adapter,
                 &credential,
                 &model_code,
-                &operation,
+                operation,
                 "state_model.api_key_runtime_write_succeeded",
                 None,
             )
             .await?;
             if let Some(metadata) = &cache_metadata {
-                bump_runtime_records_cache_version(&state, metadata).await;
+                bump_runtime_records_cache_version(adapter, metadata).await;
             }
             result
         }
         Err(error) => {
             let reason = error.to_string();
             append_api_key_engine_acl_denied_audit(
-                &state,
+                adapter,
                 &credential,
                 &model_code,
-                &operation,
+                operation,
                 &error,
             )
             .await?;
             append_api_key_runtime_audit(
-                &state,
+                adapter,
                 &credential,
                 &model_code,
-                &operation,
+                operation,
                 "state_model.api_key_runtime_write_failed",
                 Some(&reason),
             )
@@ -1374,146 +1451,8 @@ async fn delete_record(
         }
     };
 
-    Ok(Json(ApiSuccess::new(result)))
+    Ok(result)
 }
+
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    // AC-012: typed ordered-tree errors keep stable HTTP status classes.
-    #[test]
-    fn ordered_tree_errors_map_to_bad_request_not_found_conflict_and_unavailable() {
-        use runtime_core::runtime_record_repository::OrderedTreeCommandError;
-
-        let cases = [
-            (
-                anyhow::Error::new(
-                    runtime_core::runtime_engine::RuntimeModelError::InvalidOperationInput(
-                        "payload",
-                    ),
-                ),
-                StatusCode::BAD_REQUEST,
-            ),
-            (
-                anyhow::Error::new(OrderedTreeCommandError::NodeNotFound),
-                StatusCode::NOT_FOUND,
-            ),
-            (
-                anyhow::Error::new(OrderedTreeCommandError::TreeNodeHasChildren),
-                StatusCode::CONFLICT,
-            ),
-            (
-                anyhow::Error::new(
-                    runtime_core::runtime_engine::RuntimeModelError::OrderedTreeUnavailable,
-                ),
-                StatusCode::SERVICE_UNAVAILABLE,
-            ),
-        ];
-
-        for (error, expected) in cases {
-            assert_eq!(map_runtime_error(error).into_response().status(), expected);
-        }
-    }
-
-    #[test]
-    fn runtime_record_response_rounds_application_log_cache_hit_rate() {
-        let record = runtime_record_response(
-            "application_run_log_summaries",
-            json!({
-                "id": "run-1",
-                "run_mode": "debug_flow_run",
-                "total_tokens": 49901,
-                "input_cache_hit_tokens": 49063,
-                "input_cache_hit_rate": 0.9505703422053232
-            }),
-        );
-
-        assert_eq!(record["input_cache_hit_rate"], json!(0.9832));
-    }
-
-    #[test]
-    fn runtime_record_response_does_not_fall_back_to_projected_cache_hit_rate() {
-        let record = runtime_record_response(
-            "application_run_log_summaries",
-            json!({
-                "id": "run-1",
-                "run_mode": "debug_flow_run",
-                "input_cache_hit_rate": 1.0
-            }),
-        );
-
-        assert_eq!(record["input_cache_hit_rate"], Value::Null);
-    }
-
-    #[test]
-    fn application_run_records_receive_nullable_count_tokens_results() {
-        let count_tokens_run_id = Uuid::now_v7();
-        let generate_run_id = Uuid::now_v7();
-        let mut records = vec![
-            json!({ "flow_run_id": count_tokens_run_id }),
-            json!({ "flow_run_id": generate_run_id }),
-        ];
-
-        apply_application_run_count_tokens_results(
-            &mut records,
-            &[control_plane::ports::ApplicationRunCountTokensResult {
-                flow_run_id: count_tokens_run_id,
-                input_tokens: 6_956,
-            }],
-        );
-
-        assert_eq!(records[0]["count_tokens_input_tokens"], json!(6_956));
-        assert_eq!(records[1]["count_tokens_input_tokens"], Value::Null);
-    }
-
-    #[test]
-    fn runtime_record_response_leaves_other_models_unchanged() {
-        let record = runtime_record_response(
-            "orders",
-            json!({
-                "id": "order-1",
-                "input_cache_hit_rate": 0.9505703422053232
-            }),
-        );
-
-        assert_eq!(record["input_cache_hit_rate"], json!(0.9505703422053232));
-    }
-
-    #[test]
-    fn runtime_record_response_derives_principal_from_run_credentials() {
-        for (run_mode, invocation_source, principal_kind, keeps_creator) in [
-            ("workflow_http_run", "workflow_http", "user", true),
-            (
-                "workflow_schedule_run",
-                "workflow_schedule",
-                "scheduler",
-                false,
-            ),
-        ] {
-            let creator_id = Uuid::now_v7();
-            let record = runtime_record_response(
-                "application_run_log_summaries",
-                json!({
-                    "run_mode": run_mode,
-                    "created_by": creator_id.to_string(),
-                    "authorized_account": "publication creator"
-                }),
-            );
-
-            assert_eq!(record["execution_stage"], json!("published"));
-            assert_eq!(record["invocation_source"], json!(invocation_source));
-            assert_eq!(record["principal"]["kind"], json!(principal_kind));
-            if keeps_creator {
-                assert_eq!(record["principal"]["id"], json!(creator_id));
-                assert_eq!(
-                    record["principal"]["display_name"],
-                    json!("publication creator")
-                );
-            } else {
-                assert_eq!(record["principal"]["id"], Value::Null);
-                assert_eq!(record["principal"]["display_name"], Value::Null);
-            }
-        }
-    }
-}
+mod tests;
