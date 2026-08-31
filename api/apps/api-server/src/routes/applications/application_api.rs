@@ -13,20 +13,13 @@ use axum::{
 use control_plane::{
     application::ApplicationService,
     application_public_api::{
-        api_keys::{
-            ApplicationApiKeyService, CreateApplicationApiKeyCommand,
-            ListApplicationApiKeysCommand, RevokeApplicationApiKeyCommand,
-        },
         mapping::{
             ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
-            ApplicationApiMappingService, GetApplicationApiMappingCommand,
-            ReplaceApplicationApiMappingCommand, WorkflowExtensionApiConfig,
-            WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
+            WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
         },
         publications::{
             ApplicationPublicationService, ApplicationPublicationVersionRecord,
-            LoadActiveApplicationPublicationCommand, PublishApplicationCommand,
-            SetApplicationApiEnabledCommand, UnpublishApplicationCommand,
+            LoadActiveApplicationPublicationCommand,
         },
         published_workflow_operation::PublishedWorkflowOperation,
         workflow_schedule::{
@@ -62,6 +55,7 @@ use crate::{
 };
 
 pub(crate) mod interface_keys;
+pub(crate) mod interface_publication;
 
 const PUBLIC_RUNS_PATH: &str = "/api/agent/v1/runs";
 
@@ -790,15 +784,15 @@ pub async fn get_application_api_mapping(
     headers: HeaderMap,
     Path(application_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<ApplicationApiMappingBody>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let draft = ApplicationApiMappingService::new(state.store.for_actor(context.actor.clone()))
-        .get_mapping_draft(GetApplicationApiMappingCommand {
-            actor_user_id: context.user.id,
-            application_id,
-        })
+    let output: interface_publication::ApplicationPublicationOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.api-mapping.get.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+            interface_publication::ApplicationPublicationInput::GetMapping { application_id },
+        )
         .await?;
-
-    Ok(Json(ApiSuccess::new(to_mapping_body(draft.mapping))))
+    Ok(Json(ApiSuccess::new(output.into_mapping()?)))
 }
 
 #[utoipa::path(
@@ -820,18 +814,21 @@ pub async fn replace_application_api_mapping(
     Path(application_id): Path<Uuid>,
     Json(body): Json<ApplicationApiMappingBody>,
 ) -> Result<Json<ApiSuccess<ApplicationApiMappingBody>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let mapping = to_mapping_config(body);
-    let draft = ApplicationApiMappingService::new(state.store.for_actor(context.actor.clone()))
-        .replace_mapping_draft(ReplaceApplicationApiMappingCommand {
-            actor_user_id: context.user.id,
-            application_id,
-            mapping,
-        })
+    let output: interface_publication::ApplicationPublicationOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.api-mapping.replace.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+                state,
+                headers,
+            },
+            interface_publication::ApplicationPublicationInput::ReplaceMapping {
+                application_id,
+                body,
+            },
+        )
         .await?;
-
-    Ok(Json(ApiSuccess::new(to_mapping_body(draft.mapping))))
+    Ok(Json(ApiSuccess::new(output.into_mapping()?)))
 }
 
 #[utoipa::path(
@@ -852,17 +849,15 @@ pub async fn get_application_api_publication(
     headers: HeaderMap,
     Path(application_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<ApplicationPublicationResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ApplicationService::new(state.store.for_actor(context.actor.clone()))
-        .get_application(context.user.id, application_id)
+    let output: interface_publication::ApplicationPublicationOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.api-publication.get.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+            interface_publication::ApplicationPublicationInput::GetPublication { application_id },
+        )
         .await?;
-    let publication =
-        ApplicationPublicationService::new(state.store.for_actor(context.actor.clone()))
-            .load_active_publication(LoadActiveApplicationPublicationCommand { application_id })
-            .await
-            .map_err(map_publication_not_found)?;
-
-    Ok(Json(ApiSuccess::new(to_publication_response(publication))))
+    Ok(Json(ApiSuccess::new(output.into_publication()?)))
 }
 
 #[utoipa::path(
@@ -886,23 +881,23 @@ pub async fn publish_application_api(
     Path(application_id): Path<Uuid>,
     Json(body): Json<PublishApplicationApiBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ApplicationPublicationResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let mapping = to_mapping_config(body.mapping);
-    let publication =
-        ApplicationPublicationService::new(state.store.for_actor(context.actor.clone()))
-            .with_model_routing_cache_store(state.infrastructure.cache_store())
-            .publish_active_version(PublishApplicationCommand {
-                actor_user_id: context.user.id,
+    let output: interface_publication::ApplicationPublicationOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.api-publication.publish.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+                state,
+                headers,
+            },
+            interface_publication::ApplicationPublicationInput::Publish {
                 application_id,
-                mapping,
-                api_enabled: body.api_enabled,
-            })
-            .await?;
-
+                body,
+            },
+        )
+        .await?;
     Ok((
         StatusCode::CREATED,
-        Json(ApiSuccess::new(to_publication_response(publication))),
+        Json(ApiSuccess::new(output.into_publication()?)),
     ))
 }
 
@@ -922,15 +917,16 @@ pub async fn unpublish_application_api(
     headers: HeaderMap,
     Path(application_id): Path<Uuid>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    ApplicationPublicationService::new(state.store.for_actor(context.actor.clone()))
-        .unpublish(UnpublishApplicationCommand {
-            actor_user_id: context.user.id,
-            application_id,
-        })
-        .await
-        .map_err(map_publication_not_found)?;
+    crate::routes::console_interface::invoke::<
+        _,
+        interface_publication::ApplicationPublicationOutput,
+    >(
+        Arc::clone(&state),
+        "http.console.applications.api-publication.unpublish.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface_publication::ApplicationPublicationInput::Unpublish { application_id },
+    )
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -953,21 +949,21 @@ pub async fn patch_application_api_status(
     Path(application_id): Path<Uuid>,
     Json(body): Json<PatchApplicationApiStatusBody>,
 ) -> Result<Json<ApiSuccess<ApplicationApiStatusResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    ApplicationPublicationService::new(state.store.for_actor(context.actor.clone()))
-        .set_api_enabled(SetApplicationApiEnabledCommand {
-            actor_user_id: context.user.id,
-            application_id,
-            api_enabled: body.api_enabled,
-        })
+    let output: interface_publication::ApplicationPublicationOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.api-status.update.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+                state,
+                headers,
+            },
+            interface_publication::ApplicationPublicationInput::SetEnabled {
+                application_id,
+                body,
+            },
+        )
         .await?;
-
-    Ok(Json(ApiSuccess::new(ApplicationApiStatusResponse {
-        application_id,
-        api_enabled: body.api_enabled,
-        public_url: PUBLIC_RUNS_PATH.to_string(),
-    })))
+    Ok(Json(ApiSuccess::new(output.into_status()?)))
 }
 
 #[utoipa::path(

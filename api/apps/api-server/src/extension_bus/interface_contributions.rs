@@ -168,6 +168,11 @@ pub(crate) fn production_interface_contributions(
     );
     let console_application_api_keys =
         crate::routes::application_api::interface_keys::port(state.store.clone());
+    let console_application_publication =
+        crate::routes::application_api::interface_publication::port(
+            state.store.clone(),
+            state.infrastructure.cache_store(),
+        );
 
     Ok(vec![
         InterfaceRegistryContribution::new(
@@ -289,6 +294,21 @@ pub(crate) fn production_interface_contributions(
             &["api-server.console-application-api-keys"],
             crate::routes::application_api::interface_keys::compile_registry(
                 console_application_api_keys,
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-application-publication",
+            &[
+                "applications.api-mapping.get",
+                "applications.api-mapping.replace",
+                "applications.api-publication.get",
+                "applications.api-publication.publish",
+                "applications.api-publication.unpublish",
+                "applications.api-status.update",
+            ],
+            &["api-server.console-application-publication"],
+            crate::routes::application_api::interface_publication::compile_registry(
+                console_application_publication,
             )?,
         ),
         InterfaceRegistryContribution::new(
