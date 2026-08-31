@@ -18,13 +18,16 @@ interface AntDesignEsModuleSource {
   loaderSource: string;
 }
 
-export function nativeAntDesignEsModulesPlugin(): Plugin {
+export function nativeAntDesignEsModulesPlugin(
+  command: 'build' | 'serve'
+): Plugin {
   let moduleSources: readonly AntDesignEsModuleSource[] | undefined;
 
   return {
     name: '1flowbase-native-antd-es-modules',
     enforce: 'pre',
     transform(source, id) {
+      if (command === 'serve') return undefined;
       if (!/\.[cm]?[jt]sx?$/u.test(id) || id.includes('/node_modules/')) {
         return undefined;
       }

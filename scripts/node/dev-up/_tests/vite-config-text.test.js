@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const { createRequire } = require("node:module");
 
 const viteConfigPath = path.resolve(
   __dirname,
@@ -78,10 +79,75 @@ test("DV-F04 vite config exposes lifecycle readiness after bounded warmup", () =
   );
 });
 
-test("DV-F04 optimizeDeps only forces resolvable application dependencies", () => {
+test("DRS-001 critical CommonJS dependencies share the optimized ESM boundary", () => {
   const viteConfigSource = fs.readFileSync(viteConfigPath, "utf8");
+  const runtimeSource = fs.readFileSync(
+    path.resolve(path.dirname(viteConfigPath), "vite", "dev-runtime.ts"),
+    "utf8",
+  );
 
-  assert.doesNotMatch(viteConfigSource, /\n\s*'react-is',/u);
+  assert.match(runtimeSource, /'react-is'/u);
+  assert.match(runtimeSource, /'is-mobile'/u);
+  assert.match(viteConfigSource, /\.\.\.DEV_CRITICAL_INTEROP_SPECIFIERS/u);
+  assert.match(
+    viteConfigSource,
+    /needsInterop:\s*\[\.\.\.DEV_CRITICAL_INTEROP_SPECIFIERS\]/u,
+  );
+  assert.match(viteConfigSource, /devGenerationCacheDirectory/u);
+  assert.match(viteConfigSource, /cacheDir:/u);
+
+  const appRequire = createRequire(
+    path.resolve(path.dirname(viteConfigPath), "package.json"),
+  );
+  const appPackage = appRequire("./package.json");
+  for (const dependency of ["is-mobile", "react-is"]) {
+    assert.ok(appPackage.dependencies[dependency]);
+  }
+
+  const nativeAntSource = fs.readFileSync(
+    path.resolve(
+      path.dirname(viteConfigPath),
+      "build",
+      "native-antd-es-modules.ts",
+    ),
+    "utf8",
+  );
+  assert.match(viteConfigSource, /nativeAntDesignEsModulesPlugin\(command\)/u);
+  assert.match(nativeAntSource, /if \(command === 'serve'\) return undefined/u);
+});
+
+test("DRS-002 development runtime publishes a generation and warms the boot boundary", () => {
+  const runtimeSource = fs.readFileSync(
+    path.resolve(path.dirname(viteConfigPath), "vite", "dev-runtime.ts"),
+    "utf8",
+  );
+
+  assert.match(runtimeSource, /DEV_GENERATION_META_NAME/u);
+  assert.match(runtimeSource, /transformIndexHtml/u);
+  assert.match(runtimeSource, /if \(command !== 'serve'\) return \[\]/u);
+  assert.match(runtimeSource, /\/src\/bootstrap\.ts/u);
+  assert.match(runtimeSource, /generation:/u);
+  assert.match(runtimeSource, /verifyCriticalInteropCache/u);
+  assert.match(runtimeSource, /waitForCriticalInteropCache/u);
+  assert.match(runtimeSource, /pruneDevGenerationCaches/u);
+  assert.match(runtimeSource, /fs\.promises\.rm/u);
+});
+
+test("DRS-003 pre-React bootstrap never leaves an empty root after module failure", () => {
+  const bootstrapSource = fs.readFileSync(
+    path.resolve(webSourceRoot, "bootstrap.ts"),
+    "utf8",
+  );
+  const appSource = fs.readFileSync(
+    path.resolve(webSourceRoot, "app", "App.tsx"),
+    "utf8",
+  );
+
+  assert.match(bootstrapSource, /renderBootStage/u);
+  assert.match(bootstrapSource, /renderBootFailure/u);
+  assert.match(bootstrapSource, /import\(['"]\.\/main['"]\)\.catch/u);
+  assert.match(appSource, /ApplicationBootBoundary/u);
+  assert.doesNotMatch(appSource, /Suspense fallback=\{null\}/u);
 });
 
 test("DV-F07 host UI imports Ant icons through deterministic leaf modules", () => {

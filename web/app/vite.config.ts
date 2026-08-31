@@ -27,7 +27,11 @@ import {
   scenarioChunkManifestPlugin
 } from './build/scenario-chunk-planner';
 import { FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES } from './src/features/frontstage/lib/native-modules/resolved-dependency-sources';
-import { oneFlowbaseDevRuntimePlugin } from './vite/dev-runtime';
+import {
+  DEV_CRITICAL_INTEROP_SPECIFIERS,
+  devGenerationCacheDirectory,
+  oneFlowbaseDevRuntimePlugin
+} from './vite/dev-runtime';
 
 const reactDraggableBrowserDefines = {
   'process.env.DRAGGABLE_DEBUG': 'false'
@@ -110,14 +114,16 @@ export default defineConfig(({ command, mode }) => {
   const externalNpmProxyTarget = (
     env.VITE_EXTERNAL_NPM_PROXY_TARGET || 'http://127.0.0.1:4174'
   ).replace(/\/$/, '');
+  const devCacheDirectory =
+    env.VITE_DEV_CACHE_DIR || devGenerationCacheDirectory(appRoot, mode);
 
   return {
-    ...(env.VITE_DEV_CACHE_DIR ? { cacheDir: env.VITE_DEV_CACHE_DIR } : {}),
+    cacheDir: devCacheDirectory,
     plugins: [
       oneFlowbaseDevRuntimePlugin({ root: process.cwd(), mode, command }),
       pageTreeIconAssetsPlugin({ projectRoot: appRoot }),
       scenarioChunkManifestPlugin(),
-      nativeAntDesignEsModulesPlugin(),
+      nativeAntDesignEsModulesPlugin(command),
       nativeAntDesignIconsModulesPlugin({
         inventory: nativeAntDesignIconsModuleInventory
       }),
@@ -149,6 +155,7 @@ export default defineConfig(({ command, mode }) => {
       ],
       include: [
         '@1flowbase/api-client/auth',
+        ...DEV_CRITICAL_INTEROP_SPECIFIERS,
         '@ant-design/icons',
         '@ant-design/x/es/bubble',
         '@ant-design/x/es/conversations',
@@ -175,7 +182,8 @@ export default defineConfig(({ command, mode }) => {
         'lexical',
         'monaco-editor',
         'vditor'
-      ]
+      ],
+      needsInterop: [...DEV_CRITICAL_INTEROP_SPECIFIERS]
     },
     build: {
       chunkSizeWarningLimit: 3500,

@@ -120,6 +120,24 @@ a {
   width: 12px;
 }
 
+.application-bootstrap--failed {
+  align-items: flex-start;
+  color: #173d31;
+  flex-direction: column;
+  gap: 12px;
+  padding: 32px;
+}
+
+.application-bootstrap--failed button {
+  background: #00ab73;
+  border: 0;
+  border-radius: 8px;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  padding: 8px 14px;
+}
+
 @keyframes application-bootstrap-pulse {
   to {
     opacity: 0.35;

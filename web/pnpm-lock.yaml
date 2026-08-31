@@ -215,6 +215,9 @@ importers:
       i18next-resources-to-backend:
         specifier: ^1.2.1
         version: 1.2.2
+      is-mobile:
+        specifier: 5.0.0
+        version: 5.0.0
       lexical:
         specifier: ^0.43.0
         version: 0.43.0
@@ -236,6 +239,9 @@ importers:
       react-i18next:
         specifier: ^17.0.8
         version: 17.0.8(i18next@26.3.0(typescript@5.9.3))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(typescript@5.9.3)
+      react-is:
+        specifier: 19.2.8
+        version: 19.2.8
       vditor:
         specifier: 3.11.2
         version: 3.11.2

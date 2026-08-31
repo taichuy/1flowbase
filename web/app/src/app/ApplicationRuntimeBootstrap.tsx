@@ -2,6 +2,7 @@ import { Suspense, lazy } from 'react';
 
 import { loadApplicationI18nResources } from '../shared/i18n/app-i18n';
 import { useAuthStore } from '../state/auth-store';
+import { ApplicationBootStage } from './ApplicationBootBoundary';
 
 const AnonymousRuntime = lazy(() =>
   import('./AnonymousAppRuntime').then((module) => ({
@@ -34,7 +35,7 @@ export function ApplicationRuntimeBootstrap() {
     sessionStatus === 'authenticated' ? AuthenticatedRuntime : AnonymousRuntime;
 
   return (
-    <Suspense fallback={null}>
+    <Suspense fallback={<ApplicationBootStage />}>
       <Runtime />
     </Suspense>
   );
