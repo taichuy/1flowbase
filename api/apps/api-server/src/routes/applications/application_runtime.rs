@@ -13,7 +13,6 @@ use axum::{
 };
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use control_plane::{
-    application::{ApplicationNonCrudConsoleOperation, ApplicationService},
     errors::ControlPlaneError,
     orchestration_runtime::trace_projection::{
         build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
@@ -27,14 +26,12 @@ use control_plane::{
 use serde::{Deserialize, Serialize};
 use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
 use tokio::sync::mpsc;
-use tracing::error;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_get, console_post, console_put, ConsoleRouteAssembly,

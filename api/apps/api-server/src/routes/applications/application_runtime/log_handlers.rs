@@ -271,22 +271,6 @@ fn to_application_run_overview_response(
     }
 }
 
-async fn load_application_run_overview(
-    state: Arc<ApiState>,
-    application_id: Uuid,
-    flow_run_id: Uuid,
-) -> Result<ApplicationRunOverviewReadModel, ApiError> {
-    Ok(
-        <_ as OrchestrationRuntimeRepository>::get_application_run_overview(
-            &state.store,
-            application_id,
-            flow_run_id,
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("flow_run"))?,
-    )
-}
-
 #[utoipa::path(
     get,
     path = "/api/console/applications/{id}/logs/runs/{run_id}/overview",

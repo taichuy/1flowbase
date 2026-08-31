@@ -16,7 +16,7 @@ use control_plane::{
 use serde_json::{json, Map, Value};
 use uuid::Uuid;
 
-use crate::{app_state::ApiState, error_response::ApiError};
+use crate::error_response::ApiError;
 
 type RuntimeDebugArtifactOffloadFuture<'a> =
     Pin<Box<dyn Future<Output = Result<(Value, bool), ApiError>> + Send + 'a>>;
@@ -507,22 +507,6 @@ impl RuntimeDebugArtifactWriter {
     }
 }
 
-pub async fn offload_application_run_detail_artifacts(
-    state: Arc<ApiState>,
-    workspace_id: Uuid,
-    application_id: Uuid,
-    detail: domain::ApplicationRunDetail,
-) -> Result<domain::ApplicationRunDetail, ApiError> {
-    offload_application_run_detail_artifacts_with_dependencies(
-        state.store.clone(),
-        state.file_storage_registry.clone(),
-        workspace_id,
-        application_id,
-        detail,
-    )
-    .await
-}
-
 pub async fn offload_application_run_detail_artifacts_with_dependencies(
     store: storage_durable_postgres::MainDurableStore,
     file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
@@ -801,16 +785,15 @@ pub async fn offload_application_run_detail_artifacts_with_dependencies(
 }
 
 pub async fn offload_trace_node_run_detail_artifacts(
-    state: Arc<ApiState>,
+    store: storage_durable_postgres::MainDurableStore,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     workspace_id: Uuid,
     application_id: Uuid,
     flow_run_id: Uuid,
     mut node_run: domain::NodeRunRecord,
     preview_request: RuntimeDebugArtifactPreviewRequest,
 ) -> Result<domain::NodeRunRecord, ApiError> {
-    let writer =
-        RuntimeDebugArtifactWriter::new(state.store.clone(), state.file_storage_registry.clone())
-            .await?;
+    let writer = RuntimeDebugArtifactWriter::new(store, file_storage_registry).await?;
     let node_scope = RuntimeDebugArtifactScope {
         workspace_id,
         application_id,
@@ -946,7 +929,8 @@ pub async fn offload_trace_node_run_detail_artifacts(
 }
 
 pub async fn offload_trace_node_content_artifacts(
-    state: Arc<ApiState>,
+    store: storage_durable_postgres::MainDurableStore,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     workspace_id: Uuid,
     application_id: Uuid,
     flow_run_id: Uuid,
@@ -960,9 +944,7 @@ pub async fn offload_trace_node_content_artifacts(
         return Ok(content);
     }
 
-    let writer =
-        RuntimeDebugArtifactWriter::new(state.store.clone(), state.file_storage_registry.clone())
-            .await?;
+    let writer = RuntimeDebugArtifactWriter::new(store, file_storage_registry).await?;
     let scope = RuntimeDebugArtifactScope {
         workspace_id,
         application_id,
