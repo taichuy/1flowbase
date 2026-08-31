@@ -30,8 +30,8 @@ mod visible_internal_llm_route_traces;
 pub(super) use payloads::{
     application_run_model, application_run_query, load_runtime_debug_artifact_content,
     load_runtime_debug_artifact_json_value,
-    load_runtime_debug_artifact_json_value_with_dependencies, load_runtime_debug_artifact_response,
-    RuntimeDebugArtifactContent, RuntimeDebugArtifactReadDependencies,
+    load_runtime_debug_artifact_json_value_with_dependencies, RuntimeDebugArtifactContent,
+    RuntimeDebugArtifactReadDependencies,
 };
 use payloads::{
     application_run_system, is_runtime_debug_artifact_payload,
@@ -83,7 +83,8 @@ impl RuntimeDebugArtifactPreviewRequest {
 }
 
 struct RuntimeDebugArtifactWriter {
-    state: Arc<ApiState>,
+    store: storage_durable_postgres::MainDurableStore,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
     storage: domain::FileStorageRecord,
     driver: Arc<dyn storage_object::FileStorageDriver>,
     llm_tool_callback_runtime_facts: HashMap<String, LlmToolCallbackRuntimeFacts>,
@@ -108,20 +109,23 @@ pub(super) fn count_llm_tool_callback_trace_items(
 }
 
 impl RuntimeDebugArtifactWriter {
-    async fn new(state: Arc<ApiState>) -> Result<Self, ApiError> {
-        let storage = <_ as FileManagementRepository>::get_default_file_storage(&state.store)
+    async fn new(
+        store: storage_durable_postgres::MainDurableStore,
+        file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    ) -> Result<Self, ApiError> {
+        let storage = <_ as FileManagementRepository>::get_default_file_storage(&store)
             .await?
             .ok_or(ControlPlaneError::Conflict("file_storage_default_missing"))?;
         if !storage.enabled {
             return Err(ControlPlaneError::Conflict("file_storage_disabled").into());
         }
-        let driver = state
-            .file_storage_registry
+        let driver = file_storage_registry
             .get(&storage.driver_type)
             .ok_or(ControlPlaneError::Conflict("storage_driver_not_registered"))?;
 
         Ok(Self {
-            state,
+            store,
+            file_storage_registry,
             storage,
             driver,
             llm_tool_callback_runtime_facts: HashMap::new(),
@@ -159,7 +163,7 @@ impl RuntimeDebugArtifactWriter {
             })
             .await?;
         <_ as OrchestrationRuntimeRepository>::create_runtime_debug_artifact(
-            &self.state.store,
+            &self.store,
             &CreateRuntimeDebugArtifactInput {
                 artifact_id: preview.artifact_id,
                 workspace_id: scope.workspace_id,
@@ -205,7 +209,7 @@ impl RuntimeDebugArtifactWriter {
             })
             .await?;
         <_ as OrchestrationRuntimeRepository>::create_runtime_debug_artifact(
-            &self.state.store,
+            &self.store,
             &CreateRuntimeDebugArtifactInput {
                 artifact_id,
                 workspace_id: scope.workspace_id,
@@ -337,8 +341,11 @@ impl RuntimeDebugArtifactWriter {
         else {
             return Ok((payload, false));
         };
-        let full_llm_rounds = load_runtime_debug_artifact_json_value(
-            self.state.clone(),
+        let full_llm_rounds = load_runtime_debug_artifact_json_value_with_dependencies(
+            &RuntimeDebugArtifactReadDependencies::new(
+                self.store.clone(),
+                self.file_storage_registry.clone(),
+            ),
             scope.workspace_id,
             scope.application_id,
             artifact_id,
@@ -505,13 +512,30 @@ pub async fn offload_application_run_detail_artifacts(
     state: Arc<ApiState>,
     workspace_id: Uuid,
     application_id: Uuid,
+    detail: domain::ApplicationRunDetail,
+) -> Result<domain::ApplicationRunDetail, ApiError> {
+    offload_application_run_detail_artifacts_with_dependencies(
+        state.store.clone(),
+        state.file_storage_registry.clone(),
+        workspace_id,
+        application_id,
+        detail,
+    )
+    .await
+}
+
+pub async fn offload_application_run_detail_artifacts_with_dependencies(
+    store: storage_durable_postgres::MainDurableStore,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    workspace_id: Uuid,
+    application_id: Uuid,
     mut detail: domain::ApplicationRunDetail,
 ) -> Result<domain::ApplicationRunDetail, ApiError> {
     if !is_safe_to_persist_debug_artifact_previews(detail.flow_run.status) {
         return Ok(detail);
     }
 
-    let mut writer = RuntimeDebugArtifactWriter::new(state.clone()).await?;
+    let mut writer = RuntimeDebugArtifactWriter::new(store.clone(), file_storage_registry).await?;
     writer.llm_tool_callback_runtime_facts =
         collect_llm_tool_callback_runtime_facts(&detail.callback_tasks);
     let flow_scope = RuntimeDebugArtifactScope {
@@ -560,7 +584,7 @@ pub async fn offload_application_run_detail_artifacts(
     };
     if flow_input_changed || flow_output_changed || flow_error_changed {
         detail.flow_run = <_ as OrchestrationRuntimeRepository>::update_flow_run_payloads(
-            &state.store,
+            &store,
             &UpdateFlowRunPayloadsInput {
                 flow_run_id: detail.flow_run.id,
                 input_payload: flow_input_payload,
@@ -623,7 +647,7 @@ pub async fn offload_application_run_detail_artifacts(
 
         if input_changed || output_changed || error_changed || metrics_changed || debug_changed {
             *node_run = <_ as OrchestrationRuntimeRepository>::update_node_run_payloads(
-                &state.store,
+                &store,
                 &UpdateNodeRunPayloadsInput {
                     node_run_id: node_run.id,
                     input_payload,
@@ -679,7 +703,7 @@ pub async fn offload_application_run_detail_artifacts(
 
         if locator_changed || variable_changed || external_changed {
             *checkpoint = <_ as OrchestrationRuntimeRepository>::update_checkpoint_payloads(
-                &state.store,
+                &store,
                 &UpdateCheckpointPayloadsInput {
                     checkpoint_id: checkpoint.id,
                     locator_payload,
@@ -739,7 +763,7 @@ pub async fn offload_application_run_detail_artifacts(
 
         if request_changed || response_changed || external_changed {
             *callback_task = <_ as OrchestrationRuntimeRepository>::update_callback_task_payloads(
-                &state.store,
+                &store,
                 &UpdateCallbackTaskPayloadsInput {
                     callback_task_id: callback_task.id,
                     request_payload,
@@ -764,7 +788,7 @@ pub async fn offload_application_run_detail_artifacts(
             .await?;
         if changed {
             *event = <_ as OrchestrationRuntimeRepository>::update_run_event_payload(
-                &state.store,
+                &store,
                 &UpdateRunEventPayloadInput {
                     run_event_id: event.id,
                     payload,
@@ -785,7 +809,9 @@ pub async fn offload_trace_node_run_detail_artifacts(
     mut node_run: domain::NodeRunRecord,
     preview_request: RuntimeDebugArtifactPreviewRequest,
 ) -> Result<domain::NodeRunRecord, ApiError> {
-    let writer = RuntimeDebugArtifactWriter::new(state).await?;
+    let writer =
+        RuntimeDebugArtifactWriter::new(state.store.clone(), state.file_storage_registry.clone())
+            .await?;
     let node_scope = RuntimeDebugArtifactScope {
         workspace_id,
         application_id,
@@ -935,7 +961,9 @@ pub async fn offload_trace_node_content_artifacts(
         return Ok(content);
     }
 
-    let writer = RuntimeDebugArtifactWriter::new(state).await?;
+    let writer =
+        RuntimeDebugArtifactWriter::new(state.store.clone(), state.file_storage_registry.clone())
+            .await?;
     let scope = RuntimeDebugArtifactScope {
         workspace_id,
         application_id,

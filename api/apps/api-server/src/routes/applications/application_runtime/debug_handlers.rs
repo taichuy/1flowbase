@@ -473,39 +473,21 @@ pub async fn get_flow_debug_run_snapshot(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunDetailResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let application = ensure_application_visible(&state, &context.actor, id).await?;
-    let detail = <_ as OrchestrationRuntimeRepository>::get_application_run_detail(
-        &state.store,
-        id,
-        run_id,
-    )
-    .await?
-    .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-
-    if detail.flow_run.created_by != context.user.id {
-        return Err(ControlPlaneError::NotFound("flow_run").into());
-    }
-
-    let runtime_events =
-        <_ as OrchestrationRuntimeRepository>::list_runtime_events(
-            &state.store,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.debug-snapshot.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_debug_artifacts::ApplicationRuntimeDebugArtifactsInput::Snapshot {
+            application_id: id,
             run_id,
-            0,
-        )
-        .await?;
-
-    let detail = offload_application_run_detail_artifacts(
-        state,
-        context.actor.current_workspace_id,
-        id,
-        detail,
+        },
     )
     .await?;
-
-    let mut response = to_application_run_detail_response(&application, detail);
-    response.context_snapshot = to_context_snapshot_response(&runtime_events);
-
+    let interface_debug_artifacts::ApplicationRuntimeDebugArtifactsOutput::Snapshot(response) =
+        output
+    else {
+        unreachable!("runtime debug snapshot binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(response)))
 }
 

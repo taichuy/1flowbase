@@ -423,6 +423,7 @@ pub(crate) fn production_interface_contributions(
             &[
                 "applications.runtime.debug-artifact.get",
                 "applications.runtime.debug-artifacts.resolve",
+                "applications.runtime.debug-snapshot.get",
             ],
             &["api-server.console-application-runtime-debug-artifacts"],
             crate::routes::application_runtime::interface_debug_artifacts::compile_registry(

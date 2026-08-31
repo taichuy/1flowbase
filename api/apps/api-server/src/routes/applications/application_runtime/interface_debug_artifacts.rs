@@ -1,15 +1,20 @@
 use std::{collections::HashSet, sync::Arc};
 
-use control_plane::{application::ApplicationService, errors::ControlPlaneError};
+use control_plane::{
+    application::ApplicationService, errors::ControlPlaneError,
+    ports::OrchestrationRuntimeRepository,
+};
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::{
     load_runtime_debug_artifact_content, load_runtime_debug_artifact_json_value_with_dependencies,
-    ResolveRuntimeDebugArtifactsBody, ResolveRuntimeDebugArtifactsResponse,
-    RuntimeDebugArtifactContent, RuntimeDebugArtifactReadDependencies,
-    RuntimeDebugArtifactValueResponse, RUNTIME_DEBUG_ARTIFACT_RESOLVE_MAX_REFS,
+    offload_application_run_detail_artifacts_with_dependencies, to_application_run_detail_response,
+    to_context_snapshot_response, ApplicationRunDetailResponse, ResolveRuntimeDebugArtifactsBody,
+    ResolveRuntimeDebugArtifactsResponse, RuntimeDebugArtifactContent,
+    RuntimeDebugArtifactReadDependencies, RuntimeDebugArtifactValueResponse,
+    RUNTIME_DEBUG_ARTIFACT_RESOLVE_MAX_REFS,
 };
 use crate::{
     error_response::ApiError,
@@ -28,6 +33,10 @@ pub(crate) enum ApplicationRuntimeDebugArtifactsInput {
         application_id: Uuid,
         body: ResolveRuntimeDebugArtifactsBody,
     },
+    Snapshot {
+        application_id: Uuid,
+        run_id: Uuid,
+    },
 }
 
 impl InterfaceContract for ApplicationRuntimeDebugArtifactsInput {
@@ -38,6 +47,7 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsInput {
 pub(crate) enum ApplicationRuntimeDebugArtifactsOutput {
     Content(RuntimeDebugArtifactContent),
     Resolved(ResolveRuntimeDebugArtifactsResponse),
+    Snapshot(ApplicationRunDetailResponse),
 }
 
 impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
@@ -48,6 +58,7 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsOutput {
 struct ApplicationRuntimeDebugArtifactsAdapter {
     store: MainDurableStore,
     reads: RuntimeDebugArtifactReadDependencies,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
 }
 
 impl ApplicationRuntimeDebugArtifactsAdapter {
@@ -114,6 +125,41 @@ impl ApplicationRuntimeDebugArtifactsAdapter {
                     ResolveRuntimeDebugArtifactsResponse { artifacts },
                 ))
             }
+            ApplicationRuntimeDebugArtifactsInput::Snapshot {
+                application_id,
+                run_id,
+            } => {
+                let application = ApplicationService::new(self.store.for_actor(actor.clone()))
+                    .get_application(actor.user_id, application_id)
+                    .await?;
+                let detail = <_ as OrchestrationRuntimeRepository>::get_application_run_detail(
+                    &self.store,
+                    application_id,
+                    run_id,
+                )
+                .await?
+                .ok_or(ControlPlaneError::NotFound("flow_run"))?;
+                if detail.flow_run.created_by != actor.user_id {
+                    return Err(ControlPlaneError::NotFound("flow_run").into());
+                }
+                let runtime_events = <_ as OrchestrationRuntimeRepository>::list_runtime_events(
+                    &self.store,
+                    run_id,
+                    0,
+                )
+                .await?;
+                let detail = offload_application_run_detail_artifacts_with_dependencies(
+                    self.store.clone(),
+                    self.file_storage_registry.clone(),
+                    actor.current_workspace_id,
+                    application_id,
+                    detail,
+                )
+                .await?;
+                let mut response = to_application_run_detail_response(&application, detail);
+                response.context_snapshot = to_context_snapshot_response(&runtime_events);
+                Ok(ApplicationRuntimeDebugArtifactsOutput::Snapshot(response))
+            }
         }
     }
 }
@@ -152,6 +198,13 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         path: "/api/console/applications/:id/orchestration/debug-artifacts/resolve",
         mutating: false,
     },
+    ConsoleInterfaceDeclaration {
+        interface_id: "applications.runtime.debug-snapshot.get",
+        binding_id: "http.console.applications.runtime.debug-snapshot.get.v1",
+        method: "GET",
+        path: "/api/console/applications/:id/orchestration/runs/:run_id/debug-snapshot",
+        mutating: false,
+    },
 ];
 
 pub(crate) fn compile_registry(
@@ -161,12 +214,17 @@ pub(crate) fn compile_registry(
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {
-    let reads = RuntimeDebugArtifactReadDependencies::new(store.clone(), file_storage_registry);
+    let reads =
+        RuntimeDebugArtifactReadDependencies::new(store.clone(), file_storage_registry.clone());
     console_interface::compile_registry(
         "api-server.console-application-runtime-debug-artifacts",
         "graph:console-application-runtime-debug-artifacts-v1",
         DECLARATIONS,
-        Arc::new(ApplicationRuntimeDebugArtifactsAdapter { store, reads }),
+        Arc::new(ApplicationRuntimeDebugArtifactsAdapter {
+            store,
+            reads,
+            file_storage_registry,
+        }),
     )
 }
 
