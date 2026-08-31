@@ -15,8 +15,7 @@ use control_plane::{
         run_service::{
             assistant_conversation_native_history_to_values, native_result_from_run_detail,
             ApplicationPublishedFlowRunRepository, ApplicationPublishedRunService,
-            AssistantConversationSummary, AssistantPageReference, CreateAssistantConversationInput,
-            CreateAssistantRunCommand, ListAssistantConversationsInput,
+            AssistantPageReference, CreateAssistantConversationInput, CreateAssistantRunCommand,
             ASSISTANT_PAGE_REFERENCE_MAX_COUNT, ASSISTANT_PAGE_REFERENCE_MAX_TOTAL_BYTES,
         },
     },
@@ -49,7 +48,6 @@ use client_tools::AssistantRuntimeToolInvoker;
 pub use conversation_events::AssistantConversationSummaryResponse;
 use conversation_events::{AssistantConversationEventKind, AssistantConversationEventScope};
 pub use run_activity::AssistantRunActivityPageResponse;
-use run_activity::{format_assistant_activity_time, project_assistant_run_activity};
 
 #[cfg(test)]
 use crate::routes::mcp_protocol::virtual_ui::VirtualMcpScope;
@@ -337,76 +335,17 @@ pub async fn get_run_activity(
     Path(flow_run_id): Path<Uuid>,
     Query(query): Query<AssistantRunActivityQuery>,
 ) -> Result<Json<ApiSuccess<AssistantRunActivityPageResponse>>, ApiError> {
-    const DEFAULT_PAGE_SIZE: usize = 200;
-    const MAX_PAGE_SIZE: usize = 500;
-
-    let context = require_session(&state, &headers).await?;
-    context.cookie_session()?;
-    assistant_preference_for_target(&state, &context, query.application_id).await?;
-    if !state
-        .store
-        .is_assistant_run_visible(
-            context.actor.current_workspace_id,
-            query.application_id,
-            context.user.id,
-            flow_run_id,
-        )
-        .await?
-    {
-        return Err(control_plane::errors::ControlPlaneError::NotFound("flow_run").into());
-    }
-    let flow_run = OrchestrationRuntimeRepository::get_flow_run(
-        &state.store,
-        query.application_id,
-        flow_run_id,
-    )
-    .await?
-    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-        "flow_run",
-    ))?;
-
-    let page_size = query
-        .page_size
-        .unwrap_or(DEFAULT_PAGE_SIZE)
-        .clamp(1, MAX_PAGE_SIZE);
-    let mut events = OrchestrationRuntimeRepository::list_runtime_event_backfill_page(
-        &state.store,
-        flow_run_id,
-        // An omitted cursor must include sequence zero when a runtime stream
-        // implementation persisted one, rather than silently skipping it.
-        query.after_sequence.unwrap_or(-1),
-        page_size + 1,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.assistant.runs.activity.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::AssistantConversationsInput::GetRunActivity { flow_run_id, query },
     )
     .await?;
-    let has_more = events.len() > page_size;
-    events.truncate(page_size);
-    let trace_events = events
-        .into_iter()
-        .map(debug_run_stream::to_runtime_event_record_response)
-        .collect::<Vec<_>>();
-    let next_sequence = has_more
-        .then(|| trace_events.last().map(|item| item.sequence))
-        .flatten();
-    let items = trace_events
-        .iter()
-        .filter_map(project_assistant_run_activity)
-        .collect();
-    let finished_at = flow_run.finished_at;
-    let duration_ms = finished_at.map(|value| {
-        let milliseconds = (value - flow_run.started_at).whole_milliseconds();
-        i64::try_from(milliseconds).unwrap_or(i64::MAX).max(0)
-    });
-
-    Ok(Json(ApiSuccess::new(AssistantRunActivityPageResponse {
-        status: flow_run.status.as_str().to_string(),
-        started_at: format_assistant_activity_time(flow_run.started_at),
-        finished_at: finished_at.map(format_assistant_activity_time),
-        duration_ms,
-        items,
-        trace_events,
-        has_more,
-        next_sequence,
-    })))
+    let interface::AssistantConversationsOutput::RunActivity(activity) = output else {
+        unreachable!("assistant run activity binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(activity)))
 }
 
 #[utoipa::path(
@@ -429,59 +368,19 @@ pub async fn create_conversation(
     ),
     ApiError,
 > {
-    let context = require_session(&state, &headers).await?;
-    context.cookie_session()?;
-    require_csrf(&headers, &context)?;
-    assistant_preference_for_target(&state, &context, body.application_id).await?;
-    if let Some(legacy_flow_run_id) = body.seed_legacy_flow_run_id {
-        let seed_messages = state
-            .store
-            .list_assistant_legacy_snapshot_messages(
-                context.actor.current_workspace_id,
-                body.application_id,
-                context.user.id,
-                legacy_flow_run_id,
-            )
-            .await?;
-        if seed_messages.is_empty() {
-            return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
-                "assistant_legacy_snapshot",
-            )
-            .into());
-        }
-    }
-    let conversation = state
-        .store
-        .create_assistant_conversation(&CreateAssistantConversationInput {
-            conversation_id: Uuid::now_v7(),
-            workspace_id: context.actor.current_workspace_id,
-            application_id: body.application_id,
-            actor_user_id: context.user.id,
-            seed_legacy_flow_run_id: body.seed_legacy_flow_run_id,
-        })
-        .await?;
-    state.assistant_conversation_events.publish(
-        AssistantConversationEventScope {
-            workspace_id: context.actor.current_workspace_id,
-            application_id: body.application_id,
-            actor_user_id: context.user.id,
-        },
-        AssistantConversationEventKind::Created,
-        AssistantConversationSummaryResponse::from(AssistantConversationSummary {
-            conversation_id: Some(conversation.conversation_id),
-            legacy_flow_run_id: None,
-            latest_flow_run_id: None,
-            latest_flow_run_status: None,
-            title: None,
-            created_at: conversation.created_at,
-            updated_at: conversation.updated_at,
-        }),
-    );
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.assistant.conversations.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::AssistantConversationsInput::CreateConversation(body),
+    )
+    .await?;
+    let interface::AssistantConversationsOutput::Conversation(conversation) = output else {
+        unreachable!("assistant conversation create binding returned a different output")
+    };
     Ok((
         axum::http::StatusCode::CREATED,
-        Json(ApiSuccess::new(assistant_conversation_response(
-            conversation,
-        ))),
+        Json(ApiSuccess::new(conversation)),
     ))
 }
 
@@ -499,64 +398,17 @@ pub async fn list_conversations(
     headers: HeaderMap,
     Query(query): Query<ListAssistantConversationsQuery>,
 ) -> Result<Json<ApiSuccess<AssistantConversationPageResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    context.cookie_session()?;
-    assistant_preference_for_target(&state, &context, query.application_id).await?;
-    let page = state
-        .store
-        .list_assistant_conversations(&ListAssistantConversationsInput {
-            workspace_id: context.actor.current_workspace_id,
-            application_id: query.application_id,
-            actor_user_id: context.user.id,
-            page: query.page.unwrap_or(1),
-            page_size: query.page_size.unwrap_or(20),
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(AssistantConversationPageResponse {
-        items: page
-            .items
-            .into_iter()
-            .map(AssistantConversationSummaryResponse::from)
-            .collect(),
-        total: page.total,
-        page: page.page,
-        page_size: page.page_size,
-    })))
-}
-
-fn assistant_conversation_response(
-    conversation: control_plane::application_public_api::run_service::AssistantConversationRecord,
-) -> AssistantConversationResponse {
-    AssistantConversationResponse {
-        conversation_id: conversation.conversation_id,
-        application_id: conversation.application_id,
-        created_at: rfc3339(conversation.created_at),
-        updated_at: rfc3339(conversation.updated_at),
-    }
-}
-
-fn assistant_conversation_message_response(
-    message: control_plane::application_public_api::run_service::AssistantConversationMessage,
-) -> AssistantConversationMessageResponse {
-    AssistantConversationMessageResponse {
-        id: message.id,
-        flow_run_id: message.flow_run_id,
-        role: message.role,
-        content: message.content,
-        status: message.status,
-        page_references: message
-            .page_references
-            .into_iter()
-            .map(AssistantPageReferenceBody::from_reference)
-            .collect(),
-        created_at: rfc3339(message.created_at),
-    }
-}
-
-fn rfc3339(value: time::OffsetDateTime) -> String {
-    value
-        .format(&time::format_description::well_known::Rfc3339)
-        .expect("Rfc3339 is a valid fixed formatter")
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.assistant.conversations.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::AssistantConversationsInput::ListConversations(query),
+    )
+    .await?;
+    let interface::AssistantConversationsOutput::ConversationPage(page) = output else {
+        unreachable!("assistant conversation list binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(page)))
 }
 
 #[utoipa::path(
@@ -574,24 +426,20 @@ pub async fn get_conversation_messages(
     Path(conversation_id): Path<Uuid>,
     Query(query): Query<AssistantConversationMessagesQuery>,
 ) -> Result<Json<ApiSuccess<Vec<AssistantConversationMessageResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    context.cookie_session()?;
-    assistant_preference_for_target(&state, &context, query.application_id).await?;
-    let messages = state
-        .store
-        .list_assistant_conversation_messages(
-            context.actor.current_workspace_id,
-            query.application_id,
-            context.user.id,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.assistant.conversations.messages.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::AssistantConversationsInput::GetConversationMessages {
             conversation_id,
-        )
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        messages
-            .into_iter()
-            .map(assistant_conversation_message_response)
-            .collect(),
-    )))
+            query,
+        },
+    )
+    .await?;
+    let interface::AssistantConversationsOutput::ConversationMessages(messages) = output else {
+        unreachable!("assistant conversation messages binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(messages)))
 }
 
 #[utoipa::path(
@@ -609,24 +457,17 @@ pub async fn get_legacy_snapshot_messages(
     Path(flow_run_id): Path<Uuid>,
     Query(query): Query<AssistantConversationMessagesQuery>,
 ) -> Result<Json<ApiSuccess<Vec<AssistantConversationMessageResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    context.cookie_session()?;
-    assistant_preference_for_target(&state, &context, query.application_id).await?;
-    let messages = state
-        .store
-        .list_assistant_legacy_snapshot_messages(
-            context.actor.current_workspace_id,
-            query.application_id,
-            context.user.id,
-            flow_run_id,
-        )
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        messages
-            .into_iter()
-            .map(assistant_conversation_message_response)
-            .collect(),
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.assistant.legacy-runs.messages.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::AssistantConversationsInput::GetLegacySnapshotMessages { flow_run_id, query },
+    )
+    .await?;
+    let interface::AssistantConversationsOutput::ConversationMessages(messages) = output else {
+        unreachable!("assistant legacy snapshot messages binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(messages)))
 }
 
 #[utoipa::path(
@@ -1215,22 +1056,29 @@ async fn assistant_preference_for_target(
     context: &RequestContext,
     application_id: Uuid,
 ) -> Result<AssistantPreferenceBody, ApiError> {
-    let user = state
-        .store
-        .find_user_by_id(context.user.id)
+    assistant_preference_for_actor(&state.store, &context.actor, application_id).await
+}
+
+async fn assistant_preference_for_actor(
+    store: &MainDurableStore,
+    actor: &domain::ActorContext,
+    application_id: Uuid,
+) -> Result<AssistantPreferenceBody, ApiError> {
+    let user = store
+        .find_user_by_id(actor.user_id)
         .await?
         .ok_or(control_plane::errors::ControlPlaneError::NotFound("user"))?;
-    let preference = read_preference(&user.meta, context.actor.current_workspace_id);
+    let preference = read_preference(&user.meta, actor.current_workspace_id);
     if preference.application_id != Some(application_id) {
         return Err(control_plane::errors::ControlPlaneError::InvalidInput(
             "assistant_application_id",
         )
         .into());
     }
-    validate_preference(&state.store, &context.actor, &preference).await?;
-    ApplicationService::new(state.store.for_actor(context.actor.clone()))
+    validate_preference(store, actor, &preference).await?;
+    ApplicationService::new(store.for_actor(actor.clone()))
         .load_application_for_non_crud_console_operation(
-            context.user.id,
+            actor.user_id,
             application_id,
             ApplicationNonCrudConsoleOperation::Run,
         )
