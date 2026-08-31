@@ -313,6 +313,14 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-assistant-websocket-commands",
+            &["assistant.runs.websocket.command"],
+            &["api-server.console-assistant-websocket-commands"],
+            crate::routes::assistant::websocket_interface::compile_registry(
+                crate::routes::assistant::run_dependencies(state.clone()),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-applications",
             &[
                 "applications.list",
