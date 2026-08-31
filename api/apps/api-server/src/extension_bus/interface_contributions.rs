@@ -159,7 +159,7 @@ pub(crate) fn production_interface_contributions() -> [InterfaceRegistryContribu
             "api-server.workflow-extension",
             &["workflow-extension.invoke"],
             &["api-server.workflow-extension"],
-            crate::routes::application_public_api::ex::compile_workflow_extension_registry,
+            compile_workflow_extension,
         ),
     ]
 }
@@ -180,4 +180,13 @@ fn compile_compatibility(
         .upgrade()
         .expect("compatibility contribution is assembled while API state is alive");
     crate::routes::application_public_api::compatibility_interface::compile_registry(state)
+}
+
+fn compile_workflow_extension(
+    state: std::sync::Weak<crate::app_state::ApiState>,
+) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError> {
+    let state = state
+        .upgrade()
+        .expect("workflow contribution is assembled while API state is alive");
+    crate::routes::application_public_api::ex::compile_workflow_extension_registry(state)
 }

@@ -118,27 +118,16 @@ pub async fn invoke_workflow_extension(
     project_workflow_extension_output(outcome.into_value())
 }
 
-struct WorkflowExtensionAdapter {
-    state: std::sync::Weak<ApiState>,
-}
-
-impl WorkflowExtensionPort for WorkflowExtensionAdapter {
+impl WorkflowExtensionPort for ApiState {
     fn invoke<'a>(
         &'a self,
         actor: &'a domain::ActorContext,
         principal: WorkflowHttpPrincipal,
         input: WorkflowExtensionInput,
     ) -> WorkflowExtensionFuture<'a> {
-        let state = self.state.clone();
+        let state = Arc::new(self.clone());
         let actor = actor.clone();
         Box::pin(async move {
-            let state = state.upgrade().ok_or_else(|| {
-                WorkflowExtensionTargetError(NativeApiError::new(
-                    StatusCode::SERVICE_UNAVAILABLE,
-                    "api_state_unavailable",
-                    "API state is unavailable",
-                ))
-            })?;
             let run = WorkflowExtensionRunService::new(state.store.clone())
                 .create_run(CreateWorkflowExtensionRunCommand {
                     actor,
@@ -187,12 +176,12 @@ impl WorkflowExtensionPort for WorkflowExtensionAdapter {
 }
 
 pub(crate) fn compile_workflow_extension_registry(
-    state: std::sync::Weak<ApiState>,
+    port: Arc<dyn WorkflowExtensionPort>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {
-    workflow_extension_interface::compile_registry(Arc::new(WorkflowExtensionAdapter { state }))
+    workflow_extension_interface::compile_registry(port)
 }
 
 fn spawn_workflow_extension_execution(
