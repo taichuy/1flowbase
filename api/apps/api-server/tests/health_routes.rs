@@ -155,21 +155,25 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
     let mut runtime_backend_slot = runtime_core::runtime_backend::RuntimeBackendSlot::default();
     runtime_backend_slot.bind(runtime_host).unwrap();
     let api_workspace_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let extension_graph = api_server::extension_bus::assemble_extension_graph_input(
+    let extension_assembly = api_server::extension_bus::assemble_extension_graph_input(
         &api_workspace_root,
         api_server::extension_bus::DEFAULT_PLUGIN_SET_PATH,
         Vec::new(),
     )
-    .unwrap()
-    .compile_graph()
     .unwrap();
-    let runtime_backend = runtime_backend_slot.backend().unwrap();
-    let provider_runtime = std::sync::Arc::new(
-        ApiRuntimeServices::new_with_runtime_backend(
-            runtime_backend,
-            std::sync::Arc::new(extension_graph),
+    let extension_graph = std::sync::Arc::new(extension_assembly.compile_graph().unwrap());
+    let extension_boot_snapshot = std::sync::Arc::new(
+        api_server::extension_bus::compile_extension_boot_snapshot(
+            std::sync::Arc::clone(&extension_graph),
+            &extension_assembly,
+            store.clone(),
+            config.api_node_id.clone(),
         )
         .unwrap(),
+    );
+    let runtime_backend = runtime_backend_slot.backend().unwrap();
+    let provider_runtime = std::sync::Arc::new(
+        ApiRuntimeServices::new_with_runtime_backend(runtime_backend, extension_graph).unwrap(),
     );
     let api_provider_runtime = ApiProviderRuntime::new(provider_runtime.clone());
     let runtime_registry = runtime_core::runtime_model_registry::RuntimeModelRegistry::default();
@@ -236,7 +240,7 @@ async fn test_app_with_config(mut config: ApiConfig) -> Router {
             api_runtime_profile: std::sync::Arc::new(
                 HostApiRuntimeProfileCollector::new(process_started_at).unwrap(),
             ),
-            extension_boot_snapshot: None,
+            extension_boot_snapshot: Some(extension_boot_snapshot),
             runtime_host_system: std::sync::Arc::new(UnreachableRuntimeHostSystemClient),
             official_plugin_source: std::sync::Arc::new(NoopOfficialPluginSource),
             official_mcp_bundle_source: std::sync::Arc::new(NoopOfficialMcpBundleSource),
