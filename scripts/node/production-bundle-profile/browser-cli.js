@@ -17,6 +17,7 @@ const {
   observeAssetDemand,
   profileAssetFiles,
   profileInteractionAssets,
+  summarizeLifecycleStages,
 } = require("./core.js");
 
 function optionValue(name, fallback) {
@@ -230,6 +231,20 @@ async function main() {
         }))
         .sort((left, right) => right.responseEnd - left.responseEnd);
       return {
+        lifecycleMarks: Object.fromEntries(
+          [
+            "ShellReady",
+            "RouteDataReady",
+            "CanvasVisible",
+            "CanvasInteractive",
+          ].flatMap((name) => {
+            const entry = performance.getEntriesByName(
+              `1flowbase:${name}`,
+              "mark",
+            )[0];
+            return entry ? [[name, entry.startTime]] : [];
+          }),
+        ),
         navigation: navigation
           ? {
               responseStart: Math.round(navigation.responseStart),
@@ -244,6 +259,17 @@ async function main() {
         resources,
       };
     });
+    const backgroundWarmupComplete = Math.max(
+      browserTiming.navigation?.loadEventEnd ?? 0,
+      ...browserTiming.resources.map((resource) => resource.responseEnd),
+    );
+    const lifecycle = summarizeLifecycleStages(
+      {
+        ...browserTiming.lifecycleMarks,
+        BackgroundWarmupComplete: backgroundWarmupComplete,
+      },
+      browserTiming.navigation?.responseStart ?? 0,
+    );
     const result = {
       url,
       finalUrl: page.url(),
@@ -260,6 +286,7 @@ async function main() {
       failedAssets,
       pageErrors,
       browserTiming,
+      lifecycle,
       interaction,
     };
     result.ok =

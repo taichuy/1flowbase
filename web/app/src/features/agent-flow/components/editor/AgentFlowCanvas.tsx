@@ -322,6 +322,25 @@ function AgentFlowCanvasInner({
           selectionInteractions.selectEdge(edge.id);
         }}
         isValidConnection={edgeInteractions.isValidConnection}
+        onInit={() => {
+          requestAnimationFrame(() => {
+            if (
+              performance.getEntriesByName('1flowbase:CanvasVisible').length ===
+              0
+            ) {
+              performance.mark('1flowbase:CanvasVisible');
+            }
+            requestAnimationFrame(() => {
+              if (
+                performance.getEntriesByName(
+                  '1flowbase:CanvasInteractive'
+                ).length === 0
+              ) {
+                performance.mark('1flowbase:CanvasInteractive');
+              }
+            });
+          });
+        }}
       >
         <Background gap={20} size={1} />
         <PendingLocateNodeEffect />

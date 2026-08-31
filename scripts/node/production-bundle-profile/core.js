@@ -14,6 +14,52 @@ const DEFAULT_INTERACTION_BUDGET = Object.freeze({
   javaScriptCountMax: Number.POSITIVE_INFINITY,
 });
 
+const LIFECYCLE_STAGE_NAMES = Object.freeze([
+  "ShellReady",
+  "RouteDataReady",
+  "CanvasVisible",
+  "CanvasInteractive",
+  "BackgroundWarmupComplete",
+]);
+
+function summarizeLifecycleStages(marks, responseStart = 0) {
+  const normalizedMarks = Object.fromEntries(
+    LIFECYCLE_STAGE_NAMES.filter((name) => Number.isFinite(marks[name])).map(
+      (name) => [name, Math.round(marks[name])],
+    ),
+  );
+  const duration = (from, to) =>
+    Number.isFinite(from) && Number.isFinite(to)
+      ? Math.max(0, Math.round(to - from))
+      : null;
+
+  return {
+    marks: normalizedMarks,
+    stages: {
+      responseToShellReady: duration(responseStart, normalizedMarks.ShellReady),
+      shellToRouteDataReady: duration(
+        normalizedMarks.ShellReady,
+        normalizedMarks.RouteDataReady,
+      ),
+      routeDataToCanvasVisible: duration(
+        normalizedMarks.RouteDataReady,
+        normalizedMarks.CanvasVisible,
+      ),
+      canvasVisibleToInteractive: duration(
+        normalizedMarks.CanvasVisible,
+        normalizedMarks.CanvasInteractive,
+      ),
+      interactiveToBackgroundWarmupComplete: duration(
+        normalizedMarks.CanvasInteractive,
+        normalizedMarks.BackgroundWarmupComplete,
+      ),
+    },
+    complete: LIFECYCLE_STAGE_NAMES.every((name) =>
+      Number.isFinite(normalizedMarks[name]),
+    ),
+  };
+}
+
 function normalizeAssetPath(value) {
   return value.replace(/^\.?\//u, "").replace(/^assets\//u, "");
 }
@@ -253,4 +299,5 @@ module.exports = {
   profileAssetFiles,
   profileInteractionAssets,
   profileProductionBundle,
+  summarizeLifecycleStages,
 };

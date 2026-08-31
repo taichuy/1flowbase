@@ -1,4 +1,4 @@
-import type { PropsWithChildren } from 'react';
+import { useLayoutEffect, type PropsWithChildren } from 'react';
 
 import { AppShell } from '@1flowbase/ui';
 import { Link } from '@tanstack/react-router';
@@ -56,6 +56,12 @@ function AppShellFrameContent({
   const { t } = useTranslation('appShell');
   const secondaryActions = getSecondaryChromeRoutes();
   const assistantClientTools = useAssistantClientTools();
+
+  useLayoutEffect(() => {
+    if (performance.getEntriesByName('1flowbase:ShellReady').length === 0) {
+      performance.mark('1flowbase:ShellReady');
+    }
+  }, []);
 
   return (
     <AppShell

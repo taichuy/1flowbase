@@ -1,7 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Navigate } from '@tanstack/react-router';
 import { Result } from 'antd';
-import { Suspense, lazy, useCallback, type ReactNode } from 'react';
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useLayoutEffect,
+  type ReactNode
+} from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { ApiClientError } from '@1flowbase/api-client';
@@ -91,6 +97,15 @@ export function ApplicationDetailPage({
     queryKey: applicationDetailQueryKey(applicationId),
     queryFn: () => fetchApplicationDetail(applicationId)
   });
+
+  useLayoutEffect(() => {
+    if (
+      detailQuery.isSuccess &&
+      performance.getEntriesByName('1flowbase:RouteDataReady').length === 0
+    ) {
+      performance.mark('1flowbase:RouteDataReady');
+    }
+  }, [detailQuery.isSuccess]);
 
   if (detailQuery.isPending) {
     return <LoadingState />;

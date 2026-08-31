@@ -8,12 +8,50 @@ const { EventEmitter } = require("node:events");
 const {
   collectHtmlEntryAssets,
   collectStaticImports,
+  summarizeLifecycleStages,
   observeAssetDemand,
   percentile,
   profileAssetFiles,
   profileInteractionAssets,
   profileProductionBundle,
 } = require("../core.js");
+
+test("MDP-013 summarizes ordered lifecycle marks without hiding missing stages", () => {
+  assert.deepEqual(
+    summarizeLifecycleStages(
+      {
+        ShellReady: 420,
+        RouteDataReady: 760,
+        CanvasVisible: 1040,
+        CanvasInteractive: 1210,
+        BackgroundWarmupComplete: 1460,
+      },
+      120,
+    ),
+    {
+      marks: {
+        ShellReady: 420,
+        RouteDataReady: 760,
+        CanvasVisible: 1040,
+        CanvasInteractive: 1210,
+        BackgroundWarmupComplete: 1460,
+      },
+      stages: {
+        responseToShellReady: 300,
+        shellToRouteDataReady: 340,
+        routeDataToCanvasVisible: 280,
+        canvasVisibleToInteractive: 170,
+        interactiveToBackgroundWarmupComplete: 250,
+      },
+      complete: true,
+    },
+  );
+
+  assert.equal(
+    summarizeLifecycleStages({ ShellReady: 420 }, 120).complete,
+    false,
+  );
+});
 
 test("MDP-001 attributes demand when a request starts, independent of response latency", () => {
   const page = new EventEmitter();
