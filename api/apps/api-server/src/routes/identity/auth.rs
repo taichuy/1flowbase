@@ -10,8 +10,10 @@ use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
 use control_plane::auth::{
     AuthKernel, AuthenticatorRegistry, LoginCommand, SessionIssuer, SignUpCommand,
 };
+use control_plane::ports::SessionStore;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
+use storage_durable_postgres::MainDurableStore;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
@@ -138,18 +140,16 @@ pub async fn list_providers(
 }
 
 struct PublicProvidersAdapter {
-    state: std::sync::Weak<ApiState>,
+    store: MainDurableStore,
+    bootstrap_workspace_id: Uuid,
 }
 
 impl PublicProvidersPort for PublicProvidersAdapter {
     fn list(&self, input: PublicProvidersInput) -> PublicProvidersFuture<'_> {
-        let state = self.state.clone();
+        let store = self.store.clone();
+        let bootstrap_workspace_id = self.bootstrap_workspace_id;
         Box::pin(async move {
-            let state = state.upgrade().ok_or_else(|| {
-                PublicResidualTargetError(anyhow::anyhow!("API state is unavailable").into())
-            })?;
-            let mut provider = state
-                .store
+            let mut provider = store
                 .find_authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
                 .await
                 .map_err(ApiError::from)
@@ -160,8 +160,9 @@ impl PublicProvidersPort for PublicProvidersAdapter {
                     title: authenticator.title,
                 });
             if let Some(provider) = &mut provider {
-                provider.title = crate::app_state::project_canonical_display(
-                    &state,
+                provider.title = crate::app_state::project_canonical_display_with(
+                    &store,
+                    bootstrap_workspace_id,
                     &input.locale,
                     "Password",
                     &provider.title,
@@ -232,28 +233,28 @@ pub async fn list_login_instances(
 }
 
 struct PublicLoginInstancesAdapter {
-    state: std::sync::Weak<ApiState>,
+    store: MainDurableStore,
+    authenticator_registry: Arc<AuthenticatorRegistry>,
+    bootstrap_workspace_id: Uuid,
 }
 
 impl PublicLoginInstancesPort for PublicLoginInstancesAdapter {
     fn list(&self, input: PublicLoginInstancesInput) -> PublicLoginInstancesFuture<'_> {
-        let state = self.state.clone();
+        let store = self.store.clone();
+        let registry = Arc::clone(&self.authenticator_registry);
+        let bootstrap_workspace_id = self.bootstrap_workspace_id;
         Box::pin(async move {
-            let state = state
-                .upgrade()
-                .ok_or_else(|| ApiError::from(anyhow::anyhow!("API state is unavailable")))?;
-            let registry = state.authenticator_registry.as_ref();
-            let mut login_instances = state
-                .store
+            let mut login_instances = store
                 .list_authenticators()
                 .await
                 .map_err(ApiError::from)?
                 .into_iter()
-                .filter_map(|authenticator| to_public_login_instance(authenticator, registry))
+                .filter_map(|authenticator| to_public_login_instance(authenticator, &registry))
                 .collect::<Vec<_>>();
             for instance in &mut login_instances {
-                instance.title = crate::app_state::project_canonical_display(
-                    &state,
+                instance.title = crate::app_state::project_canonical_display_with(
+                    &store,
+                    bootstrap_workspace_id,
                     &input.locale,
                     "Password",
                     &instance.title,
@@ -278,7 +279,14 @@ pub(crate) fn compile_public_login_instances_registry(
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {
-    login_instances_interface::compile_registry(Arc::new(PublicLoginInstancesAdapter { state }))
+    let state = state
+        .upgrade()
+        .expect("public login instances contribution is assembled while API state is alive");
+    login_instances_interface::compile_registry(Arc::new(PublicLoginInstancesAdapter {
+        store: state.store.clone(),
+        authenticator_registry: Arc::clone(&state.authenticator_registry),
+        bootstrap_workspace_id: state.bootstrap_workspace_id,
+    }))
 }
 
 fn public_login_instances_error(error: InterfaceInvocationError) -> ApiError {
@@ -423,25 +431,23 @@ pub async fn sign_up(
 }
 
 struct PublicSignUpAdapter {
-    state: std::sync::Weak<ApiState>,
+    store: MainDurableStore,
+    session_store: Arc<dyn SessionStore>,
+    session_ttl_days: i64,
 }
 
 impl PublicSignUpPort for PublicSignUpAdapter {
     fn sign_up(&self, input: PublicSignUpInput) -> PublicSignUpFuture<'_> {
-        let state = self.state.clone();
+        let store = self.store.clone();
+        let session_store = Arc::clone(&self.session_store);
+        let session_ttl_days = self.session_ttl_days;
         Box::pin(async move {
-            let state = state.upgrade().ok_or_else(|| {
-                PublicResidualTargetError(anyhow::anyhow!("API state is unavailable").into())
-            })?;
-            AuthKernel::new(
-                state.store.clone(),
-                SessionIssuer::new(state.session_store.clone(), state.session_ttl_days),
-            )
-            .sign_up(input.0)
-            .await
-            .map(PublicSignUpOutput)
-            .map_err(ApiError::from)
-            .map_err(PublicResidualTargetError)
+            AuthKernel::new(store, SessionIssuer::new(session_store, session_ttl_days))
+                .sign_up(input.0)
+                .await
+                .map(PublicSignUpOutput)
+                .map_err(ApiError::from)
+                .map_err(PublicResidualTargetError)
         })
     }
 }
@@ -452,11 +458,19 @@ pub(crate) fn compile_public_residual_registry(
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {
+    let state = state
+        .upgrade()
+        .expect("public residual contribution is assembled while API state is alive");
     public_residual_interface::compile_registry(
         Arc::new(PublicProvidersAdapter {
-            state: state.clone(),
+            store: state.store.clone(),
+            bootstrap_workspace_id: state.bootstrap_workspace_id,
         }),
-        Arc::new(PublicSignUpAdapter { state }),
+        Arc::new(PublicSignUpAdapter {
+            store: state.store.clone(),
+            session_store: Arc::clone(&state.session_store),
+            session_ttl_days: state.session_ttl_days,
+        }),
     )
 }
 

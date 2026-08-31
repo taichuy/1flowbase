@@ -15,6 +15,8 @@ use interface_runtime::{
 };
 
 use crate::{app_state::ApiState, error_response::ApiError};
+use control_plane::ports::SessionStore;
+use storage_durable_postgres::MainDurableStore;
 
 pub(crate) const BINDING_ID: &str = "http.public.auth.sign-in.v1";
 const INTERFACE_ID: &str = "public.auth.sign-in";
@@ -50,25 +52,23 @@ trait PublicSignInPort: Send + Sync + 'static {
 }
 
 struct PublicSignInAdapter {
-    state: std::sync::Weak<ApiState>,
+    store: MainDurableStore,
+    session_store: Arc<dyn SessionStore>,
+    session_ttl_days: i64,
 }
 
 impl PublicSignInPort for PublicSignInAdapter {
     fn sign_in(&self, input: PublicSignInInput) -> PublicSignInFuture<'_> {
-        let state = self.state.clone();
+        let store = self.store.clone();
+        let session_store = Arc::clone(&self.session_store);
+        let session_ttl_days = self.session_ttl_days;
         Box::pin(async move {
-            let state = state.upgrade().ok_or_else(|| {
-                PublicSignInTargetError(anyhow::anyhow!("API state is unavailable").into())
-            })?;
-            AuthKernel::new(
-                state.store.clone(),
-                SessionIssuer::new(state.session_store.clone(), state.session_ttl_days),
-            )
-            .login(input.0)
-            .await
-            .map(PublicSignInOutput)
-            .map_err(ApiError::from)
-            .map_err(PublicSignInTargetError)
+            AuthKernel::new(store, SessionIssuer::new(session_store, session_ttl_days))
+                .login(input.0)
+                .await
+                .map(PublicSignInOutput)
+                .map_err(ApiError::from)
+                .map_err(PublicSignInTargetError)
         })
     }
 }
@@ -117,6 +117,9 @@ impl InterfaceAuthorizationPort<PublicPrincipal> for PublicSignInAuthorization {
 pub(crate) fn compile_registry(
     state: std::sync::Weak<ApiState>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
+    let state = state
+        .upgrade()
+        .expect("public sign-in contribution is assembled while API state is alive");
     let interface_id = InterfaceId::new(INTERFACE_ID).expect("static interface id is valid");
     let identity = InterfaceIdentity::new(
         interface_id.clone(),
@@ -203,7 +206,11 @@ pub(crate) fn compile_registry(
         &interface_id,
         HandlerReference::new(HANDLER).expect("static handler is valid"),
         Arc::new(PublicSignInHandler {
-            port: Arc::new(PublicSignInAdapter { state }),
+            port: Arc::new(PublicSignInAdapter {
+                store: state.store.clone(),
+                session_store: Arc::clone(&state.session_store),
+                session_ttl_days: state.session_ttl_days,
+            }),
         }),
     )?;
     compiler.compile()

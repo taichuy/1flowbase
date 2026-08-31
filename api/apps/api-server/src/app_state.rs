@@ -119,11 +119,20 @@ pub(crate) async fn resolve_request_text(
     locale: &CatalogLocale,
     key: &str,
 ) -> Result<String, ApiError> {
+    resolve_request_text_with(&state.store, state.bootstrap_workspace_id, locale, key).await
+}
+
+pub(crate) async fn resolve_request_text_with(
+    store: &MainDurableStore,
+    bootstrap_workspace_id: uuid::Uuid,
+    locale: &CatalogLocale,
+    key: &str,
+) -> Result<String, ApiError> {
     let identity =
         CatalogMessageIdentity::new(key).expect("backend display catalog key must be valid");
-    let resolver = CatalogResolver::new(state.store.clone(), state.bootstrap_workspace_id);
+    let resolver = CatalogResolver::new(store.clone(), bootstrap_workspace_id);
     Ok(resolver
-        .resolve(state.bootstrap_workspace_id, &identity, locale)
+        .resolve(bootstrap_workspace_id, &identity, locale)
         .await?
         .value)
 }
@@ -134,10 +143,27 @@ pub(crate) async fn project_canonical_display(
     key: &'static str,
     stored: &str,
 ) -> Result<String, ApiError> {
+    project_canonical_display_with(
+        &state.store,
+        state.bootstrap_workspace_id,
+        locale,
+        key,
+        stored,
+    )
+    .await
+}
+
+pub(crate) async fn project_canonical_display_with(
+    store: &MainDurableStore,
+    bootstrap_workspace_id: uuid::Uuid,
+    locale: &CatalogLocale,
+    key: &'static str,
+    stored: &str,
+) -> Result<String, ApiError> {
     if !stored.trim().is_empty() && stored != key {
         return Ok(stored.to_owned());
     }
-    resolve_request_text(state, locale, key).await
+    resolve_request_text_with(store, bootstrap_workspace_id, locale, key).await
 }
 
 pub(crate) async fn resolve_official_source_label(
