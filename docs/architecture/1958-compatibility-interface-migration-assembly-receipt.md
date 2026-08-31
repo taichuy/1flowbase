@@ -10,7 +10,8 @@
 - Initial frozen assembly: `beta@f38227d24b8ed9e3e0f29493099bb10f7829f4b0`
 - Replacement frozen assembly: `beta@a6ad997f18fce23a6a0b8190ee383ff45b146512`
 - Prior final QA assembly: `beta@9c367ddcb19e1da7f89247d6fe5808afd70521f6`
-- Fixture-remediation product assembly: `beta@180376947baef0b62cd3a89e4fc421749d72d49b` plus this receipt refresh
+- Fixture-remediation QA assembly: `beta@3426bebde34796b8266643c472d6eb8a9b4c8be2`
+- Internal-visibility fix assembly: `beta@4741e0f65df23afbe8e1329c9115a063bf37a07b` plus this receipt refresh
 - Final assembly: receipt refresh commit；集中 QA 必须用 `git rev-parse HEAD` 自动捕获完整 SHA
 - Official plugins baseline: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
 - Result: `REASSEMBLED / FRESH_QA_PENDING`
@@ -25,7 +26,11 @@ CI-F03/CI-F04。随后对 `9c367ddcb19e1da7f89247d6fe5808afd70521f6` 的 21-row 
 `17 PASS / 4 FAIL / 0 UNRUN`、3670 passed / 6 failed；后续审计证明其中 Set-Cookie finding
 来自 Frontstage integration fixture 缺失 required `ExtensionBootSnapshot`，不是完整生产装配下的
 产品回归，且 frontend style-boundary 定向复跑 16/16。CI-F06 修复该 fixture 并保留历史证据；
-fresh QA 必须对本 refresh 后不变的完整 HEAD 从 QA-001 重启全部 21 rows。
+对 `3426bebde34796b8266643c472d6eb8a9b4c8be2` 的 fresh QA 完成 21/21 rows，结果为
+`18 PASS / 3 FAIL / 0 UNRUN`、2486 passed / 0 failed 加一个 API test compilation failure。
+该 E0433 由 CI-F06 `180376947...` 删除仍被三个 crate-internal tests 使用的 `pub(crate)` 类型重导出
+引入，不是输入 `9c367ddcb...` 遗留。CI-F08 恢复该窄重导出；fresh QA 必须对本 refresh 后
+不变的完整 HEAD 从 QA-001 重启全部 21 rows。
 
 ## Packet ledger
 
@@ -45,6 +50,8 @@ fresh QA 必须对本 refresh 后不变的完整 HEAD 从 QA-001 重启全部 21
 | CI-F05 | this receipt refresh commit | ASSEMBLED | replacement QA receipt、最终 fix batch 与 final candidate freeze |
 | CI-F06 | `180376947baef0b62cd3a89e4fc421749d72d49b` | ASSEMBLED | 生产/测试共用 BootSnapshot compiler、完整 Frontstage Router fixture、有效/无效/fail-closed sign-in 行为验证 |
 | CI-F07 | this receipt refresh commit | ASSEMBLED | 历史 QA 分类校正、RED/GREEN 证据与 fresh candidate freeze |
+| CI-F08 | `4741e0f65df23afbe8e1329c9115a063bf37a07b` | ASSEMBLED | 恢复 crate-internal Snapshot query 类型重导出；完整 api-server all-targets no-run 编译通过 |
+| CI-F09 | this receipt refresh commit | ASSEMBLED | E0433 提交归因校正、visibility fix 与 fresh candidate freeze |
 
 Packet 阶段只执行 `cargo fmt`、`cargo check -p api-server` 和
 `cargo check -p api-server --tests` 作为安全装配；没有运行 Packet 测试、reviewer 或 QA。
@@ -102,6 +109,21 @@ credentials return 401 without a cookie; and a deliberately removed snapshot rem
 Therefore `SAME_ROOT_RECURRED=NO`. CIM-AC-004 is `PENDING_REVERIFY` until the candidate-bound full
 Router and Frontstage rows pass in fresh QA. CIM-AC-012 remains pending until all 21 rows have zero
 failures and zero unrun items.
+
+## Fixture-remediation QA and CI-F08
+
+The fresh QA against `3426bebde34796b8266643c472d6eb8a9b4c8be2` remains historical `QA_FAIL`
+evidence: `18 PASS / 3 FAIL / 0 UNRUN`, 2486 passed / 0 failed plus one compilation failure. QA-005
+failed before API assertions because CI-F06 commit
+`180376947baef0b62cd3a89e4fc421749d72d49b` removed the
+`DurableHostInfrastructureProvidersViewQuery` `pub(crate)` re-export while three crate-internal tests
+still used that path. QA-019 and QA-021 were derived failures from that single compile root.
+
+CI-F08 restores only the type-level crate-internal re-export. It does not expose the internal
+`boot_snapshot` module, change external visibility, or affect product behavior. Assembly evidence is
+`cargo test -p api-server --all-targets --no-run` exit 0 with every unit, bin and integration test
+executable produced. The public `compile_extension_boot_snapshot` Composition Root remains a
+non-blocking boundary warning: production crates must not consume it as a general SDK.
 
 ## Final route ownership
 
