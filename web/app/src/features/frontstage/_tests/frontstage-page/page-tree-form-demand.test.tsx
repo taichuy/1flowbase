@@ -39,7 +39,9 @@ describe('PageTreeFormModal demand lifecycle', () => {
   it('MDP-001 MDP-002 keeps form and icon catalog dormant while hidden', () => {
     render(<Harness dialog={null} />);
 
-    expect(screen.queryByRole('button', { name: '选择图标' })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'auto.select_icon' })
+    ).toBeNull();
     expect(screen.queryByRole('searchbox')).toBeNull();
   });
 
@@ -47,7 +49,7 @@ describe('PageTreeFormModal demand lifecycle', () => {
     render(<Harness dialog={dialog} />);
 
     const selectIcon = await screen.findByRole('button', {
-      name: '选择图标'
+      name: 'auto.select_icon'
     });
     expect(screen.queryByRole('searchbox')).toBeNull();
 

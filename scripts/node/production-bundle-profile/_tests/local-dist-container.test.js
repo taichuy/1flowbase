@@ -23,7 +23,14 @@ test("MDP-012 mounts the local production dist over the existing web image", () 
 
   assert.match(
     override,
-    /\.\.\/\.\.\/web\/app\/dist:\/usr\/share\/nginx\/html:ro/u,
+    /dist\/index\.html:\/usr\/share\/nginx\/html\/index\.html:ro/u,
+  );
+  assert.match(override, /dist\/assets:\/usr\/share\/nginx\/html\/assets:ro/u);
+  assert.match(override, /dist\/icons:\/usr\/share\/nginx\/html\/icons:ro/u);
+  assert.doesNotMatch(
+    override,
+    /dist:\/usr\/share\/nginx\/html:ro/u,
+    "the parent mount must remain writable so external-npm can mount below it",
   );
   assert.match(harness, /["']--no-build["']/u);
   assert.match(harness, /["']--pull["'],[\s\S]*["']never["']/u);

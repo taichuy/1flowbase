@@ -13,8 +13,6 @@ import type { Plugin, ViteDevServer } from 'vite';
 
 const PAGE_TREE_ICON_PREVIEW_ID = 'virtual:1flowbase-page-tree-icon-previews';
 const PAGE_TREE_ICON_RUNTIME_ID = 'virtual:1flowbase-page-tree-icon-runtime';
-const PAGE_TREE_ICON_COMPONENT_PACK_PREFIX =
-  'virtual:1flowbase-page-tree-icon-component-pack/';
 const RESOLVED_PREVIEW_ID = `\0${PAGE_TREE_ICON_PREVIEW_ID}`;
 const RESOLVED_RUNTIME_ID = `\0${PAGE_TREE_ICON_RUNTIME_ID}`;
 const PREVIEW_PATH_PREFIX = '/__1flowbase_page_tree_icon_pack/';
@@ -278,59 +276,20 @@ export function pageTreeIconPreviewHref(name) {
 `;
 }
 
-function generateRuntimeModule(
-  inventory: PageTreeIconInventory,
-  command: 'build' | 'serve'
-) {
-  if (command === 'serve') {
-    const loaders = inventory.packs
-      .flatMap((pack) => pack.icons)
-      .map(
-        ({ componentSource, name }) =>
-          `${JSON.stringify(name)}: () => import(${JSON.stringify(componentSource)}).then((module) => module.default)`
-      )
-      .join(',\n');
-    return singleFlightRuntimeSource(
-      `const iconLoaders = {${loaders}};`,
-      `return Boolean(iconLoaders[name]);`,
-      `const load = iconLoaders[name];
-  if (!load) return null;
-  return load();`
-    );
-  }
-
-  const nameToPack = Object.fromEntries(
-    inventory.packs.flatMap((pack) =>
-      pack.icons.map(({ name }) => [name, pack.id])
-    )
-  );
-  const packLoaders = inventory.packs
+function generateRuntimeModule(inventory: PageTreeIconInventory) {
+  const loaders = inventory.packs
+    .flatMap((pack) => pack.icons)
     .map(
-      ({ id }) =>
-        `${JSON.stringify(id)}: () => import(${JSON.stringify(`${PAGE_TREE_ICON_COMPONENT_PACK_PREFIX}${id}`)})`
+      ({ componentSource, name }) =>
+        `${JSON.stringify(name)}: () => import(${JSON.stringify(componentSource)}).then((module) => module.default)`
     )
     .join(',\n');
   return singleFlightRuntimeSource(
-    `const nameToPack = Object.freeze(${JSON.stringify(nameToPack)});
-const packLoaders = {${packLoaders}};
-const packFlights = new Map();
-async function loadPack(packId) {
-  const current = packFlights.get(packId);
-  if (current) return current;
-  const load = packLoaders[packId];
+    `const iconLoaders = {${loaders}};`,
+    `return Boolean(iconLoaders[name]);`,
+    `const load = iconLoaders[name];
   if (!load) return null;
-  const flight = load().catch((error) => {
-    if (packFlights.get(packId) === flight) packFlights.delete(packId);
-    throw error;
-  });
-  packFlights.set(packId, flight);
-  return flight;
-}`,
-    `return Boolean(nameToPack[name]);`,
-    `const packId = nameToPack[name];
-  if (!packId) return null;
-  const pack = await loadPack(packId);
-  return pack?.icons[name] ?? null;`
+  return load();`
   );
 }
 
@@ -358,19 +317,6 @@ export function loadPageTreeIconComponent(name) {
   return flight;
 }
 `;
-}
-
-function generateComponentPackModule(pack: PageTreeIconPack) {
-  const imports = pack.icons
-    .map(
-      ({ componentSource }, index) =>
-        `import Icon${index} from ${JSON.stringify(componentSource)};`
-    )
-    .join('\n');
-  const entries = pack.icons
-    .map(({ name }, index) => `${JSON.stringify(name)}: Icon${index}`)
-    .join(',\n');
-  return `${imports}\nexport const icons = Object.freeze({${entries}});`;
 }
 
 function attachPreviewMiddleware(
@@ -411,7 +357,6 @@ function pageTreeIconAssetsPlugin({
     projectRoot,
     maxPackSourceBytes
   });
-  const packById = new Map(inventory.packs.map((pack) => [pack.id, pack]));
   const emittedPackRefs = new Map<string, string>();
   let command: 'build' | 'serve' = 'build';
 
@@ -437,13 +382,6 @@ function pageTreeIconAssetsPlugin({
     resolveId(id) {
       if (id === PAGE_TREE_ICON_PREVIEW_ID) return RESOLVED_PREVIEW_ID;
       if (id === PAGE_TREE_ICON_RUNTIME_ID) return RESOLVED_RUNTIME_ID;
-      if (id.startsWith(PAGE_TREE_ICON_COMPONENT_PACK_PREFIX)) {
-        const packId = id.slice(PAGE_TREE_ICON_COMPONENT_PACK_PREFIX.length);
-        if (!packById.has(packId)) {
-          throw new Error(`Unknown page tree icon component pack '${packId}'`);
-        }
-        return `\0${id}`;
-      }
       return undefined;
     },
     load(id) {
@@ -462,15 +400,7 @@ function pageTreeIconAssetsPlugin({
         return generatePreviewModule(inventory, urls);
       }
       if (id === RESOLVED_RUNTIME_ID) {
-        return generateRuntimeModule(inventory, command);
-      }
-      if (id.startsWith(`\0${PAGE_TREE_ICON_COMPONENT_PACK_PREFIX}`)) {
-        const packId = id.slice(
-          `\0${PAGE_TREE_ICON_COMPONENT_PACK_PREFIX}`.length
-        );
-        const pack = packById.get(packId);
-        if (!pack) throw new Error(`Unknown page tree icon pack '${packId}'`);
-        return generateComponentPackModule(pack);
+        return generateRuntimeModule(inventory);
       }
       return undefined;
     },

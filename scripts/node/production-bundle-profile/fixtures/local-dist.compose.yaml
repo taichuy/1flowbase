@@ -1,4 +1,7 @@
 services:
   web:
     volumes:
-      - ../../web/app/dist:/usr/share/nginx/html:ro
+      - ../../web/app/dist/index.html:/usr/share/nginx/html/index.html:ro
+      - ../../web/app/dist/icon.svg:/usr/share/nginx/html/icon.svg:ro
+      - ../../web/app/dist/assets:/usr/share/nginx/html/assets:ro
+      - ../../web/app/dist/icons:/usr/share/nginx/html/icons:ro
