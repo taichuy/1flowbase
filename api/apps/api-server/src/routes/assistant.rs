@@ -17,8 +17,7 @@ use control_plane::{
             ApplicationPublishedFlowRunRepository, ApplicationPublishedRunService,
             AssistantConversationSummary, AssistantPageReference, CreateAssistantConversationInput,
             CreateAssistantRunCommand, ListAssistantConversationsInput,
-            ASSISTANT_PAGE_REFERENCE_MAX_BYTES, ASSISTANT_PAGE_REFERENCE_MAX_COUNT,
-            ASSISTANT_PAGE_REFERENCE_MAX_TOTAL_BYTES,
+            ASSISTANT_PAGE_REFERENCE_MAX_COUNT, ASSISTANT_PAGE_REFERENCE_MAX_TOTAL_BYTES,
         },
     },
     mcp_management::McpManagementService,
@@ -28,11 +27,11 @@ use control_plane::{
         OrchestrationRuntimeService, StartPublishedFlowRunCommand,
     },
     ports::{OrchestrationRuntimeRepository, RuntimeEventCloseReason, RuntimeEventStreamPolicy},
-    profile::{ProfileService, UpdateMeMetaCommand},
 };
 use domain::mcp_management::McpInstanceStatus;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use storage_durable_postgres::MainDurableStore;
 use tokio::sync::{mpsc, oneshot};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -41,6 +40,7 @@ use uuid::Uuid;
 mod _tests;
 mod client_tools;
 pub mod conversation_events;
+pub(crate) mod interface;
 mod run_activity;
 pub(crate) mod websocket;
 
@@ -639,30 +639,15 @@ pub async fn get_settings(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<AssistantSettingsResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    context.cookie_session()?;
-    let preference = read_preference(
-        &state
-            .store
-            .find_user_by_id(context.user.id)
-            .await?
-            .ok_or(control_plane::errors::ControlPlaneError::NotFound("user"))?
-            .meta,
-        context.actor.current_workspace_id,
-    );
-    let (published_agent_flows, enabled_mcp_instances) =
-        available_targets(&state, &context.actor).await?;
-    let run_capabilities =
-        assistant_run_capabilities(&state, &context.actor, preference.application_id).await?;
-    Ok(Json(ApiSuccess::new(AssistantSettingsResponse {
-        preference,
-        published_agent_flows,
-        enabled_mcp_instances,
-        page_reference_max_bytes: ASSISTANT_PAGE_REFERENCE_MAX_BYTES,
-        page_reference_max_count: ASSISTANT_PAGE_REFERENCE_MAX_COUNT,
-        page_reference_max_total_bytes: ASSISTANT_PAGE_REFERENCE_MAX_TOTAL_BYTES,
-        run_capabilities,
-    })))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.assistant.settings.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::AssistantSettingsInput::Get,
+    )
+    .await?;
+    let interface::AssistantSettingsOutput::Settings(settings) = output;
+    Ok(Json(ApiSuccess::new(settings)))
 }
 
 #[utoipa::path(
@@ -677,53 +662,15 @@ pub async fn update_settings(
     headers: HeaderMap,
     Json(preference): Json<AssistantPreferenceBody>,
 ) -> Result<Json<ApiSuccess<AssistantSettingsResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    context.cookie_session()?;
-    require_csrf(&headers, &context)?;
-    let current_preference = read_preference(
-        &state
-            .store
-            .find_user_by_id(context.user.id)
-            .await?
-            .ok_or(control_plane::errors::ControlPlaneError::NotFound("user"))?
-            .meta,
-        context.actor.current_workspace_id,
-    );
-    let preference = if current_preference.application_id != preference.application_id {
-        AssistantPreferenceBody {
-            model: None,
-            reasoning_effort: None,
-            ..preference
-        }
-    } else {
-        preference
-    };
-    validate_preference(&state, &context.actor, &preference).await?;
-    let workspace_id = context.actor.current_workspace_id;
-    let meta_patch = json!({
-        ASSISTANT_META_KEY: { "workspaces": { workspace_id.to_string(): preference } }
-    });
-    ProfileService::new(state.store.clone())
-        .update_me_meta(UpdateMeMetaCommand {
-            actor_user_id: context.user.id,
-            tenant_id: context.actor.tenant_id,
-            workspace_id,
-            meta_patch,
-        })
-        .await?;
-    let (published_agent_flows, enabled_mcp_instances) =
-        available_targets(&state, &context.actor).await?;
-    let run_capabilities =
-        assistant_run_capabilities(&state, &context.actor, preference.application_id).await?;
-    Ok(Json(ApiSuccess::new(AssistantSettingsResponse {
-        preference,
-        published_agent_flows,
-        enabled_mcp_instances,
-        page_reference_max_bytes: ASSISTANT_PAGE_REFERENCE_MAX_BYTES,
-        page_reference_max_count: ASSISTANT_PAGE_REFERENCE_MAX_COUNT,
-        page_reference_max_total_bytes: ASSISTANT_PAGE_REFERENCE_MAX_TOTAL_BYTES,
-        run_capabilities,
-    })))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.assistant.settings.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::AssistantSettingsInput::Update(preference),
+    )
+    .await?;
+    let interface::AssistantSettingsOutput::Settings(settings) = output;
+    Ok(Json(ApiSuccess::new(settings)))
 }
 
 #[utoipa::path(
@@ -1280,7 +1227,7 @@ async fn assistant_preference_for_target(
         )
         .into());
     }
-    validate_preference(state, &context.actor, &preference).await?;
+    validate_preference(&state.store, &context.actor, &preference).await?;
     ApplicationService::new(state.store.for_actor(context.actor.clone()))
         .load_application_for_non_crud_console_operation(
             context.user.id,
@@ -1304,7 +1251,7 @@ fn assistant_execution(preference: &AssistantPreferenceBody) -> Result<NativeExe
 }
 
 async fn available_targets(
-    state: &Arc<ApiState>,
+    store: &MainDurableStore,
     actor: &domain::ActorContext,
 ) -> Result<
     (
@@ -1313,7 +1260,7 @@ async fn available_targets(
     ),
     ApiError,
 > {
-    let applications = ApplicationService::new(state.store.for_actor(actor.clone()))
+    let applications = ApplicationService::new(store.for_actor(actor.clone()))
         .list_applications(actor.user_id)
         .await?;
     let mut published_agent_flows = Vec::new();
@@ -1321,7 +1268,7 @@ async fn available_targets(
         .into_iter()
         .filter(|application| application.application_type == domain::ApplicationType::AgentFlow)
     {
-        if ApplicationPublicationService::new(state.store.for_actor(actor.clone()))
+        if ApplicationPublicationService::new(store.for_actor(actor.clone()))
             .load_active_publication(LoadActiveApplicationPublicationCommand {
                 application_id: application.id,
             })
@@ -1334,7 +1281,7 @@ async fn available_targets(
             });
         }
     }
-    let catalog = McpManagementService::new(state.store.clone())
+    let catalog = McpManagementService::new(store.clone())
         .read_catalog_for_actor(actor)
         .await?;
     let enabled_mcp_instances = catalog
@@ -1350,14 +1297,14 @@ async fn available_targets(
 }
 
 async fn assistant_run_capabilities(
-    state: &Arc<ApiState>,
+    store: &MainDurableStore,
     actor: &domain::ActorContext,
     application_id: Option<Uuid>,
 ) -> Result<AssistantRunCapabilities, ApiError> {
     let Some(application_id) = application_id else {
         return Ok(AssistantRunCapabilities::default());
     };
-    let publication = ApplicationPublicationService::new(state.store.for_actor(actor.clone()))
+    let publication = ApplicationPublicationService::new(store.for_actor(actor.clone()))
         .load_active_publication(LoadActiveApplicationPublicationCommand { application_id })
         .await?;
     let model_selection_enabled = publication.mapping_snapshot.input.model_target.is_some();
@@ -1405,12 +1352,12 @@ async fn assistant_run_capabilities(
 }
 
 async fn validate_preference(
-    state: &Arc<ApiState>,
+    store: &MainDurableStore,
     actor: &domain::ActorContext,
     preference: &AssistantPreferenceBody,
 ) -> Result<(), ApiError> {
     if let Some(application_id) = preference.application_id {
-        let application = ApplicationService::new(state.store.for_actor(actor.clone()))
+        let application = ApplicationService::new(store.for_actor(actor.clone()))
             .get_application(actor.user_id, application_id)
             .await?;
         if application.application_type != domain::ApplicationType::AgentFlow {
@@ -1419,7 +1366,7 @@ async fn validate_preference(
             )
             .into());
         }
-        let capabilities = assistant_run_capabilities(state, actor, Some(application_id)).await?;
+        let capabilities = assistant_run_capabilities(store, actor, Some(application_id)).await?;
         if let Some(model) = preference.model.as_deref() {
             let selected = capabilities
                 .models
@@ -1452,7 +1399,7 @@ async fn validate_preference(
         )
         .into());
     }
-    let catalog = McpManagementService::new(state.store.clone())
+    let catalog = McpManagementService::new(store.clone())
         .read_catalog_for_actor(actor)
         .await?;
     for instance_id in &preference.mcp_instance_ids {
