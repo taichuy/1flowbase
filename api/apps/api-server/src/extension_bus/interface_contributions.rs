@@ -389,6 +389,18 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-application-runtime-trace-exports",
+            &[
+                "applications.runtime.trace-export.get",
+                "applications.runtime.trace-export.selected-runs",
+            ],
+            &["api-server.console-application-runtime-trace-exports"],
+            crate::routes::application_runtime::interface_trace_exports::compile_registry(
+                state.store.clone(),
+                state.file_storage_registry.clone(),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-application-orchestration",
             &[
                 "applications.orchestration.get",
