@@ -32,6 +32,7 @@ use crate::{
 
 pub mod plugins;
 pub mod pools;
+pub(crate) mod pools_interface;
 pub mod routes;
 
 #[derive(Debug, Deserialize, ToSchema)]

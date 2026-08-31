@@ -6,8 +6,7 @@ use reqwest::Client;
 use serde::Deserialize;
 
 use crate::{
-    app_state::ApiState, network_egress_client::NetworkEgressHttpClientResolver,
-    provider_runtime::ApiProviderRuntime,
+    network_egress_client::NetworkEgressHttpClientResolver, provider_runtime::ApiProviderRuntime,
 };
 
 const HTTP_PROBE_URLS: [&str; 2] = [
@@ -55,14 +54,17 @@ struct IpifyResponse {
 /// with the same fallback strategy as Sub2API; HTTPS then verifies the CONNECT capability used by
 /// model and runtime HTTP clients.
 pub async fn test_network_egress_connection(
-    state: &ApiState,
+    store: storage_durable_postgres::MainDurableStore,
+    provider_runtime: std::sync::Arc<crate::provider_runtime::ApiRuntimeServices>,
+    secret_key: String,
+    api_node_id: String,
     selected: NetworkEgressPoolSelection,
 ) -> NetworkEgressConnectionProbeResult {
     let resolver = NetworkEgressHttpClientResolver::new(
-        state.store.clone(),
-        ApiProviderRuntime::new(state.provider_runtime.clone()),
-        state.provider_secret_master_key.clone(),
-        state.api_node_id.clone(),
+        store,
+        ApiProviderRuntime::new(provider_runtime),
+        secret_key,
+        api_node_id,
     );
     let scope = match resolver
         .acquire_provider_egress(selected.provider_id, &selected.provider_egress_key)

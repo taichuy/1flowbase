@@ -756,6 +756,31 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-network-pools",
+            &[
+                "network_egress_pools.list",
+                "network_egress_proxies.create",
+                "network_egress_pool_members.test_connection",
+                "network_egress_pools.create",
+                "network_egress_pools.update",
+                "network_egress_pools.delete",
+                "network_egress_pool_members.create",
+                "network_egress_pool_members.create_static_http",
+                "network_egress_pool_members.add_provider_egresses",
+                "network_egress_pool_members.update",
+                "network_egress_pool_members.delete",
+            ],
+            &["api-server.console-network-pools"],
+            crate::routes::network_center::pools_interface::compile_registry(
+                crate::routes::network_center::pools_interface::NetworkPoolsDependencies {
+                    store: state.store.clone(),
+                    provider_runtime: state.provider_runtime.clone(),
+                    secret_key: state.provider_secret_master_key.clone(),
+                    api_node_id: state.api_node_id.clone(),
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",

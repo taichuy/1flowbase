@@ -5,17 +5,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json,
 };
-use control_plane::network_egress::{
-    CreateNetworkEgressProxyCommand, NetworkEgressProviderService,
-};
-use control_plane::network_egress_pool::{
-    AddProviderEgressesToPoolCommand, AddStaticHttpProxyToPoolCommand,
-    CreateNetworkEgressPoolCommand, CreateNetworkEgressPoolMemberCommand,
-    NetworkEgressPoolMemberView, NetworkEgressPoolService, NetworkEgressPoolView,
-    RecordNetworkEgressPoolMemberProbeCommand, UpdateNetworkEgressPoolCommand,
-    UpdateNetworkEgressPoolMemberCommand,
-};
-use control_plane::network_egress_secret::ProviderRegistryNetworkEgressSecretResolver;
+use control_plane::network_egress_pool::{NetworkEgressPoolMemberView, NetworkEgressPoolView};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -23,9 +13,6 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
-    network_egress_probe::test_network_egress_connection,
-    provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_get, console_patch, console_post, ConsoleRouteAssembly,
@@ -191,32 +178,14 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
-fn service(state: &ApiState) -> crate::app_state::ApiNetworkEgressPoolService {
-    NetworkEgressPoolService::with_secret_master_key(
-        state.store.clone(),
-        state.provider_secret_master_key.clone(),
-    )
-}
-
-fn proxy_service(state: &ApiState) -> crate::app_state::ApiNetworkEgressProviderService {
-    NetworkEgressProviderService::new(
-        state.store.clone(),
-        ApiProviderRuntime::new(state.provider_runtime.clone()),
-        ProviderRegistryNetworkEgressSecretResolver::new(
-            state.store.clone(),
-            state.provider_secret_master_key.clone(),
-        ),
-        state.provider_secret_master_key.clone(),
-        state.api_node_id.clone(),
-    )
-}
-
-fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, ApiError> {
+pub(super) fn parse_uuid(value: &str, field: &'static str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(value)
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
 }
 
-fn member_response(view: NetworkEgressPoolMemberView) -> NetworkEgressPoolMemberResponse {
+pub(super) fn member_response(
+    view: NetworkEgressPoolMemberView,
+) -> NetworkEgressPoolMemberResponse {
     NetworkEgressPoolMemberResponse {
         id: view.member.id.to_string(),
         provider_id: view.member.provider_id.to_string(),
@@ -243,7 +212,7 @@ fn member_response(view: NetworkEgressPoolMemberView) -> NetworkEgressPoolMember
     }
 }
 
-fn response(view: NetworkEgressPoolView) -> NetworkEgressPoolResponse {
+pub(super) fn response(view: NetworkEgressPoolView) -> NetworkEgressPoolResponse {
     NetworkEgressPoolResponse {
         id: view.pool.id.to_string(),
         display_name: view.pool.display_name,
@@ -263,11 +232,17 @@ pub async fn list_network_egress_pools(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<NetworkEgressPoolResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let pools = service(&state).list_global(context.user.id).await?;
-    Ok(Json(ApiSuccess::new(
-        pools.into_iter().map(response).collect(),
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-pools.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        super::pools_interface::NetworkPoolsInput::List,
+    )
+    .await?;
+    let super::pools_interface::NetworkPoolsOutput::Pools(pools) = output else {
+        unreachable!("network pools binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(pools)))
 }
 
 #[utoipa::path(
@@ -288,21 +263,17 @@ pub async fn create_network_egress_proxy(
     ),
     ApiError,
 > {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let proxy = proxy_service(&state)
-        .create_proxy(CreateNetworkEgressProxyCommand {
-            actor_user_id: context.user.id,
-            provider_code: body.provider_code,
-            display_name: body.display_name,
-            description: body.description,
-            config: body.config,
-        })
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(super::response(proxy))),
-    ))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-proxies.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        super::pools_interface::NetworkPoolsInput::CreateProxy(body),
+    )
+    .await?;
+    let super::pools_interface::NetworkPoolsOutput::Provider(provider) = output else {
+        unreachable!("network proxy create binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(provider))))
 }
 
 #[utoipa::path(
@@ -317,36 +288,17 @@ pub async fn test_network_egress_pool_member_connection(
     headers: HeaderMap,
     Path((pool_id, member_id)): Path<(String, String)>,
 ) -> Result<Json<ApiSuccess<NetworkEgressPoolMemberResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let pool_id = parse_uuid(&pool_id, "pool_id")?;
-    let member_id = parse_uuid(&member_id, "member_id")?;
-    let member = service(&state).member(pool_id, member_id).await?;
-    let probe = test_network_egress_connection(
-        &state,
-        control_plane::network_egress_pool::NetworkEgressPoolSelection {
-            pool_id,
-            member_id,
-            provider_id: member.provider_id,
-            provider_egress_key: member.provider_egress_key,
-        },
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-pool-members.test-connection.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        super::pools_interface::NetworkPoolsInput::TestMember { pool_id, member_id },
     )
-    .await;
-    let member = service(&state)
-        .record_probe(RecordNetworkEgressPoolMemberProbeCommand {
-            actor_user_id: context.user.id,
-            pool_id,
-            member_id,
-            status: probe.status,
-            http_status: probe.http_status,
-            https_status: probe.https_status,
-            latency_ms: probe.latency_ms,
-            exit_ip: probe.exit_ip,
-            exit_region: probe.exit_region,
-            error_code: probe.error_code,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(member_response(member))))
+    .await?;
+    let super::pools_interface::NetworkPoolsOutput::Member(member) = output else {
+        unreachable!("network pool member test binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(member)))
 }
 
 #[utoipa::path(
@@ -361,15 +313,17 @@ pub async fn create_network_egress_pool(
     headers: HeaderMap,
     Json(body): Json<CreateNetworkEgressPoolBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<NetworkEgressPoolResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let pool = service(&state)
-        .create(CreateNetworkEgressPoolCommand {
-            actor_user_id: context.user.id,
-            display_name: body.display_name,
-        })
-        .await?;
-    Ok((StatusCode::CREATED, Json(ApiSuccess::new(response(pool)))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-pools.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        super::pools_interface::NetworkPoolsInput::Create(body),
+    )
+    .await?;
+    let super::pools_interface::NetworkPoolsOutput::Pool(pool) = output else {
+        unreachable!("network pool create binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(pool))))
 }
 
 #[utoipa::path(
@@ -386,16 +340,17 @@ pub async fn update_network_egress_pool(
     Path(pool_id): Path<String>,
     Json(body): Json<UpdateNetworkEgressPoolBody>,
 ) -> Result<Json<ApiSuccess<NetworkEgressPoolResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let pool = service(&state)
-        .update(UpdateNetworkEgressPoolCommand {
-            actor_user_id: context.user.id,
-            pool_id: parse_uuid(&pool_id, "pool_id")?,
-            display_name: body.display_name,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(response(pool))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-pools.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        super::pools_interface::NetworkPoolsInput::Update { pool_id, body },
+    )
+    .await?;
+    let super::pools_interface::NetworkPoolsOutput::Pool(pool) = output else {
+        unreachable!("network pool update binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(pool)))
 }
 
 #[utoipa::path(
@@ -410,11 +365,16 @@ pub async fn delete_network_egress_pool(
     headers: HeaderMap,
     Path(pool_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    service(&state)
-        .delete(context.user.id, parse_uuid(&pool_id, "pool_id")?)
-        .await?;
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-pools.delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        super::pools_interface::NetworkPoolsInput::Delete { pool_id },
+    )
+    .await?;
+    let super::pools_interface::NetworkPoolsOutput::Deleted = output else {
+        unreachable!("network pool delete binding returned a different output")
+    };
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -438,22 +398,17 @@ pub async fn create_network_egress_pool_member(
     ),
     ApiError,
 > {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let member = service(&state)
-        .add_member(CreateNetworkEgressPoolMemberCommand {
-            actor_user_id: context.user.id,
-            pool_id: parse_uuid(&pool_id, "pool_id")?,
-            provider_id: parse_uuid(&body.provider_id, "provider_id")?,
-            provider_egress_key: body.provider_egress_key,
-            enabled: body.enabled,
-            sequence: body.sequence,
-        })
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(member_response(member))),
-    ))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-pool-members.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        super::pools_interface::NetworkPoolsInput::CreateMember { pool_id, body },
+    )
+    .await?;
+    let super::pools_interface::NetworkPoolsOutput::Member(member) = output else {
+        unreachable!("network pool member create binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(member))))
 }
 
 #[utoipa::path(
@@ -476,25 +431,17 @@ pub async fn add_static_http_proxy_to_pool(
     ),
     ApiError,
 > {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let member = service(&state)
-        .add_static_http_proxy(AddStaticHttpProxyToPoolCommand {
-            actor_user_id: context.user.id,
-            pool_id: parse_uuid(&pool_id, "pool_id")?,
-            display_name: body.display_name,
-            host: body.host,
-            port: body.port,
-            username: body.username,
-            password: body.password,
-            enabled: body.enabled,
-            sequence: body.sequence,
-        })
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(member_response(member))),
-    ))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-pool-members.create-static-http.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        super::pools_interface::NetworkPoolsInput::AddStatic { pool_id, body },
+    )
+    .await?;
+    let super::pools_interface::NetworkPoolsOutput::Member(member) = output else {
+        unreachable!("static network pool member binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(member))))
 }
 
 #[utoipa::path(
@@ -517,23 +464,17 @@ pub async fn add_provider_egresses_to_pool(
     ),
     ApiError,
 > {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let members = service(&state)
-        .add_provider_egresses(AddProviderEgressesToPoolCommand {
-            actor_user_id: context.user.id,
-            pool_id: parse_uuid(&pool_id, "pool_id")?,
-            provider_id: parse_uuid(&body.provider_id, "provider_id")?,
-            enabled: body.enabled,
-            sequence: body.sequence,
-        })
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(
-            members.into_iter().map(member_response).collect(),
-        )),
-    ))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-pool-members.add-provider-egresses.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        super::pools_interface::NetworkPoolsInput::AddProvider { pool_id, body },
+    )
+    .await?;
+    let super::pools_interface::NetworkPoolsOutput::Members(members) = output else {
+        unreachable!("provider network pool members binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(members))))
 }
 
 #[utoipa::path(
@@ -550,18 +491,21 @@ pub async fn update_network_egress_pool_member(
     Path((pool_id, member_id)): Path<(String, String)>,
     Json(body): Json<UpdateNetworkEgressPoolMemberBody>,
 ) -> Result<Json<ApiSuccess<NetworkEgressPoolMemberResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let member = service(&state)
-        .update_member(UpdateNetworkEgressPoolMemberCommand {
-            actor_user_id: context.user.id,
-            pool_id: parse_uuid(&pool_id, "pool_id")?,
-            member_id: parse_uuid(&member_id, "member_id")?,
-            enabled: body.enabled,
-            sequence: body.sequence,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(member_response(member))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-pool-members.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        super::pools_interface::NetworkPoolsInput::UpdateMember {
+            pool_id,
+            member_id,
+            body,
+        },
+    )
+    .await?;
+    let super::pools_interface::NetworkPoolsOutput::Member(member) = output else {
+        unreachable!("network pool member update binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(member)))
 }
 
 #[utoipa::path(
@@ -576,14 +520,15 @@ pub async fn delete_network_egress_pool_member(
     headers: HeaderMap,
     Path((pool_id, member_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    service(&state)
-        .delete_member(
-            context.user.id,
-            parse_uuid(&pool_id, "pool_id")?,
-            parse_uuid(&member_id, "member_id")?,
-        )
-        .await?;
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.network-egress-pool-members.delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        super::pools_interface::NetworkPoolsInput::DeleteMember { pool_id, member_id },
+    )
+    .await?;
+    let super::pools_interface::NetworkPoolsOutput::Deleted = output else {
+        unreachable!("network pool member delete binding returned a different output")
+    };
     Ok(StatusCode::NO_CONTENT)
 }
