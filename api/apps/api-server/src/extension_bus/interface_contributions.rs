@@ -545,6 +545,20 @@ pub(crate) fn production_interface_contributions(
             crate::routes::auth_center_interface::compile_registry(console_auth_center)?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-file-storages",
+            &[
+                "settings.file-storages.list",
+                "settings.file-storages.create",
+                "settings.file-storages.update",
+                "settings.file-storages.delete",
+            ],
+            &["api-server.console-file-storages"],
+            crate::routes::file_storages::compile_registry(
+                state.store.clone(),
+                state.bootstrap_workspace_id,
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-runs",
             &["application.native.runs.create"],
             &["api-server.application-public-api"],

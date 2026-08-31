@@ -13,16 +13,23 @@ use control_plane::file_management::{
     CreateFileStorageCommand, DeleteFileStorageCommand, FileStorageService,
     UpdateFileStorageCommand,
 };
+use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::{Deserialize, Serialize};
+use storage_durable_postgres::MainDurableStore;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, console_put, ConsoleRouteAssembly},
+    routes::{
+        console_interface::{
+            self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
+            ConsoleInterfaceTargetError, ConsoleLocaleHints,
+        },
+        console_route_assembly::{console_get, console_put, ConsoleRouteAssembly},
+    },
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -63,6 +70,133 @@ pub struct FileStorageResponse {
     pub rule_json: serde_json::Value,
     pub health_status: String,
     pub last_health_error: Option<String>,
+}
+
+enum FileStoragesInput {
+    List {
+        locale: ConsoleLocaleHints,
+    },
+    Create(CreateFileStorageBody),
+    Update {
+        file_storage_id: String,
+        body: UpdateFileStorageBody,
+    },
+    Delete {
+        file_storage_id: String,
+    },
+}
+
+impl InterfaceContract for FileStoragesInput {
+    const CONTRACT_ID: &'static str = "console-file-storages-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+enum FileStoragesOutput {
+    List(Vec<FileStorageResponse>),
+    Item(FileStorageResponse),
+    Deleted,
+}
+
+impl InterfaceContract for FileStoragesOutput {
+    const CONTRACT_ID: &'static str = "console-file-storages-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+struct FileStoragesAdapter {
+    store: MainDurableStore,
+    bootstrap_workspace_id: Uuid,
+}
+
+impl FileStoragesAdapter {
+    async fn execute_inner(
+        &self,
+        principal: &UserPrincipal,
+        input: FileStoragesInput,
+    ) -> Result<FileStoragesOutput, ApiError> {
+        let actor = principal.actor();
+        match input {
+            FileStoragesInput::List { locale } => {
+                let mut storages = FileStorageService::new(self.store.clone())
+                    .list_storages(actor.user_id)
+                    .await?;
+                let preferred_locale = self
+                    .store
+                    .find_user_by_id(actor.user_id)
+                    .await?
+                    .ok_or(control_plane::errors::ControlPlaneError::NotAuthenticated)?
+                    .preferred_locale;
+                let locale = locale.resolve(preferred_locale);
+                for storage in &mut storages {
+                    if storage.code == "local_default" && storage.is_default {
+                        storage.title = crate::app_state::project_canonical_display_with(
+                            &self.store,
+                            self.bootstrap_workspace_id,
+                            &locale,
+                            "Local",
+                            &storage.title,
+                        )
+                        .await?;
+                    }
+                }
+                Ok(FileStoragesOutput::List(
+                    storages.into_iter().map(to_response).collect(),
+                ))
+            }
+            FileStoragesInput::Create(body) => Ok(FileStoragesOutput::Item(to_response(
+                FileStorageService::new(self.store.clone())
+                    .create_storage(CreateFileStorageCommand {
+                        actor_user_id: actor.user_id,
+                        code: body.code,
+                        title: body.title,
+                        driver_type: body.driver_type,
+                        enabled: body.enabled,
+                        is_default: body.is_default,
+                        config_json: body.config_json,
+                        rule_json: body.rule_json,
+                    })
+                    .await?,
+            ))),
+            FileStoragesInput::Update {
+                file_storage_id,
+                body,
+            } => Ok(FileStoragesOutput::Item(to_response(
+                FileStorageService::new(self.store.clone())
+                    .update_storage(UpdateFileStorageCommand {
+                        actor_user_id: actor.user_id,
+                        file_storage_id: parse_uuid(&file_storage_id, "file_storage_id")?,
+                        title: body.title,
+                        enabled: body.enabled,
+                        is_default: body.is_default,
+                        config_json: body.config_json,
+                        rule_json: body.rule_json,
+                    })
+                    .await?,
+            ))),
+            FileStoragesInput::Delete { file_storage_id } => {
+                FileStorageService::new(self.store.clone())
+                    .delete_storage(DeleteFileStorageCommand {
+                        actor_user_id: actor.user_id,
+                        file_storage_id: parse_uuid(&file_storage_id, "file_storage_id")?,
+                    })
+                    .await?;
+                Ok(FileStoragesOutput::Deleted)
+            }
+        }
+    }
+}
+
+impl ConsoleInterfacePort<FileStoragesInput, FileStoragesOutput> for FileStoragesAdapter {
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: FileStoragesInput,
+    ) -> ConsoleInterfaceFuture<'a, FileStoragesOutput> {
+        Box::pin(async move {
+            self.execute_inner(principal, input)
+                .await
+                .map_err(ConsoleInterfaceTargetError)
+        })
+    }
 }
 
 fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
@@ -121,6 +255,55 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
+const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "settings.file-storages.list",
+        binding_id: "http.console.settings.file-storages.list.v1",
+        method: "GET",
+        path: "/api/console/settings/files/storages",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "settings.file-storages.create",
+        binding_id: "http.console.settings.file-storages.create.v1",
+        method: "POST",
+        path: "/api/console/settings/files/storages",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "settings.file-storages.update",
+        binding_id: "http.console.settings.file-storages.update.v1",
+        method: "PUT",
+        path: "/api/console/settings/files/storages/:id",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "settings.file-storages.delete",
+        binding_id: "http.console.settings.file-storages.delete.v1",
+        method: "DELETE",
+        path: "/api/console/settings/files/storages/:id",
+        mutating: true,
+    },
+];
+
+pub(crate) fn compile_registry(
+    store: MainDurableStore,
+    bootstrap_workspace_id: Uuid,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    console_interface::compile_registry(
+        "api-server.console-file-storages",
+        "graph:console-file-storages-v1",
+        DECLARATIONS,
+        Arc::new(FileStoragesAdapter {
+            store,
+            bootstrap_workspace_id,
+        }),
+    )
+}
+
 #[utoipa::path(
     get,
     path = "/api/console/settings/files/storages",
@@ -130,26 +313,18 @@ pub async fn list_file_storages(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<FileStorageResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let mut storages = FileStorageService::new(state.store.clone())
-        .list_storages(context.user.id)
-        .await?;
-    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
-    for storage in &mut storages {
-        if storage.code == "local_default" && storage.is_default {
-            storage.title = crate::app_state::project_canonical_display(
-                &state,
-                &locale,
-                "Local",
-                &storage.title,
-            )
-            .await?;
-        }
-    }
-
-    Ok(Json(ApiSuccess::new(
-        storages.into_iter().map(to_response).collect(),
-    )))
+    let locale = ConsoleLocaleHints::from_headers(&headers);
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.settings.file-storages.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        FileStoragesInput::List { locale },
+    )
+    .await?;
+    let FileStoragesOutput::List(storages) = output else {
+        unreachable!("file storages list binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(storages)))
 }
 
 #[utoipa::path(
@@ -163,26 +338,17 @@ pub async fn create_file_storage(
     headers: HeaderMap,
     Json(body): Json<CreateFileStorageBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<FileStorageResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    let created = FileStorageService::new(state.store.clone())
-        .create_storage(CreateFileStorageCommand {
-            actor_user_id: context.user.id,
-            code: body.code,
-            title: body.title,
-            driver_type: body.driver_type,
-            enabled: body.enabled,
-            is_default: body.is_default,
-            config_json: body.config_json,
-            rule_json: body.rule_json,
-        })
-        .await?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_response(created))),
-    ))
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.settings.file-storages.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        FileStoragesInput::Create(body),
+    )
+    .await?;
+    let FileStoragesOutput::Item(created) = output else {
+        unreachable!("file storage create binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(created))))
 }
 
 #[utoipa::path(
@@ -198,22 +364,20 @@ pub async fn update_file_storage(
     Path(file_storage_id): Path<String>,
     Json(body): Json<UpdateFileStorageBody>,
 ) -> Result<Json<ApiSuccess<FileStorageResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    let updated = FileStorageService::new(state.store.clone())
-        .update_storage(UpdateFileStorageCommand {
-            actor_user_id: context.user.id,
-            file_storage_id: parse_uuid(&file_storage_id, "file_storage_id")?,
-            title: body.title,
-            enabled: body.enabled,
-            is_default: body.is_default,
-            config_json: body.config_json,
-            rule_json: body.rule_json,
-        })
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_response(updated))))
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.settings.file-storages.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        FileStoragesInput::Update {
+            file_storage_id,
+            body,
+        },
+    )
+    .await?;
+    let FileStoragesOutput::Item(updated) = output else {
+        unreachable!("file storage update binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(updated)))
 }
 
 #[utoipa::path(
@@ -227,15 +391,15 @@ pub async fn delete_file_storage(
     headers: HeaderMap,
     Path(file_storage_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    FileStorageService::new(state.store.clone())
-        .delete_storage(DeleteFileStorageCommand {
-            actor_user_id: context.user.id,
-            file_storage_id: parse_uuid(&file_storage_id, "file_storage_id")?,
-        })
-        .await?;
-
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.settings.file-storages.delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        FileStoragesInput::Delete { file_storage_id },
+    )
+    .await?;
+    let FileStoragesOutput::Deleted = output else {
+        unreachable!("file storage delete binding returned a different output")
+    };
     Ok(StatusCode::NO_CONTENT)
 }
