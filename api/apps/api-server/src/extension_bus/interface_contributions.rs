@@ -676,6 +676,27 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-provider-instance-lifecycle",
+            &[
+                "model_providers.instances.view",
+                "model_providers.instances.create",
+                "model_providers.instances.update",
+                "model_providers.instances.validate",
+                "model_providers.instances.delete",
+            ],
+            &["api-server.console-provider-instance-lifecycle"],
+            crate::routes::model_providers::instance_lifecycle_interface::compile_registry(
+                crate::routes::model_providers::instance_lifecycle_interface::ProviderInstanceLifecycleDependencies {
+                    store: state.store.clone(),
+                    provider_runtime: state.provider_runtime.clone(),
+                    secret_key: state.provider_secret_master_key.clone(),
+                    api_node_id: state.api_node_id.clone(),
+                    install_root: state.provider_install_root.clone(),
+                    cache_store: state.infrastructure.cache_store(),
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-runs",
             &["application.native.runs.create"],
             &["api-server.application-public-api"],

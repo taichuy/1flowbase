@@ -53,6 +53,7 @@ pub(crate) mod catalog_logs_interface;
 mod clear_request_log_continuation;
 mod dto;
 pub(crate) mod icons;
+pub(crate) mod instance_lifecycle_interface;
 pub(crate) mod settings_routes;
 
 use settings_routes::settings_service;
@@ -1039,13 +1040,19 @@ pub async fn list_instances(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<ModelProviderInstanceResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let instances = settings_service(&state, &context.actor, "model_providers.instances.view")
-        .list_instances(context.user.id)
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        instances.into_iter().map(to_instance_response).collect(),
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.instances.view.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        instance_lifecycle_interface::ProviderInstanceLifecycleInput::List,
+    )
+    .await?;
+    let instance_lifecycle_interface::ProviderInstanceLifecycleOutput::Instances(instances) =
+        output
+    else {
+        unreachable!("provider instances binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(instances)))
 }
 
 #[utoipa::path(
@@ -1060,39 +1067,18 @@ pub async fn create_instance(
     headers: HeaderMap,
     Json(body): Json<CreateModelProviderBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ModelProviderInstanceResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let created = settings_service(&state, &context.actor, "model_providers.instances.create")
-        .create_instance(CreateModelProviderInstanceCommand {
-            actor_user_id: context.user.id,
-            installation_id: parse_uuid(&body.installation_id, "installation_id")?,
-            display_name: body.display_name,
-            config_json: body.config,
-            configured_models: body
-                .configured_models
-                .into_iter()
-                .map(|model| domain::ModelProviderConfiguredModel {
-                    model_id: model.model_id,
-                    enabled: model.enabled,
-                    context_window_override_tokens: model.context_window_override_tokens,
-                    supports_multimodal: model.supports_multimodal,
-                    pricing_provider_code: model.pricing_provider_code,
-                    pricing_model_id: model.pricing_model_id,
-                })
-                .collect(),
-            enabled_model_ids: body.enabled_model_ids,
-            included_in_main: body.included_in_main,
-            preview_token: body
-                .preview_token
-                .as_deref()
-                .map(|raw| parse_uuid(raw, "preview_token"))
-                .transpose()?,
-        })
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_instance_response(created))),
-    ))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.instances.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        instance_lifecycle_interface::ProviderInstanceLifecycleInput::Create(body),
+    )
+    .await?;
+    let instance_lifecycle_interface::ProviderInstanceLifecycleOutput::Instance(instance) = output
+    else {
+        unreachable!("provider instance create binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(instance))))
 }
 
 #[utoipa::path(
@@ -1108,36 +1094,18 @@ pub async fn update_instance(
     headers: HeaderMap,
     Json(body): Json<UpdateModelProviderBody>,
 ) -> Result<Json<ApiSuccess<ModelProviderInstanceResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let updated = settings_service(&state, &context.actor, "model_providers.instances.update")
-        .update_instance(UpdateModelProviderInstanceCommand {
-            actor_user_id: context.user.id,
-            instance_id: parse_uuid(&id, "id")?,
-            display_name: body.display_name,
-            config_json: body.config,
-            configured_models: body
-                .configured_models
-                .into_iter()
-                .map(|model| domain::ModelProviderConfiguredModel {
-                    model_id: model.model_id,
-                    enabled: model.enabled,
-                    context_window_override_tokens: model.context_window_override_tokens,
-                    supports_multimodal: model.supports_multimodal,
-                    pricing_provider_code: model.pricing_provider_code,
-                    pricing_model_id: model.pricing_model_id,
-                })
-                .collect(),
-            enabled_model_ids: body.enabled_model_ids,
-            included_in_main: body.included_in_main,
-            preview_token: body
-                .preview_token
-                .as_deref()
-                .map(|raw| parse_uuid(raw, "preview_token"))
-                .transpose()?,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(to_instance_response(updated))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.instances.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        instance_lifecycle_interface::ProviderInstanceLifecycleInput::Update { id, body },
+    )
+    .await?;
+    let instance_lifecycle_interface::ProviderInstanceLifecycleOutput::Instance(instance) = output
+    else {
+        unreachable!("provider instance update binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(instance)))
 }
 
 #[utoipa::path(
@@ -1151,12 +1119,18 @@ pub async fn validate_instance(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ValidateModelProviderResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let result = settings_service(&state, &context.actor, "model_providers.instances.validate")
-        .validate_instance(context.user.id, parse_uuid(&id, "id")?)
-        .await?;
-    Ok(Json(ApiSuccess::new(to_validate_response(result))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.instances.validate.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        instance_lifecycle_interface::ProviderInstanceLifecycleInput::Validate { id },
+    )
+    .await?;
+    let instance_lifecycle_interface::ProviderInstanceLifecycleOutput::Validation(result) = output
+    else {
+        unreachable!("provider instance validate binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(result)))
 }
 
 #[utoipa::path(
@@ -1556,15 +1530,18 @@ pub async fn delete_instance(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<DeletedResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    settings_service(&state, &context.actor, "model_providers.instances.delete")
-        .delete_instance(DeleteModelProviderInstanceCommand {
-            actor_user_id: context.user.id,
-            instance_id: parse_uuid(&id, "id")?,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(DeletedResponse { deleted: true })))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.instances.delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        instance_lifecycle_interface::ProviderInstanceLifecycleInput::Delete { id },
+    )
+    .await?;
+    let instance_lifecycle_interface::ProviderInstanceLifecycleOutput::Deleted(response) = output
+    else {
+        unreachable!("provider instance delete binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
