@@ -10,6 +10,7 @@ pub mod console_surface_registry;
 pub mod error_response;
 pub mod extension_bootstrap;
 pub mod extension_bus;
+pub(crate) mod external_endpoint_catalog;
 pub mod host_extension_boot;
 pub mod host_extension_loader;
 pub mod host_extensions;

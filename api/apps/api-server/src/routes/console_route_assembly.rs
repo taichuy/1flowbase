@@ -214,6 +214,19 @@ where
         &self.bindings
     }
 
+    pub(crate) fn external_endpoint_contributions(
+        &self,
+    ) -> impl Iterator<Item = crate::external_endpoint_catalog::ExternalEndpointContribution> + '_
+    {
+        self.bindings.iter().map(|binding| {
+            crate::external_endpoint_catalog::ExternalEndpointContribution::unclassified_http(
+                "console-route-assembly",
+                &binding.route.method,
+                &binding.route.path,
+            )
+        })
+    }
+
     pub fn maintenance_control_routes(&self) -> &[ConsoleRouteBinding] {
         &self.maintenance_control_routes
     }
