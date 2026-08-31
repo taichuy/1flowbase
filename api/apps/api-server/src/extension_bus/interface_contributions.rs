@@ -210,10 +210,16 @@ pub(crate) fn production_interface_contributions(
         ),
         InterfaceRegistryContribution::new(
             "api-server.compatibility",
-            &["application.native.runs.create"],
+            &[
+                "application.native.runs.create",
+                "application.compatibility.models.list",
+            ],
             &["api-server.application-public-api"],
             crate::routes::application_public_api::compatibility_interface::compile_registry(
                 state.clone(),
+                crate::routes::application_public_api::compatibility_interface::compatibility_models_port(
+                    state.store.clone(),
+                ),
             )?,
         ),
         InterfaceRegistryContribution::new(

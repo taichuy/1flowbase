@@ -30,6 +30,9 @@ use interface_runtime::{
     ProtocolProjection, RegistryCompiler, RouteIdentity, TargetReference,
 };
 
+mod models;
+pub(crate) use models::{compatibility_models_port, invoke_models, CompatibilityModelsPort};
+
 use crate::{
     app_state::ApiState,
     extension_bus::ApplicationApiKeyAuthenticationCredential,
@@ -45,6 +48,12 @@ pub(crate) const OPENAI_RESPONSES_ROOT_BINDING_ID: &str =
 pub(crate) const OPENAI_RESPONSES_COMPACT_BINDING_ID: &str =
     "http.compat.openai.responses-compact.blocking.v1";
 pub(crate) const ANTHROPIC_MESSAGES_BINDING_ID: &str = "http.compat.anthropic.messages.blocking.v1";
+pub(crate) const ANTHROPIC_COUNT_TOKENS_BINDING_ID: &str =
+    "http.compat.anthropic.messages.count-tokens.v1";
+pub(crate) const OPENAI_MODELS_ROOT_BINDING_ID: &str = "http.compat.openai.models-root.list.v1";
+pub(crate) const OPENAI_MODELS_BINDING_ID: &str = "http.compat.openai.models.list.v1";
+pub(crate) const OPENAI_CHAT_MODELS_BINDING_ID: &str =
+    "http.compat.openai.chat-completions.models.list.v1";
 pub(crate) const OPENAI_CHAT_STREAM_BINDING_ID: &str =
     "http.compat.openai.chat-completions.stream.v1";
 pub(crate) const OPENAI_CHAT_ROOT_STREAM_BINDING_ID: &str =
@@ -419,14 +428,17 @@ impl InterfaceAuthorizationPort<ApplicationPrincipal> for CompatibilityBlockingA
 
 pub(crate) fn compile_registry(
     port: Arc<dyn CompatibilityBlockingPort>,
+    models_port: Arc<dyn CompatibilityModelsPort>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
     let owner = InterfaceOwner::new(OWNER).expect("static compatibility owner is valid");
     let operation =
         AuthorizationOperation::new(OPERATION).expect("static compatibility operation is valid");
+    let models_operation = AuthorizationOperation::new("application.compatibility.models.list")
+        .expect("static compatibility models operation is valid");
     let mut compiler = RegistryCompiler::new(
         GraphFingerprint::new("graph:application-compatibility-blocking-v1")
             .expect("static compatibility graph fingerprint is valid"),
-        [operation.clone()],
+        [operation.clone(), models_operation.clone()],
         [owner.clone()],
     );
     for (interface_id, binding_id, handler, method, path) in bindings() {
@@ -455,13 +467,17 @@ pub(crate) fn compile_registry(
             path,
         )?;
     }
+    models::register_bindings(&mut compiler, &owner, &models_operation, models_port)?;
     compiler.compile()
 }
 
 #[cfg(test)]
 pub(crate) fn compile_registry_for_test(
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
-    compile_registry(Arc::new(UnavailableCompatibilityBlockingPort))
+    compile_registry(
+        Arc::new(UnavailableCompatibilityBlockingPort),
+        models::unavailable_port(),
+    )
 }
 
 #[cfg(test)]
@@ -1157,7 +1173,7 @@ type BindingDeclaration = (
     &'static str,
 );
 
-fn bindings() -> [BindingDeclaration; 6] {
+fn bindings() -> [BindingDeclaration; 7] {
     [
         (
             "compat.openai.chat-completions.blocking",
@@ -1200,6 +1216,13 @@ fn bindings() -> [BindingDeclaration; 6] {
             "api-server.compat.anthropic-messages.blocking",
             "POST",
             "/v1/messages",
+        ),
+        (
+            "compat.anthropic.messages.count-tokens",
+            ANTHROPIC_COUNT_TOKENS_BINDING_ID,
+            "api-server.compat.anthropic-count-tokens",
+            "POST",
+            "/v1/messages/count_tokens",
         ),
     ]
 }

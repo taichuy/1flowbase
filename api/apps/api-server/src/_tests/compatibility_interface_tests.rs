@@ -1,9 +1,11 @@
 use interface_runtime::{BindingId, InterfaceExecutionMode, InterfaceProtocol, ProtocolProjection};
 
 use crate::routes::application_public_api::compatibility_interface::{
-    self, ANTHROPIC_MESSAGES_BINDING_ID, ANTHROPIC_MESSAGES_STREAM_BINDING_ID,
-    NATIVE_WEBSOCKET_STREAM_BINDING_ID, OPENAI_CHAT_BINDING_ID, OPENAI_CHAT_ROOT_BINDING_ID,
-    OPENAI_CHAT_ROOT_STREAM_BINDING_ID, OPENAI_CHAT_STREAM_BINDING_ID, OPENAI_RESPONSES_BINDING_ID,
+    self, ANTHROPIC_COUNT_TOKENS_BINDING_ID, ANTHROPIC_MESSAGES_BINDING_ID,
+    ANTHROPIC_MESSAGES_STREAM_BINDING_ID, NATIVE_WEBSOCKET_STREAM_BINDING_ID,
+    OPENAI_CHAT_BINDING_ID, OPENAI_CHAT_MODELS_BINDING_ID, OPENAI_CHAT_ROOT_BINDING_ID,
+    OPENAI_CHAT_ROOT_STREAM_BINDING_ID, OPENAI_CHAT_STREAM_BINDING_ID, OPENAI_MODELS_BINDING_ID,
+    OPENAI_MODELS_ROOT_BINDING_ID, OPENAI_RESPONSES_BINDING_ID,
     OPENAI_RESPONSES_COMPACT_BINDING_ID, OPENAI_RESPONSES_ROOT_BINDING_ID,
     OPENAI_RESPONSES_ROOT_STREAM_BINDING_ID, OPENAI_RESPONSES_STREAM_BINDING_ID,
     OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID,
@@ -20,6 +22,10 @@ fn blocking_compatibility_bindings_publish_as_typed_http_plans() {
         OPENAI_RESPONSES_ROOT_BINDING_ID,
         OPENAI_RESPONSES_COMPACT_BINDING_ID,
         ANTHROPIC_MESSAGES_BINDING_ID,
+        ANTHROPIC_COUNT_TOKENS_BINDING_ID,
+        OPENAI_MODELS_ROOT_BINDING_ID,
+        OPENAI_MODELS_BINDING_ID,
+        OPENAI_CHAT_MODELS_BINDING_ID,
         OPENAI_CHAT_STREAM_BINDING_ID,
         OPENAI_CHAT_ROOT_STREAM_BINDING_ID,
         OPENAI_RESPONSES_STREAM_BINDING_ID,
@@ -81,7 +87,12 @@ fn blocking_compatibility_routes_select_frozen_binding_constants() {
         assert!(source.contains(binding), "route must select {binding}");
     }
     assert!(anthropic.contains("ANTHROPIC_MESSAGES_BINDING_ID"));
+    assert!(anthropic.contains("ANTHROPIC_COUNT_TOKENS_BINDING_ID"));
     assert!(anthropic.contains("ANTHROPIC_MESSAGES_STREAM_BINDING_ID"));
+    assert!(source.contains("OPENAI_MODELS_ROOT_BINDING_ID"));
+    assert!(source.contains("OPENAI_MODELS_BINDING_ID"));
+    assert!(source.contains("OPENAI_CHAT_MODELS_BINDING_ID"));
+    assert!(source.contains("compatibility_interface::invoke_models"));
     assert!(source.contains("compatibility_interface::invoke_blocking"));
     assert!(source.contains("compatibility_interface::invoke_stream"));
     assert!(anthropic.contains("compatibility_interface::invoke_blocking"));

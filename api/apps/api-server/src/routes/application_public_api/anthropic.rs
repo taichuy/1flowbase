@@ -21,10 +21,7 @@ use control_plane::application_public_api::{
         translate_messages_request_with_context_window, AnthropicCompatError,
         AnthropicContextWindowRequest,
     },
-    native::{
-        AnswerProjectionSegmentKind, ApplicationNativeRunService, CreateNativeRunCommand,
-        NativeRunRequest, NativeRunResult, NativeRunStatus,
-    },
+    native::{AnswerProjectionSegmentKind, NativeRunResult, NativeRunStatus},
     protocol_translation::{
         TranslationDecisionKind, TranslationProtocol, TranslationReport,
         TranslationSafeRepresentation,
@@ -356,8 +353,19 @@ pub async fn count_message_tokens(
         translation_decision_count = translation.report.decisions.len(),
         "anthropic count tokens request translated"
     );
-    let run = create_native_run(state.clone(), bearer_token.clone(), translation.request).await?;
-    let run = native::execute_blocking_native_run(state, bearer_token, run).await?;
+    let run = compatibility_interface::invoke_blocking(
+        state,
+        compatibility_interface::ANTHROPIC_COUNT_TOKENS_BINDING_ID,
+        bearer_token,
+        compatibility_interface::CompatibilityBlockingInput {
+            command: compatibility_interface::CompatibilityInvocationCommand::Start {
+                request: translation.request,
+                protocol: TranslationProtocol::AnthropicMessages,
+                provider_transport: None,
+            },
+        },
+    )
+    .await?;
     let input_tokens = match run.operation_terminal.as_ref() {
         Some(NativeOperationTerminal::CountTokens(receipt)) => receipt.input_tokens(),
         _ => return Err(native::blocking_run_projection_error(&run).into()),
@@ -459,30 +467,6 @@ fn anthropic_context_window_request(headers: &HeaderMap) -> Option<AnthropicCont
             .iter()
             .filter_map(|value| value.to_str().ok()),
     )
-}
-
-async fn create_native_run(
-    state: Arc<ApiState>,
-    bearer_token: String,
-    request: NativeRunRequest,
-) -> Result<NativeRunResult, native::NativeApiError> {
-    let protocol_context = request.client_protocol_envelope.clone();
-    let run = ApplicationNativeRunService::new(state.store.clone())
-        .with_last_used_cache(state.infrastructure.cache_store())
-        .create_native_run(CreateNativeRunCommand {
-            bearer_token,
-            request,
-            protocol: TranslationProtocol::AnthropicMessages,
-        })
-        .await
-        .map_err(native::native_error)?;
-    native::stage_client_protocol_context(
-        state.infrastructure.provider_transport_store().as_ref(),
-        &run,
-        protocol_context,
-    )
-    .await?;
-    Ok(run)
 }
 
 fn anthropic_resume_command(

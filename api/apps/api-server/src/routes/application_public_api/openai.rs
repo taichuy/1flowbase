@@ -8,7 +8,6 @@ use axum::{
     Json,
 };
 use control_plane::application_public_api::{
-    api_keys::ApplicationApiKeyService,
     callback_resume::{
         PublishedCallbackResumeSource, PublishedCallbackResumeTarget,
         ResumePublishedCallbackCommand,
@@ -18,10 +17,9 @@ use control_plane::application_public_api::{
         merge_client_protocol_envelopes, ClientProtocolIngressPolicy,
     },
     compat::openai::{
-        extract_model_list_from_start_node, response_id_from_run_id, run_id_from_response_id,
-        translate_chat_completion_request, translate_response_request_with_context_and_previous,
-        OpenAiCompatError, OpenAiCompatibleModel, OpenAiPreviousResponseContext,
-        OpenAiResponsesEndpoint,
+        response_id_from_run_id, run_id_from_response_id, translate_chat_completion_request,
+        translate_response_request_with_context_and_previous, OpenAiCompatError,
+        OpenAiCompatibleModel, OpenAiPreviousResponseContext, OpenAiResponsesEndpoint,
     },
     native::{
         ApplicationNativeRunService, NativeRunResult, NativeRunStatus, NativeRunValidationError,
@@ -30,7 +28,6 @@ use control_plane::application_public_api::{
         TranslationDecisionKind, TranslationProtocol, TranslationReport,
         TranslationSafeRepresentation,
     },
-    publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
     run_service::ApplicationPublishedRunControlRepository,
 };
 use control_plane::ports::{ProviderContinuationSlotId, ProviderTransportPayload};
@@ -970,6 +967,7 @@ async fn dispatch_response_for_endpoint(
 pub async fn list_models(
     State(state): State<Arc<ApiState>>,
     Query(query): Query<OpenAiModelListQuery>,
+    uri: Uri,
     headers: HeaderMap,
 ) -> Result<Response, OpenAiRouteError> {
     let credential = match openai_credential(&headers) {
@@ -984,61 +982,30 @@ pub async fn list_models(
             return Err(error.into());
         }
     };
-    let actor = match ApplicationApiKeyService::new(state.store.clone())
-        .authenticate_bearer_token(&credential.token)
-        .await
-    {
-        Ok(actor) => actor,
-        Err(_) => {
-            warn!(
-                route = "models",
-                auth_source = credential.source,
-                code = "not_authenticated",
-                "openai compatible model list rejected invalid application API key"
-            );
-            return Err(native::native_error(NativeRunValidationError::NotAuthenticated).into());
-        }
+    let binding_id = match uri.path() {
+        "/models" => compatibility_interface::OPENAI_MODELS_ROOT_BINDING_ID,
+        "/v1/chat/completions/models" => compatibility_interface::OPENAI_CHAT_MODELS_BINDING_ID,
+        _ => compatibility_interface::OPENAI_MODELS_BINDING_ID,
     };
-    let publication = match ApplicationPublicationService::new(state.store.clone())
-        .load_active_publication(LoadActiveApplicationPublicationCommand {
-            application_id: actor.application_id,
-        })
+    let output = compatibility_interface::invoke_models(state, binding_id, credential.token)
         .await
-    {
-        Ok(publication) => publication,
-        Err(_) => {
-            warn!(
-                route = "models",
-                auth_source = credential.source,
-                application_id = %actor.application_id,
-                api_key_id = %actor.api_key_id,
-                code = "application_not_published",
-                "openai compatible model list has no active publication"
-            );
-            return Err(
-                native::native_error(NativeRunValidationError::ApplicationNotPublished).into(),
-            );
-        }
-    };
-    let models = extract_model_list_from_start_node(&publication.document_snapshot);
-    let model_count = models.len();
+        .map_err(OpenAiRouteError::from)?;
+    let model_count = output.models.len();
 
     info!(
         route = "models",
         auth_source = credential.source,
-        application_id = %actor.application_id,
-        api_key_id = %actor.api_key_id,
         model_count,
         "openai compatible model list returned"
     );
 
     if is_codex_model_list_request(&query) {
-        return Ok(Json(to_codex_model_list_response(models)).into_response());
+        return Ok(Json(to_codex_model_list_response(output.models)).into_response());
     }
 
     Ok(Json(to_openai_model_list_response(
-        models,
-        publication.created_at.unix_timestamp(),
+        output.models,
+        output.publication_created_at,
     ))
     .into_response())
 }
