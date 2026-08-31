@@ -697,6 +697,29 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-provider-instance-operations",
+            &[
+                "model_providers.instances.authenticate",
+                "model_providers.instances.usage.view",
+                "model_providers.instances.reset_credits.view",
+                "model_providers.instances.reset_credits.consume",
+                "model_providers.balance.view",
+                "model_providers.preview.view",
+                "model_providers.instances.secrets.reveal",
+            ],
+            &["api-server.console-provider-instance-operations"],
+            crate::routes::model_providers::instance_operations_interface::compile_registry(
+                crate::routes::model_providers::instance_operations_interface::ProviderInstanceOperationsDependencies {
+                    store: state.store.clone(),
+                    provider_runtime: state.provider_runtime.clone(),
+                    secret_key: state.provider_secret_master_key.clone(),
+                    api_node_id: state.api_node_id.clone(),
+                    install_root: state.provider_install_root.clone(),
+                    cache_store: state.infrastructure.cache_store(),
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-runs",
             &["application.native.runs.create"],
             &["api-server.application-public-api"],

@@ -54,6 +54,7 @@ mod clear_request_log_continuation;
 mod dto;
 pub(crate) mod icons;
 pub(crate) mod instance_lifecycle_interface;
+pub(crate) mod instance_operations_interface;
 pub(crate) mod settings_routes;
 
 use settings_routes::settings_service;
@@ -1146,24 +1147,19 @@ pub async fn authenticate_instance(
     headers: HeaderMap,
     Json(body): Json<AuthenticateModelProviderInstanceBody>,
 ) -> Result<Json<ApiSuccess<AuthenticateModelProviderInstanceResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let operation =
-        serde_json::from_value::<ProviderAuthOperation>(body.operation).map_err(|_| {
-            control_plane::errors::ControlPlaneError::InvalidInput("provider_auth_operation")
-        })?;
-    let result = settings_service(
-        &state,
-        &context.actor,
-        "model_providers.instances.authenticate",
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.instances.authenticate.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        instance_operations_interface::ProviderInstanceOperationsInput::Authenticate { id, body },
     )
-    .authenticate_instance(AuthenticateModelProviderInstanceCommand {
-        actor_user_id: context.user.id,
-        instance_id: parse_uuid(&id, "id")?,
-        operation,
-    })
     .await?;
-    Ok(Json(ApiSuccess::new(to_authenticate_response(result))))
+    let instance_operations_interface::ProviderInstanceOperationsOutput::Authentication(response) =
+        output
+    else {
+        unreachable!("provider authenticate binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -1177,15 +1173,18 @@ pub async fn get_usage_windows(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ModelProviderUsageWindowsResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let result = settings_service(
-        &state,
-        &context.actor,
-        "model_providers.instances.usage.view",
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.instances.usage.view.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        instance_operations_interface::ProviderInstanceOperationsInput::Usage { id },
     )
-    .get_usage_windows(context.user.id, parse_uuid(&id, "id")?)
     .await?;
-    Ok(Json(ApiSuccess::new(to_usage_windows_response(result))))
+    let instance_operations_interface::ProviderInstanceOperationsOutput::Usage(response) = output
+    else {
+        unreachable!("provider usage binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -1199,17 +1198,19 @@ pub async fn count_reset_credits(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ModelProviderResetCreditCountResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let result = settings_service(
-        &state,
-        &context.actor,
-        "model_providers.instances.reset_credits.view",
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.instances.reset-credits.view.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        instance_operations_interface::ProviderInstanceOperationsInput::ResetCredits { id },
     )
-    .count_reset_credits(context.user.id, parse_uuid(&id, "id")?)
     .await?;
-    Ok(Json(ApiSuccess::new(to_reset_credit_count_response(
-        result,
-    ))))
+    let instance_operations_interface::ProviderInstanceOperationsOutput::ResetCredits(response) =
+        output
+    else {
+        unreachable!("provider reset credits binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -1225,22 +1226,22 @@ pub async fn consume_reset_credit(
     headers: HeaderMap,
     Json(body): Json<ConsumeModelProviderResetCreditBody>,
 ) -> Result<Json<ApiSuccess<ConsumeModelProviderResetCreditResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let result = settings_service(
-        &state,
-        &context.actor,
-        "model_providers.instances.reset_credits.consume",
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.instances.reset-credits.consume.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        instance_operations_interface::ProviderInstanceOperationsInput::ConsumeResetCredit {
+            id,
+            body,
+        },
     )
-    .consume_reset_credit(ConsumeModelProviderResetCreditCommand {
-        actor_user_id: context.user.id,
-        instance_id: parse_uuid(&id, "id")?,
-        idempotency_key: body.idempotency_key,
-    })
     .await?;
-    Ok(Json(ApiSuccess::new(to_consume_reset_credit_response(
-        result,
-    ))))
+    let instance_operations_interface::ProviderInstanceOperationsOutput::Consumed(response) =
+        output
+    else {
+        unreachable!("provider reset credit consume binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -1254,16 +1255,18 @@ pub async fn get_balance(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ModelProviderBalanceResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let result = service(
-        &state,
-        &context.actor,
-        "other.model-providers",
-        "model_providers.balance.view",
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.balance.view.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        instance_operations_interface::ProviderInstanceOperationsInput::Balance { id },
     )
-    .get_balance(context.user.id, parse_uuid(&id, "id")?)
     .await?;
-    Ok(Json(ApiSuccess::new(to_balance_response(result))))
+    let instance_operations_interface::ProviderInstanceOperationsOutput::Balance(response) = output
+    else {
+        unreachable!("provider balance binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -1417,33 +1420,18 @@ pub async fn preview_models(
     headers: HeaderMap,
     Json(body): Json<PreviewModelProviderModelsBody>,
 ) -> Result<Json<ApiSuccess<PreviewModelProviderModelsResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let preview = settings_service(&state, &context.actor, "model_providers.preview.view")
-        .preview_models(PreviewModelProviderModelsCommand {
-            actor_user_id: context.user.id,
-            installation_id: body
-                .installation_id
-                .as_deref()
-                .map(|raw| parse_uuid(raw, "installation_id"))
-                .transpose()?,
-            instance_id: body
-                .instance_id
-                .as_deref()
-                .map(|raw| parse_uuid(raw, "instance_id"))
-                .transpose()?,
-            config_json: body.config,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(PreviewModelProviderModelsResponse {
-        models: preview
-            .models
-            .into_iter()
-            .map(to_runtime_model_descriptor_response)
-            .collect(),
-        preview_token: preview.preview_token.to_string(),
-        expires_at: format_optional_time(Some(preview.expires_at)).unwrap_or_default(),
-    })))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.preview.view.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        instance_operations_interface::ProviderInstanceOperationsInput::Preview(body),
+    )
+    .await?;
+    let instance_operations_interface::ProviderInstanceOperationsOutput::Preview(response) = output
+    else {
+        unreachable!("provider preview binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -1459,19 +1447,18 @@ pub async fn reveal_secret(
     headers: HeaderMap,
     Json(body): Json<RevealModelProviderSecretBody>,
 ) -> Result<Json<ApiSuccess<RevealModelProviderSecretResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let value = settings_service(
-        &state,
-        &context.actor,
-        "model_providers.instances.secrets.reveal",
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.instances.secrets.reveal.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        instance_operations_interface::ProviderInstanceOperationsInput::Reveal { id, body },
     )
-    .reveal_secret(context.user.id, parse_uuid(&id, "id")?, &body.key)
     .await?;
-    Ok(Json(ApiSuccess::new(RevealModelProviderSecretResponse {
-        key: body.key,
-        value,
-    })))
+    let instance_operations_interface::ProviderInstanceOperationsOutput::Secret(response) = output
+    else {
+        unreachable!("provider secret reveal binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
