@@ -9,11 +9,9 @@ use axum::{
     Json, Router,
 };
 use control_plane::errors::ControlPlaneError;
-use control_plane::model_definition::ModelDefinitionService;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use utoipa::{IntoParams, ToSchema};
-use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
@@ -28,6 +26,9 @@ use crate::{
     routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
     runtime_data_model_docs,
 };
+
+#[path = "data_model_openapi_interface.rs"]
+pub(crate) mod data_model_openapi_interface;
 
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct DocsCategoryOperationsQuery {
@@ -270,26 +271,13 @@ pub async fn get_data_model_openapi(
     headers: HeaderMap,
     Path(model_id): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-
-    let model_id =
-        Uuid::parse_str(&model_id).map_err(|_| ControlPlaneError::InvalidInput("model_id"))?;
-    let model = ModelDefinitionService::for_console_operation(
-        state.store.clone(),
-        domain::ConsolePolicyGroup::settings_feature("system.data-models")
-            .expect("compiled data-model settings group must be valid"),
-        access_control::MODEL_DEFINITIONS_OPENAPI_VIEW_OPERATION_ID,
-    )
-    .get_model(context.user.id, model_id)
-    .await?;
-    if model.status != domain::DataModelStatus::Published {
-        return Err(ControlPlaneError::NotFound("model_id").into());
-    }
-
-    let spec = runtime_data_model_docs::build_model_openapi(
-        &model,
-        state.runtime_engine.template_catalog(),
-    )
-    .ok_or(ControlPlaneError::NotFound("model_id"))?;
-    Ok(Json(spec))
+    let output: data_model_openapi_interface::DataModelOpenApiOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.model-definitions.openapi.view.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+            data_model_openapi_interface::DataModelOpenApiInput { model_id },
+        )
+        .await?;
+    Ok(Json(output.0))
 }

@@ -647,6 +647,15 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-data-model-openapi",
+            &["model_definitions.openapi.view"],
+            &["api-server.console-data-model-openapi"],
+            crate::routes::docs::data_model_openapi_interface::compile_registry(
+                state.store.clone(),
+                state.runtime_engine.clone(),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-runs",
             &["application.native.runs.create"],
             &["api-server.application-public-api"],
