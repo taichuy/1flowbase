@@ -744,6 +744,18 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-provider-icons",
+            &["model_providers.icons.view"],
+            &["api-server.console-provider-icons"],
+            crate::routes::model_providers::icons::compile_registry(
+                state.store.clone(),
+                state.provider_runtime.clone(),
+                state.provider_secret_master_key.clone(),
+                state.api_node_id.clone(),
+                state.provider_install_root.clone(),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",

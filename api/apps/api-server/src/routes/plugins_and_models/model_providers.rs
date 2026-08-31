@@ -84,26 +84,6 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .merge(settings_routes::route_assembly())
 }
 
-fn service(
-    state: &ApiState,
-    actor: &domain::ActorContext,
-    group_id: &'static str,
-    operation_id: &'static str,
-) -> crate::app_state::ApiModelProviderService {
-    ModelProviderService::for_console_operation(
-        state.store.for_actor(actor.clone()),
-        ApiProviderRuntime::new(state.provider_runtime.clone()),
-        state.provider_secret_master_key.clone(),
-        domain::ConsolePolicyGroup::other(group_id)
-            .expect("compiled model-provider other group must be valid"),
-        operation_id,
-    )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-}
-
 fn format_time(value: time::OffsetDateTime) -> String {
     value.format(&Rfc3339).unwrap()
 }
