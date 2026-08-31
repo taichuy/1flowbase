@@ -440,6 +440,22 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-application-runtime-debug-commands",
+            &[
+                "applications.runtime.debug-runs.create",
+                "applications.runtime.runs.resume",
+                "applications.runtime.runs.cancel",
+                "applications.runtime.callback-tasks.complete",
+                "applications.runtime.nodes.debug-runs.create",
+            ],
+            &["api-server.console-application-runtime-debug-commands"],
+            crate::routes::application_runtime::interface_debug_commands::compile_registry(
+                crate::routes::application_runtime::interface_debug_commands::dependencies(
+                    state.clone(),
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-application-runtime-trace-exports",
             &[
                 "applications.runtime.trace-export.get",
