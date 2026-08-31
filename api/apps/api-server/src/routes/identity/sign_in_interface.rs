@@ -14,7 +14,7 @@ use interface_runtime::{
     TargetReference,
 };
 
-use crate::{app_state::ApiState, error_response::ApiError};
+use crate::error_response::ApiError;
 use control_plane::ports::SessionStore;
 use storage_durable_postgres::MainDurableStore;
 
@@ -47,7 +47,7 @@ impl InterfaceContract for PublicSignInTargetError {
 type PublicSignInFuture<'a> =
     Pin<Box<dyn Future<Output = Result<PublicSignInOutput, PublicSignInTargetError>> + Send + 'a>>;
 
-trait PublicSignInPort: Send + Sync + 'static {
+pub(crate) trait PublicSignInPort: Send + Sync + 'static {
     fn sign_in(&self, input: PublicSignInInput) -> PublicSignInFuture<'_>;
 }
 
@@ -115,11 +115,8 @@ impl InterfaceAuthorizationPort<PublicPrincipal> for PublicSignInAuthorization {
 }
 
 pub(crate) fn compile_registry(
-    state: std::sync::Weak<ApiState>,
+    port: Arc<dyn PublicSignInPort>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
-    let state = state
-        .upgrade()
-        .expect("public sign-in contribution is assembled while API state is alive");
     let interface_id = InterfaceId::new(INTERFACE_ID).expect("static interface id is valid");
     let identity = InterfaceIdentity::new(
         interface_id.clone(),
@@ -206,14 +203,42 @@ pub(crate) fn compile_registry(
         &interface_id,
         HandlerReference::new(HANDLER).expect("static handler is valid"),
         Arc::new(PublicSignInHandler {
-            port: Arc::new(PublicSignInAdapter {
-                store: state.store.clone(),
-                session_store: Arc::clone(&state.session_store),
-                session_ttl_days: state.session_ttl_days,
-            }),
+            port,
         }),
     )?;
     compiler.compile()
+}
+
+pub(crate) fn public_sign_in_port(
+    store: MainDurableStore,
+    session_store: Arc<dyn SessionStore>,
+    session_ttl_days: i64,
+) -> Arc<dyn PublicSignInPort> {
+    Arc::new(PublicSignInAdapter {
+        store,
+        session_store,
+        session_ttl_days,
+    })
+}
+
+#[cfg(test)]
+pub(crate) fn compile_registry_for_test(
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
+    compile_registry(Arc::new(UnavailablePublicSignInPort))
+}
+
+#[cfg(test)]
+struct UnavailablePublicSignInPort;
+
+#[cfg(test)]
+impl PublicSignInPort for UnavailablePublicSignInPort {
+    fn sign_in(&self, _input: PublicSignInInput) -> PublicSignInFuture<'_> {
+        Box::pin(async {
+            Err(PublicSignInTargetError(
+                anyhow::anyhow!("test public sign-in port is unavailable").into(),
+            ))
+        })
+    }
 }
 
 fn contract<T: InterfaceContract>() -> ContractIdentity {

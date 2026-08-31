@@ -11,6 +11,12 @@ const sources = [
   'api/apps/api-server/src/routes/application_public_api/openai.rs',
   'api/apps/api-server/src/routes/application_public_api/anthropic.rs',
   'api/apps/api-server/src/routes/application_public_api/ex.rs',
+  'api/apps/api-server/src/extension_bus/interface_contributions.rs',
+  'api/apps/api-server/src/routes/identity/auth.rs',
+  'api/apps/api-server/src/routes/identity/sign_in_interface.rs',
+  'api/apps/api-server/src/routes/application_public_api/native.rs',
+  'api/apps/api-server/src/routes/application_public_api/compatibility_interface.rs',
+  'api/apps/api-server/src/routes/mcp_protocol.rs',
 ];
 
 function fixture(overrides = {}) {
@@ -20,6 +26,12 @@ function fixture(overrides = {}) {
     [sources[1]]: 'compatibility_interface::invoke_blocking(); compatibility_interface::invoke_stream();',
     [sources[2]]: 'compatibility_interface::invoke_blocking(); compatibility_interface::invoke_stream();',
     [sources[3]]: 'boot_snapshot.authenticate(activated, credential);',
+    [sources[4]]: 'struct InterfaceRegistryContribution { registry: Arc<CompiledInterfaceRegistry> }',
+    [sources[5]]: 'struct PublicProvidersAdapter { store: MainDurableStore }',
+    [sources[6]]: 'struct PublicSignInAdapter { store: MainDurableStore }',
+    [sources[7]]: 'impl ApplicationNativeRunPort for ApiState {}',
+    [sources[8]]: 'impl CompatibilityBlockingPort for ApiState {}',
+    [sources[9]]: 'impl McpToolCallPort for ApiState {}',
   };
   for (const source of sources) {
     const target = path.join(root, source);
@@ -31,6 +43,16 @@ function fixture(overrides = {}) {
 
 test('accepts exactly-one canonical compatibility owners', () => {
   assert.deepEqual(inspectInterfaceLifecycleBoundary(fixture()), []);
+});
+
+test('rejects global state contribution callbacks and Adapter service locators', () => {
+  const root = fixture({
+    [sources[4]]: 'type CompileInterfaceRegistry = fn(Weak<crate::app_state::ApiState>);',
+    [sources[5]]: 'struct PublicProvidersAdapter { state: Weak<ApiState> }',
+  });
+  const violations = inspectInterfaceLifecycleBoundary(root);
+  assert.ok(violations.some((value) => value.includes('global-state compile callback')));
+  assert.ok(violations.some((value) => value.includes('public auth Interface adapter')));
 });
 
 test('rejects legacy stream owner and direct workflow authentication', () => {

@@ -1,15 +1,10 @@
-use std::sync::Weak;
-
 use interface_runtime::{BindingId, InterfaceExecutionMode, PrincipalProfile};
 
-use crate::{
-    app_state::ApiState,
-    routes::sign_in_interface::{self, BINDING_ID},
-};
+use crate::routes::sign_in_interface::{self, BINDING_ID};
 
 #[test]
 fn public_sign_in_publishes_one_typed_mutation_plan() {
-    let registry = sign_in_interface::compile_registry(Weak::<ApiState>::new())
+    let registry = sign_in_interface::compile_registry_for_test()
         .expect("public sign-in catalog must publish");
     let binding_id = BindingId::new(BINDING_ID).expect("fixture binding id is valid");
     let plan = registry

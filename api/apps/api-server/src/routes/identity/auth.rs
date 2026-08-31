@@ -274,19 +274,24 @@ impl PublicLoginInstancesPort for PublicLoginInstancesAdapter {
 }
 
 pub(crate) fn compile_public_login_instances_registry(
-    state: std::sync::Weak<ApiState>,
+    port: Arc<dyn PublicLoginInstancesPort>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {
-    let state = state
-        .upgrade()
-        .expect("public login instances contribution is assembled while API state is alive");
-    login_instances_interface::compile_registry(Arc::new(PublicLoginInstancesAdapter {
-        store: state.store.clone(),
-        authenticator_registry: Arc::clone(&state.authenticator_registry),
-        bootstrap_workspace_id: state.bootstrap_workspace_id,
-    }))
+    login_instances_interface::compile_registry(port)
+}
+
+pub(crate) fn public_login_instances_port(
+    store: MainDurableStore,
+    authenticator_registry: Arc<AuthenticatorRegistry>,
+    bootstrap_workspace_id: Uuid,
+) -> Arc<dyn PublicLoginInstancesPort> {
+    Arc::new(PublicLoginInstancesAdapter {
+        store,
+        authenticator_registry,
+        bootstrap_workspace_id,
+    })
 }
 
 fn public_login_instances_error(error: InterfaceInvocationError) -> ApiError {
@@ -453,25 +458,35 @@ impl PublicSignUpPort for PublicSignUpAdapter {
 }
 
 pub(crate) fn compile_public_residual_registry(
-    state: std::sync::Weak<ApiState>,
+    providers: Arc<dyn PublicProvidersPort>,
+    sign_up: Arc<dyn PublicSignUpPort>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {
-    let state = state
-        .upgrade()
-        .expect("public residual contribution is assembled while API state is alive");
-    public_residual_interface::compile_registry(
-        Arc::new(PublicProvidersAdapter {
-            store: state.store.clone(),
-            bootstrap_workspace_id: state.bootstrap_workspace_id,
-        }),
-        Arc::new(PublicSignUpAdapter {
-            store: state.store.clone(),
-            session_store: Arc::clone(&state.session_store),
-            session_ttl_days: state.session_ttl_days,
-        }),
-    )
+    public_residual_interface::compile_registry(providers, sign_up)
+}
+
+pub(crate) fn public_providers_port(
+    store: MainDurableStore,
+    bootstrap_workspace_id: Uuid,
+) -> Arc<dyn PublicProvidersPort> {
+    Arc::new(PublicProvidersAdapter {
+        store,
+        bootstrap_workspace_id,
+    })
+}
+
+pub(crate) fn public_sign_up_port(
+    store: MainDurableStore,
+    session_store: Arc<dyn SessionStore>,
+    session_ttl_days: i64,
+) -> Arc<dyn PublicSignUpPort> {
+    Arc::new(PublicSignUpAdapter {
+        store,
+        session_store,
+        session_ttl_days,
+    })
 }
 
 async fn invoke_public_residual<I, O>(

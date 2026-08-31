@@ -33,12 +33,12 @@ pub(super) enum McpInvocationInput {
     },
 }
 
-pub(super) struct McpForwardHeader {
+pub(crate) struct McpForwardHeader {
     pub(super) name: String,
     pub(super) value: Vec<u8>,
 }
 
-pub(super) struct McpToolInvocationContext {
+pub(crate) struct McpToolInvocationContext {
     pub(super) headers: Vec<McpForwardHeader>,
     pub(super) user: domain::UserRecord,
     pub(super) actor: domain::ActorContext,

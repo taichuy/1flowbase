@@ -21,6 +21,12 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
   const openai = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/openai.rs');
   const anthropic = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/anthropic.rs');
   const workflowExtension = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/ex.rs');
+  const contributions = read(repoRoot, 'api/apps/api-server/src/extension_bus/interface_contributions.rs');
+  const publicAuth = read(repoRoot, 'api/apps/api-server/src/routes/identity/auth.rs');
+  const publicSignIn = read(repoRoot, 'api/apps/api-server/src/routes/identity/sign_in_interface.rs');
+  const native = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/native.rs');
+  const compatibility = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/compatibility_interface.rs');
+  const mcp = read(repoRoot, 'api/apps/api-server/src/routes/mcp_protocol.rs');
   const protocolSources = `${stream}\n${openai}\n${anthropic}`;
   const violations = [];
 
@@ -45,6 +51,24 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
   }
   if (workflowExtension.includes('require_session(&state') || workflowExtension.includes('require_csrf(&headers')) {
     violations.push('/api/ex retains a direct authentication or CSRF bypass');
+  }
+  if (contributions.includes('type CompileInterfaceRegistry') || contributions.includes('Weak<crate::app_state::ApiState>')) {
+    violations.push('Interface contribution collector retains a global-state compile callback');
+  }
+  if (contributions.includes('collector.compile(Arc::downgrade')) {
+    violations.push('Interface contribution publication forwards global state into the collector');
+  }
+  for (const [name, source] of [
+    ['public auth', publicAuth],
+    ['public sign-in', publicSignIn],
+    ['native', native],
+    ['compatibility', compatibility],
+    ['workflow extension', workflowExtension],
+    ['MCP', mcp],
+  ]) {
+    if (/struct\s+\w*Adapter\s*\{[^}]*\b(?:Weak\s*<\s*)?(?:Arc\s*<\s*)?ApiState\b/su.test(source)) {
+      violations.push(`${name} Interface adapter retains the global ApiState container`);
+    }
   }
   return violations;
 }

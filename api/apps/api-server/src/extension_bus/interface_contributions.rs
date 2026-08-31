@@ -5,32 +5,33 @@ use interface_runtime::{
     InterfaceOwner, RegistryCompilationError, RegistryCompiler,
 };
 
-type CompileInterfaceRegistry =
-    fn(
-        std::sync::Weak<crate::app_state::ApiState>,
-    ) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError>;
-
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) struct InterfaceRegistryContribution {
     contribution_id: &'static str,
     authorization_operations: &'static [&'static str],
     owners: &'static [&'static str],
-    compile: CompileInterfaceRegistry,
+    registry: Arc<CompiledInterfaceRegistry>,
 }
 
 impl InterfaceRegistryContribution {
-    pub(crate) const fn new(
+    pub(crate) fn new(
         contribution_id: &'static str,
         authorization_operations: &'static [&'static str],
         owners: &'static [&'static str],
-        compile: CompileInterfaceRegistry,
+        registry: Arc<CompiledInterfaceRegistry>,
     ) -> Self {
         Self {
             contribution_id,
             authorization_operations,
             owners,
-            compile,
+            registry,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn with_test_contribution_id(mut self, contribution_id: &'static str) -> Self {
+        self.contribution_id = contribution_id;
+        self
     }
 }
 
@@ -87,10 +88,7 @@ impl InterfaceContributionCollector {
         Ok(())
     }
 
-    pub(crate) fn compile(
-        self,
-        state: std::sync::Weak<crate::app_state::ApiState>,
-    ) -> anyhow::Result<Arc<CompiledInterfaceRegistry>> {
+    pub(crate) fn compile(self) -> anyhow::Result<Arc<CompiledInterfaceRegistry>> {
         let mut operations = BTreeSet::new();
         let mut owners = BTreeSet::new();
         for published in &self.published {
@@ -111,91 +109,86 @@ impl InterfaceContributionCollector {
             compiler.absorb_interface(published.registry.as_ref(), &published.interface_id)?;
         }
         for contribution in self.contributions {
-            compiler.absorb_snapshot((contribution.compile)(state.clone())?.as_ref())?;
+            compiler.absorb_snapshot(contribution.registry.as_ref())?;
         }
         Ok(compiler.compile()?)
     }
 }
 
-pub(crate) fn production_interface_contributions() -> [InterfaceRegistryContribution; 7] {
-    [
+pub(crate) fn production_interface_contributions(
+    state: &Arc<crate::app_state::ApiState>,
+) -> Result<Vec<InterfaceRegistryContribution>, RegistryCompilationError> {
+    let public_login_instances = crate::routes::auth::public_login_instances_port(
+        state.store.clone(),
+        Arc::clone(&state.authenticator_registry),
+        state.bootstrap_workspace_id,
+    );
+    let public_sign_in = crate::routes::sign_in_interface::public_sign_in_port(
+        state.store.clone(),
+        Arc::clone(&state.session_store),
+        state.session_ttl_days,
+    );
+    let public_providers = crate::routes::auth::public_providers_port(
+        state.store.clone(),
+        state.bootstrap_workspace_id,
+    );
+    let public_sign_up = crate::routes::auth::public_sign_up_port(
+        state.store.clone(),
+        Arc::clone(&state.session_store),
+        state.session_ttl_days,
+    );
+
+    Ok(vec![
         InterfaceRegistryContribution::new(
             "api-server.public-login-instances",
             &["public.auth.login-instances.read"],
             &["api-server.public-auth"],
-            crate::routes::auth::compile_public_login_instances_registry,
+            crate::routes::auth::compile_public_login_instances_registry(public_login_instances)?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.public-sign-in",
             &["public.auth.sign-in"],
             &["api-server.public-auth"],
-            crate::routes::sign_in_interface::compile_registry,
+            crate::routes::sign_in_interface::compile_registry(public_sign_in)?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.public-auth-residual",
             &["public.auth.providers.read", "public.auth.sign-up"],
             &["api-server.public-auth"],
-            crate::routes::auth::compile_public_residual_registry,
+            crate::routes::auth::compile_public_residual_registry(
+                public_providers,
+                public_sign_up,
+            )?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.native-runs",
             &["application.native.runs.create"],
             &["api-server.application-public-api"],
-            compile_native_runs,
+            crate::routes::application_public_api::native::compile_native_interface_registry(
+                Arc::clone(state) as Arc<dyn crate::routes::application_public_api::native_interface::ApplicationNativeRunPort>,
+            )?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.compatibility",
             &["application.native.runs.create"],
             &["api-server.application-public-api"],
-            compile_compatibility,
+            crate::routes::application_public_api::compatibility_interface::compile_registry(
+                state.clone(),
+            )?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.mcp",
             &["mcp.tools.invoke"],
             &["api-server.mcp-protocol"],
-            compile_mcp,
+            crate::routes::mcp_protocol::compile_mcp_interface_registry(state.clone())?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.workflow-extension",
             &["workflow-extension.invoke"],
             &["api-server.workflow-extension"],
-            compile_workflow_extension,
+            crate::routes::application_public_api::ex::compile_workflow_extension_registry(
+                state.clone(),
+            )?,
         ),
-    ]
-}
-
-fn compile_native_runs(
-    state: std::sync::Weak<crate::app_state::ApiState>,
-) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError> {
-    let state = state
-        .upgrade()
-        .expect("native contribution is assembled while API state is alive");
-    crate::routes::application_public_api::native::compile_native_interface_registry(state)
-}
-
-fn compile_compatibility(
-    state: std::sync::Weak<crate::app_state::ApiState>,
-) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError> {
-    let state = state
-        .upgrade()
-        .expect("compatibility contribution is assembled while API state is alive");
-    crate::routes::application_public_api::compatibility_interface::compile_registry(state)
-}
-
-fn compile_workflow_extension(
-    state: std::sync::Weak<crate::app_state::ApiState>,
-) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError> {
-    let state = state
-        .upgrade()
-        .expect("workflow contribution is assembled while API state is alive");
-    crate::routes::application_public_api::ex::compile_workflow_extension_registry(state)
-}
-
-fn compile_mcp(
-    state: std::sync::Weak<crate::app_state::ApiState>,
-) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError> {
-    let state = state
-        .upgrade()
-        .expect("MCP contribution is assembled while API state is alive");
-    crate::routes::mcp_protocol::compile_mcp_interface_registry(state)
+    ])
 }

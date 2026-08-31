@@ -242,10 +242,10 @@ impl ExtensionBootSnapshot {
                 crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_CONTRIBUTOR_ID,
             )?,
         );
-        for contribution in production_interface_contributions() {
+        for contribution in production_interface_contributions(state)? {
             collector.add(contribution)?;
         }
-        let candidate = collector.compile(Arc::downgrade(state))?;
+        let candidate = collector.compile()?;
         self.authentication_factories
             .validate_registry(&candidate)?;
         registry.publish(candidate);
