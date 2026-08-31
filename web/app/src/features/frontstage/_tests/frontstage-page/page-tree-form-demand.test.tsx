@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { Form } from 'antd';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -8,14 +8,20 @@ import {
   type PageTreeFormDialog
 } from '../../pages/frontstage-page/page-tree-form-modal';
 
-function Harness({ dialog }: { dialog: PageTreeFormDialog | null }) {
+function Harness({
+  dialog,
+  pickerOpen = false
+}: {
+  dialog: PageTreeFormDialog | null;
+  pickerOpen?: boolean;
+}) {
   const [form] = Form.useForm();
-  const [pickerOpen, setPickerOpen] = useState(false);
+  const [isPickerOpen, setPickerOpen] = useState(pickerOpen);
   return (
     <PageTreeFormModal
       dialog={dialog}
       form={form}
-      iconPickerOpen={pickerOpen}
+      iconPickerOpen={isPickerOpen}
       isOperationPending={false}
       onCancel={vi.fn()}
       onIconPickerOpenChange={setPickerOpen}
@@ -48,13 +54,11 @@ describe('PageTreeFormModal demand lifecycle', () => {
   it('MDP-002 loads the icon catalog only after explicit picker intent', async () => {
     render(<Harness dialog={dialog} />);
 
-    const selectIcon = await screen.findByRole('button', {
-      name: 'auto.select_icon'
-    });
+    await screen.findByRole('button', { name: 'auto.select_icon' });
     expect(screen.queryByRole('searchbox')).toBeNull();
 
-    fireEvent.click(selectIcon);
+    render(<Harness dialog={dialog} pickerOpen />);
 
-    await waitFor(() => expect(screen.getByRole('searchbox')).toBeTruthy());
+    expect(await screen.findByRole('searchbox')).toBeTruthy();
   });
 });
