@@ -9,18 +9,6 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json, Router,
 };
-use control_plane::{
-    application::{
-        ApplicationService, CreateApplicationCommand, CreateApplicationTagCommand,
-        DeleteApplicationCommand, ReplaceApplicationEnvironmentVariablesCommand,
-        UpdateApplicationCommand,
-    },
-    errors::ControlPlaneError,
-    js_dependency::{
-        ApplicationJsDependencyService, ReplaceApplicationJsDependencySelectionCommand,
-    },
-    ports::{ApplicationEnvironmentVariableInput, CreateWorkflowTriggerConfig},
-};
 use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
@@ -30,10 +18,11 @@ use super::application_api::{WorkflowExtensionHttpMethodBody, WorkflowExtensionR
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
+
+pub(crate) mod interface;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -474,42 +463,6 @@ fn to_application_js_dependency_selection(
     }
 }
 
-async fn application_type_catalog(
-    state: &ApiState,
-    locale: &domain::CatalogLocale,
-) -> Result<Vec<ApplicationTypeOptionResponse>, ApiError> {
-    let agent_flow = crate::app_state::resolve_request_text(state, locale, "Agent Flow").await?;
-    let workflow = crate::app_state::resolve_request_text(state, locale, "Workflow").await?;
-    Ok(vec![
-        ApplicationTypeOptionResponse {
-            value: ApplicationTypeDto::AgentFlow,
-            label: agent_flow,
-        },
-        ApplicationTypeOptionResponse {
-            value: ApplicationTypeDto::Workflow,
-            label: workflow,
-        },
-    ])
-}
-
-async fn workflow_trigger_type_catalog(
-    state: &ApiState,
-    locale: &domain::CatalogLocale,
-) -> Result<Vec<WorkflowTriggerTypeOptionResponse>, ApiError> {
-    let extension = crate::app_state::resolve_request_text(state, locale, "Extension").await?;
-    let schedule = crate::app_state::resolve_request_text(state, locale, "Schedule").await?;
-    Ok(vec![
-        WorkflowTriggerTypeOptionResponse {
-            value: WorkflowTriggerTypeDto::Extension,
-            label: extension,
-        },
-        WorkflowTriggerTypeOptionResponse {
-            value: WorkflowTriggerTypeDto::Schedule,
-            label: schedule,
-        },
-    ])
-}
-
 fn to_application_summary(application: domain::ApplicationRecord) -> ApplicationSummaryResponse {
     ApplicationSummaryResponse {
         id: application.id.to_string(),
@@ -638,83 +591,6 @@ fn to_application_detail(application: domain::ApplicationRecord) -> ApplicationD
     }
 }
 
-fn parse_create_workflow_trigger_config(
-    trigger_type: Option<domain::WorkflowTriggerType>,
-    config: Option<CreateWorkflowTriggerConfigBody>,
-) -> Result<Option<CreateWorkflowTriggerConfig>, ApiError> {
-    match (trigger_type, config) {
-        (None, None) => Ok(None),
-        (None, Some(_)) => Err(ControlPlaneError::InvalidInput("workflow_trigger_config").into()),
-        (Some(domain::WorkflowTriggerType::Schedule), Some(config)) => {
-            let cron = config
-                .cron
-                .filter(|value| !value.trim().is_empty())
-                .ok_or(ControlPlaneError::InvalidInput("cron"))?;
-            let timezone = config
-                .timezone
-                .filter(|value| !value.trim().is_empty())
-                .ok_or(ControlPlaneError::InvalidInput("timezone"))?;
-            Ok(Some(CreateWorkflowTriggerConfig::Schedule {
-                cron,
-                timezone,
-                input_payload: config
-                    .input_payload
-                    .unwrap_or_else(|| serde_json::json!({})),
-            }))
-        }
-        (Some(domain::WorkflowTriggerType::Extension), Some(config)) => {
-            let subpath = config
-                .subpath
-                .filter(|value| !value.trim().is_empty())
-                .ok_or(ControlPlaneError::InvalidInput("subpath"))?;
-            let http_method = match config
-                .http_method
-                .unwrap_or(WorkflowExtensionHttpMethodBody::Post)
-            {
-                WorkflowExtensionHttpMethodBody::Get => "GET",
-                WorkflowExtensionHttpMethodBody::Post => "POST",
-                WorkflowExtensionHttpMethodBody::Put => "PUT",
-                WorkflowExtensionHttpMethodBody::Patch => "PATCH",
-                WorkflowExtensionHttpMethodBody::Delete => "DELETE",
-                WorkflowExtensionHttpMethodBody::Head => "HEAD",
-                WorkflowExtensionHttpMethodBody::Options => "OPTIONS",
-            }
-            .to_string();
-            let response_mode = match config
-                .response_mode
-                .unwrap_or(WorkflowExtensionResponseModeBody::Sync)
-            {
-                WorkflowExtensionResponseModeBody::Sync => "sync",
-                WorkflowExtensionResponseModeBody::Async => "async",
-            }
-            .to_string();
-            Ok(Some(CreateWorkflowTriggerConfig::Extension {
-                subpath,
-                http_method,
-                response_mode,
-            }))
-        }
-        (Some(_), None) => Ok(None),
-    }
-}
-
-fn parse_workflow_trigger_type(
-    application_type: domain::ApplicationType,
-    value: Option<WorkflowTriggerTypeDto>,
-) -> Result<Option<domain::WorkflowTriggerType>, ApiError> {
-    match application_type {
-        domain::ApplicationType::AgentFlow if value.is_none() => Ok(None),
-        domain::ApplicationType::AgentFlow => {
-            Err(ControlPlaneError::InvalidInput("workflow_trigger_type").into())
-        }
-        domain::ApplicationType::Workflow => Ok(Some(
-            value
-                .unwrap_or(WorkflowTriggerTypeDto::Extension)
-                .into_domain(),
-        )),
-    }
-}
-
 #[utoipa::path(
     get,
     path = "/api/console/applications",
@@ -728,17 +604,17 @@ pub async fn list_applications(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<ApplicationSummaryResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let applications = ApplicationService::new(state.store.for_actor(context.actor.clone()))
-        .list_applications(context.user.id)
-        .await?;
-
-    Ok(Json(ApiSuccess::new(
-        applications
-            .into_iter()
-            .map(to_application_summary)
-            .collect(),
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::ApplicationsInput::List,
+    )
+    .await?;
+    let interface::ApplicationsOutput::Applications(applications) = output else {
+        return Err(anyhow::anyhow!("applications list output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(applications)))
 }
 
 #[utoipa::path(
@@ -756,20 +632,18 @@ pub async fn get_application_catalog(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ApplicationCatalogResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let tags = ApplicationService::new(state.store.for_actor(context.actor.clone()))
-        .list_application_tags(context.user.id)
-        .await?;
-    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
-
-    Ok(Json(ApiSuccess::new(ApplicationCatalogResponse {
-        types: application_type_catalog(&state, &locale).await?,
-        workflow_triggers: workflow_trigger_type_catalog(&state, &locale).await?,
-        tags: tags
-            .into_iter()
-            .map(to_application_tag_catalog_entry)
-            .collect(),
-    })))
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.catalog.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::ApplicationsInput::Catalog { locale },
+    )
+    .await?;
+    let interface::ApplicationsOutput::Catalog(catalog) = output else {
+        return Err(anyhow::anyhow!("applications catalog output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(catalog)))
 }
 
 #[utoipa::path(
@@ -790,33 +664,17 @@ pub async fn create_application(
     headers: HeaderMap,
     Json(body): Json<CreateApplicationBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ApplicationDetailResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    let application_type = body.application_type.into_domain();
-    let workflow_trigger_type =
-        parse_workflow_trigger_type(application_type, body.workflow_trigger_type)?;
-    let created = ApplicationService::new(state.store.for_actor(context.actor.clone()))
-        .create_application(CreateApplicationCommand {
-            actor_user_id: context.user.id,
-            application_type,
-            workflow_trigger_type,
-            workflow_trigger_config: parse_create_workflow_trigger_config(
-                workflow_trigger_type,
-                body.workflow_trigger_config,
-            )?,
-            name: body.name,
-            description: body.description,
-            icon: body.icon,
-            icon_type: body.icon_type,
-            icon_background: body.icon_background,
-        })
-        .await?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_application_detail(created))),
-    ))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ApplicationsInput::Create(body),
+    )
+    .await?;
+    let interface::ApplicationsOutput::Application(application) = output else {
+        return Err(anyhow::anyhow!("applications create output contract mismatch").into());
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(application))))
 }
 
 #[utoipa::path(
@@ -835,20 +693,17 @@ pub async fn create_application_tag(
     headers: HeaderMap,
     Json(body): Json<CreateApplicationTagBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ApplicationTagCatalogResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    let created = ApplicationService::new(state.store.for_actor(context.actor.clone()))
-        .create_application_tag(CreateApplicationTagCommand {
-            actor_user_id: context.user.id,
-            name: body.name,
-        })
-        .await?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_application_tag_catalog_entry(created))),
-    ))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.tags.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ApplicationsInput::CreateTag(body),
+    )
+    .await?;
+    let interface::ApplicationsOutput::Tag(tag) = output else {
+        return Err(anyhow::anyhow!("applications tag create output contract mismatch").into());
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(tag))))
 }
 
 #[utoipa::path(
@@ -869,12 +724,17 @@ pub async fn get_application(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<ApplicationDetailResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let application = ApplicationService::new(state.store.for_actor(context.actor.clone()))
-        .get_application(context.user.id, id)
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_application_detail(application))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::ApplicationsInput::Get { application_id: id },
+    )
+    .await?;
+    let interface::ApplicationsOutput::Application(application) = output else {
+        return Err(anyhow::anyhow!("applications get output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(application)))
 }
 
 #[utoipa::path(
@@ -895,17 +755,20 @@ pub async fn list_application_environment_variables(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<Vec<ApplicationEnvironmentVariableResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let variables = ApplicationService::new(state.store.for_actor(context.actor.clone()))
-        .list_application_environment_variables(context.user.id, id)
-        .await?;
-
-    Ok(Json(ApiSuccess::new(
-        variables
-            .into_iter()
-            .map(to_application_environment_variable)
-            .collect(),
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.environment-variables.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::ApplicationsInput::ListEnvironmentVariables { application_id: id },
+    )
+    .await?;
+    let interface::ApplicationsOutput::EnvironmentVariables(variables) = output else {
+        return Err(anyhow::anyhow!(
+            "applications environment variables list output contract mismatch"
+        )
+        .into());
+    };
+    Ok(Json(ApiSuccess::new(variables)))
 }
 
 #[utoipa::path(
@@ -929,33 +792,23 @@ pub async fn replace_application_environment_variables(
     Path(id): Path<Uuid>,
     Json(body): Json<ReplaceApplicationEnvironmentVariablesBody>,
 ) -> Result<Json<ApiSuccess<Vec<ApplicationEnvironmentVariableResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    let variables = body
-        .variables
-        .into_iter()
-        .map(|variable| ApplicationEnvironmentVariableInput {
-            name: variable.name,
-            value_type: variable.value_type,
-            value: variable.value,
-            description: variable.description,
-        })
-        .collect();
-    let replaced = ApplicationService::new(state.store.for_actor(context.actor.clone()))
-        .replace_application_environment_variables(ReplaceApplicationEnvironmentVariablesCommand {
-            actor_user_id: context.user.id,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.environment-variables.replace.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ApplicationsInput::ReplaceEnvironmentVariables {
             application_id: id,
-            variables,
-        })
-        .await?;
-
-    Ok(Json(ApiSuccess::new(
-        replaced
-            .into_iter()
-            .map(to_application_environment_variable)
-            .collect(),
-    )))
+            body,
+        },
+    )
+    .await?;
+    let interface::ApplicationsOutput::EnvironmentVariables(variables) = output else {
+        return Err(anyhow::anyhow!(
+            "applications environment variables replace output contract mismatch"
+        )
+        .into());
+    };
+    Ok(Json(ApiSuccess::new(variables)))
 }
 
 #[utoipa::path(
@@ -976,17 +829,19 @@ pub async fn list_application_js_dependency_selections(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<Vec<ApplicationJsDependencySelectionResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let selections = ApplicationJsDependencyService::new(state.store.clone())
-        .list_application_js_dependency_selections(context.user.id, id)
-        .await?;
-
-    Ok(Json(ApiSuccess::new(
-        selections
-            .into_iter()
-            .map(to_application_js_dependency_selection)
-            .collect(),
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.js-dependencies.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface::ApplicationsInput::ListJsDependencies { application_id: id },
+    )
+    .await?;
+    let interface::ApplicationsOutput::JsDependencies(selections) = output else {
+        return Err(
+            anyhow::anyhow!("applications js dependencies list output contract mismatch").into(),
+        );
+    };
+    Ok(Json(ApiSuccess::new(selections)))
 }
 
 #[utoipa::path(
@@ -1010,28 +865,22 @@ pub async fn replace_application_js_dependency_selection(
     Path(id): Path<Uuid>,
     Json(body): Json<ReplaceApplicationJsDependencySelectionBody>,
 ) -> Result<Json<ApiSuccess<ApplicationJsDependencySelectionResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let installation_id = body
-        .installation_id
-        .parse::<Uuid>()
-        .map_err(|_| ControlPlaneError::InvalidInput("installation_id"))?;
-
-    let selection = ApplicationJsDependencyService::new(state.store.clone())
-        .replace_application_js_dependency_selection(
-            ReplaceApplicationJsDependencySelectionCommand {
-                actor_user_id: context.user.id,
-                application_id: id,
-                installation_id,
-                alias: body.alias,
-                target: body.target,
-            },
-        )
-        .await?;
-
-    Ok(Json(ApiSuccess::new(
-        to_application_js_dependency_selection(selection),
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.js-dependencies.replace.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ApplicationsInput::ReplaceJsDependency {
+            application_id: id,
+            body,
+        },
+    )
+    .await?;
+    let interface::ApplicationsOutput::JsDependency(selection) = output else {
+        return Err(
+            anyhow::anyhow!("applications js dependency replace output contract mismatch").into(),
+        );
+    };
+    Ok(Json(ApiSuccess::new(selection)))
 }
 
 #[utoipa::path(
@@ -1055,33 +904,20 @@ pub async fn patch_application(
     Path(id): Path<Uuid>,
     Json(body): Json<PatchApplicationBody>,
 ) -> Result<Json<ApiSuccess<ApplicationDetailResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    let tag_ids = body
-        .tag_ids
-        .into_iter()
-        .map(|value| {
-            value
-                .parse::<Uuid>()
-                .map_err(|_| ControlPlaneError::InvalidInput("tag_ids"))
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-
-    let updated = ApplicationService::new(state.store.for_actor(context.actor.clone()))
-        .update_application(UpdateApplicationCommand {
-            actor_user_id: context.user.id,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ApplicationsInput::Patch {
             application_id: id,
-            name: body.name,
-            description: body.description,
-            tag_ids,
-            icon: body.icon,
-            icon_type: body.icon_type,
-            icon_background: body.icon_background,
-        })
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_application_detail(updated))))
+            body,
+        },
+    )
+    .await?;
+    let interface::ApplicationsOutput::Application(application) = output else {
+        return Err(anyhow::anyhow!("applications update output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(application)))
 }
 
 #[utoipa::path(
@@ -1102,15 +938,12 @@ pub async fn delete_application(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    ApplicationService::new(state.store.for_actor(context.actor.clone()))
-        .delete_application(DeleteApplicationCommand {
-            actor_user_id: context.user.id,
-            application_id: id,
-        })
-        .await?;
-
+    crate::routes::console_interface::invoke::<_, interface::ApplicationsOutput>(
+        Arc::clone(&state),
+        "http.console.applications.delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface::ApplicationsInput::Delete { application_id: id },
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
