@@ -1,3 +1,5 @@
+const fs = require('node:fs');
+
 const { buildServiceEnv, getServiceDefinitions } = require('../dev-up/core.js');
 
 const PASSWORD_LOCAL_AUTHENTICATOR_ID = '00000000-0000-0000-0000-000000000001';
@@ -114,6 +116,17 @@ function sessionCookie(headers) {
     .join('; ');
 }
 
+function rebaseStorageStateCookies(storageStatePath, targetOrigin) {
+  const target = new URL(targetOrigin);
+  const storageState = JSON.parse(fs.readFileSync(storageStatePath, 'utf8'));
+  storageState.cookies = storageState.cookies.map((cookie) => ({
+    ...cookie,
+    domain: target.hostname,
+    secure: target.protocol === 'https:' || cookie.secure,
+  }));
+  fs.writeFileSync(storageStatePath, `${JSON.stringify(storageState, null, 2)}\n`);
+}
+
 async function openTemporaryOwnerSession({ apiBaseUrl, account, password, fetchImpl = globalThis.fetch }) {
   const response = await fetchImpl(`${apiBaseUrl}/api/public/auth/sign-in`, {
     method: 'POST',
@@ -160,4 +173,5 @@ module.exports = {
   loadRootCredentials,
   openTemporaryConsoleSession,
   openTemporaryOwnerSession,
+  rebaseStorageStateCookies,
 };

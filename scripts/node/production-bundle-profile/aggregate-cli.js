@@ -23,14 +23,27 @@ if (inputs.length === 0) {
 const receipts = inputs.map((input) =>
   JSON.parse(fs.readFileSync(input, "utf8")),
 );
-const interactionReadySamples = receipts.map(({ interaction }, index) => {
-  if (!interaction || typeof interaction.readyMs !== "number") {
+const sampleKind = receipts.every(({ interaction }) => interaction)
+  ? "interaction_ready"
+  : receipts.every(({ openReadyMs }) => typeof openReadyMs === "number")
+    ? "icon_picker_open_ready"
+    : null;
+if (!sampleKind) {
+  throw new Error("Receipts must contain one consistent interaction metric");
+}
+const interactionReadySamples = receipts.map((receipt, index) => {
+  const sample =
+    sampleKind === "interaction_ready"
+      ? receipt.interaction?.readyMs
+      : receipt.openReadyMs;
+  if (typeof sample !== "number") {
     throw new Error(`Receipt '${inputs[index]}' has no interaction sample`);
   }
-  return interaction.readyMs;
+  return sample;
 });
 const summary = {
   schemaVersion: "1flowbase.production-interaction-summary/v1",
+  sampleKind,
   sampleCount: receipts.length,
   allPassed: receipts.every(({ ok }) => ok === true),
   interactionReadyMs: {

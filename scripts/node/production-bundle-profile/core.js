@@ -17,6 +17,40 @@ function normalizeAssetPath(value) {
   return value.replace(/^\.?\//u, "").replace(/^assets\//u, "");
 }
 
+function assetNameFromUrl(urlValue) {
+  const pathname = new URL(urlValue).pathname;
+  for (const directory of ["assets", "icons"]) {
+    const marker = `/${directory}/`;
+    const index = pathname.indexOf(marker);
+    if (index >= 0)
+      return `${directory}/${pathname.slice(index + marker.length)}`;
+  }
+  return null;
+}
+
+function observeAssetDemand(page) {
+  const requestedAssets = new Set();
+  const failedAssets = [];
+
+  page.on("request", (request) => {
+    const asset = assetNameFromUrl(request.url());
+    if (asset) requestedAssets.add(asset);
+  });
+  page.on("response", (response) => {
+    const asset = assetNameFromUrl(response.url());
+    if (asset && response.status() >= 400) {
+      failedAssets.push({ asset, status: response.status() });
+    }
+  });
+  page.on("requestfailed", (request) => {
+    const asset = assetNameFromUrl(request.url());
+    if (asset)
+      failedAssets.push({ asset, error: request.failure()?.errorText });
+  });
+
+  return { requestedAssets, failedAssets };
+}
+
 function collectHtmlEntryAssets(html) {
   const assets = new Set();
   const entryPattern =
@@ -80,7 +114,12 @@ function collectInitialAssetClosure(distDirectory) {
 function profileAssetFiles(distDirectory, files, budget = DEFAULT_BUDGET) {
   const assetsDirectory = path.join(distDirectory, "assets");
   const initialAssets = [...new Set(files)].sort().map((file) => {
-    const contents = fs.readFileSync(path.join(assetsDirectory, file));
+    const normalizedFile = normalizeAssetPath(file);
+    const contents = fs.readFileSync(
+      file.startsWith("icons/")
+        ? path.join(distDirectory, file)
+        : path.join(assetsDirectory, normalizedFile),
+    );
     return {
       file,
       rawBytes: contents.byteLength,
@@ -128,7 +167,11 @@ function profileProductionBundle(distDirectory, budget = DEFAULT_BUDGET) {
 }
 
 function classifyAsset(file) {
-  if (/^page-tree-icons-pack-[a-f0-9]{12}-.+\.svg$/u.test(file)) {
+  if (
+    /^(?:(?:assets|icons)\/)?page-tree-icons-pack-[a-f0-9]{12}-.+\.svg$/u.test(
+      file,
+    )
+  ) {
     return "page_tree_icon_preview";
   }
   if (/page-tree-icon-component-pack/u.test(file)) {
@@ -196,9 +239,11 @@ function percentile(values, quantile) {
 module.exports = {
   DEFAULT_BUDGET,
   DEFAULT_INTERACTION_BUDGET,
+  assetNameFromUrl,
   classifyAsset,
   collectHtmlEntryAssets,
   collectStaticImports,
+  observeAssetDemand,
   percentile,
   profileAssetFiles,
   profileInteractionAssets,

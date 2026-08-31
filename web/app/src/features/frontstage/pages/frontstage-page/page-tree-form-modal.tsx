@@ -57,7 +57,7 @@ function renderPageTreeIconPicker(
   iconPickerOpen: boolean,
   onIconPickerOpenChange: (open: boolean) => void
 ) {
-  const picker = iconPickerOpen ? (
+  const picker = (
     <div className="frontstage-page-tree-form__icon-popover">
       <Suspense fallback={null}>
         <PageTreeIconPicker
@@ -69,13 +69,14 @@ function renderPageTreeIconPicker(
         />
       </Suspense>
     </div>
-  ) : null;
+  );
 
   return (
     <div className="frontstage-page-tree-form__icon-field">
       <Popover
         arrow={false}
         content={picker}
+        destroyOnHidden
         open={iconPickerOpen}
         placement="bottomLeft"
         trigger="click"

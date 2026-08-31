@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { Form } from 'antd';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
@@ -47,18 +47,20 @@ describe('PageTreeFormModal demand lifecycle', () => {
 
     expect(
       screen.queryByRole('button', { name: 'auto.select_icon' })
-    ).toBeNull();
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
   });
 
-  it('MDP-002 loads the icon catalog only after explicit picker intent', async () => {
+  it('MDP-002 loads the icon catalog only after a real picker click', async () => {
     render(<Harness dialog={dialog} />);
 
-    await screen.findByRole('button', { name: 'auto.select_icon' });
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    const trigger = await screen.findByRole('button', {
+      name: 'auto.select_icon'
+    });
+    expect(screen.queryByRole('searchbox')).not.toBeInTheDocument();
 
-    render(<Harness dialog={dialog} pickerOpen />);
+    fireEvent.click(trigger);
 
-    expect(await screen.findByRole('searchbox')).toBeTruthy();
+    expect(await screen.findByRole('searchbox')).toBeInTheDocument();
   });
 });

@@ -4,9 +4,9 @@ import { useEffect } from 'react';
 import { useAuthStore } from '../state/auth-store';
 import { useFrontstageDesignModeStore } from '../state/frontstage-design-mode-store';
 import { i18nText } from '../shared/i18n/text';
+import { preloadDesignModeDemand } from './design-mode-demand';
 
 const DESIGN_MODE_PERMISSION = 'frontstage.page.design';
-
 
 function FrontstageDesignModeActionBase() {
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
@@ -26,6 +26,12 @@ function FrontstageDesignModeActionBase() {
     actor?.effective_display_role === 'root' ||
     Boolean(me?.permissions.includes(DESIGN_MODE_PERMISSION));
   const hasResolvedDesignModePermission = sessionStatus !== 'unknown';
+
+  useEffect(() => {
+    if (hasResolvedDesignModePermission && canUseDesignMode && !isDesignMode) {
+      void preloadDesignModeDemand();
+    }
+  }, [canUseDesignMode, hasResolvedDesignModePermission, isDesignMode]);
 
   // Exit design mode only when permission is lost; route changes should not
   // overwrite the browser-persisted preference.
@@ -57,7 +63,9 @@ function FrontstageDesignModeActionBase() {
     return null;
   }
 
-  const label = isDesignMode ? i18nText("appShell", "auto.exit_design_mode") : i18nText("appShell", "auto.enter_design_mode");
+  const label = isDesignMode
+    ? i18nText('appShell', 'auto.exit_design_mode')
+    : i18nText('appShell', 'auto.enter_design_mode');
 
   const handleClick = () => {
     toggleDesignMode();

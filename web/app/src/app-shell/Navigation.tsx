@@ -20,14 +20,15 @@ import {
 } from '../features/frontstage/api/page-tree';
 import { useAuthStore } from '../state/auth-store';
 import { useFrontstageDesignModeStore } from '../state/frontstage-design-mode-store';
+import { loadTopbarNavigationDesigner } from './design-mode-demand';
 
 const TopbarNavigationDesigner = lazy(() =>
-  import('./TopbarNavigationDesigner').then((module) => ({
+  loadTopbarNavigationDesigner().then((module) => ({
     default: module.TopbarNavigationDesigner
   }))
 );
 const TopbarNavigationItemLabel = lazy(() =>
-  import('./TopbarNavigationDesigner').then((module) => ({
+  loadTopbarNavigationDesigner().then((module) => ({
     default: module.TopbarNavigationItemLabel
   }))
 );

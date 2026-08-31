@@ -11,8 +11,13 @@ const {
 const {
   loadRootCredentials,
   openTemporaryConsoleSession,
+  rebaseStorageStateCookies,
 } = require("../page-debug/auth.js");
-const { profileAssetFiles, profileInteractionAssets } = require("./core.js");
+const {
+  observeAssetDemand,
+  profileAssetFiles,
+  profileInteractionAssets,
+} = require("./core.js");
 
 function optionValue(name, fallback) {
   const index = process.argv.indexOf(name);
@@ -23,13 +28,6 @@ function optionValues(name) {
   return process.argv.flatMap((value, index) =>
     value === name && process.argv[index + 1] ? [process.argv[index + 1]] : [],
   );
-}
-
-function assetNameFromUrl(urlValue) {
-  const pathname = new URL(urlValue).pathname;
-  const marker = "/assets/";
-  const index = pathname.indexOf(marker);
-  return index >= 0 ? pathname.slice(index + marker.length) : null;
 }
 
 async function main() {
@@ -43,6 +41,7 @@ async function main() {
     '[data-testid="builtin-password-sign-in"]',
   );
   const outputPath = optionValue("--output");
+  const cacheState = optionValue("--cache-state", "cold");
   const interactionSelector = optionValue("--interaction-selector");
   const interactionReadySelector = optionValue(
     "--interaction-ready-selector",
@@ -50,6 +49,7 @@ async function main() {
   );
   const authenticated = process.argv.includes("--authenticated");
   const apiBaseUrl = optionValue("--api-base-url", "http://127.0.0.1:7800");
+  const authCookieOrigin = optionValue("--auth-cookie-origin");
   const budget = {
     initialGzipBytesMax: Number.parseInt(
       optionValue("--initial-gzip-max", String(350 * 1024)),
@@ -83,12 +83,13 @@ async function main() {
       10,
     ),
   };
+  if (!new Set(["cold", "warm"]).has(cacheState)) {
+    throw new Error("--cache-state must be cold or warm");
+  }
   const playwright = loadPlaywright(repoRoot);
   const browser = await playwright.chromium.launch(
     buildChromiumLaunchOptions({ headless: true }),
   );
-  const requestedAssets = new Set();
-  const failedAssets = [];
   const pageErrors = [];
   let temporarySession = null;
   let storageStatePath = null;
@@ -105,28 +106,29 @@ async function main() {
       password: credentials.password,
       storageStatePath,
     });
+    if (authCookieOrigin) {
+      rebaseStorageStateCookies(storageStatePath, authCookieOrigin);
+    }
   }
   const context = await browser.newContext(
     storageStatePath ? { storageState: storageStatePath } : {},
   );
   const page = await context.newPage();
-  page.on("response", (response) => {
-    const asset = assetNameFromUrl(response.url());
-    if (!asset) return;
-    if (response.status() >= 400) {
-      failedAssets.push({ asset, status: response.status() });
-    } else {
-      requestedAssets.add(asset);
-    }
-  });
-  page.on("requestfailed", (request) => {
-    const asset = assetNameFromUrl(request.url());
-    if (asset)
-      failedAssets.push({ asset, error: request.failure()?.errorText });
-  });
+  const { requestedAssets, failedAssets } = observeAssetDemand(page);
   page.on("pageerror", (error) => pageErrors.push(error.message));
 
   try {
+    if (cacheState === "warm") {
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
+      await page.waitForSelector(readySelector, {
+        state: "visible",
+        timeout: 60_000,
+      });
+      await page
+        .waitForLoadState("networkidle", { timeout: 60_000 })
+        .catch(() => {});
+      await page.goto("about:blank");
+    }
     const startedAt = Date.now();
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 60_000 });
     await page.waitForSelector(readySelector, {
@@ -213,6 +215,7 @@ async function main() {
       url,
       finalUrl: page.url(),
       authenticated,
+      cacheState,
       readySelector,
       readyDurationMs,
       durationMs: Date.now() - startedAt,

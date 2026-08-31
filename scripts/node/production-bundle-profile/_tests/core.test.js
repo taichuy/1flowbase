@@ -3,15 +3,42 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { EventEmitter } = require("node:events");
 
 const {
   collectHtmlEntryAssets,
   collectStaticImports,
+  observeAssetDemand,
   percentile,
   profileAssetFiles,
   profileInteractionAssets,
   profileProductionBundle,
 } = require("../core.js");
+
+test("MDP-001 attributes demand when a request starts, independent of response latency", () => {
+  const page = new EventEmitter();
+  const demand = observeAssetDemand(page);
+  const request = {
+    url: () => "https://gateway.example/assets/initial-a.js",
+    failure: () => null,
+  };
+
+  page.emit("request", request);
+  const interactionBaseline = new Set(demand.requestedAssets);
+  page.emit("response", {
+    url: request.url,
+    status: () => 200,
+  });
+
+  assert.deepEqual([...demand.requestedAssets], ["assets/initial-a.js"]);
+  assert.deepEqual(
+    [...demand.requestedAssets].filter(
+      (asset) => !interactionBaseline.has(asset),
+    ),
+    [],
+  );
+  assert.deepEqual(demand.failedAssets, []);
+});
 
 function createBundle(files, html) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "bundle-profile-"));
