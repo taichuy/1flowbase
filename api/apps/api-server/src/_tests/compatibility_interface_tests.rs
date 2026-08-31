@@ -1,22 +1,17 @@
-use std::sync::Weak;
-
 use interface_runtime::{BindingId, InterfaceExecutionMode, InterfaceProtocol, ProtocolProjection};
 
-use crate::{
-    app_state::ApiState,
-    routes::application_public_api::compatibility_interface::{
-        self, ANTHROPIC_MESSAGES_BINDING_ID, ANTHROPIC_MESSAGES_STREAM_BINDING_ID,
-        NATIVE_WEBSOCKET_STREAM_BINDING_ID, OPENAI_CHAT_BINDING_ID, OPENAI_CHAT_ROOT_BINDING_ID,
-        OPENAI_CHAT_ROOT_STREAM_BINDING_ID, OPENAI_CHAT_STREAM_BINDING_ID,
-        OPENAI_RESPONSES_BINDING_ID, OPENAI_RESPONSES_COMPACT_BINDING_ID,
-        OPENAI_RESPONSES_ROOT_BINDING_ID, OPENAI_RESPONSES_ROOT_STREAM_BINDING_ID,
-        OPENAI_RESPONSES_STREAM_BINDING_ID, OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID,
-    },
+use crate::routes::application_public_api::compatibility_interface::{
+    self, ANTHROPIC_MESSAGES_BINDING_ID, ANTHROPIC_MESSAGES_STREAM_BINDING_ID,
+    NATIVE_WEBSOCKET_STREAM_BINDING_ID, OPENAI_CHAT_BINDING_ID, OPENAI_CHAT_ROOT_BINDING_ID,
+    OPENAI_CHAT_ROOT_STREAM_BINDING_ID, OPENAI_CHAT_STREAM_BINDING_ID, OPENAI_RESPONSES_BINDING_ID,
+    OPENAI_RESPONSES_COMPACT_BINDING_ID, OPENAI_RESPONSES_ROOT_BINDING_ID,
+    OPENAI_RESPONSES_ROOT_STREAM_BINDING_ID, OPENAI_RESPONSES_STREAM_BINDING_ID,
+    OPENAI_RESPONSES_WEBSOCKET_STREAM_BINDING_ID,
 };
 
 #[test]
 fn blocking_compatibility_bindings_publish_as_typed_http_plans() {
-    let registry = compatibility_interface::compile_registry(Weak::<ApiState>::new())
+    let registry = compatibility_interface::compile_registry_for_test()
         .expect("blocking compatibility catalog must publish");
     let expected = [
         OPENAI_CHAT_BINDING_ID,

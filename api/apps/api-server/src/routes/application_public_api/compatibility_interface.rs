@@ -153,7 +153,7 @@ type CompatibilityBlockingFuture<'a> = Pin<
     >,
 >;
 
-trait CompatibilityBlockingPort: Send + Sync + 'static {
+pub(crate) trait CompatibilityBlockingPort: Send + Sync + 'static {
     fn execute<'a>(
         &'a self,
         principal: &'a ApplicationPrincipal,
@@ -238,26 +238,15 @@ impl
     }
 }
 
-struct CompatibilityBlockingAdapter {
-    state: std::sync::Weak<ApiState>,
-}
-
-impl CompatibilityBlockingPort for CompatibilityBlockingAdapter {
+impl CompatibilityBlockingPort for ApiState {
     fn execute<'a>(
         &'a self,
         principal: &'a ApplicationPrincipal,
         input: CompatibilityBlockingInput,
     ) -> CompatibilityBlockingFuture<'a> {
-        let state = self.state.clone();
+        let state = Arc::new(self.clone());
         let actor = application_actor(principal);
         Box::pin(async move {
-            let state = state.upgrade().ok_or_else(|| {
-                CompatibilityBlockingTargetError(NativeApiError::new(
-                    axum::http::StatusCode::SERVICE_UNAVAILABLE,
-                    "api_state_unavailable",
-                    "API state is unavailable",
-                ))
-            })?;
             let (request, protocol, provider_transport) = match input.command {
                 CompatibilityInvocationCommand::Start {
                     request,
@@ -331,16 +320,9 @@ impl CompatibilityBlockingPort for CompatibilityBlockingAdapter {
                 + 'a,
         >,
     > {
-        let state = self.state.clone();
+        let state = Arc::new(self.clone());
         let actor = application_actor(principal);
         Box::pin(async move {
-            let state = state.upgrade().ok_or_else(|| {
-                CompatibilityBlockingTargetError(NativeApiError::new(
-                    axum::http::StatusCode::SERVICE_UNAVAILABLE,
-                    "api_state_unavailable",
-                    "API state is unavailable",
-                ))
-            })?;
             let typed = match input.command {
                 CompatibilityInvocationCommand::Start {
                     request,
@@ -436,7 +418,7 @@ impl InterfaceAuthorizationPort<ApplicationPrincipal> for CompatibilityBlockingA
 }
 
 pub(crate) fn compile_registry(
-    state: std::sync::Weak<ApiState>,
+    port: Arc<dyn CompatibilityBlockingPort>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
     let owner = InterfaceOwner::new(OWNER).expect("static compatibility owner is valid");
     let operation =
@@ -447,7 +429,6 @@ pub(crate) fn compile_registry(
         [operation.clone()],
         [owner.clone()],
     );
-    let port: Arc<dyn CompatibilityBlockingPort> = Arc::new(CompatibilityBlockingAdapter { state });
     for (interface_id, binding_id, handler, method, path) in bindings() {
         register_binding(
             &mut compiler,
@@ -475,6 +456,60 @@ pub(crate) fn compile_registry(
         )?;
     }
     compiler.compile()
+}
+
+#[cfg(test)]
+pub(crate) fn compile_registry_for_test(
+) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
+    compile_registry(Arc::new(UnavailableCompatibilityBlockingPort))
+}
+
+#[cfg(test)]
+struct UnavailableCompatibilityBlockingPort;
+
+#[cfg(test)]
+impl CompatibilityBlockingPort for UnavailableCompatibilityBlockingPort {
+    fn execute<'a>(
+        &'a self,
+        _principal: &'a ApplicationPrincipal,
+        _input: CompatibilityBlockingInput,
+    ) -> CompatibilityBlockingFuture<'a> {
+        Box::pin(async {
+            Err(CompatibilityBlockingTargetError(NativeApiError::new(
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "test_port_unavailable",
+                "test compatibility port is unavailable",
+            )))
+        })
+    }
+
+    fn execute_stream<'a>(
+        &'a self,
+        _principal: &'a ApplicationPrincipal,
+        _input: CompatibilityBlockingInput,
+    ) -> Pin<
+        Box<
+            dyn Future<
+                    Output = Result<
+                        InterfaceEventStream<
+                            CompatibilityStreamEvent,
+                            CompatibilityBlockingOutput,
+                            CompatibilityBlockingTargetError,
+                        >,
+                        CompatibilityBlockingTargetError,
+                    >,
+                > + Send
+                + 'a,
+        >,
+    > {
+        Box::pin(async {
+            Err(CompatibilityBlockingTargetError(NativeApiError::new(
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                "test_port_unavailable",
+                "test compatibility port is unavailable",
+            )))
+        })
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
