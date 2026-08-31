@@ -401,6 +401,19 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-application-runtime-trace-payloads",
+            &[
+                "applications.runtime.trace-node.content.get",
+                "applications.runtime.trace-node.detail.get",
+                "applications.runtime.trace-tool-callback.content.get",
+            ],
+            &["api-server.console-application-runtime-trace-payloads"],
+            crate::routes::application_runtime::interface_trace_payloads::compile_registry(
+                state.store.clone(),
+                state.file_storage_registry.clone(),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-application-orchestration",
             &[
                 "applications.orchestration.get",
