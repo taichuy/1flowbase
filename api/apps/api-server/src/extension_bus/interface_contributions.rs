@@ -153,7 +153,7 @@ pub(crate) fn production_interface_contributions() -> [InterfaceRegistryContribu
             "api-server.mcp",
             &["mcp.tools.invoke"],
             &["api-server.mcp-protocol"],
-            crate::routes::mcp_protocol::compile_mcp_interface_registry,
+            compile_mcp,
         ),
         InterfaceRegistryContribution::new(
             "api-server.workflow-extension",
@@ -189,4 +189,13 @@ fn compile_workflow_extension(
         .upgrade()
         .expect("workflow contribution is assembled while API state is alive");
     crate::routes::application_public_api::ex::compile_workflow_extension_registry(state)
+}
+
+fn compile_mcp(
+    state: std::sync::Weak<crate::app_state::ApiState>,
+) -> Result<Arc<CompiledInterfaceRegistry>, RegistryCompilationError> {
+    let state = state
+        .upgrade()
+        .expect("MCP contribution is assembled while API state is alive");
+    crate::routes::mcp_protocol::compile_mcp_interface_registry(state)
 }

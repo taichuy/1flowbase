@@ -256,22 +256,15 @@ async fn handle_mcp_request(
     }
 }
 
-struct McpToolCallAdapter {
-    state: std::sync::Weak<ApiState>,
-}
-
-impl McpToolCallPort for McpToolCallAdapter {
+impl McpToolCallPort for ApiState {
     fn call(
         &self,
         name: String,
         arguments: McpToolArguments,
         context: McpToolInvocationContext,
     ) -> interface_operation::McpCallFuture<'_> {
-        let state = self.state.clone();
+        let state = Arc::new(self.clone());
         Box::pin(async move {
-            let state = state
-                .upgrade()
-                .ok_or_else(|| anyhow::anyhow!("API state is unavailable"))?;
             let mut headers = HeaderMap::new();
             for header in context.headers {
                 let name = axum::http::HeaderName::from_bytes(header.name.as_bytes())?;
@@ -313,12 +306,12 @@ impl McpToolCallPort for McpToolCallAdapter {
 }
 
 pub(crate) fn compile_mcp_interface_registry(
-    state: std::sync::Weak<ApiState>,
+    port: Arc<dyn McpToolCallPort>,
 ) -> Result<
     Arc<interface_runtime::CompiledInterfaceRegistry>,
     interface_runtime::RegistryCompilationError,
 > {
-    interface_operation::compile_registry(Arc::new(McpToolCallAdapter { state }))
+    interface_operation::compile_registry(port)
 }
 
 fn mcp_interface_error(error: InterfaceInvocationError) -> ApiError {

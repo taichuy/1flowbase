@@ -73,7 +73,7 @@ impl InterfaceContract for McpInvocationTargetError {
 pub(super) type McpCallFuture<'a> =
     Pin<Box<dyn Future<Output = Result<McpCallOutcome, ApiError>> + Send + 'a>>;
 
-pub(super) trait McpToolCallPort: Send + Sync + 'static {
+pub(crate) trait McpToolCallPort: Send + Sync + 'static {
     fn call(
         &self,
         name: String,
