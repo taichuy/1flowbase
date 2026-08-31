@@ -45,6 +45,20 @@ describe('production module preload boundaries', () => {
         { hostId: 'assets/native-icons-registry.js', hostType: 'js' }
       )
     ).toEqual([]);
+    expect(
+      resolveProductionModulePreloadDependencies(
+        '_virtual_1flowbase-page-tree-icon-previews-CFKtburL.js',
+        ['assets/page-tree-icons-pack-a.svg'],
+        { hostId: 'assets/PageTreeIconPicker.js', hostType: 'js' }
+      )
+    ).toEqual([]);
+    expect(
+      resolveProductionModulePreloadDependencies(
+        '_virtual_1flowbase-page-tree-icon-runtime-CFKtburL.js',
+        ['assets/page-tree-icon-component-pack-a.js'],
+        { hostId: 'assets/PageTreeIcon.js', hostType: 'js' }
+      )
+    ).toEqual([]);
   });
 
   test('PB-F02 preserves entry HTML and focused feature preload decisions', () => {

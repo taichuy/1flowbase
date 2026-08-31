@@ -7,7 +7,9 @@ const test = require("node:test");
 const {
   collectHtmlEntryAssets,
   collectStaticImports,
+  percentile,
   profileAssetFiles,
+  profileInteractionAssets,
   profileProductionBundle,
 } = require("../core.js");
 
@@ -30,6 +32,41 @@ test("PB-F01 extracts module entry and preload assets", () => {
     `),
     ["index-a.js", "runtime-b.js"],
   );
+});
+
+test("MDP-001 interaction profile rejects request fan-out", () => {
+  const files = Object.fromEntries(
+    Array.from({ length: 12 }, (_, index) => [
+      `Icon${index}Outlined-a.js`,
+      `export const icon${index} = true;`,
+    ]),
+  );
+  const directory = createBundle(files, `<script></script>`);
+  try {
+    const profile = profileInteractionAssets(
+      directory,
+      Object.keys(files),
+      6100,
+      { durationMsMax: 500, assetCountMax: 10, javaScriptCountMax: 0 },
+    );
+    assert.equal(profile.ok, false);
+    assert.deepEqual(profile.gates, {
+      durationMs: false,
+      assetCount: false,
+      javaScriptCount: false,
+    });
+    assert.equal(profile.classificationCounts.possible_icon_javascript, 12);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("MDP-009 computes the observed nearest-rank P95", () => {
+  assert.equal(
+    percentile([90, 100, 110, 120, 130, 140, 150, 160, 170, 180], 0.95),
+    180,
+  );
+  assert.equal(percentile([], 0.95), null);
 });
 
 test("PB-F01 follows static imports without crossing dynamic imports", () => {

@@ -1,0 +1,4 @@
+services:
+  web:
+    volumes:
+      - ../../web/app/dist:/usr/share/nginx/html:ro

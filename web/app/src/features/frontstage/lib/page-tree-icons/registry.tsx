@@ -6,7 +6,10 @@ import type {
   ReactNode
 } from 'react';
 
-import { pageTreeIconLoaders } from 'virtual:1flowbase-page-tree-icons';
+import {
+  hasPageTreeIconComponent,
+  loadPageTreeIconComponent
+} from 'virtual:1flowbase-page-tree-icon-runtime';
 
 import { IconComponentCache } from './cache';
 
@@ -31,13 +34,15 @@ const componentCache = new IconComponentCache<LazyPageTreeIcon>(
 );
 
 function loadIcon(name: string) {
-  const loader = pageTreeIconLoaders[name];
-  if (!loader) {
-    return null;
-  }
-
+  if (!hasPageTreeIconComponent(name)) return null;
   return componentCache.getOrCreate(name, () =>
-    lazy(async () => ({ default: await loader() }))
+    lazy(async () => {
+      const component = await loadPageTreeIconComponent(name);
+      if (!component) {
+        throw new Error(`Unknown page tree icon '${name}'`);
+      }
+      return { default: component };
+    })
   );
 }
 

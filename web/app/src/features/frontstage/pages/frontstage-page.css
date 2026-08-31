@@ -121,6 +121,11 @@
   max-width: calc(100vw - 48px);
 }
 
+.frontstage-page-tree-form__icon-picker {
+  display: grid;
+  gap: 8px;
+}
+
 .frontstage-page-tree-form__icon-viewport {
   height: 320px;
   overflow: auto;
@@ -156,6 +161,12 @@
   border: 1px solid #d8e4df;
   border-radius: 999px;
   cursor: pointer;
+}
+
+.frontstage-page-tree-form__icon-button svg {
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
 }
 
 .frontstage-page-tree-form__icon-button:hover {

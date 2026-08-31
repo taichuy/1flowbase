@@ -12,7 +12,7 @@ const {
   loadRootCredentials,
   openTemporaryConsoleSession,
 } = require("../page-debug/auth.js");
-const { profileAssetFiles } = require("./core.js");
+const { profileAssetFiles, profileInteractionAssets } = require("./core.js");
 
 function optionValue(name, fallback) {
   const index = process.argv.indexOf(name);
@@ -43,6 +43,11 @@ async function main() {
     '[data-testid="builtin-password-sign-in"]',
   );
   const outputPath = optionValue("--output");
+  const interactionSelector = optionValue("--interaction-selector");
+  const interactionReadySelector = optionValue(
+    "--interaction-ready-selector",
+    interactionSelector,
+  );
   const authenticated = process.argv.includes("--authenticated");
   const apiBaseUrl = optionValue("--api-base-url", "http://127.0.0.1:7800");
   const budget = {
@@ -58,6 +63,26 @@ async function main() {
   const forbiddenPatterns = optionValues("--forbid-pattern").map(
     (pattern) => new RegExp(pattern, "u"),
   );
+  const forbiddenInteractionPatterns = optionValues(
+    "--forbid-interaction-pattern",
+  ).map((pattern) => new RegExp(pattern, "u"));
+  const interactionBudget = {
+    durationMsMax: Number.parseInt(
+      optionValue(
+        "--interaction-duration-max",
+        String(Number.MAX_SAFE_INTEGER),
+      ),
+      10,
+    ),
+    assetCountMax: Number.parseInt(
+      optionValue("--interaction-asset-max", String(Number.MAX_SAFE_INTEGER)),
+      10,
+    ),
+    javaScriptCountMax: Number.parseInt(
+      optionValue("--interaction-js-max", String(Number.MAX_SAFE_INTEGER)),
+      10,
+    ),
+  };
   const playwright = loadPlaywright(repoRoot);
   const browser = await playwright.chromium.launch(
     buildChromiumLaunchOptions({ headless: true }),
@@ -130,6 +155,60 @@ async function main() {
       .filter((file) =>
         forbiddenPatterns.some((pattern) => pattern.test(file)),
       );
+    let interaction = null;
+    if (interactionSelector) {
+      const baselineAssets = new Set(requestedAssets);
+      const interactionStartedAt = Date.now();
+      await page.click(interactionSelector);
+      if (interactionReadySelector) {
+        await page.waitForSelector(interactionReadySelector, {
+          state: "visible",
+          timeout: 60_000,
+        });
+      }
+      const readyMs = Date.now() - interactionStartedAt;
+      const readyFiles = [...requestedAssets].filter(
+        (asset) => !baselineAssets.has(asset),
+      );
+      await page
+        .waitForLoadState("networkidle", { timeout: 5_000 })
+        .catch(() => {});
+      const settledMs = Date.now() - interactionStartedAt;
+      const settledFiles = [...requestedAssets].filter(
+        (asset) => !baselineAssets.has(asset),
+      );
+      const unexpectedAssets = settledFiles.filter((file) =>
+        forbiddenInteractionPatterns.some((pattern) => pattern.test(file)),
+      );
+      const readyInteractionProfile = profileInteractionAssets(
+        distDirectory,
+        readyFiles,
+        readyMs,
+        interactionBudget,
+      );
+      const settledInteractionProfile = profileInteractionAssets(
+        distDirectory,
+        settledFiles,
+        readyMs,
+        interactionBudget,
+      );
+      interaction = {
+        selector: interactionSelector,
+        readySelector: interactionReadySelector,
+        readyMs,
+        settledMs,
+        forbiddenPatterns: forbiddenInteractionPatterns.map(
+          (pattern) => pattern.source,
+        ),
+        unexpectedAssets,
+        ready: readyInteractionProfile,
+        settled: settledInteractionProfile,
+        ok:
+          readyInteractionProfile.ok &&
+          settledInteractionProfile.ok &&
+          unexpectedAssets.length === 0,
+      };
+    }
     const result = {
       url,
       finalUrl: page.url(),
@@ -144,12 +223,14 @@ async function main() {
       settled: settledProfile,
       failedAssets,
       pageErrors,
+      interaction,
     };
     result.ok =
       result.ready.ok &&
       unexpectedSettledAssets.length === 0 &&
       failedAssets.length === 0 &&
-      pageErrors.length === 0;
+      pageErrors.length === 0 &&
+      (interaction?.ok ?? true);
     const receipt = `${JSON.stringify(result, null, 2)}\n`;
     if (outputPath) {
       fs.mkdirSync(path.dirname(path.resolve(outputPath)), { recursive: true });

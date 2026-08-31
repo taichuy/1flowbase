@@ -2,7 +2,8 @@ const DEMAND_DRIVEN_PRELOAD_BOUNDARIES = [
   /^(?:assets\/)?SettingsPage-[^/]+\.js$/u,
   /^(?:assets\/)?SettingsExtensionCenterSection-[^/]+\.js$/u,
   /^(?:assets\/)?AppShellFrame-[^/]+\.js$/u,
-  /^(?:assets\/)?_virtual_1flowbase-native-ant-design-icons-loaders-[^/]+\.js$/u
+  /^(?:assets\/)?_virtual_1flowbase-native-ant-design-icons-loaders-[^/]+\.js$/u,
+  /^(?:assets\/)?_virtual_1flowbase-page-tree-icon-(?:previews|runtime)-[^/]+\.js$/u
 ] as const;
 
 export function resolveProductionModulePreloadDependencies(

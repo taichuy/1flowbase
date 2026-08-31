@@ -16,6 +16,7 @@ import {
   collectDndKitModuleSources,
   nativeDndKitModulesPlugin
 } from './build/native-dnd-kit-modules';
+import { pageTreeIconAssetsPlugin } from './build/page-tree-icon-assets';
 import {
   collectDayjsModuleSources,
   nativeDayjsModulesPlugin
@@ -109,7 +110,8 @@ export default defineConfig(({ command, mode }) => {
   return {
     ...(env.VITE_DEV_CACHE_DIR ? { cacheDir: env.VITE_DEV_CACHE_DIR } : {}),
     plugins: [
-      oneFlowbaseDevRuntimePlugin({ root: process.cwd(), mode, command }),
+      oneFlowbaseDevRuntimePlugin({ root: process.cwd(), mode }),
+      pageTreeIconAssetsPlugin({ projectRoot: appRoot }),
       nativeAntDesignEsModulesPlugin(),
       nativeAntDesignIconsModulesPlugin({
         inventory: nativeAntDesignIconsModuleInventory

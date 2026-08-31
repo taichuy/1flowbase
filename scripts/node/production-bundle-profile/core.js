@@ -7,6 +7,12 @@ const DEFAULT_BUDGET = Object.freeze({
   largestInitialGzipBytesMax: 200 * 1024,
 });
 
+const DEFAULT_INTERACTION_BUDGET = Object.freeze({
+  durationMsMax: Number.POSITIVE_INFINITY,
+  assetCountMax: Number.POSITIVE_INFINITY,
+  javaScriptCountMax: Number.POSITIVE_INFINITY,
+});
+
 function normalizeAssetPath(value) {
   return value.replace(/^\.?\//u, "").replace(/^assets\//u, "");
 }
@@ -121,10 +127,80 @@ function profileProductionBundle(distDirectory, budget = DEFAULT_BUDGET) {
   );
 }
 
+function classifyAsset(file) {
+  if (/^page-tree-icons-pack-[a-f0-9]{12}-.+\.svg$/u.test(file)) {
+    return "page_tree_icon_preview";
+  }
+  if (/page-tree-icon-component-pack/u.test(file)) {
+    return "page_tree_icon_runtime";
+  }
+  if (/Ant|Outlined|Filled|TwoTone/u.test(file) && file.endsWith(".js")) {
+    return "possible_icon_javascript";
+  }
+  if (file.endsWith(".js")) return "javascript";
+  if (file.endsWith(".css")) return "stylesheet";
+  return "asset";
+}
+
+function profileInteractionAssets(
+  distDirectory,
+  files,
+  durationMs,
+  budget = DEFAULT_INTERACTION_BUDGET,
+) {
+  const assets = profileAssetFiles(distDirectory, files, {
+    initialGzipBytesMax: Number.POSITIVE_INFINITY,
+    largestInitialGzipBytesMax: Number.POSITIVE_INFINITY,
+  }).initialAssets.map((asset) => ({
+    ...asset,
+    classification: classifyAsset(asset.file),
+  }));
+  const javaScriptCount = assets.filter(({ file }) =>
+    file.endsWith(".js"),
+  ).length;
+  const gates = {
+    durationMs: durationMs <= budget.durationMsMax,
+    assetCount: assets.length <= budget.assetCountMax,
+    javaScriptCount: javaScriptCount <= budget.javaScriptCountMax,
+  };
+  return {
+    budget,
+    durationMs,
+    assetCount: assets.length,
+    javaScriptCount,
+    classificationCounts: Object.fromEntries(
+      [...new Set(assets.map(({ classification }) => classification))].map(
+        (classification) => [
+          classification,
+          assets.filter((asset) => asset.classification === classification)
+            .length,
+        ],
+      ),
+    ),
+    assets,
+    gates,
+    ok: Object.values(gates).every(Boolean),
+  };
+}
+
+function percentile(values, quantile) {
+  if (values.length === 0) return null;
+  if (!Number.isFinite(quantile) || quantile < 0 || quantile > 1) {
+    throw new Error("Quantile must be between zero and one");
+  }
+  const ordered = [...values].sort((left, right) => left - right);
+  const rank = Math.max(0, Math.ceil(quantile * ordered.length) - 1);
+  return ordered[rank];
+}
+
 module.exports = {
   DEFAULT_BUDGET,
+  DEFAULT_INTERACTION_BUDGET,
+  classifyAsset,
   collectHtmlEntryAssets,
   collectStaticImports,
+  percentile,
   profileAssetFiles,
+  profileInteractionAssets,
   profileProductionBundle,
 };

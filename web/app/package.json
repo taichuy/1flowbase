@@ -18,6 +18,7 @@
     "@ant-design/colors": "^8.0.1",
     "@ant-design/cssinjs": "^2.0.1",
     "@ant-design/icons": "^6.1.0",
+    "@ant-design/icons-svg": "^4.5.0",
     "@ant-design/x": "2.9.0",
     "@ant-design/x-markdown": "2.9.0",
     "@dagrejs/dagre": "^3.0.0",

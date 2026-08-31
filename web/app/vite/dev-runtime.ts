@@ -4,8 +4,6 @@ import path from 'node:path';
 
 import type { Plugin, ViteDevServer } from 'vite';
 
-const ICON_REGISTRY_ID = 'virtual:1flowbase-page-tree-icons';
-const RESOLVED_ICON_REGISTRY_ID = `\0${ICON_REGISTRY_ID}`;
 const HMR_PROBE_ID = 'virtual:1flowbase-dev-hmr-probe';
 const RESOLVED_HMR_PROBE_ID = `\0${HMR_PROBE_ID}`;
 const READY_PATH = '/__1flowbase_dev_ready';
@@ -31,47 +29,6 @@ type DevRuntimeReceipt = {
 function transitionRuntime(receipt: DevRuntimeReceipt, state: DevRuntimeState) {
   receipt.state = state;
   receipt.transitions.push({ state, at: new Date().toISOString() });
-}
-
-function pageTreeIconNames(root: string) {
-  const iconsDirectory = path.join(
-    root,
-    'node_modules',
-    '@ant-design',
-    'icons',
-    'es',
-    'icons'
-  );
-
-  return fs
-    .readdirSync(iconsDirectory)
-    .filter((name) => /(?:Outlined|Filled|TwoTone)\.js$/u.test(name))
-    .map((name) => name.replace(/\.js$/u, ''))
-    .sort((left, right) => left.localeCompare(right));
-}
-
-function iconRegistrySource(root: string, command: 'serve' | 'build') {
-  const iconNames = pageTreeIconNames(root);
-  if (command === 'build') {
-    return [
-      `import * as AntIcons from '@ant-design/icons';`,
-      `export const pageTreeIconNames = ${JSON.stringify(iconNames)};`,
-      `export const pageTreeIconLoaders = Object.fromEntries(pageTreeIconNames.map((name) => [name, () => Promise.resolve(AntIcons[name])]));`
-    ].join('\n');
-  }
-  const loaders = iconNames
-    .map(
-      (iconName) =>
-        `${JSON.stringify(iconName)}: () => import(${JSON.stringify(
-          `@ant-design/icons/${iconName}`
-        )}).then((module) => module.default)`
-    )
-    .join(',\n');
-
-  return [
-    `export const pageTreeIconNames = ${JSON.stringify(iconNames)};`,
-    `export const pageTreeIconLoaders = {${loaders}};`
-  ].join('\n');
 }
 
 function devCacheIdentity(root: string, mode: string) {
@@ -215,12 +172,10 @@ function attachPreReadyTrafficGate(
 
 function oneFlowbaseDevRuntimePlugin({
   root,
-  mode,
-  command
+  mode
 }: {
   root: string;
   mode: string;
-  command: 'serve' | 'build';
 }): Plugin {
   const runtimeDirectory = path.join(
     path.resolve(root, '..', '..'),
@@ -242,13 +197,10 @@ function oneFlowbaseDevRuntimePlugin({
     name: '1flowbase-dev-runtime',
     enforce: 'pre',
     resolveId(id) {
-      if (id === ICON_REGISTRY_ID) return RESOLVED_ICON_REGISTRY_ID;
       if (id === HMR_PROBE_ID) return RESOLVED_HMR_PROBE_ID;
       return null;
     },
     load(id) {
-      if (id === RESOLVED_ICON_REGISTRY_ID)
-        return iconRegistrySource(root, command);
       if (id === RESOLVED_HMR_PROBE_ID) return hmrProbeSource(hmrProbeFile);
       return null;
     },
@@ -282,14 +234,11 @@ function oneFlowbaseDevRuntimePlugin({
 }
 
 export {
-  ICON_REGISTRY_ID,
   HMR_PROBE_ID,
   HMR_PROBE_PATH,
   RECOVERY_PROBE_PATH,
   READY_PATH,
   devCacheIdentity,
-  iconRegistrySource,
   hmrProbeSource,
-  oneFlowbaseDevRuntimePlugin,
-  pageTreeIconNames
+  oneFlowbaseDevRuntimePlugin
 };

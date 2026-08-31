@@ -101,15 +101,14 @@ describe('vite config', () => {
     );
   });
 
-  test('splits large frontend dependencies into named chunks', async () => {
+  test('MDP-007 delegates page tree icons to the deterministic asset planner', async () => {
     const source = await readFile(
       path.resolve(process.cwd(), 'vite.config.ts'),
       'utf8'
     );
 
-    expect(source).toContain('manualChunks');
-    expect(source).toContain('flow-vendor');
-    expect(source).toContain('monaco-vendor');
+    expect(source).toContain('pageTreeIconAssetsPlugin');
+    expect(source).not.toContain('manualChunks');
     expect(source).toContain('chunkSizeWarningLimit: 3500');
   });
 
