@@ -62,10 +62,15 @@ impl RequestContext {
     }
 
     pub fn interface_principal(&self) -> interface_runtime::UserPrincipal {
+        if let RequestCredential::CookieSession(session) = &self.credential {
+            return interface_runtime::UserPrincipal::with_authenticated_session(
+                self.actor.clone(),
+                interface_runtime::AuthenticatedSessionIdentity::new(session.session_id.clone())
+                    .expect("authenticated session identity is non-empty"),
+            );
+        }
         let credential_kind = match &self.credential {
-            RequestCredential::CookieSession(_) => {
-                interface_runtime::UserCredentialKind::CookieSession
-            }
+            RequestCredential::CookieSession(_) => unreachable!("cookie session returned above"),
             RequestCredential::UserApiKey { api_key_id } => {
                 interface_runtime::UserCredentialKind::UserApiKey {
                     api_key_id: *api_key_id,

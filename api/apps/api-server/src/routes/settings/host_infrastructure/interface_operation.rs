@@ -582,14 +582,15 @@ pub(crate) fn is_active_interface_route(state: &ApiState, method: &str, path: &s
         .and_then(|snapshot| snapshot.interface_registry())
         .map(|registry| registry.snapshot())
         .is_some_and(|snapshot| {
-            providers_view_definition(snapshot.as_ref())
-                .ok()
-                .and_then(|definition| {
-                    snapshot
-                        .plan_for_interface(definition.interface_id())
-                        .and_then(|plan| plan.binding().projection().http_route())
+            snapshot.bindings().any(|binding| {
+                binding.projection().http_route().is_some_and(|route| {
+                    route.method().eq_ignore_ascii_case(method)
+                        && crate::routes::console_route_assembly::route_templates_match(
+                            route.path(),
+                            path,
+                        )
                 })
-                .is_some_and(|route| route.method() == method && route.path() == path)
+            })
         })
 }
 

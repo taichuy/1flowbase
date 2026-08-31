@@ -39,8 +39,9 @@ pub use invocation::{
     InvocationLineageError, ResolvedInvocationPin,
 };
 pub use principal::{
-    ApplicationPrincipal, ApplicationPrincipalError, InvocationPrincipal, PrincipalProfile,
-    PrincipalSummary, PublicPrincipal, UserCredentialKind, UserPrincipal,
+    ApplicationPrincipal, ApplicationPrincipalError, AuthenticatedSessionIdentity,
+    InvocationPrincipal, PrincipalIdentityError, PrincipalProfile, PrincipalSummary,
+    PublicPrincipal, UserCredentialKind, UserPrincipal,
 };
 pub use registry::{
     CompiledInterfaceRegistry, CompiledInvocationPlan, DynamicInterfaceRegistry, InterfaceAccess,

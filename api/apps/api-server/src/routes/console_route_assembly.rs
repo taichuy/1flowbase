@@ -351,7 +351,7 @@ fn routes_owned_by(
         .collect()
 }
 
-fn route_templates_match(left: &str, right: &str) -> bool {
+pub(crate) fn route_templates_match(left: &str, right: &str) -> bool {
     let left = left.trim_matches('/').split('/').collect::<Vec<_>>();
     let right = right.trim_matches('/').split('/').collect::<Vec<_>>();
     left.len() == right.len()

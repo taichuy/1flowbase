@@ -5,11 +5,7 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json, Router,
 };
-use control_plane::auth::{
-    ApiKeyService, CreateUserApiKeyCommand, ListUserApiKeysCommand, RevokeUserApiKeyCommand,
-    UserApiKeyExpirationPolicy,
-};
-use control_plane::ports::RoleRepository;
+use control_plane::auth::UserApiKeyExpirationPolicy;
 use serde::{Deserialize, Serialize};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use utoipa::ToSchema;
@@ -18,7 +14,6 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
@@ -107,7 +102,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
-fn is_role_bound_to_current_workspace(
+pub(crate) fn is_role_bound_to_current_workspace(
     role: &domain::BoundRole,
     current_workspace_id: Uuid,
 ) -> bool {
@@ -117,14 +112,14 @@ fn is_role_bound_to_current_workspace(
     }
 }
 
-fn role_scope_kind_text(role: &domain::BoundRole) -> String {
+pub(crate) fn role_scope_kind_text(role: &domain::BoundRole) -> String {
     match role.scope_kind {
         domain::RoleScopeKind::System => "system".to_string(),
         domain::RoleScopeKind::Workspace => "workspace".to_string(),
     }
 }
 
-fn parse_expiration_policy(raw: &str) -> Result<UserApiKeyExpirationPolicy, ApiError> {
+pub(crate) fn parse_expiration_policy(raw: &str) -> Result<UserApiKeyExpirationPolicy, ApiError> {
     match raw {
         "30d" => Ok(UserApiKeyExpirationPolicy::ThirtyDays),
         "1y" => Ok(UserApiKeyExpirationPolicy::OneYear),
@@ -146,7 +141,7 @@ fn format_optional_time(value: Option<OffsetDateTime>) -> Option<String> {
     value.map(format_time)
 }
 
-fn user_api_key_response(
+pub(crate) fn user_api_key_response(
     api_key: domain::ApiKeyRecord,
     token: Option<String>,
 ) -> UserApiKeyResponse {
@@ -170,54 +165,20 @@ fn user_api_key_response(
     }
 }
 
-#[utoipa::path(
-    get,
-    path = "/api/console/user-api-keys",
-    responses((status = 200, body = UserApiKeyListResponse), (status = 401, body = crate::error_response::ErrorBody))
-)]
-pub async fn list_user_api_keys(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-) -> Result<Json<ApiSuccess<UserApiKeyListResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let items = ApiKeyService::new(state.store.clone())
-        .list_user_api_keys(ListUserApiKeysCommand {
-            actor_user_id: context.actor.user_id,
-            tenant_id: context.actor.tenant_id,
-            current_workspace_id: context.actor.current_workspace_id,
-        })
-        .await?
-        .into_iter()
-        .map(|api_key| user_api_key_response(api_key, None))
-        .collect();
-
-    Ok(Json(ApiSuccess::new(UserApiKeyListResponse { items })))
-}
-
-#[utoipa::path(
-    get,
-    path = "/api/console/user-api-keys/role-options",
-    responses((status = 200, body = UserApiKeyRoleOptionsResponse), (status = 401, body = crate::error_response::ErrorBody))
-)]
-pub async fn list_user_api_key_role_options(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-) -> Result<Json<ApiSuccess<UserApiKeyRoleOptionsResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let workspace_roles = state
-        .store
-        .list_roles(context.actor.current_workspace_id)
-        .await?;
+pub(crate) fn role_options_response(
+    user: &domain::UserRecord,
+    workspace_roles: Vec<domain::RoleTemplate>,
+    actor: &domain::ActorContext,
+) -> UserApiKeyRoleOptionsResponse {
     let role_names = workspace_roles
         .into_iter()
         .map(|role| (role.code, role.name))
         .collect::<std::collections::HashMap<_, _>>();
     let mut seen = BTreeSet::new();
-    let mut items = context
-        .user
+    let mut items = user
         .roles
         .iter()
-        .filter(|role| is_role_bound_to_current_workspace(role, context.actor.current_workspace_id))
+        .filter(|role| is_role_bound_to_current_workspace(role, actor.current_workspace_id))
         .filter(|role| seen.insert(role.code.clone()))
         .map(|role| UserApiKeyRoleOptionResponse {
             code: role.code.clone(),
@@ -229,10 +190,60 @@ pub async fn list_user_api_key_role_options(
         })
         .collect::<Vec<_>>();
     items.sort_by(|left, right| left.code.cmp(&right.code));
+    UserApiKeyRoleOptionsResponse { items }
+}
 
-    Ok(Json(ApiSuccess::new(UserApiKeyRoleOptionsResponse {
-        items,
-    })))
+#[utoipa::path(
+    get,
+    path = "/api/console/user-api-keys",
+    responses((status = 200, body = UserApiKeyListResponse), (status = 401, body = crate::error_response::ErrorBody))
+)]
+pub async fn list_user_api_keys(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<UserApiKeyListResponse>>, ApiError> {
+    let output = super::console_identity_interface::invoke(
+        Arc::clone(&state),
+        "http.console.identity.user-api-keys.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        super::console_identity_interface::ConsoleIdentityInput::ListUserApiKeys,
+    )
+    .await?;
+    let super::console_identity_interface::ConsoleIdentityOutput::UserApiKeys(response) = output
+    else {
+        return Err(anyhow::anyhow!("console user API key output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(response)))
+}
+
+#[utoipa::path(
+    get,
+    path = "/api/console/user-api-keys/role-options",
+    responses((status = 200, body = UserApiKeyRoleOptionsResponse), (status = 401, body = crate::error_response::ErrorBody))
+)]
+pub async fn list_user_api_key_role_options(
+    State(state): State<Arc<ApiState>>,
+    headers: HeaderMap,
+) -> Result<Json<ApiSuccess<UserApiKeyRoleOptionsResponse>>, ApiError> {
+    let output = super::console_identity_interface::invoke(
+        Arc::clone(&state),
+        "http.console.identity.user-api-keys.role-options.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        super::console_identity_interface::ConsoleIdentityInput::ListUserApiKeyRoleOptions,
+    )
+    .await?;
+    let super::console_identity_interface::ConsoleIdentityOutput::UserApiKeyRoleOptions(response) =
+        output
+    else {
+        return Err(anyhow::anyhow!("console user API key role output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -246,40 +257,22 @@ pub async fn create_user_api_key(
     headers: HeaderMap,
     Json(payload): Json<CreateUserApiKeyRequest>,
 ) -> Result<(StatusCode, Json<ApiSuccess<UserApiKeyResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let role_code = payload
-        .role_code
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or(context.actor.effective_display_role.as_str())
-        .to_string();
-    let role_allowed = context.user.roles.iter().any(|role| {
-        role.code == role_code
-            && is_role_bound_to_current_workspace(role, context.actor.current_workspace_id)
-    });
-    if !role_allowed {
-        return Err(control_plane::errors::ControlPlaneError::InvalidInput("role_code").into());
-    }
-    let result = ApiKeyService::new(state.store.clone())
-        .create_user_api_key(CreateUserApiKeyCommand {
-            actor_user_id: context.actor.user_id,
-            tenant_id: context.actor.tenant_id,
-            current_workspace_id: context.actor.current_workspace_id,
-            name: payload.name,
-            role_code,
-            expiration_policy: parse_expiration_policy(&payload.expiration_policy)?,
-        })
-        .await?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(user_api_key_response(
-            result.api_key,
-            Some(result.token),
-        ))),
-    ))
+    let output = super::console_identity_interface::invoke(
+        Arc::clone(&state),
+        "http.console.identity.user-api-keys.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        super::console_identity_interface::ConsoleIdentityInput::CreateUserApiKey(payload),
+    )
+    .await?;
+    let super::console_identity_interface::ConsoleIdentityOutput::UserApiKeyCreated(response) =
+        output
+    else {
+        return Err(anyhow::anyhow!("console user API key create output contract mismatch").into());
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }
 
 #[utoipa::path(
@@ -293,18 +286,20 @@ pub async fn revoke_user_api_key(
     headers: HeaderMap,
     Path(api_key_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<RevokeUserApiKeyResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    ApiKeyService::new(state.store.clone())
-        .revoke_user_api_key(RevokeUserApiKeyCommand {
-            actor_user_id: context.actor.user_id,
-            tenant_id: context.actor.tenant_id,
-            current_workspace_id: context.actor.current_workspace_id,
-            api_key_id,
-        })
-        .await?;
-
-    Ok(Json(ApiSuccess::new(RevokeUserApiKeyResponse {
-        id: api_key_id,
-    })))
+    let output = super::console_identity_interface::invoke(
+        Arc::clone(&state),
+        "http.console.identity.user-api-keys.revoke.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        super::console_identity_interface::ConsoleIdentityInput::RevokeUserApiKey { api_key_id },
+    )
+    .await?;
+    let super::console_identity_interface::ConsoleIdentityOutput::UserApiKeyRevoked(response) =
+        output
+    else {
+        return Err(anyhow::anyhow!("console user API key revoke output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }

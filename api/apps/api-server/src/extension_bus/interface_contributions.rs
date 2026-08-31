@@ -137,6 +137,11 @@ pub(crate) fn production_interface_contributions(
         Arc::clone(&state.session_store),
         state.session_ttl_days,
     );
+    let console_identity = crate::routes::console_identity_interface::console_identity_port(
+        state.store.clone(),
+        Arc::clone(&state.session_store),
+        state.cookie_name.clone(),
+    );
 
     Ok(vec![
         InterfaceRegistryContribution::new(
@@ -158,6 +163,28 @@ pub(crate) fn production_interface_contributions(
             crate::routes::auth::compile_public_residual_registry(
                 public_providers,
                 public_sign_up,
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-identity",
+            &[
+                "console.identity.session.get",
+                "console.identity.session.delete",
+                "console.identity.session.revoke-all",
+                "console.identity.session.switch-workspace",
+                "console.identity.session.switch-role",
+                "console.identity.me.get",
+                "console.identity.me.patch",
+                "console.identity.me.meta.patch",
+                "console.identity.me.change-password",
+                "console.identity.user-api-keys.list",
+                "console.identity.user-api-keys.create",
+                "console.identity.user-api-keys.role-options",
+                "console.identity.user-api-keys.revoke",
+            ],
+            &["api-server.console-identity"],
+            crate::routes::console_identity_interface::compile_registry(
+                console_identity,
             )?,
         ),
         InterfaceRegistryContribution::new(

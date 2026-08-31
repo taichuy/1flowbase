@@ -6,20 +6,12 @@ use axum::{
     Json, Router,
 };
 use axum_extra::extract::cookie::{Cookie, CookieJar, SameSite};
-use control_plane::session_security::{
-    LogoutCurrentSessionCommand, RevokeAllSessionsCommand, SessionSecurityService,
-};
-use control_plane::workspace_session::{
-    SwitchActiveRoleCommand, SwitchWorkspaceCommand, WorkspaceSessionService,
-};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
@@ -51,12 +43,7 @@ pub struct SwitchActiveRoleBody {
     pub role_code: String,
 }
 
-fn parse_workspace_id(raw: &str) -> Result<Uuid, ApiError> {
-    Uuid::parse_str(raw)
-        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("workspace_id").into())
-}
-
-fn to_session_response(
+pub(crate) fn to_session_response(
     user: &domain::UserRecord,
     actor: &domain::ActorContext,
     session: &domain::SessionRecord,
@@ -145,15 +132,20 @@ pub async fn get_session(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<SessionResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let session = context.cookie_session()?;
-
-    Ok(Json(ApiSuccess::new(to_session_response(
-        &context.user,
-        &context.actor,
-        session,
-        &state.cookie_name,
-    ))))
+    let output = super::console_identity_interface::invoke(
+        Arc::clone(&state),
+        "http.console.identity.session.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        super::console_identity_interface::ConsoleIdentityInput::GetSession,
+    )
+    .await?;
+    let super::console_identity_interface::ConsoleIdentityOutput::Session(response) = output else {
+        return Err(anyhow::anyhow!("console session output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -165,15 +157,16 @@ pub async fn delete_session(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<(CookieJar, StatusCode), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let session = context.cookie_session()?;
-
-    SessionSecurityService::new(state.store.clone(), state.session_store.clone())
-        .logout_current_session(LogoutCurrentSessionCommand {
-            session_id: session.session_id.clone(),
-        })
-        .await?;
+    super::console_identity_interface::invoke(
+        Arc::clone(&state),
+        "http.console.identity.session.delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        super::console_identity_interface::ConsoleIdentityInput::DeleteSession,
+    )
+    .await?;
 
     Ok((
         CookieJar::new().remove(expired_session_cookie(
@@ -193,16 +186,16 @@ pub async fn revoke_all_sessions(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<(CookieJar, StatusCode), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let session = context.cookie_session()?;
-
-    SessionSecurityService::new(state.store.clone(), state.session_store.clone())
-        .revoke_all_sessions(RevokeAllSessionsCommand {
-            actor_user_id: context.user.id,
-            session_id: session.session_id.clone(),
-        })
-        .await?;
+    super::console_identity_interface::invoke(
+        Arc::clone(&state),
+        "http.console.identity.session.revoke-all.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        super::console_identity_interface::ConsoleIdentityInput::RevokeAllSessions,
+    )
+    .await?;
 
     Ok((
         CookieJar::new().remove(expired_session_cookie(
@@ -228,29 +221,22 @@ pub async fn switch_workspace(
     headers: HeaderMap,
     Json(body): Json<SwitchWorkspaceBody>,
 ) -> Result<Json<ApiSuccess<SessionResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let session = context.cookie_session()?;
-    let workspace_id = parse_workspace_id(&body.workspace_id)?;
-
-    let result = WorkspaceSessionService::new(
-        state.store.clone(),
-        state.store.clone(),
-        state.session_store.clone(),
+    let output = super::console_identity_interface::invoke(
+        Arc::clone(&state),
+        "http.console.identity.session.switch-workspace.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        super::console_identity_interface::ConsoleIdentityInput::SwitchWorkspace {
+            workspace_id: body.workspace_id,
+        },
     )
-    .switch_workspace(SwitchWorkspaceCommand {
-        actor_user_id: context.user.id,
-        session_id: session.session_id.clone(),
-        target_workspace_id: workspace_id,
-    })
     .await?;
-
-    Ok(Json(ApiSuccess::new(to_session_response(
-        &context.user,
-        &result.actor,
-        &result.session,
-        &state.cookie_name,
-    ))))
+    let super::console_identity_interface::ConsoleIdentityOutput::Session(response) = output else {
+        return Err(anyhow::anyhow!("console session output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -268,30 +254,20 @@ pub async fn switch_active_role(
     headers: HeaderMap,
     Json(body): Json<SwitchActiveRoleBody>,
 ) -> Result<Json<ApiSuccess<SessionResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let session = context.cookie_session()?;
-    let role_code = body.role_code.trim();
-    if role_code.is_empty() {
-        return Err(control_plane::errors::ControlPlaneError::InvalidInput("role_code").into());
-    }
-
-    let result = WorkspaceSessionService::new(
-        state.store.clone(),
-        state.store.clone(),
-        state.session_store.clone(),
+    let output = super::console_identity_interface::invoke(
+        Arc::clone(&state),
+        "http.console.identity.session.switch-role.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        super::console_identity_interface::ConsoleIdentityInput::SwitchRole {
+            role_code: body.role_code,
+        },
     )
-    .switch_active_role(SwitchActiveRoleCommand {
-        actor_user_id: context.user.id,
-        session_id: session.session_id.clone(),
-        active_role_code: role_code.to_string(),
-    })
     .await?;
-
-    Ok(Json(ApiSuccess::new(to_session_response(
-        &context.user,
-        &result.actor,
-        &result.session,
-        &state.cookie_name,
-    ))))
+    let super::console_identity_interface::ConsoleIdentityOutput::Session(response) = output else {
+        return Err(anyhow::anyhow!("console session output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }

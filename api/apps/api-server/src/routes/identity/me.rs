@@ -10,8 +10,6 @@ use axum::{
     Json, Router,
 };
 use axum_extra::extract::cookie::CookieJar;
-use control_plane::profile::{ProfileService, UpdateMeCommand, UpdateMeMetaCommand};
-use control_plane::session_security::{ChangeOwnPasswordCommand, SessionSecurityService};
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
@@ -19,7 +17,6 @@ use utoipa::ToSchema;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_get, console_patch, console_post, ConsoleRouteAssembly,
@@ -72,7 +69,7 @@ pub struct PatchMeMetaBody {
     pub meta: serde_json::Value,
 }
 
-fn hash_password(password: &str) -> Result<String, ApiError> {
+pub(crate) fn hash_password(password: &str) -> Result<String, ApiError> {
     let salt = SaltString::generate(&mut OsRng);
     Ok(Argon2::default()
         .hash_password(password.as_bytes(), &salt)
@@ -99,7 +96,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
-fn to_me_response(
+pub(crate) fn to_me_response(
     profile: control_plane::profile::MeProfile,
     actor: &domain::ActorContext,
 ) -> MeResponse {
@@ -131,18 +128,20 @@ pub async fn get_me(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<MeResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let profile = ProfileService::new(state.store.clone())
-        .get_me(
-            context.user.id,
-            context.actor.tenant_id,
-            context.actor.current_workspace_id,
-        )
-        .await?;
-    Ok(Json(ApiSuccess::new(to_me_response(
-        profile,
-        &context.actor,
-    ))))
+    let output = super::console_identity_interface::invoke(
+        Arc::clone(&state),
+        "http.console.identity.me.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        super::console_identity_interface::ConsoleIdentityInput::GetMe,
+    )
+    .await?;
+    let super::console_identity_interface::ConsoleIdentityOutput::Me(response) = output else {
+        return Err(anyhow::anyhow!("console me output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -156,31 +155,20 @@ pub async fn patch_me(
     headers: HeaderMap,
     Json(body): Json<PatchMeBody>,
 ) -> Result<Json<ApiSuccess<MeResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    let profile = ProfileService::new(state.store.clone())
-        .update_me(UpdateMeCommand {
-            actor_user_id: context.user.id,
-            tenant_id: context.actor.tenant_id,
-            workspace_id: context.actor.current_workspace_id,
-            name: body.name,
-            nickname: body.nickname,
-            email: body.email,
-            phone: body.phone,
-            avatar_url: body.avatar_url,
-            introduction: body.introduction,
-            preferred_locale: match body.preferred_locale {
-                PreferredLocalePatch::Value(value) => Some(value),
-                PreferredLocalePatch::Null => None,
-            },
-        })
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_me_response(
-        profile,
-        &context.actor,
-    ))))
+    let output = super::console_identity_interface::invoke(
+        Arc::clone(&state),
+        "http.console.identity.me.patch.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        super::console_identity_interface::ConsoleIdentityInput::PatchMe(body),
+    )
+    .await?;
+    let super::console_identity_interface::ConsoleIdentityOutput::Me(response) = output else {
+        return Err(anyhow::anyhow!("console me output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -194,22 +182,20 @@ pub async fn patch_me_meta(
     headers: HeaderMap,
     Json(body): Json<PatchMeMetaBody>,
 ) -> Result<Json<ApiSuccess<MeResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    let profile = ProfileService::new(state.store.clone())
-        .update_me_meta(UpdateMeMetaCommand {
-            actor_user_id: context.user.id,
-            tenant_id: context.actor.tenant_id,
-            workspace_id: context.actor.current_workspace_id,
-            meta_patch: body.meta,
-        })
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_me_response(
-        profile,
-        &context.actor,
-    ))))
+    let output = super::console_identity_interface::invoke(
+        Arc::clone(&state),
+        "http.console.identity.me.meta.patch.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        super::console_identity_interface::ConsoleIdentityInput::PatchMeMeta(body),
+    )
+    .await?;
+    let super::console_identity_interface::ConsoleIdentityOutput::Me(response) = output else {
+        return Err(anyhow::anyhow!("console me output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -223,18 +209,16 @@ pub async fn change_password(
     headers: HeaderMap,
     Json(body): Json<ChangePasswordBody>,
 ) -> Result<(CookieJar, StatusCode), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let session = context.cookie_session()?;
-
-    SessionSecurityService::new(state.store.clone(), state.session_store.clone())
-        .change_own_password(ChangeOwnPasswordCommand {
-            actor_user_id: context.user.id,
-            session_id: session.session_id.clone(),
-            old_password: body.old_password,
-            new_password_hash: hash_password(&body.new_password)?,
-        })
-        .await?;
+    super::console_identity_interface::invoke(
+        Arc::clone(&state),
+        "http.console.identity.me.change-password.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        super::console_identity_interface::ConsoleIdentityInput::ChangePassword(body),
+    )
+    .await?;
 
     Ok((
         CookieJar::new().remove(expired_session_cookie(

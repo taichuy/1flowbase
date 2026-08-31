@@ -20,6 +20,29 @@ pub enum UserCredentialKind {
     ServerDelegation,
 }
 
+#[derive(Clone, Debug)]
+pub struct AuthenticatedSessionIdentity(String);
+
+impl AuthenticatedSessionIdentity {
+    pub fn new(session_id: impl Into<String>) -> Result<Self, PrincipalIdentityError> {
+        let session_id = session_id.into();
+        if session_id.trim().is_empty() {
+            return Err(PrincipalIdentityError::MissingAuthenticatedSession);
+        }
+        Ok(Self(session_id))
+    }
+
+    pub fn expose_to_trusted_handler(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+pub enum PrincipalIdentityError {
+    #[error("authenticated session identity must not be empty")]
+    MissingAuthenticatedSession,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PrincipalSummary {
     profile: PrincipalProfile,
@@ -117,6 +140,7 @@ impl InvocationPrincipal for PublicPrincipal {
 pub struct UserPrincipal {
     actor: ActorContext,
     credential_kind: UserCredentialKind,
+    authenticated_session: Option<AuthenticatedSessionIdentity>,
 }
 
 impl UserPrincipal {
@@ -124,6 +148,18 @@ impl UserPrincipal {
         Self {
             actor,
             credential_kind,
+            authenticated_session: None,
+        }
+    }
+
+    pub fn with_authenticated_session(
+        actor: ActorContext,
+        session: AuthenticatedSessionIdentity,
+    ) -> Self {
+        Self {
+            actor,
+            credential_kind: UserCredentialKind::CookieSession,
+            authenticated_session: Some(session),
         }
     }
 
@@ -137,6 +173,10 @@ impl UserPrincipal {
 
     pub fn credential_kind(&self) -> UserCredentialKind {
         self.credential_kind
+    }
+
+    pub fn authenticated_session(&self) -> Option<&AuthenticatedSessionIdentity> {
+        self.authenticated_session.as_ref()
     }
 }
 

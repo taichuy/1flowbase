@@ -2,12 +2,34 @@ use domain::ActorContext;
 use uuid::Uuid;
 
 use crate::{
-    ApplicationPrincipal, ApplicationPrincipalError, InvocationPrincipal, PrincipalProfile,
-    PublicPrincipal, UserCredentialKind, UserPrincipal,
+    ApplicationPrincipal, ApplicationPrincipalError, AuthenticatedSessionIdentity,
+    InvocationPrincipal, PrincipalProfile, PublicPrincipal, UserCredentialKind, UserPrincipal,
 };
 
 fn actor(workspace_id: Uuid) -> ActorContext {
     ActorContext::scoped(Uuid::now_v7(), workspace_id, "member", [])
+}
+
+#[test]
+fn authenticated_session_is_a_sealed_user_fact_not_a_receipt_summary_field() {
+    let actor = actor(Uuid::now_v7());
+    let principal = UserPrincipal::with_authenticated_session(
+        actor.clone(),
+        AuthenticatedSessionIdentity::new("session-verified").unwrap(),
+    );
+    assert_eq!(
+        principal
+            .authenticated_session()
+            .unwrap()
+            .expose_to_trusted_handler(),
+        "session-verified"
+    );
+    assert_eq!(
+        principal.credential_kind(),
+        UserCredentialKind::CookieSession
+    );
+    assert_eq!(principal.summary().user_id(), Some(actor.user_id));
+    assert_eq!(principal.summary().api_key_id(), None);
 }
 
 #[test]
