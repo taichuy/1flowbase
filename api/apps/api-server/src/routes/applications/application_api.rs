@@ -61,6 +61,8 @@ use crate::{
     },
 };
 
+pub(crate) mod interface_keys;
+
 const PUBLIC_RUNS_PATH: &str = "/api/agent/v1/runs";
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -688,17 +690,14 @@ pub async fn list_application_api_keys(
     headers: HeaderMap,
     Path(application_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<Vec<ApplicationApiKeyResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let api_keys = ApplicationApiKeyService::new(state.store.for_actor(context.actor.clone()))
-        .list_api_keys(ListApplicationApiKeysCommand {
-            actor_user_id: context.user.id,
-            application_id,
-        })
-        .await?;
-
-    Ok(Json(ApiSuccess::new(
-        api_keys.into_iter().map(to_api_key_response).collect(),
-    )))
+    let output: interface_keys::ApplicationApiKeyOutput = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.api-keys.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_keys::ApplicationApiKeyInput::List { application_id },
+    )
+    .await?;
+    Ok(Json(ApiSuccess::new(output.into_list()?)))
 }
 
 #[utoipa::path(
@@ -726,23 +725,19 @@ pub async fn create_application_api_key(
     ),
     ApiError,
 > {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let result = ApplicationApiKeyService::new(state.store.for_actor(context.actor.clone()))
-        .create_api_key(CreateApplicationApiKeyCommand {
-            actor_user_id: context.user.id,
+    let output: interface_keys::ApplicationApiKeyOutput = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.api-keys.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface_keys::ApplicationApiKeyInput::Create {
             application_id,
-            name: body.name,
-            expires_at: parse_expires_at(body.expires_at)?,
-        })
-        .await?;
-
+            body,
+        },
+    )
+    .await?;
     Ok((
         StatusCode::CREATED,
-        Json(ApiSuccess::new(to_created_api_key_response(
-            result.api_key,
-            result.token,
-        ))),
+        Json(ApiSuccess::new(output.into_created()?)),
     ))
 }
 
@@ -765,16 +760,16 @@ pub async fn revoke_application_api_key(
     headers: HeaderMap,
     Path((application_id, key_id)): Path<(Uuid, Uuid)>,
 ) -> Result<impl IntoResponse, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    ApplicationApiKeyService::new(state.store.for_actor(context.actor.clone()))
-        .revoke_api_key(RevokeApplicationApiKeyCommand {
-            actor_user_id: context.user.id,
+    crate::routes::console_interface::invoke::<_, interface_keys::ApplicationApiKeyOutput>(
+        Arc::clone(&state),
+        "http.console.applications.api-keys.revoke.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface_keys::ApplicationApiKeyInput::Revoke {
             application_id,
-            api_key_id: key_id,
-        })
-        .await
-        .map_err(map_application_api_key_not_found)?;
+            key_id,
+        },
+    )
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

@@ -166,6 +166,8 @@ pub(crate) fn production_interface_contributions(
         state.store.clone(),
         state.bootstrap_workspace_id,
     );
+    let console_application_api_keys =
+        crate::routes::application_api::interface_keys::port(state.store.clone());
 
     Ok(vec![
         InterfaceRegistryContribution::new(
@@ -270,6 +272,18 @@ pub(crate) fn production_interface_contributions(
             ],
             &["api-server.console-applications"],
             crate::routes::applications::interface::compile_registry(console_applications)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-application-api-keys",
+            &[
+                "applications.api-keys.list",
+                "applications.api-keys.create",
+                "applications.api-keys.revoke",
+            ],
+            &["api-server.console-application-api-keys"],
+            crate::routes::application_api::interface_keys::compile_registry(
+                console_application_api_keys,
+            )?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-application-orchestration",
