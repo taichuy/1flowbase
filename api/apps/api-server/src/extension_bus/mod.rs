@@ -11,6 +11,7 @@ pub(crate) use authentication_activation::{
     McpUserApiKeyAuthenticationCredential, PublicAuthenticationCredential,
     CONSOLE_SESSION_CREDENTIAL_CONTRACT_ID, CONSOLE_SESSION_CREDENTIAL_CONTRACT_VERSION,
 };
+pub(crate) use boot_snapshot::DurableHostInfrastructureProvidersViewQuery;
 pub use boot_snapshot::{
     compile_extension_boot_snapshot, EffectiveExtensionPlan, ExtensionBootSnapshot,
     EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1,
