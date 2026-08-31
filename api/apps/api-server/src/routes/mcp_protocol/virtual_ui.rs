@@ -20,6 +20,7 @@ use orchestration_runtime::{
     },
 };
 use serde_json::{json, Value};
+use storage_durable_postgres::MainDurableStore;
 
 use super::{input_schema, result_delivery};
 use crate::{
@@ -128,12 +129,127 @@ pub(crate) enum VirtualToolOutcome {
 
 #[derive(Clone)]
 pub(crate) struct ApiMcpRuntimeToolInvoker {
-    state: Arc<ApiState>,
+    /// This remains only for the unresolved interface catalog/dispatch boundary.
+    /// Runtime data access is carried by `dependencies` below.
+    interface_state: Arc<ApiState>,
+    dependencies: RuntimeInternalToolInvokerDependencies,
     headers: HeaderMap,
     authorization: RuntimeMcpAuthorization,
     catalog: domain::McpCatalogSnapshot,
     run_level_instance_ids: Vec<String>,
     assistant_client: Option<Arc<crate::routes::assistant::AssistantClientToolBridge>>,
+}
+
+/// Explicit data dependencies needed by the MCP runtime execution path.
+///
+/// Interface catalog lookup and Console dispatch deliberately remain outside
+/// this boundary until their API-root port is extracted in the follow-up split.
+#[derive(Clone)]
+pub(crate) struct RuntimeInternalToolInvokerDependencies {
+    store: MainDurableStore,
+    provider_secret_master_key: String,
+    result_delivery: result_delivery::McpResultDeliveryDependencies,
+}
+
+impl RuntimeInternalToolInvokerDependencies {
+    pub(crate) fn new(
+        store: MainDurableStore,
+        cache_store: Arc<dyn crate::host_infrastructure::CacheStore>,
+        provider_secret_master_key: String,
+    ) -> Self {
+        Self {
+            result_delivery: result_delivery::McpResultDeliveryDependencies::new(
+                store.clone(),
+                cache_store,
+            ),
+            store,
+            provider_secret_master_key,
+        }
+    }
+
+    fn from_api_state(state: &ApiState) -> Self {
+        Self::new(
+            state.store.clone(),
+            state.infrastructure.cache_store(),
+            state.provider_secret_master_key.clone(),
+        )
+    }
+}
+
+/// Creates runtime tool invokers from explicit runtime data dependencies.
+/// It owns no API state; the temporary interface state argument is retained
+/// solely by the resulting invoker for the follow-up interface-dispatch split.
+#[derive(Clone)]
+pub(crate) struct RuntimeInternalToolInvokerFactory {
+    dependencies: RuntimeInternalToolInvokerDependencies,
+}
+
+impl RuntimeInternalToolInvokerFactory {
+    pub(crate) fn from_api_state(state: &ApiState) -> Self {
+        Self {
+            dependencies: RuntimeInternalToolInvokerDependencies::from_api_state(state),
+        }
+    }
+
+    async fn create_server_delegated(
+        &self,
+        interface_state: Arc<ApiState>,
+        mut headers: HeaderMap,
+        actor: domain::ActorContext,
+        run_level_instance_ids: Vec<String>,
+    ) -> Result<ApiMcpRuntimeToolInvoker, ApiError> {
+        let user = self
+            .dependencies
+            .store
+            .find_user_by_id(actor.user_id)
+            .await?
+            .ok_or(control_plane::errors::ControlPlaneError::NotAuthenticated)?;
+        if matches!(user.status, domain::UserStatus::Disabled) {
+            return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
+        }
+        let catalog = McpManagementService::new(self.dependencies.store.clone())
+            .read_catalog_for_actor(&actor)
+            .await?;
+        headers.remove(COOKIE);
+        headers.remove(AUTHORIZATION);
+        headers.remove(CSRF_HEADER);
+        Ok(ApiMcpRuntimeToolInvoker {
+            interface_state,
+            dependencies: self.dependencies.clone(),
+            headers,
+            authorization: RuntimeMcpAuthorization::ServerDelegation(RuntimeActorDelegation {
+                user_id: actor.user_id,
+                tenant_id: actor.tenant_id,
+                workspace_id: actor.current_workspace_id,
+                active_role_code: actor.effective_display_role.clone(),
+                session_version: user.session_version,
+            }),
+            catalog,
+            run_level_instance_ids,
+            assistant_client: None,
+        })
+    }
+
+    async fn create_forwarded(
+        &self,
+        interface_state: Arc<ApiState>,
+        headers: HeaderMap,
+        actor: domain::ActorContext,
+        run_level_instance_ids: Vec<String>,
+    ) -> Result<ApiMcpRuntimeToolInvoker, ApiError> {
+        let catalog = McpManagementService::new(self.dependencies.store.clone())
+            .read_catalog_for_actor(&actor)
+            .await?;
+        Ok(ApiMcpRuntimeToolInvoker {
+            interface_state,
+            dependencies: self.dependencies.clone(),
+            headers,
+            authorization: RuntimeMcpAuthorization::ForwardedActor(actor),
+            catalog,
+            run_level_instance_ids,
+            assistant_client: None,
+        })
+    }
 }
 
 #[derive(Clone)]
@@ -152,9 +268,8 @@ struct RuntimeActorDelegation {
 }
 
 impl RuntimeActorDelegation {
-    async fn request_context(&self, state: &ApiState) -> Result<RequestContext, ApiError> {
-        let user = state
-            .store
+    async fn request_context(&self, store: &MainDurableStore) -> Result<RequestContext, ApiError> {
+        let user = store
             .find_user_by_id(self.user_id)
             .await?
             .ok_or(control_plane::errors::ControlPlaneError::NotAuthenticated)?;
@@ -163,8 +278,7 @@ impl RuntimeActorDelegation {
         {
             return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
         }
-        let actor = state
-            .store
+        let actor = store
             .load_actor_context(
                 user.id,
                 self.tenant_id,
@@ -182,39 +296,13 @@ impl RuntimeActorDelegation {
 impl ApiMcpRuntimeToolInvoker {
     pub(crate) async fn new(
         state: Arc<ApiState>,
-        mut headers: HeaderMap,
+        headers: HeaderMap,
         actor: domain::ActorContext,
         run_level_instance_ids: Vec<String>,
     ) -> Result<Self, ApiError> {
-        let user = state
-            .store
-            .find_user_by_id(actor.user_id)
-            .await?
-            .ok_or(control_plane::errors::ControlPlaneError::NotAuthenticated)?;
-        if matches!(user.status, domain::UserStatus::Disabled) {
-            return Err(control_plane::errors::ControlPlaneError::NotAuthenticated.into());
-        }
-        let catalog = McpManagementService::new(state.store.clone())
-            .read_catalog_for_actor(&actor)
-            .await?;
-        let authorization = RuntimeMcpAuthorization::ServerDelegation(RuntimeActorDelegation {
-            user_id: actor.user_id,
-            tenant_id: actor.tenant_id,
-            workspace_id: actor.current_workspace_id,
-            active_role_code: actor.effective_display_role.clone(),
-            session_version: user.session_version,
-        });
-        headers.remove(COOKIE);
-        headers.remove(AUTHORIZATION);
-        headers.remove(CSRF_HEADER);
-        Ok(Self {
-            state,
-            headers,
-            authorization,
-            catalog,
-            run_level_instance_ids,
-            assistant_client: None,
-        })
+        RuntimeInternalToolInvokerFactory::from_api_state(state.as_ref())
+            .create_server_delegated(state, headers, actor, run_level_instance_ids)
+            .await
     }
 
     pub(crate) async fn new_with_forwarded_authorization(
@@ -223,17 +311,9 @@ impl ApiMcpRuntimeToolInvoker {
         actor: domain::ActorContext,
         run_level_instance_ids: Vec<String>,
     ) -> Result<Self, ApiError> {
-        let catalog = McpManagementService::new(state.store.clone())
-            .read_catalog_for_actor(&actor)
-            .await?;
-        Ok(Self {
-            state,
-            headers,
-            authorization: RuntimeMcpAuthorization::ForwardedActor(actor),
-            catalog,
-            run_level_instance_ids,
-            assistant_client: None,
-        })
+        RuntimeInternalToolInvokerFactory::from_api_state(state.as_ref())
+            .create_forwarded(state, headers, actor, run_level_instance_ids)
+            .await
     }
 
     pub(crate) fn with_assistant_client(
@@ -337,8 +417,9 @@ impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
         let scope = VirtualMcpScope::single(instance_id.to_string());
         let outcome = match &self.authorization {
             RuntimeMcpAuthorization::ForwardedActor(actor) => {
-                dispatch(
-                    &self.state,
+                dispatch_with_dependencies(
+                    &self.interface_state,
+                    &self.dependencies,
                     &self.headers,
                     actor,
                     &self.catalog,
@@ -350,7 +431,7 @@ impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
                 .await
             }
             RuntimeMcpAuthorization::ServerDelegation(delegation) => {
-                let context = match delegation.request_context(&self.state).await {
+                let context = match delegation.request_context(&self.dependencies.store).await {
                     Ok(context) => context,
                     Err(error)
                         if matches!(
@@ -374,8 +455,9 @@ impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
                 let actor = context.actor.clone();
                 with_server_delegated_request_context(
                     context,
-                    dispatch(
-                        &self.state,
+                    dispatch_with_dependencies(
+                        &self.interface_state,
+                        &self.dependencies,
                         &self.headers,
                         &actor,
                         &self.catalog,
@@ -597,6 +679,33 @@ pub(crate) async fn dispatch(
     arguments: Value,
     assistant_client: Option<&crate::routes::assistant::AssistantClientToolBridge>,
 ) -> Result<VirtualToolOutcome, ApiError> {
+    let dependencies = RuntimeInternalToolInvokerDependencies::from_api_state(state.as_ref());
+    dispatch_with_dependencies(
+        state,
+        &dependencies,
+        headers,
+        actor,
+        catalog,
+        scope,
+        name,
+        arguments,
+        assistant_client,
+    )
+    .await
+}
+
+#[allow(clippy::too_many_arguments)]
+async fn dispatch_with_dependencies(
+    state: &Arc<ApiState>,
+    dependencies: &RuntimeInternalToolInvokerDependencies,
+    headers: &HeaderMap,
+    actor: &domain::ActorContext,
+    catalog: &domain::McpCatalogSnapshot,
+    scope: &VirtualMcpScope,
+    name: &str,
+    arguments: Value,
+    assistant_client: Option<&crate::routes::assistant::AssistantClientToolBridge>,
+) -> Result<VirtualToolOutcome, ApiError> {
     let registrations = mcp_llm_registrations(
         &scope
             .instance_ids
@@ -622,7 +731,7 @@ pub(crate) async fn dispatch(
     match (name, operation) {
         (_, Some(McpLlmOperation::List)) => {
             list(
-                state,
+                dependencies,
                 actor,
                 catalog,
                 &effective_scope,
@@ -637,10 +746,13 @@ pub(crate) async fn dispatch(
             &arguments,
             allow_assistant_client,
         )),
-        (_, Some(McpLlmOperation::Result)) => result(state, actor, &arguments).await,
+        (_, Some(McpLlmOperation::Result)) => {
+            result(&dependencies.result_delivery, actor, &arguments).await
+        }
         (_, Some(McpLlmOperation::Call)) => {
             call(
                 state,
+                dependencies,
                 headers,
                 actor,
                 catalog,
@@ -652,7 +764,7 @@ pub(crate) async fn dispatch(
         }
         (MCP_LIST, None) => {
             list(
-                state,
+                dependencies,
                 actor,
                 catalog,
                 scope,
@@ -662,10 +774,11 @@ pub(crate) async fn dispatch(
             .await
         }
         (MCP_GET, None) => Ok(get(catalog, scope, &arguments, allow_assistant_client)),
-        (MCP_RESULT, None) => result(state, actor, &arguments).await,
+        (MCP_RESULT, None) => result(&dependencies.result_delivery, actor, &arguments).await,
         (MCP_CALL, None) => {
             call(
                 state,
+                dependencies,
                 headers,
                 actor,
                 catalog,
@@ -684,7 +797,7 @@ pub(crate) async fn dispatch(
 }
 
 async fn list(
-    state: &Arc<ApiState>,
+    dependencies: &RuntimeInternalToolInvokerDependencies,
     actor: &domain::ActorContext,
     catalog: &domain::McpCatalogSnapshot,
     scope: &VirtualMcpScope,
@@ -717,7 +830,7 @@ async fn list(
         .get("limit")
         .and_then(Value::as_u64)
         .and_then(|value| usize::try_from(value).ok());
-    let service = McpManagementService::new(state.store.clone());
+    let service = McpManagementService::new(dependencies.store.clone());
     let mut items = Vec::new();
     for instance_id in &scope.instance_ids {
         items.extend(
@@ -785,7 +898,7 @@ fn get(
 }
 
 async fn result(
-    state: &Arc<ApiState>,
+    dependencies: &result_delivery::McpResultDeliveryDependencies,
     actor: &domain::ActorContext,
     arguments: &Value,
 ) -> Result<VirtualToolOutcome, ApiError> {
@@ -807,13 +920,14 @@ async fn result(
         Err(message) => return Ok(VirtualToolOutcome::invalid(message)),
     };
     Ok(VirtualToolOutcome::Success(
-        result_delivery::read_continuation(state.as_ref(), actor, result_ref, cursor, inline_chars)
+        result_delivery::read_continuation(dependencies, actor, result_ref, cursor, inline_chars)
             .await,
     ))
 }
 
 async fn call(
     state: &Arc<ApiState>,
+    dependencies: &RuntimeInternalToolInvokerDependencies,
     headers: &HeaderMap,
     actor: &domain::ActorContext,
     catalog: &domain::McpCatalogSnapshot,
@@ -910,7 +1024,7 @@ async fn call(
                 Ok(value) if result_delivery::exceeds_inline_limit(&value, inline_chars) => {
                     Ok(VirtualToolOutcome::Success(
                         result_delivery::deliver_oversized_result(
-                            state.as_ref(),
+                            &dependencies.result_delivery,
                             actor,
                             operation,
                             value,
@@ -932,7 +1046,7 @@ async fn call(
             remote_tool_name,
             ..
         } => {
-            let service = McpManagementService::new(state.store.clone());
+            let service = McpManagementService::new(dependencies.store.clone());
             let availability = service
                 .upstream_proxy_availability_for_actor(
                     actor,
@@ -953,7 +1067,7 @@ async fn call(
                 .upstream_secret_for_actor(
                     actor,
                     *upstream_connection_id,
-                    &state.provider_secret_master_key,
+                    &dependencies.provider_secret_master_key,
                 )
                 .await?;
             let remote_arguments = match map_proxy_arguments(&tool_arguments, &tool.input_mapping) {
@@ -1010,7 +1124,7 @@ async fn call(
             if result_delivery::exceeds_inline_limit(&detail, inline_chars) {
                 Ok(VirtualToolOutcome::Success(
                     result_delivery::deliver_oversized_result(
-                        state.as_ref(),
+                        &dependencies.result_delivery,
                         actor,
                         result_delivery::CompletedOperation::Write {
                             operation_id: &tool.tool_id,

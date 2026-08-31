@@ -4,10 +4,29 @@ use control_plane::ports::{
 };
 use domain::ActorContext;
 use serde_json::{json, Value};
+use std::sync::Arc;
+use storage_durable_postgres::MainDurableStore;
 use time::Duration;
 use uuid::Uuid;
 
-use crate::app_state::ApiState;
+use crate::host_infrastructure::CacheStore;
+
+/// Storage dependencies for MCP result continuation and receipt delivery.
+///
+/// The result-delivery core intentionally has no dependency on API state or
+/// route composition so runtime execution can retain only the resources it
+/// needs to persist and page a tool result.
+#[derive(Clone)]
+pub(crate) struct McpResultDeliveryDependencies {
+    store: MainDurableStore,
+    cache_store: Arc<dyn CacheStore>,
+}
+
+impl McpResultDeliveryDependencies {
+    pub(crate) fn new(store: MainDurableStore, cache_store: Arc<dyn CacheStore>) -> Self {
+        Self { store, cache_store }
+    }
+}
 
 pub(crate) const DEFAULT_INLINE_CHARS: usize = 4_000;
 pub(crate) const MAX_INLINE_CHARS: usize = 16_000;
@@ -60,17 +79,23 @@ pub(crate) fn exceeds_inline_limit(detail: &Value, inline_chars: usize) -> bool 
 }
 
 pub(crate) async fn deliver_oversized_result(
-    state: &ApiState,
+    dependencies: &McpResultDeliveryDependencies,
     actor: &ActorContext,
     operation: CompletedOperation<'_>,
     detail: Value,
 ) -> Value {
     let result_ref = Uuid::now_v7();
     let summary = compact_summary(operation.operation_id_ref(), &detail);
-    let cache_status = cache_detail(state, actor.current_workspace_id, result_ref, &detail).await;
+    let cache_status = cache_detail(
+        dependencies,
+        actor.current_workspace_id,
+        result_ref,
+        &detail,
+    )
+    .await;
 
     let receipt = if operation.is_write() {
-        match state
+        match dependencies
             .store
             .record_mcp_result_receipt(&RecordMcpResultReceiptInput {
                 receipt_id: result_ref,
@@ -126,13 +151,13 @@ pub(crate) async fn deliver_oversized_result(
 }
 
 pub(crate) async fn read_continuation(
-    state: &ApiState,
+    dependencies: &McpResultDeliveryDependencies,
     actor: &ActorContext,
     result_ref: Uuid,
     cursor: ContinuationCursor,
     inline_chars: usize,
 ) -> Value {
-    let receipt = state
+    let receipt = dependencies
         .store
         .get_mcp_result_receipt(actor.current_workspace_id, result_ref)
         .await
@@ -147,9 +172,8 @@ pub(crate) async fn read_continuation(
         })
         .ok()
         .flatten();
-    let cached = state
-        .infrastructure
-        .cache_store()
+    let cached = dependencies
+        .cache_store
         .get_json(&cache_key(actor.current_workspace_id, result_ref))
         .await
         .map_err(|error| {
@@ -165,7 +189,13 @@ pub(crate) async fn read_continuation(
         .flatten();
     let detail = match cached {
         Some(manifest) => {
-            resolve_cached_detail(state, actor.current_workspace_id, result_ref, manifest).await
+            resolve_cached_detail(
+                dependencies,
+                actor.current_workspace_id,
+                result_ref,
+                manifest,
+            )
+            .await
         }
         None => None,
     };
@@ -237,7 +267,7 @@ enum DetailCacheStatus {
 }
 
 async fn cache_detail(
-    state: &ApiState,
+    dependencies: &McpResultDeliveryDependencies,
     workspace_id: Uuid,
     result_ref: Uuid,
     detail: &Value,
@@ -252,7 +282,7 @@ async fn cache_detail(
     let inline_value = inline_cache_value(detail);
     if serialized(&inline_value).len() <= DETAIL_CHUNK_MAX_BYTES {
         return store_cache_value(
-            state,
+            dependencies,
             workspace_id,
             result_ref,
             &cache_key(workspace_id, result_ref),
@@ -273,7 +303,7 @@ async fn cache_detail(
     }
     for (index, chunk) in chunks.iter().enumerate() {
         let status = store_cache_value(
-            state,
+            dependencies,
             workspace_id,
             result_ref,
             &chunk_cache_key(workspace_id, result_ref, index),
@@ -287,7 +317,7 @@ async fn cache_detail(
     // The manifest is written last so a reader never observes it before all
     // chunks are in place.
     store_cache_value(
-        state,
+        dependencies,
         workspace_id,
         result_ref,
         &cache_key(workspace_id, result_ref),
@@ -301,15 +331,14 @@ fn inline_cache_value(detail: &Value) -> Value {
 }
 
 async fn store_cache_value(
-    state: &ApiState,
+    dependencies: &McpResultDeliveryDependencies,
     workspace_id: Uuid,
     result_ref: Uuid,
     key: &str,
     value: Value,
 ) -> DetailCacheStatus {
-    match state
-        .infrastructure
-        .cache_store()
+    match dependencies
+        .cache_store
         .set_json(key, value, Some(Duration::seconds(DETAIL_TTL_SECONDS)))
         .await
     {
@@ -330,7 +359,7 @@ async fn store_cache_value(
 /// entry is missing, incomplete, or corrupt, and callers should treat it the
 /// same as a cache miss.
 async fn resolve_cached_detail(
-    state: &ApiState,
+    dependencies: &McpResultDeliveryDependencies,
     workspace_id: Uuid,
     result_ref: Uuid,
     manifest: Value,
@@ -345,9 +374,8 @@ async fn resolve_cached_detail(
                 .filter(|count| (1..=MAX_DETAIL_CHUNKS).contains(count))?;
             let mut serialized_detail = String::new();
             for index in 0..chunk_count {
-                let chunk = state
-                    .infrastructure
-                    .cache_store()
+                let chunk = dependencies
+                    .cache_store
                     .get_json(&chunk_cache_key(workspace_id, result_ref, index))
                     .await
                     .ok()
