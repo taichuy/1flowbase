@@ -10,6 +10,8 @@ ENV PATH="${PNPM_HOME}:${PATH}"
 RUN corepack enable && corepack prepare pnpm@11.5.0 --activate
 
 COPY web/package.json web/pnpm-lock.yaml web/pnpm-workspace.yaml ./web/
+COPY web/patches ./web/patches
+COPY web/scripts/verify-react-grid-layout-patch.mjs ./web/scripts/verify-react-grid-layout-patch.mjs
 COPY web/app/package.json ./web/app/package.json
 COPY web/packages/api-client/package.json ./web/packages/api-client/package.json
 COPY web/packages/block-renderer/package.json ./web/packages/block-renderer/package.json
