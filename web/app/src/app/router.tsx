@@ -32,13 +32,27 @@ import type { RolePermissionTab } from '../features/settings/components/RolePerm
 import type { SettingsExtensionCenterCategory } from '../features/settings/api/extensions';
 import type { NetworkCenterPage } from '../features/settings/pages/network-center/NetworkCenterSection';
 
+let applicationDetailPageFlight:
+  | Promise<
+      typeof import('../features/applications/pages/ApplicationDetailPage')
+    >
+  | undefined;
+
+function loadApplicationDetailPage() {
+  applicationDetailPageFlight ??=
+    import('../features/applications/pages/ApplicationDetailPage');
+  return applicationDetailPageFlight;
+}
+
 const ApplicationDetailPage = lazy(() =>
-  import('../features/applications/pages/ApplicationDetailPage').then(
-    (module) => ({
-      default: module.ApplicationDetailPage
-    })
-  )
+  loadApplicationDetailPage().then((module) => ({
+    default: module.ApplicationDetailPage
+  }))
 );
+
+if (/^\/applications\/[^/]+(?:\/|$)/u.test(window.location.pathname)) {
+  void loadApplicationDetailPage();
+}
 const AppShellFrame = lazy(() =>
   import('../app-shell/AppShellFrame').then((module) => ({
     default: module.AppShellFrame

@@ -3,10 +3,13 @@ import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import { App, Button, Typography } from 'antd';
 import {
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
   useCallback,
   useEffect,
+  lazy,
   useMemo,
   useRef,
+  Suspense,
   useState
 } from 'react';
 
@@ -67,16 +70,7 @@ import {
   selectVersions,
   selectWorkingDocument
 } from '../../store/editor/selectors';
-import { AgentFlowDebugConsole } from '../debug-console/AgentFlowDebugConsole';
-import { ConversationLogPanel } from '../debug-console/ConversationLogPanel';
-import {
-  AgentFlowVariableCachePanel,
-  type SelectedVariableInfo
-} from './AgentFlowVariableCachePanel';
-import { NodeDetailPanel } from '../detail/NodeDetailPanel';
-import { NodePreviewVariablesModal } from '../detail/NodePreviewVariablesModal';
-import { VersionHistoryPanel } from '../history/VersionHistoryPanel';
-import { IssuesDrawer } from '../issues/IssuesDrawer';
+import { type SelectedVariableInfo } from './AgentFlowVariableCachePanel';
 import { AgentFlowCanvas } from './AgentFlowCanvas';
 import { AgentFlowOverlay } from './AgentFlowOverlay';
 import { AgentFlowSideDock } from './AgentFlowSideDock';
@@ -105,6 +99,46 @@ import {
 import { type AgentFlowCanvasFrameProps } from './canvas-frame/types';
 
 type NodePreviewAction = 'run' | 'debug';
+
+const AgentFlowDebugConsole = lazy(() =>
+  import('../debug-console/AgentFlowDebugConsole').then((module) => ({
+    default: module.AgentFlowDebugConsole
+  }))
+);
+const ConversationLogPanel = lazy(() =>
+  import('../debug-console/ConversationLogPanel').then((module) => ({
+    default: module.ConversationLogPanel
+  }))
+);
+const AgentFlowVariableCachePanel = lazy(() =>
+  import('./AgentFlowVariableCachePanel').then((module) => ({
+    default: module.AgentFlowVariableCachePanel
+  }))
+);
+const NodeDetailPanel = lazy(() =>
+  import('../detail/NodeDetailPanel').then((module) => ({
+    default: module.NodeDetailPanel
+  }))
+);
+const NodePreviewVariablesModal = lazy(() =>
+  import('../detail/NodePreviewVariablesModal').then((module) => ({
+    default: module.NodePreviewVariablesModal
+  }))
+);
+const VersionHistoryPanel = lazy(() =>
+  import('../history/VersionHistoryPanel').then((module) => ({
+    default: module.VersionHistoryPanel
+  }))
+);
+const IssuesDrawer = lazy(() =>
+  import('../issues/IssuesDrawer').then((module) => ({
+    default: module.IssuesDrawer
+  }))
+);
+
+function DemandIsland({ children }: { children: ReactNode }) {
+  return <Suspense fallback={null}>{children}</Suspense>;
+}
 
 const EMPTY_ENVIRONMENT_VARIABLES: NonNullable<
   AgentFlowCanvasFrameProps['initialEnvironmentVariables']
@@ -1023,42 +1057,48 @@ export function AgentFlowCanvasFrame({
               role="separator"
               tabIndex={0}
             />
-            <NodeDetailPanel
-              activeTab={nodeDetailTab}
-              onTabChange={setNodeDetailTab}
-              activeRunId={debugSession.activeRunId}
-              applicationId={applicationId}
-              debugLoading={nodePreviewAction === 'debug'}
-              environmentVariables={environmentVariables}
-              issues={issues}
-              onClose={detailActions.closeDetail}
-              onDebugNode={selectedNodeId ? handleDebugSelectedNode : undefined}
-              onResolveRunScope={debugSession.selectRunScope}
-              onRunNode={selectedNodeId ? handleRunSelectedNode : undefined}
-              previewActionsDisabled={nodePreviewMutation.isPending}
-              runLoading={nodePreviewAction === 'run'}
-            />
+            <DemandIsland>
+              <NodeDetailPanel
+                activeTab={nodeDetailTab}
+                onTabChange={setNodeDetailTab}
+                activeRunId={debugSession.activeRunId}
+                applicationId={applicationId}
+                debugLoading={nodePreviewAction === 'debug'}
+                environmentVariables={environmentVariables}
+                issues={issues}
+                onClose={detailActions.closeDetail}
+                onDebugNode={
+                  selectedNodeId ? handleDebugSelectedNode : undefined
+                }
+                onResolveRunScope={debugSession.selectRunScope}
+                onRunNode={selectedNodeId ? handleRunSelectedNode : undefined}
+                previewActionsDisabled={nodePreviewMutation.isPending}
+                runLoading={nodePreviewAction === 'run'}
+              />
+            </DemandIsland>
           </div>
         ) : null}
         {variableCacheOpen ? (
-          <AgentFlowVariableCachePanel
-            applicationId={applicationId}
-            groups={debugSession.variableGroups}
-            height={boundedVariableCacheHeight}
-            isResizing={isResizingVariableCache}
-            isSidebarResizing={isResizingVariableCacheSidebar}
-            onClose={() => setVariableCacheOpen(false)}
-            onReset={handleResetVariableCache}
-            onResizeStart={handleVariableCacheResizeStart}
-            onSelectedChange={setSelectedVariable}
-            onSelectedValueChange={handleVariableCacheValueChange}
-            onSidebarResizeStart={handleVariableCacheSidebarResizeStart}
-            rightOffset={variableCacheRightOffset}
-            selectedVariable={selectedVariable}
-            sidebarMaxWidth={variableCacheSidebarMaxWidth}
-            sidebarMinWidth={VARIABLE_CACHE_MIN_SIDEBAR_WIDTH}
-            sidebarWidth={boundedVariableCacheSidebarWidth}
-          />
+          <DemandIsland>
+            <AgentFlowVariableCachePanel
+              applicationId={applicationId}
+              groups={debugSession.variableGroups}
+              height={boundedVariableCacheHeight}
+              isResizing={isResizingVariableCache}
+              isSidebarResizing={isResizingVariableCacheSidebar}
+              onClose={() => setVariableCacheOpen(false)}
+              onReset={handleResetVariableCache}
+              onResizeStart={handleVariableCacheResizeStart}
+              onSelectedChange={setSelectedVariable}
+              onSelectedValueChange={handleVariableCacheValueChange}
+              onSidebarResizeStart={handleVariableCacheSidebarResizeStart}
+              rightOffset={variableCacheRightOffset}
+              selectedVariable={selectedVariable}
+              sidebarMaxWidth={variableCacheSidebarMaxWidth}
+              sidebarMinWidth={VARIABLE_CACHE_MIN_SIDEBAR_WIDTH}
+              sidebarWidth={boundedVariableCacheSidebarWidth}
+            />
+          </DemandIsland>
         ) : null}
         {conversationLogOpen && conversationLogMessage ? (
           <AgentFlowSideDock
@@ -1075,16 +1115,18 @@ export function AgentFlowCanvasFrame({
             width={boundedConversationLogWidth}
             onResizeStart={handleConversationLogResizeStart}
           >
-            <ConversationLogPanel
-              message={conversationLogMessage}
-              onClose={() => setConversationLogMessageId(null)}
-              onLoadArtifact={(artifactRef) =>
-                fetchRuntimeDebugArtifact(applicationId, artifactRef)
-              }
-              onLoadArtifacts={(artifactRefs) =>
-                fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
-              }
-            />
+            <DemandIsland>
+              <ConversationLogPanel
+                message={conversationLogMessage}
+                onClose={() => setConversationLogMessageId(null)}
+                onLoadArtifact={(artifactRef) =>
+                  fetchRuntimeDebugArtifact(applicationId, artifactRef)
+                }
+                onLoadArtifacts={(artifactRefs) =>
+                  fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
+                }
+              />
+            </DemandIsland>
           </AgentFlowSideDock>
         ) : null}
         {debugConsoleOpen ? (
@@ -1096,33 +1138,35 @@ export function AgentFlowCanvasFrame({
             width={boundedDebugConsoleWidth}
             onResizeStart={handleDebugConsoleResizeStart}
           >
-            <AgentFlowDebugConsole
-              messages={debugSession.messages}
-              runContext={debugSession.runContext}
-              status={debugSession.status}
-              stopping={debugSession.stopping}
-              onChangeRunContextValue={debugSession.setRunContextValue}
-              onClearSession={() => {
-                setConversationLogMessageId(null);
-                debugSession.clearSession();
-              }}
-              onClose={closeDebugConsole}
-              onLoadArtifact={(artifactRef) =>
-                fetchRuntimeDebugArtifact(applicationId, artifactRef)
-              }
-              onLoadArtifacts={(artifactRefs) =>
-                fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
-              }
-              onOpenMessageLog={(debugMessage) =>
-                setConversationLogMessageId(debugMessage.id)
-              }
-              onStopRun={() => {
-                void debugSession.stopRun();
-              }}
-              onSubmitPrompt={(prompt) => {
-                void debugSession.submitPrompt(prompt);
-              }}
-            />
+            <DemandIsland>
+              <AgentFlowDebugConsole
+                messages={debugSession.messages}
+                runContext={debugSession.runContext}
+                status={debugSession.status}
+                stopping={debugSession.stopping}
+                onChangeRunContextValue={debugSession.setRunContextValue}
+                onClearSession={() => {
+                  setConversationLogMessageId(null);
+                  debugSession.clearSession();
+                }}
+                onClose={closeDebugConsole}
+                onLoadArtifact={(artifactRef) =>
+                  fetchRuntimeDebugArtifact(applicationId, artifactRef)
+                }
+                onLoadArtifacts={(artifactRefs) =>
+                  fetchRuntimeDebugArtifacts(applicationId, artifactRefs)
+                }
+                onOpenMessageLog={(debugMessage) =>
+                  setConversationLogMessageId(debugMessage.id)
+                }
+                onStopRun={() => {
+                  void debugSession.stopRun();
+                }}
+                onSubmitPrompt={(prompt) => {
+                  void debugSession.submitPrompt(prompt);
+                }}
+              />
+            </DemandIsland>
           </AgentFlowSideDock>
         ) : null}
         {historyOpen ? (
@@ -1137,21 +1181,23 @@ export function AgentFlowCanvasFrame({
             width={boundedHistoryDockWidth}
             onResizeStart={handleHistoryDockResizeStart}
           >
-            <VersionHistoryPanel
-              versions={versions}
-              userProtectionLimit={userProtectionLimit}
-              restoring={isRestoringVersion}
-              updatingVersionId={
-                versionMetadataMutation.isPending
-                  ? (versionMetadataMutation.variables?.versionId ?? null)
-                  : null
-              }
-              onClose={() => setPanelState({ historyOpen: false })}
-              onRestore={draftSync.restoreVersion}
-              onUpdate={(versionId, input) =>
-                versionMetadataMutation.mutateAsync({ versionId, input })
-              }
-            />
+            <DemandIsland>
+              <VersionHistoryPanel
+                versions={versions}
+                userProtectionLimit={userProtectionLimit}
+                restoring={isRestoringVersion}
+                updatingVersionId={
+                  versionMetadataMutation.isPending
+                    ? (versionMetadataMutation.variables?.versionId ?? null)
+                    : null
+                }
+                onClose={() => setPanelState({ historyOpen: false })}
+                onRestore={draftSync.restoreVersion}
+                onUpdate={(versionId, input) =>
+                  versionMetadataMutation.mutateAsync({ versionId, input })
+                }
+              />
+            </DemandIsland>
           </AgentFlowSideDock>
         ) : null}
       </div>
@@ -1163,19 +1209,27 @@ export function AgentFlowCanvasFrame({
           )}
         </Typography.Text>
       ) : null}
-      <NodePreviewVariablesModal
-        confirmLoading={nodePreviewMutation.isPending}
-        fields={pendingNodePreview?.fields ?? []}
-        open={Boolean(pendingNodePreview)}
-        onCancel={() => setPendingNodePreview(null)}
-        onSubmit={handleSubmitNodePreviewVariables}
-      />
-      <IssuesDrawer
-        open={issuesOpen}
-        issues={issues}
-        onClose={() => setPanelState({ issuesOpen: false })}
-        onSelectIssue={navigation.jumpToIssue}
-      />
+      {pendingNodePreview ? (
+        <DemandIsland>
+          <NodePreviewVariablesModal
+            confirmLoading={nodePreviewMutation.isPending}
+            fields={pendingNodePreview.fields}
+            open
+            onCancel={() => setPendingNodePreview(null)}
+            onSubmit={handleSubmitNodePreviewVariables}
+          />
+        </DemandIsland>
+      ) : null}
+      {issuesOpen ? (
+        <DemandIsland>
+          <IssuesDrawer
+            open
+            issues={issues}
+            onClose={() => setPanelState({ issuesOpen: false })}
+            onSelectIssue={navigation.jumpToIssue}
+          />
+        </DemandIsland>
+      ) : null}
     </section>
   );
 }

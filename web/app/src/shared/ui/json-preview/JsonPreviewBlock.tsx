@@ -7,11 +7,14 @@ import type { ReactNode } from 'react';
 import { Suspense, lazy, useMemo, useState } from 'react';
 
 import { useClipboardCopy } from '../clipboard/use-clipboard-copy';
-import { loadMonacoEditorModule } from '../../code-block/monaco-runtime';
 import './json-preview-block.css';
 import { i18nText } from '../../i18n/text';
 
-const MonacoEditor = lazy(loadMonacoEditorModule);
+const MonacoEditor = lazy(() =>
+  import('../../code-block/monaco-runtime').then(({ loadMonacoEditorModule }) =>
+    loadMonacoEditorModule()
+  )
+);
 
 const JSON_PREVIEW_MODAL_Z_INDEX = 1060;
 

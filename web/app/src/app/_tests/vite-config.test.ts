@@ -87,9 +87,10 @@ describe('vite config', () => {
       'utf8'
     );
 
-    expect(source).toMatch(
-      /lazy\(\(\) =>\s+import\('\.\.\/features\/applications\/pages\/ApplicationDetailPage'\)/
+    expect(source).toContain(
+      "import('../features/applications/pages/ApplicationDetailPage')"
     );
+    expect(source).toContain('loadApplicationDetailPage()');
     expect(source).toMatch(
       /lazy\(\(\) =>\s+import\('\.\.\/features\/settings\/pages\/SettingsPage'\)/
     );
@@ -101,14 +102,15 @@ describe('vite config', () => {
     );
   });
 
-  test('MDP-007 delegates page tree icons to the deterministic asset planner', async () => {
+  test('MDP-007 BGP-001 delegates resources to deterministic planners', async () => {
     const source = await readFile(
       path.resolve(process.cwd(), 'vite.config.ts'),
       'utf8'
     );
 
     expect(source).toContain('pageTreeIconAssetsPlugin');
-    expect(source).not.toContain('manualChunks');
+    expect(source).toContain('manualChunks: planScenarioChunk');
+    expect(source).toContain('scenarioChunkManifestPlugin');
     expect(source).toContain('chunkSizeWarningLimit: 3500');
   });
 

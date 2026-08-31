@@ -3,6 +3,7 @@ import { lazy, Suspense, useState } from 'react';
 import type { ConsoleAssistantClientTools } from '@1flowbase/api-client';
 
 import { i18nText } from '../../../../shared/i18n/text';
+import './embedded-assistant.css';
 
 const EmbeddedAgentAssistantPreview = lazy(() =>
   import('./EmbeddedAgentAssistantPreview').then((module) => ({
@@ -61,7 +62,17 @@ export function EmbeddedAgentAssistant({
         />
       </Tooltip>
       {previewMounted ? (
-        <Suspense fallback={null}>
+        <Suspense
+          fallback={
+            open ? (
+              <div
+                aria-busy="true"
+                className="embedded-agent-assistant-window-shell"
+                data-testid="embedded-agent-assistant-window-shell"
+              />
+            ) : null
+          }
+        >
           <EmbeddedAgentAssistantPreview
             clientTools={clientTools}
             open={open}

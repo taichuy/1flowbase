@@ -266,12 +266,15 @@ describe('AppShellFrame', () => {
     );
   });
 
-  test('MDP-009 anticipates the permitted design-mode interaction island', async () => {
+  test('BGP-008 preloads design mode after the critical route grace window', async () => {
     renderShell('/');
 
-    await waitFor(() => {
-      expect(preloadDesignModeDemand).toHaveBeenCalledTimes(1);
-    });
+    await waitFor(
+      () => {
+        expect(preloadDesignModeDemand).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 2000 }
+    );
   });
 
   test('renders frontstage design mode button globally on non-frontstage pages without navigating', async () => {

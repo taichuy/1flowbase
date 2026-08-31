@@ -5,6 +5,7 @@ const zlib = require("node:zlib");
 const DEFAULT_BUDGET = Object.freeze({
   initialGzipBytesMax: 350 * 1024,
   largestInitialGzipBytesMax: 200 * 1024,
+  javaScriptCountMax: Number.POSITIVE_INFINITY,
 });
 
 const DEFAULT_INTERACTION_BUDGET = Object.freeze({
@@ -144,6 +145,9 @@ function profileAssetFiles(distDirectory, files, budget = DEFAULT_BUDGET) {
     initialGzipBytes: initialGzipBytes <= budget.initialGzipBytesMax,
     largestInitialJavaScript:
       largestInitialJavaScript.gzipBytes <= budget.largestInitialGzipBytesMax,
+    javaScriptCount:
+      initialJavaScript.length <=
+      (budget.javaScriptCountMax ?? Number.POSITIVE_INFINITY),
   };
 
   return {
@@ -151,6 +155,7 @@ function profileAssetFiles(distDirectory, files, budget = DEFAULT_BUDGET) {
     gates,
     ok: Object.values(gates).every(Boolean),
     initialAssetCount: initialAssets.length,
+    initialJavaScriptCount: initialJavaScript.length,
     initialGzipBytes,
     largestInitialJavaScript,
     eagerAntDesignVendors,

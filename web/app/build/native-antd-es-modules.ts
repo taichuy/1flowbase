@@ -1,4 +1,4 @@
-import { readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 
@@ -6,9 +6,12 @@ import type { Plugin } from 'vite';
 
 export const NATIVE_ANTD_ES_MODULES_VIRTUAL_ID =
   'virtual:1flowbase-native-antd-es-modules';
+export const PRODUCT_ANTD_RESOLVED_CHUNKS = new Map<string, string>();
 
 const RESOLVED_VIRTUAL_ID = `\0${NATIVE_ANTD_ES_MODULES_VIRTUAL_ID}`;
 const antdRequire = createRequire(import.meta.url);
+const antdPackageRoot = path.dirname(antdRequire.resolve('antd/package.json'));
+const productExportPaths = collectProductExportPaths();
 
 interface AntDesignEsModuleSource {
   moduleSource: string;
@@ -21,10 +24,30 @@ export function nativeAntDesignEsModulesPlugin(): Plugin {
   return {
     name: '1flowbase-native-antd-es-modules',
     enforce: 'pre',
-    resolveId(id) {
-      return id === NATIVE_ANTD_ES_MODULES_VIRTUAL_ID
-        ? RESOLVED_VIRTUAL_ID
-        : undefined;
+    transform(source, id) {
+      if (!/\.[cm]?[jt]sx?$/u.test(id) || id.includes('/node_modules/')) {
+        return undefined;
+      }
+      const rewritten = rewriteProductAntDesignImports(source);
+      return rewritten === source ? undefined : { code: rewritten, map: null };
+    },
+    async resolveId(id, importer) {
+      if (id === NATIVE_ANTD_ES_MODULES_VIRTUAL_ID) {
+        return RESOLVED_VIRTUAL_ID;
+      }
+      if (
+        isProductAntDesignSource(id) &&
+        !importer?.includes(NATIVE_ANTD_ES_MODULES_VIRTUAL_ID)
+      ) {
+        const resolved = await this.resolve(id, importer, { skipSelf: true });
+        if (!resolved) return undefined;
+        PRODUCT_ANTD_RESOLVED_CHUNKS.set(
+          resolved.id,
+          productAntDesignChunk(id)
+        );
+        return resolved.id;
+      }
+      return undefined;
     },
     load(id) {
       if (id !== RESOLVED_VIRTUAL_ID) return undefined;
@@ -34,8 +57,146 @@ export function nativeAntDesignEsModulesPlugin(): Plugin {
   };
 }
 
+function isProductAntDesignSource(id: string): boolean {
+  return /^antd\/es\/[A-Za-z0-9_-]+(?:\/.*)?$/u.test(id);
+}
+
+function collectProductExportPaths(): ReadonlyMap<string, string> {
+  const indexSource = readFileSync(
+    path.join(antdPackageRoot, 'es/index.js'),
+    'utf8'
+  );
+  return new Map(
+    [
+      ...indexSource.matchAll(
+        /export \{ default as (\w+) \} from '\.\/([^']+)'/gu
+      )
+    ].map((match) => [match[1], match[2]])
+  );
+}
+
+export function rewriteProductAntDesignImports(source: string): string {
+  return source.replace(
+    /import\s*\{([^}]*)\}\s*from\s*['"]antd['"];?/gu,
+    (statement, clause: string) => {
+      const types: string[] = [];
+      const unresolved: string[] = [];
+      const leaves: string[] = [];
+      for (const rawSpecifier of clause.split(',')) {
+        const specifier = rawSpecifier.trim();
+        if (!specifier) continue;
+        if (specifier.startsWith('type ')) {
+          types.push(specifier.slice('type '.length).trim());
+          continue;
+        }
+        const [exportName, localName = exportName] = specifier
+          .split(/\s+as\s+/u)
+          .map((value) => value.trim());
+        const exportPath = productExportPaths.get(exportName);
+        if (!exportPath) {
+          unresolved.push(specifier);
+          continue;
+        }
+        leaves.push(
+          `import ${localName} from ${JSON.stringify(`antd/es/${exportPath}`)};`
+        );
+      }
+      const rootImports = [
+        ...(types.length > 0
+          ? [`import type { ${types.join(', ')} } from 'antd';`]
+          : []),
+        ...(unresolved.length > 0
+          ? [`import { ${unresolved.join(', ')} } from 'antd';`]
+          : [])
+      ];
+      return [...rootImports, ...leaves].join('\n') || statement;
+    }
+  );
+}
+
+export function productAntDesignChunk(id: string): string {
+  const component = /^antd\/es\/([^/]+)/u.exec(id)?.[1];
+  if (!component) return 'antd-core';
+  if (
+    [
+      'drawer',
+      'dropdown',
+      'modal',
+      'popover',
+      'popconfirm',
+      'tooltip'
+    ].includes(component)
+  )
+    return 'antd-overlay';
+  if (
+    [
+      'calendar',
+      'cascader',
+      'date-picker',
+      'descriptions',
+      'form',
+      'pagination',
+      'select',
+      'table',
+      'time-picker',
+      'tree',
+      'tree-select',
+      'upload'
+    ].includes(component)
+  )
+    return 'antd-data';
+  if (
+    [
+      'alert',
+      'message',
+      'notification',
+      'progress',
+      'result',
+      'skeleton',
+      'spin'
+    ].includes(component)
+  )
+    return 'antd-feedback';
+  if (['anchor', 'breadcrumb', 'menu', 'steps', 'tabs'].includes(component))
+    return 'antd-navigation';
+  if (
+    [
+      'checkbox',
+      'color-picker',
+      'input',
+      'input-number',
+      'mentions',
+      'radio',
+      'rate',
+      'segmented',
+      'slider',
+      'switch',
+      'transfer'
+    ].includes(component)
+  )
+    return 'antd-input';
+  if (
+    [
+      'avatar',
+      'badge',
+      'card',
+      'carousel',
+      'collapse',
+      'empty',
+      'image',
+      'list',
+      'statistic',
+      'tag',
+      'timeline',
+      'tour'
+    ].includes(component)
+  )
+    return 'antd-display';
+  return 'antd-core';
+}
+
 export function collectAntDesignEsModuleSources(
-  packageRoot = path.dirname(antdRequire.resolve('antd/package.json'))
+  packageRoot = antdPackageRoot
 ): AntDesignEsModuleSource[] {
   const esRoot = path.join(packageRoot, 'es');
   const bySource = new Map<string, string>();

@@ -9,8 +9,11 @@ const AnonymousRuntime = lazy(() =>
   }))
 );
 const AuthenticatedRuntime = lazy(async () => {
-  const runtimeModule = await import('./AuthenticatedAppRuntime');
-  await loadApplicationI18nResources();
+  const [runtimeModule] = await Promise.all([
+    import('./AuthenticatedAppRuntime'),
+    loadApplicationI18nResources(),
+    import('../app-shell/AppShellFrame')
+  ]);
   return { default: runtimeModule.AuthenticatedAppRuntime };
 });
 
@@ -18,15 +21,17 @@ export function ApplicationRuntimeBootstrap() {
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
   if (sessionStatus === 'unknown') {
     return (
-      <div className="application-bootstrap" role="status" aria-label="thinking">
+      <div
+        className="application-bootstrap"
+        role="status"
+        aria-label="thinking"
+      >
         <span className="application-bootstrap__pulse" />
       </div>
     );
   }
   const Runtime =
-    sessionStatus === 'authenticated'
-      ? AuthenticatedRuntime
-      : AnonymousRuntime;
+    sessionStatus === 'authenticated' ? AuthenticatedRuntime : AnonymousRuntime;
 
   return (
     <Suspense fallback={null}>

@@ -7,6 +7,7 @@ import { i18nText } from '../shared/i18n/text';
 import { preloadDesignModeDemand } from './design-mode-demand';
 
 const DESIGN_MODE_PERMISSION = 'frontstage.page.design';
+const DESIGN_MODE_PRELOAD_GRACE_MS = 1000;
 
 function FrontstageDesignModeActionBase() {
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
@@ -29,7 +30,11 @@ function FrontstageDesignModeActionBase() {
 
   useEffect(() => {
     if (hasResolvedDesignModePermission && canUseDesignMode && !isDesignMode) {
-      void preloadDesignModeDemand();
+      const preloadTimer = window.setTimeout(() => {
+        void preloadDesignModeDemand();
+      }, DESIGN_MODE_PRELOAD_GRACE_MS);
+
+      return () => window.clearTimeout(preloadTimer);
     }
   }, [canUseDesignMode, hasResolvedDesignModePermission, isDesignMode]);
 

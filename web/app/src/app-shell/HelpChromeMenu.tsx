@@ -6,7 +6,7 @@ import QuestionCircleOutlined from '@ant-design/icons/es/icons/QuestionCircleOut
 import SafetyCertificateOutlined from '@ant-design/icons/es/icons/SafetyCertificateOutlined';
 import { fetchConsoleReleaseStatus } from '@1flowbase/api-client';
 import { useQuery } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Menu, Spin } from 'antd';
 import { i18nText } from '../shared/i18n/text';
 
@@ -78,13 +78,15 @@ function formatReleaseVersion(version: string | null | undefined) {
 }
 
 export function HelpChromeMenu() {
+  const [helpOpen, setHelpOpen] = useState(false);
   const releaseStatusQuery = useQuery({
     queryKey: ['console-release-status'],
     queryFn: () => fetchConsoleReleaseStatus(),
     staleTime: 60 * 1000,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
-    retry: false
+    retry: false,
+    enabled: helpOpen
   });
   const releaseStatus = releaseStatusQuery.data;
   const currentVersion = formatReleaseVersion(releaseStatus?.current_version);
@@ -98,6 +100,8 @@ export function HelpChromeMenu() {
     <Menu
       className="app-shell-help-menu"
       mode="horizontal"
+      openKeys={helpOpen ? ['help'] : []}
+      onOpenChange={(openKeys) => setHelpOpen(openKeys.includes('help'))}
       selectable={false}
       items={[
         {

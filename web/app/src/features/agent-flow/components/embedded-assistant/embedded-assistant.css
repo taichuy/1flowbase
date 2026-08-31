@@ -469,3 +469,18 @@
     display: none;
   }
 }
+.embedded-agent-assistant-window-shell {
+  position: fixed;
+  z-index: 1000;
+  right: 24px;
+  bottom: 24px;
+  width: min(480px, calc(100vw - 48px));
+  height: min(640px, calc(100vh - 48px));
+  border: 1px solid var(--ant-color-border-secondary, #e7ede9);
+  border-radius: 12px;
+  background: var(--ant-color-bg-container, rgba(255, 255, 255, 0.96));
+  box-shadow: var(
+    --ant-box-shadow-secondary,
+    0 18px 50px rgba(15, 23, 20, 0.08)
+  );
+}

@@ -1,5 +1,7 @@
-import { Think, ThoughtChain } from '@ant-design/x';
-import type { ThoughtChainItemType } from '@ant-design/x';
+import Think from '@ant-design/x/es/think';
+import ThoughtChain, {
+  type ThoughtChainItemType
+} from '@ant-design/x/es/thought-chain';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
 import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';

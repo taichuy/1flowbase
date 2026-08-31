@@ -9,11 +9,10 @@ export const NATIVE_ANT_DESIGN_ICONS_LOADERS_VIRTUAL_ID =
   'virtual:1flowbase-native-ant-design-icons-loaders';
 export const NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX =
   'virtual:1flowbase-native-ant-design-icon-leaf/';
+export const PRODUCT_ANT_DESIGN_ICON_RESOLVED_IDS = new Set<string>();
 
-const RESOLVED_VIRTUAL_ID =
-  `\0${NATIVE_ANT_DESIGN_ICONS_MODULES_VIRTUAL_ID}`;
-const RESOLVED_LOADERS_VIRTUAL_ID =
-  `\0${NATIVE_ANT_DESIGN_ICONS_LOADERS_VIRTUAL_ID}`;
+const RESOLVED_VIRTUAL_ID = `\0${NATIVE_ANT_DESIGN_ICONS_MODULES_VIRTUAL_ID}`;
+const RESOLVED_LOADERS_VIRTUAL_ID = `\0${NATIVE_ANT_DESIGN_ICONS_LOADERS_VIRTUAL_ID}`;
 const PACKAGE_NAME = '@ant-design/icons';
 const ROOT_EXPORTS = [
   'default',
@@ -60,7 +59,7 @@ export function nativeAntDesignIconsModulesPlugin({
     configResolved(config) {
       command = config.command;
     },
-    resolveId(id) {
+    async resolveId(id, importer) {
       if (id === NATIVE_ANT_DESIGN_ICONS_MODULES_VIRTUAL_ID) {
         return RESOLVED_VIRTUAL_ID;
       }
@@ -74,6 +73,16 @@ export function nativeAntDesignIconsModulesPlugin({
           );
         }
         return `\0${id}`;
+      }
+      const productIconName = productAntDesignIconName(id);
+      if (
+        productIconName &&
+        !importer?.includes(NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX)
+      ) {
+        const resolved = await this.resolve(id, importer, { skipSelf: true });
+        if (!resolved) return undefined;
+        PRODUCT_ANT_DESIGN_ICON_RESOLVED_IDS.add(resolved.id);
+        return resolved.id;
       }
       return undefined;
     },
@@ -100,6 +109,13 @@ export function nativeAntDesignIconsModulesPlugin({
   };
 }
 
+function productAntDesignIconName(id: string): string | null {
+  return (
+    /^@ant-design\/icons\/es\/icons\/([A-Za-z][A-Za-z0-9]*)$/u.exec(id)?.[1] ??
+    null
+  );
+}
+
 export function collectAntDesignIconModuleSources({
   projectRoot
 }: {
@@ -113,7 +129,9 @@ export function collectAntDesignIconModuleSources({
   const iconNames = readdirSync(iconJavaScriptRoot, { withFileTypes: true })
     .filter(
       (entry) =>
-        entry.isFile() && entry.name.endsWith('.js') && entry.name !== 'index.js'
+        entry.isFile() &&
+        entry.name.endsWith('.js') &&
+        entry.name !== 'index.js'
     )
     .map((entry) => entry.name.slice(0, -'.js'.length))
     .sort((left, right) => left.localeCompare(right));
@@ -133,8 +151,8 @@ export function collectAntDesignIconModuleSources({
     }),
     packageName: manifest.name,
     packageVersion: manifest.version,
-    rootExports: [...new Set([...ROOT_EXPORTS, ...iconNames])].sort((left, right) =>
-      left.localeCompare(right)
+    rootExports: [...new Set([...ROOT_EXPORTS, ...iconNames])].sort(
+      (left, right) => left.localeCompare(right)
     )
   };
 }
@@ -159,7 +177,10 @@ function readPackageManifest(packageRoot: string): {
   return { exports: value.exports, name: value.name, version: value.version };
 }
 
-function assertPublicLeafExport(exportsValue: unknown, packageRoot: string): void {
+function assertPublicLeafExport(
+  exportsValue: unknown,
+  packageRoot: string
+): void {
   if (!exportsValue || typeof exportsValue !== 'object') {
     throw new Error(
       `[native-ant-design-icons-modules] Package at '${packageRoot}' has no exports map.`
@@ -250,9 +271,7 @@ function generateNativeAntDesignIconsLoaderDomain(
   const leafId = ${JSON.stringify(`/@id/__x00__${NATIVE_ANT_DESIGN_ICON_LEAF_VIRTUAL_PREFIX}`)} + moduleSource.slice('@ant-design/icons/'.length);
   const load = () => import(/* @vite-ignore */ leafId);`;
   const rootLeafSources =
-    command === 'build'
-      ? 'Object.keys(leafLoaders)'
-      : '[...leafModuleSources]';
+    command === 'build' ? 'Object.keys(leafLoaders)' : '[...leafModuleSources]';
 
   return `
 import { lazy } from 'react';

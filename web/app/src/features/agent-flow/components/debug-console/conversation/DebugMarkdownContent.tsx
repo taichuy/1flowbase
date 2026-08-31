@@ -1,4 +1,4 @@
-import { XMarkdown } from '@ant-design/x-markdown';
+import XMarkdown from '@ant-design/x-markdown';
 
 const MARKDOWN_CONFIG = {
   breaks: true,

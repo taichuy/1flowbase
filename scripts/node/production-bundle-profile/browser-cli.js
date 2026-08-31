@@ -59,6 +59,10 @@ async function main() {
       optionValue("--largest-gzip-max", String(200 * 1024)),
       10,
     ),
+    javaScriptCountMax: Number.parseInt(
+      optionValue("--ready-js-max", String(Number.MAX_SAFE_INTEGER)),
+      10,
+    ),
   };
   const forbiddenPatterns = optionValues("--forbid-pattern").map(
     (pattern) => new RegExp(pattern, "u"),
@@ -211,6 +215,35 @@ async function main() {
           unexpectedAssets.length === 0,
       };
     }
+    const browserTiming = await page.evaluate(() => {
+      const navigation = performance.getEntriesByType("navigation")[0];
+      const resources = performance
+        .getEntriesByType("resource")
+        .map((entry) => ({
+          name: entry.name,
+          initiatorType: entry.initiatorType,
+          startTime: Math.round(entry.startTime),
+          responseEnd: Math.round(entry.responseEnd),
+          duration: Math.round(entry.duration),
+          transferSize: entry.transferSize,
+          decodedBodySize: entry.decodedBodySize,
+        }))
+        .sort((left, right) => right.responseEnd - left.responseEnd);
+      return {
+        navigation: navigation
+          ? {
+              responseStart: Math.round(navigation.responseStart),
+              responseEnd: Math.round(navigation.responseEnd),
+              domInteractive: Math.round(navigation.domInteractive),
+              domContentLoadedEventEnd: Math.round(
+                navigation.domContentLoadedEventEnd,
+              ),
+              loadEventEnd: Math.round(navigation.loadEventEnd),
+            }
+          : null,
+        resources,
+      };
+    });
     const result = {
       url,
       finalUrl: page.url(),
@@ -226,6 +259,7 @@ async function main() {
       settled: settledProfile,
       failedAssets,
       pageErrors,
+      browserTiming,
       interaction,
     };
     result.ok =

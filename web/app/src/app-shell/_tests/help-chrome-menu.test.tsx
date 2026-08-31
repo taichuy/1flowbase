@@ -29,6 +29,7 @@ describe('HelpChromeMenu', () => {
       </AppProviders>
     );
 
+    expect(fetchConsoleReleaseStatus).not.toHaveBeenCalled();
     fireEvent.mouseEnter(screen.getByLabelText('帮助'));
 
     const githubLink = (await screen.findByText('github')).closest('a');

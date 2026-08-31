@@ -3,8 +3,10 @@ import type { FlowAuthoringDocument } from '@1flowbase/flow-schema';
 import { App, Button, Typography } from 'antd';
 import {
   useEffect,
+  lazy,
   useMemo,
   useRef,
+  Suspense,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent
@@ -40,11 +42,7 @@ import {
 } from '../../agent-flow/api/orchestration';
 import { AgentFlowCanvas } from '../../agent-flow/components/editor/AgentFlowCanvas';
 import { AgentFlowSideDock } from '../../agent-flow/components/editor/AgentFlowSideDock';
-import { ApplicationEnvironmentVariablesPanel } from '../../agent-flow/components/editor/ApplicationEnvironmentVariablesPanel';
 import { startCanvasFrameResize } from '../../agent-flow/components/editor/canvas-frame/resize';
-import { NodeDetailPanel } from '../../agent-flow/components/detail/NodeDetailPanel';
-import { VersionHistoryPanel } from '../../agent-flow/components/history/VersionHistoryPanel';
-import { IssuesDrawer } from '../../agent-flow/components/issues/IssuesDrawer';
 import { useContainerNavigation } from '../../agent-flow/hooks/interactions/use-container-navigation';
 import { useDraftSync } from '../../agent-flow/hooks/interactions/use-draft-sync';
 import { useEditorShortcuts } from '../../agent-flow/hooks/interactions/use-editor-shortcuts';
@@ -74,6 +72,27 @@ import { WorkflowTestRunPanel } from './WorkflowTestRunPanel';
 
 const ENVIRONMENT_DOCK_WIDTH = 520;
 const HISTORY_DOCK_WIDTH = 460;
+
+const ApplicationEnvironmentVariablesPanel = lazy(() =>
+  import('../../agent-flow/components/editor/ApplicationEnvironmentVariablesPanel').then(
+    (module) => ({ default: module.ApplicationEnvironmentVariablesPanel })
+  )
+);
+const NodeDetailPanel = lazy(() =>
+  import('../../agent-flow/components/detail/NodeDetailPanel').then(
+    (module) => ({ default: module.NodeDetailPanel })
+  )
+);
+const VersionHistoryPanel = lazy(() =>
+  import('../../agent-flow/components/history/VersionHistoryPanel').then(
+    (module) => ({ default: module.VersionHistoryPanel })
+  )
+);
+const IssuesDrawer = lazy(() =>
+  import('../../agent-flow/components/issues/IssuesDrawer').then((module) => ({
+    default: module.IssuesDrawer
+  }))
+);
 
 interface WorkflowCanvasFrameProps {
   applicationId: string;
@@ -450,15 +469,17 @@ export function WorkflowCanvasFrame({
               role="separator"
               tabIndex={0}
             />
-            <NodeDetailPanel
-              activeTab={nodeDetailTab}
-              applicationId={applicationId}
-              environmentVariables={environmentVariables}
-              issues={issues}
-              onClose={detailActions.closeDetail}
-              onTabChange={setNodeDetailTab}
-              workflowTriggerContext={triggerContext}
-            />
+            <Suspense fallback={null}>
+              <NodeDetailPanel
+                activeTab={nodeDetailTab}
+                applicationId={applicationId}
+                environmentVariables={environmentVariables}
+                issues={issues}
+                onClose={detailActions.closeDetail}
+                onTabChange={setNodeDetailTab}
+                workflowTriggerContext={triggerContext}
+              />
+            </Suspense>
           </div>
         ) : null}
         {environmentVariablesOpen ? (
@@ -468,14 +489,16 @@ export function WorkflowCanvasFrame({
             width={ENVIRONMENT_DOCK_WIDTH}
             onResizeStart={() => undefined}
           >
-            <ApplicationEnvironmentVariablesPanel
-              loading={environmentVariablesMutation.isPending}
-              variables={environmentVariables}
-              onClose={() => setEnvironmentVariablesOpen(false)}
-              onSave={(variables) =>
-                environmentVariablesMutation.mutate(variables)
-              }
-            />
+            <Suspense fallback={null}>
+              <ApplicationEnvironmentVariablesPanel
+                loading={environmentVariablesMutation.isPending}
+                variables={environmentVariables}
+                onClose={() => setEnvironmentVariablesOpen(false)}
+                onSave={(variables) =>
+                  environmentVariablesMutation.mutate(variables)
+                }
+              />
+            </Suspense>
           </AgentFlowSideDock>
         ) : null}
         {historyOpen ? (
@@ -488,21 +511,23 @@ export function WorkflowCanvasFrame({
             width={HISTORY_DOCK_WIDTH}
             onResizeStart={() => undefined}
           >
-            <VersionHistoryPanel
-              versions={versions}
-              userProtectionLimit={userProtectionLimit}
-              restoring={isRestoringVersion}
-              updatingVersionId={
-                versionMetadataMutation.isPending
-                  ? (versionMetadataMutation.variables?.versionId ?? null)
-                  : null
-              }
-              onClose={() => setPanelState({ historyOpen: false })}
-              onRestore={draftSync.restoreVersion}
-              onUpdate={(versionId, input) =>
-                versionMetadataMutation.mutateAsync({ versionId, input })
-              }
-            />
+            <Suspense fallback={null}>
+              <VersionHistoryPanel
+                versions={versions}
+                userProtectionLimit={userProtectionLimit}
+                restoring={isRestoringVersion}
+                updatingVersionId={
+                  versionMetadataMutation.isPending
+                    ? (versionMetadataMutation.variables?.versionId ?? null)
+                    : null
+                }
+                onClose={() => setPanelState({ historyOpen: false })}
+                onRestore={draftSync.restoreVersion}
+                onUpdate={(versionId, input) =>
+                  versionMetadataMutation.mutateAsync({ versionId, input })
+                }
+              />
+            </Suspense>
           </AgentFlowSideDock>
         ) : null}
       </div>
@@ -514,12 +539,16 @@ export function WorkflowCanvasFrame({
           )}
         </Typography.Text>
       ) : null}
-      <IssuesDrawer
-        open={issuesOpen}
-        issues={issues}
-        onClose={() => setPanelState({ issuesOpen: false })}
-        onSelectIssue={navigation.jumpToIssue}
-      />
+      {issuesOpen ? (
+        <Suspense fallback={null}>
+          <IssuesDrawer
+            open
+            issues={issues}
+            onClose={() => setPanelState({ issuesOpen: false })}
+            onSelectIssue={navigation.jumpToIssue}
+          />
+        </Suspense>
+      ) : null}
     </section>
   );
 }

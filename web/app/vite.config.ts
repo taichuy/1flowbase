@@ -22,6 +22,10 @@ import {
   nativeDayjsModulesPlugin
 } from './build/native-dayjs-modules';
 import { resolveProductionModulePreloadDependencies } from './build/production-module-preload';
+import {
+  planScenarioChunk,
+  scenarioChunkManifestPlugin
+} from './build/scenario-chunk-planner';
 import { FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES } from './src/features/frontstage/lib/native-modules/resolved-dependency-sources';
 import { oneFlowbaseDevRuntimePlugin } from './vite/dev-runtime';
 
@@ -112,6 +116,7 @@ export default defineConfig(({ command, mode }) => {
     plugins: [
       oneFlowbaseDevRuntimePlugin({ root: process.cwd(), mode, command }),
       pageTreeIconAssetsPlugin({ projectRoot: appRoot }),
+      scenarioChunkManifestPlugin(),
       nativeAntDesignEsModulesPlugin(),
       nativeAntDesignIconsModulesPlugin({
         inventory: nativeAntDesignIconsModuleInventory
@@ -145,6 +150,11 @@ export default defineConfig(({ command, mode }) => {
       include: [
         '@1flowbase/api-client/auth',
         '@ant-design/icons',
+        '@ant-design/x/es/bubble',
+        '@ant-design/x/es/conversations',
+        '@ant-design/x/es/sender',
+        '@ant-design/x/es/think',
+        '@ant-design/x/es/thought-chain',
         ...devCriticalAntDesignModules,
         '@ant-design/x-markdown',
         '@lexical/react/LexicalComposer',
@@ -169,6 +179,11 @@ export default defineConfig(({ command, mode }) => {
     },
     build: {
       chunkSizeWarningLimit: 3500,
+      rollupOptions: {
+        output: {
+          manualChunks: planScenarioChunk
+        }
+      },
       modulePreload: {
         resolveDependencies: resolveProductionModulePreloadDependencies
       },

@@ -159,3 +159,24 @@ test("PB-F01 scenario profile rejects a JavaScript asset above the critical limi
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("BGP-F01 scenario profile rejects leaf-chunk request fan-out", () => {
+  const files = Object.fromEntries(
+    Array.from({ length: 141 }, (_, index) => [
+      `leaf-${index}.js`,
+      `export const value${index} = ${index};`,
+    ]),
+  );
+  const directory = createBundle(files, `<script></script>`);
+  try {
+    const profile = profileAssetFiles(directory, Object.keys(files), {
+      initialGzipBytesMax: Number.POSITIVE_INFINITY,
+      largestInitialGzipBytesMax: Number.POSITIVE_INFINITY,
+      javaScriptCountMax: 140,
+    });
+    assert.equal(profile.gates.javaScriptCount, false);
+    assert.equal(profile.initialJavaScriptCount, 141);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});
