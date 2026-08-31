@@ -559,6 +559,24 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-file-tables",
+            &[
+                "settings.file-tables.list",
+                "settings.file-tables.create",
+                "settings.file-tables.delete",
+                "settings.file-tables.storage.bind",
+            ],
+            &["api-server.console-file-tables"],
+            crate::routes::file_tables::compile_registry(
+                state.store.clone(),
+                state.bootstrap_workspace_id,
+                Arc::new(crate::runtime_registry_sync::ApiRuntimeRegistrySync::new(
+                    state.store.clone(),
+                    state.runtime_engine.registry().clone(),
+                )),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-runs",
             &["application.native.runs.create"],
             &["api-server.application-public-api"],

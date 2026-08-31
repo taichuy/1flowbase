@@ -6,7 +6,7 @@ use access_control::{
 };
 use axum::{
     extract::{Path, State},
-    http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode},
     Json, Router,
 };
 use control_plane::file_management::{
@@ -15,25 +15,151 @@ use control_plane::file_management::{
 };
 use control_plane::i18n_catalog::CatalogResolver;
 use control_plane::ports::RuntimeRegistrySync;
+use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::{Deserialize, Serialize};
+use storage_durable_postgres::MainDurableStore;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
-    routes::console_route_assembly::{
-        console_delete, console_get, console_put, ConsoleRouteAssembly,
+    routes::{
+        console_interface::{
+            self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
+            ConsoleInterfaceTargetError, ConsoleLocaleHints,
+        },
+        console_route_assembly::{console_delete, console_get, console_put, ConsoleRouteAssembly},
     },
-    runtime_registry_sync::ApiRuntimeRegistrySync,
 };
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateFileTableBody {
     pub code: String,
     pub title: String,
+}
+
+enum FileTablesInput {
+    List {
+        locale: ConsoleLocaleHints,
+    },
+    Create(CreateFileTableBody),
+    Bind {
+        file_table_id: String,
+        body: BindFileTableStorageBody,
+    },
+    Delete {
+        file_table_id: String,
+    },
+}
+
+impl InterfaceContract for FileTablesInput {
+    const CONTRACT_ID: &'static str = "console-file-tables-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+enum FileTablesOutput {
+    List(Vec<FileTableResponse>),
+    Item(FileTableResponse),
+    Deleted,
+}
+
+impl InterfaceContract for FileTablesOutput {
+    const CONTRACT_ID: &'static str = "console-file-tables-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+struct FileTablesAdapter {
+    store: MainDurableStore,
+    bootstrap_workspace_id: Uuid,
+    runtime_registry_sync: Arc<dyn RuntimeRegistrySync>,
+}
+
+impl FileTablesAdapter {
+    async fn execute_inner(
+        &self,
+        principal: &UserPrincipal,
+        input: FileTablesInput,
+    ) -> Result<FileTablesOutput, ApiError> {
+        let actor = principal.actor();
+        match input {
+            FileTablesInput::List { locale } => {
+                let mut tables = FileTableService::new(self.store.clone())
+                    .list_tables(actor.user_id)
+                    .await?;
+                let preferred_locale = self
+                    .store
+                    .find_user_by_id(actor.user_id)
+                    .await?
+                    .ok_or(control_plane::errors::ControlPlaneError::NotAuthenticated)?
+                    .preferred_locale;
+                let locale = locale.resolve(preferred_locale);
+                let resolver =
+                    CatalogResolver::new(self.store.clone(), self.bootstrap_workspace_id);
+                for result in &mut tables {
+                    project_builtin_file_table_title(
+                        &resolver,
+                        self.bootstrap_workspace_id,
+                        &locale,
+                        &mut result.table,
+                    )
+                    .await?;
+                }
+                Ok(FileTablesOutput::List(
+                    tables.into_iter().map(to_response).collect(),
+                ))
+            }
+            FileTablesInput::Create(body) => {
+                let created = FileTableService::new(self.store.clone())
+                    .create_table(CreateFileTableCommand {
+                        actor_user_id: actor.user_id,
+                        code: body.code,
+                        title: body.title,
+                    })
+                    .await?;
+                self.runtime_registry_sync.rebuild().await?;
+                Ok(FileTablesOutput::Item(to_response(created)))
+            }
+            FileTablesInput::Bind {
+                file_table_id,
+                body,
+            } => {
+                let updated = FileTableService::new(self.store.clone())
+                    .bind_storage(BindFileTableStorageCommand {
+                        actor_user_id: actor.user_id,
+                        file_table_id: parse_uuid(&file_table_id, "file_table_id")?,
+                        bound_storage_id: parse_uuid(&body.bound_storage_id, "bound_storage_id")?,
+                    })
+                    .await?;
+                Ok(FileTablesOutput::Item(to_response(updated)))
+            }
+            FileTablesInput::Delete { file_table_id } => {
+                FileTableService::new(self.store.clone())
+                    .delete_table(DeleteFileTableCommand {
+                        actor_user_id: actor.user_id,
+                        file_table_id: parse_uuid(&file_table_id, "file_table_id")?,
+                    })
+                    .await?;
+                self.runtime_registry_sync.rebuild().await?;
+                Ok(FileTablesOutput::Deleted)
+            }
+        }
+    }
+}
+
+impl ConsoleInterfacePort<FileTablesInput, FileTablesOutput> for FileTablesAdapter {
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: FileTablesInput,
+    ) -> ConsoleInterfaceFuture<'a, FileTablesOutput> {
+        Box::pin(async move {
+            self.execute_inner(principal, input)
+                .await
+                .map_err(ConsoleInterfaceTargetError)
+        })
+    }
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -59,31 +185,6 @@ pub struct FileTableResponse {
 fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
     Uuid::parse_str(raw)
         .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput(field).into())
-}
-
-fn request_catalog_locale(
-    headers: &HeaderMap,
-    preferred_locale: Option<String>,
-) -> domain::CatalogLocale {
-    let resolved = runtime_profile::resolve_locale(runtime_profile::LocaleResolutionInput {
-        query_locale: None,
-        explicit_header_locale: headers
-            .get("x-1flowbase-locale")
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string),
-        user_preferred_locale: preferred_locale,
-        accept_language: headers
-            .get(ACCEPT_LANGUAGE)
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string),
-        fallback_locale: runtime_profile::FALLBACK_LOCALE,
-        supported_locales: runtime_profile::SUPPORTED_LOCALES
-            .iter()
-            .map(|value| value.to_string())
-            .collect(),
-    });
-    domain::CatalogLocale::new(resolved.resolved_locale)
-        .expect("runtime profile must resolve a supported catalog locale")
 }
 
 fn to_response(result: FileTableWithStorageTitle) -> FileTableResponse {
@@ -141,6 +242,57 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
+const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "settings.file-tables.list",
+        binding_id: "http.console.settings.file-tables.list.v1",
+        method: "GET",
+        path: "/api/console/settings/files/tables",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "settings.file-tables.create",
+        binding_id: "http.console.settings.file-tables.create.v1",
+        method: "POST",
+        path: "/api/console/settings/files/tables",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "settings.file-tables.delete",
+        binding_id: "http.console.settings.file-tables.delete.v1",
+        method: "DELETE",
+        path: "/api/console/settings/files/tables/:id",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "settings.file-tables.storage.bind",
+        binding_id: "http.console.settings.file-tables.storage.bind.v1",
+        method: "PUT",
+        path: "/api/console/settings/files/tables/:id/binding",
+        mutating: true,
+    },
+];
+
+pub(crate) fn compile_registry(
+    store: MainDurableStore,
+    bootstrap_workspace_id: Uuid,
+    runtime_registry_sync: Arc<dyn RuntimeRegistrySync>,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    console_interface::compile_registry(
+        "api-server.console-file-tables",
+        "graph:console-file-tables-v1",
+        DECLARATIONS,
+        Arc::new(FileTablesAdapter {
+            store,
+            bootstrap_workspace_id,
+            runtime_registry_sync,
+        }),
+    )
+}
+
 #[utoipa::path(
     get,
     path = "/api/console/settings/files/tables",
@@ -150,25 +302,18 @@ pub async fn list_file_tables(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<FileTableResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let mut tables = FileTableService::new(state.store.clone())
-        .list_tables(context.user.id)
-        .await?;
-    let locale = request_catalog_locale(&headers, context.user.preferred_locale);
-    let resolver = CatalogResolver::new(state.store.clone(), state.bootstrap_workspace_id);
-    for result in &mut tables {
-        project_builtin_file_table_title(
-            &resolver,
-            state.bootstrap_workspace_id,
-            &locale,
-            &mut result.table,
-        )
-        .await?;
-    }
-
-    Ok(Json(ApiSuccess::new(
-        tables.into_iter().map(to_response).collect(),
-    )))
+    let locale = ConsoleLocaleHints::from_headers(&headers);
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.settings.file-tables.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        FileTablesInput::List { locale },
+    )
+    .await?;
+    let FileTablesOutput::List(tables) = output else {
+        unreachable!("file tables list binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(tables)))
 }
 
 #[utoipa::path(
@@ -182,24 +327,17 @@ pub async fn create_file_table(
     headers: HeaderMap,
     Json(body): Json<CreateFileTableBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<FileTableResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    let created = FileTableService::new(state.store.clone())
-        .create_table(CreateFileTableCommand {
-            actor_user_id: context.user.id,
-            code: body.code,
-            title: body.title,
-        })
-        .await?;
-    ApiRuntimeRegistrySync::new(state.store.clone(), state.runtime_engine.registry().clone())
-        .rebuild()
-        .await?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_response(created))),
-    ))
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.settings.file-tables.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        FileTablesInput::Create(body),
+    )
+    .await?;
+    let FileTablesOutput::Item(created) = output else {
+        unreachable!("file table create binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(created))))
 }
 
 #[utoipa::path(
@@ -215,18 +353,20 @@ pub async fn bind_file_table_storage(
     Path(file_table_id): Path<String>,
     Json(body): Json<BindFileTableStorageBody>,
 ) -> Result<Json<ApiSuccess<FileTableResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    let updated = FileTableService::new(state.store.clone())
-        .bind_storage(BindFileTableStorageCommand {
-            actor_user_id: context.user.id,
-            file_table_id: parse_uuid(&file_table_id, "file_table_id")?,
-            bound_storage_id: parse_uuid(&body.bound_storage_id, "bound_storage_id")?,
-        })
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_response(updated))))
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.settings.file-tables.storage.bind.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        FileTablesInput::Bind {
+            file_table_id,
+            body,
+        },
+    )
+    .await?;
+    let FileTablesOutput::Item(updated) = output else {
+        unreachable!("file table bind binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(updated)))
 }
 
 #[utoipa::path(
@@ -240,18 +380,15 @@ pub async fn delete_file_table(
     headers: HeaderMap,
     Path(file_table_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    FileTableService::new(state.store.clone())
-        .delete_table(DeleteFileTableCommand {
-            actor_user_id: context.user.id,
-            file_table_id: parse_uuid(&file_table_id, "file_table_id")?,
-        })
-        .await?;
-    ApiRuntimeRegistrySync::new(state.store.clone(), state.runtime_engine.registry().clone())
-        .rebuild()
-        .await?;
-
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.settings.file-tables.delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        FileTablesInput::Delete { file_table_id },
+    )
+    .await?;
+    let FileTablesOutput::Deleted = output else {
+        unreachable!("file table delete binding returned a different output")
+    };
     Ok(StatusCode::NO_CONTENT)
 }
