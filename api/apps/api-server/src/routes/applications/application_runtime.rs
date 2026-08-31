@@ -19,8 +19,8 @@ use control_plane::{
         debug_stream_events, project_runtime_event_stream_terminal,
         spawn_runtime_debug_event_persister,
         trace_projection::{
-            build_application_run_trace_projection, merge_trace_node_run_detail,
-            projection_status_needs_lazy_rebuild, APPLICATION_RUN_TRACE_PROJECTION_VERSION,
+            build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
+            APPLICATION_RUN_TRACE_PROJECTION_VERSION,
         },
         wait_for_runtime_debug_event_persister, CancelFlowRunCommand, CompleteCallbackTaskCommand,
         ContinueFlowDebugRunCommand, OrchestrationRuntimeService, PrepareFlowDebugRunCommand,
@@ -62,6 +62,7 @@ pub(crate) mod debug_variable_cache;
 pub(crate) mod debug_variable_snapshot;
 pub(crate) mod interface_runtime_reads;
 pub(crate) mod interface_trace_exports;
+pub(crate) mod interface_trace_payloads;
 mod runtime_debug_artifacts;
 
 use archive::{
@@ -78,7 +79,6 @@ use runtime_debug_artifacts::{
     enrich_application_run_detail_visible_internal_llm_route_traces,
     enrich_node_last_run_visible_internal_llm_route_traces, load_runtime_debug_artifact_json_value,
     load_runtime_debug_artifact_response, offload_application_run_detail_artifacts,
-    offload_trace_node_content_artifacts, offload_trace_node_run_detail_artifacts,
     RuntimeDebugArtifactPreviewRequest,
 };
 

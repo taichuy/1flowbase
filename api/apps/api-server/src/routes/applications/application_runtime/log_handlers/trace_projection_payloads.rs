@@ -257,7 +257,7 @@ pub(super) fn trace_node_run_detail_payload(node_run: domain::NodeRunRecord) -> 
 }
 
 pub(super) async fn find_trace_projection_tool_callback_node(
-    state: &Arc<ApiState>,
+    store: &storage_durable_postgres::MainDurableStore,
     flow_run_id: Uuid,
     owner: &domain::ApplicationRunTraceNodeRecord,
     tool_call_id: &str,
@@ -272,7 +272,7 @@ pub(super) async fn find_trace_projection_tool_callback_node(
     ] {
         if let Some(node) =
             <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_by_locator(
-                &state.store,
+                store,
                 flow_run_id,
                 &stable_locator,
             )

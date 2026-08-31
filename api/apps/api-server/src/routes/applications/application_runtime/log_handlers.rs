@@ -386,56 +386,8 @@ pub async fn get_application_run_trace_node_content(
     Path((id, run_id, trace_node_id)): Path<(Uuid, Uuid, String)>,
     RawQuery(raw_query): RawQuery,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceNodeContentResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-    let status = ensure_application_run_trace_projection_status(&state, id, run_id).await?;
-    let projection_status = to_trace_projection_status_response(&status);
-    let trace_node_uuid = parse_trace_projection_node_id(&trace_node_id)?;
-    if !projection_is_succeeded(&status) {
-        return Ok(Json(ApiSuccess::new(
-            ApplicationRunTraceNodeContentResponse {
-                trace_node_id,
-                node_kind: "trace_projection".to_string(),
-                projection_status,
-                content_kind: "trace_projection".to_string(),
-                source_refs: serde_json::Value::Array(Vec::new()),
-                detail_refs: serde_json::Value::Array(Vec::new()),
-                payload: serde_json::json!({}),
-            },
-        )));
-    }
-    let node =
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node(
-            &state.store,
-            run_id,
-            trace_node_uuid,
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("trace_node"))?;
-    let content =
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_content(
-            &state.store,
-            run_id,
-            trace_node_uuid,
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("trace_node_content"))?;
-    let content =
-        if let Some(preview_request) = trace_node_artifact_preview_request(raw_query.as_deref()) {
-            offload_trace_node_content_artifacts(
-                state.clone(),
-                context.actor.current_workspace_id,
-                id,
-                run_id,
-                content,
-                preview_request,
-            )
-            .await?
-        } else {
-            content
-        };
-    let response = trace_projection_node_content_response(node, content, projection_status)?;
-
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.trace-node.content.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_trace_payloads::ApplicationRuntimeTracePayloadsInput::GetNodeContent { application_id: id, run_id, trace_node_id, raw_query }).await?;
+    let interface_trace_payloads::ApplicationRuntimeTracePayloadsOutput::NodeContent(response) = output else { unreachable!("application trace node content binding returned a different output") };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -463,125 +415,8 @@ pub async fn get_application_run_trace_node_detail(
     Path((id, run_id, trace_node_id, detail_ref_id)): Path<(Uuid, Uuid, String, String)>,
     RawQuery(raw_query): RawQuery,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceNodeDetailResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-    let status = ensure_application_run_trace_projection_status(&state, id, run_id).await?;
-    let projection_status = to_trace_projection_status_response(&status);
-    let trace_node_uuid = parse_trace_projection_node_id(&trace_node_id)?;
-    if !projection_is_succeeded(&status) {
-        return Ok(Json(ApiSuccess::new(
-            ApplicationRunTraceNodeDetailResponse {
-                trace_node_id,
-                node_kind: "trace_projection".to_string(),
-                projection_status,
-                detail_ref_id,
-                detail_kind: "trace_projection".to_string(),
-                source_refs: serde_json::Value::Array(Vec::new()),
-                payload: serde_json::json!({}),
-            },
-        )));
-    }
-    let node =
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node(
-            &state.store,
-            run_id,
-            trace_node_uuid,
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("trace_node"))?;
-    let content =
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_content(
-            &state.store,
-            run_id,
-            trace_node_uuid,
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("trace_node_content"))?;
-    let detail_ref = trace_node_content_detail_ref(&content.payload, &detail_ref_id)
-        .ok_or(ControlPlaneError::NotFound("trace_node_detail_ref"))?;
-    let detail_kind = detail_ref
-        .get("detail_kind")
-        .and_then(serde_json::Value::as_str)
-        .ok_or(ControlPlaneError::Conflict("trace_node_detail_ref"))?
-        .to_string();
-    let preview_request = trace_node_artifact_preview_request(raw_query.as_deref());
-    let payload = match detail_kind.as_str() {
-        "node_run" => {
-            let node_run_ids = trace_node_content_node_run_ids(&content.payload)?;
-            let detail_flow_run_id =
-                trace_node_content_source_flow_run_id(&content.payload)?.unwrap_or(run_id);
-            let node_runs =
-                <_ as OrchestrationRuntimeRepository>::list_application_run_trace_node_run_details(
-                    &state.store,
-                    detail_flow_run_id,
-                    node_run_ids,
-                )
-                .await?;
-            let node_run = merge_trace_node_run_detail(&node_runs)
-                .ok_or(ControlPlaneError::NotFound("node_run"))?;
-            let node_run = if let Some(preview_request) = preview_request {
-                offload_trace_node_run_detail_artifacts(
-                    state.clone(),
-                    context.actor.current_workspace_id,
-                    id,
-                    detail_flow_run_id,
-                    node_run,
-                    preview_request,
-                )
-                .await?
-            } else {
-                node_run
-            };
-            trace_node_run_detail_payload(node_run)
-        }
-        "checkpoints" => {
-            let node_run_ids = trace_node_content_node_run_ids(&content.payload)?;
-            let detail_flow_run_id =
-                trace_node_content_source_flow_run_id(&content.payload)?.unwrap_or(run_id);
-            let checkpoints =
-                <_ as OrchestrationRuntimeRepository>::list_application_run_trace_checkpoints(
-                    &state.store,
-                    id,
-                    detail_flow_run_id,
-                    node_run_ids,
-                )
-                .await?
-                .into_iter()
-                .map(to_checkpoint_response)
-                .collect::<Vec<_>>();
-
-            serde_json::json!({ "checkpoints": checkpoints })
-        }
-        "events" => {
-            let node_run_ids = trace_node_content_node_run_ids(&content.payload)?;
-            let detail_flow_run_id =
-                trace_node_content_source_flow_run_id(&content.payload)?.unwrap_or(run_id);
-            let events =
-                <_ as OrchestrationRuntimeRepository>::list_application_run_trace_events(
-                    &state.store,
-                    id,
-                    detail_flow_run_id,
-                    node_run_ids,
-                )
-                .await?
-                .into_iter()
-                .map(to_run_event_response)
-                .collect::<Vec<_>>();
-
-            serde_json::json!({ "events": events })
-        }
-        _ => return Err(ControlPlaneError::NotFound("trace_node_detail_ref").into()),
-    };
-    let response = ApplicationRunTraceNodeDetailResponse {
-        trace_node_id,
-        node_kind: node.node_kind,
-        projection_status,
-        detail_ref_id,
-        detail_kind,
-        source_refs: serde_json::Value::Array(vec![detail_ref]),
-        payload,
-    };
-
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.trace-node.detail.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_trace_payloads::ApplicationRuntimeTracePayloadsInput::GetNodeDetail { application_id: id, run_id, trace_node_id, detail_ref_id, raw_query }).await?;
+    let interface_trace_payloads::ApplicationRuntimeTracePayloadsOutput::NodeDetail(response) = output else { unreachable!("application trace node detail binding returned a different output") };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -606,46 +441,8 @@ pub async fn get_application_run_trace_tool_callback_content(
     headers: HeaderMap,
     Path((id, run_id, trace_node_id, tool_call_id)): Path<(Uuid, Uuid, String, String)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceToolCallbackContentResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-    let status = ensure_application_run_trace_projection_status(&state, id, run_id).await?;
-    let projection_status = to_trace_projection_status_response(&status);
-    let trace_node_uuid = parse_trace_projection_node_id(&trace_node_id)?;
-    if !projection_is_succeeded(&status) {
-        return Ok(Json(ApiSuccess::new(
-            ApplicationRunTraceToolCallbackContentResponse {
-                trace_node_id,
-                tool_call_id,
-                projection_status,
-                payload: serde_json::json!({}),
-            },
-        )));
-    }
-    let owner =
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node(
-            &state.store,
-            run_id,
-            trace_node_uuid,
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("trace_node"))?;
-    let tool_node =
-        find_trace_projection_tool_callback_node(&state, run_id, &owner, &tool_call_id).await?;
-    let content =
-        <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_content(
-            &state.store,
-            run_id,
-            tool_node.trace_node_id,
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("trace_node_content"))?;
-    let response = ApplicationRunTraceToolCallbackContentResponse {
-        trace_node_id: tool_node.trace_node_id.to_string(),
-        tool_call_id,
-        projection_status,
-        payload: content.payload,
-    };
-
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.trace-tool-callback.content.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_trace_payloads::ApplicationRuntimeTracePayloadsInput::GetToolCallbackContent { application_id: id, run_id, trace_node_id, tool_call_id }).await?;
+    let interface_trace_payloads::ApplicationRuntimeTracePayloadsOutput::ToolCallbackContent(response) = output else { unreachable!("application trace tool callback content binding returned a different output") };
     Ok(Json(ApiSuccess::new(response)))
 }
 
