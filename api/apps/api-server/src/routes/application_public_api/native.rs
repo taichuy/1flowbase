@@ -13,10 +13,6 @@ use axum::{
 use control_plane::{
     application_public_api::{
         api_keys::ApplicationApiKeyService,
-        callback_resume::{
-            ApplicationPublishedCallbackResumeService, PublishedCallbackResumeSource,
-            PublishedCallbackResumeTarget, ResumePublishedCallbackCommand,
-        },
         model_catalog::{AgentModelCapabilities, AgentModelDescriptor, AgentModelReasoning},
         native::{
             translate_native_run_request, ApplicationNativeRunService, GetNativeRunCommand,
@@ -64,6 +60,8 @@ use crate::{
             native_read_interface::{
                 self, NativeCancelRunInput, NativeCancelRunOutput, NativeGetRunInput,
                 NativeGetRunOutput, NativeModelsInput, NativeModelsOutput, NativeReadTargetError,
+                NativeResumeRunInput, NativeResumeRunOutput, NativeRuntimeInvokerFactory,
+                RuntimeInvokerFuture,
             },
             sse,
             stream_terminal_fallback::recover_missing_stream_terminal_winner,
@@ -130,6 +128,36 @@ pub(crate) async fn public_mcp_runtime_invoker_for_actor(
         .await
         .map_err(|error| service_error(error.0))?,
     ))
+}
+
+struct StateBackedNativeRuntimeInvokerFactory {
+    state: Arc<ApiState>,
+}
+
+impl NativeRuntimeInvokerFactory for StateBackedNativeRuntimeInvokerFactory {
+    fn for_actor<'a>(
+        &'a self,
+        actor: &'a control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+    ) -> RuntimeInvokerFuture<'a> {
+        let state = Arc::clone(&self.state);
+        let actor = actor.clone();
+        Box::pin(async move {
+            public_mcp_runtime_invoker_for_actor(&state, &actor)
+                .await
+                .map(|invoker| {
+                    invoker
+                        as Arc<
+                            dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
+                        >
+                })
+        })
+    }
+}
+
+pub(crate) fn native_runtime_invoker_factory(
+    state: Arc<ApiState>,
+) -> Arc<dyn NativeRuntimeInvokerFactory> {
+    Arc::new(StateBackedNativeRuntimeInvokerFactory { state })
 }
 
 impl ApplicationNativeRunPort for ApiState {
@@ -1384,42 +1412,19 @@ pub async fn resume_native_run(
     Path(run_id): Path<Uuid>,
     Json(body): Json<ResumeNativeRunBody>,
 ) -> Result<Response, NativeApiError> {
-    let bearer_token = bearer_token(&headers)?;
-    let mcp_runtime_invoker = public_mcp_runtime_invoker(&state, &bearer_token).await?;
-    let runtime_service = OrchestrationRuntimeService::new(
-        state.store.clone(),
-        api_provider_runtime(&state),
-        state.runtime_engine.clone(),
-        state.provider_secret_master_key.clone(),
+    let output = invoke_native_read::<NativeResumeRunInput, NativeResumeRunOutput>(
+        &state,
+        bearer_token(&headers)?,
+        native_read_interface::RESUME_RUN_BINDING_ID,
+        NativeResumeRunInput {
+            run_id,
+            callback_task_id: body.callback_task_id,
+            response_payload: body.response_payload,
+            response_mode: body.response_mode,
+        },
     )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_file_storage_registry(state.file_storage_registry.clone())
-    .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
-    .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue())
-    .with_provider_transport_store(state.infrastructure.provider_transport_store())
-    .with_runtime_event_stream(state.runtime_event_stream.clone());
-    let result =
-        ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)
-            .with_last_used_cache(state.infrastructure.cache_store())
-            .resume_callback(ResumePublishedCallbackCommand {
-                bearer_token,
-                target: PublishedCallbackResumeTarget::FlowRun {
-                    flow_run_id: run_id,
-                    callback_task_id: body.callback_task_id,
-                },
-                source: PublishedCallbackResumeSource::NativeAgent,
-                response_payload: body.response_payload,
-                response_mode: body.response_mode,
-            })
-            .await
-            .map_err(service_error)?;
-    let run = result.run;
-
-    Ok(Json(ApiSuccess::new(to_native_run_response(run))).into_response())
+    .await?;
+    Ok(Json(ApiSuccess::new(output.0)).into_response())
 }
 
 #[utoipa::path(
