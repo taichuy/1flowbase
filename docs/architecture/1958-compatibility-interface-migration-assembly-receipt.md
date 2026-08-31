@@ -9,10 +9,11 @@
 - Initial product assembly: `beta@b6ac2ffa8480f8345298fb44b71c6febf03fab07`
 - Initial frozen assembly: `beta@f38227d24b8ed9e3e0f29493099bb10f7829f4b0`
 - Replacement frozen assembly: `beta@a6ad997f18fce23a6a0b8190ee383ff45b146512`
-- Final fix product assembly: `beta@37887d9e55f976bd21d5e424890883bfb03cba27` plus this receipt refresh
+- Prior final QA assembly: `beta@9c367ddcb19e1da7f89247d6fe5808afd70521f6`
+- Fixture-remediation product assembly: `beta@180376947baef0b62cd3a89e4fc421749d72d49b` plus this receipt refresh
 - Final assembly: receipt refresh commit；集中 QA 必须用 `git rev-parse HEAD` 自动捕获完整 SHA
 - Official plugins baseline: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
-- Result: `REASSEMBLED / FINAL_QA_PENDING`
+- Result: `REASSEMBLED / FRESH_QA_PENDING`
 - Evidence root: `tmp/test-governance/1958-compatibility-interface-migration/`
 
 本 Receipt 只冻结开发 assembly 的内容与验收矩阵，不提前声明 CIM AC 或 QA 通过。首次 fresh
@@ -20,7 +21,11 @@ centralized QA 对 `f38227d24b8ed9e3e0f29493099bb10f7829f4b0` 完成 21/21 rows�
 `16 PASS / 5 FAIL / 0 UNRUN`、1991 passed / 542 failed。完整 blocker 集已一次性转换为下方
 fix batch。Replacement QA 对 `a6ad997f18fce23a6a0b8190ee383ff45b146512` 完成 21/21 rows，
 结果为 `18 PASS / 3 FAIL / 0 UNRUN`、2512 passed / 2 failed；两个 distinct blocker 已转换为
-CI-F03/CI-F04。Final QA 必须对本 refresh 后不变的完整 HEAD 从 QA-001 重启全部 21 rows。
+CI-F03/CI-F04。随后对 `9c367ddcb19e1da7f89247d6fe5808afd70521f6` 的 21-row QA 记录为
+`17 PASS / 4 FAIL / 0 UNRUN`、3670 passed / 6 failed；后续审计证明其中 Set-Cookie finding
+来自 Frontstage integration fixture 缺失 required `ExtensionBootSnapshot`，不是完整生产装配下的
+产品回归，且 frontend style-boundary 定向复跑 16/16。CI-F06 修复该 fixture 并保留历史证据；
+fresh QA 必须对本 refresh 后不变的完整 HEAD 从 QA-001 重启全部 21 rows。
 
 ## Packet ledger
 
@@ -38,6 +43,8 @@ CI-F03/CI-F04。Final QA 必须对本 refresh 后不变的完整 HEAD 从 QA-001
 | CI-F03 | `e4b7c7a7d94f64fcd121996d8b138ade0ba1063f` | ASSEMBLED | HostExtension Authentication activation 与共享 BuiltIn factory 并存、preservation fixture |
 | CI-F04 | `37887d9e55f976bd21d5e424890883bfb03cba27` | ASSEMBLED | Public sign-in Route projection 与 typed Handler exactly-one execution owner fixture |
 | CI-F05 | this receipt refresh commit | ASSEMBLED | replacement QA receipt、最终 fix batch 与 final candidate freeze |
+| CI-F06 | `180376947baef0b62cd3a89e4fc421749d72d49b` | ASSEMBLED | 生产/测试共用 BootSnapshot compiler、完整 Frontstage Router fixture、有效/无效/fail-closed sign-in 行为验证 |
+| CI-F07 | this receipt refresh commit | ASSEMBLED | 历史 QA 分类校正、RED/GREEN 证据与 fresh candidate freeze |
 
 Packet 阶段只执行 `cargo fmt`、`cargo check -p api-server` 和
 `cargo check -p api-server --tests` 作为安全装配；没有运行 Packet 测试、reviewer 或 QA。
@@ -75,6 +82,26 @@ duplicate activation identities. CI-F04 corrects the Public sign-in ownership fi
 the protocol Route owns terminal receipt and cookie projection while the typed Handler owns the
 single AuthKernel `login` execution. The production route already preserved that ordering and
 external cookie behavior; no product fallback or second execution path is added.
+
+## Final QA classification correction and CI-F06
+
+The QA run against `9c367ddcb19e1da7f89247d6fe5808afd70521f6` remains historical `QA_FAIL`
+evidence; its artifacts are not deleted or relabelled as a pass. A bounded RED replay exposed the
+actual response before header access: `HTTP 500` with `extension boot snapshot is unavailable`. The
+five Frontstage tests manually constructed `ApiState` with `extension_boot_snapshot: None`, while
+production startup always compiles and publishes the snapshot before Router construction.
+
+CI-F06 extracts the snapshot compilation already owned by the production Composition Root and uses
+that same compiler from production startup and the Frontstage integration fixture. It does not add a
+second Graph, Registry, Authentication truth or a missing-snapshot fallback. Directed GREEN is 7/7:
+the original five consumers pass; valid credentials return `csrf_token` and `Set-Cookie`; invalid
+credentials return 401 without a cookie; and a deliberately removed snapshot remains fail-closed at
+500 without a cookie. The frontend `registry.test.tsx` directed replay is 16/16 with no Delivery
+`web/` diff, so the prior single failure is recorded as non-causal timing/environment fluctuation.
+
+Therefore `SAME_ROOT_RECURRED=NO`. CIM-AC-004 is `PENDING_REVERIFY` until the candidate-bound full
+Router and Frontstage rows pass in fresh QA. CIM-AC-012 remains pending until all 21 rows have zero
+failures and zero unrun items.
 
 ## Final route ownership
 
@@ -122,7 +149,7 @@ the removed symbols into production protocol sources.
 | CIM-AC-001 | finite 7-entry inventory and source-anchor fixture | ASSEMBLED |
 | CIM-AC-002 | explicit blocking bindings and compatibility route tests | ASSEMBLED |
 | CIM-AC-003 | server-stream/WebSocket typed runtime and terminal fixtures | ASSEMBLED |
-| CIM-AC-004 | Public sign-in plan plus existing valid/invalid/cookie/audit tests | ASSEMBLED |
+| CIM-AC-004 | complete-snapshot real Router valid/invalid/cookie/fail-closed tests | PENDING REVERIFY |
 | CIM-AC-005 | workflow extension plan plus existing auth/CSRF/sync/async/Runtime tests | ASSEMBLED |
 | CIM-AC-006 | registry exactly-one compiler negatives and source owner gates | ASSEMBLED |
 | CIM-AC-007 | typed ports; dependency and infrastructure-import boundaries | ASSEMBLED |
