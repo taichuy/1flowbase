@@ -69,6 +69,20 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
     if (/struct\s+\w*Adapter\s*\{[^}]*\b(?:Weak\s*<\s*)?(?:Arc\s*<\s*)?ApiState\b/su.test(source)) {
       violations.push(`${name} Interface adapter retains the global ApiState container`);
     }
+    const stateTypes = ['ApiState'];
+    for (const match of source.matchAll(/type\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:crate::app_state::)?ApiState\s*;/gu)) {
+      stateTypes.push(match[1]);
+    }
+    for (const stateType of stateTypes) {
+      const escaped = stateType.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+      if (new RegExp(`impl\\s+[A-Za-z_][A-Za-z0-9_]*Port\\s+for\\s+${escaped}\\b`, 'u').test(source)) {
+        violations.push(`${name} erases the global ApiState behind a narrow Port trait`);
+      }
+    }
+  }
+  if (/compile_[A-Za-z0-9_]*registry\s*\(\s*(?:Arc::clone\(state\)|state\.clone\(\))/u.test(contributions)
+      || /(?:Arc::clone\(state\)|state\.clone\(\))\s+as\s+Arc<dyn\s+\w*Port>/u.test(contributions)) {
+    violations.push('Composition Root casts the global ApiState directly to a family Port');
   }
   return violations;
 }

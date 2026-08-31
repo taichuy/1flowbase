@@ -29,9 +29,9 @@ function fixture(overrides = {}) {
     [sources[4]]: 'struct InterfaceRegistryContribution { registry: Arc<CompiledInterfaceRegistry> }',
     [sources[5]]: 'struct PublicProvidersAdapter { store: MainDurableStore }',
     [sources[6]]: 'struct PublicSignInAdapter { store: MainDurableStore }',
-    [sources[7]]: 'impl ApplicationNativeRunPort for ApiState {}',
-    [sources[8]]: 'impl CompatibilityBlockingPort for ApiState {}',
-    [sources[9]]: 'impl McpToolCallPort for ApiState {}',
+    [sources[7]]: 'struct NativeAdapter { execution: Arc<dyn NativeExecutionService> }',
+    [sources[8]]: 'struct CompatibilityAdapter { execution: Arc<dyn CompatibilityExecutionService> }',
+    [sources[9]]: 'struct McpAdapter { dispatch: Arc<dyn McpDispatchService> }',
   };
   for (const source of sources) {
     const target = path.join(root, source);
@@ -53,6 +53,18 @@ test('rejects global state contribution callbacks and Adapter service locators',
   const violations = inspectInterfaceLifecycleBoundary(root);
   assert.ok(violations.some((value) => value.includes('global-state compile callback')));
   assert.ok(violations.some((value) => value.includes('public auth Interface adapter')));
+});
+
+test('rejects ApiState Port implementations, aliases, and trait-object casts', () => {
+  const root = fixture({
+    [sources[4]]: 'compile_native_interface_registry(state.clone() as Arc<dyn ApplicationNativeRunPort>);',
+    [sources[7]]: 'impl ApplicationNativeRunPort for ApiState {}',
+    [sources[8]]: 'type HiddenState = ApiState; impl CompatibilityBlockingPort for HiddenState {}',
+  });
+  const violations = inspectInterfaceLifecycleBoundary(root);
+  assert.ok(violations.some((value) => value.includes('casts the global ApiState')));
+  assert.ok(violations.some((value) => value.includes('native erases the global ApiState')));
+  assert.ok(violations.some((value) => value.includes('compatibility erases the global ApiState')));
 });
 
 test('rejects legacy stream owner and direct workflow authentication', () => {
