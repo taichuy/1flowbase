@@ -19,18 +19,6 @@ async fn ensure_application_non_crud_operation(
         .await?)
 }
 
-async fn load_application_in_current_workspace(
-    state: &Arc<ApiState>,
-    workspace_id: Uuid,
-    application_id: Uuid,
-) -> Result<domain::ApplicationRecord, ApiError> {
-    state
-        .store
-        .get_application(workspace_id, application_id)
-        .await?
-        .ok_or_else(|| ControlPlaneError::NotFound("application").into())
-}
-
 fn parse_runtime_event_cursor(run_id: Uuid, event_id: &str) -> Option<i64> {
     if let Ok(sequence) = event_id.parse::<i64>() {
         return Some(sequence);
@@ -84,108 +72,14 @@ pub async fn start_flow_debug_run(
     Path(id): Path<Uuid>,
     Json(body): Json<StartFlowDebugRunBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ApplicationRunDetailResponse>>), ApiError> {
-    let _http_activity = state
-        .runtime_activity
-        .start(id, ApplicationActivityKind::HttpRequest);
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let mcp_runtime_invoker = Arc::new(virtual_ui::ApiMcpRuntimeToolInvoker::new(
-        crate::runtime_internal_tool_invoker_factory(&state, &context.actor).await?, headers.clone(), context.actor.clone(), Vec::new(),
-    ).await?);
-
-    let runtime_service = OrchestrationRuntimeService::new(
-        state.store.clone(),
-        api_provider_runtime(&state),
-        state.runtime_engine.clone(),
-        state.provider_secret_master_key.clone(),
-    )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_file_storage_registry(state.file_storage_registry.clone())
-    .with_runtime_internal_tool_invoker(mcp_runtime_invoker.clone())
-    .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue());
-    let detail = runtime_service
-        .start_flow_debug_run(StartFlowDebugRunCommand {
-            actor_user_id: context.user.id,
-            application_id: id,
-            input_payload: body.input_payload,
-            document_snapshot: body.document,
-            debug_session_id: body.debug_session_id,
-        })
-        .await?;
-    let application =
-        load_application_in_current_workspace(&state, context.actor.current_workspace_id, id)
-            .await?;
-    let flow_run_id = detail.flow_run.id;
-    let workspace_id = context.actor.current_workspace_id;
-    let background_state = state.clone();
-
-    tokio::spawn(async move {
-        let _execution_activity = background_state
-            .runtime_activity
-            .start(id, ApplicationActivityKind::ApplicationExecution);
-        let background_service = OrchestrationRuntimeService::new(
-            background_state.store.clone(),
-            api_provider_runtime(&background_state),
-            background_state.runtime_engine.clone(),
-            background_state.provider_secret_master_key.clone(),
-        )
-        .with_node_artifact_context(
-            background_state.api_node_id.clone(),
-            background_state.provider_install_root.clone(),
-        )
-        .with_file_storage_registry(background_state.file_storage_registry.clone())
-        .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
-        .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
-        .with_provider_request_log_queue(background_state.infrastructure.task_queue());
-        let continue_result = scope_application_activity(
-            id,
-            background_service.continue_flow_debug_run(ContinueFlowDebugRunCommand {
-                application_id: id,
-                flow_run_id,
-                workspace_id,
-            }),
-        )
-        .await;
-        match continue_result {
-            Ok(detail) => {
-                if let Err(error) = offload_application_run_detail_artifacts(
-                    background_state.clone(),
-                    workspace_id,
-                    id,
-                    detail,
-                )
-                .await
-                {
-                    error!(
-                        application_id = %id,
-                        flow_run_id = %flow_run_id,
-                        error = %error.0,
-                        "failed to offload flow debug artifacts"
-                    );
-                }
-            }
-            Err(error) => {
-                error!(
-                    application_id = %id,
-                    flow_run_id = %flow_run_id,
-                    error = %error,
-                    "failed to continue flow debug run"
-                );
-            }
-        }
-    });
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_application_run_detail_response(
-            &application,
-            detail,
-        ))),
-    ))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.debug-runs.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers: headers.clone() },
+        interface_debug_commands::ApplicationRuntimeDebugCommandsInput::Start { application_id: id, body, headers },
+    ).await?;
+    let interface_debug_commands::ApplicationRuntimeDebugCommandsOutput::Run(response) = output else { unreachable!("debug run binding returned a different output") };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }
 
 #[utoipa::path(
@@ -511,50 +405,13 @@ pub async fn cancel_flow_run(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunDetailResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let application =
-        load_application_in_current_workspace(&state, context.actor.current_workspace_id, id)
-            .await?;
-    state.store.get_flow_run(id, run_id).await?.ok_or(
-        control_plane::errors::ControlPlaneError::NotFound("flow_run"),
-    )?;
-    crate::routes::assistant::abort_assistant_execution(&state, run_id);
-
-    let runtime_service = OrchestrationRuntimeService::new(
-        state.store.clone(),
-        api_provider_runtime(&state),
-        state.runtime_engine.clone(),
-        state.provider_secret_master_key.clone(),
-    )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_file_storage_registry(state.file_storage_registry.clone())
-    .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue())
-    .with_runtime_event_stream(state.runtime_event_stream.clone());
-
-    let detail = runtime_service
-        .cancel_flow_run(CancelFlowRunCommand {
-            actor_user_id: context.user.id,
-            application_id: id,
-            flow_run_id: run_id,
-        })
-        .await?;
-    let detail = offload_application_run_detail_artifacts(
-        state.clone(),
-        context.actor.current_workspace_id,
-        id,
-        detail,
-    )
-    .await?;
-
-    Ok(Json(ApiSuccess::new(to_application_run_detail_response(
-        &application,
-        detail,
-    ))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state), "http.console.applications.runtime.runs.cancel.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface_debug_commands::ApplicationRuntimeDebugCommandsInput::Cancel { application_id: id, run_id },
+    ).await?;
+    let interface_debug_commands::ApplicationRuntimeDebugCommandsOutput::Run(response) = output else { unreachable!("debug cancel binding returned a different output") };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -579,57 +436,9 @@ pub async fn resume_flow_run(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
     Json(body): Json<ResumeFlowRunBody>,
 ) -> Result<Json<ApiSuccess<ApplicationRunDetailResponse>>, ApiError> {
-    let _http_activity = state
-        .runtime_activity
-        .start(id, ApplicationActivityKind::HttpRequest);
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let mcp_runtime_invoker = Arc::new(virtual_ui::ApiMcpRuntimeToolInvoker::new(
-        crate::runtime_internal_tool_invoker_factory(&state, &context.actor).await?, headers.clone(), context.actor.clone(), Vec::new(),
-    ).await?);
-
-    let checkpoint_id = Uuid::parse_str(&body.checkpoint_id)
-        .map_err(|_| ControlPlaneError::InvalidInput("checkpoint_id"))?;
-    let detail = scope_application_activity(
-        id,
-        OrchestrationRuntimeService::new(
-            state.store.clone(),
-            api_provider_runtime(&state),
-            state.runtime_engine.clone(),
-            state.provider_secret_master_key.clone(),
-        )
-        .with_node_artifact_context(
-            state.api_node_id.clone(),
-            state.provider_install_root.clone(),
-        )
-        .with_file_storage_registry(state.file_storage_registry.clone())
-        .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
-        .with_llm_routing_counter_store(state.infrastructure.cache_store())
-        .with_provider_request_log_queue(state.infrastructure.task_queue())
-        .resume_flow_run(ResumeFlowRunCommand {
-            actor_user_id: context.user.id,
-            application_id: id,
-            flow_run_id: run_id,
-            checkpoint_id,
-            input_payload: body.input_payload,
-        }),
-    )
-    .await?;
-    let application =
-        load_application_in_current_workspace(&state, context.actor.current_workspace_id, id)
-            .await?;
-    let detail = offload_application_run_detail_artifacts(
-        state.clone(),
-        context.actor.current_workspace_id,
-        id,
-        detail,
-    )
-    .await?;
-
-    Ok(Json(ApiSuccess::new(to_application_run_detail_response(
-        &application,
-        detail,
-    ))))
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.runs.resume.v1", crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers: headers.clone() }, interface_debug_commands::ApplicationRuntimeDebugCommandsInput::Resume { application_id: id, run_id, body, headers }).await?;
+    let interface_debug_commands::ApplicationRuntimeDebugCommandsOutput::Run(response) = output else { unreachable!("debug resume binding returned a different output") };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -654,54 +463,9 @@ pub async fn complete_callback_task(
     Path((id, callback_task_id)): Path<(Uuid, Uuid)>,
     Json(body): Json<CompleteCallbackTaskBody>,
 ) -> Result<Json<ApiSuccess<ApplicationRunDetailResponse>>, ApiError> {
-    let _http_activity = state
-        .runtime_activity
-        .start(id, ApplicationActivityKind::HttpRequest);
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let mcp_runtime_invoker = Arc::new(virtual_ui::ApiMcpRuntimeToolInvoker::new(
-        crate::runtime_internal_tool_invoker_factory(&state, &context.actor).await?, headers.clone(), context.actor.clone(), Vec::new(),
-    ).await?);
-
-    let detail = scope_application_activity(
-        id,
-        OrchestrationRuntimeService::new(
-            state.store.clone(),
-            api_provider_runtime(&state),
-            state.runtime_engine.clone(),
-            state.provider_secret_master_key.clone(),
-        )
-        .with_node_artifact_context(
-            state.api_node_id.clone(),
-            state.provider_install_root.clone(),
-        )
-        .with_file_storage_registry(state.file_storage_registry.clone())
-        .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
-        .with_llm_routing_counter_store(state.infrastructure.cache_store())
-        .with_provider_request_log_queue(state.infrastructure.task_queue())
-        .complete_callback_task(CompleteCallbackTaskCommand {
-            actor_user_id: context.user.id,
-            application_id: id,
-            callback_task_id,
-            response_payload: body.response_payload,
-        }),
-    )
-    .await?;
-    let application =
-        load_application_in_current_workspace(&state, context.actor.current_workspace_id, id)
-            .await?;
-    let detail = offload_application_run_detail_artifacts(
-        state.clone(),
-        context.actor.current_workspace_id,
-        id,
-        detail,
-    )
-    .await?;
-
-    Ok(Json(ApiSuccess::new(to_application_run_detail_response(
-        &application,
-        detail,
-    ))))
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.callback-tasks.complete.v1", crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers: headers.clone() }, interface_debug_commands::ApplicationRuntimeDebugCommandsInput::CompleteCallback { application_id: id, callback_task_id, body, headers }).await?;
+    let interface_debug_commands::ApplicationRuntimeDebugCommandsOutput::Run(response) = output else { unreachable!("callback completion binding returned a different output") };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -726,69 +490,8 @@ pub async fn start_node_debug_preview(
     Path((id, node_id)): Path<(Uuid, String)>,
     Json(body): Json<StartNodeDebugPreviewBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<NodeLastRunResponse>>), ApiError> {
-    let _http_activity = state
-        .runtime_activity
-        .start(id, ApplicationActivityKind::HttpRequest);
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let mcp_runtime_invoker = Arc::new(virtual_ui::ApiMcpRuntimeToolInvoker::new(
-        crate::runtime_internal_tool_invoker_factory(&state, &context.actor).await?, headers.clone(), context.actor.clone(), Vec::new(),
-    ).await?);
-
-    let outcome = scope_application_activity(
-        id,
-        OrchestrationRuntimeService::new(
-            state.store.clone(),
-            api_provider_runtime(&state),
-            state.runtime_engine.clone(),
-            state.provider_secret_master_key.clone(),
-        )
-        .with_node_artifact_context(
-            state.api_node_id.clone(),
-            state.provider_install_root.clone(),
-        )
-        .with_file_storage_registry(state.file_storage_registry.clone())
-        .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
-        .with_llm_routing_counter_store(state.infrastructure.cache_store())
-        .with_provider_request_log_queue(state.infrastructure.task_queue())
-        .start_node_debug_preview(StartNodeDebugPreviewCommand {
-            actor_user_id: context.user.id,
-            application_id: id,
-            node_id,
-            input_payload: body.input_payload,
-            document_snapshot: body.document,
-            debug_session_id: body.debug_session_id,
-        }),
-    )
-    .await?;
-
-    let detail = offload_application_run_detail_artifacts(
-        state.clone(),
-        context.actor.current_workspace_id,
-        id,
-        domain::ApplicationRunDetail {
-            flow_run: outcome.flow_run,
-            node_runs: vec![outcome.node_run],
-            checkpoints: Vec::new(),
-            callback_tasks: Vec::new(),
-            events: outcome.events,
-            stitched_trace: Vec::new(),
-            subagent_traces: Vec::new(),
-        },
-    )
-    .await?;
-    let node_run = detail
-        .node_runs
-        .into_iter()
-        .next()
-        .ok_or(ControlPlaneError::NotFound("node_run"))?;
-    let response = to_node_last_run_response(domain::NodeLastRun {
-        flow_run: detail.flow_run,
-        node_run,
-        checkpoints: Vec::new(),
-        events: detail.events,
-    });
-
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.nodes.debug-runs.create.v1", crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers: headers.clone() }, interface_debug_commands::ApplicationRuntimeDebugCommandsInput::StartNode { application_id: id, node_id, body, headers }).await?;
+    let interface_debug_commands::ApplicationRuntimeDebugCommandsOutput::Node(response) = output else { unreachable!("node debug binding returned a different output") };
     Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }
 

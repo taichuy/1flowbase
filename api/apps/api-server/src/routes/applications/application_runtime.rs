@@ -22,12 +22,11 @@ use control_plane::{
             build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
             APPLICATION_RUN_TRACE_PROJECTION_VERSION,
         },
-        wait_for_runtime_debug_event_persister, CancelFlowRunCommand, CompleteCallbackTaskCommand,
-        ContinueFlowDebugRunCommand, OrchestrationRuntimeService, PrepareFlowDebugRunCommand,
-        ResumeFlowRunCommand, StartFlowDebugRunCommand, StartNodeDebugPreviewCommand,
+        wait_for_runtime_debug_event_persister, ContinueFlowDebugRunCommand,
+        OrchestrationRuntimeService, PrepareFlowDebugRunCommand, StartFlowDebugRunCommand,
     },
     ports::{
-        ApplicationRepository, ApplicationRunOverviewReadModel, ApplicationRunTraceChildrenCursor,
+        ApplicationRunOverviewReadModel, ApplicationRunTraceChildrenCursor,
         ApplicationRunTraceProjectionStatistics, OrchestrationRuntimeRepository,
         RuntimeEventStreamPolicy,
     },
@@ -61,6 +60,7 @@ pub(crate) mod archive;
 pub(crate) mod debug_variable_cache;
 pub(crate) mod debug_variable_snapshot;
 pub(crate) mod interface_debug_artifacts;
+pub(crate) mod interface_debug_commands;
 pub(crate) mod interface_debug_variables;
 pub(crate) mod interface_runtime_reads;
 pub(crate) mod interface_trace_exports;
