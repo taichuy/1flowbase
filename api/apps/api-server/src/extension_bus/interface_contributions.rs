@@ -403,6 +403,18 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-application-runtime-debug-artifacts",
+            &[
+                "applications.runtime.debug-artifact.get",
+                "applications.runtime.debug-artifacts.resolve",
+            ],
+            &["api-server.console-application-runtime-debug-artifacts"],
+            crate::routes::application_runtime::interface_debug_artifacts::compile_registry(
+                state.store.clone(),
+                state.file_storage_registry.clone(),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-application-runtime-trace-exports",
             &[
                 "applications.runtime.trace-export.get",
