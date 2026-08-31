@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
 use axum::{extract::State, http::HeaderMap, Json, Router};
-use control_plane::role::RoleService;
 use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::require_session::require_session,
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
@@ -29,6 +27,33 @@ pub struct SettingsFeaturePermissionResponse {
     pub feature_id: String,
     pub label_key: String,
     pub order: i32,
+}
+
+pub(crate) fn permission_responses(
+    permission_options: Vec<domain::PermissionDefinition>,
+    features: &[access_control::SettingsFeatureInventoryEntry],
+) -> Vec<PermissionResponse> {
+    permission_options
+        .into_iter()
+        .map(|permission| {
+            let settings_feature = features
+                .iter()
+                .find(|feature| feature.permission_code == permission.code)
+                .map(|feature| SettingsFeaturePermissionResponse {
+                    feature_id: feature.feature_id.clone(),
+                    label_key: feature.console_surface.label_key.clone(),
+                    order: feature.console_surface.order,
+                });
+            PermissionResponse {
+                code: permission.code,
+                resource: permission.resource,
+                action: permission.action,
+                scope: permission.scope,
+                name: permission.name,
+                settings_feature,
+            }
+        })
+        .collect()
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
@@ -56,35 +81,19 @@ pub async fn list_permissions(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<PermissionResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let permission_options = RoleService::new(state.store.for_actor(context.actor.clone()))
-        .list_permission_options(context.user.id)
-        .await?;
-    let permissions = permission_options
-        .into_iter()
-        .map(|permission| {
-            let settings_feature = state
-                .settings_feature_registry
-                .inventory()
-                .features
-                .iter()
-                .find(|feature| feature.permission_code == permission.code)
-                .map(|feature| SettingsFeaturePermissionResponse {
-                    feature_id: feature.feature_id.clone(),
-                    label_key: feature.console_surface.label_key.clone(),
-                    order: feature.console_surface.order,
-                });
-
-            PermissionResponse {
-                code: permission.code,
-                resource: permission.resource,
-                action: permission.action,
-                scope: permission.scope,
-                name: permission.name,
-                settings_feature,
-            }
-        })
-        .collect::<Vec<_>>();
-
-    Ok(Json(ApiSuccess::new(permissions)))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.roles.permission-options.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::role_access_interface::RoleAccessInput::ListPermissionOptions,
+    )
+    .await?;
+    let crate::routes::role_access_interface::RoleAccessOutput::PermissionOptions(items) = output
+    else {
+        return Err(anyhow::anyhow!("permission options output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(items)))
 }

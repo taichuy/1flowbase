@@ -14,6 +14,43 @@ use interface_runtime::{
 
 use crate::{app_state::ApiState, error_response::ApiError};
 
+#[derive(Clone)]
+pub(crate) struct ConsoleLocaleHints {
+    explicit_header_locale: Option<String>,
+    accept_language: Option<String>,
+}
+
+impl ConsoleLocaleHints {
+    pub(crate) fn from_headers(headers: &axum::http::HeaderMap) -> Self {
+        Self {
+            explicit_header_locale: headers
+                .get("x-1flowbase-locale")
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string),
+            accept_language: headers
+                .get(axum::http::header::ACCEPT_LANGUAGE)
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_string),
+        }
+    }
+
+    pub(crate) fn resolve(&self, preferred_locale: Option<String>) -> domain::CatalogLocale {
+        let resolved = runtime_profile::resolve_locale(runtime_profile::LocaleResolutionInput {
+            query_locale: None,
+            explicit_header_locale: self.explicit_header_locale.clone(),
+            user_preferred_locale: preferred_locale,
+            accept_language: self.accept_language.clone(),
+            fallback_locale: runtime_profile::FALLBACK_LOCALE,
+            supported_locales: runtime_profile::SUPPORTED_LOCALES
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
+        });
+        domain::CatalogLocale::new(resolved.resolved_locale)
+            .expect("runtime profile must resolve a supported catalog locale")
+    }
+}
+
 const AUTHENTICATION_ADAPTER: &str = "api-server.console.require-session";
 const AUTHENTICATION_ACTIVATION: &str = "api-server.console.require-session.activation.v1";
 const AUTHORIZATION_ADAPTER: &str = "api-server.console.compiled-operation";

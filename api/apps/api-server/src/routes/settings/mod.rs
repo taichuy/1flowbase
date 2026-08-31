@@ -13,6 +13,7 @@ pub(crate) mod membership_interface;
 pub mod navigation;
 pub mod permissions;
 mod release_status;
+pub(crate) mod role_access_interface;
 pub mod roles;
 pub mod system;
 pub mod system_backups;

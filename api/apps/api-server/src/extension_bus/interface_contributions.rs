@@ -144,6 +144,12 @@ pub(crate) fn production_interface_contributions(
     );
     let console_membership =
         crate::routes::membership_interface::membership_port(state.store.clone());
+    let console_role_access = crate::routes::role_access_interface::role_access_port(
+        state.store.clone(),
+        state.console_operation_registry.inventory().clone(),
+        state.settings_feature_registry.inventory().features.clone(),
+        state.bootstrap_workspace_id,
+    );
 
     Ok(vec![
         InterfaceRegistryContribution::new(
@@ -207,6 +213,29 @@ pub(crate) fn production_interface_contributions(
             ],
             &["api-server.console-membership"],
             crate::routes::membership_interface::compile_registry(console_membership)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-role-access",
+            &[
+                "roles.data_model_options.list",
+                "roles.console_policy_catalog.view",
+                "roles.console_settings_order.replace",
+                "roles.console_policy.view",
+                "roles.console_policy.replace",
+                "roles.list",
+                "roles.create",
+                "roles.update",
+                "roles.delete",
+                "roles.permissions.view",
+                "roles.permissions.replace",
+                "roles.frontstage_routes.view",
+                "roles.frontstage_routes.replace",
+                "roles.data_policy.view",
+                "roles.data_policy.replace",
+                "roles.permission_options.list",
+            ],
+            &["api-server.console-role-access"],
+            crate::routes::role_access_interface::compile_registry(console_role_access)?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.native-runs",

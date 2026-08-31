@@ -148,6 +148,19 @@ pub(super) async fn resolve_core_console_display(
     crate::app_state::resolve_request_text(state, locale, resolved_key).await
 }
 
+pub(crate) async fn resolve_core_console_display_with(
+    store: &storage_durable_postgres::MainDurableStore,
+    bootstrap_workspace_id: uuid::Uuid,
+    locale: &CatalogLocale,
+    key: &str,
+) -> Result<String, ApiError> {
+    let Some(resolved_key) = dynamic_display_key(key) else {
+        return Ok(key.to_string());
+    };
+    crate::app_state::resolve_request_text_with(store, bootstrap_workspace_id, locale, resolved_key)
+        .await
+}
+
 #[cfg(test)]
 mod tests {
     use super::dynamic_display_key;

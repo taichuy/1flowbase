@@ -5,14 +5,8 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json, Router,
 };
-use control_plane::model_definition::ModelDefinitionService;
 use control_plane::ports::{RoleDataModelPolicyInput, RoleDataPolicyDefaultsInput};
-use control_plane::role::{
-    ConsolePolicyGroupInput, ConsolePolicyOperationInput, CreateRoleCommand, DeleteRoleCommand,
-    ReplaceConsoleSettingsOrderCommand, ReplaceRoleConsolePolicyCommand,
-    ReplaceRoleDataPolicyCommand, ReplaceRoleFrontstageRoutesCommand,
-    ReplaceRolePermissionsCommand, RoleService, UpdateRoleCommand,
-};
+use control_plane::role::{ConsolePolicyGroupInput, ConsolePolicyOperationInput};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -20,7 +14,6 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_get, console_patch, console_put, ConsoleRouteAssembly,
@@ -318,7 +311,7 @@ pub enum RoleConsolePolicyOperationResponse {
     },
 }
 
-fn to_role_response(role: domain::RoleTemplate) -> RoleResponse {
+pub(crate) fn to_role_response(role: domain::RoleTemplate) -> RoleResponse {
     RoleResponse {
         code: role.code,
         name: role.name,
@@ -365,7 +358,7 @@ fn to_console_policy_row_scope_body(
     }
 }
 
-fn to_console_policy_catalog_response(
+pub(crate) fn to_console_policy_catalog_response(
     catalog: control_plane::role::ConsolePolicyCatalog,
 ) -> ConsolePolicyCatalogResponse {
     ConsolePolicyCatalogResponse {
@@ -545,7 +538,115 @@ async fn resolve_console_policy_catalog_display(
     Ok(())
 }
 
-fn to_role_console_policy_response(
+pub(crate) async fn resolve_console_policy_catalog_display_with(
+    store: &storage_durable_postgres::MainDurableStore,
+    bootstrap_workspace_id: Uuid,
+    locale: &domain::CatalogLocale,
+    catalog: &mut control_plane::role::ConsolePolicyCatalog,
+) -> Result<(), ApiError> {
+    catalog.locale = locale.as_str().to_string();
+    for option in &mut catalog.group_strategy_options {
+        option.label = super::super::core_console_i18n::resolve_core_console_display_with(
+            store,
+            bootstrap_workspace_id,
+            locale,
+            &option.label,
+        )
+        .await?;
+        option.description = super::super::core_console_i18n::resolve_core_console_display_with(
+            store,
+            bootstrap_workspace_id,
+            locale,
+            &option.description,
+        )
+        .await?;
+    }
+    for group in &mut catalog.groups {
+        group.label = super::super::core_console_i18n::resolve_core_console_display_with(
+            store,
+            bootstrap_workspace_id,
+            locale,
+            &group.label,
+        )
+        .await?;
+        group.description = super::super::core_console_i18n::resolve_core_console_display_with(
+            store,
+            bootstrap_workspace_id,
+            locale,
+            &group.description,
+        )
+        .await?;
+        for operation in &mut group.operations {
+            operation.summary = crate::app_state::resolve_request_text_with(
+                store,
+                bootstrap_workspace_id,
+                locale,
+                &operation.summary,
+            )
+            .await?;
+            operation.description = crate::app_state::resolve_request_text_with(
+                store,
+                bootstrap_workspace_id,
+                locale,
+                &operation.description,
+            )
+            .await?;
+            for option in &mut operation.allowed_row_scopes {
+                option.label = super::super::core_console_i18n::resolve_core_console_display_with(
+                    store,
+                    bootstrap_workspace_id,
+                    locale,
+                    &option.label,
+                )
+                .await?;
+                option.description =
+                    super::super::core_console_i18n::resolve_core_console_display_with(
+                        store,
+                        bootstrap_workspace_id,
+                        locale,
+                        &option.description,
+                    )
+                    .await?;
+            }
+        }
+    }
+    for resource in &mut catalog.resources {
+        resource.label = super::super::core_console_i18n::resolve_core_console_display_with(
+            store,
+            bootstrap_workspace_id,
+            locale,
+            &resource.label,
+        )
+        .await?;
+        resource.description = super::super::core_console_i18n::resolve_core_console_display_with(
+            store,
+            bootstrap_workspace_id,
+            locale,
+            &resource.description,
+        )
+        .await?;
+        for action in &mut resource.actions {
+            action.label = super::super::core_console_i18n::resolve_core_console_display_with(
+                store,
+                bootstrap_workspace_id,
+                locale,
+                &action.label,
+            )
+            .await?;
+            action.description =
+                super::super::core_console_i18n::resolve_core_console_display_with(
+                    store,
+                    bootstrap_workspace_id,
+                    locale,
+                    &action.description,
+                )
+                .await?;
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn to_role_console_policy_response(
     role_code: String,
     policy: domain::RoleConsolePolicy,
 ) -> RoleConsolePolicyResponse {
@@ -584,7 +685,7 @@ fn to_role_console_policy_response(
     }
 }
 
-fn to_console_policy_group_input(
+pub(crate) fn to_console_policy_group_input(
     group: ConsoleRoleConsolePolicyGroupBody,
 ) -> ConsolePolicyGroupInput {
     ConsolePolicyGroupInput {
@@ -709,25 +810,21 @@ pub async fn list_data_model_options(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<RoleDataModelOptionResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let models = ModelDefinitionService::for_console_operation(
-        state.store.clone(),
-        domain::ConsolePolicyGroup::settings_feature("system.roles")
-            .expect("compiled roles settings group must be valid"),
-        "roles.data_model_options.list",
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.roles.data-model-options.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::role_access_interface::RoleAccessInput::ListDataModelOptions,
     )
-    .list_role_settings_data_model_options(context.user.id)
     .await?;
-    Ok(Json(ApiSuccess::new(
-        models
-            .into_iter()
-            .map(|model| RoleDataModelOptionResponse {
-                id: model.id,
-                code: model.code,
-                title: model.title,
-            })
-            .collect(),
-    )))
+    let crate::routes::role_access_interface::RoleAccessOutput::DataModelOptions(items) = output
+    else {
+        return Err(anyhow::anyhow!("role data model options output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(items)))
 }
 
 #[utoipa::path(
@@ -744,21 +841,23 @@ pub async fn get_console_policy_catalog(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ConsolePolicyCatalogResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
-    let mut catalog = RoleService::new(state.store.for_actor(context.actor.clone()))
-        .get_console_policy_catalog(
-            context.user.id,
-            state.console_operation_registry.inventory(),
-            &state.settings_feature_registry.inventory().features,
-            locale.as_str(),
-        )
-        .await?;
-    resolve_console_policy_catalog_display(&state, &locale, &mut catalog).await?;
-
-    Ok(Json(ApiSuccess::new(to_console_policy_catalog_response(
-        catalog,
-    ))))
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.roles.console-policy-catalog.view.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::role_access_interface::RoleAccessInput::GetConsolePolicyCatalog { locale },
+    )
+    .await?;
+    let crate::routes::role_access_interface::RoleAccessOutput::ConsolePolicyCatalog(catalog) =
+        output
+    else {
+        return Err(anyhow::anyhow!("console policy catalog output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(catalog)))
 }
 
 #[utoipa::path(
@@ -778,25 +877,26 @@ pub async fn replace_console_settings_order(
     headers: HeaderMap,
     Json(body): Json<ReplaceConsoleSettingsOrderBody>,
 ) -> Result<Json<ApiSuccess<ConsolePolicyCatalogResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
-    let mut catalog = RoleService::new(state.store.for_actor(context.actor.clone()))
-        .replace_console_settings_order(
-            ReplaceConsoleSettingsOrderCommand {
-                actor_user_id: context.user.id,
-                expected_revision: body.expected_revision,
-                group_ids: body.group_ids,
-            },
-            state.console_operation_registry.inventory(),
-            &state.settings_feature_registry.inventory().features,
-            locale.as_str(),
-        )
-        .await?;
-    resolve_console_policy_catalog_display(&state, &locale, &mut catalog).await?;
-    Ok(Json(ApiSuccess::new(to_console_policy_catalog_response(
-        catalog,
-    ))))
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.roles.console-settings-order.replace.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::role_access_interface::RoleAccessInput::ReplaceConsoleSettingsOrder {
+            locale,
+            body,
+        },
+    )
+    .await?;
+    let crate::routes::role_access_interface::RoleAccessOutput::ConsolePolicyCatalog(catalog) =
+        output
+    else {
+        return Err(anyhow::anyhow!("console policy catalog output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(catalog)))
 }
 
 #[utoipa::path(
@@ -815,18 +915,21 @@ pub async fn get_role_console_policy(
     headers: HeaderMap,
     Path(role_code): Path<String>,
 ) -> Result<Json<ApiSuccess<RoleConsolePolicyResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let policy = RoleService::new(state.store.for_actor(context.actor.clone()))
-        .get_console_policy(
-            context.user.id,
-            &role_code,
-            state.console_operation_registry.inventory(),
-        )
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_role_console_policy_response(
-        role_code, policy,
-    ))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.roles.console-policy.view.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::role_access_interface::RoleAccessInput::GetRoleConsolePolicy { role_code },
+    )
+    .await?;
+    let crate::routes::role_access_interface::RoleAccessOutput::RoleConsolePolicy(policy) = output
+    else {
+        return Err(anyhow::anyhow!("role console policy output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(policy)))
 }
 
 #[utoipa::path(
@@ -848,23 +951,22 @@ pub async fn replace_role_console_policy(
     Path(role_code): Path<String>,
     Json(body): Json<ReplaceRoleConsolePolicyBody>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    RoleService::new(state.store.for_actor(context.actor.clone()))
-        .replace_console_policy(
-            ReplaceRoleConsolePolicyCommand {
-                actor_user_id: context.user.id,
-                role_code,
-                groups: body
-                    .groups
-                    .into_iter()
-                    .map(to_console_policy_group_input)
-                    .collect(),
-            },
-            state.console_operation_registry.inventory(),
-        )
-        .await?;
-
+    crate::routes::console_interface::invoke::<
+        _,
+        crate::routes::role_access_interface::RoleAccessOutput,
+    >(
+        Arc::clone(&state),
+        "http.console.roles.console-policy.replace.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::role_access_interface::RoleAccessInput::ReplaceRoleConsolePolicy {
+            role_code,
+            body,
+        },
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -880,7 +982,7 @@ fn parse_optional_data_policy_scope(
     value.as_deref().map(parse_data_policy_scope).transpose()
 }
 
-fn to_default_policy_input(
+pub(crate) fn to_default_policy_input(
     policy: RoleDataPolicyBody,
 ) -> Result<RoleDataPolicyDefaultsInput, ApiError> {
     Ok(RoleDataPolicyDefaultsInput {
@@ -894,7 +996,7 @@ fn to_default_policy_input(
     })
 }
 
-fn to_model_policy_input(
+pub(crate) fn to_model_policy_input(
     policy: RoleDataModelPolicyBody,
 ) -> Result<RoleDataModelPolicyInput, ApiError> {
     Ok(RoleDataModelPolicyInput {
@@ -906,7 +1008,7 @@ fn to_model_policy_input(
     })
 }
 
-fn to_role_data_policy_response(
+pub(crate) fn to_role_data_policy_response(
     policy: control_plane::ports::RoleDataPolicyView,
 ) -> RoleDataPolicyResponse {
     RoleDataPolicyResponse {
@@ -961,14 +1063,20 @@ pub async fn list_roles(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<RoleResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let roles = RoleService::new(state.store.for_actor(context.actor.clone()))
-        .list_roles(context.user.id)
-        .await?;
-
-    Ok(Json(ApiSuccess::new(
-        roles.into_iter().map(to_role_response).collect::<Vec<_>>(),
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.roles.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::role_access_interface::RoleAccessInput::ListRoles,
+    )
+    .await?;
+    let crate::routes::role_access_interface::RoleAccessOutput::Roles(roles) = output else {
+        return Err(anyhow::anyhow!("roles output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(roles)))
 }
 
 #[utoipa::path(
@@ -982,34 +1090,20 @@ pub async fn create_role(
     headers: HeaderMap,
     Json(body): Json<CreateRoleBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<RoleResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    RoleService::new(state.store.for_actor(context.actor.clone()))
-        .create_role(CreateRoleCommand {
-            actor_user_id: context.user.id,
-            code: body.code.clone(),
-            name: body.name.clone(),
-            introduction: body.introduction.clone(),
-            auto_grant_new_permissions: body.auto_grant_new_permissions.unwrap_or(false),
-            is_default_member_role: body.is_default_member_role.unwrap_or(false),
-        })
-        .await?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(RoleResponse {
-            code: body.code,
-            name: body.name,
-            introduction: body.introduction,
-            scope_kind: "workspace".to_string(),
-            is_builtin: false,
-            is_editable: true,
-            auto_grant_new_permissions: body.auto_grant_new_permissions.unwrap_or(false),
-            is_default_member_role: body.is_default_member_role.unwrap_or(false),
-            permission_codes: Vec::new(),
-        })),
-    ))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.roles.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::role_access_interface::RoleAccessInput::CreateRole(body),
+    )
+    .await?;
+    let crate::routes::role_access_interface::RoleAccessOutput::Role(role) = output else {
+        return Err(anyhow::anyhow!("role create output contract mismatch").into());
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(role))))
 }
 
 #[utoipa::path(
@@ -1025,19 +1119,19 @@ pub async fn update_role(
     Path(role_code): Path<String>,
     Json(body): Json<UpdateRoleBody>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    RoleService::new(state.store.for_actor(context.actor.clone()))
-        .update_role(UpdateRoleCommand {
-            actor_user_id: context.user.id,
-            role_code,
-            name: body.name,
-            introduction: body.introduction,
-            auto_grant_new_permissions: body.auto_grant_new_permissions,
-            is_default_member_role: body.is_default_member_role,
-        })
-        .await?;
+    crate::routes::console_interface::invoke::<
+        _,
+        crate::routes::role_access_interface::RoleAccessOutput,
+    >(
+        Arc::clone(&state),
+        "http.console.roles.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::role_access_interface::RoleAccessInput::UpdateRole { role_code, body },
+    )
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1053,15 +1147,19 @@ pub async fn delete_role(
     headers: HeaderMap,
     Path(role_code): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    RoleService::new(state.store.for_actor(context.actor.clone()))
-        .delete_role(DeleteRoleCommand {
-            actor_user_id: context.user.id,
-            role_code,
-        })
-        .await?;
+    crate::routes::console_interface::invoke::<
+        _,
+        crate::routes::role_access_interface::RoleAccessOutput,
+    >(
+        Arc::clone(&state),
+        "http.console.roles.delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::role_access_interface::RoleAccessInput::DeleteRole { role_code },
+    )
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -1077,15 +1175,22 @@ pub async fn get_role_permissions(
     headers: HeaderMap,
     Path(role_code): Path<String>,
 ) -> Result<Json<ApiSuccess<RolePermissionsResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let permission_codes = RoleService::new(state.store.for_actor(context.actor.clone()))
-        .get_role_permissions(context.user.id, &role_code)
-        .await?;
-
-    Ok(Json(ApiSuccess::new(RolePermissionsResponse {
-        role_code,
-        permission_codes,
-    })))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.roles.permissions.view.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::role_access_interface::RoleAccessInput::GetRolePermissions { role_code },
+    )
+    .await?;
+    let crate::routes::role_access_interface::RoleAccessOutput::RolePermissions(permissions) =
+        output
+    else {
+        return Err(anyhow::anyhow!("role permissions output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(permissions)))
 }
 
 #[utoipa::path(
@@ -1101,21 +1206,27 @@ pub async fn replace_role_permissions(
     Path(role_code): Path<String>,
     Json(body): Json<ReplaceRolePermissionsBody>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    RoleService::new(state.store.for_actor(context.actor.clone()))
-        .replace_permissions(ReplaceRolePermissionsCommand {
-            actor_user_id: context.user.id,
+    crate::routes::console_interface::invoke::<
+        _,
+        crate::routes::role_access_interface::RoleAccessOutput,
+    >(
+        Arc::clone(&state),
+        "http.console.roles.permissions.replace.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::role_access_interface::RoleAccessInput::ReplaceRolePermissions {
             role_code,
-            permission_codes: body.permission_codes,
-        })
-        .await?;
+            body,
+        },
+    )
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn build_frontstage_route_tree(
+pub(crate) fn build_frontstage_route_tree(
     pages: Vec<domain::FrontstagePageRecord>,
     tabs: Vec<domain::frontstage::FrontstagePageTabRecord>,
 ) -> Vec<RoleFrontstageRouteNodeResponse> {
@@ -1178,16 +1289,24 @@ pub async fn get_role_frontstage_routes(
     headers: HeaderMap,
     Path(role_code): Path<String>,
 ) -> Result<Json<ApiSuccess<RoleFrontstageRoutesResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let view = RoleService::new(state.store.for_actor(context.actor.clone()))
-        .get_frontstage_routes(context.user.id, &role_code)
-        .await?;
-    Ok(Json(ApiSuccess::new(RoleFrontstageRoutesResponse {
-        role_code,
-        checked_page_ids: view.rules.iter().filter_map(|rule| rule.page_id).collect(),
-        checked_tab_ids: view.rules.iter().filter_map(|rule| rule.tab_id).collect(),
-        tree: build_frontstage_route_tree(view.pages, view.tabs),
-    })))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.roles.frontstage-routes.view.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::role_access_interface::RoleAccessInput::GetRoleFrontstageRoutes {
+            role_code,
+        },
+    )
+    .await?;
+    let crate::routes::role_access_interface::RoleAccessOutput::RoleFrontstageRoutes(routes) =
+        output
+    else {
+        return Err(anyhow::anyhow!("role frontstage routes output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(routes)))
 }
 
 pub async fn replace_role_frontstage_routes(
@@ -1196,16 +1315,22 @@ pub async fn replace_role_frontstage_routes(
     Path(role_code): Path<String>,
     Json(body): Json<ReplaceRoleFrontstageRoutesBody>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    RoleService::new(state.store.for_actor(context.actor.clone()))
-        .replace_frontstage_routes(ReplaceRoleFrontstageRoutesCommand {
-            actor_user_id: context.user.id,
+    crate::routes::console_interface::invoke::<
+        _,
+        crate::routes::role_access_interface::RoleAccessOutput,
+    >(
+        Arc::clone(&state),
+        "http.console.roles.frontstage-routes.replace.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::role_access_interface::RoleAccessInput::ReplaceRoleFrontstageRoutes {
             role_code,
-            page_ids: body.page_ids,
-            tab_ids: body.tab_ids,
-        })
-        .await?;
+            body,
+        },
+    )
+    .await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1220,12 +1345,21 @@ pub async fn get_role_data_policy(
     headers: HeaderMap,
     Path(role_code): Path<String>,
 ) -> Result<Json<ApiSuccess<RoleDataPolicyResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let policy = RoleService::new(state.store.for_actor(context.actor.clone()))
-        .get_role_data_policy(context.user.id, &role_code)
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_role_data_policy_response(policy))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.roles.data-policy.view.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::role_access_interface::RoleAccessInput::GetRoleDataPolicy { role_code },
+    )
+    .await?;
+    let crate::routes::role_access_interface::RoleAccessOutput::RoleDataPolicy(policy) = output
+    else {
+        return Err(anyhow::anyhow!("role data policy output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(policy)))
 }
 
 #[utoipa::path(
@@ -1241,23 +1375,22 @@ pub async fn replace_role_data_policy(
     Path(role_code): Path<String>,
     Json(body): Json<ReplaceRoleDataPolicyBody>,
 ) -> Result<Json<ApiSuccess<RoleDataPolicyResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    let default_policy = to_default_policy_input(body.default_policy)?;
-    let model_policies = body
-        .model_policies
-        .into_iter()
-        .map(to_model_policy_input)
-        .collect::<Result<Vec<_>, _>>()?;
-    let policy = RoleService::new(state.store.for_actor(context.actor.clone()))
-        .replace_data_policy(ReplaceRoleDataPolicyCommand {
-            actor_user_id: context.user.id,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.roles.data-policy.replace.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::role_access_interface::RoleAccessInput::ReplaceRoleDataPolicy {
             role_code,
-            default_policy,
-            model_policies,
-        })
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_role_data_policy_response(policy))))
+            body,
+        },
+    )
+    .await?;
+    let crate::routes::role_access_interface::RoleAccessOutput::RoleDataPolicy(policy) = output
+    else {
+        return Err(anyhow::anyhow!("role data policy output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(policy)))
 }
