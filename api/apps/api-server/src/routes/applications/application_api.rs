@@ -6,26 +6,19 @@ use access_control::{
 };
 use axum::{
     extract::{Path, Query, State},
-    http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json, Router,
 };
 use control_plane::{
-    application::ApplicationService,
     application_public_api::{
         mapping::{
             ApplicationApiMappingConfig, ApplicationApiMappingInput, ApplicationApiMappingOutput,
             WorkflowExtensionApiConfig, WorkflowExtensionHttpMethod, WorkflowExtensionResponseMode,
         },
-        publications::{
-            ApplicationPublicationService, ApplicationPublicationVersionRecord,
-            LoadActiveApplicationPublicationCommand,
-        },
+        publications::ApplicationPublicationVersionRecord,
         published_workflow_operation::PublishedWorkflowOperation,
-        workflow_schedule::{
-            GetWorkflowScheduleTriggerCommand, ReplaceWorkflowScheduleTriggerCommand,
-            WorkflowScheduleTriggerRecord, WorkflowScheduleTriggerService,
-        },
+        workflow_schedule::WorkflowScheduleTriggerRecord,
     },
     errors::ControlPlaneError,
 };
@@ -37,23 +30,15 @@ use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
-    application_public_docs::{
-        build_application_public_docs_catalog, build_application_public_docs_category_operations,
-        build_application_public_docs_category_spec, build_application_public_docs_operation_spec,
-        ApplicationPublicDocsContext,
-    },
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
-    openapi_docs::{
-        filter_category_operations, paginate_category_operations, DocsCatalog,
-        DocsCatalogCategoryOperationsPage, DOCS_OPERATIONS_PAGE_SIZE,
-    },
+    openapi_docs::{DocsCatalog, DocsCatalogCategoryOperationsPage, DOCS_OPERATIONS_PAGE_SIZE},
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_delete, console_get, console_patch, console_post, ConsoleRouteAssembly,
     },
 };
 
+pub(crate) mod interface_docs;
 pub(crate) mod interface_keys;
 pub(crate) mod interface_publication;
 pub(crate) mod interface_schedule;
@@ -614,61 +599,6 @@ fn map_application_api_key_not_found(error: anyhow::Error) -> ApiError {
     error.into()
 }
 
-async fn load_application_public_docs_context(
-    state: &ApiState,
-    headers: &HeaderMap,
-    application_id: Uuid,
-    query_locale: Option<String>,
-) -> Result<ApplicationPublicDocsContext, ApiError> {
-    let context = require_session(state, headers).await?;
-    let locale = runtime_profile::resolve_locale(runtime_profile::LocaleResolutionInput {
-        query_locale,
-        explicit_header_locale: headers
-            .get("x-1flowbase-locale")
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string),
-        user_preferred_locale: context.user.preferred_locale.clone(),
-        accept_language: headers
-            .get(ACCEPT_LANGUAGE)
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string),
-        fallback_locale: runtime_profile::FALLBACK_LOCALE,
-        supported_locales: runtime_profile::SUPPORTED_LOCALES
-            .iter()
-            .map(|value| value.to_string())
-            .collect(),
-    });
-    let application = ApplicationService::new(state.store.for_actor(context.actor.clone()))
-        .get_application(context.user.id, application_id)
-        .await?;
-    let active_publication =
-        ApplicationPublicationService::new(state.store.for_actor(context.actor.clone()))
-            .load_active_publication(LoadActiveApplicationPublicationCommand { application_id })
-            .await
-            .ok();
-
-    Ok(ApplicationPublicDocsContext {
-        application,
-        active_publication,
-        locale: locale.resolved_locale,
-        assistant_operations: [
-            "assistant_start_run_stream",
-            "assistant_create_websocket_ticket",
-            "assistant_runs_websocket",
-        ]
-        .into_iter()
-        .filter_map(|operation_id| {
-            Some(
-                crate::application_public_docs::ApplicationSessionOperation {
-                    operation: state.api_docs.operation(operation_id)?,
-                    spec: state.api_docs.operation_spec(operation_id)?.clone(),
-                },
-            )
-        })
-        .collect(),
-    })
-}
-
 #[utoipa::path(
     get,
     path = "/api/console/applications/{application_id}/api-keys",
@@ -1055,13 +985,19 @@ pub async fn get_application_api_docs_catalog(
     headers: HeaderMap,
     Path(application_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<DocsCatalog>>, ApiError> {
-    let context =
-        load_application_public_docs_context(&state, &headers, application_id, query.locale)
-            .await?;
-
-    Ok(Json(ApiSuccess::new(
-        build_application_public_docs_catalog(&context),
-    )))
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output: interface_docs::ApplicationDocsOutput = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.api-docs.catalog.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_docs::ApplicationDocsInput::Catalog {
+            application_id,
+            query_locale: query.locale,
+            locale,
+        },
+    )
+    .await?;
+    Ok(Json(ApiSuccess::new(output.into_catalog()?)))
 }
 
 #[utoipa::path(
@@ -1088,22 +1024,20 @@ pub async fn get_application_api_docs_category_operations(
     headers: HeaderMap,
     Path((application_id, category_id)): Path<(Uuid, String)>,
 ) -> Result<Json<ApiSuccess<DocsCatalogCategoryOperationsPage>>, ApiError> {
-    let context = load_application_public_docs_context(
-        &state,
-        &headers,
-        application_id,
-        query.locale.clone(),
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output: interface_docs::ApplicationDocsOutput = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.api-docs.category-operations.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_docs::ApplicationDocsInput::CategoryOperations {
+            application_id,
+            category_id,
+            query,
+            locale,
+        },
     )
     .await?;
-    let operations = build_application_public_docs_category_operations(&context, &category_id)
-        .ok_or(ControlPlaneError::NotFound("application_api_docs_category"))?;
-    let filtered_operations = filter_category_operations(&operations, query.search_query());
-
-    Ok(Json(ApiSuccess::new(paginate_category_operations(
-        &filtered_operations,
-        query.offset(),
-        query.limit(),
-    ))))
+    Ok(Json(ApiSuccess::new(output.into_category_operations()?)))
 }
 
 #[utoipa::path(
@@ -1127,13 +1061,20 @@ pub async fn get_application_api_docs_category_openapi(
     headers: HeaderMap,
     Path((application_id, category_id)): Path<(Uuid, String)>,
 ) -> Result<Json<Value>, ApiError> {
-    let context =
-        load_application_public_docs_context(&state, &headers, application_id, query.locale)
-            .await?;
-    let spec = build_application_public_docs_category_spec(&context, &category_id)
-        .ok_or(ControlPlaneError::NotFound("application_api_docs_category"))?;
-
-    Ok(Json(spec))
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output: interface_docs::ApplicationDocsOutput = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.api-docs.category-openapi.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_docs::ApplicationDocsInput::CategoryOpenApi {
+            application_id,
+            category_id,
+            query_locale: query.locale,
+            locale,
+        },
+    )
+    .await?;
+    Ok(Json(output.into_openapi()?))
 }
 
 #[utoipa::path(
@@ -1157,12 +1098,18 @@ pub async fn get_application_api_docs_operation_openapi(
     headers: HeaderMap,
     Path((application_id, operation_id)): Path<(Uuid, String)>,
 ) -> Result<Json<Value>, ApiError> {
-    let context =
-        load_application_public_docs_context(&state, &headers, application_id, query.locale)
-            .await?;
-    let spec = build_application_public_docs_operation_spec(&context, &operation_id).ok_or(
-        ControlPlaneError::NotFound("application_api_docs_operation"),
-    )?;
-
-    Ok(Json(spec))
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output: interface_docs::ApplicationDocsOutput = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.api-docs.operation-openapi.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_docs::ApplicationDocsInput::OperationOpenApi {
+            application_id,
+            operation_id,
+            query_locale: query.locale,
+            locale,
+        },
+    )
+    .await?;
+    Ok(Json(output.into_openapi()?))
 }

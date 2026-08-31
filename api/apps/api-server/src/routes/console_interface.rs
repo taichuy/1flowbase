@@ -35,8 +35,16 @@ impl ConsoleLocaleHints {
     }
 
     pub(crate) fn resolve(&self, preferred_locale: Option<String>) -> domain::CatalogLocale {
+        self.resolve_with_query(None, preferred_locale)
+    }
+
+    pub(crate) fn resolve_with_query(
+        &self,
+        query_locale: Option<String>,
+        preferred_locale: Option<String>,
+    ) -> domain::CatalogLocale {
         let resolved = runtime_profile::resolve_locale(runtime_profile::LocaleResolutionInput {
-            query_locale: None,
+            query_locale,
             explicit_header_locale: self.explicit_header_locale.clone(),
             user_preferred_locale: preferred_locale,
             accept_language: self.accept_language.clone(),

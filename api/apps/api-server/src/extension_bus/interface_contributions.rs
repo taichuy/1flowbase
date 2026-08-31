@@ -175,6 +175,10 @@ pub(crate) fn production_interface_contributions(
         );
     let console_workflow_schedule =
         crate::routes::application_api::interface_schedule::port(state.store.clone());
+    let console_application_docs = crate::routes::application_api::interface_docs::port(
+        state.store.clone(),
+        Arc::clone(&state.api_docs),
+    );
 
     Ok(vec![
         InterfaceRegistryContribution::new(
@@ -322,6 +326,19 @@ pub(crate) fn production_interface_contributions(
             &["api-server.console-workflow-schedule"],
             crate::routes::application_api::interface_schedule::compile_registry(
                 console_workflow_schedule,
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-application-docs",
+            &[
+                "applications.api-docs.catalog",
+                "applications.api-docs.category-operations",
+                "applications.api-docs.category-openapi",
+                "applications.api-docs.operation-openapi",
+            ],
+            &["api-server.console-application-docs"],
+            crate::routes::application_api::interface_docs::compile_registry(
+                console_application_docs,
             )?,
         ),
         InterfaceRegistryContribution::new(
