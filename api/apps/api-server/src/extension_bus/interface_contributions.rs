@@ -160,6 +160,10 @@ pub(crate) fn production_interface_contributions(
             state.store.clone(),
             state.bootstrap_workspace_id,
         );
+    let console_applications = crate::routes::applications::interface::applications_port(
+        state.store.clone(),
+        state.bootstrap_workspace_id,
+    );
 
     Ok(vec![
         InterfaceRegistryContribution::new(
@@ -246,6 +250,24 @@ pub(crate) fn production_interface_contributions(
             ],
             &["api-server.console-role-access"],
             crate::routes::role_access_interface::compile_registry(console_role_access)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-applications",
+            &[
+                "applications.list",
+                "applications.create",
+                "applications.get",
+                "applications.update",
+                "applications.delete",
+                "applications.catalog.get",
+                "applications.tags.create",
+                "applications.environment-variables.list",
+                "applications.environment-variables.replace",
+                "applications.js-dependencies.list",
+                "applications.js-dependencies.replace",
+            ],
+            &["api-server.console-applications"],
+            crate::routes::applications::interface::compile_registry(console_applications)?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-application-orchestration",
