@@ -19,7 +19,9 @@ use control_plane::data_source::{
     ValidateDataSourceInstanceResult,
 };
 use control_plane::ports::RuntimeRegistrySync;
+use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::{Deserialize, Serialize};
+use storage_durable_postgres::MainDurableStore;
 use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -27,10 +29,15 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+    routes::{
+        console_interface::{
+            self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
+            ConsoleInterfaceTargetError,
+        },
+        console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+    },
 };
 
 use super::model_definitions::{to_model_definition_response, ModelDefinitionResponse};
@@ -217,6 +224,69 @@ pub struct AgentFlowDataSourceOptionResponse {
     pub capability: String,
 }
 
+enum DataSourcesInput {
+    ListAgentFlowOptions,
+    ListCatalog,
+    List,
+    Create(CreateDataSourceBody),
+    UpdateDefaults {
+        data_source_id: String,
+        body: UpdateDataSourceDefaultsBody,
+    },
+    Validate {
+        data_source_id: String,
+    },
+    RotateSecret {
+        data_source_id: String,
+        body: RotateDataSourceSecretBody,
+    },
+    ListResources {
+        data_source_id: String,
+    },
+    DiscoverResources {
+        data_source_id: String,
+    },
+    PreviewRead {
+        data_source_id: String,
+        body: PreviewDataSourceReadBody,
+    },
+    MapResourceToModel {
+        data_source_id: String,
+        body: MapDataSourceResourceToModelBody,
+    },
+}
+
+impl InterfaceContract for DataSourcesInput {
+    const CONTRACT_ID: &'static str = "console-data-sources-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+enum DataSourcesOutput {
+    AgentFlowOptions(Vec<AgentFlowDataSourceOptionResponse>),
+    Catalog(DataSourceCatalogResponse),
+    List(Vec<DataSourceResponse>),
+    DataSource(DataSourceResponse),
+    Validation(ValidateDataSourceResponse),
+    Resources(DataSourceResourcesResponse),
+    Preview(PreviewDataSourceReadResponse),
+    Model(ModelDefinitionResponse),
+}
+
+impl InterfaceContract for DataSourcesOutput {
+    const CONTRACT_ID: &'static str = "console-data-sources-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+struct DataSourcesAdapter {
+    store: MainDurableStore,
+    provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
+    provider_secret_master_key: String,
+    api_node_id: String,
+    provider_install_root: String,
+    runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
+    runtime_registry_sync: Arc<dyn RuntimeRegistrySync>,
+}
+
 pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
 }
@@ -239,6 +309,115 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
+const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "data-sources.agent-flow-options.list",
+        binding_id: "http.console.data-sources.agent-flow-options.list.v1",
+        method: "GET",
+        path: "/api/console/data-sources/agent-flow-options",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "data-sources.catalog.list",
+        binding_id: "http.console.data-sources.catalog.list.v1",
+        method: "GET",
+        path: "/api/console/settings/data-models/data-sources/catalog",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "data-sources.list",
+        binding_id: "http.console.data-sources.list.v1",
+        method: "GET",
+        path: "/api/console/settings/data-models/data-sources",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "data-sources.create",
+        binding_id: "http.console.data-sources.create.v1",
+        method: "POST",
+        path: "/api/console/settings/data-models/data-sources",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "data-sources.defaults.update",
+        binding_id: "http.console.data-sources.defaults.update.v1",
+        method: "PATCH",
+        path: "/api/console/settings/data-models/data-sources/:data_source_id/defaults",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "data-sources.validate",
+        binding_id: "http.console.data-sources.validate.v1",
+        method: "POST",
+        path: "/api/console/settings/data-models/data-sources/:data_source_id/validate",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "data-sources.secret.rotate",
+        binding_id: "http.console.data-sources.secret.rotate.v1",
+        method: "POST",
+        path: "/api/console/data-sources/:data_source_id/secret/rotate",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "data-sources.resources.list",
+        binding_id: "http.console.data-sources.resources.list.v1",
+        method: "GET",
+        path: "/api/console/settings/data-models/data-sources/:data_source_id/resources",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "data-sources.resources.discover",
+        binding_id: "http.console.data-sources.resources.discover.v1",
+        method: "POST",
+        path: "/api/console/settings/data-models/data-sources/:data_source_id/resources/discover",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "data-sources.preview-read",
+        binding_id: "http.console.data-sources.preview-read.v1",
+        method: "POST",
+        path: "/api/console/settings/data-models/data-sources/:data_source_id/preview-read",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "data-sources.resources.map-to-model",
+        binding_id: "http.console.data-sources.resources.map-to-model.v1",
+        method: "POST",
+        path:
+            "/api/console/settings/data-models/data-sources/:data_source_id/resources/map-to-model",
+        mutating: true,
+    },
+];
+
+pub(crate) fn compile_registry(
+    store: MainDurableStore,
+    provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
+    provider_secret_master_key: String,
+    api_node_id: String,
+    provider_install_root: String,
+    runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
+    runtime_registry_sync: Arc<dyn RuntimeRegistrySync>,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    console_interface::compile_registry(
+        "api-server.console-data-sources",
+        "graph:console-data-sources-v1",
+        DECLARATIONS,
+        Arc::new(DataSourcesAdapter {
+            store,
+            provider_runtime,
+            provider_secret_master_key,
+            api_node_id,
+            provider_install_root,
+            runtime_engine,
+            runtime_registry_sync,
+        }),
+    )
+}
+
 fn to_agent_flow_option_response(
     option: NativeSqlDataSourceOption,
 ) -> AgentFlowDataSourceOptionResponse {
@@ -258,16 +437,17 @@ pub async fn list_agent_flow_data_source_options(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<AgentFlowDataSourceOptionResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let options = business_service(&state, &context.actor)
-        .list_native_sql_options(context.user.id, context.actor.current_workspace_id)
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        options
-            .into_iter()
-            .map(to_agent_flow_option_response)
-            .collect(),
-    )))
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.data-sources.agent-flow-options.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        DataSourcesInput::ListAgentFlowOptions,
+    )
+    .await?;
+    let DataSourcesOutput::AgentFlowOptions(options) = output else {
+        unreachable!("data source options binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(options)))
 }
 
 pub(super) fn service(
@@ -275,21 +455,6 @@ pub(super) fn service(
     actor: &domain::ActorContext,
 ) -> crate::app_state::ApiDataSourceService {
     DataSourceService::for_data_model_settings(
-        state.store.for_actor(actor.clone()),
-        ApiProviderRuntime::new(state.provider_runtime.clone()),
-        state.provider_secret_master_key.clone(),
-    )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-}
-
-fn business_service(
-    state: &ApiState,
-    actor: &domain::ActorContext,
-) -> crate::app_state::ApiDataSourceService {
-    DataSourceService::new(
         state.store.for_actor(actor.clone()),
         ApiProviderRuntime::new(state.provider_runtime.clone()),
         state.provider_secret_master_key.clone(),
@@ -484,6 +649,224 @@ fn to_preview_response(result: PreviewDataSourceReadResult) -> PreviewDataSource
     }
 }
 
+impl DataSourcesAdapter {
+    fn service(
+        &self,
+        actor: &domain::ActorContext,
+        settings: bool,
+    ) -> crate::app_state::ApiDataSourceService {
+        let store = self.store.for_actor(actor.clone());
+        let runtime = ApiProviderRuntime::new(self.provider_runtime.clone());
+        let service = if settings {
+            DataSourceService::for_data_model_settings(
+                store,
+                runtime,
+                self.provider_secret_master_key.clone(),
+            )
+        } else {
+            DataSourceService::new(store, runtime, self.provider_secret_master_key.clone())
+        };
+        service.with_node_artifact_context(
+            self.api_node_id.clone(),
+            self.provider_install_root.clone(),
+        )
+    }
+
+    async fn execute_inner(
+        &self,
+        principal: &UserPrincipal,
+        input: DataSourcesInput,
+    ) -> Result<DataSourcesOutput, ApiError> {
+        let actor = principal.actor();
+        let user_id = actor.user_id;
+        let workspace_id = actor.current_workspace_id;
+        match input {
+            DataSourcesInput::ListAgentFlowOptions => Ok(DataSourcesOutput::AgentFlowOptions(
+                self.service(actor, false)
+                    .list_native_sql_options(user_id, workspace_id)
+                    .await?
+                    .into_iter()
+                    .map(to_agent_flow_option_response)
+                    .collect(),
+            )),
+            DataSourcesInput::ListCatalog => {
+                Ok(DataSourcesOutput::Catalog(DataSourceCatalogResponse {
+                    entries: self
+                        .service(actor, true)
+                        .list_catalog(user_id, workspace_id)
+                        .await?
+                        .into_iter()
+                        .map(to_catalog_entry_response)
+                        .collect(),
+                }))
+            }
+            DataSourcesInput::List => Ok(DataSourcesOutput::List(
+                self.service(actor, true)
+                    .list_data_sources(user_id, workspace_id)
+                    .await?
+                    .into_iter()
+                    .map(to_data_source_response)
+                    .collect(),
+            )),
+            DataSourcesInput::Create(body) => {
+                let created = self
+                    .service(actor, true)
+                    .create_instance(CreateDataSourceInstanceCommand {
+                        actor_user_id: user_id,
+                        workspace_id,
+                        installation_id: parse_uuid(&body.installation_id, "installation_id")?,
+                        source_code: body.source_code,
+                        display_name: body.display_name,
+                        config_json: body.config_json,
+                        secret_json: body.secret_json,
+                    })
+                    .await?;
+                Ok(DataSourcesOutput::DataSource(
+                    to_runtime_extension_data_source_response(created),
+                ))
+            }
+            DataSourcesInput::UpdateDefaults {
+                data_source_id,
+                body,
+            } => {
+                let defaults = domain::DataSourceDefaults {
+                    data_model_status: parse_model_status(&body.default_data_model_status)?,
+                };
+                let response = if data_source_id == "main" {
+                    let defaults = self
+                        .service(actor, true)
+                        .update_main_data_source_defaults(UpdateMainDataSourceDefaultsCommand {
+                            actor_user_id: user_id,
+                            workspace_id,
+                            defaults,
+                        })
+                        .await?;
+                    to_data_source_response(DataSourceView {
+                        backend: DataSourceBackendView::Core { defaults },
+                    })
+                } else {
+                    let instance = self
+                        .service(actor, true)
+                        .update_defaults(UpdateDataSourceDefaultsCommand {
+                            actor_user_id: user_id,
+                            workspace_id,
+                            instance_id: parse_uuid(&data_source_id, "data_source_id")?,
+                            defaults,
+                        })
+                        .await?;
+                    to_runtime_extension_data_source_response(DataSourceInstanceView {
+                        instance,
+                        catalog: None,
+                    })
+                };
+                Ok(DataSourcesOutput::DataSource(response))
+            }
+            DataSourcesInput::Validate { data_source_id } => {
+                Ok(DataSourcesOutput::Validation(to_validate_response(
+                    self.service(actor, true)
+                        .validate_instance(ValidateDataSourceInstanceCommand {
+                            actor_user_id: user_id,
+                            workspace_id,
+                            instance_id: parse_uuid(&data_source_id, "data_source_id")?,
+                        })
+                        .await?,
+                )))
+            }
+            DataSourcesInput::RotateSecret {
+                data_source_id,
+                body,
+            } => Ok(DataSourcesOutput::DataSource(
+                to_runtime_extension_data_source_response(
+                    self.service(actor, false)
+                        .rotate_secret(RotateDataSourceSecretCommand {
+                            actor_user_id: user_id,
+                            workspace_id,
+                            instance_id: parse_uuid(&data_source_id, "data_source_id")?,
+                            secret_json: body.secret_json,
+                        })
+                        .await?,
+                ),
+            )),
+            DataSourcesInput::ListResources { data_source_id } => {
+                Ok(DataSourcesOutput::Resources(to_resources_response(
+                    self.service(actor, true)
+                        .list_resources(
+                            user_id,
+                            workspace_id,
+                            parse_uuid(&data_source_id, "data_source_id")?,
+                        )
+                        .await?,
+                )))
+            }
+            DataSourcesInput::DiscoverResources { data_source_id } => {
+                Ok(DataSourcesOutput::Resources(to_resources_response(
+                    self.service(actor, true)
+                        .discover_resources(DiscoverDataSourceResourcesCommand {
+                            actor_user_id: user_id,
+                            workspace_id,
+                            instance_id: parse_uuid(&data_source_id, "data_source_id")?,
+                        })
+                        .await?,
+                )))
+            }
+            DataSourcesInput::PreviewRead {
+                data_source_id,
+                body,
+            } => Ok(DataSourcesOutput::Preview(to_preview_response(
+                self.service(actor, true)
+                    .preview_read(PreviewDataSourceReadCommand {
+                        actor_user_id: user_id,
+                        workspace_id,
+                        instance_id: parse_uuid(&data_source_id, "data_source_id")?,
+                        resource_key: body.resource_key,
+                        limit: body.limit,
+                        cursor: body.cursor,
+                        options_json: body.options_json,
+                    })
+                    .await?,
+            ))),
+            DataSourcesInput::MapResourceToModel {
+                data_source_id,
+                body,
+            } => {
+                let result = self
+                    .service(actor, true)
+                    .map_resource_to_model(MapDataSourceResourceToModelCommand {
+                        actor_user_id: user_id,
+                        workspace_id,
+                        instance_id: parse_uuid(&data_source_id, "data_source_id")?,
+                        resource_key: body.resource_key,
+                        template_provider: body.template_provider,
+                        template_code: body.template_code,
+                        template_version: body.template_version,
+                    })
+                    .await?;
+                self.runtime_registry_sync.rebuild().await?;
+                let mut model = result.model;
+                model.fields = result.fields;
+                Ok(DataSourcesOutput::Model(to_model_definition_response(
+                    model,
+                    self.runtime_engine.template_catalog(),
+                )))
+            }
+        }
+    }
+}
+
+impl ConsoleInterfacePort<DataSourcesInput, DataSourcesOutput> for DataSourcesAdapter {
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: DataSourcesInput,
+    ) -> ConsoleInterfaceFuture<'a, DataSourcesOutput> {
+        Box::pin(async move {
+            self.execute_inner(principal, input)
+                .await
+                .map_err(ConsoleInterfaceTargetError)
+        })
+    }
+}
+
 #[utoipa::path(
     get,
     path = "/api/console/settings/data-models/data-sources/catalog",
@@ -494,13 +877,17 @@ pub async fn list_catalog(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<DataSourceCatalogResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let entries = service(&state, &context.actor)
-        .list_catalog(context.user.id, context.actor.current_workspace_id)
-        .await?;
-    Ok(Json(ApiSuccess::new(DataSourceCatalogResponse {
-        entries: entries.into_iter().map(to_catalog_entry_response).collect(),
-    })))
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.data-sources.catalog.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        DataSourcesInput::ListCatalog,
+    )
+    .await?;
+    let DataSourcesOutput::Catalog(response) = output else {
+        unreachable!("data source catalog binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -513,16 +900,17 @@ pub async fn list_data_sources(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<DataSourceResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let data_sources = service(&state, &context.actor)
-        .list_data_sources(context.user.id, context.actor.current_workspace_id)
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        data_sources
-            .into_iter()
-            .map(to_data_source_response)
-            .collect(),
-    )))
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.data-sources.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        DataSourcesInput::List,
+    )
+    .await?;
+    let DataSourcesOutput::List(response) = output else {
+        unreachable!("data sources list binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -537,25 +925,17 @@ pub async fn create_data_source(
     headers: HeaderMap,
     Json(body): Json<CreateDataSourceBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<DataSourceResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let created = service(&state, &context.actor)
-        .create_instance(CreateDataSourceInstanceCommand {
-            actor_user_id: context.user.id,
-            workspace_id: context.actor.current_workspace_id,
-            installation_id: parse_uuid(&body.installation_id, "installation_id")?,
-            source_code: body.source_code,
-            display_name: body.display_name,
-            config_json: body.config_json,
-            secret_json: body.secret_json,
-        })
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_runtime_extension_data_source_response(
-            created,
-        ))),
-    ))
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.data-sources.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        DataSourcesInput::Create(body),
+    )
+    .await?;
+    let DataSourcesOutput::DataSource(response) = output else {
+        unreachable!("data source create binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }
 
 #[utoipa::path(
@@ -571,41 +951,20 @@ pub async fn update_defaults(
     headers: HeaderMap,
     Json(body): Json<UpdateDataSourceDefaultsBody>,
 ) -> Result<Json<ApiSuccess<DataSourceResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let defaults = domain::DataSourceDefaults {
-        data_model_status: parse_model_status(&body.default_data_model_status)?,
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.data-sources.defaults.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        DataSourcesInput::UpdateDefaults {
+            data_source_id,
+            body,
+        },
+    )
+    .await?;
+    let DataSourcesOutput::DataSource(response) = output else {
+        unreachable!("data source defaults binding returned a different output")
     };
-
-    if data_source_id == "main" {
-        let defaults = service(&state, &context.actor)
-            .update_main_data_source_defaults(UpdateMainDataSourceDefaultsCommand {
-                actor_user_id: context.user.id,
-                workspace_id: context.actor.current_workspace_id,
-                defaults,
-            })
-            .await?;
-        return Ok(Json(ApiSuccess::new(to_data_source_response(
-            DataSourceView {
-                backend: DataSourceBackendView::Core { defaults },
-            },
-        ))));
-    }
-
-    let instance = service(&state, &context.actor)
-        .update_defaults(UpdateDataSourceDefaultsCommand {
-            actor_user_id: context.user.id,
-            workspace_id: context.actor.current_workspace_id,
-            instance_id: parse_uuid(&data_source_id, "data_source_id")?,
-            defaults,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        to_runtime_extension_data_source_response(DataSourceInstanceView {
-            instance,
-            catalog: None,
-        }),
-    )))
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -619,16 +978,17 @@ pub async fn validate_data_source(
     Path(data_source_id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ValidateDataSourceResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let result = service(&state, &context.actor)
-        .validate_instance(ValidateDataSourceInstanceCommand {
-            actor_user_id: context.user.id,
-            workspace_id: context.actor.current_workspace_id,
-            instance_id: parse_uuid(&data_source_id, "data_source_id")?,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(to_validate_response(result))))
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.data-sources.validate.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        DataSourcesInput::Validate { data_source_id },
+    )
+    .await?;
+    let DataSourcesOutput::Validation(response) = output else {
+        unreachable!("data source validate binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -644,19 +1004,20 @@ pub async fn rotate_secret(
     headers: HeaderMap,
     Json(body): Json<RotateDataSourceSecretBody>,
 ) -> Result<Json<ApiSuccess<DataSourceResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let result = business_service(&state, &context.actor)
-        .rotate_secret(RotateDataSourceSecretCommand {
-            actor_user_id: context.user.id,
-            workspace_id: context.actor.current_workspace_id,
-            instance_id: parse_uuid(&data_source_id, "data_source_id")?,
-            secret_json: body.secret_json,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        to_runtime_extension_data_source_response(result),
-    )))
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.data-sources.secret.rotate.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        DataSourcesInput::RotateSecret {
+            data_source_id,
+            body,
+        },
+    )
+    .await?;
+    let DataSourcesOutput::DataSource(response) = output else {
+        unreachable!("data source secret rotation binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -670,15 +1031,17 @@ pub async fn list_resources(
     Path(data_source_id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<DataSourceResourcesResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let resources = service(&state, &context.actor)
-        .list_resources(
-            context.user.id,
-            context.actor.current_workspace_id,
-            parse_uuid(&data_source_id, "data_source_id")?,
-        )
-        .await?;
-    Ok(Json(ApiSuccess::new(to_resources_response(resources))))
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.data-sources.resources.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        DataSourcesInput::ListResources { data_source_id },
+    )
+    .await?;
+    let DataSourcesOutput::Resources(response) = output else {
+        unreachable!("data source resources binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -692,16 +1055,17 @@ pub async fn discover_resources(
     Path(data_source_id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<DataSourceResourcesResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let resources = service(&state, &context.actor)
-        .discover_resources(DiscoverDataSourceResourcesCommand {
-            actor_user_id: context.user.id,
-            workspace_id: context.actor.current_workspace_id,
-            instance_id: parse_uuid(&data_source_id, "data_source_id")?,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(to_resources_response(resources))))
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.data-sources.resources.discover.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        DataSourcesInput::DiscoverResources { data_source_id },
+    )
+    .await?;
+    let DataSourcesOutput::Resources(response) = output else {
+        unreachable!("data source discovery binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -717,20 +1081,20 @@ pub async fn preview_read(
     headers: HeaderMap,
     Json(body): Json<PreviewDataSourceReadBody>,
 ) -> Result<Json<ApiSuccess<PreviewDataSourceReadResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let result = service(&state, &context.actor)
-        .preview_read(PreviewDataSourceReadCommand {
-            actor_user_id: context.user.id,
-            workspace_id: context.actor.current_workspace_id,
-            instance_id: parse_uuid(&data_source_id, "data_source_id")?,
-            resource_key: body.resource_key,
-            limit: body.limit,
-            cursor: body.cursor,
-            options_json: body.options_json,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(to_preview_response(result))))
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.data-sources.preview-read.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        DataSourcesInput::PreviewRead {
+            data_source_id,
+            body,
+        },
+    )
+    .await?;
+    let DataSourcesOutput::Preview(response) = output else {
+        unreachable!("data source preview binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -746,33 +1110,18 @@ pub async fn map_resource_to_model(
     headers: HeaderMap,
     Json(body): Json<MapDataSourceResourceToModelBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ModelDefinitionResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let result = service(&state, &context.actor)
-        .map_resource_to_model(MapDataSourceResourceToModelCommand {
-            actor_user_id: context.user.id,
-            workspace_id: context.actor.current_workspace_id,
-            instance_id: parse_uuid(&data_source_id, "data_source_id")?,
-            resource_key: body.resource_key,
-            template_provider: body.template_provider,
-            template_code: body.template_code,
-            template_version: body.template_version,
-        })
-        .await?;
-    crate::runtime_registry_sync::ApiRuntimeRegistrySync::new(
-        state.store.clone(),
-        state.runtime_engine.registry().clone(),
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.data-sources.resources.map-to-model.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        DataSourcesInput::MapResourceToModel {
+            data_source_id,
+            body,
+        },
     )
-    .rebuild()
     .await?;
-    let mut model = result.model;
-    model.fields = result.fields;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_model_definition_response(
-            model,
-            state.runtime_engine.template_catalog(),
-        ))),
-    ))
+    let DataSourcesOutput::Model(response) = output else {
+        unreachable!("data source map-to-model binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }
