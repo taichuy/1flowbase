@@ -288,6 +288,15 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-assistant-websocket-ticket",
+            &["assistant.runs.websocket-ticket.create"],
+            &["api-server.console-assistant-websocket-ticket"],
+            crate::routes::assistant::websocket_ticket_interface::compile_registry(
+                state.store.clone(),
+                state.infrastructure.cache_store(),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-applications",
             &[
                 "applications.list",
