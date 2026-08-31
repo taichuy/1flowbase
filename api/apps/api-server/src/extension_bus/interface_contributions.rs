@@ -720,6 +720,16 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-provider-routing",
+            &["model_providers.main_instance.view", "model_providers.main_instance.update"],
+            &["api-server.console-provider-routing"],
+            crate::routes::model_providers::routing_interface::compile_registry(
+                crate::routes::model_providers::routing_interface::ProviderRoutingDependencies {
+                    store: state.store.clone(), provider_runtime: state.provider_runtime.clone(), secret_key: state.provider_secret_master_key.clone(), api_node_id: state.api_node_id.clone(), install_root: state.provider_install_root.clone(), cache_store: state.infrastructure.cache_store(),
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-runs",
             &["application.native.runs.create"],
             &["api-server.application-public-api"],

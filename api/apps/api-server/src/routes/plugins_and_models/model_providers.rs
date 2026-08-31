@@ -55,6 +55,7 @@ mod dto;
 pub(crate) mod icons;
 pub(crate) mod instance_lifecycle_interface;
 pub(crate) mod instance_operations_interface;
+pub(crate) mod routing_interface;
 pub(crate) mod settings_routes;
 
 use settings_routes::settings_service;
@@ -1285,18 +1286,15 @@ pub async fn get_main_instance(
     Path(provider_code): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ModelProviderMainInstanceResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let view = settings_service(&state, &context.actor, "model_providers.main_instance.view")
-        .get_main_instance(context.user.id, &provider_code)
+    let output: routing_interface::ProviderRoutingOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.model-providers.main-instance.view.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+            routing_interface::ProviderRoutingInput::Get { provider_code },
+        )
         .await?;
-    let distribution_rules = state
-        .provider_runtime
-        .provider_distribution_definitions()
-        .await;
-    Ok(Json(ApiSuccess::new(to_main_instance_response(
-        view,
-        distribution_rules,
-    ))))
+    Ok(Json(ApiSuccess::new(output.0)))
 }
 
 #[utoipa::path(
@@ -1317,95 +1315,21 @@ pub async fn update_main_instance(
     headers: HeaderMap,
     Json(body): Json<UpdateModelProviderMainInstanceBody>,
 ) -> Result<Json<ApiSuccess<ModelProviderMainInstanceResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let model_routing_policies = if let Some(policies) = body.model_routing_policies {
-        let mut compiled = Vec::with_capacity(policies.len());
-        for policy in policies {
-            let rule_version = if !matches!(
-                policy.distribution_rule.as_str(),
-                "none"
-                    | "builtin.none"
-                    | "round_robin"
-                    | "builtin.round_robin"
-                    | "retry_round_robin"
-                    | "builtin.retry_round_robin"
-            ) {
-                let contract_version = policy
-                    .distribution_rule_contract_version
-                    .as_deref()
-                    .filter(|value| !value.trim().is_empty())
-                    .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
-                        "distribution_rule_contract_version",
-                    ))?;
-                let config = policy
-                    .distribution_rule_config
-                    .iter()
-                    .map(|(key, value)| {
-                        let value = match value {
-                            ModelProviderDistributionConfigValueBody::String(value) => {
-                                extension_contracts::ProviderDistributionConfigValue::String(
-                                    value.clone(),
-                                )
-                            }
-                            ModelProviderDistributionConfigValueBody::Integer(value) => {
-                                extension_contracts::ProviderDistributionConfigValue::Integer(
-                                    *value,
-                                )
-                            }
-                            ModelProviderDistributionConfigValueBody::Boolean(value) => {
-                                extension_contracts::ProviderDistributionConfigValue::Boolean(
-                                    *value,
-                                )
-                            }
-                        };
-                        (key.clone(), value)
-                    })
-                    .collect();
-                state
-                    .provider_runtime
-                    .validate_provider_distribution_rule(
-                        &policy.distribution_rule,
-                        contract_version,
-                        &config,
-                    )
-                    .await
-                    .map_err(|_| {
-                        control_plane::errors::ControlPlaneError::InvalidInput("distribution_rule")
-                    })?
-                    .into()
-            } else {
-                None
-            };
-            let policy = to_main_model_routing_policy(policy, rule_version)?;
-            compiled.push(policy);
-        }
-        Some(compiled)
-    } else {
-        None
-    };
-    let view = settings_service(
-        &state,
-        &context.actor,
-        "model_providers.main_instance.update",
-    )
-    .update_main_instance(UpdateModelProviderMainInstanceCommand {
-        actor_user_id: context.user.id,
-        provider_code,
-        auto_include_new_instances: body.auto_include_new_instances,
-        expected_revision: body.expected_revision,
-        model_routing_policies,
-    })
-    .await?;
-
-    let distribution_rules = state
-        .provider_runtime
-        .provider_distribution_definitions()
-        .await;
-    Ok(Json(ApiSuccess::new(to_main_instance_response(
-        view,
-        distribution_rules,
-    ))))
+    let output: routing_interface::ProviderRoutingOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.model-providers.main-instance.update.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+                state,
+                headers,
+            },
+            routing_interface::ProviderRoutingInput::Update {
+                provider_code,
+                body,
+            },
+        )
+        .await?;
+    Ok(Json(ApiSuccess::new(output.0)))
 }
 
 #[utoipa::path(
