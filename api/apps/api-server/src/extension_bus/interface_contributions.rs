@@ -366,6 +366,29 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-application-runtime-reads",
+            &[
+                "applications.runtime.logs.list",
+                "applications.runtime.conversations.messages.list",
+                "applications.runtime.run-conversation.messages.list",
+                "applications.runtime.run.overview.get",
+                "applications.runtime.trace-tree.get",
+                "applications.runtime.trace-tree.children.get",
+                "applications.runtime.resume-timeline.get",
+                "applications.runtime.resume-timeline-summary.get",
+                "applications.runtime.run-node-last-run.get",
+                "applications.runtime.monitoring.report.get",
+                "applications.runtime.monitoring.activity.get",
+            ],
+            &["api-server.console-application-runtime-reads"],
+            crate::routes::application_runtime::interface_runtime_reads::compile_registry(
+                state.store.clone(),
+                state.infrastructure.cache_store(),
+                Arc::clone(&state.runtime_activity),
+                state.process_started_at,
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-application-orchestration",
             &[
                 "applications.orchestration.get",
