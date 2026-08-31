@@ -173,12 +173,14 @@ pub(crate) fn production_interface_contributions(
             &[
                 "application.native.models.list",
                 "application.native.runs.read",
+                "application.native.runs.cancel",
             ],
             &["api-server.application-public-api"],
             crate::routes::application_public_api::native_read_interface::compile_registry(
                 crate::routes::application_public_api::native_read_interface::native_read_port(
                     state.store.clone(),
                     state.infrastructure.cache_store(),
+                    Arc::clone(&state.runtime_event_stream),
                 ),
             )?,
         ),

@@ -3,7 +3,7 @@ use interface_runtime::{BindingId, GraphFingerprint, InterfaceProtocol};
 use crate::{
     extension_bus::{production_interface_contributions, InterfaceContributionCollector},
     routes::application_public_api::native_read_interface::{
-        GET_RUN_BINDING_ID, MODELS_BINDING_ID,
+        CANCEL_RUN_BINDING_ID, GET_RUN_BINDING_ID, MODELS_BINDING_ID,
     },
 };
 
@@ -17,7 +17,7 @@ async fn eil_f05a_native_reads_publish_unique_frozen_plans() {
     }
     let registry = collector.compile().unwrap();
 
-    for binding in [MODELS_BINDING_ID, GET_RUN_BINDING_ID] {
+    for binding in [MODELS_BINDING_ID, GET_RUN_BINDING_ID, CANCEL_RUN_BINDING_ID] {
         let plan = registry.plan(&BindingId::new(binding).unwrap()).unwrap();
         assert_eq!(
             plan.binding().projection().protocol(),

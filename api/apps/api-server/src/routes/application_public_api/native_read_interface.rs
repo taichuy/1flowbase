@@ -5,7 +5,7 @@ use control_plane::application_public_api::{
     native::{ApplicationNativeRunService, NativeRunValidationError},
     publications::{ApplicationPublicationService, LoadActiveApplicationPublicationCommand},
 };
-use control_plane::ports::CacheStore;
+use control_plane::ports::{CacheStore, RuntimeEventStream};
 use interface_runtime::{
     ApplicationPrincipal, AuthenticationAdapterReference, AuthorizationAdapterReference,
     AuthorizationOperation, BindingId, CompiledInterfaceRegistry, ContractIdentity,
@@ -28,6 +28,7 @@ use super::native::{
 
 pub(crate) const MODELS_BINDING_ID: &str = "http.application.native.models.list.v1";
 pub(crate) const GET_RUN_BINDING_ID: &str = "http.application.native.runs.get.v1";
+pub(crate) const CANCEL_RUN_BINDING_ID: &str = "http.application.native.runs.cancel.v1";
 
 pub(crate) struct NativeModelsInput;
 impl InterfaceContract for NativeModelsInput {
@@ -53,6 +54,18 @@ impl InterfaceContract for NativeGetRunOutput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+pub(crate) struct NativeCancelRunInput(pub(crate) Uuid);
+impl InterfaceContract for NativeCancelRunInput {
+    const CONTRACT_ID: &'static str = "application-native-run-cancel-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+pub(crate) struct NativeCancelRunOutput(pub(crate) NativeRunResponse);
+impl InterfaceContract for NativeCancelRunOutput {
+    const CONTRACT_ID: &'static str = "application-native-run-cancel-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
 pub(crate) struct NativeReadTargetError(pub(crate) NativeApiError);
 impl InterfaceContract for NativeReadTargetError {
     const CONTRACT_ID: &'static str = "application-native-read-error";
@@ -74,11 +87,18 @@ pub(crate) trait NativeReadPort: Send + Sync + 'static {
         principal: &'a ApplicationPrincipal,
         input: NativeGetRunInput,
     ) -> ReadFuture<'a, NativeGetRunOutput>;
+
+    fn cancel_run<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: NativeCancelRunInput,
+    ) -> ReadFuture<'a, NativeCancelRunOutput>;
 }
 
 struct NativeReadAdapter {
     store: MainDurableStore,
     cache_store: Arc<dyn CacheStore>,
+    runtime_event_stream: Arc<dyn RuntimeEventStream>,
 }
 
 impl NativeReadPort for NativeReadAdapter {
@@ -122,13 +142,36 @@ impl NativeReadPort for NativeReadAdapter {
                 .map_err(NativeReadTargetError)
         })
     }
+
+    fn cancel_run<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: NativeCancelRunInput,
+    ) -> ReadFuture<'a, NativeCancelRunOutput> {
+        Box::pin(async move {
+            ApplicationNativeRunService::new(self.store.clone())
+                .with_last_used_cache(Arc::clone(&self.cache_store))
+                .with_runtime_event_stream(Arc::clone(&self.runtime_event_stream))
+                .cancel_native_run_for_actor(application_actor_from_principal(principal), input.0)
+                .await
+                .map(super::native::to_native_run_response)
+                .map(NativeCancelRunOutput)
+                .map_err(native_error)
+                .map_err(NativeReadTargetError)
+        })
+    }
 }
 
 pub(crate) fn native_read_port(
     store: MainDurableStore,
     cache_store: Arc<dyn CacheStore>,
+    runtime_event_stream: Arc<dyn RuntimeEventStream>,
 ) -> Arc<dyn NativeReadPort> {
-    Arc::new(NativeReadAdapter { store, cache_store })
+    Arc::new(NativeReadAdapter {
+        store,
+        cache_store,
+        runtime_event_stream,
+    })
 }
 
 struct NativeReadHandler {
@@ -159,6 +202,34 @@ impl
 
 struct NativeGetRunHandler {
     port: Arc<dyn NativeReadPort>,
+}
+
+struct NativeCancelRunHandler {
+    port: Arc<dyn NativeReadPort>,
+}
+
+impl
+    InterfaceHandler<
+        NativeCancelRunInput,
+        NativeCancelRunOutput,
+        NativeReadTargetError,
+        ApplicationPrincipal,
+    > for NativeCancelRunHandler
+{
+    fn invoke(
+        &self,
+        context: InterfaceHandlerContext<ApplicationPrincipal>,
+        input: NativeCancelRunInput,
+    ) -> InterfaceHandlerFuture<NativeCancelRunOutput, NativeReadTargetError> {
+        let port = Arc::clone(&self.port);
+        Box::pin(async move {
+            port.cancel_run(context.principal(), input)
+                .await
+                .map_err(|error| {
+                    InterfaceTargetFailure::new("application_native_cancel_run", error)
+                })
+        })
+    }
 }
 
 impl
@@ -204,6 +275,7 @@ pub(crate) fn compile_registry(
     let operations = [
         AuthorizationOperation::new("application.native.models.list").unwrap(),
         AuthorizationOperation::new("application.native.runs.read").unwrap(),
+        AuthorizationOperation::new("application.native.runs.cancel").unwrap(),
     ];
     let mut compiler = RegistryCompiler::new(
         GraphFingerprint::new("graph:application-native-read-v1").unwrap(),
@@ -219,6 +291,7 @@ pub(crate) fn compile_registry(
         "api-server.application-native-models.list",
         RouteIdentity::new("GET", "/api/agent/v1/models").unwrap(),
         "control-plane.application-publication.load-active",
+        InterfaceAuditPolicy::ReadOnly,
     )?;
     register::<NativeGetRunInput, NativeGetRunOutput>(
         &mut compiler,
@@ -229,6 +302,18 @@ pub(crate) fn compile_registry(
         "api-server.application-native-run.get",
         RouteIdentity::new("GET", "/api/agent/v1/runs/:run_id").unwrap(),
         "control-plane.application-native-run.get",
+        InterfaceAuditPolicy::ReadOnly,
+    )?;
+    register::<NativeCancelRunInput, NativeCancelRunOutput>(
+        &mut compiler,
+        &owner,
+        operations[2].clone(),
+        "application.native.runs.cancel",
+        CANCEL_RUN_BINDING_ID,
+        "api-server.application-native-run.cancel",
+        RouteIdentity::new("POST", "/api/agent/v1/runs/:run_id/cancel").unwrap(),
+        "control-plane.application-native-run.cancel",
+        InterfaceAuditPolicy::Mutating,
     )?;
     compiler.bind_handler::<NativeModelsInput, NativeModelsOutput, NativeReadTargetError, ApplicationPrincipal>(
         &InterfaceId::new("application.native.models.list").unwrap(),
@@ -240,7 +325,14 @@ pub(crate) fn compile_registry(
     compiler.bind_handler::<NativeGetRunInput, NativeGetRunOutput, NativeReadTargetError, ApplicationPrincipal>(
         &InterfaceId::new("application.native.runs.get").unwrap(),
         HandlerReference::new("api-server.application-native-run.get").unwrap(),
-        Arc::new(NativeGetRunHandler { port }),
+        Arc::new(NativeGetRunHandler {
+            port: Arc::clone(&port),
+        }),
+    )?;
+    compiler.bind_handler::<NativeCancelRunInput, NativeCancelRunOutput, NativeReadTargetError, ApplicationPrincipal>(
+        &InterfaceId::new("application.native.runs.cancel").unwrap(),
+        HandlerReference::new("api-server.application-native-run.cancel").unwrap(),
+        Arc::new(NativeCancelRunHandler { port }),
     )?;
     compiler.compile()
 }
@@ -255,6 +347,7 @@ fn register<I: InterfaceContract, O: InterfaceContract>(
     handler: &str,
     route: RouteIdentity,
     target: &str,
+    audit_policy: InterfaceAuditPolicy,
 ) -> Result<(), interface_runtime::RegistryCompilationError> {
     let id = InterfaceId::new(interface_id).unwrap();
     let identity = InterfaceIdentity::new(id.clone(), InterfaceVersion::new("1").unwrap());
@@ -277,7 +370,7 @@ fn register<I: InterfaceContract, O: InterfaceContract>(
             HandlerReference::new(handler).unwrap(),
             TargetReference::new(target).unwrap(),
         ),
-        InterfaceAuditPolicy::ReadOnly,
+        audit_policy,
         InterfaceErrorPolicy::TypedTarget,
         InterfaceLifecycle::BootSnapshot,
         owner.clone(),

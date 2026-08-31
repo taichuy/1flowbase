@@ -19,9 +19,8 @@ use control_plane::{
         },
         model_catalog::{AgentModelCapabilities, AgentModelDescriptor, AgentModelReasoning},
         native::{
-            translate_native_run_request, ApplicationNativeRunService, CancelNativeRunCommand,
-            GetNativeRunCommand, NativeRunRequest, NativeRunResult, NativeRunStatus,
-            NativeRunValidationError,
+            translate_native_run_request, ApplicationNativeRunService, GetNativeRunCommand,
+            NativeRunRequest, NativeRunResult, NativeRunStatus, NativeRunValidationError,
         },
         protocol_translation::{
             TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol,
@@ -63,8 +62,8 @@ use crate::{
                 ApplicationNativeRunTargetError,
             },
             native_read_interface::{
-                self, NativeGetRunInput, NativeGetRunOutput, NativeModelsInput, NativeModelsOutput,
-                NativeReadTargetError,
+                self, NativeCancelRunInput, NativeCancelRunOutput, NativeGetRunInput,
+                NativeGetRunOutput, NativeModelsInput, NativeModelsOutput, NativeReadTargetError,
             },
             sse,
             stream_terminal_fallback::recover_missing_stream_terminal_winner,
@@ -1356,18 +1355,14 @@ pub async fn cancel_native_run(
     headers: HeaderMap,
     Path(run_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<NativeRunResponse>>, NativeApiError> {
-    let bearer_token = bearer_token(&headers)?;
-    let run = ApplicationNativeRunService::new(state.store.clone())
-        .with_last_used_cache(state.infrastructure.cache_store())
-        .with_runtime_event_stream(state.runtime_event_stream.clone())
-        .cancel_native_run(CancelNativeRunCommand {
-            bearer_token,
-            run_id,
-        })
-        .await
-        .map_err(native_error)?;
-
-    Ok(Json(ApiSuccess::new(to_native_run_response(run))))
+    let output = invoke_native_read::<NativeCancelRunInput, NativeCancelRunOutput>(
+        &state,
+        bearer_token(&headers)?,
+        native_read_interface::CANCEL_RUN_BINDING_ID,
+        NativeCancelRunInput(run_id),
+    )
+    .await?;
+    Ok(Json(ApiSuccess::new(output.0)))
 }
 
 #[utoipa::path(
