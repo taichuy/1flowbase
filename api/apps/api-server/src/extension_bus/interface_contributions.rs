@@ -577,6 +577,16 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-business-files",
+            &["files.upload", "files.content.read"],
+            &["api-server.console-business-files"],
+            crate::routes::files::compile_registry(
+                state.store.clone(),
+                state.file_storage_registry.clone(),
+                state.runtime_engine.clone(),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-runs",
             &["application.native.runs.create"],
             &["api-server.application-public-api"],

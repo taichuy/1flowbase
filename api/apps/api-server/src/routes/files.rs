@@ -1,4 +1,4 @@
-use std::{collections::HashSet, sync::Arc};
+use std::sync::Arc;
 
 use axum::{
     body::Body,
@@ -8,20 +8,23 @@ use axum::{
     Json, Router,
 };
 use control_plane::ports::{FileManagementRepository, ModelDefinitionRepository};
-use control_plane::resource_action::{
-    ActionDefinition, ResourceActionKernel, ResourceActionRegistry, ResourceDefinition,
-    ResourceScopeKind,
-};
+use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::{Deserialize, Serialize};
+use storage_durable_postgres::MainDurableStore;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
-    routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+    routes::{
+        console_interface::{
+            self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
+            ConsoleInterfaceTargetError,
+        },
+        console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
+    },
 };
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
@@ -40,49 +43,43 @@ struct UploadFileMultipartBody {
     file: Vec<u8>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct UploadFileActorInput {
-    user_id: Uuid,
-    tenant_id: Uuid,
-    current_workspace_id: Uuid,
-    effective_display_role: String,
-    is_root: bool,
-    permissions: Vec<String>,
+enum BusinessFilesInput {
+    Upload {
+        file_table_id: Option<Uuid>,
+        original_filename: String,
+        content_type: Option<String>,
+        bytes: Vec<u8>,
+    },
+    ReadContent {
+        file_table_id: String,
+        record_id: String,
+    },
 }
 
-impl From<domain::ActorContext> for UploadFileActorInput {
-    fn from(actor: domain::ActorContext) -> Self {
-        Self {
-            user_id: actor.user_id,
-            tenant_id: actor.tenant_id,
-            current_workspace_id: actor.current_workspace_id,
-            effective_display_role: actor.effective_display_role,
-            is_root: actor.is_root,
-            permissions: actor.permissions.into_iter().collect(),
-        }
-    }
+impl InterfaceContract for BusinessFilesInput {
+    const CONTRACT_ID: &'static str = "console-business-files-input";
+    const CONTRACT_VERSION: &'static str = "1";
 }
 
-impl UploadFileActorInput {
-    fn into_actor(self) -> domain::ActorContext {
-        domain::ActorContext {
-            user_id: self.user_id,
-            tenant_id: self.tenant_id,
-            current_workspace_id: self.current_workspace_id,
-            effective_display_role: self.effective_display_role,
-            is_root: self.is_root,
-            permissions: HashSet::from_iter(self.permissions),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct UploadFileActionInput {
-    actor: UploadFileActorInput,
-    file_table_id: Option<Uuid>,
-    original_filename: String,
-    content_type: Option<String>,
+struct FileContentOutput {
+    content_type: String,
     bytes: Vec<u8>,
+}
+
+enum BusinessFilesOutput {
+    Uploaded(UploadedFileResponse),
+    Content(FileContentOutput),
+}
+
+impl InterfaceContract for BusinessFilesOutput {
+    const CONTRACT_ID: &'static str = "console-business-files-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+struct BusinessFilesAdapter {
+    store: MainDurableStore,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
@@ -98,6 +95,43 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/files/:file_table_id/records/:record_id/content",
             console_get(read_file_content, Authenticated),
         )
+}
+
+const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "files.upload",
+        binding_id: "http.console.files.upload.v1",
+        method: "POST",
+        path: "/api/console/files/upload",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "files.content.read",
+        binding_id: "http.console.files.content.read.v1",
+        method: "GET",
+        path: "/api/console/files/:file_table_id/records/:record_id/content",
+        mutating: false,
+    },
+];
+
+pub(crate) fn compile_registry(
+    store: MainDurableStore,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    console_interface::compile_registry(
+        "api-server.console-business-files",
+        "graph:console-business-files-v1",
+        DECLARATIONS,
+        Arc::new(BusinessFilesAdapter {
+            store,
+            file_storage_registry,
+            runtime_engine,
+        }),
+    )
 }
 
 fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
@@ -160,48 +194,143 @@ fn map_file_storage_error(error: storage_object::FileStorageError) -> ApiError {
     }
 }
 
-fn upload_file_action_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel, ApiError> {
-    let mut registry = ResourceActionRegistry::default();
-    registry.register_resource(ResourceDefinition::core(
-        "files",
-        ResourceScopeKind::Workspace,
-    ))?;
-    registry.register_action(ActionDefinition::core("files", "upload"))?;
-
-    let mut kernel = ResourceActionKernel::new(registry);
-    kernel.register_json_handler("files", "upload", move |input| {
-        let state = state.clone();
-        async move {
-            let input: UploadFileActionInput = serde_json::from_value(input).map_err(|_| {
-                control_plane::errors::ControlPlaneError::InvalidInput("file_upload_action")
-            })?;
-            let uploaded = control_plane::file_management::FileUploadService::new(
-                state.store.clone(),
-                state.file_storage_registry.clone(),
-                state.runtime_engine.clone(),
-            )
-            .upload(control_plane::file_management::UploadFileCommand {
-                actor: input.actor.into_actor(),
-                target: input.file_table_id.map_or(
-                    control_plane::file_management::FileUploadTarget::Default,
-                    control_plane::file_management::FileUploadTarget::Table,
-                ),
-                original_filename: input.original_filename,
-                content_type: input.content_type,
-                bytes: input.bytes,
-            })
-            .await
-            .map_err(|error| map_runtime_error(error).0)?;
-
-            Ok(serde_json::to_value(UploadedFileResponse {
-                file_table_id: uploaded.file_table_id.to_string(),
-                storage_id: uploaded.storage_id.to_string(),
-                record: uploaded.record,
-            })?)
+impl BusinessFilesAdapter {
+    async fn execute_inner(
+        &self,
+        principal: &UserPrincipal,
+        input: BusinessFilesInput,
+    ) -> Result<BusinessFilesOutput, ApiError> {
+        let actor = principal.actor().clone();
+        match input {
+            BusinessFilesInput::Upload {
+                file_table_id,
+                original_filename,
+                content_type,
+                bytes,
+            } => {
+                let uploaded = control_plane::file_management::FileUploadService::new(
+                    self.store.clone(),
+                    self.file_storage_registry.clone(),
+                    self.runtime_engine.clone(),
+                )
+                .upload(control_plane::file_management::UploadFileCommand {
+                    actor,
+                    target: file_table_id.map_or(
+                        control_plane::file_management::FileUploadTarget::Default,
+                        control_plane::file_management::FileUploadTarget::Table,
+                    ),
+                    original_filename,
+                    content_type,
+                    bytes,
+                })
+                .await
+                .map_err(map_runtime_error)?;
+                Ok(BusinessFilesOutput::Uploaded(UploadedFileResponse {
+                    file_table_id: uploaded.file_table_id.to_string(),
+                    storage_id: uploaded.storage_id.to_string(),
+                    record: uploaded.record,
+                }))
+            }
+            BusinessFilesInput::ReadContent {
+                file_table_id,
+                record_id,
+            } => {
+                let file_table = self
+                    .store
+                    .get_file_table(parse_uuid(&file_table_id, "file_table_id")?)
+                    .await?
+                    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                        "file_table",
+                    ))?;
+                let model = self
+                    .store
+                    .get_model_definition(
+                        actor.current_workspace_id,
+                        file_table.model_definition_id,
+                    )
+                    .await?
+                    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                        "model_definition",
+                    ))?;
+                let scope_grant = control_plane::model_definition::ModelDefinitionService::new(
+                    self.store.clone(),
+                )
+                .load_runtime_scope_grant(
+                    &actor,
+                    model.id,
+                    runtime_core::runtime_acl::RuntimeDataAction::View,
+                )
+                .await?;
+                let record = self
+                    .runtime_engine
+                    .get_record(runtime_core::runtime_engine::RuntimeGetInput {
+                        actor,
+                        model_code: model.code,
+                        record_id,
+                        scope_grant,
+                    })
+                    .await
+                    .map_err(map_runtime_error)?
+                    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                        "runtime_record",
+                    ))?;
+                let storage_id = record
+                    .get("storage_id")
+                    .and_then(|value| value.as_str())
+                    .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
+                        "storage_id",
+                    ))?;
+                let object_path = record.get("path").and_then(|value| value.as_str()).ok_or(
+                    control_plane::errors::ControlPlaneError::InvalidInput("path"),
+                )?;
+                let storage = self
+                    .store
+                    .get_file_storage(parse_uuid(storage_id, "storage_id")?)
+                    .await?
+                    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                        "file_storage",
+                    ))?;
+                let driver = self.file_storage_registry.get(&storage.driver_type).ok_or(
+                    control_plane::errors::ControlPlaneError::Conflict(
+                        "storage_driver_not_registered",
+                    ),
+                )?;
+                let open = driver
+                    .open_read(storage_object::OpenReadInput {
+                        config_json: &storage.config_json,
+                        object_path,
+                    })
+                    .await
+                    .map_err(map_file_storage_error)?;
+                Ok(BusinessFilesOutput::Content(FileContentOutput {
+                    content_type: open
+                        .content_type
+                        .or_else(|| {
+                            record
+                                .get("mimetype")
+                                .and_then(|value| value.as_str())
+                                .map(str::to_string)
+                        })
+                        .unwrap_or_else(|| "application/octet-stream".into()),
+                    bytes: open.bytes,
+                }))
+            }
         }
-    })?;
+    }
+}
 
-    Ok(kernel)
+impl ConsoleInterfacePort<BusinessFilesInput, BusinessFilesOutput> for BusinessFilesAdapter {
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: BusinessFilesInput,
+    ) -> ConsoleInterfaceFuture<'a, BusinessFilesOutput> {
+        Box::pin(async move {
+            self.execute_inner(principal, input)
+                .await
+                .map_err(ConsoleInterfaceTargetError)
+        })
+    }
 }
 
 #[utoipa::path(
@@ -215,9 +344,6 @@ pub async fn upload_file(
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<ApiSuccess<UploadedFileResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
     let mut file_table_id = None;
     let mut filename = None;
     let mut content_type = None;
@@ -241,23 +367,21 @@ pub async fn upload_file(
         .as_deref()
         .map(|value| parse_uuid(value, "file_table_id"))
         .transpose()?;
-    let output = upload_file_action_kernel(state.clone())?
-        .dispatch_json(
-            "files",
-            "upload",
-            serde_json::json!({
-                "actor": UploadFileActorInput::from(context.actor),
-                "file_table_id": file_table_id,
-                "original_filename": filename.unwrap_or_else(|| "upload.bin".into()),
-                "content_type": content_type,
-                "bytes": bytes.ok_or_else(|| invalid_input("file"))?,
-            }),
-        )
-        .await?;
-    let response = serde_json::from_value(output).map_err(|_| {
-        control_plane::errors::ControlPlaneError::InvalidInput("file_upload_result")
-    })?;
-
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.files.upload.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        BusinessFilesInput::Upload {
+            file_table_id,
+            original_filename: filename.unwrap_or_else(|| "upload.bin".into()),
+            content_type,
+            bytes: bytes.ok_or_else(|| invalid_input("file"))?,
+        },
+    )
+    .await?;
+    let BusinessFilesOutput::Uploaded(response) = output else {
+        unreachable!("file upload binding returned a different output")
+    };
     Ok((StatusCode::CREATED, Json(ApiSuccess::new(response))))
 }
 
@@ -275,88 +399,22 @@ pub async fn read_file_content(
     headers: HeaderMap,
     Path((file_table_id, record_id)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let file_table = state
-        .store
-        .get_file_table(parse_uuid(&file_table_id, "file_table_id")?)
-        .await?
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-            "file_table",
-        ))?;
-    let model = state
-        .store
-        .get_model_definition(
-            context.actor.current_workspace_id,
-            file_table.model_definition_id,
-        )
-        .await?
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-            "model_definition",
-        ))?;
-    let scope_grant =
-        control_plane::model_definition::ModelDefinitionService::new(state.store.clone())
-            .load_runtime_scope_grant(
-                &context.actor,
-                model.id,
-                runtime_core::runtime_acl::RuntimeDataAction::View,
-            )
-            .await?;
-    let record = state
-        .runtime_engine
-        .get_record(runtime_core::runtime_engine::RuntimeGetInput {
-            actor: context.actor,
-            model_code: model.code,
+    let output = console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.files.content.read.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        BusinessFilesInput::ReadContent {
+            file_table_id,
             record_id,
-            scope_grant,
-        })
-        .await
-        .map_err(map_runtime_error)?
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-            "runtime_record",
-        ))?;
-
-    let storage_id = record
-        .get("storage_id")
-        .and_then(|value| value.as_str())
-        .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
-            "storage_id",
-        ))?;
-    let object_path = record.get("path").and_then(|value| value.as_str()).ok_or(
-        control_plane::errors::ControlPlaneError::InvalidInput("path"),
-    )?;
-    let storage = state
-        .store
-        .get_file_storage(parse_uuid(storage_id, "storage_id")?)
-        .await?
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-            "file_storage",
-        ))?;
-    let driver = state
-        .file_storage_registry
-        .get(&storage.driver_type)
-        .ok_or(control_plane::errors::ControlPlaneError::Conflict(
-            "storage_driver_not_registered",
-        ))?;
-    let open = driver
-        .open_read(storage_object::OpenReadInput {
-            config_json: &storage.config_json,
-            object_path,
-        })
-        .await
-        .map_err(map_file_storage_error)?;
-    let content_type = open
-        .content_type
-        .or_else(|| {
-            record
-                .get("mimetype")
-                .and_then(|value| value.as_str())
-                .map(str::to_string)
-        })
-        .unwrap_or_else(|| "application/octet-stream".into());
-
+        },
+    )
+    .await?;
+    let BusinessFilesOutput::Content(content) = output else {
+        unreachable!("file content binding returned a different output")
+    };
     Ok(Response::builder()
         .status(StatusCode::OK)
-        .header(CONTENT_TYPE, content_type)
-        .body(Body::from(open.bytes))
+        .header(CONTENT_TYPE, content.content_type)
+        .body(Body::from(content.bytes))
         .unwrap())
 }
