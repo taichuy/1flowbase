@@ -1,9 +1,5 @@
 use std::sync::Arc;
 
-use axum::{
-    body::Body,
-    http::{header::CONTENT_TYPE, Response, StatusCode},
-};
 use control_plane::{
     errors::ControlPlaneError,
     ports::{
@@ -14,7 +10,7 @@ use serde_json::Value;
 use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
-use crate::{app_state::ApiState, error_response::ApiError};
+use crate::error_response::ApiError;
 
 const APPLICATION_INPUT_QUERY_KEYS: &[&str] = &["query", "question", "prompt", "message", "input"];
 
@@ -254,29 +250,6 @@ pub(super) fn is_safe_to_persist_debug_artifact_previews(status: domain::FlowRun
     )
 }
 
-pub(crate) async fn load_runtime_debug_artifact_response(
-    state: Arc<ApiState>,
-    workspace_id: Uuid,
-    application_id: Uuid,
-    artifact_id: Uuid,
-) -> Result<Response<Body>, ApiError> {
-    let content = load_runtime_debug_artifact_content(
-        &RuntimeDebugArtifactReadDependencies::new(
-            state.store.clone(),
-            state.file_storage_registry.clone(),
-        ),
-        workspace_id,
-        application_id,
-        artifact_id,
-    )
-    .await?;
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(CONTENT_TYPE, content.content_type)
-        .body(Body::from(content.bytes))
-        .map_err(ApiError::from)
-}
-
 pub(crate) async fn load_runtime_debug_artifact_content(
     dependencies: &RuntimeDebugArtifactReadDependencies,
     workspace_id: Uuid,
@@ -316,24 +289,6 @@ pub(crate) async fn load_runtime_debug_artifact_content(
         content_type,
         bytes: object.bytes,
     })
-}
-
-pub(crate) async fn load_runtime_debug_artifact_json_value(
-    state: Arc<ApiState>,
-    workspace_id: Uuid,
-    application_id: Uuid,
-    artifact_id: Uuid,
-) -> Result<Value, ApiError> {
-    load_runtime_debug_artifact_json_value_with_dependencies(
-        &RuntimeDebugArtifactReadDependencies::new(
-            state.store.clone(),
-            state.file_storage_registry.clone(),
-        ),
-        workspace_id,
-        application_id,
-        artifact_id,
-    )
-    .await
 }
 
 pub(crate) async fn load_runtime_debug_artifact_json_value_with_dependencies(

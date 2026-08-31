@@ -29,7 +29,6 @@ mod visible_internal_llm_route_traces;
 
 pub(super) use payloads::{
     application_run_model, application_run_query, load_runtime_debug_artifact_content,
-    load_runtime_debug_artifact_json_value,
     load_runtime_debug_artifact_json_value_with_dependencies, RuntimeDebugArtifactContent,
     RuntimeDebugArtifactReadDependencies,
 };
