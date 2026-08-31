@@ -11,7 +11,8 @@
 - Replacement frozen assembly: `beta@a6ad997f18fce23a6a0b8190ee383ff45b146512`
 - Prior final QA assembly: `beta@9c367ddcb19e1da7f89247d6fe5808afd70521f6`
 - Fixture-remediation QA assembly: `beta@3426bebde34796b8266643c472d6eb8a9b4c8be2`
-- Internal-visibility fix assembly: `beta@4741e0f65df23afbe8e1329c9115a063bf37a07b` plus this receipt refresh
+- Snapshot-visibility QA assembly: `beta@2b1def1b39559228eca206498e7f4456ecab6040`
+- Health-fixture product assembly: `beta@5769959d718886303ad447ecb6d084b403ae0acf` plus this receipt refresh
 - Final assembly: receipt refresh commit；集中 QA 必须用 `git rev-parse HEAD` 自动捕获完整 SHA
 - Official plugins baseline: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
 - Result: `REASSEMBLED / FRESH_QA_PENDING`
@@ -52,6 +53,8 @@ CI-F03/CI-F04。随后对 `9c367ddcb19e1da7f89247d6fe5808afd70521f6` 的 21-row 
 | CI-F07 | this receipt refresh commit | ASSEMBLED | 历史 QA 分类校正、RED/GREEN 证据与 fresh candidate freeze |
 | CI-F08 | `4741e0f65df23afbe8e1329c9115a063bf37a07b` | ASSEMBLED | 恢复 crate-internal Snapshot query 类型重导出；完整 api-server all-targets no-run 编译通过 |
 | CI-F09 | this receipt refresh commit | ASSEMBLED | E0433 提交归因校正、visibility fix 与 fresh candidate freeze |
+| CI-F10 | `5769959d718886303ad447ecb6d084b403ae0acf` | ASSEMBLED | Health integration 复用完整 BootSnapshot compiler；member mutation Router 4/4 |
+| CI-F11 | this receipt refresh commit | ASSEMBLED | snapshot-visibility QA blocker、health fixture fix 与 fresh candidate freeze |
 
 Packet 阶段只执行 `cargo fmt`、`cargo check -p api-server` 和
 `cargo check -p api-server --tests` 作为安全装配；没有运行 Packet 测试、reviewer 或 QA。
@@ -124,6 +127,19 @@ CI-F08 restores only the type-level crate-internal re-export. It does not expose
 `cargo test -p api-server --all-targets --no-run` exit 0 with every unit, bin and integration test
 executable produced. The public `compile_extension_boot_snapshot` Composition Root remains a
 non-blocking boundary warning: production crates must not consume it as a general SDK.
+
+## Snapshot-visibility QA and CI-F10
+
+The fresh QA against `2b1def1b39559228eca206498e7f4456ecab6040` remains historical `QA_FAIL`
+evidence: `18 PASS / 3 FAIL / 0 UNRUN`, 3611 passed / 1 failed. E0433 was closed and the complete
+Frontstage 7/7 Cookie matrix passed. The only independent root was a second integration fixture in
+`health_routes.rs` that manually set `extension_boot_snapshot: None`; QA-019 and QA-021 were derived
+failures. This is not a production sign-in regression and `SAME_ROOT_RECURRED=NO` remains correct.
+
+CI-F10 assembles the Health integration through the same `compile_extension_boot_snapshot` function
+used by production and Frontstage tests. Directed Health Router evidence is 4/4, including the member
+mutation login path. No product handler, Cookie owner, fallback, API contract, permission, migration
+or Runtime behavior changes.
 
 ## Final route ownership
 
