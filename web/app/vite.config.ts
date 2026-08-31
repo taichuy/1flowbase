@@ -110,7 +110,7 @@ export default defineConfig(({ command, mode }) => {
   return {
     ...(env.VITE_DEV_CACHE_DIR ? { cacheDir: env.VITE_DEV_CACHE_DIR } : {}),
     plugins: [
-      oneFlowbaseDevRuntimePlugin({ root: process.cwd(), mode }),
+      oneFlowbaseDevRuntimePlugin({ root: process.cwd(), mode, command }),
       pageTreeIconAssetsPlugin({ projectRoot: appRoot }),
       nativeAntDesignEsModulesPlugin(),
       nativeAntDesignIconsModulesPlugin({

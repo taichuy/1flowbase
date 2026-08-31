@@ -29,4 +29,6 @@ test("MDP-012 mounts the local production dist over the existing web image", () 
   assert.match(harness, /["']--pull["'],[\s\S]*["']never["']/u);
   assert.match(harness, /["']--no-deps["']/u);
   assert.match(harness, /["']restore["']/u);
+  assert.match(harness, /["']docker-compose["']/u);
+  assert.match(harness, /["']compose["'], ["']version["']/u);
 });

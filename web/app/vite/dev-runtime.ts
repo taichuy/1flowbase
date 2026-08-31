@@ -172,10 +172,12 @@ function attachPreReadyTrafficGate(
 
 function oneFlowbaseDevRuntimePlugin({
   root,
-  mode
+  mode,
+  command
 }: {
   root: string;
   mode: string;
+  command: 'serve' | 'build';
 }): Plugin {
   const runtimeDirectory = path.join(
     path.resolve(root, '..', '..'),
