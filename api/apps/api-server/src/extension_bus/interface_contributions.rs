@@ -117,7 +117,7 @@ impl InterfaceContributionCollector {
     }
 }
 
-pub(crate) fn production_interface_contributions() -> [InterfaceRegistryContribution; 6] {
+pub(crate) fn production_interface_contributions() -> [InterfaceRegistryContribution; 7] {
     [
         InterfaceRegistryContribution::new(
             "api-server.public-login-instances",
@@ -130,6 +130,12 @@ pub(crate) fn production_interface_contributions() -> [InterfaceRegistryContribu
             &["public.auth.sign-in"],
             &["api-server.public-auth"],
             crate::routes::sign_in_interface::compile_registry,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.public-auth-residual",
+            &["public.auth.providers.read", "public.auth.sign-up"],
+            &["api-server.public-auth"],
+            crate::routes::auth::compile_public_residual_registry,
         ),
         InterfaceRegistryContribution::new(
             "api-server.native-runs",

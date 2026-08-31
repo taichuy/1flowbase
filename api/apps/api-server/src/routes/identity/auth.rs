@@ -24,6 +24,11 @@ use super::login_instances_interface::{
     self, PublicLoginInstancesFuture, PublicLoginInstancesInput, PublicLoginInstancesOutput,
     PublicLoginInstancesPort, PublicLoginInstancesTargetError,
 };
+use super::public_residual_interface::{
+    self, PublicProvidersFuture, PublicProvidersInput, PublicProvidersOutput, PublicProvidersPort,
+    PublicResidualTargetError, PublicSignUpFuture, PublicSignUpInput, PublicSignUpOutput,
+    PublicSignUpPort,
+};
 use super::sign_in_interface::{
     self, PublicSignInInput, PublicSignInOutput, PublicSignInTargetError,
 };
@@ -122,27 +127,51 @@ pub async fn list_providers(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<AuthProviderResponse>>>, ApiError> {
-    let mut provider = state
-        .store
-        .find_authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
-        .await?
-        .map(|authenticator| AuthProviderResponse {
-            id: authenticator.id,
-            auth_type: authenticator.auth_type,
-            title: authenticator.title,
-        });
-    if let Some(provider) = &mut provider {
-        let locale = crate::app_state::request_catalog_locale(&headers, None);
-        provider.title = crate::app_state::project_canonical_display(
-            &state,
-            &locale,
-            "Password",
-            &provider.title,
-        )
-        .await?;
-    }
+    let locale = crate::app_state::request_catalog_locale(&headers, None);
+    let output = invoke_public_residual::<PublicProvidersInput, PublicProvidersOutput>(
+        &state,
+        public_residual_interface::PROVIDERS_BINDING_ID,
+        PublicProvidersInput { locale },
+    )
+    .await?;
+    Ok(Json(ApiSuccess::new(output.0)))
+}
 
-    Ok(Json(ApiSuccess::new(provider.into_iter().collect())))
+struct PublicProvidersAdapter {
+    state: std::sync::Weak<ApiState>,
+}
+
+impl PublicProvidersPort for PublicProvidersAdapter {
+    fn list(&self, input: PublicProvidersInput) -> PublicProvidersFuture<'_> {
+        let state = self.state.clone();
+        Box::pin(async move {
+            let state = state.upgrade().ok_or_else(|| {
+                PublicResidualTargetError(anyhow::anyhow!("API state is unavailable").into())
+            })?;
+            let mut provider = state
+                .store
+                .find_authenticator(domain::PASSWORD_LOCAL_AUTHENTICATOR_ID)
+                .await
+                .map_err(ApiError::from)
+                .map_err(PublicResidualTargetError)?
+                .map(|authenticator| AuthProviderResponse {
+                    id: authenticator.id,
+                    auth_type: authenticator.auth_type,
+                    title: authenticator.title,
+                });
+            if let Some(provider) = &mut provider {
+                provider.title = crate::app_state::project_canonical_display(
+                    &state,
+                    &input.locale,
+                    "Password",
+                    &provider.title,
+                )
+                .await
+                .map_err(PublicResidualTargetError)?;
+            }
+            Ok(PublicProvidersOutput(provider.into_iter().collect()))
+        })
+    }
 }
 
 #[utoipa::path(
@@ -362,17 +391,18 @@ pub async fn sign_up(
     State(state): State<Arc<ApiState>>,
     Json(body): Json<SignUpBody>,
 ) -> Result<(CookieJar, Json<ApiSuccess<LoginResponse>>), ApiError> {
-    let result = AuthKernel::new(
-        state.store.clone(),
-        SessionIssuer::new(state.session_store.clone(), state.session_ttl_days),
+    let result = invoke_public_residual::<PublicSignUpInput, PublicSignUpOutput>(
+        &state,
+        public_residual_interface::SIGN_UP_BINDING_ID,
+        PublicSignUpInput(SignUpCommand {
+            authenticator_id: body.authenticator_id,
+            account: body.account,
+            email: body.email,
+            password: body.password,
+        }),
     )
-    .sign_up(SignUpCommand {
-        authenticator_id: body.authenticator_id,
-        account: body.account,
-        email: body.email,
-        password: body.password,
-    })
-    .await?;
+    .await?
+    .0;
 
     let cookie = Cookie::build((state.cookie_name.clone(), result.session.session_id.clone()))
         .http_only(true)
@@ -390,4 +420,98 @@ pub async fn sign_up(
             current_workspace_id: result.session.current_workspace_id.to_string(),
         })),
     ))
+}
+
+struct PublicSignUpAdapter {
+    state: std::sync::Weak<ApiState>,
+}
+
+impl PublicSignUpPort for PublicSignUpAdapter {
+    fn sign_up(&self, input: PublicSignUpInput) -> PublicSignUpFuture<'_> {
+        let state = self.state.clone();
+        Box::pin(async move {
+            let state = state.upgrade().ok_or_else(|| {
+                PublicResidualTargetError(anyhow::anyhow!("API state is unavailable").into())
+            })?;
+            AuthKernel::new(
+                state.store.clone(),
+                SessionIssuer::new(state.session_store.clone(), state.session_ttl_days),
+            )
+            .sign_up(input.0)
+            .await
+            .map(PublicSignUpOutput)
+            .map_err(ApiError::from)
+            .map_err(PublicResidualTargetError)
+        })
+    }
+}
+
+pub(crate) fn compile_public_residual_registry(
+    state: std::sync::Weak<ApiState>,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    public_residual_interface::compile_registry(
+        Arc::new(PublicProvidersAdapter {
+            state: state.clone(),
+        }),
+        Arc::new(PublicSignUpAdapter { state }),
+    )
+}
+
+async fn invoke_public_residual<I, O>(
+    state: &Arc<ApiState>,
+    binding: &str,
+    input: I,
+) -> Result<O, ApiError>
+where
+    I: interface_runtime::InterfaceContract,
+    O: interface_runtime::InterfaceContract,
+{
+    let boot_snapshot = state
+        .extension_boot_snapshot
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("extension boot snapshot is unavailable"))?;
+    let snapshot = boot_snapshot
+        .interface_registry()
+        .ok_or_else(|| anyhow::anyhow!("interface registry is unavailable"))?
+        .snapshot();
+    let binding_id = interface_runtime::BindingId::new(binding).expect("static binding is valid");
+    let activated = snapshot
+        .authentication(&binding_id)
+        .ok_or_else(|| anyhow::anyhow!("public authentication activation is unavailable"))?;
+    let principal: PublicPrincipal = boot_snapshot
+        .authenticate(
+            activated,
+            crate::extension_bus::PublicAuthenticationCredential,
+        )
+        .await?;
+    let authentication_activation = activated.activation().clone();
+    let outcome = InterfaceInvocationKernel::new(Arc::new(
+        public_residual_interface::PublicResidualAuthorization,
+    ))
+    .invoke::<I, O, PublicResidualTargetError>(
+        snapshot,
+        InvocationEnvelope::with_principal(
+            InvocationLineage::root(InvocationId::now_v7()),
+            binding_id,
+            InterfaceProtocol::Http,
+            interface_runtime::AuthenticationAdapterReference::new("api-server.public").unwrap(),
+            authentication_activation,
+            principal,
+            None,
+            input,
+        ),
+    )
+    .await
+    .map_err(|failure| match failure.into_error() {
+        InterfaceInvocationError::TargetFailed(error) => error
+            .into_source::<PublicResidualTargetError>()
+            .map(|error| error.0)
+            .unwrap_or_else(|| anyhow::anyhow!("public interface failed").into()),
+        error => anyhow::anyhow!(error.to_string()).into(),
+    })?;
+    let _receipt = outcome.receipt().clone().projected();
+    Ok(outcome.into_value())
 }
