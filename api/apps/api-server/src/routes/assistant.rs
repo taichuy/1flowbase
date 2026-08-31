@@ -42,6 +42,7 @@ pub mod conversation_events;
 pub(crate) mod interface;
 mod run_activity;
 pub(crate) mod websocket;
+pub(crate) mod websocket_ticket_interface;
 
 pub use client_tools::AssistantClientToolBridge;
 use client_tools::AssistantRuntimeToolInvoker;

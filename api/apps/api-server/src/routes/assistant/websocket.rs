@@ -6,7 +6,6 @@ use axum::{
     response::Response,
     Json,
 };
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use control_plane::{
     application_public_api::run_service::{
         ApplicationPublishedFlowRunRepository, ListAssistantConversationsInput,
@@ -16,7 +15,6 @@ use control_plane::{
     ports::{CacheStore, OrchestrationRuntimeRepository},
 };
 use futures_util::{SinkExt, StreamExt};
-use rand_core::{OsRng, RngCore};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use time::Duration;
@@ -27,6 +25,9 @@ use uuid::Uuid;
 use super::conversation_events::{
     AssistantConversationEventScope, AssistantConversationSummaryResponse,
 };
+use super::websocket_ticket_interface::{
+    AssistantWebSocketTicket, ASSISTANT_WEBSOCKET_PROTOCOL, ASSISTANT_WEBSOCKET_TICKET_PREFIX,
+};
 use super::{
     abort_assistant_execution, api_provider_runtime, assistant_preference_for_target,
     launch_assistant_execution, prepare_assistant_execution, ApiError, ApiState,
@@ -34,16 +35,12 @@ use super::{
     RequestContext, StartAssistantRunBody,
 };
 use crate::{
-    middleware::{require_csrf::require_csrf, require_session::require_session},
+    middleware::require_session::require_session,
     response::ApiSuccess,
     routes::{
         application_public_api::native_websocket::schema::sequence_from_event_id, debug_run_stream,
     },
 };
-
-const ASSISTANT_WEBSOCKET_PROTOCOL: &str = "1flowbase.assistant.v1";
-const ASSISTANT_WEBSOCKET_TICKET_PREFIX: &str = "1flowbase.assistant.ticket.";
-const ASSISTANT_WEBSOCKET_TICKET_TTL_SECONDS: i64 = 60;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct CreateAssistantWebSocketTicketBody {
@@ -55,14 +52,6 @@ pub struct AssistantWebSocketTicketResponse {
     pub ticket: String,
     pub protocol: &'static str,
     pub expires_in_seconds: i64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct AssistantWebSocketTicket {
-    user_id: Uuid,
-    workspace_id: Uuid,
-    application_id: Uuid,
-    origin: String,
 }
 
 #[derive(Clone)]
@@ -97,24 +86,19 @@ pub async fn create_ticket(
     headers: HeaderMap,
     Json(body): Json<CreateAssistantWebSocketTicketBody>,
 ) -> Result<Json<ApiSuccess<AssistantWebSocketTicketResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    context.cookie_session()?;
-    require_csrf(&headers, &context)?;
-    assistant_preference_for_target(&state, &context, body.application_id).await?;
-    let origin = required_origin(&headers)?;
-    let ticket = AssistantWebSocketTicket {
-        user_id: context.user.id,
-        workspace_id: context.actor.current_workspace_id,
-        application_id: body.application_id,
-        origin,
-    };
-    let cache = state.infrastructure.cache_store();
-    let token = store_ticket(cache.as_ref(), &ticket).await?;
-    Ok(Json(ApiSuccess::new(AssistantWebSocketTicketResponse {
-        ticket: token,
-        protocol: ASSISTANT_WEBSOCKET_PROTOCOL,
-        expires_in_seconds: ASSISTANT_WEBSOCKET_TICKET_TTL_SECONDS,
-    })))
+    let origin = headers
+        .get(header::ORIGIN)
+        .and_then(|value| value.to_str().ok())
+        .map(ToOwned::to_owned);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.assistant.runs.websocket-ticket.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        super::websocket_ticket_interface::AssistantWebSocketTicketInput::Create { body, origin },
+    )
+    .await?;
+    let super::websocket_ticket_interface::AssistantWebSocketTicketOutput::Ticket(ticket) = output;
+    Ok(Json(ApiSuccess::new(ticket)))
 }
 
 #[utoipa::path(
@@ -169,28 +153,6 @@ pub async fn upgrade(
         .on_upgrade(move |socket| async move {
             run_connection(socket, state, Arc::new(authorization)).await;
         }))
-}
-
-async fn store_ticket(
-    cache: &dyn CacheStore,
-    ticket: &AssistantWebSocketTicket,
-) -> Result<String, ApiError> {
-    for _ in 0..3 {
-        let mut bytes = [0_u8; 32];
-        OsRng.fill_bytes(&mut bytes);
-        let token = URL_SAFE_NO_PAD.encode(bytes);
-        if cache
-            .set_if_absent_json(
-                &ticket_key(&token),
-                serde_json::to_value(ticket)?,
-                Some(Duration::seconds(ASSISTANT_WEBSOCKET_TICKET_TTL_SECONDS)),
-            )
-            .await?
-        {
-            return Ok(token);
-        }
-    }
-    Err(control_plane::errors::ControlPlaneError::Conflict("assistant_websocket_ticket").into())
 }
 
 async fn consume_ticket(
@@ -795,6 +757,7 @@ fn command_error(request_id: Option<&str>, code: &str, message: impl Into<String
 
 #[cfg(test)]
 mod tests {
+    use super::super::websocket_ticket_interface::store_ticket;
     use super::*;
     use storage_ephemeral::MokaCacheStore;
 
