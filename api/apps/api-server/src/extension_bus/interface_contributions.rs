@@ -379,6 +379,8 @@ pub(crate) fn production_interface_contributions(
                 "applications.runtime.run-node-last-run.get",
                 "applications.runtime.monitoring.report.get",
                 "applications.runtime.monitoring.activity.get",
+                "applications.runtime.debug-stream.get",
+                "applications.runtime.node-last-run.get",
             ],
             &["api-server.console-application-runtime-reads"],
             crate::routes::application_runtime::interface_runtime_reads::compile_registry(
@@ -386,6 +388,18 @@ pub(crate) fn production_interface_contributions(
                 state.infrastructure.cache_store(),
                 Arc::clone(&state.runtime_activity),
                 state.process_started_at,
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-application-runtime-debug-variables",
+            &[
+                "applications.runtime.debug-variables.snapshot.get",
+                "applications.runtime.debug-variables.cache.upsert",
+                "applications.runtime.debug-variables.cache.delete",
+            ],
+            &["api-server.console-application-runtime-debug-variables"],
+            crate::routes::application_runtime::interface_debug_variables::compile_registry(
+                state.store.clone(),
             )?,
         ),
         InterfaceRegistryContribution::new(
