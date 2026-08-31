@@ -1,3 +1,4 @@
+mod console_interface_compilation_tests;
 mod console_route_assembly_tests;
 mod file_console_route_assembly_tests;
 mod model_definition_template_identity_tests;

@@ -190,35 +190,35 @@ impl ConsoleInterfacePort<ProviderInstanceLifecycleInput, ProviderInstanceLifecy
 
 const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     ConsoleInterfaceDeclaration {
-        interface_id: "model-providers.instances.view",
+        interface_id: "model_providers.instances.view",
         binding_id: "http.console.model-providers.instances.view.v1",
         method: "GET",
         path: "/api/console/settings/model-providers/instances",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "model-providers.instances.create",
+        interface_id: "model_providers.instances.create",
         binding_id: "http.console.model-providers.instances.create.v1",
         method: "POST",
         path: "/api/console/settings/model-providers/instances",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "model-providers.instances.update",
+        interface_id: "model_providers.instances.update",
         binding_id: "http.console.model-providers.instances.update.v1",
         method: "PATCH",
         path: "/api/console/settings/model-providers/instances/:id",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "model-providers.instances.validate",
+        interface_id: "model_providers.instances.validate",
         binding_id: "http.console.model-providers.instances.validate.v1",
         method: "POST",
         path: "/api/console/settings/model-providers/instances/:id/validate",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "model-providers.instances.delete",
+        interface_id: "model_providers.instances.delete",
         binding_id: "http.console.model-providers.instances.delete.v1",
         method: "DELETE",
         path: "/api/console/settings/model-providers/instances/:id",

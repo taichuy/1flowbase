@@ -76,7 +76,7 @@ impl ConsoleInterfacePort<DataModelOpenApiInput, DataModelOpenApiOutput>
 }
 
 const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[ConsoleInterfaceDeclaration {
-    interface_id: "model-definitions.openapi.view",
+    interface_id: "model_definitions.openapi.view",
     binding_id: "http.console.model-definitions.openapi.view.v1",
     method: "GET",
     path: "/api/console/settings/data-models/model-definitions/:model_id/openapi.json",

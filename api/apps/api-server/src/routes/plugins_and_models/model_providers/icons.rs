@@ -196,7 +196,7 @@ impl ConsoleInterfacePort<ProviderIconInput, ProviderIconOutput> for ProviderIco
 }
 
 const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[ConsoleInterfaceDeclaration {
-    interface_id: "model-providers.icons.view",
+    interface_id: "model_providers.icons.view",
     binding_id: "http.console.model-providers.icons.view.v1",
     method: "GET",
     path: "/api/console/model-providers/providers/:provider_code/icon",

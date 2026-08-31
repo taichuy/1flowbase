@@ -163,14 +163,14 @@ impl ConsoleInterfacePort<ProviderRoutingInput, ProviderRoutingOutput> for Provi
 
 const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     ConsoleInterfaceDeclaration {
-        interface_id: "model-providers.main-instance.view",
+        interface_id: "model_providers.main_instance.view",
         binding_id: "http.console.model-providers.main-instance.view.v1",
         method: "GET",
         path: "/api/console/settings/model-providers/providers/:provider_code/main-instance",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "model-providers.main-instance.update",
+        interface_id: "model_providers.main_instance.update",
         binding_id: "http.console.model-providers.main-instance.update.v1",
         method: "PUT",
         path: "/api/console/settings/model-providers/providers/:provider_code/main-instance",

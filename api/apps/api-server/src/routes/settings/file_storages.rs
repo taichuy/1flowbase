@@ -257,28 +257,28 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 
 const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     ConsoleInterfaceDeclaration {
-        interface_id: "settings.file-storages.list",
+        interface_id: "file_storages.list",
         binding_id: "http.console.settings.file-storages.list.v1",
         method: "GET",
         path: "/api/console/settings/files/storages",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "settings.file-storages.create",
+        interface_id: "file_storages.create",
         binding_id: "http.console.settings.file-storages.create.v1",
         method: "POST",
         path: "/api/console/settings/files/storages",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "settings.file-storages.update",
+        interface_id: "file_storages.update",
         binding_id: "http.console.settings.file-storages.update.v1",
         method: "PUT",
         path: "/api/console/settings/files/storages/:id",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "settings.file-storages.delete",
+        interface_id: "file_storages.delete",
         binding_id: "http.console.settings.file-storages.delete.v1",
         method: "DELETE",
         path: "/api/console/settings/files/storages/:id",

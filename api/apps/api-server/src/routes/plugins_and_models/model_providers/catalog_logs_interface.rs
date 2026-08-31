@@ -239,28 +239,28 @@ impl ConsoleInterfacePort<ProviderCatalogLogsInput, ProviderCatalogLogsOutput>
 
 const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     ConsoleInterfaceDeclaration {
-        interface_id: "model-providers.catalog.view",
+        interface_id: "model_providers.catalog.view",
         binding_id: "http.console.model-providers.catalog.view.v1",
         method: "GET",
         path: "/api/console/settings/model-providers/catalog",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "model-providers.request-logs.view",
+        interface_id: "model_providers.request_logs.view",
         binding_id: "http.console.model-providers.request-logs.view.v1",
         method: "GET",
         path: "/api/console/settings/model-providers/request-logs",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "model-providers.request-logs.delete",
+        interface_id: "model_providers.request_logs.delete",
         binding_id: "http.console.model-providers.request-logs.delete.v1",
         method: "DELETE",
         path: "/api/console/settings/model-providers/request-logs",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "model-providers.request-logs.clear",
+        interface_id: "model_providers.request_logs.clear",
         binding_id: "http.console.model-providers.request-logs.clear.v1",
         method: "POST",
         path: "/api/console/settings/model-providers/request-logs/clear",

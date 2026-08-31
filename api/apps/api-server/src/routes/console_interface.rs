@@ -161,9 +161,13 @@ where
     O: InterfaceContract,
 {
     let owner = InterfaceOwner::new(owner).expect("static Console family owner is valid");
-    let operations = declarations
+    let declaration_ids = declarations
         .iter()
-        .map(|declaration| AuthorizationOperation::new(declaration.interface_id))
+        .map(|declaration| declaration.interface_id)
+        .collect::<std::collections::BTreeSet<_>>();
+    let operations = declaration_ids
+        .iter()
+        .map(|interface_id| AuthorizationOperation::new(interface_id))
         .collect::<Result<Vec<_>, _>>()
         .expect("static Console family operations are valid");
     let mut compiler = RegistryCompiler::new(
@@ -171,9 +175,13 @@ where
         operations.clone(),
         [owner.clone()],
     );
-    for (declaration, operation) in declarations.iter().zip(operations) {
-        let interface_id = InterfaceId::new(declaration.interface_id)
-            .expect("static Console family interface is valid");
+    for (interface_id, operation) in declaration_ids.iter().zip(operations) {
+        let declaration = declarations
+            .iter()
+            .find(|declaration| declaration.interface_id == *interface_id)
+            .expect("collected Console declaration must exist");
+        let interface_id =
+            InterfaceId::new(interface_id).expect("static Console family interface is valid");
         let identity = InterfaceIdentity::new(
             interface_id.clone(),
             InterfaceVersion::new("1").expect("static Console family version is valid"),
@@ -210,6 +218,26 @@ where
             owner.clone(),
         ))?;
         register_authentication(&mut compiler, &interface_id)?;
+        compiler.bind_handler::<I, O, ConsoleInterfaceTargetError, UserPrincipal>(
+            &interface_id,
+            handler,
+            Arc::new(ConsoleInterfaceHandler {
+                port: Arc::clone(&port),
+            }),
+        )?;
+    }
+    for declaration in declarations {
+        let interface_id = InterfaceId::new(declaration.interface_id)
+            .expect("static Console family interface is valid");
+        let identity = InterfaceIdentity::new(
+            interface_id,
+            InterfaceVersion::new("1").expect("static Console family version is valid"),
+        );
+        let contracts = InterfaceContracts::unary(
+            contract::<I>(),
+            contract::<O>(),
+            contract::<ConsoleInterfaceTargetError>(),
+        );
         compiler.register_binding(
             ProtocolBinding::new(
                 BindingId::new(declaration.binding_id)
@@ -228,13 +256,6 @@ where
                     .expect("static Console authorization adapter is valid"),
                 None,
             ),
-        )?;
-        compiler.bind_handler::<I, O, ConsoleInterfaceTargetError, UserPrincipal>(
-            &interface_id,
-            handler,
-            Arc::new(ConsoleInterfaceHandler {
-                port: Arc::clone(&port),
-            }),
         )?;
     }
     compiler.compile()

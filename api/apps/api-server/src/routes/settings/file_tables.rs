@@ -244,28 +244,28 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 
 const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     ConsoleInterfaceDeclaration {
-        interface_id: "settings.file-tables.list",
+        interface_id: "file_tables.list",
         binding_id: "http.console.settings.file-tables.list.v1",
         method: "GET",
         path: "/api/console/settings/files/tables",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "settings.file-tables.create",
+        interface_id: "file_tables.create",
         binding_id: "http.console.settings.file-tables.create.v1",
         method: "POST",
         path: "/api/console/settings/files/tables",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "settings.file-tables.delete",
+        interface_id: "file_tables.delete",
         binding_id: "http.console.settings.file-tables.delete.v1",
         method: "DELETE",
         path: "/api/console/settings/files/tables/:id",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "settings.file-tables.storage.bind",
+        interface_id: "file_tables.storage.bind",
         binding_id: "http.console.settings.file-tables.storage.bind.v1",
         method: "PUT",
         path: "/api/console/settings/files/tables/:id/binding",

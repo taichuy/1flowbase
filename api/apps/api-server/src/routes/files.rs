@@ -106,7 +106,7 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "files.content.read",
+        interface_id: "files.content.download",
         binding_id: "http.console.files.content.read.v1",
         method: "GET",
         path: "/api/console/files/:file_table_id/records/:record_id/content",

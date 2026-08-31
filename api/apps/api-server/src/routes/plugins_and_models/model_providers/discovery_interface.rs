@@ -208,28 +208,28 @@ impl ConsoleInterfacePort<ProviderDiscoveryInput, ProviderDiscoveryOutput>
 
 const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     ConsoleInterfaceDeclaration {
-        interface_id: "model-providers.instances.models.view",
+        interface_id: "model_providers.instances.models.view",
         binding_id: "http.console.model-providers.instances.models.view.v1",
         method: "GET",
         path: "/api/console/settings/model-providers/instances/:id/models",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "model-providers.instances.models.refresh",
+        interface_id: "model_providers.instances.models.refresh",
         binding_id: "http.console.model-providers.instances.models.refresh.v1",
         method: "POST",
         path: "/api/console/settings/model-providers/instances/:id/models/refresh",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "model-providers.options.view",
+        interface_id: "model_providers.options.view",
         binding_id: "http.console.model-providers.options.view.v1",
         method: "GET",
         path: "/api/console/model-providers/options",
         mutating: false,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "model-providers.settings-options.view",
+        interface_id: "model_providers.settings_options.view",
         binding_id: "http.console.model-providers.settings-options.view.v1",
         method: "GET",
         path: "/api/console/settings/model-providers/options",
