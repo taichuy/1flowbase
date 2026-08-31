@@ -456,6 +456,19 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-application-runtime-debug-streams",
+            &[
+                "applications.runtime.debug-runs.stream.create",
+                "applications.runtime.debug-runs.stream.subscribe",
+            ],
+            &["api-server.console-application-runtime-debug-streams"],
+            crate::routes::application_runtime::interface_debug_commands::compile_stream_registry(
+                crate::routes::application_runtime::interface_debug_commands::dependencies(
+                    state.clone(),
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-application-runtime-trace-exports",
             &[
                 "applications.runtime.trace-export.get",

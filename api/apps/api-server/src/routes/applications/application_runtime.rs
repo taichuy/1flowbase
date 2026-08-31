@@ -15,26 +15,18 @@ use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
 use control_plane::{
     application::{ApplicationNonCrudConsoleOperation, ApplicationService},
     errors::ControlPlaneError,
-    orchestration_runtime::{
-        debug_stream_events, project_runtime_event_stream_terminal,
-        spawn_runtime_debug_event_persister,
-        trace_projection::{
-            build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
-            APPLICATION_RUN_TRACE_PROJECTION_VERSION,
-        },
-        wait_for_runtime_debug_event_persister, ContinueFlowDebugRunCommand,
-        OrchestrationRuntimeService, PrepareFlowDebugRunCommand, StartFlowDebugRunCommand,
+    orchestration_runtime::trace_projection::{
+        build_application_run_trace_projection, projection_status_needs_lazy_rebuild,
+        APPLICATION_RUN_TRACE_PROJECTION_VERSION,
     },
     ports::{
         ApplicationRunOverviewReadModel, ApplicationRunTraceChildrenCursor,
         ApplicationRunTraceProjectionStatistics, OrchestrationRuntimeRepository,
-        RuntimeEventStreamPolicy,
     },
 };
 use serde::{Deserialize, Serialize};
 use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
 use tokio::sync::mpsc;
-use tokio_stream::StreamExt;
 use tracing::error;
 use utoipa::ToSchema;
 use uuid::Uuid;
@@ -43,12 +35,10 @@ use crate::{
     app_state::ApiState,
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
-    provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_get, console_post, console_put, ConsoleRouteAssembly,
     },
-    routes::mcp_protocol::virtual_ui,
     runtime_activity::{scope_application_activity, ApplicationActivityKind},
 };
 
@@ -81,7 +71,6 @@ use runtime_debug_artifacts::{
     enrich_application_run_detail_visible_internal_llm_route_traces,
     enrich_node_last_run_visible_internal_llm_route_traces, load_runtime_debug_artifact_content,
     load_runtime_debug_artifact_json_value_with_dependencies,
-    offload_application_run_detail_artifacts,
     offload_application_run_detail_artifacts_with_dependencies, RuntimeDebugArtifactContent,
     RuntimeDebugArtifactPreviewRequest, RuntimeDebugArtifactReadDependencies,
 };
@@ -90,13 +79,6 @@ pub(super) const APPLICATION_RUN_LOG_DEFAULT_TIME_RANGE_DAYS: i64 = 7;
 pub(super) const RUNTIME_DEBUG_STREAM_DEFAULT_PAGE_SIZE: usize = 500;
 pub(super) const RUNTIME_DEBUG_STREAM_MAX_PAGE_SIZE: usize = 1_000;
 pub(super) const RUNTIME_DEBUG_ARTIFACT_RESOLVE_MAX_REFS: usize = 50;
-
-fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
-    ApiProviderRuntime::new_with_activity(
-        state.provider_runtime.clone(),
-        state.runtime_activity.clone(),
-    )
-}
 
 include!("application_runtime/types.rs");
 

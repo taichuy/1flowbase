@@ -1,13 +1,3 @@
-async fn ensure_application_visible(
-    state: &Arc<ApiState>,
-    actor: &domain::ActorContext,
-    application_id: Uuid,
-) -> Result<domain::ApplicationRecord, ApiError> {
-    Ok(ApplicationService::new(state.store.for_actor(actor.clone()))
-        .get_application(actor.user_id, application_id)
-        .await?)
-}
-
 async fn ensure_application_non_crud_operation(
     state: &Arc<ApiState>,
     actor: &domain::ActorContext,
@@ -106,200 +96,41 @@ pub async fn start_flow_debug_run_stream(
     Query(stream_query): Query<DebugRunStreamQuery>,
     Json(body): Json<StartFlowDebugRunBody>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
-    let _http_activity = state
-        .runtime_activity
-        .start(id, ApplicationActivityKind::HttpRequest);
-    let request_received_at = std::time::Instant::now();
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let mcp_runtime_invoker = Arc::new(virtual_ui::ApiMcpRuntimeToolInvoker::new(
-        crate::runtime_internal_tool_invoker_factory(&state, &context.actor).await?, headers.clone(), context.actor.clone(), Vec::new(),
-    ).await?);
-
-    let runtime_service = OrchestrationRuntimeService::new(
-        state.store.clone(),
-        api_provider_runtime(&state),
-        state.runtime_engine.clone(),
-        state.provider_secret_master_key.clone(),
-    )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_file_storage_registry(state.file_storage_registry.clone())
-    .with_runtime_internal_tool_invoker(mcp_runtime_invoker.clone())
-    .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue());
-    let shell = runtime_service
-        .open_flow_debug_run_shell(StartFlowDebugRunCommand {
-            actor_user_id: context.user.id,
+    let stream = crate::routes::console_interface::invoke_server_stream::<
+        interface_debug_commands::ApplicationRuntimeDebugStreamInput,
+        interface_debug_commands::ApplicationRuntimeDebugStreamEvent,
+        interface_debug_commands::ApplicationRuntimeDebugStreamOutput,
+    >(
+        Arc::clone(&state),
+        "http.console.applications.runtime.debug-runs.stream.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state,
+            headers: headers.clone(),
+        },
+        interface_debug_commands::ApplicationRuntimeDebugStreamInput::Start {
             application_id: id,
-            input_payload: body.input_payload.clone(),
-            document_snapshot: body.document.clone(),
-            debug_session_id: body.debug_session_id.clone(),
-        })
-        .await?;
-    let run_id = shell.id;
-    let workspace_id = context.actor.current_workspace_id;
-    let actor_user_id = context.user.id;
-
-    state
-        .runtime_event_stream
-        .open_run(run_id, RuntimeEventStreamPolicy::debug_default())
-        .await?;
-    let persister_handle = spawn_runtime_debug_event_persister(
-        state.store.clone(),
-        state.runtime_event_stream.clone(),
-        run_id,
-    );
-    state
-        .runtime_event_stream
-        .append(run_id, debug_stream_events::flow_accepted(run_id))
-        .await?;
-    state
-        .runtime_event_stream
-        .append(run_id, debug_stream_events::heartbeat())
-        .await?;
-
+            body,
+            headers,
+            stream_query,
+        },
+    )
+    .await?;
     let (sender, receiver) = mpsc::channel(32);
-    tokio::spawn(debug_run_stream::send_runtime_event_stream(
-        state.runtime_event_stream.clone(),
-        Arc::new(state.store.clone()),
-        run_id,
-        debug_run_stream_from_sequence(run_id, &stream_query, &headers),
-        sender,
-    ));
-
-    let background_state = state.clone();
+    let (mut events, completion) = stream.into_parts();
     tokio::spawn(async move {
-        let _execution_activity = background_state
-            .runtime_activity
-            .start(id, ApplicationActivityKind::ApplicationExecution);
-        let background_service = OrchestrationRuntimeService::new(
-            background_state.store.clone(),
-            api_provider_runtime(&background_state),
-            background_state.runtime_engine.clone(),
-            background_state.provider_secret_master_key.clone(),
-        )
-        .with_node_artifact_context(
-            background_state.api_node_id.clone(),
-            background_state.provider_install_root.clone(),
-        )
-        .with_file_storage_registry(background_state.file_storage_registry.clone())
-        .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
-        .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
-        .with_provider_request_log_queue(background_state.infrastructure.task_queue())
-        .with_runtime_event_stream(background_state.runtime_event_stream.clone());
-        let prepare_result = scope_application_activity(
-            id,
-            background_service.prepare_flow_debug_run_from_shell(PrepareFlowDebugRunCommand {
-                actor_user_id,
-                application_id: id,
-                flow_run_id: run_id,
-                input_payload: body.input_payload,
-                document_snapshot: body.document,
-                debug_session_id: body.debug_session_id.unwrap_or_default(),
-            }),
-        )
-        .await;
-        let result = match prepare_result {
-            Ok(_) => {
-                scope_application_activity(
-                    id,
-                    background_service.continue_flow_debug_run(ContinueFlowDebugRunCommand {
-                        application_id: id,
-                        flow_run_id: run_id,
-                        workspace_id,
-                    }),
-                )
-                .await
-            }
-            Err(error) => Err(error),
-        };
-
-        match result {
-            Ok(detail) => {
-                if matches!(
-                    detail.flow_run.status,
-                    domain::FlowRunStatus::Succeeded
-                        | domain::FlowRunStatus::Incomplete
-                        | domain::FlowRunStatus::Failed
-                        | domain::FlowRunStatus::Cancelled
-                ) {
-                    project_runtime_event_stream_terminal(
-                        background_state.runtime_event_stream.clone(),
-                        &detail.flow_run,
-                    )
-                    .await;
-                }
-                if let Err(error) = offload_application_run_detail_artifacts(
-                    background_state.clone(),
-                    workspace_id,
-                    id,
-                    detail,
-                )
-                .await
-                {
-                    error!(
-                        application_id = %id,
-                        flow_run_id = %run_id,
-                        error = %error.0,
-                        "failed to offload streamed flow debug artifacts"
-                    );
-                }
-            }
-            Err(error) => {
-                match background_state.store.get_flow_run(id, run_id).await {
-                    Ok(Some(winner)) => {
-                        project_runtime_event_stream_terminal(
-                            background_state.runtime_event_stream.clone(),
-                            &winner,
-                        )
-                        .await;
-                    }
-                    Ok(None) => {
-                        error!(
-                            application_id = %id,
-                            flow_run_id = %run_id,
-                            "failed streamed flow debug run has no durable winner to project"
-                        );
-                    }
-                    Err(load_error) => {
-                        error!(
-                            application_id = %id,
-                            flow_run_id = %run_id,
-                            error = %load_error,
-                            "failed to load durable winner for runtime stream projection"
-                        );
-                    }
-                }
-                error!(
-                    application_id = %id,
-                    flow_run_id = %run_id,
-                    error = %error,
-                    "failed to prepare and continue streamed flow debug run"
-                );
+        while let Some(interface_debug_commands::ApplicationRuntimeDebugStreamEvent(event)) =
+            events.recv().await
+        {
+            if sender.send(event).await.is_err() {
+                return;
             }
         }
-        wait_for_runtime_debug_event_persister(persister_handle, id, run_id).await;
     });
-
-    tracing::info!(
-        application_id = %id,
-        flow_run_id = %run_id,
-        http_to_sse_open_ms = request_received_at.elapsed().as_millis() as u64,
-        "flow debug stream opened"
-    );
-
-    let sse_activity = state
-        .runtime_activity
-        .start(id, ApplicationActivityKind::SseConnection);
-    let stream = debug_run_stream::DebugRunSseStream::new(receiver).map(move |event| {
-        let _keep_alive = &sse_activity;
-        event
+    tokio::spawn(async move {
+        let _ = completion.complete().await;
     });
-
-    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+    Ok(Sse::new(debug_run_stream::DebugRunSseStream::new(receiver))
+        .keep_alive(KeepAlive::default()))
 }
 
 #[utoipa::path(
@@ -324,26 +155,36 @@ pub async fn subscribe_flow_debug_run_stream(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
     Query(stream_query): Query<DebugRunStreamQuery>,
 ) -> Result<Sse<debug_run_stream::DebugRunSseStream>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-    let flow_run = state
-        .store
-        .get_flow_run(id, run_id)
-        .await?
-        .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-    if flow_run.created_by != context.user.id {
-        return Err(ControlPlaneError::NotFound("flow_run").into());
-    }
-
+    let from_sequence = debug_run_stream_from_sequence(run_id, &stream_query, &headers);
+    let stream = crate::routes::console_interface::invoke_server_stream::<
+        interface_debug_commands::ApplicationRuntimeDebugStreamInput,
+        interface_debug_commands::ApplicationRuntimeDebugStreamEvent,
+        interface_debug_commands::ApplicationRuntimeDebugStreamOutput,
+    >(
+        Arc::clone(&state),
+        "http.console.applications.runtime.debug-runs.stream.subscribe.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_debug_commands::ApplicationRuntimeDebugStreamInput::Subscribe {
+            application_id: id,
+            run_id,
+            from_sequence,
+        },
+    )
+    .await?;
     let (sender, receiver) = mpsc::channel(32);
-    tokio::spawn(debug_run_stream::send_runtime_event_stream(
-        state.runtime_event_stream.clone(),
-        Arc::new(state.store.clone()),
-        run_id,
-        debug_run_stream_from_sequence(run_id, &stream_query, &headers),
-        sender,
-    ));
-
+    let (mut events, completion) = stream.into_parts();
+    tokio::spawn(async move {
+        while let Some(interface_debug_commands::ApplicationRuntimeDebugStreamEvent(event)) =
+            events.recv().await
+        {
+            if sender.send(event).await.is_err() {
+                return;
+            }
+        }
+    });
+    tokio::spawn(async move {
+        let _ = completion.complete().await;
+    });
     Ok(Sse::new(debug_run_stream::DebugRunSseStream::new(receiver))
         .keep_alive(KeepAlive::default()))
 }

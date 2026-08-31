@@ -505,6 +505,60 @@ where
         .map_err(|failure| console_invocation_error(failure.into_error()))
 }
 
+pub(crate) async fn invoke_server_stream<I, S, O>(
+    state: Arc<ApiState>,
+    binding_id: &'static str,
+    credential: crate::extension_bus::ConsoleAuthenticationCredential,
+    input: I,
+) -> Result<interface_runtime::InterfaceStreamInvocation<S, O, ConsoleInterfaceTargetError>, ApiError>
+where
+    I: InterfaceContract,
+    S: InterfaceContract,
+    O: InterfaceContract,
+{
+    let boot_snapshot = state.extension_boot_snapshot.as_ref().ok_or(
+        control_plane::errors::ControlPlaneError::NotFound("interface_operation"),
+    )?;
+    let snapshot = boot_snapshot
+        .interface_registry()
+        .map(|registry| registry.snapshot())
+        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+            "interface_operation",
+        ))?;
+    let binding_id = BindingId::new(binding_id).expect("static Console binding is valid");
+    let activated = snapshot.authentication(&binding_id).cloned().ok_or(
+        control_plane::errors::ControlPlaneError::NotFound("authentication_activation"),
+    )?;
+    let principal: UserPrincipal = boot_snapshot
+        .authenticate(&activated, credential)
+        .await
+        .map_err(ApiError::from)?;
+    let plan = snapshot
+        .plan(&binding_id)
+        .ok_or_else(|| anyhow::anyhow!("Console binding is unavailable"))?;
+    let target = interface_runtime::ExecutionTargetPin::BuiltIn {
+        handler: plan.definition().handler_reference().clone(),
+        target: plan.definition().target_reference().clone(),
+    };
+    console_invocation_kernel(&state)
+        .invoke_server_stream_with_dispatch_target::<I, S, O, ConsoleInterfaceTargetError>(
+            snapshot,
+            InvocationEnvelope::with_principal(
+                InvocationLineage::root(InvocationId::now_v7()),
+                binding_id,
+                InterfaceProtocol::Http,
+                activated.adapter().clone(),
+                activated.activation().clone(),
+                principal,
+                None,
+                input,
+            ),
+            target,
+        )
+        .await
+        .map_err(|failure| console_invocation_error(failure.into_error()))
+}
+
 fn frozen_snapshot(state: &ApiState) -> Result<Arc<CompiledInterfaceRegistry>, ApiError> {
     state
         .extension_boot_snapshot
