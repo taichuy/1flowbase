@@ -12,4 +12,6 @@ pub use catalog::{
     catalog_entry_from_operation, OpenApiInterfaceCatalogEntry, OpenApiParameterDescriptor,
     OpenApiParameterLocation,
 };
-pub use dispatcher::{dispatch, DispatchArguments, DispatchError, DispatchSuccess};
+pub use dispatcher::{
+    dispatch, dispatch_with_console_router, DispatchArguments, DispatchError, DispatchSuccess,
+};

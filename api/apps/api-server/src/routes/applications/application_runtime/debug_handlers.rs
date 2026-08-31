@@ -90,7 +90,7 @@ pub async fn start_flow_debug_run(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let mcp_runtime_invoker = Arc::new(virtual_ui::ApiMcpRuntimeToolInvoker::new(
-        state.clone(), headers.clone(), context.actor.clone(), Vec::new(),
+        crate::runtime_internal_tool_invoker_factory(&state, &context.actor).await?, headers.clone(), context.actor.clone(), Vec::new(),
     ).await?);
 
     let runtime_service = OrchestrationRuntimeService::new(
@@ -219,7 +219,7 @@ pub async fn start_flow_debug_run_stream(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let mcp_runtime_invoker = Arc::new(virtual_ui::ApiMcpRuntimeToolInvoker::new(
-        state.clone(), headers.clone(), context.actor.clone(), Vec::new(),
+        crate::runtime_internal_tool_invoker_factory(&state, &context.actor).await?, headers.clone(), context.actor.clone(), Vec::new(),
     ).await?);
 
     let runtime_service = OrchestrationRuntimeService::new(
@@ -603,7 +603,7 @@ pub async fn resume_flow_run(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let mcp_runtime_invoker = Arc::new(virtual_ui::ApiMcpRuntimeToolInvoker::new(
-        state.clone(), headers.clone(), context.actor.clone(), Vec::new(),
+        crate::runtime_internal_tool_invoker_factory(&state, &context.actor).await?, headers.clone(), context.actor.clone(), Vec::new(),
     ).await?);
 
     let checkpoint_id = Uuid::parse_str(&body.checkpoint_id)
@@ -678,7 +678,7 @@ pub async fn complete_callback_task(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let mcp_runtime_invoker = Arc::new(virtual_ui::ApiMcpRuntimeToolInvoker::new(
-        state.clone(), headers.clone(), context.actor.clone(), Vec::new(),
+        crate::runtime_internal_tool_invoker_factory(&state, &context.actor).await?, headers.clone(), context.actor.clone(), Vec::new(),
     ).await?);
 
     let detail = scope_application_activity(
@@ -750,7 +750,7 @@ pub async fn start_node_debug_preview(
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
     let mcp_runtime_invoker = Arc::new(virtual_ui::ApiMcpRuntimeToolInvoker::new(
-        state.clone(), headers.clone(), context.actor.clone(), Vec::new(),
+        crate::runtime_internal_tool_invoker_factory(&state, &context.actor).await?, headers.clone(), context.actor.clone(), Vec::new(),
     ).await?);
 
     let outcome = scope_application_activity(

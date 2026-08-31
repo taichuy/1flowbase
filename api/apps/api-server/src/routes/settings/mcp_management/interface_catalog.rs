@@ -1,7 +1,7 @@
 use super::*;
 use crate::openapi_interface::OpenApiCapabilitySource;
 
-pub(super) async fn mcp_interface_catalog_entries(
+pub(crate) async fn mcp_interface_catalog_entries(
     state: &ApiState,
     actor: &domain::ActorContext,
 ) -> Result<Vec<domain::McpInterfaceCatalogEntry>, ApiError> {

@@ -8,7 +8,7 @@ pub(crate) mod upstream;
 pub(crate) mod upstream_client;
 
 pub(crate) use interface_catalog::bindable_mcp_interface;
-use interface_catalog::*;
+pub(crate) use interface_catalog::*;
 use projections::*;
 
 use std::{

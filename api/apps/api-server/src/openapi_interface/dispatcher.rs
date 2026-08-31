@@ -7,6 +7,7 @@ use axum::{
         HeaderMap, HeaderName, HeaderValue, Method, Request, StatusCode,
     },
     response::Response,
+    Router,
 };
 use base64::{engine::general_purpose::STANDARD, Engine as _};
 use serde::{Deserialize, Serialize};
@@ -59,6 +60,24 @@ pub async fn dispatch(
     state: Arc<ApiState>,
     source_headers: &HeaderMap,
     entry: &OpenApiInterfaceCatalogEntry,
+    arguments: DispatchArguments,
+    injected_path: BTreeMap<String, String>,
+) -> Result<DispatchSuccess, DispatchError> {
+    dispatch_with_console_router(
+        crate::console_router(state, true),
+        source_headers,
+        entry,
+        arguments,
+        injected_path,
+    )
+    .await
+}
+
+#[allow(clippy::result_large_err)]
+pub async fn dispatch_with_console_router(
+    console_router: Router,
+    source_headers: &HeaderMap,
+    entry: &OpenApiInterfaceCatalogEntry,
     mut arguments: DispatchArguments,
     injected_path: BTreeMap<String, String>,
 ) -> Result<DispatchSuccess, DispatchError> {
@@ -107,7 +126,7 @@ pub async fn dispatch(
         request.headers_mut().insert(CONTENT_TYPE, content_type);
     }
 
-    let response = crate::console_router(state, true)
+    let response = console_router
         .oneshot(request)
         .await
         .map_err(|error| anyhow::anyhow!("failed to dispatch OpenAPI operation: {error}"))?;

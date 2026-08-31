@@ -103,7 +103,9 @@ pub(crate) async fn public_mcp_runtime_invoker(
     );
     Ok(Arc::new(
         virtual_ui::ApiMcpRuntimeToolInvoker::new_with_forwarded_authorization(
-            state.clone(),
+            crate::runtime_internal_tool_invoker_factory(state, &actor)
+                .await
+                .map_err(|error| service_error(error.0))?,
             headers,
             actor,
             Vec::new(),
@@ -119,7 +121,9 @@ pub(crate) async fn public_mcp_runtime_invoker_for_actor(
 ) -> Result<Arc<virtual_ui::ApiMcpRuntimeToolInvoker>, NativeApiError> {
     Ok(Arc::new(
         virtual_ui::ApiMcpRuntimeToolInvoker::new(
-            state.clone(),
+            crate::runtime_internal_tool_invoker_factory(state, &actor.actor)
+                .await
+                .map_err(|error| service_error(error.0))?,
             HeaderMap::new(),
             actor.actor.clone(),
             Vec::new(),

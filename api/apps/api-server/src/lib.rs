@@ -85,6 +85,37 @@ use crate::{
 
 pub const DEFAULT_API_SERVER_ADDR: &str = "0.0.0.0:7800";
 
+/// API composition root for state-free runtime MCP tool invokers.
+pub(crate) async fn runtime_internal_tool_invoker_factory(
+    state: &Arc<ApiState>,
+    actor: &domain::ActorContext,
+) -> Result<
+    routes::mcp_protocol::virtual_ui::RuntimeInternalToolInvokerFactory,
+    error_response::ApiError,
+> {
+    let interface_catalog =
+        routes::mcp_management::mcp_interface_catalog_entries(state.as_ref(), actor).await?;
+    Ok(
+        routes::mcp_protocol::virtual_ui::RuntimeInternalToolInvokerFactory::new(
+            routes::mcp_protocol::virtual_ui::RuntimeInternalToolInvokerDependencies::new(
+                state.store.clone(),
+                state.infrastructure.cache_store(),
+                state.provider_secret_master_key.clone(),
+            ),
+            Arc::new(
+                routes::mcp_protocol::virtual_ui::McpInterfaceCatalogSnapshot::new(
+                    interface_catalog,
+                ),
+            ),
+            Arc::new(
+                routes::mcp_protocol::virtual_ui::ConsoleRouterMcpInterfaceDispatchPort::new(
+                    console_router(state.clone(), true),
+                ),
+            ),
+        ),
+    )
+}
+
 struct ApiLifecycleDeliveryCompletion;
 
 impl control_plane::lifecycle_outbox_dispatcher::LifecycleDeliveryCompletionPort

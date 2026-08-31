@@ -533,7 +533,7 @@ pub async fn start_run(
     let execution = prepare_assistant_execution(&state, &headers, &context, body).await?;
     let mcp_runtime_invoker = Arc::new(
         virtual_ui::ApiMcpRuntimeToolInvoker::new(
-            state.clone(),
+            crate::runtime_internal_tool_invoker_factory(&state, &execution.actor).await?,
             execution.request_headers.clone(),
             execution.actor.clone(),
             execution.mcp_instance_ids.clone(),
@@ -670,7 +670,7 @@ async fn launch_assistant_execution(
         dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
     > = Arc::new(
         virtual_ui::ApiMcpRuntimeToolInvoker::new(
-            state.clone(),
+            crate::runtime_internal_tool_invoker_factory(&state, &execution.actor).await?,
             execution.request_headers.clone(),
             execution.actor.clone(),
             execution.mcp_instance_ids.clone(),

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use axum::{
@@ -8,6 +8,7 @@ use axum::{
         HeaderMap, HeaderName, StatusCode,
     },
     response::Response,
+    Router,
 };
 use control_plane::mcp_management::{
     mcp_llm_registrations, McpLlmOperation, McpLlmRegistrationSource, McpManagementService,
@@ -28,7 +29,6 @@ use crate::{
     error_response::ApiError,
     middleware::require_session::{with_server_delegated_request_context, RequestContext},
     routes::mcp_management::{
-        bindable_mcp_interface,
         debug_execute::{self, McpServerBoundInputs},
         upstream_client::{map_proxy_arguments, map_proxy_result, McpStreamableHttpClient},
         McpDebugExecuteBody, McpDebugResponseMode,
@@ -129,15 +129,90 @@ pub(crate) enum VirtualToolOutcome {
 
 #[derive(Clone)]
 pub(crate) struct ApiMcpRuntimeToolInvoker {
-    /// This remains only for the unresolved interface catalog/dispatch boundary.
-    /// Runtime data access is carried by `dependencies` below.
-    interface_state: Arc<ApiState>,
     dependencies: RuntimeInternalToolInvokerDependencies,
+    interface_catalog: Arc<dyn McpInterfaceCatalogPort>,
+    interface_dispatch: Arc<dyn McpInterfaceDispatchPort>,
     headers: HeaderMap,
     authorization: RuntimeMcpAuthorization,
     catalog: domain::McpCatalogSnapshot,
     run_level_instance_ids: Vec<String>,
     assistant_client: Option<Arc<crate::routes::assistant::AssistantClientToolBridge>>,
+}
+
+pub(crate) trait McpInterfaceCatalogPort: Send + Sync + 'static {
+    fn bindable_interface(
+        &self,
+        interface_id: &str,
+    ) -> Result<domain::McpInterfaceCatalogEntry, ApiError>;
+}
+
+#[derive(Clone)]
+pub(crate) struct McpInterfaceCatalogSnapshot {
+    entries: HashMap<String, domain::McpInterfaceCatalogEntry>,
+}
+
+impl McpInterfaceCatalogSnapshot {
+    pub(crate) fn new(entries: Vec<domain::McpInterfaceCatalogEntry>) -> Self {
+        Self {
+            entries: entries
+                .into_iter()
+                .map(|entry| (entry.interface_id.clone(), entry))
+                .collect(),
+        }
+    }
+}
+
+impl McpInterfaceCatalogPort for McpInterfaceCatalogSnapshot {
+    fn bindable_interface(
+        &self,
+        interface_id: &str,
+    ) -> Result<domain::McpInterfaceCatalogEntry, ApiError> {
+        self.entries.get(interface_id).cloned().ok_or_else(|| {
+            control_plane::errors::ControlPlaneError::NotFound("mcp_interface").into()
+        })
+    }
+}
+
+#[async_trait]
+pub(crate) trait McpInterfaceDispatchPort: Send + Sync + 'static {
+    async fn execute(
+        &self,
+        headers: HeaderMap,
+        interface: domain::McpInterfaceCatalogEntry,
+        body: McpDebugExecuteBody,
+        server_bound_inputs: McpServerBoundInputs,
+    ) -> Result<Value, debug_execute::McpDebugExecuteError>;
+}
+
+#[derive(Clone)]
+pub(crate) struct ConsoleRouterMcpInterfaceDispatchPort {
+    console_router: Router,
+}
+
+impl ConsoleRouterMcpInterfaceDispatchPort {
+    pub(crate) fn new(console_router: Router) -> Self {
+        Self { console_router }
+    }
+}
+
+#[async_trait]
+impl McpInterfaceDispatchPort for ConsoleRouterMcpInterfaceDispatchPort {
+    async fn execute(
+        &self,
+        headers: HeaderMap,
+        interface: domain::McpInterfaceCatalogEntry,
+        body: McpDebugExecuteBody,
+        server_bound_inputs: McpServerBoundInputs,
+    ) -> Result<Value, debug_execute::McpDebugExecuteError> {
+        debug_execute::execute_with_console_router(
+            self.console_router.clone(),
+            headers,
+            interface,
+            body,
+            server_bound_inputs,
+        )
+        .await
+    }
 }
 
 /// Explicit data dependencies needed by the MCP runtime execution path.
@@ -166,34 +241,32 @@ impl RuntimeInternalToolInvokerDependencies {
             provider_secret_master_key,
         }
     }
-
-    fn from_api_state(state: &ApiState) -> Self {
-        Self::new(
-            state.store.clone(),
-            state.infrastructure.cache_store(),
-            state.provider_secret_master_key.clone(),
-        )
-    }
 }
 
 /// Creates runtime tool invokers from explicit runtime data dependencies.
-/// It owns no API state; the temporary interface state argument is retained
-/// solely by the resulting invoker for the follow-up interface-dispatch split.
+/// It owns no API state; interface catalog and dispatch are explicit ports.
 #[derive(Clone)]
 pub(crate) struct RuntimeInternalToolInvokerFactory {
     dependencies: RuntimeInternalToolInvokerDependencies,
+    interface_catalog: Arc<dyn McpInterfaceCatalogPort>,
+    interface_dispatch: Arc<dyn McpInterfaceDispatchPort>,
 }
 
 impl RuntimeInternalToolInvokerFactory {
-    pub(crate) fn from_api_state(state: &ApiState) -> Self {
+    pub(crate) fn new(
+        dependencies: RuntimeInternalToolInvokerDependencies,
+        interface_catalog: Arc<dyn McpInterfaceCatalogPort>,
+        interface_dispatch: Arc<dyn McpInterfaceDispatchPort>,
+    ) -> Self {
         Self {
-            dependencies: RuntimeInternalToolInvokerDependencies::from_api_state(state),
+            dependencies,
+            interface_catalog,
+            interface_dispatch,
         }
     }
 
-    async fn create_server_delegated(
+    pub(crate) async fn create_server_delegated(
         &self,
-        interface_state: Arc<ApiState>,
         mut headers: HeaderMap,
         actor: domain::ActorContext,
         run_level_instance_ids: Vec<String>,
@@ -214,8 +287,9 @@ impl RuntimeInternalToolInvokerFactory {
         headers.remove(AUTHORIZATION);
         headers.remove(CSRF_HEADER);
         Ok(ApiMcpRuntimeToolInvoker {
-            interface_state,
             dependencies: self.dependencies.clone(),
+            interface_catalog: self.interface_catalog.clone(),
+            interface_dispatch: self.interface_dispatch.clone(),
             headers,
             authorization: RuntimeMcpAuthorization::ServerDelegation(RuntimeActorDelegation {
                 user_id: actor.user_id,
@@ -230,9 +304,8 @@ impl RuntimeInternalToolInvokerFactory {
         })
     }
 
-    async fn create_forwarded(
+    pub(crate) async fn create_forwarded(
         &self,
-        interface_state: Arc<ApiState>,
         headers: HeaderMap,
         actor: domain::ActorContext,
         run_level_instance_ids: Vec<String>,
@@ -241,8 +314,9 @@ impl RuntimeInternalToolInvokerFactory {
             .read_catalog_for_actor(&actor)
             .await?;
         Ok(ApiMcpRuntimeToolInvoker {
-            interface_state,
             dependencies: self.dependencies.clone(),
+            interface_catalog: self.interface_catalog.clone(),
+            interface_dispatch: self.interface_dispatch.clone(),
             headers,
             authorization: RuntimeMcpAuthorization::ForwardedActor(actor),
             catalog,
@@ -295,24 +369,24 @@ impl RuntimeActorDelegation {
 
 impl ApiMcpRuntimeToolInvoker {
     pub(crate) async fn new(
-        state: Arc<ApiState>,
+        factory: RuntimeInternalToolInvokerFactory,
         headers: HeaderMap,
         actor: domain::ActorContext,
         run_level_instance_ids: Vec<String>,
     ) -> Result<Self, ApiError> {
-        RuntimeInternalToolInvokerFactory::from_api_state(state.as_ref())
-            .create_server_delegated(state, headers, actor, run_level_instance_ids)
+        factory
+            .create_server_delegated(headers, actor, run_level_instance_ids)
             .await
     }
 
     pub(crate) async fn new_with_forwarded_authorization(
-        state: Arc<ApiState>,
+        factory: RuntimeInternalToolInvokerFactory,
         headers: HeaderMap,
         actor: domain::ActorContext,
         run_level_instance_ids: Vec<String>,
     ) -> Result<Self, ApiError> {
-        RuntimeInternalToolInvokerFactory::from_api_state(state.as_ref())
-            .create_forwarded(state, headers, actor, run_level_instance_ids)
+        factory
+            .create_forwarded(headers, actor, run_level_instance_ids)
             .await
     }
 
@@ -418,8 +492,9 @@ impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
         let outcome = match &self.authorization {
             RuntimeMcpAuthorization::ForwardedActor(actor) => {
                 dispatch_with_dependencies(
-                    &self.interface_state,
                     &self.dependencies,
+                    self.interface_catalog.as_ref(),
+                    self.interface_dispatch.as_ref(),
                     &self.headers,
                     actor,
                     &self.catalog,
@@ -456,8 +531,9 @@ impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
                 with_server_delegated_request_context(
                     context,
                     dispatch_with_dependencies(
-                        &self.interface_state,
                         &self.dependencies,
+                        self.interface_catalog.as_ref(),
+                        self.interface_dispatch.as_ref(),
                         &self.headers,
                         &actor,
                         &self.catalog,
@@ -679,10 +755,20 @@ pub(crate) async fn dispatch(
     arguments: Value,
     assistant_client: Option<&crate::routes::assistant::AssistantClientToolBridge>,
 ) -> Result<VirtualToolOutcome, ApiError> {
-    let dependencies = RuntimeInternalToolInvokerDependencies::from_api_state(state.as_ref());
+    let dependencies = RuntimeInternalToolInvokerDependencies::new(
+        state.store.clone(),
+        state.infrastructure.cache_store(),
+        state.provider_secret_master_key.clone(),
+    );
+    let interface_catalog = McpInterfaceCatalogSnapshot::new(
+        crate::routes::mcp_management::mcp_interface_catalog_entries(state.as_ref(), actor).await?,
+    );
+    let interface_dispatch =
+        ConsoleRouterMcpInterfaceDispatchPort::new(crate::console_router(state.clone(), true));
     dispatch_with_dependencies(
-        state,
         &dependencies,
+        &interface_catalog,
+        &interface_dispatch,
         headers,
         actor,
         catalog,
@@ -696,8 +782,9 @@ pub(crate) async fn dispatch(
 
 #[allow(clippy::too_many_arguments)]
 async fn dispatch_with_dependencies(
-    state: &Arc<ApiState>,
     dependencies: &RuntimeInternalToolInvokerDependencies,
+    interface_catalog: &dyn McpInterfaceCatalogPort,
+    interface_dispatch: &dyn McpInterfaceDispatchPort,
     headers: &HeaderMap,
     actor: &domain::ActorContext,
     catalog: &domain::McpCatalogSnapshot,
@@ -751,8 +838,9 @@ async fn dispatch_with_dependencies(
         }
         (_, Some(McpLlmOperation::Call)) => {
             call(
-                state,
                 dependencies,
+                interface_catalog,
+                interface_dispatch,
                 headers,
                 actor,
                 catalog,
@@ -777,8 +865,9 @@ async fn dispatch_with_dependencies(
         (MCP_RESULT, None) => result(&dependencies.result_delivery, actor, &arguments).await,
         (MCP_CALL, None) => {
             call(
-                state,
                 dependencies,
+                interface_catalog,
+                interface_dispatch,
                 headers,
                 actor,
                 catalog,
@@ -926,8 +1015,9 @@ async fn result(
 }
 
 async fn call(
-    state: &Arc<ApiState>,
     dependencies: &RuntimeInternalToolInvokerDependencies,
+    interface_catalog: &dyn McpInterfaceCatalogPort,
+    interface_dispatch: &dyn McpInterfaceDispatchPort,
     headers: &HeaderMap,
     actor: &domain::ActorContext,
     catalog: &domain::McpCatalogSnapshot,
@@ -986,8 +1076,7 @@ async fn call(
             }
         }
         domain::McpToolExecutionTarget::InterfaceWrapper { interface_id } => {
-            let interface = match bindable_mcp_interface(state.as_ref(), actor, interface_id).await
-            {
+            let interface = match interface_catalog.bindable_interface(interface_id) {
                 Ok(interface) => interface,
                 Err(error) => return Ok(interface_error(&error.0)),
             };
@@ -1007,19 +1096,16 @@ async fn call(
                 input_mapping: tool.input_mapping.clone(),
                 output_mapping: tool.output_mapping.clone(),
             };
-            match debug_execute::execute_with_server_bindings(
-                state.clone(),
-                headers.clone(),
-                crate::extension_bus::ConsoleAuthenticationCredential::ServerDelegation(
-                    actor.clone(),
-                ),
-                interface,
-                body,
-                McpServerBoundInputs {
-                    workspace_id: instance.workspace_id,
-                },
-            )
-            .await
+            match interface_dispatch
+                .execute(
+                    headers.clone(),
+                    interface,
+                    body,
+                    McpServerBoundInputs {
+                        workspace_id: instance.workspace_id,
+                    },
+                )
+                .await
             {
                 Ok(value) if result_delivery::exceeds_inline_limit(&value, inline_chars) => {
                     Ok(VirtualToolOutcome::Success(
