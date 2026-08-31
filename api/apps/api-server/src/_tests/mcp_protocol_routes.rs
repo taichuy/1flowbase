@@ -17,8 +17,16 @@ use crate::_tests::support::{
 };
 use crate::{
     middleware::require_session::require_session,
-    routes::mcp_protocol::virtual_ui::ApiMcpRuntimeToolInvoker,
+    routes::mcp_protocol::{
+        result_delivery::McpResultDeliveryDependencies, virtual_ui::ApiMcpRuntimeToolInvoker,
+    },
 };
+
+fn mcp_result_delivery_dependencies(
+    state: &crate::app_state::ApiState,
+) -> McpResultDeliveryDependencies {
+    McpResultDeliveryDependencies::new(state.store.clone(), state.infrastructure.cache_store())
+}
 
 async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
@@ -456,9 +464,16 @@ async fn runtime_mcp_invoker(
     let mut headers = HeaderMap::new();
     headers.insert(COOKIE, HeaderValue::from_str(cookie).unwrap());
     let context = require_session(&state, &headers).await.unwrap();
-    ApiMcpRuntimeToolInvoker::new(state, headers, context.actor, vec!["taichuy".to_string()])
-        .await
-        .unwrap()
+    ApiMcpRuntimeToolInvoker::new(
+        crate::runtime_internal_tool_invoker_factory(&state, &context.actor)
+            .await
+            .unwrap(),
+        headers,
+        context.actor,
+        vec!["taichuy".to_string()],
+    )
+    .await
+    .unwrap()
 }
 
 async fn invoke_runtime_create_model(
@@ -1732,10 +1747,11 @@ async fn issue_1733_ac_001_through_ac_004_large_source_code_uses_string_continua
     let (state, _) = test_api_state_with_database_url().await;
     let actor =
         domain::ActorContext::root(uuid::Uuid::now_v7(), state.bootstrap_workspace_id, "root");
+    let delivery_dependencies = mcp_result_delivery_dependencies(state.as_ref());
     let source_code = "界".repeat(17_416);
     let source_sha256 = format!("{:x}", Sha256::digest(source_code.as_bytes()));
     let delivered = deliver_oversized_result(
-        state.as_ref(),
+        &delivery_dependencies,
         &actor,
         CompletedOperation::Read {
             operation_id: "get_frontstage_block_node_code",
@@ -1762,8 +1778,14 @@ async fn issue_1733_ac_001_through_ac_004_large_source_code_uses_string_continua
     let mut cursor = ContinuationCursor::default();
     let mut reconstructed = String::new();
     for _ in 0..16 {
-        let page =
-            read_continuation(state.as_ref(), &actor, result_ref, cursor, MAX_INLINE_CHARS).await;
+        let page = read_continuation(
+            &delivery_dependencies,
+            &actor,
+            result_ref,
+            cursor,
+            MAX_INLINE_CHARS,
+        )
+        .await;
         let detail = &page["structuredContent"];
         assert_eq!(detail["detail_status"], json!("available"), "{detail}");
         assert_eq!(detail["retry_original"], json!(false));
@@ -1788,7 +1810,7 @@ async fn issue_1733_ac_001_through_ac_004_large_source_code_uses_string_continua
     );
 
     let invalid = read_continuation(
-        state.as_ref(),
+        &delivery_dependencies,
         &actor,
         result_ref,
         ContinuationCursor::parse("v2:0:999999").unwrap(),
@@ -1949,6 +1971,7 @@ async fn root_1569_ac_010_large_or_base64_like_detail_is_never_cached_or_inlined
     let (state, _) = test_api_state_with_database_url().await;
     let actor =
         domain::ActorContext::root(uuid::Uuid::now_v7(), state.bootstrap_workspace_id, "root");
+    let delivery_dependencies = mcp_result_delivery_dependencies(state.as_ref());
     for (detail, expected_reason) in [
         (
             // Beyond the chunked-continuation ceiling (16 chunks * 512 KiB):
@@ -1962,7 +1985,7 @@ async fn root_1569_ac_010_large_or_base64_like_detail_is_never_cached_or_inlined
         ),
     ] {
         let delivered = deliver_oversized_result(
-            state.as_ref(),
+            &delivery_dependencies,
             &actor,
             CompletedOperation::Read {
                 operation_id: "large_read_fixture",
@@ -2000,6 +2023,7 @@ async fn root_1569_ac_003_ac_007_ac_009_bundle_import_uses_domain_summary_and_du
             .await
             .unwrap();
     let actor = domain::ActorContext::root(actor_user_id, state.bootstrap_workspace_id, "root");
+    let delivery_dependencies = mcp_result_delivery_dependencies(state.as_ref());
     let item_reports = (0..300)
         .map(|index| {
             json!({
@@ -2048,7 +2072,7 @@ async fn root_1569_ac_003_ac_007_ac_009_bundle_import_uses_domain_summary_and_du
     });
 
     let delivered = deliver_oversized_result(
-        state.as_ref(),
+        &delivery_dependencies,
         &actor,
         CompletedOperation::Write {
             operation_id: "import_mcp_bundle_library_release",
@@ -2086,7 +2110,7 @@ async fn root_1569_ac_003_ac_007_ac_009_bundle_import_uses_domain_summary_and_du
         .await
         .unwrap();
     let expired = read_continuation(
-        state.as_ref(),
+        &delivery_dependencies,
         &actor,
         receipt_id,
         Default::default(),
@@ -2108,7 +2132,7 @@ async fn root_1569_ac_003_ac_007_ac_009_bundle_import_uses_domain_summary_and_du
     assert_eq!(expired["structuredContent"]["retry_original"], json!(false));
 
     let already_applied = deliver_oversized_result(
-        state.as_ref(),
+        &delivery_dependencies,
         &actor,
         CompletedOperation::Write {
             operation_id: "import_mcp_bundle_library_release",
