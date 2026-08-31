@@ -159,6 +159,8 @@ pub(crate) fn production_interface_contributions(
         crate::routes::application_orchestration::interface::port(
             state.store.clone(),
             state.bootstrap_workspace_id,
+            state.api_node_id.clone(),
+            state.provider_install_root.clone(),
         );
     let console_applications = crate::routes::applications::interface::applications_port(
         state.store.clone(),
@@ -276,6 +278,11 @@ pub(crate) fn production_interface_contributions(
                 "applications.orchestration.draft.save",
                 "applications.orchestration.version.restore",
                 "applications.orchestration.version.update",
+                "applications.archive.export",
+                "applications.archive.preview",
+                "applications.archive.import",
+                "applications.archive.installed.preview",
+                "applications.archive.installed.import",
             ],
             &["api-server.console-application-orchestration"],
             crate::routes::application_orchestration::interface::compile_registry(

@@ -20,22 +20,16 @@ use axum::{
 use control_plane::{
     application::{
         ApplicationArchiveApplication, ApplicationArchiveEntry, ApplicationArchivePackage,
-        ApplicationArchiveService, ExportApplicationArchiveCommand,
-        ImportApplicationArchiveCommand, PreviewApplicationArchiveCommand,
         APPLICATION_ARCHIVE_SCHEMA_VERSION,
     },
     errors::ControlPlaneError,
     flow::{
         AgentFlowTemplateDependency, AgentFlowTemplateDependencyStatus, AgentFlowTemplatePackage,
-        AgentFlowTemplatePreview, AgentFlowTemplateUnresolvedNode, FlowService,
-        ImportAgentFlowTemplateResult,
+        AgentFlowTemplatePreview, AgentFlowTemplateUnresolvedNode, ImportAgentFlowTemplateResult,
     },
     i18n_catalog::CatalogResolver,
+    plugin_management::installed_extension_integrity_warnings,
     plugin_management::ExtensionInstallationService,
-    plugin_management::{
-        installed_extension_integrity_warnings, validate_extension_integrity_override,
-        ExtensionRiskOverride,
-    },
 };
 use domain::CatalogMessageIdentity;
 use orchestration_runtime::{
@@ -51,7 +45,6 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_get, console_patch, console_post, console_put, ConsoleRouteAssembly,
@@ -399,8 +392,10 @@ async fn uploaded_application_archive_entry(
     Ok((single_application_entry(package)?, name, description))
 }
 
-async fn installed_application_archive_entry(
-    state: &ApiState,
+async fn installed_application_archive_entry_with(
+    store: &storage_durable_postgres::MainDurableStore,
+    provider_install_root: &str,
+    api_node_id: &str,
     installation_id: Uuid,
 ) -> Result<
     (
@@ -409,11 +404,10 @@ async fn installed_application_archive_entry(
     ),
     ApiError,
 > {
-    let installation =
-        ExtensionInstallationService::new(state.store.clone(), &state.provider_install_root)
-            .find_local_installation_by_id(&state.api_node_id, installation_id)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("extension_installation"))?;
+    let installation = ExtensionInstallationService::new(store.clone(), provider_install_root)
+        .find_local_installation_by_id(api_node_id, installation_id)
+        .await?
+        .ok_or(ControlPlaneError::NotFound("extension_installation"))?;
     if installation.identity.category != domain::ExtensionCategory::AgentFlow
         || installation.application_action != domain::ExtensionApplicationAction::ImportAgentFlow
     {
@@ -464,38 +458,15 @@ pub async fn preview_installed_application_extension(
     headers: HeaderMap,
     Path(installation_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<InstalledApplicationExtensionPreviewResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let (entry, warnings) = installed_application_archive_entry(&state, installation_id).await?;
-    let resources = FlowService::new(state.store.for_actor(context.actor.clone()))
-        .load_agent_flow_template_resources(context.user.id)
+    let output: interface::ApplicationOrchestrationOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.archive.installed.preview.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+            interface::ApplicationOrchestrationInput::PreviewInstalledArchive(installation_id),
+        )
         .await?;
-    let preview = ApplicationArchiveService::new(state.store.for_actor(context.actor.clone()))
-        .preview_archive(PreviewApplicationArchiveCommand {
-            actor_user_id: context.user.id,
-            entry,
-            resources,
-        })
-        .await?;
-    let applied = control_plane::ports::ApplicationRepository::has_application_extension_source(
-        &state.store,
-        context.actor.current_workspace_id,
-        installation_id,
-    )
-    .await?;
-    Ok(Json(ApiSuccess::new(
-        InstalledApplicationExtensionPreviewResponse {
-            extension_installation_id: installation_id.to_string(),
-            application_status: if applied { "applied" } else { "not_applied" }.to_string(),
-            required_integrity_override: (!warnings.is_empty()).then(|| {
-                domain::ExtensionRiskChallenge {
-                    warnings: warnings.clone(),
-                    compatibility: None,
-                }
-            }),
-            integrity_warnings: warnings,
-            preview: to_template_preview_response(preview),
-        },
-    )))
+    Ok(Json(ApiSuccess::new(output.into_installed_preview()?)))
 }
 
 #[utoipa::path(
@@ -519,39 +490,25 @@ pub async fn import_installed_application_extension(
     ),
     ApiError,
 > {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let locale =
-        crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
-    let (entry, warnings) = installed_application_archive_entry(&state, installation_id).await?;
-    let risk_override = body.integrity_override.map(|value| ExtensionRiskOverride {
-        reason: value.reason,
-        acknowledged_warnings: value.acknowledged_warnings,
-    });
-    if !validate_extension_integrity_override(&warnings, risk_override.as_ref())? {
-        return Err(ControlPlaneError::Conflict(
-            "agent_flow_extension_integrity_confirmation_required",
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output: interface::ApplicationOrchestrationOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.archive.installed.import.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+                state,
+                headers,
+            },
+            interface::ApplicationOrchestrationInput::ImportInstalledArchive {
+                installation_id,
+                body,
+                locale,
+            },
         )
-        .into());
-    }
-    let resources = FlowService::new(state.store.for_actor(context.actor.clone()))
-        .load_agent_flow_template_resources(context.user.id)
-        .await?;
-    let imported = ApplicationArchiveService::new(state.store.for_actor(context.actor.clone()))
-        .import_archive(ImportApplicationArchiveCommand {
-            actor_user_id: context.user.id,
-            entry,
-            name: body.name,
-            description: body.description,
-            resources,
-            source_extension_installation_id: Some(installation_id),
-        })
         .await?;
     Ok((
         StatusCode::CREATED,
-        Json(ApiSuccess::new(
-            to_import_response(&state, &locale, imported).await?,
-        )),
+        Json(ApiSuccess::new(output.into_archive_import()?)),
     ))
 }
 
@@ -570,19 +527,16 @@ pub async fn preview_application_archive(
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Result<Json<ApiSuccess<AgentFlowTemplatePreviewResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
     let (entry, _, _) = uploaded_application_archive_entry(&mut multipart).await?;
-    let resources = FlowService::new(state.store.for_actor(context.actor.clone()))
-        .load_agent_flow_template_resources(context.user.id)
+    let output: interface::ApplicationOrchestrationOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.archive.preview.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+            interface::ApplicationOrchestrationInput::PreviewUploadedArchive(entry),
+        )
         .await?;
-    let preview = ApplicationArchiveService::new(state.store.for_actor(context.actor.clone()))
-        .preview_archive(PreviewApplicationArchiveCommand {
-            actor_user_id: context.user.id,
-            entry,
-            resources,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(to_template_preview_response(preview))))
+    Ok(Json(ApiSuccess::new(output.into_archive_preview()?)))
 }
 
 #[utoipa::path(
@@ -607,29 +561,27 @@ pub async fn import_application_archive(
     ),
     ApiError,
 > {
-    let context = require_session(&state, &headers).await?;
-    let locale =
-        crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
-    require_csrf(&headers, &context)?;
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
     let (entry, name, description) = uploaded_application_archive_entry(&mut multipart).await?;
-    let resources = FlowService::new(state.store.for_actor(context.actor.clone()))
-        .load_agent_flow_template_resources(context.user.id)
-        .await?;
-    let imported = ApplicationArchiveService::new(state.store.for_actor(context.actor.clone()))
-        .import_archive(ImportApplicationArchiveCommand {
-            actor_user_id: context.user.id,
-            entry,
-            name,
-            description,
-            resources,
-            source_extension_installation_id: None,
-        })
+    let output: interface::ApplicationOrchestrationOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.archive.import.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+                state,
+                headers,
+            },
+            interface::ApplicationOrchestrationInput::ImportUploadedArchive {
+                entry,
+                name,
+                description,
+                locale,
+            },
+        )
         .await?;
     Ok((
         StatusCode::CREATED,
-        Json(ApiSuccess::new(
-            to_import_response(&state, &locale, imported).await?,
-        )),
+        Json(ApiSuccess::new(output.into_archive_import()?)),
     ))
 }
 
@@ -724,43 +676,26 @@ pub async fn export_application_archive(
     headers: HeaderMap,
     Json(body): Json<ExportApplicationArchiveBody>,
 ) -> Result<Response, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let exported_at = time::OffsetDateTime::now_utc()
-        .format(&time::format_description::well_known::Rfc3339)
-        .map_err(|_| ControlPlaneError::InvalidInput("application_archive_exported_at"))?;
-    let package = ApplicationArchiveService::new(state.store.for_actor(context.actor.clone()))
-        .export_archive(ExportApplicationArchiveCommand {
-            actor_user_id: context.user.id,
-            application_ids: body.application_ids,
-            exported_from_system_version: env!("CARGO_PKG_VERSION").to_string(),
-            exported_at,
-        })
+    let output: interface::ApplicationOrchestrationOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.archive.export.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+                state,
+                headers,
+            },
+            interface::ApplicationOrchestrationInput::ExportArchive(body),
+        )
         .await?;
-    let (content_type, filename, document) = match package.applications.as_slice() {
-        [application] => (
-            "application/json; charset=utf-8",
-            format!(
-                "{}.1flowbase-application.json",
-                safe_archive_name(&application.application.name)
-            ),
-            serde_json::to_vec_pretty(&package)?,
-        ),
-        applications => {
-            let filename = format!("applications-{}-items.zip", applications.len());
-            let archive =
-                tokio::task::spawn_blocking(move || build_application_archive_zip(&package))
-                    .await
-                    .map_err(|_| ControlPlaneError::InvalidInput("application_archive"))??;
-            ("application/zip", filename, archive)
-        }
-    };
-    let mut response = Response::new(Body::from(document));
-    response
-        .headers_mut()
-        .insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+    let exported = output.into_exported_archive()?;
+    let mut response = Response::new(Body::from(exported.document));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(exported.content_type),
+    );
     response.headers_mut().insert(
         header::CONTENT_DISPOSITION,
-        application_archive_content_disposition(&filename)?,
+        application_archive_content_disposition(&exported.filename)?,
     );
     Ok(response)
 }
@@ -874,20 +809,6 @@ async fn to_response_with(
     })
 }
 
-async fn to_response(
-    api_state: &ApiState,
-    locale: &domain::CatalogLocale,
-    state: domain::FlowEditorState,
-) -> Result<OrchestrationStateResponse, ApiError> {
-    to_response_with(
-        &api_state.store,
-        api_state.bootstrap_workspace_id,
-        locale,
-        state,
-    )
-    .await
-}
-
 fn to_template_application_response(
     application: control_plane::flow::AgentFlowTemplateApplication,
 ) -> AgentFlowTemplateApplicationResponse {
@@ -966,8 +887,9 @@ fn to_template_preview_response(
     }
 }
 
-async fn to_import_response(
-    api_state: &ApiState,
+async fn to_import_response_with(
+    store: &storage_durable_postgres::MainDurableStore,
+    bootstrap_workspace_id: Uuid,
     locale: &domain::CatalogLocale,
     imported: ImportAgentFlowTemplateResult,
 ) -> Result<ImportAgentFlowTemplateResponse, ApiError> {
@@ -986,7 +908,13 @@ async fn to_import_response(
                 Err(_) => imported.application.updated_at.to_string(),
             },
         },
-        orchestration: to_response(api_state, locale, imported.orchestration).await?,
+        orchestration: to_response_with(
+            store,
+            bootstrap_workspace_id,
+            locale,
+            imported.orchestration,
+        )
+        .await?,
         preview: to_template_preview_response(imported.preview),
     })
 }
