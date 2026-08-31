@@ -60,7 +60,9 @@ impl interface_runtime::InterfaceHandler<FixtureInput, FixtureOutput, FixtureErr
     }
 }
 
-fn compiled_fixture_registry() -> Arc<interface_runtime::CompiledInterfaceRegistry> {
+fn compiled_fixture_registry(
+    route_path: &str,
+) -> Arc<interface_runtime::CompiledInterfaceRegistry> {
     let interface_id = interface_runtime::InterfaceId::new("fixture.external-endpoint").unwrap();
     let version = InterfaceVersion::new("1").unwrap();
     let identity = InterfaceIdentity::new(interface_id.clone(), version.clone());
@@ -94,9 +96,7 @@ fn compiled_fixture_registry() -> Arc<interface_runtime::CompiledInterfaceRegist
         BindingId::new("fixture.external-endpoint.http").unwrap(),
         identity,
         contracts,
-        ProtocolProjection::http(
-            RouteIdentity::new("GET", "/api/console/fixture/:fixture_id").unwrap(),
-        ),
+        ProtocolProjection::http(RouteIdentity::new("GET", route_path).unwrap()),
     );
     let mut compiler = RegistryCompiler::new(
         GraphFingerprint::new("fixture-graph").unwrap(),
@@ -181,7 +181,10 @@ fn eil_f01_compiled_binding_classifies_the_same_router_row_as_canonical_business
         ))
         .unwrap();
     compiler
-        .absorb_registry("compiled-interface-registry", &compiled_fixture_registry())
+        .absorb_registry(
+            "compiled-interface-registry",
+            &compiled_fixture_registry("/api/console/fixture/:fixture_id"),
+        )
         .unwrap();
     let catalog = compiler.compile();
     let row = catalog
@@ -216,15 +219,14 @@ fn eil_f01_duplicate_source_identity_fails_closed() {
 fn eil_f01_business_and_control_classification_conflict_fails_closed() {
     let mut compiler = ExternalEndpointCatalogCompiler::default();
     compiler
-        .absorb_registry("compiled-interface-registry", &compiled_fixture_registry())
+        .absorb_registry(
+            "compiled-interface-registry",
+            &compiled_fixture_registry("/health"),
+        )
         .unwrap();
 
     assert!(matches!(
-        compiler.contribute(ExternalEndpointContribution::protocol_control_http(
-            "control-allowlist",
-            "GET",
-            "/api/console/fixture/:fixture_id",
-        )),
+        compiler.contribute_approved_controls(true),
         Err(ExternalEndpointCatalogError::ConflictingClassification { .. })
     ));
 }
@@ -232,13 +234,10 @@ fn eil_f01_business_and_control_classification_conflict_fails_closed() {
 #[test]
 fn eil_f01_operational_control_is_explicit_not_a_default() {
     let mut compiler = ExternalEndpointCatalogCompiler::default();
-    compiler
-        .contribute(ExternalEndpointContribution::operational_control_http(
-            "root-router",
-            "GET",
-            "/health",
-        ))
-        .unwrap();
+    for contribution in crate::root_external_endpoint_contributions(true) {
+        compiler.contribute(contribution).unwrap();
+    }
+    compiler.contribute_approved_controls(true).unwrap();
     let catalog = compiler.compile();
 
     assert_eq!(
@@ -248,4 +247,76 @@ fn eil_f01_operational_control_is_explicit_not_a_default() {
             .classification(),
         ExternalEndpointClassification::OperationalControl
     );
+}
+
+#[test]
+fn eil_f02_unknown_control_cannot_be_declared_by_a_route() {
+    let compiler = ExternalEndpointCatalogCompiler::default();
+
+    assert!(matches!(
+        compiler.reject_unapproved_control(ExternalEndpointIdentity::http(
+            "POST",
+            "/api/console/arbitrary-control",
+        )),
+        ExternalEndpointCatalogError::UnknownControl { .. }
+    ));
+}
+
+#[test]
+fn eil_f02_cors_and_head_are_derived_only_from_existing_routes() {
+    let mut compiler = ExternalEndpointCatalogCompiler::default();
+    compiler
+        .contribute(ExternalEndpointContribution::unclassified_http(
+            "router",
+            "GET",
+            "/api/console/widgets",
+        ))
+        .unwrap();
+    compiler.contribute_approved_controls(false).unwrap();
+    let catalog = compiler.compile();
+
+    assert_eq!(
+        catalog
+            .row(&ExternalEndpointIdentity::http_variant(
+                "OPTIONS",
+                "/api/console/widgets",
+                "cors-preflight",
+            ))
+            .unwrap()
+            .classification(),
+        ExternalEndpointClassification::ProtocolControl
+    );
+    assert_eq!(
+        catalog
+            .row(&ExternalEndpointIdentity::http_variant(
+                "HEAD",
+                "/api/console/widgets",
+                "get-mirror",
+            ))
+            .unwrap()
+            .classification(),
+        ExternalEndpointClassification::ProtocolControl
+    );
+}
+
+#[test]
+fn eil_f02_workflow_extension_options_is_never_derived_as_protocol_control() {
+    let mut compiler = ExternalEndpointCatalogCompiler::default();
+    compiler
+        .contribute(ExternalEndpointContribution::unclassified_http(
+            "workflow-extension-router",
+            "ANY",
+            "/api/ex/*slug",
+        ))
+        .unwrap();
+    compiler.contribute_approved_controls(false).unwrap();
+    let catalog = compiler.compile();
+
+    assert!(catalog
+        .row(&ExternalEndpointIdentity::http_variant(
+            "OPTIONS",
+            "/api/ex/*slug",
+            "cors-preflight",
+        ))
+        .is_none());
 }

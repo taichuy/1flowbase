@@ -209,6 +209,33 @@ fn base_router(include_docs_ui: bool, static_openapi: bool) -> Router {
     }
 }
 
+pub(crate) fn root_external_endpoint_contributions(
+    include_docs: bool,
+) -> Vec<external_endpoint_catalog::ExternalEndpointContribution> {
+    let mut contributions = vec![
+        external_endpoint_catalog::ExternalEndpointContribution::unclassified_http(
+            "api-server.root-router",
+            "GET",
+            "/health",
+        ),
+        external_endpoint_catalog::ExternalEndpointContribution::unclassified_http(
+            "api-server.root-router",
+            "GET",
+            "/openapi.json",
+        ),
+    ];
+    if include_docs {
+        contributions.push(
+            external_endpoint_catalog::ExternalEndpointContribution::unclassified_http(
+                "api-server.root-router",
+                "GET",
+                "/docs",
+            ),
+        );
+    }
+    contributions
+}
+
 pub fn app() -> Router {
     base_router(true, true)
         .layer(development_cors_layer())

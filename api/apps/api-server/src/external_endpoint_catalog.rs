@@ -47,6 +47,14 @@ impl ExternalEndpointIdentity {
             variant: None,
         }
     }
+
+    fn http_control_variant(method: &str, route_template: &str, variant: &str) -> Self {
+        Self::Http {
+            method: method.to_ascii_uppercase(),
+            route_template: normalize_route_template(route_template),
+            variant: Some(variant.to_string()),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -67,7 +75,7 @@ impl ExternalEndpointContribution {
         }
     }
 
-    pub(crate) fn protocol_control_http(source: &str, method: &str, route_template: &str) -> Self {
+    fn protocol_control_http(source: &str, method: &str, route_template: &str) -> Self {
         Self {
             identity: ExternalEndpointIdentity::http(method, route_template),
             source: source.to_string(),
@@ -76,15 +84,20 @@ impl ExternalEndpointContribution {
         }
     }
 
-    pub(crate) fn operational_control_http(
-        source: &str,
-        method: &str,
-        route_template: &str,
-    ) -> Self {
+    fn operational_control_http(source: &str, method: &str, route_template: &str) -> Self {
         Self {
             identity: ExternalEndpointIdentity::http(method, route_template),
             source: source.to_string(),
             classification: ExternalEndpointClassification::OperationalControl,
+            binding_id: None,
+        }
+    }
+
+    fn protocol_control_identity(source: &str, identity: ExternalEndpointIdentity) -> Self {
+        Self {
+            identity,
+            source: source.to_string(),
+            classification: ExternalEndpointClassification::ProtocolControl,
             binding_id: None,
         }
     }
@@ -150,6 +163,110 @@ pub(crate) enum ExternalEndpointCatalogError {
         first: String,
         second: String,
     },
+    #[error("external endpoint is not an approved control: {identity:?}")]
+    UnknownControl { identity: ExternalEndpointIdentity },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ApprovedExternalControl {
+    Health,
+    ConsoleHealth,
+    Docs,
+    OpenApi,
+    McpInitialize,
+    McpInitializedNotification,
+    NativeWebSocketUpgrade,
+    ResponsesWebSocketUpgrade,
+    NativeSseKeepalive,
+    CompatibilitySseKeepalive,
+}
+
+impl ApprovedExternalControl {
+    const ALL: [Self; 10] = [
+        Self::Health,
+        Self::ConsoleHealth,
+        Self::Docs,
+        Self::OpenApi,
+        Self::McpInitialize,
+        Self::McpInitializedNotification,
+        Self::NativeWebSocketUpgrade,
+        Self::ResponsesWebSocketUpgrade,
+        Self::NativeSseKeepalive,
+        Self::CompatibilitySseKeepalive,
+    ];
+
+    fn contribution(self) -> ExternalEndpointContribution {
+        match self {
+            Self::Health => ExternalEndpointContribution::operational_control_http(
+                "root-operational-control",
+                "GET",
+                "/health",
+            ),
+            Self::ConsoleHealth => ExternalEndpointContribution::operational_control_http(
+                "console-operational-control",
+                "GET",
+                "/api/console/health",
+            ),
+            Self::Docs => ExternalEndpointContribution::protocol_control_http(
+                "swagger-protocol-control",
+                "GET",
+                "/docs",
+            ),
+            Self::OpenApi => ExternalEndpointContribution::protocol_control_http(
+                "openapi-protocol-control",
+                "GET",
+                "/openapi.json",
+            ),
+            Self::McpInitialize => ExternalEndpointContribution::protocol_control_identity(
+                "mcp-protocol-control",
+                ExternalEndpointIdentity::mcp("initialize"),
+            ),
+            Self::McpInitializedNotification => {
+                ExternalEndpointContribution::protocol_control_identity(
+                    "mcp-protocol-control",
+                    ExternalEndpointIdentity::mcp("notifications/initialized"),
+                )
+            }
+            Self::NativeWebSocketUpgrade => {
+                ExternalEndpointContribution::protocol_control_identity(
+                    "native-websocket-protocol-control",
+                    ExternalEndpointIdentity::http_control_variant(
+                        "GET",
+                        "/api/agent/v1/runs/websocket",
+                        "websocket-upgrade",
+                    ),
+                )
+            }
+            Self::ResponsesWebSocketUpgrade => {
+                ExternalEndpointContribution::protocol_control_identity(
+                    "responses-websocket-protocol-control",
+                    ExternalEndpointIdentity::http_control_variant(
+                        "GET",
+                        "/v1/responses",
+                        "websocket-upgrade",
+                    ),
+                )
+            }
+            Self::NativeSseKeepalive => ExternalEndpointContribution::protocol_control_identity(
+                "native-sse-protocol-control",
+                ExternalEndpointIdentity::http_control_variant(
+                    "POST",
+                    "/api/agent/v1/runs",
+                    "sse-keepalive-terminal",
+                ),
+            ),
+            Self::CompatibilitySseKeepalive => {
+                ExternalEndpointContribution::protocol_control_identity(
+                    "compatibility-sse-protocol-control",
+                    ExternalEndpointIdentity::http_control_variant(
+                        "POST",
+                        "/v1/responses",
+                        "sse-keepalive-terminal",
+                    ),
+                )
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -217,6 +334,76 @@ impl ExternalEndpointCatalogCompiler {
             }
         }
         Ok(())
+    }
+
+    pub(crate) fn contribute_approved_controls(
+        &mut self,
+        include_docs: bool,
+    ) -> Result<(), ExternalEndpointCatalogError> {
+        for control in ApprovedExternalControl::ALL {
+            if !include_docs && matches!(control, ApprovedExternalControl::Docs) {
+                continue;
+            }
+            self.contribute(control.contribution())?;
+        }
+        self.contribute_derived_cors_and_head_controls()
+    }
+
+    fn contribute_derived_cors_and_head_controls(
+        &mut self,
+    ) -> Result<(), ExternalEndpointCatalogError> {
+        let routes = self
+            .rows
+            .keys()
+            .filter_map(|identity| match identity {
+                ExternalEndpointIdentity::Http {
+                    method,
+                    route_template,
+                    variant: None,
+                } => Some((method.clone(), route_template.clone())),
+                ExternalEndpointIdentity::Http {
+                    variant: Some(_), ..
+                }
+                | ExternalEndpointIdentity::Mcp { .. } => None,
+            })
+            .collect::<BTreeSet<_>>();
+        let paths = routes
+            .iter()
+            .map(|(_, path)| path.clone())
+            .collect::<BTreeSet<_>>();
+        for route_template in paths {
+            if route_template != "/api/ex/*slug" {
+                self.contribute(ExternalEndpointContribution::protocol_control_identity(
+                    "tower-http.cors",
+                    ExternalEndpointIdentity::http_control_variant(
+                        "OPTIONS",
+                        &route_template,
+                        "cors-preflight",
+                    ),
+                ))?;
+            }
+        }
+        for (method, route_template) in routes {
+            if method == "GET" {
+                self.contribute(ExternalEndpointContribution::protocol_control_identity(
+                    "axum.auto-head",
+                    ExternalEndpointIdentity::http_control_variant(
+                        "HEAD",
+                        &route_template,
+                        "get-mirror",
+                    ),
+                ))?;
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reject_unapproved_control(
+        &self,
+        identity: ExternalEndpointIdentity,
+    ) -> ExternalEndpointCatalogError {
+        ExternalEndpointCatalogError::UnknownControl { identity }
     }
 
     pub(crate) fn compile(self) -> ExternalEndpointCatalog {
