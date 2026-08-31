@@ -60,6 +60,7 @@ pub(crate) mod application_monitoring;
 pub(crate) mod archive;
 pub(crate) mod debug_variable_cache;
 pub(crate) mod debug_variable_snapshot;
+pub(crate) mod interface_debug_variables;
 pub(crate) mod interface_runtime_reads;
 pub(crate) mod interface_trace_exports;
 pub(crate) mod interface_trace_payloads;

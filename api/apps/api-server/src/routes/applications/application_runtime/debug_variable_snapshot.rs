@@ -5,19 +5,13 @@ use axum::{
     http::HeaderMap,
     Json,
 };
-use control_plane::flow::FlowService;
 use control_plane::ports::{DebugVariableCacheEntry, OrchestrationRuntimeRepository};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::{
-    app_state::ApiState, error_response::ApiError, middleware::require_session::require_session,
-    response::ApiSuccess,
-};
-
-use super::ensure_application_visible;
+use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
 
 const DEBUG_VARIABLE_SNAPSHOT_SCHEMA_VERSION: &str = "1flowbase.debug-variable-snapshot/v1";
 
@@ -61,22 +55,22 @@ pub async fn get_debug_variable_snapshot(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<DebugVariableSnapshotResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-    let editor_state = FlowService::new(state.store.for_actor(context.actor.clone()))
-        .get_or_create_editor_state(context.user.id, id)
-        .await?;
-
-    let snapshot = build_debug_variable_snapshot(
-        &state.store,
-        id,
-        context.actor.current_workspace_id,
-        context.actor.user_id,
-        &editor_state,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.debug-variables.snapshot.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        super::interface_debug_variables::ApplicationRuntimeDebugVariablesInput::Snapshot {
+            application_id: id,
+        },
     )
     .await?;
-
-    Ok(Json(ApiSuccess::new(snapshot)))
+    let super::interface_debug_variables::ApplicationRuntimeDebugVariablesOutput::Snapshot(
+        response,
+    ) = output
+    else {
+        unreachable!("debug variable snapshot binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 fn insert_variable_value(

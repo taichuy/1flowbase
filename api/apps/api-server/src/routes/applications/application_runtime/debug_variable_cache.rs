@@ -5,26 +5,11 @@ use axum::{
     http::HeaderMap,
     Json,
 };
-use control_plane::{
-    errors::ControlPlaneError,
-    flow::FlowService,
-    ports::{
-        DebugVariableCacheKey, DeleteDebugVariableCacheEntriesInput,
-        OrchestrationRuntimeRepository, UpsertDebugVariableCacheEntryInput,
-    },
-};
 use serde::Deserialize;
 use utoipa::ToSchema;
 use uuid::Uuid;
 
-use crate::{
-    app_state::ApiState,
-    error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
-    response::ApiSuccess,
-};
-
-use super::ensure_application_visible;
+use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct UpsertDebugVariableCacheEntryBody {
@@ -62,32 +47,20 @@ pub async fn upsert_debug_variable_cache_entry(
     Path(id): Path<Uuid>,
     Json(body): Json<UpsertDebugVariableCacheEntryBody>,
 ) -> Result<Json<ApiSuccess<serde_json::Value>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-    let editor_state = FlowService::new(state.store.for_actor(context.actor.clone()))
-        .get_or_create_editor_state(context.user.id, id)
-        .await?;
-    let node_id = body.node_id.trim().to_string();
-    let variable_key = body.variable_key.trim().to_string();
-    if node_id.is_empty() || variable_key.is_empty() {
-        return Err(ControlPlaneError::InvalidInput("debug_variable_cache_key").into());
-    }
-
-    <_ as OrchestrationRuntimeRepository>::upsert_debug_variable_cache_entry(
-        &state.store,
-        &UpsertDebugVariableCacheEntryInput {
-            workspace_id: context.actor.current_workspace_id,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.debug-variables.cache.upsert.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        super::interface_debug_variables::ApplicationRuntimeDebugVariablesInput::Upsert {
             application_id: id,
-            draft_id: editor_state.draft.id,
-            actor_user_id: context.actor.user_id,
-            node_id,
-            variable_key,
-            value: body.value,
+            body,
         },
     )
     .await?;
-
+    let super::interface_debug_variables::ApplicationRuntimeDebugVariablesOutput::Updated = output
+    else {
+        unreachable!("debug variable cache upsert binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(serde_json::json!({ "ok": true }))))
 }
 
@@ -109,38 +82,19 @@ pub async fn delete_debug_variable_cache_entries(
     Path(id): Path<Uuid>,
     Json(body): Json<DeleteDebugVariableCacheEntriesBody>,
 ) -> Result<Json<ApiSuccess<serde_json::Value>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-    let editor_state = FlowService::new(state.store.for_actor(context.actor.clone()))
-        .get_or_create_editor_state(context.user.id, id)
-        .await?;
-    let keys = body.keys.map(|keys| {
-        keys.into_iter()
-            .filter_map(|key| {
-                let node_id = key.node_id.trim().to_string();
-                let variable_key = key.variable_key.trim().to_string();
-                if node_id.is_empty() || variable_key.is_empty() {
-                    return None;
-                }
-                Some(DebugVariableCacheKey {
-                    node_id,
-                    variable_key,
-                })
-            })
-            .collect::<Vec<_>>()
-    });
-
-    <_ as OrchestrationRuntimeRepository>::delete_debug_variable_cache_entries(
-        &state.store,
-        &DeleteDebugVariableCacheEntriesInput {
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.debug-variables.cache.delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        super::interface_debug_variables::ApplicationRuntimeDebugVariablesInput::Delete {
             application_id: id,
-            draft_id: editor_state.draft.id,
-            actor_user_id: context.actor.user_id,
-            keys,
+            body,
         },
     )
     .await?;
-
+    let super::interface_debug_variables::ApplicationRuntimeDebugVariablesOutput::Updated = output
+    else {
+        unreachable!("debug variable cache delete binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(serde_json::json!({ "ok": true }))))
 }
