@@ -35,6 +35,7 @@ use super::native::{
     application_actor_from_principal, native_error, NativeApiError, NativeModelListResponse,
     NativeModelObject, NativeRunResponse,
 };
+use crate::routes::files::UploadedFileResponse;
 use crate::{
     provider_runtime::ApiProviderRuntime, runtime_activity::ApplicationRuntimeActivityTracker,
 };
@@ -43,6 +44,7 @@ pub(crate) const MODELS_BINDING_ID: &str = "http.application.native.models.list.
 pub(crate) const GET_RUN_BINDING_ID: &str = "http.application.native.runs.get.v1";
 pub(crate) const CANCEL_RUN_BINDING_ID: &str = "http.application.native.runs.cancel.v1";
 pub(crate) const RESUME_RUN_BINDING_ID: &str = "http.application.native.runs.resume.v1";
+pub(crate) const UPLOAD_FILE_BINDING_ID: &str = "http.application.native.files.upload.v1";
 
 pub(crate) struct NativeModelsInput;
 impl InterfaceContract for NativeModelsInput {
@@ -94,6 +96,23 @@ impl InterfaceContract for NativeResumeRunInput {
 pub(crate) struct NativeResumeRunOutput(pub(crate) NativeRunResponse);
 impl InterfaceContract for NativeResumeRunOutput {
     const CONTRACT_ID: &'static str = "application-native-run-resume-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+pub(crate) struct NativeUploadFileInput {
+    pub(crate) file_table_id: Uuid,
+    pub(crate) original_filename: String,
+    pub(crate) content_type: Option<String>,
+    pub(crate) bytes: Vec<u8>,
+}
+impl InterfaceContract for NativeUploadFileInput {
+    const CONTRACT_ID: &'static str = "application-native-file-upload-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+pub(crate) struct NativeUploadFileOutput(pub(crate) UploadedFileResponse);
+impl InterfaceContract for NativeUploadFileOutput {
+    const CONTRACT_ID: &'static str = "application-native-file-upload-output";
     const CONTRACT_VERSION: &'static str = "1";
 }
 
@@ -149,6 +168,14 @@ pub(crate) trait NativeResumePort: Send + Sync + 'static {
     ) -> ReadFuture<'a, NativeResumeRunOutput>;
 }
 
+pub(crate) trait NativeFilePort: Send + Sync + 'static {
+    fn upload<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: NativeUploadFileInput,
+    ) -> ReadFuture<'a, NativeUploadFileOutput>;
+}
+
 struct NativeReadAdapter {
     store: MainDurableStore,
     cache_store: Arc<dyn CacheStore>,
@@ -169,6 +196,59 @@ struct NativeResumeAdapter {
     runtime_event_stream: Arc<dyn RuntimeEventStream>,
     runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
     runtime_invoker_factory: Arc<dyn NativeRuntimeInvokerFactory>,
+}
+
+struct NativeFileAdapter {
+    store: MainDurableStore,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    runtime_engine: Arc<RuntimeEngine>,
+}
+
+impl NativeFilePort for NativeFileAdapter {
+    fn upload<'a>(
+        &'a self,
+        principal: &'a ApplicationPrincipal,
+        input: NativeUploadFileInput,
+    ) -> ReadFuture<'a, NativeUploadFileOutput> {
+        Box::pin(async move {
+            control_plane::file_management::FileUploadService::new(
+                self.store.clone(),
+                Arc::clone(&self.file_storage_registry),
+                Arc::clone(&self.runtime_engine),
+            )
+            .upload(control_plane::file_management::UploadFileCommand {
+                actor: principal.authorized_actor().clone(),
+                target: control_plane::file_management::FileUploadTarget::Table(
+                    input.file_table_id,
+                ),
+                original_filename: input.original_filename,
+                content_type: input.content_type,
+                bytes: input.bytes,
+            })
+            .await
+            .map(|uploaded| {
+                NativeUploadFileOutput(UploadedFileResponse {
+                    file_table_id: uploaded.file_table_id.to_string(),
+                    storage_id: uploaded.storage_id.to_string(),
+                    record: uploaded.record,
+                })
+            })
+            .map_err(super::native::service_error)
+            .map_err(NativeReadTargetError)
+        })
+    }
+}
+
+pub(crate) fn native_file_port(
+    store: MainDurableStore,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    runtime_engine: Arc<RuntimeEngine>,
+) -> Arc<dyn NativeFilePort> {
+    Arc::new(NativeFileAdapter {
+        store,
+        file_storage_registry,
+        runtime_engine,
+    })
 }
 
 impl NativeResumePort for NativeResumeAdapter {
@@ -373,6 +453,34 @@ struct NativeResumeRunHandler {
     port: Arc<dyn NativeResumePort>,
 }
 
+struct NativeUploadFileHandler {
+    port: Arc<dyn NativeFilePort>,
+}
+
+impl
+    InterfaceHandler<
+        NativeUploadFileInput,
+        NativeUploadFileOutput,
+        NativeReadTargetError,
+        ApplicationPrincipal,
+    > for NativeUploadFileHandler
+{
+    fn invoke(
+        &self,
+        context: InterfaceHandlerContext<ApplicationPrincipal>,
+        input: NativeUploadFileInput,
+    ) -> InterfaceHandlerFuture<NativeUploadFileOutput, NativeReadTargetError> {
+        let port = Arc::clone(&self.port);
+        Box::pin(async move {
+            port.upload(context.principal(), input)
+                .await
+                .map_err(|error| {
+                    InterfaceTargetFailure::new("application_native_upload_file", error)
+                })
+        })
+    }
+}
+
 impl
     InterfaceHandler<
         NativeResumeRunInput,
@@ -460,6 +568,7 @@ impl InterfaceAuthorizationPort<ApplicationPrincipal> for NativeReadAuthorizatio
 pub(crate) fn compile_registry(
     port: Arc<dyn NativeReadPort>,
     resume_port: Arc<dyn NativeResumePort>,
+    file_port: Arc<dyn NativeFilePort>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
     let owner = InterfaceOwner::new("api-server.application-public-api").unwrap();
     let operations = [
@@ -467,6 +576,7 @@ pub(crate) fn compile_registry(
         AuthorizationOperation::new("application.native.runs.read").unwrap(),
         AuthorizationOperation::new("application.native.runs.cancel").unwrap(),
         AuthorizationOperation::new("application.native.runs.resume").unwrap(),
+        AuthorizationOperation::new("application.native.files.upload").unwrap(),
     ];
     let mut compiler = RegistryCompiler::new(
         GraphFingerprint::new("graph:application-native-read-v1").unwrap(),
@@ -517,6 +627,17 @@ pub(crate) fn compile_registry(
         "control-plane.application-native-run.resume",
         InterfaceAuditPolicy::Mutating,
     )?;
+    register::<NativeUploadFileInput, NativeUploadFileOutput>(
+        &mut compiler,
+        &owner,
+        operations[4].clone(),
+        "application.native.files.upload",
+        UPLOAD_FILE_BINDING_ID,
+        "api-server.application-native-file.upload",
+        RouteIdentity::new("POST", "/api/agent/v1/files").unwrap(),
+        "control-plane.file-upload.upload",
+        InterfaceAuditPolicy::Mutating,
+    )?;
     compiler.bind_handler::<NativeModelsInput, NativeModelsOutput, NativeReadTargetError, ApplicationPrincipal>(
         &InterfaceId::new("application.native.models.list").unwrap(),
         HandlerReference::new("api-server.application-native-models.list").unwrap(),
@@ -540,6 +661,11 @@ pub(crate) fn compile_registry(
         &InterfaceId::new("application.native.runs.resume").unwrap(),
         HandlerReference::new("api-server.application-native-run.resume").unwrap(),
         Arc::new(NativeResumeRunHandler { port: resume_port }),
+    )?;
+    compiler.bind_handler::<NativeUploadFileInput, NativeUploadFileOutput, NativeReadTargetError, ApplicationPrincipal>(
+        &InterfaceId::new("application.native.files.upload").unwrap(),
+        HandlerReference::new("api-server.application-native-file.upload").unwrap(),
+        Arc::new(NativeUploadFileHandler { port: file_port }),
     )?;
     compiler.compile()
 }

@@ -24,7 +24,6 @@ use control_plane::{
         },
         run_service::native_result_from_run_detail,
     },
-    file_management::{FileUploadService, UploadFileCommand},
     orchestration_runtime::{OrchestrationRuntimeService, StartPublishedFlowRunCommand},
     ports::{
         AuthRepository, ProviderProtocolContextSlotId, ProviderProtocolContextValue,
@@ -61,7 +60,7 @@ use crate::{
                 self, NativeCancelRunInput, NativeCancelRunOutput, NativeGetRunInput,
                 NativeGetRunOutput, NativeModelsInput, NativeModelsOutput, NativeReadTargetError,
                 NativeResumeRunInput, NativeResumeRunOutput, NativeRuntimeInvokerFactory,
-                RuntimeInvokerFuture,
+                NativeUploadFileInput, NativeUploadFileOutput, RuntimeInvokerFuture,
             },
             sse,
             stream_terminal_fallback::recover_missing_stream_terminal_winner,
@@ -1293,6 +1292,31 @@ where
     I: interface_runtime::InterfaceContract,
     O: interface_runtime::InterfaceContract,
 {
+    let (snapshot, binding_id, authentication_activation, principal) =
+        authenticate_native_binding(state, bearer_token, binding_id).await?;
+    invoke_native_with_principal(
+        snapshot,
+        binding_id,
+        authentication_activation,
+        principal,
+        input,
+    )
+    .await
+}
+
+async fn authenticate_native_binding(
+    state: &Arc<ApiState>,
+    bearer_token: String,
+    binding_id: &str,
+) -> Result<
+    (
+        Arc<interface_runtime::CompiledInterfaceRegistry>,
+        interface_runtime::BindingId,
+        interface_runtime::AuthenticationActivationIdentity,
+        interface_runtime::ApplicationPrincipal,
+    ),
+    NativeApiError,
+> {
     let boot_snapshot = state.extension_boot_snapshot.as_ref().ok_or_else(|| {
         NativeApiError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -1330,6 +1354,20 @@ where
         .await
         .map_err(|_| native_error(NativeRunValidationError::NotAuthenticated))?;
     let authentication_activation = activated.activation().clone();
+    Ok((snapshot, binding_id, authentication_activation, principal))
+}
+
+async fn invoke_native_with_principal<I, O>(
+    snapshot: Arc<interface_runtime::CompiledInterfaceRegistry>,
+    binding_id: interface_runtime::BindingId,
+    authentication_activation: interface_runtime::AuthenticationActivationIdentity,
+    principal: interface_runtime::ApplicationPrincipal,
+    input: I,
+) -> Result<O, NativeApiError>
+where
+    I: interface_runtime::InterfaceContract,
+    O: interface_runtime::InterfaceContract,
+{
     let outcome =
         InterfaceInvocationKernel::new(Arc::new(native_read_interface::NativeReadAuthorization))
             .invoke::<I, O, NativeReadTargetError>(
@@ -1441,21 +1479,12 @@ pub async fn upload_native_file(
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<ApiSuccess<UploadedFileResponse>>), NativeApiError> {
     let bearer_token = bearer_token(&headers)?;
-    let api_actor = ApplicationApiKeyService::new(state.store.clone())
-        .with_last_used_cache(state.infrastructure.cache_store())
-        .authenticate_bearer_token(&bearer_token)
-        .await
-        .map_err(|_| {
-            NativeApiError::new(
-                StatusCode::UNAUTHORIZED,
-                "not_authenticated",
-                "invalid application API key",
-            )
-        })?;
-    let actor =
-        AuthRepository::load_actor_context_for_user(&state.store, api_actor.creator_user_id)
-            .await
-            .map_err(service_error)?;
+    let (snapshot, binding_id, authentication_activation, principal) = authenticate_native_binding(
+        &state,
+        bearer_token,
+        native_read_interface::UPLOAD_FILE_BINDING_ID,
+    )
+    .await?;
 
     let mut file_table_id = None;
     let mut filename = None;
@@ -1513,27 +1542,19 @@ pub async fn upload_native_file(
     let bytes = bytes.ok_or_else(|| {
         NativeApiError::new(StatusCode::BAD_REQUEST, "file", "file field is required")
     })?;
-    let uploaded = FileUploadService::new(
-        state.store.clone(),
-        state.file_storage_registry.clone(),
-        state.runtime_engine.clone(),
+    let uploaded = invoke_native_with_principal::<NativeUploadFileInput, NativeUploadFileOutput>(
+        snapshot,
+        binding_id,
+        authentication_activation,
+        principal,
+        NativeUploadFileInput {
+            file_table_id,
+            original_filename: filename.unwrap_or_else(|| "upload.bin".into()),
+            content_type,
+            bytes,
+        },
     )
-    .upload(UploadFileCommand {
-        actor,
-        target: control_plane::file_management::FileUploadTarget::Table(file_table_id),
-        original_filename: filename.unwrap_or_else(|| "upload.bin".into()),
-        content_type,
-        bytes,
-    })
-    .await
-    .map_err(service_error)?;
+    .await?;
 
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(UploadedFileResponse {
-            file_table_id: uploaded.file_table_id.to_string(),
-            storage_id: uploaded.storage_id.to_string(),
-            record: uploaded.record,
-        })),
-    ))
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(uploaded.0))))
 }

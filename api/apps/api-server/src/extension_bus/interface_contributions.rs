@@ -175,6 +175,7 @@ pub(crate) fn production_interface_contributions(
                 "application.native.runs.read",
                 "application.native.runs.cancel",
                 "application.native.runs.resume",
+                "application.native.files.upload",
             ],
             &["api-server.application-public-api"],
             crate::routes::application_public_api::native_read_interface::compile_registry(
@@ -199,6 +200,11 @@ pub(crate) fn production_interface_contributions(
                     crate::routes::application_public_api::native::native_runtime_invoker_factory(
                         Arc::clone(state),
                     ),
+                ),
+                crate::routes::application_public_api::native_read_interface::native_file_port(
+                    state.store.clone(),
+                    Arc::clone(&state.file_storage_registry),
+                    Arc::clone(&state.runtime_engine),
                 ),
             )?,
         ),

@@ -4,6 +4,7 @@ use crate::{
     extension_bus::{production_interface_contributions, InterfaceContributionCollector},
     routes::application_public_api::native_read_interface::{
         CANCEL_RUN_BINDING_ID, GET_RUN_BINDING_ID, MODELS_BINDING_ID, RESUME_RUN_BINDING_ID,
+        UPLOAD_FILE_BINDING_ID,
     },
 };
 
@@ -22,6 +23,7 @@ async fn eil_f05a_native_reads_publish_unique_frozen_plans() {
         GET_RUN_BINDING_ID,
         CANCEL_RUN_BINDING_ID,
         RESUME_RUN_BINDING_ID,
+        UPLOAD_FILE_BINDING_ID,
     ] {
         let plan = registry.plan(&BindingId::new(binding).unwrap()).unwrap();
         assert_eq!(
