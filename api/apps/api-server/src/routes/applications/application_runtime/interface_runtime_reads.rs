@@ -78,6 +78,15 @@ pub(crate) enum ApplicationRuntimeReadsInput {
     GetRuntimeActivity {
         application_id: Uuid,
     },
+    GetRuntimeDebugStream {
+        application_id: Uuid,
+        run_id: Uuid,
+        query: RuntimeDebugStreamQuery,
+    },
+    GetNodeLastRun {
+        application_id: Uuid,
+        node_id: String,
+    },
 }
 
 impl InterfaceContract for ApplicationRuntimeReadsInput {
@@ -96,6 +105,8 @@ pub(crate) enum ApplicationRuntimeReadsOutput {
     RunNodeLastRun(Option<NodeLastRunResponse>),
     MonitoringReport(application_monitoring::ApplicationRunMonitoringReportResponse),
     RuntimeActivity(crate::runtime_activity::ApplicationRuntimeActivitySnapshot),
+    RuntimeDebugStream(RuntimeDebugStreamResponse),
+    NodeLastRun(Option<NodeLastRunResponse>),
 }
 
 impl InterfaceContract for ApplicationRuntimeReadsOutput {
@@ -652,6 +663,78 @@ impl ApplicationRuntimeReadsAdapter {
         ))
     }
 
+    async fn runtime_debug_stream(
+        &self,
+        actor: &domain::ActorContext,
+        application_id: Uuid,
+        run_id: Uuid,
+        query: RuntimeDebugStreamQuery,
+    ) -> Result<RuntimeDebugStreamResponse, ApiError> {
+        self.visible_application(actor, application_id).await?;
+        <_ as OrchestrationRuntimeRepository>::get_flow_run(&self.store, application_id, run_id)
+            .await?
+            .ok_or(ControlPlaneError::NotFound("flow_run"))?;
+
+        let page_size = runtime_debug_stream_page_size(query.limit);
+        let from_sequence = query.from_sequence.unwrap_or(0).max(0);
+        let mut records = <_ as OrchestrationRuntimeRepository>::list_runtime_event_backfill_page(
+            &self.store,
+            run_id,
+            from_sequence,
+            page_size + 1,
+        )
+        .await?;
+        let has_more = records.len() > page_size;
+        if has_more {
+            records.truncate(page_size);
+        }
+        let next_sequence = records
+            .last()
+            .map(debug_run_stream::durable_event_stream_sequence);
+        let parts = records
+            .iter()
+            .filter_map(|event| {
+                control_plane::runtime_observability::debug_read_model::fold_event_to_debug_part(
+                    run_id, event,
+                )
+            })
+            .map(to_runtime_debug_stream_part_response)
+            .collect();
+        Ok(RuntimeDebugStreamResponse {
+            parts,
+            page_size: i64::try_from(page_size).unwrap_or(i64::MAX),
+            next_sequence,
+            has_more,
+        })
+    }
+
+    async fn node_last_run(
+        &self,
+        actor: &domain::ActorContext,
+        application_id: Uuid,
+        node_id: String,
+    ) -> Result<Option<NodeLastRunResponse>, ApiError> {
+        self.visible_application(actor, application_id).await?;
+        let Some(last_run) = <_ as OrchestrationRuntimeRepository>::get_latest_node_run(
+            &self.store,
+            application_id,
+            &node_id,
+        )
+        .await?
+        else {
+            return Ok(None);
+        };
+        let runtime_events = <_ as OrchestrationRuntimeRepository>::list_runtime_events(
+            &self.store,
+            last_run.flow_run.id,
+            0,
+        )
+        .await?;
+        Ok(Some(to_node_last_run_response(
+            enrich_node_last_run_visible_internal_llm_route_traces(last_run, &runtime_events),
+        )))
+    }
+
     async fn execute_inner(
         &self,
         principal: &UserPrincipal,
@@ -735,6 +818,20 @@ impl ApplicationRuntimeReadsAdapter {
                         .snapshot(application_id, self.process_started_at),
                 ))
             }
+            ApplicationRuntimeReadsInput::GetRuntimeDebugStream {
+                application_id,
+                run_id,
+                query,
+            } => Ok(ApplicationRuntimeReadsOutput::RuntimeDebugStream(
+                self.runtime_debug_stream(actor, application_id, run_id, query)
+                    .await?,
+            )),
+            ApplicationRuntimeReadsInput::GetNodeLastRun {
+                application_id,
+                node_id,
+            } => Ok(ApplicationRuntimeReadsOutput::NodeLastRun(
+                self.node_last_run(actor, application_id, node_id).await?,
+            )),
         }
     }
 }
@@ -831,6 +928,20 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         binding_id: "http.console.applications.runtime.monitoring.activity.get.v1",
         method: "GET",
         path: "/api/console/applications/:id/monitoring/runtime-activity",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "applications.runtime.debug-stream.get",
+        binding_id: "http.console.applications.runtime.debug-stream.get.v1",
+        method: "GET",
+        path: "/api/console/applications/:id/logs/runs/:run_id/debug-stream",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "applications.runtime.node-last-run.get",
+        binding_id: "http.console.applications.runtime.node-last-run.get.v1",
+        method: "GET",
+        path: "/api/console/applications/:id/orchestration/nodes/:node_id/last-run",
         mutating: false,
     },
 ];

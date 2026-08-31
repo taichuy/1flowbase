@@ -541,46 +541,23 @@ pub async fn get_runtime_debug_stream(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
     Query(query): Query<RuntimeDebugStreamQuery>,
 ) -> Result<Json<ApiSuccess<RuntimeDebugStreamResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-
-    <_ as OrchestrationRuntimeRepository>::get_flow_run(&state.store, id, run_id)
-        .await?
-        .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-
-    let page_size = runtime_debug_stream_page_size(query.limit);
-    let from_sequence = query.from_sequence.unwrap_or(0).max(0);
-    let mut records =
-        <_ as OrchestrationRuntimeRepository>::list_runtime_event_backfill_page(
-            &state.store,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.debug-stream.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::GetRuntimeDebugStream {
+            application_id: id,
             run_id,
-            from_sequence,
-            page_size + 1,
-        )
-        .await?;
-    let has_more = records.len() > page_size;
-    if has_more {
-        records.truncate(page_size);
-    }
-    let next_sequence = records
-        .last()
-        .map(debug_run_stream::durable_event_stream_sequence);
-    let parts = records
-        .iter()
-        .filter_map(|event| {
-            control_plane::runtime_observability::debug_read_model::fold_event_to_debug_part(
-                run_id, event,
-            )
-        })
-        .map(to_runtime_debug_stream_part_response)
-        .collect();
-
-    Ok(Json(ApiSuccess::new(RuntimeDebugStreamResponse {
-        parts,
-        page_size: i64::try_from(page_size).unwrap_or(i64::MAX),
-        next_sequence,
-        has_more,
-    })))
+            query,
+        },
+    )
+    .await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::RuntimeDebugStream(response) =
+        output
+    else {
+        unreachable!("application runtime debug-stream binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 fn runtime_debug_stream_page_size(limit: Option<i64>) -> usize {
@@ -608,30 +585,19 @@ pub async fn get_node_last_run(
     headers: HeaderMap,
     Path((id, node_id)): Path<(Uuid, String)>,
 ) -> Result<Json<ApiSuccess<Option<NodeLastRunResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-
-    let last_run = <_ as OrchestrationRuntimeRepository>::get_latest_node_run(
-        &state.store,
-        id,
-        &node_id,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.node-last-run.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_runtime_reads::ApplicationRuntimeReadsInput::GetNodeLastRun {
+            application_id: id,
+            node_id,
+        },
     )
     .await?;
-    let last_run = match last_run {
-        Some(last_run) => {
-            let runtime_events =
-                <_ as OrchestrationRuntimeRepository>::list_runtime_events(
-                    &state.store,
-                    last_run.flow_run.id,
-                    0,
-                )
-                .await?;
-            Some(to_node_last_run_response(
-                enrich_node_last_run_visible_internal_llm_route_traces(last_run, &runtime_events),
-            ))
-        }
-        None => None,
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::NodeLastRun(response) = output
+    else {
+        unreachable!("application runtime node last-run binding returned a different output")
     };
-
-    Ok(Json(ApiSuccess::new(last_run)))
+    Ok(Json(ApiSuccess::new(response)))
 }
