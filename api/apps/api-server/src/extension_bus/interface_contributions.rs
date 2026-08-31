@@ -288,6 +288,22 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-assistant-runs",
+            &["assistant.runs.create"],
+            &["api-server.console-assistant-runs"],
+            crate::routes::assistant::interface::compile_runs_registry(
+                crate::routes::assistant::run_dependencies(state.clone()),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-assistant-run-stream",
+            &["assistant.runs.stream.create"],
+            &["api-server.console-assistant-run-stream"],
+            crate::routes::assistant::interface::compile_run_stream_registry(
+                crate::routes::assistant::run_dependencies(state.clone()),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-assistant-websocket-ticket",
             &["assistant.runs.websocket-ticket.create"],
             &["api-server.console-assistant-websocket-ticket"],
