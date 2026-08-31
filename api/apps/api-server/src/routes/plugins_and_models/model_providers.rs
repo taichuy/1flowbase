@@ -1,7 +1,4 @@
-use std::{
-    collections::{BTreeMap, HashSet},
-    sync::Arc,
-};
+use std::{collections::HashSet, sync::Arc};
 
 use access_control::ConsoleRouteOwnership::ConsoleOperation;
 use axum::{
@@ -9,6 +6,7 @@ use axum::{
     http::{header::ACCEPT_LANGUAGE, HeaderMap, StatusCode},
     Json, Router,
 };
+use control_plane::billing::PricingRule;
 use control_plane::model_provider::{
     AuthenticateModelProviderInstanceCommand, AuthenticateModelProviderInstanceResult,
     ClearModelProviderRequestLogsBatchCommand, ClearModelProviderRequestLogsContinuation,
@@ -21,10 +19,6 @@ use control_plane::model_provider::{
     ModelProviderResetCreditCount, ModelProviderService, ModelProviderUsageWindowsResult,
     PreviewModelProviderModelsCommand, UpdateModelProviderInstanceCommand,
     UpdateModelProviderMainInstanceCommand, ValidateModelProviderResult,
-};
-use control_plane::{
-    billing::PricingRule,
-    ports::{BillingRepository, ListPricingRulesInput},
 };
 use plugin_framework::{
     provider_contract::{
@@ -40,7 +34,6 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::{
@@ -51,14 +44,13 @@ use crate::{
 
 pub(crate) mod catalog_logs_interface;
 mod clear_request_log_continuation;
+pub(crate) mod discovery_interface;
 mod dto;
 pub(crate) mod icons;
 pub(crate) mod instance_lifecycle_interface;
 pub(crate) mod instance_operations_interface;
 pub(crate) mod routing_interface;
 pub(crate) mod settings_routes;
-
-use settings_routes::settings_service;
 
 pub use dto::*;
 
@@ -779,99 +771,6 @@ fn to_options_view_response(
     }
 }
 
-async fn current_pricing_targets(
-    state: &ApiState,
-) -> Result<Vec<ModelProviderPricingTargetResponse>, ApiError> {
-    let mut offset = 0;
-    let mut rules = Vec::new();
-    loop {
-        let page = state
-            .store
-            .list_pricing_rules(&ListPricingRulesInput {
-                provider_code: None,
-                upstream_model_id: None,
-                enabled: Some(true),
-                source_kind: None,
-                page_size: 500,
-                offset,
-            })
-            .await?;
-        let page_len = page.items.len();
-        rules.extend(page.items);
-        offset += page_len as i64;
-        if page_len < 500 || offset >= page.total_count {
-            break;
-        }
-    }
-
-    let mut grouped = BTreeMap::<(String, String), Vec<PricingRule>>::new();
-    for rule in rules {
-        grouped
-            .entry((rule.provider_code.clone(), rule.upstream_model_id.clone()))
-            .or_default()
-            .push(rule);
-    }
-
-    let now = time::OffsetDateTime::now_utc();
-    let mut targets = Vec::new();
-    for rules in grouped.into_values() {
-        let Some(rule) = control_plane::billing::choose_pricing_rule(rules, now)? else {
-            continue;
-        };
-        targets.push(ModelProviderPricingTargetResponse {
-            provider_code: rule.provider_code,
-            upstream_model_id: rule.upstream_model_id,
-            input_token_unit_size: rule.input_token_unit_size,
-            input_token_unit_price: rule.input_token_unit_price.to_string(),
-            output_token_unit_size: rule.output_token_unit_size,
-            output_token_unit_price: rule.output_token_unit_price.to_string(),
-            cache_hit_token_unit_size: rule.cache_hit_token_unit_size,
-            cache_hit_token_unit_price: rule.cache_hit_token_unit_price.to_string(),
-            effective_from: format_time(rule.effective_from),
-            effective_to: format_optional_time(rule.effective_to),
-            timezone: rule.timezone,
-            weekday_mask: rule.weekday_mask,
-            local_time_start: rule.local_time_start.map(|value| value.to_string()),
-            local_time_end: rule.local_time_end.map(|value| value.to_string()),
-            rating_policy_enabled: rule.rating_policy_enabled,
-            rating_policy: rule.rating_policy,
-        });
-    }
-    targets.sort_by_key(|target| {
-        (
-            target.provider_code != domain::DEFAULT_MODEL_PRICING_PROVIDER_CODE,
-            target.provider_code.clone(),
-            target.upstream_model_id.clone(),
-        )
-    });
-    Ok(targets)
-}
-
-fn resolve_locale_meta(
-    headers: &HeaderMap,
-    query_locale: Option<String>,
-    user_preferred_locale: Option<String>,
-) -> LocaleMetaResponse {
-    runtime_profile::resolve_locale(runtime_profile::LocaleResolutionInput {
-        query_locale,
-        explicit_header_locale: headers
-            .get("x-1flowbase-locale")
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string),
-        user_preferred_locale,
-        accept_language: headers
-            .get(ACCEPT_LANGUAGE)
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string),
-        fallback_locale: runtime_profile::FALLBACK_LOCALE,
-        supported_locales: runtime_profile::SUPPORTED_LOCALES
-            .iter()
-            .map(|value| value.to_string())
-            .collect(),
-    })
-    .into()
-}
-
 fn requested_locales(locale_meta: &LocaleMetaResponse) -> control_plane::i18n::RequestedLocales {
     control_plane::i18n::RequestedLocales::new(
         locale_meta.resolved_locale.clone(),
@@ -1396,15 +1295,17 @@ pub async fn list_models(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ModelProviderModelCatalogResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let catalog = settings_service(
-        &state,
-        &context.actor,
-        "model_providers.instances.models.view",
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.instances.models.view.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        discovery_interface::ProviderDiscoveryInput::Models { id },
     )
-    .list_models(context.user.id, parse_uuid(&id, "id")?)
     .await?;
-    Ok(Json(ApiSuccess::new(to_model_catalog_response(catalog))))
+    let discovery_interface::ProviderDiscoveryOutput::Models(response) = output else {
+        unreachable!("provider models binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -1418,16 +1319,17 @@ pub async fn refresh_models(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ModelProviderModelCatalogResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let catalog = settings_service(
-        &state,
-        &context.actor,
-        "model_providers.instances.models.refresh",
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.instances.models.refresh.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        discovery_interface::ProviderDiscoveryInput::RefreshModels { id },
     )
-    .refresh_models(context.user.id, parse_uuid(&id, "id")?)
     .await?;
-    Ok(Json(ApiSuccess::new(to_model_catalog_response(catalog))))
+    let discovery_interface::ProviderDiscoveryOutput::Models(response) = output else {
+        unreachable!("provider models refresh binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -1467,22 +1369,22 @@ pub async fn list_options(
     headers: HeaderMap,
     Query(query): Query<ModelProviderCatalogQuery>,
 ) -> Result<Json<ApiSuccess<ModelProviderOptionsResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let locale_meta = resolve_locale_meta(&headers, query.locale, context.user.preferred_locale);
-    let options = service(
-        &state,
-        &context.actor,
-        "other.model-providers",
-        "model_providers.options.view",
+    let locale = catalog_logs_interface::ProviderLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.options.view.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        discovery_interface::ProviderDiscoveryInput::Options {
+            query,
+            locale,
+            settings: false,
+        },
     )
-    .options(context.user.id, requested_locales(&locale_meta))
     .await?;
-    let pricing_targets = current_pricing_targets(&state).await?;
-    Ok(Json(ApiSuccess::new(to_options_view_response(
-        locale_meta,
-        options,
-        pricing_targets,
-    ))))
+    let discovery_interface::ProviderDiscoveryOutput::Options(response) = output else {
+        unreachable!("provider options binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[cfg(test)]

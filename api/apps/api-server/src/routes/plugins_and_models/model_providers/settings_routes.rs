@@ -138,26 +138,6 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
-pub(super) fn settings_service(
-    state: &ApiState,
-    actor: &domain::ActorContext,
-    operation_id: &'static str,
-) -> crate::app_state::ApiModelProviderService {
-    ModelProviderService::for_console_operation(
-        state.store.for_actor(actor.clone()),
-        ApiProviderRuntime::new(state.provider_runtime.clone()),
-        state.provider_secret_master_key.clone(),
-        domain::ConsolePolicyGroup::settings_feature("system.model-providers")
-            .expect("compiled model-provider settings group must be valid"),
-        operation_id,
-    )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_routing_cache_store(state.infrastructure.cache_store())
-}
-
 #[utoipa::path(
     get,
     path = "/api/console/settings/model-providers/options",
@@ -170,19 +150,20 @@ pub async fn list_settings_options(
     headers: HeaderMap,
     Query(query): Query<ModelProviderCatalogQuery>,
 ) -> Result<Json<ApiSuccess<ModelProviderOptionsResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let locale_meta = resolve_locale_meta(&headers, query.locale, context.user.preferred_locale);
-    let options = settings_service(
-        &state,
-        &context.actor,
-        "model_providers.settings_options.view",
+    let locale = catalog_logs_interface::ProviderLocaleHints::from_headers(&headers);
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.model-providers.settings-options.view.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        discovery_interface::ProviderDiscoveryInput::Options {
+            query,
+            locale,
+            settings: true,
+        },
     )
-    .options(context.user.id, requested_locales(&locale_meta))
     .await?;
-    let pricing_targets = current_pricing_targets(&state).await?;
-    Ok(Json(ApiSuccess::new(to_options_view_response(
-        locale_meta,
-        options,
-        pricing_targets,
-    ))))
+    let discovery_interface::ProviderDiscoveryOutput::Options(response) = output else {
+        unreachable!("provider settings options binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }

@@ -29,7 +29,7 @@ impl ProviderLocaleHints {
         }
     }
 
-    fn resolve(
+    pub(crate) fn resolve(
         &self,
         query_locale: Option<String>,
         preferred_locale: Option<String>,
