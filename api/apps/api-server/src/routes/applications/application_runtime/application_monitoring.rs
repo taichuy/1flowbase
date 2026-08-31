@@ -5,25 +5,21 @@ use axum::{
     http::HeaderMap,
     Json,
 };
-use control_plane::{
-    application::ApplicationService,
-    errors::ControlPlaneError,
-    ports::{GetApplicationRunMonitoringReportInput, OrchestrationRuntimeRepository},
-};
+use control_plane::errors::ControlPlaneError;
 use serde::{Deserialize, Serialize};
 use time::{format_description::well_known::Rfc3339, Duration, OffsetDateTime};
 use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
-    app_state::ApiState, error_response::ApiError, middleware::require_session::require_session,
-    response::ApiSuccess, runtime_activity::ApplicationRuntimeActivitySnapshot,
+    app_state::ApiState, error_response::ApiError, response::ApiSuccess,
+    runtime_activity::ApplicationRuntimeActivitySnapshot,
 };
 
 use super::application_logs::{format_optional_time, format_time};
 
 const DEFAULT_TIME_RANGE_DAYS: i64 = 7;
-const SLOW_RUN_THRESHOLD_MS: i64 = 30_000;
+pub(super) const SLOW_RUN_THRESHOLD_MS: i64 = 30_000;
 
 #[derive(Debug, Deserialize, Default, ToSchema)]
 pub struct ApplicationRunMonitoringQuery {
@@ -204,16 +200,21 @@ pub async fn get_application_runtime_activity(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<ApplicationRuntimeActivitySnapshot>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ApplicationService::new(state.store.for_actor(context.actor.clone()))
-        .get_application(context.user.id, id)
-        .await?;
-
-    Ok(Json(ApiSuccess::new(
-        state
-            .runtime_activity
-            .snapshot(id, state.process_started_at),
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.monitoring.activity.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        super::interface_runtime_reads::ApplicationRuntimeReadsInput::GetRuntimeActivity {
+            application_id: id,
+        },
+    )
+    .await?;
+    let super::interface_runtime_reads::ApplicationRuntimeReadsOutput::RuntimeActivity(response) =
+        output
+    else {
+        unreachable!("application runtime activity binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -239,40 +240,25 @@ pub async fn get_application_run_monitoring_report(
     Path(id): Path<Uuid>,
     Query(query): Query<ApplicationRunMonitoringQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationRunMonitoringReportResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ApplicationService::new(state.store.for_actor(context.actor.clone()))
-        .get_application(context.user.id, id)
-        .await?;
-
-    let started_from = parse_optional_time(query.from.as_deref(), "from")?
-        .or_else(|| default_started_from(&query));
-    let started_to = parse_optional_time(query.to.as_deref(), "to")?;
-    let bucket = normalize_monitoring_bucket(query.bucket.as_deref(), query.time_range_days);
-
-    let report = <_ as OrchestrationRuntimeRepository>::get_application_run_monitoring_report(
-        &state.store,
-        id,
-        GetApplicationRunMonitoringReportInput {
-            started_from,
-            started_to,
-            bucket: bucket.to_string(),
-            slow_run_threshold_ms: SLOW_RUN_THRESHOLD_MS,
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.applications.runtime.monitoring.report.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        super::interface_runtime_reads::ApplicationRuntimeReadsInput::GetMonitoringReport {
+            application_id: id,
+            query,
         },
     )
     .await?;
-
-    Ok(Json(ApiSuccess::new(to_report_response(
-        report,
-        ApplicationRunMonitoringMetaResponse {
-            started_from: started_from.map(format_time),
-            started_to: started_to.map(format_time),
-            bucket: bucket.to_string(),
-            slow_run_threshold_ms: SLOW_RUN_THRESHOLD_MS,
-        },
-    ))))
+    let super::interface_runtime_reads::ApplicationRuntimeReadsOutput::MonitoringReport(response) =
+        output
+    else {
+        unreachable!("application monitoring report binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
-fn parse_optional_time(
+pub(super) fn parse_optional_time(
     value: Option<&str>,
     field: &'static str,
 ) -> Result<Option<OffsetDateTime>, ApiError> {
@@ -284,13 +270,18 @@ fn parse_optional_time(
         .transpose()
 }
 
-fn default_started_from(query: &ApplicationRunMonitoringQuery) -> Option<OffsetDateTime> {
+pub(super) fn default_started_from(
+    query: &ApplicationRunMonitoringQuery,
+) -> Option<OffsetDateTime> {
     let days = monitoring_time_range_days(query.time_range_days);
 
     Some(OffsetDateTime::now_utc() - Duration::days(days))
 }
 
-fn normalize_monitoring_bucket(input: Option<&str>, time_range_days: Option<i64>) -> &'static str {
+pub(super) fn normalize_monitoring_bucket(
+    input: Option<&str>,
+    time_range_days: Option<i64>,
+) -> &'static str {
     match input {
         Some("hour") => "hour",
         Some("week") => "week",
@@ -311,7 +302,7 @@ fn monitoring_time_range_days(time_range_days: Option<i64>) -> i64 {
         .unwrap_or(DEFAULT_TIME_RANGE_DAYS)
 }
 
-fn to_report_response(
+pub(super) fn to_report_response(
     report: control_plane::ports::ApplicationRunMonitoringReport,
     meta: ApplicationRunMonitoringMetaResponse,
 ) -> ApplicationRunMonitoringReportResponse {

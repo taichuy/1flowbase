@@ -27,88 +27,8 @@ pub async fn list_application_runs(
     Path(id): Path<Uuid>,
     Query(query): Query<ApplicationRunsQuery>,
 ) -> Result<Json<ApiSuccess<FlowRunSummaryPageResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let application = ensure_application_visible(&state, &context.actor, id).await?;
-    let page = query.page.unwrap_or(1).max(1);
-    let page_size = query.page_size.unwrap_or(20).clamp(1, 100);
-    let created_after = application_runs_created_after(&query);
-    let sort_by = normalize_application_run_sort_by(query.sort_by.as_deref()).to_string();
-    let sort_order = normalize_application_run_sort_order(query.sort_order.as_deref()).to_string();
-    let refresh_cache = should_refresh_application_run_logs(query.cache_mode.as_deref());
-    let cache = state.infrastructure.cache_store();
-    let cache_key = application_log_cache::summary_page_cache_key(
-        context.actor.current_workspace_id,
-        id,
-        &query,
-        page,
-        page_size,
-        &sort_by,
-        &sort_order,
-    );
-
-    if !refresh_cache {
-        if let Some(cached) =
-            application_log_cache::read::<FlowRunSummaryPageResponse>(cache.as_ref(), &cache_key)
-                .await
-        {
-            return Ok(Json(ApiSuccess::new(cached)));
-        }
-    }
-
-    let runs_page =
-        <_ as OrchestrationRuntimeRepository>::list_application_run_logs_page(
-            &state.store,
-            id,
-            control_plane::ports::ListApplicationRunsPageInput {
-                page,
-                page_size,
-                created_after,
-                sort_by: Some(sort_by),
-                sort_order: Some(sort_order),
-            },
-        )
-        .await?;
-
-    let mut items = Vec::with_capacity(runs_page.items.len());
-
-    for log_summary in runs_page.items {
-        let statistics = application_logs::ApplicationRunStatisticsResponse {
-            count_tokens_input_tokens: log_summary.count_tokens_input_tokens,
-            total_tokens: log_summary.total_tokens,
-            input_tokens: log_summary.input_tokens,
-            output_tokens: log_summary.output_tokens,
-            input_cache_hit_tokens: log_summary.input_cache_hit_tokens,
-            input_cache_hit_rate: application_logs::input_cache_hit_rate_for_response(
-                log_summary.total_tokens,
-                log_summary.input_cache_hit_tokens,
-            ),
-            unique_node_count: log_summary.unique_node_count,
-            tool_callback_count: log_summary.tool_callback_count,
-        };
-        items.push(to_flow_run_summary_response(
-            &application,
-            log_summary.run,
-            statistics,
-        ));
-    }
-
-    let response = FlowRunSummaryPageResponse {
-        items,
-        total: runs_page.total,
-        page: runs_page.page,
-        page_size: runs_page.page_size,
-    };
-
-    if application_log_cache::summary_page_cacheable(&response) {
-        application_log_cache::write(
-            cache.as_ref(),
-            &cache_key,
-            &response,
-            application_log_cache::summary_page_cache_ttl(page),
-        )
-        .await;
-    }
-
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.logs.list.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::ListRuns { application_id: id, query }).await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::Runs(response) = output else { unreachable!("application runtime logs binding returned a different output") };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -136,41 +56,9 @@ pub async fn list_application_conversation_messages(
     Path((id, conversation_id)): Path<(Uuid, String)>,
     Query(query): Query<ApplicationConversationMessagesQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationConversationMessagesPageResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-
-    let page =
-        <_ as OrchestrationRuntimeRepository>::list_application_conversation_runs_page(
-            &state.store,
-            id,
-            ListApplicationConversationRunsPageInput {
-                external_conversation_id: conversation_id,
-                around_run_id: query.around_run_id,
-                before_run_id: parse_optional_uuid_cursor(query.before.as_deref()),
-                after_run_id: parse_optional_uuid_cursor(query.after.as_deref()),
-                limit: query.limit.unwrap_or(5),
-            },
-        )
-        .await?;
-    let mut items = Vec::with_capacity(page.items.len());
-    for run in page.items {
-        items.push(to_application_conversation_message_summary_response(
-            run,
-            query.around_run_id,
-        ));
-    }
-
-    Ok(Json(ApiSuccess::new(
-        ApplicationConversationMessagesPageResponse {
-            items,
-            page: ApplicationConversationMessagesPageInfoResponse {
-                has_before: page.has_before,
-                has_after: page.has_after,
-                before_cursor: page.before_cursor.map(|value| value.to_string()),
-                after_cursor: page.after_cursor.map(|value| value.to_string()),
-            },
-        },
-    )))
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.conversations.messages.list.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::ListConversationMessages { application_id: id, conversation_id, query }).await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ConversationMessages(response) = output else { unreachable!("application conversation messages binding returned a different output") };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -196,45 +84,9 @@ pub async fn list_application_run_conversation_messages(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
     Query(query): Query<ApplicationConversationMessagesQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationConversationMessagesPageResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-
-    let projection_page =
-        <_ as OrchestrationRuntimeRepository>::list_application_run_conversation_message_items_page(
-            &state.store,
-            id,
-            run_id,
-            ListApplicationRunConversationMessageItemsPageInput {
-                before_sequence: parse_run_conversation_message_sequence_cursor(
-                    run_id,
-                    query.before.as_deref(),
-                ),
-                after_sequence: parse_run_conversation_message_sequence_cursor(
-                    run_id,
-                    query.after.as_deref(),
-                ),
-                limit: query.limit.unwrap_or(5),
-            },
-        )
-        .await?;
-    if projection_page.total_count > 0 {
-        return Ok(Json(ApiSuccess::new(
-            conversation_messages_from_projection_page(run_id, projection_page),
-        )));
-    }
-
-    let current_item =
-        <_ as OrchestrationRuntimeRepository>::get_application_run_conversation_current_item(
-        &state.store,
-        id,
-        run_id,
-    )
-    .await?
-    .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-
-    Ok(Json(ApiSuccess::new(
-        conversation_messages_from_current_item(run_id, current_item),
-    )))
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.run-conversation.messages.list.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::ListRunConversationMessages { application_id: id, run_id, query }).await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ConversationMessages(response) = output else { unreachable!("application run conversation messages binding returned a different output") };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 async fn ensure_application_run_trace_projection_status(
@@ -454,11 +306,8 @@ pub async fn get_application_run_overview(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunOverviewResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let application = ensure_application_visible(&state, &context.actor, id).await?;
-    let overview = load_application_run_overview(state, id, run_id).await?;
-    let response = to_application_run_overview_response(&application, overview);
-
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.run.overview.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::GetRunOverview { application_id: id, run_id }).await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::RunOverview(response) = output else { unreachable!("application run overview binding returned a different output") };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -481,55 +330,8 @@ pub async fn get_application_run_trace_tree(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceTreeResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let application = ensure_application_visible(&state, &context.actor, id).await?;
-    let status = ensure_application_run_trace_projection_status(&state, id, run_id).await?;
-    let flow_run = <_ as OrchestrationRuntimeRepository>::get_flow_run(
-        &state.store,
-        id,
-        run_id,
-    )
-    .await?
-    .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-    let nodes = if projection_is_succeeded(&status) {
-        <_ as OrchestrationRuntimeRepository>::list_application_run_trace_roots(
-            &state.store,
-            run_id,
-        )
-        .await?
-    } else {
-        Vec::new()
-    };
-    let statistics = if projection_is_succeeded(&status) {
-        to_trace_projection_statistics_response(
-            <_ as OrchestrationRuntimeRepository>::get_application_run_trace_statistics(
-                &state.store,
-                run_id,
-            )
-            .await?,
-        )
-    } else {
-        to_trace_projection_statistics_response(ApplicationRunTraceProjectionStatistics {
-            total_tokens: None,
-            input_tokens: None,
-            output_tokens: None,
-            input_cache_hit_tokens: None,
-            unique_node_count: 0,
-            tool_callback_count: 0,
-        })
-    };
-    let response = ApplicationRunTraceTreeResponse {
-        run: application_run_log_response_for_trace_tree(&application, &flow_run),
-        statistics,
-        flow_run: to_flow_run_response(flow_run),
-        answer_snapshot: None,
-        projection_status: to_trace_projection_status_response(&status),
-        nodes: nodes
-            .into_iter()
-            .map(to_trace_node_summary_from_projection)
-            .collect(),
-    };
-
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.trace-tree.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::GetTraceTree { application_id: id, run_id }).await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::TraceTree(response) = output else { unreachable!("application trace tree binding returned a different output") };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -556,64 +358,8 @@ pub async fn get_application_run_trace_node_children(
     Path((id, run_id)): Path<(Uuid, Uuid)>,
     Query(query): Query<ApplicationRunTraceNodeChildrenQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceNodeChildrenResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-    let status = ensure_application_run_trace_projection_status(&state, id, run_id).await?;
-    let projection_status = to_trace_projection_status_response(&status);
-    let page_size = application_run_trace_children_page_size(query.page_size);
-    let parent_trace_node_id = parse_trace_projection_node_id(&query.parent_trace_node_id)?;
-    let cursor =
-        parse_application_run_trace_children_cursor(query.cursor.as_deref(), parent_trace_node_id)?;
-    if !projection_is_succeeded(&status) {
-        return Ok(Json(ApiSuccess::new(
-            ApplicationRunTraceNodeChildrenResponse {
-                projection_status,
-                items: Vec::new(),
-                page_info: ApplicationRunTraceNodeChildrenPageInfoResponse {
-                    has_more: false,
-                    next_cursor: None,
-                    page_size,
-                },
-            },
-        )));
-    }
-    <_ as OrchestrationRuntimeRepository>::get_application_run_trace_node(
-        &state.store,
-        run_id,
-        parent_trace_node_id,
-    )
-    .await?
-    .ok_or(ControlPlaneError::NotFound("trace_node"))?;
-    let page = <_ as OrchestrationRuntimeRepository>::list_application_run_trace_children_page(
-            &state.store,
-            ListApplicationRunTraceChildrenPageInput {
-                flow_run_id: run_id,
-                parent_trace_node_id,
-                page_size,
-                cursor,
-            },
-        )
-        .await?;
-    let next_cursor = page
-        .next_cursor
-        .as_ref()
-        .map(|cursor| encode_application_run_trace_children_cursor(cursor, parent_trace_node_id))
-        .transpose()?;
-    let items = page
-        .items
-        .into_iter()
-        .map(to_trace_node_summary_from_projection)
-        .collect();
-    let response = ApplicationRunTraceNodeChildrenResponse {
-        projection_status,
-        items,
-        page_info: ApplicationRunTraceNodeChildrenPageInfoResponse {
-            has_more: page.has_more,
-            next_cursor,
-            page_size: page.page_size,
-        },
-    };
-
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.trace-tree.children.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::GetTraceChildren { application_id: id, run_id, query }).await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::TraceChildren(response) = output else { unreachable!("application trace children binding returned a different output") };
     Ok(Json(ApiSuccess::new(response)))
 }
 
@@ -922,34 +668,9 @@ pub async fn get_application_run_resume_timeline(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunResumeTimelineResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-    let timeline =
-        <_ as OrchestrationRuntimeRepository>::get_application_run_resume_timeline(
-            &state.store,
-            id,
-            run_id,
-        )
-        .await?
-        .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-    let events = timeline
-        .events
-        .into_iter()
-        .map(to_run_event_response)
-        .collect();
-    let callback_tasks = timeline
-        .callback_tasks
-        .into_iter()
-        .map(to_callback_task_response)
-        .collect();
-
-    Ok(Json(ApiSuccess::new(
-        ApplicationRunResumeTimelineResponse {
-            flow_run: to_flow_run_response(timeline.flow_run),
-            callback_tasks,
-            events,
-        },
-    )))
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.resume-timeline.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::GetResumeTimeline { application_id: id, run_id }).await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ResumeTimeline(response) = output else { unreachable!("application resume timeline binding returned a different output") };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -971,42 +692,9 @@ pub async fn get_application_run_resume_timeline_summary(
     headers: HeaderMap,
     Path((id, run_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunResumeTimelineSummaryResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-    let timeline = <_ as OrchestrationRuntimeRepository>::get_application_run_resume_timeline_summary(
-        &state.store,
-        id,
-        run_id,
-    )
-    .await?
-    .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-
-    Ok(Json(ApiSuccess::new(
-        ApplicationRunResumeTimelineSummaryResponse {
-            flow_run_status: timeline.flow_run_status.as_str().to_string(),
-            callback_tasks: timeline
-                .callback_tasks
-                .into_iter()
-                .map(|task| ApplicationRunResumeCallbackSummaryResponse {
-                    id: task.id.to_string(),
-                    callback_kind: task.callback_kind,
-                    status: task.status.as_str().to_string(),
-                    created_at: format_time(task.created_at),
-                    completed_at: format_optional_time(task.completed_at),
-                })
-                .collect(),
-            events: timeline
-                .events
-                .into_iter()
-                .map(|event| ApplicationRunResumeEventSummaryResponse {
-                    id: event.id.to_string(),
-                    event_type: event.event_type,
-                    description: event.description,
-                    created_at: format_time(event.created_at),
-                })
-                .collect(),
-        },
-    )))
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.resume-timeline-summary.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::GetResumeTimelineSummary { application_id: id, run_id }).await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::ResumeTimelineSummary(response) = output else { unreachable!("application resume timeline summary binding returned a different output") };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -1029,54 +717,9 @@ pub async fn get_application_run_node_last_run(
     headers: HeaderMap,
     Path((id, run_id, node_id)): Path<(Uuid, Uuid, String)>,
 ) -> Result<Json<ApiSuccess<Option<NodeLastRunResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    ensure_application_visible(&state, &context.actor, id).await?;
-
-    let detail = <_ as OrchestrationRuntimeRepository>::get_application_run_detail(
-        &state.store,
-        id,
-        run_id,
-    )
-    .await?
-    .ok_or(ControlPlaneError::NotFound("flow_run"))?;
-    let runtime_events = <_ as OrchestrationRuntimeRepository>::list_runtime_events(
-        &state.store,
-        run_id,
-        0,
-    )
-    .await?;
-    let detail =
-        enrich_application_run_detail_visible_internal_llm_route_traces(detail, &runtime_events);
-
-    let Some(node_run) = detail
-        .node_runs
-        .into_iter()
-        .rev()
-        .find(|candidate| candidate.node_id == node_id)
-    else {
-        return Ok(Json(ApiSuccess::new(None)));
-    };
-
-    let node_run_id = node_run.id;
-    let checkpoints = detail
-        .checkpoints
-        .into_iter()
-        .filter(|checkpoint| checkpoint.node_run_id == Some(node_run_id))
-        .collect();
-    let events = detail
-        .events
-        .into_iter()
-        .filter(|event| event.node_run_id == Some(node_run_id))
-        .collect();
-
-    Ok(Json(ApiSuccess::new(Some(to_node_last_run_response(
-        domain::NodeLastRun {
-            flow_run: detail.flow_run,
-            node_run,
-            checkpoints,
-            events,
-        },
-    )))))
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.run-node-last-run.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_runtime_reads::ApplicationRuntimeReadsInput::GetRunNodeLastRun { application_id: id, run_id, node_id }).await?;
+    let interface_runtime_reads::ApplicationRuntimeReadsOutput::RunNodeLastRun(response) = output else { unreachable!("application run node last-run binding returned a different output") };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
