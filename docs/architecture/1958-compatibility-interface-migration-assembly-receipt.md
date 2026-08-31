@@ -12,10 +12,10 @@
 - Prior final QA assembly: `beta@9c367ddcb19e1da7f89247d6fe5808afd70521f6`
 - Fixture-remediation QA assembly: `beta@3426bebde34796b8266643c472d6eb8a9b4c8be2`
 - Snapshot-visibility QA assembly: `beta@2b1def1b39559228eca206498e7f4456ecab6040`
-- Health-fixture product assembly: `beta@5769959d718886303ad447ecb6d084b403ae0acf` plus this receipt refresh
-- Final assembly: receipt refresh commit；集中 QA 必须用 `git rev-parse HEAD` 自动捕获完整 SHA
+- Health-fixture product assembly: `beta@5769959d718886303ad447ecb6d084b403ae0acf`
+- Final assembly: `beta@d5620f942eef6e9c5c770eaa3a471cd3f40f4ee6`
 - Official plugins baseline: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
-- Result: `REASSEMBLED / FRESH_QA_PENDING`
+- Result: `QA_PASS with non-causal frontend timing warning`
 - Evidence root: `tmp/test-governance/1958-compatibility-interface-migration/`
 
 本 Receipt 只冻结开发 assembly 的内容与验收矩阵，不提前声明 CIM AC 或 QA 通过。首次 fresh
@@ -30,8 +30,10 @@ CI-F03/CI-F04。随后对 `9c367ddcb19e1da7f89247d6fe5808afd70521f6` 的 21-row 
 对 `3426bebde34796b8266643c472d6eb8a9b4c8be2` 的 fresh QA 完成 21/21 rows，结果为
 `18 PASS / 3 FAIL / 0 UNRUN`、2486 passed / 0 failed 加一个 API test compilation failure。
 该 E0433 由 CI-F06 `180376947...` 删除仍被三个 crate-internal tests 使用的 `pub(crate)` 类型重导出
-引入，不是输入 `9c367ddcb...` 遗留。CI-F08 恢复该窄重导出；fresh QA 必须对本 refresh 后
-不变的完整 HEAD 从 QA-001 重启全部 21 rows。
+引入，不是输入 `9c367ddcb...` 遗留。CI-F08 恢复该窄重导出。最终 fresh centralized QA
+绑定 `d5620f942eef6e9c5c770eaa3a471cd3f40f4ee6` 完成全部 21 rows：20 direct PASS、
+1 `PASS_WITH_EXACT_RERUN`、0 product failures、0 unrun；settled、去重后的自动化证据为
+2551 passed / 0 failed，Blocking 0 / High 0 / Warning 3。
 
 ## Packet ledger
 
@@ -54,7 +56,7 @@ CI-F03/CI-F04。随后对 `9c367ddcb19e1da7f89247d6fe5808afd70521f6` 的 21-row 
 | CI-F08 | `4741e0f65df23afbe8e1329c9115a063bf37a07b` | ASSEMBLED | 恢复 crate-internal Snapshot query 类型重导出；完整 api-server all-targets no-run 编译通过 |
 | CI-F09 | this receipt refresh commit | ASSEMBLED | E0433 提交归因校正、visibility fix 与 fresh candidate freeze |
 | CI-F10 | `5769959d718886303ad447ecb6d084b403ae0acf` | ASSEMBLED | Health integration 复用完整 BootSnapshot compiler；member mutation Router 4/4 |
-| CI-F11 | this receipt refresh commit | ASSEMBLED | snapshot-visibility QA blocker、health fixture fix 与 fresh candidate freeze |
+| CI-F11 | `d5620f942eef6e9c5c770eaa3a471cd3f40f4ee6` | ASSEMBLED | snapshot-visibility QA blocker、health fixture fix 与 final candidate freeze |
 
 Packet 阶段只执行 `cargo fmt`、`cargo check -p api-server` 和
 `cargo check -p api-server --tests` 作为安全装配；没有运行 Packet 测试、reviewer 或 QA。
@@ -141,6 +143,38 @@ used by production and Frontstage tests. Directed Health Router evidence is 4/4,
 mutation login path. No product handler, Cookie owner, fallback, API contract, permission, migration
 or Runtime behavior changes.
 
+## Final fresh centralized QA settlement
+
+Final QA remained bound to `beta@d5620f942eef6e9c5c770eaa3a471cd3f40f4ee6` and clean official
+plugins `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`. All 21 manifest rows are
+settled with 20 direct PASS and one `PASS_WITH_EXACT_RERUN`; there are 0 product failures and 0
+unrun rows. The overall result is `QA_PASS with non-causal frontend timing warning`.
+
+QA-011's original shared frontend batch remains immutable evidence at 1181 passed / 2 failed. The
+two exact failing files immediately passed an isolated 42/42 rerun. Because #1958 has no `web/`
+product diff from its input to the final candidate and the failures were not reproducible, QA-011 is
+settled as `PASS_WITH_EXACT_RERUN`, not represented as an original first-run pass. The raw failure
+log remains at
+`tmp/test-governance/1958-compatibility-interface-migration/attempt-health-fixture/qa-011-frontend-app-consumers.log`.
+
+The final settled, non-duplicate automation count is 2551 passed / 0 failed. The earlier
+`qa-021-completeness.log` value 1543 was an incomplete intermediate count; the arithmetic audit in
+`qa-021-count-audit.log` supersedes it with 2551. Neither historical log is deleted or rewritten.
+
+Final severity is Blocking 0 / High 0 / Warning 3:
+
+1. `compile_extension_boot_snapshot` exposes `MainDurableStore` and
+   `ExtensionGraphInputAssembly`; only the api-server Composition Root and integration fixtures may
+   consume it, and it must not evolve into a public SDK.
+2. The `DurableHostInfrastructureProvidersViewQuery` `pub(crate)` re-export exists only for
+   crate-internal tests and produces an unused warning in non-test lib compilation.
+3. The frontend shared batch produced two non-causal timing failures; the exact two files passed
+   42/42, and the candidate contains no Delivery `web/` diff.
+
+`SAME_ROOT_RECURRED=NO`. CIM-AC-001 through CIM-AC-012 are candidate GREEN. This clarification does
+not modify product code, tests, Cargo, database schema, migrations, external protocol behavior or
+official plugin sources.
+
 ## Final route ownership
 
 ```text
@@ -182,29 +216,30 @@ the removed symbols into production protocol sources.
 
 ## CIM acceptance candidate map
 
-| AC | Candidate evidence | Pre-QA status |
+| AC | Candidate evidence | Final candidate status |
 | --- | --- | --- |
-| CIM-AC-001 | finite 7-entry inventory and source-anchor fixture | ASSEMBLED |
-| CIM-AC-002 | explicit blocking bindings and compatibility route tests | ASSEMBLED |
-| CIM-AC-003 | server-stream/WebSocket typed runtime and terminal fixtures | ASSEMBLED |
-| CIM-AC-004 | complete-snapshot real Router valid/invalid/cookie/fail-closed tests | PENDING REVERIFY |
-| CIM-AC-005 | workflow extension plan plus existing auth/CSRF/sync/async/Runtime tests | ASSEMBLED |
-| CIM-AC-006 | registry exactly-one compiler negatives and source owner gates | ASSEMBLED |
-| CIM-AC-007 | typed ports; dependency and infrastructure-import boundaries | ASSEMBLED |
-| CIM-AC-008 | deleted legacy path set and Rust/Node residue gates | ASSEMBLED |
-| CIM-AC-009 | migration/API/permission/runtime/plugin comparison deferred to frozen QA | PENDING QA |
-| CIM-AC-010 | inventory HOLD row and no Internal binding gate | ASSEMBLED |
-| CIM-AC-011 | #1944 publish negatives plus complete catalog/factory/handler assembly | ASSEMBLED |
-| CIM-AC-012 | candidate-bound fresh command manifest, failed=0, unrun=0 | PENDING QA |
+| CIM-AC-001 | finite 7-entry inventory and source-anchor fixture | GREEN |
+| CIM-AC-002 | explicit blocking bindings and compatibility route tests | GREEN |
+| CIM-AC-003 | server-stream/WebSocket typed runtime and terminal fixtures | GREEN |
+| CIM-AC-004 | complete-snapshot real Router valid/invalid/cookie/fail-closed tests | GREEN |
+| CIM-AC-005 | workflow extension plan plus existing auth/CSRF/sync/async/Runtime tests | GREEN |
+| CIM-AC-006 | registry exactly-one compiler negatives and source owner gates | GREEN |
+| CIM-AC-007 | typed ports; dependency and infrastructure-import boundaries | GREEN |
+| CIM-AC-008 | deleted legacy path set and Rust/Node residue gates | GREEN |
+| CIM-AC-009 | migration/API/permission/runtime/plugin comparison in frozen QA | GREEN |
+| CIM-AC-010 | inventory HOLD row and no Internal binding gate | GREEN |
+| CIM-AC-011 | #1944 publish negatives plus complete catalog/factory/handler assembly | GREEN |
+| CIM-AC-012 | candidate-bound manifest: 0 product failures、0 unrun、Blocking 0、High 0 | GREEN |
 
 ## Frozen Test Batch
 
-The centralized manifest must cover all #1958 Test Batch rows: interface-runtime; access-control;
+The centralized manifest covered all #1958 Test Batch rows: interface-runtime; access-control;
 full api-server unit/integration; Public sign-in; compatibility blocking/SSE/WebSocket; `/api/ex`;
 AuthN/AuthZ/row-scope/CSRF/deadline/cancel/idempotency; Node/Cargo residue and dependency boundaries;
 runtime-core/orchestration-runtime/runtime-extension-host; migration rehearsal and zero diff;
 frontend consumers; Compose/dev-up/deploy/rollback; fmt/workspace check/locked-offline metadata/diff;
 official plugin Node, 9 executable builds and real Host conformance; final paired identity and
-cleanliness. Unrun rows must be zero.
+cleanliness. Final result: 20 direct PASS + 1 `PASS_WITH_EXACT_RERUN`, 0 product failures, 0 unrun,
+and settled automated evidence 2551/0.
 
 No push is authorized. #1958, #1893 and #1944 remain open; this receipt does not settle Root AC.
