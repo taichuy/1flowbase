@@ -155,6 +155,11 @@ pub(crate) fn production_interface_contributions(
         Arc::clone(&state.authenticator_registry),
         state.bootstrap_workspace_id,
     );
+    let console_application_orchestration =
+        crate::routes::application_orchestration::interface::port(
+            state.store.clone(),
+            state.bootstrap_workspace_id,
+        );
 
     Ok(vec![
         InterfaceRegistryContribution::new(
@@ -241,6 +246,19 @@ pub(crate) fn production_interface_contributions(
             ],
             &["api-server.console-role-access"],
             crate::routes::role_access_interface::compile_registry(console_role_access)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-application-orchestration",
+            &[
+                "applications.orchestration.get",
+                "applications.orchestration.draft.save",
+                "applications.orchestration.version.restore",
+                "applications.orchestration.version.update",
+            ],
+            &["api-server.console-application-orchestration"],
+            crate::routes::application_orchestration::interface::compile_registry(
+                console_application_orchestration,
+            )?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-auth-center",

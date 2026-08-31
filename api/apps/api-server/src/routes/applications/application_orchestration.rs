@@ -28,7 +28,7 @@ use control_plane::{
     flow::{
         AgentFlowTemplateDependency, AgentFlowTemplateDependencyStatus, AgentFlowTemplatePackage,
         AgentFlowTemplatePreview, AgentFlowTemplateUnresolvedNode, FlowService,
-        ImportAgentFlowTemplateResult, SaveFlowDraftCommand, UpdateFlowVersionMetadataCommand,
+        ImportAgentFlowTemplateResult,
     },
     i18n_catalog::CatalogResolver,
     plugin_management::ExtensionInstallationService,
@@ -57,6 +57,8 @@ use crate::{
         console_get, console_patch, console_post, console_put, ConsoleRouteAssembly,
     },
 };
+
+pub(crate) mod interface;
 
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct SaveDraftBody {
@@ -807,12 +809,13 @@ fn collect_referenced_i18n_text_refs(document: &serde_json::Value) -> Vec<Compil
     references.into_iter().collect()
 }
 
-async fn referenced_messages(
-    api_state: &ApiState,
+async fn referenced_messages_with(
+    store: &storage_durable_postgres::MainDurableStore,
+    bootstrap_workspace_id: Uuid,
     locale: &domain::CatalogLocale,
     document: &serde_json::Value,
 ) -> Result<Vec<ReferencedI18nMessageResponse>, ApiError> {
-    let resolver = CatalogResolver::new(api_state.store.clone(), api_state.bootstrap_workspace_id);
+    let resolver = CatalogResolver::new(store.clone(), bootstrap_workspace_id);
     let mut messages = Vec::new();
 
     for reference in collect_referenced_i18n_text_refs(document) {
@@ -820,7 +823,7 @@ async fn referenced_messages(
             continue;
         };
         let text = resolver
-            .resolve(api_state.bootstrap_workspace_id, &identity, locale)
+            .resolve(bootstrap_workspace_id, &identity, locale)
             .await?
             .value;
         messages.push(ReferencedI18nMessageResponse {
@@ -832,12 +835,15 @@ async fn referenced_messages(
     Ok(messages)
 }
 
-async fn to_response(
-    api_state: &ApiState,
+async fn to_response_with(
+    store: &storage_durable_postgres::MainDurableStore,
+    bootstrap_workspace_id: Uuid,
     locale: &domain::CatalogLocale,
     state: domain::FlowEditorState,
 ) -> Result<OrchestrationStateResponse, ApiError> {
-    let messages = referenced_messages(api_state, locale, &state.draft.document).await?;
+    let messages =
+        referenced_messages_with(store, bootstrap_workspace_id, locale, &state.draft.document)
+            .await?;
 
     Ok(OrchestrationStateResponse {
         flow_id: state.flow.id.to_string(),
@@ -866,6 +872,20 @@ async fn to_response(
         autosave_interval_seconds: state.autosave_interval_seconds,
         user_protection_limit: domain::FLOW_USER_PROTECTION_LIMIT,
     })
+}
+
+async fn to_response(
+    api_state: &ApiState,
+    locale: &domain::CatalogLocale,
+    state: domain::FlowEditorState,
+) -> Result<OrchestrationStateResponse, ApiError> {
+    to_response_with(
+        &api_state.store,
+        api_state.bootstrap_workspace_id,
+        locale,
+        state,
+    )
+    .await
 }
 
 fn to_template_application_response(
@@ -997,15 +1017,23 @@ pub async fn get_orchestration(
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<OrchestrationStateResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
-    let flow_state = FlowService::new(state.store.for_actor(context.actor.clone()))
-        .get_or_create_editor_state(context.user.id, id)
+    let output: interface::ApplicationOrchestrationOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.orchestration.get.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+                state: Arc::clone(&state),
+                headers: headers.clone(),
+            },
+            interface::ApplicationOrchestrationInput::Get {
+                application_id: id,
+                locale: crate::routes::console_interface::ConsoleLocaleHints::from_headers(
+                    &headers,
+                ),
+            },
+        )
         .await?;
-
-    Ok(Json(ApiSuccess::new(
-        to_response(&state, &locale, flow_state).await?,
-    )))
+    Ok(Json(ApiSuccess::new(output.into_state()?)))
 }
 
 #[utoipa::path(
@@ -1029,24 +1057,23 @@ pub async fn save_draft(
     Path(id): Path<Uuid>,
     Json(body): Json<SaveDraftBody>,
 ) -> Result<Json<ApiSuccess<OrchestrationStateResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let locale =
-        crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
-    require_csrf(&headers, &context)?;
-
-    let flow_state = FlowService::new(state.store.for_actor(context.actor.clone()))
-        .save_draft(SaveFlowDraftCommand {
-            actor_user_id: context.user.id,
-            application_id: id,
-            document: body.document,
-            change_kind: parse_change_kind(&body.change_kind)?,
-            summary: body.summary,
-        })
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output: interface::ApplicationOrchestrationOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.orchestration.draft.save.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+                state: Arc::clone(&state),
+                headers,
+            },
+            interface::ApplicationOrchestrationInput::SaveDraft {
+                application_id: id,
+                body,
+                locale,
+            },
+        )
         .await?;
-
-    Ok(Json(ApiSuccess::new(
-        to_response(&state, &locale, flow_state).await?,
-    )))
+    Ok(Json(ApiSuccess::new(output.into_state()?)))
 }
 
 #[utoipa::path(
@@ -1068,18 +1095,23 @@ pub async fn restore_version(
     headers: HeaderMap,
     Path((id, version_id)): Path<(Uuid, Uuid)>,
 ) -> Result<Json<ApiSuccess<OrchestrationStateResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let locale =
-        crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
-    require_csrf(&headers, &context)?;
-
-    let flow_state = FlowService::new(state.store.for_actor(context.actor.clone()))
-        .restore_version(context.user.id, id, version_id)
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output: interface::ApplicationOrchestrationOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.orchestration.version.restore.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+                state: Arc::clone(&state),
+                headers,
+            },
+            interface::ApplicationOrchestrationInput::RestoreVersion {
+                application_id: id,
+                version_id,
+                locale,
+            },
+        )
         .await?;
-
-    Ok(Json(ApiSuccess::new(
-        to_response(&state, &locale, flow_state).await?,
-    )))
+    Ok(Json(ApiSuccess::new(output.into_state()?)))
 }
 
 #[utoipa::path(
@@ -1104,23 +1136,22 @@ pub async fn update_version(
     Path((id, version_id)): Path<(Uuid, Uuid)>,
     Json(body): Json<UpdateVersionBody>,
 ) -> Result<Json<ApiSuccess<OrchestrationStateResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let locale =
-        crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale.clone());
-    require_csrf(&headers, &context)?;
-
-    let flow_state = FlowService::new(state.store.for_actor(context.actor.clone()))
-        .update_version_metadata(UpdateFlowVersionMetadataCommand {
-            actor_user_id: context.user.id,
-            application_id: id,
-            version_id,
-            summary: body.summary,
-            summary_is_custom: body.summary_is_custom,
-            is_user_protected: body.is_user_protected,
-        })
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output: interface::ApplicationOrchestrationOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.applications.orchestration.version.update.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+                state: Arc::clone(&state),
+                headers,
+            },
+            interface::ApplicationOrchestrationInput::UpdateVersion {
+                application_id: id,
+                version_id,
+                body,
+                locale,
+            },
+        )
         .await?;
-
-    Ok(Json(ApiSuccess::new(
-        to_response(&state, &locale, flow_state).await?,
-    )))
+    Ok(Json(ApiSuccess::new(output.into_state()?)))
 }
