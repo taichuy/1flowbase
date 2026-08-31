@@ -16,20 +16,26 @@ use control_plane::{
         },
     },
     orchestration_runtime::{OrchestrationRuntimeService, StartPublishedFlowRunCommand},
+    ports::{CacheStore, RuntimeEventStream, TaskQueue},
 };
+use runtime_core::runtime_engine::RuntimeEngine;
 use serde::Serialize;
 use serde_json::{json, Map, Value};
+use storage_durable_postgres::MainDurableStore;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
     extension_bus::ConsoleAuthenticationCredential,
-    routes::application_public_api::native::{api_provider_runtime, service_error, NativeApiError},
+    provider_runtime::ApiProviderRuntime,
+    routes::application_public_api::native::{service_error, NativeApiError},
     routes::application_public_api::workflow_extension_interface::{
         self, WorkflowExtensionFuture, WorkflowExtensionInput, WorkflowExtensionOutput,
         WorkflowExtensionPort, WorkflowExtensionTargetError,
     },
-    runtime_activity::{scope_application_activity, ApplicationActivityKind},
+    runtime_activity::{
+        scope_application_activity, ApplicationActivityKind, ApplicationRuntimeActivityTracker,
+    },
 };
 
 #[derive(Debug, Serialize)]
@@ -118,17 +124,32 @@ pub async fn invoke_workflow_extension(
     project_workflow_extension_output(outcome.into_value())
 }
 
-impl WorkflowExtensionPort for ApiState {
+#[derive(Clone)]
+struct WorkflowExtensionAdapter {
+    store: MainDurableStore,
+    runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
+    provider_runtime: ApiProviderRuntime,
+    runtime_engine: Arc<RuntimeEngine>,
+    provider_secret_master_key: String,
+    api_node_id: String,
+    provider_install_root: String,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    cache_store: Arc<dyn CacheStore>,
+    task_queue: Arc<dyn TaskQueue>,
+    runtime_event_stream: Arc<dyn RuntimeEventStream>,
+}
+
+impl WorkflowExtensionPort for WorkflowExtensionAdapter {
     fn invoke<'a>(
         &'a self,
         actor: &'a domain::ActorContext,
         principal: WorkflowHttpPrincipal,
         input: WorkflowExtensionInput,
     ) -> WorkflowExtensionFuture<'a> {
-        let state = Arc::new(self.clone());
+        let dependencies = self.clone();
         let actor = actor.clone();
         Box::pin(async move {
-            let run = WorkflowExtensionRunService::new(state.store.clone())
+            let run = WorkflowExtensionRunService::new(dependencies.store.clone())
                 .create_run(CreateWorkflowExtensionRunCommand {
                     actor,
                     principal,
@@ -139,11 +160,14 @@ impl WorkflowExtensionPort for ApiState {
                 .await
                 .map_err(workflow_extension_error)
                 .map_err(WorkflowExtensionTargetError)?;
-            let _http_activity = state
+            let _http_activity = dependencies
                 .runtime_activity
                 .start(run.application_id, ApplicationActivityKind::HttpRequest);
-            let execution =
-                spawn_workflow_extension_execution(state.clone(), run.application_id, run.id);
+            let execution = spawn_workflow_extension_execution(
+                dependencies.clone(),
+                run.application_id,
+                run.id,
+            );
 
             if run.response_mode == WorkflowExtensionResponseMode::Async {
                 return Ok(WorkflowExtensionOutput::Accepted {
@@ -175,6 +199,35 @@ impl WorkflowExtensionPort for ApiState {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn workflow_extension_port(
+    store: MainDurableStore,
+    runtime_activity: Arc<ApplicationRuntimeActivityTracker>,
+    provider_runtime: ApiProviderRuntime,
+    runtime_engine: Arc<RuntimeEngine>,
+    provider_secret_master_key: String,
+    api_node_id: String,
+    provider_install_root: String,
+    file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    cache_store: Arc<dyn CacheStore>,
+    task_queue: Arc<dyn TaskQueue>,
+    runtime_event_stream: Arc<dyn RuntimeEventStream>,
+) -> Arc<dyn WorkflowExtensionPort> {
+    Arc::new(WorkflowExtensionAdapter {
+        store,
+        runtime_activity,
+        provider_runtime,
+        runtime_engine,
+        provider_secret_master_key,
+        api_node_id,
+        provider_install_root,
+        file_storage_registry,
+        cache_store,
+        task_queue,
+        runtime_event_stream,
+    })
+}
+
 pub(crate) fn compile_workflow_extension_registry(
     port: Arc<dyn WorkflowExtensionPort>,
 ) -> Result<
@@ -185,29 +238,29 @@ pub(crate) fn compile_workflow_extension_registry(
 }
 
 fn spawn_workflow_extension_execution(
-    state: Arc<ApiState>,
+    dependencies: WorkflowExtensionAdapter,
     application_id: uuid::Uuid,
     flow_run_id: uuid::Uuid,
 ) -> tokio::task::JoinHandle<anyhow::Result<domain::ApplicationRunDetail>> {
     tokio::spawn(async move {
-        let _execution_activity = state.runtime_activity.start(
+        let _execution_activity = dependencies.runtime_activity.start(
             application_id,
             ApplicationActivityKind::ApplicationExecution,
         );
         let runtime_service = OrchestrationRuntimeService::new(
-            state.store.clone(),
-            api_provider_runtime(&state),
-            state.runtime_engine.clone(),
-            state.provider_secret_master_key.clone(),
+            dependencies.store.clone(),
+            dependencies.provider_runtime.clone(),
+            dependencies.runtime_engine.clone(),
+            dependencies.provider_secret_master_key.clone(),
         )
         .with_node_artifact_context(
-            state.api_node_id.clone(),
-            state.provider_install_root.clone(),
+            dependencies.api_node_id.clone(),
+            dependencies.provider_install_root.clone(),
         )
-        .with_file_storage_registry(state.file_storage_registry.clone())
-        .with_llm_routing_counter_store(state.infrastructure.cache_store())
-        .with_provider_request_log_queue(state.infrastructure.task_queue())
-        .with_runtime_event_stream(state.runtime_event_stream.clone());
+        .with_file_storage_registry(dependencies.file_storage_registry.clone())
+        .with_llm_routing_counter_store(dependencies.cache_store.clone())
+        .with_provider_request_log_queue(dependencies.task_queue.clone())
+        .with_runtime_event_stream(dependencies.runtime_event_stream.clone());
         scope_application_activity(
             application_id,
             runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {

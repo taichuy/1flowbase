@@ -187,7 +187,19 @@ pub(crate) fn production_interface_contributions(
             &["workflow-extension.invoke"],
             &["api-server.workflow-extension"],
             crate::routes::application_public_api::ex::compile_workflow_extension_registry(
-                state.clone(),
+                crate::routes::application_public_api::ex::workflow_extension_port(
+                    state.store.clone(),
+                    Arc::clone(&state.runtime_activity),
+                    crate::routes::application_public_api::native::api_provider_runtime(state),
+                    Arc::clone(&state.runtime_engine),
+                    state.provider_secret_master_key.clone(),
+                    state.api_node_id.clone(),
+                    state.provider_install_root.clone(),
+                    Arc::clone(&state.file_storage_registry),
+                    state.infrastructure.cache_store(),
+                    state.infrastructure.task_queue(),
+                    Arc::clone(&state.runtime_event_stream),
+                ),
             )?,
         ),
     ])
