@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
 use axum::{extract::State, http::HeaderMap, Json, Router};
-use control_plane::workspace::{UpdateWorkspaceCommand, WorkspaceService};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
@@ -28,7 +26,7 @@ pub struct WorkspaceResponse {
     pub introduction: String,
 }
 
-fn to_workspace_response(workspace: domain::WorkspaceRecord) -> WorkspaceResponse {
+pub(crate) fn to_workspace_response(workspace: domain::WorkspaceRecord) -> WorkspaceResponse {
     WorkspaceResponse {
         id: workspace.id.to_string(),
         name: workspace.name,
@@ -62,12 +60,20 @@ pub async fn get_workspace(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<WorkspaceResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let workspace = WorkspaceService::new(state.store.for_actor(context.actor.clone()))
-        .get_workspace(context.actor.current_workspace_id)
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_workspace_response(workspace))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.workspace.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::membership_interface::MembershipInput::GetWorkspace,
+    )
+    .await?;
+    let crate::routes::membership_interface::MembershipOutput::Workspace(workspace) = output else {
+        return Err(anyhow::anyhow!("workspace output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(workspace)))
 }
 
 #[utoipa::path(
@@ -81,19 +87,18 @@ pub async fn patch_workspace(
     headers: HeaderMap,
     Json(body): Json<PatchWorkspaceBody>,
 ) -> Result<Json<ApiSuccess<WorkspaceResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let workspace_id = context.actor.current_workspace_id;
-
-    let workspace = WorkspaceService::new(state.store.for_actor(context.actor.clone()))
-        .update_workspace(UpdateWorkspaceCommand {
-            actor: context.actor,
-            workspace_id,
-            name: body.name,
-            logo_url: body.logo_url,
-            introduction: body.introduction,
-        })
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_workspace_response(workspace))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.workspace.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::membership_interface::MembershipInput::PatchWorkspace(body),
+    )
+    .await?;
+    let crate::routes::membership_interface::MembershipOutput::Workspace(workspace) = output else {
+        return Err(anyhow::anyhow!("workspace output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(workspace)))
 }

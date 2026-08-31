@@ -9,20 +9,14 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json, Router,
 };
-use control_plane::member::{
-    AssignableRoleOption, CreateMemberCommand, DeleteMemberCommand, DisableMemberCommand,
-    EnableMemberCommand, MemberService, ReplaceMemberRolesCommand, ResetMemberPasswordCommand,
-    UpdateMemberCommand,
-};
+use control_plane::member::AssignableRoleOption;
 use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_get, console_patch, console_post, console_put, ConsoleRouteAssembly,
@@ -92,12 +86,7 @@ pub struct MemberResponse {
     pub role_codes: Vec<String>,
 }
 
-fn parse_member_id(member_id: &str) -> Result<Uuid, ApiError> {
-    Uuid::parse_str(member_id)
-        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("member_id").into())
-}
-
-fn hash_password(password: &str) -> Result<String, ApiError> {
+pub(crate) fn hash_password(password: &str) -> Result<String, ApiError> {
     let salt = SaltString::generate(&mut OsRng);
     Ok(Argon2::default()
         .hash_password(password.as_bytes(), &salt)
@@ -105,7 +94,7 @@ fn hash_password(password: &str) -> Result<String, ApiError> {
         .to_string())
 }
 
-fn to_member_response(user: domain::UserRecord) -> MemberResponse {
+pub(crate) fn to_member_response(user: domain::UserRecord) -> MemberResponse {
     let resolved_display_role = user.resolved_display_role();
     let domain::UserRecord {
         id,
@@ -216,14 +205,21 @@ pub async fn list_member_role_options(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<MemberRoleOptionResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let roles = MemberService::new(state.store.for_actor(context.actor.clone()))
-        .list_assignable_role_options(context.user.id)
-        .await?;
-
-    Ok(Json(ApiSuccess::new(
-        roles.into_iter().map(Into::into).collect(),
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.members.role-options.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::membership_interface::MembershipInput::ListMemberRoleOptions,
+    )
+    .await?;
+    let crate::routes::membership_interface::MembershipOutput::MemberRoleOptions(items) = output
+    else {
+        return Err(anyhow::anyhow!("member role options output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(items)))
 }
 
 #[utoipa::path(
@@ -235,17 +231,20 @@ pub async fn list_members(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<MemberResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let members = MemberService::new(state.store.for_actor(context.actor.clone()))
-        .list_members(context.user.id)
-        .await?;
-
-    Ok(Json(ApiSuccess::new(
-        members
-            .into_iter()
-            .map(to_member_response)
-            .collect::<Vec<_>>(),
-    )))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.members.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::membership_interface::MembershipInput::ListMembers,
+    )
+    .await?;
+    let crate::routes::membership_interface::MembershipOutput::Members(items) = output else {
+        return Err(anyhow::anyhow!("members output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(items)))
 }
 
 #[utoipa::path(
@@ -259,28 +258,20 @@ pub async fn create_member(
     headers: HeaderMap,
     Json(body): Json<CreateMemberBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<MemberResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    let user = MemberService::new(state.store.for_actor(context.actor.clone()))
-        .create_member(CreateMemberCommand {
-            actor_user_id: context.user.id,
-            account: body.account,
-            email: body.email,
-            phone: body.phone,
-            password_hash: hash_password(&body.password)?,
-            name: body.name,
-            nickname: body.nickname,
-            introduction: body.introduction,
-            email_login_enabled: body.email_login_enabled,
-            phone_login_enabled: body.phone_login_enabled,
-        })
-        .await?;
-
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_member_response(user))),
-    ))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.members.create.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::membership_interface::MembershipInput::CreateMember(body),
+    )
+    .await?;
+    let crate::routes::membership_interface::MembershipOutput::Member(member) = output else {
+        return Err(anyhow::anyhow!("member create output contract mismatch").into());
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(member))))
 }
 
 #[utoipa::path(
@@ -296,22 +287,20 @@ pub async fn update_member(
     Path(member_id): Path<String>,
     Json(body): Json<UpdateMemberBody>,
 ) -> Result<Json<ApiSuccess<MemberResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    let user = MemberService::new(state.store.for_actor(context.actor.clone()))
-        .update_member(UpdateMemberCommand {
-            actor_user_id: context.user.id,
-            target_user_id: parse_member_id(&member_id)?,
-            email: body.email,
-            phone: body.phone,
-            name: body.name,
-            nickname: body.nickname,
-            introduction: body.introduction,
-        })
-        .await?;
-
-    Ok(Json(ApiSuccess::new(to_member_response(user))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.members.update.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::membership_interface::MembershipInput::UpdateMember { member_id, body },
+    )
+    .await?;
+    let crate::routes::membership_interface::MembershipOutput::Member(member) = output else {
+        return Err(anyhow::anyhow!("member update output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(member)))
 }
 
 #[utoipa::path(
@@ -325,15 +314,19 @@ pub async fn disable_member(
     headers: HeaderMap,
     Path(member_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    MemberService::new(state.store.for_actor(context.actor.clone()))
-        .disable_member(DisableMemberCommand {
-            actor_user_id: context.user.id,
-            target_user_id: parse_member_id(&member_id)?,
-        })
-        .await?;
+    crate::routes::console_interface::invoke::<
+        _,
+        crate::routes::membership_interface::MembershipOutput,
+    >(
+        Arc::clone(&state),
+        "http.console.members.disable.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::membership_interface::MembershipInput::DisableMember { member_id },
+    )
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -349,15 +342,19 @@ pub async fn enable_member(
     headers: HeaderMap,
     Path(member_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    MemberService::new(state.store.for_actor(context.actor.clone()))
-        .enable_member(EnableMemberCommand {
-            actor_user_id: context.user.id,
-            target_user_id: parse_member_id(&member_id)?,
-        })
-        .await?;
+    crate::routes::console_interface::invoke::<
+        _,
+        crate::routes::membership_interface::MembershipOutput,
+    >(
+        Arc::clone(&state),
+        "http.console.members.enable.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::membership_interface::MembershipInput::EnableMember { member_id },
+    )
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -373,15 +370,19 @@ pub async fn delete_member(
     headers: HeaderMap,
     Path(member_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    MemberService::new(state.store.for_actor(context.actor.clone()))
-        .delete_member(DeleteMemberCommand {
-            actor_user_id: context.user.id,
-            target_user_id: parse_member_id(&member_id)?,
-        })
-        .await?;
+    crate::routes::console_interface::invoke::<
+        _,
+        crate::routes::membership_interface::MembershipOutput,
+    >(
+        Arc::clone(&state),
+        "http.console.members.delete.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::membership_interface::MembershipInput::DeleteMember { member_id },
+    )
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -399,16 +400,19 @@ pub async fn reset_member(
     Path(member_id): Path<String>,
     Json(body): Json<ResetMemberPasswordBody>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    MemberService::new(state.store.for_actor(context.actor.clone()))
-        .reset_member_password(ResetMemberPasswordCommand {
-            actor_user_id: context.user.id,
-            target_user_id: parse_member_id(&member_id)?,
-            password_hash: hash_password(&body.new_password)?,
-        })
-        .await?;
+    crate::routes::console_interface::invoke::<
+        _,
+        crate::routes::membership_interface::MembershipOutput,
+    >(
+        Arc::clone(&state),
+        "http.console.members.password.reset.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::membership_interface::MembershipInput::ResetMember { member_id, body },
+    )
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -426,16 +430,22 @@ pub async fn replace_member_roles(
     Path(member_id): Path<String>,
     Json(body): Json<ReplaceMemberRolesBody>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-
-    MemberService::new(state.store.for_actor(context.actor.clone()))
-        .replace_member_roles(ReplaceMemberRolesCommand {
-            actor_user_id: context.user.id,
-            target_user_id: parse_member_id(&member_id)?,
-            role_codes: body.role_codes,
-        })
-        .await?;
+    crate::routes::console_interface::invoke::<
+        _,
+        crate::routes::membership_interface::MembershipOutput,
+    >(
+        Arc::clone(&state),
+        "http.console.members.roles.replace.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::membership_interface::MembershipInput::ReplaceMemberRoles {
+            member_id,
+            body,
+        },
+    )
+    .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }

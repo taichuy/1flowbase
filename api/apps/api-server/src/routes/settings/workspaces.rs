@@ -1,14 +1,12 @@
 use std::sync::Arc;
 
 use axum::{extract::State, http::HeaderMap, Json, Router};
-use control_plane::workspace::WorkspaceService;
 use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::require_session::require_session,
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
@@ -35,6 +33,18 @@ fn to_workspace_summary(
     }
 }
 
+pub(crate) fn to_workspace_summaries(
+    records: Vec<domain::WorkspaceRecord>,
+    current_workspace_id: uuid::Uuid,
+) -> Vec<WorkspaceSummaryResponse> {
+    let (mut current, remaining): (Vec<_>, Vec<_>) = records
+        .into_iter()
+        .map(|workspace| to_workspace_summary(workspace, current_workspace_id))
+        .partition(|workspace| workspace.is_current);
+    current.extend(remaining);
+    current
+}
+
 pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
 }
@@ -54,23 +64,19 @@ pub async fn list_workspaces(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<WorkspaceSummaryResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let workspaces = WorkspaceService::new(state.store.for_actor(context.actor.clone()))
-        .list_accessible_workspaces(context.user.id)
-        .await?;
-    let current_workspace_id = context.actor.current_workspace_id;
-
-    let mut current = Vec::new();
-    let mut remaining = Vec::new();
-    for workspace in workspaces {
-        let response = to_workspace_summary(workspace, current_workspace_id);
-        if response.is_current {
-            current.push(response);
-        } else {
-            remaining.push(response);
-        }
-    }
-    current.extend(remaining);
-
-    Ok(Json(ApiSuccess::new(current)))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.workspaces.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        crate::routes::membership_interface::MembershipInput::ListWorkspaces,
+    )
+    .await?;
+    let crate::routes::membership_interface::MembershipOutput::Workspaces(workspaces) = output
+    else {
+        return Err(anyhow::anyhow!("workspaces output contract mismatch").into());
+    };
+    Ok(Json(ApiSuccess::new(workspaces)))
 }

@@ -142,6 +142,8 @@ pub(crate) fn production_interface_contributions(
         Arc::clone(&state.session_store),
         state.cookie_name.clone(),
     );
+    let console_membership =
+        crate::routes::membership_interface::membership_port(state.store.clone());
 
     Ok(vec![
         InterfaceRegistryContribution::new(
@@ -186,6 +188,25 @@ pub(crate) fn production_interface_contributions(
             crate::routes::console_identity_interface::compile_registry(
                 console_identity,
             )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-membership",
+            &[
+                "members.role_options.list",
+                "members.list",
+                "members.create",
+                "members.update",
+                "members.disable",
+                "members.enable",
+                "members.delete",
+                "members.password.reset",
+                "members.roles.replace",
+                "console.workspace.get",
+                "workspace.update",
+                "console.workspaces.list",
+            ],
+            &["api-server.console-membership"],
+            crate::routes::membership_interface::compile_registry(console_membership)?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.native-runs",

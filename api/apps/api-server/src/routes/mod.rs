@@ -2,6 +2,7 @@ pub mod application_public_api;
 #[path = "applications/mod.rs"]
 mod applications_group;
 pub mod assistant;
+pub(crate) mod console_interface;
 pub mod console_route_assembly;
 pub(crate) mod core_console_i18n;
 pub(crate) mod core_console_operation_specs;
@@ -29,6 +30,7 @@ pub use plugins_and_models_group::{
     data_sources, frontend_block_catalog, js_dependencies, model_definitions, model_providers,
     node_contributions, plugins, runtime_models,
 };
+pub(crate) use settings_group::membership_interface;
 pub use settings_group::{
     application_management, auth_center, billing, data_models, docs, file_storages, file_tables,
     host_infrastructure, i18n_catalog, mcp_management, members, navigation, permissions, roles,

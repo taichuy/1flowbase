@@ -9,6 +9,7 @@ pub mod host_infrastructure;
 pub mod i18n_catalog;
 pub mod mcp_management;
 pub mod members;
+pub(crate) mod membership_interface;
 pub mod navigation;
 pub mod permissions;
 mod release_status;
