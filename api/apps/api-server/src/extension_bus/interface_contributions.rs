@@ -273,6 +273,21 @@ pub(crate) fn production_interface_contributions(
             crate::routes::assistant::interface::compile_registry(state.store.clone())?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-assistant-conversations",
+            &[
+                "assistant.runs.activity.get",
+                "assistant.conversations.create",
+                "assistant.conversations.list",
+                "assistant.conversations.messages.get",
+                "assistant.legacy-runs.messages.get",
+            ],
+            &["api-server.console-assistant-conversations"],
+            crate::routes::assistant::interface::compile_conversations_registry(
+                state.store.clone(),
+                Arc::clone(&state.assistant_conversation_events),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-applications",
             &[
                 "applications.list",
