@@ -13,7 +13,7 @@
 - EIL-F14R-D input Product Assembly: `beta@d8a20be4eda6fd1dd39d3b3a15e02d2b56692cee`
 - EIL-F14R-D assembled Product candidate: `beta@093c19b8a542644d9faed5f8942e66784c30292b`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
-- Delivery state: `ASSEMBLED / QA-4 PENDING`
+- Delivery state: `QA_FAIL / NEEDS_REFRAME`
 - Root AC state: candidate only; not settled
 
 ## Packet Assembly
@@ -39,8 +39,8 @@
 | EIL-F14R-D1 | `b3e461f2e1a2faa41502e09d622fd89a6b31846a` | Typed Console operation compilation source with deterministic complete-set failure reporting |
 | EIL-F14R-D2 | `2005de7cbe49774fced125d80f126aab5066d78a` | Registry Binding ownership and migration disposition derived from one compiled snapshot; System Backup residuals enter typed lifecycle |
 | EIL-F14R-D3 | `093c19b8a542644d9faed5f8942e66784c30292b` | Candidate-bound validation assets and input-Assembly permission-equivalence baseline |
-| EIL-F14R-D4 | documentation commit containing this Receipt | Global publication evidence and QA-4 governance freeze |
-| EIL-F14R-D5 | documentation commit recording QA-4 | QA harness resource isolation only; Product Assembly unchanged |
+| EIL-F14R-D4 | `d682d8f1e08db8b6bc74acedbb8837d64dbb388d` | Global publication evidence and QA-4 governance freeze |
+| EIL-F14R-D5 | `db57f9adf8c4c11ad4e43eaecae8059e2551ef23` | QA-4 history and QA harness resource isolation only; Product Assembly unchanged |
 
 Every row above is a serial commit or inclusive serial range on `beta`; the Git history is the authoritative per-file write-set ledger. No packet changed database schema, migrations, external DTOs, permissions, Runtime/plugin wire, or official plugin source.
 
@@ -252,5 +252,38 @@ uses explicitly reduced Rust test concurrency after the reproduced resource kill
 read-only GitHub state through the existing Git credential without exposing it. The Product Assembly
 remains frozen. Attempt-4 evidence remains immutable under
 `tmp/test-governance/1963-external-interface-lifecycle/attempt-4/`; the next event is one fresh QA-5.
+
+## Fresh QA Attempt 5 — final failed batch; reframe required
+
+- Frozen documentation candidate: `beta@db57f9adf8c4c11ad4e43eaecae8059e2551ef23`
+- Product Assembly: `beta@093c19b8a542644d9faed5f8942e66784c30292b`
+- Result: `QA_FAIL`
+- Rows: `11 PASS / 4 FAIL / 0 UNRUN`
+- Observed automation: `1750 passed / 10 failed / 3 ignored`; Row 05 did not emit a final
+  harness summary, so the intended-suite total is unavailable.
+- Severity: `Blocking 0 / High 0 / Warning 6`
+
+The architecture closure itself is candidate-bound and green where complete evidence exists:
+
+- Endpoint Catalog: `1058 total / 472 business / 584 protocol / 2 operational / 0 unclassified`.
+- Console inventory: `401 operations / 434 interfaces / 434 routes`.
+- Hygiene: `0 findings / 0 errors / 0 warnings`.
+- Direct bypass, fallback, dual-run, double-write and second Registry: all `0`.
+- The QA-3 operation/Binding/migration completeness root did not recur.
+
+The batch still fails Rows 01, 05, 10 and 15. Row 01 is a stale QA harness count (`25` versus the
+26 matching Receipt rows). Row 05 observed `188 ok / 9 FAILED` statuses, then made no log progress
+for about 110 minutes while retaining roughly 9 GiB RSS; after more than two hours Root authorized a
+single SIGTERM of only the stuck test child so the original batch could settle without rerun or
+substitution. Row 10 reproduced PostgreSQL `53200` in one final settings-migration fixture even on a
+disposable PostgreSQL 18 instance with `max_locks_per_transaction=256`; migration diff and new
+schema residue remain zero. Row 15 is derivative of the incomplete full API evidence and prior red
+rows; read-only GitHub OPEN-state capture and paired integrity passed.
+
+Because the full API nontermination/resource root has now failed two consecutive centralized QA
+attempts, long-running-work requires returning to problem framing. No QA-6 is authorized in this
+execution. Candidate states are: EIL-001/002/003/005/008 `PASS`; EIL-004/006/007/009
+`NOT_SETTLED`; EIL-010 `FAIL`; Root AC-002/010 candidate `PASS`, with AC-001/003/007/009
+`NOT_SETTLED`. No EIL or Root acceptance is formally settled.
 
 #1963 and #1893 remain OPEN. No EIL or Root AC is settled, no push occurred, and no product, test, migration, protocol or official-plugin source was changed after the frozen candidate.
