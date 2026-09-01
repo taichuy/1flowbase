@@ -64,10 +64,7 @@ use crate::routes::mcp_protocol::virtual_ui::VirtualMcpScope;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{
-        require_csrf::require_csrf,
-        require_session::{require_session, RequestContext},
-    },
+    middleware::require_session::RequestContext,
     response::ApiSuccess,
     routes::{
         console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
@@ -646,17 +643,17 @@ pub async fn start_run_stream(
     headers: HeaderMap,
     Json(body): Json<StartAssistantRunBody>,
 ) -> Result<Sse<debug_run_stream::DebugRunSseStream>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    context.cookie_session()?;
-    require_csrf(&headers, &context)?;
-    let stream = crate::routes::console_interface::invoke_server_stream_with_principal::<
+    let stream = crate::routes::console_interface::invoke_server_stream::<
         interface::AssistantRunInput,
         interface::AssistantRunStreamEvent,
         interface::AssistantRunStreamOutput,
     >(
         Arc::clone(&state),
         "http.console.assistant.runs.stream.v1",
-        context.interface_principal(),
+        crate::extension_bus::ConsoleAuthenticationCredential::CookieSessionWithCsrf {
+            state: Arc::clone(&state),
+            headers: headers.clone(),
+        },
         interface::AssistantRunInput { body, headers },
     )
     .await?;

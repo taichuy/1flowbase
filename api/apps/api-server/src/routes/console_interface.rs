@@ -505,46 +505,6 @@ where
     }
 }
 
-pub(crate) async fn invoke_server_stream_with_principal<I, S, O>(
-    state: Arc<ApiState>,
-    binding_id: &'static str,
-    principal: UserPrincipal,
-    input: I,
-) -> Result<interface_runtime::InterfaceStreamInvocation<S, O, ConsoleInterfaceTargetError>, ApiError>
-where
-    I: InterfaceContract,
-    S: InterfaceContract,
-    O: InterfaceContract,
-{
-    let snapshot = frozen_snapshot(&state)?;
-    let binding_id = BindingId::new(binding_id).expect("static Console binding is valid");
-    let activated = activated_authentication(&snapshot, &binding_id)?;
-    let plan = snapshot
-        .plan(&binding_id)
-        .ok_or_else(|| anyhow::anyhow!("Console binding is unavailable"))?;
-    let target = interface_runtime::ExecutionTargetPin::BuiltIn {
-        handler: plan.definition().handler_reference().clone(),
-        target: plan.definition().target_reference().clone(),
-    };
-    console_invocation_kernel(&state)
-        .invoke_server_stream_with_dispatch_target::<I, S, O, ConsoleInterfaceTargetError>(
-            snapshot,
-            InvocationEnvelope::with_principal(
-                InvocationLineage::root(InvocationId::now_v7()),
-                binding_id,
-                InterfaceProtocol::Http,
-                activated.adapter().clone(),
-                activated.activation().clone(),
-                principal,
-                None,
-                input,
-            ),
-            target,
-        )
-        .await
-        .map_err(|failure| console_invocation_error(failure.into_error()))
-}
-
 pub(crate) async fn invoke_server_stream<I, S, O>(
     state: Arc<ApiState>,
     binding_id: &'static str,

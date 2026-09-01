@@ -1,4 +1,7 @@
-use std::{num::NonZeroU64, sync::Arc};
+use std::{
+    num::NonZeroU64,
+    sync::{Arc, OnceLock},
+};
 
 use control_plane::host_infrastructure_config::HostInfrastructureConfigService;
 use plugin_framework::extension_bus::{
@@ -73,6 +76,8 @@ pub struct ExtensionBootSnapshot {
     graph: Arc<EffectiveExtensionGraph>,
     interface_registry: Option<Arc<interface_runtime::DynamicInterfaceRegistry>>,
     authentication_factories: AuthenticationAdapterFactoryRegistry,
+    external_endpoint_catalog:
+        OnceLock<Arc<crate::external_endpoint_catalog::ExternalEndpointCatalog>>,
 }
 
 pub fn compile_extension_boot_snapshot(
@@ -113,6 +118,7 @@ impl ExtensionBootSnapshot {
             interface_registry: None,
             authentication_factories: AuthenticationAdapterFactoryRegistry::built_in()
                 .expect("built-in authentication factories must be valid"),
+            external_endpoint_catalog: OnceLock::new(),
         }
     }
 
@@ -184,6 +190,7 @@ impl ExtensionBootSnapshot {
             graph,
             interface_registry: Some(interface_registry),
             authentication_factories,
+            external_endpoint_catalog: OnceLock::new(),
         })
     }
 
@@ -217,6 +224,21 @@ impl ExtensionBootSnapshot {
 
     pub fn interface_registry(&self) -> Option<&Arc<interface_runtime::DynamicInterfaceRegistry>> {
         self.interface_registry.as_ref()
+    }
+
+    pub(crate) fn publish_external_endpoint_catalog(
+        &self,
+        catalog: crate::external_endpoint_catalog::ExternalEndpointCatalog,
+    ) -> &Arc<crate::external_endpoint_catalog::ExternalEndpointCatalog> {
+        self.external_endpoint_catalog
+            .get_or_init(|| Arc::new(catalog))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn external_endpoint_catalog(
+        &self,
+    ) -> Option<&Arc<crate::external_endpoint_catalog::ExternalEndpointCatalog>> {
+        self.external_endpoint_catalog.get()
     }
 
     pub(crate) fn publish_complete_catalog(

@@ -16,6 +16,24 @@ function read(repoRoot, relativePath) {
   return fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 }
 
+function rustSourcesUnder(repoRoot, relativeRoot) {
+  const root = path.join(repoRoot, relativeRoot);
+  if (!fs.existsSync(root)) return [];
+  const result = [];
+  const visit = (directory) => {
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        if (entry.name !== '_tests' && entry.name !== 'tests') visit(target);
+      } else if (entry.isFile() && entry.name.endsWith('.rs')) {
+        result.push([path.relative(repoRoot, target), fs.readFileSync(target, 'utf8')]);
+      }
+    }
+  };
+  visit(root);
+  return result;
+}
+
 function inspectInterfaceLifecycleBoundary(repoRoot) {
   const stream = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/compat_sse.rs');
   const openai = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/openai.rs');
@@ -27,6 +45,8 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
   const native = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/native.rs');
   const compatibility = read(repoRoot, 'api/apps/api-server/src/routes/application_public_api/compatibility_interface.rs');
   const mcp = read(repoRoot, 'api/apps/api-server/src/routes/mcp_protocol.rs');
+  const apiServer = read(repoRoot, 'api/apps/api-server/src/lib.rs');
+  const endpointCatalog = read(repoRoot, 'api/apps/api-server/src/external_endpoint_catalog.rs');
   const protocolSources = `${stream}\n${openai}\n${anthropic}`;
   const violations = [];
 
@@ -83,6 +103,29 @@ function inspectInterfaceLifecycleBoundary(repoRoot) {
   if (/compile_[A-Za-z0-9_]*registry\s*\(\s*(?:Arc::clone\(state\)|state\.clone\(\))/u.test(contributions)
       || /(?:Arc::clone\(state\)|state\.clone\(\))\s+as\s+Arc<dyn\s+\w*Port>/u.test(contributions)) {
     violations.push('Composition Root casts the global ApiState directly to a family Port');
+  }
+  for (const [relativePath, source] of rustSourcesUnder(repoRoot, 'api/apps/api-server/src/routes')) {
+    const stateTypes = ['ApiState'];
+    for (const match of source.matchAll(/type\s+([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(?:crate::app_state::)?ApiState\s*;/gu)) {
+      stateTypes.push(match[1]);
+    }
+    for (const stateType of stateTypes) {
+      const escaped = stateType.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+      if (new RegExp(`impl\\s+[A-Za-z_][A-Za-z0-9_]*Port\\s+for\\s+${escaped}\\b`, 'u').test(source)) {
+        violations.push(`${relativePath} erases the global ApiState behind a narrow Port trait`);
+      }
+    }
+    if ((source.includes('require_session(&state') || source.includes('require_csrf(&headers'))
+      && relativePath !== 'api/apps/api-server/src/routes/assistant/websocket.rs'
+      && relativePath !== 'api/apps/api-server/src/routes/settings/system_backups/mod.rs') {
+      violations.push(`${relativePath} retains a direct route authentication owner`);
+    }
+  }
+  if (!apiServer.includes('publish_external_endpoint_catalog(')
+      || !apiServer.includes('contribute_openapi_document(')
+      || !endpointCatalog.includes('compile_complete(')
+      || !endpointCatalog.includes('UnclassifiedRows')) {
+    violations.push('Composition Root does not fail closed on the complete external endpoint catalog');
   }
   return violations;
 }

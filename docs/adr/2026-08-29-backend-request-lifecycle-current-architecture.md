@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted and implemented on `beta` for #1944（Canonical Interface 生产闭环已落地；全量 Route 迁移不在本 ADR 内）
+Accepted and implemented on `beta` for #1944、#1958 与 #1963（全部外部业务入口已进入 Canonical Interface Lifecycle）
 
 - 日期：2026-08-29
 - 关联 Root：[#1893](https://github.com/taichuy/1flowbase/issues/1893)
@@ -14,6 +14,8 @@ Accepted and implemented on `beta` for #1944（Canonical Interface 生产闭环�
 - 正式证据：[`1944-interface-lifecycle-assembly-receipt.md`](../architecture/1944-interface-lifecycle-assembly-receipt.md)
 - Compatibility Route Family 迁移：[#1958](https://github.com/taichuy/1flowbase/issues/1958)，候选证据见
   [`1958-compatibility-interface-migration-assembly-receipt.md`](../architecture/1958-compatibility-interface-migration-assembly-receipt.md)
+- 全量 External Interface 迁移：[#1963](https://github.com/taichuy/1flowbase/issues/1963)，候选证据见
+  [`1963-external-interface-lifecycle-assembly-receipt.md`](../architecture/1963-external-interface-lifecycle-assembly-receipt.md)
 
 ## Context
 
@@ -78,42 +80,32 @@ flowchart TB
 
 这张图是统一架构；协议差异只存在于 Adapter/Projection，业务差异只存在于 typed Handler 之后。Interface Plane 统一身份、权限、准入、插件阶段、执行计划和终态，不统一 Cookie、HTTP 对象、数据库事务或 Runtime Host。
 
-### 当前迁移状态（不是总架构）
+### 当前 External Endpoint 架构
 
-全部后端 Route 仍不是同一个物理函数。已迁移的生产路径通过 Canonical Interface 发布和执行，尚未迁移的 Route 保留原有兼容链：
+全部后端 Route 不需要成为同一个物理函数，但所有外部业务入口必须由同一个冻结 Registry 解析并执行。协议控制与运维控制不冒充业务 Invocation，而是进入同一个可计算 Catalog 的有限分类：
 
 ```mermaid
 flowchart LR
     Client["HTTP / SSE / WebSocket Client"]
     McpClient["MCP Client"]
-    Internal["Internal / Background Trigger"]
-
-    Gateway["api-server Router + Middleware"]
-    PublicAuth["Public Auth Handler"]
-    Console["Console Middleware + Route"]
-    AppApi["Application API Adapter"]
-    Mcp["MCP JSON-RPC Adapter"]
-    Typed["少量 InterfaceInvocationKernel 路径"]
-    Service["Control Plane / Application Service"]
+    Catalog["External Endpoint Catalog<br/>Router + OpenAPI + Dynamic descriptors + Frozen Registry"]
+    Controls["Protocol / Operational Control<br/>exact allowlist"]
+    Typed["Frozen Binding + Compiled Invocation Plan"]
+    Service["Typed Handler → Application / Domain / Runtime Port"]
     Domain["Domain Rules"]
     Infra["Repository / Runtime Ports"]
     Projection["HTTP / Stream / MCP Projection"]
 
-    Client --> Gateway
-    McpClient --> Mcp
-    Internal --> Service
-    Gateway --> PublicAuth --> Service
-    Gateway --> Console --> Service
-    Gateway --> AppApi --> Service
-    Gateway --> Typed --> Service
-    Mcp --> Typed
-    Mcp --> Service
+    Client --> Catalog
+    McpClient --> Catalog
+    Catalog --> Controls
+    Catalog --> Typed --> Service
     Service --> Domain --> Infra
     Service --> Projection
     Typed --> Projection
 ```
 
-因此本 ADR 的实施结果是形成唯一可编译的 Interface 语义目录和通用 Invocation Lifecycle，而不是一次性替换全部 Route。后续 Route 仍必须按功能等价证据逐项迁移。
+Catalog 在生产 Router 构造前 fail closed：任何 `UNCLASSIFIED` row、未知 Binding、重复或冲突分类都会阻止发布。静态 HTTP、动态 runtime/workflow descriptor、MCP method、WebSocket/SSE transport variant 与冻结 Registry 共同形成有限 Inventory；没有第二套 Definition Registry。
 
 ## Current Implementation
 
@@ -134,7 +126,7 @@ Static Protocol Route
 → Protocol Projection
 ```
 
-生产证据覆盖四类纵向路径：
+生产证据覆盖全部外部 Route family：
 
 | 入口族 | Principal / 协议 | 已验证的闭环 |
 | --- | --- | --- |
@@ -142,14 +134,20 @@ Static Protocol Route
 | Console host infrastructure providers | `UserPrincipal` / HTTP + MCP + Internal binding | 单一 AuthN owner、Core AuthZ、HostExtension factory、一次 session lookup |
 | Application Native | `ApplicationPrincipal` / async、blocking、server-stream | Runtime dispatch、stream event、terminal、attempt/generation 冻结 |
 | MCP User API key | `UserPrincipal` / MCP JSON-RPC | User API key AuthN、canonical result/error/continuation projection |
+| Public auth residual | `PublicPrincipal` / HTTP | providers、sign-up、Cookie/CSRF projection |
+| Native + Compatibility | `ApplicationPrincipal` / HTTP、SSE、WebSocket | read/cancel/resume/callback/files/model discovery/count tokens、attempt/generation |
+| Dynamic runtime + workflow | `UserPrincipal` / HTTP | boot-frozen descriptor、typed operation contract、Runtime port |
+| Console 全 family | `UserPrincipal` / HTTP、SSE、WebSocket | identity/access、application/runtime/assistant、data/model/file、extension/MCP/network、workspace/frontstage/UI、system/i18n/docs/billing/backup |
 
 关键边界：
 
-- 这四类路径证明同一套 contract/lifecycle 可跨协议工作，不表示所有旧 Route 已迁移；
+- 所有外部业务入口均解析 exactly-one frozen Binding 与 exactly-one typed Handler；
 - 激活的 Console Interface Route 在旧 `require_session` middleware 之前分流，frozen factory 是唯一 Authentication owner；
 - HostExtension Authentication 是可安装的可信 native 扩展，必须经过 manifest → Effective Graph → factory catalog → Registry → static Route；
 - 普通 RuntimeExtension/CapabilityPlugin 不能获取原始 credential，也不能注册 Authentication factory；
 - 零 contribution 时保持 BuiltIn 行为；缺失、多余、重复或 identity/contract 不匹配时在 publish 前 fail closed。
+- `InterfaceContributionCollector` 只合并已装配的 compiled contribution；family Adapter 持有明确 Store/Service/Runtime Port，不得把 `ApiState` 擦除成所谓窄 Port。
+- 允许的 direct control 仅限 CORS/HEAD、schema discovery、WebSocket upgrade/transport frame、SSE keepalive/terminal、MCP initialize/initialized 与两个 health endpoint；业务 frame/run/tool invocation 仍进入 Kernel。
 
 ### #1958 Compatibility Route Family 迁移候选
 

@@ -17,6 +17,8 @@ const sources = [
   'api/apps/api-server/src/routes/application_public_api/native.rs',
   'api/apps/api-server/src/routes/application_public_api/compatibility_interface.rs',
   'api/apps/api-server/src/routes/mcp_protocol.rs',
+  'api/apps/api-server/src/lib.rs',
+  'api/apps/api-server/src/external_endpoint_catalog.rs',
 ];
 
 function fixture(overrides = {}) {
@@ -32,6 +34,8 @@ function fixture(overrides = {}) {
     [sources[7]]: 'struct NativeAdapter { execution: Arc<dyn NativeExecutionService> }',
     [sources[8]]: 'struct CompatibilityAdapter { execution: Arc<dyn CompatibilityExecutionService> }',
     [sources[9]]: 'struct McpAdapter { dispatch: Arc<dyn McpDispatchService> }',
+    [sources[10]]: 'publish_external_endpoint_catalog(); contribute_openapi_document();',
+    [sources[11]]: 'fn compile_complete() {} enum Error { UnclassifiedRows }',
   };
   for (const source of sources) {
     const target = path.join(root, source);
@@ -76,4 +80,20 @@ test('rejects legacy stream owner and direct workflow authentication', () => {
   assert.ok(violations.some((value) => value.includes('start_compatible_turn_stream')));
   assert.ok(violations.some((value) => value.includes('exactly one frozen Authentication')));
   assert.ok(violations.some((value) => value.includes('direct authentication or CSRF bypass')));
+});
+
+test('rejects a direct authentication owner outside the exact protocol/control allowlist', () => {
+  const root = fixture({
+    [sources[5]]: 'require_session(&state); struct PublicProvidersAdapter { store: MainDurableStore }',
+  });
+  const violations = inspectInterfaceLifecycleBoundary(root);
+  assert.ok(violations.some((value) => value.includes('retains a direct route authentication owner')));
+});
+
+test('rejects a Composition Root without complete catalog publication', () => {
+  const root = fixture({
+    [sources[10]]: 'fn build_router() {}',
+  });
+  const violations = inspectInterfaceLifecycleBoundary(root);
+  assert.ok(violations.some((value) => value.includes('complete external endpoint catalog')));
 });

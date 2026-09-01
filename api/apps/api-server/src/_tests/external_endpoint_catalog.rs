@@ -320,3 +320,104 @@ fn eil_f02_workflow_extension_options_is_never_derived_as_protocol_control() {
         ))
         .is_none());
 }
+
+#[test]
+fn eil_f14_complete_catalog_rejects_every_unclassified_route() {
+    let registry = compiled_fixture_registry("/api/console/fixture");
+    let mut compiler = ExternalEndpointCatalogCompiler::default();
+    compiler
+        .contribute(ExternalEndpointContribution::unclassified_http(
+            "router",
+            "POST",
+            "/api/public/unbound",
+        ))
+        .unwrap();
+
+    assert!(matches!(
+        compiler.compile_complete(registry.as_ref()),
+        Err(ExternalEndpointCatalogError::UnclassifiedRows { .. })
+    ));
+}
+
+#[test]
+fn eil_f14_mcp_business_method_requires_a_real_frozen_binding() {
+    let registry = compiled_fixture_registry("/api/console/fixture");
+    let mut compiler = ExternalEndpointCatalogCompiler::default();
+    compiler
+        .contribute_mcp_protocol_surface("missing.mcp.binding")
+        .unwrap();
+    compiler.contribute_approved_controls(false).unwrap();
+
+    assert!(matches!(
+        compiler.compile_complete(registry.as_ref()),
+        Err(ExternalEndpointCatalogError::UnknownBinding { binding_id, .. })
+            if binding_id == "missing.mcp.binding"
+    ));
+}
+
+#[test]
+fn eil_f14_openapi_inventory_preserves_websocket_upgrade_as_transport_control() {
+    let mut compiler = ExternalEndpointCatalogCompiler::default();
+    compiler
+        .contribute_openapi_document(
+            "openapi",
+            &serde_json::json!({
+                "paths": {
+                    "/api/console/assistant/runs/websocket": {"get": {}},
+                    "/api/console/widgets": {"post": {}}
+                }
+            }),
+        )
+        .unwrap();
+    compiler.contribute_approved_controls(false).unwrap();
+    let catalog = compiler.compile();
+
+    assert_eq!(
+        catalog
+            .row(&ExternalEndpointIdentity::http_variant(
+                "GET",
+                "/api/console/assistant/runs/websocket",
+                "websocket-upgrade",
+            ))
+            .unwrap()
+            .classification(),
+        ExternalEndpointClassification::ProtocolControl
+    );
+    assert_eq!(
+        catalog
+            .row(&ExternalEndpointIdentity::http(
+                "POST",
+                "/api/console/widgets",
+            ))
+            .unwrap()
+            .classification(),
+        ExternalEndpointClassification::Unclassified
+    );
+}
+
+#[tokio::test]
+async fn eil_f14_production_assembly_has_no_unclassified_endpoint() {
+    let (state, _database_url) = crate::_tests::support::test_api_state_with_database_url().await;
+    let _router = crate::app_with_state_and_config(
+        Arc::clone(&state),
+        &crate::_tests::support::test_config(),
+    );
+    let catalog = state
+        .extension_boot_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.external_endpoint_catalog())
+        .expect("production assembly must publish the external endpoint catalog");
+    let total = catalog.rows().len();
+    let business =
+        catalog.classification_count(ExternalEndpointClassification::CanonicalBusinessInterface);
+    let protocol = catalog.classification_count(ExternalEndpointClassification::ProtocolControl);
+    let operational =
+        catalog.classification_count(ExternalEndpointClassification::OperationalControl);
+    let unclassified = catalog.classification_count(ExternalEndpointClassification::Unclassified);
+
+    println!(
+        "EIL_F14_ENDPOINT_COUNTS total={total} business={business} protocol={protocol} operational={operational} unclassified={unclassified}"
+    );
+    assert_eq!(unclassified, 0);
+    assert_eq!(total, business + protocol + operational);
+}

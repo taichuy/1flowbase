@@ -165,6 +165,17 @@ pub(crate) enum ExternalEndpointCatalogError {
     },
     #[error("external endpoint is not an approved control: {identity:?}")]
     UnknownControl { identity: ExternalEndpointIdentity },
+    #[error("external endpoint catalog contains unclassified rows: {identities:?}")]
+    UnclassifiedRows {
+        identities: Vec<ExternalEndpointIdentity>,
+    },
+    #[error("external endpoint {identity:?} references unknown binding `{binding_id}`")]
+    UnknownBinding {
+        identity: ExternalEndpointIdentity,
+        binding_id: String,
+    },
+    #[error("OpenAPI endpoint inventory is invalid: {0}")]
+    InvalidOpenApi(String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -179,10 +190,11 @@ pub(crate) enum ApprovedExternalControl {
     ResponsesWebSocketUpgrade,
     NativeSseKeepalive,
     CompatibilitySseKeepalive,
+    AssistantWebSocketUpgrade,
 }
 
 impl ApprovedExternalControl {
-    const ALL: [Self; 10] = [
+    const ALL: [Self; 11] = [
         Self::Health,
         Self::ConsoleHealth,
         Self::Docs,
@@ -193,6 +205,7 @@ impl ApprovedExternalControl {
         Self::ResponsesWebSocketUpgrade,
         Self::NativeSseKeepalive,
         Self::CompatibilitySseKeepalive,
+        Self::AssistantWebSocketUpgrade,
     ];
 
     fn contribution(self) -> ExternalEndpointContribution {
@@ -265,6 +278,16 @@ impl ApprovedExternalControl {
                     ),
                 )
             }
+            Self::AssistantWebSocketUpgrade => {
+                ExternalEndpointContribution::protocol_control_identity(
+                    "assistant-websocket-protocol-control",
+                    ExternalEndpointIdentity::http_control_variant(
+                        "GET",
+                        "/api/console/assistant/runs/websocket",
+                        "websocket-upgrade",
+                    ),
+                )
+            }
         }
     }
 }
@@ -275,6 +298,79 @@ pub(crate) struct ExternalEndpointCatalogCompiler {
 }
 
 impl ExternalEndpointCatalogCompiler {
+    pub(crate) fn contribute_openapi_document(
+        &mut self,
+        source: &str,
+        document: &serde_json::Value,
+    ) -> Result<(), ExternalEndpointCatalogError> {
+        let paths = document
+            .get("paths")
+            .and_then(serde_json::Value::as_object)
+            .ok_or_else(|| {
+                ExternalEndpointCatalogError::InvalidOpenApi(
+                    "document does not contain an object `paths` member".to_string(),
+                )
+            })?;
+        const HTTP_METHODS: [&str; 8] = [
+            "get", "post", "put", "patch", "delete", "options", "head", "trace",
+        ];
+        for (path, path_item) in paths {
+            let path_item = path_item.as_object().ok_or_else(|| {
+                ExternalEndpointCatalogError::InvalidOpenApi(format!(
+                    "path item `{path}` is not an object"
+                ))
+            })?;
+            for method in HTTP_METHODS {
+                if !path_item.contains_key(method) {
+                    continue;
+                }
+                let identity = match (method, path.as_str()) {
+                    (
+                        "get",
+                        "/api/agent/v1/runs/websocket"
+                        | "/v1/responses"
+                        | "/api/console/assistant/runs/websocket",
+                    ) => ExternalEndpointIdentity::http_control_variant(
+                        method,
+                        path,
+                        "websocket-upgrade",
+                    ),
+                    _ => ExternalEndpointIdentity::http(method, path),
+                };
+                self.contribute(ExternalEndpointContribution {
+                    identity,
+                    source: source.to_string(),
+                    classification: ExternalEndpointClassification::Unclassified,
+                    binding_id: None,
+                })?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(crate) fn contribute_mcp_protocol_surface(
+        &mut self,
+        binding_id: &str,
+    ) -> Result<(), ExternalEndpointCatalogError> {
+        for method in ["initialize", "notifications/initialized"] {
+            self.contribute(ExternalEndpointContribution {
+                identity: ExternalEndpointIdentity::mcp(method),
+                source: "api-server.mcp-router".to_string(),
+                classification: ExternalEndpointClassification::Unclassified,
+                binding_id: None,
+            })?;
+        }
+        for method in ["tools/list", "tools/call"] {
+            self.contribute(ExternalEndpointContribution {
+                identity: ExternalEndpointIdentity::mcp(method),
+                source: "api-server.mcp-router".to_string(),
+                classification: ExternalEndpointClassification::CanonicalBusinessInterface,
+                binding_id: Some(binding_id.to_string()),
+            })?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn contribute(
         &mut self,
         contribution: ExternalEndpointContribution,
@@ -408,6 +504,38 @@ impl ExternalEndpointCatalogCompiler {
 
     pub(crate) fn compile(self) -> ExternalEndpointCatalog {
         ExternalEndpointCatalog { rows: self.rows }
+    }
+
+    pub(crate) fn compile_complete(
+        self,
+        registry: &CompiledInterfaceRegistry,
+    ) -> Result<ExternalEndpointCatalog, ExternalEndpointCatalogError> {
+        let valid_bindings = registry
+            .bindings()
+            .map(|binding| binding.binding_id().as_str().to_string())
+            .collect::<BTreeSet<_>>();
+        let unclassified = self
+            .rows
+            .values()
+            .filter(|row| row.classification == ExternalEndpointClassification::Unclassified)
+            .map(|row| row.identity.clone())
+            .collect::<Vec<_>>();
+        if !unclassified.is_empty() {
+            return Err(ExternalEndpointCatalogError::UnclassifiedRows {
+                identities: unclassified,
+            });
+        }
+        for row in self.rows.values() {
+            if let Some(binding_id) = &row.binding_id {
+                if !valid_bindings.contains(binding_id) {
+                    return Err(ExternalEndpointCatalogError::UnknownBinding {
+                        identity: row.identity.clone(),
+                        binding_id: binding_id.clone(),
+                    });
+                }
+            }
+        }
+        Ok(ExternalEndpointCatalog { rows: self.rows })
     }
 }
 

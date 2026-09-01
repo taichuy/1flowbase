@@ -267,6 +267,52 @@ pub(crate) fn root_external_endpoint_contributions(
     contributions
 }
 
+fn publish_external_endpoint_catalog(
+    state: &Arc<ApiState>,
+    console_route_assembly: &routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>>,
+    include_docs: bool,
+    openapi_document: &serde_json::Value,
+) -> Result<()> {
+    let boot_snapshot = state
+        .extension_boot_snapshot
+        .as_ref()
+        .ok_or_else(|| anyhow!("extension boot snapshot is unavailable"))?;
+    let registry = boot_snapshot
+        .interface_registry()
+        .ok_or_else(|| anyhow!("compiled interface registry is unavailable"))?
+        .snapshot();
+    let mut compiler = external_endpoint_catalog::ExternalEndpointCatalogCompiler::default();
+    for contribution in root_external_endpoint_contributions(include_docs) {
+        compiler.contribute(contribution)?;
+    }
+    for contribution in console_route_assembly.external_endpoint_contributions() {
+        compiler.contribute(contribution)?;
+    }
+    compiler.contribute_openapi_document("api-server.openapi", openapi_document)?;
+    compiler.absorb_registry("compiled-interface-registry", registry.as_ref())?;
+    compiler.contribute_mcp_protocol_surface(routes::mcp_protocol::MCP_INVOCATION_BINDING_ID)?;
+    compiler.contribute_approved_controls(include_docs)?;
+    let catalog = compiler.compile_complete(registry.as_ref())?;
+    tracing::info!(
+        total = catalog.rows().len(),
+        canonical_business = catalog.classification_count(
+            external_endpoint_catalog::ExternalEndpointClassification::CanonicalBusinessInterface,
+        ),
+        protocol_control = catalog.classification_count(
+            external_endpoint_catalog::ExternalEndpointClassification::ProtocolControl,
+        ),
+        operational_control = catalog.classification_count(
+            external_endpoint_catalog::ExternalEndpointClassification::OperationalControl,
+        ),
+        unclassified = catalog.classification_count(
+            external_endpoint_catalog::ExternalEndpointClassification::Unclassified,
+        ),
+        "published complete external endpoint catalog"
+    );
+    boot_snapshot.publish_external_endpoint_catalog(catalog);
+    Ok(())
+}
+
 pub fn app() -> Router {
     base_router(true, true)
         .layer(development_cors_layer())
@@ -279,8 +325,20 @@ pub fn app_with_state(state: Arc<ApiState>) -> Router {
             .publish_complete_catalog(&state)
             .expect("complete interface catalog must publish before router construction");
     }
+    let interface_snapshot = state
+        .extension_boot_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.interface_registry())
+        .map(|registry| registry.snapshot());
+    let assembly = routes::console_route_assembly::migrated_core_console_route_assembly_with_interface_operations(
+        interface_snapshot.as_deref(),
+    );
+    let openapi_document = serde_json::to_value(openapi::ApiDoc::openapi())
+        .expect("static OpenAPI document must serialize");
+    publish_external_endpoint_catalog(&state, &assembly, true, &openapi_document)
+        .expect("external endpoint catalog must publish before router construction");
     base_router(true, false)
-        .merge(console_router(state, true))
+        .merge(console_router_with_assembly(state, true, assembly))
         .layer(development_cors_layer())
         .layer(TraceLayer::new_for_http())
 }
@@ -352,15 +410,25 @@ pub fn app_with_state_and_config(state: Arc<ApiState>, config: &ApiConfig) -> Ro
         interface_snapshot.as_deref(),
         config.plugin_upload_max_bytes,
     );
-    app_with_state_and_config_and_console_route_assembly(state, config, assembly)
+    let openapi_document = serde_json::to_value(openapi::ApiDoc::openapi())
+        .expect("static OpenAPI document must serialize");
+    app_with_state_and_config_and_console_route_assembly(state, config, assembly, &openapi_document)
 }
 
 fn app_with_state_and_config_and_console_route_assembly(
     state: Arc<ApiState>,
     config: &ApiConfig,
     console_route_assembly: routes::console_route_assembly::ConsoleRouteAssembly<Arc<ApiState>>,
+    openapi_document: &serde_json::Value,
 ) -> Router {
     let include_docs = config.env != ApiEnvironment::Production;
+    publish_external_endpoint_catalog(
+        &state,
+        &console_route_assembly,
+        include_docs,
+        openapi_document,
+    )
+    .expect("external endpoint catalog must publish before router construction");
     base_router(include_docs, false)
         .merge(console_router_with_assembly(
             state,
@@ -798,11 +866,15 @@ async fn app_and_runtime_host_from_config(
         bootstrap_result.root_user_id,
     );
 
+    let external_openapi_document = openapi::dynamic_openapi_document(&state)
+        .await
+        .map_err(|error| error.0)?;
     Ok((
         app_with_state_and_config_and_console_route_assembly(
             state,
             config,
             compiled_console_plan.route_assembly,
+            &external_openapi_document,
         ),
         runtime_extension_host,
     ))

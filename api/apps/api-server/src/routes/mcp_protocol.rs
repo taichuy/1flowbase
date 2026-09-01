@@ -35,6 +35,7 @@ pub(crate) mod result_delivery;
 pub(crate) mod virtual_ui;
 
 pub(crate) const JSON_RPC_RESPONSE_MAX_BYTES: usize = 256 * 1024;
+pub(crate) const MCP_INVOCATION_BINDING_ID: &str = "mcp.user-api-key.invoke.v1";
 
 pub(crate) struct McpToolArguments(Value);
 
@@ -97,7 +98,7 @@ async fn handle_mcp_request(
         .interface_registry()
         .ok_or_else(|| anyhow::anyhow!("interface registry is unavailable"))?
         .snapshot();
-    let binding_id = interface_runtime::BindingId::new("mcp.user-api-key.invoke.v1")
+    let binding_id = interface_runtime::BindingId::new(MCP_INVOCATION_BINDING_ID)
         .expect("static binding id is valid");
     let activated_authentication = snapshot
         .authentication(&binding_id)
