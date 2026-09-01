@@ -8,10 +8,7 @@ use axum::{
 };
 use control_plane::{
     errors::ControlPlaneError,
-    host_infrastructure_config::{
-        HostInfrastructureConfigService, HostInfrastructureProviderConfigView,
-        SaveHostInfrastructureProviderConfigCommand,
-    },
+    host_infrastructure_config::HostInfrastructureProviderConfigView,
     ports::{
         CacheDomainSnapshot, CacheEntrySnapshot, CacheInspectionCapabilities, CacheStore,
         DistributedLock, EphemeralEntrySnapshot, EphemeralEntryValueSnapshot,
@@ -26,12 +23,10 @@ use plugin_framework::provider_contract::{
 };
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_get, console_post, console_put, ConsoleRouteAssembly,
@@ -41,6 +36,7 @@ use crate::{
 pub(crate) mod interface_cache_inspection;
 pub(crate) mod interface_memory_inspection;
 pub mod interface_operation;
+pub(crate) mod interface_provider_config;
 mod memory_support;
 
 use memory_support::{memory_contract_definitions, MemoryInspectionDependencies};
@@ -806,29 +802,22 @@ pub async fn save_host_infrastructure_provider_config(
     Path((installation_id, provider_code)): Path<(String, String)>,
     Json(body): Json<SaveHostInfrastructureProviderConfigBody>,
 ) -> Result<Json<ApiSuccess<SaveHostInfrastructureProviderConfigResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let installation_id = Uuid::parse_str(&installation_id)
-        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("installation_id"))?;
-
-    let result =
-        HostInfrastructureConfigService::new(state.store.clone(), state.api_node_id.clone())
-            .save_provider_config(SaveHostInfrastructureProviderConfigCommand {
-                actor_user_id: context.user.id,
+    let output: interface_provider_config::HostInfrastructureProviderConfigOutput =
+        crate::routes::console_interface::invoke(
+            Arc::clone(&state),
+            "http.console.host-infrastructure.providers.configure.v1",
+            crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
+                state,
+                headers,
+            },
+            interface_provider_config::HostInfrastructureProviderConfigInput {
                 installation_id,
                 provider_code,
-                enabled_contracts: body.enabled_contracts,
-                config_json: body.config_json,
-            })
-            .await?;
-
-    Ok(Json(ApiSuccess::new(
-        SaveHostInfrastructureProviderConfigResponse {
-            restart_required: result.restart_required,
-            installation_desired_state: result.installation_desired_state,
-            provider_config_status: result.provider_config_status,
-        },
-    )))
+                body,
+            },
+        )
+        .await?;
+    Ok(Json(ApiSuccess::new(output.into_response())))
 }
 
 fn to_provider_response(

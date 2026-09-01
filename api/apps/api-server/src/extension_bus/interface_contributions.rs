@@ -562,6 +562,17 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-host-infrastructure-provider-config",
+            &["host_infrastructure.providers.configure"],
+            &["api-server.console-host-infrastructure-provider-config"],
+            crate::routes::host_infrastructure::interface_provider_config::compile_registry(
+                crate::routes::host_infrastructure::interface_provider_config::HostInfrastructureProviderConfigDependencies {
+                    store: state.store.clone(),
+                    api_node_id: state.api_node_id.clone(),
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-application-runtime-debug-artifacts",
             &[
                 "applications.runtime.debug-artifact.get",
