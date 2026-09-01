@@ -22,6 +22,8 @@ pub(crate) enum FrontstagePagesInput {
     DeleteTab(String, String),
     SaveDocument(String, String, SaveFrontstageTabDocumentBody),
     ListUiTemplates,
+    DispatchQuery(String, String, DispatchFrontstageQueryBody),
+    DispatchAction(String, String, DispatchFrontstageActionBody),
 }
 
 impl InterfaceContract for FrontstagePagesInput {
@@ -37,6 +39,7 @@ pub(crate) enum FrontstagePagesOutput {
     Tabs(Vec<FrontstagePageTabResponse>),
     Tab(FrontstagePageTabResponse),
     UiTemplates(Vec<FrontstageUiTemplateResponse>),
+    Json(Value),
     NoContent,
 }
 impl InterfaceContract for FrontstagePagesOutput {
@@ -49,6 +52,7 @@ pub(crate) struct FrontstagePagesDependencies {
     pub(crate) store: storage_durable_postgres::MainDurableStore,
     pub(crate) bootstrap_workspace_id: Uuid,
     pub(crate) api_node_id: String,
+    pub(crate) runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
 }
 struct FrontstagePagesAdapter(FrontstagePagesDependencies);
 
@@ -298,6 +302,50 @@ impl FrontstagePagesAdapter {
                         .collect(),
                 ))
             }
+            FrontstagePagesInput::DispatchQuery(page_id, tab_id, body) => {
+                let output = frontstage_query_kernel(
+                    data_capabilities::FrontstageDataExecutionDependencies {
+                        store: self.0.store.clone(),
+                        runtime_engine: Arc::clone(&self.0.runtime_engine),
+                    },
+                )?
+                .dispatch_json(
+                    "frontstage_page_tab_query",
+                    &body.query_id,
+                    serde_json::to_value(FrontstageCapabilityInput {
+                        actor_user_id: actor.user_id,
+                        actor: actor.clone(),
+                        workspace_id: actor.current_workspace_id,
+                        page_id: parse_uuid(&page_id, "page_id")?,
+                        tab_id: parse_uuid(&tab_id, "tab_id")?,
+                        params: body.params,
+                    })?,
+                )
+                .await?;
+                Ok(FrontstagePagesOutput::Json(output))
+            }
+            FrontstagePagesInput::DispatchAction(page_id, tab_id, body) => {
+                let output = frontstage_action_kernel(
+                    data_capabilities::FrontstageDataExecutionDependencies {
+                        store: self.0.store.clone(),
+                        runtime_engine: Arc::clone(&self.0.runtime_engine),
+                    },
+                )?
+                .dispatch_json(
+                    "frontstage_page_tab_action",
+                    &body.action_id,
+                    serde_json::to_value(FrontstageCapabilityInput {
+                        actor_user_id: actor.user_id,
+                        actor: actor.clone(),
+                        workspace_id: actor.current_workspace_id,
+                        page_id: parse_uuid(&page_id, "page_id")?,
+                        tab_id: parse_uuid(&tab_id, "tab_id")?,
+                        params: body.params,
+                    })?,
+                )
+                .await?;
+                Ok(FrontstagePagesOutput::Json(output))
+            }
         }
     }
 }
@@ -407,6 +455,20 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         method: "GET",
         path: "/api/console/frontstage/ui-templates",
         mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "frontstage.queries.dispatch",
+        binding_id: "http.console.frontstage.queries.dispatch.post.v1",
+        method: "POST",
+        path: "/api/console/frontstage/pages/:page_id/tabs/:tab_id/queries/dispatch",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "frontstage.actions.dispatch",
+        binding_id: "http.console.frontstage.actions.dispatch.post.v1",
+        method: "POST",
+        path: "/api/console/frontstage/pages/:page_id/tabs/:tab_id/actions/dispatch",
+        mutating: true,
     },
 ];
 

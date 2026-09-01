@@ -109,12 +109,18 @@ struct DataCapabilityContext {
     params: DataModelCapabilityParams,
 }
 
+#[derive(Clone)]
+pub(crate) struct FrontstageDataExecutionDependencies {
+    pub(crate) store: storage_durable_postgres::MainDurableStore,
+    pub(crate) runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
+}
+
 async fn resolve_data_capability_context(
-    state: &ApiState,
+    dependencies: &FrontstageDataExecutionDependencies,
     input: FrontstageCapabilityInput,
 ) -> Result<DataCapabilityContext, anyhow::Error> {
     // Re-check tab visibility on every dispatch: the tab is the capability scope.
-    FrontstagePageService::for_actor(state.store.clone(), input.actor.clone())
+    FrontstagePageService::for_actor(dependencies.store.clone(), input.actor.clone())
         .get_page_detail(GetFrontstagePageDetailCommand {
             actor_user_id: input.actor_user_id,
             workspace_id: input.workspace_id,
@@ -130,12 +136,12 @@ async fn resolve_data_capability_context(
 }
 
 async fn load_scope_grant(
-    state: &ApiState,
+    dependencies: &FrontstageDataExecutionDependencies,
     actor: &domain::ActorContext,
     model_code: &str,
     action: RuntimeDataAction,
 ) -> Result<Option<runtime_core::runtime_acl::RuntimeScopeGrant>, anyhow::Error> {
-    let model = state
+    let model = dependencies
         .runtime_engine
         .registry()
         .get(
@@ -144,7 +150,7 @@ async fn load_scope_grant(
             model_code,
         )
         .or_else(|| {
-            state.runtime_engine.registry().get(
+            dependencies.runtime_engine.registry().get(
                 domain::DataModelScopeKind::System,
                 domain::SYSTEM_SCOPE_ID,
                 model_code,
@@ -153,7 +159,7 @@ async fn load_scope_grant(
     let Some(model) = model else {
         return Ok(None);
     };
-    ModelDefinitionService::new(state.store.clone())
+    ModelDefinitionService::new(dependencies.store.clone())
         .load_runtime_scope_grant(actor, model.model_id, action)
         .await
 }
@@ -181,26 +187,26 @@ pub(crate) fn register_data_model_action_capabilities(
 pub(crate) fn register_data_model_query_handlers(
     kernel: &mut ResourceActionKernel,
     resource_code: &'static str,
-    state: Arc<ApiState>,
+    dependencies: FrontstageDataExecutionDependencies,
 ) -> Result<(), anyhow::Error> {
-    let list_state = state.clone();
+    let list_dependencies = dependencies.clone();
     kernel.register_json_handler(
         resource_code,
         "frontstage.data_model.record.list",
         move |input| {
-            let state = list_state.clone();
+            let dependencies = list_dependencies.clone();
             async move {
                 let input: FrontstageCapabilityInput = serde_json::from_value(input)
                     .map_err(|_| ControlPlaneError::InvalidInput("frontstage_capability_input"))?;
-                let context = resolve_data_capability_context(&state, input).await?;
+                let context = resolve_data_capability_context(&dependencies, input).await?;
                 let scope_grant = load_scope_grant(
-                    &state,
+                    &dependencies,
                     &context.actor,
                     &context.params.model,
                     RuntimeDataAction::View,
                 )
                 .await?;
-                let result = state
+                let result = dependencies
                     .runtime_engine
                     .list_records(runtime_core::runtime_engine::RuntimeListInput {
                         actor: context.actor,
@@ -223,25 +229,25 @@ pub(crate) fn register_data_model_query_handlers(
         },
     )?;
 
-    let get_state = state;
+    let get_dependencies = dependencies;
     kernel.register_json_handler(
         resource_code,
         "frontstage.data_model.record.get",
         move |input| {
-            let state = get_state.clone();
+            let dependencies = get_dependencies.clone();
             async move {
                 let input: FrontstageCapabilityInput = serde_json::from_value(input)
                     .map_err(|_| ControlPlaneError::InvalidInput("frontstage_capability_input"))?;
-                let context = resolve_data_capability_context(&state, input).await?;
+                let context = resolve_data_capability_context(&dependencies, input).await?;
                 let record_id = require_record_id(&context.params)?;
                 let scope_grant = load_scope_grant(
-                    &state,
+                    &dependencies,
                     &context.actor,
                     &context.params.model,
                     RuntimeDataAction::View,
                 )
                 .await?;
-                let record = state
+                let record = dependencies
                     .runtime_engine
                     .get_record(runtime_core::runtime_engine::RuntimeGetInput {
                         actor: context.actor,
@@ -265,27 +271,27 @@ pub(crate) fn register_data_model_query_handlers(
 pub(crate) fn register_data_model_action_handlers(
     kernel: &mut ResourceActionKernel,
     resource_code: &'static str,
-    state: Arc<ApiState>,
+    dependencies: FrontstageDataExecutionDependencies,
 ) -> Result<(), anyhow::Error> {
-    let create_state = state.clone();
+    let create_dependencies = dependencies.clone();
     kernel.register_json_handler(
         resource_code,
         "frontstage.data_model.record.create",
         move |input| {
-            let state = create_state.clone();
+            let dependencies = create_dependencies.clone();
             async move {
                 let input: FrontstageCapabilityInput = serde_json::from_value(input)
                     .map_err(|_| ControlPlaneError::InvalidInput("frontstage_capability_input"))?;
-                let context = resolve_data_capability_context(&state, input).await?;
+                let context = resolve_data_capability_context(&dependencies, input).await?;
                 let values = require_values(&context.params)?;
                 let scope_grant = load_scope_grant(
-                    &state,
+                    &dependencies,
                     &context.actor,
                     &context.params.model,
                     RuntimeDataAction::Create,
                 )
                 .await?;
-                let record = state
+                let record = dependencies
                     .runtime_engine
                     .create_record(runtime_core::runtime_engine::RuntimeCreateInput {
                         actor: context.actor,
@@ -303,26 +309,26 @@ pub(crate) fn register_data_model_action_handlers(
         },
     )?;
 
-    let update_state = state.clone();
+    let update_dependencies = dependencies.clone();
     kernel.register_json_handler(
         resource_code,
         "frontstage.data_model.record.update",
         move |input| {
-            let state = update_state.clone();
+            let dependencies = update_dependencies.clone();
             async move {
                 let input: FrontstageCapabilityInput = serde_json::from_value(input)
                     .map_err(|_| ControlPlaneError::InvalidInput("frontstage_capability_input"))?;
-                let context = resolve_data_capability_context(&state, input).await?;
+                let context = resolve_data_capability_context(&dependencies, input).await?;
                 let record_id = require_record_id(&context.params)?;
                 let values = require_values(&context.params)?;
                 let scope_grant = load_scope_grant(
-                    &state,
+                    &dependencies,
                     &context.actor,
                     &context.params.model,
                     RuntimeDataAction::Update,
                 )
                 .await?;
-                let record = state
+                let record = dependencies
                     .runtime_engine
                     .update_record(runtime_core::runtime_engine::RuntimeUpdateInput {
                         actor: context.actor,
@@ -341,25 +347,25 @@ pub(crate) fn register_data_model_action_handlers(
         },
     )?;
 
-    let delete_state = state;
+    let delete_dependencies = dependencies;
     kernel.register_json_handler(
         resource_code,
         "frontstage.data_model.record.delete",
         move |input| {
-            let state = delete_state.clone();
+            let dependencies = delete_dependencies.clone();
             async move {
                 let input: FrontstageCapabilityInput = serde_json::from_value(input)
                     .map_err(|_| ControlPlaneError::InvalidInput("frontstage_capability_input"))?;
-                let context = resolve_data_capability_context(&state, input).await?;
+                let context = resolve_data_capability_context(&dependencies, input).await?;
                 let record_id = require_record_id(&context.params)?;
                 let scope_grant = load_scope_grant(
-                    &state,
+                    &dependencies,
                     &context.actor,
                     &context.params.model,
                     RuntimeDataAction::Delete,
                 )
                 .await?;
-                let record = state
+                let record = dependencies
                     .runtime_engine
                     .delete_record(runtime_core::runtime_engine::RuntimeDeleteInput {
                         actor: context.actor,

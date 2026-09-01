@@ -1032,6 +1032,7 @@ pub(crate) fn production_interface_contributions(
                 "frontstage.tabs.view", "frontstage.tabs.create", "frontstage.tabs.update",
                 "frontstage.tabs.delete", "frontstage.tabs.document.save",
                 "frontstage.ui_templates.view",
+                "frontstage.queries.dispatch", "frontstage.actions.dispatch",
             ],
             &["api-server.console-frontstage-pages"],
             crate::routes::frontstage::interface_pages::compile_registry(
@@ -1039,6 +1040,7 @@ pub(crate) fn production_interface_contributions(
                     store: state.store.clone(),
                     bootstrap_workspace_id: state.bootstrap_workspace_id,
                     api_node_id: state.api_node_id.clone(),
+                    runtime_engine: Arc::clone(&state.runtime_engine),
                 },
             )?,
         ),

@@ -29,7 +29,6 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_get, console_patch, console_post, console_put, ConsoleRouteAssembly,
@@ -334,11 +333,17 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
         .route(
             "/frontstage/pages/:page_id/tabs/:tab_id/queries/dispatch",
-            console_post(dispatch_frontstage_query, Authenticated),
+            console_post(
+                dispatch_frontstage_query,
+                ConsoleOperation("frontstage.queries.dispatch".to_string()),
+            ),
         )
         .route(
             "/frontstage/pages/:page_id/tabs/:tab_id/actions/dispatch",
-            console_post(dispatch_frontstage_action, Authenticated),
+            console_post(
+                dispatch_frontstage_action,
+                ConsoleOperation("frontstage.actions.dispatch".to_string()),
+            ),
         )
         .route(
             "/frontstage/data-capabilities",
@@ -398,7 +403,9 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
-fn frontstage_query_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel, ApiError> {
+fn frontstage_query_kernel(
+    dependencies: data_capabilities::FrontstageDataExecutionDependencies,
+) -> Result<ResourceActionKernel, ApiError> {
     let mut registry = ResourceActionRegistry::default();
     registry.register_resource(ResourceDefinition::core(
         "frontstage_page_tab_query",
@@ -417,13 +424,13 @@ fn frontstage_query_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel,
     data_capabilities::register_data_model_query_handlers(
         &mut kernel,
         "frontstage_page_tab_query",
-        state.clone(),
+        dependencies.clone(),
     )?;
     kernel.register_json_handler(
         "frontstage_page_tab_query",
         "frontstage.page_tab.get",
         move |input| {
-            let state = state.clone();
+            let dependencies = dependencies.clone();
             async move {
                 let input: FrontstageCapabilityInput =
                     serde_json::from_value(input).map_err(|_| {
@@ -437,15 +444,17 @@ fn frontstage_query_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel,
                     )
                     .into());
                 }
-                let detail =
-                    FrontstagePageService::for_actor(state.store.clone(), input.actor.clone())
-                        .get_page_detail(GetFrontstagePageDetailCommand {
-                            actor_user_id: input.actor_user_id,
-                            workspace_id: input.workspace_id,
-                            page_id: input.page_id,
-                            tab_reference: input.tab_id.to_string(),
-                        })
-                        .await?;
+                let detail = FrontstagePageService::for_actor(
+                    dependencies.store.clone(),
+                    input.actor.clone(),
+                )
+                .get_page_detail(GetFrontstagePageDetailCommand {
+                    actor_user_id: input.actor_user_id,
+                    workspace_id: input.workspace_id,
+                    page_id: input.page_id,
+                    tab_reference: input.tab_id.to_string(),
+                })
+                .await?;
                 Ok(serde_json::to_value(to_page_detail_response(detail))?)
             }
         },
@@ -453,7 +462,9 @@ fn frontstage_query_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel,
     Ok(kernel)
 }
 
-fn frontstage_action_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel, ApiError> {
+fn frontstage_action_kernel(
+    dependencies: data_capabilities::FrontstageDataExecutionDependencies,
+) -> Result<ResourceActionKernel, ApiError> {
     let mut registry = ResourceActionRegistry::default();
     registry.register_resource(ResourceDefinition::core(
         "frontstage_page_tab_action",
@@ -472,13 +483,13 @@ fn frontstage_action_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel
     data_capabilities::register_data_model_action_handlers(
         &mut kernel,
         "frontstage_page_tab_action",
-        state.clone(),
+        dependencies.clone(),
     )?;
     kernel.register_json_handler(
         "frontstage_page_tab_action",
         "frontstage.page_tab.document.save",
         move |input| {
-            let state = state.clone();
+            let dependencies = dependencies.clone();
             async move {
                 let input: FrontstageCapabilityInput =
                     serde_json::from_value(input).map_err(|_| {
@@ -492,16 +503,18 @@ fn frontstage_action_kernel(state: Arc<ApiState>) -> Result<ResourceActionKernel
                             "frontstage_action_params",
                         )
                     })?;
-                let detail =
-                    FrontstagePageService::for_actor(state.store.clone(), input.actor.clone())
-                        .save_tab_document(SaveFrontstageTabDocumentCommand {
-                            actor_user_id: input.actor_user_id,
-                            workspace_id: input.workspace_id,
-                            page_id: input.page_id,
-                            tab_id: input.tab_id,
-                            document_payload: body.payload,
-                        })
-                        .await?;
+                let detail = FrontstagePageService::for_actor(
+                    dependencies.store.clone(),
+                    input.actor.clone(),
+                )
+                .save_tab_document(SaveFrontstageTabDocumentCommand {
+                    actor_user_id: input.actor_user_id,
+                    workspace_id: input.workspace_id,
+                    page_id: input.page_id,
+                    tab_id: input.tab_id,
+                    document_payload: body.payload,
+                })
+                .await?;
                 Ok(serde_json::to_value(to_page_detail_response(detail))?)
             }
         },
@@ -515,22 +528,18 @@ pub async fn dispatch_frontstage_query(
     Path((page_id, tab_id)): Path<(String, String)>,
     Json(body): Json<DispatchFrontstageQueryBody>,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let output = frontstage_query_kernel(state)?
-        .dispatch_json(
-            "frontstage_page_tab_query",
-            &body.query_id,
-            serde_json::to_value(FrontstageCapabilityInput {
-                actor_user_id: context.user.id,
-                actor: context.actor.clone(),
-                workspace_id: context.actor.current_workspace_id,
-                page_id: parse_uuid(&page_id, "page_id")?,
-                tab_id: parse_uuid(&tab_id, "tab_id")?,
-                params: body.params,
-            })?,
-        )
-        .await?;
-    Ok(Json(ApiSuccess::new(output)))
+    let interface_pages::FrontstagePagesOutput::Json(value) = invoke_pages(
+        state,
+        headers,
+        "http.console.frontstage.queries.dispatch.post.v1",
+        interface_pages::FrontstagePagesInput::DispatchQuery(page_id, tab_id, body),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 pub async fn dispatch_frontstage_action(
@@ -539,23 +548,18 @@ pub async fn dispatch_frontstage_action(
     Path((page_id, tab_id)): Path<(String, String)>,
     Json(body): Json<DispatchFrontstageActionBody>,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let output = frontstage_action_kernel(state)?
-        .dispatch_json(
-            "frontstage_page_tab_action",
-            &body.action_id,
-            serde_json::to_value(FrontstageCapabilityInput {
-                actor_user_id: context.user.id,
-                actor: context.actor.clone(),
-                workspace_id: context.actor.current_workspace_id,
-                page_id: parse_uuid(&page_id, "page_id")?,
-                tab_id: parse_uuid(&tab_id, "tab_id")?,
-                params: body.params,
-            })?,
-        )
-        .await?;
-    Ok(Json(ApiSuccess::new(output)))
+    let interface_pages::FrontstagePagesOutput::Json(value) = invoke_pages(
+        state,
+        headers,
+        "http.console.frontstage.actions.dispatch.post.v1",
+        interface_pages::FrontstagePagesInput::DispatchAction(page_id, tab_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(
