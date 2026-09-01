@@ -1259,6 +1259,26 @@ pub(crate) fn production_interface_contributions(
             })?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-system-backups",
+            &[
+                "system_backups.import",
+                "system_backups.recovery.status",
+                "system_backups.status",
+                "system_backups.detail",
+                "system_backups.delete",
+                "system_backups.verify",
+                "system_backups.download",
+            ],
+            &["api-server.console-system-backups"],
+            crate::routes::system_backups::interface::compile_registry(
+                crate::routes::system_backups::interface::port(
+                    crate::routes::system_backups::interface::SystemBackupsDependencies {
+                        runtime: state.system_backup.clone(),
+                    },
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",

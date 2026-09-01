@@ -16,10 +16,10 @@ use control_plane::{
     system_recovery::{recovery_plan_digest, ConfirmedRecoveryIntent, RecoveryPlan},
 };
 use domain::{BackupJobId, BackupSetId, ContentDigest, RecoveryJobId};
-use futures_util::{stream, StreamExt};
+use futures_util::stream;
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
@@ -55,6 +55,8 @@ const VERIFY: &str = "system_backups.verify";
 const BACKUP_PASSWORD_HEADER: &str = "x-system-backup-password";
 const BACKUP_JOB_STATUS_ROUTE: &str =
     "/api/console/settings/system-backups/jobs/status/:backup_job_id";
+
+pub(crate) mod interface;
 
 fn require_system_backup(
     state: &ApiState,
@@ -377,18 +379,18 @@ pub async fn get_backup_job_status(
     headers: HeaderMap,
     Path(backup_job_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<BackupJobStatusResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let status = require_system_backup(&state)?
-        .backup_job_status(BackupJobId::from_uuid(backup_job_id))
-        .await?
-        .ok_or(ControlPlaneError::NotFound("backup_job"))?;
-    Ok(Json(ApiSuccess::new(BackupJobStatusResponse {
-        backup_job_id: status.backup_job_id,
-        backup_set_id: status.backup_set_id,
-        status: status.state,
-        failure_code: status.failure_code,
-        sealed_components: status.sealed_components,
-    })))
+    let interface::SystemBackupsOutput::JobStatus(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.system-backups.job-status.get.v1",
+        interface::SystemBackupsInput::GetJobStatus { backup_job_id },
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(get, path = "/api/console/settings/system-backups/{backup_set_id}", params(("backup_set_id" = Uuid, Path)), responses((status = 200, body = BackupSetDetailResponse)))]
@@ -397,10 +399,18 @@ pub async fn get_backup(
     headers: HeaderMap,
     Path(backup_set_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<BackupSetDetailResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let id = BackupSetId::from_uuid(backup_set_id);
-    let detail = require_system_backup(&state)?.detail(id).await?;
-    Ok(Json(ApiSuccess::new(detail_response(id, detail))))
+    let interface::SystemBackupsOutput::Detail(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.system-backups.detail.get.v1",
+        interface::SystemBackupsInput::GetDetail { backup_set_id },
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(delete, path = "/api/console/settings/system-backups/{backup_set_id}", params(("backup_set_id" = Uuid, Path)), responses((status = 204)))]
@@ -409,11 +419,17 @@ pub async fn delete_backup(
     headers: HeaderMap,
     Path(backup_set_id): Path<Uuid>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    require_system_backup(&state)?
-        .delete(BackupSetId::from_uuid(backup_set_id))
-        .await?;
+    let interface::SystemBackupsOutput::Deleted = invoke(
+        state,
+        headers,
+        "http.console.settings.system-backups.delete.v1",
+        interface::SystemBackupsInput::Delete { backup_set_id },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -423,30 +439,33 @@ pub async fn verify_backup(
     headers: HeaderMap,
     Path(backup_set_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<BackupVerificationResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let id = BackupSetId::from_uuid(backup_set_id);
-    let password = headers
+    let backup_password = headers
         .get(BACKUP_PASSWORD_HEADER)
-        .and_then(|value| value.to_str().ok());
-    require_system_backup(&state)?
-        .verify_with_password(id, password)
-        .await?;
-    Ok(Json(ApiSuccess::new(BackupVerificationResponse {
-        backup_set_id: id,
-        verified: true,
-    })))
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let interface::SystemBackupsOutput::Verified(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.system-backups.verify.v1",
+        interface::SystemBackupsInput::Verify {
+            backup_set_id,
+            backup_password,
+        },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(post, path = "/api/console/settings/system-backups/import", request_body(content = String, content_type = "application/octet-stream"), responses((status = 200, body = BackupMutationResponse)))]
 pub async fn import_backup(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    body: Body,
+    body: Bytes,
 ) -> Result<Json<ApiSuccess<BackupMutationResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let runtime = require_system_backup(&state)?;
     if headers
         .get(header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
@@ -454,24 +473,25 @@ pub async fn import_backup(
     {
         return Err(ControlPlaneError::InvalidInput("backup_content_type").into());
     }
-    let (mut reader, mut writer) = tokio::io::duplex(256 * 1024);
-    tokio::spawn(async move {
-        let mut stream = body.into_data_stream();
-        while let Some(frame) = stream.next().await {
-            match frame {
-                Ok(bytes) if writer.write_all(&bytes).await.is_ok() => {}
-                _ => break,
-            }
-        }
-        let _ = writer.shutdown().await;
-    });
-    let password = headers
+    let backup_password = headers
         .get(BACKUP_PASSWORD_HEADER)
-        .and_then(|value| value.to_str().ok());
-    let sealed = runtime.import_with_password(&mut reader, password).await?;
-    Ok(Json(ApiSuccess::new(mutation_response(
-        sealed.manifest().backup_set_id(),
-    ))))
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let interface::SystemBackupsOutput::Imported(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.system-backups.import.v1",
+        interface::SystemBackupsInput::Import {
+            bytes: body.to_vec(),
+            backup_password,
+        },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(get, path = "/api/console/settings/system-backups/{backup_set_id}/download", params(("backup_set_id" = Uuid, Path)), responses((status = 200, content_type = "application/octet-stream", body = String)))]
@@ -480,17 +500,18 @@ pub async fn download_backup(
     headers: HeaderMap,
     Path(backup_set_id): Path<Uuid>,
 ) -> Result<Response<Body>, ApiError> {
-    require_session(&state, &headers).await?;
-    let id = BackupSetId::from_uuid(backup_set_id);
-    let runtime = require_system_backup(&state)?;
-    runtime.get(id).await?;
-    let (reader, writer) = tokio::io::duplex(256 * 1024);
-    tokio::spawn(async move {
-        if let Err(error) = runtime.download(id, writer).await {
-            tracing::warn!(backup_set_id = %id.as_uuid(), error = %error, "backup download stream failed");
-        }
-    });
-    let stream = stream::unfold(reader, |mut reader| async move {
+    let interface::SystemBackupsOutput::Download(download) = invoke(
+        state,
+        headers,
+        "http.console.settings.system-backups.download.get.v1",
+        interface::SystemBackupsInput::Download { backup_set_id },
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    let stream = stream::unfold(download.reader, |mut reader| async move {
         let mut buffer = vec![0_u8; 64 * 1024];
         match reader.read(&mut buffer).await {
             Ok(0) => None,
@@ -501,18 +522,18 @@ pub async fn download_backup(
             Err(_) => None,
         }
     });
+    let status = StatusCode::from_u16(download.status)
+        .map_err(|_| ControlPlaneError::InvalidInput("backup_download_status"))?;
     let mut response = Response::new(Body::from_stream(stream));
+    *response.status_mut() = status;
     response.headers_mut().insert(
         header::CONTENT_TYPE,
-        HeaderValue::from_static("application/octet-stream"),
+        HeaderValue::from_static(download.content_type),
     );
     response.headers_mut().insert(
         header::CONTENT_DISPOSITION,
-        HeaderValue::from_str(&format!(
-            "attachment; filename=\"{}.1fb-backup\"",
-            id.as_uuid()
-        ))
-        .map_err(|_| ControlPlaneError::InvalidInput("backup_set_id"))?,
+        HeaderValue::from_str(&download.content_disposition)
+            .map_err(|_| ControlPlaneError::InvalidInput("backup_set_id"))?,
     );
     Ok(response)
 }
@@ -638,43 +659,36 @@ pub async fn get_recovery_status(
     headers: HeaderMap,
     Query(query): Query<RecoveryStatusQuery>,
 ) -> Result<Json<ApiSuccess<RecoveryStatusResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_root_cookie(&context)?;
-    let runtime = require_system_backup(&state)?;
-    let maintenance = runtime.maintenance_status();
-    let active = runtime.active_recovery();
-    let requested_job_id = query
-        .recovery_job_id
-        .map(RecoveryJobId::from_uuid)
-        .or(maintenance.recovery_job_id);
-    let journal = match requested_job_id {
-        Some(recovery_job_id) => runtime.recovery_journal(recovery_job_id).await?,
-        None => Vec::new(),
+    let interface::SystemBackupsOutput::RecoveryStatus(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.system-backups.recovery-status.get.v1",
+        interface::SystemBackupsInput::GetRecoveryStatus {
+            recovery_job_id: query.recovery_job_id,
+        },
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
     };
-    let journal_state = journal.iter().rev().find_map(|event| match &event.event {
-        domain::BackupJournalEventKind::RecoveryStateChanged { state } => Some(*state),
-        _ => None,
-    });
-    let journal_events = journal
-        .into_iter()
-        .map(serde_json::to_value)
-        .collect::<Result<Vec<_>, _>>()?;
-    let phase = match maintenance.phase {
-        control_plane::system_recovery::SystemMaintenancePhase::Online => "online",
-        control_plane::system_recovery::SystemMaintenancePhase::Draining => "draining",
-        control_plane::system_recovery::SystemMaintenancePhase::Active => "active",
+    Ok(Json(ApiSuccess::new(response)))
+}
+
+async fn invoke(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    binding_id: &'static str,
+    input: interface::SystemBackupsInput,
+    mutating: bool,
+) -> Result<interface::SystemBackupsOutput, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    let credential = if mutating {
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers }
+    } else {
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
     };
-    Ok(Json(ApiSuccess::new(RecoveryStatusResponse {
-        phase: phase.to_owned(),
-        recovery_job_id: requested_job_id,
-        active_write_count: maintenance.active_write_count() as u64,
-        started_at: maintenance.started_at.map(|value| value.to_string()),
-        target_backup_set_id: active.as_ref().map(|value| value.target_backup_set_id),
-        safety_backup_set_id: active.as_ref().map(|value| value.safety_backup_set_id),
-        plan_digest: active.map(|value| value.plan_digest.as_str().to_owned()),
-        journal_state,
-        journal_events,
-    })))
+    crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
 }
 
 fn canonical_backup_name(id: BackupSetId) -> String {
