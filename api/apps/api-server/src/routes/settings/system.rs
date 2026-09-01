@@ -6,6 +6,7 @@ use axum::{
     Json, Router,
 };
 use control_plane::system_runtime::SystemRuntimeService;
+use interface_runtime::{InterfaceContract, UserPrincipal};
 use runtime_profile::{LocaleResolution, LocaleResolutionInput, LocaleSource, RuntimeProfile};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
@@ -13,8 +14,11 @@ use utoipa::{IntoParams, ToSchema};
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::require_session::require_session,
     response::ApiSuccess,
+    routes::console_interface::{
+        self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
+        ConsoleInterfaceTargetError,
+    },
     routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
     runtime_profile_client::RuntimeProfileSnapshotCache,
 };
@@ -26,6 +30,121 @@ pub use super::release_status::{
 #[derive(Debug, Deserialize, IntoParams)]
 pub struct SystemRuntimeProfileQuery {
     pub locale: Option<String>,
+}
+
+pub(crate) enum SystemInterfaceInput {
+    ReleaseStatus,
+    RuntimeProfile {
+        query_locale: Option<String>,
+        explicit_header_locale: Option<String>,
+        accept_language: Option<String>,
+    },
+}
+impl InterfaceContract for SystemInterfaceInput {
+    const CONTRACT_ID: &'static str = "console-system-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+pub(crate) enum SystemInterfaceOutput {
+    ReleaseStatus(ConsoleReleaseStatusResponse),
+    RuntimeProfile(SystemRuntimeProfileResponse),
+}
+impl InterfaceContract for SystemInterfaceOutput {
+    const CONTRACT_ID: &'static str = "console-system-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+pub(crate) struct SystemInterfaceDependencies {
+    pub(crate) store: storage_durable_postgres::MainDurableStore,
+    pub(crate) profiles: RuntimeProfileSnapshotCache,
+    pub(crate) api_node_id: String,
+    pub(crate) provider_install_root: String,
+    pub(crate) host_extension_dropin_root: String,
+}
+struct SystemInterfaceAdapter(SystemInterfaceDependencies);
+impl ConsoleInterfacePort<SystemInterfaceInput, SystemInterfaceOutput> for SystemInterfaceAdapter {
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: SystemInterfaceInput,
+    ) -> ConsoleInterfaceFuture<'a, SystemInterfaceOutput> {
+        Box::pin(async move {
+            match input {
+                SystemInterfaceInput::ReleaseStatus => Ok(SystemInterfaceOutput::ReleaseStatus(
+                    super::release_status::fetch_console_release_status().await,
+                )),
+                SystemInterfaceInput::RuntimeProfile {
+                    query_locale,
+                    explicit_header_locale,
+                    accept_language,
+                } => {
+                    let access = SystemRuntimeService::new(
+                        self.0.store.for_actor(principal.actor().clone()),
+                    )
+                    .authorize_view(principal.actor().user_id)
+                    .await
+                    .map_err(ApiError::from)
+                    .map_err(ConsoleInterfaceTargetError)?;
+                    let locale = runtime_profile::resolve_locale(LocaleResolutionInput {
+                        query_locale,
+                        explicit_header_locale,
+                        user_preferred_locale: access.preferred_locale,
+                        accept_language,
+                        fallback_locale: runtime_profile::FALLBACK_LOCALE,
+                        supported_locales: runtime_profile::SUPPORTED_LOCALES
+                            .iter()
+                            .map(|value| value.to_string())
+                            .collect(),
+                    });
+                    let profiles = self
+                        .0
+                        .profiles
+                        .get_or_refresh()
+                        .await
+                        .map_err(ApiError::from)
+                        .map_err(ConsoleInterfaceTargetError)?;
+                    Ok(SystemInterfaceOutput::RuntimeProfile(
+                        merge_runtime_profiles(
+                            locale,
+                            profiles.api_profile,
+                            profiles.host_profile,
+                            self.0.api_node_id.clone(),
+                            self.0.provider_install_root.clone(),
+                            self.0.host_extension_dropin_root.clone(),
+                        ),
+                    ))
+                }
+            }
+        })
+    }
+}
+
+pub(crate) fn compile_registry(
+    dependencies: SystemInterfaceDependencies,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+        ConsoleInterfaceDeclaration {
+            interface_id: "system.runtime_profile.view",
+            binding_id: "http.console.system.runtime-profile.get.v1",
+            method: "GET",
+            path: "/api/console/system/runtime-profile",
+            mutating: false,
+        },
+        ConsoleInterfaceDeclaration {
+            interface_id: "system.release_status.view",
+            binding_id: "http.console.system.release-status.get.v1",
+            method: "GET",
+            path: "/api/console/system/release-status",
+            mutating: false,
+        },
+    ];
+    console_interface::compile_registry(
+        "api-server.console-system",
+        "graph:console-system-v1",
+        DECLARATIONS,
+        Arc::new(SystemInterfaceAdapter(dependencies)),
+    )
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -331,11 +450,18 @@ pub async fn get_release_status(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ConsoleReleaseStatusResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-
-    Ok(Json(ApiSuccess::new(
-        super::release_status::fetch_console_release_status().await,
-    )))
+    let snapshot_state = Arc::clone(&state);
+    let SystemInterfaceOutput::ReleaseStatus(value) = console_interface::invoke(
+        snapshot_state,
+        "http.console.system.release-status.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        SystemInterfaceInput::ReleaseStatus,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(
@@ -353,41 +479,23 @@ pub async fn get_runtime_profile(
     Query(query): Query<SystemRuntimeProfileQuery>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<SystemRuntimeProfileResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let access = SystemRuntimeService::new(state.store.for_actor(context.actor.clone()))
-        .authorize_view(context.user.id)
-        .await?;
-
-    let locale = runtime_profile::resolve_locale(LocaleResolutionInput {
+    let input = SystemInterfaceInput::RuntimeProfile {
         query_locale: query.locale,
         explicit_header_locale: header_locale(&headers),
-        user_preferred_locale: access.preferred_locale,
         accept_language: header_accept_language(&headers),
-        fallback_locale: runtime_profile::FALLBACK_LOCALE,
-        supported_locales: runtime_profile::SUPPORTED_LOCALES
-            .iter()
-            .map(|value| value.to_string())
-            .collect(),
-    });
-
-    let profiles = RuntimeProfileSnapshotCache::new(
-        state.infrastructure.cache_store(),
-        state.infrastructure.distributed_lock(),
-        state.api_runtime_profile.clone(),
-        state.runtime_host_system.clone(),
-        state.api_node_id.clone(),
-        state.process_started_at,
+    };
+    let snapshot_state = Arc::clone(&state);
+    let SystemInterfaceOutput::RuntimeProfile(value) = console_interface::invoke(
+        snapshot_state,
+        "http.console.system.runtime-profile.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        input,
     )
-    .get_or_refresh()
-    .await?;
-    Ok(Json(ApiSuccess::new(merge_runtime_profiles(
-        locale,
-        profiles.api_profile,
-        profiles.host_profile,
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-        state.host_extension_dropin_root.clone(),
-    ))))
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 fn header_locale(headers: &HeaderMap) -> Option<String> {

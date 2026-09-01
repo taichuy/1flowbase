@@ -1076,6 +1076,22 @@ pub(crate) fn production_interface_contributions(
             crate::routes::application_management::compile_registry(state.store.clone())?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-system",
+            &["system.runtime_profile.view", "system.release_status.view"],
+            &["api-server.console-system"],
+            crate::routes::system::compile_registry(crate::routes::system::SystemInterfaceDependencies {
+                store: state.store.clone(),
+                profiles: crate::runtime_profile_client::RuntimeProfileSnapshotCache::new(
+                    state.infrastructure.cache_store(), state.infrastructure.distributed_lock(),
+                    Arc::clone(&state.api_runtime_profile), Arc::clone(&state.runtime_host_system),
+                    state.api_node_id.clone(), state.process_started_at,
+                ),
+                api_node_id: state.api_node_id.clone(),
+                provider_install_root: state.provider_install_root.clone(),
+                host_extension_dropin_root: state.host_extension_dropin_root.clone(),
+            })?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",
