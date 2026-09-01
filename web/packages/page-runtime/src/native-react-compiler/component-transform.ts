@@ -104,7 +104,7 @@ export function transformNativeReactComponentSource(
 
   return {
     ok: true,
-    source: policy.source,
+    source,
     injectedModules: bindings.value.injectedModules,
     importBindings: bindings.value.importBindings,
     executableBody: [
