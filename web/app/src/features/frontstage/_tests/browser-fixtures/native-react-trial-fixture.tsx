@@ -1,7 +1,7 @@
-import { Button, ConfigProvider, Select } from 'antd';
+import { Avatar, Badge, Button, ConfigProvider, Select } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
 import { EChart } from '@1flowbase/charts';
-import { Surface } from '@1flowbase/native-components';
+import { ScrollableSurface, Surface } from '@1flowbase/native-components';
 import { VditorEditor } from '@1flowbase/rich-text';
 import nativeComponentsCss from '@1flowbase/native-components/styles.css?raw';
 import richTextCss from '@1flowbase/rich-text/styles.css?raw';
@@ -30,7 +30,10 @@ import {
   subscribeFrontstageRuntimeObservations,
   type FrontstageRuntimeObservation
 } from '../../lib/page-canvas/runtime-observation';
-import type { FrontstageBlockInstance } from '../../lib/page-document';
+import type {
+  FrontstageBlockInstance,
+  FrontstageBlockPresentation
+} from '../../lib/page-document';
 import type { FrontstageBlockPorts } from '../../lib/page-signals/types';
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-trusted-block-runtime-factory';
 import type { PreparedFrontstageIsolatedContribution } from '../../lib/isolated-frontend-block-contribution';
@@ -234,6 +237,39 @@ function PublicModulesBlock({
       <h3>
         <UserOutlined /> {props.label}
       </h3>
+      <div
+        data-testid={`surface-topology-ink-${props.label}`}
+        style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}
+      >
+        <Badge count={9} data-testid={`surface-topology-badge-${props.label}`}>
+          <Avatar shape="square">A</Avatar>
+        </Badge>
+        <button
+          type="button"
+          data-testid={`surface-topology-focus-${props.label}`}
+          style={{ outline: '3px solid #1677ff', outlineOffset: 2 }}
+        >
+          focus ink
+        </button>
+        <div
+          data-testid={`surface-topology-shadow-${props.label}`}
+          style={{ boxShadow: '0 0 6px #1677ff', padding: 4 }}
+        >
+          shadow ink
+        </div>
+      </div>
+      <ScrollableSurface
+        aria-label={`surface-topology-scroll-${props.label}`}
+        data-testid={`surface-topology-scroll-${props.label}`}
+        style={{ width: 320, maxWidth: '100%', height: 64, marginTop: 12 }}
+      >
+        <div
+          data-testid={`surface-topology-wide-${props.label}`}
+          style={{ width: 720, height: 40 }}
+        >
+          explicit wide scroll content
+        </div>
+      </ScrollableSurface>
       <EChart
         ariaLabel={`chart-${props.label}`}
         option={{
@@ -496,7 +532,9 @@ function NativeReactTrialFixture() {
         'public-b',
         3,
         { label: 'b' },
-        { inputs: [], outputs: [] }
+        { inputs: [], outputs: [] },
+        'native_react',
+        { heightMode: 'fixed', height: 360 }
       ),
       fixtureRuntimeBlock(
         'isolated',
@@ -773,7 +811,11 @@ function fixtureRuntimeBlock(
   order: number,
   props: Record<string, unknown>,
   ports: FrontstageBlockPorts,
-  runtimeKind = 'native_react'
+  runtimeKind = 'native_react',
+  presentation: FrontstageBlockPresentation = {
+    heightMode: 'auto',
+    height: null
+  }
 ): FrontstageBlockInstance {
   return {
     id,
@@ -796,7 +838,7 @@ function fixtureRuntimeBlock(
       hint: runtimeKind
     },
     layout: { order, region: 'main', span: 12 },
-    presentation: { heightMode: 'auto', height: null },
+    presentation,
     order,
     props,
     ports

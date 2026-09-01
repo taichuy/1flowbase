@@ -28,6 +28,7 @@ import {
   createNativeTrustedBlockPortalContainment,
   isNativeTrustedBlockRuntimeError,
   type NativeBlockExternalAssetScope,
+  type NativeTrustedBlockAllocationMode,
   type NativeTrustedBlockPortalContainment,
   type NativeTrustedBlockPortalSurface,
   type NativeTrustedBlockPreparePlan,
@@ -127,6 +128,7 @@ export interface FrontstageNativeTrustedBlockPortalHostProps {
   onRuntimeError?: FrontstageNativeTrustedBlockRuntimeErrorHandler;
   contribution?: PreparedTrustedFrontendContribution;
   surfaceLayoutEpoch?: string;
+  allocationMode?: NativeTrustedBlockAllocationMode;
 }
 
 /**
@@ -145,7 +147,8 @@ export function FrontstageNativeTrustedBlockPortalHost({
   providerWrapper,
   onRuntimeError,
   contribution,
-  surfaceLayoutEpoch = 'stable'
+  surfaceLayoutEpoch = 'stable',
+  allocationMode = 'flow'
 }: FrontstageNativeTrustedBlockPortalHostProps): ReactNode {
   const [surface, setSurface] =
     useState<NativeTrustedBlockPortalSurface | null>(null);
@@ -168,7 +171,8 @@ export function FrontstageNativeTrustedBlockPortalHost({
     const attachSurface = () => {
       nextSurface = attachNativeTrustedBlockPortalSurface({
         root,
-        blockId: plan.blockId
+        blockId: plan.blockId,
+        allocationMode
       });
     };
     if (lifecycle) {
@@ -202,7 +206,7 @@ export function FrontstageNativeTrustedBlockPortalHost({
     // portal-owned ShadowRoot child before the surface clears host-owned DOM.
     // renderEpoch remains the React portal key and does not recreate the DOM.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [root, contribution]);
+  }, [root, contribution, allocationMode]);
 
   useEffect(() => {
     const lifecycle = lifecycleRef.current;

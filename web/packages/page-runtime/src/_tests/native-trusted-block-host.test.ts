@@ -34,22 +34,46 @@ describe('native trusted block portal surface', () => {
     expect(first).not.toHaveProperty('update');
   });
 
-  test('AC-001 AC-002 contains wide block content inside the mount scroll owner', () => {
+  test('I1969-AC-001 I1969-AC-002 I1969-AC-008 separates the bounded ink gutter from the visible flow root', () => {
     const root = createRoot();
     const surface = attachNativeTrustedBlockPortalSurface({
       root,
-      blockId: 'wide-content'
+      blockId: 'flow-content'
     });
 
+    expect(surface.slotElement.getRootNode()).toBe(surface.shadowRoot);
+    expect(surface.mountElement.parentElement).toBe(surface.slotElement);
+    expect(surface.slotElement).toHaveStyle({
+      width: '100%',
+      maxWidth: '100%',
+      minWidth: '0',
+      height: '100%',
+      boxSizing: 'border-box',
+      overflow: 'clip',
+      padding: '8px'
+    });
     expect(surface.mountElement).toHaveStyle({
       width: '100%',
       maxWidth: '100%',
       minWidth: '0',
       height: '100%',
       boxSizing: 'border-box',
-      overflowX: 'auto',
-      overflowY: 'visible'
+      overflow: 'visible'
     });
+
+    surface.dispose();
+  });
+
+  test('I1969-AC-005 leaves fixed-height flow overflow visible for the allocation scroll owner', () => {
+    const root = createRoot();
+    const surface = attachNativeTrustedBlockPortalSurface({
+      root,
+      blockId: 'fixed-height-content',
+      allocationMode: 'fixed-height'
+    });
+
+    expect(surface.slotElement).toHaveStyle({ overflow: 'visible' });
+    expect(surface.mountElement).toHaveStyle({ overflow: 'visible' });
 
     surface.dispose();
   });
@@ -64,14 +88,20 @@ describe('native trusted block portal surface', () => {
     const shadowRoot = first.shadowRoot;
 
     expect(root).toHaveAttribute('data-flowbase-native-trusted-block-root', '');
-    expect(root).toHaveAttribute('data-flowbase-native-trusted-block-id', 'epoch-1');
+    expect(root).toHaveAttribute(
+      'data-flowbase-native-trusted-block-id',
+      'epoch-1'
+    );
 
     first.dispose();
     first.dispose();
 
     expect(shadowRoot.childNodes).toHaveLength(0);
     expect(root).not.toHaveAttribute('data-flowbase-native-trusted-block-root');
-    expect(root).toHaveAttribute('data-flowbase-native-trusted-block-id', 'host-value');
+    expect(root).toHaveAttribute(
+      'data-flowbase-native-trusted-block-id',
+      'host-value'
+    );
 
     const second = attachNativeTrustedBlockPortalSurface({
       root,

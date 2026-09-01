@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { render, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
@@ -22,6 +25,9 @@ describe('@1flowbase/native-components (AC-PUB-001)', () => {
     expect(screen.getByLabelText('scroll')).toHaveClass(
       'oneflow-surface',
       'oneflow-scrollable-surface'
+    );
+    expect(readFileSync(join(process.cwd(), 'src/styles.css'), 'utf8')).toMatch(
+      /\.oneflow-scrollable-surface\s*\{[^}]*overflow:\s*auto;/su
     );
   });
 });
