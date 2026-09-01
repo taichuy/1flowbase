@@ -17,5 +17,8 @@ pub use catalog::{
     OpenApiParameterLocation,
 };
 pub use dispatcher::{
-    dispatch, dispatch_with_console_router, DispatchArguments, DispatchError, DispatchSuccess,
+    console_router_callable_dispatch_port, dispatch, dispatch_with_console_router,
+    CallableDispatchError, CallableDispatchForwarding, CallableDispatchHeader,
+    CallableDispatchHttpResponse, CallableDispatchPort, CallableDispatchResult, DispatchArguments,
+    DispatchError, DispatchSuccess,
 };

@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap, future::Future, pin::Pin, sync::Arc};
 
 use axum::{
     body::{to_bytes, Body},
@@ -21,6 +21,64 @@ const CSRF_HEADER: HeaderName = HeaderName::from_static("x-csrf-token");
 const CALLABLE_DEPTH_HEADER: HeaderName = HeaderName::from_static("x-1flowbase-callable-depth");
 const MAX_CALLABLE_DEPTH: u8 = 4;
 const MAX_CALLABLE_BINARY_BYTES: usize = 16 * 1024 * 1024;
+
+pub type CallableDispatchFuture<'a> = Pin<
+    Box<dyn Future<Output = Result<CallableDispatchResult, CallableDispatchError>> + Send + 'a>,
+>;
+
+/// The only source request facts a callable target may inherit.
+#[derive(Debug, Clone, Default)]
+pub struct CallableDispatchForwarding {
+    pub cookie: Option<Vec<u8>>,
+    pub authorization: Option<Vec<u8>>,
+    pub accept_language: Option<Vec<u8>>,
+    pub csrf_token: Option<Vec<u8>>,
+    pub callable_depth: u8,
+}
+
+#[derive(Debug, Clone)]
+pub struct CallableDispatchHeader {
+    pub name: String,
+    pub value: Vec<u8>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CallableDispatchHttpResponse {
+    pub status: u16,
+    pub headers: Vec<CallableDispatchHeader>,
+    pub body: Vec<u8>,
+}
+
+pub enum CallableDispatchResult {
+    Json(Value),
+    NoContent,
+    Media(CallableDispatchHttpResponse),
+}
+
+pub enum CallableDispatchError {
+    Api(anyhow::Error),
+    Target(CallableDispatchHttpResponse),
+}
+
+pub trait CallableDispatchPort: Send + Sync + 'static {
+    fn dispatch<'a>(
+        &'a self,
+        entry: &'a OpenApiInterfaceCatalogEntry,
+        arguments: DispatchArguments,
+        injected_path: BTreeMap<String, String>,
+        forwarding: CallableDispatchForwarding,
+    ) -> CallableDispatchFuture<'a>;
+}
+
+struct ConsoleRouterCallableDispatchPort {
+    console_router: Router,
+}
+
+pub fn console_router_callable_dispatch_port(
+    console_router: Router,
+) -> Arc<dyn CallableDispatchPort> {
+    Arc::new(ConsoleRouterCallableDispatchPort { console_router })
+}
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize, ToSchema)]
 pub struct DispatchArguments {
@@ -78,76 +136,144 @@ pub async fn dispatch_with_console_router(
     console_router: Router,
     source_headers: &HeaderMap,
     entry: &OpenApiInterfaceCatalogEntry,
-    mut arguments: DispatchArguments,
+    arguments: DispatchArguments,
     injected_path: BTreeMap<String, String>,
 ) -> Result<DispatchSuccess, DispatchError> {
+    let forwarding = forwarding_from_headers(source_headers).map_err(DispatchError::Api)?;
+    let result = console_router_callable_dispatch_port(console_router)
+        .dispatch(entry, arguments, injected_path, forwarding)
+        .await;
+    legacy_dispatch_result(result).await
+}
+
+impl CallableDispatchPort for ConsoleRouterCallableDispatchPort {
+    fn dispatch<'a>(
+        &'a self,
+        entry: &'a OpenApiInterfaceCatalogEntry,
+        arguments: DispatchArguments,
+        injected_path: BTreeMap<String, String>,
+        forwarding: CallableDispatchForwarding,
+    ) -> CallableDispatchFuture<'a> {
+        Box::pin(dispatch_with_router(
+            self.console_router.clone(),
+            entry,
+            arguments,
+            injected_path,
+            forwarding,
+        ))
+    }
+}
+
+async fn dispatch_with_router(
+    console_router: Router,
+    entry: &OpenApiInterfaceCatalogEntry,
+    mut arguments: DispatchArguments,
+    injected_path: BTreeMap<String, String>,
+    forwarding: CallableDispatchForwarding,
+) -> Result<CallableDispatchResult, CallableDispatchError> {
     for (name, value) in injected_path {
         if arguments.path.contains_key(&name) {
-            return Err(invalid("host_injected_parameters").into());
+            return Err(CallableDispatchError::Api(invalid(
+                "host_injected_parameters",
+            )));
         }
         arguments.path.insert(name, Value::String(value));
     }
-    validate_request(entry, &arguments)?;
+    validate_request(entry, &arguments).map_err(CallableDispatchError::Api)?;
 
-    let method =
-        Method::from_bytes(entry.method.as_bytes()).map_err(|_| invalid("operation_id"))?;
-    let uri = target_uri(&entry.path, &arguments)?;
+    let method = Method::from_bytes(entry.method.as_bytes())
+        .map_err(|_| CallableDispatchError::Api(invalid("operation_id")))?;
+    let uri = target_uri(&entry.path, &arguments).map_err(CallableDispatchError::Api)?;
     let has_body = entry.request_schema.pointer("/properties/body").is_some();
-    let (body, content_type) = request_body(entry, &arguments, has_body)?;
+    let (body, content_type) =
+        request_body(entry, &arguments, has_body).map_err(CallableDispatchError::Api)?;
     let mut request = Request::builder()
         .method(method)
         .uri(uri)
         .body(body)
-        .map_err(|_| invalid("request_schema"))?;
-    request
-        .headers_mut()
-        .insert(CALLABLE_DEPTH_HEADER, next_callable_depth(source_headers)?);
-    copy_header(source_headers, request.headers_mut(), COOKIE);
-    copy_header(source_headers, request.headers_mut(), AUTHORIZATION);
-    copy_header(source_headers, request.headers_mut(), ACCEPT_LANGUAGE);
-    copy_header(source_headers, request.headers_mut(), CSRF_HEADER);
+        .map_err(|_| CallableDispatchError::Api(invalid("request_schema")))?;
+    request.headers_mut().insert(
+        CALLABLE_DEPTH_HEADER,
+        next_callable_depth(forwarding.callable_depth).map_err(CallableDispatchError::Api)?,
+    );
+    copy_forwarded_header(request.headers_mut(), COOKIE, forwarding.cookie.as_deref())
+        .map_err(CallableDispatchError::Api)?;
+    copy_forwarded_header(
+        request.headers_mut(),
+        AUTHORIZATION,
+        forwarding.authorization.as_deref(),
+    )
+    .map_err(CallableDispatchError::Api)?;
+    copy_forwarded_header(
+        request.headers_mut(),
+        ACCEPT_LANGUAGE,
+        forwarding.accept_language.as_deref(),
+    )
+    .map_err(CallableDispatchError::Api)?;
+    copy_forwarded_header(
+        request.headers_mut(),
+        CSRF_HEADER,
+        forwarding.csrf_token.as_deref(),
+    )
+    .map_err(CallableDispatchError::Api)?;
     for (name, value) in &arguments.headers {
-        let name = HeaderName::try_from(name).map_err(|_| invalid("request_schema"))?;
+        let name = HeaderName::try_from(name)
+            .map_err(|_| CallableDispatchError::Api(invalid("request_schema")))?;
         if name == COOKIE
             || name == AUTHORIZATION
             || name == CSRF_HEADER
             || name == CALLABLE_DEPTH_HEADER
         {
-            return Err(invalid("host_injected_parameters").into());
+            return Err(CallableDispatchError::Api(invalid(
+                "host_injected_parameters",
+            )));
         }
         let value = value
             .as_str()
-            .ok_or_else(|| invalid("request_schema"))?
+            .ok_or_else(|| CallableDispatchError::Api(invalid("request_schema")))?
             .parse()
-            .map_err(|_| invalid("request_schema"))?;
+            .map_err(|_| CallableDispatchError::Api(invalid("request_schema")))?;
         request.headers_mut().insert(name, value);
     }
     if let Some(content_type) = content_type {
         request.headers_mut().insert(CONTENT_TYPE, content_type);
     }
 
-    let response = console_router
-        .oneshot(request)
-        .await
-        .map_err(|error| anyhow::anyhow!("failed to dispatch OpenAPI operation: {error}"))?;
+    let response = console_router.oneshot(request).await.map_err(|error| {
+        CallableDispatchError::Api(anyhow::anyhow!(
+            "failed to dispatch OpenAPI operation: {error}"
+        ))
+    })?;
     if !response.status().is_success() {
-        return Err(DispatchError::Target(response));
+        return Err(CallableDispatchError::Target(
+            typed_response(response)
+                .await
+                .map_err(CallableDispatchError::Api)?,
+        ));
     }
     if response.status() == StatusCode::NO_CONTENT {
-        validate(&entry.response_schema, &Value::Null, "response_schema")?;
-        return Ok(DispatchSuccess::NoContent);
+        validate(&entry.response_schema, &Value::Null, "response_schema")
+            .map_err(CallableDispatchError::Api)?;
+        return Ok(CallableDispatchResult::NoContent);
     }
     if entry
         .response_media_type
         .as_deref()
         .is_some_and(|media_type| !is_json_media_type(Some(media_type)))
     {
-        return media_response(response, entry.response_media_type.as_deref()).await;
+        return Ok(CallableDispatchResult::Media(
+            typed_response(response)
+                .await
+                .map_err(CallableDispatchError::Api)?,
+        ));
     }
-    let value = parse_response(response, entry.response_media_type.as_deref()).await?;
+    let value = parse_response(response, entry.response_media_type.as_deref())
+        .await
+        .map_err(CallableDispatchError::Api)?;
     let contract_value = value.get("data").unwrap_or(&value);
-    validate(&entry.response_schema, contract_value, "response_schema")?;
-    Ok(DispatchSuccess::Json(value))
+    validate(&entry.response_schema, contract_value, "response_schema")
+        .map_err(CallableDispatchError::Api)?;
+    Ok(CallableDispatchResult::Json(value))
 }
 
 fn request_body(
@@ -360,22 +486,97 @@ fn scalar_or_json(value: &Value) -> String {
     }
 }
 
-#[allow(clippy::result_large_err)]
-async fn media_response(
-    response: Response,
-    media_type: Option<&str>,
-) -> Result<DispatchSuccess, DispatchError> {
-    if media_type == Some("text/event-stream") {
-        return Ok(DispatchSuccess::Media(response));
-    }
+async fn typed_response(response: Response) -> anyhow::Result<CallableDispatchHttpResponse> {
     let (parts, body) = response.into_parts();
     let bytes = to_bytes(body, MAX_CALLABLE_BINARY_BYTES)
         .await
         .map_err(|_| invalid("binary_response_limit"))?;
-    Ok(DispatchSuccess::Media(Response::from_parts(
-        parts,
-        Body::from(bytes),
-    )))
+    Ok(CallableDispatchHttpResponse {
+        status: parts.status.as_u16(),
+        headers: parts
+            .headers
+            .iter()
+            .map(|(name, value)| CallableDispatchHeader {
+                name: name.as_str().to_string(),
+                value: value.as_bytes().to_vec(),
+            })
+            .collect(),
+        body: bytes.to_vec(),
+    })
+}
+
+fn response_from_typed(response: CallableDispatchHttpResponse) -> anyhow::Result<Response> {
+    let mut builder = Response::builder().status(response.status);
+    let headers = builder
+        .headers_mut()
+        .ok_or_else(|| anyhow::anyhow!("typed callable response builder has no headers"))?;
+    for header in response.headers {
+        headers.insert(
+            HeaderName::try_from(header.name).map_err(|_| invalid("callable_response_header"))?,
+            HeaderValue::from_bytes(&header.value)
+                .map_err(|_| invalid("callable_response_header"))?,
+        );
+    }
+    builder
+        .body(Body::from(response.body))
+        .map_err(|_| invalid("callable_response"))
+}
+
+async fn legacy_dispatch_result(
+    result: Result<CallableDispatchResult, CallableDispatchError>,
+) -> Result<DispatchSuccess, DispatchError> {
+    match result {
+        Ok(CallableDispatchResult::Json(value)) => Ok(DispatchSuccess::Json(value)),
+        Ok(CallableDispatchResult::NoContent) => Ok(DispatchSuccess::NoContent),
+        Ok(CallableDispatchResult::Media(response)) => response_from_typed(response)
+            .map(DispatchSuccess::Media)
+            .map_err(DispatchError::Api),
+        Err(CallableDispatchError::Api(error)) => Err(DispatchError::Api(error)),
+        Err(CallableDispatchError::Target(response)) => Err(response_from_typed(response)
+            .map(DispatchError::Target)
+            .map_err(DispatchError::Api)?),
+    }
+}
+
+fn forwarding_from_headers(source: &HeaderMap) -> anyhow::Result<CallableDispatchForwarding> {
+    let callable_depth = source
+        .get(&CALLABLE_DEPTH_HEADER)
+        .map(|value| {
+            value
+                .to_str()
+                .map_err(|_| invalid("callable_dispatch_depth"))?
+                .parse::<u8>()
+                .map_err(|_| invalid("callable_dispatch_depth"))
+        })
+        .transpose()?
+        .unwrap_or(0);
+    Ok(CallableDispatchForwarding {
+        cookie: source.get(&COOKIE).map(|value| value.as_bytes().to_vec()),
+        authorization: source
+            .get(&AUTHORIZATION)
+            .map(|value| value.as_bytes().to_vec()),
+        accept_language: source
+            .get(&ACCEPT_LANGUAGE)
+            .map(|value| value.as_bytes().to_vec()),
+        csrf_token: source
+            .get(&CSRF_HEADER)
+            .map(|value| value.as_bytes().to_vec()),
+        callable_depth,
+    })
+}
+
+fn copy_forwarded_header(
+    target: &mut HeaderMap,
+    name: HeaderName,
+    value: Option<&[u8]>,
+) -> anyhow::Result<()> {
+    if let Some(value) = value {
+        target.insert(
+            name,
+            HeaderValue::from_bytes(value).map_err(|_| invalid("callable_request_header"))?,
+        );
+    }
+    Ok(())
 }
 
 fn arguments_value(arguments: &DispatchArguments) -> Value {
@@ -448,28 +649,11 @@ fn is_json_media_type(media_type: Option<&str>) -> bool {
     })
 }
 
-fn next_callable_depth(source_headers: &HeaderMap) -> anyhow::Result<HeaderValue> {
-    let depth = source_headers
-        .get(&CALLABLE_DEPTH_HEADER)
-        .map(|value| {
-            value
-                .to_str()
-                .map_err(|_| invalid("callable_dispatch_depth"))?
-                .parse::<u8>()
-                .map_err(|_| invalid("callable_dispatch_depth"))
-        })
-        .transpose()?
-        .unwrap_or(0);
+fn next_callable_depth(depth: u8) -> anyhow::Result<HeaderValue> {
     if depth >= MAX_CALLABLE_DEPTH {
         return Err(invalid("callable_dispatch_depth"));
     }
     HeaderValue::from_str(&(depth + 1).to_string()).map_err(|_| invalid("callable_dispatch_depth"))
-}
-
-fn copy_header(source: &HeaderMap, target: &mut HeaderMap, name: HeaderName) {
-    if let Some(value) = source.get(&name) {
-        target.insert(name, value.clone());
-    }
 }
 
 fn validate(schema: &Value, value: &Value, field: &'static str) -> anyhow::Result<()> {
@@ -514,12 +698,24 @@ mod tests {
 
     #[test]
     fn callable_depth_is_internal_bounded_state() {
-        let mut headers = HeaderMap::new();
-        assert_eq!(next_callable_depth(&headers).unwrap(), "1");
-        headers.insert(CALLABLE_DEPTH_HEADER, HeaderValue::from_static("3"));
-        assert_eq!(next_callable_depth(&headers).unwrap(), "4");
-        headers.insert(CALLABLE_DEPTH_HEADER, HeaderValue::from_static("4"));
-        assert!(next_callable_depth(&headers).is_err());
+        assert_eq!(next_callable_depth(0).unwrap(), "1");
+        assert_eq!(next_callable_depth(3).unwrap(), "4");
+        assert!(next_callable_depth(4).is_err());
+    }
+
+    #[test]
+    fn typed_callable_response_preserves_transport_projection() {
+        let response = response_from_typed(CallableDispatchHttpResponse {
+            status: StatusCode::ACCEPTED.as_u16(),
+            headers: vec![CallableDispatchHeader {
+                name: "content-type".to_string(),
+                value: b"application/octet-stream".to_vec(),
+            }],
+            body: b"payload".to_vec(),
+        })
+        .unwrap();
+        assert_eq!(response.status(), StatusCode::ACCEPTED);
+        assert_eq!(response.headers()[CONTENT_TYPE], "application/octet-stream");
     }
 
     #[test]
