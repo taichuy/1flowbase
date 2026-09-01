@@ -310,7 +310,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
         .route(
             "/frontstage/components",
-            console_get(components::list_frontstage_components, Authenticated),
+            console_get(
+                components::list_frontstage_components,
+                ConsoleOperation("frontstage.components.view".to_string()),
+            ),
         )
         .route(
             "/frontstage/ui-templates",
@@ -318,13 +321,16 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
         .route(
             "/frontstage/components/:component_id",
-            console_get(components::get_frontstage_component, Authenticated),
+            console_get(
+                components::get_frontstage_component,
+                ConsoleOperation("frontstage.components.view".to_string()),
+            ),
         )
         .route(
             "/frontstage/component-module-assets/:sha256",
             console_get(
                 components::get_frontstage_component_module_asset,
-                Authenticated,
+                ConsoleOperation("frontstage.components.view".to_string()),
             ),
         )
         .route(

@@ -13,14 +13,12 @@ use control_plane::{
     ui_management::{ListUiComponentRecordsQuery, UiManagementService},
 };
 use domain::{UiComponentRecord, UiComponentRecordOrigin};
+use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
-use crate::{
-    app_state::ApiState, error_response::ApiError, middleware::require_session::require_session,
-    response::ApiSuccess,
-};
+use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
 
 const COMPONENT_PAGE_SIZE: usize = 20;
 
@@ -87,31 +85,17 @@ pub async fn list_frontstage_components(
     headers: HeaderMap,
     Query(query): Query<FrontstageComponentQuery>,
 ) -> Result<Json<ApiSuccess<FrontstageComponentPageResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_design_permission(&context.actor)?;
-    let page = UiManagementService::new(state.store.clone(), state.api_node_id.clone())
-        .list_component_records_page(ListUiComponentRecordsQuery {
-            query: query.query,
-            offset: query.offset.unwrap_or(0),
-            limit: query
-                .limit
-                .unwrap_or(COMPONENT_PAGE_SIZE)
-                .clamp(1, COMPONENT_PAGE_SIZE),
-        })
-        .await?;
-    let items = page
-        .items
-        .into_iter()
-        .map(component_response)
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(Json(ApiSuccess::new(FrontstageComponentPageResponse {
-        items,
-        total: page.total,
-        offset: page.offset,
-        limit: page.limit,
-        has_more: page.has_more,
-        next_offset: page.next_offset,
-    })))
+    let FrontstageComponentsOutput::Page(value) = invoke(
+        state,
+        headers,
+        "http.console.frontstage.components.get.v1",
+        FrontstageComponentsInput::List(query),
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(
@@ -130,12 +114,17 @@ pub async fn get_frontstage_component(
     headers: HeaderMap,
     Path(component_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<FrontstageComponentResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_design_permission(&context.actor)?;
-    let record = UiManagementService::new(state.store.clone(), state.api_node_id.clone())
-        .get_component_record(component_id)
-        .await?;
-    Ok(Json(ApiSuccess::new(component_response(record)?)))
+    let FrontstageComponentsOutput::Component(value) = invoke(
+        state,
+        headers,
+        "http.console.frontstage.component.get.v1",
+        FrontstageComponentsInput::Get(component_id),
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(
@@ -155,18 +144,16 @@ pub async fn get_frontstage_component_module_asset(
     headers: HeaderMap,
     Path(sha256): Path<String>,
 ) -> Result<Response<Body>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let workspace_id = context.actor.current_workspace_id;
-    require_design_permission(&context.actor)?;
-    let asset = FrontendModuleAssetService::new(state.store.clone(), state.api_node_id.clone())
-        .get_module_asset(GetFrontendModuleAssetQuery {
-            workspace_id,
-            sha256,
-        })
-        .await?
-        .ok_or(ControlPlaneError::NotFound(
-            "frontend_component_module_asset",
-        ))?;
+    let FrontstageComponentsOutput::Asset(asset) = invoke(
+        state,
+        headers,
+        "http.console.frontstage.component-asset.get.v1",
+        FrontstageComponentsInput::Asset(sha256),
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     let mut response = Response::new(Body::from(asset.bytes));
     response.headers_mut().insert(
         header::CONTENT_TYPE,
@@ -183,6 +170,182 @@ pub async fn get_frontstage_component_module_asset(
             .map_err(|_| ControlPlaneError::InvalidInput("sha256"))?,
     );
     Ok(response)
+}
+
+async fn invoke(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    binding_id: &'static str,
+    input: FrontstageComponentsInput,
+) -> Result<FrontstageComponentsOutput, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    crate::routes::console_interface::invoke(
+        snapshot_state,
+        binding_id,
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        input,
+    )
+    .await
+}
+
+pub(crate) enum FrontstageComponentsInput {
+    List(FrontstageComponentQuery),
+    Get(Uuid),
+    Asset(String),
+}
+impl InterfaceContract for FrontstageComponentsInput {
+    const CONTRACT_ID: &'static str = "console-frontstage-components-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+pub(crate) enum FrontstageComponentsOutput {
+    Page(FrontstageComponentPageResponse),
+    Component(FrontstageComponentResponse),
+    Asset(FrontstageComponentAsset),
+}
+impl InterfaceContract for FrontstageComponentsOutput {
+    const CONTRACT_ID: &'static str = "console-frontstage-components-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+pub(crate) struct FrontstageComponentAsset {
+    bytes: Vec<u8>,
+    media_type: String,
+    sha256: String,
+}
+
+#[derive(Clone)]
+pub(crate) struct FrontstageComponentsDependencies {
+    pub(crate) store: storage_durable_postgres::MainDurableStore,
+    pub(crate) api_node_id: String,
+}
+struct FrontstageComponentsAdapter(FrontstageComponentsDependencies);
+
+impl
+    crate::routes::console_interface::ConsoleInterfacePort<
+        FrontstageComponentsInput,
+        FrontstageComponentsOutput,
+    > for FrontstageComponentsAdapter
+{
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: FrontstageComponentsInput,
+    ) -> crate::routes::console_interface::ConsoleInterfaceFuture<'a, FrontstageComponentsOutput>
+    {
+        Box::pin(async move {
+            let actor = principal.actor();
+            require_design_permission(actor)
+                .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
+            let service =
+                UiManagementService::new(self.0.store.clone(), self.0.api_node_id.clone());
+            match input {
+                FrontstageComponentsInput::List(query) => {
+                    let page = service
+                        .list_component_records_page(ListUiComponentRecordsQuery {
+                            query: query.query,
+                            offset: query.offset.unwrap_or(0),
+                            limit: query
+                                .limit
+                                .unwrap_or(COMPONENT_PAGE_SIZE)
+                                .clamp(1, COMPONENT_PAGE_SIZE),
+                        })
+                        .await
+                        .map_err(ApiError)
+                        .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
+                    let items = page
+                        .items
+                        .into_iter()
+                        .map(component_response)
+                        .collect::<Result<Vec<_>, _>>()
+                        .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
+                    Ok(FrontstageComponentsOutput::Page(
+                        FrontstageComponentPageResponse {
+                            items,
+                            total: page.total,
+                            offset: page.offset,
+                            limit: page.limit,
+                            has_more: page.has_more,
+                            next_offset: page.next_offset,
+                        },
+                    ))
+                }
+                FrontstageComponentsInput::Get(id) => {
+                    let record = service
+                        .get_component_record(id)
+                        .await
+                        .map_err(ApiError)
+                        .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
+                    Ok(FrontstageComponentsOutput::Component(
+                        component_response(record).map_err(
+                            crate::routes::console_interface::ConsoleInterfaceTargetError,
+                        )?,
+                    ))
+                }
+                FrontstageComponentsInput::Asset(sha256) => {
+                    let asset = FrontendModuleAssetService::new(
+                        self.0.store.clone(),
+                        self.0.api_node_id.clone(),
+                    )
+                    .get_module_asset(GetFrontendModuleAssetQuery {
+                        workspace_id: actor.current_workspace_id,
+                        sha256,
+                    })
+                    .await
+                    .map_err(|error| ApiError(error.into()))
+                    .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?
+                    .ok_or(ControlPlaneError::NotFound(
+                        "frontend_component_module_asset",
+                    ))
+                    .map_err(|error| ApiError(error.into()))
+                    .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
+                    Ok(FrontstageComponentsOutput::Asset(
+                        FrontstageComponentAsset {
+                            bytes: asset.bytes,
+                            media_type: asset.media_type,
+                            sha256: asset.sha256,
+                        },
+                    ))
+                }
+            }
+        })
+    }
+}
+
+pub(crate) fn compile_registry(
+    dependencies: FrontstageComponentsDependencies,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    crate::routes::console_interface::compile_registry(
+        "api-server.console-frontstage-components",
+        "graph:console-frontstage-components-v1",
+        &[
+            crate::routes::console_interface::ConsoleInterfaceDeclaration {
+                interface_id: "frontstage.components.view",
+                binding_id: "http.console.frontstage.components.get.v1",
+                method: "GET",
+                path: "/api/console/frontstage/components",
+                mutating: false,
+            },
+            crate::routes::console_interface::ConsoleInterfaceDeclaration {
+                interface_id: "frontstage.components.view",
+                binding_id: "http.console.frontstage.component.get.v1",
+                method: "GET",
+                path: "/api/console/frontstage/components/:component_id",
+                mutating: false,
+            },
+            crate::routes::console_interface::ConsoleInterfaceDeclaration {
+                interface_id: "frontstage.components.view",
+                binding_id: "http.console.frontstage.component-asset.get.v1",
+                method: "GET",
+                path: "/api/console/frontstage/component-module-assets/:sha256",
+                mutating: false,
+            },
+        ],
+        Arc::new(FrontstageComponentsAdapter(dependencies)),
+    )
 }
 
 fn require_design_permission(actor: &domain::ActorContext) -> Result<(), ApiError> {

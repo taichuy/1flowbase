@@ -1014,6 +1014,17 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-frontstage-components",
+            &["frontstage.components.view"],
+            &["api-server.console-frontstage-components"],
+            crate::routes::frontstage::components::compile_registry(
+                crate::routes::frontstage::components::FrontstageComponentsDependencies {
+                    store: state.store.clone(),
+                    api_node_id: state.api_node_id.clone(),
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",
