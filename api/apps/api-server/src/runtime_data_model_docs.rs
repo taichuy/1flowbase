@@ -9,7 +9,6 @@ use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::{
-    app_state::ApiState,
     error_response::ApiError,
     openapi_docs::{DocsCatalogCategory, DocsCatalogCategoryOperations, DocsCatalogOperation},
 };
@@ -38,11 +37,11 @@ pub fn parse_operation_id(
     Ok(Some((model_id, suffix.to_owned())))
 }
 
-pub async fn ready_models(
-    state: &ApiState,
+pub async fn ready_models_with(
+    store: storage_durable_postgres::MainDurableStore,
     actor_user_id: Uuid,
 ) -> Result<Vec<domain::ModelDefinitionRecord>, ApiError> {
-    let models = match ModelDefinitionService::new(state.store.clone())
+    let models = match ModelDefinitionService::new(store)
         .list_models(actor_user_id)
         .await
     {
@@ -64,12 +63,12 @@ pub async fn ready_models(
     Ok(models)
 }
 
-pub async fn ready_model(
-    state: &ApiState,
+pub async fn ready_model_with(
+    store: storage_durable_postgres::MainDurableStore,
     actor_user_id: Uuid,
     model_id: Uuid,
 ) -> Result<Option<domain::ModelDefinitionRecord>, ApiError> {
-    let model = match ModelDefinitionService::new(state.store.clone())
+    let model = match ModelDefinitionService::new(store)
         .get_model(actor_user_id, model_id)
         .await
     {

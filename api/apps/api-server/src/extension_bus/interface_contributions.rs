@@ -723,6 +723,26 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-docs",
+            &[
+                "docs.catalog.view",
+                "docs.categories.operations.list",
+                "docs.categories.openapi.view",
+                "docs.operations.openapi.view",
+            ],
+            &["api-server.console-docs"],
+            crate::routes::docs::interface::compile_registry(
+                crate::routes::docs::interface::port(
+                    crate::routes::docs::interface::DocsDependencies {
+                        store: state.store.clone(),
+                        api_docs: Arc::clone(&state.api_docs),
+                        template_catalog: state.runtime_engine.template_catalog().clone(),
+                        cookie_name: state.cookie_name.clone(),
+                    },
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-data-model-openapi",
             &["model_definitions.openapi.view"],
             &["api-server.console-data-model-openapi"],

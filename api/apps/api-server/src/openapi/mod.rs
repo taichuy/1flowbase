@@ -45,8 +45,21 @@ impl OpenApi for ApiDoc {
 }
 
 pub(crate) async fn dynamic_openapi_document(state: &ApiState) -> Result<Value, ApiError> {
+    dynamic_openapi_document_with(
+        state.store.clone(),
+        &state.cookie_name,
+        state.runtime_engine.template_catalog(),
+    )
+    .await
+}
+
+pub(crate) async fn dynamic_openapi_document_with(
+    store: storage_durable_postgres::MainDurableStore,
+    cookie_name: &str,
+    template_catalog: &runtime_core::data_model_template_registry::DataModelTemplateCatalog,
+) -> Result<Value, ApiError> {
     let mut document = serde_json::to_value(ApiDoc::openapi())?;
-    let publications = state.store.list_enabled_extension_publications().await?;
+    let publications = store.list_enabled_extension_publications().await?;
     let operations = build_published_workflow_operations(publications)
         .map_err(|_| control_plane::errors::ControlPlaneError::Conflict("workflow_route"))?;
     document["components"]["securitySchemes"]["UserApiKey"] = json!({
@@ -57,19 +70,21 @@ pub(crate) async fn dynamic_openapi_document(state: &ApiState) -> Result<Value, 
     let document_map = document
         .as_object_mut()
         .ok_or_else(|| anyhow!("dynamic OpenAPI document must be an object"))?;
-    crate::openapi_docs::ensure_session_security_schemes(document_map, &state.cookie_name)?;
+    crate::openapi_docs::ensure_session_security_schemes(document_map, cookie_name)?;
     append_workflow_extension_paths(&mut document, &operations);
     crate::runtime_data_model_docs::append_template_runtime_openapi_paths(
         &mut document,
-        state.runtime_engine.template_catalog(),
+        template_catalog,
     );
     Ok(document)
 }
 
-pub(crate) async fn workflow_extension_openapi_document(
-    state: &ApiState,
+pub(crate) async fn workflow_extension_openapi_document_with(
+    store: storage_durable_postgres::MainDurableStore,
+    cookie_name: &str,
+    template_catalog: &runtime_core::data_model_template_registry::DataModelTemplateCatalog,
 ) -> Result<Value, ApiError> {
-    let mut document = dynamic_openapi_document(state).await?;
+    let mut document = dynamic_openapi_document_with(store, cookie_name, template_catalog).await?;
     let paths = document
         .get_mut("paths")
         .and_then(Value::as_object_mut)
