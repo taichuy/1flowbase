@@ -176,7 +176,7 @@ fn registry_definition_projects_route_console_openapi_and_mcp_identity() {
     let openapi_source = include_str!("../../openapi_interface/capability_catalog.rs");
     let mcp_catalog_source =
         include_str!("../../routes/settings/mcp_management/interface_catalog.rs");
-    let mcp_dispatch_source = include_str!("../../routes/settings/mcp_management/debug_execute.rs");
+    let mcp_dispatch_source = include_str!("../../extension_bus/interface_contributions.rs");
     assert!(!route_source.contains("host_infrastructure.providers.view"));
     assert!(openapi_source.contains("providers_view_definition(registry)"));
     assert!(mcp_catalog_source.contains("mcp_interface_entry_from_capability"));

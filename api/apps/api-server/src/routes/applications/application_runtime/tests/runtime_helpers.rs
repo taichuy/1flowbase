@@ -313,7 +313,7 @@ fn d1_lightweight_endpoint_inventory_keeps_detail_export_and_archive_contract_bo
     assert!(trace_detail.contains("list_application_run_trace_events"));
     assert!(!trace_detail.contains("get_application_run_detail"));
 
-    assert!(include_str!("../export_handlers.rs").contains("get_application_run_detail"));
+    assert!(include_str!("../interface_trace_exports.rs").contains("get_application_run_detail"));
     assert!(
         include_str!("../../../../application_runtime_archive/document.rs")
             .contains("get_application_run_detail")

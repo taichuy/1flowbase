@@ -2,9 +2,8 @@ use utoipa::OpenApi;
 
 #[test]
 fn runtime_catalog_route_is_authenticated_documented_and_module_free() {
-    let assembly = crate::routes::console_route_assembly::migrated_core_console_route_assembly();
-    let binding = assembly
-        .bindings()
+    let bindings = crate::routes::console_route_assembly::migrated_core_console_contract_bindings();
+    let binding = bindings
         .iter()
         .find(|binding| {
             binding.route.method == "GET" && binding.route.path == "/api/console/i18n/catalog"
@@ -17,7 +16,7 @@ fn runtime_catalog_route_is_authenticated_documented_and_module_free() {
     let settings = crate::app_state::compile_core_settings_feature_registry().unwrap();
     let registry = crate::routes::console_route_assembly::compile_complete_migrated_console_operation_registry(
         &settings,
-        assembly.bindings(),
+        &bindings,
         &[],
     )
     .unwrap();

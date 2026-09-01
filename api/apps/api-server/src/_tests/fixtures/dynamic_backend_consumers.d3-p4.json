@@ -1,6 +1,6 @@
 {
   "packet": "D3-P4",
-  "count": 78,
+  "count": 82,
   "consumers": [
     {
       "category": "settings_feature_label",
@@ -211,6 +211,26 @@
       "category": "other_policy_group",
       "path": "api/apps/api-server/src/routes/core_console_i18n/mod.rs",
       "key": "Registered frontend block catalog operations"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
+      "key": "Frontstage"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
+      "key": "Registered Frontstage operations available to signed-in users"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
+      "key": "Runtime localization catalog"
+    },
+    {
+      "category": "other_policy_group",
+      "path": "api/apps/api-server/src/routes/core_console_i18n/catalog.rs",
+      "key": "Registered runtime localization catalog operations available to signed-in users"
     },
     {
       "category": "other_policy_group",
