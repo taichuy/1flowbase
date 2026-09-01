@@ -1061,6 +1061,15 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-runtime-i18n",
+            &["i18n.catalog.view"],
+            &["api-server.console-runtime-i18n"],
+            crate::routes::runtime_i18n_catalog::compile_registry(
+                state.store.clone(),
+                state.bootstrap_workspace_id,
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",
