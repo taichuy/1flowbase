@@ -148,6 +148,12 @@ Static Protocol Route
 - 零 contribution 时保持 BuiltIn 行为；缺失、多余、重复或 identity/contract 不匹配时在 publish 前 fail closed。
 - `InterfaceContributionCollector` 只合并已装配的 compiled contribution；family Adapter 持有明确 Store/Service/Runtime Port，不得把 `ApiState` 擦除成所谓窄 Port。
 - 允许的 direct control 仅限 CORS/HEAD、schema discovery、WebSocket upgrade/transport frame、SSE keepalive/terminal、MCP initialize/initialized 与两个 health endpoint；业务 frame/run/tool invocation 仍进入 Kernel。
+- Console route、Interface Binding owner 与 policy migration disposition 由同一个
+  `CompiledConsoleOperationSnapshot` 在 boot publication 前校验；missing、extra、duplicate、
+  inactive owner 与 route/binding conflict 会一次性形成稳定排序错误集合并 fail closed。
+- External Endpoint Catalog 与 Console hygiene 只消费上述 production snapshot 或其只读
+  compiled-inventory projection，不维护第二份业务 Route allowlist；普通业务 Route 缺少 frozen
+  Binding 时不能发布。
 
 ### #1958 Compatibility Route Family 迁移候选
 

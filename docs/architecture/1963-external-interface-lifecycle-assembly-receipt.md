@@ -10,8 +10,10 @@
 - QA-2 frozen candidate: `beta@9057a345474d43c0236c300206553d027a6959eb`
 - QA-3 remediation Product Assembly: `beta@d8a20be4eda6fd1dd39d3b3a15e02d2b56692cee`
 - QA-3 frozen documentation candidate: `beta@d354bf31c7cc4494d882461e976e64503758c159`
+- EIL-F14R-D input Product Assembly: `beta@d8a20be4eda6fd1dd39d3b3a15e02d2b56692cee`
+- EIL-F14R-D assembled Product candidate: `beta@093c19b8a542644d9faed5f8942e66784c30292b`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
-- Delivery state: `BLOCKED / NEEDS_REFRAME`
+- Delivery state: `ASSEMBLED / QA-4 PENDING`
 - Root AC state: candidate only; not settled
 
 ## Packet Assembly
@@ -34,6 +36,10 @@
 | EIL-F13 | `1bee7198c..3ab5c6e1e` | Console system, i18n, docs, billing and backup families |
 | EIL-F14 | `3c6701837534bba1acef2ba7ae4a23730312da35` | Production Catalog publication, zero-unclassified gate, direct AuthN residue removal and global boundary fixtures |
 | EIL-F14R-C | `d8a20be4eda6fd1dd39d3b3a15e02d2b56692cee` | Exact Console operation-spec set, explicit authenticated operation ownership, complete Frontstage specifications and post-migration fixture alignment |
+| EIL-F14R-D1 | `b3e461f2e1a2faa41502e09d622fd89a6b31846a` | Typed Console operation compilation source with deterministic complete-set failure reporting |
+| EIL-F14R-D2 | `2005de7cbe49774fced125d80f126aab5066d78a` | Registry Binding ownership and migration disposition derived from one compiled snapshot; System Backup residuals enter typed lifecycle |
+| EIL-F14R-D3 | `093c19b8a542644d9faed5f8942e66784c30292b` | Candidate-bound validation assets and input-Assembly permission-equivalence baseline |
+| EIL-F14R-D4 | documentation commit containing this Receipt | Global publication evidence and QA-4 governance freeze |
 
 Every row above is a serial commit or inclusive serial range on `beta`; the Git history is the authoritative per-file write-set ledger. No packet changed database schema, migrations, external DTOs, permissions, Runtime/plugin wire, or official plugin source.
 
@@ -170,5 +176,53 @@ Candidate acceptance disposition:
 Immutable Attempt-3 evidence is retained under:
 
 `tmp/test-governance/1963-external-interface-lifecycle/attempt-3/`
+
+## EIL-F14R-D assembled candidate — QA-4 pending
+
+The approved finite remediation replaces the three parallel completeness truths with one typed
+compilation path:
+
+```text
+Compiled ConsoleOperation inventory
+        + Compiled Interface Registry bindings
+        + Compiled policy-migration dispositions
+                         ↓
+           CompiledConsoleOperationSnapshot
+                         ↓
+      boot publication / Endpoint Catalog / hygiene projection
+```
+
+Publication now validates every active business route against its frozen Interface binding and
+migration disposition before the Dynamic Interface Registry is published. Approved protocol and
+operational controls are classified by the existing exact allowlist and are not forced to masquerade
+as business bindings. The five residual System Backup coordinator business operations (`list`,
+`create`, recovery `preflight`, `reauth`, and `intent`) now execute through the existing typed
+System Backup family adapter; route DTOs, status codes, CSRF, root-cookie checks, password/digest
+checks, maintenance lease and asynchronous handoff remain unchanged.
+
+The minimum production compiler authenticity probe passed with:
+
+| total | business | protocol | operational | unclassified |
+| ---: | ---: | ---: | ---: | ---: |
+| 1058 | 472 | 584 | 2 | 0 |
+
+Static assembly findings at freeze are: Business Direct Route bypass `0`, production fallback `0`,
+dual-run `0`, double-write `0`, and second Registry `0`. These are assembly facts only; EIL and Root
+AC remain candidate-only until the single frozen QA-4 batch settles all 15 rows with zero failures
+and zero unrun items.
+
+The Console hygiene baseline is not an unreviewed current-candidate refresh. It is byte-derived from
+the immutable QA-3 inventory of input Product Assembly
+`d8a20be4eda6fd1dd39d3b3a15e02d2b56692cee`, with source SHA-256
+`7bd227feb1bf913f3f059f100e8b18f77dede9bb134f7c3efe8bad00ca5a08b6`. This proves the former
+113-item expansion set predates F14R-D. Frontstage and runtime-i18n routes retain their prior
+Authenticated authorization while acquiring explicit typed owners; no Simple grant or permission
+result was added.
+
+Development-stage evidence is limited to `cargo fmt --all --check`, `git diff --check`,
+`cargo check -p api-server --tests`, and the single production compiler authenticity probe. Packet
+tests, Node, frontend, storage, Compose, Runtime and official-plugin suites were deliberately not run.
+All QA-1/2/3 evidence remains unchanged. The next and only validation event is fresh centralized
+QA-4 under `tmp/test-governance/1963-external-interface-lifecycle/attempt-4/`.
 
 #1963 and #1893 remain OPEN. No EIL or Root AC is settled, no push occurred, and no product, test, migration, protocol or official-plugin source was changed after the frozen candidate.
