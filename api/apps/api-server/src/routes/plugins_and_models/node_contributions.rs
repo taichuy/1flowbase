@@ -9,6 +9,7 @@ use control_plane::{
     application::ApplicationService,
     node_contribution::{ApplicationNodeCatalogService, ListApplicationNodesQuery},
 };
+use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::{Deserialize, Serialize};
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
@@ -16,7 +17,6 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::require_session::require_session,
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
@@ -295,18 +295,82 @@ pub async fn list_node_contributions(
     headers: HeaderMap,
     Query(query): Query<NodeContributionQuery>,
 ) -> Result<Json<ApiSuccess<ApplicationNodeCatalogResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let application = ApplicationService::new(state.store.for_actor(context.actor.clone()))
-        .get_application(context.user.id, query.application_id)
-        .await?;
-    let catalog = ApplicationNodeCatalogService::new(state.store.clone())
-        .list_application_nodes(ListApplicationNodesQuery {
-            actor_user_id: context.user.id,
-            application_type: application.application_type,
-        })
-        .await?;
+    let snapshot_state = Arc::clone(&state);
+    let output: NodeContributionsOutput = crate::routes::console_interface::invoke(
+        snapshot_state,
+        "http.console.node-contributions.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        NodeContributionsInput(query),
+    )
+    .await?;
+    Ok(Json(ApiSuccess::new(output.0)))
+}
 
-    Ok(Json(ApiSuccess::new(ApplicationNodeCatalogResponse {
-        nodes: catalog.nodes.into_iter().map(to_response).collect(),
-    })))
+pub(crate) struct NodeContributionsInput(NodeContributionQuery);
+impl InterfaceContract for NodeContributionsInput {
+    const CONTRACT_ID: &'static str = "console-node-contributions-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+pub(crate) struct NodeContributionsOutput(ApplicationNodeCatalogResponse);
+impl InterfaceContract for NodeContributionsOutput {
+    const CONTRACT_ID: &'static str = "console-node-contributions-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+struct NodeContributionsAdapter(storage_durable_postgres::MainDurableStore);
+
+impl
+    crate::routes::console_interface::ConsoleInterfacePort<
+        NodeContributionsInput,
+        NodeContributionsOutput,
+    > for NodeContributionsAdapter
+{
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        input: NodeContributionsInput,
+    ) -> crate::routes::console_interface::ConsoleInterfaceFuture<'a, NodeContributionsOutput> {
+        Box::pin(async move {
+            let actor = principal.actor();
+            let application = ApplicationService::new(self.0.for_actor(actor.clone()))
+                .get_application(actor.user_id, input.0.application_id)
+                .await
+                .map_err(ApiError)
+                .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
+            let catalog = ApplicationNodeCatalogService::new(self.0.clone())
+                .list_application_nodes(ListApplicationNodesQuery {
+                    actor_user_id: actor.user_id,
+                    application_type: application.application_type,
+                })
+                .await
+                .map_err(ApiError)
+                .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
+            Ok(NodeContributionsOutput(ApplicationNodeCatalogResponse {
+                nodes: catalog.nodes.into_iter().map(to_response).collect(),
+            }))
+        })
+    }
+}
+
+pub(crate) fn compile_registry(
+    store: storage_durable_postgres::MainDurableStore,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    crate::routes::console_interface::compile_registry(
+        "api-server.console-node-contributions",
+        "graph:console-node-contributions-v1",
+        &[
+            crate::routes::console_interface::ConsoleInterfaceDeclaration {
+                interface_id: "node_contributions.view",
+                binding_id: "http.console.node-contributions.get.v1",
+                method: "GET",
+                path: "/api/console/node-contributions",
+                mutating: false,
+            },
+        ],
+        Arc::new(NodeContributionsAdapter(store)),
+    )
 }

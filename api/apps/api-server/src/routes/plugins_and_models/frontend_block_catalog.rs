@@ -4,13 +4,13 @@ use axum::{extract::State, http::HeaderMap, Json, Router};
 use control_plane::frontend_block_catalog::{
     FrontendBlockCatalogService, FrontendContributionBinding, ListFrontendBlockCatalogQuery,
 };
+use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::require_session::require_session,
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
@@ -178,29 +178,92 @@ pub async fn list_frontend_blocks(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<FrontendBlockCatalogResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let graph = state
-        .extension_boot_snapshot
-        .as_ref()
-        .map(|snapshot| Arc::clone(snapshot.graph_arc()))
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-            "extension_boot_snapshot",
-        ))?;
-    let entries = FrontendBlockCatalogService::new(
-        state.store.for_actor(context.actor.clone()),
-        state.api_node_id.clone(),
-        graph,
-    )?
-    .list_frontend_blocks(ListFrontendBlockCatalogQuery {
-        actor_user_id: context.user.id,
-    })
+    let snapshot_state = Arc::clone(&state);
+    let output: FrontendBlocksOutput = crate::routes::console_interface::invoke(
+        snapshot_state,
+        "http.console.frontend-blocks.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        FrontendBlocksInput,
+    )
     .await?;
+    Ok(Json(ApiSuccess::new(output.0)))
+}
 
-    Ok(Json(ApiSuccess::new(
-        entries
-            .entries
-            .into_iter()
-            .map(to_response)
-            .collect::<Result<Vec<_>, _>>()?,
-    )))
+#[derive(Clone)]
+pub(crate) struct FrontendBlockDependencies {
+    pub(crate) store: storage_durable_postgres::MainDurableStore,
+    pub(crate) api_node_id: String,
+    pub(crate) graph: Arc<plugin_framework::extension_bus::EffectiveExtensionGraph>,
+}
+
+pub(crate) struct FrontendBlocksInput;
+impl InterfaceContract for FrontendBlocksInput {
+    const CONTRACT_ID: &'static str = "console-frontend-blocks-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+pub(crate) struct FrontendBlocksOutput(Vec<FrontendBlockCatalogResponse>);
+impl InterfaceContract for FrontendBlocksOutput {
+    const CONTRACT_ID: &'static str = "console-frontend-blocks-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+struct FrontendBlocksAdapter(FrontendBlockDependencies);
+
+impl
+    crate::routes::console_interface::ConsoleInterfacePort<
+        FrontendBlocksInput,
+        FrontendBlocksOutput,
+    > for FrontendBlocksAdapter
+{
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        _input: FrontendBlocksInput,
+    ) -> crate::routes::console_interface::ConsoleInterfaceFuture<'a, FrontendBlocksOutput> {
+        Box::pin(async move {
+            let entries = FrontendBlockCatalogService::new(
+                self.0.store.for_actor(principal.actor().clone()),
+                self.0.api_node_id.clone(),
+                Arc::clone(&self.0.graph),
+            )
+            .map_err(ApiError)
+            .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?
+            .list_frontend_blocks(ListFrontendBlockCatalogQuery {
+                actor_user_id: principal.actor().user_id,
+            })
+            .await
+            .map_err(ApiError)
+            .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
+            let output = entries
+                .entries
+                .into_iter()
+                .map(to_response)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
+            Ok(FrontendBlocksOutput(output))
+        })
+    }
+}
+
+pub(crate) fn compile_registry(
+    dependencies: FrontendBlockDependencies,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    crate::routes::console_interface::compile_registry(
+        "api-server.console-frontend-blocks",
+        "graph:console-frontend-blocks-v1",
+        &[
+            crate::routes::console_interface::ConsoleInterfaceDeclaration {
+                interface_id: "frontend_blocks.view",
+                binding_id: "http.console.frontend-blocks.get.v1",
+                method: "GET",
+                path: "/api/console/frontend-blocks",
+                mutating: false,
+            },
+        ],
+        Arc::new(FrontendBlocksAdapter(dependencies)),
+    )
 }

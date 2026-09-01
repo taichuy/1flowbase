@@ -972,6 +972,40 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-frontend-blocks",
+            &["frontend_blocks.view"],
+            &["api-server.console-frontend-blocks"],
+            crate::routes::frontend_block_catalog::compile_registry(
+                crate::routes::frontend_block_catalog::FrontendBlockDependencies {
+                    store: state.store.clone(),
+                    api_node_id: state.api_node_id.clone(),
+                    graph: Arc::clone(
+                        state
+                            .extension_boot_snapshot
+                            .as_ref()
+                            .expect("production interface publication requires ExtensionBootSnapshot")
+                            .graph_arc(),
+                    ),
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-js-dependencies",
+            &["js_dependencies.view"],
+            &["api-server.console-js-dependencies"],
+            crate::routes::js_dependencies::compile_registry(
+                state.store.clone(),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-node-contributions",
+            &["node_contributions.view"],
+            &["api-server.console-node-contributions"],
+            crate::routes::node_contributions::compile_registry(
+                state.store.clone(),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",

@@ -2,13 +2,13 @@ use std::sync::Arc;
 
 use axum::{extract::State, http::HeaderMap, Json, Router};
 use control_plane::js_dependency::{JsDependencyService, ListWorkspaceJsDependenciesQuery};
+use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::require_session::require_session,
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
@@ -84,14 +84,77 @@ pub async fn list_js_dependencies(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<JsDependencyCatalogEntryResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let entries = JsDependencyService::new(state.store.for_actor(context.actor.clone()))
-        .list_workspace_js_dependencies(ListWorkspaceJsDependenciesQuery {
-            actor_user_id: context.user.id,
-        })
-        .await?;
+    let snapshot_state = Arc::clone(&state);
+    let output: JsDependenciesOutput = crate::routes::console_interface::invoke(
+        snapshot_state,
+        "http.console.js-dependencies.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        JsDependenciesInput,
+    )
+    .await?;
+    Ok(Json(ApiSuccess::new(output.0)))
+}
 
-    Ok(Json(ApiSuccess::new(
-        entries.entries.into_iter().map(to_response).collect(),
-    )))
+pub(crate) struct JsDependenciesInput;
+
+impl InterfaceContract for JsDependenciesInput {
+    const CONTRACT_ID: &'static str = "console-js-dependencies-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+pub(crate) struct JsDependenciesOutput(Vec<JsDependencyCatalogEntryResponse>);
+
+impl InterfaceContract for JsDependenciesOutput {
+    const CONTRACT_ID: &'static str = "console-js-dependencies-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+struct JsDependenciesAdapter(storage_durable_postgres::MainDurableStore);
+
+impl
+    crate::routes::console_interface::ConsoleInterfacePort<
+        JsDependenciesInput,
+        JsDependenciesOutput,
+    > for JsDependenciesAdapter
+{
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        _input: JsDependenciesInput,
+    ) -> crate::routes::console_interface::ConsoleInterfaceFuture<'a, JsDependenciesOutput> {
+        Box::pin(async move {
+            let entries = JsDependencyService::new(self.0.for_actor(principal.actor().clone()))
+                .list_workspace_js_dependencies(ListWorkspaceJsDependenciesQuery {
+                    actor_user_id: principal.actor().user_id,
+                })
+                .await
+                .map_err(ApiError)
+                .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?;
+            Ok(JsDependenciesOutput(
+                entries.entries.into_iter().map(to_response).collect(),
+            ))
+        })
+    }
+}
+
+pub(crate) fn compile_registry(
+    store: storage_durable_postgres::MainDurableStore,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    crate::routes::console_interface::compile_registry(
+        "api-server.console-js-dependencies",
+        "graph:console-js-dependencies-v1",
+        &[
+            crate::routes::console_interface::ConsoleInterfaceDeclaration {
+                interface_id: "js_dependencies.view",
+                binding_id: "http.console.js-dependencies.get.v1",
+                method: "GET",
+                path: "/api/console/js-dependencies",
+                mutating: false,
+            },
+        ],
+        Arc::new(JsDependenciesAdapter(store)),
+    )
 }
