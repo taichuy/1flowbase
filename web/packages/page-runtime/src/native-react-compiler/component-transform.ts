@@ -1,6 +1,9 @@
 import type { BlockProtocolError } from '@1flowbase/page-protocol';
 
-import { validateNativeTrustedBlockSource } from '../native-trusted-block-source-policy';
+import {
+  validateNativeTrustedBlockJavaScript,
+  validateNativeTrustedBlockSource
+} from '../native-trusted-block-source-policy';
 import { RUNTIME_CAPABILITY_GUARD_BINDING_NAMES } from '../native-trusted-block/runtime-capability-guard';
 import {
   DEFAULT_EXPORT_IDENTIFIER,
@@ -10,11 +13,12 @@ import {
   collectInjectedModules,
   createModuleBindingPreamble,
   parseTopLevelModuleSyntax,
-  tokenizeSource
+  tokenizeJavaScriptSource
 } from '../native-trusted-block/source-evaluator-transform';
-import type {
-  NativeTrustedBlockImportBinding,
-  NativeTrustedBlockInjectedModule
+import {
+  NATIVE_REACT_JSX_RUNTIME_IMPORT_SOURCE,
+  type NativeTrustedBlockImportBinding,
+  type NativeTrustedBlockInjectedModule
 } from '../native-trusted-block/source-evaluator-types';
 import { transformNativeReactTsx } from './tsx-transform';
 
@@ -38,13 +42,30 @@ export function transformNativeReactComponentSource(
   source: unknown,
   moduleSources: ReadonlySet<string> = new Set()
 ): NativeReactComponentTransformResult {
+  if (typeof source !== 'string') {
+    const invalidSource = validateNativeTrustedBlockSource(source);
+    return invalidSource.ok
+      ? transformFailure(
+          'source',
+          'Native React component source must be a string.'
+        )
+      : { ok: false, errors: invalidSource.errors };
+  }
+
   const acceptedImportSources = new Set(moduleSources);
-  const policy = validateNativeTrustedBlockSource(source, {
-    allowedImportSources: acceptedImportSources
+  const tsx = transformNativeReactTsx(source);
+  if (!tsx.ok) return tsx;
+
+  const policy = validateNativeTrustedBlockJavaScript(tsx.code, {
+    allowedImportSources: acceptedImportSources,
+    compilerGeneratedImportSources: new Set([
+      NATIVE_REACT_JSX_RUNTIME_IMPORT_SOURCE
+    ])
   });
   if (!policy.ok) return policy;
 
-  const reservedToken = tokenizeSource(policy.source).find((token) =>
+  const tokens = tokenizeJavaScriptSource(tsx.code);
+  const reservedToken = tokens.find((token) =>
     RESERVED_TRANSFORM_IDENTIFIERS.has(token.value)
   );
   if (reservedToken) {
@@ -54,12 +75,9 @@ export function transformNativeReactComponentSource(
     );
   }
 
-  const tsx = transformNativeReactTsx(policy.source);
-  if (!tsx.ok) return tsx;
-
   const parsed = parseTopLevelModuleSyntax(
     tsx.code,
-    tokenizeSource(tsx.code),
+    tokens,
     acceptedImportSources
   );
   if (!parsed.ok) return { ok: false, errors: [parsed.error] };

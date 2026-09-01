@@ -20,6 +20,7 @@
   "dependencies": {
     "@1flowbase/page-protocol": "workspace:*",
     "@jridgewell/trace-mapping": "^0.3.31",
+    "acorn": "^8.16.0",
     "sucrase": "^3.35.0"
   },
   "scripts": {

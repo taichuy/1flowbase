@@ -10,6 +10,7 @@ import {
   deniedGlobalIdentifiers,
   deniedPortalIdentifiers
 } from './native-trusted-block/source-policy-constants';
+import { parseNativeTrustedBlockJavaScriptPolicy } from './native-trusted-block/javascript-policy-parser';
 
 export {
   NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS,
@@ -35,6 +36,7 @@ export type ValidateNativeTrustedBlockSourceResult =
 
 export interface ValidateNativeTrustedBlockSourceOptions {
   allowedImportSources?: ReadonlySet<string>;
+  compilerGeneratedImportSources?: ReadonlySet<string>;
 }
 
 interface SourceToken {
@@ -109,6 +111,47 @@ export function validateNativeTrustedBlockSource(
       'transform_failed',
       'source',
       'Native trusted block source validation failed.'
+    );
+  }
+}
+
+export function validateNativeTrustedBlockJavaScript(
+  source: string,
+  options: ValidateNativeTrustedBlockSourceOptions = {}
+): ValidateNativeTrustedBlockSourceResult {
+  try {
+    const acceptedImportSources =
+      options.allowedImportSources ?? allowedImports;
+    const includeImportSourceLocations =
+      options.allowedImportSources !== undefined;
+    const parsed = parseNativeTrustedBlockJavaScriptPolicy(
+      source,
+      acceptedImportSources,
+      includeImportSourceLocations,
+      options.compilerGeneratedImportSources ?? new Set()
+    );
+    if (!parsed.ok) {
+      return { ok: false, errors: [parsed.error] };
+    }
+
+    const errors = [
+      ...parsed.importErrors,
+      ...validateDeniedCapabilities(source, parsed.tokens)
+    ];
+
+    return errors.length > 0
+      ? { ok: false, errors }
+      : {
+          ok: true,
+          source,
+          normalizedSource: source.trim(),
+          errors: []
+        };
+  } catch {
+    return failure(
+      'transform_failed',
+      'source',
+      'Native trusted block JavaScript validation failed.'
     );
   }
 }
