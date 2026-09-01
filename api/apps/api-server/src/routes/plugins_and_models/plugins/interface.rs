@@ -74,6 +74,39 @@ pub(crate) enum PluginInterfaceInput {
     GetTask {
         task_id: String,
     },
+    ModelFamilies {
+        query: PluginCatalogQuery,
+        locale: ConsoleLocaleHints,
+    },
+    ModelOfficial {
+        query: OfficialPluginCatalogQuery,
+        locale: ConsoleLocaleHints,
+    },
+    ModelInstallOfficial(InstallOfficialPluginBody),
+    ModelInstallUploaded {
+        file_name: String,
+        package_bytes: Vec<u8>,
+    },
+    ModelRefreshArtifact {
+        installation_id: String,
+    },
+    ModelInstallArtifact {
+        installation_id: String,
+    },
+    ModelUpgradeLatest {
+        provider_code: String,
+        body: Option<UpgradeLatestPluginFamilyBody>,
+    },
+    ModelSwitchVersion {
+        provider_code: String,
+        body: SwitchPluginVersionBody,
+    },
+    ModelDeleteFamily {
+        provider_code: String,
+    },
+    ModelGetTask {
+        task_id: String,
+    },
 }
 
 impl InterfaceContract for PluginInterfaceInput {
@@ -131,6 +164,23 @@ impl PluginInterfaceAdapter {
                 .expect("compiled plugin policy group must be valid"),
             operation,
         )
+    }
+
+    fn model_service(
+        &self,
+        actor: &domain::ActorContext,
+        operation: &'static str,
+    ) -> crate::app_state::ApiPluginManagementService {
+        PluginManagementService::new(
+            self.0.store.for_actor(actor.clone()),
+            ApiProviderRuntime::new(self.0.provider_runtime.clone()),
+            self.0.official_plugin_source.clone(),
+            self.0.provider_install_root.clone(),
+        )
+        .with_node_id(self.0.api_node_id.clone())
+        .with_allow_uploaded_host_extensions(self.0.allow_uploaded_host_extensions)
+        .with_model_routing_cache_store(self.0.cache_store.clone())
+        .for_model_provider_console_operation(operation)
     }
 
     async fn preferred_locale(
@@ -461,6 +511,218 @@ impl PluginInterfaceAdapter {
                         .await?,
                 )))
             }
+            PluginInterfaceInput::ModelFamilies { mut query, locale } => {
+                query.plugin_type = Some(settings_routes::MODEL_PROVIDER_PLUGIN_TYPE.to_string());
+                let locale_meta = locale.resolve_meta(
+                    query.locale.clone(),
+                    self.preferred_locale(principal).await?,
+                );
+                let families = self
+                    .model_service(actor, "model_provider_plugins.families.view")
+                    .list_families(
+                        actor.user_id,
+                        filter_from_query(&query),
+                        requested_locales(&locale_meta),
+                    )
+                    .await?;
+                Ok(PluginInterfaceOutput::Families(
+                    PluginFamilyCatalogResponse {
+                        locale_meta,
+                        i18n_catalog: serde_json::to_value(families.i18n_catalog)?,
+                        entries: families
+                            .entries
+                            .into_iter()
+                            .map(to_family_response)
+                            .collect(),
+                    },
+                ))
+            }
+            PluginInterfaceInput::ModelOfficial { mut query, locale } => {
+                query.plugin_type = Some(settings_routes::MODEL_PROVIDER_PLUGIN_TYPE.to_string());
+                let locale_meta = locale.resolve_meta(
+                    query.locale.clone(),
+                    self.preferred_locale(principal).await?,
+                );
+                let local_catalog = self
+                    .model_service(actor, "model_provider_plugins.official_catalog.view")
+                    .list_catalog(
+                        actor.user_id,
+                        filter_from_query(&PluginCatalogQuery {
+                            plugin_type: query.plugin_type.clone(),
+                            locale: query.locale.clone(),
+                        }),
+                        requested_locales(&locale_meta),
+                    )
+                    .await?;
+                let filter = official_filter_from_query(&query);
+                let page = self
+                    .0
+                    .official_catalog_source
+                    .search_for_workspace(
+                        actor.current_workspace_id,
+                        "runtime-extensions",
+                        crate::official_extension_catalog::OfficialExtensionCatalogSearchQuery {
+                            slot_code: Some(
+                                settings_routes::MODEL_PROVIDER_PLUGIN_TYPE.to_string(),
+                            ),
+                            q: filter.search_query.clone(),
+                            limit: filter.limit,
+                            cursor: query.cursor.clone(),
+                        },
+                    )
+                    .await?;
+                let installed = local_catalog
+                    .entries
+                    .into_iter()
+                    .map(|entry| {
+                        (
+                            settings_routes::model_provider_catalog_id(&entry.installation),
+                            settings_routes::model_provider_catalog_install_status(
+                                entry.local_artifact.artifact_status,
+                                entry.assigned_to_current_workspace,
+                            ),
+                        )
+                    })
+                    .collect::<std::collections::HashMap<_, _>>();
+                let entries = page
+                    .entries
+                    .into_iter()
+                    .filter_map(
+                        |entry| match settings_routes::project_model_provider_catalog_entry(
+                            self.0.official_catalog_source.as_ref(),
+                            entry,
+                            &installed,
+                        ) {
+                            Ok(Some(entry)) => Some(Ok(entry)),
+                            Ok(None) => None,
+                            Err(error) => Some(Err(error)),
+                        },
+                    )
+                    .collect::<anyhow::Result<Vec<_>>>()?;
+                let locale = domain::CatalogLocale::new(locale_meta.resolved_locale.clone())
+                    .expect("resolved locale is valid");
+                let source_label = crate::app_state::resolve_official_source_label_with(
+                    &self.0.store,
+                    self.0.bootstrap_workspace_id,
+                    &locale,
+                    &page.source_kind,
+                    page.source_kind.clone(),
+                )
+                .await?;
+                Ok(PluginInterfaceOutput::Official(
+                    OfficialPluginCatalogResponse {
+                        source_kind: page.source_kind,
+                        source_label,
+                        registry_url: page.snapshot_locator,
+                        source_freshness: "fresh".to_string(),
+                        locale_meta,
+                        page: OfficialPluginCatalogPageResponse {
+                            limit: filter.limit,
+                            next_cursor: page.next_cursor,
+                        },
+                        entries,
+                    },
+                ))
+            }
+            PluginInterfaceInput::ModelInstallOfficial(body) => {
+                let command = self
+                    .resolved_official_command(actor.user_id, actor.current_workspace_id, body)
+                    .await?;
+                let result = self
+                    .model_service(actor, "model_provider_plugins.install.official")
+                    .install_resolved_official_plugin(command)
+                    .await?;
+                Ok(PluginInterfaceOutput::Installed(to_install_response(
+                    result,
+                )))
+            }
+            PluginInterfaceInput::ModelInstallUploaded {
+                file_name,
+                package_bytes,
+            } => {
+                let result = self
+                    .model_service(actor, "model_provider_plugins.install.upload")
+                    .install_uploaded_model_provider(InstallUploadedPluginCommand {
+                        actor_user_id: actor.user_id,
+                        file_name,
+                        package_bytes,
+                    })
+                    .await?;
+                Ok(PluginInterfaceOutput::Installed(to_install_response(
+                    result,
+                )))
+            }
+            PluginInterfaceInput::ModelRefreshArtifact { installation_id } => Ok(
+                PluginInterfaceOutput::Artifact(to_artifact_instance_response(
+                    self.model_service(actor, "model_provider_plugins.artifact.refresh")
+                        .refresh_current_node_artifact(RefreshCurrentNodePluginArtifactCommand {
+                            actor_user_id: actor.user_id,
+                            installation_id: parse_uuid(&installation_id, "installation_id")?,
+                        })
+                        .await?,
+                )),
+            ),
+            PluginInterfaceInput::ModelInstallArtifact { installation_id } => Ok(
+                PluginInterfaceOutput::Artifact(to_artifact_instance_response(
+                    self.model_service(actor, "model_provider_plugins.artifact.install")
+                        .install_current_node_artifact(InstallCurrentNodePluginArtifactCommand {
+                            actor_user_id: actor.user_id,
+                            installation_id: parse_uuid(&installation_id, "installation_id")?,
+                        })
+                        .await?,
+                )),
+            ),
+            PluginInterfaceInput::ModelUpgradeLatest {
+                provider_code,
+                body,
+            } => {
+                let compatibility_override = body.as_ref().and_then(|body| {
+                    to_compatibility_override(body.compatibility_override.clone())
+                });
+                let risk_override = body.and_then(|body| to_risk_override(body.risk_override));
+                Ok(PluginInterfaceOutput::Task(to_task_response(
+                    self.model_service(actor, "model_provider_plugins.families.upgrade")
+                        .upgrade_latest(UpgradeLatestPluginFamilyCommand {
+                            actor_user_id: actor.user_id,
+                            provider_code,
+                            compatibility_override,
+                            risk_override,
+                        })
+                        .await?,
+                )))
+            }
+            PluginInterfaceInput::ModelSwitchVersion {
+                provider_code,
+                body,
+            } => Ok(PluginInterfaceOutput::Task(to_task_response(
+                self.model_service(actor, "model_provider_plugins.families.switch")
+                    .switch_version(SwitchPluginVersionCommand {
+                        actor_user_id: actor.user_id,
+                        provider_code,
+                        target_installation_id: parse_uuid(
+                            &body.installation_id,
+                            "installation_id",
+                        )?,
+                    })
+                    .await?,
+            ))),
+            PluginInterfaceInput::ModelDeleteFamily { provider_code } => {
+                Ok(PluginInterfaceOutput::Task(to_task_response(
+                    self.model_service(actor, "model_provider_plugins.families.delete")
+                        .delete_family(DeletePluginFamilyCommand {
+                            actor_user_id: actor.user_id,
+                            provider_code,
+                        })
+                        .await?,
+                )))
+            }
+            PluginInterfaceInput::ModelGetTask { task_id } => {
+                Ok(PluginInterfaceOutput::Task(to_task_response(
+                    self.model_service(actor, "model_provider_plugins.tasks.view")
+                        .get_task(actor.user_id, parse_uuid(&task_id, "task_id")?)
+                        .await?,
+                )))
+            }
         }
     }
 }
@@ -592,6 +854,16 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         path: "/api/console/plugins/tasks/:task_id",
         mutating: false,
     },
+    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.families.view", binding_id: "http.console.model-provider-plugins.families.v1", method: "GET", path: "/api/console/settings/model-providers/plugins/families", mutating: false },
+    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.official_catalog.view", binding_id: "http.console.model-provider-plugins.official-catalog.v1", method: "GET", path: "/api/console/settings/model-providers/plugins/official-catalog", mutating: false },
+    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.install.official", binding_id: "http.console.model-provider-plugins.install-official.v1", method: "POST", path: "/api/console/settings/model-providers/plugins/install-official", mutating: true },
+    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.install.upload", binding_id: "http.console.model-provider-plugins.install-upload.v1", method: "POST", path: "/api/console/settings/model-providers/plugins/install-upload", mutating: true },
+    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.artifact.refresh", binding_id: "http.console.model-provider-plugins.artifact-refresh.v1", method: "POST", path: "/api/console/settings/model-providers/plugins/:installation_id/artifact/refresh", mutating: true },
+    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.artifact.install", binding_id: "http.console.model-provider-plugins.artifact-install.v1", method: "POST", path: "/api/console/settings/model-providers/plugins/:installation_id/artifact/install-current-node", mutating: true },
+    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.families.upgrade", binding_id: "http.console.model-provider-plugins.family-upgrade.v1", method: "POST", path: "/api/console/settings/model-providers/plugins/families/:provider_code/upgrade-latest", mutating: true },
+    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.families.switch", binding_id: "http.console.model-provider-plugins.family-switch.v1", method: "POST", path: "/api/console/settings/model-providers/plugins/families/:provider_code/switch-version", mutating: true },
+    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.families.delete", binding_id: "http.console.model-provider-plugins.family-delete.v1", method: "DELETE", path: "/api/console/settings/model-providers/plugins/families/:provider_code", mutating: true },
+    ConsoleInterfaceDeclaration { interface_id: "model_provider_plugins.tasks.view", binding_id: "http.console.model-provider-plugins.task.v1", method: "GET", path: "/api/console/settings/model-providers/plugins/tasks/:task_id", mutating: false },
 ];
 
 pub(crate) fn compile_registry(

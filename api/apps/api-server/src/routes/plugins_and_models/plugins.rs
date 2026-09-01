@@ -5,7 +5,7 @@ use axum::{
     body::{to_bytes, Body},
     extract::{DefaultBodyLimit, Multipart, Path, Query, State},
     handler::Handler,
-    http::{header::ACCEPT_LANGUAGE, HeaderMap, Request, StatusCode},
+    http::{HeaderMap, Request, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     Json, Router,
@@ -806,31 +806,6 @@ fn to_task_response(task: domain::PluginTaskRecord) -> PluginTaskResponse {
     }
 }
 
-pub(crate) fn resolve_locale_meta(
-    headers: &HeaderMap,
-    query_locale: Option<String>,
-    user_preferred_locale: Option<String>,
-) -> LocaleMetaResponse {
-    runtime_profile::resolve_locale(runtime_profile::LocaleResolutionInput {
-        query_locale,
-        explicit_header_locale: headers
-            .get("x-1flowbase-locale")
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string),
-        user_preferred_locale,
-        accept_language: headers
-            .get(ACCEPT_LANGUAGE)
-            .and_then(|value| value.to_str().ok())
-            .map(str::to_string),
-        fallback_locale: runtime_profile::FALLBACK_LOCALE,
-        supported_locales: runtime_profile::SUPPORTED_LOCALES
-            .iter()
-            .map(|value| value.to_string())
-            .collect(),
-    })
-    .into()
-}
-
 pub(crate) fn requested_locales(
     locale_meta: &LocaleMetaResponse,
 ) -> control_plane::i18n::RequestedLocales {
@@ -869,67 +844,6 @@ fn official_filter_from_query(query: &OfficialPluginCatalogQuery) -> OfficialPlu
             .map(str::to_string),
         limit,
     }
-}
-
-pub(crate) async fn resolved_official_plugin_install_command(
-    state: &ApiState,
-    actor_user_id: Uuid,
-    workspace_id: Uuid,
-    plugin_id: String,
-    compatibility_override: Option<PluginCompatibilityOverride>,
-    risk_override: Option<PluginRiskOverride>,
-) -> Result<InstallResolvedOfficialPluginCommand, ApiError> {
-    let mut cursor = None;
-    let (entry, source_kind) = loop {
-        let page = state
-            .official_extension_catalog_source
-            .list_page_for_workspace(workspace_id, "runtime-extensions", cursor.as_deref())
-            .await?;
-        if let Some(entry) = page.entries.into_iter().find(|entry| {
-            entry
-                .source
-                .metadata
-                .get("plugin_id")
-                .and_then(serde_json::Value::as_str)
-                == Some(plugin_id.as_str())
-        }) {
-            break (entry, page.source_kind);
-        }
-        let Some(next_cursor) = page.metadata.next_cursor else {
-            return Err(
-                control_plane::errors::ControlPlaneError::NotFound("official_plugin").into(),
-            );
-        };
-        cursor = Some(next_cursor);
-    };
-    let plugin_type = entry
-        .source
-        .metadata
-        .get("plugin_type")
-        .and_then(serde_json::Value::as_str)
-        .ok_or(control_plane::errors::ControlPlaneError::InvalidInput(
-            "official_plugin_type",
-        ))?
-        .to_string();
-    let downloaded = state
-        .official_extension_catalog_source
-        .download_artifact_for_workspace(workspace_id, &entry)
-        .await?;
-    let expected_checksum = downloaded.descriptor.expected_checksum.clone().ok_or(
-        control_plane::errors::ControlPlaneError::InvalidInput("official_plugin_checksum"),
-    )?;
-    Ok(InstallResolvedOfficialPluginCommand {
-        actor_user_id,
-        plugin_id,
-        plugin_type,
-        minimum_host_version: entry.host_version_requirement,
-        source_kind,
-        file_name: downloaded.file_name,
-        package_bytes: downloaded.artifact_bytes,
-        expected_checksum,
-        compatibility_override,
-        risk_override,
-    })
 }
 
 #[utoipa::path(

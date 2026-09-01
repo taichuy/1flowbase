@@ -1,14 +1,6 @@
 use super::*;
 
-const MODEL_PROVIDER_PLUGIN_TYPE: &str = "model_provider";
-
-fn service(
-    state: &ApiState,
-    actor: &domain::ActorContext,
-    operation_id: &'static str,
-) -> crate::app_state::ApiPluginManagementService {
-    super::base_service(state, actor).for_model_provider_console_operation(operation_id)
-}
+pub(super) const MODEL_PROVIDER_PLUGIN_TYPE: &str = "model_provider";
 
 #[utoipa::path(
     get,
@@ -20,36 +12,21 @@ fn service(
 pub async fn list_families(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Query(mut query): Query<PluginCatalogQuery>,
+    Query(query): Query<PluginCatalogQuery>,
 ) -> Result<Json<ApiSuccess<PluginFamilyCatalogResponse>>, ApiError> {
-    query.plugin_type = Some(MODEL_PROVIDER_PLUGIN_TYPE.to_string());
-    let context = require_session(&state, &headers).await?;
-    let locale_meta = resolve_locale_meta(
-        &headers,
-        query.locale.clone(),
-        context.user.preferred_locale,
-    );
-    let families = service(
-        &state,
-        &context.actor,
-        "model_provider_plugins.families.view",
-    )
-    .list_families(
-        context.user.id,
-        filter_from_query(&query),
-        requested_locales(&locale_meta),
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = super::invoke_plugin_interface(
+        state,
+        headers,
+        "http.console.model-provider-plugins.families.v1",
+        interface::PluginInterfaceInput::ModelFamilies { query, locale },
+        false,
     )
     .await?;
-    let i18n_catalog = serde_json::to_value(families.i18n_catalog)?;
-    Ok(Json(ApiSuccess::new(PluginFamilyCatalogResponse {
-        locale_meta,
-        i18n_catalog,
-        entries: families
-            .entries
-            .into_iter()
-            .map(to_family_response)
-            .collect(),
-    })))
+    let interface::PluginInterfaceOutput::Families(families) = output else {
+        unreachable!("model plugin families binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(families)))
 }
 
 #[utoipa::path(
@@ -62,92 +39,25 @@ pub async fn list_families(
 pub async fn list_official_catalog(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
-    Query(mut query): Query<OfficialPluginCatalogQuery>,
+    Query(query): Query<OfficialPluginCatalogQuery>,
 ) -> Result<Json<ApiSuccess<OfficialPluginCatalogResponse>>, ApiError> {
-    query.plugin_type = Some(MODEL_PROVIDER_PLUGIN_TYPE.to_string());
-    let context = require_session(&state, &headers).await?;
-    let locale_meta = resolve_locale_meta(
-        &headers,
-        query.locale.clone(),
-        context.user.preferred_locale,
-    );
-    let local_catalog = service(
-        &state,
-        &context.actor,
-        "model_provider_plugins.official_catalog.view",
-    )
-    .list_catalog(
-        context.user.id,
-        filter_from_query(&PluginCatalogQuery {
-            plugin_type: query.plugin_type.clone(),
-            locale: query.locale.clone(),
-        }),
-        requested_locales(&locale_meta),
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let output = super::invoke_plugin_interface(
+        state,
+        headers,
+        "http.console.model-provider-plugins.official-catalog.v1",
+        interface::PluginInterfaceInput::ModelOfficial { query, locale },
+        false,
     )
     .await?;
-    let filter = official_filter_from_query(&query);
-    let page = state
-        .official_extension_catalog_source
-        .search_for_workspace(
-            context.actor.current_workspace_id,
-            "runtime-extensions",
-            crate::official_extension_catalog::OfficialExtensionCatalogSearchQuery {
-                slot_code: Some(MODEL_PROVIDER_PLUGIN_TYPE.to_string()),
-                q: filter.search_query.clone(),
-                limit: filter.limit,
-                cursor: query.cursor.clone(),
-            },
-        )
-        .await?;
-    let installed = local_catalog
-        .entries
-        .into_iter()
-        .map(|entry| {
-            (
-                model_provider_catalog_id(&entry.installation),
-                model_provider_catalog_install_status(
-                    entry.local_artifact.artifact_status,
-                    entry.assigned_to_current_workspace,
-                ),
-            )
-        })
-        .collect::<std::collections::HashMap<_, _>>();
-    let entries = page
-        .entries
-        .into_iter()
-        .filter_map(
-            |entry| match project_model_provider_catalog_entry(&state, entry, &installed) {
-                Ok(Some(entry)) => Some(Ok(entry)),
-                Ok(None) => None,
-                Err(error) => Some(Err(error)),
-            },
-        )
-        .collect::<anyhow::Result<Vec<_>>>()?;
-    let locale = domain::CatalogLocale::new(locale_meta.resolved_locale.clone())
-        .expect("runtime profile must resolve a supported catalog locale");
-    let source_label = crate::app_state::resolve_official_source_label(
-        &state,
-        &locale,
-        &page.source_kind,
-        page.source_kind.clone(),
-    )
-    .await?;
-    Ok(Json(ApiSuccess::new(OfficialPluginCatalogResponse {
-        source_kind: page.source_kind,
-        source_label,
-        registry_url: page.snapshot_locator,
-        source_freshness: "fresh".to_string(),
-        locale_meta,
-        page: OfficialPluginCatalogPageResponse {
-            limit: filter.limit,
-            next_cursor: page.next_cursor,
-        },
-        entries,
-    })))
+    let interface::PluginInterfaceOutput::Official(catalog) = output else {
+        unreachable!("model plugin catalog binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(catalog)))
 }
 
-fn project_model_provider_catalog_entry(
-    state: &ApiState,
+pub(super) fn project_model_provider_catalog_entry(
+    source: &dyn crate::official_extension_catalog::OfficialExtensionCatalogSourcePort,
     entry: crate::official_extension_catalog::OfficialExtensionCatalogEntry,
     installed: &std::collections::HashMap<String, &'static str>,
 ) -> anyhow::Result<Option<OfficialPluginCatalogEntryResponse>> {
@@ -162,9 +72,7 @@ fn project_model_provider_catalog_entry(
     let model_discovery_mode = catalog_metadata_required(&entry, "model_discovery_mode")?;
     let icon = catalog_metadata_optional(&entry, "icon");
     let help_url = catalog_metadata_optional(&entry, "help_url");
-    let descriptor = state
-        .official_extension_catalog_source
-        .resolve_artifact(&entry)?;
+    let descriptor = source.resolve_artifact(&entry)?;
     let checksum = descriptor.expected_checksum.ok_or_else(|| {
         anyhow::anyhow!("official model-provider catalog entry is missing checksum")
     })?;
@@ -218,7 +126,7 @@ fn project_model_provider_catalog_entry(
     }))
 }
 
-fn model_provider_catalog_id(installation: &domain::PluginInstallationRecord) -> String {
+pub(super) fn model_provider_catalog_id(installation: &domain::PluginInstallationRecord) -> String {
     canonical_model_provider_catalog_id(
         installation.category,
         &installation.organization,
@@ -244,7 +152,7 @@ fn exact_catalog_install_status<'a>(
         .unwrap_or("not_installed")
 }
 
-fn model_provider_catalog_install_status(
+pub(super) fn model_provider_catalog_install_status(
     artifact_status: domain::PluginArtifactInstanceStatus,
     assigned_to_current_workspace: bool,
 ) -> &'static str {
@@ -342,28 +250,18 @@ pub async fn install_official_plugin(
     headers: HeaderMap,
     Json(body): Json<InstallOfficialPluginBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<InstallPluginResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let command = resolved_official_plugin_install_command(
-        &state,
-        context.user.id,
-        context.actor.current_workspace_id,
-        body.plugin_id,
-        to_compatibility_override(body.compatibility_override),
-        to_risk_override(body.risk_override),
+    let output = super::invoke_plugin_interface(
+        state,
+        headers,
+        "http.console.model-provider-plugins.install-official.v1",
+        interface::PluginInterfaceInput::ModelInstallOfficial(body),
+        true,
     )
     .await?;
-    let result = service(
-        &state,
-        &context.actor,
-        "model_provider_plugins.install.official",
-    )
-    .install_resolved_official_plugin(command)
-    .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_install_response(result))),
-    ))
+    let interface::PluginInterfaceOutput::Installed(result) = output else {
+        unreachable!("model plugin install binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(result))))
 }
 
 #[utoipa::path(
@@ -378,24 +276,22 @@ pub async fn install_uploaded_plugin(
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Result<(StatusCode, Json<ApiSuccess<InstallPluginResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
     let (file_name, package_bytes) = read_upload_file(&mut multipart).await?;
-    let result = service(
-        &state,
-        &context.actor,
-        "model_provider_plugins.install.upload",
+    let output = super::invoke_plugin_interface(
+        state,
+        headers,
+        "http.console.model-provider-plugins.install-upload.v1",
+        interface::PluginInterfaceInput::ModelInstallUploaded {
+            file_name,
+            package_bytes,
+        },
+        true,
     )
-    .install_uploaded_model_provider(InstallUploadedPluginCommand {
-        actor_user_id: context.user.id,
-        file_name,
-        package_bytes,
-    })
     .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_install_response(result))),
-    ))
+    let interface::PluginInterfaceOutput::Installed(result) = output else {
+        unreachable!("model plugin upload binding returned a different output")
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(result))))
 }
 
 #[utoipa::path(
@@ -409,21 +305,18 @@ pub async fn refresh_current_node_artifact(
     Path(installation_id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<PluginArtifactInstanceResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let artifact = service(
-        &state,
-        &context.actor,
-        "model_provider_plugins.artifact.refresh",
+    let output = super::invoke_plugin_interface(
+        state,
+        headers,
+        "http.console.model-provider-plugins.artifact-refresh.v1",
+        interface::PluginInterfaceInput::ModelRefreshArtifact { installation_id },
+        true,
     )
-    .refresh_current_node_artifact(RefreshCurrentNodePluginArtifactCommand {
-        actor_user_id: context.user.id,
-        installation_id: parse_uuid(&installation_id, "installation_id")?,
-    })
     .await?;
-    Ok(Json(ApiSuccess::new(to_artifact_instance_response(
-        artifact,
-    ))))
+    let interface::PluginInterfaceOutput::Artifact(artifact) = output else {
+        unreachable!("model plugin refresh binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(artifact)))
 }
 
 #[utoipa::path(
@@ -437,21 +330,18 @@ pub async fn install_current_node_artifact(
     Path(installation_id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<PluginArtifactInstanceResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let artifact = service(
-        &state,
-        &context.actor,
-        "model_provider_plugins.artifact.install",
+    let output = super::invoke_plugin_interface(
+        state,
+        headers,
+        "http.console.model-provider-plugins.artifact-install.v1",
+        interface::PluginInterfaceInput::ModelInstallArtifact { installation_id },
+        true,
     )
-    .install_current_node_artifact(InstallCurrentNodePluginArtifactCommand {
-        actor_user_id: context.user.id,
-        installation_id: parse_uuid(&installation_id, "installation_id")?,
-    })
     .await?;
-    Ok(Json(ApiSuccess::new(to_artifact_instance_response(
-        artifact,
-    ))))
+    let interface::PluginInterfaceOutput::Artifact(artifact) = output else {
+        unreachable!("model plugin artifact install binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(artifact)))
 }
 
 #[utoipa::path(
@@ -466,26 +356,22 @@ pub async fn upgrade_latest(
     headers: HeaderMap,
     body: Option<Json<UpgradeLatestPluginFamilyBody>>,
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
     let body = body.map(|Json(body)| body);
-    let compatibility_override = body
-        .as_ref()
-        .and_then(|body| to_compatibility_override(body.compatibility_override.clone()));
-    let risk_override = body.and_then(|body| to_risk_override(body.risk_override));
-    let task = service(
-        &state,
-        &context.actor,
-        "model_provider_plugins.families.upgrade",
+    let output = super::invoke_plugin_interface(
+        state,
+        headers,
+        "http.console.model-provider-plugins.family-upgrade.v1",
+        interface::PluginInterfaceInput::ModelUpgradeLatest {
+            provider_code,
+            body,
+        },
+        true,
     )
-    .upgrade_latest(UpgradeLatestPluginFamilyCommand {
-        actor_user_id: context.user.id,
-        provider_code,
-        compatibility_override,
-        risk_override,
-    })
     .await?;
-    Ok(Json(ApiSuccess::new(to_task_response(task))))
+    let interface::PluginInterfaceOutput::Task(task) = output else {
+        unreachable!("model plugin upgrade binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(task)))
 }
 
 #[utoipa::path(
@@ -501,20 +387,21 @@ pub async fn switch_version(
     headers: HeaderMap,
     Json(body): Json<SwitchPluginVersionBody>,
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let task = service(
-        &state,
-        &context.actor,
-        "model_provider_plugins.families.switch",
+    let output = super::invoke_plugin_interface(
+        state,
+        headers,
+        "http.console.model-provider-plugins.family-switch.v1",
+        interface::PluginInterfaceInput::ModelSwitchVersion {
+            provider_code,
+            body,
+        },
+        true,
     )
-    .switch_version(SwitchPluginVersionCommand {
-        actor_user_id: context.user.id,
-        provider_code,
-        target_installation_id: parse_uuid(&body.installation_id, "installation_id")?,
-    })
     .await?;
-    Ok(Json(ApiSuccess::new(to_task_response(task))))
+    let interface::PluginInterfaceOutput::Task(task) = output else {
+        unreachable!("model plugin switch binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(task)))
 }
 
 #[utoipa::path(
@@ -528,19 +415,18 @@ pub async fn delete_family(
     Path(provider_code): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let task = service(
-        &state,
-        &context.actor,
-        "model_provider_plugins.families.delete",
+    let output = super::invoke_plugin_interface(
+        state,
+        headers,
+        "http.console.model-provider-plugins.family-delete.v1",
+        interface::PluginInterfaceInput::ModelDeleteFamily { provider_code },
+        true,
     )
-    .delete_family(DeletePluginFamilyCommand {
-        actor_user_id: context.user.id,
-        provider_code,
-    })
     .await?;
-    Ok(Json(ApiSuccess::new(to_task_response(task))))
+    let interface::PluginInterfaceOutput::Task(task) = output else {
+        unreachable!("model plugin delete binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(task)))
 }
 
 #[utoipa::path(
@@ -554,9 +440,16 @@ pub async fn get_task(
     Path(task_id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let task = service(&state, &context.actor, "model_provider_plugins.tasks.view")
-        .get_task(context.user.id, parse_uuid(&task_id, "task_id")?)
-        .await?;
-    Ok(Json(ApiSuccess::new(to_task_response(task))))
+    let output = super::invoke_plugin_interface(
+        state,
+        headers,
+        "http.console.model-provider-plugins.task.v1",
+        interface::PluginInterfaceInput::ModelGetTask { task_id },
+        false,
+    )
+    .await?;
+    let interface::PluginInterfaceOutput::Task(task) = output else {
+        unreachable!("model plugin task binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(task)))
 }
