@@ -9,8 +9,9 @@
 - QA-1 remediation Assembly: `beta@a577d91bce7a9792108668316fd36ab81d31b019`
 - QA-2 frozen candidate: `beta@9057a345474d43c0236c300206553d027a6959eb`
 - QA-3 remediation Product Assembly: `beta@d8a20be4eda6fd1dd39d3b3a15e02d2b56692cee`
+- QA-3 frozen documentation candidate: `beta@d354bf31c7cc4494d882461e976e64503758c159`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
-- Delivery state: `ASSEMBLED / QA_REVERIFY_PENDING`
+- Delivery state: `BLOCKED / NEEDS_REFRAME`
 - Root AC state: candidate only; not settled
 
 ## Packet Assembly
@@ -137,3 +138,37 @@ The user approved EIL-F14R-C after a bounded read-only inventory proved 26 missi
 - aligns six stale source-structure fixtures with the post-F03R/F14 typed Adapter owners.
 
 Mechanical assembly evidence is `cargo fmt --all --check` PASS, `git diff --check` PASS, `cargo check -p api-server --tests` PASS and the minimum production exact-set publication probe `1 passed / 0 failed / 1240 filtered`. No per-Packet regression or QA was run. The next commit freezes this Receipt with the product Assembly above; that document HEAD is the sole QA-3 candidate.
+
+## Fresh QA Attempt 3 — retained failure history
+
+- Frozen candidate: `beta@d354bf31c7cc4494d882461e976e64503758c159`
+- Product Assembly: `beta@d8a20be4eda6fd1dd39d3b3a15e02d2b56692cee`
+- Result: `QA_FAIL`
+- Rows: `10 PASS / 5 FAIL / 0 UNRUN`
+- De-duplicated automated evidence: `2210 passed / 552 failed / 1 ignored`
+- Raw automated executions: `2250 passed / 553 failed / 3 ignored`
+- Severity: `Blocking 2 / High 2 / Warning 4`
+- Endpoint classification counts: unavailable because the production Catalog did not publish
+
+The two Blocking findings are:
+
+1. `http.console.i18n.catalog.get.v1` is published by both the runtime-i18n family contribution and the Core owned-operation projection, so Router/Catalog assembly rejects the duplicate binding.
+2. The live Console migration crosswalk has no disposition for at least `frontstage.blocks.delete`, so release-cohort migration planning cannot compile.
+
+The exact-set compiler itself passes, but its repair exposed that operation identity, Interface binding ownership and policy-migration disposition still have separate sources of truth. This is the same completeness root class for a third centralized QA cycle. Per the approved stop condition, no QA-4 or additional per-identity patch is authorized. Delivery returns to problem framing for a finite single-owner compilation model.
+
+Additional High findings are incomplete fixture alignment (`4/6` of the six specified fixtures) and a stale Console hygiene baseline (`401 operations / 434 routes`, `46 errors`). The single PostgreSQL failure is environment lock-table exhaustion (`53200`); migration diff and schema residue are zero, so no candidate storage regression is proven.
+
+Candidate acceptance disposition:
+
+- PASS: `EIL-008`
+- NOT SETTLED: `EIL-003`, `EIL-004`, `EIL-009`
+- FAIL: `EIL-001`, `EIL-002`, `EIL-005`, `EIL-006`, `EIL-007`, `EIL-010`
+- Root NOT SETTLED: `AC-001`, `AC-003`
+- Root FAIL: `AC-002`, `AC-007`, `AC-009`, `AC-010`
+
+Immutable Attempt-3 evidence is retained under:
+
+`tmp/test-governance/1963-external-interface-lifecycle/attempt-3/`
+
+#1963 and #1893 remain OPEN. No EIL or Root AC is settled, no push occurred, and no product, test, migration, protocol or official-plugin source was changed after the frozen candidate.
