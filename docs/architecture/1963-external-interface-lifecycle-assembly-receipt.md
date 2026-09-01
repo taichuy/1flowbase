@@ -7,8 +7,9 @@
 - Input: `beta@fee6ae814b28e5136305fd545613520419608c21`
 - Initial Product Assembly: `beta@3c6701837534bba1acef2ba7ae4a23730312da35`
 - QA-1 remediation Assembly: `beta@a577d91bce7a9792108668316fd36ab81d31b019`
+- QA-2 frozen candidate: `beta@9057a345474d43c0236c300206553d027a6959eb`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
-- Delivery state: `ASSEMBLED / QA_REVERIFY_PENDING`
+- Delivery state: `BLOCKED / NEEDS_REFRAME`
 - Root AC state: candidate only; not settled
 
 ## Packet Assembly
@@ -65,21 +66,23 @@ The production Catalog is computed from Root mounts, `ConsoleRouteAssembly`, gen
 
 The frozen QA batch must report the final total and the four classification counts. Required invariants are `UNCLASSIFIED=0`, Business Direct Route bypass `=0`, production fallback `=0`, dual-run `=0`, double-write `=0`, second Registry `=0`.
 
-## Candidate Acceptance State
+## Acceptance State After QA Attempt 2
 
-| Acceptance | Pre-QA state |
+| Acceptance | State |
 | --- | --- |
-| EIL-001～EIL-009 | `CANDIDATE_PENDING_FRESH_QA` |
-| EIL-010 | `PENDING_FRESH_QA` |
-| Root AC-001/002/003/007/009/010 | `CANDIDATE_ONLY / NOT_SETTLED` |
+| EIL-001/002/005/006/007/010 | `FAIL` |
+| EIL-003/004 | `NOT_SETTLED` |
+| EIL-008/009 | `PASS` |
+| Root AC-001/003 | `NOT_SETTLED` |
+| Root AC-002/007/009/010 | `FAIL` |
 
 ## QA Governance
 
-The sole fresh centralized QA is intentionally not represented as complete in this pre-QA Assembly receipt. Its immutable artifacts will be written under:
+Both centralized QA attempts are retained as immutable local evidence under:
 
 `tmp/test-governance/1963-external-interface-lifecycle/`
 
-After the frozen batch, this receipt will append the candidate-bound result without removing packet history or raw QA evidence. #1963 and #1893 remain OPEN; there is no push or Root AC settlement.
+Attempt 2 failed on the same operation-spec completeness root class as Attempt 1. The long-running-work stop condition therefore requires problem framing before any further product or test change. No third centralized QA is authorized. #1963 and #1893 remain OPEN; there is no push or Root AC settlement.
 
 ## Fresh QA Attempt 1 — retained failure history
 
@@ -99,4 +102,28 @@ Finite remediation packets:
 | EIL-F14R-A | `80b8508de849ef6f8636f10a478b17fc64cc0f7d` | Register `i18n.catalog.view` as an explicit authenticated Core operation without changing its existing workspace restriction or API contract |
 | EIL-F14R-B | `a577d91bce7a9792108668316fd36ab81d31b019` | Preserve SQL/raw-pool/Runtime-Host prohibitions while allowing approved explicit durable Adapter fields; add positive and negative structural fixtures |
 
-These fixes were mechanically compiled only. Attempt 1 was not rewritten or rerun. A second fresh frozen batch is required before any EIL or Root AC can become candidate GREEN.
+These fixes were mechanically compiled only. Attempt 1 was not rewritten or rerun. The required second fresh frozen batch is recorded below; it did not make any additional EIL or Root AC candidate GREEN.
+
+## Fresh QA Attempt 2 — retained failure history
+
+- Frozen candidate: `beta@9057a345474d43c0236c300206553d027a6959eb`
+- Product Assembly under reverification: `beta@a577d91bce7a9792108668316fd36ab81d31b019`
+- Result: `QA_FAIL`
+- Rows: `11 PASS / 4 FAIL / 0 UNRUN`
+- Automated evidence: `2195 passed / 604 failed / 3 ignored`
+- Severity: `Blocking 1 / High 1 / Warning 2`
+- Passing rows: QA rows `01–04`, `07`, `09–14`
+- Failing rows: QA rows `05`, `06`, `08`, `15`
+- Endpoint classification counts: unavailable because the production Catalog did not publish
+
+The primary blocker is the missing explicit Core or HostExtension operation specification for `frontstage.blocks.update`. Attempt 1 stopped on the same completeness root at `i18n.catalog.view`; therefore this is the second centralized failure of one root class, not authorization for another one-operation repair.
+
+After excluding the boot-plan cascade, six direct API assertions remain. Three encode stale pre-#1963 structural expectations: direct Workflow `.authenticate(...)`, all Frontstage routes being `Authenticated`, and runtime i18n remaining `Authenticated` instead of its explicit `ConsoleOperation`. The other three source-anchor assertions for overview, run-conversation messages and trace-tree projections remain unresolved because the production boot failure prevents complete behavior evidence. Legacy authentication or route bypasses must not be restored to satisfy them.
+
+Immutable Attempt-2 evidence is retained under:
+
+`tmp/test-governance/1963-external-interface-lifecycle/attempt-2/`
+
+## Reframe Gate
+
+Status is `BLOCKED / NEEDS_REFRAME`. No product or test change and no third centralized QA may start until Root approves a finite completeness mechanism. The recommended bounded direction is to derive a finite route-operation inventory and enforce an exact-set fixture between every `ConsoleOperation`/compiled Interface operation and the Core/HostExtension operation specifications. Only after that inventory is complete should Root create one finite remediation Packet and freeze a new Assembly.
