@@ -1,6 +1,26 @@
 use super::*;
 use crate::openapi_interface::OpenApiCapabilitySource;
 
+pub(crate) trait McpInterfaceRegistrySnapshotPort: Send + Sync + 'static {
+    fn snapshot(&self) -> Arc<interface_runtime::CompiledInterfaceRegistry>;
+}
+
+pub(crate) struct DynamicMcpInterfaceRegistrySnapshotPort {
+    registry: Arc<interface_runtime::DynamicInterfaceRegistry>,
+}
+
+impl DynamicMcpInterfaceRegistrySnapshotPort {
+    pub(crate) fn new(registry: Arc<interface_runtime::DynamicInterfaceRegistry>) -> Self {
+        Self { registry }
+    }
+}
+
+impl McpInterfaceRegistrySnapshotPort for DynamicMcpInterfaceRegistrySnapshotPort {
+    fn snapshot(&self) -> Arc<interface_runtime::CompiledInterfaceRegistry> {
+        self.registry.snapshot()
+    }
+}
+
 pub(crate) async fn mcp_interface_catalog_entries(
     state: &ApiState,
     actor: &domain::ActorContext,
@@ -26,6 +46,20 @@ pub(crate) async fn mcp_interface_catalog_entries(
 pub(crate) struct McpInterfaceCatalogDependencies {
     pub(crate) store: storage_durable_postgres::MainDurableStore,
     pub(crate) openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies,
+}
+
+impl McpInterfaceCatalogDependencies {
+    pub(crate) fn with_interface_registry_snapshot(
+        &self,
+        interface_registry: Arc<interface_runtime::CompiledInterfaceRegistry>,
+    ) -> Self {
+        let mut openapi = self.openapi.clone();
+        openapi.interface_registry = Some(interface_registry);
+        Self {
+            store: self.store.clone(),
+            openapi,
+        }
+    }
 }
 
 pub(crate) async fn mcp_interface_catalog_entries_with(

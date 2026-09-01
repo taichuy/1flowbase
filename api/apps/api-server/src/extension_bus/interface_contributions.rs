@@ -239,6 +239,42 @@ pub(crate) fn production_interface_contributions(
         state.store.clone(),
         Arc::clone(&state.api_docs),
     );
+    let native_interface_registry = state
+        .extension_boot_snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.interface_registry())
+        .cloned()
+        .expect("native runtime invoker requires a published dynamic interface registry");
+    let native_runtime_invoker_factory =
+        crate::routes::application_public_api::native::native_runtime_invoker_factory(
+            crate::routes::application_public_api::native::NativeRuntimeInvokerFactoryDependencies {
+                runtime_dependencies: crate::routes::mcp_protocol::virtual_ui::RuntimeInternalToolInvokerDependencies::new(
+                    state.store.clone(),
+                    state.infrastructure.cache_store(),
+                    state.provider_secret_master_key.clone(),
+                ),
+                interface_catalog: crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies {
+                    store: state.store.clone(),
+                    openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
+                        store: state.store.clone(),
+                        console_operations: state.console_operation_registry.inventory().clone(),
+                        interface_registry: None,
+                        api_docs: Arc::clone(&state.api_docs),
+                        template_catalog: state.runtime_engine.template_catalog().clone(),
+                    },
+                },
+                interface_registry: Arc::new(
+                    crate::routes::mcp_management::interface_catalog::DynamicMcpInterfaceRegistrySnapshotPort::new(
+                        native_interface_registry,
+                    ),
+                ),
+                interface_dispatch: Arc::new(
+                    crate::routes::mcp_protocol::virtual_ui::ConsoleRouterMcpInterfaceDispatchPort::new(
+                        crate::console_router(Arc::clone(state), true),
+                    ),
+                ),
+            },
+        );
 
     Ok(vec![
         InterfaceRegistryContribution::new(
@@ -1472,9 +1508,7 @@ pub(crate) fn production_interface_contributions(
                     state.infrastructure.provider_transport_store(),
                     Arc::clone(&state.runtime_event_stream),
                     Arc::clone(&state.runtime_activity),
-                    crate::routes::application_public_api::native::native_runtime_invoker_factory(
-                        Arc::clone(state),
-                    ),
+                    Arc::clone(&native_runtime_invoker_factory),
                 ),
                 crate::routes::application_public_api::native_read_interface::native_file_port(
                     state.store.clone(),
