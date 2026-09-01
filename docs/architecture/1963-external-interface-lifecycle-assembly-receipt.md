@@ -8,8 +8,9 @@
 - Initial Product Assembly: `beta@3c6701837534bba1acef2ba7ae4a23730312da35`
 - QA-1 remediation Assembly: `beta@a577d91bce7a9792108668316fd36ab81d31b019`
 - QA-2 frozen candidate: `beta@9057a345474d43c0236c300206553d027a6959eb`
+- QA-3 remediation Product Assembly: `beta@d8a20be4eda6fd1dd39d3b3a15e02d2b56692cee`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
-- Delivery state: `BLOCKED / NEEDS_REFRAME`
+- Delivery state: `ASSEMBLED / QA_REVERIFY_PENDING`
 - Root AC state: candidate only; not settled
 
 ## Packet Assembly
@@ -31,6 +32,7 @@
 | EIL-F12 | `b08374b3f..379496b1d` | Console workspace, frontstage and UI families |
 | EIL-F13 | `1bee7198c..3ab5c6e1e` | Console system, i18n, docs, billing and backup families |
 | EIL-F14 | `3c6701837534bba1acef2ba7ae4a23730312da35` | Production Catalog publication, zero-unclassified gate, direct AuthN residue removal and global boundary fixtures |
+| EIL-F14R-C | `d8a20be4eda6fd1dd39d3b3a15e02d2b56692cee` | Exact Console operation-spec set, explicit authenticated operation ownership, complete Frontstage specifications and post-migration fixture alignment |
 
 Every row above is a serial commit or inclusive serial range on `beta`; the Git history is the authoritative per-file write-set ledger. No packet changed database schema, migrations, external DTOs, permissions, Runtime/plugin wire, or official plugin source.
 
@@ -82,7 +84,7 @@ Both centralized QA attempts are retained as immutable local evidence under:
 
 `tmp/test-governance/1963-external-interface-lifecycle/`
 
-Attempt 2 failed on the same operation-spec completeness root class as Attempt 1. The long-running-work stop condition therefore requires problem framing before any further product or test change. No third centralized QA is authorized. #1963 and #1893 remain OPEN; there is no push or Root AC settlement.
+Attempt 2 failed on the same operation-spec completeness root class as Attempt 1 and triggered problem framing. Root subsequently approved the finite EIL-F14R-C exact-set remediation recorded below. One third fresh centralized QA is authorized only for the newly frozen documentation Assembly; #1963 and #1893 remain OPEN, with no push or Root AC settlement.
 
 ## Fresh QA Attempt 1 — retained failure history
 
@@ -126,4 +128,12 @@ Immutable Attempt-2 evidence is retained under:
 
 ## Reframe Gate
 
-Status is `BLOCKED / NEEDS_REFRAME`. No product or test change and no third centralized QA may start until Root approves a finite completeness mechanism. The recommended bounded direction is to derive a finite route-operation inventory and enforce an exact-set fixture between every `ConsoleOperation`/compiled Interface operation and the Core/HostExtension operation specifications. Only after that inventory is complete should Root create one finite remediation Packet and freeze a new Assembly.
+The user approved EIL-F14R-C after a bounded read-only inventory proved 26 missing specifications, all in the `frontstage.*` family. The Packet now:
+
+- separates typed route selection from authorization kind;
+- preserves Authenticated authorization for explicitly owned Frontstage and runtime i18n operations;
+- validates the complete production `ConsoleOperation`/Core/HostExtension/projected specification exact set and reports every sorted missing, extra and duplicate identity in one failure;
+- retains unique per-route Interface identities for multi-route authorization profiles;
+- aligns six stale source-structure fixtures with the post-F03R/F14 typed Adapter owners.
+
+Mechanical assembly evidence is `cargo fmt --all --check` PASS, `git diff --check` PASS, `cargo check -p api-server --tests` PASS and the minimum production exact-set publication probe `1 passed / 0 failed / 1240 filtered`. No per-Packet regression or QA was run. The next commit freezes this Receipt with the product Assembly above; that document HEAD is the sole QA-3 candidate.
