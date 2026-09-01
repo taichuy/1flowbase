@@ -149,6 +149,13 @@ pub(crate) fn production_interface_contributions(
     );
     let console_membership =
         crate::routes::membership_interface::membership_port(state.store.clone());
+    let console_navigation = crate::routes::navigation_interface::port(
+        crate::routes::navigation_interface::ConsoleNavigationDependencies {
+            store: state.store.clone(),
+            surfaces: Arc::clone(&state.console_surface_registry),
+            settings_features: state.settings_feature_registry.inventory().features.clone(),
+        },
+    );
     let console_role_access = crate::routes::role_access_interface::role_access_port(
         state.store.clone(),
         state.console_operation_registry.inventory().clone(),
@@ -253,6 +260,12 @@ pub(crate) fn production_interface_contributions(
             ],
             &["api-server.console-membership"],
             crate::routes::membership_interface::compile_registry(console_membership)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-navigation",
+            &["console.navigation.view"],
+            &["api-server.console-navigation"],
+            crate::routes::navigation_interface::compile_registry(console_navigation)?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-role-access",

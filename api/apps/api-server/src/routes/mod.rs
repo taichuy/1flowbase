@@ -36,7 +36,8 @@ pub use settings_group::{
     system, system_backups, ui_management, workspace, workspaces,
 };
 pub(crate) use settings_group::{
-    auth_center_interface, membership_interface, role_access_interface, ui_management_interface,
+    auth_center_interface, membership_interface, navigation_interface, role_access_interface,
+    ui_management_interface,
 };
 
 pub const PUBLIC_API_PATH_PREFIX: &str = "/api/public/";

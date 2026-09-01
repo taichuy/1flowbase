@@ -1,17 +1,15 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 
 use access_control::{
     ConsoleNavigation, ConsoleNavigationItem, ConsolePermissionBinding, ConsoleRouteDefinition,
 };
 use axum::{extract::State, http::HeaderMap, Json, Router};
-use control_plane::ports::RoleRepository;
 use serde::Serialize;
 use utoipa::ToSchema;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::require_session::require_session,
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
@@ -75,60 +73,18 @@ pub async fn get_console_navigation(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<ConsoleNavigationResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let mut navigation = state
-        .console_surface_registry
-        .accessible_navigation(&context.actor);
-    let stored_order = state
-        .store
-        .get_workspace_console_settings_order(context.actor.current_workspace_id)
-        .await?;
-    let mut active_features = state
-        .settings_feature_registry
-        .inventory()
-        .features
-        .iter()
-        .filter(|feature| feature.lifecycle == access_control::SettingsFeatureLifecycle::Active)
-        .collect::<Vec<_>>();
-    active_features.sort_by(|left, right| {
-        left.console_surface
-            .order
-            .cmp(&right.console_surface.order)
-            .then(left.feature_id.cmp(&right.feature_id))
-    });
-    let active_ids = active_features
-        .iter()
-        .map(|feature| feature.feature_id.as_str())
-        .collect::<std::collections::BTreeSet<_>>();
-    let mut ordered_ids = stored_order
-        .group_ids
-        .iter()
-        .filter(|group_id| active_ids.contains(group_id.as_str()))
-        .cloned()
-        .collect::<Vec<_>>();
-    let missing_ids = active_features
-        .iter()
-        .map(|feature| feature.feature_id.clone())
-        .filter(|feature_id| !ordered_ids.contains(feature_id))
-        .collect::<Vec<_>>();
-    ordered_ids.extend(missing_ids);
-    let route_positions = active_features
-        .iter()
-        .filter_map(|feature| {
-            ordered_ids
-                .iter()
-                .position(|feature_id| feature_id == &feature.feature_id)
-                .map(|position| (feature.console_surface.route_id.as_str(), position as i32))
-        })
-        .collect::<BTreeMap<_, _>>();
-    for item in &mut navigation.navigation_items {
-        if let Some(position) = route_positions.get(item.route_id.as_str()) {
-            item.order = *position;
-        }
-    }
-    Ok(Json(ApiSuccess::new(ConsoleNavigationResponse::from(
-        navigation,
-    ))))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.navigation.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol {
+            state: Arc::clone(&state),
+            headers,
+        },
+        super::navigation_interface::ConsoleNavigationInput::Get,
+    )
+    .await?;
+    let super::navigation_interface::ConsoleNavigationOutput::Navigation(navigation) = output;
+    Ok(Json(ApiSuccess::new(navigation)))
 }
 
 impl From<ConsoleNavigation> for ConsoleNavigationResponse {

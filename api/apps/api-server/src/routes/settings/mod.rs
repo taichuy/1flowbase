@@ -12,6 +12,7 @@ pub mod mcp_management;
 pub mod members;
 pub(crate) mod membership_interface;
 pub mod navigation;
+pub(crate) mod navigation_interface;
 pub mod permissions;
 mod release_status;
 pub(crate) mod role_access_interface;
