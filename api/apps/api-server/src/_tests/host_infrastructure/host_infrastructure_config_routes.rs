@@ -14,7 +14,7 @@ use crate::_tests::support::{
 use async_trait::async_trait;
 use axum::{
     body::{to_bytes, Body},
-    http::{HeaderMap, Request, StatusCode},
+    http::{Request, StatusCode},
 };
 use control_plane::ports::{
     AuthRepository, PluginRepository, RoleConsolePolicyReader, UpsertPluginInstallationInput,
@@ -274,43 +274,31 @@ async fn host_infrastructure_config_routes_list_inactive_provider_and_save_pendi
     );
     assert_eq!(list_payload["data"][0]["config_schema"][0]["key"], "host");
 
-    let actor =
-        domain::ActorContext::root(uuid::Uuid::now_v7(), state.bootstrap_workspace_id, "root");
-    let capability = crate::openapi_interface::build_openapi_capability_catalog(
-        state.as_ref(),
-        state.bootstrap_workspace_id,
-    )
-    .await
-    .unwrap()
-    .into_iter()
-    .find(|entry| {
-        entry.interface.operation_id
-            == crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID
-    })
-    .unwrap();
-    let mcp_interface =
-        crate::routes::mcp_management::mcp_interface_entry_from_capability(capability);
-    let mcp_result = match crate::routes::mcp_management::debug_execute::execute_with_server_bindings(
-        Arc::clone(&state),
-        HeaderMap::new(),
-        crate::extension_bus::ConsoleAuthenticationCredential::ServerDelegation(actor),
-        mcp_interface,
-        crate::routes::mcp_management::McpDebugExecuteBody {
-            interface_id: crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID.to_string(),
-            debug_response_mode:
-                crate::routes::mcp_management::debug_execute::McpDebugResponseMode::ToolResult,
-            mcp_arguments: json!({}),
-            input_mapping: json!({"mappings": []}),
-            output_mapping: json!({}),
-        },
-        crate::routes::mcp_management::debug_execute::McpServerBoundInputs {
-            workspace_id: state.bootstrap_workspace_id,
-        },
-    )
-    .await {
-        Ok(value) => value,
-        Err(_) => panic!("activated interface MCP wrapper must invoke the typed Kernel"),
-    };
+    let debug_response = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/mcp/debug/execute")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&json!({
+                        "interface_id": crate::routes::host_infrastructure::interface_operation::HOST_INFRASTRUCTURE_PROVIDERS_VIEW_OPERATION_ID,
+                        "debug_response_mode": "tool_result",
+                        "mcp_arguments": {},
+                        "input_mapping": {"mappings": []},
+                        "output_mapping": {},
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(debug_response.status(), StatusCode::OK);
+    let mcp_result = response_json(debug_response).await["data"].clone();
     assert_eq!(mcp_result, typed_payload);
 
     let save_response = app
