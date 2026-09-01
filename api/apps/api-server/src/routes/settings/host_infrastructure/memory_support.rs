@@ -1,5 +1,17 @@
 use super::*;
 
+#[derive(Clone)]
+pub(crate) struct MemoryInspectionDependencies {
+    pub(crate) session_store: Option<Arc<dyn SessionStore>>,
+    pub(crate) cache_store: Option<Arc<dyn CacheStore>>,
+    pub(crate) rate_limit_store: Option<Arc<dyn RateLimitStore>>,
+    pub(crate) distributed_lock: Option<Arc<dyn DistributedLock>>,
+    pub(crate) task_queue: Option<Arc<dyn TaskQueue>>,
+    pub(crate) event_bus: Option<Arc<dyn EventBus>>,
+    pub(crate) runtime_event_stream: Option<Arc<dyn RuntimeEventStream>>,
+    pub(crate) provider_codes: std::collections::BTreeMap<String, String>,
+}
+
 pub(super) enum MemoryInspectionTarget {
     Session(Arc<dyn SessionStore>),
     Cache(Arc<dyn CacheStore>),
@@ -134,43 +146,43 @@ pub(super) fn memory_contract_label(contract_code: &str) -> Result<&'static str,
 }
 
 pub(super) fn memory_inspection_target(
-    state: &ApiState,
+    dependencies: &MemoryInspectionDependencies,
     contract_code: &str,
 ) -> Result<MemoryInspectionTarget, ApiError> {
     match contract_code {
-        "session-store" => Ok(state
-            .infrastructure
-            .session_store()
+        "session-store" => Ok(dependencies
+            .session_store
+            .clone()
             .map(MemoryInspectionTarget::Session)
             .unwrap_or(MemoryInspectionTarget::Unsupported)),
-        "cache-store" => Ok(state
-            .infrastructure
-            .registered_cache_store()
+        "cache-store" => Ok(dependencies
+            .cache_store
+            .clone()
             .map(MemoryInspectionTarget::Cache)
             .unwrap_or(MemoryInspectionTarget::Unsupported)),
-        "rate-limit-store" => Ok(state
-            .infrastructure
-            .registered_rate_limit_store()
+        "rate-limit-store" => Ok(dependencies
+            .rate_limit_store
+            .clone()
             .map(MemoryInspectionTarget::RateLimit)
             .unwrap_or(MemoryInspectionTarget::Unsupported)),
-        "distributed-lock" => Ok(state
-            .infrastructure
-            .registered_distributed_lock()
+        "distributed-lock" => Ok(dependencies
+            .distributed_lock
+            .clone()
             .map(MemoryInspectionTarget::Lock)
             .unwrap_or(MemoryInspectionTarget::Unsupported)),
-        "task-queue" => Ok(state
-            .infrastructure
-            .registered_task_queue()
+        "task-queue" => Ok(dependencies
+            .task_queue
+            .clone()
             .map(MemoryInspectionTarget::TaskQueue)
             .unwrap_or(MemoryInspectionTarget::Unsupported)),
-        "event-bus" => Ok(state
-            .infrastructure
-            .registered_event_bus()
+        "event-bus" => Ok(dependencies
+            .event_bus
+            .clone()
             .map(MemoryInspectionTarget::EventBus)
             .unwrap_or(MemoryInspectionTarget::Unsupported)),
-        "runtime-event-stream" => Ok(state
-            .infrastructure
-            .runtime_event_stream()
+        "runtime-event-stream" => Ok(dependencies
+            .runtime_event_stream
+            .clone()
             .map(MemoryInspectionTarget::RuntimeEvents)
             .unwrap_or(MemoryInspectionTarget::Unsupported)),
         _ => Err(ControlPlaneError::NotFound("memory_contract").into()),
@@ -293,33 +305,30 @@ pub(super) fn format_memory_value_state(
 }
 
 pub(super) async fn memory_contract_summary(
-    state: &ApiState,
+    dependencies: &MemoryInspectionDependencies,
     contract_code: &str,
     label: &str,
 ) -> Result<MemoryContractSummaryResponse, ApiError> {
-    let target = memory_inspection_target(state, contract_code)?;
+    let target = memory_inspection_target(dependencies, contract_code)?;
     let capabilities = target.capabilities();
     let supported = memory_contract_supported(&capabilities);
 
     Ok(MemoryContractSummaryResponse {
         contract_code: contract_code.to_string(),
         label: label.to_string(),
-        provider_code: state
-            .infrastructure
-            .default_provider(contract_code)
-            .map(ToString::to_string),
+        provider_code: dependencies.provider_codes.get(contract_code).cloned(),
         capabilities: capabilities.into(),
         supported,
     })
 }
 
 pub(super) async fn memory_contract_stats_response(
-    state: &ApiState,
+    dependencies: &MemoryInspectionDependencies,
     contract_code: &str,
     label: &str,
     inspection_path: &[String],
 ) -> Result<MemoryStatsResponse, ApiError> {
-    let target = memory_inspection_target(state, contract_code)?;
+    let target = memory_inspection_target(dependencies, contract_code)?;
     let capabilities = target.capabilities();
     let supported = memory_contract_supported(&capabilities);
     let summary = if supported {
@@ -330,10 +339,7 @@ pub(super) async fn memory_contract_stats_response(
     Ok(MemoryStatsResponse {
         contract_code: contract_code.to_string(),
         label: label.to_string(),
-        provider_code: state
-            .infrastructure
-            .default_provider(contract_code)
-            .map(ToString::to_string),
+        provider_code: dependencies.provider_codes.get(contract_code).cloned(),
         capabilities: capabilities.into(),
         supported,
         inspection_path: inspection_path.to_vec(),

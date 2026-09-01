@@ -48,6 +48,7 @@ use memory_support::{
     format_memory_value_state, memory_contract_definitions, memory_contract_label,
     memory_contract_stats_response, memory_contract_summary, memory_contract_supported,
     memory_inspection_target, memory_page_request, memory_query_path, parse_memory_reveal_mode,
+    MemoryInspectionDependencies,
 };
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -478,9 +479,10 @@ pub async fn get_host_infrastructure_memory_overview(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<MemoryOverviewResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
+    let memory = memory_inspection_dependencies(&state);
     let mut contracts = Vec::new();
     for (contract_code, label) in memory_contract_definitions() {
-        contracts.push(memory_contract_summary(&state, contract_code, label).await?);
+        contracts.push(memory_contract_summary(&memory, contract_code, label).await?);
     }
 
     Ok(Json(ApiSuccess::new(MemoryOverviewResponse {
@@ -499,12 +501,13 @@ pub async fn get_host_infrastructure_memory_stats_overview(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<MemoryStatsOverviewResponse>>, ApiError> {
     require_session(&state, &headers).await?;
+    let memory = memory_inspection_dependencies(&state);
     let inspection_path = Vec::new();
     let mut contracts = Vec::new();
     let mut total = EphemeralInspectionSummarySnapshot::empty();
     for (contract_code, label) in memory_contract_definitions() {
         let stats =
-            memory_contract_stats_response(&state, contract_code, label, &inspection_path).await?;
+            memory_contract_stats_response(&memory, contract_code, label, &inspection_path).await?;
         total.entry_count += stats.entry_count;
         total.sensitive_entry_count += stats.sensitive_entry_count;
         total.total_value_size_bytes += stats.total_value_size_bytes;
@@ -531,8 +534,9 @@ pub async fn list_host_infrastructure_memory_entries(
     Query(query): Query<MemoryPageQuery>,
 ) -> Result<Json<ApiSuccess<MemoryEntriesResponse>>, ApiError> {
     require_session(&state, &headers).await?;
+    let memory = memory_inspection_dependencies(&state);
     let label = memory_contract_label(&contract_code)?;
-    let target = memory_inspection_target(&state, &contract_code)?;
+    let target = memory_inspection_target(&memory, &contract_code)?;
     let capabilities = target.capabilities();
     let supported = memory_contract_supported(&capabilities);
     let page_request = memory_page_request(query.path, query.cursor, query.limit, query.byte_limit);
@@ -545,10 +549,7 @@ pub async fn list_host_infrastructure_memory_entries(
     Ok(Json(ApiSuccess::new(MemoryEntriesResponse {
         contract_code: contract_code.clone(),
         label: label.to_string(),
-        provider_code: state
-            .infrastructure
-            .default_provider(&contract_code)
-            .map(ToString::to_string),
+        provider_code: memory.provider_codes.get(&contract_code).cloned(),
         capabilities: capabilities.into(),
         supported,
         inspection_path: page.inspection_path,
@@ -578,10 +579,11 @@ pub async fn get_host_infrastructure_memory_stats(
     Query(query): Query<MemoryPathQuery>,
 ) -> Result<Json<ApiSuccess<MemoryStatsResponse>>, ApiError> {
     require_session(&state, &headers).await?;
+    let memory = memory_inspection_dependencies(&state);
     let label = memory_contract_label(&contract_code)?;
     let inspection_path = memory_query_path(query.path);
     let stats =
-        memory_contract_stats_response(&state, &contract_code, label, &inspection_path).await?;
+        memory_contract_stats_response(&memory, &contract_code, label, &inspection_path).await?;
 
     Ok(Json(ApiSuccess::new(stats)))
 }
@@ -599,8 +601,9 @@ pub async fn list_host_infrastructure_memory_tree(
     Query(query): Query<MemoryPageQuery>,
 ) -> Result<Json<ApiSuccess<MemoryTreeResponse>>, ApiError> {
     require_session(&state, &headers).await?;
+    let memory = memory_inspection_dependencies(&state);
     let label = memory_contract_label(&contract_code)?;
-    let target = memory_inspection_target(&state, &contract_code)?;
+    let target = memory_inspection_target(&memory, &contract_code)?;
     let capabilities = target.capabilities();
     let supported = memory_contract_supported(&capabilities);
     let page_request = memory_page_request(query.path, query.cursor, query.limit, query.byte_limit);
@@ -613,10 +616,7 @@ pub async fn list_host_infrastructure_memory_tree(
     Ok(Json(ApiSuccess::new(MemoryTreeResponse {
         contract_code: contract_code.clone(),
         label: label.to_string(),
-        provider_code: state
-            .infrastructure
-            .default_provider(&contract_code)
-            .map(ToString::to_string),
+        provider_code: memory.provider_codes.get(&contract_code).cloned(),
         capabilities: capabilities.into(),
         supported,
         inspection_path: page.inspection_path,
@@ -646,8 +646,9 @@ pub async fn search_host_infrastructure_memory_entries(
     Query(query): Query<MemorySearchQuery>,
 ) -> Result<Json<ApiSuccess<MemoryEntriesResponse>>, ApiError> {
     require_session(&state, &headers).await?;
+    let memory = memory_inspection_dependencies(&state);
     let label = memory_contract_label(&contract_code)?;
-    let target = memory_inspection_target(&state, &contract_code)?;
+    let target = memory_inspection_target(&memory, &contract_code)?;
     let capabilities = target.capabilities();
     let supported = memory_contract_supported(&capabilities);
     let page_request = memory_page_request(query.path, query.cursor, query.limit, query.byte_limit);
@@ -660,10 +661,7 @@ pub async fn search_host_infrastructure_memory_entries(
     Ok(Json(ApiSuccess::new(MemoryEntriesResponse {
         contract_code: contract_code.clone(),
         label: label.to_string(),
-        provider_code: state
-            .infrastructure
-            .default_provider(&contract_code)
-            .map(ToString::to_string),
+        provider_code: memory.provider_codes.get(&contract_code).cloned(),
         capabilities: capabilities.into(),
         supported,
         inspection_path: page.inspection_path,
@@ -695,8 +693,9 @@ pub async fn reveal_host_infrastructure_memory_entry(
 ) -> Result<Json<ApiSuccess<MemoryEntryValueResponse>>, ApiError> {
     let context = require_session(&state, &headers).await?;
     require_csrf(&headers, &context)?;
+    let memory = memory_inspection_dependencies(&state);
     let _label = memory_contract_label(&contract_code)?;
-    let target = memory_inspection_target(&state, &contract_code)?;
+    let target = memory_inspection_target(&memory, &contract_code)?;
     let capabilities = target.capabilities();
     if !capabilities.reveal_value {
         return Err(ControlPlaneError::InvalidInput("memory_inspection_unsupported").into());
@@ -1003,6 +1002,28 @@ fn to_provider_response(
             .collect(),
         config_json: provider.config_json,
         restart_required: provider.restart_required,
+    }
+}
+
+fn memory_inspection_dependencies(state: &ApiState) -> MemoryInspectionDependencies {
+    let provider_codes = memory_contract_definitions()
+        .iter()
+        .filter_map(|(contract_code, _)| {
+            state
+                .infrastructure
+                .default_provider(contract_code)
+                .map(|provider_code| ((*contract_code).to_string(), provider_code.to_string()))
+        })
+        .collect();
+    MemoryInspectionDependencies {
+        session_store: state.infrastructure.session_store(),
+        cache_store: state.infrastructure.registered_cache_store(),
+        rate_limit_store: state.infrastructure.registered_rate_limit_store(),
+        distributed_lock: state.infrastructure.registered_distributed_lock(),
+        task_queue: state.infrastructure.registered_task_queue(),
+        event_bus: state.infrastructure.registered_event_bus(),
+        runtime_event_stream: state.infrastructure.runtime_event_stream(),
+        provider_codes,
     }
 }
 
