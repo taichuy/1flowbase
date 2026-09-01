@@ -2,6 +2,7 @@ pub mod application_management;
 pub mod auth_center;
 pub(crate) mod auth_center_interface;
 pub mod billing;
+pub(crate) mod billing_interface;
 pub mod data_models;
 pub mod docs;
 pub mod file_storages;

@@ -9,29 +9,20 @@ use control_plane::{
     billing::{
         pricing_rules_cache_key, PricingRule, GLOBAL_ZERO_MODEL_ID, GLOBAL_ZERO_PROVIDER_CODE,
     },
-    ports::{
-        BillingRepository, CreditCommandInput, ListCreditLedgerInput, ListPricingRulesInput,
-        UpsertPricingRuleInput,
-    },
+    ports::{BillingRepository, UpsertPricingRuleInput},
 };
 
-async fn invalidate_pricing_rules_cache(
-    state: &ApiState,
+pub(crate) async fn invalidate_pricing_rules_cache(
+    cache_store: &dyn control_plane::ports::CacheStore,
     rule: &PricingRule,
 ) -> Result<(), ApiError> {
     if rule.provider_code == GLOBAL_ZERO_PROVIDER_CODE
         && rule.upstream_model_id == GLOBAL_ZERO_MODEL_ID
     {
-        state
-            .infrastructure
-            .cache_store()
-            .clear_cache_domain("model-pricing")
-            .await?;
+        cache_store.clear_cache_domain("model-pricing").await?;
         return Ok(());
     }
-    state
-        .infrastructure
-        .cache_store()
+    cache_store
         .delete(&pricing_rules_cache_key(
             &rule.provider_code,
             &rule.upstream_model_id,
@@ -49,7 +40,6 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_get, console_patch, console_post, ConsoleRouteAssembly,
@@ -58,39 +48,39 @@ use crate::{
 
 #[derive(Debug, Deserialize)]
 pub struct PricingRuleQuery {
-    provider_code: Option<String>,
-    upstream_model_id: Option<String>,
-    enabled: Option<bool>,
-    source_kind: Option<String>,
-    page: Option<i64>,
-    page_size: Option<i64>,
+    pub(crate) provider_code: Option<String>,
+    pub(crate) upstream_model_id: Option<String>,
+    pub(crate) enabled: Option<bool>,
+    pub(crate) source_kind: Option<String>,
+    pub(crate) page: Option<i64>,
+    pub(crate) page_size: Option<i64>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct PricingRulesPageResponse {
-    items: Vec<PricingRuleResponse>,
-    total_count: i64,
-    page: i64,
-    page_size: i64,
+    pub(crate) items: Vec<PricingRuleResponse>,
+    pub(crate) total_count: i64,
+    pub(crate) page: i64,
+    pub(crate) page_size: i64,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct PricingCatalogQuery {
-    provider_code: Option<String>,
-    upstream_model_id: Option<String>,
-    page: Option<usize>,
-    page_size: Option<usize>,
+    pub(crate) provider_code: Option<String>,
+    pub(crate) upstream_model_id: Option<String>,
+    pub(crate) page: Option<usize>,
+    pub(crate) page_size: Option<usize>,
 }
 
 #[derive(Debug, Serialize)]
 pub struct PricingCatalogPageResponse {
-    schema_version: &'static str,
-    catalog_version: String,
-    currency_code: &'static str,
-    items: Vec<PricingRuleBody>,
-    total_count: usize,
-    page: usize,
-    page_size: usize,
+    pub(crate) schema_version: &'static str,
+    pub(crate) catalog_version: String,
+    pub(crate) currency_code: &'static str,
+    pub(crate) items: Vec<PricingRuleBody>,
+    pub(crate) total_count: usize,
+    pub(crate) page: usize,
+    pub(crate) page_size: usize,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
@@ -194,7 +184,7 @@ impl From<PricingRule> for PricingRuleResponse {
     }
 }
 
-fn body_to_rule(
+pub(crate) fn body_to_rule(
     body: PricingRuleBody,
     actor_user_id: Uuid,
     forced_id: Option<Uuid>,
@@ -373,42 +363,36 @@ pub async fn list_pricing_rules(
     headers: HeaderMap,
     Query(q): Query<PricingRuleQuery>,
 ) -> Result<Json<ApiSuccess<PricingRulesPageResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let page = q.page.unwrap_or(1).max(1);
-    let page_size = q.page_size.unwrap_or(20).clamp(1, 100);
-    let result = state
-        .store
-        .list_pricing_rules(&ListPricingRulesInput {
-            provider_code: q.provider_code,
-            upstream_model_id: q.upstream_model_id,
-            enabled: q.enabled,
-            source_kind: q.source_kind,
-            page_size,
-            offset: (page - 1) * page_size,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(PricingRulesPageResponse {
-        items: result.items.into_iter().map(Into::into).collect(),
-        total_count: result.total_count,
-        page,
-        page_size,
-    })))
+    let super::billing_interface::BillingOutput::PricingRules(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.billing.pricing-rules.list.v1",
+        super::billing_interface::BillingInput::ListPricingRules(q),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 pub async fn create_pricing_rule(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Json(body): Json<PricingRuleBody>,
 ) -> Result<Json<ApiSuccess<PricingRuleResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let row = state
-        .store
-        .upsert_pricing_rule(&UpsertPricingRuleInput {
-            rule: body_to_rule(body, context.user.id, None)?,
-        })
-        .await?;
-    invalidate_pricing_rules_cache(&state, &row).await?;
-    Ok(Json(ApiSuccess::new(row.into())))
+    let super::billing_interface::BillingOutput::PricingRule(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.billing.pricing-rules.create.v1",
+        super::billing_interface::BillingInput::CreatePricingRule(body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 pub async fn update_pricing_rule(
     State(state): State<Arc<ApiState>>,
@@ -416,36 +400,36 @@ pub async fn update_pricing_rule(
     Path(id): Path<Uuid>,
     Json(body): Json<PricingRuleBody>,
 ) -> Result<Json<ApiSuccess<PricingRuleResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let Some(previous) = state.store.get_pricing_rule(id).await? else {
-        return Err(control_plane::errors::ControlPlaneError::NotFound("pricing_rule").into());
+    let super::billing_interface::BillingOutput::PricingRule(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.billing.pricing-rules.update.v1",
+        super::billing_interface::BillingInput::UpdatePricingRule { id, body },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
     };
-    let row = state
-        .store
-        .upsert_pricing_rule(&UpsertPricingRuleInput {
-            rule: body_to_rule(body, context.user.id, Some(id))?,
-        })
-        .await?;
-    invalidate_pricing_rules_cache(&state, &previous).await?;
-    invalidate_pricing_rules_cache(&state, &row).await?;
-    Ok(Json(ApiSuccess::new(row.into())))
+    Ok(Json(ApiSuccess::new(response)))
 }
 pub async fn delete_pricing_rule(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let previous = state.store.get_pricing_rule(id).await?;
-    let deleted = state.store.delete_pricing_rule(id).await?;
-    if let Some(previous) = previous {
-        invalidate_pricing_rules_cache(&state, &previous).await?;
-    }
-    Ok(Json(ApiSuccess::new(
-        serde_json::json!({"deleted":deleted}),
-    )))
+    let super::billing_interface::BillingOutput::Deleted(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.billing.pricing-rules.delete.v1",
+        super::billing_interface::BillingInput::DeletePricingRule { id },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 pub async fn get_pricing_catalog(
@@ -453,59 +437,27 @@ pub async fn get_pricing_catalog(
     headers: HeaderMap,
     Query(query): Query<PricingCatalogQuery>,
 ) -> Result<Json<ApiSuccess<PricingCatalogPageResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let (_, catalog) = bundled_pricing_catalog(&state)?;
-    let provider_filter = query
-        .provider_code
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let model_filter = query
-        .upstream_model_id
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    let filtered = catalog
-        .rules
-        .into_iter()
-        .filter(|rule| {
-            provider_filter.is_none_or(|filter| {
-                rule.provider_code
-                    .to_lowercase()
-                    .contains(&filter.to_lowercase())
-            }) && model_filter.is_none_or(|filter| {
-                rule.upstream_model_id
-                    .to_lowercase()
-                    .contains(&filter.to_lowercase())
-            })
-        })
-        .collect::<Vec<_>>();
-    let page = query.page.unwrap_or(1).max(1);
-    let page_size = query.page_size.unwrap_or(20).clamp(1, 100);
-    let total_count = filtered.len();
-    let items = filtered
-        .into_iter()
-        .skip((page - 1) * page_size)
-        .take(page_size)
-        .collect();
-    Ok(Json(ApiSuccess::new(PricingCatalogPageResponse {
-        schema_version: "1flowbase.model-pricing-page/v1",
-        catalog_version: catalog.catalog_version,
-        currency_code: "USD",
-        items,
-        total_count,
-        page,
-        page_size,
-    })))
+    let super::billing_interface::BillingOutput::PricingCatalog(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.billing.pricing-catalog.get.v1",
+        super::billing_interface::BillingInput::GetPricingCatalog(query),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 #[derive(Debug, Deserialize)]
 pub struct ImportCatalogBody {
     pub catalog_ids: Vec<Uuid>,
 }
 #[derive(Debug, Deserialize)]
-struct BundledPricingCatalog {
-    catalog_version: String,
-    rules: Vec<PricingRuleBody>,
+pub(crate) struct BundledPricingCatalog {
+    pub(crate) catalog_version: String,
+    pub(crate) rules: Vec<PricingRuleBody>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -545,9 +497,16 @@ pub(crate) fn catalog_version_is_at_least(candidate: &str, baseline: &str) -> bo
     }
 }
 
-fn bundled_pricing_catalog(state: &ApiState) -> Result<(Value, BundledPricingCatalog), ApiError> {
+pub(crate) fn bundled_pricing_catalog(
+    trusted_public_keys: &[plugin_framework::TrustedPublicKey],
+) -> Result<(Value, BundledPricingCatalog), ApiError> {
     let (value, catalog, rule_bytes, expected_checksum) = bundled_pricing_catalog_payload()?;
-    verify_catalog_signature(state, &value, &rule_bytes, &expected_checksum)?;
+    verify_catalog_signature_with_keys(
+        &value,
+        &rule_bytes,
+        &expected_checksum,
+        trusted_public_keys,
+    )?;
     Ok((value, catalog))
 }
 
@@ -585,20 +544,6 @@ fn pricing_catalog_payload(
     }
     let catalog = serde_json::from_value(value.clone())?;
     Ok((value, catalog, rule_bytes, expected_checksum))
-}
-
-fn verify_catalog_signature(
-    state: &ApiState,
-    value: &Value,
-    rule_bytes: &[u8],
-    expected_checksum: &str,
-) -> Result<(), ApiError> {
-    verify_catalog_signature_with_keys(
-        value,
-        rule_bytes,
-        expected_checksum,
-        &state.official_plugin_source.trusted_public_keys(),
-    )
 }
 
 fn verify_catalog_signature_with_keys(
@@ -768,151 +713,158 @@ pub async fn import_pricing_catalog(
     headers: HeaderMap,
     Json(body): Json<ImportCatalogBody>,
 ) -> Result<Json<ApiSuccess<Value>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let (_, catalog) = bundled_pricing_catalog(&state)?;
-    let selected = catalog
-        .rules
-        .into_iter()
-        .filter(|rule| rule.id.is_some_and(|id| body.catalog_ids.contains(&id)))
-        .collect::<Vec<_>>();
-    if selected.len() != body.catalog_ids.len() {
-        return Err(
-            control_plane::errors::ControlPlaneError::InvalidInput("pricing_catalog_id").into(),
-        );
-    }
-    let mut imported = 0;
-    for item in selected {
-        let rule = body_to_rule(item, context.user.id, None)?;
-        if rule.source_kind != "official" || rule.source_catalog_id.is_none() {
-            return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-                "official_catalog_rule",
-            )
-            .into());
-        }
-        let imported_rule = state
-            .store
-            .upsert_pricing_rule(&UpsertPricingRuleInput { rule })
-            .await?;
-        invalidate_pricing_rules_cache(&state, &imported_rule).await?;
-        imported += 1;
-    }
-    Ok(Json(ApiSuccess::new(
-        serde_json::json!({"imported":imported,"deleted":0}),
-    )))
+    let super::billing_interface::BillingOutput::Imported(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.billing.pricing-catalog.import.v1",
+        super::billing_interface::BillingInput::ImportPricingCatalog(body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[derive(Debug, Deserialize)]
 pub struct PageQuery {
-    limit: Option<i64>,
-    offset: Option<i64>,
-    user_id: Option<Uuid>,
-    before_created_at: Option<OffsetDateTime>,
-    before_id: Option<Uuid>,
+    pub(crate) limit: Option<i64>,
+    pub(crate) offset: Option<i64>,
+    pub(crate) user_id: Option<Uuid>,
+    pub(crate) before_created_at: Option<OffsetDateTime>,
+    pub(crate) before_id: Option<Uuid>,
 }
 pub async fn list_credit_accounts(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Query(q): Query<PageQuery>,
 ) -> Result<Json<ApiSuccess<Vec<control_plane::ports::CreditAccountRecord>>>, ApiError> {
-    let c = require_session(&state, &headers).await?;
-    Ok(Json(ApiSuccess::new(
-        state
-            .store
-            .list_credit_accounts(
-                c.actor.current_workspace_id,
-                q.limit.unwrap_or(100),
-                q.offset.unwrap_or(0),
-            )
-            .await?,
-    )))
+    let super::billing_interface::BillingOutput::CreditAccounts(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.billing.credit-accounts.list.v1",
+        super::billing_interface::BillingInput::ListCreditAccounts(q),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 pub async fn get_credit_account(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(user_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<Option<control_plane::ports::CreditAccountRecord>>>, ApiError> {
-    let c = require_session(&state, &headers).await?;
-    Ok(Json(ApiSuccess::new(
-        state
-            .store
-            .get_credit_account(c.actor.current_workspace_id, user_id)
-            .await?,
-    )))
+    let super::billing_interface::BillingOutput::CreditAccount(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.billing.credit-accounts.get.v1",
+        super::billing_interface::BillingInput::GetCreditAccount { user_id },
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 pub async fn list_credit_ledger(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Query(q): Query<PageQuery>,
 ) -> Result<Json<ApiSuccess<Vec<control_plane::ports::CreditTransactionRecord>>>, ApiError> {
-    let c = require_session(&state, &headers).await?;
-    Ok(Json(ApiSuccess::new(
-        state
-            .store
-            .list_credit_ledger(&ListCreditLedgerInput {
-                workspace_id: c.actor.current_workspace_id,
-                user_id: q.user_id,
-                before_created_at: q.before_created_at,
-                before_id: q.before_id,
-                limit: q.limit.unwrap_or(100),
-            })
-            .await?,
-    )))
+    let super::billing_interface::BillingOutput::CreditLedger(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.billing.credit-ledger.list.v1",
+        super::billing_interface::BillingInput::ListCreditLedger(q),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[derive(Debug, Deserialize)]
 pub struct CreditCommandBody {
-    pub amount: Option<String>,
-    pub reason: String,
-    pub source_type: Option<String>,
-    pub source_id: Option<String>,
-    pub idempotency_key: String,
-    pub metadata: Option<Value>,
-}
-async fn command(
-    state: &ApiState,
-    headers: &HeaderMap,
-    user_id: Uuid,
-    body: CreditCommandBody,
-    kind: &str,
-) -> Result<control_plane::ports::CreditTransactionRecord, ApiError> {
-    let c = require_session(state, headers).await?;
-    require_csrf(headers, &c)?;
-    Ok(state
-        .store
-        .execute_credit_command(&CreditCommandInput {
-            workspace_id: c.actor.current_workspace_id,
-            user_id,
-            amount: body.amount.unwrap_or_else(|| "0".into()),
-            credit_unit: "USD".into(),
-            command: kind.into(),
-            reason: body.reason,
-            source_type: body.source_type,
-            source_id: body.source_id,
-            idempotency_key: body.idempotency_key,
-            actor_user_id: Some(c.user.id),
-            actor_plugin_id: None,
-            metadata: body.metadata.unwrap_or_else(|| serde_json::json!({})),
-        })
-        .await?)
+    pub(crate) amount: Option<String>,
+    pub(crate) reason: String,
+    pub(crate) source_type: Option<String>,
+    pub(crate) source_id: Option<String>,
+    pub(crate) idempotency_key: String,
+    pub(crate) metadata: Option<Value>,
 }
 macro_rules! credit_handler {
-    ($name:ident,$kind:literal) => {
+    ($name:ident,$input:ident,$binding_id:literal) => {
         pub async fn $name(
             State(state): State<Arc<ApiState>>,
             headers: HeaderMap,
             Path(user_id): Path<Uuid>,
             Json(body): Json<CreditCommandBody>,
         ) -> Result<Json<ApiSuccess<control_plane::ports::CreditTransactionRecord>>, ApiError> {
-            Ok(Json(ApiSuccess::new(
-                command(&state, &headers, user_id, body, $kind).await?,
-            )))
+            let super::billing_interface::BillingOutput::CreditTransaction(response) = invoke(
+                state,
+                headers,
+                $binding_id,
+                super::billing_interface::BillingInput::$input { user_id, body },
+                true,
+            )
+            .await?
+            else {
+                unreachable!()
+            };
+            Ok(Json(ApiSuccess::new(response)))
         }
     };
 }
-credit_handler!(grant_credit, "grant");
-credit_handler!(charge_credit, "charge");
-credit_handler!(adjust_credit, "adjustment");
-credit_handler!(enable_charge, "enable_charge");
-credit_handler!(disable_charge, "disable_charge");
-credit_handler!(refund_credit, "refund");
+credit_handler!(
+    grant_credit,
+    GrantCredit,
+    "http.console.settings.billing.credits.grant.v1"
+);
+credit_handler!(
+    charge_credit,
+    ChargeCredit,
+    "http.console.settings.billing.credits.charge.v1"
+);
+credit_handler!(
+    adjust_credit,
+    AdjustCredit,
+    "http.console.settings.billing.credits.adjust.v1"
+);
+credit_handler!(
+    enable_charge,
+    EnableCharge,
+    "http.console.settings.billing.credits.enable.v1"
+);
+credit_handler!(
+    disable_charge,
+    DisableCharge,
+    "http.console.settings.billing.credits.disable.v1"
+);
+credit_handler!(
+    refund_credit,
+    RefundCredit,
+    "http.console.settings.billing.credits.refund.v1"
+);
+
+async fn invoke(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    binding_id: &'static str,
+    input: super::billing_interface::BillingInput,
+    mutating: bool,
+) -> Result<super::billing_interface::BillingOutput, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    let credential = if mutating {
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers }
+    } else {
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
+    };
+    crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
+}

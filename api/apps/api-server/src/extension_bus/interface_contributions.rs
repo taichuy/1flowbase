@@ -182,6 +182,13 @@ pub(crate) fn production_interface_contributions(
             api_node_id: state.api_node_id.clone(),
         },
     );
+    let console_billing = crate::routes::billing_interface::port(
+        crate::routes::billing_interface::BillingDependencies {
+            store: state.store.clone(),
+            cache_store: state.infrastructure.cache_store(),
+            trusted_public_keys: state.official_plugin_source.trusted_public_keys(),
+        },
+    );
     let console_application_orchestration =
         crate::routes::application_orchestration::interface::port(
             state.store.clone(),
@@ -620,6 +627,28 @@ pub(crate) fn production_interface_contributions(
             ],
             &["api-server.console-ui-management"],
             crate::routes::ui_management_interface::compile_registry(console_ui_management)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-billing",
+            &[
+                "billing.pricing_rules.list",
+                "billing.pricing_rules.create",
+                "billing.pricing_rules.update",
+                "billing.pricing_rules.delete",
+                "billing.pricing_catalog.view",
+                "billing.pricing_catalog.import",
+                "billing.credit_accounts.list",
+                "billing.credit_accounts.view",
+                "billing.credit_ledger.list",
+                "billing.credit.grant",
+                "billing.credit.charge",
+                "billing.credit.adjust",
+                "billing.credit.enable",
+                "billing.credit.disable",
+                "billing.credit.refund",
+            ],
+            &["api-server.console-billing"],
+            crate::routes::billing_interface::compile_registry(console_billing)?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-file-storages",
