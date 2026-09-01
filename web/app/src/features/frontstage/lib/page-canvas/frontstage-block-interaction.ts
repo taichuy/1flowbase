@@ -7,8 +7,8 @@ import {
 } from 'react-grid-layout';
 import type { FrontstagePageLayoutMode } from '../page-document';
 import {
-  normalizeFrontstageAutomaticRows,
-  projectFrontstageAutomaticRow
+  projectFrontstageAutomaticRow,
+  solveFrontstageAutomaticLayout
 } from './frontstage-row-layout';
 
 export type FrontstageBlockInteractionInput = {
@@ -380,7 +380,7 @@ function solveFrontstageAutomaticResize(
     : row[activeIndex + 1];
 
   if (!neighbor || proposedActive.w === active.w) {
-    return normalizeFrontstageAutomaticRows(
+    return solveFrontstageAutomaticLayout(
       committedLayout.map(restoreRequiredHeight),
       columns
     );
@@ -405,7 +405,7 @@ function solveFrontstageAutomaticResize(
     : active.x;
   const neighborX = resizedFromWest ? neighbor.x : activeX + activeWidth;
 
-  return normalizeFrontstageAutomaticRows(
+  return solveFrontstageAutomaticLayout(
     committedLayout.map((item) => {
       if (item.i === active.i) {
         return {

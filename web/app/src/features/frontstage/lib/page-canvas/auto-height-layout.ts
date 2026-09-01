@@ -6,16 +6,27 @@ export const FRONTSTAGE_AUTO_HEIGHT_SETTLE_MS = 250;
 export const FRONTSTAGE_AUTO_HEIGHT_SETTLE_FRAMES = 3;
 
 interface FrontstageAutoHeightRecord {
-  identity: string | null;
+  epoch: number;
+  source: FrontstageIntrinsicMeasurementSource;
   observedRows: number;
   committedRows: number | null;
   changedAtMs: number;
   stableFrames: number;
 }
 
+export type FrontstageIntrinsicMeasurementSource =
+  | 'dom-intrinsic'
+  | 'runtime-explicit';
+
+export interface FrontstageIntrinsicMeasurementContext {
+  epoch: number;
+  source: FrontstageIntrinsicMeasurementSource;
+}
+
 export interface FrontstageCommittedIntrinsicMeasurement {
   blockId: string;
-  identity: string | null;
+  epoch: number;
+  source: FrontstageIntrinsicMeasurementSource;
   rows: number;
 }
 
@@ -68,15 +79,32 @@ export class FrontstageAutoHeightBatch {
   measure(
     blockId: string,
     height: number,
-    identity: string | null = null,
+    context: FrontstageIntrinsicMeasurementContext = {
+      epoch: 0,
+      source: 'dom-intrinsic'
+    },
     nowMs = performance.now()
   ): void {
     if (!Number.isFinite(height) || height <= 0) return;
     const observedRows = pixelsToFrontstageGridRows(height);
     const current = this.records.get(blockId);
-    if (!current || current.identity !== identity) {
+    if (current && context.epoch < current.epoch) return;
+    if (
+      current &&
+      context.epoch === current.epoch &&
+      current.source === 'runtime-explicit' &&
+      context.source === 'dom-intrinsic'
+    ) {
+      return;
+    }
+    if (
+      !current ||
+      current.epoch !== context.epoch ||
+      current.source !== context.source
+    ) {
       this.records.set(blockId, {
-        identity,
+        epoch: context.epoch,
+        source: context.source,
         observedRows,
         committedRows: null,
         changedAtMs: nowMs,
@@ -119,7 +147,8 @@ export class FrontstageAutoHeightBatch {
       this.pendingBlockIds.delete(blockId);
       this.committedMeasurements.push({
         blockId,
-        identity: record.identity,
+        epoch: record.epoch,
+        source: record.source,
         rows
       });
     }

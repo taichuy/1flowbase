@@ -331,7 +331,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     await waitFor(() => expect(button).toHaveTextContent('1:1:dark'));
   });
 
-  test('AC-008/010 AC-1926-001/004 fills the allocated viewport after either automatic or explicit intrinsic measurement', async () => {
+  test('AC-1926-002 fills the allocated viewport only after an explicit intrinsic measurement', async () => {
     let mounts = 0;
     const SizingBlock = ({ ctx }: { ctx: BlockContext }) => {
       const [localCount, setLocalCount] = useState(0);
@@ -409,11 +409,17 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     );
     await within(root.shadow).findByTestId('plain-native-block');
     await waitFor(() =>
+      expect(screen.getByTestId('block-slot-block-1')).toHaveAttribute(
+        'data-flowbase-frontstage-intrinsic-height',
+        '800'
+      )
+    );
+    await waitFor(() =>
       expect(
         root.host.closest('[data-flowbase-frontstage-intrinsic-content]')
-      ).toHaveStyle({ height: '100%' })
+      ).not.toHaveStyle({ height: '100%' })
     );
-    expect(root.host.parentElement).toHaveStyle({ height: '100%' });
+    expect(root.host.parentElement).not.toHaveStyle({ height: '100%' });
     expect(root.host.parentElement).toHaveAttribute(
       'data-flowbase-frontstage-available-height',
       '800'

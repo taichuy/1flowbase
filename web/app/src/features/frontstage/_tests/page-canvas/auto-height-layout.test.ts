@@ -7,6 +7,11 @@ import {
 } from '../../lib/page-canvas/auto-height-layout';
 import { pixelsToFrontstageGridRows } from '../../lib/responsive-grid-layout';
 
+const domMeasurement = (epoch: number) =>
+  ({ epoch, source: 'dom-intrinsic' }) as const;
+const explicitMeasurement = (epoch: number) =>
+  ({ epoch, source: 'runtime-explicit' }) as const;
+
 describe('FrontstageAutoHeightBatch', () => {
   test('AC-005 coalesces measurements by block and preserves state identity when rows do not change', () => {
     const batch = new FrontstageAutoHeightBatch();
@@ -31,14 +36,14 @@ describe('FrontstageAutoHeightBatch', () => {
     });
     const initial = { hero: pixelsToFrontstageGridRows(434) };
 
-    batch.measure('hero', 400, 'identity-1', 0);
+    batch.measure('hero', 400, domMeasurement(1), 0);
     expect(batch.commit(initial, 16)).toBe(initial);
     expect(batch.hasPendingMeasurements()).toBe(true);
 
-    batch.measure('hero', 350, 'identity-1', 32);
+    batch.measure('hero', 350, domMeasurement(1), 32);
     expect(batch.commit(initial, 64)).toBe(initial);
 
-    batch.measure('hero', 296, 'identity-1', 80);
+    batch.measure('hero', 296, domMeasurement(1), 80);
     expect(batch.commit(initial, 128)).toBe(initial);
     expect(batch.commit(initial, 144)).toBe(initial);
     const committed = batch.commit(initial, 160);
@@ -46,44 +51,47 @@ describe('FrontstageAutoHeightBatch', () => {
     expect(batch.hasPendingMeasurements()).toBe(false);
   });
 
-  test('AC-005 invalidates an accumulated measurement when RenderIdentity changes', () => {
+  test('AC-1926-004 invalidates an accumulated measurement when the layout epoch advances', () => {
     const batch = new FrontstageAutoHeightBatch({ settleMs: 0 });
-    batch.measure('hero', 434, 'identity-1', 0);
+    batch.measure('hero', 434, domMeasurement(1), 0);
     const first = batch.commit({}, 0);
     expect(first).toEqual({ hero: pixelsToFrontstageGridRows(434) });
     expect(batch.takeCommittedMeasurements()).toEqual([
       {
         blockId: 'hero',
-        identity: 'identity-1',
+        epoch: 1,
+        source: 'dom-intrinsic',
         rows: pixelsToFrontstageGridRows(434)
       }
     ]);
 
-    batch.measure('hero', 296, 'identity-2', 1);
+    batch.measure('hero', 296, domMeasurement(2), 1);
     expect(batch.commit(first, 1)).toEqual({
       hero: pixelsToFrontstageGridRows(296)
     });
     expect(batch.takeCommittedMeasurements()).toEqual([
       {
         blockId: 'hero',
-        identity: 'identity-2',
+        epoch: 2,
+        source: 'dom-intrinsic',
         rows: pixelsToFrontstageGridRows(296)
       }
     ]);
   });
 
-  test('AC-1926-005 commits a new measurement owner even when its row count is unchanged', () => {
+  test('AC-1926-002 commits an explicit allocation owner even when its row count is unchanged', () => {
     const batch = new FrontstageAutoHeightBatch({ settleMs: 0 });
-    batch.measure('hero', 320, 'identity-1', 0);
+    batch.measure('hero', 320, domMeasurement(1), 0);
     const rows = batch.commit({}, 0);
     batch.takeCommittedMeasurements();
 
-    batch.measure('hero', 320, 'identity-2', 1);
+    batch.measure('hero', 320, explicitMeasurement(1), 1);
     expect(batch.commit(rows, 1)).toBe(rows);
     expect(batch.takeCommittedMeasurements()).toEqual([
       {
         blockId: 'hero',
-        identity: 'identity-2',
+        epoch: 1,
+        source: 'runtime-explicit',
         rows: pixelsToFrontstageGridRows(320)
       }
     ]);
@@ -96,17 +104,41 @@ describe('FrontstageAutoHeightBatch', () => {
     });
     const initial = { hero: pixelsToFrontstageGridRows(296) };
 
-    batch.measure('hero', 299, 'identity-1', 0);
+    batch.measure('hero', 299, domMeasurement(1), 0);
     expect(batch.commit(initial, 80)).toBe(initial);
     expect(batch.commit(initial, 160)).toBe(initial);
     expect(batch.commit(initial, 200)).toBe(initial);
 
-    batch.measure('hero', 434, 'identity-1', 212);
+    batch.measure('hero', 434, domMeasurement(1), 212);
     expect(batch.commit(initial, 300)).toBe(initial);
     expect(batch.commit(initial, 400)).toBe(initial);
     expect(batch.commit(initial, 462)).toEqual({
       hero: pixelsToFrontstageGridRows(434)
     });
+  });
+
+  test('AC-1926-004 ignores a late measurement from a retired epoch', () => {
+    const batch = new FrontstageAutoHeightBatch({ settleMs: 0 });
+    batch.measure('hero', 296, domMeasurement(2), 0);
+    const current = batch.commit({}, 0);
+    batch.takeCommittedMeasurements();
+
+    batch.measure('hero', 434, domMeasurement(1), 1);
+
+    expect(batch.commit(current, 1)).toBe(current);
+    expect(batch.takeCommittedMeasurements()).toEqual([]);
+  });
+
+  test('AC-1926-002 keeps explicit intrinsic reporting authoritative within one epoch', () => {
+    const batch = new FrontstageAutoHeightBatch({ settleMs: 0 });
+    batch.measure('hero', 320, explicitMeasurement(1), 0);
+    const current = batch.commit({}, 0);
+    batch.takeCommittedMeasurements();
+
+    batch.measure('hero', 800, domMeasurement(1), 1);
+
+    expect(batch.commit(current, 1)).toBe(current);
+    expect(batch.takeCommittedMeasurements()).toEqual([]);
   });
 });
 

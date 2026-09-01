@@ -54,7 +54,8 @@ export function projectFrontstageAutomaticRow(
   });
 }
 
-export function normalizeFrontstageAutomaticRows(
+/** Solves intrinsic row contributions into deterministic allocations and positions. */
+export function solveFrontstageAutomaticLayout(
   layout: Layout,
   columns: number
 ): Layout {

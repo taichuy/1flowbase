@@ -72,6 +72,7 @@ import {
   FrontstageAutoHeightBatch,
   resolveFrontstageAutoHeightScrollDelta
 } from '../lib/page-canvas/auto-height-layout';
+import type { FrontstageIntrinsicMeasurementContext } from '../lib/page-canvas/auto-height-layout';
 import type { FrontstageNativePreparationSnapshot } from '../lib/page-canvas/native-runtime-preparation';
 import {
   frontstageNativeInstanceRenderKey,
@@ -227,10 +228,10 @@ type RenderPlanSlotProps = {
   onAutoHeightChange?: (
     blockId: string,
     height: number,
-    renderIdentity: string | null
+    context: FrontstageIntrinsicMeasurementContext
   ) => void;
   intrinsicHeight?: number;
-  intrinsicMeasurementOwner?: string | null;
+  allocatedHeightEpoch?: number;
   onRuntimeDemandChange?: (
     blockId: string,
     priority: FrontstageRuntimeDemandPriority
@@ -690,7 +691,7 @@ const RenderPlanSlot = memo(function RenderPlanSlot({
   toolbarDisabled,
   onAutoHeightChange,
   intrinsicHeight,
-  intrinsicMeasurementOwner,
+  allocatedHeightEpoch,
   onRuntimeDemandChange,
   onRuntimeRetry,
   onRuntimeRefresh
@@ -698,17 +699,23 @@ const RenderPlanSlot = memo(function RenderPlanSlot({
   const [isHovered, setIsHovered] = useState(false);
   const blockRef = useRef<HTMLDivElement>(null);
   const intrinsicContentRef = useRef<HTMLDivElement>(null);
-  const runtimeIntrinsicOwnerRef = useRef<string | null>(null);
   const runtimeRenderIdentity =
     runtimePreparation?.status === 'ready' && runtimePreparation.mountIntent
       ? frontstageNativeInstanceRenderKey(runtimePreparation.mountIntent)
       : null;
+  const measurementEpochRef = useRef({ key: '', value: 0 });
+  const measurementEpochKey = `${runtimeRenderIdentity ?? 'unprepared'}:${runtimePreparation?.generation ?? 0}`;
+  if (measurementEpochRef.current.key !== measurementEpochKey) {
+    measurementEpochRef.current = {
+      key: measurementEpochKey,
+      value: measurementEpochRef.current.value + 1
+    };
+  }
+  const measurementEpoch = measurementEpochRef.current.value;
   const rendererVersionError = resolveRendererVersionError(item);
   const isFixedHeight = item.presentation.heightMode === 'fixed';
   const fillsAvailableHeight =
-    isFixedHeight ||
-    (runtimeRenderIdentity !== null &&
-      intrinsicMeasurementOwner === runtimeRenderIdentity);
+    isFixedHeight || allocatedHeightEpoch === measurementEpoch;
   const viewportDemand = useRef({
     priority: 3 as FrontstageRuntimeDemandPriority,
     visible: false,
@@ -775,44 +782,40 @@ const RenderPlanSlot = memo(function RenderPlanSlot({
       !node ||
       isFixedHeight ||
       typeof ResizeObserver === 'undefined' ||
-      (runtimeRenderIdentity !== null &&
-        intrinsicMeasurementOwner === runtimeRenderIdentity)
+      fillsAvailableHeight
     ) {
       return;
     }
 
     const observer = new ResizeObserver(([entry]) => {
-      if (
-        entry &&
-        runtimeIntrinsicOwnerRef.current !== runtimeRenderIdentity &&
-        intrinsicMeasurementOwner !== runtimeRenderIdentity
-      ) {
-        onAutoHeightChange?.(
-          item.blockId,
-          entry.contentRect.height,
-          runtimeRenderIdentity
-        );
+      if (entry) {
+        onAutoHeightChange?.(item.blockId, entry.contentRect.height, {
+          epoch: measurementEpoch,
+          source: 'dom-intrinsic'
+        });
       }
     });
     observer.observe(node);
     return () => observer.disconnect();
   }, [
     isFixedHeight,
-    intrinsicMeasurementOwner,
+    fillsAvailableHeight,
     item.blockId,
-    onAutoHeightChange,
-    runtimeRenderIdentity
+    measurementEpoch,
+    onAutoHeightChange
   ]);
 
   const handleIntrinsicSizeReport = useCallback(
     (height: number) => {
-      if (!runtimeRenderIdentity || !Number.isFinite(height) || height <= 0) {
+      if (!Number.isFinite(height) || height <= 0) {
         return;
       }
-      runtimeIntrinsicOwnerRef.current = runtimeRenderIdentity;
-      onAutoHeightChange?.(item.blockId, height, runtimeRenderIdentity);
+      onAutoHeightChange?.(item.blockId, height, {
+        epoch: measurementEpoch,
+        source: 'runtime-explicit'
+      });
     },
-    [item.blockId, onAutoHeightChange, runtimeRenderIdentity]
+    [item.blockId, measurementEpoch, onAutoHeightChange]
   );
 
   // Determine border style based on mode
@@ -959,9 +962,7 @@ const RenderPlanSlot = memo(function RenderPlanSlot({
       data-flowbase-frontstage-intrinsic-height={
         intrinsicHeight ?? FRONTSTAGE_DEFAULT_AUTO_HEIGHT_PX
       }
-      data-flowbase-frontstage-intrinsic-owner={
-        intrinsicMeasurementOwner ?? undefined
-      }
+      data-flowbase-frontstage-allocation-epoch={allocatedHeightEpoch}
       data-flowbase-frontstage-render-error={
         rendererVersionError?.description ??
         isolatedPreparationError?.message ??
@@ -1188,10 +1189,10 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   );
   const [autoRows, setAutoRows] = useState<Record<string, number>>({});
   const autoRowsRef = useRef(autoRows);
-  const [autoRowOwners, setAutoRowOwners] = useState<
-    Record<string, string | null>
+  const [autoAllocatedHeightEpochs, setAutoAllocatedHeightEpochs] = useState<
+    Record<string, number>
   >({});
-  const autoRowOwnersRef = useRef(autoRowOwners);
+  const autoAllocatedHeightEpochsRef = useRef(autoAllocatedHeightEpochs);
   const autoHeightScopeRef = useRef(content?.page.id);
   const autoHeightBatchRef = useRef(
     new FrontstageAutoHeightBatch({
@@ -1214,19 +1215,19 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     autoRowsRef.current = autoRows;
   }, [autoRows]);
   useEffect(() => {
-    autoRowOwnersRef.current = autoRowOwners;
-  }, [autoRowOwners]);
+    autoAllocatedHeightEpochsRef.current = autoAllocatedHeightEpochs;
+  }, [autoAllocatedHeightEpochs]);
   useEffect(() => {
     if (autoHeightScopeRef.current === content?.page.id) return;
     autoHeightScopeRef.current = content?.page.id;
     autoRowsRef.current = {};
-    autoRowOwnersRef.current = {};
+    autoAllocatedHeightEpochsRef.current = {};
     autoHeightBatchRef.current = new FrontstageAutoHeightBatch({
       settleMs: FRONTSTAGE_AUTO_HEIGHT_SETTLE_MS,
       settleFrames: FRONTSTAGE_AUTO_HEIGHT_SETTLE_FRAMES
     });
     setAutoRows({});
-    setAutoRowOwners({});
+    setAutoAllocatedHeightEpochs({});
   }, [content?.page.id]);
   useEffect(
     () => () => {
@@ -1290,11 +1291,15 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     );
 
   const updateAutoHeight = useCallback(
-    (blockId: string, height: number, renderIdentity: string | null) => {
+    (
+      blockId: string,
+      height: number,
+      context: FrontstageIntrinsicMeasurementContext
+    ) => {
       autoHeightBatchRef.current.measure(
         blockId,
         height,
-        renderIdentity,
+        context,
         performance.now()
       );
       if (autoHeightFrameRef.current !== null) return;
@@ -1305,18 +1310,26 @@ export const PageCanvas: FC<PageCanvasProps> = ({
         const committedMeasurements =
           autoHeightBatchRef.current.takeCommittedMeasurements();
         if (committedMeasurements.length > 0) {
-          const currentOwners = autoRowOwnersRef.current;
-          let nextOwners: Record<string, string | null> | null = null;
+          const currentEpochs = autoAllocatedHeightEpochsRef.current;
+          let nextEpochs: Record<string, number> | null = null;
           for (const measurement of committedMeasurements) {
-            if (currentOwners[measurement.blockId] === measurement.identity) {
+            const nextEpoch =
+              measurement.source === 'runtime-explicit'
+                ? measurement.epoch
+                : undefined;
+            if (currentEpochs[measurement.blockId] === nextEpoch) {
               continue;
             }
-            nextOwners ??= { ...currentOwners };
-            nextOwners[measurement.blockId] = measurement.identity;
+            nextEpochs ??= { ...currentEpochs };
+            if (nextEpoch === undefined) {
+              delete nextEpochs[measurement.blockId];
+            } else {
+              nextEpochs[measurement.blockId] = nextEpoch;
+            }
           }
-          if (nextOwners) {
-            autoRowOwnersRef.current = nextOwners;
-            setAutoRowOwners(nextOwners);
+          if (nextEpochs) {
+            autoAllocatedHeightEpochsRef.current = nextEpochs;
+            setAutoAllocatedHeightEpochs(nextEpochs);
           }
         }
         if (nextRows !== currentRows) {
@@ -1587,7 +1600,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                       ? undefined
                       : frontstageGridRowsToPixels(autoRows[item.blockId])
                   }
-                  intrinsicMeasurementOwner={autoRowOwners[item.blockId]}
+                  allocatedHeightEpoch={autoAllocatedHeightEpochs[item.blockId]}
                   onRuntimeDemandChange={onRuntimeDemandChange}
                   onRuntimeRetry={onRuntimeRetry}
                   onRuntimeRefresh={onRuntimeRefresh}

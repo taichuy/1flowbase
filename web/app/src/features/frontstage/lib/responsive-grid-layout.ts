@@ -1,7 +1,7 @@
 import type { Layout, ResponsiveLayouts } from 'react-grid-layout/legacy';
 
 import type { FrontstageBlockRenderPlanItem } from './page-canvas/render-plan';
-import { normalizeFrontstageAutomaticRows } from './page-canvas/frontstage-row-layout';
+import { solveFrontstageAutomaticLayout } from './page-canvas/frontstage-row-layout';
 
 export const FRONTSTAGE_GRID_BREAKPOINTS = {
   lg: 1200,
@@ -180,7 +180,7 @@ export function normalizeFrontstageAutomaticResponsiveLayouts(
   return Object.fromEntries(
     Object.entries(layouts).map(([breakpoint, layout]) => [
       breakpoint,
-      normalizeFrontstageAutomaticRows(
+      solveFrontstageAutomaticLayout(
         layout ?? [],
         FRONTSTAGE_GRID_COLUMNS[breakpoint as FrontstageGridBreakpoint]
       )

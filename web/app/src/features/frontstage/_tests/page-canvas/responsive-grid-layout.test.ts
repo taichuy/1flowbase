@@ -12,6 +12,7 @@ import {
   replaceFrontstageBreakpointLayout
 } from '../../lib/responsive-grid-layout';
 import type { FrontstageBlockRenderPlanItem } from '../../lib/page-canvas/render-plan';
+import { solveFrontstageAutomaticLayout } from '../../lib/page-canvas/frontstage-row-layout';
 
 function frontstageBlockFixture(): FrontstageBlockRenderPlanItem {
   return {
@@ -209,6 +210,30 @@ describe('frontstage responsive grid layout', () => {
       { i: 'tall', y: 0, h: 10 },
       { i: 'following', y: 10, h: 4 }
     ]);
+  });
+
+  test('AC-1926-001/003 is permutation-invariant and idempotent', () => {
+    const input = [
+      { i: 'short', x: 0, y: 0, w: 12, h: 6 },
+      { i: 'tall', x: 12, y: 0, w: 12, h: 10 },
+      { i: 'following', x: 0, y: 20, w: 24, h: 4 }
+    ];
+    const project = (
+      layout: ReturnType<typeof solveFrontstageAutomaticLayout>
+    ) =>
+      layout
+        .map(({ i, x, y, w, h }) => ({ i, x, y, w, h }))
+        .sort((left, right) => left.i.localeCompare(right.i));
+    const solved = solveFrontstageAutomaticLayout(input, 24);
+    const permuted = solveFrontstageAutomaticLayout(
+      [input[2]!, input[1]!, input[0]!],
+      24
+    );
+
+    expect(project(permuted)).toEqual(project(solved));
+    expect(project(solveFrontstageAutomaticLayout(solved, 24))).toEqual(
+      project(solved)
+    );
   });
 
   test('AC-006 stacks an infeasible multi-member row at a single-column breakpoint', () => {
