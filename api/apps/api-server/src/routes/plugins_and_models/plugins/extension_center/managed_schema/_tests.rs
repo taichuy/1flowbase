@@ -58,30 +58,39 @@ async fn pdm_003_009_composition_previews_applies_and_retains_the_compiled_plan(
     }
     let target = target.expect("a registered physical business-table fixture must exist");
     let declaration = declaration(target);
+    let dependencies = super::super::legacy_dependencies(&state);
 
-    let prepared = prepare_managed_schema(&state, state.bootstrap_workspace_id, Some(&declaration))
-        .await
-        .unwrap()
-        .unwrap();
+    let prepared = prepare_managed_schema(
+        &dependencies,
+        state.bootstrap_workspace_id,
+        Some(&declaration),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert_eq!(prepared.preview.entries.len(), 3);
     assert!(prepared
         .preview
         .entries
         .iter()
         .all(|entry| entry.action == "create"));
-    let applied = prepared.apply(&state).await.unwrap();
+    let applied = prepared.apply(&dependencies).await.unwrap();
     assert_eq!(applied.created_objects, 3);
 
-    let replay = prepare_managed_schema(&state, state.bootstrap_workspace_id, Some(&declaration))
-        .await
-        .unwrap()
-        .unwrap();
+    let replay = prepare_managed_schema(
+        &dependencies,
+        state.bootstrap_workspace_id,
+        Some(&declaration),
+    )
+    .await
+    .unwrap()
+    .unwrap();
     assert!(replay
         .preview
         .entries
         .iter()
         .all(|entry| entry.action == "already_present"));
-    let replay_receipt = replay.apply(&state).await.unwrap();
+    let replay_receipt = replay.apply(&dependencies).await.unwrap();
     assert_eq!(replay_receipt.receipt_id, applied.receipt_id);
 
     let identity = domain::ExtensionInstallationIdentity {
@@ -90,7 +99,7 @@ async fn pdm_003_009_composition_previews_applies_and_retains_the_compiled_plan(
         artifact_id: "managed_schema".to_string(),
         version: "1.0.0".to_string(),
     };
-    let retained = retain_managed_schema(&state, state.bootstrap_workspace_id, &identity)
+    let retained = retain_managed_schema(&dependencies, state.bootstrap_workspace_id, &identity)
         .await
         .unwrap()
         .unwrap();

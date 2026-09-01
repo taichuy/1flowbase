@@ -5,7 +5,9 @@ use control_plane::{
 };
 use uuid::Uuid;
 
-use crate::{app_state::ApiState, error_response::ApiError};
+use crate::error_response::ApiError;
+
+use super::ExtensionCenterDependencies;
 
 pub(super) fn default_application_status(
     action: domain::ExtensionApplicationAction,
@@ -33,7 +35,7 @@ pub(super) fn catalog_application_action(
 }
 
 pub(super) async fn workspace_application_status(
-    state: &ApiState,
+    dependencies: &ExtensionCenterDependencies,
     workspace_id: Uuid,
     entry: &domain::ExtensionInstallationRecord,
 ) -> Result<&'static str, ApiError> {
@@ -42,7 +44,7 @@ pub(super) async fn workspace_application_status(
         domain::ExtensionApplicationAction::ConfigureModelProvider => return Ok("available"),
         domain::ExtensionApplicationAction::ImportAgentFlow => {
             ApplicationRepository::has_application_extension_source(
-                &state.store,
+                &dependencies.store,
                 workspace_id,
                 entry.id,
             )
@@ -67,7 +69,7 @@ pub(super) async fn workspace_application_status(
             let mut all_instances_are_present = true;
             for template in package.instances {
                 let current = McpManagementRepository::get_mcp_instance(
-                    &state.store,
+                    &dependencies.store,
                     workspace_id,
                     &template.instance_id,
                 )
@@ -87,17 +89,19 @@ pub(super) async fn workspace_application_status(
             all_instances_are_present
         }
         domain::ExtensionApplicationAction::ActivateI18n => {
-            let catalog_state =
-                I18nCatalogRepository::get_workspace_catalog_state(&state.store, workspace_id)
-                    .await?
-                    .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                        "workspace_i18n_catalog_state",
-                    ))?;
+            let catalog_state = I18nCatalogRepository::get_workspace_catalog_state(
+                &dependencies.store,
+                workspace_id,
+            )
+            .await?
+            .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+                "workspace_i18n_catalog_state",
+            ))?;
             let Some(release_id) = catalog_state.active_release_id() else {
                 return Ok("not_applied");
             };
             let Some(active) = I18nCatalogRepository::get_i18n_catalog_release_descriptor(
-                &state.store,
+                &dependencies.store,
                 workspace_id,
                 release_id,
             )

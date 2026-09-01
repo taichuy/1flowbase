@@ -122,7 +122,7 @@ fn parse_mcp_upload_manifest(bytes: &[u8]) -> Result<Option<domain::McpBundleMan
 }
 
 async fn classify_uploaded_extension(
-    state: &ApiState,
+    dependencies: &ExtensionCenterDependencies,
     fields: &ExtensionUploadFields,
     file_name: &str,
     artifact_bytes: &[u8],
@@ -258,7 +258,8 @@ async fn classify_uploaded_extension(
         });
     }
 
-    let inspection = inspect_node_plugin(state, file_name, artifact_bytes, "uploaded").await?;
+    let inspection =
+        inspect_node_plugin(dependencies, file_name, artifact_bytes, "uploaded").await?;
     if explicit_category.is_some_and(|value| value != inspection.category) {
         return Err(control_plane::errors::ControlPlaneError::InvalidInput(
             "extension_catalog_category",
@@ -332,6 +333,7 @@ async fn install_uploaded_artifact(
     actor: &domain::ActorContext,
     mut fields: ExtensionUploadFields,
 ) -> Result<Response, ApiError> {
+    let dependencies = legacy_dependencies(state);
     let actor_user_id = actor.user_id;
     let file_name = fields
         .file_name
@@ -340,7 +342,8 @@ async fn install_uploaded_artifact(
     let artifact_bytes = fields.artifact_bytes.take().ok_or(
         control_plane::errors::ControlPlaneError::InvalidInput("extension_file"),
     )?;
-    let artifact = classify_uploaded_extension(state, &fields, &file_name, &artifact_bytes).await?;
+    let artifact =
+        classify_uploaded_extension(&dependencies, &fields, &file_name, &artifact_bytes).await?;
     let identity = extension_identity(
         artifact.category,
         &artifact.organization,
@@ -348,7 +351,7 @@ async fn install_uploaded_artifact(
         &artifact.version,
         &state.api_node_id,
     )?;
-    let install_service = extension_installation_service(state);
+    let install_service = extension_installation_service(&dependencies);
     if let Some(installation) = install_service
         .find_local_installation(&state.api_node_id, &identity)
         .await?
@@ -396,14 +399,14 @@ async fn install_uploaded_artifact(
         acknowledged_warnings: value.acknowledged_warnings,
     });
     let prepared_schema = prepare_managed_schema(
-        state,
+        &dependencies,
         actor.current_workspace_id,
         artifact.managed_schema.as_ref(),
     )
     .await?;
     let managed_schema_preview = prepared_schema.as_ref().map(|prepared| prepared.preview());
     if artifact.node_plugin {
-        let installed = service(state, actor, "extension_center.install.upload")
+        let installed = service(&dependencies, actor, "extension_center.install.upload")
             .install_extension_node_plugin(InstallExtensionNodePluginCommand {
                 actor_user_id,
                 category: artifact.category,
@@ -422,7 +425,7 @@ async fn install_uploaded_artifact(
             "extension_installation",
         ))?;
         let managed_schema_receipt = match prepared_schema {
-            Some(prepared) => Some(prepared.apply(state).await?),
+            Some(prepared) => Some(prepared.apply(&dependencies).await?),
             None => None,
         };
         return Ok((

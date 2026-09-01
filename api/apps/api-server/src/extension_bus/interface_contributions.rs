@@ -873,6 +873,33 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-extension-center",
+            &[
+                "extension_center.installed.view",
+                "extension_center.installed.select",
+                "extension_center.installed.enable",
+                "extension_center.installed.disable",
+                "extension_center.installed.delete",
+                "extension_center.catalog.view",
+                "extension_center.catalog.detail",
+                "extension_center.update_check",
+            ],
+            &["api-server.console-extension-center"],
+            crate::routes::plugins::extension_center::interface::compile_registry(
+                crate::routes::plugins::extension_center::ExtensionCenterDependencies {
+                    store: state.store.clone(),
+                    provider_runtime: state.provider_runtime.clone(),
+                    official_plugin_source: state.official_plugin_source.clone(),
+                    official_mcp_bundle_source: state.official_mcp_bundle_source.clone(),
+                    official_extension_catalog_source: state.official_extension_catalog_source.clone(),
+                    cache_store: state.infrastructure.cache_store(),
+                    provider_install_root: state.provider_install_root.clone(),
+                    api_node_id: state.api_node_id.clone(),
+                    allow_uploaded_host_extensions: state.allow_uploaded_host_extensions,
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",

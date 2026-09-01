@@ -43,9 +43,55 @@ use super::{
     PluginCompatibilityOverrideBody, PluginRiskOverrideBody, PluginTaskResponse,
 };
 
+#[derive(Clone)]
+pub(crate) struct ExtensionCenterDependencies {
+    pub(crate) store: storage_durable_postgres::MainDurableStore,
+    pub(crate) provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
+    pub(crate) official_plugin_source: Arc<dyn control_plane::ports::OfficialPluginSourcePort>,
+    pub(crate) official_mcp_bundle_source:
+        Arc<dyn crate::official_mcp_bundles::OfficialMcpBundleSourcePort>,
+    pub(crate) official_extension_catalog_source:
+        Arc<dyn crate::official_extension_catalog::OfficialExtensionCatalogSourcePort>,
+    pub(crate) cache_store: Arc<dyn crate::host_infrastructure::CacheStore>,
+    pub(crate) provider_install_root: String,
+    pub(crate) api_node_id: String,
+    pub(crate) allow_uploaded_host_extensions: bool,
+}
+
+fn legacy_dependencies(state: &ApiState) -> ExtensionCenterDependencies {
+    ExtensionCenterDependencies {
+        store: state.store.clone(),
+        provider_runtime: state.provider_runtime.clone(),
+        official_plugin_source: state.official_plugin_source.clone(),
+        official_mcp_bundle_source: state.official_mcp_bundle_source.clone(),
+        official_extension_catalog_source: state.official_extension_catalog_source.clone(),
+        cache_store: state.infrastructure.cache_store(),
+        provider_install_root: state.provider_install_root.clone(),
+        api_node_id: state.api_node_id.clone(),
+        allow_uploaded_host_extensions: state.allow_uploaded_host_extensions,
+    }
+}
+
+async fn invoke_interface(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    binding_id: &'static str,
+    input: interface::ExtensionCenterInput,
+    mutating: bool,
+) -> Result<interface::ExtensionCenterOutput, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    let credential = if mutating {
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers }
+    } else {
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
+    };
+    crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
+}
+
 mod builtin_mcp;
 mod catalog_page;
 mod dto;
+pub(crate) mod interface;
 mod managed_schema;
 
 use builtin_mcp::builtin_frontstage_catalog_entry;
@@ -142,17 +188,29 @@ pub(super) fn route_assembly(
 }
 
 fn service(
-    state: &ApiState,
+    dependencies: &ExtensionCenterDependencies,
     actor: &domain::ActorContext,
     operation_id: &'static str,
 ) -> crate::app_state::ApiPluginManagementService {
-    base_service(state, actor).for_extension_center_console_operation(operation_id)
+    control_plane::plugin_management::PluginManagementService::new(
+        dependencies.store.for_actor(actor.clone()),
+        crate::provider_runtime::ApiProviderRuntime::new(dependencies.provider_runtime.clone()),
+        dependencies.official_plugin_source.clone(),
+        dependencies.provider_install_root.clone(),
+    )
+    .with_node_id(dependencies.api_node_id.clone())
+    .with_allow_uploaded_host_extensions(dependencies.allow_uploaded_host_extensions)
+    .with_model_routing_cache_store(dependencies.cache_store.clone())
+    .for_extension_center_console_operation(operation_id)
 }
 
 fn extension_installation_service(
-    state: &ApiState,
+    dependencies: &ExtensionCenterDependencies,
 ) -> crate::app_state::ApiExtensionInstallationService {
-    ExtensionInstallationService::new(state.store.clone(), &state.provider_install_root)
+    ExtensionInstallationService::new(
+        dependencies.store.clone(),
+        &dependencies.provider_install_root,
+    )
 }
 
 fn to_risk_warnings(
@@ -282,87 +340,18 @@ pub async fn list_local_extension_inventory(
     headers: HeaderMap,
     Query(query): Query<LocalExtensionInventoryQuery>,
 ) -> Result<Json<ApiSuccess<LocalExtensionInventoryPageResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let category = query
-        .category
-        .as_deref()
-        .map(|value| {
-            domain::ExtensionCategory::parse(value).ok_or(
-                control_plane::errors::ControlPlaneError::InvalidInput(
-                    "extension_catalog_category",
-                ),
-            )
-        })
-        .transpose()?;
-    let limit = query.limit.unwrap_or(20).clamp(1, 50);
-    let mut families = extension_installation_service(&state)
-        .list_installed_families_for_node(&state.api_node_id)
-        .await?;
-    if let Some(category) = category {
-        families.retain(|family| family.current.identity.category == category);
-    }
-    let (total_entries, next_cursor, page_entries) =
-        paginate_installed_families(families, query.cursor.as_deref(), limit);
-    let mut entries = Vec::with_capacity(page_entries.len());
-    for family in page_entries {
-        let status = workspace_application_status(
-            &state,
-            context.actor.current_workspace_id,
-            &family.current,
-        )
-        .await?;
-        let mut response = to_local_inventory_family_entry(family);
-        if let Some(installation) = control_plane::ports::PluginRepository::get_installation(
-            &state.store,
-            Uuid::parse_str(&response.id).map_err(|_| {
-                control_plane::errors::ControlPlaneError::InvalidInput("extension_installation_id")
-            })?,
-        )
-        .await?
-        {
-            response.desired_state = Some(installation.desired_state.as_str().to_string());
-            if let Some(artifact) = control_plane::ports::PluginRepository::get_artifact_instance(
-                &state.store,
-                &state.api_node_id,
-                installation.id,
-            )
-            .await?
-            {
-                response.availability_status =
-                    Some(artifact.availability_status.as_str().to_string());
-                if is_runtime_uninstall_category(installation.category)
-                    && artifact.artifact_status == domain::PluginArtifactInstanceStatus::Missing
-                {
-                    response.status = "uninstalled".to_string();
-                }
-            }
-        }
-        for version in &mut response.installed_versions {
-            if let Some(decision) =
-                control_plane::ports::ExtensionInstallationRepository::extension_deletion_decision(
-                    &state.store,
-                    &state.api_node_id,
-                    Uuid::parse_str(&version.id).map_err(|_| {
-                        control_plane::errors::ControlPlaneError::InvalidInput(
-                            "extension_installation_id",
-                        )
-                    })?,
-                )
-                .await?
-            {
-                version.deletable = decision.deletable;
-                version.delete_reasons = decision.reasons;
-            }
-        }
-        response.application_status = status.to_string();
-        entries.push(response);
-    }
-    Ok(Json(ApiSuccess::new(LocalExtensionInventoryPageResponse {
-        limit,
-        total_entries,
-        next_cursor,
-        entries,
-    })))
+    let output = invoke_interface(
+        state,
+        headers,
+        "http.console.extension-center.installed.v1",
+        interface::ExtensionCenterInput::ListInstalled(query),
+        false,
+    )
+    .await?;
+    let interface::ExtensionCenterOutput::Installed(page) = output else {
+        unreachable!("extension inventory binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(page)))
 }
 
 #[utoipa::path(
@@ -377,15 +366,18 @@ pub async fn enable_installed_plugin(
     Path(installation_id): Path<Uuid>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let task = service(&state, &context.actor, "extension_center.installed.enable")
-        .enable_plugin(EnablePluginCommand {
-            actor_user_id: context.user.id,
-            installation_id,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(to_task_response(task))))
+    let output = invoke_interface(
+        state,
+        headers,
+        "http.console.extension-center.enable.v1",
+        interface::ExtensionCenterInput::Enable(installation_id),
+        true,
+    )
+    .await?;
+    let interface::ExtensionCenterOutput::Task(task) = output else {
+        unreachable!("extension enable binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(task)))
 }
 
 #[utoipa::path(
@@ -400,31 +392,18 @@ pub async fn disable_installed_plugin(
     Path(installation_id): Path<Uuid>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<PluginTaskResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let installation =
-        control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(
-            &state.store,
-            &state.api_node_id,
-            installation_id,
-        )
-        .await?
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-            "extension_installation",
-        ))?;
-    let task = service(&state, &context.actor, "extension_center.installed.disable")
-        .disable_plugin(DisablePluginCommand {
-            actor_user_id: context.user.id,
-            installation_id,
-        })
-        .await?;
-    retain_managed_schema(
-        &state,
-        context.actor.current_workspace_id,
-        &installation.identity,
+    let output = invoke_interface(
+        state,
+        headers,
+        "http.console.extension-center.disable.v1",
+        interface::ExtensionCenterInput::Disable(installation_id),
+        true,
     )
     .await?;
-    Ok(Json(ApiSuccess::new(to_task_response(task))))
+    let interface::ExtensionCenterOutput::Task(task) = output else {
+        unreachable!("extension disable binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(task)))
 }
 
 #[utoipa::path(
@@ -440,17 +419,18 @@ pub async fn select_local_extension_installation(
     Path(installation_id): Path<Uuid>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<LocalExtensionInventoryEntryResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let installation = extension_installation_service(&state)
-        .select_current_installation(&state.api_node_id, installation_id)
-        .await?
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-            "extension_installation",
-        ))?;
-    Ok(Json(ApiSuccess::new(to_local_inventory_entry(
-        installation,
-    ))))
+    let output = invoke_interface(
+        state,
+        headers,
+        "http.console.extension-center.select.v1",
+        interface::ExtensionCenterInput::Select(installation_id),
+        true,
+    )
+    .await?;
+    let interface::ExtensionCenterOutput::Installation(installation) = output else {
+        unreachable!("extension select binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(installation)))
 }
 
 #[utoipa::path(
@@ -466,70 +446,18 @@ pub async fn delete_local_extension_installation(
     Path(installation_id): Path<Uuid>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<LocalExtensionInventoryEntryResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let existing =
-        control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(
-            &state.store,
-            &state.api_node_id,
-            installation_id,
-        )
-        .await?
-        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-            "extension_installation",
-        ))?;
-    let installation_service = extension_installation_service(&state);
-    let managed_schema_identity = existing.identity.clone();
-    let installation = if is_runtime_uninstall_category(existing.identity.category) {
-        let plugin =
-            control_plane::ports::PluginRepository::get_installation(&state.store, installation_id)
-                .await?
-                .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                    "plugin_installation",
-                ))?;
-        service(&state, &context.actor, "extension_center.installed.delete")
-            .delete_family(DeletePluginFamilyCommand {
-                actor_user_id: context.user.id,
-                provider_code: plugin.provider_code,
-            })
-            .await?;
-        domain::ExtensionInstallationRecord {
-            local_path: None,
-            status: domain::ExtensionInstallationStatus::Missing,
-            is_current: false,
-            ..existing
-        }
-    } else if existing.identity.category == domain::ExtensionCategory::Mcp {
-        state
-            .official_mcp_bundle_source
-            .delete_local_version(
-                &existing.identity.organization,
-                &existing.identity.artifact_id,
-                &existing.identity.version,
-            )
-            .await?;
-        domain::ExtensionInstallationRecord {
-            status: domain::ExtensionInstallationStatus::Missing,
-            is_current: false,
-            ..existing
-        }
-    } else {
-        installation_service
-            .delete_local_installation(&state.api_node_id, installation_id)
-            .await?
-            .ok_or(control_plane::errors::ControlPlaneError::NotFound(
-                "extension_installation",
-            ))?
-    };
-    retain_managed_schema(
-        &state,
-        context.actor.current_workspace_id,
-        &managed_schema_identity,
+    let output = invoke_interface(
+        state,
+        headers,
+        "http.console.extension-center.delete.v1",
+        interface::ExtensionCenterInput::Delete(installation_id),
+        true,
     )
     .await?;
-    Ok(Json(ApiSuccess::new(to_local_inventory_entry(
-        installation,
-    ))))
+    let interface::ExtensionCenterOutput::Installation(installation) = output else {
+        unreachable!("extension delete binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(installation)))
 }
 
 fn is_runtime_uninstall_category(category: domain::ExtensionCategory) -> bool {
@@ -564,11 +492,11 @@ impl InstalledCatalogJoinStatus {
 }
 
 async fn installed_catalog_joins(
-    state: &ApiState,
+    dependencies: &ExtensionCenterDependencies,
     category: ExtensionCatalogCategory,
 ) -> Result<HashMap<String, InstalledCatalogJoin>, ApiError> {
-    let records = extension_installation_service(state)
-        .list_installed_for_node(&state.api_node_id)
+    let records = extension_installation_service(dependencies)
+        .list_installed_for_node(&dependencies.api_node_id)
         .await?;
     let mut joins = project_installed_catalog_joins(records, category);
     if matches!(
@@ -577,8 +505,8 @@ async fn installed_catalog_joins(
     ) {
         for join in joins.values_mut() {
             let artifact = control_plane::ports::PluginRepository::get_artifact_instance(
-                &state.store,
-                &state.api_node_id,
+                &dependencies.store,
+                &dependencies.api_node_id,
                 join.installation_id,
             )
             .await?;
@@ -635,12 +563,12 @@ fn extension_update_status(
 }
 
 async fn find_catalog_entry_for_requested_identity(
-    state: &ApiState,
+    dependencies: &ExtensionCenterDependencies,
     workspace_id: Uuid,
     category: ExtensionCatalogCategory,
     catalog_id: &str,
 ) -> Result<Option<LocatedOfficialExtensionCatalogEntry>, ApiError> {
-    state
+    dependencies
         .official_extension_catalog_source
         .find_entry_for_workspace(workspace_id, category.as_str(), catalog_id)
         .await
@@ -811,10 +739,17 @@ pub async fn list_extension_catalog_gateway(
     headers: HeaderMap,
     Query(query): Query<ExtensionCatalogGatewayQuery>,
 ) -> Result<Json<ApiSuccess<ExtensionCatalogGatewayPageResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let category = ExtensionCatalogCategory::parse(&category)?;
-    let page =
-        load_catalog_page(&state, context.actor.current_workspace_id, category, query).await?;
+    let output = invoke_interface(
+        state,
+        headers,
+        "http.console.extension-center.catalog.v1",
+        interface::ExtensionCenterInput::ListCatalog { category, query },
+        false,
+    )
+    .await?;
+    let interface::ExtensionCenterOutput::Catalog(page) = output else {
+        unreachable!("extension catalog binding returned a different output")
+    };
     Ok(Json(ApiSuccess::new(page)))
 }
 
@@ -831,58 +766,21 @@ pub async fn get_extension_catalog_entry(
     headers: HeaderMap,
     Query(_query): Query<ExtensionCatalogGatewayQuery>,
 ) -> Result<Json<ApiSuccess<ExtensionCatalogGatewayEntryResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let category = ExtensionCatalogCategory::parse(&category)?;
-    let identity = catalog_identity(category, &catalog_id)?;
-    if category == ExtensionCatalogCategory::Mcp && catalog_id == BUILTIN_FRONTSTAGE_CATALOG_ID {
-        let installed = installed_catalog_joins(&state, category).await?;
-        return Ok(Json(ApiSuccess::new(
-            builtin_frontstage_catalog_entry(
-                &state,
-                context.actor.current_workspace_id,
-                &installed,
-            )
-            .await?,
-        )));
-    }
-    let located = find_catalog_entry_for_requested_identity(
-        &state,
-        context.actor.current_workspace_id,
-        category,
-        &catalog_id,
+    let output = invoke_interface(
+        state,
+        headers,
+        "http.console.extension-center.catalog-entry.v1",
+        interface::ExtensionCenterInput::GetCatalog {
+            category,
+            catalog_id,
+        },
+        false,
     )
     .await?;
-    let located = located.ok_or(control_plane::errors::ControlPlaneError::NotFound(
-        "extension_catalog_entry",
-    ))?;
-    if located.entry.category != category.as_str()
-        || located.entry.artifact != identity.artifact_id()
-        || located.entry.id != catalog_id
-        || located.entry.organization != identity.organization()
-    {
-        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-            "extension_catalog_identity",
-        )
-        .into());
-    }
-    let installed = installed_catalog_joins(&state, category).await?;
-    let trusted_key_ids = state
-        .official_plugin_source
-        .trusted_public_keys()
-        .iter()
-        .map(|key| key.key_id.clone())
-        .collect::<Vec<_>>();
-    let catalog_source = if located.source_kind == "official_repository" {
-        "official"
-    } else {
-        "mirror"
+    let interface::ExtensionCenterOutput::CatalogEntry(entry) = output else {
+        unreachable!("extension catalog entry binding returned a different output")
     };
-    Ok(Json(ApiSuccess::new(project_catalog_entry(
-        located.entry,
-        catalog_source,
-        &installed,
-        &trusted_key_ids,
-    ))))
+    Ok(Json(ApiSuccess::new(entry)))
 }
 
 #[utoipa::path(
@@ -897,57 +795,18 @@ pub async fn check_extension_catalog_updates(
     headers: HeaderMap,
     Json(body): Json<ExtensionUpdateCheckBody>,
 ) -> Result<Json<ApiSuccess<ExtensionUpdateCheckResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    if body.items.len() > 50 {
-        return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-            "extension_update_check_page",
-        )
-        .into());
-    }
-    let category = ExtensionCatalogCategory::parse(&body.category)?;
-    for item in &body.items {
-        catalog_identity(category, &item.catalog_id)?;
-        if !valid_extension_segment(&item.current_version) {
-            return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-                "extension_version",
-            )
-            .into());
-        }
-        if item.installed_versions.is_empty()
-            || item
-                .installed_versions
-                .iter()
-                .any(|version| !valid_extension_segment(version))
-        {
-            return Err(control_plane::errors::ControlPlaneError::InvalidInput(
-                "installed_extension_versions",
-            )
-            .into());
-        }
-    }
-    let mut items = Vec::with_capacity(body.items.len());
-    for item in body.items {
-        let latest_version = find_catalog_entry_for_requested_identity(
-            &state,
-            context.actor.current_workspace_id,
-            category,
-            &item.catalog_id,
-        )
-        .await?
-        .map(|located| located.entry.version);
-        let status = extension_update_status(latest_version.as_deref(), &item.installed_versions);
-        items.push(ExtensionUpdateCheckItemResponse {
-            catalog_id: item.catalog_id,
-            current_version: item.current_version,
-            latest_version,
-            status: status.to_string(),
-        });
-    }
-    Ok(Json(ApiSuccess::new(ExtensionUpdateCheckResponse {
-        category: body.category,
-        items,
-    })))
+    let output = invoke_interface(
+        state,
+        headers,
+        "http.console.extension-center.update-check.v1",
+        interface::ExtensionCenterInput::CheckUpdates(body),
+        true,
+    )
+    .await?;
+    let interface::ExtensionCenterOutput::Updates(updates) = output else {
+        unreachable!("extension update check binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(updates)))
 }
 
 #[derive(Debug)]
@@ -1274,7 +1133,7 @@ fn signature_status_from_intake(status: &str) -> domain::ExtensionSignatureStatu
 }
 
 async fn inspect_node_plugin(
-    state: &ApiState,
+    dependencies: &ExtensionCenterDependencies,
     file_name: &str,
     artifact_bytes: &[u8],
     source_kind: &str,
@@ -1285,7 +1144,7 @@ async fn inspect_node_plugin(
             source_kind: source_kind.to_string(),
             trust_mode: "allow_unsigned".to_string(),
             expected_artifact_sha256: None,
-            trusted_public_keys: state.official_plugin_source.trusted_public_keys(),
+            trusted_public_keys: dependencies.official_plugin_source.trusted_public_keys(),
             original_filename: Some(file_name.to_string()),
         },
     )
@@ -1334,6 +1193,7 @@ async fn install_or_update_official_extension(
 ) -> Result<Response, ApiError> {
     let context = require_session(state, headers).await?;
     require_csrf(headers, &context)?;
+    let dependencies = legacy_dependencies(state);
     let category = ExtensionCatalogCategory::parse(&body.category)?;
     let identity = requested_installation_identity(
         category,
@@ -1341,7 +1201,7 @@ async fn install_or_update_official_extension(
         &body.version,
         &state.api_node_id,
     )?;
-    let install_service = extension_installation_service(state);
+    let install_service = extension_installation_service(&dependencies);
     if let Some(installation) = install_service
         .find_local_installation(&state.api_node_id, &identity)
         .await?
@@ -1468,7 +1328,7 @@ async fn install_or_update_official_extension(
     let mut managed_schema_declaration = None;
     if is_node_plugin_category(category) {
         let inspection = inspect_node_plugin(
-            state,
+            &dependencies,
             &downloaded.file_name,
             &downloaded.artifact_bytes,
             source_kind,
@@ -1511,7 +1371,7 @@ async fn install_or_update_official_extension(
         managed_schema_declaration = inspection.managed_schema;
     }
     let prepared_schema = prepare_managed_schema(
-        state,
+        &dependencies,
         context.actor.current_workspace_id,
         managed_schema_declaration.as_ref(),
     )
@@ -1527,7 +1387,7 @@ async fn install_or_update_official_extension(
         acknowledged_warnings: value.acknowledged_warnings,
     });
     if is_node_plugin_category(category) {
-        let installed = service(state, &context.actor, operation_id)
+        let installed = service(&dependencies, &context.actor, operation_id)
             .install_extension_node_plugin(InstallExtensionNodePluginCommand {
                 actor_user_id: context.user.id,
                 category,
@@ -1561,7 +1421,7 @@ async fn install_or_update_official_extension(
                 .as_ref()
                 .is_some_and(|assignment| assignment.installation_id != installed.installation.id);
         if requires_model_provider_switch {
-            service(state, &context.actor, operation_id)
+            service(&dependencies, &context.actor, operation_id)
                 .switch_version(SwitchPluginVersionCommand {
                     actor_user_id: context.user.id,
                     provider_code: installed.installation.provider_code.clone(),
@@ -1573,7 +1433,7 @@ async fn install_or_update_official_extension(
                 .as_ref()
                 .is_none_or(|assignment| assignment.installation_id != installed.installation.id)
         {
-            service(state, &context.actor, operation_id)
+            service(&dependencies, &context.actor, operation_id)
                 .assign_plugin(AssignPluginCommand {
                     actor_user_id: context.user.id,
                     installation_id: installed.installation.id,
@@ -1590,7 +1450,7 @@ async fn install_or_update_official_extension(
             "extension_installation",
         ))?;
         let managed_schema_receipt = match prepared_schema {
-            Some(prepared) => Some(prepared.apply(state).await?),
+            Some(prepared) => Some(prepared.apply(&dependencies).await?),
             None => None,
         };
         return Ok((

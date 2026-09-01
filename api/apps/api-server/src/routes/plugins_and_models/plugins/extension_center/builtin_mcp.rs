@@ -3,13 +3,12 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::{
-    app_state::ApiState, error_response::ApiError,
-    official_extension_catalog::OfficialExtensionCatalogEntrySource,
+    error_response::ApiError, official_extension_catalog::OfficialExtensionCatalogEntrySource,
 };
 
 use super::{
-    compatibility_for_requirement, ExtensionCatalogGatewayEntryResponse, InstalledCatalogJoin,
-    McpExtensionTemplateInstanceResponse,
+    compatibility_for_requirement, ExtensionCatalogGatewayEntryResponse,
+    ExtensionCenterDependencies, InstalledCatalogJoin, McpExtensionTemplateInstanceResponse,
 };
 
 pub(crate) const BUILTIN_FRONTSTAGE_CATALOG_ID: &str = "mcp:1flowbase/frontstage_assistant";
@@ -41,7 +40,7 @@ pub(super) fn builtin_frontstage_matches_query(
 }
 
 pub(super) async fn builtin_frontstage_catalog_entry(
-    state: &ApiState,
+    dependencies: &ExtensionCenterDependencies,
     workspace_id: Uuid,
     installed: &HashMap<String, InstalledCatalogJoin>,
 ) -> Result<ExtensionCatalogGatewayEntryResponse, ApiError> {
@@ -51,7 +50,7 @@ pub(super) async fn builtin_frontstage_catalog_entry(
     let mut mcp_instances = Vec::with_capacity(package.instances.len());
     for template in &package.instances {
         let current = control_plane::ports::McpManagementRepository::get_mcp_instance(
-            &state.store,
+            &dependencies.store,
             workspace_id,
             &template.instance_id,
         )

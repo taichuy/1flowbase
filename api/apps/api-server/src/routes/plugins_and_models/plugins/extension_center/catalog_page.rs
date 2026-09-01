@@ -2,7 +2,6 @@ use control_plane::plugin_management::ExtensionCatalogCategory;
 use uuid::Uuid;
 
 use crate::{
-    app_state::ApiState,
     error_response::ApiError,
     official_extension_catalog::{
         OfficialExtensionCatalogFreshness, OfficialExtensionCatalogSearchQuery,
@@ -15,11 +14,11 @@ use super::{
         BUILTIN_FRONTSTAGE_CATALOG_ID, BUILTIN_FRONTSTAGE_CURSOR,
     },
     installed_catalog_joins, project_catalog_entry, ExtensionCatalogGatewayPageResponse,
-    ExtensionCatalogGatewayQuery,
+    ExtensionCatalogGatewayQuery, ExtensionCenterDependencies,
 };
 
 pub(super) async fn load_catalog_page(
-    state: &ApiState,
+    dependencies: &ExtensionCenterDependencies,
     workspace_id: Uuid,
     category: ExtensionCatalogCategory,
     query: ExtensionCatalogGatewayQuery,
@@ -33,7 +32,7 @@ pub(super) async fn load_catalog_page(
         builtin_frontstage_matches_query(package, query.q.as_deref(), query.slot_code.as_deref())
     });
     let remote_has_builtin = if builtin_matches {
-        state
+        dependencies
             .official_extension_catalog_source
             .find_entry_for_workspace(
                 workspace_id,
@@ -50,7 +49,7 @@ pub(super) async fn load_catalog_page(
     } else {
         limit
     };
-    let page = state
+    let page = dependencies
         .official_extension_catalog_source
         .search_for_workspace(
             workspace_id,
@@ -63,8 +62,8 @@ pub(super) async fn load_catalog_page(
             },
         )
         .await?;
-    let installed = installed_catalog_joins(state, category).await?;
-    let trusted_key_ids = state
+    let installed = installed_catalog_joins(dependencies, category).await?;
+    let trusted_key_ids = dependencies
         .official_plugin_source
         .trusted_public_keys()
         .iter()
@@ -84,7 +83,8 @@ pub(super) async fn load_catalog_page(
     }
     let mut next_cursor = page.next_cursor;
     if builtin_matches {
-        let builtin = builtin_frontstage_catalog_entry(state, workspace_id, &installed).await?;
+        let builtin =
+            builtin_frontstage_catalog_entry(dependencies, workspace_id, &installed).await?;
         if limit == 1 {
             entries.clear();
             if page.total_entries > 0 {

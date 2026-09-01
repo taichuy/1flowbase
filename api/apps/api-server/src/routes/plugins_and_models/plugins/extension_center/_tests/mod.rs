@@ -352,8 +352,9 @@ async fn root_1805_ac_009_catalog_search_resolves_the_current_workspace_route() 
         workspace_id: Arc::clone(&observed_workspace_id),
     });
 
+    let dependencies = super::legacy_dependencies(&state);
     let page = super::catalog_page::load_catalog_page(
-        &state,
+        &dependencies,
         workspace_id,
         super::ExtensionCatalogCategory::RuntimeExtensions,
         super::ExtensionCatalogGatewayQuery {

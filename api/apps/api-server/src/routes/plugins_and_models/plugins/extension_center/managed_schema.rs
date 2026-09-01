@@ -11,11 +11,11 @@ use plugin_framework::{
     ManagedSchemaAction, ManagedSchemaObject, PluginManifestV1, PluginSchemaOwner,
 };
 
-use crate::{app_state::ApiState, error_response::ApiError};
+use crate::error_response::ApiError;
 
 use super::{
-    ManagedSchemaApplyReceiptResponse, ManagedSchemaPreviewEntryResponse,
-    ManagedSchemaPreviewResponse,
+    ExtensionCenterDependencies, ManagedSchemaApplyReceiptResponse,
+    ManagedSchemaPreviewEntryResponse, ManagedSchemaPreviewResponse,
 };
 
 const DEFAULT_MAX_TARGET_TABLE_BYTES: u64 = 1_073_741_824;
@@ -66,16 +66,16 @@ impl PreparedManagedSchema {
 
     pub(super) async fn apply(
         self,
-        state: &ApiState,
+        dependencies: &ExtensionCenterDependencies,
     ) -> Result<ManagedSchemaApplyReceiptResponse, ApiError> {
         let receipt =
-            ManagedSchemaRepository::apply_managed_schema(&state.store, &self.plan).await?;
+            ManagedSchemaRepository::apply_managed_schema(&dependencies.store, &self.plan).await?;
         Ok(receipt_response(receipt))
     }
 }
 
 pub(super) async fn prepare_managed_schema(
-    state: &ApiState,
+    dependencies: &ExtensionCenterDependencies,
     workspace_id: uuid::Uuid,
     declaration: Option<&ManagedSchemaDeclaration>,
 ) -> Result<Option<PreparedManagedSchema>, ApiError> {
@@ -83,12 +83,12 @@ pub(super) async fn prepare_managed_schema(
         return Ok(None);
     };
     let registered_business_tables =
-        ModelDefinitionRepository::list_model_definitions(&state.store, workspace_id)
+        ModelDefinitionRepository::list_model_definitions(&dependencies.store, workspace_id)
             .await?
             .into_iter()
             .map(|definition| definition.physical_table_name)
             .collect::<BTreeSet<_>>();
-    let existing = ManagedSchemaRepository::list_managed_schema_ownership(&state.store)
+    let existing = ManagedSchemaRepository::list_managed_schema_ownership(&dependencies.store)
         .await?
         .iter()
         .map(existing_ownership)
@@ -101,7 +101,8 @@ pub(super) async fn prepare_managed_schema(
     )
     .map_err(|_| control_plane::errors::ControlPlaneError::Conflict("plugin_managed_schema"))?;
     let plan = repository_plan(&effective);
-    let preview = ManagedSchemaRepository::preview_managed_schema(&state.store, &plan).await?;
+    let preview =
+        ManagedSchemaRepository::preview_managed_schema(&dependencies.store, &plan).await?;
     Ok(Some(PreparedManagedSchema {
         plan,
         preview: preview_response(preview),
@@ -109,19 +110,20 @@ pub(super) async fn prepare_managed_schema(
 }
 
 pub(super) async fn retain_managed_schema(
-    state: &ApiState,
+    dependencies: &ExtensionCenterDependencies,
     workspace_id: uuid::Uuid,
     identity: &domain::ExtensionInstallationIdentity,
 ) -> Result<Option<ManagedSchemaApplyReceiptResponse>, ApiError> {
     let declaration = ManagedSchemaDeclaration::retained(identity);
-    let Some(prepared) = prepare_managed_schema(state, workspace_id, Some(&declaration)).await?
+    let Some(prepared) =
+        prepare_managed_schema(dependencies, workspace_id, Some(&declaration)).await?
     else {
         return Ok(None);
     };
     if prepared.plan.operations.is_empty() {
         return Ok(None);
     }
-    prepared.apply(state).await.map(Some)
+    prepared.apply(dependencies).await.map(Some)
 }
 
 fn existing_ownership(
