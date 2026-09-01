@@ -1,7 +1,7 @@
 use super::*;
 
 pub(super) struct SubscribedCompatibleTypedEventStream {
-    pub(super) state: Arc<ApiState>,
+    pub(super) terminal_dependencies: NativeRunTerminalDependencies,
     pub(super) initial_run: NativeRunResult,
     pub(super) from_sequence: Option<i64>,
     pub(super) ignored_waiting_callback_task_id: Option<uuid::Uuid>,
@@ -15,7 +15,7 @@ pub(super) async fn send_subscribed_compatible_typed_event_stream(
     // The only synthesized typed facts are canonical answer deltas recovered
     // from a durable terminal snapshot when the live lane did not deliver them.
     let SubscribedCompatibleTypedEventStream {
-        state,
+        terminal_dependencies,
         initial_run,
         from_sequence,
         ignored_waiting_callback_task_id,
@@ -25,7 +25,7 @@ pub(super) async fn send_subscribed_compatible_typed_event_stream(
     let mut last_forwarded_sequence = from_sequence.unwrap_or(0);
     let mut emitted_answer_delta = false;
     if forward_ordered_typed_events(
-        state.as_ref(),
+        &terminal_dependencies,
         &initial_run,
         &sender,
         ignored_waiting_callback_task_id,
@@ -40,7 +40,7 @@ pub(super) async fn send_subscribed_compatible_typed_event_stream(
 
     while let Some(event) = subscription.live_events.recv().await {
         if forward_ordered_typed_events(
-            state.as_ref(),
+            &terminal_dependencies,
             &initial_run,
             &sender,
             ignored_waiting_callback_task_id,
@@ -56,7 +56,7 @@ pub(super) async fn send_subscribed_compatible_typed_event_stream(
 }
 
 async fn forward_ordered_typed_events(
-    state: &ApiState,
+    terminal_dependencies: &NativeRunTerminalDependencies,
     initial_run: &NativeRunResult,
     sender: &mpsc::Sender<CompatibleProjectionInput>,
     ignored_waiting_callback_task_id: Option<uuid::Uuid>,
@@ -74,19 +74,23 @@ async fn forward_ordered_typed_events(
         };
         let terminal = is_public_terminal_runtime_event(&event.event_type);
         let run = if terminal {
-            let run =
-                match load_durable_native_run_for_terminal_projection(state, initial_run).await {
-                    Ok(run) => run,
-                    Err(error) => {
-                        warn!(
-                            flow_run_id = %initial_run.id,
-                            application_id = %initial_run.application_id,
-                            error = %error,
-                            "typed public terminal blocked because durable run reload failed"
-                        );
-                        continue;
-                    }
-                };
+            let run = match load_durable_native_run_for_terminal_projection_with_dependencies(
+                terminal_dependencies,
+                initial_run,
+            )
+            .await
+            {
+                Ok(run) => run,
+                Err(error) => {
+                    warn!(
+                        flow_run_id = %initial_run.id,
+                        application_id = %initial_run.application_id,
+                        error = %error,
+                        "typed public terminal blocked because durable run reload failed"
+                    );
+                    continue;
+                }
+            };
             if !durable_native_run_matches_terminal(&run, &event.event_type) {
                 warn!(
                     flow_run_id = %initial_run.id,
@@ -691,19 +695,29 @@ where
     let is_terminal = is_public_terminal_runtime_event(&event.event_type);
     let terminal_run;
     let run = if is_terminal {
-        terminal_run =
-            match load_durable_native_run_for_terminal_projection(state, initial_run).await {
-                Ok(run) => run,
-                Err(error) => {
-                    warn!(
-                        flow_run_id = %initial_run.id,
-                        application_id = %initial_run.application_id,
-                        error = %error,
-                        "compatible public terminal blocked because durable run reload failed"
-                    );
-                    return CompatibleForwardOutcome::Open;
-                }
-            };
+        terminal_run = match load_durable_native_run_for_terminal_projection_with_dependencies(
+            &NativeRunTerminalDependencies::new(
+                state.store.clone(),
+                state.runtime_engine.clone(),
+                state.provider_runtime.clone(),
+                state.provider_secret_master_key.clone(),
+                state.runtime_event_stream.clone(),
+            ),
+            initial_run,
+        )
+        .await
+        {
+            Ok(run) => run,
+            Err(error) => {
+                warn!(
+                    flow_run_id = %initial_run.id,
+                    application_id = %initial_run.application_id,
+                    error = %error,
+                    "compatible public terminal blocked because durable run reload failed"
+                );
+                return CompatibleForwardOutcome::Open;
+            }
+        };
         if !durable_native_run_matches_terminal(&terminal_run, &event.event_type) {
             warn!(
                 flow_run_id = %initial_run.id,
@@ -833,7 +847,7 @@ async fn send_compatible_sse_events(
 }
 
 pub(super) async fn append_compatible_resume_terminal_event(
-    state: &ApiState,
+    runtime_event_stream: &Arc<dyn control_plane::ports::RuntimeEventStream>,
     run: &NativeRunResult,
 ) {
     let Some(event) = terminal_runtime_event_from_native_run(run) else {
@@ -855,8 +869,7 @@ pub(super) async fn append_compatible_resume_terminal_event(
         trace_visible: event.trace_visible,
         payload: event.payload,
     };
-    let _ = state
-        .runtime_event_stream
+    let _ = runtime_event_stream
         .append_terminal_if_missing_and_close(run.id, payload)
         .await;
 }
@@ -899,7 +912,18 @@ where
         ignored_waiting_callback_task_id,
     } = fallback;
 
-    let latest_run = match recover_missing_stream_terminal_winner(state, initial_run).await {
+    let latest_run = match recover_missing_stream_terminal_winner_with_dependencies(
+        &NativeRunTerminalDependencies::new(
+            state.store.clone(),
+            state.runtime_engine.clone(),
+            state.provider_runtime.clone(),
+            state.provider_secret_master_key.clone(),
+            state.runtime_event_stream.clone(),
+        ),
+        initial_run,
+    )
+    .await
+    {
         Ok(run) => run,
         Err(error) => {
             warn!(

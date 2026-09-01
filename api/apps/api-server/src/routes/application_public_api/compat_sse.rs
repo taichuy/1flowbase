@@ -39,11 +39,14 @@ use crate::{
     app_state::ApiState,
     provider_runtime::ApiProviderRuntime,
     routes::application_public_api::{
+        compatibility_interface::CompatibilityExecutionDependencies,
         native::{self, service_error, NativeApiError},
         stream_terminal_fallback::{
             durable_canonical_partial_runtime_events_from_native_run,
-            durable_native_run_matches_terminal, load_durable_native_run_for_terminal_projection,
-            recover_missing_stream_terminal_winner, terminal_runtime_event_from_native_run,
+            durable_native_run_matches_terminal,
+            load_durable_native_run_for_terminal_projection_with_dependencies,
+            recover_missing_stream_terminal_winner_with_dependencies,
+            terminal_runtime_event_from_native_run, NativeRunTerminalDependencies,
         },
     },
 };
@@ -300,32 +303,27 @@ pub(crate) async fn prepare_compatible_resume_for_actor(
 }
 
 pub(crate) async fn execute_compatible_resume_for_actor(
-    state: Arc<ApiState>,
+    dependencies: CompatibilityExecutionDependencies,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
     command: ResumePublishedCallbackCommand,
 ) -> Result<NativeRunResult, NativeApiError> {
-    let mcp_runtime_invoker = native::public_mcp_runtime_invoker_for_actor(&state, &actor).await?;
-    let runtime_service = OrchestrationRuntimeService::new(
-        state.store.clone(),
-        ApiProviderRuntime::new(state.provider_runtime.clone()),
-        state.runtime_engine.clone(),
-        state.provider_secret_master_key.clone(),
+    let runtime_internal_tool_invoker = dependencies
+        .native
+        .runtime_invoker_factory
+        .for_actor(&actor)
+        .await?;
+    let runtime_service =
+        native::native_runtime_service(&dependencies.native, runtime_internal_tool_invoker)
+            .with_runtime_event_stream(dependencies.native.runtime_event_stream.clone());
+    ApplicationPublishedCallbackResumeService::new(
+        dependencies.native.store.clone(),
+        runtime_service,
     )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_file_storage_registry(state.file_storage_registry.clone())
-    .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
-    .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue())
-    .with_runtime_event_stream(state.runtime_event_stream.clone());
-    ApplicationPublishedCallbackResumeService::new(state.store.clone(), runtime_service)
-        .with_last_used_cache(state.infrastructure.cache_store())
-        .resume_callback_for_actor(actor, command)
-        .await
-        .map(|result| result.run)
-        .map_err(service_error)
+    .with_last_used_cache(dependencies.native.cache_store.clone())
+    .resume_callback_for_actor(actor, command)
+    .await
+    .map(|result| result.run)
+    .map_err(service_error)
 }
 
 #[cfg(test)]
@@ -471,43 +469,51 @@ fn test_projected_events_response(events: Vec<Result<Event, Infallible>>) -> Res
 }
 
 pub(crate) async fn start_compatible_typed_start_stream_for_actor(
-    state: Arc<ApiState>,
+    dependencies: CompatibilityExecutionDependencies,
     initial_run: NativeRunResult,
     provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
-    let mcp_runtime_invoker = native::public_mcp_runtime_invoker_for_actor(&state, &actor).await?;
+    let mcp_runtime_invoker = dependencies
+        .native
+        .runtime_invoker_factory
+        .for_actor(&actor)
+        .await?;
     let opened = open_compatible_turn_with_invoker(
-        state.clone(),
+        dependencies.clone(),
         initial_run,
         CompatibleTurnAction::Start,
         provider_transport_slot,
         mcp_runtime_invoker,
     )
     .await?;
-    opened_compatible_typed_stream(state, opened)
+    opened_compatible_typed_stream(dependencies, opened)
 }
 
 pub(crate) async fn start_compatible_typed_resume_stream_for_actor(
-    state: Arc<ApiState>,
+    dependencies: CompatibilityExecutionDependencies,
     initial_run: NativeRunResult,
     command: ResumePublishedCallbackCommand,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
-    let mcp_runtime_invoker = native::public_mcp_runtime_invoker_for_actor(&state, &actor).await?;
+    let mcp_runtime_invoker = dependencies
+        .native
+        .runtime_invoker_factory
+        .for_actor(&actor)
+        .await?;
     let opened = open_compatible_turn_with_invoker(
-        state.clone(),
+        dependencies.clone(),
         initial_run,
         CompatibleTurnAction::ResumeForActor { command, actor },
         None,
         mcp_runtime_invoker,
     )
     .await?;
-    opened_compatible_typed_stream(state, opened)
+    opened_compatible_typed_stream(dependencies, opened)
 }
 
 fn opened_compatible_typed_stream(
-    state: Arc<ApiState>,
+    dependencies: CompatibilityExecutionDependencies,
     opened: OpenedCompatibleTurn,
 ) -> Result<CompatibleTypedTurnStream, NativeApiError> {
     let OpenedCompatibleTurn {
@@ -527,7 +533,7 @@ fn opened_compatible_typed_stream(
     });
     tokio::spawn(send_subscribed_compatible_typed_event_stream(
         SubscribedCompatibleTypedEventStream {
-            state,
+            terminal_dependencies: native::native_run_terminal_dependencies(&dependencies.native),
             initial_run: initial_run.clone(),
             from_sequence,
             ignored_waiting_callback_task_id,
@@ -554,7 +560,13 @@ pub(crate) async fn start_compatible_typed_attach_stream(
     let (sender, events) = mpsc::channel(32);
     tokio::spawn(send_subscribed_compatible_typed_event_stream(
         SubscribedCompatibleTypedEventStream {
-            state,
+            terminal_dependencies: NativeRunTerminalDependencies::new(
+                state.store.clone(),
+                state.runtime_engine.clone(),
+                state.provider_runtime.clone(),
+                state.provider_secret_master_key.clone(),
+                state.runtime_event_stream.clone(),
+            ),
             initial_run: initial_run.clone(),
             from_sequence,
             ignored_waiting_callback_task_id: None,
@@ -569,7 +581,7 @@ pub(crate) async fn start_compatible_typed_attach_stream(
 }
 
 async fn open_compatible_turn_with_invoker(
-    state: Arc<ApiState>,
+    dependencies: CompatibilityExecutionDependencies,
     initial_run: NativeRunResult,
     action: CompatibleTurnAction,
     provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
@@ -578,7 +590,8 @@ async fn open_compatible_turn_with_invoker(
     >,
 ) -> Result<OpenedCompatibleTurn, NativeApiError> {
     let turn_action = action.name();
-    if let Err(error) = state
+    if let Err(error) = dependencies
+        .native
         .runtime_event_stream
         .open_run(
             initial_run.id,
@@ -597,7 +610,8 @@ async fn open_compatible_turn_with_invoker(
 
     let ignored_waiting_callback_task_id = action.resumed_callback_task_id();
     let from_sequence = if ignored_waiting_callback_task_id.is_some() {
-        let resume_started = state
+        let resume_started = dependencies
+            .native
             .runtime_event_stream
             .append(
                 initial_run.id,
@@ -609,7 +623,8 @@ async fn open_compatible_turn_with_invoker(
     } else {
         None
     };
-    let subscription = state
+    let subscription = dependencies
+        .native
         .runtime_event_stream
         .subscribe(initial_run.id, from_sequence)
         .await
@@ -624,25 +639,14 @@ async fn open_compatible_turn_with_invoker(
             service_error(error)
         })?;
 
-    let background_state = state.clone();
+    let background_dependencies = dependencies.clone();
     let background_run = initial_run.clone();
     let execution = tokio::spawn(async move {
-        let runtime_service = OrchestrationRuntimeService::new(
-            background_state.store.clone(),
-            ApiProviderRuntime::new(background_state.provider_runtime.clone()),
-            background_state.runtime_engine.clone(),
-            background_state.provider_secret_master_key.clone(),
-        )
-        .with_node_artifact_context(
-            background_state.api_node_id.clone(),
-            background_state.provider_install_root.clone(),
-        )
-        .with_file_storage_registry(background_state.file_storage_registry.clone())
-        .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
-        .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
-        .with_provider_request_log_queue(background_state.infrastructure.task_queue())
-        .with_provider_transport_store(background_state.infrastructure.provider_transport_store())
-        .with_runtime_event_stream(background_state.runtime_event_stream.clone());
+        let runtime_service =
+            native::native_runtime_service(&background_dependencies.native, mcp_runtime_invoker)
+                .with_runtime_event_stream(
+                    background_dependencies.native.runtime_event_stream.clone(),
+                );
         match action {
             CompatibleTurnAction::Start => {
                 if let Err(runtime_error) = runtime_service
@@ -660,8 +664,13 @@ async fn open_compatible_turn_with_invoker(
                         "compatible public API streamed run failed"
                     );
                     if let Err(recovery_error) =
-                        recover_missing_stream_terminal_winner(&background_state, &background_run)
-                            .await
+                        recover_missing_stream_terminal_winner_with_dependencies(
+                            &native::native_run_terminal_dependencies(
+                                &background_dependencies.native,
+                            ),
+                            &background_run,
+                        )
+                        .await
                     {
                         warn!(
                             flow_run_id = %background_run.id,
@@ -674,16 +683,19 @@ async fn open_compatible_turn_with_invoker(
             }
             CompatibleTurnAction::ResumeForActor { command, actor } => {
                 match ApplicationPublishedCallbackResumeService::new(
-                    background_state.store.clone(),
+                    background_dependencies.native.store.clone(),
                     runtime_service,
                 )
-                .with_last_used_cache(background_state.infrastructure.cache_store())
+                .with_last_used_cache(background_dependencies.native.cache_store.clone())
                 .resume_callback_for_actor(actor, command)
                 .await
                 {
                     Ok(result) => {
-                        append_compatible_resume_terminal_event(&background_state, &result.run)
-                            .await
+                        append_compatible_resume_terminal_event(
+                            &background_dependencies.native.runtime_event_stream,
+                            &result.run,
+                        )
+                        .await
                     }
                     Err(error) => {
                         warn!(
@@ -691,7 +703,8 @@ async fn open_compatible_turn_with_invoker(
                             error = %error,
                             "compatible callback resume failed"
                         );
-                        let _ = background_state
+                        let _ = background_dependencies
+                            .native
                             .runtime_event_stream
                             .append_terminal_if_missing_and_close(
                                 background_run.id,

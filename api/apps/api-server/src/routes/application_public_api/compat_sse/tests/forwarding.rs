@@ -8,8 +8,12 @@ use super::support::*;
 use crate::{
     app_state::ApiState,
     host_infrastructure::LocalRuntimeEventStream,
-    routes::application_public_api::sse::{
-        send_native_runtime_event_stream, IncludeWorkflowEvents,
+    routes::application_public_api::{
+        sse::{
+            send_native_runtime_event_stream_with_dependencies, IncludeWorkflowEvents,
+            NativeRunSseDependencies,
+        },
+        stream_terminal_fallback::NativeRunTerminalDependencies,
     },
 };
 use axum::response::IntoResponse;
@@ -25,6 +29,19 @@ use serde_json::json;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::mpsc;
 use uuid::Uuid;
+
+fn native_run_sse_dependencies(state: &ApiState) -> NativeRunSseDependencies {
+    NativeRunSseDependencies::new(
+        state.runtime_event_stream.clone(),
+        NativeRunTerminalDependencies::new(
+            state.store.clone(),
+            state.runtime_engine.clone(),
+            state.provider_runtime.clone(),
+            state.provider_secret_master_key.clone(),
+            state.runtime_event_stream.clone(),
+        ),
+    )
+}
 
 async fn native_sse_body_from_replay(
     base_state: &ApiState,
@@ -45,8 +62,8 @@ async fn native_sse_body_from_replay(
 
     tokio::time::timeout(
         Duration::from_secs(2),
-        send_native_runtime_event_stream(
-            Arc::new(state),
+        send_native_runtime_event_stream_with_dependencies(
+            native_run_sse_dependencies(&state),
             run,
             IncludeWorkflowEvents::None,
             from_sequence,
@@ -213,8 +230,8 @@ async fn d2_ac_008_native_eof_fallback_finalizes_running_winner_before_projectio
     let (run, state) = running_run_with_closed_stream().await;
     let (sender, mut receiver) = mpsc::channel(32);
 
-    send_native_runtime_event_stream(
-        state.clone(),
+    send_native_runtime_event_stream_with_dependencies(
+        native_run_sse_dependencies(state.as_ref()),
         run.clone(),
         IncludeWorkflowEvents::None,
         None,

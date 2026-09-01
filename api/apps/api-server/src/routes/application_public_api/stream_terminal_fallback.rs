@@ -21,10 +21,7 @@ use tracing::warn;
 
 use std::sync::Arc;
 
-use crate::{
-    app_state::ApiState,
-    provider_runtime::{ApiProviderRuntime, ApiRuntimeServices},
-};
+use crate::provider_runtime::{ApiProviderRuntime, ApiRuntimeServices};
 
 #[derive(Clone)]
 pub(crate) struct NativeRunTerminalDependencies {
@@ -53,16 +50,6 @@ impl NativeRunTerminalDependencies {
     }
 }
 
-fn native_run_terminal_dependencies(state: &ApiState) -> NativeRunTerminalDependencies {
-    NativeRunTerminalDependencies::new(
-        state.store.clone(),
-        state.runtime_engine.clone(),
-        state.provider_runtime.clone(),
-        state.provider_secret_master_key.clone(),
-        state.runtime_event_stream.clone(),
-    )
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TerminalAnswerDeltaKind {
     Reasoning,
@@ -78,21 +65,6 @@ pub(crate) struct TerminalAnswerDelta {
 /// A public terminal may only be projected from a durable run snapshot. A load
 /// failure is therefore a barrier failure, not permission to reuse the stale
 /// pre-execution snapshot.
-/// B3 compatibility bridge. Native interface execution uses the explicit-dependency variant.
-#[deprecated(
-    note = "B3 compatibility bridge; use load_durable_native_run_for_terminal_projection_with_dependencies"
-)]
-pub(crate) async fn load_durable_native_run_for_terminal_projection(
-    state: &ApiState,
-    initial_run: &NativeRunResult,
-) -> anyhow::Result<NativeRunResult> {
-    load_durable_native_run_for_terminal_projection_with_dependencies(
-        &native_run_terminal_dependencies(state),
-        initial_run,
-    )
-    .await
-}
-
 pub(crate) async fn load_durable_native_run_for_terminal_projection_with_dependencies(
     dependencies: &NativeRunTerminalDependencies,
     initial_run: &NativeRunResult,
@@ -117,21 +89,6 @@ pub(crate) fn durable_native_run_matches_terminal(run: &NativeRunResult, event_t
 /// Resolves a confirmed producer EOF to the durable winner before an API adapter projects it.
 /// Callers must use this only after execution has ended or a runtime stream closed without a
 /// terminal event; transport failures and client disconnects are not EOF evidence.
-/// B3 compatibility bridge. Native interface execution uses the explicit-dependency variant.
-#[deprecated(
-    note = "B3 compatibility bridge; use recover_missing_stream_terminal_winner_with_dependencies"
-)]
-pub(crate) async fn recover_missing_stream_terminal_winner(
-    state: &ApiState,
-    initial_run: &NativeRunResult,
-) -> anyhow::Result<NativeRunResult> {
-    recover_missing_stream_terminal_winner_with_dependencies(
-        &native_run_terminal_dependencies(state),
-        initial_run,
-    )
-    .await
-}
-
 pub(crate) async fn recover_missing_stream_terminal_winner_with_dependencies(
     dependencies: &NativeRunTerminalDependencies,
     initial_run: &NativeRunResult,

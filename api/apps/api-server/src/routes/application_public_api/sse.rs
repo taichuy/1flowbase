@@ -12,17 +12,12 @@ use tokio::sync::mpsc;
 use tracing::{debug, warn};
 use uuid::Uuid;
 
-use crate::{
-    app_state::ApiState,
-    routes::application_public_api::stream_terminal_fallback::{
-        durable_canonical_partial_runtime_events_from_native_run,
-        durable_native_run_matches_terminal,
-        load_durable_native_run_for_terminal_projection_with_dependencies,
-        recover_missing_stream_terminal_winner_with_dependencies,
-        terminal_answer_deltas_from_payload, terminal_answer_text_from_payload,
-        terminal_runtime_event_from_native_run, NativeRunTerminalDependencies, TerminalAnswerDelta,
-        TerminalAnswerDeltaKind,
-    },
+use crate::routes::application_public_api::stream_terminal_fallback::{
+    durable_canonical_partial_runtime_events_from_native_run, durable_native_run_matches_terminal,
+    load_durable_native_run_for_terminal_projection_with_dependencies,
+    recover_missing_stream_terminal_winner_with_dependencies, terminal_answer_deltas_from_payload,
+    terminal_answer_text_from_payload, terminal_runtime_event_from_native_run,
+    NativeRunTerminalDependencies, TerminalAnswerDelta, TerminalAnswerDeltaKind,
 };
 
 pub type NativeRunSseStream = tokio_stream::wrappers::ReceiverStream<Result<Event, Infallible>>;
@@ -49,19 +44,6 @@ impl NativeRunSseDependencies {
             terminal,
         }
     }
-}
-
-fn native_run_sse_dependencies(state: &ApiState) -> NativeRunSseDependencies {
-    NativeRunSseDependencies::new(
-        state.runtime_event_stream.clone(),
-        NativeRunTerminalDependencies::new(
-            state.store.clone(),
-            state.runtime_engine.clone(),
-            state.provider_runtime.clone(),
-            state.provider_secret_master_key.clone(),
-            state.runtime_event_stream.clone(),
-        ),
-    )
 }
 
 #[derive(Debug, Serialize)]
@@ -384,29 +366,6 @@ pub(crate) fn is_answer_presentation_delta(envelope: &RuntimeEventEnvelope) -> b
         envelope.event_type.as_str(),
         "reasoning_delta" | "text_delta"
     ) && debug_stream_events::is_answer_presentation_delta_payload(&envelope.payload)
-}
-
-/// B3 compatibility bridge. Native interface execution uses the explicit-dependency variant.
-#[deprecated(
-    note = "B3 compatibility bridge; use send_native_runtime_event_stream_with_dependencies"
-)]
-pub(crate) async fn send_native_runtime_event_stream(
-    state: Arc<ApiState>,
-    initial_run: NativeRunResult,
-    include_workflow_events: IncludeWorkflowEvents,
-    from_sequence: Option<i64>,
-    ignored_waiting_callback_task_id: Option<Uuid>,
-    sender: mpsc::Sender<Result<Event, Infallible>>,
-) {
-    send_native_runtime_event_stream_with_dependencies(
-        native_run_sse_dependencies(state.as_ref()),
-        initial_run,
-        include_workflow_events,
-        from_sequence,
-        ignored_waiting_callback_task_id,
-        sender,
-    )
-    .await;
 }
 
 pub(crate) async fn send_native_runtime_event_stream_with_dependencies(

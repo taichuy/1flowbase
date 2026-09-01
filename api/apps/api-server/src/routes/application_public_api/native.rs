@@ -305,7 +305,7 @@ pub(crate) fn application_native_run_port(
     Arc::new(ApplicationNativeRunAdapter(dependencies))
 }
 
-fn native_runtime_service(
+pub(crate) fn native_runtime_service(
     dependencies: &ApplicationNativeRunDependencies,
     runtime_internal_tool_invoker: Arc<
         dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
@@ -340,7 +340,7 @@ fn native_run_sse_dependencies(
     )
 }
 
-fn native_run_terminal_dependencies(
+pub(crate) fn native_run_terminal_dependencies(
     dependencies: &ApplicationNativeRunDependencies,
 ) -> NativeRunTerminalDependencies {
     NativeRunTerminalDependencies::new(
@@ -852,7 +852,7 @@ pub(crate) async fn execute_blocking_native_run_for_actor(
     execute_blocking_native_run_for_actor_with_provider_transport(state, actor, run, None).await
 }
 
-async fn execute_blocking_native_run_for_actor_with_dependencies(
+pub(crate) async fn execute_blocking_native_run_for_actor_with_dependencies(
     dependencies: ApplicationNativeRunDependencies,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
     run: NativeRunResult,

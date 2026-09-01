@@ -36,7 +36,9 @@ pub(crate) use models::{compatibility_models_port, invoke_models, CompatibilityM
 use crate::{
     app_state::ApiState,
     extension_bus::ApplicationApiKeyAuthenticationCredential,
-    routes::application_public_api::native::{self, NativeApiError},
+    routes::application_public_api::native::{
+        self, ApplicationNativeRunDependencies, NativeApiError,
+    },
 };
 
 pub(crate) const OPENAI_CHAT_BINDING_ID: &str = "http.compat.openai.chat-completions.blocking.v1";
@@ -190,6 +192,20 @@ pub(crate) trait CompatibilityBlockingPort: Send + Sync + 'static {
     >;
 }
 
+#[derive(Clone)]
+pub(crate) struct CompatibilityExecutionDependencies {
+    pub(crate) native: ApplicationNativeRunDependencies,
+    pub(crate) provider_transport_store: Arc<dyn ProviderTransportStore>,
+}
+
+struct CompatibilityExecutionAdapter(CompatibilityExecutionDependencies);
+
+pub(crate) fn compatibility_execution_port(
+    dependencies: CompatibilityExecutionDependencies,
+) -> Arc<dyn CompatibilityBlockingPort> {
+    Arc::new(CompatibilityExecutionAdapter(dependencies))
+}
+
 struct CompatibilityBlockingHandler {
     port: Arc<dyn CompatibilityBlockingPort>,
 }
@@ -247,13 +263,13 @@ impl
     }
 }
 
-impl CompatibilityBlockingPort for ApiState {
+impl CompatibilityBlockingPort for CompatibilityExecutionAdapter {
     fn execute<'a>(
         &'a self,
         principal: &'a ApplicationPrincipal,
         input: CompatibilityBlockingInput,
     ) -> CompatibilityBlockingFuture<'a> {
-        let state = Arc::new(self.clone());
+        let dependencies = self.0.clone();
         let actor = application_actor(principal);
         Box::pin(async move {
             let (request, protocol, provider_transport) = match input.command {
@@ -264,7 +280,7 @@ impl CompatibilityBlockingPort for ApiState {
                 } => (request, protocol, provider_transport),
                 CompatibilityInvocationCommand::Resume { command, .. } => {
                     return crate::routes::application_public_api::compat_sse::execute_compatible_resume_for_actor(
-                        state,
+                        dependencies,
                         actor,
                         command,
                     )
@@ -274,14 +290,14 @@ impl CompatibilityBlockingPort for ApiState {
                 }
             };
             let protocol_context = request.client_protocol_envelope.clone();
-            let run = ApplicationNativeRunService::new(state.store.clone())
-                .with_last_used_cache(state.infrastructure.cache_store())
+            let run = ApplicationNativeRunService::new(dependencies.native.store.clone())
+                .with_last_used_cache(dependencies.native.cache_store.clone())
                 .create_native_run_for_actor(actor.clone(), request, protocol)
                 .await
                 .map_err(native::native_error)
                 .map_err(CompatibilityBlockingTargetError)?;
             native::stage_client_protocol_context(
-                state.infrastructure.provider_transport_store().as_ref(),
+                dependencies.provider_transport_store.as_ref(),
                 &run,
                 protocol_context,
             )
@@ -289,7 +305,7 @@ impl CompatibilityBlockingPort for ApiState {
             .map_err(CompatibilityBlockingTargetError)?;
             let provider_transport_slot = match provider_transport {
                 Some(transport) => stage_provider_transport(
-                    state.infrastructure.provider_transport_store().as_ref(),
+                    dependencies.provider_transport_store.as_ref(),
                     run.id,
                     transport.operation,
                     transport.payload,
@@ -298,8 +314,8 @@ impl CompatibilityBlockingPort for ApiState {
                 .map_err(CompatibilityBlockingTargetError)?,
                 None => None,
             };
-            native::execute_blocking_native_run_for_actor_with_provider_transport(
-                state,
+            native::execute_blocking_native_run_for_actor_with_dependencies(
+                dependencies.native,
                 actor,
                 run,
                 provider_transport_slot,
@@ -329,7 +345,7 @@ impl CompatibilityBlockingPort for ApiState {
                 + 'a,
         >,
     > {
-        let state = Arc::new(self.clone());
+        let dependencies = self.0.clone();
         let actor = application_actor(principal);
         Box::pin(async move {
             let typed = match input.command {
@@ -339,14 +355,14 @@ impl CompatibilityBlockingPort for ApiState {
                     provider_transport,
                 } => {
                     let protocol_context = request.client_protocol_envelope.clone();
-                    let run = ApplicationNativeRunService::new(state.store.clone())
-                        .with_last_used_cache(state.infrastructure.cache_store())
+                    let run = ApplicationNativeRunService::new(dependencies.native.store.clone())
+                        .with_last_used_cache(dependencies.native.cache_store.clone())
                         .create_native_run_for_actor(actor.clone(), request, protocol)
                         .await
                         .map_err(native::native_error)
                         .map_err(CompatibilityBlockingTargetError)?;
                     native::stage_client_protocol_context(
-                        state.infrastructure.provider_transport_store().as_ref(),
+                        dependencies.provider_transport_store.as_ref(),
                         &run,
                         protocol_context,
                     )
@@ -354,7 +370,7 @@ impl CompatibilityBlockingPort for ApiState {
                     .map_err(CompatibilityBlockingTargetError)?;
                     let provider_transport_slot = match provider_transport {
                         Some(transport) => stage_provider_transport(
-                            state.infrastructure.provider_transport_store().as_ref(),
+                            dependencies.provider_transport_store.as_ref(),
                             run.id,
                             transport.operation,
                             transport.payload,
@@ -364,7 +380,7 @@ impl CompatibilityBlockingPort for ApiState {
                         None => None,
                     };
                     crate::routes::application_public_api::compat_sse::start_compatible_typed_start_stream_for_actor(
-                        state,
+                        dependencies,
                         run,
                         provider_transport_slot,
                         actor,
@@ -376,7 +392,7 @@ impl CompatibilityBlockingPort for ApiState {
                     initial_run,
                     command,
                 } => crate::routes::application_public_api::compat_sse::start_compatible_typed_resume_stream_for_actor(
-                    state,
+                    dependencies,
                     initial_run,
                     command,
                     actor,
