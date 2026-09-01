@@ -12,8 +12,9 @@
 - QA-3 frozen documentation candidate: `beta@d354bf31c7cc4494d882461e976e64503758c159`
 - EIL-F14R-D input Product Assembly: `beta@d8a20be4eda6fd1dd39d3b3a15e02d2b56692cee`
 - EIL-F14R-D assembled Product candidate: `beta@093c19b8a542644d9faed5f8942e66784c30292b`
+- EIL-F14R-E assembled Product candidate: `beta@c4865b02e0836a69409d43a252e6e0f800a7e254`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
-- Delivery state: `QA_FAIL / NEEDS_REFRAME`
+- Delivery state: `ASSEMBLED / QA-6 PENDING`
 - Root AC state: candidate only; not settled
 
 ## Packet Assembly
@@ -41,6 +42,7 @@
 | EIL-F14R-D3 | `093c19b8a542644d9faed5f8942e66784c30292b` | Candidate-bound validation assets and input-Assembly permission-equivalence baseline |
 | EIL-F14R-D4 | `d682d8f1e08db8b6bc74acedbb8837d64dbb388d` | Global publication evidence and QA-4 governance freeze |
 | EIL-F14R-D5 | `db57f9adf8c4c11ad4e43eaecae8059e2551ef23` | QA-4 history and QA harness resource isolation only; Product Assembly unchanged |
+| EIL-F14R-E | `c4865b02e0836a69409d43a252e6e0f800a7e254` | Preserve archive-export and runtime-model error semantics; freeze exact resource-bounded QA-6 execution evidence |
 
 Every row above is a serial commit or inclusive serial range on `beta`; the Git history is the authoritative per-file write-set ledger. No packet changed database schema, migrations, external DTOs, permissions, Runtime/plugin wire, or official plugin source.
 
@@ -287,3 +289,40 @@ execution. Candidate states are: EIL-001/002/003/005/008 `PASS`; EIL-004/006/007
 `NOT_SETTLED`. No EIL or Root acceptance is formally settled.
 
 #1963 and #1893 remain OPEN. No EIL or Root AC is settled, no push occurred, and no product, test, migration, protocol or official-plugin source was changed after the frozen candidate.
+
+## EIL-F14R-E assembled candidate — QA-6 pending
+
+The approved bounded remediation keeps the complete Interface Lifecycle architecture frozen and
+closes the two product-behavior roots exposed by QA-5 without changing external DTOs, permissions,
+database schema, migrations, Runtime behavior or plugin wire:
+
+1. Read-only application archive export now uses the frozen Console protocol credential profile
+   without requiring CSRF. Mutating archive operations retain their existing CSRF ownership.
+2. Runtime-model Authentication no longer projects an unavailable business operation before the
+   typed Handler runs. The Handler remains the business-error owner and preserves the established
+   `409 model_not_published` response.
+
+All nine authentic QA-5 API failures were reproduced individually before the fix. On Product
+Assembly `c4865b02e0836a69409d43a252e6e0f800a7e254`, the same exact set passed `9/0`. The selected
+long-running API sample completed in approximately 35 seconds with approximately 489 MiB maximum
+RSS. The formerly failing Settings migration fixture passed independently (`1/0`) and its complete
+integration target passed serially (`11/0`) against the existing PostgreSQL 18.6 development
+container. This demonstrates that the QA-5 `53200` observation was concurrent-fixture lock pressure,
+not a migration semantic failure.
+
+The repository-owned four-way nextest partition is an exact representation of the complete
+api-server inventory: full inventory `1267`, partitions `329/279/330/329`, union `1267`, and
+missing/extra/duplicate `0/0/0`. QA-6 must execute these partitions serially with bounded intra-shard
+concurrency and validate the binary-qualified inventory before accepting Row 05. Storage PostgreSQL
+tests must likewise use serial exact partitions with one test thread. The existing `docker-db-1`
+database is used only through unique `PostgresTestSchema` schemas; QA-6 records the exact sorted
+`test_*` schema-name set before and after and requires zero set difference.
+
+Row 01 completeness is semantic: it extracts only the `Packet Assembly` section and requires every
+named Packet identity exactly once. It does not count all Markdown rows beginning with `EIL-`, so
+historical acceptance tables cannot create a false failure.
+
+QA-1 through QA-5 evidence remains immutable. The targeted diagnostics above are assembly evidence,
+not a substitute for centralized QA. No EIL or Root AC becomes settled until one fresh QA-6 closes
+all 15 rows with zero product failures and zero unrun items. #1963 and #1893 remain OPEN; no push or
+Root AC settlement is authorized.
