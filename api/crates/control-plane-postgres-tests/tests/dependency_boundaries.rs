@@ -288,40 +288,52 @@ fn workspace_dependency_graph_respects_layer_boundaries() {
 }
 
 #[test]
-fn protocol_layers_use_services_without_concrete_storage_or_sql() {
+fn protocol_layers_use_explicit_adapters_without_sql_or_runtime_host() {
     let api = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    let metadata = cargo_metadata(&api);
-    let api_dependencies = resolved_dependencies(&metadata, "api-server");
-    let mut patterns = vec![
-        ("ApiDurableStore alias", "ApiDurableStore".to_owned()),
-        ("direct sqlx use", "sqlx::".to_owned()),
-        ("raw pool access", ".pool()".to_owned()),
-    ];
-    for dependency in api_dependencies.iter().filter(|dependency| {
-        matches!(
-            dependency.package.as_str(),
-            "storage-durable-postgres" | "runtime-extension-host"
-        )
-    }) {
-        patterns.push((
-            "concrete dependency reference",
-            format!("{}::", dependency.crate_name),
-        ));
-    }
-    let borrowed_patterns = patterns
-        .iter()
-        .map(|(label, pattern)| (*label, pattern.as_str()))
-        .collect::<Vec<_>>();
+    let patterns = protocol_layer_forbidden_patterns();
     let mut violations = Vec::new();
     for directory in [
         api.join("apps/api-server/src/routes"),
         api.join("apps/api-server/src/controllers"),
     ] {
         if directory.exists() {
-            violations.extend(source_pattern_violations(&directory, &borrowed_patterns));
+            violations.extend(source_pattern_violations(&directory, &patterns));
         }
     }
     assert_eq!(violations, Vec::<String>::new());
+}
+
+fn protocol_layer_forbidden_patterns() -> [(&'static str, &'static str); 4] {
+    [
+        ("ApiDurableStore alias", "ApiDurableStore"),
+        ("direct sqlx use", "sqlx::"),
+        ("raw pool access", ".pool()"),
+        (
+            "Runtime Host implementation dependency",
+            "runtime_extension_host::",
+        ),
+    ]
+}
+
+#[test]
+fn protocol_dependency_rule_allows_explicit_durable_adapter_but_rejects_implementation_leaks() {
+    let patterns = protocol_layer_forbidden_patterns();
+    let allowed = "struct Adapter { store: storage_durable_postgres::MainDurableStore }";
+    assert!(patterns
+        .iter()
+        .all(|(_, pattern)| !allowed.contains(pattern)));
+
+    for denied in [
+        "sqlx::query(\"select 1\")",
+        "state.store.pool()",
+        "runtime_extension_host::RuntimeExtensionHost",
+        "type Store = ApiDurableStore",
+    ] {
+        assert!(
+            patterns.iter().any(|(_, pattern)| denied.contains(pattern)),
+            "boundary fixture must reject `{denied}`"
+        );
+    }
 }
 
 #[test]
