@@ -15,13 +15,20 @@ pub(crate) enum CoreConsoleAuthorizationSpec {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CoreConsoleRouteSelector {
+    AuthenticatedRoutes,
+    OwnedOperation,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CoreConsoleOperationSpec {
     pub(crate) operation_id: &'static str,
     pub(crate) policy_group: CoreConsolePolicyGroupSpec,
     pub(crate) authorization: CoreConsoleAuthorizationSpec,
+    pub(crate) route_selector: CoreConsoleRouteSelector,
 }
 
-const fn authenticated(
+const fn authenticated_routes(
     operation_id: &'static str,
     other_group_id: &'static str,
 ) -> CoreConsoleOperationSpec {
@@ -29,6 +36,19 @@ const fn authenticated(
         operation_id,
         policy_group: CoreConsolePolicyGroupSpec::Other(other_group_id),
         authorization: CoreConsoleAuthorizationSpec::Authenticated,
+        route_selector: CoreConsoleRouteSelector::AuthenticatedRoutes,
+    }
+}
+
+const fn authenticated_operation(
+    operation_id: &'static str,
+    other_group_id: &'static str,
+) -> CoreConsoleOperationSpec {
+    CoreConsoleOperationSpec {
+        operation_id,
+        policy_group: CoreConsolePolicyGroupSpec::Other(other_group_id),
+        authorization: CoreConsoleAuthorizationSpec::Authenticated,
+        route_selector: CoreConsoleRouteSelector::OwnedOperation,
     }
 }
 
@@ -40,6 +60,7 @@ const fn settings(
         operation_id,
         policy_group: CoreConsolePolicyGroupSpec::SettingsFeature(feature_id),
         authorization: CoreConsoleAuthorizationSpec::Simple,
+        route_selector: CoreConsoleRouteSelector::OwnedOperation,
     }
 }
 
@@ -48,6 +69,7 @@ const fn other(operation_id: &'static str, group_id: &'static str) -> CoreConsol
         operation_id,
         policy_group: CoreConsolePolicyGroupSpec::Other(group_id),
         authorization: CoreConsoleAuthorizationSpec::Simple,
+        route_selector: CoreConsoleRouteSelector::OwnedOperation,
     }
 }
 
@@ -64,13 +86,14 @@ const fn resource_action(
             resource_code,
             action_code,
         },
+        route_selector: CoreConsoleRouteSelector::OwnedOperation,
     }
 }
 
 /// The Core's closed operation set. New route ownership fails compilation until it is declared
 /// here with an explicit policy group and authorization contract.
 pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
-    authenticated("core.authenticated", "core.authenticated"),
+    authenticated_routes("core.authenticated", "core.authenticated"),
     settings("applications.api.set_enabled", "system.applications"),
     settings("applications.create", "system.applications"),
     resource_action(
@@ -139,6 +162,32 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("file_tables.list", "system.files"),
     settings("file_tables.storage.bind", "system.files"),
     other("frontend_blocks.view", "other.frontend-blocks"),
+    authenticated_operation("frontstage.actions.dispatch", "other.frontstage"),
+    authenticated_operation("frontstage.blocks.code.update", "other.frontstage"),
+    authenticated_operation("frontstage.blocks.code.view", "other.frontstage"),
+    authenticated_operation("frontstage.blocks.create", "other.frontstage"),
+    authenticated_operation("frontstage.blocks.delete", "other.frontstage"),
+    authenticated_operation("frontstage.blocks.move", "other.frontstage"),
+    authenticated_operation("frontstage.blocks.open", "other.frontstage"),
+    authenticated_operation("frontstage.blocks.runtime.view", "other.frontstage"),
+    authenticated_operation("frontstage.blocks.search", "other.frontstage"),
+    authenticated_operation("frontstage.blocks.update", "other.frontstage"),
+    authenticated_operation("frontstage.blocks.view", "other.frontstage"),
+    authenticated_operation("frontstage.components.view", "other.frontstage"),
+    authenticated_operation("frontstage.data_capabilities.view", "other.frontstage"),
+    authenticated_operation("frontstage.groups.create", "other.frontstage"),
+    authenticated_operation("frontstage.pages.create", "other.frontstage"),
+    authenticated_operation("frontstage.pages.delete", "other.frontstage"),
+    authenticated_operation("frontstage.pages.move", "other.frontstage"),
+    authenticated_operation("frontstage.pages.update", "other.frontstage"),
+    authenticated_operation("frontstage.pages.view", "other.frontstage"),
+    authenticated_operation("frontstage.queries.dispatch", "other.frontstage"),
+    authenticated_operation("frontstage.tabs.create", "other.frontstage"),
+    authenticated_operation("frontstage.tabs.delete", "other.frontstage"),
+    authenticated_operation("frontstage.tabs.document.save", "other.frontstage"),
+    authenticated_operation("frontstage.tabs.update", "other.frontstage"),
+    authenticated_operation("frontstage.tabs.view", "other.frontstage"),
+    authenticated_operation("frontstage.ui_templates.view", "other.frontstage"),
     settings(
         "host_infrastructure.cache.domain.clear",
         "system.host-infrastructure",
@@ -171,7 +220,7 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
         "host_infrastructure.providers.view",
         "system.host-infrastructure",
     ),
-    authenticated("i18n.catalog.view", "other.i18n-catalog"),
+    authenticated_operation("i18n.catalog.view", "other.i18n-catalog"),
     settings("i18n_catalog.custom_keys.delete", "system.i18n-catalog"),
     settings(
         "i18n_catalog.custom_translations.upsert",

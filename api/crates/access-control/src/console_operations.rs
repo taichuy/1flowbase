@@ -640,7 +640,6 @@ impl ConsoleOperationRegistry {
                 }
                 ConsoleRouteOwnership::ConsoleOperation(expected_operation_id) => {
                     operation.operation_id == *expected_operation_id
-                        && operation.authorization != ConsoleAuthorization::Authenticated
                 }
             };
             if !ownership_matches {

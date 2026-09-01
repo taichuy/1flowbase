@@ -59,6 +59,8 @@ fn other_policy_group_displays() -> Vec<ConsoleOtherPolicyGroupDisplay> {
         "other.agent-flow",
         "other.data-sources",
         "other.frontend-blocks",
+        "other.frontstage",
+        "other.i18n-catalog",
         "other.js-dependencies",
         "other.model-providers",
         "other.node-contributions",
@@ -91,6 +93,14 @@ fn other_policy_group_keys(group_id: &str) -> (&'static str, &'static str) {
         "other.frontend-blocks" => (
             "Frontend blocks",
             "Registered frontend block catalog operations",
+        ),
+        "other.frontstage" => (
+            "Frontstage",
+            "Registered Frontstage operations available to signed-in users",
+        ),
+        "other.i18n-catalog" => (
+            "Runtime localization catalog",
+            "Registered runtime localization catalog operations available to signed-in users",
         ),
         "other.js-dependencies" => (
             "JavaScript dependencies",

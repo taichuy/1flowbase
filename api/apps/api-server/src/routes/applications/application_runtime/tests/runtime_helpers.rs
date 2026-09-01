@@ -206,69 +206,54 @@ fn application_run_statistics_counts_indexed_llm_tool_callbacks() {
 
 #[test]
 fn trace_tree_endpoints_read_projection_without_full_detail_fallback() {
-    let log_endpoint_source = include_str!("../log_handlers.rs");
+    let reads = include_str!("../interface_runtime_reads.rs");
+    let payloads = include_str!("../interface_trace_payloads.rs");
+    let trace_tree = application_runtime_method_source(reads, "trace_tree");
+    let trace_children = application_runtime_method_source(reads, "trace_children");
+    let node_content = application_runtime_method_source(payloads, "node_content");
+    let tool_callback_content =
+        application_runtime_method_source(payloads, "tool_callback_content");
 
-    for function_name in [
-        "get_application_run_trace_tree",
-        "get_application_run_trace_node_children",
-        "get_application_run_trace_node_content",
-        "get_application_run_trace_tool_callback_content",
+    for (method_name, method_source, projection_status_call) in [
+        ("trace_tree", trace_tree, "self.trace_projection_status"),
+        (
+            "trace_children",
+            trace_children,
+            "self.trace_projection_status",
+        ),
+        ("node_content", node_content, "self.projection_status"),
+        (
+            "tool_callback_content",
+            tool_callback_content,
+            "self.projection_status",
+        ),
     ] {
-        let function_source =
-            application_trace_tree_endpoint_source(log_endpoint_source, function_name);
-
         assert!(
-            function_source.contains("ensure_application_run_trace_projection_status"),
-            "{function_name} must enter through projection status"
+            method_source.contains(projection_status_call),
+            "{method_name} must enter through projection status"
         );
         assert!(
-            !function_source.contains("get_application_run_detail"),
-            "{function_name} must not fallback to full run detail reads"
+            !method_source.contains("get_application_run_detail"),
+            "{method_name} must not fallback to full run detail reads"
         );
     }
 
-    assert!(application_trace_tree_endpoint_source(
-        log_endpoint_source,
-        "get_application_run_trace_tree"
-    )
-    .contains("list_application_run_trace_roots"));
-    assert!(application_trace_tree_endpoint_source(
-        log_endpoint_source,
-        "get_application_run_trace_tree"
-    )
-    .contains("get_application_run_trace_statistics"));
-    assert!(!application_trace_tree_endpoint_source(
-        log_endpoint_source,
-        "get_application_run_trace_tree"
-    )
-    .contains("list_application_run_trace_nodes_for_statistics"));
-    assert!(application_trace_tree_endpoint_source(
-        log_endpoint_source,
-        "get_application_run_trace_node_children"
-    )
-    .contains("list_application_run_trace_children"));
-    assert!(application_trace_tree_endpoint_source(
-        log_endpoint_source,
-        "get_application_run_trace_node_content"
-    )
-    .contains("<_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_content"));
-    assert!(application_trace_tree_endpoint_source(
-        log_endpoint_source,
-        "get_application_run_trace_tool_callback_content"
-    )
-    .contains("<_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_content"));
+    assert!(trace_tree.contains("list_application_run_trace_roots"));
+    assert!(trace_tree.contains("get_application_run_trace_statistics"));
+    assert!(!trace_tree.contains("list_application_run_trace_nodes_for_statistics"));
+    assert!(trace_children.contains("list_application_run_trace_children_page"));
+    assert!(node_content
+        .contains("<_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_content"));
+    assert!(tool_callback_content
+        .contains("<_ as OrchestrationRuntimeRepository>::get_application_run_trace_node_content"));
 }
 
 #[test]
 fn run_conversation_messages_endpoint_reads_projection_without_full_detail_fallback() {
-    let function_source = application_runtime_function_source(
-        include_str!("../log_handlers.rs"),
-        "pub async fn list_application_run_conversation_messages",
+    let function_source = application_runtime_method_source(
+        include_str!("../interface_runtime_reads.rs"),
+        "run_conversation_messages",
     );
-    let function_source = function_source
-        .split("\nasync fn ensure_application_run_trace_projection_status")
-        .next()
-        .expect("run conversation endpoint source should precede trace projection helper");
 
     assert!(
         function_source.contains("list_application_run_conversation_message_items_page"),
@@ -309,29 +294,21 @@ fn trace_projection_status_ensure_checks_lightweight_watermark_before_full_sourc
 
 #[test]
 fn d1_lightweight_endpoint_inventory_keeps_detail_export_and_archive_contract_boundaries() {
-    let log_handlers = include_str!("../log_handlers.rs");
-    let overview_loader =
-        application_runtime_function_source(log_handlers, "async fn load_application_run_overview");
+    let runtime_reads = include_str!("../interface_runtime_reads.rs");
+    let trace_payloads = include_str!("../interface_trace_payloads.rs");
+    let overview_loader = application_runtime_method_source(runtime_reads, "run_overview");
     assert!(overview_loader.contains("get_application_run_overview"));
     assert!(!overview_loader.contains("get_application_run_detail"));
 
-    let resume_timeline = application_runtime_function_source(
-        log_handlers,
-        "pub async fn get_application_run_resume_timeline",
-    );
+    let resume_timeline = application_runtime_method_source(runtime_reads, "resume_timeline");
     assert!(resume_timeline.contains("get_application_run_resume_timeline"));
     assert!(!resume_timeline.contains("get_application_run_detail"));
-    let resume_timeline_summary = application_runtime_function_source(
-        log_handlers,
-        "pub async fn get_application_run_resume_timeline_summary",
-    );
+    let resume_timeline_summary =
+        application_runtime_method_source(runtime_reads, "resume_timeline_summary");
     assert!(resume_timeline_summary.contains("get_application_run_resume_timeline_summary"));
     assert!(!resume_timeline_summary.contains("get_application_run_resume_timeline("));
 
-    let trace_detail = application_runtime_function_source(
-        log_handlers,
-        "pub async fn get_application_run_trace_node_detail",
-    );
+    let trace_detail = application_runtime_method_source(trace_payloads, "node_detail");
     assert!(trace_detail.contains("list_application_run_trace_checkpoints"));
     assert!(trace_detail.contains("list_application_run_trace_events"));
     assert!(!trace_detail.contains("get_application_run_detail"));

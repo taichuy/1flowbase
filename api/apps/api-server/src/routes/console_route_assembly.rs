@@ -25,7 +25,7 @@ use utoipa::OpenApi;
 use super::core_console_i18n::core_console_locale_catalog_contribution;
 use super::core_console_operation_specs::{
     CoreConsoleAuthorizationSpec, CoreConsoleOperationSpec, CoreConsolePolicyGroupSpec,
-    CORE_CONSOLE_OPERATION_SPECS,
+    CoreConsoleRouteSelector, CORE_CONSOLE_OPERATION_SPECS,
 };
 use crate::app_state::ApiState;
 
@@ -426,16 +426,13 @@ fn routes_for_core_operation_spec(
     spec: &CoreConsoleOperationSpec,
     bindings: &[ConsoleRouteAssemblyBinding],
 ) -> Vec<ConsoleRouteBinding> {
-    match spec.authorization {
-        CoreConsoleAuthorizationSpec::Authenticated => bindings
+    match spec.route_selector {
+        CoreConsoleRouteSelector::AuthenticatedRoutes => bindings
             .iter()
             .filter(|binding| binding.ownership == ConsoleRouteOwnership::Authenticated)
             .map(|binding| binding.route.clone())
             .collect(),
-        CoreConsoleAuthorizationSpec::Simple
-        | CoreConsoleAuthorizationSpec::ResourceAction { .. } => {
-            routes_owned_by(bindings, spec.operation_id)
-        }
+        CoreConsoleRouteSelector::OwnedOperation => routes_owned_by(bindings, spec.operation_id),
     }
 }
 
@@ -679,9 +676,7 @@ fn expand_core_interface_registrations(
     let mut expanded = Vec::new();
     let mut missing = Vec::new();
     for registration in registrations {
-        if registration.authorization == ConsoleAuthorization::Authenticated
-            || registration.routes.len() <= 1
-        {
+        if registration.authorization_profile_id.is_none() || registration.routes.len() <= 1 {
             expanded.push(registration);
             continue;
         }
@@ -821,13 +816,11 @@ fn compile_console_interface_metadata(
                     && route_templates_match(&route.path, &binding.route.path)
             })
         });
-        let interface_id = match operation {
-            Some(operation)
-                if !matches!(operation.authorization, ConsoleAuthorization::Authenticated) =>
-            {
+        let interface_id = match (&binding.ownership, operation) {
+            (ConsoleRouteOwnership::ConsoleOperation(_), Some(operation)) => {
                 operation.operation_id.clone()
             }
-            Some(_) => {
+            (ConsoleRouteOwnership::Authenticated, Some(_)) => {
                 let key = (
                     binding.route.method.to_ascii_uppercase(),
                     route_identity_shape(&binding.route.path),
@@ -838,7 +831,7 @@ fn compile_console_interface_metadata(
                 };
                 interface_id.clone()
             }
-            None => {
+            (_, None) => {
                 missing.push(format!("{} {}", binding.route.method, binding.route.path));
                 continue;
             }
@@ -890,6 +883,75 @@ fn validate_explicit_operation_specs(
     Ok(())
 }
 
+fn validate_operation_spec_exact_set(
+    route_operation_ids: impl IntoIterator<Item = String>,
+    specification_ids: impl IntoIterator<Item = String>,
+) -> anyhow::Result<()> {
+    let route_operation_ids = route_operation_ids.into_iter().collect::<BTreeSet<_>>();
+    let mut specification_counts = BTreeMap::<String, usize>::new();
+    for specification_id in specification_ids {
+        *specification_counts.entry(specification_id).or_default() += 1;
+    }
+    let specification_ids = specification_counts
+        .keys()
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let missing = route_operation_ids
+        .difference(&specification_ids)
+        .cloned()
+        .collect::<Vec<_>>();
+    let extra = specification_ids
+        .difference(&route_operation_ids)
+        .cloned()
+        .collect::<Vec<_>>();
+    let duplicates = specification_counts
+        .into_iter()
+        .filter_map(|(operation_id, count)| (count > 1).then_some(operation_id))
+        .collect::<Vec<_>>();
+    if !missing.is_empty() || !extra.is_empty() || !duplicates.is_empty() {
+        anyhow::bail!(
+            "console operation specification exact-set mismatch; missing=[{}]; extra=[{}]; duplicate=[{}]",
+            missing.join(", "),
+            extra.join(", "),
+            duplicates.join(", "),
+        );
+    }
+    Ok(())
+}
+
+fn validate_complete_explicit_operation_specs(
+    bindings: &[ConsoleRouteAssemblyBinding],
+    host_operation_ids: &[String],
+    settings_features: &SettingsFeatureRegistry,
+) -> anyhow::Result<()> {
+    let route_operation_ids = bindings
+        .iter()
+        .filter_map(|binding| match &binding.ownership {
+            ConsoleRouteOwnership::ConsoleOperation(operation_id) => Some(operation_id.clone()),
+            ConsoleRouteOwnership::Authenticated => None,
+        })
+        .collect::<BTreeSet<_>>();
+    let mut specification_ids = CORE_CONSOLE_OPERATION_SPECS
+        .iter()
+        .filter(|spec| spec.route_selector == CoreConsoleRouteSelector::OwnedOperation)
+        .map(|spec| spec.operation_id.to_string())
+        .chain(host_operation_ids.iter().cloned())
+        .collect::<Vec<_>>();
+    let declared_specifications = specification_ids.iter().cloned().collect::<BTreeSet<_>>();
+    specification_ids.extend(
+        settings_features
+            .inventory()
+            .features
+            .iter()
+            .map(|feature| format!("settings_feature.access.{}", feature.feature_id))
+            .filter(|operation_id| {
+                route_operation_ids.contains(operation_id)
+                    && !declared_specifications.contains(operation_id)
+            }),
+    );
+    validate_operation_spec_exact_set(route_operation_ids, specification_ids)
+}
+
 pub fn compile_migrated_core_console_operation_registry(
     settings_features: &SettingsFeatureRegistry,
     bindings: &[ConsoleRouteAssemblyBinding],
@@ -932,7 +994,9 @@ pub(crate) fn compile_migrated_console_operation_registry(
             }
             Some(ConsoleOperationRegistration {
                 operation_id: spec.operation_id.to_string(),
-                authorization_profile_id: None,
+                authorization_profile_id: (spec.route_selector
+                    == CoreConsoleRouteSelector::OwnedOperation)
+                    .then(|| spec.operation_id.to_string()),
                 owner: core_owner.clone(),
                 lifecycle: SettingsFeatureLifecycle::Active,
                 policy_group: policy_group_for_spec(spec),
@@ -1047,11 +1111,28 @@ pub(crate) fn compile_migrated_console_operation_registry(
     Ok(registry)
 }
 
+pub(crate) fn compile_complete_migrated_console_operation_registry(
+    settings_features: &SettingsFeatureRegistry,
+    bindings: &[ConsoleRouteAssemblyBinding],
+    host_contributions: &[HostExtensionContributionManifest],
+) -> anyhow::Result<ConsoleOperationRegistry> {
+    let host_operation_ids = host_contributions
+        .iter()
+        .map(HostExtensionContributionManifest::console_contribution)
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flat_map(|contribution| contribution.operations)
+        .map(|operation| operation.operation_id)
+        .collect::<Vec<_>>();
+    validate_complete_explicit_operation_specs(bindings, &host_operation_ids, settings_features)?;
+    compile_migrated_console_operation_registry(settings_features, bindings, host_contributions)
+}
+
 pub fn validate_migrated_core_console_route_coverage(
     settings_features: &SettingsFeatureRegistry,
 ) -> anyhow::Result<()> {
     let bindings = migrated_core_console_contract_bindings();
-    compile_migrated_core_console_operation_registry(settings_features, &bindings)?;
+    compile_complete_migrated_console_operation_registry(settings_features, &bindings, &[])?;
     Ok(())
 }
 
@@ -1062,7 +1143,9 @@ mod tests {
     use access_control::ConsoleRouteOwnership;
 
     use super::{
-        console_health_route_assembly, migrated_core_console_route_assembly, ConsoleRouteAssembly,
+        compile_complete_migrated_console_operation_registry, console_health_route_assembly,
+        migrated_core_console_contract_bindings, migrated_core_console_route_assembly,
+        validate_operation_spec_exact_set, ConsoleRouteAssembly,
     };
 
     fn route_keys<S>(assembly: &ConsoleRouteAssembly<S>) -> BTreeSet<(String, String, String)>
@@ -1134,5 +1217,35 @@ mod tests {
             route_keys(&migrated_core_console_route_assembly()),
             route_keys(&expected)
         );
+    }
+
+    #[test]
+    fn complete_operation_specifications_match_the_production_route_set() {
+        let settings = crate::app_state::compile_core_settings_feature_registry().unwrap();
+        let bindings = migrated_core_console_contract_bindings();
+
+        compile_complete_migrated_console_operation_registry(&settings, &bindings, &[]).unwrap();
+    }
+
+    #[test]
+    fn operation_specification_exact_set_reports_every_difference() {
+        let error = validate_operation_spec_exact_set(
+            [
+                "operation.present",
+                "operation.missing",
+                "operation.present",
+            ]
+            .into_iter()
+            .map(str::to_string),
+            ["operation.present", "operation.extra", "operation.extra"]
+                .into_iter()
+                .map(str::to_string),
+        )
+        .unwrap_err();
+        let message = error.to_string();
+
+        assert!(message.contains("missing=[operation.missing]"));
+        assert!(message.contains("extra=[operation.extra]"));
+        assert!(message.contains("duplicate=[operation.extra]"));
     }
 }

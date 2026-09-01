@@ -63,10 +63,11 @@ fn workflow_extension_route_has_one_frozen_authentication_and_execution_owner() 
     assert!(!source.contains("require_csrf(&headers"));
     assert_eq!(
         source
-            .matches("WorkflowExtensionRunService::new(state.store.clone())")
+            .matches("WorkflowExtensionRunService::new(dependencies.store.clone())")
             .count(),
         1
     );
+    assert!(!source.contains("WorkflowExtensionRunService::new(state.store.clone())"));
     assert_eq!(
         source.matches(".invoke::<WorkflowExtensionInput").count(),
         1

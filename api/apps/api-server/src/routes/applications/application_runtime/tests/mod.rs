@@ -1,16 +1,6 @@
 use super::*;
 use axum::http::HeaderValue;
 
-fn application_trace_tree_endpoint_source<'a>(
-    log_endpoint_source: &'a str,
-    function_name: &str,
-) -> &'a str {
-    application_runtime_function_source(
-        log_endpoint_source,
-        &format!("pub async fn {function_name}"),
-    )
-}
-
 fn application_runtime_function_source<'a>(
     log_endpoint_source: &'a str,
     function_marker: &str,
@@ -21,6 +11,20 @@ fn application_runtime_function_source<'a>(
     let remaining_source = &log_endpoint_source[start..];
     let end = remaining_source
         .find("\n#[utoipa::path(")
+        .unwrap_or(remaining_source.len());
+
+    &remaining_source[..end]
+}
+
+fn application_runtime_method_source<'a>(source: &'a str, method_name: &str) -> &'a str {
+    let marker = format!("    async fn {method_name}(");
+    let start = source
+        .find(&marker)
+        .unwrap_or_else(|| panic!("{marker} source exists"));
+    let remaining_source = &source[start..];
+    let end = remaining_source[marker.len()..]
+        .find("\n    async fn ")
+        .map(|offset| marker.len() + offset)
         .unwrap_or(remaining_source.len());
 
     &remaining_source[..end]

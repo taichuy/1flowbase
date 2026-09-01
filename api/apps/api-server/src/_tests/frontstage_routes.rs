@@ -15,7 +15,7 @@ use tower::ServiceExt;
 use utoipa::OpenApi;
 
 #[test]
-fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
+fn frontstage_route_assembly_freezes_business_operations_and_authenticated_catalog_routes() {
     let assembly = crate::routes::frontstage::route_assembly();
     let routes = assembly
         .bindings()
@@ -147,10 +147,65 @@ fn frontstage_route_assembly_marks_every_console_route_as_authenticated() {
             ),
         ])
     );
-    assert!(assembly
+    let operation_ids = assembly
         .bindings()
         .iter()
-        .all(|binding| { binding.ownership == ConsoleRouteOwnership::Authenticated }));
+        .filter_map(|binding| match &binding.ownership {
+            ConsoleRouteOwnership::ConsoleOperation(operation_id) => Some(operation_id.as_str()),
+            ConsoleRouteOwnership::Authenticated => None,
+        })
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        operation_ids,
+        BTreeSet::from([
+            "frontstage.actions.dispatch",
+            "frontstage.blocks.code.update",
+            "frontstage.blocks.code.view",
+            "frontstage.blocks.create",
+            "frontstage.blocks.delete",
+            "frontstage.blocks.move",
+            "frontstage.blocks.open",
+            "frontstage.blocks.runtime.view",
+            "frontstage.blocks.search",
+            "frontstage.blocks.update",
+            "frontstage.blocks.view",
+            "frontstage.components.view",
+            "frontstage.data_capabilities.view",
+            "frontstage.groups.create",
+            "frontstage.pages.create",
+            "frontstage.pages.delete",
+            "frontstage.pages.move",
+            "frontstage.pages.update",
+            "frontstage.pages.view",
+            "frontstage.queries.dispatch",
+            "frontstage.tabs.create",
+            "frontstage.tabs.delete",
+            "frontstage.tabs.document.save",
+            "frontstage.tabs.update",
+            "frontstage.tabs.view",
+            "frontstage.ui_templates.view",
+        ])
+    );
+    let authenticated_routes = assembly
+        .bindings()
+        .iter()
+        .filter(|binding| binding.ownership == ConsoleRouteOwnership::Authenticated)
+        .map(|binding| (binding.route.method.as_str(), binding.route.path.as_str()))
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        authenticated_routes,
+        BTreeSet::from([
+            ("GET", "/api/console/frontstage/interface-capabilities"),
+            (
+                "GET",
+                "/api/console/frontstage/interface-capabilities/:interface_id",
+            ),
+            (
+                "POST",
+                "/api/console/frontstage/pages/:page_id/tabs/:tab_id/callable-interfaces/dispatch",
+            ),
+        ])
+    );
 }
 
 async fn current_workspace_id(app: &axum::Router, cookie: &str) -> String {

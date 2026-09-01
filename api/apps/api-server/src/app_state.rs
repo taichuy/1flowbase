@@ -66,7 +66,7 @@ use crate::{
     host_extensions::console::ResolvedHostExtensionConsoleContribution,
     host_infrastructure::HostInfrastructureRegistry,
     routes::console_route_assembly::{
-        compile_migrated_console_operation_registry, ConsoleRouteAssembly,
+        compile_complete_migrated_console_operation_registry, ConsoleRouteAssembly,
     },
 };
 use crate::{
@@ -224,11 +224,8 @@ pub fn compile_core_console_operation_registry(
     settings_features: &access_control::SettingsFeatureRegistry,
 ) -> anyhow::Result<Arc<access_control::ConsoleOperationRegistry>> {
     let bindings = crate::routes::console_route_assembly::migrated_core_console_contract_bindings();
-    crate::routes::console_route_assembly::compile_migrated_core_console_operation_registry(
-        settings_features,
-        &bindings,
-    )
-    .map(Arc::new)
+    compile_complete_migrated_console_operation_registry(settings_features, &bindings, &[])
+        .map(Arc::new)
 }
 
 #[derive(Debug, Serialize)]
@@ -243,8 +240,11 @@ pub fn compile_core_console_operation_inventory_snapshot(
     let settings_features = compile_core_settings_feature_registry()?;
     let contract_bindings =
         crate::routes::console_route_assembly::migrated_core_console_contract_bindings();
-    let registry =
-        compile_migrated_console_operation_registry(&settings_features, &contract_bindings, &[])?;
+    let registry = compile_complete_migrated_console_operation_registry(
+        &settings_features,
+        &contract_bindings,
+        &[],
+    )?;
     let inventory = registry.inventory();
     let locale_catalog = inventory
         .locale_catalog
@@ -332,11 +332,12 @@ pub(crate) fn compile_console_boot_plan_with_interface_operations_and_plugin_upl
             route_assembly = route_assembly.merge(host_assembly);
         }
     }
-    let console_operation_registry = Arc::new(compile_migrated_console_operation_registry(
-        &settings_feature_registry,
-        route_assembly.bindings(),
-        &host_contributions,
-    )?);
+    let console_operation_registry =
+        Arc::new(compile_complete_migrated_console_operation_registry(
+            &settings_feature_registry,
+            route_assembly.bindings(),
+            &host_contributions,
+        )?);
     let console_surface_registry = Arc::new(
         ConsoleSurfaceRegistry::from_host_extension_contributions(&host_contributions)?,
     );

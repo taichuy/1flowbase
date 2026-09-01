@@ -584,6 +584,45 @@ fn ac_002_console_route_assembly_rejects_duplicate_ownership() {
 }
 
 #[test]
+fn explicit_console_operation_can_retain_authenticated_authorization() {
+    let settings_registry = applications_settings_registry();
+    let registry = ConsoleOperationRegistry::compile(
+        &settings_registry,
+        [
+            applications_settings_access_operation(),
+            operation(
+                "frontstage.pages.view",
+                ConsolePolicyGroup::Other("other.frontstage".to_string()),
+                ConsoleAuthorization::Authenticated,
+                vec![route("GET", "/api/console/frontstage/pages")],
+            ),
+        ],
+        [],
+    )
+    .unwrap();
+
+    registry
+        .validate_console_route_coverage([
+            assembled_route(
+                "GET",
+                "/api/console/settings/applications",
+                ConsoleRouteOwnership::ConsoleOperation("settings.applications.view".to_string()),
+            ),
+            assembled_route(
+                "GET",
+                "/api/console/frontstage/pages",
+                ConsoleRouteOwnership::ConsoleOperation("frontstage.pages.view".to_string()),
+            ),
+        ])
+        .unwrap();
+    let access = registry
+        .access_for_console_route("GET", "/api/console/frontstage/pages")
+        .unwrap();
+    assert_eq!(access.operation_id, "frontstage.pages.view");
+    assert_eq!(access.authorization, &ConsoleAuthorization::Authenticated);
+}
+
+#[test]
 fn ac_002_console_route_assembly_rejects_unmounted_compiled_route() {
     let settings_registry = applications_settings_registry();
     let registry = ConsoleOperationRegistry::compile(
