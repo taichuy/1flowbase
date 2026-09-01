@@ -903,6 +903,34 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-mcp-core",
+            &[
+                "mcp.client_credential.reveal",
+                "mcp.client_credential.save",
+                "mcp.client_credential.delete",
+                "mcp.instances.view",
+                "mcp.instances.create",
+                "mcp.instances.copy",
+                "mcp.instances.update",
+                "mcp.instances.delete",
+                "mcp.groups.upsert",
+                "mcp.groups.move",
+                "mcp.groups.delete",
+                "mcp.tool_bindings.create",
+                "mcp.tool_bindings.update",
+                "mcp.tool_bindings.delete",
+                "mcp.discovery_policy.view",
+                "mcp.discovery_policy.update",
+            ],
+            &["api-server.console-mcp-core"],
+            crate::routes::mcp_management::interface_core::compile_registry(
+                crate::routes::mcp_management::interface_core::McpCoreDependencies {
+                    store: state.store.clone(),
+                    provider_secret_master_key: state.provider_secret_master_key.clone(),
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",

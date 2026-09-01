@@ -2,6 +2,7 @@ pub(crate) mod bundles;
 pub(crate) mod debug_execute;
 mod dto;
 mod interface_catalog;
+pub(crate) mod interface_core;
 pub(crate) use interface_catalog::mcp_interface_entry_from_capability;
 mod projections;
 pub(crate) mod upstream;
@@ -58,6 +59,22 @@ pub use debug_execute::{
 };
 
 pub use dto::*;
+
+async fn invoke_core(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    binding_id: &'static str,
+    input: interface_core::McpCoreInput,
+    mutating: bool,
+) -> Result<interface_core::McpCoreOutput, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    let credential = if mutating {
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers }
+    } else {
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
+    };
+    crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
+}
 
 pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
@@ -239,18 +256,18 @@ pub async fn get_mcp_client_credential(
     headers: HeaderMap,
     Path(instance_id): Path<String>,
 ) -> Result<Json<ApiSuccess<McpClientCredentialResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let api_key = McpManagementService::new(state.store.clone())
-        .get_client_credential(
-            context.user.id,
-            &instance_id,
-            &state.provider_secret_master_key,
-        )
-        .await?;
-    Ok(Json(ApiSuccess::new(McpClientCredentialResponse {
-        saved: api_key.is_some(),
-        api_key,
-    })))
+    let interface_core::McpCoreOutput::Credential(value) = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.client-credential.get.v1",
+        interface_core::McpCoreInput::GetCredential(instance_id),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 pub async fn save_mcp_client_credential(
@@ -259,20 +276,18 @@ pub async fn save_mcp_client_credential(
     Path(instance_id): Path<String>,
     Json(body): Json<SaveMcpClientCredentialBody>,
 ) -> Result<Json<ApiSuccess<McpClientCredentialResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    McpManagementService::new(state.store.clone())
-        .save_client_credential(SaveMcpClientCredentialCommand {
-            actor_user_id: context.user.id,
-            instance_id,
-            api_key: body.api_key,
-            master_key: state.provider_secret_master_key.clone(),
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(McpClientCredentialResponse {
-        saved: true,
-        api_key: None,
-    })))
+    let interface_core::McpCoreOutput::Credential(value) = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.client-credential.put.v1",
+        interface_core::McpCoreInput::SaveCredential(instance_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 pub async fn delete_mcp_client_credential(
@@ -280,11 +295,17 @@ pub async fn delete_mcp_client_credential(
     headers: HeaderMap,
     Path(instance_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    McpManagementService::new(state.store.clone())
-        .delete_client_credential(context.user.id, &instance_id)
-        .await?;
+    let interface_core::McpCoreOutput::NoContent = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.client-credential.delete.v1",
+        interface_core::McpCoreInput::DeleteCredential(instance_id),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -377,17 +398,18 @@ pub async fn list_mcp_instances(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<McpInstanceResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let snapshot = McpManagementService::new(state.store.clone())
-        .read_catalog_for_actor(&context.actor)
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        snapshot
-            .instances
-            .into_iter()
-            .map(to_instance_response)
-            .collect(),
-    )))
+    let interface_core::McpCoreOutput::Instances(value) = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.instances.get.v1",
+        interface_core::McpCoreInput::ListInstances,
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(post, path = "/api/console/mcp/instances", request_body = CreateMcpInstanceBody, responses((status = 201, body = McpInstanceResponse)))]
@@ -396,15 +418,18 @@ pub async fn create_mcp_instance(
     headers: HeaderMap,
     Json(body): Json<CreateMcpInstanceBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<McpInstanceResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let record = McpManagementService::new(state.store.clone())
-        .create_instance_for_actor(&context.actor, to_instance_command(context.user.id, body)?)
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_instance_response(record))),
-    ))
+    let interface_core::McpCoreOutput::Instance(value) = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.instances.post.v1",
+        interface_core::McpCoreInput::CreateInstance(body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(value))))
 }
 
 #[utoipa::path(post, path = "/api/console/mcp/instances/{instance_id}/copy", request_body = CopyMcpInstanceBody, responses((status = 201, body = McpInstanceResponse)))]
@@ -414,23 +439,18 @@ pub async fn copy_mcp_instance(
     Path(source_instance_id): Path<String>,
     Json(body): Json<CopyMcpInstanceBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<McpInstanceResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let record = McpManagementService::new(state.store.clone())
-        .copy_instance_for_actor(
-            &context.actor,
-            CopyMcpInstanceCommand {
-                actor_user_id: context.user.id,
-                source_instance_id,
-                instance_id: body.instance_id,
-                name: body.name,
-            },
-        )
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_instance_response(record))),
-    ))
+    let interface_core::McpCoreOutput::Instance(value) = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.instances.copy.v1",
+        interface_core::McpCoreInput::CopyInstance(source_instance_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(value))))
 }
 
 #[utoipa::path(put, path = "/api/console/mcp/instances/{instance_id}", request_body = CreateMcpInstanceBody, responses((status = 200, body = McpInstanceResponse)))]
@@ -438,15 +458,20 @@ pub async fn update_mcp_instance(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
     Path(instance_id): Path<String>,
-    Json(mut body): Json<CreateMcpInstanceBody>,
+    Json(body): Json<CreateMcpInstanceBody>,
 ) -> Result<Json<ApiSuccess<McpInstanceResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    body.instance_id = instance_id;
-    let record = McpManagementService::new(state.store.clone())
-        .update_instance_for_actor(&context.actor, to_instance_command(context.user.id, body)?)
-        .await?;
-    Ok(Json(ApiSuccess::new(to_instance_response(record))))
+    let interface_core::McpCoreOutput::Instance(value) = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.instances.put.v1",
+        interface_core::McpCoreInput::UpdateInstance(instance_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(delete, path = "/api/console/mcp/instances/{instance_id}", responses((status = 204)))]
@@ -455,11 +480,17 @@ pub async fn delete_mcp_instance(
     headers: HeaderMap,
     Path(instance_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    McpManagementService::new(state.store.clone())
-        .delete_instance_for_actor(&context.actor, &instance_id)
-        .await?;
+    let interface_core::McpCoreOutput::NoContent = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.instances.delete.v1",
+        interface_core::McpCoreInput::DeleteInstance(instance_id),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -470,23 +501,18 @@ pub async fn upsert_mcp_group(
     Path(instance_id): Path<String>,
     Json(body): Json<UpsertMcpGroupBody>,
 ) -> Result<Json<ApiSuccess<McpGroupResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let record = McpManagementService::new(state.store.clone())
-        .upsert_group_for_actor(
-            &context.actor,
-            UpsertMcpGroupCommand {
-                actor_user_id: context.user.id,
-                instance_id,
-                path: body.path,
-                display_name: body.display_name.unwrap_or_default(),
-                description_short: body.description_short,
-                enabled: body.enabled,
-                sort_order: body.sort_order,
-            },
-        )
-        .await?;
-    Ok(Json(ApiSuccess::new(to_group_response(record))))
+    let interface_core::McpCoreOutput::Group(value) = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.groups.post.v1",
+        interface_core::McpCoreInput::UpsertGroup(instance_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(post, path = "/api/console/mcp/instances/{instance_id}/groups/move", request_body = MoveMcpGroupBody, responses((status = 200, body = McpGroupResponse)))]
@@ -496,21 +522,18 @@ pub async fn move_mcp_group(
     Path(instance_id): Path<String>,
     Json(body): Json<MoveMcpGroupBody>,
 ) -> Result<Json<ApiSuccess<McpGroupResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let record = McpManagementService::new(state.store.clone())
-        .move_group_for_actor(
-            &context.actor,
-            MoveMcpGroupCommand {
-                actor_user_id: context.user.id,
-                instance_id,
-                source_path: body.source_path,
-                target_parent_path: body.target_parent_path,
-                sort_order: body.sort_order,
-            },
-        )
-        .await?;
-    Ok(Json(ApiSuccess::new(to_group_response(record))))
+    let interface_core::McpCoreOutput::Group(value) = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.groups.move.v1",
+        interface_core::McpCoreInput::MoveGroup(instance_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(delete, path = "/api/console/mcp/instances/{instance_id}/groups", params(DeleteMcpGroupQuery), responses((status = 204)))]
@@ -520,11 +543,17 @@ pub async fn delete_mcp_group(
     Path(instance_id): Path<String>,
     Query(query): Query<DeleteMcpGroupQuery>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    McpManagementService::new(state.store.clone())
-        .delete_group_for_actor(&context.actor, &instance_id, &query.path)
-        .await?;
+    let interface_core::McpCoreOutput::NoContent = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.groups.delete.v1",
+        interface_core::McpCoreInput::DeleteGroup(instance_id, query),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -755,26 +784,18 @@ pub async fn create_mcp_tool_binding(
     Path(instance_id): Path<String>,
     Json(body): Json<CreateMcpToolBindingBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<McpToolBindingResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let record = McpManagementService::new(state.store.clone())
-        .create_tool_binding_for_actor(
-            &context.actor,
-            CreateMcpToolBindingCommand {
-                actor_user_id: context.user.id,
-                instance_id,
-                group_path: body.group_path,
-                tool_id: body.tool_id,
-                display_alias: body.display_alias,
-                visible: body.visible,
-                sort_order: body.sort_order,
-            },
-        )
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_binding_response(record))),
-    ))
+    let interface_core::McpCoreOutput::Binding(value) = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.bindings.post.v1",
+        interface_core::McpCoreInput::CreateBinding(instance_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(value))))
 }
 
 #[utoipa::path(put, path = "/api/console/mcp/tool-bindings/{binding_id}", request_body = UpdateMcpToolBindingBody, responses((status = 200, body = McpToolBindingResponse)))]
@@ -784,22 +805,18 @@ pub async fn update_mcp_tool_binding(
     Path(binding_id): Path<String>,
     Json(body): Json<UpdateMcpToolBindingBody>,
 ) -> Result<Json<ApiSuccess<McpToolBindingResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let record = McpManagementService::new(state.store.clone())
-        .update_tool_binding_for_actor(
-            &context.actor,
-            UpdateMcpToolBindingCommand {
-                actor_user_id: context.user.id,
-                binding_id: parse_uuid(&binding_id, "binding_id")?,
-                group_path: body.group_path,
-                display_alias: body.display_alias,
-                visible: body.visible,
-                sort_order: body.sort_order,
-            },
-        )
-        .await?;
-    Ok(Json(ApiSuccess::new(to_binding_response(record))))
+    let interface_core::McpCoreOutput::Binding(value) = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.bindings.put.v1",
+        interface_core::McpCoreInput::UpdateBinding(binding_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(delete, path = "/api/console/mcp/tool-bindings/{binding_id}", responses((status = 204)))]
@@ -808,11 +825,17 @@ pub async fn delete_mcp_tool_binding(
     headers: HeaderMap,
     Path(binding_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    McpManagementService::new(state.store.clone())
-        .delete_tool_binding_for_actor(&context.actor, parse_uuid(&binding_id, "binding_id")?)
-        .await?;
+    let interface_core::McpCoreOutput::NoContent = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.bindings.delete.v1",
+        interface_core::McpCoreInput::DeleteBinding(binding_id),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -822,14 +845,18 @@ pub async fn get_mcp_instance_discovery_policy(
     Path(instance_id): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<McpInstanceDiscoveryPolicyResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let record = McpManagementService::new(state.store.clone())
-        .get_instance_discovery_policy(context.user.id, &instance_id)
-        .await?;
-    Ok(Json(ApiSuccess::new(to_discovery_policy_response(
-        record,
-        instance_id,
-    ))))
+    let interface_core::McpCoreOutput::DiscoveryPolicy(value) = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.discovery-policy.get.v1",
+        interface_core::McpCoreInput::GetDiscoveryPolicy(instance_id),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(put, path = "/api/console/mcp/instances/{instance_id}/discovery-policy", request_body = UpdateMcpInstanceDiscoveryPolicyBody, responses((status = 200, body = McpInstanceDiscoveryPolicyResponse)))]
@@ -839,26 +866,18 @@ pub async fn update_mcp_instance_discovery_policy(
     headers: HeaderMap,
     Json(body): Json<UpdateMcpInstanceDiscoveryPolicyBody>,
 ) -> Result<Json<ApiSuccess<McpInstanceDiscoveryPolicyResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let record = McpManagementService::new(state.store.clone())
-        .update_instance_discovery_policy_for_actor(
-            &context.actor,
-            UpdateMcpInstanceDiscoveryPolicyCommand {
-                actor_user_id: context.user.id,
-                instance_id: instance_id.clone(),
-                list_default_limit: body.list_default_limit,
-                list_max_depth: body.list_max_depth,
-                list_regex_enabled: body.list_regex_enabled,
-                list_regex_max_length: body.list_regex_max_length,
-                list_return_fields: body.list_return_fields,
-            },
-        )
-        .await?;
-    Ok(Json(ApiSuccess::new(to_discovery_policy_response(
-        record,
-        instance_id,
-    ))))
+    let interface_core::McpCoreOutput::DiscoveryPolicy(value) = invoke_core(
+        state,
+        headers,
+        "http.console.mcp.discovery-policy.put.v1",
+        interface_core::McpCoreInput::UpdateDiscoveryPolicy(instance_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
