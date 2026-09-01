@@ -256,14 +256,30 @@ async fn handle_mcp_request(
     }
 }
 
-impl McpToolCallPort for ApiState {
+pub(crate) struct McpToolCallDependencies {
+    pub(crate) runtime_dependencies: virtual_ui::RuntimeInternalToolInvokerDependencies,
+    pub(crate) interface_catalog:
+        crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies,
+    pub(crate) interface_registry:
+        Arc<dyn crate::routes::mcp_management::interface_catalog::McpInterfaceRegistrySnapshotPort>,
+    pub(crate) interface_dispatch: Arc<dyn virtual_ui::McpInterfaceDispatchPort>,
+}
+
+struct McpToolCallAdapter(McpToolCallDependencies);
+
+pub(crate) fn mcp_tool_call_port(
+    dependencies: McpToolCallDependencies,
+) -> Arc<dyn McpToolCallPort> {
+    Arc::new(McpToolCallAdapter(dependencies))
+}
+
+impl McpToolCallPort for McpToolCallAdapter {
     fn call(
         &self,
         name: String,
         arguments: McpToolArguments,
         context: McpToolInvocationContext,
     ) -> interface_operation::McpCallFuture<'_> {
-        let state = Arc::new(self.clone());
         Box::pin(async move {
             let mut headers = HeaderMap::new();
             for header in context.headers {
@@ -273,10 +289,23 @@ impl McpToolCallPort for ApiState {
             }
             let request_context =
                 RequestContext::server_delegation(context.user, context.actor.clone());
+            let catalog_dependencies = self
+                .0
+                .interface_catalog
+                .with_interface_registry_snapshot(self.0.interface_registry.snapshot());
+            let interface_catalog = virtual_ui::McpInterfaceCatalogSnapshot::new(
+                crate::routes::mcp_management::interface_catalog::mcp_interface_catalog_entries_with(
+                    &catalog_dependencies,
+                    &context.actor,
+                )
+                .await?,
+            );
             match with_server_delegated_request_context(
                 request_context,
                 virtual_ui::dispatch(
-                    &state,
+                    &self.0.runtime_dependencies,
+                    &interface_catalog,
+                    self.0.interface_dispatch.as_ref(),
                     &headers,
                     &context.actor,
                     &context.catalog,

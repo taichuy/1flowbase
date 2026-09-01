@@ -245,36 +245,55 @@ pub(crate) fn production_interface_contributions(
         .and_then(|snapshot| snapshot.interface_registry())
         .cloned()
         .expect("native runtime invoker requires a published dynamic interface registry");
+    let runtime_tool_invoker_dependencies =
+        crate::routes::mcp_protocol::virtual_ui::RuntimeInternalToolInvokerDependencies::new(
+            state.store.clone(),
+            state.infrastructure.cache_store(),
+            state.provider_secret_master_key.clone(),
+        );
+    let mcp_interface_catalog_dependencies =
+        crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies {
+            store: state.store.clone(),
+            openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
+                store: state.store.clone(),
+                console_operations: state.console_operation_registry.inventory().clone(),
+                interface_registry: None,
+                api_docs: Arc::clone(&state.api_docs),
+                template_catalog: state.runtime_engine.template_catalog().clone(),
+            },
+        };
+    let mcp_interface_dispatch: Arc<
+        dyn crate::routes::mcp_protocol::virtual_ui::McpInterfaceDispatchPort,
+    > = Arc::new(
+        crate::routes::mcp_protocol::virtual_ui::ConsoleRouterMcpInterfaceDispatchPort::new(
+            crate::console_router(Arc::clone(state), true),
+        ),
+    );
     let native_runtime_invoker_factory =
         crate::routes::application_public_api::native::native_runtime_invoker_factory(
             crate::routes::application_public_api::native::NativeRuntimeInvokerFactoryDependencies {
-                runtime_dependencies: crate::routes::mcp_protocol::virtual_ui::RuntimeInternalToolInvokerDependencies::new(
-                    state.store.clone(),
-                    state.infrastructure.cache_store(),
-                    state.provider_secret_master_key.clone(),
-                ),
-                interface_catalog: crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies {
-                    store: state.store.clone(),
-                    openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
-                        store: state.store.clone(),
-                        console_operations: state.console_operation_registry.inventory().clone(),
-                        interface_registry: None,
-                        api_docs: Arc::clone(&state.api_docs),
-                        template_catalog: state.runtime_engine.template_catalog().clone(),
-                    },
-                },
+                runtime_dependencies: runtime_tool_invoker_dependencies.clone(),
+                interface_catalog: mcp_interface_catalog_dependencies.clone(),
                 interface_registry: Arc::new(
                     crate::routes::mcp_management::interface_catalog::DynamicMcpInterfaceRegistrySnapshotPort::new(
-                        native_interface_registry,
+                        Arc::clone(&native_interface_registry),
                     ),
                 ),
-                interface_dispatch: Arc::new(
-                    crate::routes::mcp_protocol::virtual_ui::ConsoleRouterMcpInterfaceDispatchPort::new(
-                        crate::console_router(Arc::clone(state), true),
-                    ),
-                ),
+                interface_dispatch: Arc::clone(&mcp_interface_dispatch),
             },
         );
+    let mcp_tool_call_port = crate::routes::mcp_protocol::mcp_tool_call_port(
+        crate::routes::mcp_protocol::McpToolCallDependencies {
+            runtime_dependencies: runtime_tool_invoker_dependencies,
+            interface_catalog: mcp_interface_catalog_dependencies,
+            interface_registry: Arc::new(
+                crate::routes::mcp_management::interface_catalog::DynamicMcpInterfaceRegistrySnapshotPort::new(
+                    native_interface_registry,
+                ),
+            ),
+            interface_dispatch: mcp_interface_dispatch,
+        },
+    );
     let native_run_dependencies =
         crate::routes::application_public_api::native::ApplicationNativeRunDependencies {
             store: state.store.clone(),
@@ -1561,7 +1580,9 @@ pub(crate) fn production_interface_contributions(
             "api-server.mcp",
             &["mcp.tools.invoke"],
             &["api-server.mcp-protocol"],
-            crate::routes::mcp_protocol::compile_mcp_interface_registry(state.clone())?,
+            crate::routes::mcp_protocol::compile_mcp_interface_registry(Arc::clone(
+                &mcp_tool_call_port,
+            ))?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.workflow-extension",

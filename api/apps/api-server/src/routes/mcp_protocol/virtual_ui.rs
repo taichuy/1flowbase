@@ -25,7 +25,6 @@ use storage_durable_postgres::MainDurableStore;
 
 use super::{input_schema, result_delivery};
 use crate::{
-    app_state::ApiState,
     error_response::ApiError,
     middleware::require_session::{with_server_delegated_request_context, RequestContext},
     routes::mcp_management::{
@@ -491,7 +490,7 @@ impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
         let scope = VirtualMcpScope::single(instance_id.to_string());
         let outcome = match &self.authorization {
             RuntimeMcpAuthorization::ForwardedActor(actor) => {
-                dispatch_with_dependencies(
+                dispatch(
                     &self.dependencies,
                     self.interface_catalog.as_ref(),
                     self.interface_dispatch.as_ref(),
@@ -530,7 +529,7 @@ impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
                 let actor = context.actor.clone();
                 with_server_delegated_request_context(
                     context,
-                    dispatch_with_dependencies(
+                    dispatch(
                         &self.dependencies,
                         self.interface_catalog.as_ref(),
                         self.interface_dispatch.as_ref(),
@@ -746,42 +745,6 @@ fn apply_catalog_registration_capabilities(
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn dispatch(
-    state: &Arc<ApiState>,
-    headers: &HeaderMap,
-    actor: &domain::ActorContext,
-    catalog: &domain::McpCatalogSnapshot,
-    scope: &VirtualMcpScope,
-    name: &str,
-    arguments: Value,
-    assistant_client: Option<&crate::routes::assistant::AssistantClientToolBridge>,
-) -> Result<VirtualToolOutcome, ApiError> {
-    let dependencies = RuntimeInternalToolInvokerDependencies::new(
-        state.store.clone(),
-        state.infrastructure.cache_store(),
-        state.provider_secret_master_key.clone(),
-    );
-    let interface_catalog = McpInterfaceCatalogSnapshot::new(
-        crate::routes::mcp_management::mcp_interface_catalog_entries(state.as_ref(), actor).await?,
-    );
-    let interface_dispatch =
-        ConsoleRouterMcpInterfaceDispatchPort::new(crate::console_router(state.clone(), true));
-    dispatch_with_dependencies(
-        &dependencies,
-        &interface_catalog,
-        &interface_dispatch,
-        headers,
-        actor,
-        catalog,
-        scope,
-        name,
-        arguments,
-        assistant_client,
-    )
-    .await
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn dispatch_with_dependencies(
     dependencies: &RuntimeInternalToolInvokerDependencies,
     interface_catalog: &dyn McpInterfaceCatalogPort,
     interface_dispatch: &dyn McpInterfaceDispatchPort,
