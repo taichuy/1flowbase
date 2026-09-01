@@ -1,7 +1,8 @@
 pub(crate) mod bundles;
 pub(crate) mod debug_execute;
 mod dto;
-mod interface_catalog;
+pub(crate) mod interface_catalog;
+pub(crate) mod interface_catalog_routes;
 pub(crate) mod interface_core;
 pub(crate) use interface_catalog::mcp_interface_entry_from_capability;
 mod projections;
@@ -45,9 +46,7 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     openapi_docs::DocsCatalogOperation,
-    openapi_interface::{
-        build_openapi_capability_catalog, OpenApiCapabilityCatalogEntry, OpenApiParameterLocation,
-    },
+    openapi_interface::{OpenApiCapabilityCatalogEntry, OpenApiParameterLocation},
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_get, console_post, console_put, ConsoleRouteAssembly,
@@ -73,6 +72,18 @@ async fn invoke_core(
     } else {
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
     };
+    crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
+}
+
+async fn invoke_catalog(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    binding_id: &'static str,
+    input: interface_catalog_routes::McpCatalogInput,
+) -> Result<interface_catalog_routes::McpCatalogOutput, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    let credential =
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers };
     crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
 }
 
@@ -314,14 +325,17 @@ pub async fn get_mcp_catalog(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<McpCatalogResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let service = McpManagementService::new(state.store.clone());
-    let snapshot = service.read_catalog_for_actor(&context.actor).await?;
-    let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
-    Ok(Json(ApiSuccess::new(to_catalog_response(
-        snapshot,
-        &operations,
-    )?)))
+    let interface_catalog_routes::McpCatalogOutput::Catalog(value) = invoke_catalog(
+        state,
+        headers,
+        "http.console.mcp.catalog.get.v1",
+        interface_catalog_routes::McpCatalogInput::Catalog,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(get, path = "/api/console/mcp/interface-capabilities", params(McpInterfaceCatalogQuery), responses((status = 200, body = [McpInterfaceCatalogEntryResponse])))]
@@ -330,17 +344,17 @@ pub async fn list_mcp_interface_capabilities(
     Query(query): Query<McpInterfaceCatalogQuery>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<McpInterfaceCatalogEntryResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    McpManagementService::new(state.store.clone())
-        .authorize_interface_catalog_view(context.user.id)
-        .await?;
-    let mut entries = mcp_interface_catalog_entries(state.as_ref(), &context.actor).await?;
-    if query.bindable_only.unwrap_or(false) {
-        entries.retain(|entry| entry.bindable);
-    }
-    Ok(Json(ApiSuccess::new(
-        entries.into_iter().map(to_interface_response).collect(),
-    )))
+    let interface_catalog_routes::McpCatalogOutput::Interfaces(value) = invoke_catalog(
+        state,
+        headers,
+        "http.console.mcp.interfaces.get.v1",
+        interface_catalog_routes::McpCatalogInput::Interfaces(query),
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(get, path = "/api/console/mcp/list", params(McpListQuery), responses((status = 200, body = [McpListItemSummaryResponse])))]
@@ -349,32 +363,17 @@ pub async fn list_mcp_items(
     Query(query): Query<McpListQuery>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<McpListItemSummaryResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let service = McpManagementService::new(state.store.clone());
-    let items = service
-        .list_items_for_actor(
-            &context.actor,
-            query.instance_id.as_deref(),
-            query.path.as_deref(),
-            query.path_regex.as_deref(),
-            query.keywords.as_deref(),
-            query.depth,
-            query.limit,
-        )
-        .await?;
-    let instance_id = query.instance_id.as_deref().ok_or(
-        control_plane::errors::ControlPlaneError::InvalidInput("instance_id"),
-    )?;
-    let discovery_policy = service
-        .get_instance_discovery_policy_for_actor(&context.actor, instance_id)
-        .await?;
-    let return_fields = list_response_field_set(&discovery_policy.list_return_fields)?;
-    Ok(Json(ApiSuccess::new(
-        items
-            .into_iter()
-            .map(|item| to_list_item_response(item, &return_fields))
-            .collect(),
-    )))
+    let interface_catalog_routes::McpCatalogOutput::List(value) = invoke_catalog(
+        state,
+        headers,
+        "http.console.mcp.list.get.v1",
+        interface_catalog_routes::McpCatalogInput::List(query),
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(get, path = "/api/console/mcp/export", responses((status = 200, body = McpExportPackageResponse)))]
@@ -382,15 +381,17 @@ pub async fn export_mcp_catalog(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<McpExportPackageResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let export = McpManagementService::new(state.store.clone())
-        .export_catalog_for_actor(&context.actor)
-        .await?;
-    let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
-    Ok(Json(ApiSuccess::new(to_export_response(
-        export,
-        &operations,
-    )?)))
+    let interface_catalog_routes::McpCatalogOutput::Export(value) = invoke_catalog(
+        state,
+        headers,
+        "http.console.mcp.export.get.v1",
+        interface_catalog_routes::McpCatalogInput::Export,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(get, path = "/api/console/mcp/instances", responses((status = 200, body = [McpInstanceResponse])))]
@@ -570,7 +571,7 @@ pub async fn list_mcp_tools(
     let mut tools = Vec::with_capacity(snapshot.tools.len());
     for record in snapshot.tools {
         tools.push(
-            to_tool_response_for_actor(state.as_ref(), &context.actor, record, &operations).await?,
+            to_tool_response_for_actor(&state.store, &context.actor, record, &operations).await?,
         );
     }
     Ok(Json(ApiSuccess::new(tools)))
@@ -616,7 +617,7 @@ pub async fn get_mcp_tool(
         .await?;
     let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
     Ok(Json(ApiSuccess::new(
-        to_tool_response_for_actor(state.as_ref(), &context.actor, record, &operations).await?,
+        to_tool_response_for_actor(&state.store, &context.actor, record, &operations).await?,
     )))
 }
 
@@ -670,7 +671,7 @@ pub async fn update_mcp_tool(
                 .await?;
             let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
             Ok(Json(ApiSuccess::new(
-                to_tool_response_for_actor(state.as_ref(), &context.actor, record, &operations)
+                to_tool_response_for_actor(&state.store, &context.actor, record, &operations)
                     .await?,
             )))
         }

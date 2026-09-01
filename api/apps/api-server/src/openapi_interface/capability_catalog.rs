@@ -1,4 +1,7 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 
 use control_plane::ports::ModelDefinitionRepository;
 use serde_json::{json, Value};
@@ -221,10 +224,40 @@ pub async fn build_openapi_capability_catalog(
     state: &ApiState,
     workspace_id: uuid::Uuid,
 ) -> Result<Vec<OpenApiCapabilityCatalogEntry>, ApiError> {
+    build_openapi_capability_catalog_with(
+        &OpenApiCapabilityCatalogDependencies {
+            store: state.store.clone(),
+            console_operations: state.console_operation_registry.inventory().clone(),
+            interface_registry: state
+                .extension_boot_snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.interface_registry())
+                .map(|registry| registry.snapshot()),
+            api_docs: Arc::clone(&state.api_docs),
+            template_catalog: state.runtime_engine.template_catalog().clone(),
+        },
+        workspace_id,
+    )
+    .await
+}
+
+#[derive(Clone)]
+pub(crate) struct OpenApiCapabilityCatalogDependencies {
+    pub(crate) store: storage_durable_postgres::MainDurableStore,
+    pub(crate) console_operations: access_control::ConsoleOperationCompiledInventory,
+    pub(crate) interface_registry: Option<Arc<interface_runtime::CompiledInterfaceRegistry>>,
+    pub(crate) api_docs: Arc<crate::openapi_docs::ApiDocsRegistry>,
+    pub(crate) template_catalog:
+        runtime_core::data_model_template_registry::DataModelTemplateCatalog,
+}
+
+pub(crate) async fn build_openapi_capability_catalog_with(
+    dependencies: &OpenApiCapabilityCatalogDependencies,
+    workspace_id: uuid::Uuid,
+) -> Result<Vec<OpenApiCapabilityCatalogEntry>, ApiError> {
     let mut entries = Vec::new();
-    let compiled_interfaces = state
-        .console_operation_registry
-        .inventory()
+    let compiled_interfaces = dependencies
+        .console_operations
         .interfaces
         .iter()
         .map(|interface| {
@@ -235,18 +268,14 @@ pub async fn build_openapi_capability_catalog(
         })
         .collect::<BTreeMap<_, _>>();
     let mut documented_console_routes = BTreeSet::new();
-    let interface_snapshot = state
-        .extension_boot_snapshot
-        .as_ref()
-        .and_then(|snapshot| snapshot.interface_registry())
-        .map(|registry| registry.snapshot());
+    let interface_snapshot = dependencies.interface_registry.clone();
 
-    for category in &state.api_docs.catalog().categories {
-        let Some(operations) = state.api_docs.category_operations(&category.id) else {
+    for category in &dependencies.api_docs.catalog().categories {
+        let Some(operations) = dependencies.api_docs.category_operations(&category.id) else {
             continue;
         };
         for operation in &operations.operations {
-            let Some(spec) = state.api_docs.operation_spec(&operation.id) else {
+            let Some(spec) = dependencies.api_docs.operation_spec(&operation.id) else {
                 continue;
             };
             let Some(interface) = catalog_entry_from_operation(operation, spec) else {
@@ -290,13 +319,14 @@ pub async fn build_openapi_capability_catalog(
             .map(|(_, interface)| missing_openapi_entry(interface)),
     );
 
-    let mut models = state.store.list_model_definitions(workspace_id).await?;
+    let mut models = dependencies
+        .store
+        .list_model_definitions(workspace_id)
+        .await?;
     models.retain(|model| model.status == domain::DataModelStatus::Published);
     models.sort_by(|left, right| left.code.cmp(&right.code));
-    let operations = runtime_data_model_docs::build_category_operations(
-        &models,
-        state.runtime_engine.template_catalog(),
-    );
+    let operations =
+        runtime_data_model_docs::build_category_operations(&models, &dependencies.template_catalog);
     for operation in operations.operations {
         let Ok(Some((model_id, operation_code))) =
             runtime_data_model_docs::parse_operation_id(&operation.id)
@@ -309,7 +339,7 @@ pub async fn build_openapi_capability_catalog(
         let Some(spec) = runtime_data_model_docs::build_operation_openapi(
             model,
             &operation_code,
-            state.runtime_engine.template_catalog(),
+            &dependencies.template_catalog,
         ) else {
             continue;
         };

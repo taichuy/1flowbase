@@ -8,6 +8,9 @@ pub use capability_catalog::{
     OpenApiCapabilityCatalogEntry, OpenApiCapabilityCatalogPage, OpenApiCapabilityCatalogQuery,
     OpenApiCapabilityCatalogSummary, OpenApiCapabilitySource,
 };
+pub(crate) use capability_catalog::{
+    build_openapi_capability_catalog_with, OpenApiCapabilityCatalogDependencies,
+};
 pub use catalog::{
     catalog_entry_from_operation, OpenApiInterfaceCatalogEntry, OpenApiParameterDescriptor,
     OpenApiParameterLocation,

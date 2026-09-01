@@ -5,12 +5,45 @@ pub(crate) async fn mcp_interface_catalog_entries(
     state: &ApiState,
     actor: &domain::ActorContext,
 ) -> Result<Vec<domain::McpInterfaceCatalogEntry>, ApiError> {
-    let mut entries = build_openapi_capability_catalog(state, actor.current_workspace_id)
-        .await?
-        .into_iter()
-        .map(mcp_interface_entry_from_capability)
-        .collect::<Vec<_>>();
-    let publications = state.store.list_enabled_extension_publications().await?;
+    let dependencies = McpInterfaceCatalogDependencies {
+        store: state.store.clone(),
+        openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
+            store: state.store.clone(),
+            console_operations: state.console_operation_registry.inventory().clone(),
+            interface_registry: state
+                .extension_boot_snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.interface_registry())
+                .map(|registry| registry.snapshot()),
+            api_docs: Arc::clone(&state.api_docs),
+            template_catalog: state.runtime_engine.template_catalog().clone(),
+        },
+    };
+    mcp_interface_catalog_entries_with(&dependencies, actor).await
+}
+
+#[derive(Clone)]
+pub(crate) struct McpInterfaceCatalogDependencies {
+    pub(crate) store: storage_durable_postgres::MainDurableStore,
+    pub(crate) openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies,
+}
+
+pub(crate) async fn mcp_interface_catalog_entries_with(
+    dependencies: &McpInterfaceCatalogDependencies,
+    actor: &domain::ActorContext,
+) -> Result<Vec<domain::McpInterfaceCatalogEntry>, ApiError> {
+    let mut entries = crate::openapi_interface::build_openapi_capability_catalog_with(
+        &dependencies.openapi,
+        actor.current_workspace_id,
+    )
+    .await?
+    .into_iter()
+    .map(mcp_interface_entry_from_capability)
+    .collect::<Vec<_>>();
+    let publications = dependencies
+        .store
+        .list_enabled_extension_publications()
+        .await?;
     let operations = build_published_workflow_operations(publications)
         .map_err(|_| control_plane::errors::ControlPlaneError::Conflict("workflow_route"))?;
     for operation in operations
@@ -127,11 +160,43 @@ pub(crate) async fn bindable_mcp_interface(
     Ok(entry)
 }
 
+pub(crate) async fn bindable_mcp_interface_with(
+    dependencies: &McpInterfaceCatalogDependencies,
+    actor: &domain::ActorContext,
+    interface_id: &str,
+) -> Result<domain::McpInterfaceCatalogEntry, ApiError> {
+    let entry = mcp_interface_catalog_entries_with(dependencies, actor)
+        .await?
+        .into_iter()
+        .find(|entry| entry.interface_id == interface_id)
+        .ok_or(control_plane::errors::ControlPlaneError::NotFound(
+            "mcp_interface",
+        ))?;
+    if !entry.bindable {
+        return Err(control_plane::errors::ControlPlaneError::InvalidInput("interface_id").into());
+    }
+    Ok(entry)
+}
+
 pub(super) async fn mcp_interface_operation_map(
     state: &ApiState,
     actor: &domain::ActorContext,
 ) -> Result<HashMap<String, String>, ApiError> {
     Ok(mcp_interface_catalog_entries(state, actor)
+        .await?
+        .into_iter()
+        .map(|entry| {
+            let operation = interface_operation(&entry);
+            (entry.interface_id, operation)
+        })
+        .collect())
+}
+
+pub(super) async fn mcp_interface_operation_map_with(
+    dependencies: &McpInterfaceCatalogDependencies,
+    actor: &domain::ActorContext,
+) -> Result<HashMap<String, String>, ApiError> {
+    Ok(mcp_interface_catalog_entries_with(dependencies, actor)
         .await?
         .into_iter()
         .map(|entry| {

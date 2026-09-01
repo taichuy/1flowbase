@@ -132,7 +132,7 @@ pub(super) fn to_tool_response(
 }
 
 pub(super) async fn to_tool_response_for_actor(
-    state: &ApiState,
+    store: &storage_durable_postgres::MainDurableStore,
     actor: &domain::ActorContext,
     record: domain::McpToolRecord,
     operations: &HashMap<String, String>,
@@ -143,7 +143,7 @@ pub(super) async fn to_tool_response_for_actor(
             remote_tool_name,
             ..
         } => Some(
-            McpManagementService::new(state.store.clone())
+            McpManagementService::new(store.clone())
                 .upstream_proxy_availability_for_actor(
                     actor,
                     *upstream_connection_id,
