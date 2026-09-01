@@ -6,12 +6,7 @@ use axum::{
     Json,
 };
 use control_plane::{
-    i18n_catalog::management::{
-        CatalogManagementAccess, DeleteCustomMessageCommand, GetCatalogEntryCommand,
-        I18nCatalogManagementService, ListCatalogEntriesCommand,
-        RestoreAllOfficialOverridesCommand, RestoreOfficialTranslationCommand,
-        UpsertCustomTranslationCommand, UpsertOfficialOverrideCommand,
-    },
+    i18n_catalog::management::CatalogManagementAccess,
     ports::{CatalogManagementEntry, CatalogManagementOrigin},
 };
 use domain::{CatalogLocale, CatalogMessageIdentity, CatalogTranslation, WorkspaceCatalogRevision};
@@ -21,16 +16,15 @@ use utoipa::{IntoParams, ToSchema};
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_delete, console_get, console_post, console_put, ConsoleRouteAssembly,
     },
 };
 
-use super::{invalid_input, require_root_catalog_actor};
+use super::invalid_input;
 
-const DEFAULT_PAGE_LIMIT: u32 = 50;
+pub(super) const DEFAULT_PAGE_LIMIT: u32 = 50;
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -206,51 +200,34 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
 }
 
-fn access(actor: domain::ActorContext) -> CatalogManagementAccess {
+pub(super) fn access(actor: domain::ActorContext) -> CatalogManagementAccess {
     CatalogManagementAccess {
         current_workspace_id: actor.current_workspace_id,
         actor,
     }
 }
 
-fn identity(key: String) -> Result<CatalogMessageIdentity, ApiError> {
+pub(super) fn identity(key: String) -> Result<CatalogMessageIdentity, ApiError> {
     CatalogMessageIdentity::new(key).map_err(|_| invalid_input("i18n_catalog_key"))
 }
 
-fn locale(value: String) -> Result<CatalogLocale, ApiError> {
+pub(super) fn locale(value: String) -> Result<CatalogLocale, ApiError> {
     CatalogLocale::new(value).map_err(|_| invalid_input("i18n_catalog_locale"))
 }
 
-fn revision(value: i64) -> Result<WorkspaceCatalogRevision, ApiError> {
+pub(super) fn revision(value: i64) -> Result<WorkspaceCatalogRevision, ApiError> {
     WorkspaceCatalogRevision::new(value).map_err(|_| invalid_input("expected_revision"))
 }
 
-fn translation(body: &UpsertCatalogTranslationBody) -> Result<CatalogTranslation, ApiError> {
+pub(super) fn translation(
+    body: &UpsertCatalogTranslationBody,
+) -> Result<CatalogTranslation, ApiError> {
     CatalogTranslation::new(
         identity(body.key.clone())?,
         locale(body.locale.clone())?,
         body.translation.clone(),
     )
     .map_err(|_| invalid_input("i18n_catalog_translation"))
-}
-
-async fn authenticated_access(
-    state: &ApiState,
-    headers: &HeaderMap,
-) -> Result<CatalogManagementAccess, ApiError> {
-    let context = require_session(state, headers).await?;
-    require_root_catalog_actor(state, &context.actor)?;
-    Ok(access(context.actor))
-}
-
-async fn mutation_access(
-    state: &ApiState,
-    headers: &HeaderMap,
-) -> Result<CatalogManagementAccess, ApiError> {
-    let context = require_session(state, headers).await?;
-    require_csrf(headers, &context)?;
-    require_root_catalog_actor(state, &context.actor)?;
-    Ok(access(context.actor))
 }
 
 #[utoipa::path(
@@ -266,25 +243,17 @@ pub async fn list_catalog_entries(
     headers: HeaderMap,
     Query(query): Query<ListCatalogEntriesQuery>,
 ) -> Result<Json<ApiSuccess<CatalogManagementPageResponse>>, ApiError> {
-    let access = authenticated_access(&state, &headers).await?;
-    let service =
-        I18nCatalogManagementService::new(state.store.clone(), state.bootstrap_workspace_id);
-    let page = service
-        .list(ListCatalogEntriesCommand {
-            access,
-            key: query.key,
-            locale: query.locale.map(locale).transpose()?,
-            search: query.search,
-            origin: query.origin.map(Into::into),
-            offset: query.offset.unwrap_or(0),
-            limit: query.limit.unwrap_or(DEFAULT_PAGE_LIMIT),
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(CatalogManagementPageResponse {
-        entries: page.entries.into_iter().map(Into::into).collect(),
-        total: page.total,
-        revision: page.revision.value(),
-    })))
+    let super::interface::I18nCatalogOutput::Entries(response) = super::invoke(
+        state,
+        headers,
+        "http.console.i18n.entries.list.get.v1",
+        super::interface::I18nCatalogInput::ListEntries(query),
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -300,39 +269,17 @@ pub async fn get_catalog_entry(
     headers: HeaderMap,
     Query(query): Query<GetCatalogEntryQuery>,
 ) -> Result<Json<ApiSuccess<CatalogManagementEntryResponse>>, ApiError> {
-    let access = authenticated_access(&state, &headers).await?;
-    let service =
-        I18nCatalogManagementService::new(state.store.clone(), state.bootstrap_workspace_id);
-    let entry = service
-        .detail(GetCatalogEntryCommand {
-            access,
-            identity: identity(query.key)?,
-            locale: locale(query.locale)?,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(entry.into())))
-}
-
-async fn entry_after_mutation(
-    state: &ApiState,
-    access: CatalogManagementAccess,
-    identity: CatalogMessageIdentity,
-    locale: CatalogLocale,
-    revision: WorkspaceCatalogRevision,
-) -> Result<CatalogEntryMutationResponse, ApiError> {
-    let service =
-        I18nCatalogManagementService::new(state.store.clone(), state.bootstrap_workspace_id);
-    let entry = service
-        .detail(GetCatalogEntryCommand {
-            access,
-            identity,
-            locale,
-        })
-        .await?;
-    Ok(CatalogEntryMutationResponse {
-        revision: revision.value(),
-        entry: entry.into(),
-    })
+    let super::interface::I18nCatalogOutput::Entry(response) = super::invoke(
+        state,
+        headers,
+        "http.console.i18n.entries.detail.get.v1",
+        super::interface::I18nCatalogInput::GetEntry(query),
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -348,22 +295,17 @@ pub async fn upsert_catalog_override(
     headers: HeaderMap,
     Json(body): Json<UpsertCatalogTranslationBody>,
 ) -> Result<Json<ApiSuccess<CatalogEntryMutationResponse>>, ApiError> {
-    let access = mutation_access(&state, &headers).await?;
-    let value = translation(&body)?;
-    let identity = value.identity().clone();
-    let locale = value.locale().clone();
-    let service =
-        I18nCatalogManagementService::new(state.store.clone(), state.bootstrap_workspace_id);
-    let catalog_state = service
-        .upsert_official_override(UpsertOfficialOverrideCommand {
-            access: access.clone(),
-            value,
-            expected_revision: revision(body.expected_revision)?,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        entry_after_mutation(&state, access, identity, locale, catalog_state.revision()).await?,
-    )))
+    let super::interface::I18nCatalogOutput::EntryMutation(response) = super::invoke_mutating(
+        state,
+        headers,
+        "http.console.i18n.overrides.put.v1",
+        super::interface::I18nCatalogInput::UpsertOfficialOverride(body),
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -379,22 +321,17 @@ pub async fn restore_catalog_override(
     headers: HeaderMap,
     Json(body): Json<RestoreCatalogOverrideBody>,
 ) -> Result<Json<ApiSuccess<CatalogEntryMutationResponse>>, ApiError> {
-    let access = mutation_access(&state, &headers).await?;
-    let identity = identity(body.key)?;
-    let locale = locale(body.locale)?;
-    let service =
-        I18nCatalogManagementService::new(state.store.clone(), state.bootstrap_workspace_id);
-    let catalog_state = service
-        .restore_official_translation(RestoreOfficialTranslationCommand {
-            access: access.clone(),
-            identity: identity.clone(),
-            locale: locale.clone(),
-            expected_revision: revision(body.expected_revision)?,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        entry_after_mutation(&state, access, identity, locale, catalog_state.revision()).await?,
-    )))
+    let super::interface::I18nCatalogOutput::EntryMutation(response) = super::invoke_mutating(
+        state,
+        headers,
+        "http.console.i18n.overrides.delete.v1",
+        super::interface::I18nCatalogInput::RestoreOfficialOverride(body),
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -410,22 +347,17 @@ pub async fn upsert_custom_catalog_translation(
     headers: HeaderMap,
     Json(body): Json<UpsertCatalogTranslationBody>,
 ) -> Result<Json<ApiSuccess<CatalogEntryMutationResponse>>, ApiError> {
-    let access = mutation_access(&state, &headers).await?;
-    let value = translation(&body)?;
-    let identity = value.identity().clone();
-    let locale = value.locale().clone();
-    let service =
-        I18nCatalogManagementService::new(state.store.clone(), state.bootstrap_workspace_id);
-    let catalog_state = service
-        .upsert_custom_translation(UpsertCustomTranslationCommand {
-            access: access.clone(),
-            value,
-            expected_revision: revision(body.expected_revision)?,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        entry_after_mutation(&state, access, identity, locale, catalog_state.revision()).await?,
-    )))
+    let super::interface::I18nCatalogOutput::EntryMutation(response) = super::invoke_mutating(
+        state,
+        headers,
+        "http.console.i18n.custom-translations.put.v1",
+        super::interface::I18nCatalogInput::UpsertCustomTranslation(body),
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -441,19 +373,17 @@ pub async fn delete_custom_catalog_key(
     headers: HeaderMap,
     Json(body): Json<DeleteCustomCatalogKeyBody>,
 ) -> Result<Json<ApiSuccess<CatalogRevisionResponse>>, ApiError> {
-    let access = mutation_access(&state, &headers).await?;
-    let service =
-        I18nCatalogManagementService::new(state.store.clone(), state.bootstrap_workspace_id);
-    let catalog_state = service
-        .delete_custom_message(DeleteCustomMessageCommand {
-            access,
-            identity: identity(body.key)?,
-            expected_revision: revision(body.expected_revision)?,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(CatalogRevisionResponse {
-        revision: catalog_state.revision().value(),
-    })))
+    let super::interface::I18nCatalogOutput::Revision(response) = super::invoke_mutating(
+        state,
+        headers,
+        "http.console.i18n.custom-keys.delete.v1",
+        super::interface::I18nCatalogInput::DeleteCustomKey(body),
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -469,18 +399,17 @@ pub async fn restore_all_catalog_overrides(
     headers: HeaderMap,
     Json(body): Json<RestoreCatalogOverridesBody>,
 ) -> Result<Json<ApiSuccess<CatalogRevisionResponse>>, ApiError> {
-    let access = mutation_access(&state, &headers).await?;
-    let service =
-        I18nCatalogManagementService::new(state.store.clone(), state.bootstrap_workspace_id);
-    let catalog_state = service
-        .restore_all_official_overrides(RestoreAllOfficialOverridesCommand {
-            access,
-            expected_revision: revision(body.expected_revision)?,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(CatalogRevisionResponse {
-        revision: catalog_state.revision().value(),
-    })))
+    let super::interface::I18nCatalogOutput::Revision(response) = super::invoke_mutating(
+        state,
+        headers,
+        "http.console.i18n.restore-overrides.post.v1",
+        super::interface::I18nCatalogInput::RestoreAllOfficialOverrides(body),
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[cfg(test)]

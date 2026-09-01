@@ -5,30 +5,17 @@ use axum::{
     http::HeaderMap,
     Json, Router,
 };
-use control_plane::{
-    errors::ControlPlaneError,
-    i18n_catalog::{
-        OfficialI18nCatalogUpdateCommand, OfficialI18nCatalogUpdateOutcome,
-        OfficialI18nCatalogUpdateStatus,
-    },
-    plugin_management::{
-        installed_extension_integrity_warnings, validate_extension_integrity_override,
-        ExtensionInstallationService, ExtensionRiskOverride,
-    },
-    ports::I18nCatalogRepository,
-};
-use domain::WorkspaceCatalogRevision;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
 
+pub(crate) mod interface;
 pub(crate) mod management;
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -118,18 +105,38 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .merge(management::route_assembly())
 }
 
-pub(super) fn require_root_catalog_actor(
-    state: &ApiState,
-    actor: &domain::ActorContext,
-) -> Result<(), ApiError> {
-    if !actor.is_root || actor.current_workspace_id != state.bootstrap_workspace_id {
-        return Err(ControlPlaneError::PermissionDenied("root_i18n_catalog_actor").into());
-    }
-    Ok(())
+pub(super) fn invalid_input(name: &'static str) -> ApiError {
+    control_plane::errors::ControlPlaneError::InvalidInput(name).into()
 }
 
-pub(super) fn invalid_input(name: &'static str) -> ApiError {
-    ControlPlaneError::InvalidInput(name).into()
+async fn invoke(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    binding_id: &'static str,
+    input: interface::I18nCatalogInput,
+) -> Result<interface::I18nCatalogOutput, ApiError> {
+    crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        binding_id,
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        input,
+    )
+    .await
+}
+
+async fn invoke_mutating(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    binding_id: &'static str,
+    input: interface::I18nCatalogInput,
+) -> Result<interface::I18nCatalogOutput, ApiError> {
+    crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        binding_id,
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        input,
+    )
+    .await
 }
 
 #[utoipa::path(
@@ -143,44 +150,15 @@ pub async fn get_i18n_catalog_state(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<I18nCatalogStateResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_root_catalog_actor(&state, &context.actor)?;
-    let workspace_id = context.actor.current_workspace_id;
-    let catalog_state =
-        I18nCatalogRepository::get_workspace_catalog_state(&state.store, workspace_id)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("workspace_i18n_catalog_state"))?;
-    let descriptor = match catalog_state.active_release_id() {
-        Some(release_id) => Some(
-            I18nCatalogRepository::get_i18n_catalog_release_descriptor(
-                &state.store,
-                workspace_id,
-                release_id,
-            )
-            .await?
-            .ok_or(ControlPlaneError::NotFound("active_i18n_catalog_release"))?,
-        ),
-        None => None,
-    };
-    let response = match descriptor {
-        Some(descriptor) => I18nCatalogStateResponse {
-            active_catalog_version: Some(descriptor.catalog_version.as_str().to_owned()),
-            revision: catalog_state.revision().value(),
-            source: "official",
-            source_locale: descriptor.source_locale.as_str().to_owned(),
-            locales: descriptor
-                .locales
-                .iter()
-                .map(|value| value.as_str().to_owned())
-                .collect(),
-        },
-        None => I18nCatalogStateResponse {
-            active_catalog_version: None,
-            revision: catalog_state.revision().value(),
-            source: "official",
-            source_locale: domain::I18N_CATALOG_SOURCE_LOCALE.to_owned(),
-            locales: Vec::new(),
-        },
+    let interface::I18nCatalogOutput::State(response) = invoke(
+        state,
+        headers,
+        "http.console.i18n.catalog.get.v1",
+        interface::I18nCatalogInput::GetState,
+    )
+    .await?
+    else {
+        unreachable!()
     };
     Ok(Json(ApiSuccess::new(response)))
 }
@@ -196,29 +174,15 @@ pub async fn get_i18n_catalog_update_status(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<I18nCatalogUpdateStatusResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_root_catalog_actor(&state, &context.actor)?;
-    let status = state
-        .official_i18n_catalog_update_service
-        .check_update(context.actor.current_workspace_id)
-        .await?;
-    let response = match status {
-        OfficialI18nCatalogUpdateStatus::Current {
-            active_catalog_version,
-            latest_catalog_version,
-        } => I18nCatalogUpdateStatusResponse {
-            status: "current",
-            active_catalog_version: Some(active_catalog_version.as_str().to_owned()),
-            latest_catalog_version: latest_catalog_version.as_str().to_owned(),
-        },
-        OfficialI18nCatalogUpdateStatus::UpdateAvailable {
-            active_catalog_version,
-            latest_catalog_version,
-        } => I18nCatalogUpdateStatusResponse {
-            status: "update_available",
-            active_catalog_version: active_catalog_version.map(|value| value.as_str().to_owned()),
-            latest_catalog_version: latest_catalog_version.as_str().to_owned(),
-        },
+    let interface::I18nCatalogOutput::UpdateStatus(response) = invoke(
+        state,
+        headers,
+        "http.console.i18n.update-check.get.v1",
+        interface::I18nCatalogInput::CheckUpdate,
+    )
+    .await?
+    else {
+        unreachable!()
     };
     Ok(Json(ApiSuccess::new(response)))
 }
@@ -236,72 +200,17 @@ pub async fn activate_i18n_catalog_update(
     headers: HeaderMap,
     Json(body): Json<ActivateI18nCatalogBody>,
 ) -> Result<Json<ApiSuccess<ActivateI18nCatalogResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    require_root_catalog_actor(&state, &context.actor)?;
-    let expected_revision = WorkspaceCatalogRevision::new(body.expected_revision)
-        .map_err(|_| invalid_input("expected_revision"))?;
-    let outcome = state
-        .official_i18n_catalog_update_service
-        .check_and_activate(OfficialI18nCatalogUpdateCommand {
-            workspace_id: context.actor.current_workspace_id,
-            expected_revision,
-        })
-        .await?;
-    let response = match outcome {
-        OfficialI18nCatalogUpdateOutcome::Current { catalog_version } => {
-            ActivateI18nCatalogResponse {
-                status: "current",
-                catalog_version: catalog_version.as_str().to_owned(),
-                revision: expected_revision.value(),
-            }
-        }
-        OfficialI18nCatalogUpdateOutcome::Activated {
-            catalog_version,
-            state,
-        } => ActivateI18nCatalogResponse {
-            status: "activated",
-            catalog_version: catalog_version.as_str().to_owned(),
-            revision: state.revision().value(),
-        },
+    let interface::I18nCatalogOutput::Activation(response) = invoke_mutating(
+        state,
+        headers,
+        "http.console.i18n.activate.post.v1",
+        interface::I18nCatalogInput::ActivateOfficial(body),
+    )
+    .await?
+    else {
+        unreachable!()
     };
     Ok(Json(ApiSuccess::new(response)))
-}
-
-async fn load_installed_i18n_catalog(
-    state: &ApiState,
-    installation_id: uuid::Uuid,
-) -> Result<
-    (
-        domain::ExtensionInstallationRecord,
-        control_plane::i18n_catalog::VerifiedOfficialCatalogSeed,
-        Vec<domain::ExtensionIntegrityWarning>,
-    ),
-    ApiError,
-> {
-    let installation =
-        ExtensionInstallationService::new(state.store.clone(), &state.provider_install_root)
-            .find_local_installation_by_id(&state.api_node_id, installation_id)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("extension_installation"))?;
-    if installation.identity.category != domain::ExtensionCategory::I18n
-        || installation.application_action != domain::ExtensionApplicationAction::ActivateI18n
-    {
-        return Err(ControlPlaneError::InvalidInput("i18n_extension_installation").into());
-    }
-    let local_path = installation.local_path.as_deref().ok_or(
-        control_plane::errors::ControlPlaneError::Conflict("extension_artifact_path_missing"),
-    )?;
-    let bytes = tokio::fs::read(local_path).await?;
-    let warnings = installed_extension_integrity_warnings(&installation, &bytes);
-    let seed = tokio::task::spawn_blocking(move || {
-        let inspection = crate::official_i18n_catalog_seed::inspect_catalog_seed(&bytes)?;
-        crate::official_i18n_catalog_seed::decode_downloaded_catalog_seed(&bytes, &inspection)
-    })
-    .await
-    .map_err(|_| ControlPlaneError::InvalidInput("i18n_catalog_seed"))?
-    .map_err(|_| ControlPlaneError::InvalidInput("i18n_catalog_seed"))?;
-    Ok((installation, seed, warnings))
 }
 
 #[utoipa::path(
@@ -317,45 +226,17 @@ pub async fn preview_installed_i18n_catalog(
     headers: HeaderMap,
     Path(installation_id): Path<uuid::Uuid>,
 ) -> Result<Json<ApiSuccess<InstalledI18nCatalogPreviewResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_root_catalog_actor(&state, &context.actor)?;
-    let (_, seed, warnings) = load_installed_i18n_catalog(&state, installation_id).await?;
-    let catalog_state = I18nCatalogRepository::get_workspace_catalog_state(
-        &state.store,
-        context.actor.current_workspace_id,
+    let interface::I18nCatalogOutput::InstalledPreview(response) = invoke(
+        state,
+        headers,
+        "http.console.i18n.installed-extension.preview.get.v1",
+        interface::I18nCatalogInput::PreviewInstalled { installation_id },
     )
     .await?
-    .ok_or(ControlPlaneError::NotFound("workspace_i18n_catalog_state"))?;
-    let active = match catalog_state.active_release_id() {
-        Some(release_id) => {
-            I18nCatalogRepository::get_i18n_catalog_release_descriptor(
-                &state.store,
-                context.actor.current_workspace_id,
-                release_id,
-            )
-            .await?
-        }
-        None => None,
+    else {
+        unreachable!()
     };
-    let applied = active.as_ref().is_some_and(|descriptor| {
-        descriptor.catalog_version == *seed.catalog_version()
-            && descriptor.semantic_sha256 == *seed.semantic_sha256()
-    });
-    Ok(Json(ApiSuccess::new(InstalledI18nCatalogPreviewResponse {
-        extension_installation_id: installation_id.to_string(),
-        application_status: if applied { "applied" } else { "not_applied" }.to_string(),
-        active_catalog_version: active
-            .map(|descriptor| descriptor.catalog_version.as_str().to_string()),
-        installed_catalog_version: seed.catalog_version().as_str().to_string(),
-        revision: catalog_state.revision().value(),
-        required_integrity_override: (!warnings.is_empty()).then(|| {
-            domain::ExtensionRiskChallenge {
-                warnings: warnings.clone(),
-                compatibility: None,
-            }
-        }),
-        integrity_warnings: warnings,
-    })))
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -373,47 +254,18 @@ pub async fn activate_installed_i18n_catalog(
     Path(installation_id): Path<uuid::Uuid>,
     Json(body): Json<ActivateInstalledI18nCatalogBody>,
 ) -> Result<Json<ApiSuccess<ActivateI18nCatalogResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    require_root_catalog_actor(&state, &context.actor)?;
-    let (_, seed, warnings) = load_installed_i18n_catalog(&state, installation_id).await?;
-    let risk_override = body.integrity_override.map(|value| ExtensionRiskOverride {
-        reason: value.reason,
-        acknowledged_warnings: value.acknowledged_warnings,
-    });
-    if !validate_extension_integrity_override(&warnings, risk_override.as_ref())? {
-        return Err(
-            ControlPlaneError::Conflict("i18n_catalog_integrity_confirmation_required").into(),
-        );
-    }
-    let expected_revision = WorkspaceCatalogRevision::new(body.expected_revision)
-        .map_err(|_| invalid_input("expected_revision"))?;
-    let outcome = state
-        .official_i18n_catalog_update_service
-        .activate_installed(
-            OfficialI18nCatalogUpdateCommand {
-                workspace_id: context.actor.current_workspace_id,
-                expected_revision,
-            },
-            seed,
-        )
-        .await?;
-    let response = match outcome {
-        OfficialI18nCatalogUpdateOutcome::Current { catalog_version } => {
-            ActivateI18nCatalogResponse {
-                status: "current",
-                catalog_version: catalog_version.as_str().to_string(),
-                revision: expected_revision.value(),
-            }
-        }
-        OfficialI18nCatalogUpdateOutcome::Activated {
-            catalog_version,
-            state,
-        } => ActivateI18nCatalogResponse {
-            status: "activated",
-            catalog_version: catalog_version.as_str().to_string(),
-            revision: state.revision().value(),
+    let interface::I18nCatalogOutput::Activation(response) = invoke_mutating(
+        state,
+        headers,
+        "http.console.i18n.installed-extension.activate.post.v1",
+        interface::I18nCatalogInput::ActivateInstalled {
+            installation_id,
+            body,
         },
+    )
+    .await?
+    else {
+        unreachable!()
     };
     Ok(Json(ApiSuccess::new(response)))
 }

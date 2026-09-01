@@ -156,6 +156,15 @@ pub(crate) fn production_interface_contributions(
             settings_features: state.settings_feature_registry.inventory().features.clone(),
         },
     );
+    let console_i18n_catalog = crate::routes::i18n_catalog::interface::port(
+        crate::routes::i18n_catalog::interface::I18nCatalogDependencies {
+            store: state.store.clone(),
+            bootstrap_workspace_id: state.bootstrap_workspace_id,
+            update_service: Arc::clone(&state.official_i18n_catalog_update_service),
+            api_node_id: state.api_node_id.clone(),
+            provider_install_root: state.provider_install_root.clone(),
+        },
+    );
     let console_role_access = crate::routes::role_access_interface::role_access_port(
         state.store.clone(),
         state.console_operation_registry.inventory().clone(),
@@ -266,6 +275,25 @@ pub(crate) fn production_interface_contributions(
             &["console.navigation.view"],
             &["api-server.console-navigation"],
             crate::routes::navigation_interface::compile_registry(console_navigation)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-i18n-catalog",
+            &[
+                "i18n_catalog.state.get",
+                "i18n_catalog.update.check",
+                "i18n_catalog.update.activate",
+                "i18n_catalog.installed_extension.preview",
+                "i18n_catalog.installed_extension.activate",
+                "i18n_catalog.entries.list",
+                "i18n_catalog.entries.detail",
+                "i18n_catalog.overrides.upsert",
+                "i18n_catalog.overrides.restore",
+                "i18n_catalog.custom_translations.upsert",
+                "i18n_catalog.custom_keys.delete",
+                "i18n_catalog.overrides.restore_all",
+            ],
+            &["api-server.console-i18n-catalog"],
+            crate::routes::i18n_catalog::interface::compile_registry(console_i18n_catalog)?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-role-access",
