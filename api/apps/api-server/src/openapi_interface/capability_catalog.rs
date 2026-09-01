@@ -91,7 +91,31 @@ pub async fn query_openapi_capability_catalog(
     workspace_id: uuid::Uuid,
     query: OpenApiCapabilityCatalogQuery,
 ) -> Result<OpenApiCapabilityCatalogPage, ApiError> {
-    let mut summaries = openapi_capability_catalog_summaries(state, workspace_id).await?;
+    query_openapi_capability_catalog_with(
+        &OpenApiCapabilityCatalogDependencies {
+            store: state.store.clone(),
+            console_operations: state.console_operation_registry.inventory().clone(),
+            interface_registry: state
+                .extension_boot_snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.interface_registry())
+                .map(|registry| registry.snapshot()),
+            api_docs: Arc::clone(&state.api_docs),
+            template_catalog: state.runtime_engine.template_catalog().clone(),
+        },
+        workspace_id,
+        query,
+    )
+    .await
+}
+
+pub(crate) async fn query_openapi_capability_catalog_with(
+    dependencies: &OpenApiCapabilityCatalogDependencies,
+    workspace_id: uuid::Uuid,
+    query: OpenApiCapabilityCatalogQuery,
+) -> Result<OpenApiCapabilityCatalogPage, ApiError> {
+    let mut summaries =
+        openapi_capability_catalog_summaries_with(dependencies, workspace_id).await?;
     let adapter_ids = summaries
         .iter()
         .map(|entry| entry.source.adapter_id().to_string())
@@ -163,10 +187,35 @@ pub async fn get_openapi_capability(
     workspace_id: uuid::Uuid,
     interface_id: &str,
 ) -> Result<Option<OpenApiCapabilityCatalogEntry>, ApiError> {
-    Ok(build_openapi_capability_catalog(state, workspace_id)
-        .await?
-        .into_iter()
-        .find(|entry| entry.interface.operation_id == interface_id))
+    get_openapi_capability_with(
+        &OpenApiCapabilityCatalogDependencies {
+            store: state.store.clone(),
+            console_operations: state.console_operation_registry.inventory().clone(),
+            interface_registry: state
+                .extension_boot_snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.interface_registry())
+                .map(|registry| registry.snapshot()),
+            api_docs: Arc::clone(&state.api_docs),
+            template_catalog: state.runtime_engine.template_catalog().clone(),
+        },
+        workspace_id,
+        interface_id,
+    )
+    .await
+}
+
+pub(crate) async fn get_openapi_capability_with(
+    dependencies: &OpenApiCapabilityCatalogDependencies,
+    workspace_id: uuid::Uuid,
+    interface_id: &str,
+) -> Result<Option<OpenApiCapabilityCatalogEntry>, ApiError> {
+    Ok(
+        build_openapi_capability_catalog_with(dependencies, workspace_id)
+            .await?
+            .into_iter()
+            .find(|entry| entry.interface.operation_id == interface_id),
+    )
 }
 
 pub async fn get_openapi_capability_by_route(
@@ -190,11 +239,11 @@ pub async fn get_openapi_capability_by_route(
     Ok(found)
 }
 
-async fn openapi_capability_catalog_summaries(
-    state: &ApiState,
+async fn openapi_capability_catalog_summaries_with(
+    dependencies: &OpenApiCapabilityCatalogDependencies,
     workspace_id: uuid::Uuid,
 ) -> Result<Vec<OpenApiCapabilityCatalogSummary>, ApiError> {
-    let mut summaries = build_openapi_capability_catalog(state, workspace_id)
+    let mut summaries = build_openapi_capability_catalog_with(dependencies, workspace_id)
         .await?
         .into_iter()
         .filter(|entry| {

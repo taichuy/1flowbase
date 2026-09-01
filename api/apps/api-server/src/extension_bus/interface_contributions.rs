@@ -1092,6 +1092,27 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-frontstage-callable-catalog",
+            &[
+                "frontstage.callable_interfaces.list",
+                "frontstage.callable_interfaces.view",
+            ],
+            &["api-server.console-frontstage-callable-catalog"],
+            crate::routes::frontstage::callable_interface_catalog::compile_registry(
+                crate::routes::frontstage::callable_interface_catalog::port(
+                    crate::routes::frontstage::callable_interface_catalog::FrontstageCallableCatalogDependencies {
+                        openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
+                            store: state.store.clone(),
+                            console_operations: state.console_operation_registry.inventory().clone(),
+                            interface_registry: state.extension_boot_snapshot.as_ref().and_then(|snapshot| snapshot.interface_registry()).map(|registry| registry.snapshot()),
+                            api_docs: Arc::clone(&state.api_docs),
+                            template_catalog: state.runtime_engine.template_catalog().clone(),
+                        },
+                    },
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-runtime-i18n",
             &["i18n.catalog.view"],
             &["api-server.console-runtime-i18n"],

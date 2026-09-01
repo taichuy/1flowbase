@@ -21,15 +21,12 @@ use crate::{
     error_response::ApiError,
     middleware::{require_csrf::require_csrf, require_session::require_session},
     openapi_interface::{
-        get_openapi_capability, get_openapi_capability_by_route, query_openapi_capability_catalog,
-        DispatchArguments, DispatchError, OpenApiCapabilityCatalogEntry,
-        OpenApiCapabilityCatalogQuery, OpenApiCapabilitySource, OpenApiInterfaceCatalogEntry,
+        get_openapi_capability_by_route, DispatchArguments, DispatchError,
+        OpenApiCapabilityCatalogEntry, OpenApiCapabilitySource, OpenApiInterfaceCatalogEntry,
         OpenApiParameterLocation,
     },
     response::ApiSuccess,
 };
-
-const INTERFACE_CAPABILITY_PAGE_SIZE: usize = 20;
 
 #[derive(Clone)]
 struct RegisteredCallable {
@@ -156,28 +153,13 @@ pub async fn list_frontstage_interface_capabilities(
     headers: HeaderMap,
     Query(query): Query<FrontstageInterfaceCapabilityQuery>,
 ) -> Result<Json<ApiSuccess<FrontstageInterfaceCapabilityPageResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let workspace_id = context.actor.current_workspace_id;
-    let actor = &context.actor;
-    if !actor.has_permission("frontstage.page.design") {
-        return Err(ControlPlaneError::PermissionDenied("frontstage.page.design").into());
-    }
-    let page = query_openapi_capability_catalog(
-        &state,
-        workspace_id,
-        OpenApiCapabilityCatalogQuery {
-            path_prefixes: query.path_prefixes,
-            path_query: query.path_query,
-            adapter_id: query.adapter_id,
-            method: query.method,
-            offset: query.offset.unwrap_or(0),
-            limit: query
-                .limit
-                .unwrap_or(INTERFACE_CAPABILITY_PAGE_SIZE)
-                .clamp(1, INTERFACE_CAPABILITY_PAGE_SIZE),
-        },
-    )
-    .await?;
+    let snapshot_state = Arc::clone(&state);
+    let crate::routes::frontstage::callable_interface_catalog::FrontstageCallableCatalogOutput::Page(page) = crate::routes::console_interface::invoke(
+        snapshot_state,
+        "http.console.frontstage.interface-capabilities.list.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        crate::routes::frontstage::callable_interface_catalog::FrontstageCallableCatalogInput::List(query),
+    ).await? else { unreachable!() };
     Ok(Json(ApiSuccess::new(
         FrontstageInterfaceCapabilityPageResponse {
             items: page
@@ -219,17 +201,13 @@ pub async fn get_frontstage_interface_capability(
     headers: HeaderMap,
     Path(interface_id): Path<String>,
 ) -> Result<Json<ApiSuccess<FrontstageInterfaceCapabilityResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let workspace_id = context.actor.current_workspace_id;
-    let actor = &context.actor;
-    if !actor.has_permission("frontstage.page.design") {
-        return Err(ControlPlaneError::PermissionDenied("frontstage.page.design").into());
-    }
-    let entry = get_openapi_capability(&state, workspace_id, &interface_id)
-        .await?
-        .ok_or(ControlPlaneError::NotFound(
-            "frontstage_interface_capability",
-        ))?;
+    let snapshot_state = Arc::clone(&state);
+    let crate::routes::frontstage::callable_interface_catalog::FrontstageCallableCatalogOutput::Entry(entry) = crate::routes::console_interface::invoke(
+        snapshot_state,
+        "http.console.frontstage.interface-capabilities.detail.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        crate::routes::frontstage::callable_interface_catalog::FrontstageCallableCatalogInput::Get { interface_id },
+    ).await? else { unreachable!() };
     Ok(Json(ApiSuccess::new(to_response(registered_callable(
         entry,
     )))))

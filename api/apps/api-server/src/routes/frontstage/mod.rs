@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 pub mod block_tree;
+pub(crate) mod callable_interface_catalog;
 pub mod callable_interfaces;
 pub mod components;
 pub mod data_capabilities;
