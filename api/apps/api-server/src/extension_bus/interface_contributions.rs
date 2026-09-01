@@ -883,6 +883,9 @@ pub(crate) fn production_interface_contributions(
                 "extension_center.catalog.view",
                 "extension_center.catalog.detail",
                 "extension_center.update_check",
+                "extension_center.install",
+                "extension_center.update",
+                "extension_center.install.upload",
             ],
             &["api-server.console-extension-center"],
             crate::routes::plugins::extension_center::interface::compile_registry(

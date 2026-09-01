@@ -27,6 +27,9 @@ pub(crate) enum ExtensionCenterInput {
         catalog_id: String,
     },
     CheckUpdates(ExtensionUpdateCheckBody),
+    InstallOfficial(InstallOfficialExtensionBody),
+    UpdateOfficial(InstallOfficialExtensionBody),
+    InstallUploaded(ExtensionUploadFields),
 }
 
 impl InterfaceContract for ExtensionCenterInput {
@@ -41,6 +44,7 @@ pub(crate) enum ExtensionCenterOutput {
     Catalog(ExtensionCatalogGatewayPageResponse),
     CatalogEntry(ExtensionCatalogGatewayEntryResponse),
     Updates(ExtensionUpdateCheckResponse),
+    Install(ExtensionInstallOutcome),
 }
 
 impl InterfaceContract for ExtensionCenterOutput {
@@ -343,6 +347,27 @@ impl ExtensionCenterAdapter {
                     },
                 ))
             }
+            ExtensionCenterInput::InstallOfficial(body) => Ok(ExtensionCenterOutput::Install(
+                install_or_update_official_extension(
+                    &self.0,
+                    actor,
+                    body,
+                    "extension_center.install",
+                )
+                .await?,
+            )),
+            ExtensionCenterInput::UpdateOfficial(body) => Ok(ExtensionCenterOutput::Install(
+                install_or_update_official_extension(
+                    &self.0,
+                    actor,
+                    body,
+                    "extension_center.update",
+                )
+                .await?,
+            )),
+            ExtensionCenterInput::InstallUploaded(fields) => Ok(ExtensionCenterOutput::Install(
+                upload::install_uploaded_artifact(&self.0, actor, fields).await?,
+            )),
         }
     }
 }
@@ -416,6 +441,27 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         binding_id: "http.console.extension-center.update-check.v1",
         method: "POST",
         path: "/api/console/settings/extension-center/update-check",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.install",
+        binding_id: "http.console.extension-center.install.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/install",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.update",
+        binding_id: "http.console.extension-center.update.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/update",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "extension_center.install.upload",
+        binding_id: "http.console.extension-center.install-upload.v1",
+        method: "POST",
+        path: "/api/console/settings/extension-center/install-upload",
         mutating: true,
     },
 ];

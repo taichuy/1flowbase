@@ -58,7 +58,17 @@ async fn pdm_003_009_composition_previews_applies_and_retains_the_compiled_plan(
     }
     let target = target.expect("a registered physical business-table fixture must exist");
     let declaration = declaration(target);
-    let dependencies = super::super::legacy_dependencies(&state);
+    let dependencies = super::super::ExtensionCenterDependencies {
+        store: state.store.clone(),
+        provider_runtime: state.provider_runtime.clone(),
+        official_plugin_source: state.official_plugin_source.clone(),
+        official_mcp_bundle_source: state.official_mcp_bundle_source.clone(),
+        official_extension_catalog_source: state.official_extension_catalog_source.clone(),
+        cache_store: state.infrastructure.cache_store(),
+        provider_install_root: state.provider_install_root.clone(),
+        api_node_id: state.api_node_id.clone(),
+        allow_uploaded_host_extensions: state.allow_uploaded_host_extensions,
+    };
 
     let prepared = prepare_managed_schema(
         &dependencies,

@@ -1,7 +1,5 @@
 use super::*;
-use axum::response::IntoResponse;
-
-async fn read_extension_upload(
+pub(crate) async fn read_extension_upload(
     multipart: &mut Multipart,
 ) -> Result<ExtensionUploadFields, ApiError> {
     let mut fields = ExtensionUploadFields::default();
@@ -328,12 +326,11 @@ pub(super) fn upload_challenge(
     }
 }
 
-async fn install_uploaded_artifact(
-    state: &ApiState,
+pub(crate) async fn install_uploaded_artifact(
+    dependencies: &ExtensionCenterDependencies,
     actor: &domain::ActorContext,
     mut fields: ExtensionUploadFields,
-) -> Result<Response, ApiError> {
-    let dependencies = legacy_dependencies(state);
+) -> Result<ExtensionInstallOutcome, ApiError> {
     let actor_user_id = actor.user_id;
     let file_name = fields
         .file_name
@@ -349,11 +346,11 @@ async fn install_uploaded_artifact(
         &artifact.organization,
         &artifact.artifact_id,
         &artifact.version,
-        &state.api_node_id,
+        &dependencies.api_node_id,
     )?;
-    let install_service = extension_installation_service(&dependencies);
+    let install_service = extension_installation_service(dependencies);
     if let Some(installation) = install_service
-        .find_local_installation(&state.api_node_id, &identity)
+        .find_local_installation(&dependencies.api_node_id, &identity)
         .await?
     {
         let node_plugin_installation_id = if artifact.node_plugin {
@@ -361,9 +358,8 @@ async fn install_uploaded_artifact(
         } else {
             None
         };
-        return Ok((
-            StatusCode::OK,
-            Json(ApiSuccess::new(ExtensionInstallResponse {
+        return Ok(ExtensionInstallOutcome::Existing(
+            ExtensionInstallResponse {
                 application_action: installation.application_action.as_str().to_string(),
                 application_status: default_application_status(installation.application_action)
                     .to_string(),
@@ -372,9 +368,8 @@ async fn install_uploaded_artifact(
                 node_plugin_installation_id,
                 managed_schema_preview: None,
                 managed_schema_receipt: None,
-            })),
-        )
-            .into_response());
+            },
+        ));
     }
     let challenge = upload_challenge(&artifact);
     let declared_warnings = challenge
@@ -391,7 +386,9 @@ async fn install_uploaded_artifact(
         fields.risk_override.as_ref(),
         fields.compatibility_override.as_ref(),
     )? {
-        PreflightDecision::Challenge => return Ok(challenge_response(challenge)),
+        PreflightDecision::Challenge => {
+            return Ok(ExtensionInstallOutcome::Challenge(challenge));
+        }
         PreflightDecision::Accepted(receipt) => receipt,
     };
     let risk_override = fields.risk_override.map(|value| ExtensionRiskOverride {
@@ -399,14 +396,14 @@ async fn install_uploaded_artifact(
         acknowledged_warnings: value.acknowledged_warnings,
     });
     let prepared_schema = prepare_managed_schema(
-        &dependencies,
+        dependencies,
         actor.current_workspace_id,
         artifact.managed_schema.as_ref(),
     )
     .await?;
     let managed_schema_preview = prepared_schema.as_ref().map(|prepared| prepared.preview());
     if artifact.node_plugin {
-        let installed = service(&dependencies, actor, "extension_center.install.upload")
+        let installed = service(dependencies, actor, "extension_center.install.upload")
             .install_extension_node_plugin(InstallExtensionNodePluginCommand {
                 actor_user_id,
                 category: artifact.category,
@@ -416,8 +413,8 @@ async fn install_uploaded_artifact(
             })
             .await?;
         let installation = control_plane::ports::ExtensionInstallationRepository::find_extension_installation_by_id(
-            &state.store,
-            &state.api_node_id,
+            &dependencies.store,
+            &dependencies.api_node_id,
             installed.installation.id,
         )
         .await?
@@ -425,23 +422,19 @@ async fn install_uploaded_artifact(
             "extension_installation",
         ))?;
         let managed_schema_receipt = match prepared_schema {
-            Some(prepared) => Some(prepared.apply(&dependencies).await?),
+            Some(prepared) => Some(prepared.apply(dependencies).await?),
             None => None,
         };
-        return Ok((
-            StatusCode::CREATED,
-            Json(ApiSuccess::new(ExtensionInstallResponse {
-                application_action: installation.application_action.as_str().to_string(),
-                application_status: default_application_status(installation.application_action)
-                    .to_string(),
-                installation: to_local_inventory_entry(installation.clone()),
-                local_artifact_was_present: false,
-                node_plugin_installation_id: Some(installation.id.to_string()),
-                managed_schema_preview,
-                managed_schema_receipt,
-            })),
-        )
-            .into_response());
+        return Ok(ExtensionInstallOutcome::Created(ExtensionInstallResponse {
+            application_action: installation.application_action.as_str().to_string(),
+            application_status: default_application_status(installation.application_action)
+                .to_string(),
+            installation: to_local_inventory_entry(installation.clone()),
+            local_artifact_was_present: false,
+            node_plugin_installation_id: Some(installation.id.to_string()),
+            managed_schema_preview,
+            managed_schema_receipt,
+        }));
     }
     let outcome = install_service
         .install_from_bytes(InstallExtensionArtifactCommand {
@@ -450,7 +443,7 @@ async fn install_uploaded_artifact(
             organization: artifact.organization,
             artifact_id: artifact.artifact_id,
             version: artifact.version,
-            node_id: state.api_node_id.clone(),
+            node_id: dependencies.api_node_id.clone(),
             artifact_bytes,
             source: "upload".to_string(),
             trust: if artifact.signature_status == domain::ExtensionSignatureStatus::Verified {
@@ -470,10 +463,10 @@ async fn install_uploaded_artifact(
         .await?;
     let (installation, local_artifact_was_present) = match outcome {
         ExtensionArtifactInstallOutcome::RiskConfirmationRequired { risk_challenge } => {
-            return Ok(domain_challenge_response(
+            return Ok(ExtensionInstallOutcome::Challenge(domain_challenge(
                 risk_challenge,
                 challenge.compatibility,
-            ));
+            )));
         }
         ExtensionArtifactInstallOutcome::Installed {
             installation,
@@ -481,20 +474,15 @@ async fn install_uploaded_artifact(
         } => (installation, local_artifact_was_present),
     };
     let node_plugin_installation_id = None;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(ExtensionInstallResponse {
-            application_action: installation.application_action.as_str().to_string(),
-            application_status: default_application_status(installation.application_action)
-                .to_string(),
-            installation: to_local_inventory_entry(installation),
-            local_artifact_was_present,
-            node_plugin_installation_id,
-            managed_schema_preview: None,
-            managed_schema_receipt: None,
-        })),
-    )
-        .into_response())
+    Ok(ExtensionInstallOutcome::Created(ExtensionInstallResponse {
+        application_action: installation.application_action.as_str().to_string(),
+        application_status: default_application_status(installation.application_action).to_string(),
+        installation: to_local_inventory_entry(installation),
+        local_artifact_was_present,
+        node_plugin_installation_id,
+        managed_schema_preview: None,
+        managed_schema_receipt: None,
+    }))
 }
 
 #[utoipa::path(
@@ -509,8 +497,17 @@ pub async fn install_uploaded_extension(
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Result<Response, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
     let fields = read_extension_upload(&mut multipart).await?;
-    install_uploaded_artifact(&state, &context.actor, fields).await
+    let output = invoke_interface(
+        state,
+        headers,
+        "http.console.extension-center.install-upload.v1",
+        interface::ExtensionCenterInput::InstallUploaded(fields),
+        true,
+    )
+    .await?;
+    let interface::ExtensionCenterOutput::Install(outcome) = output else {
+        unreachable!("extension upload binding returned a different output")
+    };
+    Ok(project_install_outcome(outcome))
 }

@@ -11,12 +11,9 @@ use axum::{
     Json, Router,
 };
 use control_plane::plugin_management::{
-    DeletePluginFamilyCommand, InstallCurrentNodePluginArtifactCommand, InstallPluginResult,
-    InstallResolvedOfficialPluginCommand, InstallUploadedPluginCommand, OfficialPluginCatalogEntry,
-    OfficialPluginCatalogFilter, PluginCatalogEntry, PluginCatalogFilter,
-    PluginCompatibilityOverride, PluginFamilyView, PluginInstalledVersionView,
-    PluginManagementService, PluginRiskOverride, RefreshCurrentNodePluginArtifactCommand,
-    SwitchPluginVersionCommand, UpgradeLatestPluginFamilyCommand,
+    InstallPluginResult, OfficialPluginCatalogEntry, OfficialPluginCatalogFilter,
+    PluginCatalogEntry, PluginCatalogFilter, PluginCompatibilityOverride, PluginFamilyView,
+    PluginInstalledVersionView, PluginRiskOverride,
 };
 use plugin_framework::provider_contract::CURRENT_PROVIDER_CONTRACT;
 use serde::{Deserialize, Serialize};
@@ -27,8 +24,6 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
-    provider_runtime::ApiProviderRuntime,
     response::ApiSuccess,
     routes::{
         console_route_assembly::{console_delete, console_get, console_post, ConsoleRouteAssembly},
@@ -515,21 +510,6 @@ async fn invoke_plugin_interface(
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
     };
     crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
-}
-
-pub(crate) fn base_service(
-    state: &ApiState,
-    actor: &domain::ActorContext,
-) -> crate::app_state::ApiPluginManagementService {
-    PluginManagementService::new(
-        state.store.for_actor(actor.clone()),
-        ApiProviderRuntime::new(state.provider_runtime.clone()),
-        state.official_plugin_source.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_node_id(state.api_node_id.clone())
-    .with_allow_uploaded_host_extensions(state.allow_uploaded_host_extensions)
-    .with_model_routing_cache_store(state.infrastructure.cache_store())
 }
 
 fn format_time(value: time::OffsetDateTime) -> String {
