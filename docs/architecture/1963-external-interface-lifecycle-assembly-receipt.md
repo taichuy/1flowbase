@@ -5,9 +5,10 @@
 - Delivery: [#1963](https://github.com/taichuy/1flowbase/issues/1963)
 - Root: [#1893](https://github.com/taichuy/1flowbase/issues/1893)
 - Input: `beta@fee6ae814b28e5136305fd545613520419608c21`
-- Product Assembly: `beta@3c6701837534bba1acef2ba7ae4a23730312da35`
+- Initial Product Assembly: `beta@3c6701837534bba1acef2ba7ae4a23730312da35`
+- QA-1 remediation Assembly: `beta@a577d91bce7a9792108668316fd36ab81d31b019`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
-- Delivery state: `ASSEMBLED / QA_PENDING`
+- Delivery state: `ASSEMBLED / QA_REVERIFY_PENDING`
 - Root AC state: candidate only; not settled
 
 ## Packet Assembly
@@ -79,3 +80,23 @@ The sole fresh centralized QA is intentionally not represented as complete in th
 `tmp/test-governance/1963-external-interface-lifecycle/`
 
 After the frozen batch, this receipt will append the candidate-bound result without removing packet history or raw QA evidence. #1963 and #1893 remain OPEN; there is no push or Root AC settlement.
+
+## Fresh QA Attempt 1 — retained failure history
+
+- Frozen candidate: `beta@1322d7fd03fb1c1b76fbe7c166bec8d42e3de9ff`
+- Result: `QA_FAIL`
+- Rows: `9 PASS / 6 FAIL / 0 UNRUN`
+- Automated evidence: `2022 passed / 606 failed / 2 ignored`
+- Independent roots:
+  - production boot-plan compilation lacked the explicit `i18n.catalog.view` Core operation specification;
+  - the pre-#1963 dependency gate rejected all concrete durable Adapter fields, conflicting with the approved EIL-F03R Composition Root → explicit family Adapter boundary.
+- Raw evidence remains unchanged under `tmp/test-governance/1963-external-interface-lifecycle/row-*.log` and the attempt-1 local QA receipt.
+
+Finite remediation packets:
+
+| Packet | Commit | Result |
+| --- | --- | --- |
+| EIL-F14R-A | `80b8508de849ef6f8636f10a478b17fc64cc0f7d` | Register `i18n.catalog.view` as an explicit authenticated Core operation without changing its existing workspace restriction or API contract |
+| EIL-F14R-B | `a577d91bce7a9792108668316fd36ab81d31b019` | Preserve SQL/raw-pool/Runtime-Host prohibitions while allowing approved explicit durable Adapter fields; add positive and negative structural fixtures |
+
+These fixes were mechanically compiled only. Attempt 1 was not rewritten or rerun. A second fresh frozen batch is required before any EIL or Root AC can become candidate GREEN.
