@@ -512,6 +512,30 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-host-infrastructure-memory-inspection",
+            &[
+                "host_infrastructure.memory.overview.get",
+                "host_infrastructure.memory.stats-overview.get",
+                "host_infrastructure.memory.entries.list",
+                "host_infrastructure.memory.stats.get",
+                "host_infrastructure.memory.entries.search",
+                "host_infrastructure.memory.tree.list",
+                "host_infrastructure.memory.entry.reveal",
+            ],
+            &["api-server.console-host-infrastructure-memory-inspection"],
+            crate::routes::host_infrastructure::interface_memory_inspection::compile_registry(
+                crate::routes::host_infrastructure::interface_memory_inspection::MemoryInspectionInterfaceDependencies {
+                    memory: crate::routes::host_infrastructure::memory_inspection_dependencies(state),
+                    audit_policy: Arc::new(
+                        crate::routes::host_infrastructure::interface_memory_inspection::MemoryAuditPolicyAdapter::new(
+                            state.store.clone(),
+                            Arc::clone(&state.console_operation_registry),
+                        ),
+                    ),
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-application-runtime-debug-artifacts",
             &[
                 "applications.runtime.debug-artifact.get",

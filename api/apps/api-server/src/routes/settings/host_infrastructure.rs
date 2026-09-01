@@ -40,16 +40,11 @@ use crate::{
     },
 };
 
+pub(crate) mod interface_memory_inspection;
 pub mod interface_operation;
 mod memory_support;
 
-use memory_support::{
-    empty_memory_entry_page, empty_memory_tree_page, format_memory_reveal_mode,
-    format_memory_value_state, memory_contract_definitions, memory_contract_label,
-    memory_contract_stats_response, memory_contract_summary, memory_contract_supported,
-    memory_inspection_target, memory_page_request, memory_query_path, parse_memory_reveal_mode,
-    MemoryInspectionDependencies,
-};
+use memory_support::{memory_contract_definitions, MemoryInspectionDependencies};
 
 #[derive(Debug, Serialize, ToSchema)]
 pub struct PluginFormOptionResponse {
@@ -478,17 +473,17 @@ pub async fn get_host_infrastructure_memory_overview(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<MemoryOverviewResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let memory = memory_inspection_dependencies(&state);
-    let mut contracts = Vec::new();
-    for (contract_code, label) in memory_contract_definitions() {
-        contracts.push(memory_contract_summary(&memory, contract_code, label).await?);
-    }
-
-    Ok(Json(ApiSuccess::new(MemoryOverviewResponse {
-        can_manage: can_manage_memory(&state, &context.actor).await?,
-        contracts,
-    })))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.host-infrastructure.memory.overview.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_memory_inspection::MemoryInspectionInput::Overview,
+    )
+    .await?;
+    let interface_memory_inspection::MemoryInspectionOutput::Overview(response) = output else {
+        unreachable!("memory overview binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -500,26 +495,18 @@ pub async fn get_host_infrastructure_memory_stats_overview(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<MemoryStatsOverviewResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let memory = memory_inspection_dependencies(&state);
-    let inspection_path = Vec::new();
-    let mut contracts = Vec::new();
-    let mut total = EphemeralInspectionSummarySnapshot::empty();
-    for (contract_code, label) in memory_contract_definitions() {
-        let stats =
-            memory_contract_stats_response(&memory, contract_code, label, &inspection_path).await?;
-        total.entry_count += stats.entry_count;
-        total.sensitive_entry_count += stats.sensitive_entry_count;
-        total.total_value_size_bytes += stats.total_value_size_bytes;
-        contracts.push(stats);
-    }
-    Ok(Json(ApiSuccess::new(MemoryStatsOverviewResponse {
-        inspection_path,
-        contracts,
-        entry_count: total.entry_count,
-        sensitive_entry_count: total.sensitive_entry_count,
-        total_value_size_bytes: total.total_value_size_bytes,
-    })))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.host-infrastructure.memory.stats-overview.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_memory_inspection::MemoryInspectionInput::StatsOverview,
+    )
+    .await?;
+    let interface_memory_inspection::MemoryInspectionOutput::StatsOverview(response) = output
+    else {
+        unreachable!("memory stats overview binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 #[utoipa::path(
     get,
@@ -533,37 +520,20 @@ pub async fn list_host_infrastructure_memory_entries(
     Path(contract_code): Path<String>,
     Query(query): Query<MemoryPageQuery>,
 ) -> Result<Json<ApiSuccess<MemoryEntriesResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let memory = memory_inspection_dependencies(&state);
-    let label = memory_contract_label(&contract_code)?;
-    let target = memory_inspection_target(&memory, &contract_code)?;
-    let capabilities = target.capabilities();
-    let supported = memory_contract_supported(&capabilities);
-    let page_request = memory_page_request(query.path, query.cursor, query.limit, query.byte_limit);
-    let page = if capabilities.list_entries {
-        target.list_entry_page(page_request).await?
-    } else {
-        empty_memory_entry_page(page_request)
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.host-infrastructure.memory.entries.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_memory_inspection::MemoryInspectionInput::Entries {
+            contract_code,
+            query,
+        },
+    )
+    .await?;
+    let interface_memory_inspection::MemoryInspectionOutput::Entries(response) = output else {
+        unreachable!("memory entries binding returned a different output")
     };
-
-    Ok(Json(ApiSuccess::new(MemoryEntriesResponse {
-        contract_code: contract_code.clone(),
-        label: label.to_string(),
-        provider_code: memory.provider_codes.get(&contract_code).cloned(),
-        capabilities: capabilities.into(),
-        supported,
-        inspection_path: page.inspection_path,
-        entries: page
-            .entries
-            .into_iter()
-            .map(to_memory_entry_metadata_response)
-            .collect(),
-        next_cursor: page.next_cursor,
-        limit: page.limit,
-        byte_limit: page.byte_limit,
-        emitted_bytes: page.emitted_bytes,
-        truncated_by_byte_limit: page.truncated_by_byte_limit,
-    })))
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -578,14 +548,20 @@ pub async fn get_host_infrastructure_memory_stats(
     Path(contract_code): Path<String>,
     Query(query): Query<MemoryPathQuery>,
 ) -> Result<Json<ApiSuccess<MemoryStatsResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let memory = memory_inspection_dependencies(&state);
-    let label = memory_contract_label(&contract_code)?;
-    let inspection_path = memory_query_path(query.path);
-    let stats =
-        memory_contract_stats_response(&memory, &contract_code, label, &inspection_path).await?;
-
-    Ok(Json(ApiSuccess::new(stats)))
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.host-infrastructure.memory.stats.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_memory_inspection::MemoryInspectionInput::Stats {
+            contract_code,
+            query,
+        },
+    )
+    .await?;
+    let interface_memory_inspection::MemoryInspectionOutput::Stats(response) = output else {
+        unreachable!("memory stats binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -600,37 +576,20 @@ pub async fn list_host_infrastructure_memory_tree(
     Path(contract_code): Path<String>,
     Query(query): Query<MemoryPageQuery>,
 ) -> Result<Json<ApiSuccess<MemoryTreeResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let memory = memory_inspection_dependencies(&state);
-    let label = memory_contract_label(&contract_code)?;
-    let target = memory_inspection_target(&memory, &contract_code)?;
-    let capabilities = target.capabilities();
-    let supported = memory_contract_supported(&capabilities);
-    let page_request = memory_page_request(query.path, query.cursor, query.limit, query.byte_limit);
-    let page = if capabilities.list_tree {
-        target.list_tree(page_request).await?
-    } else {
-        empty_memory_tree_page(page_request)
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.host-infrastructure.memory.tree.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_memory_inspection::MemoryInspectionInput::Tree {
+            contract_code,
+            query,
+        },
+    )
+    .await?;
+    let interface_memory_inspection::MemoryInspectionOutput::Tree(response) = output else {
+        unreachable!("memory tree binding returned a different output")
     };
-
-    Ok(Json(ApiSuccess::new(MemoryTreeResponse {
-        contract_code: contract_code.clone(),
-        label: label.to_string(),
-        provider_code: memory.provider_codes.get(&contract_code).cloned(),
-        capabilities: capabilities.into(),
-        supported,
-        inspection_path: page.inspection_path,
-        nodes: page
-            .nodes
-            .into_iter()
-            .map(to_memory_tree_node_response)
-            .collect(),
-        next_cursor: page.next_cursor,
-        limit: page.limit,
-        byte_limit: page.byte_limit,
-        emitted_bytes: page.emitted_bytes,
-        truncated_by_byte_limit: page.truncated_by_byte_limit,
-    })))
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -645,37 +604,20 @@ pub async fn search_host_infrastructure_memory_entries(
     Path(contract_code): Path<String>,
     Query(query): Query<MemorySearchQuery>,
 ) -> Result<Json<ApiSuccess<MemoryEntriesResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let memory = memory_inspection_dependencies(&state);
-    let label = memory_contract_label(&contract_code)?;
-    let target = memory_inspection_target(&memory, &contract_code)?;
-    let capabilities = target.capabilities();
-    let supported = memory_contract_supported(&capabilities);
-    let page_request = memory_page_request(query.path, query.cursor, query.limit, query.byte_limit);
-    let page = if capabilities.search_entries {
-        target.search_entry_page(&query.q, page_request).await?
-    } else {
-        empty_memory_entry_page(page_request)
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.host-infrastructure.memory.entries.search.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_memory_inspection::MemoryInspectionInput::Search {
+            contract_code,
+            query,
+        },
+    )
+    .await?;
+    let interface_memory_inspection::MemoryInspectionOutput::Entries(response) = output else {
+        unreachable!("memory search binding returned a different output")
     };
-
-    Ok(Json(ApiSuccess::new(MemoryEntriesResponse {
-        contract_code: contract_code.clone(),
-        label: label.to_string(),
-        provider_code: memory.provider_codes.get(&contract_code).cloned(),
-        capabilities: capabilities.into(),
-        supported,
-        inspection_path: page.inspection_path,
-        entries: page
-            .entries
-            .into_iter()
-            .map(to_memory_entry_metadata_response)
-            .collect(),
-        next_cursor: page.next_cursor,
-        limit: page.limit,
-        byte_limit: page.byte_limit,
-        emitted_bytes: page.emitted_bytes,
-        truncated_by_byte_limit: page.truncated_by_byte_limit,
-    })))
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -691,51 +633,20 @@ pub async fn reveal_host_infrastructure_memory_entry(
     Path(contract_code): Path<String>,
     Json(body): Json<MemoryEntryRevealBody>,
 ) -> Result<Json<ApiSuccess<MemoryEntryValueResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let memory = memory_inspection_dependencies(&state);
-    let _label = memory_contract_label(&contract_code)?;
-    let target = memory_inspection_target(&memory, &contract_code)?;
-    let capabilities = target.capabilities();
-    if !capabilities.reveal_value {
-        return Err(ControlPlaneError::InvalidInput("memory_inspection_unsupported").into());
-    }
-
-    let reveal_mode = parse_memory_reveal_mode(body.reveal_mode.as_deref())?;
-    let value = target
-        .reveal_entry(&body.entry_ref, reveal_mode)
-        .await?
-        .ok_or(ControlPlaneError::NotFound("memory_entry"))?;
-    append_memory_audit(
-        &state,
-        &context.actor,
-        "host_infrastructure.memory_value_revealed",
-        serde_json::json!({
-            "contract_code": value.metadata.contract_code.clone(),
-            "group_code": value.metadata.group_code.clone(),
-            "entry_ref": value.metadata.entry_ref.clone(),
-            "key": value.metadata.key.clone(),
-            "inspection_path": value.metadata.inspection_path.clone(),
-            "entry_kind": value.metadata.entry_kind.clone(),
-            "status": value.metadata.status.clone(),
-            "owner": value.metadata.owner.clone(),
-            "value_size_bytes": value.metadata.value_size_bytes,
-            "reveal_mode": format_memory_reveal_mode(value.reveal_mode),
-            "value_state": format_memory_value_state(value.value_state),
-            "sensitive": value.metadata.sensitive,
-        }),
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.host-infrastructure.memory.entry.reveal.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface_memory_inspection::MemoryInspectionInput::Reveal {
+            contract_code,
+            body,
+        },
     )
     .await?;
-
-    Ok(Json(ApiSuccess::new(MemoryEntryValueResponse {
-        metadata: to_memory_entry_metadata_response(value.metadata),
-        reveal_mode: format_memory_reveal_mode(value.reveal_mode),
-        value_state: format_memory_value_state(value.value_state),
-        value: value.value,
-        value_preview: value.value_preview,
-        preview_size_bytes: value.preview_size_bytes,
-        full_value_size_bytes: value.full_value_size_bytes,
-    })))
+    let interface_memory_inspection::MemoryInspectionOutput::Revealed(response) = output else {
+        unreachable!("memory reveal binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -1005,7 +916,7 @@ fn to_provider_response(
     }
 }
 
-fn memory_inspection_dependencies(state: &ApiState) -> MemoryInspectionDependencies {
+pub(crate) fn memory_inspection_dependencies(state: &ApiState) -> MemoryInspectionDependencies {
     let provider_codes = memory_contract_definitions()
         .iter()
         .filter_map(|(contract_code, _)| {
@@ -1025,39 +936,6 @@ fn memory_inspection_dependencies(state: &ApiState) -> MemoryInspectionDependenc
         runtime_event_stream: state.infrastructure.runtime_event_stream(),
         provider_codes,
     }
-}
-
-async fn can_manage_memory(
-    state: &ApiState,
-    actor: &domain::ActorContext,
-) -> Result<bool, ApiError> {
-    can_manage_registered_operations(state, actor, &["host_infrastructure.memory.reveal"]).await
-}
-
-async fn append_memory_audit(
-    state: &ApiState,
-    actor: &domain::ActorContext,
-    event_code: &str,
-    payload: serde_json::Value,
-) -> Result<(), ApiError> {
-    let workspace_id = if actor.current_workspace_id == domain::SYSTEM_SCOPE_ID {
-        None
-    } else {
-        Some(actor.current_workspace_id)
-    };
-    AuthRepository::append_audit_log(
-        &state.store,
-        &audit_log(
-            workspace_id,
-            Some(actor.user_id),
-            "host_infrastructure_memory",
-            None,
-            event_code,
-            payload,
-        ),
-    )
-    .await?;
-    Ok(())
 }
 
 async fn can_manage_cache(
@@ -1178,7 +1056,9 @@ impl From<EphemeralInspectionCapabilities> for MemoryInspectionCapabilitiesRespo
     }
 }
 
-fn to_memory_entry_metadata_response(entry: EphemeralEntrySnapshot) -> MemoryEntryMetadataResponse {
+pub(super) fn to_memory_entry_metadata_response(
+    entry: EphemeralEntrySnapshot,
+) -> MemoryEntryMetadataResponse {
     MemoryEntryMetadataResponse {
         contract_code: entry.contract_code,
         group_code: entry.group_code,
@@ -1198,7 +1078,7 @@ fn to_memory_entry_metadata_response(entry: EphemeralEntrySnapshot) -> MemoryEnt
     }
 }
 
-fn to_memory_tree_node_response(
+pub(super) fn to_memory_tree_node_response(
     node: EphemeralInspectionTreeNodeSnapshot,
 ) -> MemoryTreeNodeResponse {
     MemoryTreeNodeResponse {
