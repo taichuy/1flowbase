@@ -10,6 +10,7 @@ use control_plane::{
     },
     resource_crud::{parse_resource_filter, parse_resource_filter_expr},
 };
+use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde::{Deserialize, Serialize};
 use time::format_description::well_known::Rfc3339;
 use utoipa::ToSchema;
@@ -17,8 +18,11 @@ use utoipa::ToSchema;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::require_session::require_session,
     response::ApiSuccess,
+    routes::console_interface::{
+        self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
+        ConsoleInterfaceTargetError,
+    },
     routes::console_route_assembly::{console_get, ConsoleRouteAssembly},
 };
 
@@ -62,6 +66,78 @@ pub struct ApplicationManagementPageResponse {
     pub page_size: i64,
 }
 
+impl InterfaceContract for ApplicationManagementQueryParams {
+    const CONTRACT_ID: &'static str = "console-application-management-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+impl InterfaceContract for ApplicationManagementPageResponse {
+    const CONTRACT_ID: &'static str = "console-application-management-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+struct ApplicationManagementAdapter(storage_durable_postgres::MainDurableStore);
+impl ConsoleInterfacePort<ApplicationManagementQueryParams, ApplicationManagementPageResponse>
+    for ApplicationManagementAdapter
+{
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        query: ApplicationManagementQueryParams,
+    ) -> ConsoleInterfaceFuture<'a, ApplicationManagementPageResponse> {
+        Box::pin(async move {
+            let filter = match parse_resource_filter(query.filter.as_deref())
+                .map_err(ApiError::from)
+                .map_err(ConsoleInterfaceTargetError)?
+            {
+                Some(filter) => parse_resource_filter_expr(&filter)
+                    .map_err(ApiError::from)
+                    .map_err(ConsoleInterfaceTargetError)?,
+                None => domain::ResourceFilterExpr::All(Vec::new()),
+            };
+            let (sort_field, sort_direction) =
+                parse_application_management_sort(query.sort.as_deref())
+                    .map_err(ConsoleInterfaceTargetError)?;
+            let page = ApplicationService::new(self.0.for_actor(principal.actor().clone()))
+                .list_application_management(
+                    principal.actor().user_id,
+                    ApplicationManagementQuery {
+                        filter,
+                        sort_field,
+                        sort_direction,
+                        page: query.page.unwrap_or(1).max(1),
+                        page_size: query.page_size.unwrap_or(20).clamp(1, 100),
+                    },
+                )
+                .await
+                .map_err(ApiError::from)
+                .map_err(ConsoleInterfaceTargetError)?;
+            page.try_into()
+                .map_err(ApiError::from)
+                .map_err(ConsoleInterfaceTargetError)
+        })
+    }
+}
+
+pub(crate) fn compile_registry(
+    store: storage_durable_postgres::MainDurableStore,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[ConsoleInterfaceDeclaration {
+        interface_id: access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION,
+        binding_id: "http.console.settings.applications.get.v1",
+        method: "GET",
+        path: "/api/console/settings/applications",
+        mutating: false,
+    }];
+    console_interface::compile_registry(
+        "api-server.console-application-management",
+        "graph:console-application-management-v1",
+        DECLARATIONS,
+        Arc::new(ApplicationManagementAdapter(store)),
+    )
+}
+
 pub fn router() -> Router<Arc<ApiState>> {
     route_assembly().into_router()
 }
@@ -93,28 +169,15 @@ pub async fn list_application_management(
     headers: HeaderMap,
     Query(query): Query<ApplicationManagementQueryParams>,
 ) -> Result<Json<ApiSuccess<ApplicationManagementPageResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let filter = match parse_resource_filter(query.filter.as_deref())? {
-        Some(filter) => parse_resource_filter_expr(&filter)?,
-        None => domain::ResourceFilterExpr::All(Vec::new()),
-    };
-    let (sort_field, sort_direction) = parse_application_management_sort(query.sort.as_deref())?;
-    let page = query.page.unwrap_or(1).max(1);
-    let page_size = query.page_size.unwrap_or(20).clamp(1, 100);
-    let page = ApplicationService::new(state.store.for_actor(context.actor.clone()))
-        .list_application_management(
-            context.user.id,
-            ApplicationManagementQuery {
-                filter,
-                sort_field,
-                sort_direction,
-                page,
-                page_size,
-            },
-        )
-        .await?;
-
-    Ok(Json(ApiSuccess::new(page.try_into()?)))
+    let snapshot_state = Arc::clone(&state);
+    let value = console_interface::invoke(
+        snapshot_state,
+        "http.console.settings.applications.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        query,
+    )
+    .await?;
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 fn parse_application_management_sort(

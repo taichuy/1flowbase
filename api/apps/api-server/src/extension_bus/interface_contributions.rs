@@ -1070,6 +1070,12 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-application-management",
+            &[access_control::SYSTEM_APPLICATIONS_SETTINGS_FEATURE_PERMISSION],
+            &["api-server.console-application-management"],
+            crate::routes::application_management::compile_registry(state.store.clone())?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",
