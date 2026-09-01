@@ -1,5 +1,6 @@
 mod protocol;
 
+use async_trait::async_trait;
 use protocol::*;
 use std::{
     collections::HashSet,
@@ -81,6 +82,87 @@ pub enum McpUpstreamClientError {
     Protocol(String),
     #[error("upstream request failed: {0}")]
     Request(String),
+}
+
+pub(crate) struct StreamableHttpMcpUpstreamTransport;
+
+#[async_trait]
+impl super::upstream_interface::McpUpstreamTransportPort for StreamableHttpMcpUpstreamTransport {
+    async fn test_configuration(
+        &self,
+        endpoint: &str,
+        auth_type: domain::McpUpstreamAuthType,
+        custom_header_name: Option<&str>,
+        secret: Option<&Value>,
+    ) -> Result<McpUpstreamServerInfo, super::upstream_interface::McpUpstreamTransportError> {
+        McpStreamableHttpClient::connect_configuration(
+            endpoint,
+            auth_type,
+            custom_header_name,
+            secret,
+        )
+        .await
+        .map_err(|error| {
+            super::upstream_interface::McpUpstreamTransportError::new(error.to_string())
+        })?
+        .initialize()
+        .await
+        .map_err(|error| {
+            super::upstream_interface::McpUpstreamTransportError::new(error.to_string())
+        })
+    }
+
+    async fn test_connection(
+        &self,
+        connection: &domain::McpUpstreamConnectionRecord,
+        secret: Option<&Value>,
+    ) -> Result<McpUpstreamServerInfo, super::upstream_interface::McpUpstreamTransportError> {
+        McpStreamableHttpClient::connect(connection, secret)
+            .await
+            .map_err(|error| {
+                super::upstream_interface::McpUpstreamTransportError::new(error.to_string())
+            })?
+            .initialize()
+            .await
+            .map_err(|error| {
+                super::upstream_interface::McpUpstreamTransportError::new(error.to_string())
+            })
+    }
+
+    async fn discover(
+        &self,
+        connection: &domain::McpUpstreamConnectionRecord,
+        secret: Option<&Value>,
+    ) -> Result<McpDiscoveryResult, super::upstream_interface::McpUpstreamTransportError> {
+        McpStreamableHttpClient::connect_and_discover(connection, secret)
+            .await
+            .map_err(|error| {
+                super::upstream_interface::McpUpstreamTransportError::new(error.to_string())
+            })
+    }
+
+    async fn execute_proxy(
+        &self,
+        connection: &domain::McpUpstreamConnectionRecord,
+        secret: Option<&Value>,
+        remote_tool_name: &str,
+        arguments: Value,
+        input_mapping: &Value,
+        output_mapping: &Value,
+    ) -> Result<McpProxyExecutionTrace, super::upstream_interface::McpProxyTransportError> {
+        let client = McpStreamableHttpClient::connect(connection, secret)
+            .await
+            .map_err(|_| super::upstream_interface::McpProxyTransportError::Connection)?;
+        execute_proxy_call(
+            &client,
+            remote_tool_name,
+            arguments,
+            input_mapping,
+            output_mapping,
+        )
+        .await
+        .map_err(|_| super::upstream_interface::McpProxyTransportError::Execution)
+    }
 }
 
 #[derive(Default)]

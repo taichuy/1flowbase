@@ -10,6 +10,7 @@ pub(crate) use interface_catalog::mcp_interface_entry_from_capability;
 mod projections;
 pub(crate) mod upstream;
 pub(crate) mod upstream_client;
+pub(crate) mod upstream_interface;
 
 pub(crate) use interface_catalog::bindable_mcp_interface;
 pub(crate) use interface_catalog::*;

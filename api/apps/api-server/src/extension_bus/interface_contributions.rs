@@ -1127,6 +1127,33 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-mcp-upstream",
+            &[
+                "mcp.upstream_connections.view",
+                "mcp.upstream_connections.create",
+                "mcp.upstream_connections.update",
+                "mcp.upstream_connections.delete",
+                "mcp.upstream_credentials.update",
+                "mcp.upstream_credentials.delete",
+                "mcp.upstream_connections.test",
+                "mcp.upstream_connections.discover",
+                "mcp.upstream_tools.import",
+                "mcp.upstream_tools.debug",
+            ],
+            &["api-server.console-mcp-upstream"],
+            crate::routes::mcp_management::upstream_interface::compile_registry(
+                crate::routes::mcp_management::upstream_interface::port(
+                    crate::routes::mcp_management::upstream_interface::McpUpstreamDependencies {
+                        store: state.store.clone(),
+                        provider_secret_master_key: state.provider_secret_master_key.clone(),
+                        transport: Arc::new(
+                            crate::routes::mcp_management::upstream_client::StreamableHttpMcpUpstreamTransport,
+                        ),
+                    },
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-frontend-blocks",
             &["frontend_blocks.view"],
             &["api-server.console-frontend-blocks"],
