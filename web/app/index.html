@@ -5,9 +5,170 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <title>1flowbase</title>
+    <style>
+      html,
+      body,
+      #root {
+        min-height: 100%;
+        margin: 0;
+      }
+
+      .application-bootstrap-shell {
+        background:
+          radial-gradient(
+            circle at top left,
+            rgba(0, 171, 115, 0.16),
+            transparent 26%
+          ),
+          radial-gradient(
+            circle at top right,
+            rgba(47, 214, 161, 0.1),
+            transparent 20%
+          ),
+          linear-gradient(180deg, #f8fcfa 0%, #eef4f0 100%);
+        box-sizing: border-box;
+        display: grid;
+        min-height: 100vh;
+        padding: 32px 24px;
+        place-items: center;
+      }
+
+      .application-bootstrap-shell__content {
+        display: grid;
+        place-items: center;
+        position: relative;
+        width: min(100%, 720px);
+      }
+
+      .application-bootstrap-shell__spinner {
+        animation: application-bootstrap-shell-spin 0.9s linear infinite;
+        border: 3px solid transparent;
+        border-radius: 50%;
+        border-right-color: #1677ff;
+        border-top-color: #1677ff;
+        height: 40px;
+        width: 40px;
+      }
+
+      .application-bootstrap-shell__indicator {
+        align-items: center;
+        color: #1677ff;
+        display: flex;
+        flex-direction: column;
+        font:
+          14px/1.5715 Arial,
+          sans-serif;
+        gap: 8px;
+        position: absolute;
+        z-index: 1;
+      }
+
+      .application-bootstrap-shell__surface {
+        box-sizing: border-box;
+        display: grid;
+        gap: 16px;
+        opacity: 0.1;
+        padding: 24px;
+        width: 100%;
+      }
+
+      .application-bootstrap-shell__line {
+        animation: application-bootstrap-shell-pulse 1.4s ease-in-out infinite
+          alternate;
+        background: #dce7e1;
+        border-radius: 8px;
+        height: 16px;
+      }
+
+      .application-bootstrap-shell__line--title {
+        height: 28px;
+        width: 28%;
+      }
+
+      .application-bootstrap-shell__line--wide {
+        width: 92%;
+      }
+
+      .application-bootstrap-shell__line--medium {
+        width: 76%;
+      }
+
+      .application-bootstrap-shell__line--short {
+        width: 52%;
+      }
+
+      .application-bootstrap-failure {
+        align-items: flex-start;
+        box-sizing: border-box;
+        color: #173d31;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        min-height: 100vh;
+        padding: 32px;
+      }
+
+      .application-bootstrap-failure button {
+        background: #00ab73;
+        border: 0;
+        border-radius: 8px;
+        color: #fff;
+        cursor: pointer;
+        font: inherit;
+        padding: 8px 14px;
+      }
+
+      @keyframes application-bootstrap-shell-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @keyframes application-bootstrap-shell-pulse {
+        to {
+          opacity: 0.55;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .application-bootstrap-shell__spinner,
+        .application-bootstrap-shell__line {
+          animation: none;
+        }
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div
+        class="application-bootstrap-shell"
+        data-testid="application-bootstrap-shell"
+        role="status"
+        aria-live="polite"
+        aria-label="thinking"
+      >
+        <div class="application-bootstrap-shell__content">
+          <div class="application-bootstrap-shell__indicator">
+            <div class="application-bootstrap-shell__spinner"></div>
+            <span>thinking</span>
+          </div>
+          <div class="application-bootstrap-shell__surface" aria-hidden="true">
+            <div
+              class="application-bootstrap-shell__line application-bootstrap-shell__line--title"
+            ></div>
+            <div
+              class="application-bootstrap-shell__line application-bootstrap-shell__line--wide"
+            ></div>
+            <div
+              class="application-bootstrap-shell__line application-bootstrap-shell__line--medium"
+            ></div>
+            <div
+              class="application-bootstrap-shell__line application-bootstrap-shell__line--short"
+            ></div>
+          </div>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/bootstrap.ts"></script>
   </body>
 </html>

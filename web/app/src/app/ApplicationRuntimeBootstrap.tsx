@@ -1,8 +1,8 @@
 import { Suspense, lazy } from 'react';
 
 import { loadApplicationI18nResources } from '../shared/i18n/app-i18n';
+import { LoadingState } from '../shared/ui/loading-state/LoadingState';
 import { useAuthStore } from '../state/auth-store';
-import { ApplicationBootStage } from './ApplicationBootBoundary';
 
 const AnonymousRuntime = lazy(() =>
   import('./AnonymousAppRuntime').then((module) => ({
@@ -21,21 +21,13 @@ const AuthenticatedRuntime = lazy(async () => {
 export function ApplicationRuntimeBootstrap() {
   const sessionStatus = useAuthStore((state) => state.sessionStatus);
   if (sessionStatus === 'unknown') {
-    return (
-      <div
-        className="application-bootstrap"
-        role="status"
-        aria-label="thinking"
-      >
-        <span className="application-bootstrap__pulse" />
-      </div>
-    );
+    return <LoadingState fullscreen />;
   }
   const Runtime =
     sessionStatus === 'authenticated' ? AuthenticatedRuntime : AnonymousRuntime;
 
   return (
-    <Suspense fallback={<ApplicationBootStage />}>
+    <Suspense fallback={<LoadingState fullscreen />}>
       <Runtime />
     </Suspense>
   );

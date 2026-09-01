@@ -1,5 +1,3 @@
-import { startAuthSessionDiscovery } from './features/auth/api/auth-session-discovery';
-
 const DEV_GENERATION_META_NAME = '1flowbase-dev-generation';
 const DEV_RELOAD_PREFIX = '1flowbase.dev-runtime.reload';
 
@@ -7,20 +5,6 @@ function rootElement() {
   const root = document.getElementById('root');
   if (!root) throw new Error('application root is missing');
   return root;
-}
-
-function renderBootStage() {
-  const root = rootElement();
-  const stage = document.createElement('div');
-  stage.className = 'application-bootstrap';
-  stage.setAttribute('role', 'status');
-  stage.setAttribute('aria-label', '应用正在启动');
-  const label = document.createElement('span');
-  label.textContent = '应用正在启动';
-  const pulse = document.createElement('span');
-  pulse.className = 'application-bootstrap__pulse';
-  stage.append(pulse, label);
-  root.replaceChildren(stage);
 }
 
 function currentGeneration() {
@@ -53,7 +37,7 @@ function renderBootFailure(error: unknown) {
 
   const root = rootElement();
   const alert = document.createElement('div');
-  alert.className = 'application-bootstrap application-bootstrap--failed';
+  alert.className = 'application-bootstrap-failure';
   alert.setAttribute('role', 'alert');
 
   const title = document.createElement('strong');
@@ -71,6 +55,7 @@ function renderBootFailure(error: unknown) {
   root.replaceChildren(alert);
 }
 
-renderBootStage();
-void startAuthSessionDiscovery();
+void import('./features/auth/api/auth-session-discovery')
+  .then(({ startAuthSessionDiscovery }) => startAuthSessionDiscovery())
+  .catch(() => undefined);
 void import('./main').catch(renderBootFailure);

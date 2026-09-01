@@ -177,6 +177,7 @@ export default defineConfig(({ command, mode }) => {
         '@scalar/api-reference-react',
         '@xyflow/react',
         'antd',
+        'antd-img-crop',
         'copy-to-clipboard',
         'echarts',
         'lexical',

@@ -16,6 +16,7 @@ describe('Frontstage JSX editor projection', () => {
         'react',
         'react/jsx-runtime',
         'antd',
+        'antd-img-crop',
         'antd-style',
         '@1flowbase/ui',
         '@1flowbase/block-sdk',
@@ -81,5 +82,11 @@ describe('Frontstage JSX editor projection', () => {
         ({ source }) => source === '@dnd-kit/core/dist/index.js'
       )?.content
     ).toContain("export * from '@dnd-kit/core'");
+    expect(
+      projection.monacoExtraLibs
+        .filter(({ source }) => source === 'antd-img-crop')
+        .map(({ content }) => content)
+        .join('\n')
+    ).toContain('rotationSlider?: boolean');
   });
 });

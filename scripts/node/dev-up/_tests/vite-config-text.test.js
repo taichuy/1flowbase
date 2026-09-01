@@ -134,6 +134,10 @@ test("DRS-002 development runtime publishes a generation and warms the boot boun
 });
 
 test("DRS-003 pre-React bootstrap never leaves an empty root after module failure", () => {
+  const indexSource = fs.readFileSync(
+    path.resolve(path.dirname(viteConfigPath), "index.html"),
+    "utf8",
+  );
   const bootstrapSource = fs.readFileSync(
     path.resolve(webSourceRoot, "bootstrap.ts"),
     "utf8",
@@ -142,12 +146,37 @@ test("DRS-003 pre-React bootstrap never leaves an empty root after module failur
     path.resolve(webSourceRoot, "app", "App.tsx"),
     "utf8",
   );
+  const runtimeBootstrapSource = fs.readFileSync(
+    path.resolve(webSourceRoot, "app", "ApplicationRuntimeBootstrap.tsx"),
+    "utf8",
+  );
 
-  assert.match(bootstrapSource, /renderBootStage/u);
+  assert.match(indexSource, /data-testid="application-bootstrap-shell"/u);
+  assert.match(indexSource, /class="application-bootstrap-shell__spinner"/u);
+  assert.match(indexSource, />thinking<\/span>/u);
+  assert.doesNotMatch(bootstrapSource, /^import\s/mu);
+  assert.doesNotMatch(bootstrapSource, /renderBootStage/u);
   assert.match(bootstrapSource, /renderBootFailure/u);
+  assert.match(
+    bootstrapSource,
+    /import\(['"]\.\/features\/auth\/api\/auth-session-discovery['"]\)/u,
+  );
   assert.match(bootstrapSource, /import\(['"]\.\/main['"]\)\.catch/u);
+  assert.match(appSource, /import \{ LoadingState \}/u);
+  assert.match(appSource, /fallback=\{<LoadingState fullscreen \/>\}/u);
+  assert.match(runtimeBootstrapSource, /import \{ LoadingState \}/u);
+  assert.match(
+    runtimeBootstrapSource,
+    /fallback=\{<LoadingState fullscreen \/>\}/u,
+  );
   assert.match(appSource, /ApplicationBootBoundary/u);
+  assert.doesNotMatch(appSource, /ApplicationBootStage/u);
+  assert.doesNotMatch(runtimeBootstrapSource, /ApplicationBootStage/u);
   assert.doesNotMatch(appSource, /Suspense fallback=\{null\}/u);
+  assert.doesNotMatch(
+    `${indexSource}\n${bootstrapSource}\n${appSource}\n${runtimeBootstrapSource}`,
+    /应用正在启动/u,
+  );
 });
 
 test("DV-F07 host UI imports Ant icons through deterministic leaf modules", () => {

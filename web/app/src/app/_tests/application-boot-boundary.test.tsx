@@ -2,10 +2,7 @@ import { render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
-import {
-  ApplicationBootBoundary,
-  ApplicationBootStage
-} from '../ApplicationBootBoundary';
+import { ApplicationBootBoundary } from '../ApplicationBootBoundary';
 
 function BrokenRuntime(): ReactNode {
   throw new Error("does not provide an export named 'ForwardRef'");
@@ -16,10 +13,14 @@ describe('ApplicationBootBoundary', () => {
     vi.restoreAllMocks();
   });
 
-  test('DRS-003 keeps a visible stage while the application graph loads', () => {
-    render(<ApplicationBootStage />);
+  test('DRS-003 leaves the canonical loading owner outside the error boundary', () => {
+    render(
+      <ApplicationBootBoundary>
+        <div data-testid="canonical-loading-owner" />
+      </ApplicationBootBoundary>
+    );
 
-    expect(screen.getByRole('status', { name: '应用正在启动' })).toBeVisible();
+    expect(screen.getByTestId('canonical-loading-owner')).toBeVisible();
   });
 
   test('DRS-003 replaces a failed application graph with a retry surface', () => {

@@ -33,6 +33,7 @@ import {
   loadAntDesignColorsModule
 } from './ant-design-colors-runtime';
 import { ANTD_STYLE_EXPORTS, loadAntdStyleModule } from './antd-style-runtime';
+import { loadAntdImgCropModule } from './image-crop/antd-img-crop-runtime';
 
 type ModuleNamespace = Record<string, unknown>;
 
@@ -111,6 +112,7 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
   registration('@ant-design/colors', ANT_DESIGN_COLORS_EXPORTS, async () => ({
     module: await loadAntDesignColorsModule()
   })),
+  registration('antd-img-crop', ['default'], loadAntdImgCropModule),
   ...DAYJS_MODULE_DEFINITIONS.map(({ module_source, exports }) =>
     registration(module_source, exports, async () => ({
       module: await loadDayjsModule(module_source)

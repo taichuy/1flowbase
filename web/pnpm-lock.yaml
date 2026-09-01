@@ -194,6 +194,9 @@ importers:
       antd:
         specifier: ^6.1.1
         version: 6.5.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      antd-img-crop:
+        specifier: ~4.30.0
+        version: 4.30.0(antd@6.5.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       antd-style:
         specifier: ^4.1.0
         version: 4.1.0(@types/react@19.2.14)(antd@6.5.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -233,6 +236,9 @@ importers:
       react-dom:
         specifier: ^19.0.0
         version: 19.2.5(react@19.2.5)
+      react-easy-crop:
+        specifier: ^5.5.7
+        version: 5.5.7(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
       react-grid-layout:
         specifier: 2.2.3
         version: 2.2.3(patch_hash=e738f000027de32e8a2677dbe6e8944408c727abf8ef223bb1620ec6693466df)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -1968,6 +1974,13 @@ packages:
     resolution: {integrity: sha512-6564t0m0fuQMnockqBv7wJxo9T5C2V9JpYXyNScfRDPVLusOQQhkpMGrFC17QbiolraQ1sMXX+Y5nJpjqozL4g==}
     engines: {node: '>=10'}
 
+  antd-img-crop@4.30.0:
+    resolution: {integrity: sha512-fjpwyCNKtKr22AQcENBix5Y+P8ECM80Ivk/Yn7kF9D0XltYBGJHg+3yycxcGq7ATgnl7pgPYDvN2VzKleogCLQ==}
+    peerDependencies:
+      antd: '>=4.0.0'
+      react: '>=16.8.0'
+      react-dom: '>=16.8.0'
+
   antd-style@4.1.0:
     resolution: {integrity: sha512-vnPBGg0OVlSz90KRYZhxd89aZiOImTiesF+9MQqN8jsLGZUQTjbP04X9jTdEfsztKUuMbBWg/RmB/wHTakbtMQ==}
     peerDependencies:
@@ -3215,6 +3228,9 @@ packages:
   neverpanic@0.0.8:
     resolution: {integrity: sha512-vVdkelrLxaow/fdWDumzNBO+jwm6X8bxeLJc34THtpj70u0C5QBkcV6CRCu2X726km7XD45N0A3QtYCla4RvKw==}
 
+  normalize-wheel@1.0.1:
+    resolution: {integrity: sha512-1OnlAPZ3zgrk8B91HyRj+eVv+kS5u+Z0SCsak6Xil/kmgEia50ga7zfkumayonZrImffAxPU/5WcyGhzetHNPA==}
+
   nwsapi@2.2.23:
     resolution: {integrity: sha512-7wfH4sLbt4M0gCDzGE6vzQBo0bfTKjU7Sfpqy/7gs1qBfYz2vEJH6vXcBKpO3+6Yu1telwd0t9HpyOoLEQQbIQ==}
 
@@ -3364,6 +3380,12 @@ packages:
     peerDependencies:
       react: '>= 16.3.0'
       react-dom: '>= 16.3.0'
+
+  react-easy-crop@5.5.7:
+    resolution: {integrity: sha512-kYo4NtMeXFQB7h1U+h5yhUkE46WQbQdq7if54uDlbMdZHdRgNehfvaFrXnFw5NR1PNoUOJIfTwLnWmEx/MaZnA==}
+    peerDependencies:
+      react: '>=16.4.0'
+      react-dom: '>=16.4.0'
 
   react-error-boundary@6.1.1:
     resolution: {integrity: sha512-BrYwPOdXi5mqkk5lw+Uvt0ThHx32rCt3BkukS4X23A2AIWDPSGX6iaWTc0y9TU/mHDA/6qOSGel+B2ERkOvD1w==}
@@ -6235,6 +6257,14 @@ snapshots:
 
   ansi-styles@5.0.0: {}
 
+  antd-img-crop@4.30.0(antd@6.5.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5):
+    dependencies:
+      antd: 6.5.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      react: 19.2.5
+      react-dom: 19.2.5(react@19.2.5)
+      react-easy-crop: 5.5.7(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
+      tslib: 2.8.1
+
   antd-style@4.1.0(@types/react@19.2.14)(antd@6.5.3(react-dom@19.2.5(react@19.2.5))(react@19.2.5))(react-dom@19.2.5(react@19.2.5))(react@19.2.5):
     dependencies:
       '@ant-design/cssinjs': 2.1.2(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -7741,6 +7771,8 @@ snapshots:
 
   neverpanic@0.0.8: {}
 
+  normalize-wheel@1.0.1: {}
+
   nwsapi@2.2.23: {}
 
   object-assign@4.1.1: {}
@@ -7893,6 +7925,13 @@ snapshots:
       prop-types: 15.8.1
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
+
+  react-easy-crop@5.5.7(react-dom@19.2.5(react@19.2.5))(react@19.2.5):
+    dependencies:
+      normalize-wheel: 1.0.1
+      react: 19.2.5
+      react-dom: 19.2.5(react@19.2.5)
+      tslib: 2.8.1
 
   react-error-boundary@6.1.1(react@19.2.5):
     dependencies:

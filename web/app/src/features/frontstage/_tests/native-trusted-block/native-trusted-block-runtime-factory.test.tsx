@@ -237,6 +237,64 @@ export default function Block() {
     expect(registrySource).toContain('loadAntDesignColorsModule');
   });
 
+  test('I1968-AC-001/003 compiles and lazily resolves the antd-img-crop package root only', async () => {
+    const registry = createFrontstageNativeReactModuleRegistry();
+    const source = `import ImgCrop from 'antd-img-crop';
+import { Upload } from 'antd';
+
+export default function Block() {
+  return <ImgCrop rotationSlider><Upload /></ImgCrop>;
+}`;
+
+    expect(compileNativeReactComponent(source, registry.definitions).ok).toBe(
+      true
+    );
+    expect(
+      registry.definitions.find(
+        ({ module_source }) => module_source === 'antd-img-crop'
+      )
+    ).toEqual({
+      module_source: 'antd-img-crop',
+      exports: ['default']
+    });
+
+    const [first, second] = await Promise.all([
+      registry.load('antd-img-crop'),
+      registry.load('antd-img-crop')
+    ]);
+    expect(first).toBe(second);
+    expect(first.default).toBeTypeOf('object');
+
+    const [asset] = await registry.resolveModuleAssets(['antd-img-crop']);
+    const css = new TextDecoder().decode(asset?.bytes);
+    expect(asset).toMatchObject({
+      module_source: 'antd-img-crop',
+      role: 'shadow_style',
+      media_type: 'text/css; charset=utf-8'
+    });
+    expect(css).toContain('.\\[height\\:40vh\\]');
+    expect(
+      [...document.head.querySelectorAll('style')].some((style) =>
+        style.textContent?.includes('.\\[height\\:40vh\\]')
+      )
+    ).toBe(false);
+
+    for (const deniedSource of [
+      'antd-img-crop/dist/antd-img-crop.esm.js',
+      'some-unregistered-react-package'
+    ]) {
+      expect(
+        compileNativeReactComponent(
+          `import dependency from '${deniedSource}'; export default dependency;`,
+          registry.definitions
+        ).ok
+      ).toBe(false);
+      await expect(registry.load(deniedSource)).rejects.toMatchObject({
+        code: 'module_not_registered'
+      });
+    }
+  });
+
   test('I1933-AC-001/003/004b/004c compiles and lazily resolves the installed dayjs module domain', async () => {
     const registry = createFrontstageNativeReactModuleRegistry();
     const source = `import dayjs from 'dayjs';
