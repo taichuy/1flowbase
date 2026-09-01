@@ -1098,6 +1098,35 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-mcp-bundles",
+            &[
+                "mcp.bundles.official.list", "mcp.bundles.preview", "mcp.bundles.import",
+                "mcp.bundles.export", "mcp.instances.export", "mcp.bundle_library.list",
+                "mcp.bundle_library.sync", "mcp.bundle_library.preview", "mcp.bundle_library.import",
+                "mcp.bundle_library.current.switch", "mcp.bundle_library.releases.delete",
+                "mcp.bundle_library.releases.repair",
+            ],
+            &["api-server.console-mcp-bundles"],
+            crate::routes::mcp_management::bundles_interface::compile_registry(
+                crate::routes::mcp_management::bundles_interface::port(
+                    crate::routes::mcp_management::bundles_interface::McpBundlesDependencies {
+                        store: state.store.clone(),
+                        official_mcp_bundle_source: state.official_mcp_bundle_source.clone(),
+                        official_extension_catalog_source: state.official_extension_catalog_source.clone(),
+                        provider_install_root: state.provider_install_root.clone(),
+                        api_node_id: state.api_node_id.clone(),
+                        bootstrap_workspace_id: state.bootstrap_workspace_id,
+                        interface_catalog: crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies {
+                            store: state.store.clone(),
+                            openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
+                                store: state.store.clone(), console_operations: state.console_operation_registry.inventory().clone(), interface_registry: state.extension_boot_snapshot.as_ref().and_then(|snapshot| snapshot.interface_registry()).map(|registry| registry.snapshot()), api_docs: Arc::clone(&state.api_docs), template_catalog: state.runtime_engine.template_catalog().clone(),
+                            },
+                        },
+                    },
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-frontend-blocks",
             &["frontend_blocks.view"],
             &["api-server.console-frontend-blocks"],

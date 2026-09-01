@@ -1,4 +1,5 @@
 pub(crate) mod bundles;
+pub(crate) mod bundles_interface;
 pub(crate) mod debug_execute;
 mod dto;
 pub(crate) mod interface_catalog;

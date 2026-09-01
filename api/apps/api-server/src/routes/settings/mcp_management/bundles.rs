@@ -11,19 +11,7 @@ use axum::{
     response::{IntoResponse, Response},
     Json,
 };
-use control_plane::{
-    errors::ControlPlaneError,
-    mcp_bundle::{
-        ExportMcpBundleCommand, ExportMcpInstanceBundleCommand, ImportMcpBundleCommand,
-        McpInstanceBundleExportKind, PreviewMcpBundleCommand,
-    },
-    mcp_management::McpManagementService,
-    plugin_management::ExtensionInstallationService,
-    plugin_management::{
-        installed_extension_integrity_warnings, validate_extension_integrity_override,
-        ExtensionRiskOverride,
-    },
-};
+use control_plane::errors::ControlPlaneError;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
@@ -31,16 +19,32 @@ use zip::{write::SimpleFileOptions, CompressionMethod, ZipArchive, ZipWriter};
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
-    official_extension_catalog::{OfficialExtensionCatalogEntry, OfficialExtensionCatalogPage},
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_delete, console_get, console_post, ConsoleRouteAssembly,
     },
 };
 
+use super::bundles_interface;
+
 const MAX_BUNDLE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_BUNDLE_FILES: usize = 256;
+
+async fn invoke(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    binding_id: &'static str,
+    input: bundles_interface::McpBundlesInput,
+    mutating: bool,
+) -> Result<bundles_interface::McpBundlesOutput, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    let credential = if mutating {
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers }
+    } else {
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
+    };
+    crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
+}
 
 pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
@@ -155,109 +159,96 @@ pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
 
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
-enum McpBundleSourceBody {
+pub(crate) enum McpBundleSourceBody {
     OfficialCatalog(OfficialMcpBundleSelector),
     InstalledExtension(InstalledMcpExtensionSelector),
     BuiltinTemplate(BuiltinMcpTemplateSelector),
 }
 
 #[derive(Debug, Deserialize)]
-struct OfficialMcpBundleSelector {
-    organization: String,
-    bundle_id: String,
+pub(crate) struct OfficialMcpBundleSelector {
+    pub(crate) organization: String,
+    pub(crate) bundle_id: String,
 }
 
 #[derive(Debug, Deserialize)]
-struct InstalledMcpExtensionSelector {
-    extension_installation_id: String,
-    instance_id: Option<String>,
-    integrity_override: Option<crate::routes::plugins::PluginRiskOverrideBody>,
+pub(crate) struct InstalledMcpExtensionSelector {
+    pub(crate) extension_installation_id: String,
+    pub(crate) instance_id: Option<String>,
+    pub(crate) integrity_override: Option<crate::routes::plugins::PluginRiskOverrideBody>,
 }
 
 #[derive(Debug, Deserialize)]
-struct BuiltinMcpTemplateSelector {
-    builtin_template_id: String,
-    instance_id: String,
+pub(crate) struct BuiltinMcpTemplateSelector {
+    pub(crate) builtin_template_id: String,
+    pub(crate) instance_id: String,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
-enum McpBundlePreviewSourceResponse {
+pub(crate) enum McpBundlePreviewSourceResponse {
     OfficialCatalog(domain::McpBundlePreview),
     InstalledExtension(InstalledMcpExtensionPreviewResponse),
     BuiltinTemplate(BuiltinMcpTemplatePreviewResponse),
 }
 
 #[derive(Debug, Serialize)]
-struct BuiltinMcpTemplatePreviewResponse {
-    builtin_template_id: String,
-    workspace_application_status: String,
-    preview: domain::McpBundlePreview,
+pub(crate) struct BuiltinMcpTemplatePreviewResponse {
+    pub(crate) builtin_template_id: String,
+    pub(crate) workspace_application_status: String,
+    pub(crate) preview: domain::McpBundlePreview,
 }
 
 #[derive(Debug, Serialize)]
-struct InstalledMcpExtensionPreviewResponse {
-    extension_installation_id: String,
-    artifact_installation_status: String,
-    workspace_application_status: String,
-    integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
-    required_integrity_override: Option<domain::ExtensionRiskChallenge>,
-    preview: domain::McpBundlePreview,
+pub(crate) struct InstalledMcpExtensionPreviewResponse {
+    pub(crate) extension_installation_id: String,
+    pub(crate) artifact_installation_status: String,
+    pub(crate) workspace_application_status: String,
+    pub(crate) integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
+    pub(crate) required_integrity_override: Option<domain::ExtensionRiskChallenge>,
+    pub(crate) preview: domain::McpBundlePreview,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
-enum McpBundleImportSourceResponse {
+pub(crate) enum McpBundleImportSourceResponse {
     OfficialCatalog(domain::McpBundleImportReport),
     InstalledExtension(InstalledMcpExtensionImportResponse),
     BuiltinTemplate(BuiltinMcpTemplateImportResponse),
 }
 
 #[derive(Debug, Serialize)]
-struct BuiltinMcpTemplateImportResponse {
-    builtin_template_id: String,
-    workspace_application_status: String,
-    import_report: domain::McpBundleImportReport,
+pub(crate) struct BuiltinMcpTemplateImportResponse {
+    pub(crate) builtin_template_id: String,
+    pub(crate) workspace_application_status: String,
+    pub(crate) import_report: domain::McpBundleImportReport,
 }
 
 #[derive(Debug, Serialize)]
-struct InstalledMcpExtensionImportResponse {
-    extension_installation_id: String,
-    artifact_installation_status: String,
-    workspace_application_status: String,
-    integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
-    import_report: domain::McpBundleImportReport,
+pub(crate) struct InstalledMcpExtensionImportResponse {
+    pub(crate) extension_installation_id: String,
+    pub(crate) artifact_installation_status: String,
+    pub(crate) workspace_application_status: String,
+    pub(crate) integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
+    pub(crate) import_report: domain::McpBundleImportReport,
 }
 
 #[derive(Debug, Serialize)]
-struct InstalledMcpExtensionIntegrityChallengeResponse {
-    status: u16,
-    code: String,
-    message: String,
-    extension_installation_id: String,
-    artifact_installation_status: String,
-    workspace_application_status: String,
-    integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
-    required_integrity_override: domain::ExtensionRiskChallenge,
-    preview: domain::McpBundlePreview,
-}
-
-#[derive(Clone, Copy)]
-enum LoadedMcpBundleSourceKind {
-    OfficialCatalog,
-    InstalledExtension(uuid::Uuid),
-    BuiltinTemplate,
-}
-
-struct LoadedMcpBundleSource {
-    kind: LoadedMcpBundleSourceKind,
-    package: domain::McpBundlePackage,
-    integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
+pub(crate) struct InstalledMcpExtensionIntegrityChallengeResponse {
+    pub(crate) status: u16,
+    pub(crate) code: String,
+    pub(crate) message: String,
+    pub(crate) extension_installation_id: String,
+    pub(crate) artifact_installation_status: String,
+    pub(crate) workspace_application_status: String,
+    pub(crate) integrity_warnings: Vec<domain::ExtensionIntegrityWarning>,
+    pub(crate) required_integrity_override: domain::ExtensionRiskChallenge,
+    pub(crate) preview: domain::McpBundlePreview,
 }
 
 #[derive(Debug, Default, Deserialize, utoipa::ToSchema)]
 pub(crate) struct McpBundleLibraryVersionBody {
-    bundle_version: Option<String>,
+    pub(crate) bundle_version: Option<String>,
 }
 
 #[utoipa::path(
@@ -278,14 +269,18 @@ pub(crate) async fn list_bundle_library(
     headers: HeaderMap,
     Query(query): Query<McpBundleLibraryQuery>,
 ) -> Result<Json<ApiSuccess<crate::official_mcp_bundles::McpBundleLibraryCatalog>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    McpManagementService::new(state.store.clone())
-        .authorize_bundle_management(context.user.id)
-        .await?;
-    let catalog = if query.refresh_remote.unwrap_or(false) {
-        state.official_mcp_bundle_source.refresh_catalog().await?
-    } else {
-        state.official_mcp_bundle_source.library_catalog().await?
+    let bundles_interface::McpBundlesOutput::Library(catalog) = invoke(
+        state,
+        headers,
+        "http.console.mcp.bundles.library.list.v1",
+        bundles_interface::McpBundlesInput::ListLibrary {
+            refresh_remote: query.refresh_remote.unwrap_or(false),
+        },
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
     };
     Ok(Json(ApiSuccess::new(catalog)))
 }
@@ -293,7 +288,7 @@ pub(crate) async fn list_bundle_library(
 #[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
 #[into_params(parameter_in = Query)]
 pub(crate) struct McpBundleLibraryQuery {
-    refresh_remote: Option<bool>,
+    pub(crate) refresh_remote: Option<bool>,
 }
 
 #[utoipa::path(
@@ -319,15 +314,21 @@ pub(crate) async fn sync_library_bundle(
     Path((organization, bundle_id)): Path<(String, String)>,
     Json(body): Json<McpBundleLibraryVersionBody>,
 ) -> Result<Json<ApiSuccess<crate::official_mcp_bundles::LocalMcpBundleReceipt>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    McpManagementService::new(state.store.clone())
-        .authorize_bundle_management(context.user.id)
-        .await?;
-    let receipt = state
-        .official_mcp_bundle_source
-        .sync(&organization, &bundle_id, body.bundle_version.as_deref())
-        .await?;
+    let bundles_interface::McpBundlesOutput::LibraryReceipt(receipt) = invoke(
+        state,
+        headers,
+        "http.console.mcp.bundles.library.sync.v1",
+        bundles_interface::McpBundlesInput::SyncLibrary {
+            organization,
+            bundle_id,
+            body,
+        },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(Json(ApiSuccess::new(receipt)))
 }
 
@@ -354,26 +355,21 @@ pub(crate) async fn preview_library_bundle(
     Path((organization, bundle_id)): Path<(String, String)>,
     Json(body): Json<McpBundleLibraryVersionBody>,
 ) -> Result<Json<ApiSuccess<domain::McpBundlePreview>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    McpManagementService::new(state.store.clone())
-        .authorize_bundle_management(context.user.id)
-        .await?;
-    let bytes = state
-        .official_mcp_bundle_source
-        .resolve_artifact(&organization, &bundle_id, body.bundle_version.as_deref())
-        .await?;
-    let package = parse_downloaded_bundle(bytes).await?;
-    let interface_catalog =
-        super::mcp_interface_catalog_entries(state.as_ref(), &context.actor).await?;
-    let preview = McpManagementService::new(state.store.clone())
-        .preview_bundle(PreviewMcpBundleCommand {
-            actor_user_id: context.user.id,
-            package,
-            interface_catalog,
-            current_system_version: current_system_version(),
-        })
-        .await?;
+    let bundles_interface::McpBundlesOutput::Preview(preview) = invoke(
+        state,
+        headers,
+        "http.console.mcp.bundles.library.preview.v1",
+        bundles_interface::McpBundlesInput::PreviewLibrary {
+            organization,
+            bundle_id,
+            body,
+        },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(Json(ApiSuccess::new(preview)))
 }
 
@@ -400,26 +396,21 @@ pub(crate) async fn import_library_bundle(
     Path((organization, bundle_id)): Path<(String, String)>,
     Json(body): Json<McpBundleLibraryVersionBody>,
 ) -> Result<Json<ApiSuccess<domain::McpBundleImportReport>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    McpManagementService::new(state.store.clone())
-        .authorize_bundle_management(context.user.id)
-        .await?;
-    let bytes = state
-        .official_mcp_bundle_source
-        .resolve_artifact(&organization, &bundle_id, body.bundle_version.as_deref())
-        .await?;
-    let package = parse_downloaded_bundle(bytes).await?;
-    let interface_catalog =
-        super::mcp_interface_catalog_entries(state.as_ref(), &context.actor).await?;
-    let report = McpManagementService::new(state.store.clone())
-        .import_bundle(ImportMcpBundleCommand {
-            actor_user_id: context.user.id,
-            package,
-            interface_catalog,
-            current_system_version: current_system_version(),
-        })
-        .await?;
+    let bundles_interface::McpBundlesOutput::Import(report) = invoke(
+        state,
+        headers,
+        "http.console.mcp.bundles.library.import.v1",
+        bundles_interface::McpBundlesInput::ImportLibrary {
+            organization,
+            bundle_id,
+            body,
+        },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(Json(ApiSuccess::new(report)))
 }
 
@@ -428,15 +419,21 @@ async fn switch_library_bundle(
     headers: HeaderMap,
     Path((organization, bundle_id, bundle_version)): Path<(String, String, String)>,
 ) -> Result<Json<ApiSuccess<crate::official_mcp_bundles::LocalMcpBundleReceipt>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    McpManagementService::new(state.store.clone())
-        .authorize_bundle_management(context.user.id)
-        .await?;
-    let receipt = state
-        .official_mcp_bundle_source
-        .switch_current(&organization, &bundle_id, &bundle_version)
-        .await?;
+    let bundles_interface::McpBundlesOutput::LibraryReceipt(receipt) = invoke(
+        state,
+        headers,
+        "http.console.mcp.bundles.library.current.switch.v1",
+        bundles_interface::McpBundlesInput::SwitchLibrary {
+            organization,
+            bundle_id,
+            bundle_version,
+        },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(Json(ApiSuccess::new(receipt)))
 }
 
@@ -445,15 +442,21 @@ async fn delete_library_bundle_release(
     headers: HeaderMap,
     Path((organization, bundle_id, bundle_version)): Path<(String, String, String)>,
 ) -> Result<Json<ApiSuccess<serde_json::Value>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    McpManagementService::new(state.store.clone())
-        .authorize_bundle_management(context.user.id)
-        .await?;
-    state
-        .official_mcp_bundle_source
-        .delete_local_version(&organization, &bundle_id, &bundle_version)
-        .await?;
+    let bundles_interface::McpBundlesOutput::Deleted = invoke(
+        state,
+        headers,
+        "http.console.mcp.bundles.library.releases.delete.v1",
+        bundles_interface::McpBundlesInput::DeleteLibraryRelease {
+            organization,
+            bundle_id,
+            bundle_version,
+        },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(Json(ApiSuccess::new(
         serde_json::json!({ "deleted": true }),
     )))
@@ -464,15 +467,21 @@ async fn repair_library_bundle_release(
     headers: HeaderMap,
     Path((organization, bundle_id, bundle_version)): Path<(String, String, String)>,
 ) -> Result<Json<ApiSuccess<crate::official_mcp_bundles::LocalMcpBundleReceipt>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    McpManagementService::new(state.store.clone())
-        .authorize_bundle_management(context.user.id)
-        .await?;
-    let receipt = state
-        .official_mcp_bundle_source
-        .repair(&organization, &bundle_id, &bundle_version)
-        .await?;
+    let bundles_interface::McpBundlesOutput::LibraryReceipt(receipt) = invoke(
+        state,
+        headers,
+        "http.console.mcp.bundles.library.releases.repair.v1",
+        bundles_interface::McpBundlesInput::RepairLibraryRelease {
+            organization,
+            bundle_id,
+            bundle_version,
+        },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(Json(ApiSuccess::new(receipt)))
 }
 
@@ -481,102 +490,19 @@ async fn list_official_bundles(
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<crate::official_mcp_bundles::OfficialMcpBundleCatalogSnapshot>>, ApiError>
 {
-    let context = require_session(&state, &headers).await?;
-    McpManagementService::new(state.store.clone())
-        .authorize_bundle_management(context.user.id)
-        .await?;
-    let first_page = state
-        .official_extension_catalog_source
-        .list_page_for_workspace(context.actor.current_workspace_id, "mcp", None)
-        .await?;
-    let mut next_cursor = first_page.metadata.next_cursor.clone();
-    let mut pages = vec![first_page];
-    while let Some(cursor) = next_cursor {
-        let page = state
-            .official_extension_catalog_source
-            .list_page_for_workspace(context.actor.current_workspace_id, "mcp", Some(&cursor))
-            .await?;
-        next_cursor = page.metadata.next_cursor.clone();
-        pages.push(page);
-    }
-    let mut catalog = project_official_mcp_catalog(&state, pages)?;
-    let locale = crate::app_state::request_catalog_locale(&headers, context.user.preferred_locale);
-    catalog.source.source_label = crate::app_state::resolve_official_source_label(
-        &state,
-        &locale,
-        &catalog.source.source_kind,
-        catalog.source.source_label,
+    let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
+    let bundles_interface::McpBundlesOutput::OfficialCatalog(catalog) = invoke(
+        state,
+        headers,
+        "http.console.mcp.bundles.official.list.v1",
+        bundles_interface::McpBundlesInput::ListOfficial { locale },
+        false,
     )
-    .await?;
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(Json(ApiSuccess::new(catalog)))
-}
-
-fn project_official_mcp_catalog(
-    state: &ApiState,
-    pages: Vec<OfficialExtensionCatalogPage>,
-) -> anyhow::Result<crate::official_mcp_bundles::OfficialMcpBundleCatalogSnapshot> {
-    let first = pages
-        .first()
-        .ok_or_else(|| anyhow::anyhow!("official MCP catalog has no page"))?;
-    let source_kind = first.source_kind.clone();
-    let catalog_url = first.metadata.locator.clone();
-    let entries = pages
-        .into_iter()
-        .flat_map(|page| page.entries)
-        .map(|entry| project_official_mcp_entry(state, entry))
-        .collect::<anyhow::Result<Vec<_>>>()?;
-    Ok(
-        crate::official_mcp_bundles::OfficialMcpBundleCatalogSnapshot {
-            source: crate::official_mcp_bundles::OfficialMcpBundleCatalogSource {
-                source_label: source_kind.clone(),
-                source_kind,
-                catalog_url,
-            },
-            entries,
-        },
-    )
-}
-
-fn project_official_mcp_entry(
-    state: &ApiState,
-    entry: OfficialExtensionCatalogEntry,
-) -> anyhow::Result<crate::official_mcp_bundles::OfficialMcpBundleCatalogEntry> {
-    if entry.category != "mcp" {
-        anyhow::bail!("official MCP catalog projection received another category");
-    }
-    let locale = catalog_metadata_string(&entry, "locale")?;
-    let exported_from_system_version =
-        catalog_metadata_string(&entry, "exported_from_system_version")?;
-    let release_tag = catalog_metadata_string(&entry, "release_tag")?;
-    let descriptor = state
-        .official_extension_catalog_source
-        .resolve_artifact(&entry)?;
-    Ok(crate::official_mcp_bundles::OfficialMcpBundleCatalogEntry {
-        organization: entry.organization,
-        bundle_id: entry.artifact,
-        latest_version: entry.version,
-        locale,
-        minimum_host_version: entry.host_version_requirement,
-        exported_from_system_version,
-        release_tag,
-        download_url: descriptor.locator,
-        artifact_sha256: descriptor.expected_checksum,
-    })
-}
-
-fn catalog_metadata_string(
-    entry: &OfficialExtensionCatalogEntry,
-    field: &'static str,
-) -> anyhow::Result<String> {
-    entry
-        .source
-        .metadata
-        .get(field)
-        .and_then(serde_json::Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-        .ok_or_else(|| anyhow::anyhow!("official extension catalog entry is missing {field}"))
 }
 
 async fn preview_official_bundle(
@@ -584,64 +510,16 @@ async fn preview_official_bundle(
     headers: HeaderMap,
     Json(body): Json<McpBundleSourceBody>,
 ) -> Result<Json<ApiSuccess<McpBundlePreviewSourceResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let source = load_mcp_bundle_source(&state, context.actor.current_workspace_id, body).await?;
-    let interface_catalog =
-        super::mcp_interface_catalog_entries(state.as_ref(), &context.actor).await?;
-    let preview = McpManagementService::new(state.store.clone())
-        .preview_bundle(PreviewMcpBundleCommand {
-            actor_user_id: context.user.id,
-            package: source.package,
-            interface_catalog,
-            current_system_version: current_system_version(),
-        })
-        .await?;
-    let response = match source.kind {
-        LoadedMcpBundleSourceKind::InstalledExtension(extension_installation_id) => {
-            let has_import_receipt = McpManagementService::new(state.store.clone())
-                .extension_bundle_is_imported(context.user.id, extension_installation_id)
-                .await?;
-            let workspace_application_status = if preview.effect_summary.changes > 0 {
-                "ready_to_import"
-            } else if has_import_receipt {
-                "imported"
-            } else {
-                "already_present"
-            };
-            McpBundlePreviewSourceResponse::InstalledExtension(
-                InstalledMcpExtensionPreviewResponse {
-                    extension_installation_id: extension_installation_id.to_string(),
-                    artifact_installation_status: "installed".to_string(),
-                    workspace_application_status: workspace_application_status.to_string(),
-                    required_integrity_override: (!source.integrity_warnings.is_empty()).then(
-                        || domain::ExtensionRiskChallenge {
-                            warnings: source.integrity_warnings.clone(),
-                            compatibility: None,
-                        },
-                    ),
-                    integrity_warnings: source.integrity_warnings,
-                    preview,
-                },
-            )
-        }
-        LoadedMcpBundleSourceKind::BuiltinTemplate => {
-            let workspace_application_status = if preview.effect_summary.changes > 0 {
-                "ready_to_import"
-            } else {
-                "already_present"
-            };
-            McpBundlePreviewSourceResponse::BuiltinTemplate(BuiltinMcpTemplatePreviewResponse {
-                builtin_template_id:
-                    crate::routes::plugins::extension_center::BUILTIN_FRONTSTAGE_CATALOG_ID
-                        .to_string(),
-                workspace_application_status: workspace_application_status.to_string(),
-                preview,
-            })
-        }
-        LoadedMcpBundleSourceKind::OfficialCatalog => {
-            McpBundlePreviewSourceResponse::OfficialCatalog(preview)
-        }
+    let bundles_interface::McpBundlesOutput::PreviewOfficial(response) = invoke(
+        state,
+        headers,
+        "http.console.mcp.bundles.preview-official.v1",
+        bundles_interface::McpBundlesInput::PreviewOfficial(body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
     };
     Ok(Json(ApiSuccess::new(response)))
 }
@@ -651,243 +529,73 @@ async fn import_official_bundle(
     headers: HeaderMap,
     Json(body): Json<McpBundleSourceBody>,
 ) -> Result<Response, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let interface_catalog =
-        super::mcp_interface_catalog_entries(state.as_ref(), &context.actor).await?;
-    let integrity_override = match &body {
-        McpBundleSourceBody::InstalledExtension(selector) => selector
-            .integrity_override
-            .as_ref()
-            .map(|value| ExtensionRiskOverride {
-                reason: value.reason.clone(),
-                acknowledged_warnings: value.acknowledged_warnings.clone(),
-            }),
-        McpBundleSourceBody::OfficialCatalog(_) => None,
-        McpBundleSourceBody::BuiltinTemplate(_) => None,
-    };
-    let source = load_mcp_bundle_source(&state, context.actor.current_workspace_id, body).await?;
-    let service = McpManagementService::new(state.store.clone());
-    if let LoadedMcpBundleSourceKind::InstalledExtension(extension_installation_id) = source.kind {
-        let preview = service
-            .preview_bundle(PreviewMcpBundleCommand {
-                actor_user_id: context.user.id,
-                package: source.package.clone(),
-                interface_catalog: interface_catalog.clone(),
-                current_system_version: current_system_version(),
-            })
-            .await?;
-        if !validate_extension_integrity_override(
-            &source.integrity_warnings,
-            integrity_override.as_ref(),
-        )? {
-            return Ok((
-                StatusCode::CONFLICT,
-                Json(InstalledMcpExtensionIntegrityChallengeResponse {
-                    status: StatusCode::CONFLICT.as_u16(),
-                    code: "mcp_bundle_integrity_confirmation_required".to_string(),
-                    message: "Installed MCP artifact integrity warnings require confirmation."
-                        .to_string(),
-                    extension_installation_id: extension_installation_id.to_string(),
-                    artifact_installation_status: "installed".to_string(),
-                    workspace_application_status: "not_imported".to_string(),
-                    integrity_warnings: source.integrity_warnings.clone(),
-                    required_integrity_override: domain::ExtensionRiskChallenge {
-                        warnings: source.integrity_warnings.clone(),
-                        compatibility: None,
-                    },
-                    preview,
-                }),
-            )
-                .into_response());
+    match invoke(
+        state,
+        headers,
+        "http.console.mcp.bundles.import-official.v1",
+        bundles_interface::McpBundlesInput::ImportOfficial(body),
+        true,
+    )
+    .await?
+    {
+        bundles_interface::McpBundlesOutput::ImportOfficial(response) => {
+            Ok(Json(ApiSuccess::new(response)).into_response())
         }
-    }
-    let report = service
-        .import_bundle(ImportMcpBundleCommand {
-            actor_user_id: context.user.id,
-            package: source.package,
-            interface_catalog,
-            current_system_version: current_system_version(),
-        })
-        .await?;
-    let is_reconciled = report.effect_summary.conflicts == 0 && report.effect_summary.failed == 0;
-    if let LoadedMcpBundleSourceKind::InstalledExtension(extension_installation_id) = source.kind {
-        if is_reconciled {
-            service
-                .record_extension_bundle_import(
-                    context.user.id,
-                    extension_installation_id,
-                    &report.status,
-                )
-                .await?;
+        bundles_interface::McpBundlesOutput::IntegrityChallenge(response) => {
+            Ok((StatusCode::CONFLICT, Json(response)).into_response())
         }
-    }
-    let response = match source.kind {
-        LoadedMcpBundleSourceKind::InstalledExtension(extension_installation_id) => {
-            let workspace_application_status = if is_reconciled {
-                "imported"
-            } else if report.effect_summary.changes > 0 {
-                "partially_imported"
-            } else {
-                "not_imported"
-            };
-            McpBundleImportSourceResponse::InstalledExtension(InstalledMcpExtensionImportResponse {
-                extension_installation_id: extension_installation_id.to_string(),
-                artifact_installation_status: "installed".to_string(),
-                workspace_application_status: workspace_application_status.to_string(),
-                integrity_warnings: source.integrity_warnings,
-                import_report: report,
-            })
-        }
-        LoadedMcpBundleSourceKind::BuiltinTemplate => {
-            let workspace_application_status = if is_reconciled {
-                "imported"
-            } else if report.effect_summary.changes > 0 {
-                "partially_imported"
-            } else {
-                "not_imported"
-            };
-            McpBundleImportSourceResponse::BuiltinTemplate(BuiltinMcpTemplateImportResponse {
-                builtin_template_id:
-                    crate::routes::plugins::extension_center::BUILTIN_FRONTSTAGE_CATALOG_ID
-                        .to_string(),
-                workspace_application_status: workspace_application_status.to_string(),
-                import_report: report,
-            })
-        }
-        LoadedMcpBundleSourceKind::OfficialCatalog => {
-            McpBundleImportSourceResponse::OfficialCatalog(report)
-        }
-    };
-    Ok(Json(ApiSuccess::new(response)).into_response())
-}
-
-async fn load_mcp_bundle_source(
-    state: &ApiState,
-    workspace_id: uuid::Uuid,
-    body: McpBundleSourceBody,
-) -> Result<LoadedMcpBundleSource, ApiError> {
-    match body {
-        McpBundleSourceBody::OfficialCatalog(selector) => {
-            let catalog_id = format!("mcp:{}/{}", selector.organization, selector.bundle_id);
-            let located = state
-                .official_extension_catalog_source
-                .find_entry_for_workspace(workspace_id, "mcp", &catalog_id)
-                .await?;
-            let located = located.ok_or(ControlPlaneError::NotFound("official_mcp_bundle"))?;
-            if located.entry.organization != selector.organization
-                || located.entry.artifact != selector.bundle_id
-            {
-                return Err(ControlPlaneError::InvalidInput("official_mcp_bundle").into());
-            }
-            let downloaded = state
-                .official_extension_catalog_source
-                .download_artifact_for_workspace(workspace_id, &located.entry)
-                .await?;
-            Ok(LoadedMcpBundleSource {
-                kind: LoadedMcpBundleSourceKind::OfficialCatalog,
-                package: parse_downloaded_bundle(downloaded.artifact_bytes).await?,
-                integrity_warnings: Vec::new(),
-            })
-        }
-        McpBundleSourceBody::InstalledExtension(selector) => {
-            let installation_id = uuid::Uuid::parse_str(&selector.extension_installation_id)
-                .map_err(|_| ControlPlaneError::InvalidInput("extension_installation_id"))?;
-            let installation = ExtensionInstallationService::new(
-                state.store.clone(),
-                &state.provider_install_root,
-            )
-            .find_local_installation_by_id(&state.api_node_id, installation_id)
-            .await?
-            .ok_or(ControlPlaneError::NotFound("extension_installation"))?;
-            if installation.identity.category != domain::ExtensionCategory::Mcp {
-                return Err(ControlPlaneError::InvalidInput("extension_installation_id").into());
-            }
-            let local_path =
-                installation
-                    .local_path
-                    .as_deref()
-                    .ok_or(ControlPlaneError::Conflict(
-                        "extension_artifact_path_missing",
-                    ))?;
-            let bytes = tokio::fs::read(local_path).await?;
-            let integrity_warnings = installed_extension_integrity_warnings(&installation, &bytes);
-            let package = parse_downloaded_bundle(bytes).await?;
-            let package = match selector.instance_id {
-                Some(instance_id) => package
-                    .project_instance(&instance_id)
-                    .ok_or(ControlPlaneError::NotFound("mcp_bundle_instance"))?,
-                None => package,
-            };
-            Ok(LoadedMcpBundleSource {
-                kind: LoadedMcpBundleSourceKind::InstalledExtension(installation_id),
-                package,
-                integrity_warnings,
-            })
-        }
-        McpBundleSourceBody::BuiltinTemplate(selector) => {
-            if selector.builtin_template_id
-                != crate::routes::plugins::extension_center::BUILTIN_FRONTSTAGE_CATALOG_ID
-            {
-                return Err(ControlPlaneError::NotFound("builtin_mcp_template").into());
-            }
-            let package = crate::official_mcp_bundles::ApiOfficialMcpBundleRegistry::bundled_frontstage_assistant_package()?
-                .project_instance(&selector.instance_id)
-                .ok_or(ControlPlaneError::NotFound("mcp_bundle_instance"))?;
-            Ok(LoadedMcpBundleSource {
-                kind: LoadedMcpBundleSourceKind::BuiltinTemplate,
-                package,
-                integrity_warnings: Vec::new(),
-            })
-        }
+        _ => unreachable!(),
     }
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ExportMcpBundleBody {
-    organization: String,
-    bundle_id: String,
-    bundle_version: String,
-    locale: String,
+pub(crate) struct ExportMcpBundleBody {
+    pub(crate) organization: String,
+    pub(crate) bundle_id: String,
+    pub(crate) bundle_version: String,
+    pub(crate) locale: String,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct ExportMcpInstanceBundleBody {
-    organization: String,
-    bundle_id: String,
-    bundle_version: String,
-    locale: String,
-    export_profile: Option<McpInstanceBundleExportProfile>,
+pub(crate) struct ExportMcpInstanceBundleBody {
+    pub(crate) organization: String,
+    pub(crate) bundle_id: String,
+    pub(crate) bundle_version: String,
+    pub(crate) locale: String,
+    pub(crate) export_profile: Option<McpInstanceBundleExportProfile>,
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
-enum McpInstanceBundleExportProfile {
+pub(crate) enum McpInstanceBundleExportProfile {
     Portable,
     OfficialBuiltin,
 }
 
 #[derive(Debug, Serialize)]
-struct McpBundleExportDefaults {
-    minimum_host_version: String,
-    current_system_version: String,
+pub(crate) struct McpBundleExportDefaults {
+    pub(crate) minimum_host_version: String,
+    pub(crate) current_system_version: String,
 }
 
 async fn export_bundle_defaults(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<McpBundleExportDefaults>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    McpManagementService::new(state.store.clone())
-        .authorize_bundle_management(context.user.id)
-        .await?;
-    let current_system_version = current_system_version();
-    Ok(Json(ApiSuccess::new(McpBundleExportDefaults {
-        minimum_host_version: current_system_version.clone(),
-        current_system_version,
-    })))
+    let bundles_interface::McpBundlesOutput::ExportDefaults(response) = invoke(
+        state,
+        headers,
+        "http.console.mcp.bundles.export-defaults.v1",
+        bundles_interface::McpBundlesInput::ExportDefaults,
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 async fn export_bundle(
@@ -895,19 +603,18 @@ async fn export_bundle(
     headers: HeaderMap,
     Json(body): Json<ExportMcpBundleBody>,
 ) -> Result<Response, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let package = McpManagementService::new(state.store.clone())
-        .export_bundle(ExportMcpBundleCommand {
-            actor_user_id: context.user.id,
-            organization: body.organization,
-            bundle_id: body.bundle_id,
-            bundle_version: body.bundle_version,
-            locale: body.locale,
-            current_system_version: current_system_version(),
-        })
-        .await?;
-    bundle_archive_response(package, "mcp-bundle.zip").await
+    let bundles_interface::McpBundlesOutput::Archive(archive) = invoke(
+        state,
+        headers,
+        "http.console.mcp.bundles.export.v1",
+        bundles_interface::McpBundlesInput::Export(body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    bundle_archive_response(archive)
 }
 
 async fn export_instance_bundle(
@@ -916,83 +623,44 @@ async fn export_instance_bundle(
     Path(instance_id): Path<String>,
     Json(body): Json<ExportMcpInstanceBundleBody>,
 ) -> Result<Response, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let filename = format!("mcp-instance-{}.zip", safe_filename_segment(&instance_id));
-    let kind = match body.export_profile {
-        None | Some(McpInstanceBundleExportProfile::Portable) => {
-            McpInstanceBundleExportKind::Portable
-        }
-        Some(McpInstanceBundleExportProfile::OfficialBuiltin) => {
-            McpInstanceBundleExportKind::OfficialBuiltin {
-                interface_catalog: super::mcp_interface_catalog_entries(
-                    state.as_ref(),
-                    &context.actor,
-                )
-                .await?,
-            }
-        }
+    let bundles_interface::McpBundlesOutput::Archive(archive) = invoke(
+        state,
+        headers,
+        "http.console.mcp.instances.bundles.export.v1",
+        bundles_interface::McpBundlesInput::ExportInstance { instance_id, body },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
     };
-    let exported = McpManagementService::new(state.store.clone())
-        .export_instance_bundle(ExportMcpInstanceBundleCommand {
-            actor_user_id: context.user.id,
-            instance_id,
-            organization: body.organization,
-            bundle_id: body.bundle_id,
-            bundle_version: body.bundle_version,
-            locale: body.locale,
-            current_system_version: current_system_version(),
-            kind,
-        })
-        .await?;
-    let mut response = bundle_archive_response(exported.package, &filename).await?;
-    if let Some(report) = exported.official_report {
+    bundle_archive_response(archive)
+}
+
+fn bundle_archive_response(
+    archive: bundles_interface::BundleArchive,
+) -> Result<Response, ApiError> {
+    let mut response = Response::new(Body::from(archive.bytes));
+    *response.status_mut() = StatusCode::from_u16(archive.status)
+        .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_export_status"))?;
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static(archive.content_type),
+    );
+    response.headers_mut().insert(
+        header::CONTENT_DISPOSITION,
+        HeaderValue::from_str(&format!("attachment; filename=\"{}\"", archive.filename))
+            .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_filename"))?,
+    );
+    for (name, value) in archive.headers {
         response.headers_mut().insert(
-            "x-1flowbase-mcp-excluded-tool-count",
-            HeaderValue::from_str(&report.excluded_tool_count.to_string())
+            axum::http::header::HeaderName::from_bytes(name.as_bytes())
                 .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_export_report"))?,
-        );
-        response.headers_mut().insert(
-            "x-1flowbase-mcp-exclusion-reasons",
-            HeaderValue::from_str(&report.exclusion_reasons.join(","))
+            HeaderValue::from_str(&value)
                 .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_export_report"))?,
         );
     }
     Ok(response)
-}
-
-async fn bundle_archive_response(
-    package: domain::McpBundlePackage,
-    filename: &str,
-) -> Result<Response, ApiError> {
-    let archive = tokio::task::spawn_blocking(move || build_bundle_archive(package))
-        .await
-        .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_archive"))??;
-    let mut response = Response::new(Body::from(archive));
-    *response.status_mut() = StatusCode::OK;
-    response.headers_mut().insert(
-        header::CONTENT_TYPE,
-        HeaderValue::from_static("application/zip"),
-    );
-    response.headers_mut().insert(
-        header::CONTENT_DISPOSITION,
-        HeaderValue::from_str(&format!("attachment; filename=\"{filename}\""))
-            .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_filename"))?,
-    );
-    Ok(response)
-}
-
-fn safe_filename_segment(value: &str) -> String {
-    value
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect()
 }
 
 async fn preview_uploaded_bundle(
@@ -1000,19 +668,18 @@ async fn preview_uploaded_bundle(
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Result<Json<ApiSuccess<domain::McpBundlePreview>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let package = read_bundle_package(&mut multipart).await?;
-    let interface_catalog =
-        super::mcp_interface_catalog_entries(state.as_ref(), &context.actor).await?;
-    let preview = McpManagementService::new(state.store.clone())
-        .preview_bundle(PreviewMcpBundleCommand {
-            actor_user_id: context.user.id,
-            package,
-            interface_catalog,
-            current_system_version: current_system_version(),
-        })
-        .await?;
+    let bytes = read_bundle_bytes(&mut multipart).await?;
+    let bundles_interface::McpBundlesOutput::Preview(preview) = invoke(
+        state,
+        headers,
+        "http.console.mcp.bundles.preview-upload.v1",
+        bundles_interface::McpBundlesInput::PreviewUploaded { bytes },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(Json(ApiSuccess::new(preview)))
 }
 
@@ -1021,29 +688,22 @@ async fn import_uploaded_bundle(
     headers: HeaderMap,
     mut multipart: Multipart,
 ) -> Result<Json<ApiSuccess<domain::McpBundleImportReport>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let package = read_bundle_package(&mut multipart).await?;
-    let interface_catalog =
-        super::mcp_interface_catalog_entries(state.as_ref(), &context.actor).await?;
-    let report = McpManagementService::new(state.store.clone())
-        .import_bundle(ImportMcpBundleCommand {
-            actor_user_id: context.user.id,
-            package,
-            interface_catalog,
-            current_system_version: current_system_version(),
-        })
-        .await?;
+    let bytes = read_bundle_bytes(&mut multipart).await?;
+    let bundles_interface::McpBundlesOutput::Import(report) = invoke(
+        state,
+        headers,
+        "http.console.mcp.bundles.import-upload.v1",
+        bundles_interface::McpBundlesInput::ImportUploaded { bytes },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(Json(ApiSuccess::new(report)))
 }
 
-fn current_system_version() -> String {
-    env!("CARGO_PKG_VERSION").to_string()
-}
-
-async fn read_bundle_package(
-    multipart: &mut Multipart,
-) -> Result<domain::McpBundlePackage, ApiError> {
+async fn read_bundle_bytes(multipart: &mut Multipart) -> Result<Vec<u8>, ApiError> {
     while let Some(field) = multipart
         .next_field()
         .await
@@ -1059,22 +719,9 @@ async fn read_bundle_package(
         if bytes.is_empty() || bytes.len() > MAX_BUNDLE_BYTES {
             return Err(ControlPlaneError::InvalidInput("mcp_bundle_file").into());
         }
-        return tokio::task::spawn_blocking(move || parse_bundle_archive(bytes.as_ref()))
-            .await
-            .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_archive"))?
-            .map_err(Into::into);
+        return Ok(bytes.to_vec());
     }
     Err(ControlPlaneError::InvalidInput("mcp_bundle_file").into())
-}
-
-async fn parse_downloaded_bundle(bytes: Vec<u8>) -> Result<domain::McpBundlePackage, ApiError> {
-    if bytes.is_empty() || bytes.len() > MAX_BUNDLE_BYTES {
-        return Err(ControlPlaneError::InvalidInput("mcp_bundle_file").into());
-    }
-    tokio::task::spawn_blocking(move || parse_bundle_archive(&bytes))
-        .await
-        .map_err(|_| ControlPlaneError::InvalidInput("mcp_bundle_archive"))?
-        .map_err(Into::into)
 }
 
 pub(crate) fn parse_bundle_archive(
