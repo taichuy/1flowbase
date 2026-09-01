@@ -4,6 +4,7 @@ mod dto;
 pub(crate) mod interface_catalog;
 pub(crate) mod interface_catalog_routes;
 pub(crate) mod interface_core;
+pub(crate) mod interface_tools;
 pub(crate) use interface_catalog::mcp_interface_entry_from_capability;
 mod projections;
 pub(crate) mod upstream;
@@ -84,6 +85,22 @@ async fn invoke_catalog(
     let snapshot_state = Arc::clone(&state);
     let credential =
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers };
+    crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
+}
+
+async fn invoke_tools(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    binding_id: &'static str,
+    input: interface_tools::McpToolsInput,
+    mutating: bool,
+) -> Result<interface_tools::McpToolsOutput, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    let credential = if mutating {
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers }
+    } else {
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
+    };
     crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
 }
 
@@ -563,18 +580,18 @@ pub async fn list_mcp_tools(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<McpToolResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let snapshot = McpManagementService::new(state.store.clone())
-        .read_catalog_for_actor(&context.actor)
-        .await?;
-    let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
-    let mut tools = Vec::with_capacity(snapshot.tools.len());
-    for record in snapshot.tools {
-        tools.push(
-            to_tool_response_for_actor(&state.store, &context.actor, record, &operations).await?,
-        );
-    }
-    Ok(Json(ApiSuccess::new(tools)))
+    let interface_tools::McpToolsOutput::Tools(value) = invoke_tools(
+        state,
+        headers,
+        "http.console.mcp.tools.get.v1",
+        interface_tools::McpToolsInput::List,
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(post, path = "/api/console/mcp/tools", request_body = CreateMcpToolBody, responses((status = 201, body = McpToolResponse)))]
@@ -583,26 +600,18 @@ pub async fn create_mcp_tool(
     headers: HeaderMap,
     Json(body): Json<CreateMcpToolBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<McpToolResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let interface_id = interface_target_id(&body.execution_target)?;
-    let interface_entry =
-        bindable_mcp_interface(state.as_ref(), &context.actor, interface_id).await?;
-    let operation = interface_operation(&interface_entry);
-    let record = McpManagementService::new(state.store.clone())
-        .create_tool_for_actor(
-            &context.actor,
-            to_create_tool_command(context.user.id, body, interface_entry)?,
-        )
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_tool_response_with_operation(
-            record,
-            operation,
-            domain::McpToolAvailabilityStatus::Available,
-        ))),
-    ))
+    let interface_tools::McpToolsOutput::Tool(value) = invoke_tools(
+        state,
+        headers,
+        "http.console.mcp.tools.post.v1",
+        interface_tools::McpToolsInput::Create(body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(value))))
 }
 
 #[utoipa::path(get, path = "/api/console/mcp/tools/{tool_id}", responses((status = 200, body = McpToolResponse)))]
@@ -611,14 +620,18 @@ pub async fn get_mcp_tool(
     headers: HeaderMap,
     Path(tool_id): Path<String>,
 ) -> Result<Json<ApiSuccess<McpToolResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let record = McpManagementService::new(state.store.clone())
-        .get_tool(context.user.id, &tool_id)
-        .await?;
-    let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
-    Ok(Json(ApiSuccess::new(
-        to_tool_response_for_actor(&state.store, &context.actor, record, &operations).await?,
-    )))
+    let interface_tools::McpToolsOutput::Tool(value) = invoke_tools(
+        state,
+        headers,
+        "http.console.mcp.tool.get.v1",
+        interface_tools::McpToolsInput::Get(tool_id),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(put, path = "/api/console/mcp/tools/{tool_id}", request_body = UpdateMcpToolBody, responses((status = 200, body = McpToolResponse)))]
@@ -628,81 +641,18 @@ pub async fn update_mcp_tool(
     Path(tool_id): Path<String>,
     Json(body): Json<UpdateMcpToolBody>,
 ) -> Result<Json<ApiSuccess<McpToolResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    match &body.execution_target {
-        McpToolExecutionTargetDto::InterfaceWrapper { interface_id } => {
-            let interface_entry =
-                bindable_mcp_interface(state.as_ref(), &context.actor, interface_id).await?;
-            let operation = interface_operation(&interface_entry);
-            let record = McpManagementService::new(state.store.clone())
-                .update_tool_for_actor(
-                    &context.actor,
-                    to_update_tool_command(context.user.id, tool_id, body, interface_entry)?,
-                )
-                .await?;
-            Ok(Json(ApiSuccess::new(to_tool_response_with_operation(
-                record,
-                operation,
-                domain::McpToolAvailabilityStatus::Available,
-            ))))
-        }
-        McpToolExecutionTargetDto::McpProxy { .. } => {
-            let execution_target = to_domain_execution_target(&body.execution_target)?;
-            let record = McpManagementService::new(state.store.clone())
-                .update_proxy_tool_for_actor(
-                    &context.actor,
-                    UpdateMcpProxyToolCommand {
-                        actor_user_id: context.user.id,
-                        tool_id,
-                        des_id: body.des_id,
-                        name: body.name,
-                        short_description: body.short_description,
-                        full_description: body.full_description.unwrap_or_default(),
-                        execution_target,
-                        parameter_schema: body.parameter_schema,
-                        result_schema: body.result_schema,
-                        input_mapping: body.input_mapping,
-                        output_mapping: body.output_mapping,
-                        risk_level: parse_risk_level(&body.risk_level)?,
-                        status: parse_tool_status(&body.status)?,
-                    },
-                )
-                .await?;
-            let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
-            Ok(Json(ApiSuccess::new(
-                to_tool_response_for_actor(&state.store, &context.actor, record, &operations)
-                    .await?,
-            )))
-        }
-        McpToolExecutionTargetDto::AssistantClient { .. } => {
-            let execution_target = to_domain_execution_target(&body.execution_target)?;
-            let record = McpManagementService::new(state.store.clone())
-                .update_proxy_tool_for_actor(
-                    &context.actor,
-                    UpdateMcpProxyToolCommand {
-                        actor_user_id: context.user.id,
-                        tool_id,
-                        des_id: body.des_id,
-                        name: body.name,
-                        short_description: body.short_description,
-                        full_description: body.full_description.unwrap_or_default(),
-                        execution_target,
-                        parameter_schema: body.parameter_schema,
-                        result_schema: body.result_schema,
-                        input_mapping: body.input_mapping,
-                        output_mapping: body.output_mapping,
-                        risk_level: parse_risk_level(&body.risk_level)?,
-                        status: parse_tool_status(&body.status)?,
-                    },
-                )
-                .await?;
-            Ok(Json(ApiSuccess::new(to_tool_response(
-                record,
-                &HashMap::new(),
-            ))))
-        }
-    }
+    let interface_tools::McpToolsOutput::Tool(value) = invoke_tools(
+        state,
+        headers,
+        "http.console.mcp.tool.put.v1",
+        interface_tools::McpToolsInput::Update(tool_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(delete, path = "/api/console/mcp/tools/{tool_id}", responses((status = 204)))]
@@ -711,11 +661,17 @@ pub async fn delete_mcp_tool(
     headers: HeaderMap,
     Path(tool_id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    McpManagementService::new(state.store.clone())
-        .delete_tool_for_actor(&context.actor, &tool_id)
-        .await?;
+    let interface_tools::McpToolsOutput::NoContent = invoke_tools(
+        state,
+        headers,
+        "http.console.mcp.tool.delete.v1",
+        interface_tools::McpToolsInput::Delete(tool_id),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -725,19 +681,18 @@ pub async fn refresh_mcp_tool_description(
     headers: HeaderMap,
     Path(tool_id): Path<String>,
 ) -> Result<Json<ApiSuccess<McpToolResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let record = McpManagementService::new(state.store.clone())
-        .refresh_tool_description_for_actor(
-            &context.actor,
-            RefreshMcpToolDescriptionCommand {
-                actor_user_id: context.user.id,
-                tool_id,
-            },
-        )
-        .await?;
-    let operations = mcp_interface_operation_map(state.as_ref(), &context.actor).await?;
-    Ok(Json(ApiSuccess::new(to_tool_response(record, &operations))))
+    let interface_tools::McpToolsOutput::Tool(value) = invoke_tools(
+        state,
+        headers,
+        "http.console.mcp.tool-description.refresh.v1",
+        interface_tools::McpToolsInput::RefreshDescription(tool_id),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(post, path = "/api/console/mcp/tools/{tool_id}/description-check", request_body = McpDescriptionCheckBody, responses((status = 200, body = McpDescriptionCheckResponse)))]
@@ -747,14 +702,18 @@ pub async fn check_mcp_tool_description(
     Path(tool_id): Path<String>,
     Json(body): Json<McpDescriptionCheckBody>,
 ) -> Result<Json<ApiSuccess<McpDescriptionCheckResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let result = McpManagementService::new(state.store.clone())
-        .description_check(context.user.id, &tool_id, body.des_id.as_deref())
-        .await?;
-    Ok(Json(ApiSuccess::new(McpDescriptionCheckResponse {
-        accepted: result.accepted,
-        current_des_id: result.current_des_id,
-    })))
+    let interface_tools::McpToolsOutput::Check(value) = invoke_tools(
+        state,
+        headers,
+        "http.console.mcp.tool-description.check.v1",
+        interface_tools::McpToolsInput::CheckDescription(tool_id, body),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(post, path = "/api/console/mcp/debug/execute", request_body = McpDebugExecuteBody, responses((status = 200, body = Value)))]

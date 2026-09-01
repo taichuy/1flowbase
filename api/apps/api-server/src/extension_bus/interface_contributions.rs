@@ -948,6 +948,30 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-mcp-tools",
+            &[
+                "mcp.tools.view",
+                "mcp.tools.create",
+                "mcp.tools.update",
+                "mcp.tools.delete",
+                "mcp.tools.description.refresh",
+                "mcp.tools.description.check",
+            ],
+            &["api-server.console-mcp-tools"],
+            crate::routes::mcp_management::interface_tools::compile_registry(
+                crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies {
+                    store: state.store.clone(),
+                    openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
+                        store: state.store.clone(),
+                        console_operations: state.console_operation_registry.inventory().clone(),
+                        interface_registry: state.extension_boot_snapshot.as_ref().and_then(|snapshot| snapshot.interface_registry()).map(|registry| registry.snapshot()),
+                        api_docs: Arc::clone(&state.api_docs),
+                        template_catalog: state.runtime_engine.template_catalog().clone(),
+                    },
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",
