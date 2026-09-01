@@ -117,7 +117,7 @@ use utoipa::OpenApi;
         crate::routes::frontstage::components::list_frontstage_components,
         crate::routes::frontstage::components::get_frontstage_component,
         crate::routes::frontstage::components::get_frontstage_component_module_asset,
-        crate::routes::frontstage::callable_interfaces::dispatch_frontstage_callable_interface,
+        crate::routes::frontstage::callable_interface_dispatch::dispatch_frontstage_callable_interface,
         crate::routes::roles::list_roles,
         crate::routes::roles::create_role,
         crate::routes::roles::update_role,

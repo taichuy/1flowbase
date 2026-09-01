@@ -224,8 +224,33 @@ pub async fn get_openapi_capability_by_route(
     method: &str,
     path: &str,
 ) -> Result<Option<OpenApiCapabilityCatalogEntry>, ApiError> {
+    get_openapi_capability_by_route_with(
+        &OpenApiCapabilityCatalogDependencies {
+            store: state.store.clone(),
+            console_operations: state.console_operation_registry.inventory().clone(),
+            interface_registry: state
+                .extension_boot_snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.interface_registry())
+                .map(|registry| registry.snapshot()),
+            api_docs: Arc::clone(&state.api_docs),
+            template_catalog: state.runtime_engine.template_catalog().clone(),
+        },
+        workspace_id,
+        method,
+        path,
+    )
+    .await
+}
+
+pub(crate) async fn get_openapi_capability_by_route_with(
+    dependencies: &OpenApiCapabilityCatalogDependencies,
+    workspace_id: uuid::Uuid,
+    method: &str,
+    path: &str,
+) -> Result<Option<OpenApiCapabilityCatalogEntry>, ApiError> {
     let route = route_identity(method, path);
-    let mut matches = build_openapi_capability_catalog(state, workspace_id)
+    let mut matches = build_openapi_capability_catalog_with(dependencies, workspace_id)
         .await?
         .into_iter()
         .filter(|entry| route_identity(&entry.interface.method, &entry.interface.path) == route)

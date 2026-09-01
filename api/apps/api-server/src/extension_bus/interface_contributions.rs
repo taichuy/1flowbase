@@ -118,6 +118,11 @@ impl InterfaceContributionCollector {
 pub(crate) fn production_interface_contributions(
     state: &Arc<crate::app_state::ApiState>,
 ) -> Result<Vec<InterfaceRegistryContribution>, RegistryCompilationError> {
+    let console_frontstage_callable_dispatch =
+        crate::openapi_interface::console_router_callable_dispatch_port(crate::console_router(
+            Arc::clone(state),
+            true,
+        ));
     let public_login_instances = crate::routes::auth::public_login_instances_port(
         state.store.clone(),
         Arc::clone(&state.authenticator_registry),
@@ -1108,6 +1113,26 @@ pub(crate) fn production_interface_contributions(
                             api_docs: Arc::clone(&state.api_docs),
                             template_catalog: state.runtime_engine.template_catalog().clone(),
                         },
+                    },
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-frontstage-callable-dispatch",
+            &["frontstage.callable_interfaces.dispatch"],
+            &["api-server.console-frontstage-callable-dispatch"],
+            crate::routes::frontstage::callable_interface_dispatch::compile_registry(
+                crate::routes::frontstage::callable_interface_dispatch::port(
+                    crate::routes::frontstage::callable_interface_dispatch::FrontstageCallableDispatchDependencies {
+                        store: state.store.clone(),
+                        openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
+                            store: state.store.clone(),
+                            console_operations: state.console_operation_registry.inventory().clone(),
+                            interface_registry: state.extension_boot_snapshot.as_ref().and_then(|snapshot| snapshot.interface_registry()).map(|registry| registry.snapshot()),
+                            api_docs: Arc::clone(&state.api_docs),
+                            template_catalog: state.runtime_engine.template_catalog().clone(),
+                        },
+                        dispatcher: Arc::clone(&console_frontstage_callable_dispatch),
                     },
                 ),
             )?,

@@ -1,29 +1,21 @@
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 
 use axum::{
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
-    response::{IntoResponse, Response},
+    http::HeaderMap,
     Json,
-};
-use control_plane::{
-    errors::ControlPlaneError,
-    frontstage::{FrontstageBlockScopeCommand, FrontstagePageService},
 };
 use serde::{de::Error as _, Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use utoipa::{IntoParams, ToSchema};
-use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     openapi_interface::{
-        get_openapi_capability_by_route, DispatchArguments, DispatchError,
-        OpenApiCapabilityCatalogEntry, OpenApiCapabilitySource, OpenApiInterfaceCatalogEntry,
-        OpenApiParameterLocation,
+        DispatchArguments, OpenApiCapabilityCatalogEntry, OpenApiCapabilitySource,
+        OpenApiInterfaceCatalogEntry, OpenApiParameterLocation,
     },
     response::ApiSuccess,
 };
@@ -213,134 +205,6 @@ pub async fn get_frontstage_interface_capability(
     )))))
 }
 
-#[utoipa::path(
-    post,
-    path = "/api/console/frontstage/pages/{page_id}/tabs/{tab_id}/callable-interfaces/dispatch",
-    request_body = DispatchFrontstageCallableBody,
-    params(
-        ("page_id" = String, Path, description = "Page id"),
-        ("tab_id" = String, Path, description = "Tab id")
-    ),
-    responses(
-        (status = 200, body = Object),
-        (status = 400, body = crate::error_response::ErrorBody),
-        (status = 401, body = crate::error_response::ErrorBody),
-        (status = 403, body = crate::error_response::ErrorBody),
-        (status = 404, body = crate::error_response::ErrorBody)
-    )
-)]
-pub async fn dispatch_frontstage_callable_interface(
-    State(state): State<Arc<ApiState>>,
-    headers: HeaderMap,
-    Path((page_id, tab_id)): Path<(String, String)>,
-    Json(body): Json<DispatchFrontstageCallableBody>,
-) -> Result<Response, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let workspace_id = context.actor.current_workspace_id;
-    let page_id = super::parse_uuid(&page_id, "page_id")?;
-    let tab_id = super::parse_uuid(&tab_id, "tab_id")?;
-
-    let callable = resolve_source_callable(
-        &state,
-        &context,
-        workspace_id,
-        page_id,
-        tab_id,
-        &body.block_id,
-        &body.method,
-        &body.path,
-    )
-    .await?;
-
-    let injected_path = injected_path_parameters(
-        &callable.host_injected_parameters,
-        workspace_id,
-        page_id,
-        tab_id,
-    );
-
-    match crate::openapi_interface::dispatch(
-        state,
-        &headers,
-        &callable.interface,
-        body.request,
-        injected_path,
-    )
-    .await
-    {
-        Ok(crate::openapi_interface::DispatchSuccess::Json(value)) => {
-            Ok(Json(ApiSuccess::new(value.get("data").cloned().unwrap_or(value))).into_response())
-        }
-        Ok(crate::openapi_interface::DispatchSuccess::NoContent) => {
-            Ok(StatusCode::NO_CONTENT.into_response())
-        }
-        Ok(crate::openapi_interface::DispatchSuccess::Media(response)) => Ok(response),
-        Err(DispatchError::Api(error)) => Err(error.into()),
-        Err(DispatchError::Target(response)) => Ok(response),
-    }
-}
-
-#[allow(clippy::too_many_arguments)]
-async fn resolve_source_callable(
-    state: &ApiState,
-    context: &crate::middleware::require_session::RequestContext,
-    workspace_id: Uuid,
-    page_id: Uuid,
-    tab_id: Uuid,
-    block_id: &str,
-    method: &str,
-    path: &str,
-) -> Result<RegisteredCallable, ApiError> {
-    let node = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .get_block_node(FrontstageBlockScopeCommand {
-            actor_user_id: context.user.id,
-            workspace_id,
-            page_id,
-            block_id: block_id.to_owned(),
-        })
-        .await?;
-    if node.tab_id != tab_id {
-        return Err(ControlPlaneError::NotFound("frontstage_block").into());
-    }
-    let route = canonical_route_key(method, path)?;
-    let callable = get_openapi_capability_by_route(state, workspace_id, &route.method, &route.path)
-        .await?
-        .map(registered_callable)
-        .ok_or(ControlPlaneError::NotFound("frontstage_callable"))?;
-    Ok(callable)
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct CanonicalRouteKey {
-    method: String,
-    path: String,
-}
-
-fn canonical_route_key(method: &str, path: &str) -> Result<CanonicalRouteKey, ApiError> {
-    let method = method.trim().to_ascii_uppercase();
-    if !matches!(
-        method.as_str(),
-        "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "OPTIONS"
-    ) {
-        return Err(ControlPlaneError::InvalidInput("method").into());
-    }
-    if path.is_empty()
-        || path != path.trim()
-        || !path.starts_with('/')
-        || path.starts_with("//")
-        || path.contains('?')
-        || path.contains('#')
-        || path.split('/').any(|segment| matches!(segment, "." | ".."))
-    {
-        return Err(ControlPlaneError::InvalidInput("path").into());
-    }
-    Ok(CanonicalRouteKey {
-        method,
-        path: path.to_string(),
-    })
-}
-
 fn registered_callable(entry: OpenApiCapabilityCatalogEntry) -> RegisteredCallable {
     let host_injected_parameters = match entry.source {
         OpenApiCapabilitySource::StaticApiDocs
@@ -413,7 +277,9 @@ fn to_response(mut entry: RegisteredCallable) -> FrontstageInterfaceCapabilityRe
     }
 }
 
-fn host_injected_parameters(interface: &OpenApiInterfaceCatalogEntry) -> Vec<&'static str> {
+pub(crate) fn host_injected_parameters(
+    interface: &OpenApiInterfaceCatalogEntry,
+) -> Vec<&'static str> {
     interface
         .parameter_descriptors
         .iter()
@@ -424,26 +290,6 @@ fn host_injected_parameters(interface: &OpenApiInterfaceCatalogEntry) -> Vec<&'s
             "tab_id" => Some("tab_id"),
             "tab_reference" => Some("tab_reference"),
             _ => None,
-        })
-        .collect()
-}
-
-fn injected_path_parameters(
-    parameters: &[&str],
-    workspace_id: Uuid,
-    page_id: Uuid,
-    tab_id: Uuid,
-) -> BTreeMap<String, String> {
-    parameters
-        .iter()
-        .filter_map(|parameter| {
-            let value = match *parameter {
-                "workspace_id" => workspace_id,
-                "page_id" => page_id,
-                "tab_id" | "tab_reference" => tab_id,
-                _ => return None,
-            };
-            Some(((*parameter).to_string(), value.to_string()))
         })
         .collect()
 }
@@ -477,30 +323,5 @@ fn strip_injected_path_parameters(schema: &mut Value, injected: &[&str]) {
         if let Some(required) = schema.get_mut("required").and_then(Value::as_array_mut) {
             required.retain(|name| name.as_str() != Some("path"));
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn ac_020_route_key_requires_a_supported_method_and_canonical_relative_path() {
-        assert_eq!(
-            canonical_route_key("get", "/api/console/applications/catalog").unwrap(),
-            CanonicalRouteKey {
-                method: "GET".to_string(),
-                path: "/api/console/applications/catalog".to_string(),
-            }
-        );
-        for path in [
-            "https://example.com/api/console/applications",
-            "//example.com/api/console/applications",
-            "/api/console/applications?limit=20",
-            "/api/console/../private",
-        ] {
-            assert!(canonical_route_key("GET", path).is_err(), "{path}");
-        }
-        assert!(canonical_route_key("TRACE", "/api/console/applications").is_err());
     }
 }

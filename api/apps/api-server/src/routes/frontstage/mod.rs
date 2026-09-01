@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 pub mod block_tree;
 pub(crate) mod callable_interface_catalog;
+pub(crate) mod callable_interface_dispatch;
 pub mod callable_interfaces;
 pub mod components;
 pub mod data_capabilities;
@@ -398,7 +399,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         .route(
             "/frontstage/pages/:page_id/tabs/:tab_id/callable-interfaces/dispatch",
             console_post(
-                callable_interfaces::dispatch_frontstage_callable_interface,
+                callable_interface_dispatch::dispatch_frontstage_callable_interface,
                 Authenticated,
             ),
         )
