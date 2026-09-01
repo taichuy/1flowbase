@@ -140,6 +140,7 @@ pub(crate) fn mcp_interface_entry_from_capability(
     }
 }
 
+#[allow(dead_code)]
 pub(crate) async fn bindable_mcp_interface(
     state: &ApiState,
     actor: &domain::ActorContext,

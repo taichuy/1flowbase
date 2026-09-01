@@ -49,6 +49,32 @@ pub(crate) struct InterfaceContributionCollector {
     contribution_ids: BTreeSet<&'static str>,
 }
 
+struct ApiMcpDebugActivatedOperations {
+    state: Arc<crate::app_state::ApiState>,
+}
+
+#[async_trait::async_trait]
+impl crate::routes::mcp_management::interface_debug::McpDebugActivatedOperationPort
+    for ApiMcpDebugActivatedOperations
+{
+    async fn providers_view(
+        &self,
+        principal: &interface_runtime::UserPrincipal,
+    ) -> Result<serde_json::Value, crate::error_response::ApiError> {
+        let (output, _) =
+            crate::routes::host_infrastructure::interface_operation::invoke_providers_view(
+                Arc::clone(&self.state),
+                crate::extension_bus::ConsoleAuthenticationCredential::ServerDelegation(
+                    principal.actor().clone(),
+                ),
+                interface_runtime::InterfaceProtocol::Mcp,
+            )
+            .await?;
+        serde_json::to_value(crate::response::ApiSuccess::new(output.into_providers()))
+            .map_err(crate::error_response::ApiError::from)
+    }
+}
+
 impl InterfaceContributionCollector {
     pub(crate) fn new(graph_fingerprint: GraphFingerprint) -> Self {
         Self {
@@ -1149,6 +1175,28 @@ pub(crate) fn production_interface_contributions(
                         transport: Arc::new(
                             crate::routes::mcp_management::upstream_client::StreamableHttpMcpUpstreamTransport,
                         ),
+                    },
+                ),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-mcp-debug",
+            &["mcp.debug.execute"],
+            &["api-server.console-mcp-debug"],
+            crate::routes::mcp_management::interface_debug::compile_registry(
+                crate::routes::mcp_management::interface_debug::port(
+                    crate::routes::mcp_management::interface_debug::McpDebugDependencies {
+                        store: state.store.clone(),
+                        catalog: crate::routes::mcp_management::interface_catalog::McpInterfaceCatalogDependencies {
+                            store: state.store.clone(),
+                            openapi: crate::openapi_interface::OpenApiCapabilityCatalogDependencies {
+                                store: state.store.clone(), console_operations: state.console_operation_registry.inventory().clone(), interface_registry: state.extension_boot_snapshot.as_ref().and_then(|snapshot| snapshot.interface_registry()).map(|registry| registry.snapshot()), api_docs: Arc::clone(&state.api_docs), template_catalog: state.runtime_engine.template_catalog().clone(),
+                            },
+                        },
+                        dispatcher: Arc::clone(&console_frontstage_callable_dispatch),
+                        activated_operations: Arc::new(ApiMcpDebugActivatedOperations {
+                            state: Arc::clone(state),
+                        }),
                     },
                 ),
             )?,

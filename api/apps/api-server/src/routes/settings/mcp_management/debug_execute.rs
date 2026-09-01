@@ -10,6 +10,17 @@ use domain::mcp_management::{McpInputValueSource, McpServerBinding};
 use domain::mcp_management::{McpParameterDescriptor, McpParameterType};
 use uuid::Uuid;
 
+pub enum McpDebugDispatchError {
+    Api(anyhow::Error),
+    Target(crate::openapi_interface::CallableDispatchHttpResponse),
+}
+
+impl From<anyhow::Error> for McpDebugDispatchError {
+    fn from(value: anyhow::Error) -> Self {
+        Self::Api(value)
+    }
+}
+
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct McpDebugExecuteBody {
     pub interface_id: String,
@@ -89,7 +100,7 @@ enum InterfaceParameterTarget {
     Body,
 }
 
-#[allow(clippy::result_large_err)]
+#[allow(dead_code, clippy::result_large_err)]
 pub async fn execute(
     state: Arc<ApiState>,
     headers: HeaderMap,
@@ -112,7 +123,7 @@ pub async fn execute(
     .await
 }
 
-#[allow(clippy::result_large_err)]
+#[allow(dead_code, clippy::result_large_err)]
 pub async fn execute_with_server_bindings(
     state: Arc<ApiState>,
     headers: HeaderMap,
@@ -267,6 +278,83 @@ pub async fn execute_with_console_router(
         }
         Err(crate::openapi_interface::DispatchError::Target(response)) => {
             return Err(McpDebugExecuteError::TargetResponse(response))
+        }
+    };
+    let tool_result = map_tool_result(&body.output_mapping, &interface_response);
+    if matches!(body.debug_response_mode, McpDebugResponseMode::ToolResult) {
+        return Ok(tool_result);
+    }
+    serde_json::to_value(McpDebugExecuteDetailsResponse {
+        mcp_arguments: body.mcp_arguments,
+        interface_arguments: interface_arguments.to_value(),
+        interface_response,
+        tool_result,
+    })
+    .map_err(|error| anyhow::anyhow!("failed to serialize MCP debug details: {error}").into())
+}
+
+pub async fn execute_with_dispatch_port(
+    dispatcher: &dyn crate::openapi_interface::CallableDispatchPort,
+    forwarding: crate::openapi_interface::CallableDispatchForwarding,
+    interface_entry: domain::McpInterfaceCatalogEntry,
+    body: McpDebugExecuteBody,
+    server_bound_inputs: McpServerBoundInputs,
+    activated_interface_response: Option<Value>,
+) -> Result<Value, McpDebugDispatchError> {
+    let interface_arguments = build_interface_arguments(
+        &interface_entry,
+        &body.input_mapping,
+        &body.mcp_arguments,
+        server_bound_inputs,
+    )?;
+    let dispatch_entry = crate::openapi_interface::OpenApiInterfaceCatalogEntry {
+        operation_id: interface_entry.interface_id.clone(),
+        method: interface_entry.method.clone(),
+        path: interface_entry.path.clone(),
+        name: interface_entry.name.clone(),
+        description: interface_entry.short_description.clone(),
+        parameter_descriptors: Vec::new(),
+        request_schema: interface_entry.parameter_schema.clone(),
+        response_schema: interface_entry.result_schema.clone(),
+        request_media_type: Some("application/json".to_string()),
+        response_media_type: Some("application/json".to_string()),
+        security: interface_entry.security.clone(),
+    };
+    let dispatch_arguments = crate::openapi_interface::DispatchArguments {
+        path: interface_arguments.path.clone(),
+        query: interface_arguments.query.clone(),
+        headers: Map::new(),
+        body: if interface_arguments.body.is_empty() {
+            Value::Null
+        } else {
+            Value::Object(interface_arguments.body.clone())
+        },
+    };
+    let interface_response = if let Some(value) = activated_interface_response {
+        value
+    } else {
+        match dispatcher
+            .dispatch(
+                &dispatch_entry,
+                dispatch_arguments,
+                BTreeMap::new(),
+                forwarding,
+            )
+            .await
+        {
+            Ok(crate::openapi_interface::CallableDispatchResult::Json(value)) => value,
+            Ok(crate::openapi_interface::CallableDispatchResult::NoContent) => Value::Null,
+            Ok(crate::openapi_interface::CallableDispatchResult::Media(_)) => {
+                return Err(
+                    anyhow::anyhow!("MCP debug execute requires a JSON interface response").into(),
+                )
+            }
+            Err(crate::openapi_interface::CallableDispatchError::Api(error)) => {
+                return Err(McpDebugDispatchError::Api(error));
+            }
+            Err(crate::openapi_interface::CallableDispatchError::Target(response)) => {
+                return Err(McpDebugDispatchError::Target(response));
+            }
         }
     };
     let tool_result = map_tool_result(&body.output_mapping, &interface_response);

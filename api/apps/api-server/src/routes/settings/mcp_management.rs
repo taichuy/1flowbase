@@ -5,6 +5,7 @@ mod dto;
 pub(crate) mod interface_catalog;
 pub(crate) mod interface_catalog_routes;
 pub(crate) mod interface_core;
+pub(crate) mod interface_debug;
 pub(crate) mod interface_tools;
 pub(crate) use interface_catalog::mcp_interface_entry_from_capability;
 mod projections;
@@ -22,8 +23,9 @@ use std::{
 };
 
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     Json, Router,
 };
@@ -104,6 +106,21 @@ async fn invoke_tools(
         crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
     };
     crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
+}
+
+async fn invoke_debug(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    input: interface_debug::McpDebugInput,
+) -> Result<interface_debug::McpDebugOutput, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    crate::routes::console_interface::invoke(
+        snapshot_state,
+        "http.console.mcp.debug.execute.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        input,
+    )
+    .await
 }
 
 pub fn router() -> Router<Arc<ApiState>> {
@@ -724,19 +741,75 @@ pub async fn execute_mcp_debug(
     headers: HeaderMap,
     Json(body): Json<McpDebugExecuteBody>,
 ) -> Result<Response, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    McpManagementService::new(state.store.clone())
-        .authorize_debug_execute(context.user.id)
-        .await?;
-    let interface_entry =
-        bindable_mcp_interface(state.as_ref(), &context.actor, &body.interface_id).await?;
-
-    match debug_execute::execute(state, headers, interface_entry, body).await {
-        Ok(result) => Ok(Json(ApiSuccess::new(result)).into_response()),
-        Err(debug_execute::McpDebugExecuteError::Api(error)) => Err(ApiError(error)),
-        Err(debug_execute::McpDebugExecuteError::TargetResponse(response)) => Ok(response),
+    let forwarding = debug_dispatch_forwarding(&headers)?;
+    match invoke_debug(
+        state,
+        headers,
+        interface_debug::McpDebugInput { body, forwarding },
+    )
+    .await?
+    {
+        interface_debug::McpDebugOutput::Json(result) => {
+            Ok(Json(ApiSuccess::new(result)).into_response())
+        }
+        interface_debug::McpDebugOutput::Target(response) => debug_target_response(response),
     }
+}
+
+fn debug_dispatch_forwarding(
+    headers: &HeaderMap,
+) -> Result<crate::openapi_interface::CallableDispatchForwarding, ApiError> {
+    let callable_depth = headers
+        .get("x-1flowbase-callable-depth")
+        .map(|value| {
+            value
+                .to_str()
+                .map_err(|_| {
+                    control_plane::errors::ControlPlaneError::InvalidInput(
+                        "callable_dispatch_depth",
+                    )
+                })?
+                .parse::<u8>()
+                .map_err(|_| {
+                    control_plane::errors::ControlPlaneError::InvalidInput(
+                        "callable_dispatch_depth",
+                    )
+                })
+        })
+        .transpose()?
+        .unwrap_or(0);
+    Ok(crate::openapi_interface::CallableDispatchForwarding {
+        cookie: headers.get("cookie").map(|value| value.as_bytes().to_vec()),
+        authorization: headers
+            .get("authorization")
+            .map(|value| value.as_bytes().to_vec()),
+        accept_language: headers
+            .get("accept-language")
+            .map(|value| value.as_bytes().to_vec()),
+        csrf_token: headers
+            .get("x-csrf-token")
+            .map(|value| value.as_bytes().to_vec()),
+        callable_depth,
+    })
+}
+
+fn debug_target_response(
+    target: crate::openapi_interface::CallableDispatchHttpResponse,
+) -> Result<Response, ApiError> {
+    let mut response = Response::new(Body::from(target.body));
+    *response.status_mut() = StatusCode::from_u16(target.status)
+        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("callable_response"))?;
+    for header in target.headers {
+        response.headers_mut().insert(
+            HeaderName::from_bytes(header.name.as_bytes()).map_err(|_| {
+                control_plane::errors::ControlPlaneError::InvalidInput("callable_response")
+            })?,
+            HeaderValue::from_bytes(&header.value).map_err(|_| {
+                control_plane::errors::ControlPlaneError::InvalidInput("callable_response")
+            })?,
+        );
+    }
+    Ok(response)
 }
 
 #[utoipa::path(post, path = "/api/console/mcp/instances/{instance_id}/tool-bindings", request_body = CreateMcpToolBindingBody, responses((status = 201, body = McpToolBindingResponse)))]
