@@ -7,20 +7,18 @@ use axum::{
     Json, Router,
 };
 use control_plane::{
-    audit::audit_log,
     errors::ControlPlaneError,
     host_infrastructure_config::{
         HostInfrastructureConfigService, HostInfrastructureProviderConfigView,
         SaveHostInfrastructureProviderConfigCommand,
     },
     ports::{
-        AuthRepository, CacheDomainSnapshot, CacheEntrySnapshot, CacheInspectionCapabilities,
-        CacheStore, DistributedLock, EphemeralEntrySnapshot, EphemeralEntryValueSnapshot,
+        CacheDomainSnapshot, CacheEntrySnapshot, CacheInspectionCapabilities, CacheStore,
+        DistributedLock, EphemeralEntrySnapshot, EphemeralEntryValueSnapshot,
         EphemeralInspectionCapabilities, EphemeralInspectionEntryPage,
         EphemeralInspectionPageRequest, EphemeralInspectionSummarySnapshot,
         EphemeralInspectionTreeNodeSnapshot, EphemeralInspectionTreePage, EphemeralValueRevealMode,
-        EventBus, RateLimitStore, RoleConsolePolicyReader, RuntimeEventStream, SessionStore,
-        TaskQueue,
+        EventBus, RateLimitStore, RuntimeEventStream, SessionStore, TaskQueue,
     },
 };
 use plugin_framework::provider_contract::{
@@ -40,6 +38,7 @@ use crate::{
     },
 };
 
+pub(crate) mod interface_cache_inspection;
 pub(crate) mod interface_memory_inspection;
 pub mod interface_operation;
 mod memory_support;
@@ -658,29 +657,17 @@ pub async fn get_host_infrastructure_cache_overview(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<CacheOverviewResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let cache = state.infrastructure.cache_store();
-    let capabilities = cache.inspection_capabilities();
-    let domains = if capabilities.list_domains {
-        cache
-            .list_cache_domains()
-            .await?
-            .into_iter()
-            .map(to_cache_domain_response)
-            .collect()
-    } else {
-        Vec::new()
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.host-infrastructure.cache.overview.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_cache_inspection::CacheInspectionInput::Overview,
+    )
+    .await?;
+    let interface_cache_inspection::CacheInspectionOutput::Overview(response) = output else {
+        unreachable!("cache overview binding returned a different output")
     };
-
-    Ok(Json(ApiSuccess::new(CacheOverviewResponse {
-        provider_code: state
-            .infrastructure
-            .default_provider("cache-store")
-            .map(ToString::to_string),
-        can_manage: can_manage_cache(&state, &context.actor).await?,
-        capabilities: capabilities.into(),
-        domains,
-    })))
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -694,25 +681,17 @@ pub async fn list_host_infrastructure_cache_entries(
     headers: HeaderMap,
     Path(domain_code): Path<String>,
 ) -> Result<Json<ApiSuccess<CacheEntriesResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let cache = state.infrastructure.cache_store();
-    let capabilities = cache.inspection_capabilities();
-    let entries = if capabilities.list_entries {
-        cache
-            .list_cache_entries(&domain_code)
-            .await?
-            .into_iter()
-            .map(to_cache_entry_metadata_response)
-            .collect()
-    } else {
-        Vec::new()
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.host-infrastructure.cache.entries.list.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        interface_cache_inspection::CacheInspectionInput::Entries { domain_code },
+    )
+    .await?;
+    let interface_cache_inspection::CacheInspectionOutput::Entries(response) = output else {
+        unreachable!("cache entries binding returned a different output")
     };
-
-    Ok(Json(ApiSuccess::new(CacheEntriesResponse {
-        domain_code,
-        capabilities: capabilities.into(),
-        entries,
-    })))
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -728,34 +707,17 @@ pub async fn reveal_host_infrastructure_cache_entry(
     Path(domain_code): Path<String>,
     Json(body): Json<CacheEntryKeyBody>,
 ) -> Result<Json<ApiSuccess<CacheEntryValueResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let cache = state.infrastructure.cache_store();
-    let capabilities = cache.inspection_capabilities();
-    if !capabilities.reveal_value {
-        return Err(ControlPlaneError::InvalidInput("cache_inspection_unsupported").into());
-    }
-
-    let value = cache
-        .reveal_cache_entry(&domain_code, &body.key)
-        .await?
-        .ok_or(ControlPlaneError::NotFound("cache_entry"))?;
-    append_cache_audit(
-        &state,
-        &context.actor,
-        "host_infrastructure.cache_value_revealed",
-        serde_json::json!({
-            "domain_code": domain_code,
-            "key": body.key,
-            "value_size_bytes": value.metadata.value_size_bytes,
-        }),
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.host-infrastructure.cache.entry.reveal.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface_cache_inspection::CacheInspectionInput::Reveal { domain_code, body },
     )
     .await?;
-
-    Ok(Json(ApiSuccess::new(CacheEntryValueResponse {
-        metadata: to_cache_entry_metadata_response(value.metadata),
-        value: value.value,
-    })))
+    let interface_cache_inspection::CacheInspectionOutput::Revealed(response) = output else {
+        unreachable!("cache reveal binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -771,28 +733,17 @@ pub async fn clear_host_infrastructure_cache_entry(
     Path(domain_code): Path<String>,
     Json(body): Json<CacheEntryKeyBody>,
 ) -> Result<Json<ApiSuccess<ClearCacheEntryResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let cache = state.infrastructure.cache_store();
-    let capabilities = cache.inspection_capabilities();
-    if !capabilities.clear_entry {
-        return Err(ControlPlaneError::InvalidInput("cache_inspection_unsupported").into());
-    }
-
-    let cleared = cache.clear_cache_entry(&domain_code, &body.key).await?;
-    append_cache_audit(
-        &state,
-        &context.actor,
-        "host_infrastructure.cache_entry_cleared",
-        serde_json::json!({
-            "domain_code": domain_code,
-            "key": body.key,
-            "cleared": cleared,
-        }),
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.host-infrastructure.cache.entry.clear.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface_cache_inspection::CacheInspectionInput::ClearEntry { domain_code, body },
     )
     .await?;
-
-    Ok(Json(ApiSuccess::new(ClearCacheEntryResponse { cleared })))
+    let interface_cache_inspection::CacheInspectionOutput::EntryCleared(response) = output else {
+        unreachable!("cache entry clear binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -806,29 +757,17 @@ pub async fn clear_host_infrastructure_cache_domain(
     headers: HeaderMap,
     Path(domain_code): Path<String>,
 ) -> Result<Json<ApiSuccess<ClearCacheDomainResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let cache = state.infrastructure.cache_store();
-    let capabilities = cache.inspection_capabilities();
-    if !capabilities.clear_domain {
-        return Err(ControlPlaneError::InvalidInput("cache_inspection_unsupported").into());
-    }
-
-    let cleared_count = cache.clear_cache_domain(&domain_code).await?;
-    append_cache_audit(
-        &state,
-        &context.actor,
-        "host_infrastructure.cache_domain_cleared",
-        serde_json::json!({
-            "domain_code": domain_code,
-            "cleared_count": cleared_count,
-        }),
+    let output = crate::routes::console_interface::invoke(
+        Arc::clone(&state),
+        "http.console.host-infrastructure.cache.domain.clear.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers },
+        interface_cache_inspection::CacheInspectionInput::ClearDomain { domain_code },
     )
     .await?;
-
-    Ok(Json(ApiSuccess::new(ClearCacheDomainResponse {
-        cleared_count,
-    })))
+    let interface_cache_inspection::CacheInspectionOutput::DomainCleared(response) = output else {
+        unreachable!("cache domain clear binding returned a different output")
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(
@@ -938,43 +877,7 @@ pub(crate) fn memory_inspection_dependencies(state: &ApiState) -> MemoryInspecti
     }
 }
 
-async fn can_manage_cache(
-    state: &ApiState,
-    actor: &domain::ActorContext,
-) -> Result<bool, ApiError> {
-    can_manage_registered_operations(
-        state,
-        actor,
-        &[
-            "host_infrastructure.cache.reveal",
-            "host_infrastructure.cache.entry.clear",
-            "host_infrastructure.cache.domain.clear",
-        ],
-    )
-    .await
-}
-
-async fn can_manage_registered_operations(
-    state: &ApiState,
-    actor: &domain::ActorContext,
-    operation_ids: &[&str],
-) -> Result<bool, ApiError> {
-    if actor.is_root {
-        return Ok(true);
-    }
-    let policies = state
-        .store
-        .load_role_console_policies_for_user(actor)
-        .await?;
-    Ok(has_registered_simple_operations(
-        &state.console_operation_registry,
-        actor,
-        &policies,
-        operation_ids,
-    ))
-}
-
-fn has_registered_simple_operations(
+pub(super) fn has_registered_simple_operations(
     registry: &ConsoleOperationRegistry,
     actor: &domain::ActorContext,
     policies: &[domain::RoleConsolePolicy],
@@ -1009,32 +912,6 @@ fn has_registered_simple_operations(
         };
         domain::effective_console_simple_operation(policies, &group, &operation_id)
     })
-}
-
-async fn append_cache_audit(
-    state: &ApiState,
-    actor: &domain::ActorContext,
-    event_code: &str,
-    payload: serde_json::Value,
-) -> Result<(), ApiError> {
-    let workspace_id = if actor.current_workspace_id == domain::SYSTEM_SCOPE_ID {
-        None
-    } else {
-        Some(actor.current_workspace_id)
-    };
-    AuthRepository::append_audit_log(
-        &state.store,
-        &audit_log(
-            workspace_id,
-            Some(actor.user_id),
-            "host_infrastructure_cache",
-            None,
-            event_code,
-            payload,
-        ),
-    )
-    .await?;
-    Ok(())
 }
 
 impl From<EphemeralInspectionCapabilities> for MemoryInspectionCapabilitiesResponse {
@@ -1102,7 +979,7 @@ impl From<CacheInspectionCapabilities> for CacheInspectionCapabilitiesResponse {
     }
 }
 
-fn to_cache_domain_response(domain: CacheDomainSnapshot) -> CacheDomainResponse {
+pub(super) fn to_cache_domain_response(domain: CacheDomainSnapshot) -> CacheDomainResponse {
     CacheDomainResponse {
         domain_code: domain.domain_code,
         entry_count: domain.entry_count,
@@ -1110,7 +987,9 @@ fn to_cache_domain_response(domain: CacheDomainSnapshot) -> CacheDomainResponse 
     }
 }
 
-fn to_cache_entry_metadata_response(entry: CacheEntrySnapshot) -> CacheEntryMetadataResponse {
+pub(super) fn to_cache_entry_metadata_response(
+    entry: CacheEntrySnapshot,
+) -> CacheEntryMetadataResponse {
     CacheEntryMetadataResponse {
         domain_code: entry.domain_code,
         key: entry.key,

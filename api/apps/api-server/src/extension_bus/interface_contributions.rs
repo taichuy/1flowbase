@@ -536,6 +536,32 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-host-infrastructure-cache-inspection",
+            &[
+                "host_infrastructure.cache.overview.get",
+                "host_infrastructure.cache.entries.list",
+                "host_infrastructure.cache.entry.reveal",
+                "host_infrastructure.cache.entry.clear",
+                "host_infrastructure.cache.domain.clear",
+            ],
+            &["api-server.console-host-infrastructure-cache-inspection"],
+            crate::routes::host_infrastructure::interface_cache_inspection::compile_registry(
+                crate::routes::host_infrastructure::interface_cache_inspection::CacheInspectionDependencies {
+                    cache: state.infrastructure.cache_store(),
+                    provider_code: state
+                        .infrastructure
+                        .default_provider("cache-store")
+                        .map(ToString::to_string),
+                    audit_policy: Arc::new(
+                        crate::routes::host_infrastructure::interface_cache_inspection::CacheAuditPolicyAdapter::new(
+                            state.store.clone(),
+                            Arc::clone(&state.console_operation_registry),
+                        ),
+                    ),
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.console-application-runtime-debug-artifacts",
             &[
                 "applications.runtime.debug-artifact.get",
