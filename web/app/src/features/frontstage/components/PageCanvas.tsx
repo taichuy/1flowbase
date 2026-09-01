@@ -9,7 +9,6 @@ import {
   NATIVE_TRUSTED_BLOCK_PERMISSION,
   NATIVE_TRUSTED_BLOCK_RUNTIME,
   type IsolatedFrontendBlockCapabilityHandlers,
-  type NativeTrustedBlockAllocationMode,
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
 import type { CSSProperties, FC, Ref } from 'react';
@@ -386,7 +385,6 @@ function NativeRuntimeSlotSurface({
   contentViewportStyle,
   surfaceLayoutEpoch,
   fillsAvailableHeight,
-  allocationMode,
   onIntrinsicSizeReport,
   onRetry
 }: {
@@ -401,7 +399,6 @@ function NativeRuntimeSlotSurface({
   nativeContextHost?: FrontstageNativeBlockContextHost;
   pageContent?: FrontstagePageContent;
   fillsAvailableHeight: boolean;
-  allocationMode: NativeTrustedBlockAllocationMode;
   onIntrinsicSizeReport?: (height: number) => void;
 }) {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
@@ -536,7 +533,6 @@ function NativeRuntimeSlotSurface({
           pageContent={pageContent}
           runtimeSizing={runtimeSizing}
           surfaceLayoutEpoch={surfaceLayoutEpoch}
-          allocationMode={allocationMode}
           onRuntimeError={setRuntimeError}
         />
       ) : (
@@ -563,7 +559,6 @@ function FrontstageNativeRuntimeInstance({
   pageContent,
   runtimeSizing,
   surfaceLayoutEpoch,
-  allocationMode,
   onRuntimeError
 }: {
   root: Element;
@@ -580,7 +575,6 @@ function FrontstageNativeRuntimeInstance({
   pageContent?: FrontstagePageContent;
   runtimeSizing: BlockContextSizing;
   surfaceLayoutEpoch: string;
-  allocationMode: NativeTrustedBlockAllocationMode;
   onRuntimeError(error: BlockProtocolError): void;
 }) {
   const { instanceEpoch, isCurrentInstance } = useFrontstageNativeBlockInstance(
@@ -674,7 +668,6 @@ function FrontstageNativeRuntimeInstance({
       moduleSources={preparation.prepared.moduleSources}
       contribution={preparation.prepared.contribution}
       surfaceLayoutEpoch={surfaceLayoutEpoch}
-      allocationMode={allocationMode}
       onRuntimeError={onRuntimeError}
     />
   );
@@ -926,7 +919,6 @@ const RenderPlanSlot = memo(function RenderPlanSlot({
           contentViewportStyle={contentViewportStyle}
           surfaceLayoutEpoch={isDesignMode ? 'design' : 'preview'}
           fillsAvailableHeight={fillsAvailableHeight}
-          allocationMode={isFixedHeight ? 'fixed-height' : 'flow'}
           onIntrinsicSizeReport={handleIntrinsicSizeReport}
           onRetry={
             onRuntimeRetry ? () => onRuntimeRetry(item.blockId) : undefined

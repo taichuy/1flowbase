@@ -34,24 +34,24 @@ describe('native trusted block portal surface', () => {
     expect(first).not.toHaveProperty('update');
   });
 
-  test('I1969-AC-001 I1969-AC-002 I1969-AC-008 separates the bounded ink gutter from the visible flow root', () => {
+  test('I1969-AC-001 I1969-AC-002 I1969-AC-008 exposes one unclipped flow root without a forced gutter boundary', () => {
     const root = createRoot();
     const surface = attachNativeTrustedBlockPortalSurface({
       root,
       blockId: 'flow-content'
     });
 
-    expect(surface.slotElement.getRootNode()).toBe(surface.shadowRoot);
-    expect(surface.mountElement.parentElement).toBe(surface.slotElement);
-    expect(surface.slotElement).toHaveStyle({
-      width: '100%',
-      maxWidth: '100%',
-      minWidth: '0',
-      height: '100%',
-      boxSizing: 'border-box',
-      overflow: 'clip',
-      padding: '8px'
-    });
+    expect(surface).not.toHaveProperty('slotElement');
+    expect(
+      surface.shadowRoot.querySelector(
+        '[data-flowbase-native-trusted-block-slot]'
+      )
+    ).toBeNull();
+    expect(surface.mountElement.parentNode).toBe(surface.shadowRoot);
+    expect(surface.mountElement.style.padding).toBe('');
+    expect(
+      surface.mountElement.dataset.flowbaseNativeTrustedBlockAllocationMode
+    ).toBeUndefined();
     expect(surface.mountElement).toHaveStyle({
       width: '100%',
       maxWidth: '100%',
@@ -60,20 +60,6 @@ describe('native trusted block portal surface', () => {
       boxSizing: 'border-box',
       overflow: 'visible'
     });
-
-    surface.dispose();
-  });
-
-  test('I1969-AC-005 leaves fixed-height flow overflow visible for the allocation scroll owner', () => {
-    const root = createRoot();
-    const surface = attachNativeTrustedBlockPortalSurface({
-      root,
-      blockId: 'fixed-height-content',
-      allocationMode: 'fixed-height'
-    });
-
-    expect(surface.slotElement).toHaveStyle({ overflow: 'visible' });
-    expect(surface.mountElement).toHaveStyle({ overflow: 'visible' });
 
     surface.dispose();
   });

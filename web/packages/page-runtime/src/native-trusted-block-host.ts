@@ -2,11 +2,8 @@ const NATIVE_TRUSTED_BLOCK_ROOT_ATTRIBUTE =
   'data-flowbase-native-trusted-block-root';
 const NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE =
   'data-flowbase-native-trusted-block-id';
-const NATIVE_TRUSTED_BLOCK_SLOT_ATTRIBUTE =
-  'data-flowbase-native-trusted-block-slot';
 const NATIVE_TRUSTED_BLOCK_MOUNT_ATTRIBUTE =
   'data-flowbase-native-trusted-block-mount';
-const NATIVE_TRUSTED_BLOCK_INK_GUTTER = '8px';
 
 const ownedShadowRoots = new WeakMap<Element, ShadowRoot>();
 const activeRoots = new WeakSet<Element>();
@@ -14,7 +11,6 @@ const activeRoots = new WeakSet<Element>();
 export interface NativeTrustedBlockPortalSurface {
   root: Element;
   shadowRoot: ShadowRoot;
-  slotElement: HTMLElement;
   mountElement: HTMLElement;
   dispose(): void;
 }
@@ -22,10 +18,7 @@ export interface NativeTrustedBlockPortalSurface {
 export interface NativeTrustedBlockPortalSurfaceInput {
   root: Element;
   blockId: string;
-  allocationMode?: NativeTrustedBlockAllocationMode;
 }
-
-export type NativeTrustedBlockAllocationMode = 'flow' | 'fixed-height';
 
 /**
  * Attaches the DOM boundary for one surface-owned React portal.
@@ -33,8 +26,7 @@ export type NativeTrustedBlockAllocationMode = 'flow' | 'fixed-height';
  */
 export function attachNativeTrustedBlockPortalSurface({
   root,
-  blockId,
-  allocationMode = 'flow'
+  blockId
 }: NativeTrustedBlockPortalSurfaceInput): NativeTrustedBlockPortalSurface {
   validatePortalSurfaceRoot(root);
   if (activeRoots.has(root)) {
@@ -53,25 +45,11 @@ export function attachNativeTrustedBlockPortalSurface({
   }
 
   const styleScope = applyStyleScope(root, blockId);
-  const slotElement = document.createElement('div');
-  slotElement.setAttribute(NATIVE_TRUSTED_BLOCK_SLOT_ATTRIBUTE, '');
-  slotElement.setAttribute(NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE, blockId);
-  slotElement.dataset.flowbaseNativeTrustedBlockAllocationMode = allocationMode;
-  Object.assign(slotElement.style, {
-    width: '100%',
-    maxWidth: '100%',
-    minWidth: '0',
-    height: '100%',
-    boxSizing: 'border-box',
-    overflow: allocationMode === 'fixed-height' ? 'visible' : 'clip',
-    padding: NATIVE_TRUSTED_BLOCK_INK_GUTTER
-  });
-
   const mountElement = document.createElement('div');
   mountElement.setAttribute(NATIVE_TRUSTED_BLOCK_MOUNT_ATTRIBUTE, '');
   mountElement.setAttribute(NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE, blockId);
   // Flow content keeps its local paint geometry. Wide content opts into a
-  // ScrollableSurface; fixed-height scrolling stays with the allocation owner.
+  // ScrollableSurface; popups remain direct ShadowRoot children.
   Object.assign(mountElement.style, {
     width: '100%',
     maxWidth: '100%',
@@ -80,15 +58,13 @@ export function attachNativeTrustedBlockPortalSurface({
     boxSizing: 'border-box',
     overflow: 'visible'
   });
-  slotElement.append(mountElement);
-  shadowRoot.replaceChildren(slotElement);
+  shadowRoot.replaceChildren(mountElement);
   activeRoots.add(root);
 
   let didDispose = false;
   return {
     root,
     shadowRoot,
-    slotElement,
     mountElement,
     dispose() {
       if (didDispose) return;

@@ -234,6 +234,18 @@ function PublicModulesBlock({
       aria-label={`public-modules-${props.label}`}
       data-testid={`public-modules-${props.label}`}
     >
+      <div
+        data-testid={`surface-topology-boundary-${props.label}`}
+        style={{ position: 'relative', height: 36 }}
+      >
+        <Badge
+          count={5}
+          offset={[0, -10]}
+          data-testid={`surface-topology-boundary-badge-${props.label}`}
+        >
+          <Avatar shape="square">B</Avatar>
+        </Badge>
+      </div>
       <h3>
         <UserOutlined /> {props.label}
       </h3>
