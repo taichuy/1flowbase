@@ -1041,6 +1041,22 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-frontstage-blocks",
+            &[
+                "frontstage.blocks.open", "frontstage.blocks.view", "frontstage.blocks.create",
+                "frontstage.blocks.search", "frontstage.blocks.update", "frontstage.blocks.delete",
+                "frontstage.blocks.move", "frontstage.blocks.code.view",
+                "frontstage.blocks.code.update", "frontstage.blocks.runtime.view",
+            ],
+            &["api-server.console-frontstage-blocks"],
+            crate::routes::frontstage::block_tree::interface::compile_registry(
+                crate::routes::frontstage::block_tree::interface::FrontstageBlocksDependencies {
+                    store: state.store.clone(),
+                    api_node_id: state.api_node_id.clone(),
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",

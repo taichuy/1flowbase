@@ -25,7 +25,6 @@ use utoipa::{IntoParams, ToSchema};
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_get, console_post, console_put, ConsoleRouteAssembly,
@@ -33,6 +32,24 @@ use crate::{
 };
 
 use super::parse_uuid;
+
+pub(crate) mod interface;
+
+async fn invoke_blocks(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    binding_id: &'static str,
+    input: interface::FrontstageBlocksInput,
+    mutating: bool,
+) -> Result<interface::FrontstageBlocksOutput, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    let credential = if mutating {
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers }
+    } else {
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
+    };
+    crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
+}
 
 #[derive(Debug, Clone, Copy, Deserialize, Serialize, ToSchema)]
 #[serde(rename_all = "snake_case")]
@@ -273,69 +290,126 @@ pub struct FrontstageBlockOpenResponse {
 }
 
 pub(super) fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
-    use access_control::ConsoleRouteOwnership::Authenticated;
+    use access_control::ConsoleRouteOwnership::ConsoleOperation;
 
     ConsoleRouteAssembly::new()
         .route(
             "/frontstage/pages/:page_id/tabs/:tab_id/block-descriptors",
-            console_put(update_frontstage_block_descriptors, Authenticated),
+            console_put(
+                update_frontstage_block_descriptors,
+                ConsoleOperation("frontstage.blocks.update".into()),
+            ),
         )
         .route(
             "/frontstage/pages/:page_id/blocks/search",
-            console_get(search_frontstage_blocks, Authenticated),
+            console_get(
+                search_frontstage_blocks,
+                ConsoleOperation("frontstage.blocks.search".into()),
+            ),
         )
         .route(
             "/frontstage/pages/:page_id/blocks",
-            console_get(list_frontstage_block_roots, Authenticated)
-                .post(create_frontstage_block_node, Authenticated),
+            console_get(
+                list_frontstage_block_roots,
+                ConsoleOperation("frontstage.blocks.view".into()),
+            )
+            .post(
+                create_frontstage_block_node,
+                ConsoleOperation("frontstage.blocks.create".into()),
+            ),
         )
         .route(
             "/frontstage/pages/:page_id/blocks/:block_id",
-            console_get(get_frontstage_block_node, Authenticated)
-                .patch(update_frontstage_block_node, Authenticated)
-                .delete(delete_frontstage_block_leaf, Authenticated),
+            console_get(
+                get_frontstage_block_node,
+                ConsoleOperation("frontstage.blocks.view".into()),
+            )
+            .patch(
+                update_frontstage_block_node,
+                ConsoleOperation("frontstage.blocks.update".into()),
+            )
+            .delete(
+                delete_frontstage_block_leaf,
+                ConsoleOperation("frontstage.blocks.delete".into()),
+            ),
         )
         .route(
             "/frontstage/pages/:page_id/blocks/:block_id/children",
-            console_get(list_frontstage_block_children, Authenticated),
+            console_get(
+                list_frontstage_block_children,
+                ConsoleOperation("frontstage.blocks.view".into()),
+            ),
         )
         .route(
             "/frontstage/pages/:page_id/blocks/:block_id/ancestors",
-            console_get(list_frontstage_block_ancestors, Authenticated),
+            console_get(
+                list_frontstage_block_ancestors,
+                ConsoleOperation("frontstage.blocks.view".into()),
+            ),
         )
         .route(
             "/frontstage/pages/:page_id/blocks/:block_id/descendants",
-            console_get(list_frontstage_block_descendants, Authenticated),
+            console_get(
+                list_frontstage_block_descendants,
+                ConsoleOperation("frontstage.blocks.view".into()),
+            ),
         )
         .route(
             "/frontstage/pages/:page_id/blocks/:block_id/delete-impact",
-            console_get(get_frontstage_block_delete_impact, Authenticated),
+            console_get(
+                get_frontstage_block_delete_impact,
+                ConsoleOperation("frontstage.blocks.view".into()),
+            ),
         )
         .route(
             "/frontstage/pages/:page_id/blocks/:block_id/move",
-            console_post(move_frontstage_block_node, Authenticated),
+            console_post(
+                move_frontstage_block_node,
+                ConsoleOperation("frontstage.blocks.move".into()),
+            ),
         )
         .route(
             "/frontstage/pages/:page_id/blocks/:block_id/delete-subtree",
-            console_post(delete_frontstage_block_subtree, Authenticated),
+            console_post(
+                delete_frontstage_block_subtree,
+                ConsoleOperation("frontstage.blocks.delete".into()),
+            ),
         )
         .route(
             "/frontstage/pages/:page_id/blocks/:block_id/open",
-            console_get(open_frontstage_block, Authenticated),
+            console_get(
+                open_frontstage_block,
+                ConsoleOperation("frontstage.blocks.open".into()),
+            ),
         )
         .route(
             "/frontstage/pages/:page_id/blocks/:block_id/code",
-            console_get(get_frontstage_block_node_code, Authenticated)
-                .put(save_frontstage_block_node_code, Authenticated)
-                .patch(patch_frontstage_block_node_code, Authenticated),
+            console_get(
+                get_frontstage_block_node_code,
+                ConsoleOperation("frontstage.blocks.code.view".into()),
+            )
+            .put(
+                save_frontstage_block_node_code,
+                ConsoleOperation("frontstage.blocks.code.update".into()),
+            )
+            .patch(
+                patch_frontstage_block_node_code,
+                ConsoleOperation("frontstage.blocks.code.update".into()),
+            ),
         )
         .route(
             "/frontstage/pages/:page_id/blocks/:block_id/code/fragment",
-            console_get(get_frontstage_block_code_fragment, Authenticated),
+            console_get(
+                get_frontstage_block_code_fragment,
+                ConsoleOperation("frontstage.blocks.code.view".into()),
+            ),
         )
         .route(
             "/frontstage/pages/:page_id/blocks/:block_id/runtime-assembly",
-            console_get(get_frontstage_block_runtime_assembly, Authenticated),
+            console_get(
+                get_frontstage_block_runtime_assembly,
+                ConsoleOperation("frontstage.blocks.runtime.view".into()),
+            ),
         )
 }
 
@@ -354,23 +428,18 @@ pub async fn open_frontstage_block(
     headers: HeaderMap,
     Path((page_id, block_id)): Path<(String, String)>,
 ) -> Result<Json<ApiSuccess<FrontstageBlockOpenResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let target = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .open_block(FrontstageBlockScopeCommand {
-            actor_user_id: context.user.id,
-            workspace_id: context.actor.current_workspace_id,
-            page_id: parse_uuid(&page_id, "page_id")?,
-            block_id,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(FrontstageBlockOpenResponse {
-        canonical_url: format!(
-            "/{}/pages/{}/blocks/{}",
-            target.slug,
-            target.page_id,
-            encode_block_path_segment(&target.block_id)
-        ),
-    })))
+    let interface::FrontstageBlocksOutput::Open(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.open.get.v1",
+        interface::FrontstageBlocksInput::Open(page_id, block_id),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(get, path = "/api/console/frontstage/pages/{page_id}/blocks", summary = "List Frontstage block roots", description = "Lists complete Block Node Descriptor v1 roots owned by one page tab.", params(("page_id" = String, Path), FrontstageBlockRootListQuery), responses((status = 200, body = Vec<FrontstageBlockNodeResponse>), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody)))]
@@ -380,19 +449,18 @@ pub async fn list_frontstage_block_roots(
     Path(page_id): Path<String>,
     Query(query): Query<FrontstageBlockRootListQuery>,
 ) -> Result<Json<ApiSuccess<Vec<FrontstageBlockNodeResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let nodes = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .list_block_roots(ListFrontstageBlocksCommand {
-            actor_user_id: context.user.id,
-            workspace_id: context.actor.current_workspace_id,
-            page_id: parse_uuid(&page_id, "page_id")?,
-            tab_id: parse_uuid(&query.tab_id, "tab_id")?,
-            limit: query.limit,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        nodes.into_iter().map(to_node_response).collect(),
-    )))
+    let interface::FrontstageBlocksOutput::Nodes(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.list.get.v1",
+        interface::FrontstageBlocksInput::ListRoots(page_id, query),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(post, path = "/api/console/frontstage/pages/{page_id}/blocks", summary = "Create a Frontstage block", description = "Creates one independently stored Block Node Descriptor v1 in the page ordered-tree partition.", request_body = CreateFrontstageBlockNodeBody, responses((status = 201, body = FrontstageBlockNodeResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 403, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
@@ -402,37 +470,18 @@ pub async fn create_frontstage_block_node(
     Path(page_id): Path<String>,
     Json(body): Json<CreateFrontstageBlockNodeBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<FrontstageBlockNodeResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let node = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .with_node_id(state.api_node_id.clone())
-        .create_block_node(CreateFrontstageBlockNodeCommand {
-            actor_user_id: context.user.id,
-            workspace_id: context.actor.current_workspace_id,
-            page_id: parse_uuid(&page_id, "page_id")?,
-            tab_id: body
-                .tab_id
-                .as_deref()
-                .map(|tab_id| parse_uuid(tab_id, "tab_id"))
-                .transpose()?,
-            title: body.title,
-            description: body.description,
-            presentation: to_domain_presentation(body.presentation),
-            position: FrontstageBlockPosition {
-                parent_block_id: body.parent_block_id,
-                before_block_id: body.before_block_id,
-                after_block_id: body.after_block_id,
-            },
-            source_code: body.source_code,
-            input_mapping: body.input_mapping,
-            output_mapping: body.output_mapping,
-            runtime_descriptor: body.runtime_descriptor,
-        })
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(to_node_response(node))),
-    ))
+    let interface::FrontstageBlocksOutput::Node(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.create.post.v1",
+        interface::FrontstageBlocksInput::Create(page_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(value))))
 }
 
 #[utoipa::path(get, path = "/api/console/frontstage/pages/{page_id}/blocks/search", params(("page_id" = String, Path), FrontstageBlockSearchQuery), responses((status = 200, body = Vec<FrontstageBlockSearchResultResponse>), (status = 400, body = crate::error_response::ErrorBody)))]
@@ -442,30 +491,18 @@ pub async fn search_frontstage_blocks(
     Path(page_id): Path<String>,
     Query(query): Query<FrontstageBlockSearchQuery>,
 ) -> Result<Json<ApiSuccess<Vec<FrontstageBlockSearchResultResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let results = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .search_blocks(SearchFrontstageBlocksCommand {
-            actor_user_id: context.user.id,
-            workspace_id: context.actor.current_workspace_id,
-            page_id: parse_uuid(&page_id, "page_id")?,
-            tab_id: parse_uuid(&query.tab_id, "tab_id")?,
-            query: query.query,
-            limit: query.limit,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        results
-            .into_iter()
-            .map(|result| FrontstageBlockSearchResultResponse {
-                node: to_summary_response(result.node),
-                ancestors: result
-                    .ancestors
-                    .into_iter()
-                    .map(to_summary_response)
-                    .collect(),
-            })
-            .collect(),
-    )))
+    let interface::FrontstageBlocksOutput::Search(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.search.get.v1",
+        interface::FrontstageBlocksInput::Search(page_id, query),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(get, path = "/api/console/frontstage/pages/{page_id}/blocks/{block_id}", summary = "Get a Frontstage block", description = "Gets one public Block Node Descriptor v1 without exposing internal ordered-tree identity or model codes.", responses((status = 200, body = FrontstageBlockNodeResponse), (status = 404, body = crate::error_response::ErrorBody)))]
@@ -474,11 +511,18 @@ pub async fn get_frontstage_block_node(
     headers: HeaderMap,
     Path((page_id, block_id)): Path<(String, String)>,
 ) -> Result<Json<ApiSuccess<FrontstageBlockNodeResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let node = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .get_block_node(block_scope(&context, page_id, block_id)?)
-        .await?;
-    Ok(Json(ApiSuccess::new(to_node_response(node))))
+    let interface::FrontstageBlocksOutput::Node(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.detail.get.v1",
+        interface::FrontstageBlocksInput::Get(page_id, block_id),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(patch, path = "/api/console/frontstage/pages/{page_id}/blocks/{block_id}", request_body = UpdateFrontstageBlockNodeBody, responses((status = 200, body = FrontstageBlockNodeResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
@@ -488,20 +532,18 @@ pub async fn update_frontstage_block_node(
     Path((page_id, block_id)): Path<(String, String)>,
     Json(body): Json<UpdateFrontstageBlockNodeBody>,
 ) -> Result<Json<ApiSuccess<FrontstageBlockNodeResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let node = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .update_block_node(UpdateFrontstageBlockNodeCommand {
-            scope: block_scope(&context, page_id, block_id)?,
-            title: body.title,
-            description: body.description,
-            presentation: body.presentation.map(to_domain_presentation),
-            input_mapping: body.input_mapping,
-            output_mapping: body.output_mapping,
-            runtime_descriptor: body.runtime_descriptor,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(to_node_response(node))))
+    let interface::FrontstageBlocksOutput::Node(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.update.patch.v1",
+        interface::FrontstageBlocksInput::Update(page_id, block_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(
@@ -523,24 +565,18 @@ pub async fn update_frontstage_block_descriptors(
     Path((page_id, tab_id)): Path<(String, String)>,
     Json(body): Json<UpdateFrontstageBlockDescriptorsBody>,
 ) -> Result<Json<ApiSuccess<Vec<FrontstageBlockNodeResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let nodes = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .update_block_descriptors(UpdateFrontstageBlockDescriptorsCommand {
-            actor_user_id: context.user.id,
-            workspace_id: context.actor.current_workspace_id,
-            page_id: parse_uuid(&page_id, "page_id")?,
-            tab_id: parse_uuid(&tab_id, "tab_id")?,
-            updates: body
-                .updates
-                .into_iter()
-                .map(|item| (item.block_id, item.runtime_descriptor))
-                .collect(),
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        nodes.into_iter().map(to_node_response).collect(),
-    )))
+    let interface::FrontstageBlocksOutput::Nodes(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.descriptors.put.v1",
+        interface::FrontstageBlocksInput::UpdateDescriptors(page_id, tab_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(delete, path = "/api/console/frontstage/pages/{page_id}/blocks/{block_id}", summary = "Delete a Frontstage block leaf", description = "Deletes one leaf block; nodes with children require the explicit subtree action.", responses((status = 204), (status = 404, body = crate::error_response::ErrorBody), (status = 409, body = crate::error_response::ErrorBody)))]
@@ -549,11 +585,17 @@ pub async fn delete_frontstage_block_leaf(
     headers: HeaderMap,
     Path((page_id, block_id)): Path<(String, String)>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .delete_block_leaf(block_scope(&context, page_id, block_id)?)
-        .await?;
+    let interface::FrontstageBlocksOutput::NoContent = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.delete.delete.v1",
+        interface::FrontstageBlocksInput::DeleteLeaf(page_id, block_id),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -564,16 +606,18 @@ pub async fn list_frontstage_block_children(
     Path((page_id, block_id)): Path<(String, String)>,
     Query(query): Query<FrontstageBlockListQuery>,
 ) -> Result<Json<ApiSuccess<Vec<FrontstageBlockNodeSummaryResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let nodes = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .list_block_children(ListFrontstageBlockChildrenCommand {
-            scope: block_scope(&context, page_id, block_id)?,
-            limit: query.limit,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        nodes.into_iter().map(to_summary_response).collect(),
-    )))
+    let interface::FrontstageBlocksOutput::Summaries(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.children.get.v1",
+        interface::FrontstageBlocksInput::Children(page_id, block_id, query),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(get, path = "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/ancestors", responses((status = 200, body = Vec<FrontstageBlockNodeSummaryResponse>), (status = 404, body = crate::error_response::ErrorBody)))]
@@ -582,13 +626,18 @@ pub async fn list_frontstage_block_ancestors(
     headers: HeaderMap,
     Path((page_id, block_id)): Path<(String, String)>,
 ) -> Result<Json<ApiSuccess<Vec<FrontstageBlockNodeSummaryResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let nodes = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .list_block_ancestors(block_scope(&context, page_id, block_id)?)
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        nodes.into_iter().map(to_summary_response).collect(),
-    )))
+    let interface::FrontstageBlocksOutput::Summaries(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.ancestors.get.v1",
+        interface::FrontstageBlocksInput::Ancestors(page_id, block_id),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(get, path = "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/descendants", params(FrontstageBlockDescendantsQuery), responses((status = 200, body = Vec<FrontstageBlockDescendantResponse>), (status = 400, body = crate::error_response::ErrorBody)))]
@@ -598,25 +647,18 @@ pub async fn list_frontstage_block_descendants(
     Path((page_id, block_id)): Path<(String, String)>,
     Query(query): Query<FrontstageBlockDescendantsQuery>,
 ) -> Result<Json<ApiSuccess<Vec<FrontstageBlockDescendantResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let nodes = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .list_block_descendants(ListFrontstageBlockDescendantsCommand {
-            scope: block_scope(&context, page_id, block_id)?,
-            max_depth: query.max_depth,
-            limit: query.limit,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        nodes
-            .into_iter()
-            .map(|projection| FrontstageBlockDescendantResponse {
-                node: to_summary_response(projection.node),
-                depth: projection.depth,
-                has_children: projection.has_children,
-                path: projection.path,
-            })
-            .collect(),
-    )))
+    let interface::FrontstageBlocksOutput::Descendants(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.descendants.get.v1",
+        interface::FrontstageBlocksInput::Descendants(page_id, block_id, query),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(get, path = "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/delete-impact", responses((status = 200, body = FrontstageBlockDeleteImpactResponse), (status = 404, body = crate::error_response::ErrorBody)))]
@@ -625,13 +667,18 @@ pub async fn get_frontstage_block_delete_impact(
     headers: HeaderMap,
     Path((page_id, block_id)): Path<(String, String)>,
 ) -> Result<Json<ApiSuccess<FrontstageBlockDeleteImpactResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let impact = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .get_block_delete_impact(block_scope(&context, page_id, block_id)?)
-        .await?;
-    Ok(Json(ApiSuccess::new(FrontstageBlockDeleteImpactResponse {
-        affected_count: impact.affected_count,
-    })))
+    let interface::FrontstageBlocksOutput::DeleteImpact(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.delete-impact.get.v1",
+        interface::FrontstageBlocksInput::DeleteImpact(page_id, block_id),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(post, path = "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/move", summary = "Move a Frontstage block", description = "Moves one block within its page ordered-tree partition using public block positions.", request_body = MoveFrontstageBlockNodeBody, responses((status = 200, body = FrontstageBlockNodeResponse), (status = 409, body = crate::error_response::ErrorBody)))]
@@ -641,19 +688,18 @@ pub async fn move_frontstage_block_node(
     Path((page_id, block_id)): Path<(String, String)>,
     Json(body): Json<MoveFrontstageBlockNodeBody>,
 ) -> Result<Json<ApiSuccess<FrontstageBlockNodeResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let node = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .move_block_node(MoveFrontstageBlockNodeCommand {
-            scope: block_scope(&context, page_id, block_id)?,
-            position: FrontstageBlockPosition {
-                parent_block_id: body.parent_block_id,
-                before_block_id: body.before_block_id,
-                after_block_id: body.after_block_id,
-            },
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(to_node_response(node))))
+    let interface::FrontstageBlocksOutput::Node(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.move.post.v1",
+        interface::FrontstageBlocksInput::Move(page_id, block_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(post, path = "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/delete-subtree", summary = "Delete a Frontstage block subtree", description = "Explicitly deletes a block subtree after the caller confirms the backend impact count.", request_body = DeleteFrontstageBlockSubtreeBody, responses((status = 200, body = FrontstageBlockSubtreeDeleteResponse), (status = 409, body = crate::error_response::ErrorBody)))]
@@ -663,19 +709,18 @@ pub async fn delete_frontstage_block_subtree(
     Path((page_id, block_id)): Path<(String, String)>,
     Json(body): Json<DeleteFrontstageBlockSubtreeBody>,
 ) -> Result<Json<ApiSuccess<FrontstageBlockSubtreeDeleteResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let deleted = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .delete_block_subtree(DeleteFrontstageBlockSubtreeCommand {
-            scope: block_scope(&context, page_id, block_id)?,
-            expected_affected_count: body.expected_affected_count,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        FrontstageBlockSubtreeDeleteResponse {
-            deleted_count: deleted.deleted_count,
-        },
-    )))
+    let interface::FrontstageBlocksOutput::DeleteSubtree(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.delete-subtree.post.v1",
+        interface::FrontstageBlocksInput::DeleteSubtree(page_id, block_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(get, path = "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/code", responses((status = 200, body = FrontstageBlockNodeCodeResponse), (status = 404, body = crate::error_response::ErrorBody)))]
@@ -684,16 +729,18 @@ pub async fn get_frontstage_block_node_code(
     headers: HeaderMap,
     Path((page_id, block_id)): Path<(String, String)>,
 ) -> Result<Json<ApiSuccess<FrontstageBlockNodeCodeResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let scope = block_scope(&context, page_id, block_id)?;
-    let public_block_id = scope.block_id.clone();
-    let code = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .get_block_node_code(scope)
-        .await?;
-    Ok(Json(ApiSuccess::new(to_code_response(
-        public_block_id,
-        code,
-    ))))
+    let interface::FrontstageBlocksOutput::Code(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.code.get.v1",
+        interface::FrontstageBlocksInput::GetCode(page_id, block_id),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(
@@ -714,31 +761,18 @@ pub async fn get_frontstage_block_code_fragment(
     Path((page_id, block_id)): Path<(String, String)>,
     Query(query): Query<FrontstageBlockCodeFragmentQuery>,
 ) -> Result<Json<ApiSuccess<FrontstageBlockCodeFragmentResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let fragment = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .get_block_code_fragment(GetFrontstageBlockCodeFragmentCommand {
-            scope: block_scope(&context, page_id, block_id)?,
-            start_line: query.start_line,
-            start_column: query.start_column,
-            line_count: query.line_count,
-            max_chars: query.max_chars,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(FrontstageBlockCodeFragmentResponse {
-        block_id: fragment.block_id,
-        page_id: fragment.page_id.to_string(),
-        source_revision: fragment.source_revision,
-        source_fragment: fragment.source_fragment,
-        start_line: fragment.start_line,
-        start_column: fragment.start_column,
-        end_line: fragment.end_line,
-        end_column: fragment.end_column,
-        total_lines: fragment.total_lines,
-        total_chars: fragment.total_chars,
-        next_line: fragment.next_line,
-        next_column: fragment.next_column,
-        truncated_by_max_chars: fragment.truncated_by_max_chars,
-    })))
+    let interface::FrontstageBlocksOutput::Fragment(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.code-fragment.get.v1",
+        interface::FrontstageBlocksInput::GetCodeFragment(page_id, block_id, query),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(
@@ -757,15 +791,18 @@ pub async fn get_frontstage_block_runtime_assembly(
     headers: HeaderMap,
     Path((page_id, block_id)): Path<(String, String)>,
 ) -> Result<Json<ApiSuccess<FrontstageBlockRuntimeAssemblyResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let layers = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .get_block_runtime_assembly(block_scope(&context, page_id, block_id)?)
-        .await?;
-    Ok(Json(ApiSuccess::new(
-        FrontstageBlockRuntimeAssemblyResponse {
-            layers: layers.into_iter().map(to_runtime_layer_response).collect(),
-        },
-    )))
+    let interface::FrontstageBlocksOutput::RuntimeAssembly(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.runtime-assembly.get.v1",
+        interface::FrontstageBlocksInput::RuntimeAssembly(page_id, block_id),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(put, path = "/api/console/frontstage/pages/{page_id}/blocks/{block_id}/code", request_body = SaveFrontstageBlockNodeCodeBody, responses((status = 200, body = FrontstageBlockNodeCodeResponse), (status = 400, body = crate::error_response::ErrorBody), (status = 404, body = crate::error_response::ErrorBody)))]
@@ -775,22 +812,18 @@ pub async fn save_frontstage_block_node_code(
     Path((page_id, block_id)): Path<(String, String)>,
     Json(body): Json<SaveFrontstageBlockNodeCodeBody>,
 ) -> Result<Json<ApiSuccess<FrontstageBlockNodeCodeResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let scope = block_scope(&context, page_id, block_id)?;
-    let public_block_id = scope.block_id.clone();
-    let code = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .with_node_id(state.api_node_id.clone())
-        .save_block_node_code(SaveFrontstageBlockNodeCodeCommand {
-            scope,
-            expected_source_revision: body.expected_source_revision,
-            source_code: body.source_code,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(to_code_response(
-        public_block_id,
-        code,
-    ))))
+    let interface::FrontstageBlocksOutput::Code(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.code.put.v1",
+        interface::FrontstageBlocksInput::SaveCode(page_id, block_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(
@@ -812,45 +845,18 @@ pub async fn patch_frontstage_block_node_code(
     Path((page_id, block_id)): Path<(String, String)>,
     Json(body): Json<PatchFrontstageBlockNodeCodeBody>,
 ) -> Result<Json<ApiSuccess<FrontstageBlockNodeCodeResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let scope = block_scope(&context, page_id, block_id)?;
-    let public_block_id = scope.block_id.clone();
-    let code = FrontstagePageService::for_actor(state.store.clone(), context.actor.clone())
-        .with_node_id(state.api_node_id.clone())
-        .patch_block_node_code(PatchFrontstageBlockNodeCodeCommand {
-            scope,
-            expected_source_revision: body.expected_source_revision,
-            edits: body
-                .edits
-                .into_iter()
-                .map(|edit| FrontstageSourceEdit {
-                    start_line: edit.start_line,
-                    start_column: edit.start_column,
-                    end_line: edit.end_line,
-                    end_column: edit.end_column,
-                    replacement: edit.replacement,
-                })
-                .collect(),
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(to_code_response(
-        public_block_id,
-        code,
-    ))))
-}
-
-fn block_scope(
-    context: &crate::middleware::require_session::RequestContext,
-    page_id: String,
-    block_id: String,
-) -> Result<FrontstageBlockScopeCommand, ApiError> {
-    Ok(FrontstageBlockScopeCommand {
-        actor_user_id: context.user.id,
-        workspace_id: context.actor.current_workspace_id,
-        page_id: parse_uuid(&page_id, "page_id")?,
-        block_id,
-    })
+    let interface::FrontstageBlocksOutput::Code(value) = invoke_blocks(
+        state,
+        headers,
+        "http.console.frontstage.blocks.code.patch.v1",
+        interface::FrontstageBlocksInput::PatchCode(page_id, block_id, body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 fn default_result_limit() -> u32 {
