@@ -8,15 +8,13 @@ use control_plane::frontstage::{FrontstagePageService, GetFrontstagePageDetailCo
 use control_plane::model_definition::ModelDefinitionService;
 use control_plane::resource_action::{ActionDefinition, ResourceActionKernel};
 use control_plane::resource_crud::parse_resource_filter_expr;
+use interface_runtime::{InterfaceContract, UserPrincipal};
 use runtime_core::runtime_acl::RuntimeDataAction;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use utoipa::ToSchema;
 
-use crate::{
-    app_state::ApiState, error_response::ApiError, middleware::require_session::require_session,
-    response::ApiSuccess,
-};
+use crate::{app_state::ApiState, error_response::ApiError, response::ApiSuccess};
 
 use super::FrontstageCapabilityInput;
 
@@ -520,35 +518,100 @@ pub async fn list_frontstage_data_capabilities(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<FrontstageDataCapabilitiesResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let workspace_id = context.actor.current_workspace_id;
-    let models = state
-        .runtime_engine
-        .registry()
-        .list_available_for_workspace(workspace_id)
-        .into_iter()
-        .map(|model| FrontstageDataCapabilityModelResponse {
-            code: model.model_code,
-            scope_kind: model.scope_kind.as_str().to_string(),
-            fields: model
-                .fields
-                .iter()
-                .map(|field| FrontstageDataCapabilityFieldResponse {
-                    code: field.code.clone(),
-                    title: field.title.clone(),
-                    field_kind: field.field_kind.as_str().to_string(),
-                    is_required: field.is_required,
-                    is_writable: field.is_writable,
+    let snapshot_state = Arc::clone(&state);
+    let output: FrontstageDataCapabilitiesOutput = crate::routes::console_interface::invoke(
+        snapshot_state,
+        "http.console.frontstage.data-capabilities.get.v1",
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
+        FrontstageDataCapabilitiesInput,
+    )
+    .await?;
+    Ok(Json(ApiSuccess::new(output.0)))
+}
+
+pub(crate) struct FrontstageDataCapabilitiesInput;
+impl InterfaceContract for FrontstageDataCapabilitiesInput {
+    const CONTRACT_ID: &'static str = "console-frontstage-data-capabilities-input";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+pub(crate) struct FrontstageDataCapabilitiesOutput(FrontstageDataCapabilitiesResponse);
+impl InterfaceContract for FrontstageDataCapabilitiesOutput {
+    const CONTRACT_ID: &'static str = "console-frontstage-data-capabilities-output";
+    const CONTRACT_VERSION: &'static str = "1";
+}
+
+struct FrontstageDataCapabilitiesAdapter(
+    runtime_core::runtime_model_registry::RuntimeModelRegistry,
+);
+
+impl
+    crate::routes::console_interface::ConsoleInterfacePort<
+        FrontstageDataCapabilitiesInput,
+        FrontstageDataCapabilitiesOutput,
+    > for FrontstageDataCapabilitiesAdapter
+{
+    fn execute<'a>(
+        &'a self,
+        principal: &'a UserPrincipal,
+        _input: FrontstageDataCapabilitiesInput,
+    ) -> crate::routes::console_interface::ConsoleInterfaceFuture<
+        'a,
+        FrontstageDataCapabilitiesOutput,
+    > {
+        Box::pin(async move {
+            let models = self
+                .0
+                .list_available_for_workspace(principal.actor().current_workspace_id)
+                .into_iter()
+                .map(|model| FrontstageDataCapabilityModelResponse {
+                    code: model.model_code,
+                    scope_kind: model.scope_kind.as_str().to_string(),
+                    fields: model
+                        .fields
+                        .iter()
+                        .map(|field| FrontstageDataCapabilityFieldResponse {
+                            code: field.code.clone(),
+                            title: field.title.clone(),
+                            field_kind: field.field_kind.as_str().to_string(),
+                            is_required: field.is_required,
+                            is_writable: field.is_writable,
+                        })
+                        .collect(),
                 })
-                .collect(),
+                .collect();
+            let (queries, actions) = capability_descriptors();
+            Ok(FrontstageDataCapabilitiesOutput(
+                FrontstageDataCapabilitiesResponse {
+                    queries,
+                    actions,
+                    models,
+                },
+            ))
         })
-        .collect();
-    let (queries, actions) = capability_descriptors();
-    Ok(Json(ApiSuccess::new(FrontstageDataCapabilitiesResponse {
-        queries,
-        actions,
-        models,
-    })))
+    }
+}
+
+pub(crate) fn compile_catalog_registry(
+    registry: runtime_core::runtime_model_registry::RuntimeModelRegistry,
+) -> Result<
+    Arc<interface_runtime::CompiledInterfaceRegistry>,
+    interface_runtime::RegistryCompilationError,
+> {
+    crate::routes::console_interface::compile_registry(
+        "api-server.console-frontstage-data-capabilities",
+        "graph:console-frontstage-data-capabilities-v1",
+        &[
+            crate::routes::console_interface::ConsoleInterfaceDeclaration {
+                interface_id: "frontstage.data_capabilities.view",
+                binding_id: "http.console.frontstage.data-capabilities.get.v1",
+                method: "GET",
+                path: "/api/console/frontstage/data-capabilities",
+                mutating: false,
+            },
+        ],
+        Arc::new(FrontstageDataCapabilitiesAdapter(registry)),
+    )
 }
 
 fn map_engine_error(error: anyhow::Error) -> anyhow::Error {

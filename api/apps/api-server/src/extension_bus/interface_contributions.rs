@@ -1006,6 +1006,14 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-frontstage-data-capabilities",
+            &["frontstage.data_capabilities.view"],
+            &["api-server.console-frontstage-data-capabilities"],
+            crate::routes::frontstage::data_capabilities::compile_catalog_registry(
+                state.runtime_engine.registry().clone(),
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",

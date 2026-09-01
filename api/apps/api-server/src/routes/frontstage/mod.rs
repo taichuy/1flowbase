@@ -243,7 +243,7 @@ pub fn router() -> Router<Arc<ApiState>> {
 }
 
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
-    use access_control::ConsoleRouteOwnership::Authenticated;
+    use access_control::ConsoleRouteOwnership::{Authenticated, ConsoleOperation};
 
     block_tree::route_assembly()
         .route(
@@ -291,7 +291,7 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             "/frontstage/data-capabilities",
             console_get(
                 data_capabilities::list_frontstage_data_capabilities,
-                Authenticated,
+                ConsoleOperation("frontstage.data_capabilities.view".to_string()),
             ),
         )
         .route(
