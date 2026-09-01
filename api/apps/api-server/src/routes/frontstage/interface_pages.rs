@@ -21,6 +21,7 @@ pub(crate) enum FrontstagePagesInput {
     UpdateTab(String, String, UpdateFrontstagePageTabBody),
     DeleteTab(String, String),
     SaveDocument(String, String, SaveFrontstageTabDocumentBody),
+    ListUiTemplates,
 }
 
 impl InterfaceContract for FrontstagePagesInput {
@@ -35,6 +36,7 @@ pub(crate) enum FrontstagePagesOutput {
     Detail(FrontstagePageDetailResponse),
     Tabs(Vec<FrontstagePageTabResponse>),
     Tab(FrontstagePageTabResponse),
+    UiTemplates(Vec<FrontstageUiTemplateResponse>),
     NoContent,
 }
 impl InterfaceContract for FrontstagePagesOutput {
@@ -46,6 +48,7 @@ impl InterfaceContract for FrontstagePagesOutput {
 pub(crate) struct FrontstagePagesDependencies {
     pub(crate) store: storage_durable_postgres::MainDurableStore,
     pub(crate) bootstrap_workspace_id: Uuid,
+    pub(crate) api_node_id: String,
 }
 struct FrontstagePagesAdapter(FrontstagePagesDependencies);
 
@@ -265,6 +268,36 @@ impl FrontstagePagesAdapter {
                     detail,
                 )))
             }
+            FrontstagePagesInput::ListUiTemplates => {
+                if !actor.has_permission("frontstage.page.design") {
+                    return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
+                        "frontstage.page.design",
+                    )
+                    .into());
+                }
+                let values = control_plane::ui_management::UiManagementService::new(
+                    self.0.store.clone(),
+                    self.0.api_node_id.clone(),
+                )
+                .list_published_templates_for_workspace(actor.current_workspace_id)
+                .await?;
+                Ok(FrontstagePagesOutput::UiTemplates(
+                    values
+                        .into_iter()
+                        .map(|value| FrontstageUiTemplateResponse {
+                            template_id: value.template_id.map(|id| id.to_string()),
+                            provider_code: value.provider_code,
+                            contribution_code: value.contribution_code,
+                            name: value.name,
+                            source: value.source,
+                            language: value.language,
+                            version: value.version,
+                            is_official: value.is_official,
+                            is_default: value.is_default,
+                        })
+                        .collect(),
+                ))
+            }
         }
     }
 }
@@ -367,6 +400,13 @@ const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         method: "PUT",
         path: "/api/console/frontstage/pages/:page_id/tabs/:tab_id/document",
         mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "frontstage.ui_templates.view",
+        binding_id: "http.console.frontstage.ui-templates.get.v1",
+        method: "GET",
+        path: "/api/console/frontstage/ui-templates",
+        mutating: false,
     },
 ];
 

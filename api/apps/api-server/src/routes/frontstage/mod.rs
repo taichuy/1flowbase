@@ -370,7 +370,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
         )
         .route(
             "/frontstage/ui-templates",
-            console_get(list_frontstage_ui_templates, Authenticated),
+            console_get(
+                list_frontstage_ui_templates,
+                ConsoleOperation("frontstage.ui_templates.view".to_string()),
+            ),
         )
         .route(
             "/frontstage/components/:component_id",
@@ -895,36 +898,18 @@ pub async fn list_frontstage_ui_templates(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<FrontstageUiTemplateResponse>>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    let workspace_id = context.actor.current_workspace_id;
-    if !context.actor.has_permission("frontstage.page.design") {
-        return Err(control_plane::errors::ControlPlaneError::PermissionDenied(
-            "frontstage.page.design",
-        )
-        .into());
-    }
-    let templates = control_plane::ui_management::UiManagementService::new(
-        state.store.clone(),
-        state.api_node_id.clone(),
+    let interface_pages::FrontstagePagesOutput::UiTemplates(value) = invoke_pages(
+        state,
+        headers,
+        "http.console.frontstage.ui-templates.get.v1",
+        interface_pages::FrontstagePagesInput::ListUiTemplates,
+        false,
     )
-    .list_published_templates_for_workspace(workspace_id)
-    .await?;
-    Ok(Json(ApiSuccess::new(
-        templates
-            .into_iter()
-            .map(|value| FrontstageUiTemplateResponse {
-                template_id: value.template_id.map(|id| id.to_string()),
-                provider_code: value.provider_code,
-                contribution_code: value.contribution_code,
-                name: value.name,
-                source: value.source,
-                language: value.language,
-                version: value.version,
-                is_official: value.is_official,
-                is_default: value.is_default,
-            })
-            .collect(),
-    )))
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 pub(crate) fn parse_uuid(raw: &str, field: &'static str) -> Result<Uuid, ApiError> {
