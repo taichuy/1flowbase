@@ -155,6 +155,12 @@ pub(crate) fn production_interface_contributions(
         Arc::clone(&state.authenticator_registry),
         state.bootstrap_workspace_id,
     );
+    let console_ui_management = crate::routes::ui_management_interface::ui_management_port(
+        crate::routes::ui_management_interface::UiManagementDependencies {
+            store: state.store.clone(),
+            api_node_id: state.api_node_id.clone(),
+        },
+    );
     let console_application_orchestration =
         crate::routes::application_orchestration::interface::port(
             state.store.clone(),
@@ -543,6 +549,31 @@ pub(crate) fn production_interface_contributions(
             ],
             &["api-server.console-auth-center"],
             crate::routes::auth_center_interface::compile_registry(console_auth_center)?,
+        ),
+        InterfaceRegistryContribution::new(
+            "api-server.console-ui-management",
+            &[
+                "ui_management.templates.list",
+                "ui_management.templates.create",
+                "ui_management.templates.default.reset",
+                "ui_management.templates.update",
+                "ui_management.templates.publish",
+                "ui_management.templates.default.set",
+                "ui_management.templates.archive",
+                "ui_management.components.list",
+                "ui_management.components.create",
+                "ui_management.components.view",
+                "ui_management.components.update",
+                "ui_management.components.delete",
+                "ui_management.catalog.index",
+                "ui_management.catalog.page",
+                "ui_management.catalog.search",
+                "ui_management.catalog.update_status",
+                "ui_management.catalog.download",
+                "ui_management.catalog.sync_group",
+            ],
+            &["api-server.console-ui-management"],
+            crate::routes::ui_management_interface::compile_registry(console_ui_management)?,
         ),
         InterfaceRegistryContribution::new(
             "api-server.console-file-storages",

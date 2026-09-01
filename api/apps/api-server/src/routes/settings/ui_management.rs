@@ -5,33 +5,36 @@ use axum::{
     http::{HeaderMap, StatusCode},
     Json,
 };
-use control_plane::{
-    ports::{
-        CreateUiCodeTemplateInput, CreateUiComponentRecordInput, ReviseUiCodeTemplateInput,
-        UiComponentRecordPatch,
-    },
-    ui_component_catalog::{UiComponentCatalogService, UiComponentCatalogUpdateStatus},
-    ui_management::{OfficialUiCodeTemplate, UiManagementService},
-};
-use domain::{
-    UiCodeTemplate, UiCodeTemplateLanguage, UiComponentRecord, UiComponentRecordOrigin,
-    UiComponentRecordUpstream,
-};
+use domain::{UiCodeTemplateLanguage, UiComponentRecordOrigin};
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
-use uuid::Uuid;
-
-use crate::ui_component_catalog_source::ApiUiComponentCatalogSource;
 
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     response::ApiSuccess,
     routes::console_route_assembly::{
         console_delete, console_get, console_post, console_put, ConsoleRouteAssembly,
     },
 };
+
+use super::ui_management_interface::{UiManagementInput, UiManagementOutput};
+
+async fn invoke_ui_management(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    binding_id: &'static str,
+    input: UiManagementInput,
+    mutating: bool,
+) -> Result<UiManagementOutput, ApiError> {
+    let snapshot_state = Arc::clone(&state);
+    let credential = if mutating {
+        crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf { state, headers }
+    } else {
+        crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }
+    };
+    crate::routes::console_interface::invoke(snapshot_state, binding_id, credential, input).await
+}
 
 #[derive(Debug, Deserialize)]
 pub struct ListTemplatesQuery {
@@ -269,140 +272,6 @@ pub struct CatalogSyncResponse {
     pub synchronized_records: usize,
 }
 
-fn template_response(value: UiCodeTemplate) -> ManagedTemplateResponse {
-    ManagedTemplateResponse {
-        id: value.id.to_string(),
-        provider_code: value.provider_code,
-        contribution_code: value.contribution_code,
-        name: value.name,
-        latest_revision: TemplateRevisionResponse {
-            revision: value.latest_revision.revision,
-            source: value.latest_revision.source,
-            language: value.latest_revision.language,
-            is_published: value.latest_revision.is_published,
-        },
-        published_revision: value.published_revision.map(|r| TemplateRevisionResponse {
-            revision: r.revision,
-            source: r.source,
-            language: r.language,
-            is_published: true,
-        }),
-        is_default: value.is_default,
-        is_archived: value.archived_at.is_some(),
-    }
-}
-
-fn official_response(value: OfficialUiCodeTemplate) -> OfficialTemplateResponse {
-    OfficialTemplateResponse {
-        provider_code: value.provider_code,
-        contribution_code: value.contribution_code,
-        title: value.title,
-        source: value.source,
-        language: value.language,
-        version: value.version,
-        is_default: value.is_default,
-    }
-}
-
-fn component_response(value: UiComponentRecord) -> Result<ComponentRecordResponse, ApiError> {
-    use time::format_description::well_known::Rfc3339;
-    Ok(ComponentRecordResponse {
-        id: value.id.to_string(),
-        scope_id: value.scope_id.to_string(),
-        component_code: value.component_code,
-        name: value.name,
-        description: value.description,
-        import_code: value.import_code,
-        source_code: value.source_code,
-        origin: value.origin,
-        source: value.source,
-        group: value.group,
-        upstream: ComponentUpstreamBody {
-            identity: value.upstream.identity,
-            version: value.upstream.version,
-        },
-        version: value.version,
-        keywords: value.keywords,
-        catalog_updated_at: value
-            .catalog_updated_at
-            .map(|timestamp| timestamp.format(&Rfc3339))
-            .transpose()?,
-        source_locator: value.source_locator,
-        source_checksum: value.source_checksum,
-        created_at: value.created_at.format(&Rfc3339)?,
-        updated_at: value.updated_at.format(&Rfc3339)?,
-    })
-}
-
-fn catalog_component_response(
-    value: control_plane::ports::OfficialUiComponentCatalogRecord,
-    local_version: Option<String>,
-) -> Result<CatalogComponentResponse, ApiError> {
-    use time::format_description::well_known::Rfc3339;
-    Ok(CatalogComponentResponse {
-        component_code: value.component_code,
-        name: value.name,
-        description: value.description,
-        import_code: value.import_code,
-        source_code: value.source_code,
-        source: value.source,
-        group: value.group,
-        upstream: ComponentUpstreamBody {
-            identity: value.upstream.identity,
-            version: value.upstream.version,
-        },
-        version: value.version,
-        keywords: value.keywords,
-        catalog_updated_at: value.catalog_updated_at.format(&Rfc3339)?,
-        source_locator: value.source_locator,
-        source_checksum: value.source_checksum,
-        local_version,
-    })
-}
-
-fn catalog_update_status_response(
-    value: UiComponentCatalogUpdateStatus,
-) -> CatalogUpdateStatusResponse {
-    CatalogUpdateStatusResponse {
-        catalog_version: value.catalog_version,
-        source_fingerprint: value.source_fingerprint,
-        update_available: value.update_available,
-        groups: value
-            .groups
-            .into_iter()
-            .map(|group| {
-                let update_available = group.update_available();
-                CatalogGroupUpdateResponse {
-                    source: group.source,
-                    group: group.group,
-                    remote_records: group.remote_records,
-                    new_or_updated_records: group.new_or_updated_records,
-                    removed_records: group.removed_records,
-                    update_available,
-                }
-            })
-            .collect(),
-    }
-}
-
-fn catalog_service(state: &ApiState) -> crate::app_state::ApiUiComponentCatalogService {
-    UiComponentCatalogService::new(
-        state.store.clone(),
-        ApiUiComponentCatalogSource::default_taichuy(),
-    )
-}
-
-fn parse_id(value: &str) -> Result<Uuid, ApiError> {
-    Uuid::parse_str(value)
-        .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("template_id").into())
-}
-
-fn parse_component_id(value: &str) -> Result<Uuid, ApiError> {
-    Uuid::parse_str(value).map_err(|_| {
-        control_plane::errors::ControlPlaneError::InvalidInput("ui_component_record_id").into()
-    })
-}
-
 pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
     use access_control::ConsoleRouteOwnership::ConsoleOperation;
     let owner = |operation_id: &str| ConsoleOperation(operation_id.to_string());
@@ -487,15 +356,18 @@ pub async fn list_templates(
     headers: HeaderMap,
     Query(query): Query<ListTemplatesQuery>,
 ) -> Result<Json<ApiSuccess<TemplateListResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let (official, managed) =
-        UiManagementService::new(state.store.clone(), state.api_node_id.clone())
-            .list_templates(query.include_archived)
-            .await?;
-    Ok(Json(ApiSuccess::new(TemplateListResponse {
-        official: official.into_iter().map(official_response).collect(),
-        managed: managed.into_iter().map(template_response).collect(),
-    })))
+    let UiManagementOutput::Templates(value) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.templates.list.get.v1",
+        UiManagementInput::ListTemplates(query),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(post, path = "/api/console/settings/ui-management/templates", request_body = TemplateBody, responses((status = 201, body = ManagedTemplateResponse), (status = 403, body = crate::error_response::ErrorBody)))]
@@ -504,22 +376,18 @@ pub async fn create_template(
     headers: HeaderMap,
     Json(body): Json<TemplateBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ManagedTemplateResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let value = UiManagementService::new(state.store.clone(), state.api_node_id.clone())
-        .create_template(CreateUiCodeTemplateInput {
-            provider_code: body.provider_code,
-            contribution_code: body.contribution_code,
-            name: body.name,
-            source: body.source,
-            language: body.language,
-            actor_user_id: context.user.id,
-        })
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(template_response(value))),
-    ))
+    let UiManagementOutput::Template(value) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.templates.create.post.v1",
+        UiManagementInput::CreateTemplate(body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(value))))
 }
 
 #[utoipa::path(put, path = "/api/console/settings/ui-management/templates/{id}", request_body = UpdateTemplateBody, params(("id" = String, Path)), responses((status = 200, body = ManagedTemplateResponse)))]
@@ -529,18 +397,18 @@ pub async fn update_template(
     Path(id): Path<String>,
     Json(body): Json<UpdateTemplateBody>,
 ) -> Result<Json<ApiSuccess<ManagedTemplateResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let value = UiManagementService::new(state.store.clone(), state.api_node_id.clone())
-        .revise_template(ReviseUiCodeTemplateInput {
-            template_id: parse_id(&id)?,
-            name: body.name,
-            source: body.source,
-            language: body.language,
-            actor_user_id: context.user.id,
-        })
-        .await?;
-    Ok(Json(ApiSuccess::new(template_response(value))))
+    let UiManagementOutput::Template(value) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.templates.update.put.v1",
+        UiManagementInput::UpdateTemplate { id, body },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(post, path = "/api/console/settings/ui-management/templates/{id}/publish", request_body = PublishTemplateBody, params(("id" = String, Path)), responses((status = 200, body = ManagedTemplateResponse)))]
@@ -550,12 +418,18 @@ pub async fn publish_template(
     Path(id): Path<String>,
     Json(body): Json<PublishTemplateBody>,
 ) -> Result<Json<ApiSuccess<ManagedTemplateResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let value = UiManagementService::new(state.store.clone(), state.api_node_id.clone())
-        .publish_template(parse_id(&id)?, body.revision, context.user.id)
-        .await?;
-    Ok(Json(ApiSuccess::new(template_response(value))))
+    let UiManagementOutput::Template(value) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.templates.publish.post.v1",
+        UiManagementInput::PublishTemplate { id, body },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 #[utoipa::path(put, path = "/api/console/settings/ui-management/templates/{id}/default", params(("id" = String, Path)), responses((status = 204)))]
 pub async fn set_default_template(
@@ -563,11 +437,17 @@ pub async fn set_default_template(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    UiManagementService::new(state.store.clone(), state.api_node_id.clone())
-        .set_template_default(parse_id(&id)?, context.user.id)
-        .await?;
+    let UiManagementOutput::NoContent = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.templates.default.set.put.v1",
+        UiManagementInput::SetDefaultTemplate { id },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(StatusCode::NO_CONTENT)
 }
 #[utoipa::path(delete, path = "/api/console/settings/ui-management/templates/default", request_body = ResetDefaultTemplateBody, responses((status = 204)))]
@@ -576,11 +456,17 @@ pub async fn reset_default_template(
     headers: HeaderMap,
     Json(body): Json<ResetDefaultTemplateBody>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    UiManagementService::new(state.store.clone(), state.api_node_id.clone())
-        .reset_template_default(&body.provider_code, &body.contribution_code)
-        .await?;
+    let UiManagementOutput::NoContent = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.templates.default.reset.delete.v1",
+        UiManagementInput::ResetDefaultTemplate(body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(StatusCode::NO_CONTENT)
 }
 #[utoipa::path(put, path = "/api/console/settings/ui-management/templates/{id}/archive", request_body = ArchiveTemplateBody, params(("id" = String, Path)), responses((status = 200, body = ManagedTemplateResponse)))]
@@ -590,12 +476,18 @@ pub async fn archive_template(
     Path(id): Path<String>,
     Json(body): Json<ArchiveTemplateBody>,
 ) -> Result<Json<ApiSuccess<ManagedTemplateResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let value = UiManagementService::new(state.store.clone(), state.api_node_id.clone())
-        .set_template_archived(parse_id(&id)?, body.archived, context.user.id)
-        .await?;
-    Ok(Json(ApiSuccess::new(template_response(value))))
+    let UiManagementOutput::Template(value) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.templates.archive.put.v1",
+        UiManagementInput::ArchiveTemplate { id, body },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(get, path = "/api/console/settings/ui-management/components", responses((status = 200, body = [ComponentRecordResponse])))]
@@ -603,15 +495,18 @@ pub async fn list_components(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<Vec<ComponentRecordResponse>>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let values = UiManagementService::new(state.store.clone(), state.api_node_id.clone())
-        .list_component_records()
-        .await?;
-    let response = values
-        .into_iter()
-        .map(component_response)
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok(Json(ApiSuccess::new(response)))
+    let UiManagementOutput::Components(value) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.components.list.get.v1",
+        UiManagementInput::ListComponents,
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(get, path = "/api/console/settings/ui-management/components/{id}", params(("id" = String, Path)), responses((status = 200, body = ComponentRecordResponse), (status = 404, body = crate::error_response::ErrorBody)))]
@@ -620,11 +515,18 @@ pub async fn get_component(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<Json<ApiSuccess<ComponentRecordResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let value = UiManagementService::new(state.store.clone(), state.api_node_id.clone())
-        .get_component_record(parse_component_id(&id)?)
-        .await?;
-    Ok(Json(ApiSuccess::new(component_response(value)?)))
+    let UiManagementOutput::Component(value) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.components.view.get.v1",
+        UiManagementInput::GetComponent { id },
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(post, path = "/api/console/settings/ui-management/components", request_body = CreateComponentBody, responses((status = 201, body = ComponentRecordResponse), (status = 400, body = crate::error_response::ErrorBody)))]
@@ -633,30 +535,18 @@ pub async fn create_component(
     headers: HeaderMap,
     Json(body): Json<CreateComponentBody>,
 ) -> Result<(StatusCode, Json<ApiSuccess<ComponentRecordResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let value = UiManagementService::new(state.store.clone(), state.api_node_id.clone())
-        .create_component_record(CreateUiComponentRecordInput {
-            component_code: body.component_code,
-            name: body.name,
-            description: body.description,
-            import_code: body.import_code,
-            source_code: body.source_code,
-            source: body.source,
-            group: body.group,
-            upstream: UiComponentRecordUpstream {
-                identity: body.upstream.identity,
-                version: body.upstream.version,
-            },
-            version: body.version,
-            keywords: body.keywords,
-            actor_user_id: context.user.id,
-        })
-        .await?;
-    Ok((
-        StatusCode::CREATED,
-        Json(ApiSuccess::new(component_response(value)?)),
-    ))
+    let UiManagementOutput::Component(value) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.components.create.post.v1",
+        UiManagementInput::CreateComponent(body),
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok((StatusCode::CREATED, Json(ApiSuccess::new(value))))
 }
 
 #[utoipa::path(put, path = "/api/console/settings/ui-management/components/{id}", params(("id" = String, Path)), request_body = UpdateComponentBody, responses((status = 200, body = ComponentRecordResponse), (status = 409, body = crate::error_response::ErrorBody)))]
@@ -666,29 +556,18 @@ pub async fn update_component(
     Path(id): Path<String>,
     Json(body): Json<UpdateComponentBody>,
 ) -> Result<Json<ApiSuccess<ComponentRecordResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let value = UiManagementService::new(state.store.clone(), state.api_node_id.clone())
-        .update_component_record(
-            parse_component_id(&id)?,
-            UiComponentRecordPatch {
-                name: body.name,
-                description: body.description,
-                import_code: body.import_code,
-                source_code: body.source_code,
-                source: body.source,
-                group: body.group,
-                upstream: UiComponentRecordUpstream {
-                    identity: body.upstream.identity,
-                    version: body.upstream.version,
-                },
-                version: body.version,
-                keywords: body.keywords,
-                actor_user_id: context.user.id,
-            },
-        )
-        .await?;
-    Ok(Json(ApiSuccess::new(component_response(value)?)))
+    let UiManagementOutput::Component(value) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.components.update.put.v1",
+        UiManagementInput::UpdateComponent { id, body },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(delete, path = "/api/console/settings/ui-management/components/{id}", params(("id" = String, Path)), responses((status = 204), (status = 409, body = crate::error_response::ErrorBody)))]
@@ -697,11 +576,17 @@ pub async fn delete_component(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    UiManagementService::new(state.store.clone(), state.api_node_id.clone())
-        .delete_component_record(parse_component_id(&id)?)
-        .await?;
+    let UiManagementOutput::NoContent = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.components.delete.delete.v1",
+        UiManagementInput::DeleteComponent { id },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -710,16 +595,18 @@ pub async fn catalog_index(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<CatalogIndexResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let value = catalog_service(&state).index().await?;
-    use time::format_description::well_known::Rfc3339;
-    Ok(Json(ApiSuccess::new(CatalogIndexResponse {
-        catalog_version: value.catalog_version,
-        generated_at: value.generated_at.format(&Rfc3339)?,
-        page_size: value.page_size,
-        total_components: value.total_components,
-        source_fingerprint: value.source_fingerprint,
-    })))
+    let UiManagementOutput::CatalogIndex(value) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.catalog.index.get.v1",
+        UiManagementInput::CatalogIndex,
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(get, path = "/api/console/settings/ui-management/components/catalog/pages/{page}", params(("page" = u32, Path)), responses((status = 200, body = CatalogPageResponse)))]
@@ -728,21 +615,18 @@ pub async fn catalog_page(
     headers: HeaderMap,
     Path(page): Path<u32>,
 ) -> Result<Json<ApiSuccess<CatalogPageResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let value = catalog_service(&state).page(page).await?;
-    Ok(Json(ApiSuccess::new(CatalogPageResponse {
-        catalog_version: value.catalog_version,
-        total_components: value.total_components,
-        page_size: value.page_size,
-        page: value.page,
-        cursor: value.cursor,
-        next_cursor: value.next_cursor,
-        records: value
-            .records
-            .into_iter()
-            .map(|record| catalog_component_response(record.catalog, record.local_version))
-            .collect::<Result<Vec<_>, _>>()?,
-    })))
+    let UiManagementOutput::CatalogPage(value) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.catalog.page.get.v1",
+        UiManagementInput::CatalogPage { page },
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(get, path = "/api/console/settings/ui-management/components/catalog/search", params(("q" = String, Query), ("page" = Option<u32>, Query), ("page_size" = Option<usize>, Query)), responses((status = 200, body = CatalogSearchResponse)))]
@@ -751,38 +635,18 @@ pub async fn catalog_search(
     headers: HeaderMap,
     Query(query): Query<CatalogSearchQuery>,
 ) -> Result<Json<ApiSuccess<CatalogSearchResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let value = catalog_service(&state)
-        .search(&query.q, query.page, query.page_size)
-        .await?;
-    Ok(Json(ApiSuccess::new(CatalogSearchResponse {
-        catalog_version: value.catalog_version,
-        page: value.page,
-        page_size: value.page_size,
-        total_entries: value.total_entries,
-        entries: value
-            .entries
-            .into_iter()
-            .map(|projection| {
-                let entry = projection.catalog;
-                CatalogSearchEntryResponse {
-                    component_code: entry.component_code,
-                    name: entry.name,
-                    description: entry.description,
-                    source: entry.source,
-                    group: entry.group,
-                    upstream: ComponentUpstreamBody {
-                        identity: entry.upstream.identity,
-                        version: entry.upstream.version,
-                    },
-                    version: entry.version,
-                    keywords: entry.keywords,
-                    catalog_page: entry.catalog_page,
-                    local_version: projection.local_version,
-                }
-            })
-            .collect(),
-    })))
+    let UiManagementOutput::CatalogSearch(value) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.catalog.search.get.v1",
+        UiManagementInput::CatalogSearch(query),
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(get, path = "/api/console/settings/ui-management/components/catalog/update-status", responses((status = 200, body = CatalogUpdateStatusResponse)))]
@@ -790,9 +654,18 @@ pub async fn catalog_update_status(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<CatalogUpdateStatusResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let value = catalog_service(&state).update_status().await?;
-    Ok(Json(ApiSuccess::new(catalog_update_status_response(value))))
+    let UiManagementOutput::CatalogUpdateStatus(value) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.catalog.update-status.get.v1",
+        UiManagementInput::CatalogUpdateStatus,
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(post, path = "/api/console/settings/ui-management/components/catalog/{component_code}/download", params(("component_code" = String, Path)), responses((status = 200, body = CatalogComponentResponse)))]
@@ -801,16 +674,18 @@ pub async fn catalog_download(
     headers: HeaderMap,
     Path(component_code): Path<String>,
 ) -> Result<Json<ApiSuccess<CatalogComponentResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let value = catalog_service(&state)
-        .download_component(&component_code, context.user.id)
-        .await?;
-    let local_version = Some(value.version.clone());
-    Ok(Json(ApiSuccess::new(catalog_component_response(
-        value,
-        local_version,
-    )?)))
+    let UiManagementOutput::CatalogComponent(value) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.catalog.download.post.v1",
+        UiManagementInput::CatalogDownload { component_code },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
 
 #[utoipa::path(post, path = "/api/console/settings/ui-management/components/catalog/groups/{source}/{group}/sync", params(("source" = String, Path), ("group" = String, Path)), responses((status = 200, body = CatalogSyncResponse)))]
@@ -819,12 +694,16 @@ pub async fn catalog_sync_group(
     headers: HeaderMap,
     Path((source, group)): Path<(String, String)>,
 ) -> Result<Json<ApiSuccess<CatalogSyncResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let synchronized_records = catalog_service(&state)
-        .sync_source_group(&source, &group, context.user.id)
-        .await?;
-    Ok(Json(ApiSuccess::new(CatalogSyncResponse {
-        synchronized_records,
-    })))
+    let UiManagementOutput::CatalogSync(value) = invoke_ui_management(
+        state,
+        headers,
+        "http.console.ui-management.catalog.sync-group.post.v1",
+        UiManagementInput::CatalogSyncGroup { source, group },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(value)))
 }
