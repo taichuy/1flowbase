@@ -1025,6 +1025,22 @@ pub(crate) fn production_interface_contributions(
             )?,
         ),
         InterfaceRegistryContribution::new(
+            "api-server.console-frontstage-pages",
+            &[
+                "frontstage.pages.view", "frontstage.pages.create", "frontstage.groups.create",
+                "frontstage.pages.update", "frontstage.pages.move", "frontstage.pages.delete",
+                "frontstage.tabs.view", "frontstage.tabs.create", "frontstage.tabs.update",
+                "frontstage.tabs.delete", "frontstage.tabs.document.save",
+            ],
+            &["api-server.console-frontstage-pages"],
+            crate::routes::frontstage::interface_pages::compile_registry(
+                crate::routes::frontstage::interface_pages::FrontstagePagesDependencies {
+                    store: state.store.clone(),
+                    bootstrap_workspace_id: state.bootstrap_workspace_id,
+                },
+            )?,
+        ),
+        InterfaceRegistryContribution::new(
             "api-server.native-read",
             &[
                 "application.native.models.list",
