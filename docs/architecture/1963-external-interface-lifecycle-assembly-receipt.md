@@ -40,6 +40,7 @@
 | EIL-F14R-D2 | `2005de7cbe49774fced125d80f126aab5066d78a` | Registry Binding ownership and migration disposition derived from one compiled snapshot; System Backup residuals enter typed lifecycle |
 | EIL-F14R-D3 | `093c19b8a542644d9faed5f8942e66784c30292b` | Candidate-bound validation assets and input-Assembly permission-equivalence baseline |
 | EIL-F14R-D4 | documentation commit containing this Receipt | Global publication evidence and QA-4 governance freeze |
+| EIL-F14R-D5 | documentation commit recording QA-4 | QA harness resource isolation only; Product Assembly unchanged |
 
 Every row above is a serial commit or inclusive serial range on `beta`; the Git history is the authoritative per-file write-set ledger. No packet changed database schema, migrations, external DTOs, permissions, Runtime/plugin wire, or official plugin source.
 
@@ -222,7 +223,34 @@ result was added.
 Development-stage evidence is limited to `cargo fmt --all --check`, `git diff --check`,
 `cargo check -p api-server --tests`, and the single production compiler authenticity probe. Packet
 tests, Node, frontend, storage, Compose, Runtime and official-plugin suites were deliberately not run.
-All QA-1/2/3 evidence remains unchanged. The next and only validation event is fresh centralized
+All QA-1/2/3 evidence remains unchanged. The assembled candidate was evaluated by fresh centralized
 QA-4 under `tmp/test-governance/1963-external-interface-lifecycle/attempt-4/`.
+
+## Fresh QA Attempt 4 — retained failure history
+
+- Frozen documentation candidate: `beta@d682d8f1e08db8b6bc74acedbb8837d64dbb388d`
+- Product Assembly: `beta@093c19b8a542644d9faed5f8942e66784c30292b`
+- Result: `QA_FAIL`
+- Rows: `11 PASS / 4 FAIL / 0 UNRUN`
+- Observed automation: `1738 passed / 11 failed / 3 ignored`; the full API process was
+  terminated before its final summary, so this is a lower bound rather than a complete batch count.
+- Severity: `Blocking 0 / High 0 / Warning 6`
+- Endpoint counts: `1058 total / 472 business / 584 protocol / 2 operational / 0 unclassified`
+
+The QA-3 operation/Binding/migration completeness root did not recur. Production Catalog
+publication, exact-set compilation, migration reconciliation, runtime/official-plugin evidence and
+all zero-residue counters passed. Four red rows have one finite QA execution batch:
+
+1. Row 05 exited `137` before the full api-server suite emitted failure bodies or a final summary.
+2. Row 08 did not materialize the preserved hygiene evaluator into the fresh evidence directory.
+3. The disposable PostgreSQL URL was exported QA-wide and overrode two dev-up fixture-local URLs.
+4. Row 15 failed derivatively and could not use unauthenticated GitHub CLI access.
+
+EIL-F14R-D5 changes no product, test, contract, database, migration, Runtime or plugin source. It
+materializes the fixed Row-08 evaluator, scopes the disposable database only to API/storage rows,
+uses explicitly reduced Rust test concurrency after the reproduced resource kill, and obtains
+read-only GitHub state through the existing Git credential without exposing it. The Product Assembly
+remains frozen. Attempt-4 evidence remains immutable under
+`tmp/test-governance/1963-external-interface-lifecycle/attempt-4/`; the next event is one fresh QA-5.
 
 #1963 and #1893 remain OPEN. No EIL or Root AC is settled, no push occurred, and no product, test, migration, protocol or official-plugin source was changed after the frozen candidate.
