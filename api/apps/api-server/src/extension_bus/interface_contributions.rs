@@ -275,6 +275,24 @@ pub(crate) fn production_interface_contributions(
                 ),
             },
         );
+    let native_run_port =
+        crate::routes::application_public_api::native::application_native_run_port(
+            crate::routes::application_public_api::native::ApplicationNativeRunDependencies {
+                store: state.store.clone(),
+                cache_store: state.infrastructure.cache_store(),
+                runtime_engine: state.runtime_engine.clone(),
+                provider_runtime: state.provider_runtime.clone(),
+                provider_secret_master_key: state.provider_secret_master_key.clone(),
+                api_node_id: state.api_node_id.clone(),
+                provider_install_root: state.provider_install_root.clone(),
+                file_storage_registry: state.file_storage_registry.clone(),
+                task_queue: state.infrastructure.task_queue(),
+                provider_transport_store: state.infrastructure.provider_transport_store(),
+                runtime_event_stream: state.runtime_event_stream.clone(),
+                runtime_activity: state.runtime_activity.clone(),
+                runtime_invoker_factory: Arc::clone(&native_runtime_invoker_factory),
+            },
+        );
 
     Ok(vec![
         InterfaceRegistryContribution::new(
@@ -988,7 +1006,7 @@ pub(crate) fn production_interface_contributions(
             &["application.native.runs.create"],
             &["api-server.application-public-api"],
             crate::routes::application_public_api::native::compile_native_interface_registry(
-                Arc::clone(state) as Arc<dyn crate::routes::application_public_api::native_interface::ApplicationNativeRunPort>,
+                Arc::clone(&native_run_port),
             )?,
         ),
         InterfaceRegistryContribution::new(

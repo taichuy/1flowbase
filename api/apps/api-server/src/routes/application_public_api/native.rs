@@ -27,7 +27,7 @@ use control_plane::{
     orchestration_runtime::{OrchestrationRuntimeService, StartPublishedFlowRunCommand},
     ports::{
         AuthRepository, ProviderProtocolContextSlotId, ProviderProtocolContextValue,
-        ProviderTransportStore,
+        ProviderTransportStore, RuntimeEventStream,
     },
 };
 use plugin_framework::provider_contract::ProtocolContextEnvelope;
@@ -63,7 +63,10 @@ use crate::{
                 NativeUploadFileInput, NativeUploadFileOutput, RuntimeInvokerFuture,
             },
             sse,
-            stream_terminal_fallback::recover_missing_stream_terminal_winner,
+            stream_terminal_fallback::{
+                recover_missing_stream_terminal_winner_with_dependencies,
+                NativeRunTerminalDependencies,
+            },
         },
         files::UploadedFileResponse,
         mcp_protocol::virtual_ui,
@@ -190,17 +193,36 @@ pub(crate) fn native_runtime_invoker_factory(
     Arc::new(NativeRuntimeInvokerFactoryAdapter(dependencies))
 }
 
-impl ApplicationNativeRunPort for ApiState {
+#[derive(Clone)]
+pub(crate) struct ApplicationNativeRunDependencies {
+    pub(crate) store: storage_durable_postgres::MainDurableStore,
+    pub(crate) cache_store: Arc<dyn crate::host_infrastructure::CacheStore>,
+    pub(crate) runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
+    pub(crate) provider_runtime: Arc<crate::provider_runtime::ApiRuntimeServices>,
+    pub(crate) provider_secret_master_key: String,
+    pub(crate) api_node_id: String,
+    pub(crate) provider_install_root: String,
+    pub(crate) file_storage_registry: Arc<storage_object::FileStorageDriverRegistry>,
+    pub(crate) task_queue: Arc<dyn crate::host_infrastructure::TaskQueue>,
+    pub(crate) provider_transport_store: Arc<dyn ProviderTransportStore>,
+    pub(crate) runtime_event_stream: Arc<dyn RuntimeEventStream>,
+    pub(crate) runtime_activity: Arc<crate::runtime_activity::ApplicationRuntimeActivityTracker>,
+    pub(crate) runtime_invoker_factory: Arc<dyn NativeRuntimeInvokerFactory>,
+}
+
+struct ApplicationNativeRunAdapter(ApplicationNativeRunDependencies);
+
+impl ApplicationNativeRunPort for ApplicationNativeRunAdapter {
     fn create<'a>(
         &'a self,
         principal: &'a interface_runtime::ApplicationPrincipal,
         input: ApplicationNativeRunInput,
     ) -> ApplicationNativeRunFuture<'a> {
-        let state = Arc::new(self.clone());
+        let dependencies = self.0.clone();
         let actor = application_actor_from_principal(principal);
         Box::pin(async move {
-            ApplicationNativeRunService::new(state.store.clone())
-                .with_last_used_cache(state.infrastructure.cache_store())
+            ApplicationNativeRunService::new(dependencies.store.clone())
+                .with_last_used_cache(dependencies.cache_store.clone())
                 .create_native_run_for_actor(actor, input.request, input.protocol)
                 .await
                 .map(ApplicationNativeRunOutput)
@@ -214,16 +236,16 @@ impl ApplicationNativeRunPort for ApiState {
         principal: &'a interface_runtime::ApplicationPrincipal,
         input: ApplicationNativeRunInput,
     ) -> ApplicationNativeRunFuture<'a> {
-        let state = Arc::new(self.clone());
+        let dependencies = self.0.clone();
         let actor = application_actor_from_principal(principal);
         Box::pin(async move {
-            let run = ApplicationNativeRunService::new(state.store.clone())
-                .with_last_used_cache(state.infrastructure.cache_store())
+            let run = ApplicationNativeRunService::new(dependencies.store.clone())
+                .with_last_used_cache(dependencies.cache_store.clone())
                 .create_native_run_for_actor(actor.clone(), input.request, input.protocol)
                 .await
                 .map_err(native_error)
                 .map_err(ApplicationNativeRunTargetError)?;
-            execute_blocking_native_run_for_actor(state, actor, run)
+            execute_blocking_native_run_for_actor_with_dependencies(dependencies, actor, run, None)
                 .await
                 .map(ApplicationNativeRunOutput)
                 .map_err(ApplicationNativeRunTargetError)
@@ -235,19 +257,19 @@ impl ApplicationNativeRunPort for ApiState {
         principal: &'a interface_runtime::ApplicationPrincipal,
         input: ApplicationNativeRunInput,
     ) -> ApplicationNativeRunStreamFuture<'a> {
-        let state = Arc::new(self.clone());
+        let dependencies = self.0.clone();
         let actor = application_actor_from_principal(principal);
         Box::pin(async move {
             let include_workflow_events =
                 include_workflow_events(&input.request).map_err(ApplicationNativeRunTargetError)?;
-            let run = ApplicationNativeRunService::new(state.store.clone())
-                .with_last_used_cache(state.infrastructure.cache_store())
+            let run = ApplicationNativeRunService::new(dependencies.store.clone())
+                .with_last_used_cache(dependencies.cache_store.clone())
                 .create_native_run_for_actor(actor.clone(), input.request, input.protocol)
                 .await
                 .map_err(native_error)
                 .map_err(ApplicationNativeRunTargetError)?;
-            let receiver = start_native_run_event_channel_for_actor(
-                state,
+            let receiver = start_native_run_event_channel_for_actor_with_dependencies(
+                dependencies,
                 actor,
                 run.clone(),
                 include_workflow_events,
@@ -275,6 +297,59 @@ impl ApplicationNativeRunPort for ApiState {
             Ok(stream)
         })
     }
+}
+
+pub(crate) fn application_native_run_port(
+    dependencies: ApplicationNativeRunDependencies,
+) -> Arc<dyn ApplicationNativeRunPort> {
+    Arc::new(ApplicationNativeRunAdapter(dependencies))
+}
+
+fn native_runtime_service(
+    dependencies: &ApplicationNativeRunDependencies,
+    runtime_internal_tool_invoker: Arc<
+        dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
+    >,
+) -> OrchestrationRuntimeService<storage_durable_postgres::MainDurableStore, ApiProviderRuntime> {
+    OrchestrationRuntimeService::new(
+        dependencies.store.clone(),
+        ApiProviderRuntime::new_with_activity(
+            dependencies.provider_runtime.clone(),
+            dependencies.runtime_activity.clone(),
+        ),
+        dependencies.runtime_engine.clone(),
+        dependencies.provider_secret_master_key.clone(),
+    )
+    .with_node_artifact_context(
+        dependencies.api_node_id.clone(),
+        dependencies.provider_install_root.clone(),
+    )
+    .with_file_storage_registry(dependencies.file_storage_registry.clone())
+    .with_runtime_internal_tool_invoker(runtime_internal_tool_invoker)
+    .with_llm_routing_counter_store(dependencies.cache_store.clone())
+    .with_provider_request_log_queue(dependencies.task_queue.clone())
+    .with_provider_transport_store(dependencies.provider_transport_store.clone())
+}
+
+fn native_run_sse_dependencies(
+    dependencies: &ApplicationNativeRunDependencies,
+) -> sse::NativeRunSseDependencies {
+    sse::NativeRunSseDependencies::new(
+        dependencies.runtime_event_stream.clone(),
+        native_run_terminal_dependencies(dependencies),
+    )
+}
+
+fn native_run_terminal_dependencies(
+    dependencies: &ApplicationNativeRunDependencies,
+) -> NativeRunTerminalDependencies {
+    NativeRunTerminalDependencies::new(
+        dependencies.store.clone(),
+        dependencies.runtime_engine.clone(),
+        dependencies.provider_runtime.clone(),
+        dependencies.provider_secret_master_key.clone(),
+        dependencies.runtime_event_stream.clone(),
+    )
 }
 
 pub(crate) fn application_actor_from_principal(
@@ -777,6 +852,48 @@ pub(crate) async fn execute_blocking_native_run_for_actor(
     execute_blocking_native_run_for_actor_with_provider_transport(state, actor, run, None).await
 }
 
+async fn execute_blocking_native_run_for_actor_with_dependencies(
+    dependencies: ApplicationNativeRunDependencies,
+    actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
+    run: NativeRunResult,
+    provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
+) -> Result<NativeRunResult, NativeApiError> {
+    let _execution_activity = dependencies.runtime_activity.start(
+        run.application_id,
+        ApplicationActivityKind::ApplicationExecution,
+    );
+    let runtime_internal_tool_invoker = dependencies
+        .runtime_invoker_factory
+        .for_actor(&actor)
+        .await?;
+    let execution_result = scope_application_activity(
+        run.application_id,
+        native_runtime_service(&dependencies, runtime_internal_tool_invoker)
+            .start_published_flow_run(StartPublishedFlowRunCommand {
+                application_id: run.application_id,
+                flow_run_id: run.id,
+                provider_transport_slot,
+            }),
+    )
+    .await;
+    match execution_result {
+        Ok(detail) => Ok(native_result_from_run_detail(&detail, run.metadata.clone())),
+        Err(error) => {
+            error!(
+                application_id = %run.application_id,
+                flow_run_id = %run.id,
+                error = %error,
+                "blocking native published run reached failed runtime result"
+            );
+            ApplicationNativeRunService::new(dependencies.store)
+                .with_last_used_cache(dependencies.cache_store)
+                .get_native_run_for_actor(actor, run.id)
+                .await
+                .map_err(native_error)
+        }
+    }
+}
+
 pub(crate) async fn execute_blocking_native_run_for_actor_with_provider_transport(
     state: Arc<ApiState>,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
@@ -1185,8 +1302,8 @@ pub(crate) fn include_workflow_event_visibility(
     }
 }
 
-async fn start_native_run_event_channel_for_actor(
-    state: Arc<ApiState>,
+async fn start_native_run_event_channel_for_actor_with_dependencies(
+    dependencies: ApplicationNativeRunDependencies,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
     run: NativeRunResult,
     include_workflow_events: sse::IncludeWorkflowEvents,
@@ -1194,26 +1311,31 @@ async fn start_native_run_event_channel_for_actor(
     mpsc::Receiver<Result<axum::response::sse::Event, std::convert::Infallible>>,
     NativeApiError,
 > {
-    let mcp_runtime_invoker = public_mcp_runtime_invoker_for_actor(&state, &actor).await?;
-    start_native_run_event_channel_with_invoker(
-        state,
-        mcp_runtime_invoker,
+    let runtime_internal_tool_invoker = dependencies
+        .runtime_invoker_factory
+        .for_actor(&actor)
+        .await?;
+    start_native_run_event_channel_with_dependencies(
+        dependencies,
+        runtime_internal_tool_invoker,
         run,
         include_workflow_events,
     )
     .await
 }
 
-async fn start_native_run_event_channel_with_invoker(
-    state: Arc<ApiState>,
-    mcp_runtime_invoker: Arc<virtual_ui::ApiMcpRuntimeToolInvoker>,
+async fn start_native_run_event_channel_with_dependencies(
+    dependencies: ApplicationNativeRunDependencies,
+    runtime_internal_tool_invoker: Arc<
+        dyn orchestration_runtime::execution_engine::RuntimeInternalToolInvoker,
+    >,
     run: NativeRunResult,
     include_workflow_events: sse::IncludeWorkflowEvents,
 ) -> Result<
     mpsc::Receiver<Result<axum::response::sse::Event, std::convert::Infallible>>,
     NativeApiError,
 > {
-    state
+    dependencies
         .runtime_event_stream
         .open_run(
             run.id,
@@ -1223,8 +1345,8 @@ async fn start_native_run_event_channel_with_invoker(
         .map_err(service_error)?;
 
     let (sender, receiver) = mpsc::channel(32);
-    tokio::spawn(sse::send_native_runtime_event_stream(
-        state.clone(),
+    tokio::spawn(sse::send_native_runtime_event_stream_with_dependencies(
+        native_run_sse_dependencies(&dependencies),
         run.clone(),
         include_workflow_events,
         None,
@@ -1232,29 +1354,16 @@ async fn start_native_run_event_channel_with_invoker(
         sender,
     ));
 
-    let background_state = state.clone();
+    let background_dependencies = dependencies.clone();
     let background_run = run.clone();
     tokio::spawn(async move {
-        let _execution_activity = background_state.runtime_activity.start(
+        let _execution_activity = background_dependencies.runtime_activity.start(
             background_run.application_id,
             ApplicationActivityKind::ApplicationExecution,
         );
-        let runtime_service = OrchestrationRuntimeService::new(
-            background_state.store.clone(),
-            api_provider_runtime(&background_state),
-            background_state.runtime_engine.clone(),
-            background_state.provider_secret_master_key.clone(),
-        )
-        .with_node_artifact_context(
-            background_state.api_node_id.clone(),
-            background_state.provider_install_root.clone(),
-        )
-        .with_file_storage_registry(background_state.file_storage_registry.clone())
-        .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
-        .with_llm_routing_counter_store(background_state.infrastructure.cache_store())
-        .with_provider_request_log_queue(background_state.infrastructure.task_queue())
-        .with_provider_transport_store(background_state.infrastructure.provider_transport_store())
-        .with_runtime_event_stream(background_state.runtime_event_stream.clone());
+        let runtime_service =
+            native_runtime_service(&background_dependencies, runtime_internal_tool_invoker)
+                .with_runtime_event_stream(background_dependencies.runtime_event_stream.clone());
         if let Err(runtime_error) = scope_application_activity(
             background_run.application_id,
             runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
@@ -1265,8 +1374,11 @@ async fn start_native_run_event_channel_with_invoker(
         )
         .await
         {
-            if let Err(recovery_error) =
-                recover_missing_stream_terminal_winner(&background_state, &background_run).await
+            if let Err(recovery_error) = recover_missing_stream_terminal_winner_with_dependencies(
+                &native_run_terminal_dependencies(&background_dependencies),
+                &background_run,
+            )
+            .await
             {
                 error!(
                     application_id = %background_run.application_id,

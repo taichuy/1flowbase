@@ -19,7 +19,49 @@ use control_plane::{
 use serde_json::{json, Value};
 use tracing::warn;
 
-use crate::{app_state::ApiState, provider_runtime::ApiProviderRuntime};
+use std::sync::Arc;
+
+use crate::{
+    app_state::ApiState,
+    provider_runtime::{ApiProviderRuntime, ApiRuntimeServices},
+};
+
+#[derive(Clone)]
+pub(crate) struct NativeRunTerminalDependencies {
+    store: storage_durable_postgres::MainDurableStore,
+    runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
+    provider_runtime: Arc<ApiRuntimeServices>,
+    provider_secret_master_key: String,
+    runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
+}
+
+impl NativeRunTerminalDependencies {
+    pub(crate) fn new(
+        store: storage_durable_postgres::MainDurableStore,
+        runtime_engine: Arc<runtime_core::runtime_engine::RuntimeEngine>,
+        provider_runtime: Arc<ApiRuntimeServices>,
+        provider_secret_master_key: String,
+        runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
+    ) -> Self {
+        Self {
+            store,
+            runtime_engine,
+            provider_runtime,
+            provider_secret_master_key,
+            runtime_event_stream,
+        }
+    }
+}
+
+fn native_run_terminal_dependencies(state: &ApiState) -> NativeRunTerminalDependencies {
+    NativeRunTerminalDependencies::new(
+        state.store.clone(),
+        state.runtime_engine.clone(),
+        state.provider_runtime.clone(),
+        state.provider_secret_master_key.clone(),
+        state.runtime_event_stream.clone(),
+    )
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TerminalAnswerDeltaKind {
@@ -36,11 +78,26 @@ pub(crate) struct TerminalAnswerDelta {
 /// A public terminal may only be projected from a durable run snapshot. A load
 /// failure is therefore a barrier failure, not permission to reuse the stale
 /// pre-execution snapshot.
+/// B3 compatibility bridge. Native interface execution uses the explicit-dependency variant.
+#[deprecated(
+    note = "B3 compatibility bridge; use load_durable_native_run_for_terminal_projection_with_dependencies"
+)]
 pub(crate) async fn load_durable_native_run_for_terminal_projection(
     state: &ApiState,
     initial_run: &NativeRunResult,
 ) -> anyhow::Result<NativeRunResult> {
-    load_latest_native_run_strict(state, initial_run).await
+    load_durable_native_run_for_terminal_projection_with_dependencies(
+        &native_run_terminal_dependencies(state),
+        initial_run,
+    )
+    .await
+}
+
+pub(crate) async fn load_durable_native_run_for_terminal_projection_with_dependencies(
+    dependencies: &NativeRunTerminalDependencies,
+    initial_run: &NativeRunResult,
+) -> anyhow::Result<NativeRunResult> {
+    load_latest_native_run_strict_with_dependencies(dependencies, initial_run).await
 }
 
 pub(crate) fn durable_native_run_matches_terminal(run: &NativeRunResult, event_type: &str) -> bool {
@@ -60,11 +117,27 @@ pub(crate) fn durable_native_run_matches_terminal(run: &NativeRunResult, event_t
 /// Resolves a confirmed producer EOF to the durable winner before an API adapter projects it.
 /// Callers must use this only after execution has ended or a runtime stream closed without a
 /// terminal event; transport failures and client disconnects are not EOF evidence.
+/// B3 compatibility bridge. Native interface execution uses the explicit-dependency variant.
+#[deprecated(
+    note = "B3 compatibility bridge; use recover_missing_stream_terminal_winner_with_dependencies"
+)]
 pub(crate) async fn recover_missing_stream_terminal_winner(
     state: &ApiState,
     initial_run: &NativeRunResult,
 ) -> anyhow::Result<NativeRunResult> {
-    let current = load_latest_native_run_strict(state, initial_run).await?;
+    recover_missing_stream_terminal_winner_with_dependencies(
+        &native_run_terminal_dependencies(state),
+        initial_run,
+    )
+    .await
+}
+
+pub(crate) async fn recover_missing_stream_terminal_winner_with_dependencies(
+    dependencies: &NativeRunTerminalDependencies,
+    initial_run: &NativeRunResult,
+) -> anyhow::Result<NativeRunResult> {
+    let current =
+        load_latest_native_run_strict_with_dependencies(dependencies, initial_run).await?;
     if !matches!(
         current.status,
         NativeRunStatus::Queued | NativeRunStatus::Running
@@ -73,12 +146,12 @@ pub(crate) async fn recover_missing_stream_terminal_winner(
     }
 
     let recovery_service = OrchestrationRuntimeService::new(
-        state.store.clone(),
-        ApiProviderRuntime::new(state.provider_runtime.clone()),
-        state.runtime_engine.clone(),
-        state.provider_secret_master_key.clone(),
+        dependencies.store.clone(),
+        ApiProviderRuntime::new(dependencies.provider_runtime.clone()),
+        dependencies.runtime_engine.clone(),
+        dependencies.provider_secret_master_key.clone(),
     )
-    .with_runtime_event_stream(state.runtime_event_stream.clone());
+    .with_runtime_event_stream(dependencies.runtime_event_stream.clone());
     let recovery_result = recovery_service
         .finalize_published_run_missing_stream_terminal(
             FinalizePublishedRunMissingStreamTerminalCommand {
@@ -91,7 +164,7 @@ pub(crate) async fn recover_missing_stream_terminal_winner(
     // Live publication can fail after the durable transaction commits (for example a stream
     // already closed). The fresh durable winner, rather than that delivery error, is the source
     // of truth for the fallback projection.
-    let winner = load_latest_native_run_strict(state, initial_run).await?;
+    let winner = load_latest_native_run_strict_with_dependencies(dependencies, initial_run).await?;
     if !matches!(
         winner.status,
         NativeRunStatus::Queued | NativeRunStatus::Running
@@ -115,11 +188,11 @@ pub(crate) async fn recover_missing_stream_terminal_winner(
     }
 }
 
-async fn load_latest_native_run_strict(
-    state: &ApiState,
+async fn load_latest_native_run_strict_with_dependencies(
+    dependencies: &NativeRunTerminalDependencies,
     initial_run: &NativeRunResult,
 ) -> anyhow::Result<NativeRunResult> {
-    let stream_state = state
+    let stream_state = dependencies
         .store
         .get_published_run_stream_state(initial_run.application_id, initial_run.id)
         .await?

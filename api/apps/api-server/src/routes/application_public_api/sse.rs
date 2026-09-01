@@ -16,10 +16,12 @@ use crate::{
     app_state::ApiState,
     routes::application_public_api::stream_terminal_fallback::{
         durable_canonical_partial_runtime_events_from_native_run,
-        durable_native_run_matches_terminal, load_durable_native_run_for_terminal_projection,
-        recover_missing_stream_terminal_winner, terminal_answer_deltas_from_payload,
-        terminal_answer_text_from_payload, terminal_runtime_event_from_native_run,
-        TerminalAnswerDelta, TerminalAnswerDeltaKind,
+        durable_native_run_matches_terminal,
+        load_durable_native_run_for_terminal_projection_with_dependencies,
+        recover_missing_stream_terminal_winner_with_dependencies,
+        terminal_answer_deltas_from_payload, terminal_answer_text_from_payload,
+        terminal_runtime_event_from_native_run, NativeRunTerminalDependencies, TerminalAnswerDelta,
+        TerminalAnswerDeltaKind,
     },
 };
 
@@ -29,6 +31,37 @@ pub type NativeRunSseStream = tokio_stream::wrappers::ReceiverStream<Result<Even
 pub enum IncludeWorkflowEvents {
     None,
     Public,
+}
+
+#[derive(Clone)]
+pub(crate) struct NativeRunSseDependencies {
+    runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
+    terminal: NativeRunTerminalDependencies,
+}
+
+impl NativeRunSseDependencies {
+    pub(crate) fn new(
+        runtime_event_stream: Arc<dyn control_plane::ports::RuntimeEventStream>,
+        terminal: NativeRunTerminalDependencies,
+    ) -> Self {
+        Self {
+            runtime_event_stream,
+            terminal,
+        }
+    }
+}
+
+fn native_run_sse_dependencies(state: &ApiState) -> NativeRunSseDependencies {
+    NativeRunSseDependencies::new(
+        state.runtime_event_stream.clone(),
+        NativeRunTerminalDependencies::new(
+            state.store.clone(),
+            state.runtime_engine.clone(),
+            state.provider_runtime.clone(),
+            state.provider_secret_master_key.clone(),
+            state.runtime_event_stream.clone(),
+        ),
+    )
 }
 
 #[derive(Debug, Serialize)]
@@ -353,7 +386,11 @@ pub(crate) fn is_answer_presentation_delta(envelope: &RuntimeEventEnvelope) -> b
     ) && debug_stream_events::is_answer_presentation_delta_payload(&envelope.payload)
 }
 
-pub async fn send_native_runtime_event_stream(
+/// B3 compatibility bridge. Native interface execution uses the explicit-dependency variant.
+#[deprecated(
+    note = "B3 compatibility bridge; use send_native_runtime_event_stream_with_dependencies"
+)]
+pub(crate) async fn send_native_runtime_event_stream(
     state: Arc<ApiState>,
     initial_run: NativeRunResult,
     include_workflow_events: IncludeWorkflowEvents,
@@ -361,7 +398,26 @@ pub async fn send_native_runtime_event_stream(
     ignored_waiting_callback_task_id: Option<Uuid>,
     sender: mpsc::Sender<Result<Event, Infallible>>,
 ) {
-    let stream = state.runtime_event_stream.clone();
+    send_native_runtime_event_stream_with_dependencies(
+        native_run_sse_dependencies(state.as_ref()),
+        initial_run,
+        include_workflow_events,
+        from_sequence,
+        ignored_waiting_callback_task_id,
+        sender,
+    )
+    .await;
+}
+
+pub(crate) async fn send_native_runtime_event_stream_with_dependencies(
+    dependencies: NativeRunSseDependencies,
+    initial_run: NativeRunResult,
+    include_workflow_events: IncludeWorkflowEvents,
+    from_sequence: Option<i64>,
+    ignored_waiting_callback_task_id: Option<Uuid>,
+    sender: mpsc::Sender<Result<Event, Infallible>>,
+) {
+    let stream = dependencies.runtime_event_stream.clone();
     let Ok(mut subscription) = stream.subscribe(initial_run.id, from_sequence).await else {
         return;
     };
@@ -377,21 +433,23 @@ pub async fn send_native_runtime_event_stream(
         let is_answer_delta = is_answer_presentation_delta(&event);
         let terminal_run;
         let projection_run = if is_terminal {
-            terminal_run =
-                match load_durable_native_run_for_terminal_projection(state.as_ref(), &initial_run)
-                    .await
-                {
-                    Ok(run) => run,
-                    Err(error) => {
-                        warn!(
-                            flow_run_id = %initial_run.id,
-                            application_id = %initial_run.application_id,
-                            error = %error,
-                            "native public terminal blocked because durable run reload failed"
-                        );
-                        continue;
-                    }
-                };
+            terminal_run = match load_durable_native_run_for_terminal_projection_with_dependencies(
+                &dependencies.terminal,
+                &initial_run,
+            )
+            .await
+            {
+                Ok(run) => run,
+                Err(error) => {
+                    warn!(
+                        flow_run_id = %initial_run.id,
+                        application_id = %initial_run.application_id,
+                        error = %error,
+                        "native public terminal blocked because durable run reload failed"
+                    );
+                    continue;
+                }
+            };
             if !durable_native_run_matches_terminal(&terminal_run, &event_type) {
                 warn!(
                     flow_run_id = %initial_run.id,
@@ -433,21 +491,23 @@ pub async fn send_native_runtime_event_stream(
         let is_answer_delta = is_answer_presentation_delta(&event);
         let terminal_run;
         let projection_run = if is_terminal {
-            terminal_run =
-                match load_durable_native_run_for_terminal_projection(state.as_ref(), &initial_run)
-                    .await
-                {
-                    Ok(run) => run,
-                    Err(error) => {
-                        warn!(
-                            flow_run_id = %initial_run.id,
-                            application_id = %initial_run.application_id,
-                            error = %error,
-                            "native public terminal blocked because durable run reload failed"
-                        );
-                        continue;
-                    }
-                };
+            terminal_run = match load_durable_native_run_for_terminal_projection_with_dependencies(
+                &dependencies.terminal,
+                &initial_run,
+            )
+            .await
+            {
+                Ok(run) => run,
+                Err(error) => {
+                    warn!(
+                        flow_run_id = %initial_run.id,
+                        application_id = %initial_run.application_id,
+                        error = %error,
+                        "native public terminal blocked because durable run reload failed"
+                    );
+                    continue;
+                }
+            };
             if !durable_native_run_matches_terminal(&terminal_run, &event_type) {
                 warn!(
                     flow_run_id = %initial_run.id,
@@ -496,7 +556,7 @@ pub async fn send_native_runtime_event_stream(
     }
 
     emit_native_terminal_fallback(NativeTerminalFallback {
-        state: &state,
+        terminal_dependencies: &dependencies.terminal,
         initial_run: &initial_run,
         include_workflow_events,
         sender: &sender,
@@ -532,7 +592,7 @@ async fn send_native_sse_events(
 }
 
 struct NativeTerminalFallback<'a> {
-    state: &'a ApiState,
+    terminal_dependencies: &'a NativeRunTerminalDependencies,
     initial_run: &'a NativeRunResult,
     include_workflow_events: IncludeWorkflowEvents,
     sender: &'a mpsc::Sender<Result<Event, Infallible>>,
@@ -545,7 +605,7 @@ struct NativeTerminalFallback<'a> {
 
 async fn emit_native_terminal_fallback(fallback: NativeTerminalFallback<'_>) -> bool {
     let NativeTerminalFallback {
-        state,
+        terminal_dependencies,
         initial_run,
         include_workflow_events,
         sender,
@@ -556,7 +616,12 @@ async fn emit_native_terminal_fallback(fallback: NativeTerminalFallback<'_>) -> 
         ignored_waiting_callback_task_id,
     } = fallback;
 
-    let latest_run = match recover_missing_stream_terminal_winner(state, initial_run).await {
+    let latest_run = match recover_missing_stream_terminal_winner_with_dependencies(
+        terminal_dependencies,
+        initial_run,
+    )
+    .await
+    {
         Ok(run) => run,
         Err(error) => {
             warn!(
