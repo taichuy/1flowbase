@@ -621,10 +621,12 @@ pub(crate) fn runtime_operation_requires_csrf(
     method: plugin_framework::DataModelOperationMethod,
     model_code: &str,
     path: &str,
-) -> anyhow::Result<bool> {
-    Ok(
-        resolve_runtime_operation_for_actor(state, actor, method, model_code, path)?.data_action
-            != runtime_core::runtime_acl::RuntimeDataAction::View,
+) -> bool {
+    // Authentication owns credential validation, not runtime-model availability projection.
+    // When resolution rejects the operation, the typed Handler repeats the same pure lookup and
+    // returns the established model/operation error before any side effect can execute.
+    resolve_runtime_operation_for_actor(state, actor, method, model_code, path).is_ok_and(
+        |operation| operation.data_action != runtime_core::runtime_acl::RuntimeDataAction::View,
     )
 }
 

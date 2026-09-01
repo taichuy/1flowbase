@@ -322,7 +322,7 @@ fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactor
                     credential.method,
                     &credential.model_code,
                     &credential.path,
-                )? && matches!(context.credential, RequestCredential::CookieSession(_))
+                ) && matches!(context.credential, RequestCredential::CookieSession(_))
                 {
                     crate::middleware::require_csrf::require_csrf(&credential.headers, &context)
                         .map_err(|error| error.0)?;

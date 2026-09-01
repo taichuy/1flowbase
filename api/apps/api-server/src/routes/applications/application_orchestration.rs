@@ -680,10 +680,7 @@ pub async fn export_application_archive(
         crate::routes::console_interface::invoke(
             Arc::clone(&state),
             "http.console.applications.archive.export.v1",
-            crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
-                state,
-                headers,
-            },
+            crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers },
             interface::ApplicationOrchestrationInput::ExportArchive(body),
         )
         .await?;

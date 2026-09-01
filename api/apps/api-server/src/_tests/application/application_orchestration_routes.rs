@@ -922,9 +922,15 @@ async fn delivery_1545_d6_installed_agent_flow_previews_imports_and_reports_work
         )
         .await
         .unwrap();
-    assert_eq!(preview.status(), StatusCode::OK);
-    let preview: Value =
-        serde_json::from_slice(&to_bytes(preview.into_body(), usize::MAX).await.unwrap()).unwrap();
+    let preview_status = preview.status();
+    let preview_body = to_bytes(preview.into_body(), usize::MAX).await.unwrap();
+    assert_eq!(
+        preview_status,
+        StatusCode::OK,
+        "installed extension preview failed: {}",
+        String::from_utf8_lossy(&preview_body)
+    );
+    let preview: Value = serde_json::from_slice(&preview_body).unwrap();
     assert_eq!(preview["data"]["application_status"], "not_applied");
     assert_eq!(
         preview["data"]["preview"]["application"]["name"],
