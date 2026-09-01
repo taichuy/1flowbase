@@ -489,7 +489,7 @@ impl ConsoleInterfacePort<I18nCatalogInput, I18nCatalogOutput> for I18nCatalogAd
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
     ConsoleInterfaceDeclaration {
         interface_id: "i18n_catalog.state.get",
-        binding_id: "http.console.i18n.catalog.get.v1",
+        binding_id: "http.console.settings.i18n.catalog.get.v1",
         method: "GET",
         path: "/api/console/settings/i18n/catalog",
         mutating: false,

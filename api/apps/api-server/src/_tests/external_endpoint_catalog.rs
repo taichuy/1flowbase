@@ -13,8 +13,9 @@ use interface_runtime::{
 
 use crate::{
     external_endpoint_catalog::{
-        ExternalEndpointCatalogCompiler, ExternalEndpointCatalogError,
-        ExternalEndpointClassification, ExternalEndpointContribution, ExternalEndpointIdentity,
+        is_approved_external_control_http, ExternalEndpointCatalogCompiler,
+        ExternalEndpointCatalogError, ExternalEndpointClassification, ExternalEndpointContribution,
+        ExternalEndpointIdentity,
     },
     routes::console_route_assembly::migrated_core_console_route_assembly,
 };
@@ -25,6 +26,18 @@ struct FixtureInput;
 impl interface_runtime::InterfaceContract for FixtureInput {
     const CONTRACT_ID: &'static str = "external-endpoint-fixture-input";
     const CONTRACT_VERSION: &'static str = "1";
+}
+
+#[test]
+fn eil_f14r_d2_console_health_is_compiled_as_operational_control() {
+    assert!(is_approved_external_control_http(
+        "GET",
+        "/api/console/health"
+    ));
+    assert!(!is_approved_external_control_http(
+        "GET",
+        "/api/console/settings/system-backups"
+    ));
 }
 
 #[derive(Debug)]

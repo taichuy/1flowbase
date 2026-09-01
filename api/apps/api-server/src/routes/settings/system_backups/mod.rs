@@ -1,9 +1,5 @@
 use std::{collections::BTreeMap, convert::Infallible, sync::Arc};
 
-use argon2::{
-    password_hash::{PasswordHash, PasswordVerifier},
-    Argon2,
-};
 use axum::{
     body::{Body, Bytes},
     extract::{Path, Query, State},
@@ -13,29 +9,18 @@ use axum::{
 };
 use control_plane::{
     errors::ControlPlaneError,
-    system_recovery::{recovery_plan_digest, ConfirmedRecoveryIntent, RecoveryPlan},
+    system_recovery::{recovery_plan_digest, RecoveryPlan},
 };
 use domain::{BackupJobId, BackupSetId, ContentDigest, RecoveryJobId};
 use futures_util::stream;
 use serde::{Deserialize, Serialize};
-use time::OffsetDateTime;
 use tokio::io::AsyncReadExt;
 use utoipa::{IntoParams, ToSchema};
 use uuid::Uuid;
 
 use crate::{
     app_state::ApiState,
-    error_response::{ApiError, ApiServiceUnavailable},
-    middleware::{
-        require_csrf::require_csrf,
-        require_session::require_session,
-        require_settings_feature_permission::{
-            authorize_compiled_console_access, compiled_console_route_access,
-        },
-    },
-    recovery_authorization::{
-        consume_reauth_challenge, issue_reauth_challenge, recovery_intent_ttl,
-    },
+    error_response::ApiError,
     response::ApiSuccess,
     routes::console_route_assembly::{console_get, console_post, ConsoleRouteAssembly},
 };
@@ -53,19 +38,8 @@ const RECOVERY_REAUTH: &str = "system_backups.recovery.reauth";
 const RECOVERY_STATUS: &str = "system_backups.recovery.status";
 const VERIFY: &str = "system_backups.verify";
 const BACKUP_PASSWORD_HEADER: &str = "x-system-backup-password";
-const BACKUP_JOB_STATUS_ROUTE: &str =
-    "/api/console/settings/system-backups/jobs/status/:backup_job_id";
 
 pub(crate) mod interface;
-
-fn require_system_backup(
-    state: &ApiState,
-) -> Result<Arc<crate::system_backup::SystemBackupRuntime>, ApiError> {
-    state
-        .system_backup
-        .clone()
-        .ok_or_else(|| ApiServiceUnavailable("system_backup_unavailable").into())
-}
 
 fn owned(operation: &str) -> access_control::ConsoleRouteOwnership {
     access_control::ConsoleRouteOwnership::ConsoleOperation(operation.to_owned())
@@ -307,21 +281,18 @@ pub async fn list_backups(
     State(state): State<Arc<ApiState>>,
     headers: HeaderMap,
 ) -> Result<Json<ApiSuccess<BackupSetListResponse>>, ApiError> {
-    require_session(&state, &headers).await?;
-    let items = require_system_backup(&state)?
-        .list()
-        .await?
-        .into_iter()
-        .map(|entry| BackupSetSummaryResponse {
-            exact_backup_name: canonical_backup_name(entry.backup_set_id),
-            backup_set_id: entry.backup_set_id,
-            created_at: entry.created_at.to_string(),
-            availability: entry.availability,
-            total_size_bytes: entry.total_size_bytes,
-            envelope_digest: entry.envelope_digest.map(|value| value.as_str().to_owned()),
-        })
-        .collect();
-    Ok(Json(ApiSuccess::new(BackupSetListResponse { items })))
+    let interface::SystemBackupsOutput::Listed(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.system-backups.list.get.v1",
+        interface::SystemBackupsInput::List,
+        false,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(post, path = "/api/console/settings/system-backups", responses((status = 202, body = QueuedBackupResponse)))]
@@ -330,47 +301,20 @@ pub async fn create_backup(
     headers: HeaderMap,
     request: Option<Json<CreateBackupRequest>>,
 ) -> Result<(StatusCode, Json<ApiSuccess<QueuedBackupResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let status_access = compiled_console_route_access(
-        &state.console_operation_registry,
-        "GET",
-        BACKUP_JOB_STATUS_ROUTE,
+    let interface::SystemBackupsOutput::Created(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.system-backups.create.v1",
+        interface::SystemBackupsInput::Create {
+            backup_password: request.and_then(|request| request.0.backup_password),
+        },
+        true,
     )
-    .map_err(ControlPlaneError::PermissionDenied)?;
-    if !context.actor.is_root
-        && !matches!(
-            status_access.authorization,
-            access_control::ConsoleAuthorization::Authenticated
-        )
-    {
-        let policies = state
-            .store
-            .load_console_policy_for_bound_role(
-                context.actor.user_id,
-                context.actor.current_workspace_id,
-                &context.actor.effective_display_role,
-            )
-            .await?;
-        if !authorize_compiled_console_access(&status_access, &context.actor, &policies) {
-            return Err(
-                ControlPlaneError::PermissionDenied("console_operation_permission_denied").into(),
-            );
-        }
-    }
-    let queued = require_system_backup(&state)?
-        .queue_manual_backup(
-            context.actor.user_id,
-            request.and_then(|request| request.0.backup_password),
-        )
-        .await?;
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(ApiSuccess::new(QueuedBackupResponse {
-            backup_job_id: queued.backup_job_id,
-            backup_set_id: queued.backup_set_id,
-        })),
-    ))
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok((StatusCode::ACCEPTED, Json(ApiSuccess::new(response))))
 }
 
 #[utoipa::path(get, path = "/api/console/settings/system-backups/jobs/status/{backup_job_id}", params(("backup_job_id" = Uuid, Path)), responses((status = 200, body = BackupJobStatusResponse)))]
@@ -544,16 +488,25 @@ pub async fn preflight_recovery(
     headers: HeaderMap,
     Path(backup_set_id): Path<Uuid>,
 ) -> Result<Json<ApiSuccess<RecoveryPreflightResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    require_root_cookie(&context)?;
-    let password = headers
+    let backup_password = headers
         .get(BACKUP_PASSWORD_HEADER)
-        .and_then(|value| value.to_str().ok());
-    let plan = require_system_backup(&state)?
-        .preflight_with_password(BackupSetId::from_uuid(backup_set_id), password)
-        .await;
-    Ok(Json(ApiSuccess::new(preflight_response(&plan)?)))
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let interface::SystemBackupsOutput::RecoveryPreflight(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.system-backups.recovery-preflight.v1",
+        interface::SystemBackupsInput::RecoveryPreflight {
+            backup_set_id,
+            backup_password,
+        },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(post, path = "/api/console/settings/system-backups/recovery/reauth", request_body = RecoveryReauthRequest, responses((status = 200, body = RecoveryReauthResponse)))]
@@ -562,32 +515,18 @@ pub async fn reauthenticate_recovery(
     headers: HeaderMap,
     Json(body): Json<RecoveryReauthRequest>,
 ) -> Result<Json<ApiSuccess<RecoveryReauthResponse>>, ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let session = require_root_cookie(&context)?;
-    validate_exact_name(body.backup_set_id, &body.exact_backup_name)?;
-    let plan = require_system_backup(&state)?
-        .preflight_with_password(body.backup_set_id, body.backup_password.as_deref())
-        .await;
-    require_compatible_digest(&plan, &body.plan_digest)?;
-    let parsed = PasswordHash::new(&context.user.password_hash)
-        .map_err(|_| ControlPlaneError::PermissionDenied("recovery_reauth_failed"))?;
-    Argon2::default()
-        .verify_password(body.password.as_bytes(), &parsed)
-        .map_err(|_| ControlPlaneError::PermissionDenied("recovery_reauth_failed"))?;
-    let digest = ContentDigest::try_from(body.plan_digest)
-        .map_err(|_| ControlPlaneError::InvalidInput("plan_digest"))?;
-    let challenge = issue_reauth_challenge(
-        context.actor.user_id,
-        &session.session_id,
-        body.backup_set_id,
-        digest,
-        &body.exact_backup_name,
-    );
-    Ok(Json(ApiSuccess::new(RecoveryReauthResponse {
-        challenge_token: challenge.token,
-        expires_at: challenge.expires_at.to_string(),
-    })))
+    let interface::SystemBackupsOutput::RecoveryReauth(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.system-backups.recovery-reauth.v1",
+        interface::SystemBackupsInput::RecoveryReauth { request: body },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok(Json(ApiSuccess::new(response)))
 }
 
 #[utoipa::path(post, path = "/api/console/settings/system-backups/{backup_set_id}/recovery/intents", params(("backup_set_id" = Uuid, Path)), request_body = CreateRecoveryIntentRequest, responses((status = 202, body = RecoveryIntentResponse)))]
@@ -597,60 +536,21 @@ pub async fn create_recovery_intent(
     Path(backup_set_id): Path<Uuid>,
     Json(body): Json<CreateRecoveryIntentRequest>,
 ) -> Result<(StatusCode, Json<ApiSuccess<RecoveryIntentResponse>>), ApiError> {
-    let context = require_session(&state, &headers).await?;
-    require_csrf(&headers, &context)?;
-    let session = require_root_cookie(&context)?;
-    let backup_set_id = BackupSetId::from_uuid(backup_set_id);
-    validate_exact_name(backup_set_id, &body.exact_backup_name)?;
-    let runtime = require_system_backup(&state)?;
-    let plan = runtime
-        .preflight_with_password(backup_set_id, body.backup_password.as_deref())
-        .await;
-    let plan_digest = require_compatible_digest(&plan, &body.plan_digest)?;
-    consume_reauth_challenge(
-        body.challenge_token,
-        context.actor.user_id,
-        &session.session_id,
-        backup_set_id,
-        &plan_digest,
-        &body.exact_backup_name,
-    )
-    .map_err(ControlPlaneError::PermissionDenied)?;
-
-    let now = OffsetDateTime::now_utc();
-    let expires_at = now + recovery_intent_ttl();
-    let intent_id = Uuid::now_v7();
-    let recovery_job_id = RecoveryJobId::new();
-    let confirmed = ConfirmedRecoveryIntent::try_new(
-        intent_id,
-        recovery_job_id,
-        context.actor.user_id,
-        backup_set_id,
-        plan_digest,
-        now,
-        expires_at,
-    )
-    .map_err(|_| ControlPlaneError::InvalidInput("recovery_intent"))?;
-    let lease = runtime.reserve_recovery_maintenance(recovery_job_id)?;
-    let target_backup_password = body.backup_password;
-    tokio::spawn(async move {
-        if let Err(error) = runtime
-            .prepare_recovery_with_maintenance_lease(confirmed, target_backup_password, lease)
-            .await
-        {
-            tracing::error!(intent_id = %intent_id, recovery_job_id = %recovery_job_id.as_uuid(), error = %error, "recovery handoff preparation failed");
-        }
-    });
-    Ok((
-        StatusCode::ACCEPTED,
-        Json(ApiSuccess::new(RecoveryIntentResponse {
-            intent_id,
-            recovery_job_id,
+    let interface::SystemBackupsOutput::RecoveryIntent(response) = invoke(
+        state,
+        headers,
+        "http.console.settings.system-backups.recovery-intent.v1",
+        interface::SystemBackupsInput::RecoveryIntent {
             backup_set_id,
-            status: "preparing".to_owned(),
-            expires_at: expires_at.to_string(),
-        })),
-    ))
+            request: body,
+        },
+        true,
+    )
+    .await?
+    else {
+        unreachable!()
+    };
+    Ok((StatusCode::ACCEPTED, Json(ApiSuccess::new(response))))
 }
 
 #[utoipa::path(get, path = "/api/console/settings/system-backups/recovery/status", params(RecoveryStatusQuery), responses((status = 200, body = RecoveryStatusResponse)))]
@@ -822,15 +722,6 @@ fn validate_exact_name(id: BackupSetId, actual: &str) -> Result<(), ApiError> {
         return Err(ControlPlaneError::InvalidInput("exact_backup_name").into());
     }
     Ok(())
-}
-
-fn require_root_cookie(
-    context: &crate::middleware::require_session::RequestContext,
-) -> Result<&domain::SessionRecord, ApiError> {
-    if !context.actor.is_root {
-        return Err(ControlPlaneError::PermissionDenied("root_recovery_required").into());
-    }
-    context.cookie_session().map_err(Into::into)
 }
 
 fn require_compatible_digest(

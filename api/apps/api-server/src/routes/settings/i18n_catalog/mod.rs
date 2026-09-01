@@ -153,7 +153,7 @@ pub async fn get_i18n_catalog_state(
     let interface::I18nCatalogOutput::State(response) = invoke(
         state,
         headers,
-        "http.console.i18n.catalog.get.v1",
+        "http.console.settings.i18n.catalog.get.v1",
         interface::I18nCatalogInput::GetState,
     )
     .await?

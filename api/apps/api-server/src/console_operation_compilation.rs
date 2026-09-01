@@ -244,6 +244,63 @@ pub(crate) fn compile_console_operation_snapshot(
     })
 }
 
+pub(crate) fn policy_contributions_from_inventory(
+    inventory: &access_control::ConsoleOperationCompiledInventory,
+) -> Vec<ConsoleOperationPolicyContribution> {
+    inventory
+        .operations
+        .iter()
+        .map(|operation| ConsoleOperationPolicyContribution {
+            operation_id: operation.operation_id.clone(),
+            authorization_profile_id: operation.authorization_profile_id.clone(),
+            owner_id: operation.owner.owner_id.clone(),
+            owner_active: operation.lifecycle == access_control::SettingsFeatureLifecycle::Active,
+            policy_group: operation.policy_group.clone(),
+            authorization: operation.authorization.clone(),
+            routes: operation
+                .routes
+                .iter()
+                .filter(|route| {
+                    !crate::external_endpoint_catalog::is_approved_external_control_http(
+                        &route.method,
+                        &route.path,
+                    )
+                })
+                .cloned()
+                .collect(),
+        })
+        .collect()
+}
+
+pub(crate) fn migration_contributions_from_plan(
+    migration: &crate::console_policy_migration::CompiledCoreConsolePolicyMigration,
+) -> Vec<ConsoleMigrationDispositionContribution> {
+    migration
+        .dispositions()
+        .iter()
+        .map(|disposition| ConsoleMigrationDispositionContribution {
+            operation_id: disposition.operation_id.clone(),
+            disposition: match &disposition.disposition {
+                crate::console_policy_migration::ConsolePolicyMigrationOperationDispositionKind::Operations {
+                    legacy_grants,
+                } => ConsoleMigrationDisposition::LegacyOperations {
+                    legacy_grants: legacy_grants.clone(),
+                },
+                crate::console_policy_migration::ConsolePolicyMigrationOperationDispositionKind::NoProjection {
+                    evidence,
+                } => ConsoleMigrationDisposition::NoProjection {
+                    evidence: evidence.clone(),
+                },
+                crate::console_policy_migration::ConsolePolicyMigrationOperationDispositionKind::DefaultDisabledNewOperation {
+                    evidence,
+                } => ConsoleMigrationDisposition::DefaultDisabled {
+                    evidence: evidence.clone(),
+                },
+            },
+        })
+        .collect()
+}
+
 fn route_key(route: &ConsoleRouteBinding) -> (String, String) {
     (
         route.method.to_ascii_uppercase(),

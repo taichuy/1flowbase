@@ -292,6 +292,14 @@ impl ApprovedExternalControl {
     }
 }
 
+pub(crate) fn is_approved_external_control_http(method: &str, route_template: &str) -> bool {
+    let identity = ExternalEndpointIdentity::http(method, route_template);
+    ApprovedExternalControl::ALL
+        .into_iter()
+        .map(ApprovedExternalControl::contribution)
+        .any(|control| control.identity == identity)
+}
+
 #[derive(Default)]
 pub(crate) struct ExternalEndpointCatalogCompiler {
     rows: BTreeMap<ExternalEndpointIdentity, ExternalEndpointRow>,

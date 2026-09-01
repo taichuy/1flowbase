@@ -5,6 +5,12 @@ use interface_runtime::{
     InterfaceOwner, RegistryCompilationError, RegistryCompiler,
 };
 
+use crate::console_operation_compilation::{
+    compile_console_operation_snapshot, migration_contributions_from_plan,
+    policy_contributions_from_inventory, CompiledConsoleOperationSnapshot, ConsoleBindingOwnerKind,
+    ConsoleBindingOwnershipContribution,
+};
+
 #[derive(Clone)]
 pub(crate) struct InterfaceRegistryContribution {
     contribution_id: &'static str,
@@ -32,6 +38,14 @@ impl InterfaceRegistryContribution {
     pub(crate) fn with_test_contribution_id(mut self, contribution_id: &'static str) -> Self {
         self.contribution_id = contribution_id;
         self
+    }
+
+    fn console_binding_contributions(&self) -> Vec<ConsoleBindingOwnershipContribution> {
+        console_bindings_from_registry(
+            self.contribution_id,
+            ConsoleBindingOwnerKind::Family,
+            self.registry.as_ref(),
+        )
     }
 }
 
@@ -139,6 +153,87 @@ impl InterfaceContributionCollector {
         }
         Ok(compiler.compile()?)
     }
+
+    pub(crate) fn compile_complete_console_snapshot(
+        self,
+        console_inventory: &access_control::ConsoleOperationCompiledInventory,
+    ) -> anyhow::Result<(
+        Arc<CompiledInterfaceRegistry>,
+        CompiledConsoleOperationSnapshot,
+    )> {
+        let migration =
+            crate::console_policy_migration::compile_core_console_policy_migration_plan(
+                console_inventory,
+            )?;
+        let mut binding_contributions = Vec::new();
+        let mut known_binding_owners = BTreeSet::new();
+        for published in &self.published {
+            binding_contributions.extend(console_bindings_from_registry(
+                published.owner.as_str(),
+                ConsoleBindingOwnerKind::HostExtension,
+                published.registry.as_ref(),
+            ));
+            known_binding_owners.extend(
+                published
+                    .registry
+                    .definitions()
+                    .map(|definition| definition.owner().as_str().to_string()),
+            );
+        }
+        for contribution in &self.contributions {
+            binding_contributions.extend(contribution.console_binding_contributions());
+            known_binding_owners.extend(
+                contribution
+                    .registry
+                    .definitions()
+                    .map(|definition| definition.owner().as_str().to_string()),
+            );
+        }
+        let snapshot = compile_console_operation_snapshot(
+            policy_contributions_from_inventory(console_inventory),
+            binding_contributions,
+            migration_contributions_from_plan(&migration),
+            known_binding_owners,
+        )?;
+        let registry = self.compile()?;
+        Ok((registry, snapshot))
+    }
+}
+
+fn console_bindings_from_registry(
+    contribution_id: &str,
+    owner_kind: ConsoleBindingOwnerKind,
+    registry: &CompiledInterfaceRegistry,
+) -> Vec<ConsoleBindingOwnershipContribution> {
+    registry
+        .bindings()
+        .filter_map(|binding| {
+            let route = binding.projection().http_route()?;
+            if !route.path().starts_with("/api/console") {
+                return None;
+            }
+            let definition = registry.definition(binding.interface_identity().interface_id())?;
+            Some(ConsoleBindingOwnershipContribution {
+                contribution_id: contribution_id.to_string(),
+                owner_kind,
+                owner_id: definition.owner().as_str().to_string(),
+                owner_active: true,
+                interface_id: definition.interface_id().as_str().to_string(),
+                binding_id: binding.binding_id().as_str().to_string(),
+                protocol: match binding.projection().protocol() {
+                    interface_runtime::InterfaceProtocol::Http => "http",
+                    interface_runtime::InterfaceProtocol::Mcp => "mcp",
+                    interface_runtime::InterfaceProtocol::Internal => "internal",
+                    interface_runtime::InterfaceProtocol::Worker => "worker",
+                }
+                .to_string(),
+                route: access_control::ConsoleRouteBinding {
+                    method: route.method().to_string(),
+                    path: route.path().to_string(),
+                },
+            })
+        })
+        .collect()
 }
 
 pub(crate) fn production_interface_contributions(
@@ -1507,6 +1602,8 @@ pub(crate) fn production_interface_contributions(
         InterfaceRegistryContribution::new(
             "api-server.console-system-backups",
             &[
+                "system_backups.list",
+                "system_backups.create",
                 "system_backups.import",
                 "system_backups.recovery.status",
                 "system_backups.status",
@@ -1514,12 +1611,35 @@ pub(crate) fn production_interface_contributions(
                 "system_backups.delete",
                 "system_backups.verify",
                 "system_backups.download",
+                "system_backups.recovery.preflight",
+                "system_backups.recovery.reauth",
+                "system_backups.recovery.intent",
             ],
             &["api-server.console-system-backups"],
             crate::routes::system_backups::interface::compile_registry(
                 crate::routes::system_backups::interface::port(
                     crate::routes::system_backups::interface::SystemBackupsDependencies {
                         runtime: state.system_backup.clone(),
+                        store: state.store.clone(),
+                        backup_status_access: {
+                            let access = crate::middleware::require_settings_feature_permission::compiled_console_route_access(
+                                &state.console_operation_registry,
+                                "GET",
+                                "/api/console/settings/system-backups/jobs/status/:backup_job_id",
+                            )
+                            .map_err(|_| {
+                                RegistryCompilationError::UnknownAuthorizationOperation(
+                                    interface_runtime::InterfaceId::new("system_backups.status")
+                                        .expect("static system backup status operation is valid"),
+                                )
+                            })?;
+                            crate::routes::system_backups::interface::BackupStatusAccess {
+                                operation_id: access.operation_id.to_owned(),
+                                policy_group: access.policy_group.clone(),
+                                authorization: access.authorization.clone(),
+                                resource_access: access.resource_access.cloned(),
+                            }
+                        },
                     },
                 ),
             )?,

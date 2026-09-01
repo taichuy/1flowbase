@@ -1,16 +1,31 @@
 use std::sync::Arc;
 
-use control_plane::errors::ControlPlaneError;
+use argon2::{
+    password_hash::{PasswordHash, PasswordVerifier},
+    Argon2,
+};
+use control_plane::{errors::ControlPlaneError, system_recovery::ConfirmedRecoveryIntent};
+use domain::{BackupSetId, ContentDigest, RecoveryJobId};
 use interface_runtime::{InterfaceContract, UserPrincipal};
+use storage_durable_postgres::MainDurableStore;
+use time::OffsetDateTime;
 use tokio::io::{AsyncWriteExt, DuplexStream};
 use uuid::Uuid;
 
 use super::{
-    detail_response, mutation_response, BackupJobStatusResponse, BackupMutationResponse,
-    BackupSetDetailResponse, BackupVerificationResponse, RecoveryStatusResponse,
+    canonical_backup_name, detail_response, mutation_response, preflight_response,
+    require_compatible_digest, validate_exact_name, BackupJobStatusResponse,
+    BackupMutationResponse, BackupSetDetailResponse, BackupSetListResponse,
+    BackupSetSummaryResponse, BackupVerificationResponse, CreateRecoveryIntentRequest,
+    QueuedBackupResponse, RecoveryIntentResponse, RecoveryPreflightResponse, RecoveryReauthRequest,
+    RecoveryReauthResponse, RecoveryStatusResponse,
 };
 use crate::{
     error_response::{ApiError, ApiServiceUnavailable},
+    middleware::require_settings_feature_permission::authorize_compiled_console_access,
+    recovery_authorization::{
+        consume_reauth_challenge, issue_reauth_challenge, recovery_intent_ttl,
+    },
     routes::console_interface::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
         ConsoleInterfaceTargetError,
@@ -19,6 +34,10 @@ use crate::{
 };
 
 pub(crate) enum SystemBackupsInput {
+    List,
+    Create {
+        backup_password: Option<String>,
+    },
     Import {
         bytes: Vec<u8>,
         backup_password: Option<String>,
@@ -42,6 +61,17 @@ pub(crate) enum SystemBackupsInput {
     GetRecoveryStatus {
         recovery_job_id: Option<Uuid>,
     },
+    RecoveryPreflight {
+        backup_set_id: Uuid,
+        backup_password: Option<String>,
+    },
+    RecoveryReauth {
+        request: RecoveryReauthRequest,
+    },
+    RecoveryIntent {
+        backup_set_id: Uuid,
+        request: CreateRecoveryIntentRequest,
+    },
 }
 
 impl InterfaceContract for SystemBackupsInput {
@@ -57,6 +87,8 @@ pub(crate) struct BackupDownload {
 }
 
 pub(crate) enum SystemBackupsOutput {
+    Listed(BackupSetListResponse),
+    Created(QueuedBackupResponse),
     Imported(BackupMutationResponse),
     JobStatus(BackupJobStatusResponse),
     Detail(BackupSetDetailResponse),
@@ -64,6 +96,9 @@ pub(crate) enum SystemBackupsOutput {
     Verified(BackupVerificationResponse),
     Download(BackupDownload),
     RecoveryStatus(RecoveryStatusResponse),
+    RecoveryPreflight(RecoveryPreflightResponse),
+    RecoveryReauth(RecoveryReauthResponse),
+    RecoveryIntent(RecoveryIntentResponse),
 }
 
 impl InterfaceContract for SystemBackupsOutput {
@@ -73,6 +108,16 @@ impl InterfaceContract for SystemBackupsOutput {
 
 pub(crate) struct SystemBackupsDependencies {
     pub(crate) runtime: Option<Arc<SystemBackupRuntime>>,
+    pub(crate) store: MainDurableStore,
+    pub(crate) backup_status_access: BackupStatusAccess,
+}
+
+#[derive(Clone)]
+pub(crate) struct BackupStatusAccess {
+    pub(crate) operation_id: String,
+    pub(crate) policy_group: access_control::ConsolePolicyGroup,
+    pub(crate) authorization: access_control::ConsoleAuthorization,
+    pub(crate) resource_access: Option<access_control::ResourceAccessRegistration>,
 }
 
 struct SystemBackupsAdapter(SystemBackupsDependencies);
@@ -99,6 +144,142 @@ impl SystemBackupsAdapter {
             return Err(ControlPlaneError::PermissionDenied("cookie_session_required").into());
         }
         Ok(())
+    }
+
+    async fn authorize_backup_status(&self, principal: &UserPrincipal) -> Result<(), ApiError> {
+        let actor = principal.actor();
+        if actor.is_root
+            || matches!(
+                self.0.backup_status_access.authorization,
+                access_control::ConsoleAuthorization::Authenticated
+            )
+        {
+            return Ok(());
+        }
+        let policies = self
+            .0
+            .store
+            .load_console_policy_for_bound_role(
+                actor.user_id,
+                actor.current_workspace_id,
+                &actor.effective_display_role,
+            )
+            .await?;
+        let access = access_control::ConsoleRouteAccess {
+            operation_id: &self.0.backup_status_access.operation_id,
+            policy_group: &self.0.backup_status_access.policy_group,
+            authorization: &self.0.backup_status_access.authorization,
+            resource_access: self.0.backup_status_access.resource_access.as_ref(),
+        };
+        if !authorize_compiled_console_access(&access, actor, &policies) {
+            return Err(
+                ControlPlaneError::PermissionDenied("console_operation_permission_denied").into(),
+            );
+        }
+        Ok(())
+    }
+
+    async fn recovery_reauth(
+        &self,
+        principal: &UserPrincipal,
+        body: RecoveryReauthRequest,
+    ) -> Result<RecoveryReauthResponse, ApiError> {
+        Self::require_root_cookie(principal)?;
+        validate_exact_name(body.backup_set_id, &body.exact_backup_name)?;
+        let plan = self
+            .runtime()?
+            .preflight_with_password(body.backup_set_id, body.backup_password.as_deref())
+            .await;
+        require_compatible_digest(&plan, &body.plan_digest)?;
+        let user = self
+            .0
+            .store
+            .find_user_by_id(principal.actor().user_id)
+            .await?
+            .ok_or(ControlPlaneError::PermissionDenied(
+                "recovery_reauth_failed",
+            ))?;
+        let parsed = PasswordHash::new(&user.password_hash)
+            .map_err(|_| ControlPlaneError::PermissionDenied("recovery_reauth_failed"))?;
+        Argon2::default()
+            .verify_password(body.password.as_bytes(), &parsed)
+            .map_err(|_| ControlPlaneError::PermissionDenied("recovery_reauth_failed"))?;
+        let digest = ContentDigest::try_from(body.plan_digest)
+            .map_err(|_| ControlPlaneError::InvalidInput("plan_digest"))?;
+        let session = principal
+            .authenticated_session()
+            .expect("root cookie checked");
+        let challenge = issue_reauth_challenge(
+            principal.actor().user_id,
+            session.expose_to_trusted_handler(),
+            body.backup_set_id,
+            digest,
+            &body.exact_backup_name,
+        );
+        Ok(RecoveryReauthResponse {
+            challenge_token: challenge.token,
+            expires_at: challenge.expires_at.to_string(),
+        })
+    }
+
+    async fn recovery_intent(
+        &self,
+        principal: &UserPrincipal,
+        backup_set_id: Uuid,
+        body: CreateRecoveryIntentRequest,
+    ) -> Result<RecoveryIntentResponse, ApiError> {
+        Self::require_root_cookie(principal)?;
+        let backup_set_id = BackupSetId::from_uuid(backup_set_id);
+        validate_exact_name(backup_set_id, &body.exact_backup_name)?;
+        let runtime = self.runtime()?;
+        let plan = runtime
+            .preflight_with_password(backup_set_id, body.backup_password.as_deref())
+            .await;
+        let plan_digest = require_compatible_digest(&plan, &body.plan_digest)?;
+        let session = principal
+            .authenticated_session()
+            .expect("root cookie checked");
+        consume_reauth_challenge(
+            body.challenge_token,
+            principal.actor().user_id,
+            session.expose_to_trusted_handler(),
+            backup_set_id,
+            &plan_digest,
+            &body.exact_backup_name,
+        )
+        .map_err(ControlPlaneError::PermissionDenied)?;
+
+        let now = OffsetDateTime::now_utc();
+        let expires_at = now + recovery_intent_ttl();
+        let intent_id = Uuid::now_v7();
+        let recovery_job_id = RecoveryJobId::new();
+        let confirmed = ConfirmedRecoveryIntent::try_new(
+            intent_id,
+            recovery_job_id,
+            principal.actor().user_id,
+            backup_set_id,
+            plan_digest,
+            now,
+            expires_at,
+        )
+        .map_err(|_| ControlPlaneError::InvalidInput("recovery_intent"))?;
+        let lease = runtime.reserve_recovery_maintenance(recovery_job_id)?;
+        let target_backup_password = body.backup_password;
+        tokio::spawn(async move {
+            if let Err(error) = runtime
+                .prepare_recovery_with_maintenance_lease(confirmed, target_backup_password, lease)
+                .await
+            {
+                tracing::error!(intent_id = %intent_id, recovery_job_id = %recovery_job_id.as_uuid(), error = %error, "recovery handoff preparation failed");
+            }
+        });
+        Ok(RecoveryIntentResponse {
+            intent_id,
+            recovery_job_id,
+            backup_set_id,
+            status: "preparing".to_owned(),
+            expires_at: expires_at.to_string(),
+        })
     }
 
     async fn import(
@@ -188,6 +369,36 @@ impl SystemBackupsAdapter {
         input: SystemBackupsInput,
     ) -> Result<SystemBackupsOutput, ApiError> {
         match input {
+            SystemBackupsInput::List => {
+                let items = self
+                    .runtime()?
+                    .list()
+                    .await?
+                    .into_iter()
+                    .map(|entry| BackupSetSummaryResponse {
+                        exact_backup_name: canonical_backup_name(entry.backup_set_id),
+                        backup_set_id: entry.backup_set_id,
+                        created_at: entry.created_at.to_string(),
+                        availability: entry.availability,
+                        total_size_bytes: entry.total_size_bytes,
+                        envelope_digest: entry
+                            .envelope_digest
+                            .map(|value| value.as_str().to_owned()),
+                    })
+                    .collect();
+                Ok(SystemBackupsOutput::Listed(BackupSetListResponse { items }))
+            }
+            SystemBackupsInput::Create { backup_password } => {
+                self.authorize_backup_status(principal).await?;
+                let queued = self
+                    .runtime()?
+                    .queue_manual_backup(principal.actor().user_id, backup_password)
+                    .await?;
+                Ok(SystemBackupsOutput::Created(QueuedBackupResponse {
+                    backup_job_id: queued.backup_job_id,
+                    backup_set_id: queued.backup_set_id,
+                }))
+            }
             SystemBackupsInput::Import {
                 bytes,
                 backup_password,
@@ -243,6 +454,34 @@ impl SystemBackupsAdapter {
                     self.recovery_status(principal, recovery_job_id).await?,
                 ))
             }
+            SystemBackupsInput::RecoveryPreflight {
+                backup_set_id,
+                backup_password,
+            } => {
+                Self::require_root_cookie(principal)?;
+                let plan = self
+                    .runtime()?
+                    .preflight_with_password(
+                        BackupSetId::from_uuid(backup_set_id),
+                        backup_password.as_deref(),
+                    )
+                    .await;
+                Ok(SystemBackupsOutput::RecoveryPreflight(preflight_response(
+                    &plan,
+                )?))
+            }
+            SystemBackupsInput::RecoveryReauth { request } => {
+                Ok(SystemBackupsOutput::RecoveryReauth(
+                    self.recovery_reauth(principal, request).await?,
+                ))
+            }
+            SystemBackupsInput::RecoveryIntent {
+                backup_set_id,
+                request,
+            } => Ok(SystemBackupsOutput::RecoveryIntent(
+                self.recovery_intent(principal, backup_set_id, request)
+                    .await?,
+            )),
         }
     }
 }
@@ -262,6 +501,20 @@ impl ConsoleInterfacePort<SystemBackupsInput, SystemBackupsOutput> for SystemBac
 }
 
 pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
+    ConsoleInterfaceDeclaration {
+        interface_id: "system_backups.list",
+        binding_id: "http.console.settings.system-backups.list.get.v1",
+        method: "GET",
+        path: "/api/console/settings/system-backups",
+        mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "system_backups.create",
+        binding_id: "http.console.settings.system-backups.create.v1",
+        method: "POST",
+        path: "/api/console/settings/system-backups",
+        mutating: true,
+    },
     ConsoleInterfaceDeclaration {
         interface_id: "system_backups.import",
         binding_id: "http.console.settings.system-backups.import.v1",
@@ -310,6 +563,27 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         method: "GET",
         path: "/api/console/settings/system-backups/:backup_set_id/download",
         mutating: false,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "system_backups.recovery.preflight",
+        binding_id: "http.console.settings.system-backups.recovery-preflight.v1",
+        method: "POST",
+        path: "/api/console/settings/system-backups/:backup_set_id/recovery/preflight",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "system_backups.recovery.reauth",
+        binding_id: "http.console.settings.system-backups.recovery-reauth.v1",
+        method: "POST",
+        path: "/api/console/settings/system-backups/recovery/reauth",
+        mutating: true,
+    },
+    ConsoleInterfaceDeclaration {
+        interface_id: "system_backups.recovery.intent",
+        binding_id: "http.console.settings.system-backups.recovery-intent.v1",
+        method: "POST",
+        path: "/api/console/settings/system-backups/:backup_set_id/recovery/intents",
+        mutating: true,
     },
 ];
 
@@ -363,5 +637,16 @@ mod tests {
             assert_eq!(route.path(), declaration.path);
         }
         assert_eq!(registry.bindings().count(), DECLARATIONS.len());
+        for operation in [
+            "system_backups.list",
+            "system_backups.create",
+            "system_backups.recovery.preflight",
+            "system_backups.recovery.reauth",
+            "system_backups.recovery.intent",
+        ] {
+            assert!(DECLARATIONS
+                .iter()
+                .any(|declaration| declaration.interface_id == operation));
+        }
     }
 }

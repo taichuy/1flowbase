@@ -78,6 +78,8 @@ pub struct ExtensionBootSnapshot {
     authentication_factories: AuthenticationAdapterFactoryRegistry,
     external_endpoint_catalog:
         OnceLock<Arc<crate::external_endpoint_catalog::ExternalEndpointCatalog>>,
+    console_operation_snapshot:
+        OnceLock<Arc<crate::console_operation_compilation::CompiledConsoleOperationSnapshot>>,
 }
 
 pub fn compile_extension_boot_snapshot(
@@ -119,6 +121,7 @@ impl ExtensionBootSnapshot {
             authentication_factories: AuthenticationAdapterFactoryRegistry::built_in()
                 .expect("built-in authentication factories must be valid"),
             external_endpoint_catalog: OnceLock::new(),
+            console_operation_snapshot: OnceLock::new(),
         }
     }
 
@@ -191,6 +194,7 @@ impl ExtensionBootSnapshot {
             interface_registry: Some(interface_registry),
             authentication_factories,
             external_endpoint_catalog: OnceLock::new(),
+            console_operation_snapshot: OnceLock::new(),
         })
     }
 
@@ -241,6 +245,12 @@ impl ExtensionBootSnapshot {
         self.external_endpoint_catalog.get()
     }
 
+    pub(crate) fn console_operation_snapshot(
+        &self,
+    ) -> Option<&Arc<crate::console_operation_compilation::CompiledConsoleOperationSnapshot>> {
+        self.console_operation_snapshot.get()
+    }
+
     pub(crate) fn publish_complete_catalog(
         &self,
         state: &Arc<crate::app_state::ApiState>,
@@ -267,10 +277,16 @@ impl ExtensionBootSnapshot {
         for contribution in production_interface_contributions(state)? {
             collector.add(contribution)?;
         }
-        let candidate = collector.compile()?;
+        let (candidate, console_operation_snapshot) = collector
+            .compile_complete_console_snapshot(state.console_operation_registry.inventory())?;
         self.authentication_factories
             .validate_registry(&candidate)?;
         registry.publish(candidate);
+        self.console_operation_snapshot
+            .set(Arc::new(console_operation_snapshot))
+            .map_err(|_| {
+                anyhow::anyhow!("compiled Console operation snapshot is already published")
+            })?;
         Ok(())
     }
 
