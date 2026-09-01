@@ -5,6 +5,7 @@ extern crate self as api_server;
 pub mod app_state;
 pub mod application_public_docs;
 pub mod config;
+pub(crate) mod console_operation_compilation;
 pub mod console_policy_migration;
 pub mod console_surface_registry;
 pub mod error_response;

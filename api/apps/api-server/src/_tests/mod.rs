@@ -8,6 +8,7 @@ mod billing_routes;
 mod compatibility_interface_tests;
 mod config_tests;
 mod console_navigation_routes;
+mod console_operation_compilation_tests;
 mod console_policy_migration_tests;
 mod core_console_display_i18n_routes;
 mod data_sources_routes;
