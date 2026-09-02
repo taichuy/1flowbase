@@ -13,8 +13,9 @@
 - EIL-F14R-D input Product Assembly: `beta@d8a20be4eda6fd1dd39d3b3a15e02d2b56692cee`
 - EIL-F14R-D assembled Product candidate: `beta@093c19b8a542644d9faed5f8942e66784c30292b`
 - EIL-F14R-E assembled Product candidate: `beta@c4865b02e0836a69409d43a252e6e0f800a7e254`
+- EIL-F14R-F assembled Product candidate: `beta@2792e691217f5a88078bff479bfde4058a9ced8b`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
-- Delivery state: `QA_FAIL / FIX PACKET PENDING`
+- Delivery state: `QA_FAIL / QA-7 AUTHORIZATION PENDING`
 - Root AC state: candidate only; not settled
 
 ## Packet Assembly
@@ -36,6 +37,8 @@
 | EIL-F12 | `b08374b3f..379496b1d` | Console workspace, frontstage and UI families |
 | EIL-F13 | `1bee7198c..3ab5c6e1e` | Console system, i18n, docs, billing and backup families |
 | EIL-F14 | `3c6701837534bba1acef2ba7ae4a23730312da35` | Production Catalog publication, zero-unclassified gate, direct AuthN residue removal and global boundary fixtures |
+| EIL-F14R-A | `80b8508de849ef6f8636f10a478b17fc64cc0f7d` | Register `i18n.catalog.view` as an explicit authenticated Core operation without changing its workspace restriction or API contract |
+| EIL-F14R-B | `a577d91bce7a9792108668316fd36ab81d31b019` | Preserve SQL/raw-pool/Runtime-Host prohibitions while allowing approved explicit durable Adapter fields |
 | EIL-F14R-C | `d8a20be4eda6fd1dd39d3b3a15e02d2b56692cee` | Exact Console operation-spec set, explicit authenticated operation ownership, complete Frontstage specifications and post-migration fixture alignment |
 | EIL-F14R-D1 | `b3e461f2e1a2faa41502e09d622fd89a6b31846a` | Typed Console operation compilation source with deterministic complete-set failure reporting |
 | EIL-F14R-D2 | `2005de7cbe49774fced125d80f126aab5066d78a` | Registry Binding ownership and migration disposition derived from one compiled snapshot; System Backup residuals enter typed lifecycle |
@@ -43,6 +46,9 @@
 | EIL-F14R-D4 | `d682d8f1e08db8b6bc74acedbb8837d64dbb388d` | Global publication evidence and QA-4 governance freeze |
 | EIL-F14R-D5 | `db57f9adf8c4c11ad4e43eaecae8059e2551ef23` | QA-4 history and QA harness resource isolation only; Product Assembly unchanged |
 | EIL-F14R-E | `c4865b02e0836a69409d43a252e6e0f800a7e254` | Preserve archive-export and runtime-model error semantics; freeze exact resource-bounded QA-6 execution evidence |
+| EIL-F14R-F1 | `b2443544a445959828977d3fb671abd5eb981bd5` | Defer Console CSRF protocol admission until after frozen Core Authorization while retaining exactly-one session authentication owner |
+| EIL-F14R-F2 | `2792e691217f5a88078bff479bfde4058a9ced8b` | Align stale controlled negatives with Router/Registry publish-time fail-closed behavior |
+| EIL-F14R-F3 | documentation HEAD | Correct Packet completeness and freeze the future QA-7 harness without executing it |
 
 Every row above is a serial commit or inclusive serial range on `beta`; the Git history is the authoritative per-file write-set ledger. No packet changed database schema, migrations, external DTOs, permissions, Runtime/plugin wire, or official plugin source.
 
@@ -370,3 +376,32 @@ Endpoint counts remain `1058 / 472 / 584 / 2 / 0`; Console inventory remains
 double-write and second Registry remain zero. Attempts 1 through 6 remain local and immutable.
 #1963 and #1893 stay OPEN; no EIL or Root AC is formally settled, no push occurred, and the next
 state requires a finite approved fix packet rather than another automatic QA run.
+
+## EIL-F14R-F assembled candidate — QA-7 authorization pending
+
+The approved finite QA-6 remediation is assembled at Product Assembly
+`beta@2792e691217f5a88078bff479bfde4058a9ced8b`:
+
+1. Console Authentication still resolves the session exactly once, but defers the CSRF protocol
+   result to the frozen target Admission stage. Core Authorization therefore retains ownership of
+   the established `403 Forbidden` permission result for a valid limited-role session, while an
+   authorized cookie-session mutation with missing CSRF remains `401 Unauthorized` before Handler
+   execution. Raw credentials do not enter Handler, Receipt or extension facts.
+2. The two stale controlled negatives now assert the architecture's publish-time fail-closed
+   boundary: an unknown Console authorization operation prevents complete catalog publication, and
+   a missing `ExtensionBootSnapshot` prevents External Endpoint Catalog/Router publication. No
+   runtime fallback, legacy sign-in path or unregistered route execution was restored.
+3. Packet Assembly now contains separate EIL-F14R-A and EIL-F14R-B rows. The future QA harness uses
+   the authoritative exact-inventory validator output for Row 15 instead of the former nested-quote
+   `grep` and includes F14R-F1/F2/F3 in semantic Packet completeness.
+
+Targeted assembly evidence is limited to `cargo check -p api-server --tests`, the exact MCP
+permission-equivalence fixture, the exact authorized-missing-CSRF fixture, and the two corrected
+publish-time fixtures; all passed. `cargo fmt --all --check` and `git diff --check` are the remaining
+mechanical freeze checks. This evidence is not centralized QA and does not supersede immutable
+QA-1 through QA-6 history.
+
+QA-7 has not been run and is not authorized by this assembly step. #1963 remains OPEN in
+`phase:ready`; #1893 remains OPEN; no EIL or Root AC is settled, no push occurred, and no database
+schema, migration, external DTO, permission policy, Runtime/plugin wire or official-plugin source
+was changed.
