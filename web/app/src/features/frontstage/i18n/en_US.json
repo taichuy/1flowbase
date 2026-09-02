@@ -241,6 +241,9 @@
     "layout_mode": "Layout mode",
     "layout_mode_auto": "Automatic layout",
     "layout_mode_free": "Free grid",
+    "refresh_current_page": "Refresh current page",
+    "refresh_current_page_failed": "Failed to refresh current page",
+    "refreshing_current_page": "Refreshing current page...",
     "tab_route_segment": "Route segment",
     "tab_route_segment_required": "Enter a route segment",
     "tab_settings": "Tab settings"

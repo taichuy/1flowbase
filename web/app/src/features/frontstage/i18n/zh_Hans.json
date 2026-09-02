@@ -241,6 +241,9 @@
     "layout_mode": "布局方式",
     "layout_mode_auto": "自动布局",
     "layout_mode_free": "自由网格",
+    "refresh_current_page": "刷新当前页面",
+    "refresh_current_page_failed": "刷新当前页面失败",
+    "refreshing_current_page": "正在刷新当前页面……",
     "tab_route_segment": "访问路径",
     "tab_route_segment_required": "请输入标签页访问路径",
     "tab_settings": "标签页设置"

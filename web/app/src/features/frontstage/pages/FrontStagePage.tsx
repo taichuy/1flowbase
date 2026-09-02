@@ -111,6 +111,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   hasPageContentLoadError,
   isPageContentPermissionDenied,
   onRetryLoadPageContent,
+  onRefreshPage,
   isPageTreeMutating,
   pageTreeMutationError,
   onCreateGroupNode,
@@ -175,6 +176,10 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
   const [isBlockSavePending, setIsBlockSavePending] = useState(false);
   const blockCreationPendingRef = useRef(false);
   const [blockSaveError, setBlockSaveError] = useState<string | null>(null);
+  const pageRefreshPendingRef = useRef(false);
+  const pageRefreshGenerationRef = useRef(0);
+  const [isPageRefreshPending, setIsPageRefreshPending] = useState(false);
+  const [pageRefreshError, setPageRefreshError] = useState<string | null>(null);
   const blockCatalog = useFrontstageBlockCatalog({ workspaceId });
   const pageContentSave = useFrontstagePageContentSave({
     workspaceId,
@@ -500,6 +505,50 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     (pageContentSave.error
       ? toDisplayErrorMessage(pageContentSave.error)
       : null);
+  const handlePageRefresh = useCallback(async () => {
+    if (
+      !onRefreshPage ||
+      pageRefreshPendingRef.current ||
+      isOperationPending ||
+      isPageContentSavePending
+    ) {
+      return;
+    }
+
+    pageRefreshPendingRef.current = true;
+    const refreshGeneration = pageRefreshGenerationRef.current + 1;
+    pageRefreshGenerationRef.current = refreshGeneration;
+    setIsPageRefreshPending(true);
+    setPageRefreshError(null);
+    setSavedPageContent(null);
+    try {
+      await onRefreshPage();
+      if (pageRefreshGenerationRef.current !== refreshGeneration) return;
+      rootBlocks.forEach((block) =>
+        pageCanvasNativePreparations.refreshBlock(block.id)
+      );
+      assemblyBlocks.forEach((block) =>
+        assemblyRuntime.refreshBlock(block.id)
+      );
+    } catch (error) {
+      if (pageRefreshGenerationRef.current === refreshGeneration) {
+        setPageRefreshError(toDisplayErrorMessage(error));
+      }
+    } finally {
+      if (pageRefreshGenerationRef.current === refreshGeneration) {
+        pageRefreshPendingRef.current = false;
+        setIsPageRefreshPending(false);
+      }
+    }
+  }, [
+    assemblyBlocks,
+    assemblyRuntime,
+    isOperationPending,
+    isPageContentSavePending,
+    onRefreshPage,
+    pageCanvasNativePreparations,
+    rootBlocks
+  ]);
   const canAddBlock =
     Boolean(activePageContent) &&
     !isPageContentLoading &&
@@ -547,11 +596,15 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
     [blockCatalog.items, selectedBlock]
   );
   useEffect(() => {
+    pageRefreshGenerationRef.current += 1;
+    pageRefreshPendingRef.current = false;
+    setIsPageRefreshPending(false);
     setSavedPageContent(null);
     setSelectedBlockId(null);
     setIsJsxStudioOpen(false);
     setBlockSaveError(null);
-  }, [selectedPageId]);
+    setPageRefreshError(null);
+  }, [selectedPageId, tabId]);
 
   useEffect(() => {
     setSavedPageContent(null);
@@ -1281,6 +1334,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                   <div className="frontstage-page-workspace__page-action">
                     <PageWorkspaceActionMenu
                       disabled={isOperationPending || isPageContentSavePending}
+                      refreshing={isPageRefreshPending}
                       tabsEnabled={
                         selectedPageNode.content_presentation === 'tabs'
                       }
@@ -1288,6 +1342,7 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
                         blockCompositionState?.document.layoutMode ?? 'auto'
                       }
                       onEdit={() => handleRenameNode(selectedPageNode)}
+                      onRefresh={() => void handlePageRefresh()}
                       onTabsEnabledChange={handlePageTabsEnabledChange}
                       onLayoutModeChange={handlePageLayoutModeChange}
                     />
@@ -1302,6 +1357,26 @@ export const FrontStagePage: FC<FrontStagePageProps> = ({
             data-flowbase-frontstage-scroll-owner=""
           >
             {renderPageTreeErrorBanner}
+            {isPageRefreshPending ? (
+              <Typography.Text
+                type="secondary"
+                style={{ marginBottom: 12, display: 'block' }}
+              >
+                {i18nText('frontstage', 'design.refreshing_current_page')}
+              </Typography.Text>
+            ) : null}
+            {pageRefreshError ? (
+              <Alert
+                style={{ marginBottom: 12 }}
+                title={i18nText(
+                  'frontstage',
+                  'design.refresh_current_page_failed'
+                )}
+                description={pageRefreshError}
+                type="error"
+                showIcon
+              />
+            ) : null}
             {canEnterDesignMode &&
             isDesignMode &&
             (isOperationPending || hasOperationError) ? (

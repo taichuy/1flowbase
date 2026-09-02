@@ -41,6 +41,7 @@ import {
 } from '../lib/page-tree';
 import { createFrontstageBlockRouteInputs } from '../lib/page-canvas/runtime-assembly';
 import { FrontStagePage } from './FrontStagePage';
+import { refreshCurrentFrontstagePage } from './frontstage-page/refresh-current-page';
 
 export interface FrontstageWorkspacePageProps {
   workspaceId: string;
@@ -380,6 +381,27 @@ export function FrontstageWorkspacePage({
         }}
         onRetryLoadPageContent={() => {
           void pageContentQuery.refetch();
+        }}
+        onRefreshPage={async () => {
+          await refreshCurrentFrontstagePage({
+            refreshPageContent: () =>
+              pageContentQuery.refetch({
+                cancelRefetch: true,
+                throwOnError: true
+              }),
+            refreshBlockRoots: () =>
+              blockRootsQuery.refetch({
+                cancelRefetch: true,
+                throwOnError: true
+              }),
+            refreshBlockRuntimeAssembly: blockId
+              ? () =>
+                  blockRuntimeAssemblyQuery.refetch({
+                    cancelRefetch: true,
+                    throwOnError: true
+                  })
+              : undefined
+          });
         }}
         onNavigatePage={(nextPageId) => {
           if (!rootNode?.slug) return;
