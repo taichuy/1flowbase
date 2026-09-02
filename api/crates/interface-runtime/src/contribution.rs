@@ -7,6 +7,8 @@ use crate::{
     InvocationPrincipal, PrincipalProfile, ProtocolBinding,
 };
 
+type StreamContributionMarker<I, S, O, E, P> = PhantomData<fn(I, S, O, E, P)>;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ContributedProtocolBinding {
     binding: ProtocolBinding,
@@ -93,7 +95,7 @@ where
 {
     definition: InterfaceDefinition,
     bindings: Vec<ContributedProtocolBinding>,
-    marker: PhantomData<fn(I, S, O, E, P)>,
+    marker: StreamContributionMarker<I, S, O, E, P>,
 }
 
 impl<I, S, O, E, P> TypedInterfaceStreamDefinitionContribution<I, S, O, E, P>

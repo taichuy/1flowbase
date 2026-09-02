@@ -291,6 +291,10 @@ pub struct InterfaceDefinition {
 }
 
 impl InterfaceDefinition {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the stable definition constructor preserves the explicit compiled contract"
+    )]
     pub fn new(
         identity: InterfaceIdentity,
         contracts: InterfaceContracts,

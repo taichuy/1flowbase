@@ -138,6 +138,10 @@ pub enum LifecycleHandlerRegistryError {
     },
 }
 
+#[expect(
+    clippy::result_large_err,
+    reason = "the stable compiler API preserves structured lifecycle mismatch diagnostics"
+)]
 pub fn compile_lifecycle_handler_registry(
     plan: &EffectiveLifecycleSubscriberPlan,
     bindings: Vec<LifecycleHandlerBinding>,

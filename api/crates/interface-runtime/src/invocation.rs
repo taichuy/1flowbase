@@ -312,6 +312,10 @@ where
     I: InterfaceContract,
     P: InvocationPrincipal,
 {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the stable envelope constructor mirrors the sealed invocation boundary"
+    )]
     pub fn with_principal(
         lineage: InvocationLineage,
         binding_id: BindingId,
@@ -334,6 +338,10 @@ where
         )
     }
 
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the stable envelope constructor mirrors the sealed invocation boundary"
+    )]
     pub fn with_principal_and_controls(
         lineage: InvocationLineage,
         binding_id: BindingId,
@@ -393,6 +401,10 @@ impl<I> InvocationEnvelope<I, UserPrincipal>
 where
     I: InterfaceContract,
 {
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "the stable user envelope constructor mirrors the sealed invocation boundary"
+    )]
     pub fn new(
         lineage: InvocationLineage,
         binding_id: BindingId,
@@ -949,8 +961,8 @@ where
 
 #[derive(Debug)]
 pub struct InterfaceInvocationFailure {
-    error: InterfaceInvocationError,
-    receipt: InterfaceInvocationReceipt,
+    error: Box<InterfaceInvocationError>,
+    receipt: Box<InterfaceInvocationReceipt>,
 }
 
 impl InterfaceInvocationFailure {
@@ -963,7 +975,7 @@ impl InterfaceInvocationFailure {
     }
 
     pub fn into_error(self) -> InterfaceInvocationError {
-        self.error
+        *self.error
     }
 }
 
@@ -2177,8 +2189,8 @@ impl ReceiptBuilder {
         terminal: InterfaceInvocationTerminal,
     ) -> InterfaceInvocationFailure {
         InterfaceInvocationFailure {
-            error,
-            receipt: self.receipt(terminal),
+            error: Box::new(error),
+            receipt: Box::new(self.receipt(terminal)),
         }
     }
 

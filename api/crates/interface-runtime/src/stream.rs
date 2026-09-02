@@ -8,6 +8,16 @@ use crate::{
     InterfaceTargetFailure, InvocationPrincipal, UserPrincipal,
 };
 
+type StreamTerminalSender<O, E> =
+    Arc<Mutex<Option<oneshot::Sender<InterfaceStreamTerminal<O, E>>>>>;
+type InterfaceStreamCompletionFuture<O, E> = Pin<
+    Box<
+        dyn Future<
+                Output = Result<InterfaceStreamTerminalOutcome<O, E>, InterfaceInvocationFailure>,
+            > + Send,
+    >,
+>;
+
 pub type InterfaceStreamHandlerFuture<S, O, E> = Pin<
     Box<
         dyn Future<Output = Result<InterfaceEventStream<S, O, E>, InterfaceTargetFailure<E>>>
@@ -38,7 +48,7 @@ where
     E: InterfaceContract,
 {
     events: mpsc::Sender<S>,
-    terminal: Arc<Mutex<Option<oneshot::Sender<InterfaceStreamTerminal<O, E>>>>>,
+    terminal: StreamTerminalSender<O, E>,
 }
 
 impl<S, O, E> InterfaceStreamPublisher<S, O, E>
@@ -136,16 +146,7 @@ where
     O: InterfaceContract,
     E: InterfaceContract,
 {
-    pub(crate) completion: Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        InterfaceStreamTerminalOutcome<O, E>,
-                        InterfaceInvocationFailure,
-                    >,
-                > + Send,
-        >,
-    >,
+    pub(crate) completion: InterfaceStreamCompletionFuture<O, E>,
 }
 
 impl<O, E> InterfaceStreamCompletion<O, E>
