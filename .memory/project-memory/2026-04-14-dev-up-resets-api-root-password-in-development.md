@@ -1,7 +1,7 @@
 ---
 memory_type: project
 topic: dev-up root 密码重置将从 Rust 全局编译链改为脚本
-summary: `2026-08-23 18` 用户确认 `reset_root_password` 应改为不依赖 `api-server` Rust 全局编译图的脚本；当前 dev-up prestart 行为仍存在，待实现时保留开发库 root 凭据同步语义，但不得再触发巨型 Rust crate 重编译。
+summary: `2026-09-03 07` 已用通用 Node.js 数据库账号密码重置脚本取代 Rust `reset_root_password`；`dev-up` 保留开发库 root 凭据同步、migration drift 检测与空库 API bootstrap 语义，不再为密码重置触发 Cargo。
 keywords:
   - dev-up
   - api-server
@@ -13,13 +13,14 @@ match_when:
   - 需要确认 dev-up 是否会自动同步开发态 root 密码
   - 需要判断持久化开发库的 root 密码为何会与 `.env` 漂移
 created_at: 2026-04-14 09
-updated_at: 2026-08-23 18
-last_verified_at: 2026-08-23 18
+updated_at: 2026-09-03 07
+last_verified_at: 2026-09-03 07
 decision_policy: verify_before_decision
 scope:
-  - scripts/node/dev-up/core.js
-  - scripts/node/dev-up/_tests/core.test.js
-  - api/apps/api-server/src/bin/reset_root_password.rs
+  - scripts/node/dev-up/env.js
+  - scripts/node/dev-up/_tests/prestart.test.js
+  - scripts/node/reset-account-password.js
+  - scripts/node/reset-account-password/
 ---
 
 # dev-up 会在开发态启动前重置 api root 密码
@@ -27,8 +28,14 @@ scope:
 ## 2026-08-23 方向更新
 
 - 用户确认 `reset_root_password` 应改为脚本，不再依赖 `api-server` library crate 与其全局 Rust 依赖图。
-- 这一方向取代“继续复用当前 Rust `reset_root_password` 工具”的旧实现决策；尚未授权实现。
+- 这一方向取代“继续复用当前 Rust `reset_root_password` 工具”的旧实现决策；已于 2026-09-03 实现并验收。
 - 实现验收边界：保留开发环境 root 密码同步效果，不运行 Cargo，不把生产环境纳入自动重置，并避免出现与后端密码哈希 / bootstrap 语义漂移的第二套规则。
+
+## 2026-09-03 现状复核
+
+- 用户再次确认目标是“通用 JS 数据库账号密码重置脚本，读取后端配置并直接更新数据库”，不是优化 Rust `reset_root_password` 的编译边界。
+- 原 `dev-up` 调用 Rust binary 会在密码重置阶段编译完整 `api-server` library 约 143 秒；实现后真实 Node.js 重置耗时 131 ms，一次 backend-only `dev-up` 重启总耗时 4.833 s。
+- 实现时通用脚本只对已存在账号执行密码哈希更新；空库 / 账号不存在时由 API 启动 bootstrap 作为唯一语义 owner，不在 JS 重复 bootstrap 逻辑。
 
 ## 时间
 
@@ -58,4 +65,4 @@ scope:
 
 - 保持生产启动语义稳定：生产仍只依赖显式环境配置，不自动改 root 密码。
 - 让开发态 root 凭据回到 `.env` 单一真值源，避免 UI 登录问题反复落到数据库历史状态上。
-- 继续复用已有的 `api-server` 工具 `reset_root_password`，不再引入第二套重置逻辑。
+- 原“继续复用 `api-server` Rust 工具”决策已被 2026-08-23 确认的通用 JS 脚本方向取代。

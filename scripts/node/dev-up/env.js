@@ -213,9 +213,13 @@ function getServicePrestartCommands(service, sourceEnv = process.env) {
   return [
     {
       description: "api-server development root password reset",
-      command: service.command,
-      args: ["run", "-p", "api-server", "--bin", "reset_root_password"],
-      cwd: service.cwd,
+      command: process.execPath,
+      args: [
+        path.join(service.repoRoot, "scripts", "node", "reset-account-password.js"),
+        "--if-missing",
+        "skip",
+      ],
+      cwd: service.repoRoot,
       env,
     },
   ];

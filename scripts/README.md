@@ -99,8 +99,23 @@ node scripts/node/dev-up.js stop
 - `--skip-docker` 只跳过 Docker 中间件，不影响前后端本地进程。
 - `--frontend-only` 只管理前端。
 - `--backend-only` 只管理 `api-server`。
+- 开发环境启动 API 前，使用 Node.js 脚本将 `.env` 中的 root 密码同步到已存在的开发数据库，不会为此编译 Rust。
 - 日志写入 `tmp/logs/`。
 - pid 记录写入 `tmp/dev-up/pids/`。
+
+### `node scripts/node/reset-account-password.js [options]`
+
+直接读取当前 worktree 的 `api/apps/api-server/.env`，并在开发数据库中重置指定账号的密码。
+
+```bash
+# 使用 BOOTSTRAP_ROOT_ACCOUNT / BOOTSTRAP_ROOT_PASSWORD
+node scripts/node/reset-account-password.js
+
+# 重置其他已存在账号
+node scripts/node/reset-account-password.js --account alice --password '<new-password>'
+```
+
+脚本使用与后端一致的 Argon2id 参数，更新密码时同时递增 `session_version`。账号或数据表不存在时默认失败；`dev-up` 显式使用 `--if-missing skip`，把空库 root 创建交给 API bootstrap。生产环境禁止执行。
 
 ## Test Scripts
 

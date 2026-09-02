@@ -12,7 +12,7 @@ const {
   runServicePrestartCommands,
 } = require('../core.js');
 
-test('AC-001 resets the api root password without invoking the removed frontstage upgrade', () => {
+test('AC-001 resets the api root password through Node without compiling Rust', () => {
   const tempRepoRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'oneflowbase-dev-up-prestart-'));
   const apiServerDir = path.join(tempRepoRoot, 'api', 'apps', 'api-server');
   const envExamplePath = path.join(apiServerDir, '.env.example');
@@ -39,9 +39,13 @@ test('AC-001 resets the api root password without invoking the removed frontstag
     [
       {
         description: 'api-server development root password reset',
-        command: 'cargo',
-        args: ['run', '-p', 'api-server', '--bin', 'reset_root_password'],
-        cwd: path.join(tempRepoRoot, 'api'),
+        command: process.execPath,
+        args: [
+          path.join(tempRepoRoot, 'scripts', 'node', 'reset-account-password.js'),
+          '--if-missing',
+          'skip',
+        ],
+        cwd: tempRepoRoot,
       },
     ]
   );
@@ -164,7 +168,8 @@ test('AC-003 surfaces a failed api root password reset', () => {
   }
 
   assert.equal(commandCalls.length, 1);
-  assert.equal(commandCalls[0].args.at(-1), 'reset_root_password');
+  assert.equal(commandCalls[0].command, process.execPath);
+  assert.equal(path.basename(commandCalls[0].args[0]), 'reset-account-password.js');
   assert.equal(commandCalls[0].options.captureOutput, true);
   assert.deepEqual(composeCalls, []);
   assert.equal(
