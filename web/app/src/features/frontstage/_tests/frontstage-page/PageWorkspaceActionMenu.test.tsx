@@ -62,7 +62,7 @@ test('#1975 AC-001 exposes refresh current page from the page settings menu', as
   fireEvent.click(screen.getByRole('button', { name: '配置页面' }));
   fireEvent.click(
     await screen.findByRole('menuitem', {
-      name: /刷新当前页面/
+      name: /刷新/
     })
   );
 

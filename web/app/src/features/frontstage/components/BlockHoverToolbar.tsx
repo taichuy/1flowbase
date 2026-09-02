@@ -103,7 +103,7 @@ export const BlockHoverToolbar: FC<BlockHoverToolbarProps> = ({
                 disabled={disabled}
                 onClick={menuAction(onRefresh)}
               >
-                {i18nText('frontstage', 'auto.refresh_block')}
+                {i18nText('frontstage', 'auto.refresh')}
               </Button>
             ) : null}
             <Divider />

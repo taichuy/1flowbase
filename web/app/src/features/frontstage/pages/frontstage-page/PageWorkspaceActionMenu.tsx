@@ -49,7 +49,7 @@ const PageWorkspaceActionMenu: FC<PageWorkspaceActionMenuProps> = ({
     {
       key: 'refresh',
       icon: <ReloadOutlined spin={refreshing} />,
-      label: i18nText('frontstage', 'design.refresh_current_page'),
+      label: i18nText('frontstage', 'auto.refresh'),
       disabled: actionDisabled,
       onClick: ({ domEvent }) => {
         domEvent.stopPropagation();

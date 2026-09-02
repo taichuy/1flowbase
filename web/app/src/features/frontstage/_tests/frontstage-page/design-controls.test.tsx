@@ -724,7 +724,7 @@ describe('FrontStagePage - design controls', () => {
     const pageMenu = await screen.findByRole('menu');
     expect(within(pageMenu).getAllByRole('menuitem')).toHaveLength(4);
     expect(within(pageMenu).getByText('编辑')).toBeInTheDocument();
-    expect(within(pageMenu).getByText('刷新当前页面')).toBeInTheDocument();
+    expect(within(pageMenu).getByText('刷新')).toBeInTheDocument();
     const layoutMode = within(pageMenu).getByRole('combobox', {
       name: '布局方式'
     });
@@ -779,7 +779,7 @@ describe('FrontStagePage - design controls', () => {
     fireEvent.click(configurePage);
     fireEvent.click(
       await screen.findByRole('menuitem', {
-        name: /刷新当前页面/
+        name: /刷新/
       })
     );
 
@@ -791,7 +791,7 @@ describe('FrontStagePage - design controls', () => {
     fireEvent.click(configurePage);
     expect(
       await screen.findByRole('menuitem', {
-        name: /刷新当前页面/
+        name: /刷新/
       })
     ).toHaveAttribute('aria-disabled', 'true');
 
@@ -832,7 +832,7 @@ describe('FrontStagePage - design controls', () => {
     activateDesignMode();
     fireEvent.click(screen.getByRole('button', { name: '配置页面' }));
     fireEvent.click(
-      await screen.findByRole('menuitem', { name: /刷新当前页面/ })
+      await screen.findByRole('menuitem', { name: /刷新/ })
     );
     expect(await screen.findByText('正在刷新当前页面……')).toBeInTheDocument();
 
