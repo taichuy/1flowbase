@@ -303,6 +303,7 @@ pub(crate) fn is_approved_external_control_http(method: &str, route_template: &s
 #[derive(Default)]
 pub(crate) struct ExternalEndpointCatalogCompiler {
     rows: BTreeMap<ExternalEndpointIdentity, ExternalEndpointRow>,
+    required_frozen_bindings: BTreeMap<ExternalEndpointIdentity, ExternalEndpointIdentity>,
 }
 
 impl ExternalEndpointCatalogCompiler {
@@ -329,9 +330,9 @@ impl ExternalEndpointCatalogCompiler {
                 ))
             })?;
             for method in HTTP_METHODS {
-                if !path_item.contains_key(method) {
+                let Some(operation) = path_item.get(method) else {
                     continue;
-                }
+                };
                 let identity = match (method, path.as_str()) {
                     (
                         "get",
@@ -345,12 +346,17 @@ impl ExternalEndpointCatalogCompiler {
                     ),
                     _ => ExternalEndpointIdentity::http(method, path),
                 };
+                let required_frozen_binding = runtime_model_frozen_binding(method, path, operation);
                 self.contribute(ExternalEndpointContribution {
-                    identity,
+                    identity: identity.clone(),
                     source: source.to_string(),
                     classification: ExternalEndpointClassification::Unclassified,
                     binding_id: None,
                 })?;
+                if let Some(required_frozen_binding) = required_frozen_binding {
+                    self.required_frozen_bindings
+                        .insert(identity, required_frozen_binding);
+                }
             }
         }
         Ok(())
@@ -434,7 +440,27 @@ impl ExternalEndpointCatalogCompiler {
         for binding in registry.bindings() {
             if let Some(contribution) = ExternalEndpointContribution::from_binding(source, binding)
             {
+                let frozen_identity = contribution.identity.clone();
+                let binding_id = contribution
+                    .binding_id
+                    .clone()
+                    .expect("external protocol binding contribution has a binding id");
                 self.contribute(contribution)?;
+                let concrete_identities = self
+                    .required_frozen_bindings
+                    .iter()
+                    .filter_map(|(identity, required)| {
+                        (required == &frozen_identity).then_some(identity.clone())
+                    })
+                    .collect::<Vec<_>>();
+                for identity in concrete_identities {
+                    self.contribute(ExternalEndpointContribution {
+                        identity,
+                        source: format!("{source}.runtime-model-descriptor-projection"),
+                        classification: ExternalEndpointClassification::CanonicalBusinessInterface,
+                        binding_id: Some(binding_id.clone()),
+                    })?;
+                }
             }
         }
         Ok(())
@@ -545,6 +571,20 @@ impl ExternalEndpointCatalogCompiler {
         }
         Ok(ExternalEndpointCatalog { rows: self.rows })
     }
+}
+
+fn runtime_model_frozen_binding(
+    method: &str,
+    path: &str,
+    operation: &serde_json::Value,
+) -> Option<ExternalEndpointIdentity> {
+    let is_descriptor_operation = operation
+        .get("x-data-model-templates")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|templates| !templates.is_empty());
+    (is_descriptor_operation && path.starts_with("/api/runtime/models/{model_code}/")).then(|| {
+        ExternalEndpointIdentity::http(method, "/api/runtime/models/:model_code/*operation_path")
+    })
 }
 
 pub(crate) struct ExternalEndpointCatalog {

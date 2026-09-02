@@ -408,6 +408,92 @@ fn eil_f14_openapi_inventory_preserves_websocket_upgrade_as_transport_control() 
     );
 }
 
+#[test]
+fn eil_f15_runtime_model_descriptor_routes_use_method_specific_frozen_bindings() {
+    let templates = runtime_core::data_model_template_registry::DataModelTemplateCatalog::core();
+    let mut document = serde_json::json!({ "paths": {} });
+    crate::runtime_data_model_docs::append_template_runtime_openapi_paths(
+        &mut document,
+        &templates,
+    );
+    let registry =
+        crate::routes::runtime_models::compile_runtime_model_interface_registry_for_test()
+            .expect("runtime model interface registry must compile");
+    let mut compiler = ExternalEndpointCatalogCompiler::default();
+    compiler
+        .contribute_openapi_document("authentic-runtime-model-openapi", &document)
+        .unwrap();
+    compiler
+        .absorb_registry("compiled-interface-registry", registry.as_ref())
+        .unwrap();
+    let catalog = compiler.compile_complete(registry.as_ref()).unwrap();
+
+    let paths = document["paths"]
+        .as_object()
+        .expect("descriptor fixture must publish concrete paths");
+    assert_eq!(paths.len(), 12);
+    for (path, path_item) in paths {
+        let operations = path_item
+            .as_object()
+            .expect("descriptor path item must be an object");
+        for method in operations.keys() {
+            let expected_binding_id = registry
+                .bindings()
+                .find_map(|binding| match binding.projection() {
+                    ProtocolProjection::Http(route)
+                        if route.method().eq_ignore_ascii_case(method)
+                            && route.path()
+                                == "/api/runtime/models/:model_code/*operation_path" =>
+                    {
+                        Some(binding.binding_id().as_str())
+                    }
+                    _ => None,
+                })
+                .expect("descriptor method must have a frozen runtime model binding");
+            let row = catalog
+                .row(&ExternalEndpointIdentity::http(method, path))
+                .expect("descriptor route must be cataloged");
+            assert_eq!(
+                row.classification(),
+                ExternalEndpointClassification::CanonicalBusinessInterface,
+                "{method} {path} must be canonical"
+            );
+            assert_eq!(
+                row.binding_id(),
+                Some(expected_binding_id),
+                "{method} {path} must use its method-specific frozen binding"
+            );
+        }
+    }
+}
+
+#[test]
+fn eil_f15_unknown_runtime_model_route_remains_unclassified() {
+    let registry =
+        crate::routes::runtime_models::compile_runtime_model_interface_registry_for_test()
+            .expect("runtime model interface registry must compile");
+    let mut compiler = ExternalEndpointCatalogCompiler::default();
+    compiler
+        .contribute(ExternalEndpointContribution::unclassified_http(
+            "unknown-runtime-router",
+            "POST",
+            "/api/runtime/models/{model_code}/actions/not-a-descriptor",
+        ))
+        .unwrap();
+    compiler
+        .absorb_registry("compiled-interface-registry", registry.as_ref())
+        .unwrap();
+
+    assert!(matches!(
+        compiler.compile_complete(registry.as_ref()),
+        Err(ExternalEndpointCatalogError::UnclassifiedRows { identities })
+            if identities.contains(&ExternalEndpointIdentity::http(
+                "POST",
+                "/api/runtime/models/{model_code}/actions/not-a-descriptor",
+            ))
+    ));
+}
+
 #[tokio::test]
 async fn eil_f14_production_assembly_has_no_unclassified_endpoint() {
     let (state, _database_url) = crate::_tests::support::test_api_state_with_database_url().await;
