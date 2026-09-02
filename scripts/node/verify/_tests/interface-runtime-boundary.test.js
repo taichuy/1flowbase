@@ -249,7 +249,7 @@ test('Delivery 1912 production slice consumes one compiled registry for HTTP and
   const operation = read(
     'api/apps/api-server/src/routes/settings/host_infrastructure/interface_operation.rs',
   );
-  const mcp = read('api/apps/api-server/src/routes/settings/mcp_management/debug_execute.rs');
+  const mcp = read('api/apps/api-server/src/extension_bus/interface_contributions.rs');
 
   assert.match(boot, /DynamicInterfaceRegistry/u);
   assert.match(boot, /compile_interface_registry/u);

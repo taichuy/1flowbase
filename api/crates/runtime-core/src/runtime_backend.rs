@@ -28,10 +28,6 @@ use thiserror::Error;
 pub struct RuntimeRequestId(String);
 
 impl RuntimeRequestId {
-    #[expect(
-        clippy::result_large_err,
-        reason = "the stable public constructor returns the shared runtime backend error contract"
-    )]
     pub fn new(value: impl Into<String>) -> Result<Self, RuntimeBackendError> {
         let value = value.into();
         if value.trim().is_empty() {
@@ -58,10 +54,6 @@ impl fmt::Display for RuntimeRequestId {
 pub struct RuntimeTargetId(String);
 
 impl RuntimeTargetId {
-    #[expect(
-        clippy::result_large_err,
-        reason = "the stable public constructor returns the shared runtime backend error contract"
-    )]
     pub fn new(value: impl Into<String>) -> Result<Self, RuntimeBackendError> {
         let value = value.into();
         if value.trim().is_empty() {
@@ -243,10 +235,6 @@ pub struct RuntimeLegacyManifestEligibility {
 pub struct RuntimeArtifactReference(String);
 
 impl RuntimeArtifactReference {
-    #[expect(
-        clippy::result_large_err,
-        reason = "the stable public constructor returns the shared runtime backend error contract"
-    )]
     pub fn new(value: impl Into<String>) -> Result<Self, RuntimeBackendError> {
         let value = value.into();
         if value.trim().is_empty() {
@@ -553,10 +541,6 @@ pub struct RuntimeBackendSlot {
 }
 
 impl RuntimeBackendSlot {
-    #[expect(
-        clippy::result_large_err,
-        reason = "the stable slot API returns the shared runtime backend error contract"
-    )]
     pub fn bind(&mut self, backend: Arc<dyn RuntimeBackend>) -> Result<(), RuntimeBackendError> {
         if self.backend.is_some() {
             return Err(RuntimeBackendError::DuplicateBackend);
@@ -565,10 +549,6 @@ impl RuntimeBackendSlot {
         Ok(())
     }
 
-    #[expect(
-        clippy::result_large_err,
-        reason = "the stable slot API returns the shared runtime backend error contract"
-    )]
     pub fn backend(&self) -> Result<Arc<dyn RuntimeBackend>, RuntimeBackendError> {
         self.backend
             .as_ref()
