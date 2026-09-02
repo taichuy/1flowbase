@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted and implemented on `beta` for #1944、#1958 与 #1963（全部外部业务入口已进入 Canonical Interface Lifecycle）
+Accepted architecture；implemented candidate on `beta` for #1944、#1958 与 #1963。全部外部业务入口已进入 Canonical Interface Lifecycle，但 #1963 的最终 candidate-bound GitHub Actions 验收尚未结算，因此不得表述为已完成最终交付。
 
 - 日期：2026-08-29
 - 关联 Root：[#1893](https://github.com/taichuy/1flowbase/issues/1893)
@@ -16,6 +16,9 @@ Accepted and implemented on `beta` for #1944、#1958 与 #1963（全部外部业
   [`1958-compatibility-interface-migration-assembly-receipt.md`](../architecture/1958-compatibility-interface-migration-assembly-receipt.md)
 - 全量 External Interface 迁移：[#1963](https://github.com/taichuy/1flowbase/issues/1963)，候选证据见
   [`1963-external-interface-lifecycle-assembly-receipt.md`](../architecture/1963-external-interface-lifecycle-assembly-receipt.md)
+- 全量迁移产品候选：`beta@2792e691217f5a88078bff479bfde4058a9ced8b`
+- 最新治理证据：`beta@3a141c0e38c9c656ac0fd5b2df4fddb63a625586`；QA-7 产品行通过，但两个证据治理 blocker 触发 `NEEDS_REFRAME`
+- 最终结算方式：固定 main/beta SHA，在 GitHub Actions 分别执行完整 `quality gate(scope=ci)`；共同 scope 比较与 RuntimeExtensionHost 拓扑差异分开判定
 
 ## Context
 

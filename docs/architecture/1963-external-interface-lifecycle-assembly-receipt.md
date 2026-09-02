@@ -453,3 +453,40 @@ Immutable local evidence is retained under
 `tmp/test-governance/1963-external-interface-lifecycle/attempt-7/`. #1963 and #1893 remain OPEN; no
 push, issue close, Root AC settlement, product/test/migration/protocol or official-plugin source
 change occurred during QA-7.
+
+## GitHub Actions Candidate-Bound Reframe — Approved
+
+The user approved the balanced reframe after QA-7. The product architecture is not reopened and
+the immutable attempts above are not rewritten. Final settlement moves from another local harness
+attempt to GitHub Actions PR Merge Gate evidence.
+
+Execution contract:
+
+1. Keep Product Assembly `2792e691217f5a88078bff479bfde4058a9ced8b` frozen; governance-only
+   documentation commits may follow it.
+2. Fast-forward the local `beta` history to `origin/beta`, then capture exact remote main and beta
+   SHAs. Branch names or moving `latest` are not evidence identities.
+3. Dispatch the complete `quality gate` with `scope=ci` for both exact SHAs. The push-triggered
+   `verify` workflow is supplementary and cannot settle EIL-010.
+4. A remote gate passes only when the workflow conclusion is `success`, the downloaded aggregate
+   artifact records `status=passed`, and `exitCode=0`; non-empty warning files remain visible.
+5. Compare the intersection of common scope identities. Do not count removal of the former
+   `plugin-runner` test, coverage and image lanes as an ordinary beta omission: the topology change
+   must instead be covered by RuntimeExtensionHost tests, official-plugin locked builds and real
+   Host conformance.
+6. Candidate-specific architecture evidence must retain
+   `unclassified=0`, `direct_bypass=0`, `production_fallback=0`, `dual_run=0`,
+   `double_write=0`, `second_registry=0`, complete API inventory, migration/schema zero diff and
+   zero unrun acceptance rows.
+
+Settlement:
+
+- EIL-001 through EIL-009 retain their candidate-GREEN status from QA-7.
+- EIL-010 becomes GREEN only after both remote runs and their aggregate artifacts are attributable
+  to the frozen SHAs and the normalized comparison shows no newly introduced blocker in the common
+  scopes.
+- A real API, permission, schema, migration, stream, Runtime or plugin-wire regression stops the
+  reframe and returns to product remediation. An uncomparable gate set stops settlement and requires
+  an explicit differential workflow decision.
+- #1963 remains OPEN and returns to `phase:implementation` while these remote artifacts are pending;
+  Root #1893 remains the only user-acceptance owner.
