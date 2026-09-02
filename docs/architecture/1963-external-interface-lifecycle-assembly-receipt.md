@@ -14,8 +14,9 @@
 - EIL-F14R-D assembled Product candidate: `beta@093c19b8a542644d9faed5f8942e66784c30292b`
 - EIL-F14R-E assembled Product candidate: `beta@c4865b02e0836a69409d43a252e6e0f800a7e254`
 - EIL-F14R-F assembled Product candidate: `beta@2792e691217f5a88078bff479bfde4058a9ced8b`
+- QA-7 frozen documentation candidate: `beta@17cc9641f54496a222c358e57426a2b94b6cc3ea`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
-- Delivery state: `QA_FAIL / QA-7 AUTHORIZATION PENDING`
+- Delivery state: `QA_FAIL / NEEDS_REFRAME`
 - Root AC state: candidate only; not settled
 
 ## Packet Assembly
@@ -405,3 +406,50 @@ QA-7 has not been run and is not authorized by this assembly step. #1963 remains
 `phase:ready`; #1893 remains OPEN; no EIL or Root AC is settled, no push occurred, and no database
 schema, migration, external DTO, permission policy, Runtime/plugin wire or official-plugin source
 was changed.
+
+## Fresh QA Attempt 7 — governance failure; reframe required
+
+- Frozen documentation candidate: `beta@17cc9641f54496a222c358e57426a2b94b6cc3ea`
+- Product Assembly: `beta@2792e691217f5a88078bff479bfde4058a9ced8b`
+- Result: `QA_FAIL / NEEDS_REFRAME`
+- Rows: `13 PASS / 2 FAIL / 0 UNRUN`
+- Automated evidence: `2831 passed / 0 failed / 3 ignored`
+- Severity: `Blocking 2 / High 0 / Warning 3`
+
+All product-bearing Rows 02 through 14 passed. The complete api-server inventory was `1267/1267`
+with shards `328/279/331/329` and missing/extra/duplicate/unrun `0/0/0/0`. The QA-6 MCP permission
+regression and both stale publication fixtures passed in that complete execution. Storage was
+`261/261`; migration diff and schema-set residue were zero. Runtime, frontend, Compose/deployment,
+workspace metadata, official Node, nine locked builds and real Host conformance passed.
+
+Endpoint and lifecycle evidence remains:
+
+```text
+total=1058 business=472 protocol=584 operational=2 unclassified=0
+direct_bypass=0 production_fallback=0 dual_run=0 double_write=0 second_registry=0
+```
+
+The two independent failures are governance integrity failures rather than product regressions:
+
+1. Row 01 observed the retained QA-5 evidence hash as
+   `ec9e220a5dceec59768eeb3d4f8a3e9a00cbd0160dbe7899c57dd4f9281f6dda`, matching QA-6's retained
+   observation but not the frozen expected
+   `dbb38500515ce0f583f8511c46df3f9bebbacc0c26e6e90a42157e974417239e`. Candidate identity,
+   Packet completeness, ancestry, QA-1/2/3/4 integrity and paired entry cleanliness passed before
+   this mismatch.
+2. Row 15 repeated the QA-6 nested-single-quote harness root. The intended `jq` validation was
+   parsed as `jq -e .missing` without its JSON file and waited on PTY stdin. After deterministic
+   non-progress was established, only that child was terminated; the original part remained
+   `EXIT 143`, no command was rerun and no substitute result was accepted.
+
+The authoritative generated inventory JSON independently records `1267/1267` and zero
+missing/extra/duplicate/unrun, but it cannot convert the frozen Row-15 command to PASS. Because the
+same nested-quote root has now failed two consecutive centralized QA attempts, the approved stop
+condition applies: no automatic QA-8 or mechanical repair is authorized. `EIL-001` through
+`EIL-009` are candidate GREEN; `EIL-010` remains RED because centralized QA did not settle with zero
+failed rows. Root candidate AC evidence remains GREEN but is not formally settled.
+
+Immutable local evidence is retained under
+`tmp/test-governance/1963-external-interface-lifecycle/attempt-7/`. #1963 and #1893 remain OPEN; no
+push, issue close, Root AC settlement, product/test/migration/protocol or official-plugin source
+change occurred during QA-7.
