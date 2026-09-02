@@ -14,7 +14,7 @@
 - EIL-F14R-D assembled Product candidate: `beta@093c19b8a542644d9faed5f8942e66784c30292b`
 - EIL-F14R-E assembled Product candidate: `beta@c4865b02e0836a69409d43a252e6e0f800a7e254`
 - Official plugins: `main@8bf11605b02a0df8dd01271875f1ec3d182c0d3a`
-- Delivery state: `ASSEMBLED / QA-6 PENDING`
+- Delivery state: `QA_FAIL / FIX PACKET PENDING`
 - Root AC state: candidate only; not settled
 
 ## Packet Assembly
@@ -326,3 +326,47 @@ QA-1 through QA-5 evidence remains immutable. The targeted diagnostics above are
 not a substitute for centralized QA. No EIL or Root AC becomes settled until one fresh QA-6 closes
 all 15 rows with zero product failures and zero unrun items. #1963 and #1893 remain OPEN; no push or
 Root AC settlement is authorized.
+
+## Fresh QA Attempt 6 — final failed batch
+
+- Frozen documentation candidate: `beta@1cc66efc0656f79098106e952d76c4bc34a5d8f6`
+- Product Assembly: `beta@c4865b02e0836a69409d43a252e6e0f800a7e254`
+- Result: `QA_FAIL`
+- Rows: `12 PASS / 3 FAIL / 0 UNRUN`
+- Automated evidence: `2828 passed / 3 failed / 3 ignored`
+- Severity: `Blocking 0 / High 1 / Warning 6`
+
+The resource-bounded exact execution model closed the QA-4/5 infrastructure uncertainty. The full
+api-server inventory was `1267`; four serial shards were `329/279/330/329`; the union was `1267`
+with missing/extra/duplicate/unrun `0/0/0/0`. Execution completed as `1264 passed / 3 failed` without
+the former monolithic-process nontermination. Storage PostgreSQL completed `436/0/1 ignored`, its
+exact inventory was `261/261`, migration diff remained zero, and the sorted `test_*` schema set was
+`568 → 568` with zero set difference.
+
+One High product-behavior finding remains. A valid limited-role session invoking
+`POST /api/console/mcp/bundles/preview-official` receives `401 Unauthorized`; the accepted permission
+contract and existing behavior fixture require `403 Forbidden` when the session lacks the MCP
+settings scope. This changes an observable AuthN/AuthZ result and keeps EIL-004/006/007/010 red.
+
+The other two api-server failures are stale controlled-negative boundaries, not evidence that a
+production fallback should be restored:
+
+1. An unregistered mounted Console route now fails during operation compilation instead of serving a
+   runtime `403`.
+2. Missing `ExtensionBootSnapshot` now prevents Router publication instead of producing a runtime
+   sign-in `500`.
+
+Rows 01 and 15 also expose frozen evidence-governance defects: the semantic Packet validator expects
+separate F14R-A/B Packet Assembly rows that the Receipt does not contain, and a nested-quote error in
+Row 15 creates a false-negative grep after the authoritative exact-inventory validator has passed.
+QA-6 initially recorded a QA-5 aggregate-hash mismatch. A Root read-only post-batch recomputation
+returned the frozen expected hash
+`dbb38500515ce0f583f8511c46df3f9bebbacc0c26e6e90a42157e974417239e`, and no attempt-5 file has a
+modification time within the QA-6 window. The transient observation remains in the immutable QA-6
+receipt, but no persistent QA-5 evidence mutation is currently proven.
+
+Endpoint counts remain `1058 / 472 / 584 / 2 / 0`; Console inventory remains
+`401 operations / 434 interfaces / 434 routes`; direct bypass, production fallback, dual-run,
+double-write and second Registry remain zero. Attempts 1 through 6 remain local and immutable.
+#1963 and #1893 stay OPEN; no EIL or Root AC is formally settled, no push occurred, and the next
+state requires a finite approved fix packet rather than another automatic QA run.
