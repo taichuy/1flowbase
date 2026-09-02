@@ -31,7 +31,9 @@ use extension_package_runtime::{
 };
 use serde::Serialize;
 use serde_json::Value;
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+#[cfg(test)]
+use time::format_description::well_known::Rfc3339;
+use time::OffsetDateTime;
 use tokio::sync::{Mutex, OwnedSemaphorePermit, Semaphore};
 
 #[cfg(test)]
@@ -45,6 +47,7 @@ use crate::stdio_runtime::{
 };
 
 use self::supervisor::ProviderWorkerSupervisor;
+#[cfg(test)]
 pub use self::supervisor::ProviderWorkerSupervisorSnapshot;
 
 type ProviderWorkerHandle = Arc<ProviderWorkerSupervisor>;
@@ -151,11 +154,13 @@ pub struct ProviderInvokeStreamOutput {
     pub result: ProviderInvocationResult,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct ProviderActiveStreamsOutput {
     pub streams: Vec<ProviderActiveStreamSnapshot>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct ProviderActiveStreamSnapshot {
     pub invocation_id: String,
@@ -173,35 +178,54 @@ pub struct ProviderActiveStreamSnapshot {
 
 #[derive(Debug, Clone)]
 struct ActiveProviderStreamRecord {
+    #[cfg(test)]
     invocation_id: String,
+    #[cfg(test)]
     plugin_id: String,
+    #[cfg(test)]
     provider_instance_id: String,
+    #[cfg(test)]
     provider_code: String,
+    #[cfg(test)]
     protocol: String,
+    #[cfg(test)]
     model: String,
+    #[cfg(test)]
     transport: String,
+    #[cfg(test)]
     status: String,
+    #[cfg(test)]
     started_at: OffsetDateTime,
     last_event_at: OffsetDateTime,
 }
 
 impl ActiveProviderStreamRecord {
-    fn new(invocation_id: String, plugin_id: &str, input: &ProviderInvocationInput) -> Self {
+    fn new(_invocation_id: String, _plugin_id: &str, _input: &ProviderInvocationInput) -> Self {
         let now = OffsetDateTime::now_utc();
         Self {
-            invocation_id,
-            plugin_id: plugin_id.to_string(),
-            provider_instance_id: input.provider_instance_id.clone(),
-            provider_code: input.provider_code.clone(),
-            protocol: input.protocol.clone(),
-            model: input.model.clone(),
-            transport: provider_stream_transport(input),
+            #[cfg(test)]
+            invocation_id: _invocation_id,
+            #[cfg(test)]
+            plugin_id: _plugin_id.to_string(),
+            #[cfg(test)]
+            provider_instance_id: _input.provider_instance_id.clone(),
+            #[cfg(test)]
+            provider_code: _input.provider_code.clone(),
+            #[cfg(test)]
+            protocol: _input.protocol.clone(),
+            #[cfg(test)]
+            model: _input.model.clone(),
+            #[cfg(test)]
+            transport: provider_stream_transport(_input),
+            #[cfg(test)]
             status: "running".to_string(),
+            #[cfg(test)]
             started_at: now,
             last_event_at: now,
         }
     }
 
+    #[cfg(test)]
     fn snapshot(&self, now: OffsetDateTime) -> ProviderActiveStreamSnapshot {
         ProviderActiveStreamSnapshot {
             invocation_id: self.invocation_id.clone(),
@@ -286,10 +310,12 @@ impl ProviderHost {
         Ok(())
     }
 
+    #[cfg(test)]
     pub fn load(&mut self, package_root: &str) -> FrameworkResult<LoadedProviderSummary> {
         self.load_with_source_identity(package_root, None)
     }
 
+    #[cfg(test)]
     fn load_with_source_identity(
         &mut self,
         package_root: &str,
@@ -338,6 +364,7 @@ impl ProviderHost {
         Ok(summary)
     }
 
+    #[cfg(test)]
     pub fn is_loaded(&self, plugin_id: &str) -> bool {
         self.loaded_packages.contains_key(plugin_id)
     }
@@ -379,6 +406,11 @@ impl ProviderHost {
             .map(|_| ())
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal reload fixture; production activation uses a frozen artifact reference"
+    )]
     pub async fn reload(&mut self, plugin_id: &str) -> FrameworkResult<LoadedProviderSummary> {
         let source = match self.loaded_sources.get(plugin_id).cloned() {
             Some(source) => source,
@@ -417,6 +449,7 @@ impl ProviderHost {
         Ok(())
     }
 
+    #[cfg(test)]
     pub async fn validate(
         &self,
         plugin_id: &str,
@@ -455,6 +488,7 @@ impl ProviderHost {
         })
     }
 
+    #[cfg(test)]
     pub async fn authenticate(
         &self,
         plugin_id: &str,
@@ -535,6 +569,7 @@ impl ProviderHost {
         })
     }
 
+    #[cfg(test)]
     pub async fn list_models(
         &self,
         plugin_id: &str,
@@ -591,6 +626,11 @@ impl ProviderHost {
         })
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal direct-call fixture; production facade uses the admitted operation future"
+    )]
     pub async fn get_balance(
         &self,
         plugin_id: &str,
@@ -623,6 +663,7 @@ impl ProviderHost {
         })
     }
 
+    #[cfg(test)]
     pub async fn get_usage_windows(
         &self,
         plugin_id: &str,
@@ -664,6 +705,7 @@ impl ProviderHost {
         })
     }
 
+    #[cfg(test)]
     pub async fn reset_credit(
         &self,
         plugin_id: &str,
@@ -727,6 +769,7 @@ impl ProviderHost {
 
     // Preserve the typed provider diagnostic at this public runtime boundary.
     #[allow(clippy::result_large_err)]
+    #[cfg(test)]
     pub async fn count_tokens(
         &self,
         plugin_id: &str,
@@ -827,6 +870,7 @@ impl ProviderHost {
 
     // Preserve the typed provider diagnostic at this public runtime boundary.
     #[allow(clippy::result_large_err)]
+    #[cfg(test)]
     pub async fn compact(
         &self,
         plugin_id: &str,
@@ -895,6 +939,7 @@ impl ProviderHost {
         })
     }
 
+    #[cfg(test)]
     pub async fn invoke_stream(
         &self,
         plugin_id: &str,
@@ -903,6 +948,7 @@ impl ProviderHost {
         self.invoke_stream_operation(plugin_id, input)?.await
     }
 
+    #[cfg(test)]
     pub fn invoke_stream_operation(
         &self,
         plugin_id: &str,
@@ -913,6 +959,11 @@ impl ProviderHost {
         self.invoke_stream_with_live_events_operation(plugin_id, input, None, None)
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal direct-call fixture; production facade supplies explicit required and diagnostic sinks"
+    )]
     pub async fn invoke_stream_with_live_events(
         &self,
         plugin_id: &str,
@@ -929,6 +980,7 @@ impl ProviderHost {
         .await
     }
 
+    #[cfg(test)]
     pub fn invoke_stream_with_live_events_operation(
         &self,
         plugin_id: &str,
@@ -991,6 +1043,7 @@ impl ProviderHost {
         })
     }
 
+    #[cfg(test)]
     pub async fn active_stream_snapshot(&self) -> ProviderActiveStreamsOutput {
         let now = OffsetDateTime::now_utc();
         let mut streams = self
@@ -1004,6 +1057,7 @@ impl ProviderHost {
         ProviderActiveStreamsOutput { streams }
     }
 
+    #[cfg(test)]
     pub fn provider_worker_snapshot(
         &self,
         plugin_id: &str,
@@ -1011,6 +1065,7 @@ impl ProviderHost {
         provider_worker_supervisor_snapshot(&self.provider_workers, plugin_id)
     }
 
+    #[cfg(test)]
     pub fn provider_worker_cleanup_receipt(
         &self,
         plugin_id: &str,
@@ -1396,15 +1451,18 @@ mod operations;
 mod supervisor;
 
 use operations::{
-    elapsed_milliseconds, format_timestamp, merge_models, normalize_balance, normalize_models,
-    normalize_reset_credit_result, normalize_usage_windows, provider_invocation_limits,
-    provider_pool_key, provider_stream_transport, provider_worker_cleanup_receipt,
-    provider_worker_handle, provider_worker_supervisor_snapshot, record_provider_worker_cleanup,
-    reset_credit_result_matches_operation, take_provider_worker_for_quiesce,
+    merge_models, normalize_balance, normalize_models, normalize_reset_credit_result,
+    normalize_usage_windows, provider_invocation_limits, provider_pool_key, provider_worker_handle,
+    record_provider_worker_cleanup, reset_credit_result_matches_operation,
+    take_provider_worker_for_quiesce,
 };
 
 #[cfg(test)]
-use operations::lock_provider_worker_registry;
+use operations::{
+    elapsed_milliseconds, format_timestamp, lock_provider_worker_registry,
+    provider_stream_transport, provider_worker_cleanup_receipt,
+    provider_worker_supervisor_snapshot,
+};
 
 #[cfg(test)]
 #[path = "_tests/provider_host.rs"]

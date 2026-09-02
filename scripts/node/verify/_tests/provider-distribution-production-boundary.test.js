@@ -19,7 +19,7 @@ test('production composition compiles and owns the effective distribution snapsh
 
 test('API validation and catalog project the effective distribution snapshot', () => {
   const route = read(
-    'api/apps/api-server/src/routes/plugins_and_models/model_providers.rs'
+    'api/apps/api-server/src/routes/plugins_and_models/model_providers/routing_interface.rs'
   );
   assert.match(route, /provider_distribution_definitions\(\)[\s\S]*?\.await/u);
   assert.match(route, /validate_provider_distribution_rule/u);

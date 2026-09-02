@@ -403,6 +403,11 @@ fn complete_fake_backend_implements_all_six_ports() {
 }
 
 #[test]
+fn runtime_backend_error_keeps_large_contract_payloads_behind_indirection() {
+    assert!(std::mem::size_of::<RuntimeBackendError>() <= 64);
+}
+
+#[test]
 fn runtime_backend_slot_rejects_a_second_contribution() {
     let mut slot = RuntimeBackendSlot::default();
     slot.bind(Arc::new(CompleteFakeBackend)).unwrap();

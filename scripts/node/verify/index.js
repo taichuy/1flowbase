@@ -697,28 +697,73 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
       ];
     }
     if (entry.key === 'storage-postgres') {
-      return {
-        label: `backend-coverage-${entry.key}`,
+      const outputPath = path.join(
+        repoRoot,
+        COVERAGE_ROOT,
+        'backend',
+        `${entry.key}.json`
+      );
+      const baseCommand = {
+        label: 'backend-coverage-storage-postgres',
         command: 'cargo',
         args: [
           'llvm-cov',
           '--package',
           entry.packageName,
-          '--package',
-          'control-plane-postgres-tests',
-          '--exclude-from-report',
-          'control-plane-postgres-tests',
           '--no-clean',
           '--json',
           '--summary-only',
           '--output-path',
-          path.join(repoRoot, COVERAGE_ROOT, 'backend', `${entry.key}.json`),
+          outputPath,
           '--',
           `--test-threads=${cargoTestThreads}`,
         ],
         cwd: 'api',
         env,
       };
+      return [
+        baseCommand,
+        {
+          ...baseCommand,
+          label: 'backend-coverage-storage-postgres-control-plane-integration',
+          args: [
+            'llvm-cov',
+            '--package',
+            entry.packageName,
+            '--package',
+            'control-plane-postgres-tests',
+            '--exclude-from-report',
+            'control-plane-postgres-tests',
+            '--test',
+            'mcp_instance_copy',
+            '--test',
+            'mcp_management_integration',
+            '--test',
+            'file_management_backup_integration',
+            '--test',
+            'i18n_catalog_integration',
+            '--test',
+            'role_policy_integration',
+            '--test',
+            'plugin_network_integration',
+            '--test',
+            'runtime_record_integration',
+            '--test',
+            'network_egress_integration',
+            '--test',
+            'orchestration_runtime_integration',
+            '--test',
+            'role_console_policy_integration',
+            '--no-clean',
+            '--json',
+            '--summary-only',
+            '--output-path',
+            outputPath,
+            '--',
+            `--test-threads=${cargoTestThreads}`,
+          ],
+        },
+      ];
     }
     return {
       label: `backend-coverage-${entry.key}`,

@@ -96,6 +96,11 @@ impl CapabilityHost {
         Ok(summary)
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn validate_config(
         &self,
         plugin_id: &str,
@@ -136,6 +141,11 @@ impl CapabilityHost {
         })
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn resolve_dynamic_options(
         &self,
         plugin_id: &str,
@@ -176,6 +186,11 @@ impl CapabilityHost {
         })
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn resolve_output_schema(
         &self,
         plugin_id: &str,
@@ -216,6 +231,11 @@ impl CapabilityHost {
         })
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn execute(
         &self,
         plugin_id: &str,
@@ -325,25 +345,5 @@ impl CapabilityHost {
             &loaded.manifest.runtime.limits,
         )
         .await
-    }
-}
-
-impl CapabilityHost {
-    pub fn with_loaded_package(
-        plugin_id: impl Into<String>,
-        loaded: LoadedCapabilityPackage,
-    ) -> Self {
-        let mut loaded_packages = HashMap::new();
-        let mut scopes = HashMap::new();
-        let mut next_generation = HashMap::new();
-        let plugin_id = plugin_id.into();
-        loaded_packages.insert(plugin_id.clone(), loaded);
-        scopes.insert(plugin_id.clone(), PluginScope::mounted(1));
-        next_generation.insert(plugin_id, 1);
-        Self {
-            loaded_packages,
-            scopes,
-            next_generation,
-        }
     }
 }

@@ -216,6 +216,7 @@ impl ProviderWorker {
         self.process.as_ref().map(|process| process.control.clone())
     }
 
+    #[cfg(test)]
     pub fn last_cleanup_receipt(&self) -> Option<&ProviderWorkerCleanupReceipt> {
         self.last_cleanup_receipt.as_ref()
     }
@@ -270,6 +271,7 @@ impl ProviderWorker {
         }
     }
 
+    #[cfg(test)]
     pub async fn call_streaming(
         &mut self,
         request: &ProviderStdioRequest,
@@ -288,6 +290,7 @@ impl ProviderWorker {
         .await
     }
 
+    #[cfg(test)]
     pub async fn call_streaming_with_limits(
         &mut self,
         request: &ProviderStdioRequest,

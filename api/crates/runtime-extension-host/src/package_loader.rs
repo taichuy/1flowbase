@@ -14,6 +14,11 @@ use extension_package_runtime::{
 
 #[derive(Debug, Clone)]
 pub struct LoadedProviderPackage {
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "retained only for package loader fixture identity assertions"
+    )]
     pub package_root: PathBuf,
     pub runtime_executable: PathBuf,
     pub package: ProviderPackage,
@@ -21,6 +26,11 @@ pub struct LoadedProviderPackage {
 
 #[derive(Debug, Clone)]
 pub struct LoadedDataSourcePackage {
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "retained only for package loader fixture identity assertions"
+    )]
     pub package_root: PathBuf,
     pub runtime_executable: PathBuf,
     pub package: DataSourcePackage,
@@ -107,6 +117,7 @@ impl PackageLoader {
         }
 
         Ok(LoadedProviderPackage {
+            #[cfg(test)]
             package_root,
             runtime_executable,
             package,
@@ -157,6 +168,7 @@ impl PackageLoader {
         }
 
         Ok(LoadedDataSourcePackage {
+            #[cfg(test)]
             package_root,
             runtime_executable,
             package,
@@ -218,6 +230,7 @@ impl PackageLoader {
         }
 
         Ok(LoadedCapabilityPackage {
+            #[cfg(test)]
             package_root,
             runtime_executable,
             manifest,
@@ -227,6 +240,11 @@ impl PackageLoader {
 
 #[derive(Debug, Clone)]
 pub struct LoadedCapabilityPackage {
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "retained only for package loader fixture identity assertions"
+    )]
     pub package_root: PathBuf,
     pub runtime_executable: PathBuf,
     pub manifest: PluginManifestV1,

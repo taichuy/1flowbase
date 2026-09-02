@@ -122,6 +122,11 @@ impl DataSourceHost {
         Ok(summary)
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience path; production activation loads a frozen artifact"
+    )]
     pub async fn reload(&mut self, plugin_id: &str) -> FrameworkResult<LoadedDataSourceSummary> {
         let package_root = self.loaded_package(plugin_id)?.package_root.clone();
         let loaded = match self.legacy_manifest_eligibilities.get(plugin_id) {
@@ -152,6 +157,11 @@ impl DataSourceHost {
             .clone())
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn validate_config(
         &self,
         plugin_id: &str,
@@ -179,6 +189,11 @@ impl DataSourceHost {
         })
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn test_connection(
         &self,
         plugin_id: &str,
@@ -206,6 +221,11 @@ impl DataSourceHost {
         })
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn discover_catalog(
         &self,
         plugin_id: &str,
@@ -233,6 +253,11 @@ impl DataSourceHost {
         })
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn describe_resource(
         &self,
         plugin_id: &str,
@@ -266,6 +291,11 @@ impl DataSourceHost {
         })
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn preview_read(
         &self,
         plugin_id: &str,
@@ -289,6 +319,11 @@ impl DataSourceHost {
         Ok(async move { normalize_preview_read(operation.await?) })
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn import_snapshot(
         &self,
         plugin_id: &str,
@@ -314,6 +349,11 @@ impl DataSourceHost {
         Ok(async move { normalize_import_snapshot(operation.await?) })
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn list_records(
         &self,
         plugin_id: &str,
@@ -337,6 +377,11 @@ impl DataSourceHost {
         Ok(async move { normalize_list_records(operation.await?) })
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn get_record(
         &self,
         plugin_id: &str,
@@ -360,6 +405,11 @@ impl DataSourceHost {
         Ok(async move { normalize_get_record(operation.await?) })
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn create_record(
         &self,
         plugin_id: &str,
@@ -385,6 +435,11 @@ impl DataSourceHost {
         Ok(async move { normalize_create_record(operation.await?) })
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn update_record(
         &self,
         plugin_id: &str,
@@ -410,6 +465,11 @@ impl DataSourceHost {
         Ok(async move { normalize_update_record(operation.await?) })
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn delete_record(
         &self,
         plugin_id: &str,
@@ -435,6 +495,11 @@ impl DataSourceHost {
         Ok(async move { normalize_delete_record(operation.await?) })
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn execute_sql(
         &self,
         plugin_id: &str,
@@ -464,6 +529,11 @@ impl DataSourceHost {
         Ok(async move { normalize_native_sql_output(operation.await?) })
     }
 
+    #[cfg(test)]
+    #[expect(
+        dead_code,
+        reason = "internal test convenience wrapper; production uses the admitted operation future"
+    )]
     pub async fn execute_model_operation(
         &self,
         plugin_id: &str,

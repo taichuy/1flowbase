@@ -1793,9 +1793,9 @@ fn runtime_execution_request(
 
 fn map_runtime_backend_error(error: RuntimeBackendError) -> anyhow::Error {
     match error {
-        RuntimeBackendError::Contract(error) => map_provider_framework_error(error),
-        RuntimeBackendError::CountTokens(error) => anyhow::Error::new(error),
-        RuntimeBackendError::Compact(error) => anyhow::Error::new(error),
+        RuntimeBackendError::Contract(error) => map_provider_framework_error(*error),
+        RuntimeBackendError::CountTokens(error) => anyhow::Error::new(*error),
+        RuntimeBackendError::Compact(error) => anyhow::Error::new(*error),
         RuntimeBackendError::InvalidRequest(_) => {
             ControlPlaneError::InvalidInput("provider_runtime").into()
         }
@@ -1813,7 +1813,7 @@ fn map_runtime_backend_error(error: RuntimeBackendError) -> anyhow::Error {
 
 fn map_data_source_runtime_error(error: RuntimeBackendError) -> anyhow::Error {
     match error {
-        RuntimeBackendError::Contract(error) => map_framework_error(error, "data_source_runtime"),
+        RuntimeBackendError::Contract(error) => map_framework_error(*error, "data_source_runtime"),
         RuntimeBackendError::InvalidRequest(_) => {
             ControlPlaneError::InvalidInput("data_source_runtime").into()
         }

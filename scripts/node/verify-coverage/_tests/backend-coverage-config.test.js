@@ -44,11 +44,15 @@ test('backend coverage includes the migrated PostgreSQL integration harness', ()
     backendKeys: ['storage-postgres'],
   });
 
-  assert.equal(storageCommands.length, 1);
-  const [storageCommand] = storageCommands;
+  assert.equal(storageCommands.length, 2);
+  const [storageCommand, integrationCommand] = storageCommands;
   assert.equal(storageCommand.label, 'backend-coverage-storage-postgres');
   assert.equal(storageCommand.args[2], 'storage-durable-postgres');
-  assert.deepEqual(storageCommand.args.slice(1, 7), [
+  assert.equal(
+    integrationCommand.label,
+    'backend-coverage-storage-postgres-control-plane-integration'
+  );
+  assert.deepEqual(integrationCommand.args.slice(1, 7), [
     '--package',
     'storage-durable-postgres',
     '--package',
@@ -56,6 +60,8 @@ test('backend coverage includes the migrated PostgreSQL integration harness', ()
     '--exclude-from-report',
     'control-plane-postgres-tests',
   ]);
+  assert.equal(integrationCommand.args.includes('dependency_boundaries'), false);
+  assert.equal(integrationCommand.args.includes('orchestration_runtime_integration'), true);
   const outputPathIndex = storageCommand.args.indexOf('--output-path');
   assert.notEqual(outputPathIndex, -1);
   assert.match(

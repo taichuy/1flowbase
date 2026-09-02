@@ -155,13 +155,31 @@ pub enum RuntimeBackendError {
     #[error("runtime backend does not implement operation {0}")]
     UnsupportedOperation(&'static str),
     #[error(transparent)]
-    Contract(#[from] extension_contracts::error::ExtensionContractError),
+    Contract(Box<extension_contracts::error::ExtensionContractError>),
     #[error(transparent)]
-    CountTokens(#[from] ProviderCountTokensError),
+    CountTokens(Box<ProviderCountTokensError>),
     #[error(transparent)]
-    Compact(#[from] ProviderCompactError),
+    Compact(Box<ProviderCompactError>),
     #[error("runtime target {target_id} failed: {message}")]
     Execution { target_id: String, message: String },
+}
+
+impl From<extension_contracts::error::ExtensionContractError> for RuntimeBackendError {
+    fn from(error: extension_contracts::error::ExtensionContractError) -> Self {
+        Self::Contract(Box::new(error))
+    }
+}
+
+impl From<ProviderCountTokensError> for RuntimeBackendError {
+    fn from(error: ProviderCountTokensError) -> Self {
+        Self::CountTokens(Box::new(error))
+    }
+}
+
+impl From<ProviderCompactError> for RuntimeBackendError {
+    fn from(error: ProviderCompactError) -> Self {
+        Self::Compact(Box::new(error))
+    }
 }
 
 #[async_trait]

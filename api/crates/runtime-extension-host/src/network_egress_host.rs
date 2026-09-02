@@ -50,7 +50,6 @@ impl NetworkEgressWorkerConfig {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NetworkEgressWorkerState {
-    Active,
     Inactive,
     Failed,
 }
@@ -60,7 +59,6 @@ pub enum NetworkEgressWorkerState {
 pub enum NetworkEgressCleanupReason {
     Stopped,
     Reloaded,
-    LeaseExpired,
     RuntimeFailure,
 }
 
@@ -339,6 +337,7 @@ impl NetworkEgressHost {
         Ok(())
     }
 
+    #[cfg(test)]
     pub fn cleanup_receipt(&self, runtime_id: &str) -> Option<&NetworkEgressCleanupReceipt> {
         self.cleanup_receipts.get(runtime_id)
     }

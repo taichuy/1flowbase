@@ -63,6 +63,7 @@ pub(super) fn record_provider_worker_cleanup(
     Ok(())
 }
 
+#[cfg(test)]
 pub(super) fn provider_worker_supervisor_snapshot(
     provider_workers: &ProviderWorkerRegistry,
     plugin_id: &str,
@@ -76,6 +77,7 @@ pub(super) fn provider_worker_supervisor_snapshot(
         .transpose()
 }
 
+#[cfg(test)]
 pub(super) fn provider_worker_cleanup_receipt(
     provider_workers: &ProviderWorkerRegistry,
     plugin_id: &str,
@@ -127,6 +129,7 @@ pub(super) fn stable_pool_component(value: &str) -> String {
         .collect()
 }
 
+#[cfg(test)]
 pub(super) fn provider_stream_transport(input: &ProviderInvocationInput) -> String {
     if let Some(transport_mode) = provider_config_transport_mode(&input.provider_config) {
         return normalize_transport_mode_hint(&transport_mode);
@@ -137,6 +140,7 @@ pub(super) fn provider_stream_transport(input: &ProviderInvocationInput) -> Stri
     "provider_stream".to_string()
 }
 
+#[cfg(test)]
 pub(super) fn provider_config_transport_mode(provider_config: &Value) -> Option<String> {
     let value = provider_config.get("transport_mode")?;
     let text = match value {
@@ -147,6 +151,7 @@ pub(super) fn provider_config_transport_mode(provider_config: &Value) -> Option<
     (!text.is_empty()).then_some(text)
 }
 
+#[cfg(test)]
 pub(super) fn normalize_transport_mode_hint(transport_mode: &str) -> String {
     match transport_mode.trim().to_ascii_lowercase().as_str() {
         "" => "http_sse".to_string(),
@@ -157,11 +162,13 @@ pub(super) fn normalize_transport_mode_hint(transport_mode: &str) -> String {
     }
 }
 
+#[cfg(test)]
 pub(super) fn elapsed_milliseconds(started_at: OffsetDateTime, now: OffsetDateTime) -> u64 {
     let milliseconds = (now - started_at).whole_milliseconds();
     u64::try_from(milliseconds).unwrap_or(0)
 }
 
+#[cfg(test)]
 pub(super) fn format_timestamp(value: OffsetDateTime) -> String {
     value.format(&Rfc3339).unwrap_or_else(|_| value.to_string())
 }
