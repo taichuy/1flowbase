@@ -1,4 +1,5 @@
-import { QuestionCircleOutlined, ReloadOutlined } from '@ant-design/icons';
+import QuestionCircleOutlined from '@ant-design/icons/es/icons/QuestionCircleOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import { useQuery } from '@tanstack/react-query';
 import {
   Alert,
@@ -214,7 +215,9 @@ function LlmNumericControl({
         />
         <div className="agent-flow-llm-parameter-form__number-actions">
           <InputNumber
-            aria-label={i18nText("agentFlow", "auto.current_value", { value1: field.label })}
+            aria-label={i18nText('agentFlow', 'auto.current_value', {
+              value1: field.label
+            })}
             min={min}
             max={max}
             step={step}
@@ -229,11 +232,13 @@ function LlmNumericControl({
               nextParameters(draftValue);
             }}
           />
-          <Tooltip title={i18nText("agentFlow", "auto.restore_defaults")}>
+          <Tooltip title={i18nText('agentFlow', 'auto.restore_defaults')}>
             <Button
               type="text"
               size="small"
-              aria-label={i18nText("agentFlow", "auto.restore_default_value", { value1: field.label })}
+              aria-label={i18nText('agentFlow', 'auto.restore_default_value', {
+                value1: field.label
+              })}
               className="agent-flow-llm-parameter-form__default-icon"
               icon={<ReloadOutlined />}
               onClick={restoreDefaultValue}
@@ -411,19 +416,30 @@ export function LlmParameterForm({
 
   if (providerOptionsQuery.isPending) {
     return (
-      <Typography.Text type="secondary">{i18nText("agentFlow", "auto.loading_parameter_schema")}</Typography.Text>
+      <Typography.Text type="secondary">
+        {i18nText('agentFlow', 'auto.loading_parameter_schema')}
+      </Typography.Text>
     );
   }
 
   if (providerOptionsQuery.isError) {
-    return <Alert type="error" showIcon title={i18nText("agentFlow", "auto.parameter_schema_failed_load")} />;
+    return (
+      <Alert
+        type="error"
+        showIcon
+        title={i18nText('agentFlow', 'auto.parameter_schema_failed_load')}
+      />
+    );
   }
 
   if (!modelProvider.model_id) {
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={block.empty_text ?? i18nText("agentFlow", "auto.select_model_adjusting_llm_parameters")}
+        description={
+          block.empty_text ??
+          i18nText('agentFlow', 'auto.select_model_adjusting_llm_parameters')
+        }
       />
     );
   }
@@ -433,7 +449,10 @@ export function LlmParameterForm({
       <Alert
         type="warning"
         showIcon
-        title={i18nText("agentFlow", "auto.model_provider_unavailable_parameter_form_rendered")}
+        title={i18nText(
+          'agentFlow',
+          'auto.model_provider_unavailable_parameter_form_rendered'
+        )}
       />
     );
   }
@@ -443,7 +462,10 @@ export function LlmParameterForm({
       <Alert
         type="warning"
         showIcon
-        title={i18nText("agentFlow", "auto.model_unavailable_parameter_form_rendered")}
+        title={i18nText(
+          'agentFlow',
+          'auto.model_unavailable_parameter_form_rendered'
+        )}
       />
     );
   }
@@ -452,7 +474,7 @@ export function LlmParameterForm({
     return (
       <Empty
         image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={i18nText("agentFlow", "auto.provider_tunable_parameters")}
+        description={i18nText('agentFlow', 'auto.provider_tunable_parameters')}
       />
     );
   }
@@ -508,7 +530,11 @@ export function LlmParameterForm({
                           <Tooltip title={field.description}>
                             <QuestionCircleOutlined
                               className="agent-flow-llm-parameter-form__help-icon"
-                              aria-label={i18nText("agentFlow", "auto.field_description", { value1: field.label })}
+                              aria-label={i18nText(
+                                'agentFlow',
+                                'auto.field_description',
+                                { value1: field.label }
+                              )}
                             />
                           </Tooltip>
                         ) : null}
@@ -549,7 +575,8 @@ export function LlmParameterForm({
                           type="secondary"
                           className="agent-flow-llm-parameter-form__row-fixed"
                         >
-                          {i18nText("agentFlow", "auto.always_on")}</Typography.Text>
+                          {i18nText('agentFlow', 'auto.always_on')}
+                        </Typography.Text>
                       )}
                     </div>
                   </div>
@@ -559,7 +586,8 @@ export function LlmParameterForm({
                         field,
                         value,
                         contextWindow,
-                        nextParameters: (nextValue) => nextParameters(nextValue),
+                        nextParameters: (nextValue) =>
+                          nextParameters(nextValue),
                         restoreDefaultValue: () => nextParameters(defaultValue)
                       })}
                     </div>

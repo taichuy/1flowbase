@@ -1,4 +1,4 @@
-import { SettingOutlined } from '@ant-design/icons';
+import SettingOutlined from '@ant-design/icons/es/icons/SettingOutlined';
 import { Link } from '@tanstack/react-router';
 import type { MenuProps } from 'antd';
 

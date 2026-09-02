@@ -6,8 +6,10 @@ import type {
 export type {
   BlockBinaryInput,
   BlockBinaryResource,
+  BlockContextAssets,
   BlockContext,
   BlockContextRecord,
+  BlockExternalAssetHandle,
   BlockContextOutputPublishResult,
   BlockContextOutputs
 } from '@1flowbase/page-protocol';

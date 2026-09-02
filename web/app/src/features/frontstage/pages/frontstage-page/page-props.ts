@@ -47,6 +47,7 @@ export type FrontStagePageProps = {
   hasPageContentLoadError?: boolean;
   isPageContentPermissionDenied?: boolean;
   onRetryLoadPageContent?: () => void;
+  onRefreshPage?: () => Promise<void>;
   isPageTreeMutating?: boolean;
   pageTreeMutationError?: Error | null;
   onCreateGroupNode?: (

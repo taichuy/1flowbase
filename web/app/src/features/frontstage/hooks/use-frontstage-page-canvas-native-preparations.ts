@@ -16,7 +16,7 @@ import {
   compileNativeReactComponentInBrowser,
   type NativeReactBrowserCompileResult
 } from '../../../shared/code-block/native-react-compiler-browser';
-import { createFrontstageNativeReactModuleRegistry } from '../lib/native-trusted-block-runtime-factory';
+import { createFrontstageNativeReactModuleRegistry } from '../lib/native-modules/registry';
 import {
   createFrontstageNativeReactArtifactCacheIdentity,
   frontstageNativeReactArtifactCache,
@@ -57,6 +57,7 @@ export interface UseFrontstagePageCanvasNativePreparationsInput {
 
 export interface UseFrontstagePageCanvasNativePreparationsResult {
   preparations: FrontstageNativePreparationSnapshot[];
+  noteInteraction(): void;
   retryBlock(blockId: string): void;
   refreshBlock(blockId: string): void;
 }
@@ -177,7 +178,7 @@ export function useFrontstagePageCanvasNativePreparations({
           let artifact;
           let artifactCacheTier: 'l2' | 'miss' = 'miss';
           if (!forceCompile) {
-            enterStage('artifact_lookup');
+            await enterStage('artifact_lookup');
             const cached = await artifactCache.get(identity);
             throwIfAborted(signal);
             if (cached.status === 'hit') {
@@ -186,7 +187,7 @@ export function useFrontstagePageCanvasNativePreparations({
             }
           }
           if (!artifact) {
-            enterStage('compile', 'miss');
+            await enterStage('compile', 'miss');
             const moduleRegistry = moduleRegistryFactory();
             const compiled = await compile({
               source: source.source_code,
@@ -206,7 +207,7 @@ export function useFrontstagePageCanvasNativePreparations({
             throwIfAborted(signal);
           }
 
-          enterStage('module_resolve', artifactCacheTier);
+          await enterStage('module_resolve', artifactCacheTier);
           const componentFactoryKey = JSON.stringify(artifact.identity);
           if (forceCompile) componentFactoryFlights.delete(componentFactoryKey);
           const moduleRegistry = moduleRegistryFactory();
@@ -237,12 +238,16 @@ export function useFrontstagePageCanvasNativePreparations({
               (module) => module.source
             )
           );
+          const moduleSources = evaluated.artifact.program.injectedModules.map(
+            (module) => module.source
+          );
           throwIfAborted(signal);
           return {
             artifact: evaluated.artifact,
             component: evaluated.component,
             artifactCacheTier,
             moduleAssets,
+            moduleSources,
             ...(contribution ? { contribution } : {}),
             identityInput: {
               sourceSha256: evaluated.artifact.identity.source_sha256,
@@ -286,6 +291,10 @@ export function useFrontstagePageCanvasNativePreparations({
     (blockId: string) => scheduler.retry(blockId),
     [scheduler]
   );
+  const noteInteraction = useCallback(
+    () => scheduler.noteInteraction(),
+    [scheduler]
+  );
   const refreshBlock = useCallback(
     (blockId: string) => {
       const request = readPlan?.requests.find(
@@ -299,7 +308,7 @@ export function useFrontstagePageCanvasNativePreparations({
     },
     [readPlan]
   );
-  return { preparations, retryBlock, refreshBlock };
+  return { preparations, noteInteraction, retryBlock, refreshBlock };
 }
 
 async function defaultFetchSource(

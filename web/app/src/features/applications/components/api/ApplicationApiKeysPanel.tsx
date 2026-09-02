@@ -2,9 +2,21 @@ import { useState } from 'react';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 
-import { DeleteOutlined, KeyOutlined, QuestionCircleOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import KeyOutlined from '@ant-design/icons/es/icons/KeyOutlined';
+import QuestionCircleOutlined from '@ant-design/icons/es/icons/QuestionCircleOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { App, Button, Form, Input, Modal, Space, Table, Tooltip, Typography } from 'antd';
+import {
+  App,
+  Button,
+  Form,
+  Input,
+  Modal,
+  Space,
+  Table,
+  Tooltip,
+  Typography
+} from 'antd';
 
 import { formatDateTime } from '../../../../shared/i18n/format';
 import { copyTextToClipboard } from '../../../../shared/ui/clipboard/copy-text';
@@ -37,7 +49,10 @@ function formatShanghaiDateTime(value: string) {
   });
 }
 
-function formatOptionalDateTime(value: string | null | undefined, t: TFunction<'applications'>) {
+function formatOptionalDateTime(
+  value: string | null | undefined,
+  t: TFunction<'applications'>
+) {
   return value ? formatShanghaiDateTime(value) : t('auto.not_used');
 }
 
@@ -57,14 +72,17 @@ export function ApplicationApiKeysPanel({
   const { message } = App.useApp();
   const [createOpen, setCreateOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
-  const [createdKey, setCreatedKey] = useState<CreatedApplicationApiKey | null>(null);
+  const [createdKey, setCreatedKey] = useState<CreatedApplicationApiKey | null>(
+    null
+  );
   const [form] = Form.useForm<{ name: string }>();
   const keysQuery = useQuery({
     queryKey: applicationApiKeysQueryKey(applicationId),
     queryFn: () => fetchApplicationApiKeys(applicationId)
   });
   const createMutation = useMutation({
-    mutationFn: (name: string) => createApplicationApiKey(applicationId, name, csrfToken),
+    mutationFn: (name: string) =>
+      createApplicationApiKey(applicationId, name, csrfToken),
     onSuccess: (key) => {
       setCreatedKey(key);
       onCreatedToken(key.token);
@@ -79,7 +97,8 @@ export function ApplicationApiKeysPanel({
     }
   });
   const revokeMutation = useMutation({
-    mutationFn: (keyId: string) => revokeApplicationApiKey(applicationId, keyId, csrfToken),
+    mutationFn: (keyId: string) =>
+      revokeApplicationApiKey(applicationId, keyId, csrfToken),
     onSuccess: () => {
       message.success(t('auto.api_key_deleted'));
       void queryClient.invalidateQueries({
@@ -138,7 +157,8 @@ export function ApplicationApiKeysPanel({
           title: t('auto.last_used_at'),
           dataIndex: 'last_used_at',
           width: 200,
-          render: (value: string | null | undefined) => formatOptionalDateTime(value, t)
+          render: (value: string | null | undefined) =>
+            formatOptionalDateTime(value, t)
         },
         {
           title: t('auto.operation'),
@@ -169,7 +189,8 @@ export function ApplicationApiKeysPanel({
           icon={<KeyOutlined />}
           onClick={() => setListOpen(true)}
         >
-          {t('auto.api_key')}</Button>
+          {t('auto.api_key')}
+        </Button>
         <Modal
           title="API Keys"
           open={listOpen}
@@ -178,12 +199,19 @@ export function ApplicationApiKeysPanel({
           footer={null}
           onCancel={() => setListOpen(false)}
         >
-          <Space orientation="vertical" size={16} className="application-api-key-list-modal">
+          <Space
+            orientation="vertical"
+            size={16}
+            className="application-api-key-list-modal"
+          >
             <div className="application-api-panel__header">
               <Typography.Text type="secondary">
-                {t('auto.created')}{keys.length} {t('auto.key_count_suffix')}</Typography.Text>
+                {t('auto.created')}
+                {keys.length} {t('auto.key_count_suffix')}
+              </Typography.Text>
               <Button type="primary" onClick={() => setCreateOpen(true)}>
-                {t('auto.create_key')}</Button>
+                {t('auto.create_key')}
+              </Button>
             </div>
             {keyTable}
           </Space>
@@ -219,20 +247,23 @@ export function ApplicationApiKeysPanel({
           onCancel={() => setCreatedKey(null)}
           footer={[
             <Button key="close" type="text" onClick={() => setCreatedKey(null)}>
-              {t('auto.close')}</Button>,
+              {t('auto.close')}
+            </Button>,
             <Button
               key="copy"
               aria-label={t('auto.copy')}
               className="application-api-created-token-copy"
               onClick={copyCreatedToken}
             >
-              {t('auto.copy')}</Button>
+              {t('auto.copy')}
+            </Button>
           ]}
         >
           <Space orientation="vertical" className="application-api-token-modal">
             <Typography.Text>{t('auto.full_token_shown_once')}</Typography.Text>
             <Typography.Text type="secondary">
-              {t('auto.full_token_hidden_after_close')}</Typography.Text>
+              {t('auto.full_token_hidden_after_close')}
+            </Typography.Text>
             <Typography.Text className="application-api-created-token">
               {createdKey?.token}
             </Typography.Text>
@@ -247,10 +278,13 @@ export function ApplicationApiKeysPanel({
       <div className="application-api-panel__header">
         <div>
           <Typography.Title level={4}>{t('auto.api_keys')}</Typography.Title>
-          <Typography.Text type="secondary">{t('auto.current_application_public_api_usage')}</Typography.Text>
+          <Typography.Text type="secondary">
+            {t('auto.current_application_public_api_usage')}
+          </Typography.Text>
         </div>
         <Button type="primary" onClick={() => setCreateOpen(true)}>
-          {t('auto.create_key')}</Button>
+          {t('auto.create_key')}
+        </Button>
       </div>
       {keyTable}
       <Modal
@@ -284,20 +318,23 @@ export function ApplicationApiKeysPanel({
         onCancel={() => setCreatedKey(null)}
         footer={[
           <Button key="close" type="text" onClick={() => setCreatedKey(null)}>
-            {t('auto.close')}</Button>,
+            {t('auto.close')}
+          </Button>,
           <Button
             key="copy"
             aria-label={t('auto.copy')}
             className="application-api-created-token-copy"
             onClick={copyCreatedToken}
           >
-            {t('auto.copy')}</Button>
+            {t('auto.copy')}
+          </Button>
         ]}
       >
         <Space orientation="vertical" className="application-api-token-modal">
           <Typography.Text>{t('auto.full_token_shown_once')}</Typography.Text>
           <Typography.Text type="secondary">
-            {t('auto.full_token_hidden_after_close')}</Typography.Text>
+            {t('auto.full_token_hidden_after_close')}
+          </Typography.Text>
           <Typography.Text className="application-api-created-token">
             {createdKey?.token}
           </Typography.Text>

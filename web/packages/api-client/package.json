@@ -3,6 +3,16 @@
   "version": "0.4.1",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./src/index.ts"
+    },
+    "./auth": {
+      "types": "./dist/auth/index.d.ts",
+      "default": "./src/auth/index.ts"
+    }
+  },
   "dependencies": {
     "@1flowbase/flow-schema": "workspace:^",
     "@1flowbase/shared-types": "workspace:*"

@@ -13,7 +13,7 @@ import {
   Typography
 } from 'antd';
 import type { FormInstance } from 'antd';
-import { ReloadOutlined } from '@ant-design/icons';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 
 import type { CopySettingsMcpInstanceBody } from '../../../api/mcp-management';
 import { i18nText } from '../../../../../shared/i18n/text';

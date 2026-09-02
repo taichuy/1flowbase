@@ -1,11 +1,17 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
   within
 } from '@testing-library/react';
-import { useEffect, useState, type ComponentType } from 'react';
+import {
+  useEffect,
+  useLayoutEffect,
+  useState,
+  type ComponentType
+} from 'react';
 import { describe, expect, test, vi } from 'vitest';
 
 import type { BlockContext } from '@1flowbase/page-protocol';
@@ -23,6 +29,69 @@ import type { FrontstageBlockInstance } from '../../lib/page-document';
 import { createFrontstagePageContentFixture } from '../frontstage-page-content-fixtures';
 
 describe('PageCanvas declarative Native block lifecycle', () => {
+  test('AC-001/AC-006 gives internal input an interaction lease while preserving browser offscreen containment', async () => {
+    const noteInteraction = vi.fn();
+    render(
+      <PageCanvas
+        content={pageContent('Interaction')}
+        runtimeBlocks={[runtimeBlock('Interaction')]}
+        runtimePreparations={[preparation('source-a', 1, () => null)]}
+        onRuntimeInteraction={noteInteraction}
+      />
+    );
+
+    const canvas = screen.getByTestId('page-canvas-render-slots');
+    fireEvent.pointerOver(canvas);
+    fireEvent.pointerDown(canvas);
+    expect(noteInteraction).toHaveBeenCalledTimes(2);
+
+    const blockSlot = await screen.findByTestId('block-slot-block-1');
+    expect(blockSlot).toHaveStyle({ contentVisibility: 'auto' });
+    expect(blockSlot.style.containIntrinsicSize).toMatch(/^auto /u);
+  });
+
+  test('AC-004 does not re-render unrelated ready Block trees when one stable height commits', async () => {
+    let reportFirstHeight: ((input: { height: number }) => void) | undefined;
+    let secondInvocationCount = 0;
+    const FirstBlock = ({ ctx }: { ctx: BlockContext }) => {
+      reportFirstHeight = ctx.ui.sizing?.reportIntrinsicSize;
+      return <div>first</div>;
+    };
+    const SecondBlock = () => {
+      secondInvocationCount += 1;
+      return <div>second</div>;
+    };
+    const blocks = [
+      runtimeBlock('First', 'block-1', 0),
+      {
+        ...runtimeBlock('Second', 'block-2', 1),
+        presentation: { heightMode: 'fixed' as const, height: 320 }
+      }
+    ];
+    render(
+      <PageCanvas
+        content={pageContentWithBlocks(blocks)}
+        runtimeBlocks={blocks}
+        runtimePreparations={[
+          preparation('source-a', 1, FirstBlock),
+          preparation('source-b', 1, SecondBlock, true, {}, 'block-2', 1)
+        ]}
+      />
+    );
+
+    await waitFor(() => expect(reportFirstHeight).toBeTypeOf('function'));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const secondBlockCountBeforeCommit = secondInvocationCount;
+    act(() => reportFirstHeight?.({ height: 500 }));
+    await waitFor(() =>
+      expect(screen.getByTestId('block-slot-block-1')).toHaveAttribute(
+        'data-flowbase-frontstage-intrinsic-height',
+        '500'
+      )
+    );
+    expect(secondInvocationCount).toBe(secondBlockCountBeforeCommit);
+  });
+
   test('AC-013 exposes route inputs to the selected runtime block context', async () => {
     const InputBlock = ({ ctx }: { ctx: BlockContext }) => (
       <div data-testid="runtime-route-input">
@@ -151,7 +220,7 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     expect(unmounts).toBe(3);
   });
 
-  test('D3R-AC-005/008 presents demand 0/1, unmounts 2/3, and disposes the page epoch', async () => {
+  test('AC-001 preserves a mounted Portal across demand changes and disposes the page epoch', async () => {
     const contexts: BlockContext[] = [];
     let mounts = 0;
     let unmounts = 0;
@@ -175,6 +244,11 @@ describe('PageCanvas declarative Native block lifecycle', () => {
     );
     const root = await nativeRoot();
     await within(root.shadow).findByTestId('lifecycle-native-block');
+    const blockSlot = screen.getByTestId('block-slot-block-1');
+    const measuredIntrinsicHeight = Number(
+      blockSlot.getAttribute('data-flowbase-frontstage-intrinsic-height')
+    );
+    expect(measuredIntrinsicHeight).toBeGreaterThan(0);
     const firstPublish = contexts.at(-1)!.outputs.publish;
 
     view.rerender(
@@ -192,31 +266,164 @@ describe('PageCanvas declarative Native block lifecycle', () => {
           content={pageContent('Demand')}
           runtimeBlocks={[runtimeBlock('Demand')]}
           runtimePreparations={[
-            preparation('source-a', priority, LifecycleBlock, false)
+            preparation('source-a', priority, LifecycleBlock)
           ]}
         />
       );
-      await waitFor(() => expect(root.shadow.childNodes).toHaveLength(0));
+      expect(
+        within(root.shadow).getByTestId('lifecycle-native-block')
+      ).toHaveTextContent('ready');
+      expect(blockSlot).toHaveAttribute(
+        'data-flowbase-frontstage-intrinsic-height',
+        String(measuredIntrinsicHeight)
+      );
     }
-    expect(unmounts).toBe(1);
+    expect(mounts).toBe(1);
+    expect(unmounts).toBe(0);
+    expect(firstPublish({})).toEqual({ ok: true, stale: false });
+
+    view.unmount();
+    await waitFor(() => expect(unmounts).toBe(1));
     expect(firstPublish({})).toEqual({ ok: false, stale: true });
+    expect(root.shadow.childNodes).toHaveLength(0);
+  });
+
+  test('AC-004 keeps ctx.state stable across host updates in one mount epoch', async () => {
+    const StatefulContextBlock = ({ ctx }: { ctx: BlockContext }) => {
+      const [revision, setRevision] = useState(0);
+      return (
+        <button
+          data-testid="context-state-native-block"
+          onClick={() => {
+            ctx.patch({ count: Number(ctx.state.count ?? 0) + 1 });
+            setRevision((current) => current + 1);
+          }}
+        >
+          {String(ctx.state.count ?? 'none')}:{revision}:{ctx.theme.mode}
+        </button>
+      );
+    };
+    const ready = preparation('source-a', 1, StatefulContextBlock);
+    const view = render(
+      <PageCanvas
+        content={pageContent('Context state')}
+        runtimeBlocks={[runtimeBlock('Context state')]}
+        runtimeContext={runtimeContext('light')}
+        runtimePreparations={[ready]}
+      />
+    );
+    const root = await nativeRoot();
+    const button = await within(root.shadow).findByTestId(
+      'context-state-native-block'
+    );
+    fireEvent.click(button);
+    expect(button).toHaveTextContent('1:1:light');
 
     view.rerender(
       <PageCanvas
-        content={pageContent('Demand')}
-        runtimeBlocks={[runtimeBlock('Demand')]}
-        runtimePreparations={[preparation('source-a', 1, LifecycleBlock)]}
+        content={pageContent('Context state')}
+        runtimeBlocks={[runtimeBlock('Context state')]}
+        runtimeContext={runtimeContext('dark')}
+        runtimePreparations={[ready]}
       />
     );
-    const remountedRoot = await nativeRoot();
-    await within(remountedRoot.shadow).findByTestId('lifecycle-native-block');
-    expect(mounts).toBe(2);
 
-    const secondPublish = contexts.at(-1)!.outputs.publish;
-    view.unmount();
-    await waitFor(() => expect(unmounts).toBe(2));
-    expect(secondPublish({})).toEqual({ ok: false, stale: true });
-    expect(remountedRoot.shadow.childNodes).toHaveLength(0);
+    await waitFor(() => expect(button).toHaveTextContent('1:1:dark'));
+  });
+
+  test('AC-1926-002 fills the allocated viewport only after an explicit intrinsic measurement', async () => {
+    let mounts = 0;
+    const SizingBlock = ({ ctx }: { ctx: BlockContext }) => {
+      const [localCount, setLocalCount] = useState(0);
+      useState(() => ++mounts);
+      const sizing = ctx.ui.sizing;
+      useLayoutEffect(() => {
+        sizing?.reportIntrinsicSize({ height: 320 });
+      }, [sizing]);
+      return (
+        <button
+          data-testid="sizing-native-block"
+          onClick={() => setLocalCount((current) => current + 1)}
+        >
+          {sizing?.available.width ?? 'missing'}x
+          {sizing?.available.height ?? 'missing'}:{localCount}
+        </button>
+      );
+    };
+    const ready = preparation('source-a', 1, SizingBlock);
+    const view = render(
+      <PageCanvas
+        content={pageContent('Sizing')}
+        runtimeBlocks={[runtimeBlock('Sizing')]}
+        runtimeContext={runtimeContext('light')}
+        runtimePreparations={[ready]}
+      />
+    );
+
+    const root = await nativeRoot();
+    const button = await within(root.shadow).findByTestId(
+      'sizing-native-block'
+    );
+    await waitFor(() => expect(button).toHaveTextContent('1280x800:0'));
+    await waitFor(() =>
+      expect(screen.getByTestId('block-slot-block-1')).toHaveAttribute(
+        'data-flowbase-frontstage-intrinsic-height',
+        '320'
+      )
+    );
+    await waitFor(() =>
+      expect(root.host.parentElement).toHaveStyle({ height: '100%' })
+    );
+    expect(root.host.parentElement).toHaveAttribute(
+      'data-flowbase-frontstage-available-height',
+      '800'
+    );
+    expect(
+      root.host.closest('[data-flowbase-frontstage-intrinsic-content]')
+    ).toHaveStyle({ height: '100%' });
+
+    fireEvent.click(button);
+    view.rerender(
+      <PageCanvas
+        content={pageContent('Sizing')}
+        runtimeBlocks={[runtimeBlock('Sizing')]}
+        runtimeContext={runtimeContext('dark')}
+        runtimePreparations={[ready]}
+      />
+    );
+
+    await waitFor(() => expect(button).toHaveTextContent('1280x800:1'));
+    expect(mounts).toBe(1);
+
+    const PlainBlock = (_props: {
+      ctx: BlockContext;
+      props: Record<string, unknown>;
+    }) => <div data-testid="plain-native-block">plain</div>;
+    view.rerender(
+      <PageCanvas
+        content={pageContent('Plain')}
+        runtimeBlocks={[runtimeBlock('Plain')]}
+        runtimeContext={runtimeContext('dark')}
+        runtimePreparations={[preparation('source-b', 1, PlainBlock)]}
+      />
+    );
+    await within(root.shadow).findByTestId('plain-native-block');
+    await waitFor(() =>
+      expect(screen.getByTestId('block-slot-block-1')).toHaveAttribute(
+        'data-flowbase-frontstage-intrinsic-height',
+        '800'
+      )
+    );
+    await waitFor(() =>
+      expect(
+        root.host.closest('[data-flowbase-frontstage-intrinsic-content]')
+      ).not.toHaveStyle({ height: '100%' })
+    );
+    expect(root.host.parentElement).not.toHaveStyle({ height: '100%' });
+    expect(root.host.parentElement).toHaveAttribute(
+      'data-flowbase-frontstage-available-height',
+      '800'
+    );
   });
 
   test('D3R-AC-005 render retry replaces only the failed Portal epoch', async () => {
@@ -278,7 +485,9 @@ function preparation(
   identityOverrides: Partial<{
     compilerAbi: string;
     runtimeAbi: string;
-  }> = {}
+  }> = {},
+  blockId = 'block-1',
+  slotIndex = 0
 ): Extract<FrontstageNativePreparationSnapshot, { status: 'ready' }> {
   const identityInput = {
     sourceSha256: sourceSha256.padEnd(64, '0'),
@@ -287,19 +496,18 @@ function preparation(
   };
   return {
     status: 'ready',
-    blockId: 'block-1',
-    slotIndex: 0,
+    blockId,
+    slotIndex,
     priority,
     generation: 0,
-    mountIntent: present
-      ? { blockId: 'block-1', slotIndex: 0, identityInput }
-      : null,
+    mountIntent: present ? { blockId, slotIndex, identityInput } : null,
     prepared: {
       artifact: {} as FrontstageNativePreparedRuntime['artifact'],
       component: component as FrontstageNativePreparedRuntime['component'],
       identityInput,
       artifactCacheTier: 'l2',
-      moduleAssets: []
+      moduleAssets: [],
+      moduleSources: []
     }
   };
 }
@@ -316,9 +524,13 @@ function runtimeContext(
   };
 }
 
-function runtimeBlock(title: string): FrontstageBlockInstance {
+function runtimeBlock(
+  title: string,
+  blockId = 'block-1',
+  order = 0
+): FrontstageBlockInstance {
   return {
-    id: 'block-1',
+    id: blockId,
     rendererVersion: 'v1',
     sourceId: 'block-1',
     codeRef: 'block-1-code',
@@ -337,12 +549,36 @@ function runtimeBlock(title: string): FrontstageBlockInstance {
       entry: 'blocks/block-1.js',
       hint: 'native_react'
     },
-    layout: { order: 0, region: 'main' },
+    layout: { order, region: 'main' },
     presentation: { heightMode: 'auto', height: null },
-    order: 0,
+    order,
     props: { title },
     ports: { inputs: [], outputs: [] }
   };
+}
+
+function pageContentWithBlocks(
+  blocks: readonly FrontstageBlockInstance[]
+): FrontstagePageContent {
+  return createFrontstagePageContentFixture({
+    root: {
+      uid: 'root-1',
+      payload: {
+        blocks: blocks.map((block) => ({
+          id: block.id,
+          renderer_version: block.rendererVersion,
+          codeRef: block.codeRef,
+          catalog: block.catalog,
+          contribution: block.contribution,
+          runtime: block.runtime,
+          layout: block.layout,
+          presentation: block.presentation,
+          props: block.props,
+          ports: block.ports
+        }))
+      }
+    }
+  });
 }
 
 function pageContent(title: string): FrontstagePageContent {

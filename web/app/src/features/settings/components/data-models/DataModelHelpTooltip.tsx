@@ -1,6 +1,6 @@
 import { useId } from 'react';
 
-import { QuestionCircleOutlined } from '@ant-design/icons';
+import QuestionCircleOutlined from '@ant-design/icons/es/icons/QuestionCircleOutlined';
 import { Tooltip } from 'antd';
 import { i18nText } from '../../../../shared/i18n/text';
 
@@ -42,7 +42,13 @@ export function DataModelHelpTooltip({
         <QuestionCircleOutlined
           aria-describedby={decorative ? undefined : descriptionId}
           aria-hidden={decorative ? true : undefined}
-          aria-label={decorative ? undefined : i18nText("settings", "auto.description_option", { value1: label })}
+          aria-label={
+            decorative
+              ? undefined
+              : i18nText('settings', 'auto.description_option', {
+                  value1: label
+                })
+          }
           className="data-model-panel__help-icon"
           tabIndex={decorative ? -1 : 0}
         />

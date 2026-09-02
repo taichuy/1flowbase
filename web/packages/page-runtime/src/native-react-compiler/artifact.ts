@@ -334,7 +334,10 @@ function validateImportedModuleDefinitions(
       if (binding.kind === 'namespace') continue;
       const exportName =
         binding.kind === 'default' ? 'default' : binding.imported;
-      if (!registration.exports.includes(exportName)) {
+      if (
+        !registration.exports.includes('*') &&
+        !registration.exports.includes(exportName)
+      ) {
         return compileFailure(
           `moduleRegistry.${registration.module_source}.exports.${exportName}`,
           `Frontend module export is not registered: ${registration.module_source}.${exportName}.`

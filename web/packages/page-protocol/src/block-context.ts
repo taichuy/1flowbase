@@ -1,4 +1,6 @@
 export const BLOCK_CONTEXT_KEYS = [
+  'root',
+  'assets',
   'currentUser',
   'workspace',
   'application',
@@ -132,15 +134,45 @@ export interface BlockContextTheme {
   tokens: BlockContextRecord;
 }
 
+export interface BlockContextAvailableSize {
+  width: number;
+  height: number;
+}
+
+export interface BlockContextIntrinsicSize {
+  height: number;
+}
+
+export interface BlockContextSizing {
+  available: Readonly<BlockContextAvailableSize>;
+  reportIntrinsicSize(size: BlockContextIntrinsicSize): void;
+}
+
 export interface BlockContextUi {
   locale?: string;
   density?: 'compact' | 'comfortable';
+  sizing?: BlockContextSizing;
+}
+
+export interface BlockExternalAssetHandle {
+  dispose(): void;
+}
+
+export interface BlockContextAssets {
+  importModule<TModule = Record<string, unknown>>(
+    url: string
+  ): Promise<TModule>;
+  loadStyle(url: string): Promise<BlockExternalAssetHandle>;
+  loadScript(url: string): Promise<BlockExternalAssetHandle>;
+  loadSvgSprite(url: string): Promise<BlockExternalAssetHandle>;
 }
 
 export interface BlockContext<
   TInputs extends BlockContextRecord = BlockContextRecord,
   TOutputs extends BlockContextRecord = BlockContextRecord
 > {
+  root: ShadowRoot;
+  assets: BlockContextAssets;
   currentUser: BlockContextIdentity | null;
   workspace: BlockContextEntity;
   application: BlockContextEntity | null;
@@ -157,3 +189,8 @@ export interface BlockContext<
   theme: BlockContextTheme;
   ui: BlockContextUi;
 }
+
+export type BlockContextSeed<
+  TInputs extends BlockContextRecord = BlockContextRecord,
+  TOutputs extends BlockContextRecord = BlockContextRecord
+> = Omit<BlockContext<TInputs, TOutputs>, 'root' | 'assets'>;

@@ -1,7 +1,23 @@
-import * as antdModule from 'antd';
 import * as ReactModule from 'react';
 import * as ReactJsxRuntimeModule from 'react/jsx-runtime';
-import * as uiModule from '@1flowbase/ui';
+import {
+  ANTD_ROOT_EXPORTS,
+  ANTD_ES_MODULE_DEFINITIONS,
+  loadAntDesignRootModule,
+  loadAntDesignEsModule
+} from 'virtual:1flowbase-native-antd-es-modules';
+import {
+  ANT_DESIGN_ICONS_MODULE_DEFINITIONS,
+  loadAntDesignIconsModule
+} from 'virtual:1flowbase-native-ant-design-icons-modules';
+import {
+  DND_KIT_MODULE_DEFINITIONS,
+  loadDndKitModule
+} from 'virtual:1flowbase-native-dnd-kit-modules';
+import {
+  DAYJS_MODULE_DEFINITIONS,
+  loadDayjsModule
+} from 'virtual:1flowbase-native-dayjs-modules';
 
 import {
   createNativeReactModuleRegistry,
@@ -12,53 +28,42 @@ import {
   type NativeTrustedBlockInjectedModuleMap
 } from '@1flowbase/page-runtime';
 
-import { createFrontendModuleExtraLib } from './declarations';
+import {
+  ANT_DESIGN_COLORS_EXPORTS,
+  loadAntDesignColorsModule
+} from './ant-design-colors-runtime';
+import { ANTD_STYLE_EXPORTS, loadAntdStyleModule } from './antd-style-runtime';
+import { loadAntdImgCropModule } from './image-crop/antd-img-crop-runtime';
 
 type ModuleNamespace = Record<string, unknown>;
 
-const ICON_EXPORTS = [
-  'ArrowDownOutlined',
-  'ArrowLeftOutlined',
-  'ArrowRightOutlined',
-  'ArrowUpOutlined',
-  'CalendarOutlined',
-  'CheckCircleOutlined',
-  'CheckOutlined',
-  'ClockCircleOutlined',
-  'CloseCircleOutlined',
-  'CloseOutlined',
-  'CopyOutlined',
-  'DeleteOutlined',
-  'DownloadOutlined',
-  'EditOutlined',
-  'ExclamationCircleOutlined',
-  'EyeInvisibleOutlined',
-  'EyeOutlined',
-  'FileOutlined',
-  'FolderOpenOutlined',
-  'FolderOutlined',
-  'HomeOutlined',
-  'InfoCircleOutlined',
-  'LeftOutlined',
-  'LinkOutlined',
-  'LoadingOutlined',
-  'LockOutlined',
-  'MailOutlined',
-  'MenuOutlined',
-  'MinusOutlined',
-  'MoreOutlined',
-  'PlusOutlined',
-  'QuestionCircleOutlined',
-  'ReloadOutlined',
-  'RightOutlined',
-  'SaveOutlined',
-  'SearchOutlined',
-  'SettingOutlined',
-  'UpOutlined',
-  'UploadOutlined',
-  'UserOutlined',
-  'WarningOutlined'
-] as const;
+const UI_MODULE_EXPORTS = ['AppShell', 'AppThemeProvider'] as const;
+
+async function loadNativeAntDesignModule(): Promise<ModuleNamespace> {
+  const [
+    antdModule,
+    { NativeBlockAffix },
+    { NativeBlockAnchor },
+    { NativeBlockDropdown },
+    { NativeBlockMessage },
+    { NativeBlockMenu }
+  ] = await Promise.all([
+    loadAntDesignRootModule(),
+    import('./native-affix-runtime'),
+    import('./native-anchor-runtime'),
+    import('./native-dropdown-runtime'),
+    import('./native-message-runtime'),
+    import('./menu/native-menu-runtime')
+  ]);
+  return {
+    ...antdModule,
+    Affix: NativeBlockAffix,
+    Anchor: NativeBlockAnchor,
+    Dropdown: NativeBlockDropdown,
+    Menu: NativeBlockMenu,
+    message: NativeBlockMessage
+  };
+}
 
 const ANT_DESIGN_X_EXPORTS = [
   'Actions',
@@ -91,11 +96,40 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
     Object.keys(ReactJsxRuntimeModule),
     async () => ({ module: ReactJsxRuntimeModule })
   ),
-  registration('antd', Object.keys(antdModule), async () => ({
-    module: antdModule
+  registration('antd', ANTD_ROOT_EXPORTS, async () => ({
+    module: await loadNativeAntDesignModule()
   })),
-  registration('@1flowbase/ui', Object.keys(uiModule), async () => ({
-    module: uiModule
+  ...ANTD_ES_MODULE_DEFINITIONS.map(({ module_source, exports }) =>
+    registration(module_source, exports, async () => ({
+      module: await loadAntDesignEsModule(module_source)
+    }))
+  ),
+  ...DND_KIT_MODULE_DEFINITIONS.map(({ module_source, exports }) =>
+    registration(module_source, exports, async () => ({
+      module: await loadDndKitModule(module_source)
+    }))
+  ),
+  registration('@ant-design/colors', ANT_DESIGN_COLORS_EXPORTS, async () => ({
+    module: await loadAntDesignColorsModule()
+  })),
+  registration('antd-img-crop', ['default'], loadAntdImgCropModule),
+  ...DAYJS_MODULE_DEFINITIONS.map(({ module_source, exports }) =>
+    registration(module_source, exports, async () => ({
+      module: await loadDayjsModule(module_source)
+    }))
+  ),
+  registration('lodash/debounce', ['default'], async () => {
+    const debounceModule = await import('lodash/debounce');
+    return { module: { default: debounceModule.default } };
+  }),
+  registration('clsx', ['default', 'clsx'], async () => ({
+    module: await import('clsx')
+  })),
+  registration('antd-style', ANTD_STYLE_EXPORTS, async () => ({
+    module: await loadAntdStyleModule()
+  })),
+  registration('@1flowbase/ui', UI_MODULE_EXPORTS, async () => ({
+    module: await import('@1flowbase/ui')
   })),
   registration('@1flowbase/block-sdk', ['blockSdkVersion'], async () => ({
     module: await import('@1flowbase/block-sdk')
@@ -111,9 +145,11 @@ const registrations: readonly NativeReactFrontendModuleRegistration[] = [
       return { module, styles: [{ css: style.default }] };
     }
   ),
-  registration('@ant-design/icons', [...ICON_EXPORTS], async () => ({
-    module: await import('@ant-design/icons')
-  })),
+  ...ANT_DESIGN_ICONS_MODULE_DEFINITIONS.map(({ module_source, exports }) =>
+    registration(module_source, exports, async () => ({
+      module: await loadAntDesignIconsModule(module_source)
+    }))
+  ),
   registration('@1flowbase/charts', ['EChart'], async () => ({
     module: await import('@1flowbase/charts')
   })),
@@ -143,11 +179,6 @@ export const FRONTSTAGE_NATIVE_REACT_MODULE_DEFINITIONS: readonly NativeReactMod
     module_source,
     exports: [...exports]
   }));
-
-export const FRONTSTAGE_NATIVE_REACT_MODULE_EXTRA_LIBS = registrations.map(
-  ({ module_source, exports }) =>
-    createFrontendModuleExtraLib(module_source, exports)
-);
 
 let sharedRegistry: NativeReactModuleRegistry | undefined;
 

@@ -1,14 +1,12 @@
-import {
-  CloudDownloadOutlined,
-  ExportOutlined,
-  FileTextOutlined,
-  GithubOutlined,
-  QuestionCircleOutlined,
-  SafetyCertificateOutlined
-} from '@ant-design/icons';
+import CloudDownloadOutlined from '@ant-design/icons/es/icons/CloudDownloadOutlined';
+import ExportOutlined from '@ant-design/icons/es/icons/ExportOutlined';
+import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
+import GithubOutlined from '@ant-design/icons/es/icons/GithubOutlined';
+import QuestionCircleOutlined from '@ant-design/icons/es/icons/QuestionCircleOutlined';
+import SafetyCertificateOutlined from '@ant-design/icons/es/icons/SafetyCertificateOutlined';
 import { fetchConsoleReleaseStatus } from '@1flowbase/api-client';
 import { useQuery } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
 import { Menu, Spin } from 'antd';
 import { i18nText } from '../shared/i18n/text';
 
@@ -21,7 +19,7 @@ const HELP_LINKS = [
   },
   {
     key: 'docs',
-    label: i18nText("appShell", "auto.documentation"),
+    label: i18nText('appShell', 'auto.documentation'),
     icon: <FileTextOutlined />,
     href: 'https://1flowbase.taichuy.com/docs/'
   },
@@ -60,13 +58,7 @@ function HelpPopupLink({
   );
 }
 
-function HelpPopupText({
-  icon,
-  label
-}: {
-  icon: ReactNode;
-  label: ReactNode;
-}) {
+function HelpPopupText({ icon, label }: { icon: ReactNode; label: ReactNode }) {
   return (
     <span className="app-shell-help-popup__link">
       <span className="app-shell-help-popup__link-icon">{icon}</span>
@@ -86,13 +78,15 @@ function formatReleaseVersion(version: string | null | undefined) {
 }
 
 export function HelpChromeMenu() {
+  const [helpOpen, setHelpOpen] = useState(false);
   const releaseStatusQuery = useQuery({
     queryKey: ['console-release-status'],
     queryFn: () => fetchConsoleReleaseStatus(),
     staleTime: 60 * 1000,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
-    retry: false
+    retry: false,
+    enabled: helpOpen
   });
   const releaseStatus = releaseStatusQuery.data;
   const currentVersion = formatReleaseVersion(releaseStatus?.current_version);
@@ -106,12 +100,17 @@ export function HelpChromeMenu() {
     <Menu
       className="app-shell-help-menu"
       mode="horizontal"
+      openKeys={helpOpen ? ['help'] : []}
+      onOpenChange={(openKeys) => setHelpOpen(openKeys.includes('help'))}
       selectable={false}
       items={[
         {
           key: 'help',
           label: (
-            <span className="app-shell-help-block" aria-label={i18nText("appShell", "auto.help")}>
+            <span
+              className="app-shell-help-block"
+              aria-label={i18nText('appShell', 'auto.help')}
+            >
               <QuestionCircleOutlined />
             </span>
           ),

@@ -48,15 +48,15 @@ export function attachNativeTrustedBlockPortalSurface({
   const mountElement = document.createElement('div');
   mountElement.setAttribute(NATIVE_TRUSTED_BLOCK_MOUNT_ATTRIBUTE, '');
   mountElement.setAttribute(NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE, blockId);
-  // Normal block content owns horizontal scrolling here. Popups mount as
-  // direct ShadowRoot children, so they remain outside this scroll boundary.
+  // Flow content keeps its local paint geometry. Wide content opts into a
+  // ScrollableSurface; popups remain direct ShadowRoot children.
   Object.assign(mountElement.style, {
     width: '100%',
     maxWidth: '100%',
     minWidth: '0',
+    height: '100%',
     boxSizing: 'border-box',
-    overflowX: 'auto',
-    overflowY: 'visible'
+    overflow: 'visible'
   });
   shadowRoot.replaceChildren(mountElement);
   activeRoots.add(root);
@@ -87,10 +87,7 @@ interface AttributeSnapshot {
   value: string | null;
 }
 
-function applyStyleScope(
-  root: Element,
-  blockId: string
-): { restore(): void } {
+function applyStyleScope(root: Element, blockId: string): { restore(): void } {
   const snapshots = [
     snapshotAttribute(root, NATIVE_TRUSTED_BLOCK_ROOT_ATTRIBUTE),
     snapshotAttribute(root, NATIVE_TRUSTED_BLOCK_ID_ATTRIBUTE)

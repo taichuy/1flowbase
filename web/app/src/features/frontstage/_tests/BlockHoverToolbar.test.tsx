@@ -1,7 +1,16 @@
 import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeAll, describe, expect, test, vi } from 'vitest';
 
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../shared/i18n/app-i18n';
 import { BlockHoverToolbar } from '../components/BlockHoverToolbar';
+
+beforeAll(async () => {
+  await loadApplicationI18nResources();
+  await appI18n.changeLanguage('zh_Hans');
+});
 
 describe('BlockHoverToolbar', () => {
   test('uses the page-tree micro action language and exposes a real grid drag handle', async () => {

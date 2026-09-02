@@ -1,4 +1,4 @@
-import { Bubble } from '@ant-design/x';
+import Bubble from '@ant-design/x/es/bubble';
 import { Empty, Flex, Typography } from 'antd';
 import {
   useCallback,

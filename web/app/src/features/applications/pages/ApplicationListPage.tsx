@@ -15,21 +15,19 @@ import {
   Typography,
   type MenuProps
 } from 'antd';
-import {
-  AppstoreAddOutlined,
-  AppstoreOutlined,
-  BlockOutlined,
-  CopyOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  ExportOutlined,
-  FileTextOutlined,
-  ImportOutlined,
-  MoreOutlined,
-  RobotOutlined,
-  SearchOutlined,
-  TagOutlined
-} from '@ant-design/icons';
+import AppstoreAddOutlined from '@ant-design/icons/es/icons/AppstoreAddOutlined';
+import AppstoreOutlined from '@ant-design/icons/es/icons/AppstoreOutlined';
+import BlockOutlined from '@ant-design/icons/es/icons/BlockOutlined';
+import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import ExportOutlined from '@ant-design/icons/es/icons/ExportOutlined';
+import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
+import ImportOutlined from '@ant-design/icons/es/icons/ImportOutlined';
+import MoreOutlined from '@ant-design/icons/es/icons/MoreOutlined';
+import RobotOutlined from '@ant-design/icons/es/icons/RobotOutlined';
+import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
+import TagOutlined from '@ant-design/icons/es/icons/TagOutlined';
 import type { TFunction } from 'i18next';
 import type { ChangeEvent, ReactNode } from 'react';
 import { useCallback, useRef, useState } from 'react';

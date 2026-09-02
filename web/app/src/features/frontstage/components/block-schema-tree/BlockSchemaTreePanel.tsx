@@ -1,4 +1,6 @@
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,

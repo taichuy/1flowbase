@@ -10,6 +10,7 @@ import {
 } from '../../lib/page-canvas/native-runtime-preparation';
 import {
   createFrontstageRuntimeDemandCandidates,
+  resolveFrontstageViewportDemandPriority,
   resolveFrontstageRuntimePreparationKind
 } from '../../lib/page-canvas/runtime-demand';
 import { frontstageRuntimeSourceMatchesDigest } from '../../lib/page-canvas/runtime-source';
@@ -40,9 +41,7 @@ describe('Frontstage Native React preparation demand', () => {
         },
         'workspace-1'
       )
-    ).toThrowError(
-      i18nText('frontstage', 'auto.runtime_preview_unavailable')
-    );
+    ).toThrowError(i18nText('frontstage', 'auto.runtime_preview_unavailable'));
   });
 
   test('D3-AC-001 keeps 0/1 mount intent, 2 preload, 3 dormant and stable priority/slot order', () => {
@@ -82,9 +81,97 @@ describe('Frontstage Native React preparation demand', () => {
       )
     ).toBe(false);
   });
+
+  test('AC-007 applies viewport hysteresis before a not-yet-mounted block becomes dormant', () => {
+    expect(
+      resolveFrontstageViewportDemandPriority({
+        previousPriority: 3,
+        visible: false,
+        withinEnterMargin: true,
+        withinExitMargin: true
+      })
+    ).toBe(2);
+    expect(
+      resolveFrontstageViewportDemandPriority({
+        previousPriority: 2,
+        visible: false,
+        withinEnterMargin: false,
+        withinExitMargin: true
+      })
+    ).toBe(2);
+    expect(
+      resolveFrontstageViewportDemandPriority({
+        previousPriority: 2,
+        visible: false,
+        withinEnterMargin: false,
+        withinExitMargin: false
+      })
+    ).toBe(3);
+    expect(
+      resolveFrontstageViewportDemandPriority({
+        previousPriority: 3,
+        visible: true,
+        withinEnterMargin: true,
+        withinExitMargin: true
+      })
+    ).toBe(1);
+  });
 });
 
 describe('FrontstageNativePreparationScheduler', () => {
+  test('AC-001/AC-002 defers compile admission during an active interaction lease', async () => {
+    vi.useFakeTimers();
+    try {
+      const scheduler = new FrontstageNativePreparationScheduler(1);
+      scheduler.noteInteraction();
+      scheduler.reconcile(
+        [
+          task('nearby', 0, async (_signal, enterStage) => {
+            await enterStage('compile');
+            return prepared('nearby');
+          })
+        ],
+        { nearby: 1 }
+      );
+      await tick();
+
+      expect(scheduler.getSnapshots()[0]).toMatchObject({
+        status: 'source_fetch'
+      });
+
+      await vi.advanceTimersByTimeAsync(250);
+      await tick();
+      expect(scheduler.getSnapshots()[0]).toMatchObject({ status: 'ready' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('AC-001 defers a prepared result entering ready mount during an active interaction lease', async () => {
+    vi.useFakeTimers();
+    try {
+      const scheduler = new FrontstageNativePreparationScheduler(1);
+      const flight = deferred<FrontstageNativePreparedRuntime>();
+      scheduler.reconcile(
+        [task('nearby', 0, async () => flight.promise)],
+        { nearby: 1 }
+      );
+      scheduler.noteInteraction();
+      flight.resolve(prepared('nearby'));
+      await tick();
+
+      expect(scheduler.getSnapshots()[0]).toMatchObject({
+        status: 'source_fetch'
+      });
+
+      await vi.advanceTimersByTimeAsync(250);
+      await tick();
+      expect(scheduler.getSnapshots()[0]).toMatchObject({ status: 'ready' });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   test('does not emit again when reconcile receives semantically unchanged tasks and demands', () => {
     const scheduler = new FrontstageNativePreparationScheduler(1);
     const listener = vi.fn();
@@ -137,6 +224,33 @@ describe('FrontstageNativePreparationScheduler', () => {
     ).toMatchObject({ status: 'ready', mountIntent: null });
   });
 
+  test('AC-001 keeps a ready mount intent sticky when viewport demand falls to preload or dormant', async () => {
+    const scheduler = new FrontstageNativePreparationScheduler(1);
+    scheduler.reconcile(
+      [task('accumulated', 0, async () => prepared('accumulated'))],
+      { accumulated: 1 }
+    );
+    await tick();
+
+    expect(scheduler.getSnapshots()[0]).toMatchObject({
+      status: 'ready',
+      priority: 1,
+      mountIntent: { blockId: 'accumulated' }
+    });
+
+    for (const priority of [2, 3] as const) {
+      scheduler.reconcile(
+        [task('accumulated', 0, async () => prepared('accumulated'))],
+        { accumulated: priority }
+      );
+      expect(scheduler.getSnapshots()[0]).toMatchObject({
+        status: 'ready',
+        priority,
+        mountIntent: { blockId: 'accumulated' }
+      });
+    }
+  });
+
   test('D3-AC-002 exposes compile/module failures and retries with a new generation', async () => {
     const scheduler = new FrontstageNativePreparationScheduler(1);
     let attempt = 0;
@@ -148,7 +262,7 @@ describe('FrontstageNativePreparationScheduler', () => {
     scheduler.reconcile(
       [
         task('block', 0, async (_signal, enterStage) => {
-          enterStage(attempt++ === 0 ? 'compile' : 'module_resolve');
+          await enterStage(attempt++ === 0 ? 'compile' : 'module_resolve');
           if (attempt === 1) throw new Error('compile failed');
           return prepared('block');
         })
@@ -177,15 +291,15 @@ describe('FrontstageNativePreparationScheduler', () => {
     scheduler.reconcile(
       [
         task('l2-hit', 0, async (_signal, enterStage) => {
-          enterStage('artifact_lookup');
-          enterStage('module_resolve');
+          await enterStage('artifact_lookup');
+          await enterStage('module_resolve');
           return { ...prepared('l2-hit'), artifactCacheTier: 'l2' };
         }),
         task('l2-miss', 1, async (_signal, enterStage) => {
-          enterStage('artifact_lookup');
-          enterStage('compile');
+          await enterStage('artifact_lookup');
+          await enterStage('compile');
           compile();
-          enterStage('module_resolve');
+          await enterStage('module_resolve');
           return prepared('l2-miss');
         })
       ],
@@ -223,7 +337,7 @@ describe('FrontstageNativePreparationScheduler', () => {
     });
   });
 
-  test('D3-AC-001 cancels dormant work and rejects stale generation completion', async () => {
+  test('D3-AC-001/I1950-AC-004 cancels dormant work and rejects stale generation completion', async () => {
     const scheduler = new FrontstageNativePreparationScheduler(1);
     const first = deferred<FrontstageNativePreparedRuntime>();
     const second = deferred<FrontstageNativePreparedRuntime>();
@@ -268,8 +382,8 @@ describe('FrontstageNativePreparationScheduler', () => {
     scheduler.reconcile(
       [
         observedTask('v2', async (_signal, enterStage) => {
-          enterStage('artifact_lookup');
-          enterStage('module_resolve', 'l2');
+          await enterStage('artifact_lookup');
+          await enterStage('module_resolve', 'l2');
           return { ...prepared('observed'), artifactCacheTier: 'l2' };
         })
       ],
@@ -302,8 +416,8 @@ describe('FrontstageNativePreparationScheduler', () => {
     scheduler.reconcile(
       [
         task('module-fail', 0, async (_signal, enterStage) => {
-          enterStage('artifact_lookup');
-          enterStage('module_resolve');
+          await enterStage('artifact_lookup');
+          await enterStage('module_resolve');
           throw new Error('module digest mismatch');
         })
       ],
@@ -342,6 +456,7 @@ function prepared(blockId: string): FrontstageNativePreparedRuntime {
     component: (() => null) as FrontstageNativePreparedRuntime['component'],
     artifactCacheTier: 'miss',
     moduleAssets: [],
+    moduleSources: [],
     identityInput: {
       sourceSha256: blockId,
       compilerAbi: 'compiler',
@@ -359,5 +474,13 @@ function deferred<T = FrontstageNativePreparedRuntime>() {
 }
 
 async function tick(): Promise<void> {
+  for (let turn = 0; turn < 3; turn += 1) {
+    for (let index = 0; index < 5; index += 1) await Promise.resolve();
+    if (vi.isFakeTimers()) {
+      await vi.advanceTimersByTimeAsync(0);
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+  }
   for (let index = 0; index < 5; index += 1) await Promise.resolve();
 }

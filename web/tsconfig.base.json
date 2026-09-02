@@ -14,10 +14,14 @@
     "paths": {
       "@1flowbase/shared-types": ["packages/shared-types/src/index.ts"],
       "@1flowbase/api-client": ["packages/api-client/src/index.ts"],
+      "@1flowbase/api-client/auth": ["packages/api-client/src/auth/index.ts"],
       "@1flowbase/model-provider-contracts/*": [
         "../scripts/node/testing/contracts/model-providers/*"
       ],
       "@1flowbase/ui": ["packages/ui/src/index.tsx"],
+      "@1flowbase/ui/app-theme-provider": [
+        "packages/ui/src/app-theme-provider.tsx"
+      ],
       "@1flowbase/native-components": [
         "packages/native-components/src/index.tsx"
       ],
@@ -25,9 +29,15 @@
       "@1flowbase/rich-text": ["packages/rich-text/src/index.tsx"],
       "@1flowbase/flow-schema": ["packages/flow-schema/src/index.ts"],
       "@1flowbase/block-renderer": ["packages/block-renderer/src/index.tsx"],
+      "@1flowbase/block-renderer/loading-shell": [
+        "packages/block-renderer/src/BlockUiLoadingShell.tsx"
+      ],
       "@1flowbase/block-sdk": ["packages/block-sdk/src/index.ts"],
       "@1flowbase/page-protocol": ["packages/page-protocol/src/index.ts"],
       "@1flowbase/page-runtime": ["packages/page-runtime/src/index.ts"],
+      "@1flowbase/page-runtime/source-contract": [
+        "packages/page-runtime/src/native-react-compiler/source-contract.ts"
+      ],
       "@1flowbase/embed-sdk": ["packages/embed-sdk/src/index.ts"],
       "@1flowbase/embedded-contracts": [
         "packages/embedded-contracts/src/index.ts"

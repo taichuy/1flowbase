@@ -1,11 +1,9 @@
-import {
-  CloudDownloadOutlined,
-  DeleteOutlined,
-  DownloadOutlined,
-  EyeOutlined,
-  ReloadOutlined,
-  ToolOutlined
-} from '@ant-design/icons';
+import CloudDownloadOutlined from '@ant-design/icons/es/icons/CloudDownloadOutlined';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
+import EyeOutlined from '@ant-design/icons/es/icons/EyeOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
+import ToolOutlined from '@ant-design/icons/es/icons/ToolOutlined';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,

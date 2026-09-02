@@ -1,4 +1,4 @@
-import { CloseOutlined } from '@ant-design/icons';
+import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
 import { Button, Tag, Typography } from 'antd';
 
 import { agentFlowSystemVariables } from '../../lib/variables/system-variables';
@@ -11,17 +11,23 @@ interface SystemVariablesPanelProps {
 export function SystemVariablesPanel({ onClose }: SystemVariablesPanelProps) {
   return (
     <section
-      aria-label={i18nText("agentFlow", "auto.system_variables")}
+      aria-label={i18nText('agentFlow', 'auto.system_variables')}
       className="agent-flow-editor__system-variables-panel"
     >
       <header className="agent-flow-editor__system-variables-header">
         <div className="agent-flow-editor__system-variables-heading">
-          <Typography.Title level={3}>{i18nText("agentFlow", "auto.system_variables")}</Typography.Title>
+          <Typography.Title level={3}>
+            {i18nText('agentFlow', 'auto.system_variables')}
+          </Typography.Title>
           <Typography.Text type="secondary">
-            {i18nText("agentFlow", "auto.system_variables_global_read_variables_referenced_any_node_canvas")}</Typography.Text>
+            {i18nText(
+              'agentFlow',
+              'auto.system_variables_global_read_variables_referenced_any_node_canvas'
+            )}
+          </Typography.Text>
         </div>
         <Button
-          aria-label={i18nText("agentFlow", "auto.turn_off_system_variables")}
+          aria-label={i18nText('agentFlow', 'auto.turn_off_system_variables')}
           icon={<CloseOutlined />}
           type="text"
           onClick={onClose}

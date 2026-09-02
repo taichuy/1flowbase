@@ -1,4 +1,4 @@
-import { SearchOutlined } from '@ant-design/icons';
+import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
 import { Button, Input, Popover } from 'antd';
 import type { ReactElement, ReactNode } from 'react';
 import { useMemo, useState } from 'react';

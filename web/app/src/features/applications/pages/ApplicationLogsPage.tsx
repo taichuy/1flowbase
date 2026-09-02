@@ -1,11 +1,9 @@
-import {
-  DownloadOutlined,
-  ReloadOutlined,
-  SearchOutlined,
-  SortAscendingOutlined,
-  SortDescendingOutlined,
-  UploadOutlined
-} from '@ant-design/icons';
+import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
+import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
+import SortAscendingOutlined from '@ant-design/icons/es/icons/SortAscendingOutlined';
+import SortDescendingOutlined from '@ant-design/icons/es/icons/SortDescendingOutlined';
+import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,

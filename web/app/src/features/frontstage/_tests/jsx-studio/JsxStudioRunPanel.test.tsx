@@ -46,16 +46,21 @@ function source(label: string): string {
 }
 
 function createCompiler() {
-  return vi.fn(async ({
-    source: currentSource,
-    moduleDefinitions = []
-  }: {
-    source: string;
-    moduleDefinitions?: Parameters<typeof compileNativeReactComponent>[1];
-  }) => {
-    const result = compileNativeReactComponent(currentSource, moduleDefinitions);
-    return result as NativeReactBrowserCompileResult;
-  });
+  return vi.fn(
+    async ({
+      source: currentSource,
+      moduleDefinitions = []
+    }: {
+      source: string;
+      moduleDefinitions?: Parameters<typeof compileNativeReactComponent>[1];
+    }) => {
+      const result = compileNativeReactComponent(
+        currentSource,
+        moduleDefinitions
+      );
+      return result as NativeReactBrowserCompileResult;
+    }
+  );
 }
 
 function renderPanel({
@@ -247,26 +252,48 @@ describe('JsxStudioRunPanel Native React run revision', () => {
           phase: 'compile',
           code: 'import_denied',
           path: 'source.imports[0]',
-          message: "Import source 'dayjs' is not allowed."
+          message: "Import source 'lodash' is not allowed."
         }
       ]
     });
 
     renderPanel({
-      code: "import dayjs from 'dayjs'; export default () => <div />;",
+      code: "import lodash from 'lodash'; export default () => <div />;",
       revision: 'run:external-npm-unavailable',
       nativeCompiler: compiler
     });
 
     expect(await screen.findByText('运行失败')).toBeInTheDocument();
     expect(
-      screen.getByText(
-        /Import source 'dayjs' is not allowed\./u
-      )
+      screen.getByText(/Import source 'lodash' is not allowed\./u)
     ).toBeInTheDocument();
     expect(compiler).toHaveBeenCalledWith(
       expect.objectContaining({ moduleDefinitions: expect.any(Array) })
     );
+  });
+
+  test('I1907-AC-004 renders antd-style inside the JSX Studio ShadowRoot', async () => {
+    const code = `
+      import { createStyles } from 'antd-style';
+      const useStyles = createStyles({ shell: { border: '3px solid rgb(22, 119, 255)', padding: 17 } });
+      export default function Block() {
+        const { styles } = useStyles();
+        return <output className={styles.shell}>Studio styled</output>;
+      }
+    `;
+    const view = renderPanel({
+      code,
+      revision: 'run:antd-style-shadow',
+      nativeCompiler: createCompiler()
+    });
+
+    await waitFor(() => expect(trialShadowRoot(view.container)).not.toBeNull());
+    const shadowRoot = trialShadowRoot(view.container);
+    const output = await within(
+      shadowRoot as unknown as HTMLElement
+    ).findByText('Studio styled');
+    expect(output.className).toMatch(/css-/u);
+    expect(shadowRoot.querySelector('style[data-emotion]')).not.toBeNull();
   });
 
   test('D4-AC-007/D3R-AC-007 confines render errors to the current declarative Portal Host', async () => {

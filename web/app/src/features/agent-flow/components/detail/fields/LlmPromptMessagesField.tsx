@@ -1,4 +1,6 @@
-import { DeleteOutlined, DownOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Dropdown, Typography } from 'antd';
 import { useState } from 'react';
 
@@ -196,9 +198,13 @@ export function LlmPromptMessagesField({
       >
         <div className="agent-flow-llm-prompt-messages__body">
           <TemplatedTextField
-            ariaLabel={i18nText("agentFlow", "auto.message_content", { value1: roleLabel })}
+            ariaLabel={i18nText('agentFlow', 'auto.message_content', {
+              value1: roleLabel
+            })}
             draggable={isDraggableMessage}
-            dragLabel={i18nText("agentFlow", "auto.drag_drop_sort_messages", { value1: roleLabel })}
+            dragLabel={i18nText('agentFlow', 'auto.drag_drop_sort_messages', {
+              value1: roleLabel
+            })}
             label={roleLabel}
             labelContent={
               isSystemMessage ? (
@@ -210,7 +216,9 @@ export function LlmPromptMessagesField({
                 </Typography.Text>
               ) : (
                 <PromptMessageRoleSelect
-                  ariaLabel={roleLabel + i18nText("agentFlow", "auto.message_role")}
+                  ariaLabel={
+                    roleLabel + i18nText('agentFlow', 'auto.message_role')
+                  }
                   value={message.role}
                   onChange={(role) => updateRole(index, role)}
                 />
@@ -219,7 +227,9 @@ export function LlmPromptMessagesField({
             toolbarExtraActions={
               isSystemMessage ? null : (
                 <Button
-                  aria-label={i18nText("agentFlow", "auto.delete_message", { value1: roleLabel })}
+                  aria-label={i18nText('agentFlow', 'auto.delete_message', {
+                    value1: roleLabel
+                  })}
                   className="agent-flow-templated-text-field__action"
                   danger
                   icon={<DeleteOutlined />}
@@ -230,7 +240,10 @@ export function LlmPromptMessagesField({
               )
             }
             options={options}
-            placeholder={i18nText("agentFlow", "auto.enter_text_enter_reference_variable")}
+            placeholder={i18nText(
+              'agentFlow',
+              'auto.enter_text_enter_reference_variable'
+            )}
             value={message.content.value}
             onChange={(nextValue) => updateContent(index, nextValue)}
             onDragEnd={() => setDraggingIndex(null)}
@@ -245,7 +258,11 @@ export function LlmPromptMessagesField({
     <div className="agent-flow-llm-prompt-messages">
       <div className="agent-flow-llm-prompt-messages__header">
         <Typography.Text className="agent-flow-node-detail__section-subtitle">
-          {i18nText("agentFlow", "auto.contextual_messages_sent_model_sequence")}</Typography.Text>
+          {i18nText(
+            'agentFlow',
+            'auto.contextual_messages_sent_model_sequence'
+          )}
+        </Typography.Text>
       </div>
 
       <div className="agent-flow-llm-prompt-messages__list">
@@ -258,14 +275,15 @@ export function LlmPromptMessagesField({
             renderPromptMessage(message, dynamicIndex + 1)
           )}
           <Button
-            aria-label={i18nText("agentFlow", "auto.add_new_message")}
+            aria-label={i18nText('agentFlow', 'auto.add_new_message')}
             className="agent-flow-llm-prompt-messages__add-message"
             icon={<PlusOutlined />}
             size="small"
             type="dashed"
             onClick={addMessage}
           >
-            {i18nText("agentFlow", "auto.add_new_message")}</Button>
+            {i18nText('agentFlow', 'auto.add_new_message')}
+          </Button>
         </div>
       </div>
     </div>

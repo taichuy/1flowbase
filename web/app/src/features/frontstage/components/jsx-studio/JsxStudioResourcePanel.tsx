@@ -849,7 +849,7 @@ function ConfigurationPanel({
           key: 'block-id',
           label: 'Block ID',
           children: (
-            <Typography.Text code copyable>
+            <Typography.Text copyable>
               {block.id}
             </Typography.Text>
           )
@@ -858,7 +858,7 @@ function ConfigurationPanel({
           key: 'code-ref',
           label: 'codeRef',
           children: (
-            <Typography.Text code copyable>
+            <Typography.Text copyable>
               {block.codeRef}
             </Typography.Text>
           )

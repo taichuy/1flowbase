@@ -1,8 +1,6 @@
-import {
-  CloseOutlined,
-  CompressOutlined,
-  FullscreenOutlined
-} from '@ant-design/icons';
+import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
+import CompressOutlined from '@ant-design/icons/es/icons/CompressOutlined';
+import FullscreenOutlined from '@ant-design/icons/es/icons/FullscreenOutlined';
 import { Button, Space, Typography } from 'antd';
 import type { ReactNode } from 'react';
 

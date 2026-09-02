@@ -1,10 +1,17 @@
-import { CloseOutlined, PlusOutlined } from '@ant-design/icons';
+import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Form, Input, Modal, Popover, Space } from 'antd';
 import type { FormInstance } from 'antd';
+import { lazy, Suspense } from 'react';
 
 import { i18nText } from '../../../../shared/i18n/text';
-import { PageTreeIconPicker } from '../../lib/page-tree-icons/PageTreeIconPicker';
 import { PageTreeIcon } from '../../lib/page-tree-icons/registry';
+
+const PageTreeIconPicker = lazy(async () =>
+  import('../../lib/page-tree-icons/PageTreeIconPicker').then((module) => ({
+    default: module.PageTreeIconPicker
+  }))
+);
 
 type PageTreeFormValues = {
   title?: string;
@@ -52,13 +59,15 @@ function renderPageTreeIconPicker(
 ) {
   const picker = (
     <div className="frontstage-page-tree-form__icon-popover">
-      <PageTreeIconPicker
-        selectedIcon={selectedIcon}
-        onSelect={(iconName) => {
-          onChange(iconName);
-          onIconPickerOpenChange(false);
-        }}
-      />
+      <Suspense fallback={null}>
+        <PageTreeIconPicker
+          selectedIcon={selectedIcon}
+          onSelect={(iconName) => {
+            onChange(iconName);
+            onIconPickerOpenChange(false);
+          }}
+        />
+      </Suspense>
     </div>
   );
 
@@ -67,6 +76,7 @@ function renderPageTreeIconPicker(
       <Popover
         arrow={false}
         content={picker}
+        destroyOnHidden
         open={iconPickerOpen}
         placement="bottomLeft"
         trigger="click"
@@ -149,7 +159,6 @@ function PageTreeFormModal({
       cancelText={i18nText('frontstage', 'auto.cancel')}
       confirmLoading={isOperationPending}
       destroyOnHidden
-      forceRender
       onCancel={onCancel}
       onOk={() => form.submit()}
     >

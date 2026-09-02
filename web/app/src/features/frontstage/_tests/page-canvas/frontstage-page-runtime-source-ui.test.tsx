@@ -257,6 +257,7 @@ describe('FrontStagePage PageCanvas runtime source UI', () => {
           component: () => <h1>FrontStage Runtime Snapshot</h1>,
           artifactCacheTier: 'l2',
           moduleAssets: [],
+          moduleSources: [],
           identityInput: {
             sourceSha256: 'a'.repeat(64),
             compilerAbi: 'compiler-a',

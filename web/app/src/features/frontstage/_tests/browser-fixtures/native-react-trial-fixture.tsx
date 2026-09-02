@@ -1,7 +1,7 @@
-import { Button, ConfigProvider, Select } from 'antd';
+import { Avatar, Badge, Button, ConfigProvider, Select } from 'antd';
 import { UserOutlined } from '@ant-design/icons';
 import { EChart } from '@1flowbase/charts';
-import { Surface } from '@1flowbase/native-components';
+import { ScrollableSurface, Surface } from '@1flowbase/native-components';
 import { VditorEditor } from '@1flowbase/rich-text';
 import nativeComponentsCss from '@1flowbase/native-components/styles.css?raw';
 import richTextCss from '@1flowbase/rich-text/styles.css?raw';
@@ -30,6 +30,11 @@ import {
   subscribeFrontstageRuntimeObservations,
   type FrontstageRuntimeObservation
 } from '../../lib/page-canvas/runtime-observation';
+import type {
+  FrontstageBlockInstance,
+  FrontstageBlockPresentation
+} from '../../lib/page-document';
+import type { FrontstageBlockPorts } from '../../lib/page-signals/types';
 import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-trusted-block-runtime-factory';
 import type { PreparedFrontstageIsolatedContribution } from '../../lib/isolated-frontend-block-contribution';
 
@@ -229,9 +234,54 @@ function PublicModulesBlock({
       aria-label={`public-modules-${props.label}`}
       data-testid={`public-modules-${props.label}`}
     >
+      <div
+        data-testid={`surface-topology-boundary-${props.label}`}
+        style={{ position: 'relative', height: 36 }}
+      >
+        <Badge
+          count={5}
+          offset={[0, -10]}
+          data-testid={`surface-topology-boundary-badge-${props.label}`}
+        >
+          <Avatar shape="square">B</Avatar>
+        </Badge>
+      </div>
       <h3>
         <UserOutlined /> {props.label}
       </h3>
+      <div
+        data-testid={`surface-topology-ink-${props.label}`}
+        style={{ display: 'flex', alignItems: 'flex-start', gap: 24 }}
+      >
+        <Badge count={9} data-testid={`surface-topology-badge-${props.label}`}>
+          <Avatar shape="square">A</Avatar>
+        </Badge>
+        <button
+          type="button"
+          data-testid={`surface-topology-focus-${props.label}`}
+          style={{ outline: '3px solid #1677ff', outlineOffset: 2 }}
+        >
+          focus ink
+        </button>
+        <div
+          data-testid={`surface-topology-shadow-${props.label}`}
+          style={{ boxShadow: '0 0 6px #1677ff', padding: 4 }}
+        >
+          shadow ink
+        </div>
+      </div>
+      <ScrollableSurface
+        aria-label={`surface-topology-scroll-${props.label}`}
+        data-testid={`surface-topology-scroll-${props.label}`}
+        style={{ width: 320, maxWidth: '100%', height: 64, marginTop: 12 }}
+      >
+        <div
+          data-testid={`surface-topology-wide-${props.label}`}
+          style={{ width: 720, height: 40 }}
+        >
+          explicit wide scroll content
+        </div>
+      </ScrollableSurface>
       <EChart
         ariaLabel={`chart-${props.label}`}
         option={{
@@ -458,6 +508,67 @@ function NativeReactTrialFixture() {
       }),
     [sourceRevision]
   );
+  const runtimeBlocks = useMemo<readonly FrontstageBlockInstance[]>(
+    () => [
+      fixtureRuntimeBlock(
+        'first',
+        0,
+        { label: `source-${sourceRevision}` },
+        {
+          inputs: [
+            {
+              name: 'count',
+              schema: { type: 'integer' },
+              source: { block_id: 'second', output: 'total', scope: 'tab' }
+            }
+          ],
+          outputs: []
+        }
+      ),
+      fixtureRuntimeBlock(
+        'second',
+        1,
+        {},
+        {
+          inputs: [],
+          outputs: [{ name: 'total', schema: { type: 'integer' } }]
+        }
+      ),
+      fixtureRuntimeBlock(
+        'public-a',
+        2,
+        { label: 'a' },
+        { inputs: [], outputs: [] }
+      ),
+      fixtureRuntimeBlock(
+        'public-b',
+        3,
+        { label: 'b' },
+        { inputs: [], outputs: [] },
+        'native_react',
+        { heightMode: 'fixed', height: 360 }
+      ),
+      fixtureRuntimeBlock(
+        'isolated',
+        4,
+        { label: `isolated-${sourceRevision}` },
+        { inputs: [], outputs: [] },
+        'isolated_iframe'
+      ),
+      ...Array.from({ length: 6 }, (_, index) =>
+        fixtureRuntimeBlock(
+          `filler-${index + 1}`,
+          5 + index,
+          {},
+          {
+            inputs: [],
+            outputs: []
+          }
+        )
+      )
+    ],
+    [sourceRevision]
+  );
   const preparations = useMemo(
     () => [
       preparation(
@@ -646,27 +757,37 @@ function NativeReactTrialFixture() {
         <>
           <CatalogIconsProbe />
           <CatalogRichTextProbe />
-          <InstrumentedPageCanvas
-            content={content}
-            runtimePreparations={hidden ? [] : preparations}
-            isolatedRuntimePreparations={hidden ? [] : isolatedPreparations}
-            isolatedCapabilityHandlersByBlockId={isolatedCapabilityHandlers}
-            runtimeContext={{
-              currentUser: { id: 'fixture-user', displayName: 'Fixture User' },
-              workspace: { id: 'fixture-workspace' },
-              application: null,
-              theme: { mode: 'light', tokens: {} },
-              ui: {}
-            }}
-            onRuntimeDemandChange={(blockId, priority) =>
-              setDemands((current) =>
-                current[blockId] === priority
-                  ? current
-                  : { ...current, [blockId]: priority }
-              )
-            }
-            onRuntimeRetry={retryPreparation}
-          />
+          <div
+            data-testid="issue-1896-scroll-owner"
+            data-flowbase-frontstage-scroll-owner=""
+            style={{ height: 560, overflow: 'auto', position: 'relative' }}
+          >
+            <InstrumentedPageCanvas
+              content={content}
+              runtimeBlocks={runtimeBlocks}
+              runtimePreparations={hidden ? [] : preparations}
+              isolatedRuntimePreparations={hidden ? [] : isolatedPreparations}
+              isolatedCapabilityHandlersByBlockId={isolatedCapabilityHandlers}
+              runtimeContext={{
+                currentUser: {
+                  id: 'fixture-user',
+                  displayName: 'Fixture User'
+                },
+                workspace: { id: 'fixture-workspace' },
+                application: null,
+                theme: { mode: 'light', tokens: {} },
+                ui: {}
+              }}
+              onRuntimeDemandChange={(blockId, priority) =>
+                setDemands((current) =>
+                  current[blockId] === priority
+                    ? current
+                    : { ...current, [blockId]: priority }
+                )
+              }
+              onRuntimeRetry={retryPreparation}
+            />
+          </div>
         </>
       ) : null}
     </main>
@@ -696,6 +817,47 @@ function fixtureBlock(
     ports
   };
 }
+
+function fixtureRuntimeBlock(
+  id: string,
+  order: number,
+  props: Record<string, unknown>,
+  ports: FrontstageBlockPorts,
+  runtimeKind = 'native_react',
+  presentation: FrontstageBlockPresentation = {
+    heightMode: 'auto',
+    height: null
+  }
+): FrontstageBlockInstance {
+  return {
+    id,
+    rendererVersion: 'v1',
+    sourceId: id,
+    codeRef: `${id}-code`,
+    sourceCodeRef: id,
+    catalog: { providerCode: 'qa', installationId: 'fixture' },
+    contribution: {
+      pluginId: 'qa.native',
+      pluginVersion: '1.0.0',
+      code: id
+    },
+    runtime: {
+      kind: runtimeKind,
+      entry:
+        runtimeKind === 'isolated_iframe'
+          ? '@fixture/isolated-timer'
+          : `blocks/${id}.js`,
+      hint: runtimeKind
+    },
+    layout: { order, region: 'main', span: 12 },
+    presentation,
+    order,
+    props,
+    ports
+  };
+}
+
+const accumulatedFixtureMounts = new Set<string>();
 
 function preparation(
   blockId: 'first' | 'second' | 'public-a' | 'public-b',
@@ -728,7 +890,8 @@ function preparation(
       error: new Error('controlled compile failure')
     };
   }
-  if (priority === 3) return { ...base, status: 'idle' };
+  const accumulatedMount = accumulatedFixtureMounts.has(blockId);
+  if (priority === 3 && !accumulatedMount) return { ...base, status: 'idle' };
   const identityInput = {
     sourceSha256: `${blockId}-${sourceRevision}`.padEnd(64, '0'),
     compilerAbi: 'native-fixture-compiler',
@@ -739,13 +902,18 @@ function preparation(
     component: component as FrontstageNativePreparedRuntime['component'],
     identityInput,
     artifactCacheTier,
-    moduleAssets
+    moduleAssets,
+    moduleSources: []
   };
+  if (priority <= 1) accumulatedFixtureMounts.add(blockId);
   return {
     ...base,
     status: 'ready',
     prepared,
-    mountIntent: priority <= 1 ? { blockId, slotIndex, identityInput } : null
+    mountIntent:
+      priority <= 1 || accumulatedMount
+        ? { blockId, slotIndex, identityInput }
+        : null
   };
 }
 

@@ -207,6 +207,7 @@
       "web/app/src/features/frontstage/components/frontstage-add-action.css",
       "web/app/src/features/frontstage/components/frontstage-page-tree-sidebar.css",
       "web/app/src/features/frontstage/components/PageCanvas.tsx",
+      "web/app/src/features/frontstage/components/jsx-studio/JsxStudioRunPanel.tsx",
       "web/app/src/features/frontstage/components/page-canvas.css",
       "web/app/src/features/frontstage/components/BlockHoverToolbar.tsx",
       "web/app/src/features/frontstage/components/FrontstagePageTabs.tsx",
@@ -229,6 +230,12 @@
       "web/app/src/shared/ui/resizable-drawer/ResizableDrawer.tsx",
       "web/app/src/shared/ui/resizable-drawer/resizable-drawer.css",
       "web/app/src/features/frontstage/lib/design-mode-theme.ts",
+      "web/app/src/features/frontstage/lib/native-modules/antd-style-runtime.ts",
+      "web/app/src/features/frontstage/lib/native-modules/native-anchor-runtime.tsx",
+      "web/app/src/features/frontstage/lib/native-modules/native-block-surface-context.ts",
+      "web/app/src/features/frontstage/lib/native-modules/native-motion-runtime.ts",
+      "web/app/src/features/frontstage/lib/native-modules/registry.ts",
+      "web/app/src/features/frontstage/lib/native-trusted-block-react-adapter.tsx",
       "web/app/src/features/frontstage/lib/responsive-grid-layout.ts",
       "web/app/src/features/frontstage/lib/page-canvas/frontstage-block-interaction.ts",
       "web/app/src/features/frontstage/lib/page-canvas/frontstage-row-layout.ts",
@@ -1887,7 +1894,9 @@
       "web/app/src/features/auth/pages/SignInPage.tsx",
       "web/app/src/features/auth/pages/sign-in-page.css",
       "web/app/src/features/auth/components/HeroAnimation.tsx",
-      "web/app/src/app/router.tsx"
+      "web/app/src/features/auth/components/PublicAuthProviders.tsx",
+      "web/app/src/app/AnonymousAppRuntime.tsx",
+      "web/app/src/app/public-router.tsx"
     ],
     "boundaryNodes": [
       {

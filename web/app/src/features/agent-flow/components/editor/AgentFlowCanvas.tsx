@@ -1,11 +1,9 @@
 import '@xyflow/react/dist/style.css';
 
-import {
-  AimOutlined,
-  ApartmentOutlined,
-  MinusOutlined,
-  PlusOutlined
-} from '@ant-design/icons';
+import AimOutlined from '@ant-design/icons/es/icons/AimOutlined';
+import ApartmentOutlined from '@ant-design/icons/es/icons/ApartmentOutlined';
+import MinusOutlined from '@ant-design/icons/es/icons/MinusOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button } from 'antd';
 import {
   Background,
@@ -324,6 +322,25 @@ function AgentFlowCanvasInner({
           selectionInteractions.selectEdge(edge.id);
         }}
         isValidConnection={edgeInteractions.isValidConnection}
+        onInit={() => {
+          requestAnimationFrame(() => {
+            if (
+              performance.getEntriesByName('1flowbase:CanvasVisible').length ===
+              0
+            ) {
+              performance.mark('1flowbase:CanvasVisible');
+            }
+            requestAnimationFrame(() => {
+              if (
+                performance.getEntriesByName(
+                  '1flowbase:CanvasInteractive'
+                ).length === 0
+              ) {
+                performance.mark('1flowbase:CanvasInteractive');
+              }
+            });
+          });
+        }}
       >
         <Background gap={20} size={1} />
         <PendingLocateNodeEffect />

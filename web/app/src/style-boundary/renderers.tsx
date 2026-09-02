@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react';
 import { Menu } from 'antd';
 
+import { AnonymousAppRuntime } from '../app/AnonymousAppRuntime';
 import { AppRouterProvider } from '../app/router';
 import { AppShellFrame } from '../app-shell/AppShellFrame';
 import { createAccountMenuItems } from '../app-shell/account-menu-items';
@@ -68,6 +69,14 @@ function renderRouterScene(
   window.history.replaceState({}, '', pathname);
 
   return <AppRouterProvider />;
+}
+
+function renderPublicRouterScene(pathname: string) {
+  seedStyleBoundaryCommonFetch();
+  useAuthStore.getState().setAnonymous();
+  window.history.replaceState({}, '', pathname);
+
+  return <AnonymousAppRuntime />;
 }
 
 const variableGroupSelectorOptions: FlowSelectorOption[] = [
@@ -320,5 +329,5 @@ export const renderers: Record<string, StyleBoundaryRuntimeScene['render']> = {
     return renderRouterScene('/settings/docs?category=console');
   },
   'page.me': () => renderRouterScene('/me/profile'),
-  'page.sign-in': () => renderRouterScene('/sign-in', { authenticated: false })
+  'page.sign-in': () => renderPublicRouterScene('/sign-in')
 };

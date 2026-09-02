@@ -11,18 +11,12 @@ import { useQuery } from '@tanstack/react-query';
 import { Result } from 'antd';
 import { Suspense, lazy, useState, type ReactNode } from 'react';
 
-import { AppShellFrame } from '../app-shell/AppShellFrame';
-import { SignInPage } from '../features/auth/pages/SignInPage';
 import type { ApplicationSectionKey } from '../features/applications/lib/application-sections';
 import {
   fetchFrontstagePageTree,
   frontstagePageTreeQueryKey
 } from '../features/frontstage/api/page-tree';
-import { HomePage } from '../features/home/pages/HomePage';
-import { FrontstageWorkspacePage } from '../features/frontstage/pages/FrontstageWorkspacePage';
 import type { MeSectionKey } from '../features/me/lib/me-sections';
-import { MePage } from '../features/me/pages/MePage';
-import { TemplatesPage } from '../features/templates/pages/TemplatesPage';
 import { RouteGuard } from '../routes/route-guards';
 import { SessionGuard } from '../routes/session-guard';
 import {
@@ -38,12 +32,51 @@ import type { RolePermissionTab } from '../features/settings/components/RolePerm
 import type { SettingsExtensionCenterCategory } from '../features/settings/api/extensions';
 import type { NetworkCenterPage } from '../features/settings/pages/network-center/NetworkCenterSection';
 
+let applicationDetailPageFlight:
+  | Promise<
+      typeof import('../features/applications/pages/ApplicationDetailPage')
+    >
+  | undefined;
+
+function loadApplicationDetailPage() {
+  applicationDetailPageFlight ??=
+    import('../features/applications/pages/ApplicationDetailPage');
+  return applicationDetailPageFlight;
+}
+
 const ApplicationDetailPage = lazy(() =>
-  import('../features/applications/pages/ApplicationDetailPage').then(
-    (module) => ({
-      default: module.ApplicationDetailPage
-    })
+  loadApplicationDetailPage().then((module) => ({
+    default: module.ApplicationDetailPage
+  }))
+);
+
+if (/^\/applications\/[^/]+(?:\/|$)/u.test(window.location.pathname)) {
+  void loadApplicationDetailPage();
+}
+const AppShellFrame = lazy(() =>
+  import('../app-shell/AppShellFrame').then((module) => ({
+    default: module.AppShellFrame
+  }))
+);
+const HomePage = lazy(() =>
+  import('../features/home/pages/HomePage').then((module) => ({
+    default: module.HomePage
+  }))
+);
+const FrontstageWorkspacePage = lazy(() =>
+  import('../features/frontstage/pages/FrontstageWorkspacePage').then(
+    (module) => ({ default: module.FrontstageWorkspacePage })
   )
+);
+const MePage = lazy(() =>
+  import('../features/me/pages/MePage').then((module) => ({
+    default: module.MePage
+  }))
+);
+const TemplatesPage = lazy(() =>
+  import('../features/templates/pages/TemplatesPage').then((module) => ({
+    default: module.TemplatesPage
+  }))
 );
 const SettingsPage = lazy(() =>
   import('../features/settings/pages/SettingsPage').then((module) => ({
@@ -69,9 +102,13 @@ function ShellLayout() {
   });
 
   return (
-    <AppShellFrame pathname={pathname} useRouterLinks>
-      <Outlet />
-    </AppShellFrame>
+    <SessionGuard>
+      <LazyRouteBoundary>
+        <AppShellFrame pathname={pathname} useRouterLinks>
+          <Outlet />
+        </AppShellFrame>
+      </LazyRouteBoundary>
+    </SessionGuard>
   );
 }
 
@@ -123,7 +160,9 @@ const homeRoute = createRoute({
   path: '/',
   component: () => (
     <RouteGuard routeId="home">
-      <HomePage />
+      <LazyRouteBoundary>
+        <HomePage />
+      </LazyRouteBoundary>
     </RouteGuard>
   )
 });
@@ -228,7 +267,9 @@ const templatesRoute = createRoute({
   notFoundComponent: NotFoundPage,
   component: () => (
     <RouteGuard routeId="templates">
-      <TemplatesPage />
+      <LazyRouteBoundary>
+        <TemplatesPage />
+      </LazyRouteBoundary>
     </RouteGuard>
   )
 });
@@ -262,7 +303,9 @@ function renderSettingsRoute(
 function renderMeRoute(requestedSectionKey?: MeSectionKey) {
   return (
     <RouteGuard routeId="me">
-      <MePage requestedSectionKey={requestedSectionKey} />
+      <LazyRouteBoundary>
+        <MePage requestedSectionKey={requestedSectionKey} />
+      </LazyRouteBoundary>
     </RouteGuard>
   );
 }
@@ -306,14 +349,16 @@ function FrontStageSlugRoute({
   if (!rootNode) return <NotFoundPage />;
   return (
     <SessionGuard>
-      <FrontstageWorkspacePage
-        workspaceId={workspaceId}
-        pageId={pageId}
-        tabRef={tabRef}
-        blockId={blockId}
-        blockInputSearch={blockInputSearch}
-        rootNode={rootNode}
-      />
+      <LazyRouteBoundary>
+        <FrontstageWorkspacePage
+          workspaceId={workspaceId}
+          pageId={pageId}
+          tabRef={tabRef}
+          blockId={blockId}
+          blockInputSearch={blockInputSearch}
+          rootNode={rootNode}
+        />
+      </LazyRouteBoundary>
     </SessionGuard>
   );
 }
@@ -711,14 +756,7 @@ const signInRoute = createRoute({
         ? search.authenticator_id
         : undefined
   }),
-  component: () => {
-    const { authenticator_id } = signInRoute.useSearch();
-    return (
-      <RouteGuard routeId="sign-in">
-        <SignInPage authenticatorId={authenticator_id} />
-      </RouteGuard>
-    );
-  }
+  component: () => <Navigate to="/" replace />
 });
 
 const routeTree = rootRoute.addChildren([

@@ -1,10 +1,8 @@
-import {
-  DeleteOutlined,
-  EditOutlined,
-  ExperimentOutlined,
-  PlusOutlined,
-  SearchOutlined
-} from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import ExperimentOutlined from '@ant-design/icons/es/icons/ExperimentOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,

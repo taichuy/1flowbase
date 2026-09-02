@@ -3,10 +3,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
-const { getConsoleNavigation, patchUserPreferences } = vi.hoisted(() => ({
-  getConsoleNavigation: vi.fn(),
-  patchUserPreferences: vi.fn()
-}));
+const { getConsoleNavigation, patchUserPreferences, preloadDesignModeDemand } =
+  vi.hoisted(() => ({
+    getConsoleNavigation: vi.fn(),
+    patchUserPreferences: vi.fn(),
+    preloadDesignModeDemand: vi.fn(() => Promise.resolve())
+  }));
+
+vi.mock('../design-mode-demand', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../design-mode-demand')>();
+  return { ...actual, preloadDesignModeDemand };
+});
 
 vi.mock('@1flowbase/api-client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@1flowbase/api-client')>();
@@ -49,6 +56,7 @@ describe('AppShellFrame', () => {
   beforeEach(() => {
     window.localStorage.clear();
     patchUserPreferences.mockReset();
+    preloadDesignModeDemand.mockClear();
     getConsoleNavigation.mockReset();
     getConsoleNavigation.mockResolvedValue({
       route_definitions: [
@@ -255,6 +263,17 @@ describe('AppShellFrame', () => {
     expect(screen.getByLabelText('Exit design mode')).toHaveAttribute(
       'aria-pressed',
       'true'
+    );
+  });
+
+  test('BGP-008 preloads design mode after the critical route grace window', async () => {
+    renderShell('/');
+
+    await waitFor(
+      () => {
+        expect(preloadDesignModeDemand).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 2000 }
     );
   });
 

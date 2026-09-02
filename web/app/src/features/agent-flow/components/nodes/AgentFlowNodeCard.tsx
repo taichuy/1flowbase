@@ -1,10 +1,8 @@
-import {
-  DeleteOutlined,
-  MergeOutlined,
-  MoreOutlined,
-  PlayCircleOutlined,
-  SwapOutlined
-} from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import MergeOutlined from '@ant-design/icons/es/icons/MergeOutlined';
+import MoreOutlined from '@ant-design/icons/es/icons/MoreOutlined';
+import PlayCircleOutlined from '@ant-design/icons/es/icons/PlayCircleOutlined';
+import SwapOutlined from '@ant-design/icons/es/icons/SwapOutlined';
 import { Button, Dropdown, Tooltip, type MenuProps } from 'antd';
 import {
   Position,
@@ -227,10 +225,7 @@ export function AgentFlowNodeCard({
     updateNodeInternals
   ]);
 
-  function renderSourceHandle(
-    handle: SourceHandle,
-    index: number
-  ) {
+  function renderSourceHandle(handle: SourceHandle, index: number) {
     const sourceHandleId = handle.id ?? MAIN_SOURCE_HANDLE_ID;
     const pickerSourceHandleId = data.pickerSourceHandleId ?? null;
     const pickerOpen = data.pickerOpen && pickerSourceHandleId === handle.id;

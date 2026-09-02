@@ -1,10 +1,8 @@
-import {
-  DeleteOutlined,
-  EditOutlined,
-  FileOutlined,
-  FolderOpenOutlined,
-  FolderOutlined
-} from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import FileOutlined from '@ant-design/icons/es/icons/FileOutlined';
+import FolderOpenOutlined from '@ant-design/icons/es/icons/FolderOpenOutlined';
+import FolderOutlined from '@ant-design/icons/es/icons/FolderOutlined';
 import { Button, Popconfirm, Tooltip, Tree } from 'antd';
 import type { ReactNode } from 'react';
 import { i18nText } from '../../../../../shared/i18n/text';

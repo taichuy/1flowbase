@@ -1,4 +1,5 @@
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Checkbox, Flex, Input, Space, Typography } from 'antd';
 import { useEffect } from 'react';
 import type {
@@ -70,7 +71,11 @@ export function McpProxyMappingEditor({
   };
 
   return (
-    <Space orientation="vertical" size="small" className="mcp-management__stack">
+    <Space
+      orientation="vertical"
+      size="small"
+      className="mcp-management__stack"
+    >
       <Flex gap={8} align="center">
         <Typography.Text strong>
           {direction === 'input'

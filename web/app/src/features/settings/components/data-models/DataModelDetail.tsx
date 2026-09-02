@@ -2,7 +2,9 @@ import { useState } from 'react';
 
 import { Button, Flex, Table, Tabs, Tag, Typography, Space } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import { LockOutlined, PlusOutlined, EditOutlined } from '@ant-design/icons';
+import LockOutlined from '@ant-design/icons/es/icons/LockOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
 
 import type {
   CreateSettingsDataModelFieldInput,

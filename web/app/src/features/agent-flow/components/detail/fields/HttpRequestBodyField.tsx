@@ -1,4 +1,5 @@
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Input, Radio, Select } from 'antd';
 import type { FlowBinding } from '@1flowbase/flow-schema';
 import { useRef } from 'react';
@@ -58,7 +59,9 @@ function getBodyType(value: unknown): HttpRequestBodyType {
   return isHttpRequestBodyType(value) ? value : 'none';
 }
 
-function getFormDataKind(entry: HttpRequestKeyValueEntry): HttpRequestFormDataKind {
+function getFormDataKind(
+  entry: HttpRequestKeyValueEntry
+): HttpRequestFormDataKind {
   return entry.valueType === 'file' ? 'file' : 'text';
 }
 
@@ -204,7 +207,10 @@ export function HttpRequestBodyField({
                 <Select
                   aria-label={`${i18nText('agentFlow', 'auto.form_data')}-${index}-type`}
                   options={[
-                    { value: 'text', label: i18nText('agentFlow', 'auto.text') },
+                    {
+                      value: 'text',
+                      label: i18nText('agentFlow', 'auto.text')
+                    },
                     { value: 'file', label: i18nText('agentFlow', 'auto.file') }
                   ]}
                   value={kind}
@@ -305,7 +311,9 @@ export function HttpRequestBodyField({
           ariaLabel={i18nText('agentFlow', 'auto.binary_file_variable')}
           options={fileOptions}
           value={getSelectorBindingValue(binaryValue)}
-          onChange={(nextValue) => onBinaryChange(toSelectorBinding(nextValue as string[]))}
+          onChange={(nextValue) =>
+            onBinaryChange(toSelectorBinding(nextValue as string[]))
+          }
         />
       ) : null}
     </div>

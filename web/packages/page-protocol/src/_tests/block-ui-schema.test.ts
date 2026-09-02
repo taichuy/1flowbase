@@ -88,6 +88,8 @@ describe('block UI schema protocol', () => {
 
   test('exports only the minimal BlockContext surface keys', () => {
     expect(BLOCK_CONTEXT_KEYS).toEqual([
+      'root',
+      'assets',
       'currentUser',
       'workspace',
       'application',

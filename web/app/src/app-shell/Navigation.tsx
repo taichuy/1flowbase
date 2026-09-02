@@ -1,9 +1,9 @@
 import { Link } from '@tanstack/react-router';
-import { MenuOutlined } from '@ant-design/icons';
+import MenuOutlined from '@ant-design/icons/es/icons/MenuOutlined';
 import { Button, Drawer, Menu, Typography } from 'antd';
 import type { MenuProps } from 'antd';
 import type { ItemType } from 'antd/es/menu/interface';
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import type { ConsoleNavigation } from '@1flowbase/api-client';
@@ -20,10 +20,18 @@ import {
 } from '../features/frontstage/api/page-tree';
 import { useAuthStore } from '../state/auth-store';
 import { useFrontstageDesignModeStore } from '../state/frontstage-design-mode-store';
-import {
-  TopbarNavigationDesigner,
-  TopbarNavigationItemLabel
-} from './TopbarNavigationDesigner';
+import { loadTopbarNavigationDesigner } from './design-mode-demand';
+
+const TopbarNavigationDesigner = lazy(() =>
+  loadTopbarNavigationDesigner().then((module) => ({
+    default: module.TopbarNavigationDesigner
+  }))
+);
+const TopbarNavigationItemLabel = lazy(() =>
+  loadTopbarNavigationDesigner().then((module) => ({
+    default: module.TopbarNavigationItemLabel
+  }))
+);
 
 interface ConsolePrimaryNavigationRoute {
   id: string;
@@ -70,20 +78,22 @@ function topbarNavigationItems({
       key: node.id,
       label:
         isDesignMode && workspaceId ? (
-          <TopbarNavigationItemLabel
-            workspaceId={workspaceId}
-            node={node}
-            siblings={nodes.filter(
-              (candidate) => candidate.placement === 'topbar'
-            )}
-          >
-            {renderNavigationLink(
-              path,
-              node.title?.trim() || '未命名页面',
-              useRouterLinks,
-              pathname === path || pathname.startsWith(`${path}/`)
-            )}
-          </TopbarNavigationItemLabel>
+          <Suspense fallback={null}>
+            <TopbarNavigationItemLabel
+              workspaceId={workspaceId}
+              node={node}
+              siblings={nodes.filter(
+                (candidate) => candidate.placement === 'topbar'
+              )}
+            >
+              {renderNavigationLink(
+                path,
+                node.title?.trim() || '未命名页面',
+                useRouterLinks,
+                pathname === path || pathname.startsWith(`${path}/`)
+              )}
+            </TopbarNavigationItemLabel>
+          </Suspense>
         ) : (
           renderNavigationLink(
             path,
@@ -400,9 +410,9 @@ export function Navigation({
                 ? [mobileSelectedFrontstagePageId]
                 : selectedDynamicRoute
                   ? [selectedDynamicRoute.id]
-                : routes.some((route) => route.id === selectedKey)
-                  ? [selectedKey]
-                  : []
+                  : routes.some((route) => route.id === selectedKey)
+                    ? [selectedKey]
+                    : []
             }
             defaultOpenKeys={
               selectedTopbarNode
@@ -415,18 +425,22 @@ export function Navigation({
             items={mobilePrimaryItems}
           />
           {isDesignMode && workspaceId ? (
-            <TopbarNavigationDesigner
-              workspaceId={workspaceId}
-              nodes={frontstageNavigationQuery.data ?? []}
-            />
+            <Suspense fallback={null}>
+              <TopbarNavigationDesigner
+                workspaceId={workspaceId}
+                nodes={frontstageNavigationQuery.data ?? []}
+              />
+            </Suspense>
           ) : null}
         </section>
       </Drawer>
       {isDesignMode && workspaceId ? (
-        <TopbarNavigationDesigner
-          workspaceId={workspaceId}
-          nodes={frontstageNavigationQuery.data ?? []}
-        />
+        <Suspense fallback={null}>
+          <TopbarNavigationDesigner
+            workspaceId={workspaceId}
+            nodes={frontstageNavigationQuery.data ?? []}
+          />
+        </Suspense>
       ) : null}
     </nav>
   );

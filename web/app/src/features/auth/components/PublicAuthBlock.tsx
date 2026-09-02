@@ -1,12 +1,12 @@
-import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
+import { BlockUiLoadingShell } from '@1flowbase/block-renderer/loading-shell';
 import {
   diagnoseLegacyBlockModuleSource,
   sha256Text,
   type NativeReactResolvedModuleAsset,
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
-import type { BlockContext } from '@1flowbase/page-protocol';
-import { Space } from 'antd';
+import type { BlockContextSeed } from '@1flowbase/page-protocol';
+import Space from 'antd/es/space';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
@@ -22,7 +22,7 @@ import {
   FrontstageNativeTrustedBlockPortalHost,
   type FrontstageNativeTrustedBlockReactComponent
 } from '../../frontstage/lib/native-trusted-block-react-adapter';
-import { createFrontstageNativeReactModuleRegistry } from '../../frontstage/lib/native-trusted-block-runtime-factory';
+import { createFrontstageNativeReactModuleRegistry } from '../../frontstage/lib/native-modules/registry';
 import type { FrontstageBlockInstance } from '../../frontstage/lib/page-document';
 import type {
   PasswordSignInResponse,
@@ -45,23 +45,36 @@ export interface PublicAuthBlockProps {
   nativeCompiler?: typeof compileNativeReactComponentInBrowser;
   nativeCompilerWorkerFactory?: NativeReactBrowserCompilerWorkerFactory;
   nativeModuleRegistryFactory?: NativeReactModuleRegistryFactory;
+  onPhaseChange?: (phase: PublicAuthPhase) => void;
 }
 
 interface ActivePublicAuthInstance {
   requestId: string;
 }
 
+export type PublicAuthPhase =
+  | 'discovering'
+  | 'compiling'
+  | 'mounting'
+  | 'ready'
+  | 'failed';
+
+type ReadyPublicAuthSnapshot = {
+  component: FrontstageNativeTrustedBlockReactComponent;
+  context: BlockContextSeed;
+  moduleAssets: NativeReactResolvedModuleAsset[];
+  moduleSources: string[];
+  plan: NativeTrustedBlockPreparePlan;
+  renderEpoch: string;
+  attempt: PublicAuthAttempt;
+};
+
 type PublicAuthRenderSnapshot =
-  | { status: 'preparing' }
-  | { status: 'failed' }
+  | { status: 'discovering' | 'compiling' }
+  | { status: 'failed'; diagnostic: 'compile_failed' | 'mount_failed' }
   | {
-      status: 'ready';
-      component: FrontstageNativeTrustedBlockReactComponent;
-      context: BlockContext;
-      moduleAssets: NativeReactResolvedModuleAsset[];
-      plan: NativeTrustedBlockPreparePlan;
-      renderEpoch: string;
-      attempt: PublicAuthAttempt;
+      status: 'mounting' | 'ready';
+      value: ReadyPublicAuthSnapshot;
     };
 
 export function PublicAuthBlock({
@@ -70,11 +83,12 @@ export function PublicAuthBlock({
   onAuthenticated,
   nativeCompiler = compileNativeReactComponentInBrowser,
   nativeCompilerWorkerFactory,
-  nativeModuleRegistryFactory = createFrontstageNativeReactModuleRegistry
+  nativeModuleRegistryFactory = createFrontstageNativeReactModuleRegistry,
+  onPhaseChange
 }: PublicAuthBlockProps) {
   const [renderRoot, setRenderRoot] = useState<HTMLDivElement | null>(null);
   const [snapshot, setSnapshot] = useState<PublicAuthRenderSnapshot>({
-    status: 'preparing'
+    status: 'discovering'
   });
   const generationRef = useRef(0);
   const activeInstanceRef = useRef<ActivePublicAuthInstance | null>(null);
@@ -84,12 +98,28 @@ export function PublicAuthBlock({
   );
   const escapeFallbackVisible = snapshot.status === 'failed';
 
+  useEffect(() => {
+    onPhaseChange?.(snapshot.status);
+  }, [onPhaseChange, snapshot.status]);
+
+  useEffect(() => {
+    if (snapshot.status !== 'mounting') return;
+    const frame = window.requestAnimationFrame(() => {
+      setSnapshot((current) =>
+        current.status === 'mounting'
+          ? { status: 'ready', value: current.value }
+          : current
+      );
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [snapshot.status]);
+
   const prepare = useCallback(
     async (initialAttempt: PublicAuthAttempt = 0) => {
       if (!renderRoot) return;
       const generation = generationRef.current + 1;
       generationRef.current = generation;
-      setSnapshot({ status: 'preparing' });
+      setSnapshot({ status: 'compiling' });
 
       const failAttempt = (
         attempt: PublicAuthAttempt,
@@ -105,7 +135,7 @@ export function PublicAuthBlock({
         if (attempt === 0) {
           void runAttempt(1);
         } else {
-          setSnapshot({ status: 'failed' });
+          setSnapshot({ status: 'failed', diagnostic: 'compile_failed' });
         }
       };
 
@@ -177,24 +207,29 @@ export function PublicAuthBlock({
             }
           });
           setSnapshot({
-            status: 'ready',
-            component:
-              prepared.component as FrontstageNativeTrustedBlockReactComponent,
-            context: {
-              ...unavailable,
-              workspace: { id: 'public-auth' },
-              application: null,
-              inputs: createPublicAuthInputs(
-                instance.id,
-                instance.public_variables,
-                Boolean(authenticatorSelector)
+            status: 'mounting',
+            value: {
+              component:
+                prepared.component as FrontstageNativeTrustedBlockReactComponent,
+              context: {
+                ...unavailable,
+                workspace: { id: 'public-auth' },
+                application: null,
+                inputs: createPublicAuthInputs(
+                  instance.id,
+                  instance.public_variables,
+                  Boolean(authenticatorSelector)
+                ),
+                ...capabilities
+              },
+              moduleAssets: prepared.moduleAssets,
+              moduleSources: prepared.artifact.program.injectedModules.map(
+                ({ source }) => source
               ),
-              ...capabilities
-            },
-            moduleAssets: prepared.moduleAssets,
-            plan,
-            renderEpoch,
-            attempt
+              plan,
+              renderEpoch,
+              attempt
+            }
           });
         } catch {
           failAttempt(attempt, activeInstance);
@@ -229,28 +264,38 @@ export function PublicAuthBlock({
     <Space orientation="vertical" size="small" style={{ width: '100%' }}>
       <div
         ref={setRenderRoot}
+        data-public-auth-diagnostic={
+          snapshot.status === 'failed' ? snapshot.diagnostic : undefined
+        }
+        data-public-auth-phase={snapshot.status}
         data-testid="native-react-public-auth-root"
         style={{ width: '100%' }}
       />
-      {snapshot.status === 'ready' && renderRoot && !escapeFallbackVisible ? (
+      {(snapshot.status === 'mounting' || snapshot.status === 'ready') &&
+      renderRoot &&
+      !escapeFallbackVisible ? (
         <FrontstageNativeTrustedBlockPortalHost
           root={renderRoot}
-          renderEpoch={snapshot.renderEpoch}
-          plan={snapshot.plan}
-          component={snapshot.component}
-          ctx={snapshot.context}
-          moduleAssets={snapshot.moduleAssets}
+          renderEpoch={snapshot.value.renderEpoch}
+          plan={snapshot.value.plan}
+          component={snapshot.value.component}
+          ctx={snapshot.value.context}
+          moduleAssets={snapshot.value.moduleAssets}
+          moduleSources={snapshot.value.moduleSources}
           onRuntimeError={() => {
             activeInstanceRef.current = null;
-            if (snapshot.attempt === 0) {
+            if (snapshot.value.attempt === 0) {
               void prepare(1);
             } else {
-              setSnapshot({ status: 'failed' });
+              setSnapshot({ status: 'failed', diagnostic: 'mount_failed' });
             }
           }}
         />
       ) : null}
-      {snapshot.status === 'preparing' && !escapeFallbackVisible ? (
+      {(snapshot.status === 'discovering' ||
+        snapshot.status === 'compiling' ||
+        snapshot.status === 'mounting') &&
+      !escapeFallbackVisible ? (
         <BlockUiLoadingShell />
       ) : null}
       {escapeFallbackVisible ? (

@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Dropdown, Tag, Typography, type MenuProps } from 'antd';
 
 import {

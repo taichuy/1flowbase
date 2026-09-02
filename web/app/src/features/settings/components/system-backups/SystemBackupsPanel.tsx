@@ -14,16 +14,14 @@ import {
   type BackupSetSummaryResponse,
   type RecoveryPreflightResponse
 } from '@1flowbase/api-client';
-import {
-  DeleteOutlined,
-  DownloadOutlined,
-  MoreOutlined,
-  PlusOutlined,
-  ReloadOutlined,
-  SafetyCertificateOutlined,
-  UploadOutlined,
-  WarningOutlined
-} from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import DownloadOutlined from '@ant-design/icons/es/icons/DownloadOutlined';
+import MoreOutlined from '@ant-design/icons/es/icons/MoreOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
+import SafetyCertificateOutlined from '@ant-design/icons/es/icons/SafetyCertificateOutlined';
+import UploadOutlined from '@ant-design/icons/es/icons/UploadOutlined';
+import WarningOutlined from '@ant-design/icons/es/icons/WarningOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Alert,

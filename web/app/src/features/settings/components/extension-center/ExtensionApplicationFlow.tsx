@@ -1,15 +1,24 @@
-import { useMemo } from 'react';
+import { Suspense, lazy, useMemo } from 'react';
 
-import { InstalledAgentFlowImportFlow } from '../../../applications/components/InstalledAgentFlowImportFlow';
 import { type SettingsExtensionApplicationAction } from '../../api/extensions';
-import {
-  McpBundleImportFlow,
-  type McpBundleImportSource
-} from '../mcp-management/bundle/McpBundleImportFlow';
-import {
-  I18nCatalogActivationFlow,
-  type I18nCatalogActivationSource
-} from '../i18n-catalog/I18nCatalogActivationFlow';
+import type { McpBundleImportSource } from '../mcp-management/bundle/McpBundleImportFlow';
+import type { I18nCatalogActivationSource } from '../i18n-catalog/I18nCatalogActivationFlow';
+
+const InstalledAgentFlowImportFlow = lazy(() =>
+  import('../../../applications/components/InstalledAgentFlowImportFlow').then(
+    (module) => ({ default: module.InstalledAgentFlowImportFlow })
+  )
+);
+const McpBundleImportFlow = lazy(() =>
+  import('../mcp-management/bundle/McpBundleImportFlow').then((module) => ({
+    default: module.McpBundleImportFlow
+  }))
+);
+const I18nCatalogActivationFlow = lazy(() =>
+  import('../i18n-catalog/I18nCatalogActivationFlow').then((module) => ({
+    default: module.I18nCatalogActivationFlow
+  }))
+);
 
 export interface ExtensionApplicationTarget {
   installationId?: string;
@@ -65,34 +74,36 @@ export function ExtensionApplicationFlow({
   );
 
   return (
-    <>
-      <InstalledAgentFlowImportFlow
-        installationId={
-          target?.action === 'import_agent_flow'
-            ? (target.installationId ?? null)
-            : null
-        }
-        csrfToken={csrfToken}
-        onClose={onClose}
-        onImported={async (applicationId) => {
-          await onApplied();
-          window.location.assign(
-            `/applications/${applicationId}/orchestration`
-          );
-        }}
-      />
-      <McpBundleImportFlow
-        source={mcpSource}
-        csrfToken={csrfToken}
-        onClose={onClose}
-        onApplied={onApplied}
-      />
-      <I18nCatalogActivationFlow
-        source={i18nSource}
-        csrfToken={csrfToken}
-        onClose={onClose}
-        onActivated={onApplied}
-      />
-    </>
+    <Suspense fallback={null}>
+      {target?.action === 'import_agent_flow' ? (
+        <InstalledAgentFlowImportFlow
+          installationId={target.installationId ?? null}
+          csrfToken={csrfToken}
+          onClose={onClose}
+          onImported={async (applicationId) => {
+            await onApplied();
+            window.location.assign(
+              `/applications/${applicationId}/orchestration`
+            );
+          }}
+        />
+      ) : null}
+      {mcpSource ? (
+        <McpBundleImportFlow
+          source={mcpSource}
+          csrfToken={csrfToken}
+          onClose={onClose}
+          onApplied={onApplied}
+        />
+      ) : null}
+      {i18nSource ? (
+        <I18nCatalogActivationFlow
+          source={i18nSource}
+          csrfToken={csrfToken}
+          onClose={onClose}
+          onActivated={onApplied}
+        />
+      ) : null}
+    </Suspense>
   );
 }

@@ -25,6 +25,277 @@ function expectValidLayout(layout: Layout, columns: number) {
 }
 
 describe('frontstage block interaction solver', () => {
+  test('AC-002 inserts a standalone row when the pointer targets the boundary between rows', () => {
+    const committed: Layout = [
+      { i: 'first', x: 0, y: 0, w: 24, h: 20 },
+      { i: 'second', x: 0, y: 20, w: 24, h: 20 },
+      { i: 'active', x: 0, y: 40, w: 24, h: 20 }
+    ];
+
+    const result = solveFrontstageBlockInteraction({
+      committedLayout: committed,
+      activeId: 'active',
+      proposedPosition: { x: 0, y: 10 },
+      columns: 24,
+      dragIntent: {
+        pointerColumn: 12,
+        pointerRow: 20,
+        previousProjection: null,
+        deadbandColumns: 0.5
+      }
+    });
+
+    expect(
+      result.previewLayout.map(({ i, x, y, w }) => ({ i, x, y, w }))
+    ).toEqual([
+      { i: 'first', x: 0, y: 0, w: 24 },
+      { i: 'second', x: 0, y: 40, w: 24 },
+      { i: 'active', x: 0, y: 20, w: 24 }
+    ]);
+    expect(result.projection).toEqual({
+      kind: 'standalone-row',
+      rowIndex: 1
+    });
+    expectValidLayout(result.previewLayout, 24);
+  });
+
+  test('AC-002 reaches standalone positions before, between, and after rows', () => {
+    const committed: Layout = [
+      { i: 'first', x: 0, y: 0, w: 24, h: 20 },
+      { i: 'second', x: 0, y: 20, w: 24, h: 20 },
+      { i: 'active', x: 0, y: 40, w: 24, h: 20 }
+    ];
+    const projectAt = (pointerRow: number) =>
+      solveFrontstageBlockInteraction({
+        committedLayout: committed,
+        activeId: 'active',
+        proposedPosition: { x: 0, y: pointerRow },
+        columns: 24,
+        dragIntent: {
+          pointerColumn: 12,
+          pointerRow,
+          previousProjection: null,
+          deadbandColumns: 0.5
+        }
+      });
+
+    expect(projectAt(0).projection).toEqual({
+      kind: 'standalone-row',
+      rowIndex: 0
+    });
+    expect(projectAt(20).projection).toEqual({
+      kind: 'standalone-row',
+      rowIndex: 1
+    });
+    expect(projectAt(40).projection).toEqual({
+      kind: 'standalone-row',
+      rowIndex: 2
+    });
+  });
+
+  test('AC-004 keeps standalone projection inside the wider exit threshold', () => {
+    const committed: Layout = [
+      { i: 'first', x: 0, y: 0, w: 24, h: 20 },
+      { i: 'second', x: 0, y: 20, w: 24, h: 20 },
+      { i: 'active', x: 0, y: 40, w: 24, h: 20 }
+    ];
+    const project = (
+      pointerRow: number,
+      previousProjection: ReturnType<
+        typeof solveFrontstageBlockInteraction
+      >['projection']
+    ) =>
+      solveFrontstageBlockInteraction({
+        committedLayout: committed,
+        activeId: 'active',
+        proposedPosition: { x: 0, y: pointerRow },
+        columns: 24,
+        dragIntent: {
+          pointerColumn: 12,
+          pointerRow,
+          previousProjection,
+          deadbandColumns: 0.5
+        }
+      });
+
+    const entered = project(20, null);
+    const held = project(24, entered.projection);
+    const exited = project(26, held.projection);
+
+    expect(entered.projection).toEqual({
+      kind: 'standalone-row',
+      rowIndex: 1
+    });
+    expect(held.projection).toEqual(entered.projection);
+    expect(exited.projection).toEqual({
+      kind: 'join-row',
+      rowIndex: 1,
+      cellIndex: 1
+    });
+  });
+
+  test('AC-006 advances pointer row from proposed drag position during edge scroll', () => {
+    const committed: Layout = [
+      { i: 'first', x: 0, y: 0, w: 24, h: 20 },
+      { i: 'second', x: 0, y: 20, w: 24, h: 20 },
+      { i: 'active', x: 0, y: 40, w: 24, h: 20 }
+    ];
+    const compactor = createFrontstageInteractionCompactor('auto');
+    compactor.begin(committed, 'active');
+    compactor.updateDragPointer({ column: 12, row: 20 });
+
+    const atBoundary = compactor.compact(
+      [committed[0]!, committed[1]!, { ...committed[2]!, y: 10 }],
+      24
+    );
+    const afterScrollWithoutPointerMove = compactor.compact(
+      [committed[0]!, committed[1]!, { ...committed[2]!, y: 0 }],
+      24
+    );
+
+    expect(atBoundary.map(({ i, x, y, w }) => ({ i, x, y, w }))).toEqual([
+      { i: 'first', x: 0, y: 0, w: 24 },
+      { i: 'second', x: 0, y: 40, w: 24 },
+      { i: 'active', x: 0, y: 20, w: 24 }
+    ]);
+    expect(
+      afterScrollWithoutPointerMove.map(({ i, x, y, w }) => ({ i, x, y, w }))
+    ).toEqual([
+      { i: 'first', x: 0, y: 0, w: 12 },
+      { i: 'second', x: 0, y: 20, w: 24 },
+      { i: 'active', x: 12, y: 0, w: 12 }
+    ]);
+    compactor.end();
+  });
+
+  test('AC-005 recomputes row prefix positions for different block heights', () => {
+    const committed: Layout = [
+      { i: 'short', x: 0, y: 0, w: 24, h: 10 },
+      { i: 'tall', x: 0, y: 10, w: 24, h: 30 },
+      { i: 'active', x: 0, y: 40, w: 24, h: 20 }
+    ];
+
+    const result = solveFrontstageBlockInteraction({
+      committedLayout: committed,
+      activeId: 'active',
+      proposedPosition: { x: 0, y: 10 },
+      columns: 24,
+      dragIntent: {
+        pointerColumn: 12,
+        pointerRow: 10,
+        previousProjection: null,
+        deadbandColumns: 0.5
+      }
+    });
+
+    expect(result.previewLayout.map(({ i, y, h }) => ({ i, y, h }))).toEqual([
+      { i: 'short', y: 0, h: 10 },
+      { i: 'tall', y: 30, h: 30 },
+      { i: 'active', y: 10, h: 20 }
+    ]);
+    expectValidLayout(result.previewLayout, 24);
+  });
+
+  test('AC-002 AC-004 restores intrinsic demand when an allocated member becomes standalone', () => {
+    const committed: Layout = [
+      { i: 'short', x: 0, y: 0, w: 12, h: 10 },
+      { i: 'tall', x: 12, y: 0, w: 12, h: 10 },
+      { i: 'following', x: 0, y: 10, w: 24, h: 4 }
+    ];
+
+    const result = solveFrontstageBlockInteraction({
+      committedLayout: committed,
+      activeId: 'short',
+      proposedPosition: { x: 0, y: 10 },
+      columns: 24,
+      requiredRowsByBlock: { short: 6, tall: 10, following: 4 },
+      dragIntent: {
+        pointerColumn: 6,
+        pointerRow: 10,
+        previousProjection: null,
+        deadbandColumns: 0.5
+      }
+    });
+
+    expect(result.previewLayout.map(({ i, y, h }) => ({ i, y, h }))).toEqual([
+      { i: 'short', y: 10, h: 6 },
+      { i: 'tall', y: 0, h: 10 },
+      { i: 'following', y: 16, h: 4 }
+    ]);
+    expectValidLayout(result.previewLayout, 24);
+  });
+
+  test('AC-001 moves the trailing block into the first slot after crossing the leading block', () => {
+    const committed: Layout = [
+      { i: 'first', x: 0, y: 0, w: 12, h: 6 },
+      { i: 'second', x: 12, y: 0, w: 12, h: 6 }
+    ];
+
+    const result = solveFrontstageBlockInteraction({
+      committedLayout: committed,
+      activeId: 'second',
+      proposedPosition: { x: 0, y: 0 },
+      columns: 24
+    });
+
+    expect(result.previewLayout.map(({ i, x }) => ({ i, x }))).toEqual([
+      { i: 'first', x: 12 },
+      { i: 'second', x: 0 }
+    ]);
+  });
+
+  test('AC-002 reaches the first, middle, and last insertion indices across rows', () => {
+    const committed: Layout = [
+      { i: 'first', x: 0, y: 0, w: 12, h: 6 },
+      { i: 'second', x: 12, y: 0, w: 12, h: 6 },
+      { i: 'active', x: 0, y: 8, w: 24, h: 6 }
+    ];
+    const projectedOrder = (pointerColumn: number) =>
+      solveFrontstageBlockInteraction({
+        committedLayout: committed,
+        activeId: 'active',
+        proposedPosition: { x: 0, y: 0 },
+        columns: 24,
+        dragIntent: {
+          pointerColumn,
+          pointerRow: 3,
+          previousProjection: null,
+          deadbandColumns: 0.5
+        }
+      })
+        .previewLayout.filter((item) => item.y === 0)
+        .sort((left, right) => left.x - right.x)
+        .map((item) => item.i);
+
+    expect(projectedOrder(1)).toEqual(['active', 'first', 'second']);
+    expect(projectedOrder(8)).toEqual(['first', 'active', 'second']);
+    expect(projectedOrder(23)).toEqual(['first', 'second', 'active']);
+  });
+
+  test('AC-003 keeps the stable insertion index inside the midpoint deadband', () => {
+    const committed: Layout = [
+      { i: 'first', x: 0, y: 0, w: 12, h: 6 },
+      { i: 'second', x: 12, y: 0, w: 12, h: 6 }
+    ];
+    const compactor = createFrontstageInteractionCompactor('auto');
+    compactor.begin(committed, 'second');
+    compactor.updateDragPointer({ column: 1, row: 3 });
+    const insertedFirst = compactor.compact(
+      [committed[0]!, { ...committed[1]!, x: 0 }],
+      24
+    );
+    compactor.updateDragPointer({ column: 6.2, row: 3 });
+    const heldInsideDeadband = compactor.compact(insertedFirst, 24);
+
+    expect(
+      heldInsideDeadband
+        .filter((item) => item.y === 0)
+        .sort((left, right) => left.x - right.x)
+        .map((item) => item.i)
+    ).toEqual(['second', 'first']);
+    compactor.end();
+  });
+
   test('AC-003 identifies a restored drag as a no-op commit', () => {
     const committed: Layout = [
       { i: 'first', x: 0, y: 0, w: 12, h: 6 },
@@ -109,7 +380,7 @@ describe('frontstage block interaction solver', () => {
     expect(result.contacts).toEqual([]);
     expect(result.previewLayout).toEqual([
       expect.objectContaining({ i: 'first', x: 0, y: 0, w: 24 }),
-      expect.objectContaining({ i: 'second', x: 0, y: 16, w: 24 })
+      expect.objectContaining({ i: 'second', x: 0, y: 6, w: 24 })
     ]);
     expectValidLayout(result.previewLayout, 24);
   });
@@ -133,7 +404,7 @@ describe('frontstage block interaction solver', () => {
     ).toEqual([
       { i: 'first', x: 0, y: 0, w: 12 },
       { i: 'second', x: 12, y: 0, w: 12 },
-      { i: 'third', x: 0, y: 8, w: 24 }
+      { i: 'third', x: 0, y: 6, w: 24 }
     ]);
     expectValidLayout(result.previewLayout, 24);
   });
@@ -202,7 +473,7 @@ describe('frontstage block interaction solver', () => {
     );
     expect(leftRow.map(({ i, x, y, w }) => ({ i, x, y, w }))).toEqual([
       { i: 'first', x: 0, y: 0, w: 24 },
-      { i: 'second', x: 0, y: 16, w: 24 }
+      { i: 'second', x: 0, y: 6, w: 24 }
     ]);
 
     compactor.end();

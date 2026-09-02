@@ -1,4 +1,5 @@
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Checkbox, Input, Select, Tabs, Typography } from 'antd';
 import {
   Suspense,
@@ -15,6 +16,7 @@ import {
 
 import { parseJsonSchemaInput } from '../../../../lib/output-contract/schema';
 import { FloatingSettingsPanel } from '../../FloatingSettingsPanel';
+import { loadMonacoEditorModule } from '../../../../../../shared/code-block/monaco-runtime';
 import { i18nText } from '../../../../../../shared/i18n/text';
 import {
   jsonSchemaRootType,
@@ -43,7 +45,7 @@ import {
   type SchemaFieldTypeOptionValue
 } from './schema-row-model';
 
-const MonacoEditor = lazy(() => import('@monaco-editor/react'));
+const MonacoEditor = lazy(loadMonacoEditorModule);
 
 function JsonSchemaEditorFallback() {
   return (

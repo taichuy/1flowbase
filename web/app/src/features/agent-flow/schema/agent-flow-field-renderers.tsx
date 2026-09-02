@@ -10,7 +10,12 @@ import type {
   IfElseBranchDocument
 } from '@1flowbase/flow-schema';
 import { DEFAULT_LLM_PROTOCOL_CONTEXT_REFERENCE } from '@1flowbase/flow-schema';
-import type { ReactNode } from 'react';
+import {
+  lazy,
+  type ComponentType,
+  type LazyExoticComponent,
+  type ReactNode
+} from 'react';
 import { Cascader, Input, InputNumber, Select, Switch, Typography } from 'antd';
 
 import type {
@@ -19,41 +24,12 @@ import type {
 } from '../../../shared/schema-ui/v1/registry/create-renderer-registry';
 
 import type { AgentFlowDataModelFieldOption } from '../api/data-model-options';
-import { ConditionGroupField } from '../components/bindings/ConditionGroupField';
-import { DataModelQueryField } from '../components/bindings/DataModelQueryField';
-import { IfElseBranchesField } from '../components/bindings/IfElseBranchesField';
-import { NamedBindingsField } from '../components/bindings/NamedBindingsField';
-import { SelectorField } from '../components/bindings/SelectorField';
-import { StateWriteField } from '../components/bindings/StateWriteField';
-import { TemplatedTextField } from '../components/bindings/TemplatedTextField';
-import { VariableGroupsField } from '../components/bindings/VariableGroupsField';
-import {
-  VariableAssignmentField,
-  type VariableAssignmentValue
-} from '../components/bindings/VariableAssignmentField';
-import {
-  TemplatedNamedBindingsField,
-  type TemplatedNamedBindingValue
-} from '../components/bindings/TemplatedNamedBindingsField';
-import { OutputContractDefinitionField } from '../components/detail/fields/output-contract/OutputContractDefinitionField';
-import { CodeSourceField } from '../components/detail/fields/CodeSourceField';
-import { DataModelField } from '../components/detail/fields/DataModelField';
-import { DataSourceField } from '../components/detail/fields/sql/DataSourceField';
-import { LlmModelField } from '../components/detail/fields/LlmModelField';
-import { LlmMcpInstancesField } from '../components/detail/fields/LlmMcpInstancesField';
-import { LlmToolRegistrationsField } from '../components/detail/fields/LlmToolRegistrationsField';
-import { LlmPromptMessagesField } from '../components/detail/fields/LlmPromptMessagesField';
-import { LlmResponseFormatField } from '../components/detail/fields/LlmResponseFormatField';
-import {
-  StartInputFieldsField,
-  type StartInputContractKind,
-  type StartInputSourceOption
+import type { VariableAssignmentValue } from '../components/bindings/VariableAssignmentField';
+import type { TemplatedNamedBindingValue } from '../components/bindings/TemplatedNamedBindingsField';
+import type {
+  StartInputContractKind,
+  StartInputSourceOption
 } from '../components/detail/fields/StartInputFieldsField';
-import { StartModelListField } from '../components/detail/fields/StartModelListField';
-import { HttpRequestBodyField } from '../components/detail/fields/HttpRequestBodyField';
-import { HttpRequestCurlImportField } from '../components/detail/fields/HttpRequestCurlImportField';
-import { HttpRequestKeyValuesField } from '../components/detail/fields/HttpRequestKeyValuesField';
-import { HttpRequestTemplateInput } from '../components/detail/fields/HttpRequestTemplateInput';
 import {
   DATA_MODEL_QUERY_DEFAULT_VALUE,
   normalizeDataModelQueryBindingValue
@@ -82,6 +58,122 @@ import { codeOutputSelector } from '../lib/output-contract/code-output';
 import { outputHasLlmContextSchema } from '../lib/output-contract/schema';
 import { createTemplateSelectorToken } from '../lib/template-binding';
 import { i18nText } from '../../../shared/i18n/text';
+
+const lazyField = <TModule, K extends keyof TModule>(
+  load: () => Promise<TModule>,
+  name: K
+  // The module key preserves each component's concrete props; `any` is only
+  // the React component constraint required by React.lazy's generic.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): LazyExoticComponent<Extract<TModule[K], ComponentType<any>>> =>
+  lazy(() =>
+    load().then((module) => ({
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      default: module[name] as Extract<TModule[K], ComponentType<any>>
+    }))
+  );
+
+const ConditionGroupField = lazyField(
+  () => import('../components/bindings/ConditionGroupField'),
+  'ConditionGroupField'
+);
+const DataModelQueryField = lazyField(
+  () => import('../components/bindings/DataModelQueryField'),
+  'DataModelQueryField'
+);
+const IfElseBranchesField = lazyField(
+  () => import('../components/bindings/IfElseBranchesField'),
+  'IfElseBranchesField'
+);
+const NamedBindingsField = lazyField(
+  () => import('../components/bindings/NamedBindingsField'),
+  'NamedBindingsField'
+);
+const SelectorField = lazyField(
+  () => import('../components/bindings/SelectorField'),
+  'SelectorField'
+);
+const StateWriteField = lazyField(
+  () => import('../components/bindings/StateWriteField'),
+  'StateWriteField'
+);
+const TemplatedTextField = lazyField(
+  () => import('../components/bindings/TemplatedTextField'),
+  'TemplatedTextField'
+);
+const VariableGroupsField = lazyField(
+  () => import('../components/bindings/VariableGroupsField'),
+  'VariableGroupsField'
+);
+const VariableAssignmentField = lazyField(
+  () => import('../components/bindings/VariableAssignmentField'),
+  'VariableAssignmentField'
+);
+const TemplatedNamedBindingsField = lazyField(
+  () => import('../components/bindings/TemplatedNamedBindingsField'),
+  'TemplatedNamedBindingsField'
+);
+const OutputContractDefinitionField = lazyField(
+  () =>
+    import('../components/detail/fields/output-contract/OutputContractDefinitionField'),
+  'OutputContractDefinitionField'
+);
+const CodeSourceField = lazyField(
+  () => import('../components/detail/fields/CodeSourceField'),
+  'CodeSourceField'
+);
+const DataModelField = lazyField(
+  () => import('../components/detail/fields/DataModelField'),
+  'DataModelField'
+);
+const DataSourceField = lazyField(
+  () => import('../components/detail/fields/sql/DataSourceField'),
+  'DataSourceField'
+);
+const LlmModelField = lazyField(
+  () => import('../components/detail/fields/LlmModelField'),
+  'LlmModelField'
+);
+const LlmMcpInstancesField = lazyField(
+  () => import('../components/detail/fields/LlmMcpInstancesField'),
+  'LlmMcpInstancesField'
+);
+const LlmToolRegistrationsField = lazyField(
+  () => import('../components/detail/fields/LlmToolRegistrationsField'),
+  'LlmToolRegistrationsField'
+);
+const LlmPromptMessagesField = lazyField(
+  () => import('../components/detail/fields/LlmPromptMessagesField'),
+  'LlmPromptMessagesField'
+);
+const LlmResponseFormatField = lazyField(
+  () => import('../components/detail/fields/LlmResponseFormatField'),
+  'LlmResponseFormatField'
+);
+const StartInputFieldsField = lazyField(
+  () => import('../components/detail/fields/StartInputFieldsField'),
+  'StartInputFieldsField'
+);
+const StartModelListField = lazyField(
+  () => import('../components/detail/fields/StartModelListField'),
+  'StartModelListField'
+);
+const HttpRequestBodyField = lazyField(
+  () => import('../components/detail/fields/HttpRequestBodyField'),
+  'HttpRequestBodyField'
+);
+const HttpRequestCurlImportField = lazyField(
+  () => import('../components/detail/fields/HttpRequestCurlImportField'),
+  'HttpRequestCurlImportField'
+);
+const HttpRequestKeyValuesField = lazyField(
+  () => import('../components/detail/fields/HttpRequestKeyValuesField'),
+  'HttpRequestKeyValuesField'
+);
+const HttpRequestTemplateInput = lazyField(
+  () => import('../components/detail/fields/HttpRequestTemplateInput'),
+  'HttpRequestTemplateInput'
+);
 
 const BYTES_PER_MIB = 1024 * 1024;
 const DEFAULT_ENABLED_SWITCH_PATHS = new Set(['config.verify_ssl']);

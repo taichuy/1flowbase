@@ -1,8 +1,13 @@
-import { CloseOutlined, CopyOutlined, QuestionCircleOutlined } from '@ant-design/icons';
+import CloseOutlined from '@ant-design/icons/es/icons/CloseOutlined';
+import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
+import QuestionCircleOutlined from '@ant-design/icons/es/icons/QuestionCircleOutlined';
 import { App, Button, Tooltip, Typography } from 'antd';
 import type { MouseEvent as ReactMouseEvent } from 'react';
 
-import { fetchRuntimeDebugArtifact, type AgentFlowVariableGroup } from '../../api/runtime';
+import {
+  fetchRuntimeDebugArtifact,
+  type AgentFlowVariableGroup
+} from '../../api/runtime';
 import { copyTextToClipboard } from '../../../../shared/ui/clipboard/copy-text';
 import { i18nText } from '../../../../shared/i18n/text';
 import {

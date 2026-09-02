@@ -1,5 +1,5 @@
-import { SendOutlined } from '@ant-design/icons';
-import { Sender } from '@ant-design/x';
+import SendOutlined from '@ant-design/icons/es/icons/SendOutlined';
+import Sender from '@ant-design/x/es/sender';
 import { Flex, Tooltip } from 'antd';
 import type { ReactNode } from 'react';
 import { i18nText } from '../../../../../shared/i18n/text';

@@ -1,7 +1,8 @@
 import { Alert, Button, Empty, Space, Typography } from 'antd';
 import { BlockUiLoadingShell } from '@1flowbase/block-renderer';
 import type {
-  BlockContext,
+  BlockContextSizing,
+  BlockContextSeed,
   BlockProtocolError
 } from '@1flowbase/page-protocol';
 import {
@@ -12,8 +13,10 @@ import {
 } from '@1flowbase/page-runtime';
 import type { CSSProperties, FC, Ref } from 'react';
 import {
+  memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -41,6 +44,7 @@ import { FRONTSTAGE_DESIGN_BLUE } from '../lib/design-mode-theme';
 import {
   createFrontstagePersistedGridLayout,
   createFrontstageResponsiveLayouts,
+  FRONTSTAGE_DEFAULT_AUTO_HEIGHT_PX,
   FRONTSTAGE_GRID_BREAKPOINTS,
   FRONTSTAGE_GRID_COLUMNS,
   FRONTSTAGE_GRID_ROW_HEIGHT,
@@ -61,6 +65,14 @@ import {
   frontstageLayoutsEqualForCommit
 } from '../lib/page-canvas/frontstage-block-interaction';
 import type { FrontstageRuntimeDemandPriority } from '../lib/page-canvas/runtime-demand';
+import { resolveFrontstageViewportDemandPriority } from '../lib/page-canvas/runtime-demand';
+import {
+  FRONTSTAGE_AUTO_HEIGHT_SETTLE_FRAMES,
+  FRONTSTAGE_AUTO_HEIGHT_SETTLE_MS,
+  FrontstageAutoHeightBatch,
+  resolveFrontstageAutoHeightScrollDelta
+} from '../lib/page-canvas/auto-height-layout';
+import type { FrontstageIntrinsicMeasurementContext } from '../lib/page-canvas/auto-height-layout';
 import type { FrontstageNativePreparationSnapshot } from '../lib/page-canvas/native-runtime-preparation';
 import {
   frontstageNativeInstanceRenderKey,
@@ -85,7 +97,7 @@ import { createFrontstageAssistantDomRuntime } from '../lib/assistant-frontstage
 import { registerFrontstageAssistantRuntime } from '../lib/assistant-frontstage-runtime';
 
 export type FrontstagePageCanvasRuntimeContext = Pick<
-  BlockContext,
+  BlockContextSeed,
   'currentUser' | 'workspace' | 'application' | 'theme' | 'ui'
 >;
 
@@ -136,6 +148,7 @@ type PageCanvasProps = {
     blockId: string,
     priority: FrontstageRuntimeDemandPriority
   ) => void;
+  onRuntimeInteraction?: () => void;
   onRuntimeRetry?: (blockId: string) => void;
   onRuntimeRefresh?: (blockId: string) => void;
 };
@@ -171,7 +184,7 @@ function useFrontstagePageCanvasWidth() {
     return () => observer.disconnect();
   }, [containerNode]);
 
-  return { width, containerRef };
+  return { width, containerNode, containerRef };
 }
 
 function renderFrontstageResizeHandle(
@@ -212,7 +225,13 @@ type RenderPlanSlotProps = {
   isDesignMode?: boolean;
   designActions?: DesignBlockActions;
   toolbarDisabled?: boolean;
-  onAutoHeightChange?: (blockId: string, height: number) => void;
+  onAutoHeightChange?: (
+    blockId: string,
+    height: number,
+    context: FrontstageIntrinsicMeasurementContext
+  ) => void;
+  intrinsicHeight?: number;
+  allocatedHeightEpoch?: number;
   onRuntimeDemandChange?: (
     blockId: string,
     priority: FrontstageRuntimeDemandPriority
@@ -231,6 +250,10 @@ const blockFrameBaseStyle: CSSProperties = {
   overflow: 'hidden',
   boxShadow: '0 14px 40px rgba(37, 99, 235, 0.05)'
 };
+
+const FRONTSTAGE_DESIGN_PREVIEW_MIN_HEIGHT = 160;
+const FRONTSTAGE_DEMAND_ENTER_MARGIN = 400;
+const FRONTSTAGE_DEMAND_EXIT_MARGIN = 800;
 
 const blockLabelStyle: CSSProperties = {
   position: 'absolute',
@@ -360,19 +383,27 @@ function NativeRuntimeSlotSurface({
   nativeContextHost,
   pageContent,
   contentViewportStyle,
+  surfaceLayoutEpoch,
+  fillsAvailableHeight,
+  onIntrinsicSizeReport,
   onRetry
 }: {
   item: FrontstageBlockRenderPlanItem;
   preparation: FrontstageNativePreparationSnapshot;
   contentViewportStyle: CSSProperties;
+  surfaceLayoutEpoch: string;
   onRetry?: () => void;
   signalCoordinator?: FrontstageSignalRuntimeCoordinator | null;
   runtimeInputValues?: Readonly<Record<string, unknown>>;
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
   nativeContextHost?: FrontstageNativeBlockContextHost;
   pageContent?: FrontstagePageContent;
+  fillsAvailableHeight: boolean;
+  onIntrinsicSizeReport?: (height: number) => void;
 }) {
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
+  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  const [availableSize, setAvailableSize] = useState({ width: 0, height: 0 });
   const [runtimeError, setRuntimeError] = useState<BlockProtocolError | null>(
     null
   );
@@ -381,6 +412,30 @@ function NativeRuntimeSlotSurface({
   const renderIdentity = readyPreparation?.mountIntent
     ? frontstageNativeInstanceRenderKey(readyPreparation.mountIntent)
     : null;
+  useEffect(() => {
+    if (!viewport || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const { width, height } = entry.contentRect;
+      if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+      setAvailableSize((current) =>
+        Math.abs(current.width - width) < 0.5 &&
+        Math.abs(current.height - height) < 0.5
+          ? current
+          : { width, height }
+      );
+    });
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [viewport]);
+  const reportIntrinsicSize = useCallback(
+    ({ height }: { height: number }) => onIntrinsicSizeReport?.(height),
+    [onIntrinsicSizeReport]
+  );
+  const runtimeSizing = useMemo<BlockContextSizing>(
+    () => ({ available: availableSize, reportIntrinsicSize }),
+    [availableSize, reportIntrinsicSize]
+  );
   useEffect(() => setRuntimeError(null), [renderIdentity]);
   const plan = useMemo<NativeTrustedBlockPreparePlan>(() => {
     const preparedSource = readyPreparation
@@ -447,11 +502,22 @@ function NativeRuntimeSlotSurface({
   }
 
   return (
-    <div style={contentViewportStyle}>
+    <div
+      ref={setViewport}
+      style={contentViewportStyle}
+      data-flowbase-frontstage-allocation-viewport={item.blockId}
+      data-flowbase-frontstage-available-width={availableSize.width}
+      data-flowbase-frontstage-available-height={availableSize.height}
+    >
       <div
         ref={setRoot}
         data-testid={`frontstage-native-block-root-${item.blockId}`}
-        style={{ width: '100%', maxWidth: '100%', minWidth: 0 }}
+        style={{
+          width: '100%',
+          maxWidth: '100%',
+          minWidth: 0,
+          height: fillsAvailableHeight ? '100%' : undefined
+        }}
       />
       {root ? (
         <FrontstageNativeRuntimeInstance
@@ -465,6 +531,8 @@ function NativeRuntimeSlotSurface({
           runtimeContext={runtimeContext}
           nativeContextHost={nativeContextHost}
           pageContent={pageContent}
+          runtimeSizing={runtimeSizing}
+          surfaceLayoutEpoch={surfaceLayoutEpoch}
           onRuntimeError={setRuntimeError}
         />
       ) : (
@@ -489,6 +557,8 @@ function FrontstageNativeRuntimeInstance({
   runtimeContext,
   nativeContextHost,
   pageContent,
+  runtimeSizing,
+  surfaceLayoutEpoch,
   onRuntimeError
 }: {
   root: Element;
@@ -503,6 +573,8 @@ function FrontstageNativeRuntimeInstance({
   runtimeContext?: FrontstagePageCanvasRuntimeContext;
   nativeContextHost?: FrontstageNativeBlockContextHost;
   pageContent?: FrontstagePageContent;
+  runtimeSizing: BlockContextSizing;
+  surfaceLayoutEpoch: string;
   onRuntimeError(error: BlockProtocolError): void;
 }) {
   const { instanceEpoch, isCurrentInstance } = useFrontstageNativeBlockInstance(
@@ -531,6 +603,15 @@ function FrontstageNativeRuntimeInstance({
     getSnapshot
   );
   const unavailable = createFrontstageUnavailableBlockContext(plan);
+  const [runtimeState] = useState(() => {
+    const state: Record<string, unknown> = {};
+    return {
+      state,
+      patch: (patch: Record<string, unknown>) => {
+        Object.assign(state, patch);
+      }
+    };
+  });
   const outputs = signalCoordinator
     ? signalCoordinator.outputsFor(item.blockId, instanceEpoch)
     : unavailable.outputs;
@@ -550,7 +631,7 @@ function FrontstageNativeRuntimeInstance({
         navigation: unavailable.navigation,
         outputs
       };
-  const context: BlockContext = {
+  const context: BlockContextSeed = {
     ...unavailable,
     ...(runtimeContext ?? {}),
     page: {
@@ -563,7 +644,14 @@ function FrontstageNativeRuntimeInstance({
     },
     inputs: { ...signalSnapshot.inputs, ...runtimeInputValues },
     ...capabilities,
-    props: { ...plan.props }
+    ui: {
+      ...unavailable.ui,
+      ...(runtimeContext?.ui ?? {}),
+      sizing: runtimeSizing
+    },
+    props: { ...plan.props },
+    state: runtimeState.state,
+    patch: runtimeState.patch
   };
 
   return (
@@ -577,13 +665,15 @@ function FrontstageNativeRuntimeInstance({
       }
       ctx={context}
       moduleAssets={preparation.prepared.moduleAssets}
+      moduleSources={preparation.prepared.moduleSources}
       contribution={preparation.prepared.contribution}
+      surfaceLayoutEpoch={surfaceLayoutEpoch}
       onRuntimeError={onRuntimeError}
     />
   );
 }
 
-function RenderPlanSlot({
+const RenderPlanSlot = memo(function RenderPlanSlot({
   item,
   runtimePreparation,
   isolatedPreparation,
@@ -600,17 +690,42 @@ function RenderPlanSlot({
   designActions,
   toolbarDisabled,
   onAutoHeightChange,
+  intrinsicHeight,
+  allocatedHeightEpoch,
   onRuntimeDemandChange,
   onRuntimeRetry,
   onRuntimeRefresh
 }: RenderPlanSlotProps) {
   const [isHovered, setIsHovered] = useState(false);
   const blockRef = useRef<HTMLDivElement>(null);
+  const intrinsicContentRef = useRef<HTMLDivElement>(null);
+  const runtimeRenderIdentity =
+    runtimePreparation?.status === 'ready' && runtimePreparation.mountIntent
+      ? frontstageNativeInstanceRenderKey(runtimePreparation.mountIntent)
+      : null;
+  const measurementEpochRef = useRef({ key: '', value: 0 });
+  const measurementEpochKey = `${runtimeRenderIdentity ?? 'unprepared'}:${runtimePreparation?.generation ?? 0}`;
+  if (measurementEpochRef.current.key !== measurementEpochKey) {
+    measurementEpochRef.current = {
+      key: measurementEpochKey,
+      value: measurementEpochRef.current.value + 1
+    };
+  }
+  const measurementEpoch = measurementEpochRef.current.value;
   const rendererVersionError = resolveRendererVersionError(item);
   const isFixedHeight = item.presentation.heightMode === 'fixed';
+  const fillsAvailableHeight =
+    isFixedHeight || allocatedHeightEpoch === measurementEpoch;
+  const viewportDemand = useRef({
+    priority: 3 as FrontstageRuntimeDemandPriority,
+    visible: false,
+    withinEnterMargin: false,
+    withinExitMargin: false
+  });
 
   useEffect(() => {
     if (isSelected) {
+      viewportDemand.current.priority = 0;
       onRuntimeDemandChange?.(item.blockId, 0);
       return;
     }
@@ -621,40 +736,87 @@ function RenderPlanSlot({
       return;
     }
 
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (!entry?.isIntersecting) {
-          onRuntimeDemandChange?.(item.blockId, 3);
-          return;
-        }
-        const rect = entry.boundingClientRect;
-        const visible =
-          rect.bottom > 0 &&
-          rect.top < window.innerHeight &&
-          rect.right > 0 &&
-          rect.left < window.innerWidth;
-        onRuntimeDemandChange?.(item.blockId, visible ? 1 : 2);
-      },
-      { rootMargin: '400px 0px' }
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
+    const publishDemand = () => {
+      const current = viewportDemand.current;
+      const priority = resolveFrontstageViewportDemandPriority({
+        previousPriority: current.priority,
+        visible: current.visible,
+        withinEnterMargin: current.withinEnterMargin,
+        withinExitMargin: current.withinExitMargin
+      });
+      if (priority === current.priority) return;
+      current.priority = priority;
+      onRuntimeDemandChange?.(item.blockId, priority);
+    };
+    const observeBand = (
+      field: 'visible' | 'withinEnterMargin' | 'withinExitMargin',
+      rootMargin: string
+    ) => {
+      const root = node.closest<HTMLElement>(
+        '[data-flowbase-frontstage-scroll-owner]'
+      );
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          viewportDemand.current[field] = entry?.isIntersecting === true;
+          publishDemand();
+        },
+        { root, rootMargin }
+      );
+      observer.observe(node);
+      return observer;
+    };
+    const observers = [
+      observeBand('visible', '0px'),
+      observeBand(
+        'withinEnterMargin',
+        `${FRONTSTAGE_DEMAND_ENTER_MARGIN}px 0px`
+      ),
+      observeBand('withinExitMargin', `${FRONTSTAGE_DEMAND_EXIT_MARGIN}px 0px`)
+    ];
+    return () => observers.forEach((observer) => observer.disconnect());
   }, [isSelected, item.blockId, onRuntimeDemandChange]);
 
   useEffect(() => {
-    const node = blockRef.current;
-    if (!node || isFixedHeight || typeof ResizeObserver === 'undefined') {
+    const node = intrinsicContentRef.current;
+    if (
+      !node ||
+      isFixedHeight ||
+      typeof ResizeObserver === 'undefined' ||
+      fillsAvailableHeight
+    ) {
       return;
     }
 
     const observer = new ResizeObserver(([entry]) => {
       if (entry) {
-        onAutoHeightChange?.(item.blockId, entry.contentRect.height);
+        onAutoHeightChange?.(item.blockId, entry.contentRect.height, {
+          epoch: measurementEpoch,
+          source: 'dom-intrinsic'
+        });
       }
     });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [isFixedHeight, item.blockId, onAutoHeightChange]);
+  }, [
+    isFixedHeight,
+    fillsAvailableHeight,
+    item.blockId,
+    measurementEpoch,
+    onAutoHeightChange
+  ]);
+
+  const handleIntrinsicSizeReport = useCallback(
+    (height: number) => {
+      if (!Number.isFinite(height) || height <= 0) {
+        return;
+      }
+      onAutoHeightChange?.(item.blockId, height, {
+        epoch: measurementEpoch,
+        source: 'runtime-explicit'
+      });
+    },
+    [item.blockId, measurementEpoch, onAutoHeightChange]
+  );
 
   // Determine border style based on mode
   let borderStyle: CSSProperties;
@@ -685,10 +847,22 @@ function RenderPlanSlot({
     width: '100%',
     maxWidth: '100%',
     minWidth: 0,
-    height: isFixedHeight ? '100%' : 'auto',
+    height: isFixedHeight || fillsAvailableHeight ? '100%' : 'auto',
+    minHeight:
+      isDesignMode && !isFixedHeight
+        ? FRONTSTAGE_DESIGN_PREVIEW_MIN_HEIGHT
+        : undefined,
     boxSizing: 'border-box',
-    overflow: isFixedHeight ? 'auto' : 'visible',
-    padding: isDesignMode ? '40px 24px 20px' : 12
+    overflow: isDesignMode ? 'clip' : isFixedHeight ? 'auto' : 'visible',
+    padding: isDesignMode ? '40px 24px 20px' : 12,
+    ...(isDesignMode
+      ? {
+          position: 'relative',
+          zIndex: 0,
+          isolation: 'isolate',
+          contain: 'layout paint'
+        }
+      : {})
   };
 
   const handleSelect = () => {
@@ -743,6 +917,9 @@ function RenderPlanSlot({
           nativeContextHost={nativeContextHost}
           pageContent={pageContent}
           contentViewportStyle={contentViewportStyle}
+          surfaceLayoutEpoch={isDesignMode ? 'design' : 'preview'}
+          fillsAvailableHeight={fillsAvailableHeight}
+          onIntrinsicSizeReport={handleIntrinsicSizeReport}
           onRetry={
             onRuntimeRetry ? () => onRuntimeRetry(item.blockId) : undefined
           }
@@ -762,13 +939,16 @@ function RenderPlanSlot({
       ref={blockRef}
       style={{
         ...blockFrameBaseStyle,
-        height: isFixedHeight
-          ? `calc(100% - ${FRONTSTAGE_GRID_ROW_GAP}px)`
-          : 'auto',
+        height: `calc(100% - ${FRONTSTAGE_GRID_ROW_GAP}px)`,
         overflow: isFixedHeight ? 'hidden' : 'visible',
         ...borderStyle,
         position: 'relative',
-        transition: 'border-color 0.15s, background 0.15s'
+        transition: 'border-color 0.15s, background 0.15s',
+        contentVisibility: 'auto',
+        containIntrinsicSize: `auto ${Math.max(
+          1,
+          intrinsicHeight ?? FRONTSTAGE_DEFAULT_AUTO_HEIGHT_PX
+        )}px`
       }}
       data-testid={`block-slot-${item.blockId}`}
       data-flowbase-frontstage-block-id={item.blockId}
@@ -779,6 +959,10 @@ function RenderPlanSlot({
             (isolatedPreparation ? 'ready' : 'loading'))
       }
       data-flowbase-frontstage-generation={runtimePreparation?.generation ?? 0}
+      data-flowbase-frontstage-intrinsic-height={
+        intrinsicHeight ?? FRONTSTAGE_DEFAULT_AUTO_HEIGHT_PX
+      }
+      data-flowbase-frontstage-allocation-epoch={allocatedHeightEpoch}
       data-flowbase-frontstage-render-error={
         rendererVersionError?.description ??
         isolatedPreparationError?.message ??
@@ -806,11 +990,24 @@ function RenderPlanSlot({
       }}
     >
       {isDesignMode ? (
-        <span style={blockLabelStyle}>
-          {item.title ?? item.blockId}
-        </span>
+        <span style={blockLabelStyle}>{item.title ?? item.blockId}</span>
       ) : null}
-      {renderBlockContent()}
+      {isFixedHeight ? (
+        renderBlockContent()
+      ) : (
+        <div
+          ref={intrinsicContentRef}
+          data-flowbase-frontstage-intrinsic-content={item.blockId}
+          style={{
+            width: '100%',
+            maxWidth: '100%',
+            minWidth: 0,
+            height: fillsAvailableHeight ? '100%' : undefined
+          }}
+        >
+          {renderBlockContent()}
+        </div>
+      )}
 
       {isDesignMode && designActions && isToolbarVisible && (
         <BlockHoverToolbar
@@ -828,9 +1025,52 @@ function RenderPlanSlot({
       )}
     </div>
   );
-}
+});
 
 // ─── PageCanvas ─────────────────────────────────────────────────────
+
+type FrontstageScrollAnchor = {
+  scrollOwner: HTMLElement;
+  blockId: string;
+  layoutDeltaPx: number;
+  scrollTop: number;
+};
+
+function captureFrontstageScrollAnchor(
+  canvasNode: HTMLElement | null
+): FrontstageScrollAnchor | null {
+  const scrollOwner = canvasNode?.closest<HTMLElement>(
+    '[data-flowbase-frontstage-scroll-owner]'
+  );
+  if (!canvasNode || !scrollOwner) return null;
+  const ownerRect = scrollOwner.getBoundingClientRect();
+  const visibleBlocks = Array.from(
+    canvasNode.querySelectorAll<HTMLElement>(
+      '[data-flowbase-frontstage-block-id]'
+    )
+  )
+    .map((blockElement) => {
+      const element =
+        blockElement.closest<HTMLElement>('.react-grid-item') ?? blockElement;
+      return {
+        blockId: blockElement.dataset.flowbaseFrontstageBlockId ?? '',
+        rect: element.getBoundingClientRect()
+      };
+    })
+    .filter(
+      ({ rect }) => rect.bottom > ownerRect.top && rect.top < ownerRect.bottom
+    )
+    .sort((left, right) => left.rect.top - right.rect.top);
+  const anchor = visibleBlocks[0];
+  return anchor
+    ? {
+        scrollOwner,
+        blockId: anchor.blockId,
+        layoutDeltaPx: 0,
+        scrollTop: scrollOwner.scrollTop
+      }
+    : null;
+}
 
 export const PageCanvas: FC<PageCanvasProps> = ({
   content,
@@ -856,6 +1096,7 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   showTitle = true,
   onResponsiveLayoutSave,
   onRuntimeDemandChange,
+  onRuntimeInteraction,
   onRuntimeRetry,
   onRuntimeRefresh
 }) => {
@@ -898,6 +1139,8 @@ export const PageCanvas: FC<PageCanvasProps> = ({
   const isRenderEmpty = renderItems.length === 0;
   const signalSession = useMemo(
     () => createFrontstagePageSignalSession(),
+    // The page id is the lifecycle key even though session construction is argument-free.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [content?.page.id]
   );
   const localSignalCoordinator = useMemo(
@@ -909,10 +1152,11 @@ export const PageCanvas: FC<PageCanvasProps> = ({
             signalSession
           )
         : null,
+    // Runtime block arrays reconcile below; depending on their identity would dispose live epochs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       content?.tab.id,
       pageDocument?.page.id,
-      runtimeBlocks,
       sharedSignalCoordinator,
       signalSession
     ]
@@ -934,21 +1178,76 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     () => () => localSignalCoordinator?.dispose(),
     [localSignalCoordinator]
   );
-  const { width: gridWidth, containerRef } = useFrontstagePageCanvasWidth();
+  const {
+    width: gridWidth,
+    containerNode: gridContainerNode,
+    containerRef
+  } = useFrontstagePageCanvasWidth();
   const interactionCompactor = useMemo(
     () => createFrontstageInteractionCompactor(document?.layoutMode ?? 'auto'),
     [document?.layoutMode]
   );
-  const [autoHeights, setAutoHeights] = useState<Record<string, number>>({});
+  const [autoRows, setAutoRows] = useState<Record<string, number>>({});
+  const autoRowsRef = useRef(autoRows);
+  const [autoAllocatedHeightEpochs, setAutoAllocatedHeightEpochs] = useState<
+    Record<string, number>
+  >({});
+  const autoAllocatedHeightEpochsRef = useRef(autoAllocatedHeightEpochs);
+  const autoHeightScopeRef = useRef(content?.page.id);
+  const autoHeightBatchRef = useRef(
+    new FrontstageAutoHeightBatch({
+      settleMs: FRONTSTAGE_AUTO_HEIGHT_SETTLE_MS,
+      settleFrames: FRONTSTAGE_AUTO_HEIGHT_SETTLE_FRAMES
+    })
+  );
+  const autoHeightFrameRef = useRef<number | null>(null);
+  const pendingScrollAnchorRef = useRef<FrontstageScrollAnchor | null>(null);
   const layouts = useMemo(() => {
     const responsiveLayouts = createFrontstageResponsiveLayouts(
       renderItems,
-      autoHeights
+      autoRows
     );
     return document?.layoutMode === 'free'
       ? responsiveLayouts
       : normalizeFrontstageAutomaticResponsiveLayouts(responsiveLayouts);
-  }, [autoHeights, document?.layoutMode, renderItems]);
+  }, [autoRows, document?.layoutMode, renderItems]);
+  useEffect(() => {
+    autoRowsRef.current = autoRows;
+  }, [autoRows]);
+  useEffect(() => {
+    autoAllocatedHeightEpochsRef.current = autoAllocatedHeightEpochs;
+  }, [autoAllocatedHeightEpochs]);
+  useEffect(() => {
+    if (autoHeightScopeRef.current === content?.page.id) return;
+    autoHeightScopeRef.current = content?.page.id;
+    autoRowsRef.current = {};
+    autoAllocatedHeightEpochsRef.current = {};
+    autoHeightBatchRef.current = new FrontstageAutoHeightBatch({
+      settleMs: FRONTSTAGE_AUTO_HEIGHT_SETTLE_MS,
+      settleFrames: FRONTSTAGE_AUTO_HEIGHT_SETTLE_FRAMES
+    });
+    setAutoRows({});
+    setAutoAllocatedHeightEpochs({});
+  }, [content?.page.id]);
+  useEffect(
+    () => () => {
+      if (autoHeightFrameRef.current !== null) {
+        cancelAnimationFrame(autoHeightFrameRef.current);
+      }
+    },
+    []
+  );
+  useLayoutEffect(() => {
+    const anchor = pendingScrollAnchorRef.current;
+    pendingScrollAnchorRef.current = null;
+    if (
+      !anchor ||
+      Math.abs(anchor.scrollOwner.scrollTop - anchor.scrollTop) > 0.5
+    ) {
+      return;
+    }
+    anchor.scrollOwner.scrollTop += anchor.layoutDeltaPx;
+  }, [autoRows]);
   const latestLayouts = useRef(layouts);
   const dragCommittedLayout = useRef<Layout | null>(null);
   const activeBreakpoint = useRef<FrontstageGridBreakpoint>('lg');
@@ -982,13 +1281,104 @@ export const PageCanvas: FC<PageCanvasProps> = ({
     );
   };
 
-  const updateAutoHeight = (blockId: string, height: number) => {
-    setAutoHeights((current) =>
-      Math.abs((current[blockId] ?? 0) - height) < 1
-        ? current
-        : { ...current, [blockId]: height }
+  const createCurrentRowRequirements = () =>
+    Object.fromEntries(
+      (
+        createFrontstageResponsiveLayouts(renderItems, autoRowsRef.current)[
+          activeBreakpoint.current
+        ] ?? []
+      ).map((item) => [item.i, item.h])
     );
-  };
+
+  const updateAutoHeight = useCallback(
+    (
+      blockId: string,
+      height: number,
+      context: FrontstageIntrinsicMeasurementContext
+    ) => {
+      autoHeightBatchRef.current.measure(
+        blockId,
+        height,
+        context,
+        performance.now()
+      );
+      if (autoHeightFrameRef.current !== null) return;
+      const flush = (nowMs: number) => {
+        autoHeightFrameRef.current = null;
+        const currentRows = autoRowsRef.current;
+        const nextRows = autoHeightBatchRef.current.commit(currentRows, nowMs);
+        const committedMeasurements =
+          autoHeightBatchRef.current.takeCommittedMeasurements();
+        if (committedMeasurements.length > 0) {
+          const currentEpochs = autoAllocatedHeightEpochsRef.current;
+          let nextEpochs: Record<string, number> | null = null;
+          for (const measurement of committedMeasurements) {
+            const nextEpoch =
+              measurement.source === 'runtime-explicit'
+                ? measurement.epoch
+                : undefined;
+            if (currentEpochs[measurement.blockId] === nextEpoch) {
+              continue;
+            }
+            nextEpochs ??= { ...currentEpochs };
+            if (nextEpoch === undefined) {
+              delete nextEpochs[measurement.blockId];
+            } else {
+              nextEpochs[measurement.blockId] = nextEpoch;
+            }
+          }
+          if (nextEpochs) {
+            autoAllocatedHeightEpochsRef.current = nextEpochs;
+            setAutoAllocatedHeightEpochs(nextEpochs);
+          }
+        }
+        if (nextRows !== currentRows) {
+          const anchor = captureFrontstageScrollAnchor(gridContainerNode);
+          if (anchor) {
+            const currentResponsiveLayouts = createFrontstageResponsiveLayouts(
+              renderItems,
+              currentRows
+            );
+            const nextResponsiveLayouts = createFrontstageResponsiveLayouts(
+              renderItems,
+              nextRows
+            );
+            const currentLayouts =
+              document?.layoutMode === 'free'
+                ? currentResponsiveLayouts
+                : normalizeFrontstageAutomaticResponsiveLayouts(
+                    currentResponsiveLayouts
+                  );
+            const nextLayouts =
+              document?.layoutMode === 'free'
+                ? nextResponsiveLayouts
+                : normalizeFrontstageAutomaticResponsiveLayouts(
+                    nextResponsiveLayouts
+                  );
+            const breakpoint = activeBreakpoint.current;
+            const columns = FRONTSTAGE_GRID_COLUMNS[breakpoint];
+            anchor.layoutDeltaPx = resolveFrontstageAutoHeightScrollDelta({
+              anchorBlockId: anchor.blockId,
+              columns,
+              compact: document?.layoutMode !== 'free',
+              currentLayout: currentLayouts[breakpoint] ?? [],
+              nextLayout: nextLayouts[breakpoint] ?? [],
+              rowHeight: FRONTSTAGE_GRID_ROW_HEIGHT,
+              rowMargin: FRONTSTAGE_GRID_VERTICAL_MARGIN
+            });
+          }
+          pendingScrollAnchorRef.current = anchor;
+          autoRowsRef.current = nextRows;
+          setAutoRows(nextRows);
+        }
+        if (autoHeightBatchRef.current.hasPendingMeasurements()) {
+          autoHeightFrameRef.current = requestAnimationFrame(flush);
+        }
+      };
+      autoHeightFrameRef.current = requestAnimationFrame(flush);
+    },
+    [document?.layoutMode, gridContainerNode, renderItems]
+  );
 
   if (isLoading) {
     return (
@@ -1050,6 +1440,29 @@ export const PageCanvas: FC<PageCanvasProps> = ({
         ref={containerRef}
         className="frontstage-page-canvas-grid"
         data-testid="page-canvas-render-slots"
+        onPointerOverCapture={onRuntimeInteraction}
+        onPointerDownCapture={onRuntimeInteraction}
+        onFocusCapture={onRuntimeInteraction}
+        onKeyDownCapture={onRuntimeInteraction}
+        onPointerMoveCapture={(event) => {
+          if (!isDesignMode || toolbarDisabled) return;
+          const bounds = event.currentTarget.getBoundingClientRect();
+          if (bounds.width <= 0) return;
+          const columns = FRONTSTAGE_GRID_COLUMNS[activeBreakpoint.current];
+          interactionCompactor.updateDragPointer({
+            column: Math.max(
+              0,
+              Math.min(
+                columns,
+                ((event.clientX - bounds.left) / bounds.width) * columns
+              )
+            ),
+            row: Math.max(
+              0,
+              (event.clientY - bounds.top) / FRONTSTAGE_GRID_ROW_HEIGHT
+            )
+          });
+        }}
       >
         {isRenderEmpty && isDesignMode ? (
           <div data-testid="page-canvas-design-empty-state" />
@@ -1098,7 +1511,12 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                 dragCommittedLayout.current = currentLayout.map((item) => ({
                   ...item
                 }));
-                interactionCompactor.begin(currentLayout, draggedItem.i);
+                interactionCompactor.begin(
+                  currentLayout,
+                  draggedItem.i,
+                  'drag',
+                  createCurrentRowRequirements()
+                );
               }
             }}
             onDragStop={(currentLayout) => {
@@ -1117,7 +1535,8 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                 interactionCompactor.begin(
                   currentLayout,
                   resizedItem.i,
-                  'resize'
+                  'resize',
+                  createCurrentRowRequirements()
                 );
               }
             }}
@@ -1176,6 +1595,12 @@ export const PageCanvas: FC<PageCanvasProps> = ({
                   designActions={designActions}
                   toolbarDisabled={toolbarDisabled}
                   onAutoHeightChange={updateAutoHeight}
+                  intrinsicHeight={
+                    autoRows[item.blockId] === undefined
+                      ? undefined
+                      : frontstageGridRowsToPixels(autoRows[item.blockId])
+                  }
+                  allocatedHeightEpoch={autoAllocatedHeightEpochs[item.blockId]}
                   onRuntimeDemandChange={onRuntimeDemandChange}
                   onRuntimeRetry={onRuntimeRetry}
                   onRuntimeRefresh={onRuntimeRefresh}

@@ -1,12 +1,10 @@
 import type { ReactNode } from 'react';
 
-import {
-  ApiOutlined,
-  BarChartOutlined,
-  DeploymentUnitOutlined,
-  FundOutlined,
-  UnorderedListOutlined
-} from '@ant-design/icons';
+import ApiOutlined from '@ant-design/icons/es/icons/ApiOutlined';
+import BarChartOutlined from '@ant-design/icons/es/icons/BarChartOutlined';
+import DeploymentUnitOutlined from '@ant-design/icons/es/icons/DeploymentUnitOutlined';
+import FundOutlined from '@ant-design/icons/es/icons/FundOutlined';
+import UnorderedListOutlined from '@ant-design/icons/es/icons/UnorderedListOutlined';
 import type { ConsoleApplicationDetail } from '@1flowbase/api-client';
 
 import type { SectionNavItem } from '../../../shared/ui/section-page-layout/SectionPageLayout';

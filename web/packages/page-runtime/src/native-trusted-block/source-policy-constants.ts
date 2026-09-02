@@ -4,6 +4,7 @@ export const NATIVE_TRUSTED_BLOCK_PERMISSION = 'ui_block.javascript.native';
 export const NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS = [
   'react',
   'antd',
+  'antd-style',
   '@1flowbase/ui'
 ] as const;
 
@@ -14,15 +15,7 @@ export const allowedImports = new Set<string>(
   NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS satisfies readonly NativeTrustedBlockAllowedImport[]
 );
 
-export const deniedGlobalIdentifiers = new Set([
-  'window',
-  'document',
-  'globalThis',
-  'self',
-  'localStorage',
-  'sessionStorage',
-  'cookie'
-]);
+export const deniedGlobalIdentifiers = new Set<string>();
 
 export const deniedPortalIdentifiers = new Set([
   'ReactDOM',
@@ -31,7 +24,7 @@ export const deniedPortalIdentifiers = new Set([
   'hydrateRoot'
 ]);
 
-export const deniedAntdGlobalIdentifiers = new Set(['message', 'notification']);
+export const deniedAntdGlobalIdentifiers = new Set(['notification']);
 
 export const deniedAntdStaticModalMethods = new Set([
   'confirm',
@@ -44,18 +37,7 @@ export const deniedAntdStaticModalMethods = new Set([
   'warn'
 ]);
 
-export const deniedCallIdentifiers = new Set([
-  'require',
-  'eval',
-  'fetch',
-  'sendBeacon'
-]);
-
-export const deniedConstructorIdentifiers = new Set([
-  'Function',
-  'XMLHttpRequest',
-  'WebSocket'
-]);
+export const deniedCallIdentifiers = new Set(['require', 'eval']);
 
 export const deniedEscapeIdentifiers = new Set([
   'constructor',

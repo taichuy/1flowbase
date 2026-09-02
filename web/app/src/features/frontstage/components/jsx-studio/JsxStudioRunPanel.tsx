@@ -6,7 +6,7 @@ import {
   type NativeReactResolvedModuleAsset,
   type NativeTrustedBlockPreparePlan
 } from '@1flowbase/page-runtime';
-import type { BlockContext } from '@1flowbase/page-protocol';
+import type { BlockContextSeed } from '@1flowbase/page-protocol';
 import { Alert, Button, Space } from 'antd';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -25,7 +25,7 @@ import {
   FrontstageNativeTrustedBlockPortalHost,
   type FrontstageNativeTrustedBlockReactComponent
 } from '../../lib/native-trusted-block-react-adapter';
-import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-trusted-block-runtime-factory';
+import { createFrontstageNativeReactModuleRegistry } from '../../lib/native-modules/registry';
 import type { FrontstageBlockInstance } from '../../lib/page-document';
 import { JsxStudioPreviewConsole } from './JsxStudioPreviewConsole';
 import {
@@ -48,9 +48,10 @@ interface StudioRunReadySnapshot {
   diagnostics: [];
   component: FrontstageNativeTrustedBlockReactComponent;
   plan: NativeTrustedBlockPreparePlan;
-  context: BlockContext;
+  context: BlockContextSeed;
   renderEpoch: string;
   moduleAssets: NativeReactResolvedModuleAsset[];
+  moduleSources: string[];
 }
 
 type StudioRunSnapshot = StudioRunPendingSnapshot | StudioRunReadySnapshot;
@@ -82,7 +83,7 @@ export interface JsxStudioRunPanelProps {
   nativeCompiler?: typeof compileNativeReactComponentInBrowser;
   nativeCompilerWorkerFactory?: NativeReactBrowserCompilerWorkerFactory;
   nativeModuleRegistryFactory?: NativeReactModuleRegistryFactory;
-  createBlockContext?(input: JsxStudioRunBlockContextInput): BlockContext;
+  createBlockContext?(input: JsxStudioRunBlockContextInput): BlockContextSeed;
 }
 
 export function JsxStudioRunPanel({
@@ -238,7 +239,10 @@ export function JsxStudioRunPanel({
         plan,
         context,
         renderEpoch: instanceEpoch,
-        moduleAssets: prepared.moduleAssets
+        moduleAssets: prepared.moduleAssets,
+        moduleSources: prepared.artifact.program.injectedModules.map(
+          ({ source }) => source
+        )
       });
     },
     [
@@ -295,6 +299,7 @@ export function JsxStudioRunPanel({
           component={snapshot.component}
           ctx={snapshot.context}
           moduleAssets={snapshot.moduleAssets}
+          moduleSources={snapshot.moduleSources}
           onRuntimeError={(error) => {
             const active = activeRunRef.current;
             if (!active || active.requestId !== snapshot.requestId) return;

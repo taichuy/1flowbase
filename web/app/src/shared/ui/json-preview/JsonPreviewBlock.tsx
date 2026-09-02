@@ -1,9 +1,7 @@
-import {
-  CheckOutlined,
-  CopyOutlined,
-  DownOutlined,
-  FullscreenOutlined
-} from '@ant-design/icons';
+import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
+import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
+import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
+import FullscreenOutlined from '@ant-design/icons/es/icons/FullscreenOutlined';
 import { App, Button, Modal, Tooltip } from 'antd';
 import type { ReactNode } from 'react';
 import { Suspense, lazy, useMemo, useState } from 'react';
@@ -12,7 +10,11 @@ import { useClipboardCopy } from '../clipboard/use-clipboard-copy';
 import './json-preview-block.css';
 import { i18nText } from '../../i18n/text';
 
-const MonacoEditor = lazy(() => import('@monaco-editor/react'));
+const MonacoEditor = lazy(() =>
+  import('../../code-block/monaco-runtime').then(({ loadMonacoEditorModule }) =>
+    loadMonacoEditorModule()
+  )
+);
 
 const JSON_PREVIEW_MODAL_Z_INDEX = 1060;
 

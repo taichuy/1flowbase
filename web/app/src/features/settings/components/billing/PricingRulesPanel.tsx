@@ -1,5 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
-import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,
@@ -195,20 +197,20 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
               rating_policy_json: JSON.stringify(rule.rating_policy, null, 2)
             }
           : {
-          input_token_unit_size: DEFAULT_UNIT,
-          output_token_unit_size: DEFAULT_UNIT,
-          cache_hit_token_unit_size: DEFAULT_UNIT,
-          input_token_unit_price: '0',
-          output_token_unit_price: '0',
-          cache_hit_token_unit_price: '0',
-          effective_from: new Date().toISOString(),
-          timezone: 'UTC',
-          weekday_mask: 127,
-          priority: 0,
-          enabled: true,
-          rating_policy_enabled: false,
-          rating_policy_json: '{}'
-        }
+              input_token_unit_size: DEFAULT_UNIT,
+              output_token_unit_size: DEFAULT_UNIT,
+              cache_hit_token_unit_size: DEFAULT_UNIT,
+              input_token_unit_price: '0',
+              output_token_unit_price: '0',
+              cache_hit_token_unit_price: '0',
+              effective_from: new Date().toISOString(),
+              timezone: 'UTC',
+              weekday_mask: 127,
+              priority: 0,
+              enabled: true,
+              rating_policy_enabled: false,
+              rating_policy_json: '{}'
+            }
       );
       setOpen(true);
     },
@@ -321,10 +323,7 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
       },
       {
         key: 'rating_policy_enabled',
-        title: i18nText(
-          'settings',
-          'auto.billing_rating_policy_enabled'
-        ),
+        title: i18nText('settings', 'auto.billing_rating_policy_enabled'),
         dataIndex: 'rating_policy_enabled',
         width: 150,
         defaultVisibility: 'hidden',
@@ -586,10 +585,7 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
           <Space align="start" wrap>
             <Form.Item
               name="rating_policy_enabled"
-              label={i18nText(
-                'settings',
-                'auto.billing_rating_policy_enabled'
-              )}
+              label={i18nText('settings', 'auto.billing_rating_policy_enabled')}
               valuePropName="checked"
             >
               <Switch />
@@ -622,10 +618,7 @@ export function PricingRulesPanel({ canManage }: { canManage: boolean }) {
               ]}
             >
               <Input.TextArea
-                aria-label={i18nText(
-                  'settings',
-                  'auto.billing_rating_policy'
-                )}
+                aria-label={i18nText('settings', 'auto.billing_rating_policy')}
                 autoSize={{ minRows: 4, maxRows: 12 }}
                 disabled={!ratingPolicyEnabled}
               />

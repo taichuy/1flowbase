@@ -3,6 +3,7 @@ export * from './native-trusted-block-manifest';
 export * from './native-trusted-block-host';
 export * from './native-block-context/capabilities';
 export * from './native-block-context/effects';
+export * from './native-block-context/external-assets';
 export * from './native-trusted-block-portal';
 export * from './native-trusted-block/source-evaluator';
 export * from './native-trusted-block/jsx-transform';

@@ -1,10 +1,8 @@
-import {
-  DownOutlined,
-  DeleteOutlined,
-  HolderOutlined,
-  PlusOutlined,
-  RightOutlined
-} from '@ant-design/icons';
+import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import HolderOutlined from '@ant-design/icons/es/icons/HolderOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
 import { Button, Empty, Typography } from 'antd';
 import { useRef, useState } from 'react';
 

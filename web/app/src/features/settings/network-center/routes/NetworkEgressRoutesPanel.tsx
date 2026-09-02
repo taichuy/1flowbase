@@ -14,7 +14,8 @@ import {
   Table,
   Tag
 } from 'antd';
-import { ArrowDownOutlined, ArrowUpOutlined } from '@ant-design/icons';
+import ArrowDownOutlined from '@ant-design/icons/es/icons/ArrowDownOutlined';
+import ArrowUpOutlined from '@ant-design/icons/es/icons/ArrowUpOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createSettingsNetworkEgressRoute,

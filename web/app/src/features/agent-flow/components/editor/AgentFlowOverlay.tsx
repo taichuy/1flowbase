@@ -1,13 +1,11 @@
-import {
-  CodeOutlined,
-  ExportOutlined,
-  GlobalOutlined,
-  HistoryOutlined,
-  IssuesCloseOutlined,
-  MessageOutlined,
-  PlayCircleOutlined,
-  SaveOutlined
-} from '@ant-design/icons';
+import CodeOutlined from '@ant-design/icons/es/icons/CodeOutlined';
+import ExportOutlined from '@ant-design/icons/es/icons/ExportOutlined';
+import GlobalOutlined from '@ant-design/icons/es/icons/GlobalOutlined';
+import HistoryOutlined from '@ant-design/icons/es/icons/HistoryOutlined';
+import IssuesCloseOutlined from '@ant-design/icons/es/icons/IssuesCloseOutlined';
+import MessageOutlined from '@ant-design/icons/es/icons/MessageOutlined';
+import PlayCircleOutlined from '@ant-design/icons/es/icons/PlayCircleOutlined';
+import SaveOutlined from '@ant-design/icons/es/icons/SaveOutlined';
 import { Badge, Button, Space, Tag, Tooltip, Typography } from 'antd';
 import { i18nText } from '../../../../shared/i18n/text';
 

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import {
   Button,
   Checkbox,
@@ -25,16 +26,25 @@ import { DataModelHelpTooltip } from './DataModelHelpTooltip';
 import { i18nText } from '../../../../shared/i18n/text';
 
 const fieldKindOptions = [
-  { label: i18nText("settings", "auto.short_text"), value: 'string' },
-  { label: i18nText("settings", "auto.numbers"), value: 'number' },
-  { label: i18nText("settings", "auto.yes_no"), value: 'boolean' },
-  { label: i18nText("settings", "auto.date_time"), value: 'datetime' },
-  { label: i18nText("settings", "auto.enumeration"), value: 'enum' },
-  { label: i18nText("settings", "auto.long_text"), value: 'text' },
+  { label: i18nText('settings', 'auto.short_text'), value: 'string' },
+  { label: i18nText('settings', 'auto.numbers'), value: 'number' },
+  { label: i18nText('settings', 'auto.yes_no'), value: 'boolean' },
+  { label: i18nText('settings', 'auto.date_time'), value: 'datetime' },
+  { label: i18nText('settings', 'auto.enumeration'), value: 'enum' },
+  { label: i18nText('settings', 'auto.long_text'), value: 'text' },
   { label: 'JSON', value: 'json' },
-  { label: i18nText("settings", "auto.many_one_relationship"), value: 'many_to_one' },
-  { label: i18nText("settings", "auto.one_many_relationship"), value: 'one_to_many' },
-  { label: i18nText("settings", "auto.many_relationship"), value: 'many_to_many' }
+  {
+    label: i18nText('settings', 'auto.many_one_relationship'),
+    value: 'many_to_one'
+  },
+  {
+    label: i18nText('settings', 'auto.one_many_relationship'),
+    value: 'one_to_many'
+  },
+  {
+    label: i18nText('settings', 'auto.many_relationship'),
+    value: 'many_to_many'
+  }
 ];
 
 const displayInterfaceOptions = [
@@ -50,15 +60,30 @@ const displayInterfaceOptions = [
 ];
 
 const enumDisplayFormatOptions = [
-  { label: i18nText("settings", "auto.single_choice"), value: 'radio' },
-  { label: i18nText("settings", "auto.multiple_choice"), value: 'checkbox_group' },
-  { label: i18nText("settings", "auto.drop_down"), value: 'select' },
-  { label: i18nText("settings", "auto.multiple_selection_drop_down"), value: 'multi_select' }
+  { label: i18nText('settings', 'auto.single_choice'), value: 'radio' },
+  {
+    label: i18nText('settings', 'auto.multiple_choice'),
+    value: 'checkbox_group'
+  },
+  { label: i18nText('settings', 'auto.drop_down'), value: 'select' },
+  {
+    label: i18nText('settings', 'auto.multiple_selection_drop_down'),
+    value: 'multi_select'
+  }
 ];
 
-const externalFieldKeyHelp = i18nText("settings", "auto.field_path_external_data_source_such_properties_email");
-const enumOptionValueHelp = i18nText("settings", "auto.stored_values_written_database_api_payload");
-const enumOptionLabelHelp = i18nText("settings", "auto.displayed_value_used_interface_display");
+const externalFieldKeyHelp = i18nText(
+  'settings',
+  'auto.field_path_external_data_source_such_properties_email'
+);
+const enumOptionValueHelp = i18nText(
+  'settings',
+  'auto.stored_values_written_database_api_payload'
+);
+const enumOptionLabelHelp = i18nText(
+  'settings',
+  'auto.displayed_value_used_interface_display'
+);
 
 interface FieldFormValues {
   code: string;
@@ -80,7 +105,11 @@ interface FieldFormValues {
   relation_options_json: string;
 }
 
-const relationFieldKinds = new Set(['many_to_one', 'one_to_many', 'many_to_many']);
+const relationFieldKinds = new Set([
+  'many_to_one',
+  'one_to_many',
+  'many_to_many'
+]);
 
 function isRelationFieldKind(fieldKind: string | null | undefined) {
   return fieldKind ? relationFieldKinds.has(fieldKind) : false;
@@ -207,23 +236,20 @@ function readEnumOptions(displayOptions: Record<string, unknown>) {
         const record = option as Record<string, unknown>;
         const value = typeof record.value === 'string' ? record.value : '';
         return {
-          label:
-            typeof record.label === 'string'
-              ? record.label
-              : value,
+          label: typeof record.label === 'string' ? record.label : value,
           value
         };
       }
       return null;
     })
-    .filter((option): option is { label: string; value: string } => option !== null);
+    .filter(
+      (option): option is { label: string; value: string } => option !== null
+    );
 
   return normalized.length > 0 ? normalized : [{ label: '', value: '' }];
 }
 
-function parseEnumOptions(
-  options: FieldFormValues['enum_options']
-) {
+function parseEnumOptions(options: FieldFormValues['enum_options']) {
   return (options ?? [])
     .map((option) => ({
       label: option.label?.trim() ?? '',
@@ -237,7 +263,8 @@ function parseEnumOptions(
 }
 
 function normalizeEnumDisplayFormat(value: string | null | undefined): string {
-  return value && enumDisplayFormatOptions.some((option) => option.value === value)
+  return value &&
+    enumDisplayFormatOptions.some((option) => option.value === value)
     ? value
     : 'select';
 }
@@ -296,9 +323,7 @@ export function DataModelFieldDrawer({
       ? canManage
       : Boolean(canManage && field?.capabilities.can_update_physical_metadata);
   const canSubmit =
-    mode === 'create'
-      ? canManage
-      : canUpdatePresentation || canUpdatePhysical;
+    mode === 'create' ? canManage : canUpdatePresentation || canUpdatePhysical;
   const canDeleteField =
     mode === 'edit' && Boolean(canManage && field?.capabilities.can_delete);
 
@@ -322,10 +347,13 @@ export function DataModelFieldDrawer({
           field.default_value,
           normalizeEnumDisplayFormat(field.display_interface)
         ),
-        enum_display_format: normalizeEnumDisplayFormat(field.display_interface),
+        enum_display_format: normalizeEnumDisplayFormat(
+          field.display_interface
+        ),
         enum_options: readEnumOptions(field.display_options),
         display_interface:
-          field.display_interface ?? defaultDisplayInterfaceForKind(field.field_kind),
+          field.display_interface ??
+          defaultDisplayInterfaceForKind(field.field_kind),
         display_options_json: stringifyJson(field.display_options),
         relation_target_model_id: field.relation_target_model_id,
         relation_options_json: stringifyJson(field.relation_options)
@@ -369,38 +397,38 @@ export function DataModelFieldDrawer({
           name: 'default_value_input',
           errors:
             values.field_kind === 'json'
-              ? [i18nText("settings", "auto.enter_valid_json")]
-              : [i18nText("settings", "auto.enter_value_matches_field_type")]
+              ? [i18nText('settings', 'auto.enter_valid_json')]
+              : [i18nText('settings', 'auto.enter_value_matches_field_type')]
         }
       ]);
       return;
     }
 
     try {
-      displayOptions = parseJson(
-        values.display_options_json,
-        {}
-      ) as Record<string, unknown>;
+      displayOptions = parseJson(values.display_options_json, {}) as Record<
+        string,
+        unknown
+      >;
     } catch {
       form.setFields([
         {
           name: 'display_options_json',
-          errors: [i18nText("settings", "auto.enter_valid_json")]
+          errors: [i18nText('settings', 'auto.enter_valid_json')]
         }
       ]);
       return;
     }
 
     try {
-      relationOptions = parseJson(
-        values.relation_options_json,
-        {}
-      ) as Record<string, unknown>;
+      relationOptions = parseJson(values.relation_options_json, {}) as Record<
+        string,
+        unknown
+      >;
     } catch {
       form.setFields([
         {
           name: 'relation_options_json',
-          errors: [i18nText("settings", "auto.enter_valid_json")]
+          errors: [i18nText('settings', 'auto.enter_valid_json')]
         }
       ]);
       return;
@@ -416,7 +444,8 @@ export function DataModelFieldDrawer({
     const displayInterface =
       values.field_kind === 'enum'
         ? values.enum_display_format || 'select'
-        : values.display_interface || defaultDisplayInterfaceForKind(values.field_kind);
+        : values.display_interface ||
+          defaultDisplayInterfaceForKind(values.field_kind);
     const relationTargetModelId = isRelationFieldKind(values.field_kind)
       ? values.relation_target_model_id || null
       : null;
@@ -443,7 +472,9 @@ export function DataModelFieldDrawer({
       code: values.code,
       title: values.title,
       description: values.description?.trim() || null,
-      external_field_key: isExternalModel ? values.external_field_key || null : null,
+      external_field_key: isExternalModel
+        ? values.external_field_key || null
+        : null,
       field_kind: values.field_kind,
       is_required: values.is_required,
       is_unique: values.is_unique,
@@ -468,10 +499,12 @@ export function DataModelFieldDrawer({
     label: `${model.title} (${model.code})`,
     value: model.id
   }));
-  const defaultEnumOptions = parseEnumOptions(watchedEnumOptions).map((option) => ({
-    label: option.label,
-    value: option.value
-  }));
+  const defaultEnumOptions = parseEnumOptions(watchedEnumOptions).map(
+    (option) => ({
+      label: option.label,
+      value: option.value
+    })
+  );
 
   function renderDefaultValueControl() {
     if (selectedFieldKind === 'enum') {
@@ -497,7 +530,11 @@ export function DataModelFieldDrawer({
         <Select
           allowClear
           disabled={!canUpdatePhysical}
-          mode={selectedEnumDisplayFormat === 'multi_select' ? 'multiple' : undefined}
+          mode={
+            selectedEnumDisplayFormat === 'multi_select'
+              ? 'multiple'
+              : undefined
+          }
           options={defaultEnumOptions}
         />
       );
@@ -509,8 +546,8 @@ export function DataModelFieldDrawer({
           allowClear
           disabled={!canUpdatePhysical}
           options={[
-            { label: i18nText("settings", "auto.yes"), value: true },
-            { label: i18nText("settings", "auto.no"), value: false }
+            { label: i18nText('settings', 'auto.yes'), value: true },
+            { label: i18nText('settings', 'auto.no'), value: false }
           ]}
         />
       );
@@ -532,7 +569,10 @@ export function DataModelFieldDrawer({
         type={selectedFieldKind === 'number' ? 'number' : undefined}
         placeholder={
           selectedFieldKind === 'datetime'
-            ? i18nText("settings", "auto.example_two_zero_two_six_zero_five_zero_seven_t")
+            ? i18nText(
+                'settings',
+                'auto.example_two_zero_two_six_zero_five_zero_seven_t'
+              )
             : undefined
         }
       />
@@ -543,23 +583,29 @@ export function DataModelFieldDrawer({
     return (
       <>
         <Divider />
-        <Typography.Title level={5}>{i18nText("settings", "auto.rules")}</Typography.Title>
+        <Typography.Title level={5}>
+          {i18nText('settings', 'auto.rules')}
+        </Typography.Title>
         <Space size="large">
           <Form.Item name="is_required" valuePropName="checked">
             <Checkbox disabled={!canUpdatePhysical}>
-              {i18nText("settings", "auto.required")}
+              {i18nText('settings', 'auto.required')}
             </Checkbox>
           </Form.Item>
           <Form.Item name="is_unique" valuePropName="checked">
             <Checkbox disabled={!canUpdatePhysical}>
-              {i18nText("settings", "auto.only")}
+              {i18nText('settings', 'auto.only')}
             </Checkbox>
           </Form.Item>
         </Space>
         {showsDefaultValue ? (
           <Form.Item
             name="default_value_input"
-            label={selectedFieldKind === 'json' ? i18nText("settings", "auto.default_value_json") : i18nText("settings", "auto.default_value")}
+            label={
+              selectedFieldKind === 'json'
+                ? i18nText('settings', 'auto.default_value_json')
+                : i18nText('settings', 'auto.default_value')
+            }
           >
             {renderDefaultValueControl()}
           </Form.Item>
@@ -571,15 +617,24 @@ export function DataModelFieldDrawer({
   return (
     <>
       <Drawer
-        title={mode === 'create' ? i18nText("settings", "auto.add_new_field") : i18nText("settings", "auto.edit_field")}
+        title={
+          mode === 'create'
+            ? i18nText('settings', 'auto.add_new_field')
+            : i18nText('settings', 'auto.edit_field')
+        }
         open={open}
         size={560}
         onClose={onClose}
         extra={
           <Space>
             {mode === 'edit' ? (
-              <Button danger disabled={!canDeleteField || saving} onClick={confirmDelete}>
-                {i18nText("settings", "auto.delete_field")}</Button>
+              <Button
+                danger
+                disabled={!canDeleteField || saving}
+                onClick={confirmDelete}
+              >
+                {i18nText('settings', 'auto.delete_field')}
+              </Button>
             ) : null}
             <Button
               type="primary"
@@ -587,7 +642,9 @@ export function DataModelFieldDrawer({
               disabled={!canSubmit}
               onClick={handleSubmit}
             >
-              {mode === 'create' ? i18nText("settings", "auto.create_fields") : i18nText("settings", "auto.save_field")}
+              {mode === 'create'
+                ? i18nText('settings', 'auto.create_fields')
+                : i18nText('settings', 'auto.save_field')}
             </Button>
           </Space>
         }
@@ -604,31 +661,48 @@ export function DataModelFieldDrawer({
             relation_options_json: '{}'
           }}
         >
-          <Typography.Title level={5}>{i18nText("settings", "auto.basic_information")}</Typography.Title>
+          <Typography.Title level={5}>
+            {i18nText('settings', 'auto.basic_information')}
+          </Typography.Title>
           <Form.Item
             name="title"
-            label={i18nText("settings", "auto.field_title")}
-            rules={[{ required: true, message: i18nText("settings", "auto.enter_field_title") }]}
+            label={i18nText('settings', 'auto.field_title')}
+            rules={[
+              {
+                required: true,
+                message: i18nText('settings', 'auto.enter_field_title')
+              }
+            ]}
           >
             <Input disabled={!canUpdatePresentation} />
           </Form.Item>
           <Form.Item
             name="description"
-            label={i18nText("settings", "auto.description")}
+            label={i18nText('settings', 'auto.description')}
           >
             <Input.TextArea rows={3} disabled={!canUpdatePresentation} />
           </Form.Item>
           <Form.Item
             name="code"
-            label={i18nText("settings", "auto.field_code")}
-            rules={[{ required: true, message: i18nText("settings", "auto.enter_field_code") }]}
+            label={i18nText('settings', 'auto.field_code')}
+            rules={[
+              {
+                required: true,
+                message: i18nText('settings', 'auto.enter_field_code')
+              }
+            ]}
           >
             <Input disabled={mode === 'edit' || !canUpdatePhysical} />
           </Form.Item>
           <Form.Item
             name="field_kind"
-            label={i18nText("settings", "auto.field_type")}
-            rules={[{ required: true, message: i18nText("settings", "auto.select_field_type") }]}
+            label={i18nText('settings', 'auto.field_type')}
+            rules={[
+              {
+                required: true,
+                message: i18nText('settings', 'auto.select_field_type')
+              }
+            ]}
           >
             <Select
               options={fieldKindOptions}
@@ -639,12 +713,15 @@ export function DataModelFieldDrawer({
           {isExternalModel ? (
             <Form.Item
               name="external_field_key"
-              label={i18nText("settings", "auto.external_field_mapping_key")}
+              label={i18nText('settings', 'auto.external_field_mapping_key')}
               tooltip={externalFieldKeyHelp}
               rules={[
                 {
                   required: mode === 'create',
-                  message: i18nText("settings", "auto.enter_external_field_mapping_key")
+                  message: i18nText(
+                    'settings',
+                    'auto.enter_external_field_mapping_key'
+                  )
                 }
               ]}
             >
@@ -657,17 +734,26 @@ export function DataModelFieldDrawer({
           {showsEnumSettings ? (
             <>
               <Divider />
-              <Typography.Title level={5}>{i18nText("settings", "auto.enum_configuration")}</Typography.Title>
+              <Typography.Title level={5}>
+                {i18nText('settings', 'auto.enum_configuration')}
+              </Typography.Title>
               <Form.Item
                 name="enum_display_format"
-                label={i18nText("settings", "auto.display_format")}
-                rules={[{ required: true, message: i18nText("settings", "auto.select_display_format") }]}
+                label={i18nText('settings', 'auto.display_format')}
+                rules={[
+                  {
+                    required: true,
+                    message: i18nText('settings', 'auto.select_display_format')
+                  }
+                ]}
               >
                 <Select
                   options={enumDisplayFormatOptions}
                   disabled={!canUpdatePresentation}
                   onChange={(value) => {
-                    const currentDefaultValue = form.getFieldValue('default_value_input');
+                    const currentDefaultValue = form.getFieldValue(
+                      'default_value_input'
+                    );
                     if (isMultipleEnumDisplayFormat(value)) {
                       form.setFieldValue(
                         'default_value_input',
@@ -689,9 +775,7 @@ export function DataModelFieldDrawer({
                   }}
                 />
               </Form.Item>
-              <Form.Item
-                label={i18nText("settings", "auto.enum_options")}
-              >
+              <Form.Item label={i18nText('settings', 'auto.enum_options')}>
                 <Form.List
                   name="enum_options"
                   initialValue={[createDefaultEnumOption()]}
@@ -701,23 +785,30 @@ export function DataModelFieldDrawer({
                       <div className="data-model-panel__enum-options-head">
                         <span className="data-model-panel__enum-options-index" />
                         <span className="data-model-panel__enum-options-heading">
-                          <span>{i18nText("settings", "auto.stored_value")}</span>
+                          <span>
+                            {i18nText('settings', 'auto.stored_value')}
+                          </span>
                           <DataModelHelpTooltip
-                            label={i18nText("settings", "auto.stored_value")}
+                            label={i18nText('settings', 'auto.stored_value')}
                             title={enumOptionValueHelp}
                           />
                         </span>
                         <span className="data-model-panel__enum-options-heading">
-                          <span>{i18nText("settings", "auto.display_value")}</span>
+                          <span>
+                            {i18nText('settings', 'auto.display_value')}
+                          </span>
                           <DataModelHelpTooltip
-                            label={i18nText("settings", "auto.display_value")}
+                            label={i18nText('settings', 'auto.display_value')}
                             title={enumOptionLabelHelp}
                           />
                         </span>
                         <span className="data-model-panel__enum-options-action" />
                       </div>
                       {fields.map(({ key, name, ...restField }, index) => (
-                        <div key={key} className="data-model-panel__enum-option-row">
+                        <div
+                          key={key}
+                          className="data-model-panel__enum-option-row"
+                        >
                           <span className="data-model-panel__enum-options-index">
                             {index + 1}
                           </span>
@@ -725,10 +816,22 @@ export function DataModelFieldDrawer({
                             <Form.Item
                               {...restField}
                               name={[name, 'value']}
-                              rules={[{ required: true, message: i18nText("settings", "auto.enter_stored_value") }]}
+                              rules={[
+                                {
+                                  required: true,
+                                  message: i18nText(
+                                    'settings',
+                                    'auto.enter_stored_value'
+                                  )
+                                }
+                              ]}
                             >
                               <Input
-                                aria-label={i18nText("settings", "auto.option_stores_value", { value1: index + 1 })}
+                                aria-label={i18nText(
+                                  'settings',
+                                  'auto.option_stores_value',
+                                  { value1: index + 1 }
+                                )}
                                 disabled={!canUpdatePresentation}
                                 placeholder="value"
                               />
@@ -738,10 +841,22 @@ export function DataModelFieldDrawer({
                             <Form.Item
                               {...restField}
                               name={[name, 'label']}
-                              rules={[{ required: true, message: i18nText("settings", "auto.enter_display_value") }]}
+                              rules={[
+                                {
+                                  required: true,
+                                  message: i18nText(
+                                    'settings',
+                                    'auto.enter_display_value'
+                                  )
+                                }
+                              ]}
                             >
                               <Input
-                                aria-label={i18nText("settings", "auto.option_display_value", { value1: index + 1 })}
+                                aria-label={i18nText(
+                                  'settings',
+                                  'auto.option_display_value',
+                                  { value1: index + 1 }
+                                )}
                                 disabled={!canUpdatePresentation}
                                 placeholder="label"
                               />
@@ -750,9 +865,15 @@ export function DataModelFieldDrawer({
                           <Button
                             danger
                             type="text"
-                            aria-label={i18nText("settings", "auto.delete_option", { value1: index + 1 })}
+                            aria-label={i18nText(
+                              'settings',
+                              'auto.delete_option',
+                              { value1: index + 1 }
+                            )}
                             icon={<DeleteOutlined />}
-                            disabled={fields.length <= 1 || !canUpdatePresentation}
+                            disabled={
+                              fields.length <= 1 || !canUpdatePresentation
+                            }
                             onClick={() => remove(name)}
                             className="data-model-panel__enum-options-action"
                           />
@@ -760,13 +881,14 @@ export function DataModelFieldDrawer({
                       ))}
                       <Button
                         block
-                        aria-label={i18nText("settings", "auto.add_options")}
+                        aria-label={i18nText('settings', 'auto.add_options')}
                         icon={<PlusOutlined />}
                         disabled={!canUpdatePresentation}
                         onClick={() => add(createDefaultEnumOption())}
                         className="data-model-panel__enum-add"
                       >
-                        {i18nText("settings", "auto.add_options")}</Button>
+                        {i18nText('settings', 'auto.add_options')}
+                      </Button>
                     </div>
                   )}
                 </Form.List>
@@ -779,14 +901,19 @@ export function DataModelFieldDrawer({
           {showsRelationSettings ? (
             <>
               <Divider />
-              <Typography.Title level={5}>{i18nText("settings", "auto.relationship_configuration")}</Typography.Title>
+              <Typography.Title level={5}>
+                {i18nText('settings', 'auto.relationship_configuration')}
+              </Typography.Title>
               <Form.Item
                 name="relation_target_model_id"
-                label={i18nText("settings", "auto.target_data_table")}
+                label={i18nText('settings', 'auto.target_data_table')}
                 rules={[
                   {
                     required: mode === 'create',
-                    message: i18nText("settings", "auto.select_target_data_table")
+                    message: i18nText(
+                      'settings',
+                      'auto.select_target_data_table'
+                    )
                   }
                 ]}
               >
@@ -800,12 +927,19 @@ export function DataModelFieldDrawer({
           ) : null}
 
           <Divider />
-          <Button type="link" onClick={() => setAdvancedOpen((value) => !value)}>
-            {i18nText("settings", "auto.advanced_display_settings")}</Button>
+          <Button
+            type="link"
+            onClick={() => setAdvancedOpen((value) => !value)}
+          >
+            {i18nText('settings', 'auto.advanced_display_settings')}
+          </Button>
           {advancedOpen ? (
             <>
               {showsEnumSettings ? null : (
-                <Form.Item name="display_interface" label={i18nText("settings", "auto.display_control")}>
+                <Form.Item
+                  name="display_interface"
+                  label={i18nText('settings', 'auto.display_control')}
+                >
                   <Select
                     allowClear
                     disabled={!canUpdatePresentation}
@@ -815,14 +949,20 @@ export function DataModelFieldDrawer({
               )}
               <Form.Item
                 name="display_options_json"
-                label={i18nText("settings", "auto.display_control_configuration_json")}
+                label={i18nText(
+                  'settings',
+                  'auto.display_control_configuration_json'
+                )}
               >
                 <Input.TextArea rows={3} disabled={!canUpdatePresentation} />
               </Form.Item>
               {showsRelationSettings ? (
                 <Form.Item
                   name="relation_options_json"
-                  label={i18nText("settings", "auto.relationship_configuration_json")}
+                  label={i18nText(
+                    'settings',
+                    'auto.relationship_configuration_json'
+                  )}
                 >
                   <Input.TextArea rows={3} disabled={!canUpdatePresentation} />
                 </Form.Item>
@@ -832,12 +972,12 @@ export function DataModelFieldDrawer({
         </Form>
       </Drawer>
       <Modal
-        title={i18nText("settings", "auto.confirm_field_deletion")}
+        title={i18nText('settings', 'auto.confirm_field_deletion')}
         open={deleteConfirmOpen}
-        okText={i18nText("settings", "auto.delete")}
+        okText={i18nText('settings', 'auto.delete')}
         okType="danger"
-        cancelText={i18nText("settings", "auto.cancel")}
-        okButtonProps={{ 'aria-label': i18nText("settings", "auto.delete") }}
+        cancelText={i18nText('settings', 'auto.cancel')}
+        okButtonProps={{ 'aria-label': i18nText('settings', 'auto.delete') }}
         onCancel={() => setDeleteConfirmOpen(false)}
         onOk={() => {
           if (field) {
@@ -848,7 +988,11 @@ export function DataModelFieldDrawer({
         }}
       >
         {field
-          ? i18nText("settings", "auto.sure_want_delete_field_operation_changes_data_structure_synchronously", { value1: field.title, value2: field.code })
+          ? i18nText(
+              'settings',
+              'auto.sure_want_delete_field_operation_changes_data_structure_synchronously',
+              { value1: field.title, value2: field.code }
+            )
           : null}
       </Modal>
     </>

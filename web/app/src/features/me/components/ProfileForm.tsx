@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { EditOutlined } from '@ant-design/icons';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
 import {
   Alert,
   Avatar,
@@ -34,7 +34,10 @@ interface ProfileFormValues {
   preferred_locale?: string;
 }
 
-function formatLocaleLabel(locale: string | null | undefined, t: TFunction<'me'>) {
+function formatLocaleLabel(
+  locale: string | null | undefined,
+  t: TFunction<'me'>
+) {
   switch (locale) {
     case 'zh_Hans':
       return t('profile.locale.zh_hans');
@@ -119,7 +122,11 @@ export function ProfileForm({
       >
         <Row gutter={[24, 24]}>
           <Col span={24} className="me-profile-card__summary">
-            <Avatar size={80} src={me.avatar_url} className="me-profile-card__avatar">
+            <Avatar
+              size={80}
+              src={me.avatar_url}
+              className="me-profile-card__avatar"
+            >
               {me.name?.[0]?.toUpperCase() ?? me.account?.[0]?.toUpperCase()}
             </Avatar>
             <div>
@@ -140,39 +147,76 @@ export function ProfileForm({
           <Divider className="me-profile-card__divider" />
 
           <Col span={24}>
-            <Descriptions 
-              column={{ xs: 1, sm: 2, md: 3 }} 
+            <Descriptions
+              column={{ xs: 1, sm: 2, md: 3 }}
               layout="vertical"
-              styles={{ label: { color: 'rgba(0, 0, 0, 0.45)', paddingBottom: 8 }, content: { color: 'rgba(0, 0, 0, 0.88)', fontWeight: 400, paddingBottom: 24 } }}
+              styles={{
+                label: { color: 'rgba(0, 0, 0, 0.45)', paddingBottom: 8 },
+                content: {
+                  color: 'rgba(0, 0, 0, 0.88)',
+                  fontWeight: 400,
+                  paddingBottom: 24
+                }
+              }}
             >
-              <Descriptions.Item label={t('profile.fields.account')}>{me.account}</Descriptions.Item>
-              <Descriptions.Item label={t('profile.fields.name')}>{me.name}</Descriptions.Item>
-              <Descriptions.Item label={t('profile.fields.email')}>{me.email}</Descriptions.Item>
-              <Descriptions.Item label={t('profile.fields.phone')}>{me.phone || '-'}</Descriptions.Item>
-              <Descriptions.Item label={t('profile.fields.interface_language')} span={2}>
+              <Descriptions.Item label={t('profile.fields.account')}>
+                {me.account}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('profile.fields.name')}>
+                {me.name}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('profile.fields.email')}>
+                {me.email}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('profile.fields.phone')}>
+                {me.phone || '-'}
+              </Descriptions.Item>
+              <Descriptions.Item
+                label={t('profile.fields.interface_language')}
+                span={2}
+              >
                 {formatLocaleLabel(
                   resolveUserLocalePreference(me.preferred_locale, me.meta),
                   t
                 )}
               </Descriptions.Item>
-              <Descriptions.Item label={t('profile.fields.permissions')} span={3}>
+              <Descriptions.Item
+                label={t('profile.fields.permissions')}
+                span={3}
+              >
                 {me.permissions.length > 0 ? (
-                  <Space className="me-profile-card__permissions" size={[4, 8]} wrap>
+                  <Space
+                    className="me-profile-card__permissions"
+                    size={[4, 8]}
+                    wrap
+                  >
                     {me.permissions.map((permission) => (
-                      <Tag key={permission} className="me-profile-card__permission">
+                      <Tag
+                        key={permission}
+                        className="me-profile-card__permission"
+                      >
                         {permission}
                       </Tag>
                     ))}
                   </Space>
                 ) : (
-                  <Typography.Text className="me-profile-card__placeholder" type="secondary">
+                  <Typography.Text
+                    className="me-profile-card__placeholder"
+                    type="secondary"
+                  >
                     {t('profile.empty.permissions')}
                   </Typography.Text>
                 )}
               </Descriptions.Item>
-              <Descriptions.Item label={t('profile.fields.introduction')} span={3}>
+              <Descriptions.Item
+                label={t('profile.fields.introduction')}
+                span={3}
+              >
                 {me.introduction || (
-                  <Typography.Text className="me-profile-card__placeholder" type="secondary">
+                  <Typography.Text
+                    className="me-profile-card__placeholder"
+                    type="secondary"
+                  >
                     {t('profile.empty.introduction')}
                   </Typography.Text>
                 )}
@@ -190,15 +234,26 @@ export function ProfileForm({
         open={drawerVisible}
         extra={
           <Space>
-            <Button onClick={handleDrawerClose}>{t('profile.actions.cancel')}</Button>
-            <Button type="primary" onClick={() => form.submit()} loading={submitting}>
+            <Button onClick={handleDrawerClose}>
+              {t('profile.actions.cancel')}
+            </Button>
+            <Button
+              type="primary"
+              onClick={() => form.submit()}
+              loading={submitting}
+            >
               {t('profile.actions.save')}
             </Button>
           </Space>
         }
       >
         {errorMessage ? (
-          <Alert type="error" title={errorMessage} showIcon style={{ marginBottom: 24 }} />
+          <Alert
+            type="error"
+            title={errorMessage}
+            showIcon
+            style={{ marginBottom: 24 }}
+          />
         ) : null}
 
         <Form<ProfileFormValues>
@@ -209,7 +264,9 @@ export function ProfileForm({
           <Form.Item
             label={t('profile.form.name.label')}
             name="name"
-            rules={[{ required: true, message: t('profile.form.name.required') }]}
+            rules={[
+              { required: true, message: t('profile.form.name.required') }
+            ]}
             extra={t('profile.form.name.extra')}
           >
             <Input />
@@ -217,7 +274,9 @@ export function ProfileForm({
           <Form.Item
             label={t('profile.fields.nickname')}
             name="nickname"
-            rules={[{ required: true, message: t('profile.form.nickname.required') }]}
+            rules={[
+              { required: true, message: t('profile.form.nickname.required') }
+            ]}
             extra={t('profile.form.nickname.extra')}
           >
             <Input />
@@ -225,7 +284,13 @@ export function ProfileForm({
           <Form.Item
             label={t('profile.fields.email')}
             name="email"
-            rules={[{ required: true, type: 'email', message: t('profile.form.email.required') }]}
+            rules={[
+              {
+                required: true,
+                type: 'email',
+                message: t('profile.form.email.required')
+              }
+            ]}
           >
             <Input />
           </Form.Item>
@@ -253,8 +318,14 @@ export function ProfileForm({
           >
             <Input placeholder={t('profile.form.avatar_url.placeholder')} />
           </Form.Item>
-          <Form.Item label={t('profile.fields.introduction')} name="introduction">
-            <Input.TextArea rows={4} placeholder={t('profile.form.introduction.placeholder')} />
+          <Form.Item
+            label={t('profile.fields.introduction')}
+            name="introduction"
+          >
+            <Input.TextArea
+              rows={4}
+              placeholder={t('profile.form.introduction.placeholder')}
+            />
           </Form.Item>
         </Form>
       </Drawer>

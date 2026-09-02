@@ -1,4 +1,4 @@
-import { HolderOutlined } from '@ant-design/icons';
+import HolderOutlined from '@ant-design/icons/es/icons/HolderOutlined';
 import { Typography } from 'antd';
 import type { MouseEventHandler, ReactNode } from 'react';
 import { i18nText } from '../../../../shared/i18n/text';
@@ -65,7 +65,12 @@ export function NodeConfigFieldContainer({
           <div className="agent-flow-node-config-field__heading">
             {draggable ? (
               <button
-                aria-label={dragLabel ?? i18nText("agentFlow", "auto.drag_drop_sort", { value1: ariaLabel ?? label })}
+                aria-label={
+                  dragLabel ??
+                  i18nText('agentFlow', 'auto.drag_drop_sort', {
+                    value1: ariaLabel ?? label
+                  })
+                }
                 className="agent-flow-node-config-field__drag-handle"
                 draggable
                 onDragEnd={onDragEnd}

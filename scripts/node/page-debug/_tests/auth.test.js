@@ -1,10 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const {
   loadRootCredentials,
   openTemporaryConsoleSession,
   openTemporaryOwnerSession,
+  rebaseStorageStateCookies,
 } = require('../auth.js');
 
 test('loadRootCredentials falls back to api-server bootstrap env values', () => {
@@ -292,4 +296,36 @@ test('Root #1556 F11 owner session preserves login and revoke failures', async (
       : new Response('revoke fixture', { status: 500 }),
   });
   await assert.rejects(() => session.dispose(), /revoke fixture/u);
+});
+
+test('MDP-010 rebases an owned session cookie for the public browser sample', () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'page-debug-cookie-'));
+  const storageStatePath = path.join(directory, 'state.json');
+  fs.writeFileSync(
+    storageStatePath,
+    JSON.stringify({
+      cookies: [
+        {
+          name: 'flowbase_console_session',
+          value: 'owned-session',
+          domain: '127.0.0.1',
+          path: '/',
+          secure: false,
+          httpOnly: true,
+          sameSite: 'Lax',
+        },
+      ],
+      origins: [],
+    }),
+  );
+
+  try {
+    rebaseStorageStateCookies(storageStatePath, 'https://gateway.example/');
+    const state = JSON.parse(fs.readFileSync(storageStatePath, 'utf8'));
+    assert.equal(state.cookies[0].domain, 'gateway.example');
+    assert.equal(state.cookies[0].secure, true);
+    assert.equal(state.cookies[0].value, 'owned-session');
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });

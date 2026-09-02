@@ -1,15 +1,23 @@
-import '../features/workflow/register';
+import { Suspense, lazy } from 'react';
 
-import { AppProviders } from './AppProviders';
-import { AppRouterProvider } from './router';
 import { AuthBootstrap } from '../features/auth/components/AuthBootstrap';
+import { LoadingState } from '../shared/ui/loading-state/LoadingState';
+import { ApplicationBootBoundary } from './ApplicationBootBoundary';
+
+const ApplicationRuntimeBootstrap = lazy(() =>
+  import('./ApplicationRuntimeBootstrap').then((module) => ({
+    default: module.ApplicationRuntimeBootstrap
+  }))
+);
 
 export function App() {
   return (
-    <AppProviders>
+    <ApplicationBootBoundary>
       <AuthBootstrap>
-        <AppRouterProvider />
+        <Suspense fallback={<LoadingState fullscreen />}>
+          <ApplicationRuntimeBootstrap />
+        </Suspense>
       </AuthBootstrap>
-    </AppProviders>
+    </ApplicationBootBoundary>
   );
 }

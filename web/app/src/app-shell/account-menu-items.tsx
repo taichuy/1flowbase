@@ -1,9 +1,7 @@
-import {
-  CheckOutlined,
-  LogoutOutlined,
-  SwapOutlined,
-  UserOutlined
-} from '@ant-design/icons';
+import CheckOutlined from '@ant-design/icons/es/icons/CheckOutlined';
+import LogoutOutlined from '@ant-design/icons/es/icons/LogoutOutlined';
+import SwapOutlined from '@ant-design/icons/es/icons/SwapOutlined';
+import UserOutlined from '@ant-design/icons/es/icons/UserOutlined';
 import type { MenuProps } from 'antd';
 import type { ConsoleAvailableRole } from '@1flowbase/api-client';
 import { i18nText } from '../shared/i18n/text';
@@ -39,8 +37,7 @@ export function createAccountMenuItems(
           children: roles.map((role) => ({
             key: `role:${role.code}`,
             label: role.name,
-            icon:
-              role.code === activeRoleCode ? <CheckOutlined /> : undefined,
+            icon: role.code === activeRoleCode ? <CheckOutlined /> : undefined,
             disabled:
               role.code === activeRoleCode || role.code === switchingRoleCode
           }))

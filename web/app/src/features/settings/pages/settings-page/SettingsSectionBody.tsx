@@ -3,19 +3,42 @@ import { Suspense, lazy, type ReactNode } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 
 import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
-import { MemberSettingsTabs } from './MemberSettingsTabs';
-import {
-  RolePermissionPanel,
-  type RolePermissionTab
-} from '../../components/RolePermissionPanel';
+import type { RolePermissionTab } from '../../components/RolePermissionPanel';
 import { SettingsSectionSurface } from '../../components/SettingsSectionSurface';
-import { SystemRuntimePanel } from '../../components/SystemRuntimePanel';
 import type { SettingsSectionKey } from '../../lib/settings-sections';
 import type { SettingsExtensionCenterCategory } from '../../api/extensions';
 import type { NetworkCenterPage } from '../network-center/NetworkCenterSection';
-import { SettingsAuthCenterSection } from './SettingsAuthCenterSection';
-import { SettingsDataModelsSection } from './SettingsDataModelsSection';
-import { SettingsFilesSection } from './SettingsFilesSection';
+
+const MemberSettingsTabs = lazy(() =>
+  import('./MemberSettingsTabs').then((module) => ({
+    default: module.MemberSettingsTabs
+  }))
+);
+const RolePermissionPanel = lazy(() =>
+  import('../../components/RolePermissionPanel').then((module) => ({
+    default: module.RolePermissionPanel
+  }))
+);
+const SystemRuntimePanel = lazy(() =>
+  import('../../components/SystemRuntimePanel').then((module) => ({
+    default: module.SystemRuntimePanel
+  }))
+);
+const SettingsAuthCenterSection = lazy(() =>
+  import('./SettingsAuthCenterSection').then((module) => ({
+    default: module.SettingsAuthCenterSection
+  }))
+);
+const SettingsDataModelsSection = lazy(() =>
+  import('./SettingsDataModelsSection').then((module) => ({
+    default: module.SettingsDataModelsSection
+  }))
+);
+const SettingsFilesSection = lazy(() =>
+  import('./SettingsFilesSection').then((module) => ({
+    default: module.SettingsFilesSection
+  }))
+);
 
 const ApiDocsPanel = lazy(() =>
   import('../../components/ApiDocsPanel').then((module) => ({
@@ -153,19 +176,27 @@ export function SettingsSectionBody({
       );
     case 'members':
       return (
-        <MemberSettingsTabs
-          canManageMembers={access.canManageMembers}
-          canManageRoleBindings={access.canManageRoles}
-        />
+        <SettingsSectionBoundary>
+          <MemberSettingsTabs
+            canManageMembers={access.canManageMembers}
+            canManageRoleBindings={access.canManageRoles}
+          />
+        </SettingsSectionBoundary>
       );
     case 'system-runtime':
-      return <SystemRuntimePanel />;
+      return (
+        <SettingsSectionBoundary>
+          <SystemRuntimePanel />
+        </SettingsSectionBoundary>
+      );
     case 'files':
       return (
-        <SettingsFilesSection
-          isRoot={access.isRoot}
-          permissions={access.permissions}
-        />
+        <SettingsSectionBoundary>
+          <SettingsFilesSection
+            isRoot={access.isRoot}
+            permissions={access.permissions}
+          />
+        </SettingsSectionBoundary>
       );
     case 'model-providers':
       return (
@@ -178,7 +209,9 @@ export function SettingsSectionBody({
       );
     case 'data-models':
       return (
-        <SettingsDataModelsSection canManage={access.canManageDataModels} />
+        <SettingsSectionBoundary>
+          <SettingsDataModelsSection canManage={access.canManageDataModels} />
+        </SettingsSectionBoundary>
       );
     case 'network-center':
       return (
@@ -226,16 +259,18 @@ export function SettingsSectionBody({
       );
     case 'roles':
       return (
-        <RolePermissionPanel
-          canManageRoles={access.canManageRoles}
-          activePermissionTab={rolePermissionTab}
-          onPermissionTabChange={(tab, navigationMode) =>
-            navigate({
-              to: `/settings/roles/${tab}`,
-              replace: navigationMode === 'replace'
-            })
-          }
-        />
+        <SettingsSectionBoundary>
+          <RolePermissionPanel
+            canManageRoles={access.canManageRoles}
+            activePermissionTab={rolePermissionTab}
+            onPermissionTabChange={(tab, navigationMode) =>
+              navigate({
+                to: `/settings/roles/${tab}`,
+                replace: navigationMode === 'replace'
+              })
+            }
+          />
+        </SettingsSectionBoundary>
       );
     case 'api-key-authentication':
       return (

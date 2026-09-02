@@ -17,6 +17,25 @@ export interface FrontstageRuntimeDemandCandidate<T> {
   value: T;
 }
 
+export interface FrontstageViewportDemandInput {
+  previousPriority: FrontstageRuntimeDemandPriority;
+  visible: boolean;
+  withinEnterMargin: boolean;
+  withinExitMargin: boolean;
+}
+
+/** Schmitt-trigger demand: enter near eagerly, leave only past a wider margin. */
+export function resolveFrontstageViewportDemandPriority({
+  previousPriority,
+  visible,
+  withinEnterMargin,
+  withinExitMargin
+}: FrontstageViewportDemandInput): 1 | 2 | 3 {
+  if (visible) return 1;
+  if (previousPriority <= 2) return withinExitMargin ? 2 : 3;
+  return withinEnterMargin ? 2 : 3;
+}
+
 export function resolveFrontstageRuntimeDemand(
   demands: FrontstageRuntimeDemandByBlockId | undefined,
   blockId: string,

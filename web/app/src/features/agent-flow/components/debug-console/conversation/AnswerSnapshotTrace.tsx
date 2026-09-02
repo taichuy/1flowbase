@@ -1,8 +1,6 @@
-import {
-  DownOutlined,
-  FileTextOutlined,
-  RightOutlined
-} from '@ant-design/icons';
+import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
+import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
+import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
 import { Tag, Typography } from 'antd';
 import { useState } from 'react';
 

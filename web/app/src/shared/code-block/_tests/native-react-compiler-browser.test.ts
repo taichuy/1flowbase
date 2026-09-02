@@ -59,4 +59,27 @@ describe('Native React browser compiler adapter', () => {
     if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
     expect(FakeBrowserWorker.instances[0]?.terminate).toHaveBeenCalledTimes(1);
   });
+
+  test('I1967-AC-001 preserves raw TypeScript source identity across the Worker boundary', async () => {
+    const source = `const tokenize = (input: string): string[] => {
+      const tokens: string[] = [];
+      const regex = /"([^"]*)"|([^,\\n]+)/g;
+      return tokens.concat(regex.test(input) ? input : []);
+    };
+    export default () => <div>{tokenize('"value"').join(',')}</div>;`;
+
+    const result = await compileNativeReactComponentInBrowser({
+      requestId: 'issue-1967-browser-worker-source-identity',
+      source,
+      moduleDefinitions: [
+        {
+          module_source: 'react/jsx-runtime',
+          exports: ['Fragment', 'jsx', 'jsxs']
+        }
+      ],
+      workerFactory: () => new FakeBrowserWorker('test-worker')
+    });
+
+    expect(result).toMatchObject({ ok: true, diagnostics: [] });
+  });
 });

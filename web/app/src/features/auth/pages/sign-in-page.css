@@ -24,6 +24,109 @@
     -12px 0 36px rgba(18, 71, 53, 0.06);
 }
 
+.auth-sign-in-content,
+.auth-sign-in-selector,
+.builtin-password-sign-in,
+.builtin-password-sign-in__form,
+.builtin-password-sign-in__field {
+  display: grid;
+}
+
+.auth-sign-in-content,
+.builtin-password-sign-in {
+  gap: 24px;
+  width: 100%;
+}
+
+.auth-sign-in-selector,
+.builtin-password-sign-in__form {
+  gap: 12px;
+}
+
+.auth-sign-in-selector-button,
+.builtin-password-sign-in__back,
+.builtin-password-sign-in__input,
+.builtin-password-sign-in__submit {
+  box-sizing: border-box;
+  font: inherit;
+}
+
+.auth-sign-in-selector-button {
+  border: 1px solid rgba(0, 171, 115, 0.22);
+  border-radius: 24px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.builtin-password-sign-in__back {
+  background: transparent;
+  border: 0;
+  color: #16211d;
+  cursor: pointer;
+  font-size: 24px;
+  justify-self: start;
+}
+
+.builtin-password-sign-in__title {
+  color: #16211d;
+  font-size: 30px;
+  margin: 0;
+  text-align: center;
+}
+
+.builtin-password-sign-in__field {
+  color: #16211d;
+  gap: 6px;
+}
+
+.builtin-password-sign-in__input {
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #bcc8c1;
+  border-radius: 8px;
+  color: #16211d;
+  min-height: 40px;
+  outline: none;
+  padding: 8px 11px;
+}
+
+.builtin-password-sign-in__input:focus {
+  border-color: #00ab73;
+  box-shadow: 0 0 0 3px rgba(0, 171, 115, 0.12);
+}
+
+.builtin-password-sign-in__submit {
+  background: rgba(0, 171, 115, 0.08);
+  border: 1px solid #00ab73;
+  border-radius: 8px;
+  color: #008f5f;
+  cursor: pointer;
+  font-weight: 600;
+  min-height: 40px;
+}
+
+.builtin-password-sign-in__submit:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.builtin-password-sign-in__error {
+  background: #fff1f0;
+  border: 1px solid #ffccc7;
+  border-radius: 8px;
+  color: #a8071a;
+  padding: 10px 12px;
+}
+
+.auth-sign-in-footer {
+  color: #55645d;
+  font-size: 12px;
+}
+
+.auth-sign-in-footer a {
+  color: #008f5f;
+  text-decoration: none;
+}
+
 .auth-sign-in-page .auth-sign-in-panel .auth-sign-in-selector-button {
   height: 48px;
   font-size: 15px;

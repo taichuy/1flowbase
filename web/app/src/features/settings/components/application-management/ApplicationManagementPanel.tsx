@@ -1,9 +1,7 @@
-import {
-  CopyOutlined,
-  DeleteOutlined,
-  ExportOutlined,
-  PlusOutlined
-} from '@ant-design/icons';
+import CopyOutlined from '@ant-design/icons/es/icons/CopyOutlined';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import ExportOutlined from '@ant-design/icons/es/icons/ExportOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Button,

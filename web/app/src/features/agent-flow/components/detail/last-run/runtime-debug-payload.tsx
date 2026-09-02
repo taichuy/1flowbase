@@ -1,4 +1,4 @@
-import { LineHeightOutlined } from '@ant-design/icons';
+import LineHeightOutlined from '@ant-design/icons/es/icons/LineHeightOutlined';
 import { App, Button, Space, Tag, Tooltip } from 'antd';
 import { useMemo, useState } from 'react';
 
@@ -162,10 +162,10 @@ export function RuntimeDebugPayloadBlock({
         ? artifactValueMapFromResult(await onLoadArtifacts(artifactRefs))
         : new Map(
             await Promise.all(
-              artifactRefs.map(async (artifactRef) => [
-                artifactRef,
-                await onLoadArtifact!(artifactRef)
-              ] as const)
+              artifactRefs.map(
+                async (artifactRef) =>
+                  [artifactRef, await onLoadArtifact!(artifactRef)] as const
+              )
             )
           );
 

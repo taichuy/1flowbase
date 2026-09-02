@@ -24,6 +24,7 @@ describe('Native trusted block source static policy', () => {
     expect(NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS).toEqual([
       'react',
       'antd',
+      'antd-style',
       '@1flowbase/ui'
     ]);
   });
@@ -42,6 +43,7 @@ describe('Native trusted block source static policy', () => {
   test.each([
     ['react named import', "import { useMemo } from 'react';"],
     ['antd component import', "import { Button } from 'antd';"],
+    ['antd style import', "import { useResponsive } from 'antd-style';"],
     ['first-party UI import', "import { Surface } from '@1flowbase/ui';"],
     ['allowed re-export', "export { Surface } from '@1flowbase/ui';"]
   ])('accepts allowed source import: %s', (_label, source) => {
@@ -125,12 +127,7 @@ describe('Native trusted block source static policy', () => {
 
   test.each([
     ['require', "const antd = require('antd');", 'import_denied'],
-    ['eval', "eval('2 + 2');", 'transform_failed'],
-    [
-      'Function constructor',
-      "const fn = new Function('return 1');",
-      'transform_failed'
-    ]
+    ['eval', "eval('2 + 2');", 'transform_failed']
   ] as const)('rejects executable escape hatch: %s', (_label, source, code) => {
     const result = validateNativeTrustedBlockSource(source);
 
@@ -141,17 +138,58 @@ describe('Native trusted block source static policy', () => {
   });
 
   test.each([
+    ['Function call', "const fn = Function('return 1');"],
+    ['Function constructor', "const fn = new Function('return 1');"]
+  ])('AC-001 accepts runtime JavaScript construction: %s', (_label, source) => {
+    expect(validateNativeTrustedBlockSource(source)).toMatchObject({
+      ok: true,
+      normalizedSource: source
+    });
+  });
+
+  test('AC-004 ignores denied capability words inside JSX text', () => {
+    const source = `
+export default function Block() {
+  return <div>classNames Function eval require</div>;
+}
+`;
+
+    expect(validateNativeTrustedBlockSource(source)).toMatchObject({
+      ok: true,
+      normalizedSource: source.trim()
+    });
+  });
+
+  test('AC-004 keeps TypeScript generic syntax in code context', () => {
+    const source = 'const values: Array<Function> = [];';
+
+    expect(validateNativeTrustedBlockSource(source)).toMatchObject({
+      ok: true,
+      normalizedSource: source
+    });
+  });
+
+  test('preserves syntax errors after a complete JSX element', () => {
+    const result = validateNativeTrustedBlockSource(`
+const node = <div>Ready</div>;
+const label = "unterminated;
+`);
+
+    expect(result).toMatchObject({
+      ok: false,
+      errors: [{ code: 'syntax_invalid', path: 'source' }]
+    });
+  });
+
+  test.each([
     ['fetch', "await fetch('/api/private');"],
     ['XMLHttpRequest', 'const xhr = new XMLHttpRequest();'],
     ['WebSocket', "const socket = new WebSocket('wss://example.com');"],
     ['sendBeacon', "navigator.sendBeacon('/track');"]
-  ])('rejects network capability: %s', (_label, source) => {
+  ])('AC-005 accepts browser network capability: %s', (_label, source) => {
     const result = validateNativeTrustedBlockSource(source);
 
-    expect(result.ok).toBe(false);
-    expect(result.errors[0]).toMatchObject({
-      code: 'transform_failed'
-    });
+    expect(result.ok).toBe(true);
   });
 
   test.each([
@@ -162,14 +200,14 @@ describe('Native trusted block source static policy', () => {
     ['document', 'document.querySelector("#root");'],
     ['globalThis', 'globalThis.crypto;'],
     ['self', 'self.postMessage({});']
-  ])('rejects DOM or storage capability: %s', (_label, source) => {
-    const result = validateNativeTrustedBlockSource(source);
+  ])(
+    'AC-005 accepts browser DOM or storage capability: %s',
+    (_label, source) => {
+      const result = validateNativeTrustedBlockSource(source);
 
-    expect(result.ok).toBe(false);
-    expect(result.errors[0]).toMatchObject({
-      code: 'transform_failed'
-    });
-  });
+      expect(result.ok).toBe(true);
+    }
+  );
 
   test.each([
     ['ReactDOM.createPortal', 'ReactDOM.createPortal(node, target);'],
@@ -185,11 +223,9 @@ describe('Native trusted block source static policy', () => {
   });
 
   test.each([
-    ['message global API', "message.success('done');"],
     ['notification global API', "notification.open({ message: 'done' });"],
     ['Modal static method', 'Modal.confirm({ title: "Confirm" });'],
-    ['computed Modal static method', "Modal['info']({ title: 'Info' });"],
-    ['Upload component usage', 'return React.createElement(Upload);']
+    ['computed Modal static method', "Modal['info']({ title: 'Info' });"]
   ])('rejects AntD global or privileged API: %s', (_label, source) => {
     const result = validateNativeTrustedBlockSource(source);
 
@@ -197,6 +233,30 @@ describe('Native trusted block source static policy', () => {
     expect(result.errors[0]).toMatchObject({
       code: 'transform_failed'
     });
+  });
+
+  test.each([
+    [
+      'static API',
+      "import { message } from 'antd'; message.success('done');"
+    ],
+    [
+      'instance Hook',
+      "import { message } from 'antd'; const [api] = message.useMessage(); api.info('done');"
+    ]
+  ])('I1922-AC-001/002 allows AntD message %s', (_label, source) => {
+    expect(validateNativeTrustedBlockSource(source)).toMatchObject({
+      ok: true,
+      errors: []
+    });
+  });
+
+  test('AC-006 accepts AntD Upload component usage', () => {
+    expect(
+      validateNativeTrustedBlockSource(
+        "import { Upload } from 'antd'; export default () => React.createElement(Upload);"
+      )
+    ).toMatchObject({ ok: true });
   });
 
   test('allows ordinary object properties named like an AntD global API', () => {

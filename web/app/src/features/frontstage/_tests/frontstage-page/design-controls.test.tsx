@@ -8,9 +8,13 @@ import {
 } from '@testing-library/react';
 import type { ConsoleFrontstageBlockNode } from '@1flowbase/api-client';
 import { useState } from 'react';
-import { expect, vi } from 'vitest';
+import { beforeAll, expect, vi } from 'vitest';
 
 import { AppProviders } from '../../../../app/AppProviders';
+import {
+  appI18n,
+  loadApplicationI18nResources
+} from '../../../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../../../state/auth-store';
 import {
   resetFrontstageDesignModeStore,
@@ -136,6 +140,11 @@ export default function PluginBlock() {
 
 vi.setConfig({ testTimeout: SLOW_FRONTSTAGE_TEST_TIMEOUT });
 
+beforeAll(async () => {
+  await loadApplicationI18nResources();
+  await appI18n.changeLanguage('zh_Hans');
+});
+
 type TestFrontStageTreeNode = {
   id: string;
   title: string | null;
@@ -252,7 +261,8 @@ function FrontStagePageHarness({
   initialPageTree,
   pageContent,
   isPageContentLoading,
-  hasPageContentLoadError
+  hasPageContentLoadError,
+  onRefreshPage
 }: {
   workspaceId?: string;
   pageId?: string;
@@ -263,6 +273,7 @@ function FrontStagePageHarness({
   pageContent?: FrontstagePageContent;
   isPageContentLoading?: boolean;
   hasPageContentLoadError?: boolean;
+  onRefreshPage?: () => Promise<void>;
 }) {
   const [pageTree, setPageTree] = useState<TestFrontStageTreeNode[]>(
     initialPageTree ?? []
@@ -313,6 +324,7 @@ function FrontStagePageHarness({
       blockRoots={blockRoots}
       isPageContentLoading={isPageContentLoading}
       hasPageContentLoadError={hasPageContentLoadError}
+      onRefreshPage={onRefreshPage}
       onCreateGroupNode={(input) => {
         const groupNode = {
           id: createTestNodeId(),
@@ -637,7 +649,7 @@ describe('FrontStagePage - design controls', () => {
     ).not.toBeInTheDocument();
   });
 
-  test('AC-002 places Add menu as the first tree row when the tree is empty', () => {
+  test('AC-002 keeps Add menu outside the scrollable tree when the tree is empty', () => {
     authenticate(['frontstage.page.design']);
     renderPage();
 
@@ -649,26 +661,33 @@ describe('FrontStagePage - design controls', () => {
 
     const tree = sidebar?.querySelector('.frontstage-page-tree-sidebar__tree');
     expect(tree).toBeInTheDocument();
-    expect(tree?.children).toHaveLength(1);
+    expect(tree?.children).toHaveLength(0);
     expect(
-      within(tree as HTMLElement).getByRole('button', { name: '添加菜单' })
+      within(tree as HTMLElement).queryByRole('button', { name: '添加菜单' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar as HTMLElement).getByRole('button', { name: '添加菜单' })
     ).toHaveClass(
       'frontstage-add-action-button',
       'frontstage-add-action-button--full'
     );
   });
 
-  test('AC-003 places Add menu after existing top-level nodes', () => {
+  test('AC-003 keeps Add menu fixed outside existing top-level nodes', () => {
     authenticate(['frontstage.page.design']);
     renderPage('page-1');
 
     activateDesignMode();
 
     const tree = document.querySelector('.frontstage-page-tree-sidebar__tree');
+    const sidebar = document.querySelector('.frontstage-page-tree-sidebar');
     expect(tree).toBeInTheDocument();
-    expect(tree?.children).toHaveLength(2);
+    expect(tree?.children).toHaveLength(1);
     expect(
-      within(tree?.lastElementChild as HTMLElement).getByRole('button', {
+      within(tree as HTMLElement).queryByRole('button', { name: '添加菜单' })
+    ).not.toBeInTheDocument();
+    expect(
+      within(sidebar as HTMLElement).getByRole('button', {
         name: '添加菜单'
       })
     ).toBeInTheDocument();
@@ -703,8 +722,9 @@ describe('FrontStagePage - design controls', () => {
     fireEvent.click(configurePage);
 
     const pageMenu = await screen.findByRole('menu');
-    expect(within(pageMenu).getAllByRole('menuitem')).toHaveLength(3);
+    expect(within(pageMenu).getAllByRole('menuitem')).toHaveLength(4);
     expect(within(pageMenu).getByText('编辑')).toBeInTheDocument();
+    expect(within(pageMenu).getByText('刷新')).toBeInTheDocument();
     const layoutMode = within(pageMenu).getByRole('combobox', {
       name: '布局方式'
     });
@@ -728,6 +748,118 @@ describe('FrontStagePage - design controls', () => {
     expect(
       screen.queryByRole('combobox', { name: '内容呈现方式' })
     ).not.toBeInTheDocument();
+  });
+
+  test('#1975 AC-003/004 keeps current content while refresh is pending or fails', async () => {
+    authenticate(['frontstage.page.design']);
+    mockPageContentSaveState();
+    let rejectRefresh: (error: Error) => void = () => undefined;
+    const onRefreshPage = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectRefresh = reject;
+        })
+    );
+    render(
+      <AppProviders>
+        <FrontStagePageHarness
+          pageId="page-1"
+          tabId="tab-1"
+          initialPageTree={[createBackendPage('page-1')]}
+          pageContent={createPageContent()}
+          onRefreshPage={onRefreshPage}
+        />
+      </AppProviders>
+    );
+
+    activateDesignMode();
+    const configurePage = screen.getByRole('button', {
+      name: '配置页面'
+    });
+    fireEvent.click(configurePage);
+    fireEvent.click(
+      await screen.findByRole('menuitem', {
+        name: /刷新/
+      })
+    );
+
+    expect(
+      await screen.findByText('正在刷新当前页面……')
+    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '页面 page-1' })).toBeInTheDocument();
+
+    fireEvent.click(configurePage);
+    expect(
+      await screen.findByRole('menuitem', {
+        name: /刷新/
+      })
+    ).toHaveAttribute('aria-disabled', 'true');
+
+    await act(async () => {
+      rejectRefresh(new Error('refresh unavailable'));
+    });
+
+    expect(
+      await screen.findByText('刷新当前页面失败')
+    ).toBeInTheDocument();
+    expect(screen.getByText('refresh unavailable')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: '页面 page-1' })).toBeInTheDocument();
+  });
+
+  test('#1975 AC-004 ignores a stale refresh failure after the page scope changes', async () => {
+    authenticate(['frontstage.page.design']);
+    mockPageContentSaveState();
+    let rejectRefresh: (error: Error) => void = () => undefined;
+    const onRefreshPage = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectRefresh = reject;
+        })
+    );
+    const pages = [createBackendPage('page-1'), createBackendPage('page-2')];
+    const view = render(
+      <AppProviders>
+        <FrontStagePageHarness
+          pageId="page-1"
+          tabId="tab-1"
+          initialPageTree={pages}
+          pageContent={createPageContent({ page: { id: 'page-1' } })}
+          onRefreshPage={onRefreshPage}
+        />
+      </AppProviders>
+    );
+
+    activateDesignMode();
+    fireEvent.click(screen.getByRole('button', { name: '配置页面' }));
+    fireEvent.click(
+      await screen.findByRole('menuitem', { name: /刷新/ })
+    );
+    expect(await screen.findByText('正在刷新当前页面……')).toBeInTheDocument();
+
+    view.rerender(
+      <AppProviders>
+        <FrontStagePageHarness
+          pageId="page-2"
+          tabId="tab-2"
+          initialPageTree={pages}
+          pageContent={createPageContent({
+            page: { id: 'page-2' },
+            tab: { id: 'tab-2', pageId: 'page-2' }
+          })}
+          onRefreshPage={vi.fn(() => Promise.resolve())}
+        />
+      </AppProviders>
+    );
+    expect(await screen.findByRole('heading', { name: '页面 page-2' })).toBeInTheDocument();
+
+    await act(async () => {
+      rejectRefresh(new Error('stale refresh failure'));
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('刷新当前页面失败')).not.toBeInTheDocument();
+      expect(screen.queryByText('stale refresh failure')).not.toBeInTheDocument();
+    });
   });
 
   test('#1300 keeps the canvas and Add Block action inside the active tab container', async () => {

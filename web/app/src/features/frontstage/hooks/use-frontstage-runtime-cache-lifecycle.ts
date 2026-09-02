@@ -15,6 +15,11 @@ export interface FrontstageRuntimeCacheLifecycleOptions {
   >;
 }
 
+export function FrontstageRuntimeCacheLifecycle() {
+  useFrontstageRuntimeCacheLifecycle();
+  return null;
+}
+
 export function useFrontstageRuntimeCacheLifecycle(
   options: FrontstageRuntimeCacheLifecycleOptions = {}
 ): void {
@@ -54,10 +59,5 @@ export function useFrontstageRuntimeCacheLifecycle(
         })
         .catch(() => undefined);
     }
-  }, [
-    actor,
-    lifecycleIdentity,
-    nativeReactArtifactCache,
-    queryClient
-  ]);
+  }, [actor, lifecycleIdentity, nativeReactArtifactCache, queryClient]);
 }

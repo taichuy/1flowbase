@@ -3,10 +3,10 @@
   "scenarios": [
     {
       "id": "frontstage-demo-page",
-      "path_template": "/frontstage/pages/:page_id",
+      "path_template": "/:slug/pages/:page_id",
       "fixture_kind": "frontstage_page",
       "ready_selector": "[data-testid=\"frontstage-page-workspace\"]",
-      "expected_path_prefix": "/frontstage/pages/",
+      "expected_path_pattern": "^/[^/]+/pages/[^/]+$",
       "phases": [
         "cold",
         "warm",
@@ -16,8 +16,8 @@
         "recovery"
       ],
       "budgets": {
-        "cold_module_requests_max": 1999,
-        "decoded_bytes_max": 157286399,
+        "cold_module_requests_max": 500,
+        "decoded_bytes_max": 52428800,
         "failed_modules_max": 0,
         "runtime_errors_max": 0
       }
@@ -31,8 +31,8 @@
       "expected_path_prefix": "/settings",
       "phases": ["cold", "warm", "recovery"],
       "budgets": {
-        "cold_module_requests_max": 1999,
-        "decoded_bytes_max": 157286399,
+        "cold_module_requests_max": 500,
+        "decoded_bytes_max": 52428800,
         "failed_modules_max": 0,
         "runtime_errors_max": 0
       }
@@ -45,8 +45,25 @@
       "expected_path_prefix": "/applications/",
       "phases": ["cold", "warm", "recovery"],
       "budgets": {
-        "cold_module_requests_max": 1999,
-        "decoded_bytes_max": 157286399,
+        "cold_module_requests_max": 500,
+        "decoded_bytes_max": 52428800,
+        "failed_modules_max": 0,
+        "runtime_errors_max": 0
+      }
+    },
+    {
+      "id": "public-incognito-root",
+      "base_url_kind": "public",
+      "session_kind": "incognito",
+      "fixture_kind": "static",
+      "fixture_path": "/",
+      "ready_selector": "[data-testid=\"builtin-password-sign-in\"]",
+      "expected_path_prefix": "/sign-in",
+      "phases": ["cold", "warm"],
+      "budgets": {
+        "cold_module_requests_max": 500,
+        "decoded_bytes_max": 52428800,
+        "duration_ms_max": 8000,
         "failed_modules_max": 0,
         "runtime_errors_max": 0
       }

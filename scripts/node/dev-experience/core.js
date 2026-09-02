@@ -22,10 +22,17 @@ const { getServiceDefinitions } = require("../dev-up/services.js");
 const DEFAULT_MANIFEST_PATH = path.join(__dirname, "manifest.json");
 const DEFAULT_WEB_BASE_URL = "http://127.0.0.1:3100";
 const SOURCE_EXTENSIONS = new Set([".js", ".jsx", ".ts", ".tsx"]);
-const NAMESPACE_IMPORT = /\bimport\s+\*\s+as\s+\w+\s+from\s+['"]([^'"]+)['"]/gu;
+const ANT_ICON_BARREL_IMPORT =
+  /\bimport\s+(?:\{[^;]*\}|\*\s+as\s+\w+)\s+from\s+['"]@ant-design\/icons['"]/gu;
 const IMPORT_SPECIFIER =
   /\b(?:import|export)\s+(?:[\s\S]*?\s+from\s+)?['"]([^'"]+)['"]/gu;
 const DYNAMIC_IMPORT = /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/gu;
+const BROWSER_RESOURCE_CONSOLE_ERROR =
+  /^Failed to load resource: the server responded with a status of \d+/u;
+
+function isActionableConsoleError(message) {
+  return !BROWSER_RESOURCE_CONSOLE_ERROR.test(message);
+}
 
 function normalizePath(value) {
   return value.replace(/\\/gu, "/");
@@ -117,7 +124,10 @@ function routeGraphProfiles(graph, repoRoot) {
   };
   return Object.fromEntries(
     Object.entries(entries).map(([route, relativePath]) => {
-      const modules = reachableModules(graph, path.join(repoRoot, relativePath));
+      const modules = reachableModules(
+        graph,
+        path.join(repoRoot, relativePath),
+      );
       return [
         route,
         {
@@ -305,17 +315,15 @@ function analyzeStatic({ repoRoot = getRepoRoot() } = {}) {
   const findings = [];
   for (const filePath of graph.keys()) {
     const source = fs.readFileSync(filePath, "utf8");
-    NAMESPACE_IMPORT.lastIndex = 0;
-    let match = NAMESPACE_IMPORT.exec(source);
+    ANT_ICON_BARREL_IMPORT.lastIndex = 0;
+    let match = ANT_ICON_BARREL_IMPORT.exec(source);
     while (match) {
-      if (match[1] === "@ant-design/icons") {
-        findings.push({
-          code: "high-fanout-icon-namespace",
-          file: normalizePath(path.relative(repoRoot, filePath)),
-          dependency: match[1],
-        });
-      }
-      match = NAMESPACE_IMPORT.exec(source);
+      findings.push({
+        code: "high-fanout-icon-barrel",
+        file: normalizePath(path.relative(repoRoot, filePath)),
+        dependency: "@ant-design/icons",
+      });
+      match = ANT_ICON_BARREL_IMPORT.exec(source);
     }
   }
   const viteSource = fs.readFileSync(
@@ -390,11 +398,16 @@ async function profileScenario({
   const failedRequests = [];
   const consoleErrors = [];
   const pageErrors = [];
-  const onRequestFailed = (request) =>
+  const pendingRequests = new Set();
+  const onRequest = (request) => pendingRequests.add(request.url());
+  const onRequestFinished = (request) => pendingRequests.delete(request.url());
+  const onRequestFailed = (request) => {
+    pendingRequests.delete(request.url());
     failedRequests.push({
       url: request.url(),
       error: request.failure()?.errorText || "unknown",
     });
+  };
   const onResponse = (response) => {
     const urlValue = response.url();
     if (
@@ -408,9 +421,17 @@ async function profileScenario({
     }
   };
   const onConsole = (message) => {
-    if (message.type() === "error") consoleErrors.push(message.text());
+    if (
+      message.type() === "error" &&
+      isActionableConsoleError(message.text())
+    ) {
+      consoleErrors.push(message.text());
+    }
   };
-  const onPageError = (error) => pageErrors.push(error.message || String(error));
+  const onPageError = (error) =>
+    pageErrors.push(error.message || String(error));
+  page.on("request", onRequest);
+  page.on("requestfinished", onRequestFinished);
   page.on("requestfailed", onRequestFailed);
   page.on("response", onResponse);
   page.on("console", onConsole);
@@ -422,7 +443,10 @@ async function profileScenario({
       state: "visible",
       timeout,
     });
-    await page.waitForLoadState("networkidle", { timeout }).catch(() => {});
+    const readyDurationMs = Date.now() - startedAt;
+    await page
+      .waitForLoadState("networkidle", { timeout: Math.min(timeout, 5_000) })
+      .catch(() => {});
     const entries = await page.evaluate(() =>
       performance.getEntriesByType("resource").map((entry) => ({
         name: entry.name,
@@ -434,20 +458,30 @@ async function profileScenario({
       })),
     );
     const finalUrl = page.url();
-    if (!new URL(finalUrl).pathname.startsWith(scenario.expected_path_prefix)) {
+    const finalPath = new URL(finalUrl).pathname;
+    const expectedPathMatches = scenario.expected_path_pattern
+      ? new RegExp(scenario.expected_path_pattern, "u").test(finalPath)
+      : finalPath.startsWith(scenario.expected_path_prefix);
+    if (!expectedPathMatches) {
       pageErrors.push(
-        `unexpected final path ${new URL(finalUrl).pathname}; expected ${scenario.expected_path_prefix}`,
+        `unexpected final path ${finalPath}; expected ${scenario.expected_path_pattern || scenario.expected_path_prefix}`,
       );
     }
     return {
       phase,
+      readyDurationMs,
       durationMs: Date.now() - startedAt,
       finalUrl,
       consoleErrors,
       pageErrors,
+      pendingRequests: [...pendingRequests].filter(
+        (urlValue) => classifyResource({ name: urlValue }) === "module",
+      ),
       ...summarizeResources(entries, failedRequests),
     };
   } finally {
+    page.off("request", onRequest);
+    page.off("requestfinished", onRequestFinished);
     page.off("requestfailed", onRequestFailed);
     page.off("response", onResponse);
     page.off("console", onConsole);
@@ -488,11 +522,16 @@ async function profileHmrTransport({ page, webBaseUrl, timeout = 10_000 }) {
 async function triggerRuntimeRecovery({ page, webBaseUrl, timeout = 30_000 }) {
   const baseUrl = webBaseUrl.replace(/\/$/u, "");
   const degraded = await page.evaluate(async (probeUrl) => {
-    const response = await fetch(probeUrl, { method: "POST", cache: "no-store" });
+    const response = await fetch(probeUrl, {
+      method: "POST",
+      cache: "no-store",
+    });
     return { status: response.status, body: await response.json() };
   }, `${baseUrl}/__1flowbase_dev_recovery_probe`);
   if (degraded.status !== 202 || degraded.body.state !== "Degraded") {
-    throw new Error(`runtime recovery probe did not enter Degraded: ${JSON.stringify(degraded)}`);
+    throw new Error(
+      `runtime recovery probe did not enter Degraded: ${JSON.stringify(degraded)}`,
+    );
   }
   const startedAt = Date.now();
   while (Date.now() - startedAt < timeout) {
@@ -502,8 +541,16 @@ async function triggerRuntimeRecovery({ page, webBaseUrl, timeout = 30_000 }) {
     }, `${baseUrl}/__1flowbase_dev_ready`);
     if (readiness.status === 200 && readiness.body.state === "Ready") {
       const states = readiness.body.transitions.map((entry) => entry.state);
-      if (!states.slice(-3).every((state, index) => state === ["Degraded", "Warming", "Ready"][index])) {
-        throw new Error(`runtime recovery transition mismatch: ${states.join(" -> ")}`);
+      if (
+        !states
+          .slice(-3)
+          .every(
+            (state, index) => state === ["Degraded", "Warming", "Ready"][index],
+          )
+      ) {
+        throw new Error(
+          `runtime recovery transition mismatch: ${states.join(" -> ")}`,
+        );
       }
       return readiness.body.transitions.slice(-3);
     }
@@ -549,8 +596,25 @@ function attachProfileGates(profile, budgets, scenario, history = {}) {
           (profile.pageErrors?.length || 0),
         absoluteMax: budgets.runtime_errors_max,
         history:
-          history[profileHistoryKey(scenario, profile.phase, "runtimeErrors")] ||
-          [],
+          history[
+            profileHistoryKey(scenario, profile.phase, "runtimeErrors")
+          ] || [],
+      }),
+      duration: evaluateBudget({
+        value: profile.readyDurationMs ?? profile.durationMs ?? 0,
+        absoluteMax: budgets.duration_ms_max ?? Number.MAX_SAFE_INTEGER,
+        history:
+          history[
+            profileHistoryKey(scenario, profile.phase, "readyDurationMs")
+          ] || [],
+      }),
+      pending: evaluateBudget({
+        value: profile.pendingRequests?.length || 0,
+        absoluteMax: budgets.pending_modules_max ?? 0,
+        history:
+          history[
+            profileHistoryKey(scenario, profile.phase, "pendingRequests")
+          ] || [],
       }),
     },
   };
@@ -564,7 +628,11 @@ function writeReport({ repoRoot, result, env = process.env }) {
   return reportPath;
 }
 
-function buildReferenceIdentity(repoRoot, manifestPath) {
+function buildReferenceIdentity(
+  repoRoot,
+  manifestPath,
+  { webBaseUrl, publicWebBaseUrl },
+) {
   const identityHash = crypto.createHash("sha256");
   for (const filePath of [
     manifestPath,
@@ -577,16 +645,14 @@ function buildReferenceIdentity(repoRoot, manifestPath) {
       node: process.version,
       platform: process.platform,
       arch: process.arch,
+      webBaseUrl,
+      publicWebBaseUrl,
     }),
   );
   return identityHash.digest("hex");
 }
 
-function readHistory({
-  repoRoot,
-  referenceIdentity,
-  env = process.env,
-}) {
+function readHistory({ repoRoot, referenceIdentity, env = process.env }) {
   const reportPath = path.join(
     resolveOutputDir(repoRoot, env),
     "dev-experience-profile.json",
@@ -610,6 +676,9 @@ function updateHistory(history, profiles) {
     const metrics = {
       moduleRequestCount: profile.moduleRequestCount || 0,
       decodedBytes: profile.decodedBytes || 0,
+      durationMs: profile.durationMs || 0,
+      readyDurationMs: profile.readyDurationMs ?? profile.durationMs ?? 0,
+      pendingRequests: profile.pendingRequests?.length || 0,
       failedRequests: profile.failedRequests.length,
       runtimeErrors:
         (profile.consoleErrors?.length || 0) +
@@ -681,13 +750,15 @@ async function waitForReady(baseUrl, timeout = 90_000) {
   );
 }
 
+function createIsolatedViteCacheDirectory(repoRoot) {
+  const cacheRoot = path.join(repoRoot, "web", "app", "node_modules");
+  fs.mkdirSync(cacheRoot, { recursive: true });
+  return fs.mkdtempSync(path.join(cacheRoot, ".vite-dev-experience-cache-"));
+}
+
 async function startIsolatedVite(repoRoot) {
   const port = await reservePort();
-  const temporaryRoot = path.join(repoRoot, "tmp");
-  fs.mkdirSync(temporaryRoot, { recursive: true });
-  const cacheDirectory = fs.mkdtempSync(
-    path.join(temporaryRoot, "dev-experience-vite-cache-"),
-  );
+  const cacheDirectory = createIsolatedViteCacheDirectory(repoRoot);
   const child = spawn(
     "pnpm",
     [
@@ -740,7 +811,7 @@ async function stopIsolatedVite(runtime) {
     ]);
   }
   const temporaryName = path.basename(runtime.cacheDirectory);
-  if (temporaryName.startsWith("dev-experience-vite-cache-")) {
+  if (temporaryName.startsWith(".vite-dev-experience-cache-")) {
     fs.rmSync(runtime.cacheDirectory, { recursive: true, force: true });
   }
 }
@@ -750,11 +821,20 @@ function apiBaseUrlForRepo(repoRoot) {
   return `http://${service.probeHost || "127.0.0.1"}:${service.port}`;
 }
 
-function flattenPageTree(nodes) {
-  return nodes.flatMap((node) => [
-    node,
-    ...flattenPageTree(Array.isArray(node.children) ? node.children : []),
-  ]);
+function findFrontstageFixture(nodes, inheritedSlug = null) {
+  for (const node of nodes) {
+    const slug =
+      typeof node.slug === "string" && node.slug.length > 0
+        ? node.slug
+        : inheritedSlug;
+    if (node.kind === "page" && slug) return { pageId: node.id, slug };
+    const nested = findFrontstageFixture(
+      Array.isArray(node.children) ? node.children : [],
+      slug,
+    );
+    if (nested) return nested;
+  }
+  return null;
 }
 
 async function requestData(requestContext, apiPath) {
@@ -788,25 +868,29 @@ async function resolveScenarioFixtures({
         continue;
       }
       if (scenario.fixture_kind === "frontstage_page") {
-        pages ||= flattenPageTree(
-          (await requestData(requestContext, "/api/console/frontstage/pages")) ||
-            [],
-        );
-        const page = pages.find((candidate) => candidate.kind === "page");
-        if (!page) {
+        pages ||=
+          (await requestData(
+            requestContext,
+            "/api/console/frontstage/pages",
+          )) || [];
+        const fixture = findFrontstageFixture(pages);
+        if (!fixture) {
           throw new Error(
             "Dev experience requires at least one existing Frontstage page fixture",
           );
         }
         resolved.push({
           ...scenario,
-          fixture_path: scenario.path_template.replace(":page_id", page.id),
+          fixture_path: scenario.path_template
+            .replace(":slug", fixture.slug)
+            .replace(":page_id", fixture.pageId),
         });
         continue;
       }
       if (scenario.fixture_kind === "workflow_application") {
         applications ||=
-          (await requestData(requestContext, "/api/console/applications")) || [];
+          (await requestData(requestContext, "/api/console/applications")) ||
+          [];
         const application = applications.find(
           (candidate) => candidate.application_type === "workflow",
         );
@@ -824,7 +908,9 @@ async function resolveScenarioFixtures({
         });
         continue;
       }
-      throw new Error(`Unknown dev experience fixture kind: ${scenario.fixture_kind}`);
+      throw new Error(
+        `Unknown dev experience fixture kind: ${scenario.fixture_kind}`,
+      );
     }
     return resolved;
   } finally {
@@ -836,13 +922,17 @@ async function runSmoke({
   repoRoot = getRepoRoot(),
   manifestPath = DEFAULT_MANIFEST_PATH,
   webBaseUrl = DEFAULT_WEB_BASE_URL,
+  publicWebBaseUrl = null,
   env = process.env,
 } = {}) {
   const manifest = readJson(manifestPath);
   const playwright = loadPlaywright(repoRoot);
   const outputDir = resolveOutputDir(repoRoot, env);
   fs.mkdirSync(outputDir, { recursive: true });
-  const storageStatePath = path.join(outputDir, "dev-experience-storage-state.json");
+  const storageStatePath = path.join(
+    outputDir,
+    "dev-experience-storage-state.json",
+  );
   const apiBaseUrl = apiBaseUrlForRepo(repoRoot);
   const credentials = loadRootCredentials({ repoRoot, sourceEnv: env });
   const temporarySession = await openTemporaryConsoleSession({
@@ -870,12 +960,26 @@ async function runSmoke({
     throw error;
   }
   const profiles = [];
-  const referenceIdentity = buildReferenceIdentity(repoRoot, manifestPath);
+  const referenceIdentity = buildReferenceIdentity(repoRoot, manifestPath, {
+    webBaseUrl,
+    publicWebBaseUrl,
+  });
   const history = readHistory({ repoRoot, referenceIdentity, env });
   try {
     for (const scenario of scenarios) {
-      const targetUrl = `${webBaseUrl.replace(/\/$/u, "")}${scenario.fixture_path}`;
-      const context = await browser.newContext({ storageState: storageStatePath });
+      const scenarioBaseUrl =
+        scenario.base_url_kind === "public" ? publicWebBaseUrl : webBaseUrl;
+      if (!scenarioBaseUrl) {
+        throw new Error(
+          `Dev experience scenario '${scenario.id}' requires --public-web-base-url`,
+        );
+      }
+      const targetUrl = `${scenarioBaseUrl.replace(/\/$/u, "")}${scenario.fixture_path}`;
+      const context = await browser.newContext(
+        scenario.session_kind === "incognito"
+          ? {}
+          : { storageState: storageStatePath },
+      );
       const page = await context.newPage();
       const cold = await profileScenario({
         page,
@@ -909,12 +1013,14 @@ async function runSmoke({
           page,
           webBaseUrl,
         });
+        const recoveryPage = await context.newPage();
         const recovery = await profileScenario({
-          page,
+          page: recoveryPage,
           phase: "recovery",
           url: targetUrl,
           scenario,
         });
+        await recoveryPage.close();
         profiles.push({
           scenario: scenario.id,
           recoveryTransitions,
@@ -950,6 +1056,9 @@ async function runSmoke({
           ...attachProfileGates(
             {
               phase: "concurrent",
+              readyDurationMs: Math.max(
+                ...concurrentProfiles.map((profile) => profile.readyDurationMs),
+              ),
               durationMs: Math.max(
                 ...concurrentProfiles.map((profile) => profile.durationMs),
               ),
@@ -993,13 +1102,10 @@ async function runSmoke({
           contexts.map((candidateContext) => candidateContext.close()),
         );
       }
-
     }
 
     if (
-      scenarios.some((scenario) =>
-        scenario.phases.includes("cache-rebuild"),
-      )
+      scenarios.some((scenario) => scenario.phases.includes("cache-rebuild"))
     ) {
       const isolated = await startIsolatedVite(repoRoot);
       try {
@@ -1010,12 +1116,20 @@ async function runSmoke({
             storageState: storageStatePath,
           });
           const page = await context.newPage();
-          const profile = await profileScenario({
-            page,
-            phase: "cache-rebuild",
-            url: `${isolated.baseUrl}${scenario.fixture_path}`,
-            scenario,
-          });
+          let profile;
+          try {
+            profile = await profileScenario({
+              page,
+              phase: "cache-rebuild",
+              url: `${isolated.baseUrl}${scenario.fixture_path}`,
+              scenario,
+            });
+          } catch (error) {
+            throw new Error(
+              `${error.message}\n${isolated.log().slice(-4000)}`,
+              { cause: error },
+            );
+          }
           profiles.push({
             scenario: scenario.id,
             cacheIdentity: isolated.readiness.cacheIdentity,
@@ -1054,13 +1168,16 @@ async function runSmoke({
       arch: process.arch,
       browser: "chromium",
       webBaseUrl,
+      publicWebBaseUrl,
       apiBaseUrl,
     },
     referenceIdentity,
     staticGraph: staticResult.graph,
-    ok: profiles.every((profile) =>
-      Object.values(profile.gates).every((gate) => gate.ok),
-    ),
+    ok:
+      staticResult.ok &&
+      profiles.every((profile) =>
+        Object.values(profile.gates).every((gate) => gate.ok),
+      ),
     profiles,
     history: updateHistory(history, profiles),
   };
@@ -1069,11 +1186,17 @@ async function runSmoke({
 }
 
 function parseCliArgs(argv) {
-  const options = { smoke: false, webBaseUrl: DEFAULT_WEB_BASE_URL };
+  const options = {
+    smoke: false,
+    webBaseUrl: DEFAULT_WEB_BASE_URL,
+    publicWebBaseUrl: null,
+  };
   for (let index = 0; index < argv.length; index += 1) {
     if (argv[index] === "--smoke") options.smoke = true;
     else if (argv[index] === "--web-base-url" && argv[index + 1])
       options.webBaseUrl = argv[++index];
+    else if (argv[index] === "--public-web-base-url" && argv[index + 1])
+      options.publicWebBaseUrl = argv[++index];
     else if (argv[index] === "--help" || argv[index] === "-h")
       options.help = true;
     else throw new Error(`Unknown dev-experience option: ${argv[index]}`);
@@ -1087,7 +1210,7 @@ async function main(argv = [], deps = {}) {
     deps.writeStdout || ((text) => process.stdout.write(text));
   if (options.help) {
     writeStdout(
-      "Usage: node scripts/node/dev-experience.js [--smoke] [--web-base-url <url>]\n",
+      "Usage: node scripts/node/dev-experience.js [--smoke] [--web-base-url <url>] [--public-web-base-url <url>]\n",
     );
     return 0;
   }
@@ -1102,6 +1225,7 @@ async function main(argv = [], deps = {}) {
   const smokeResult = await (deps.runSmokeImpl || runSmoke)({
     repoRoot: deps.repoRoot || getRepoRoot(),
     webBaseUrl: options.webBaseUrl,
+    publicWebBaseUrl: options.publicWebBaseUrl,
     env: deps.env || process.env,
   });
   return smokeResult.ok ? 0 : 1;
@@ -1112,7 +1236,10 @@ module.exports = {
   buildCondensation,
   buildSourceGraph,
   cacheIdentity,
+  createIsolatedViteCacheDirectory,
+  attachProfileGates,
   evaluateBudget,
+  isActionableConsoleError,
   main,
   median,
   parseOptimizeDepsInclude,

@@ -7,7 +7,9 @@ import {
   type Key
 } from 'react';
 
-import { EyeOutlined, FileSearchOutlined, ReloadOutlined } from '@ant-design/icons';
+import EyeOutlined from '@ant-design/icons/es/icons/EyeOutlined';
+import FileSearchOutlined from '@ant-design/icons/es/icons/FileSearchOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 import {
   Alert,
   Button,

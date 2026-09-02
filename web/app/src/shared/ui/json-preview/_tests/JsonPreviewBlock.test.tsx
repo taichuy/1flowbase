@@ -14,6 +14,10 @@ vi.mock('@monaco-editor/react', () => ({
   )
 }));
 
+vi.mock('../../../code-block/monaco-runtime', () => ({
+  loadMonacoEditorModule: () => import('@monaco-editor/react')
+}));
+
 vi.mock('antd', async () => {
   const actual = await vi.importActual<typeof import('antd')>('antd');
 

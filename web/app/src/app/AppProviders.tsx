@@ -1,16 +1,34 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { PropsWithChildren } from 'react';
-import { useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 
-import { AppThemeProvider } from '@1flowbase/ui';
+import { AppThemeProvider } from '@1flowbase/ui/app-theme-provider';
 
 import { AppI18nProvider } from './AppI18nProvider';
 import { WindowWorkspaceProvider } from '../shared/ui/window-workspace/WindowWorkspaceProvider';
-import { useFrontstageRuntimeCacheLifecycle } from '../features/frontstage/hooks/use-frontstage-runtime-cache-lifecycle';
+import { useAuthStore } from '../state/auth-store';
 
-function FrontstageRuntimeCacheLifecycle() {
-  useFrontstageRuntimeCacheLifecycle();
-  return null;
+const FrontstageRuntimeCacheLifecycle = lazy(() =>
+  import('../features/frontstage/hooks/use-frontstage-runtime-cache-lifecycle').then(
+    (module) => ({
+      default: module.FrontstageRuntimeCacheLifecycle
+    })
+  )
+);
+
+function ActivatedRuntimeLifecycles() {
+  const sessionStatus = useAuthStore((state) => state.sessionStatus);
+  const [frontstageActivated, setFrontstageActivated] = useState(false);
+
+  useEffect(() => {
+    if (sessionStatus === 'authenticated') setFrontstageActivated(true);
+  }, [sessionStatus]);
+
+  return frontstageActivated ? (
+    <Suspense fallback={null}>
+      <FrontstageRuntimeCacheLifecycle />
+    </Suspense>
+  ) : null;
 }
 
 export function AppProviders({ children }: PropsWithChildren) {
@@ -32,7 +50,7 @@ export function AppProviders({ children }: PropsWithChildren) {
     <AppThemeProvider>
       <AppI18nProvider>
         <QueryClientProvider client={queryClient}>
-          <FrontstageRuntimeCacheLifecycle />
+          <ActivatedRuntimeLifecycles />
           <WindowWorkspaceProvider>{children}</WindowWorkspaceProvider>
         </QueryClientProvider>
       </AppI18nProvider>

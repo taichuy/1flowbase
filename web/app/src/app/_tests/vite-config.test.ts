@@ -6,6 +6,25 @@ import appPackageJson from '../../../package.json';
 import richTextPackageJson from '../../../../packages/rich-text/package.json';
 
 describe('vite config', () => {
+  test('AC-001 AC-002 keeps local dev bundleless and exposes stable remote preview', async () => {
+    expect(appPackageJson.scripts).toEqual(
+      expect.objectContaining({
+        dev: 'vite',
+        'dev:remote':
+          'vite build --mode remote-debug && vite preview --mode remote-debug --host 0.0.0.0 --port 3100 --strictPort',
+        'dev:remote:experimental': 'vite --experimentalBundle'
+      })
+    );
+
+    const source = await readFile(
+      path.resolve(process.cwd(), 'vite.config.ts'),
+      'utf8'
+    );
+
+    expect(source).toContain("const isRemoteDebug = mode === 'remote-debug'");
+    expect(source).toContain('sourcemap: isRemoteDebug');
+  });
+
   test('AC-001 resolves Vditor and its rich-text runtime assets from one exact version', () => {
     expect(appPackageJson.dependencies.vditor).toBe('3.11.2');
     expect(richTextPackageJson.dependencies.vditor).toBe(
@@ -68,9 +87,10 @@ describe('vite config', () => {
       'utf8'
     );
 
-    expect(source).toMatch(
-      /lazy\(\(\) =>\s+import\('\.\.\/features\/applications\/pages\/ApplicationDetailPage'\)/
+    expect(source).toContain(
+      "import('../features/applications/pages/ApplicationDetailPage')"
     );
+    expect(source).toContain('loadApplicationDetailPage()');
     expect(source).toMatch(
       /lazy\(\(\) =>\s+import\('\.\.\/features\/settings\/pages\/SettingsPage'\)/
     );
@@ -82,15 +102,15 @@ describe('vite config', () => {
     );
   });
 
-  test('splits large frontend dependencies into named chunks', async () => {
+  test('MDP-007 BGP-001 delegates resources to deterministic planners', async () => {
     const source = await readFile(
       path.resolve(process.cwd(), 'vite.config.ts'),
       'utf8'
     );
 
-    expect(source).toContain('manualChunks');
-    expect(source).toContain('flow-vendor');
-    expect(source).toContain('monaco-vendor');
+    expect(source).toContain('pageTreeIconAssetsPlugin');
+    expect(source).toContain('manualChunks: planScenarioChunk');
+    expect(source).toContain('scenarioChunkManifestPlugin');
     expect(source).toContain('chunkSizeWarningLimit: 3500');
   });
 
@@ -101,10 +121,6 @@ describe('vite config', () => {
     );
     const lazyOnlyDeps = [
       '@ant-design/x-markdown',
-      '@dnd-kit/core',
-      '@dnd-kit/modifiers',
-      '@dnd-kit/sortable',
-      '@dnd-kit/utilities',
       '@lexical/react/LexicalComposer',
       '@lexical/react/LexicalComposerContext',
       '@lexical/react/LexicalContentEditable',
@@ -125,6 +141,13 @@ describe('vite config', () => {
     ];
 
     expect(source).toContain('optimizeDeps');
+    expect(source).toContain("'@ant-design/icons'");
+    expect(source).toContain("'@ant-design/icons-svg'");
+    expect(source).toContain("command === 'serve'");
+    expect(source).toContain("'@ant-design/icons-svg/es/asn'");
+    expect(source).not.toContain(
+      '...nativeAntDesignIconsModuleInventory.modules.map'
+    );
     for (const dependency of lazyOnlyDeps) {
       expect(source).toContain(`'${dependency}'`);
     }

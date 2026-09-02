@@ -1,4 +1,4 @@
-import { BugFilled } from '@ant-design/icons';
+import BugFilled from '@ant-design/icons/es/icons/BugFilled';
 import { Button, Tooltip } from 'antd';
 
 import { i18nText } from '../../../../shared/i18n/text';

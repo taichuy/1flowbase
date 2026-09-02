@@ -1,8 +1,11 @@
 import { StyleProvider, createCache } from '@ant-design/cssinjs';
-import { App as AntdApp, ConfigProvider } from 'antd';
+import AntdApp from 'antd/es/app';
+import ConfigProvider from 'antd/es/config-provider';
+import Skeleton from 'antd/es/skeleton';
 import type { ConfigProviderProps } from 'antd/es/config-provider';
 import {
   Component,
+  Suspense,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -16,12 +19,15 @@ import { createPortal } from 'react-dom';
 
 import type {
   BlockContext,
+  BlockContextSeed,
   BlockProtocolError
 } from '@1flowbase/page-protocol';
 import {
   attachNativeTrustedBlockPortalSurface,
+  createNativeBlockExternalAssetScope,
   createNativeTrustedBlockPortalContainment,
   isNativeTrustedBlockRuntimeError,
+  type NativeBlockExternalAssetScope,
   type NativeTrustedBlockPortalContainment,
   type NativeTrustedBlockPortalSurface,
   type NativeTrustedBlockPreparePlan,
@@ -34,6 +40,19 @@ import type {
   PreparedTrustedFrontendContribution,
   TrustedFrontendContributionHandle
 } from './native-trusted-block-contribution-lifecycle';
+import {
+  loadAntdStyleModule,
+  type AntdStyleShadowProvider
+} from './native-modules/antd-style-runtime';
+import {
+  NativeBlockSurfaceProvider,
+  resolveNativeBlockScrollOwner
+} from './native-modules/native-block-surface-context';
+import { useNativeBlockMotionTheme } from './native-modules/native-motion-runtime';
+import {
+  createNativeOverlayHost,
+  type NativeOverlayHost
+} from './native-modules/native-overlay-host';
 
 export interface FrontstageNativeTrustedBlockReactComponentProps {
   plan: NativeTrustedBlockPreparePlan;
@@ -45,6 +64,22 @@ export interface FrontstageNativeTrustedBlockReactComponentProps {
 export type FrontstageNativeTrustedBlockReactComponent =
   ComponentType<FrontstageNativeTrustedBlockReactComponentProps>;
 
+function NativeBlockModuleLoadingShell() {
+  return (
+    <div
+      aria-busy="true"
+      data-testid="native-block-module-loading-shell"
+      style={{ width: '100%' }}
+    >
+      <Skeleton
+        active
+        title={{ width: '32%' }}
+        paragraph={{ rows: 3, width: ['94%', '78%', '58%'] }}
+      />
+    </div>
+  );
+}
+
 export interface FrontstageNativeTrustedBlockProviderScope {
   theme?: ConfigProviderProps['theme'];
   locale?: ConfigProviderProps['locale'];
@@ -55,6 +90,7 @@ export interface FrontstageNativeTrustedBlockProviderContext {
   root: Element;
   shadowRoot: ShadowRoot;
   mountElement: HTMLElement;
+  scrollOwner: HTMLElement | Window;
   portalContainment: NativeTrustedBlockPortalContainment;
 }
 
@@ -83,12 +119,14 @@ export interface FrontstageNativeTrustedBlockPortalHostProps {
   renderEpoch: string;
   plan: NativeTrustedBlockPreparePlan;
   component: FrontstageNativeTrustedBlockReactComponent;
-  ctx: BlockContext;
+  ctx: BlockContextSeed;
   moduleAssets?: readonly NativeReactResolvedModuleAsset[];
+  moduleSources?: readonly string[];
   providerScope?: FrontstageNativeTrustedBlockProviderScope;
   providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper;
   onRuntimeError?: FrontstageNativeTrustedBlockRuntimeErrorHandler;
   contribution?: PreparedTrustedFrontendContribution;
+  surfaceLayoutEpoch?: string;
 }
 
 /**
@@ -102,19 +140,26 @@ export function FrontstageNativeTrustedBlockPortalHost({
   component: BlockComponent,
   ctx,
   moduleAssets = [],
+  moduleSources = [],
   providerScope,
   providerWrapper,
   onRuntimeError,
-  contribution
+  contribution,
+  surfaceLayoutEpoch = 'stable'
 }: FrontstageNativeTrustedBlockPortalHostProps): ReactNode {
   const [surface, setSurface] =
     useState<NativeTrustedBlockPortalSurface | null>(null);
+  const [overlayHostState, setOverlayHostState] = useState<{
+    surface: NativeTrustedBlockPortalSurface;
+    host: NativeOverlayHost;
+  } | null>(null);
   const lifecycleRef = useRef<TrustedFrontendContributionHandle | null>(null);
   const renderInput = useMemo(
     () => ({ plan, BlockComponent, ctx, moduleAssets, providerScope }),
     [BlockComponent, ctx, moduleAssets, plan, providerScope]
   );
   const mountedRenderInput = useRef<typeof renderInput | null>(null);
+  const runtimeMotionTheme = useNativeBlockMotionTheme(providerScope?.theme);
 
   useEffect(() => {
     const lifecycle = contribution?.createHandle() ?? null;
@@ -167,9 +212,48 @@ export function FrontstageNativeTrustedBlockPortalHost({
   }, [renderInput]);
 
   const styleCache = useMemo(() => (surface ? createCache() : null), [surface]);
+  const antdStylePrefix = useMemo(
+    () => (surface ? createAntdStyleSurfacePrefix(plan.blockId) : null),
+    [plan.blockId, surface]
+  );
   const portalContainment = useMemo(
     () => (surface ? createPortalContainment(surface.shadowRoot) : null),
     [surface]
+  );
+  const externalAssetScope = useMemo<NativeBlockExternalAssetScope | null>(
+    () =>
+      surface
+        ? createNativeBlockExternalAssetScope({ root: surface.shadowRoot })
+        : null,
+    [surface]
+  );
+  const blockContext = useMemo<BlockContext | null>(
+    () =>
+      surface && externalAssetScope
+        ? {
+            ...ctx,
+            root: surface.shadowRoot,
+            assets: externalAssetScope.assets
+          }
+        : null,
+    [ctx, externalAssetScope, surface]
+  );
+  const overlayHost =
+    overlayHostState?.surface === surface ? overlayHostState.host : null;
+
+  useLayoutEffect(() => {
+    if (!surface) return;
+    const host = createNativeOverlayHost({
+      blockId: plan.blockId,
+      targetRoot: surface.shadowRoot
+    });
+    setOverlayHostState({ surface, host });
+    return () => host.dispose();
+  }, [plan.blockId, surface]);
+
+  useLayoutEffect(
+    () => () => externalAssetScope?.dispose(),
+    [externalAssetScope]
   );
 
   useLayoutEffect(() => {
@@ -177,27 +261,39 @@ export function FrontstageNativeTrustedBlockPortalHost({
     return attachModuleStyleAssets(surface, moduleAssets);
   }, [moduleAssets, surface]);
 
-  if (!surface || !styleCache || !portalContainment) return null;
+  if (
+    !surface ||
+    !styleCache ||
+    !antdStylePrefix ||
+    !portalContainment ||
+    !blockContext ||
+    !overlayHost
+  ) {
+    return null;
+  }
 
   const providerContext: FrontstageNativeTrustedBlockProviderContext = {
     plan,
     root,
     shadowRoot: surface.shadowRoot,
     mountElement: surface.mountElement,
+    scrollOwner: resolveNativeBlockScrollOwner(root),
     portalContainment
   };
   const content = (
-    <FrontstageNativeTrustedBlockErrorBoundary
-      context={{ ...providerContext, blockId: plan.blockId }}
-      onRuntimeError={onRuntimeError}
-    >
-      <BlockComponent
-        plan={plan}
-        props={plan.props}
-        ctx={ctx}
-        portalContainment={portalContainment}
-      />
-    </FrontstageNativeTrustedBlockErrorBoundary>
+    <Suspense fallback={<NativeBlockModuleLoadingShell />}>
+      <FrontstageNativeTrustedBlockErrorBoundary
+        context={{ ...providerContext, blockId: plan.blockId }}
+        onRuntimeError={onRuntimeError}
+      >
+        <BlockComponent
+          plan={plan}
+          props={plan.props}
+          ctx={blockContext}
+          portalContainment={portalContainment}
+        />
+      </FrontstageNativeTrustedBlockErrorBoundary>
+    </Suspense>
   );
 
   return createPortal(
@@ -205,8 +301,12 @@ export function FrontstageNativeTrustedBlockPortalHost({
       content,
       providerContext,
       styleCache,
-      providerScope,
-      providerWrapper
+      moduleSources,
+      antdStylePrefix,
+      overlayHost,
+      { ...providerScope, theme: runtimeMotionTheme },
+      providerWrapper,
+      surfaceLayoutEpoch
     ),
     surface.mountElement,
     renderEpoch
@@ -270,7 +370,7 @@ function decodeModuleStyle(asset: NativeReactResolvedModuleAsset): string {
 
 export function createFrontstageUnavailableBlockContext(
   plan: NativeTrustedBlockPreparePlan
-): BlockContext {
+): BlockContextSeed {
   const state: Record<string, unknown> = {};
 
   return {
@@ -415,23 +515,47 @@ function wrapWithHostProviders(
   children: ReactNode,
   context: FrontstageNativeTrustedBlockProviderContext,
   styleCache: ReturnType<typeof createCache>,
+  moduleSources: readonly string[],
+  antdStylePrefix: string,
+  overlayHost: NativeOverlayHost,
   providerScope?: FrontstageNativeTrustedBlockProviderScope,
-  providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper
+  providerWrapper?: FrontstageNativeTrustedBlockProviderWrapper,
+  surfaceLayoutEpoch = 'stable'
 ): ReactNode {
-  const getShadowContainer = () => context.shadowRoot;
+  const getPopupContainer = () => overlayHost.getPopupContainer();
+  const getTargetContainer = () => context.scrollOwner;
   const isolatedPrefix = createShadowStylePrefix(context.plan.blockId);
-  const scopedChildren = (
+  const hostChildren = (
     <StyleProvider cache={styleCache} container={context.shadowRoot}>
       <ConfigProvider
-        getPopupContainer={getShadowContainer}
-        getTargetContainer={getShadowContainer}
+        getPopupContainer={getPopupContainer}
+        getTargetContainer={getTargetContainer}
         locale={providerScope?.locale}
         prefixCls={isolatedPrefix}
         theme={providerScope?.theme}
       >
-        <AntdApp>{children}</AntdApp>
+        <NativeBlockSurfaceProvider
+          scope={{
+            targetRoot: context.shadowRoot,
+            scrollOwner: context.scrollOwner,
+            layoutEpoch: surfaceLayoutEpoch,
+            overlayHost
+          }}
+        >
+          <AntdApp>{children}</AntdApp>
+        </NativeBlockSurfaceProvider>
       </ConfigProvider>
     </StyleProvider>
+  );
+  const scopedChildren = moduleSources.includes('antd-style') ? (
+    <AntdStyleSurfaceProvider
+      container={context.shadowRoot}
+      prefix={antdStylePrefix}
+    >
+      {hostChildren}
+    </AntdStyleSurfaceProvider>
+  ) : (
+    hostChildren
   );
 
   return providerWrapper
@@ -439,11 +563,71 @@ function wrapWithHostProviders(
     : scopedChildren;
 }
 
+let antdStyleSurfaceSequence = 0;
+
+function createAntdStyleSurfacePrefix(blockId: string): string {
+  antdStyleSurfaceSequence += 1;
+  return `native-css-${encodeAlphabetic(hashBlockId(blockId) + 1)}-${encodeAlphabetic(antdStyleSurfaceSequence)}`;
+}
+
+function encodeAlphabetic(value: number): string {
+  let remaining = value;
+  let encoded = '';
+  while (remaining > 0) {
+    remaining -= 1;
+    encoded = String.fromCharCode(97 + (remaining % 26)) + encoded;
+    remaining = Math.floor(remaining / 26);
+  }
+  return encoded;
+}
+
+function AntdStyleSurfaceProvider({
+  children,
+  container,
+  prefix
+}: {
+  children: ReactNode;
+  container: ShadowRoot;
+  prefix: string;
+}): ReactNode {
+  const [Provider, setProvider] = useState<AntdStyleShadowProvider | null>(
+    null
+  );
+  const [loadError, setLoadError] = useState<unknown>(null);
+
+  useEffect(() => {
+    let active = true;
+    void loadAntdStyleModule().then(
+      (module) => {
+        if (active) setProvider(() => module.StyleProvider);
+      },
+      (error: unknown) => {
+        if (active) setLoadError(error);
+      }
+    );
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (loadError) throw loadError;
+  if (!Provider) return null;
+  return (
+    <Provider container={container} prefix={prefix}>
+      {children}
+    </Provider>
+  );
+}
+
 function createShadowStylePrefix(blockId: string): string {
+  return `ant-native-${hashBlockId(blockId).toString(36)}`;
+}
+
+function hashBlockId(blockId: string): number {
   let hash = 2166136261;
   for (const character of blockId) {
     hash ^= character.codePointAt(0) ?? 0;
     hash = Math.imul(hash, 16777619);
   }
-  return `ant-native-${(hash >>> 0).toString(36)}`;
+  return hash >>> 0;
 }

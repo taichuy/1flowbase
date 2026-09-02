@@ -1,11 +1,12 @@
 import type { editor, IRange } from 'monaco-editor';
 import { Button, Tooltip } from 'antd';
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef } from 'react';
+import { loadMonacoEditorModule } from '../../../../../shared/code-block/monaco-runtime';
 import { i18nText } from '../../../../../shared/i18n/text';
 import type { FlowSelectorOption } from '../../../lib/selector-options';
 import { createTemplateSelectorToken } from '../../../lib/template-binding';
 
-const MonacoEditor = lazy(() => import('@monaco-editor/react'));
+const MonacoEditor = lazy(loadMonacoEditorModule);
 
 const CODE_EDITOR_OPTIONS = {
   automaticLayout: true,

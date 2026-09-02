@@ -1,21 +1,19 @@
-import {
-  ArrowDownOutlined,
-  ArrowUpOutlined,
-  DeleteOutlined,
-  DownOutlined,
-  DragOutlined,
-  EditOutlined,
-  EyeInvisibleOutlined,
-  EyeOutlined,
-  FileAddOutlined,
-  FileTextOutlined,
-  FolderAddOutlined,
-  FolderOutlined,
-  InfoCircleOutlined,
-  MenuOutlined,
-  PlusOutlined,
-  RightOutlined
-} from '@ant-design/icons';
+import ArrowDownOutlined from '@ant-design/icons/es/icons/ArrowDownOutlined';
+import ArrowUpOutlined from '@ant-design/icons/es/icons/ArrowUpOutlined';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
+import DragOutlined from '@ant-design/icons/es/icons/DragOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import EyeInvisibleOutlined from '@ant-design/icons/es/icons/EyeInvisibleOutlined';
+import EyeOutlined from '@ant-design/icons/es/icons/EyeOutlined';
+import FileAddOutlined from '@ant-design/icons/es/icons/FileAddOutlined';
+import FileTextOutlined from '@ant-design/icons/es/icons/FileTextOutlined';
+import FolderAddOutlined from '@ant-design/icons/es/icons/FolderAddOutlined';
+import FolderOutlined from '@ant-design/icons/es/icons/FolderOutlined';
+import InfoCircleOutlined from '@ant-design/icons/es/icons/InfoCircleOutlined';
+import MenuOutlined from '@ant-design/icons/es/icons/MenuOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import RightOutlined from '@ant-design/icons/es/icons/RightOutlined';
 import { Button, Typography, Dropdown, Tooltip, Switch } from 'antd';
 import { useState } from 'react';
 import type { DragEvent, FocusEvent } from 'react';
@@ -769,56 +767,56 @@ export function FrontStagePageTreeSidebar({
             setDropIndicator
           })
         )}
-        {canEdit ? (
-          <li className="frontstage-page-tree-sidebar__add-row">
-            <div
-              className="frontstage-page-tree-sidebar__actions"
-              onBlur={handleAddMenuBlur}
-              onMouseEnter={() => setIsAddMenuOpen(true)}
-              onMouseLeave={() => setIsAddMenuOpen(false)}
-            >
-              <Button
-                aria-expanded={isAddMenuOpen}
-                aria-haspopup="menu"
-                aria-label={i18nText('frontstage', 'auto.add_menu')}
-                className="frontstage-page-tree-sidebar__add-item-btn frontstage-add-action-button frontstage-add-action-button--full"
-                disabled={isOperationPending}
-                icon={<PlusOutlined />}
-                onClick={() => setIsAddMenuOpen(true)}
-                onFocus={() => setIsAddMenuOpen(true)}
-                size="small"
-              >
-                {i18nText('frontstage', 'auto.add_menu')}
-              </Button>
-              {isAddMenuOpen ? (
-                <div
-                  className="frontstage-page-tree-sidebar__add-menu"
-                  role="menu"
-                >
-                  <button
-                    className="frontstage-page-tree-sidebar__add-menu-item"
-                    onClick={handleAddGroup}
-                    role="menuitem"
-                    type="button"
-                  >
-                    <FolderAddOutlined aria-hidden />
-                    {i18nText('frontstage', 'auto.add_group')}
-                  </button>
-                  <button
-                    className="frontstage-page-tree-sidebar__add-menu-item"
-                    onClick={handleAddPage}
-                    role="menuitem"
-                    type="button"
-                  >
-                    <FileAddOutlined aria-hidden />
-                    {i18nText('frontstage', 'auto.add_page')}
-                  </button>
-                </div>
-              ) : null}
-            </div>
-          </li>
-        ) : null}
       </ul>
+      {canEdit ? (
+        <div className="frontstage-page-tree-sidebar__add-row">
+          <div
+            className="frontstage-page-tree-sidebar__actions"
+            onBlur={handleAddMenuBlur}
+            onMouseEnter={() => setIsAddMenuOpen(true)}
+            onMouseLeave={() => setIsAddMenuOpen(false)}
+          >
+            <Button
+              aria-expanded={isAddMenuOpen}
+              aria-haspopup="menu"
+              aria-label={i18nText('frontstage', 'auto.add_menu')}
+              className="frontstage-page-tree-sidebar__add-item-btn frontstage-add-action-button frontstage-add-action-button--full"
+              disabled={isOperationPending}
+              icon={<PlusOutlined />}
+              onClick={() => setIsAddMenuOpen(true)}
+              onFocus={() => setIsAddMenuOpen(true)}
+              size="small"
+            >
+              {i18nText('frontstage', 'auto.add_menu')}
+            </Button>
+            {isAddMenuOpen ? (
+              <div
+                className="frontstage-page-tree-sidebar__add-menu"
+                role="menu"
+              >
+                <button
+                  className="frontstage-page-tree-sidebar__add-menu-item"
+                  onClick={handleAddGroup}
+                  role="menuitem"
+                  type="button"
+                >
+                  <FolderAddOutlined aria-hidden />
+                  {i18nText('frontstage', 'auto.add_group')}
+                </button>
+                <button
+                  className="frontstage-page-tree-sidebar__add-menu-item"
+                  onClick={handleAddPage}
+                  role="menuitem"
+                  type="button"
+                >
+                  <FileAddOutlined aria-hidden />
+                  {i18nText('frontstage', 'auto.add_page')}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

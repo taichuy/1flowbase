@@ -13,13 +13,11 @@ import {
   Typography
 } from 'antd';
 
-import {
-  ApiOutlined,
-  CheckCircleOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  PlusOutlined
-} from '@ant-design/icons';
+import ApiOutlined from '@ant-design/icons/es/icons/ApiOutlined';
+import CheckCircleOutlined from '@ant-design/icons/es/icons/CheckCircleOutlined';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 
 import type {
   SettingsAuthenticateModelProviderInstanceResult,

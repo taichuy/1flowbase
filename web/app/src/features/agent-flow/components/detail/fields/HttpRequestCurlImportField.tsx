@@ -1,4 +1,4 @@
-import { ImportOutlined } from '@ant-design/icons';
+import ImportOutlined from '@ant-design/icons/es/icons/ImportOutlined';
 import { App, Button, Modal, Input } from 'antd';
 import { useState } from 'react';
 import type { FlowBinding } from '@1flowbase/flow-schema';

@@ -1,19 +1,9 @@
-import {
-  CodeOutlined,
-  DownOutlined,
-  HistoryOutlined,
-  IssuesCloseOutlined,
-  SaveOutlined
-} from '@ant-design/icons';
-import {
-  Badge,
-  Button,
-  Dropdown,
-  Space,
-  Tag,
-  Tooltip,
-  Typography
-} from 'antd';
+import CodeOutlined from '@ant-design/icons/es/icons/CodeOutlined';
+import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
+import HistoryOutlined from '@ant-design/icons/es/icons/HistoryOutlined';
+import IssuesCloseOutlined from '@ant-design/icons/es/icons/IssuesCloseOutlined';
+import SaveOutlined from '@ant-design/icons/es/icons/SaveOutlined';
+import { Badge, Button, Dropdown, Space, Tag, Tooltip, Typography } from 'antd';
 import type { ReactNode } from 'react';
 
 import { i18nText } from '../../../shared/i18n/text';

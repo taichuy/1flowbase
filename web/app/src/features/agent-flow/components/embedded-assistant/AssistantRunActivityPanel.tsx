@@ -1,6 +1,8 @@
-import { Think, ThoughtChain } from '@ant-design/x';
-import type { ThoughtChainItemType } from '@ant-design/x';
-import { ToolOutlined } from '@ant-design/icons';
+import Think from '@ant-design/x/es/think';
+import ThoughtChain, {
+  type ThoughtChainItemType
+} from '@ant-design/x/es/thought-chain';
+import ToolOutlined from '@ant-design/icons/es/icons/ToolOutlined';
 import { Alert, Divider, Empty, Spin, Typography } from 'antd';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {

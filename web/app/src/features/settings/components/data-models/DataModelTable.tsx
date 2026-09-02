@@ -14,14 +14,12 @@ import {
   App
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
-import {
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  CheckCircleOutlined,
-  ExclamationCircleOutlined,
-  StopOutlined
-} from '@ant-design/icons';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import CheckCircleOutlined from '@ant-design/icons/es/icons/CheckCircleOutlined';
+import ExclamationCircleOutlined from '@ant-design/icons/es/icons/ExclamationCircleOutlined';
+import StopOutlined from '@ant-design/icons/es/icons/StopOutlined';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useAuthStore } from '../../../../state/auth-store';

@@ -1,17 +1,9 @@
-import { App as AntdApp, ConfigProvider, Layout, Typography } from 'antd';
+import { Layout, Typography } from 'antd';
 import type { PropsWithChildren, ReactNode } from 'react';
 
-import { emeraldLightTheme } from './theme';
+export { AppThemeProvider } from './app-theme-provider';
 
 const { Header, Content } = Layout;
-
-export function AppThemeProvider({ children }: PropsWithChildren) {
-  return (
-    <ConfigProvider theme={emeraldLightTheme}>
-      <AntdApp>{children}</AntdApp>
-    </ConfigProvider>
-  );
-}
 
 export interface AppShellProps extends PropsWithChildren {
   title: string;
@@ -19,7 +11,12 @@ export interface AppShellProps extends PropsWithChildren {
   actions?: ReactNode;
 }
 
-export function AppShell({ title, navigation, actions, children }: AppShellProps) {
+export function AppShell({
+  title,
+  navigation,
+  actions,
+  children
+}: AppShellProps) {
   return (
     <Layout className="app-shell">
       <Header
@@ -29,7 +26,12 @@ export function AppShell({ title, navigation, actions, children }: AppShellProps
       >
         <div className="app-shell-header-main">
           <div className="app-shell-brand">
-            <img className="app-shell-logo" src="/icon.svg" alt="" aria-hidden="true" />
+            <img
+              className="app-shell-logo"
+              src="/icon.svg"
+              alt=""
+              aria-hidden="true"
+            />
             <Typography.Title level={4} className="app-shell-title">
               {title}
             </Typography.Title>

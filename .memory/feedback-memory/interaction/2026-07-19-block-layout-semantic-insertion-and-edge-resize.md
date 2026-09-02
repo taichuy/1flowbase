@@ -15,8 +15,8 @@ match_when:
   - 设计或实现区块、卡片、schema UI 的拖拽组合与 resize 交互
   - 评估碰撞处理、网格压缩或插入预览
 created_at: 2026-07-19 22
-updated_at: 2026-07-20 09
-last_verified_at: 2026-07-20 09
+updated_at: 2026-09-01 07
+last_verified_at: 2026-09-01 07
 decision_policy: direct_reference
 scope:
   - web/app/src/features/frontstage
@@ -34,10 +34,13 @@ scope:
 - 碰撞与尺寸响应使用纯计算内核和成熟算法；CSS 只呈现求解结果与命中反馈，不拥有布局真值或碰撞逻辑。
 - `/home/taichuy/git/react-grid-layout` 默认只作为已发布依赖的参考源码；优先通过包公开的 `core / react / extras` API 在 1flowbase 内组合。未经用户另行授权，不修改、fork 或 patch 上游源码。
 - 自动铺满与允许空隙是两个不同产品语义，必须显式建模为可持久化布局策略；共享 geometry/constraint/commit 内核，不能靠同一算法在不同拖拽场景中隐式切换心智。
+- 诊断区块尺寸异常时，先区分 intrinsic size、constraint、allocated size、position 四类量，建立布局方程、不变量和收敛条件，再审查局部状态判断；不得从某个 `if` 或默认像素值直接跳到根因。优先对照 Measure/Arrange、CSS Grid track sizing、约束求解或其他成熟布局协议，说明为何适用或不适用。
 
 ## 原因
 
 纯碰撞位移只会把区块推开或腾出空位，没有吸收用户真正想表达的“组成同一行并自动分配比例”。仅在 Frontstage 叠加局部分栏 planner 会固化短期产品语义；应先利用 `react-grid-layout` 已发布的底层扩展面，再由 1flowbase 拥有产品布局策略。默认 `react-resizable` SVG 手柄也与现有画布壳层交互语言不一致。
+
+2026-09-01 用户进一步纠正：区块高度问题不能只以运行时分支命中作为解释；若未建立自然尺寸与分配尺寸之间的因果模型，就无法判断是状态机、算法还是架构边界错误，也无法证明修复会收敛。
 
 ## 适用场景
 

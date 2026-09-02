@@ -1,16 +1,26 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/react';
+import { createStyles } from 'antd-style';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import {
+  act,
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode
+} from 'react';
 import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-import type { BlockContext } from '@1flowbase/page-protocol';
+import type { BlockContext, BlockContextSeed } from '@1flowbase/page-protocol';
 import type { NativeTrustedBlockPreparePlan } from '@1flowbase/page-runtime';
 
 import {
   FrontstageNativeTrustedBlockPortalHost,
-  type FrontstageNativeTrustedBlockReactComponent
+  type FrontstageNativeTrustedBlockReactComponent,
+  type FrontstageNativeTrustedBlockReactComponentProps
 } from '../../lib/native-trusted-block-react-adapter';
 import {
   TrustedFrontendContributionHandle,
@@ -56,6 +66,11 @@ vi.mock('antd', async () => {
     },
     App({ children }: { children?: ReactNode }) {
       return React.createElement(React.Fragment, null, children);
+    },
+    Skeleton() {
+      return React.createElement('div', {
+        'data-testid': 'runtime-suspense-skeleton'
+      });
     }
   };
 });
@@ -75,7 +90,9 @@ function createPlan(
   };
 }
 
-function createContext(overrides: Partial<BlockContext> = {}): BlockContext {
+function createContext(
+  overrides: Partial<BlockContextSeed> = {}
+): BlockContextSeed {
   return {
     currentUser: null,
     workspace: { id: 'workspace-1' },
@@ -178,6 +195,77 @@ describe('frontstage native trusted block declarative portal host', () => {
     expect(source).not.toContain('.unmount(');
   });
 
+  test('I1950-AC-001 contains a lazy component suspension inside its native runtime cell', async () => {
+    const stableRoot = createBlockRoot();
+    const lazyRoot = createBlockRoot();
+    let resolveLazyBlock:
+      | ((module: {
+          default: FrontstageNativeTrustedBlockReactComponent;
+        }) => void)
+      | undefined;
+    const LazyBlock = lazy(
+      () =>
+        new Promise<{
+          default: FrontstageNativeTrustedBlockReactComponent;
+        }>((resolve) => {
+          resolveLazyBlock = resolve;
+        })
+    );
+    const StableBlock: FrontstageNativeTrustedBlockReactComponent = () => (
+      <output data-testid="stable-block">stable</output>
+    );
+
+    render(
+      <Suspense fallback={<div data-testid="page-suspense-fallback" />}>
+        <FrontstageNativeTrustedBlockPortalHost
+          root={stableRoot}
+          renderEpoch="stable:1"
+          plan={createPlan({ blockId: 'stable' })}
+          component={StableBlock}
+          ctx={createContext()}
+        />
+        <FrontstageNativeTrustedBlockPortalHost
+          root={lazyRoot}
+          renderEpoch="lazy:1"
+          plan={createPlan({ blockId: 'lazy' })}
+          component={LazyBlock}
+          ctx={createContext()}
+        />
+      </Suspense>
+    );
+
+    await waitFor(() => expect(lazyRoot.shadowRoot).not.toBeNull());
+    await waitFor(() =>
+      expect(
+        document.querySelector('[data-testid="page-suspense-fallback"]') ??
+          lazyRoot.shadowRoot?.querySelector(
+            '[data-testid="native-block-module-loading-shell"]'
+          )
+      ).not.toBeNull()
+    );
+    expect(
+      document.querySelector('[data-testid="page-suspense-fallback"]')
+    ).toBeNull();
+    expect(
+      await shadowQueries(lazyRoot).findByTestId(
+        'native-block-module-loading-shell'
+      )
+    ).toBeInTheDocument();
+
+    await act(async () => {
+      resolveLazyBlock?.({
+        default: () => <output data-testid="lazy-block">lazy</output>
+      });
+    });
+
+    expect(
+      await shadowQueries(lazyRoot).findByTestId('lazy-block')
+    ).toHaveTextContent('lazy');
+    expect(
+      shadowQueries(stableRoot).getByTestId('stable-block')
+    ).toHaveTextContent('stable');
+  });
+
   test('D3R-AC-001 preserves component identity across plan, context, and theme updates', async () => {
     const root = createBlockRoot();
     const mounted = vi.fn();
@@ -208,6 +296,7 @@ describe('frontstage native trusted block declarative portal host', () => {
         plan={createPlan()}
         component={StatefulBlock}
         ctx={createContext({ props: { contextTitle: 'Context 1' } })}
+        moduleSources={['antd-style']}
         providerScope={{ theme: { token: { colorPrimary: '#111111' } } }}
       />
     );
@@ -221,6 +310,7 @@ describe('frontstage native trusted block declarative portal host', () => {
         plan={createPlan({ props: { title: 'Updated' } })}
         component={StatefulBlock}
         ctx={createContext({ props: { contextTitle: 'Context 2' } })}
+        moduleSources={['antd-style']}
         providerScope={{ theme: { token: { colorPrimary: '#222222' } } }}
       />
     );
@@ -230,6 +320,139 @@ describe('frontstage native trusted block declarative portal host', () => {
     );
     expect(mounted).toHaveBeenCalledTimes(1);
     expect(unmounted).not.toHaveBeenCalled();
+  });
+
+  test('I1927-AC-001 injects the responsive motion budget into the native surface theme', async () => {
+    const root = createBlockRoot();
+
+    render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="motion:responsive"
+        plan={createPlan()}
+        component={() => <output>responsive motion</output>}
+        ctx={createContext()}
+      />
+    );
+
+    await shadowQueries(root).findByText('responsive motion');
+    expect(providerRecords.configs.at(-1)?.theme).toEqual({
+      token: expect.objectContaining({
+        motion: true,
+        motionDurationFast: '0.03s',
+        motionDurationMid: '0.05s',
+        motionDurationSlow: '0.08s'
+      })
+    });
+  });
+
+  test('I1927-AC-002 preserves authored theme tokens over the responsive defaults', async () => {
+    const root = createBlockRoot();
+
+    render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="motion:authored"
+        plan={createPlan()}
+        component={() => <output>authored motion</output>}
+        ctx={createContext()}
+        providerScope={{
+          theme: {
+            token: {
+              colorPrimary: '#123456',
+              motionDurationMid: '0.24s'
+            }
+          }
+        }}
+      />
+    );
+
+    await shadowQueries(root).findByText('authored motion');
+    expect(providerRecords.configs.at(-1)?.theme).toEqual({
+      token: expect.objectContaining({
+        colorPrimary: '#123456',
+        motionDurationFast: '0.03s',
+        motionDurationMid: '0.24s',
+        motionDurationSlow: '0.08s'
+      })
+    });
+  });
+
+  test('I1927-AC-003 follows reduced-motion changes without remounting the block', async () => {
+    const root = createBlockRoot();
+    const mounted = vi.fn();
+    let reduced = true;
+    let changeListener: ((event: MediaQueryListEvent) => void) | undefined;
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn(() => ({
+        get matches() {
+          return reduced;
+        },
+        media: '(prefers-reduced-motion: reduce)',
+        onchange: null,
+        addEventListener: vi.fn(
+          (_type: string, listener: (event: MediaQueryListEvent) => void) => {
+            changeListener = listener;
+          }
+        ),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn()
+      }))
+    );
+    const Block = () => {
+      useEffect(() => mounted(), []);
+      return <output>reduced motion</output>;
+    };
+
+    render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="motion:reduced"
+        plan={createPlan()}
+        component={Block}
+        ctx={createContext()}
+      />
+    );
+
+    await shadowQueries(root).findByText('reduced motion');
+    expect(
+      (
+        providerRecords.configs.at(-1)?.theme as {
+          token?: Record<string, unknown>;
+        }
+      ).token
+    ).toEqual(
+      expect.objectContaining({
+        motion: false,
+        motionDurationFast: '0s',
+        motionDurationMid: '0s',
+        motionDurationSlow: '0s'
+      })
+    );
+
+    reduced = false;
+    act(() => changeListener?.({ matches: false } as MediaQueryListEvent));
+
+    await waitFor(() =>
+      expect(
+        (
+          providerRecords.configs.at(-1)?.theme as {
+            token?: Record<string, unknown>;
+          }
+        ).token
+      ).toEqual(
+        expect.objectContaining({
+          motion: true,
+          motionDurationFast: '0.03s',
+          motionDurationMid: '0.05s',
+          motionDurationSlow: '0.08s'
+        })
+      )
+    );
+    expect(mounted).toHaveBeenCalledTimes(1);
   });
 
   test('D5-P2 mounts once, updates without remounting, and disposes the typed contribution instance once', async () => {
@@ -283,7 +506,7 @@ describe('frontstage native trusted block declarative portal host', () => {
     dispose.mockRestore();
   });
 
-  test('D3R-AC-007 scopes providers, authored CSS, and popup containment to the block ShadowRoot', async () => {
+  test('I1931-AC-001/002 scopes styles to the ShadowRoot and default popups to the Block top layer', async () => {
     const root = createBlockRoot();
     const receivedContainment: unknown[] = [];
     const Block: FrontstageNativeTrustedBlockReactComponent = ({
@@ -314,8 +537,41 @@ describe('frontstage native trusted block declarative portal host', () => {
       expect.objectContaining({ container: shadowRoot })
     ]);
     const config = providerRecords.configs[0];
-    expect((config.getPopupContainer as () => ShadowRoot)()).toBe(shadowRoot);
-    expect((config.getTargetContainer as () => ShadowRoot)()).toBe(shadowRoot);
+    const popupContainer = (config.getPopupContainer as () => HTMLElement)();
+    expect(popupContainer).toBeInstanceOf(HTMLElement);
+    expect(popupContainer.parentNode).toBe(shadowRoot);
+    expect(popupContainer).toHaveAttribute(
+      'data-flowbase-native-overlay-layer',
+      'native-block-1'
+    );
+    expect(popupContainer).toHaveAttribute('popover', 'manual');
+    const popup = document.createElement('div');
+    popup.textContent = 'Cascader options';
+    const nestedPopup = document.createElement('div');
+    nestedPopup.textContent = 'Cascader nested options';
+    popupContainer.append(popup, nestedPopup);
+    await waitFor(() =>
+      expect(popupContainer).toHaveAttribute(
+        'data-flowbase-native-overlay-state',
+        'open'
+      )
+    );
+    popup.remove();
+    await new Promise<void>((resolve) =>
+      popupContainer.ownerDocument.defaultView?.queueMicrotask(resolve)
+    );
+    expect(popupContainer).toHaveAttribute(
+      'data-flowbase-native-overlay-state',
+      'open'
+    );
+    nestedPopup.remove();
+    await waitFor(() =>
+      expect(popupContainer).toHaveAttribute(
+        'data-flowbase-native-overlay-state',
+        'closed'
+      )
+    );
+    expect((config.getTargetContainer as () => Window)()).toBe(window);
     expect(receivedContainment).toEqual([
       expect.objectContaining({
         root: shadowRoot,
@@ -326,6 +582,140 @@ describe('frontstage native trusted block declarative portal host', () => {
       })
     ]);
     expect(document.head).not.toHaveTextContent(/\.native-same/);
+  });
+
+  test('I1907-AC-001/002 injects antd-style rules into the importing block ShadowRoot', async () => {
+    const root = createBlockRoot();
+    const useStyles = createStyles({
+      shell: {
+        border: '3px solid rgb(22, 119, 255)',
+        padding: 17
+      }
+    });
+    const Block = () => {
+      const { styles } = useStyles();
+      return <output className={styles.shell}>antd-style scoped</output>;
+    };
+
+    render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="antd-style:1"
+        plan={createPlan({
+          source:
+            "import { createStyles } from 'antd-style'; export default function Block() { return null; }"
+        })}
+        component={Block}
+        ctx={createContext()}
+        moduleSources={['antd-style']}
+      />
+    );
+
+    const output = await shadowQueries(root).findByText('antd-style scoped');
+    expect(output.className).toMatch(/css-/u);
+    expect(
+      root.shadowRoot?.querySelector('style[data-emotion]')
+    ).not.toBeNull();
+    expect(document.head.querySelector(`style[data-emotion]`)).toBeNull();
+  });
+
+  test('I1907-AC-002/005 isolates antd-style caches for two surfaces and cleans them on dispose', async () => {
+    const firstRoot = createBlockRoot();
+    const secondRoot = createBlockRoot();
+    const useStyles = createStyles({
+      surface: { backgroundColor: 'rgb(245, 245, 245)' }
+    });
+    const Block = ({
+      plan
+    }: FrontstageNativeTrustedBlockReactComponentProps) => {
+      const { styles } = useStyles();
+      return <output className={styles.surface}>{plan.entry}</output>;
+    };
+    const view = render(
+      <>
+        <FrontstageNativeTrustedBlockPortalHost
+          root={firstRoot}
+          renderEpoch="antd-style:first"
+          plan={createPlan({ entry: 'First' })}
+          component={Block}
+          ctx={createContext()}
+          moduleSources={['antd-style']}
+        />
+        <FrontstageNativeTrustedBlockPortalHost
+          root={secondRoot}
+          renderEpoch="antd-style:second"
+          plan={createPlan({ entry: 'Second' })}
+          component={Block}
+          ctx={createContext()}
+          moduleSources={['antd-style']}
+        />
+      </>
+    );
+
+    await shadowQueries(firstRoot).findByText('First');
+    await shadowQueries(secondRoot).findByText('Second');
+    const firstStyle = firstRoot.shadowRoot?.querySelector(
+      'style[data-emotion]'
+    );
+    const secondStyle = secondRoot.shadowRoot?.querySelector(
+      'style[data-emotion]'
+    );
+    expect(firstStyle?.getAttribute('data-emotion')).not.toBe(
+      secondStyle?.getAttribute('data-emotion')
+    );
+    expect(document.head.querySelector('style[data-emotion]')).toBeNull();
+
+    view.unmount();
+    expect(firstRoot.shadowRoot?.childNodes).toHaveLength(0);
+    expect(secondRoot.shadowRoot?.childNodes).toHaveLength(0);
+  });
+
+  test('AC-003/006 injects ctx.assets into the current ShadowRoot and disposes its resources on unmount', async () => {
+    const root = createBlockRoot();
+    const receivedContexts: BlockContext[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          '<svg><symbol id="icon-scoped" viewBox="0 0 16 16"><path d="M0 0h16v16H0z" /></symbol></svg>'
+      }))
+    );
+    const Block: FrontstageNativeTrustedBlockReactComponent = ({ ctx }) => {
+      receivedContexts.push(ctx);
+      useEffect(() => {
+        void ctx.assets.loadSvgSprite('https://cdn.example.test/icons.svg');
+      }, [ctx]);
+      return <output>Scoped assets ready</output>;
+    };
+
+    const view = render(
+      <FrontstageNativeTrustedBlockPortalHost
+        root={root}
+        renderEpoch="assets:1"
+        plan={createPlan()}
+        component={Block}
+        ctx={createContext()}
+      />
+    );
+
+    await shadowQueries(root).findByText('Scoped assets ready');
+    await waitFor(() =>
+      expect(root.shadowRoot?.querySelector('#icon-scoped')).not.toBeNull()
+    );
+    expect(receivedContexts.at(-1)?.root).toBe(root.shadowRoot);
+    expect(receivedContexts.at(-1)?.assets).toEqual(
+      expect.objectContaining({
+        importModule: expect.any(Function),
+        loadStyle: expect.any(Function),
+        loadScript: expect.any(Function),
+        loadSvgSprite: expect.any(Function)
+      })
+    );
+
+    view.unmount();
+    expect(root.shadowRoot?.querySelector('#icon-scoped')).toBeNull();
   });
 
   test('D3R-AC-007 contains a render error to the current portal', async () => {

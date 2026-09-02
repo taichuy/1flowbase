@@ -1,4 +1,4 @@
-import { MoreOutlined } from '@ant-design/icons';
+import MoreOutlined from '@ant-design/icons/es/icons/MoreOutlined';
 import { Button, Dropdown, Space } from 'antd';
 import type { MenuProps } from 'antd';
 import type { ReactNode } from 'react';

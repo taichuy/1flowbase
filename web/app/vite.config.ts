@@ -3,42 +3,78 @@ import { fileURLToPath, URL } from 'node:url';
 import react from '@vitejs/plugin-react';
 import { defineConfig, loadEnv, searchForWorkspaceRoot } from 'vite';
 
-import { oneFlowbaseDevRuntimePlugin } from './vite/dev-runtime';
+import { nativeModuleDeclarationsPlugin } from './build/native-module-declarations';
+import {
+  collectAntDesignEsModuleSources,
+  nativeAntDesignEsModulesPlugin
+} from './build/native-antd-es-modules';
+import {
+  collectAntDesignIconModuleSources,
+  nativeAntDesignIconsModulesPlugin
+} from './build/native-ant-design-icons-modules';
+import {
+  collectDndKitModuleSources,
+  nativeDndKitModulesPlugin
+} from './build/native-dnd-kit-modules';
+import { pageTreeIconAssetsPlugin } from './build/page-tree-icon-assets';
+import {
+  collectDayjsModuleSources,
+  nativeDayjsModulesPlugin
+} from './build/native-dayjs-modules';
+import { resolveProductionModulePreloadDependencies } from './build/production-module-preload';
+import {
+  planScenarioChunk,
+  scenarioChunkManifestPlugin
+} from './build/scenario-chunk-planner';
+import { FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES } from './src/features/frontstage/lib/native-modules/resolved-dependency-sources';
+import {
+  DEV_CRITICAL_INTEROP_SPECIFIERS,
+  devGenerationCacheDirectory,
+  oneFlowbaseDevRuntimePlugin
+} from './vite/dev-runtime';
 
 const reactDraggableBrowserDefines = {
   'process.env.DRAGGABLE_DEBUG': 'false'
 };
-
-function manualChunks(id: string) {
-  if (!id.includes('/node_modules/')) {
-    return;
-  }
-
-  if (id.includes('/monaco-editor/') || id.includes('/@monaco-editor/')) {
-    return 'monaco-vendor';
-  }
-
-  if (id.includes('/@xyflow/')) {
-    return 'flow-vendor';
-  }
-
-  if (
-    id.includes('/antd/') ||
-    id.includes('/@ant-design/') ||
-    id.includes('/rc-')
-  ) {
-    return 'antd-vendor';
-  }
-
-  if (
-    id.includes('/react/') ||
-    id.includes('/react-dom/') ||
-    id.includes('/scheduler/') ||
-    id.includes('/@tanstack/')
-  ) {
-    return 'react-vendor';
-  }
-}
+const appRoot = fileURLToPath(new URL('.', import.meta.url));
+const nativeAntDesignEsModuleSources = collectAntDesignEsModuleSources().map(
+  ({ moduleSource }) => moduleSource
+);
+const devCriticalAntDesignModules = [
+  'antd/es/alert',
+  'antd/es/app',
+  'antd/es/button',
+  'antd/es/config-provider',
+  'antd/es/input',
+  'antd/es/skeleton',
+  'antd/es/space',
+  'antd/es/spin',
+  'antd/es/theme',
+  'antd/es/theme/themes/default',
+  'antd/es/typography'
+] as const;
+const deferredNativeAntDesignEsModuleSources =
+  nativeAntDesignEsModuleSources.filter(
+    (moduleSource) =>
+      !devCriticalAntDesignModules.includes(
+        moduleSource as (typeof devCriticalAntDesignModules)[number]
+      )
+  );
+const nativeAntDesignIconsModuleInventory = collectAntDesignIconModuleSources({
+  projectRoot: appRoot
+});
+const nativeDndKitModuleInventory = collectDndKitModuleSources({
+  projectRoot: appRoot
+});
+const nativeDndKitPackageRoots = [
+  ...new Set(nativeDndKitModuleInventory.map(({ packageName }) => packageName))
+];
+const nativeDayjsModuleInventory = collectDayjsModuleSources({
+  projectRoot: appRoot
+});
+const nativeDayjsDeclarationSources = nativeDayjsModuleInventory
+  .filter(({ hasDeclaration }) => hasDeclaration)
+  .map(({ moduleSource }) => moduleSource);
 
 function parseAllowedHosts(value?: string) {
   const hosts = String(value || '')
@@ -64,6 +100,7 @@ function parseAllowedOrigins(value?: string) {
 
 export default defineConfig(({ command, mode }) => {
   const env = { ...loadEnv(mode, process.cwd(), ''), ...process.env };
+  const isRemoteDebug = mode === 'remote-debug';
   const devServerPort = Number.parseInt(env.VITE_DEV_SERVER_PORT || '3100', 10);
   const devAllowedHosts = parseAllowedHosts(env.VITE_DEV_ALLOWED_HOSTS);
   const devCorsAllowedOrigins = parseAllowedOrigins(
@@ -77,22 +114,56 @@ export default defineConfig(({ command, mode }) => {
   const externalNpmProxyTarget = (
     env.VITE_EXTERNAL_NPM_PROXY_TARGET || 'http://127.0.0.1:4174'
   ).replace(/\/$/, '');
+  const devCacheDirectory =
+    env.VITE_DEV_CACHE_DIR || devGenerationCacheDirectory(appRoot, mode);
 
   return {
-    ...(env.VITE_DEV_CACHE_DIR ? { cacheDir: env.VITE_DEV_CACHE_DIR } : {}),
+    cacheDir: devCacheDirectory,
     plugins: [
       oneFlowbaseDevRuntimePlugin({ root: process.cwd(), mode, command }),
+      pageTreeIconAssetsPlugin({ projectRoot: appRoot }),
+      scenarioChunkManifestPlugin(),
+      nativeAntDesignEsModulesPlugin(command),
+      nativeAntDesignIconsModulesPlugin({
+        inventory: nativeAntDesignIconsModuleInventory
+      }),
+      nativeDndKitModulesPlugin({ inventory: nativeDndKitModuleInventory }),
+      nativeDayjsModulesPlugin({ inventory: nativeDayjsModuleInventory }),
+      nativeModuleDeclarationsPlugin({
+        moduleSources: [
+          ...FRONTSTAGE_NATIVE_REACT_RESOLVED_DECLARATION_SOURCES,
+          ...nativeAntDesignEsModuleSources,
+          ...nativeDndKitPackageRoots,
+          ...nativeDayjsDeclarationSources
+        ],
+        projectRoot: appRoot
+      }),
       react()
     ],
     define: reactDraggableBrowserDefines,
     optimizeDeps: {
+      rolldownOptions: {
+        output: {
+          minify: true
+        }
+      },
+      exclude: [
+        '@ant-design/icons-svg',
+        'dayjs',
+        ...nativeDndKitPackageRoots,
+        ...deferredNativeAntDesignEsModuleSources
+      ],
       include: [
+        '@1flowbase/api-client/auth',
+        ...DEV_CRITICAL_INTEROP_SPECIFIERS,
         '@ant-design/icons',
+        '@ant-design/x/es/bubble',
+        '@ant-design/x/es/conversations',
+        '@ant-design/x/es/sender',
+        '@ant-design/x/es/think',
+        '@ant-design/x/es/thought-chain',
+        ...devCriticalAntDesignModules,
         '@ant-design/x-markdown',
-        '@dnd-kit/core',
-        '@dnd-kit/modifiers',
-        '@dnd-kit/sortable',
-        '@dnd-kit/utilities',
         '@lexical/react/LexicalComposer',
         '@lexical/react/LexicalComposerContext',
         '@lexical/react/LexicalContentEditable',
@@ -106,20 +177,26 @@ export default defineConfig(({ command, mode }) => {
         '@scalar/api-reference-react',
         '@xyflow/react',
         'antd',
+        'antd-img-crop',
         'copy-to-clipboard',
         'echarts',
         'lexical',
         'monaco-editor',
         'vditor'
-      ]
+      ],
+      needsInterop: [...DEV_CRITICAL_INTEROP_SPECIFIERS]
     },
     build: {
       chunkSizeWarningLimit: 3500,
       rollupOptions: {
         output: {
-          manualChunks
+          manualChunks: planScenarioChunk
         }
-      }
+      },
+      modulePreload: {
+        resolveDependencies: resolveProductionModulePreloadDependencies
+      },
+      sourcemap: isRemoteDebug
     },
     server: {
       host: '0.0.0.0',
@@ -139,6 +216,7 @@ export default defineConfig(({ command, mode }) => {
       strictPort: true,
       warmup: {
         clientFiles: [
+          './src/bootstrap.ts',
           './src/main.tsx',
           './src/app/router.tsx',
           './src/features/frontstage/pages/FrontStagePage.tsx',
@@ -178,11 +256,25 @@ export default defineConfig(({ command, mode }) => {
     },
     resolve: {
       alias: {
+        ...(command === 'serve'
+          ? {
+              '@ant-design/icons-svg/lib/asn': '@ant-design/icons-svg/es/asn'
+            }
+          : {}),
         '@1flowbase/shared-types': fileURLToPath(
           new URL('../packages/shared-types/src/index.ts', import.meta.url)
         ),
+        '@1flowbase/api-client/auth': fileURLToPath(
+          new URL('../packages/api-client/src/auth/index.ts', import.meta.url)
+        ),
         '@1flowbase/api-client': fileURLToPath(
           new URL('../packages/api-client/src/index.ts', import.meta.url)
+        ),
+        '@1flowbase/block-renderer/loading-shell': fileURLToPath(
+          new URL(
+            '../packages/block-renderer/src/BlockUiLoadingShell.tsx',
+            import.meta.url
+          )
         ),
         '@1flowbase/block-renderer': fileURLToPath(
           new URL('../packages/block-renderer/src/index.tsx', import.meta.url)
@@ -192,6 +284,9 @@ export default defineConfig(({ command, mode }) => {
             '../../scripts/node/testing/contracts/model-providers',
             import.meta.url
           )
+        ),
+        '@1flowbase/ui/app-theme-provider': fileURLToPath(
+          new URL('../packages/ui/src/app-theme-provider.tsx', import.meta.url)
         ),
         '@1flowbase/ui': fileURLToPath(
           new URL('../packages/ui/src/index.tsx', import.meta.url)
@@ -205,6 +300,12 @@ export default defineConfig(({ command, mode }) => {
         '@1flowbase/page-runtime/module-registry': fileURLToPath(
           new URL(
             '../packages/page-runtime/src/native-react-compiler/module-registry/contracts.ts',
+            import.meta.url
+          )
+        ),
+        '@1flowbase/page-runtime/source-contract': fileURLToPath(
+          new URL(
+            '../packages/page-runtime/src/native-react-compiler/source-contract.ts',
             import.meta.url
           )
         ),

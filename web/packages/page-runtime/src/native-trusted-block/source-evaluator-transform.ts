@@ -1,4 +1,5 @@
 import { NATIVE_TRUSTED_BLOCK_ALLOWED_IMPORTS } from '../native-trusted-block-source-policy';
+import { tokenizer } from 'acorn';
 import {
   NATIVE_REACT_JSX_RUNTIME_IMPORT_SOURCE,
   type DefaultExportDeclaration,
@@ -133,6 +134,39 @@ export function tokenizeSource(source: string): SourceToken[] {
     }
 
     index += 1;
+  }
+
+  return tokens;
+}
+
+export function tokenizeJavaScriptSource(source: string): SourceToken[] {
+  const tokens: SourceToken[] = [];
+  const parser = tokenizer(source, {
+    ecmaVersion: 'latest',
+    sourceType: 'module',
+    allowAwaitOutsideFunction: true
+  });
+  let depth = 0;
+
+  while (true) {
+    const token = parser.getToken();
+    const label = token.type.label;
+    if (label === 'eof') break;
+
+    if (label === ')' || label === ']' || label === '}') {
+      depth = Math.max(0, depth - 1);
+    }
+
+    const tokenValue = (token as typeof token & { value?: unknown }).value;
+    const value =
+      label === 'name' ? tokenValue : (token.type.keyword ?? undefined);
+    if (typeof value === 'string') {
+      tokens.push({ value, start: token.start, end: token.end, depth });
+    }
+
+    if (label === '(' || label === '[' || label === '{' || label === '${') {
+      depth += 1;
+    }
   }
 
   return tokens;

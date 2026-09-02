@@ -7,7 +7,7 @@ import {
   type HTMLAttributes
 } from 'react';
 
-import { DragOutlined } from '@ant-design/icons';
+import DragOutlined from '@ant-design/icons/es/icons/DragOutlined';
 import {
   closestCenter,
   DndContext,

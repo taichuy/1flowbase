@@ -14,12 +14,10 @@ import {
 } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import { useQuery } from '@tanstack/react-query';
-import {
-  CheckCircleOutlined,
-  EyeOutlined,
-  LinkOutlined,
-  ReloadOutlined
-} from '@ant-design/icons';
+import CheckCircleOutlined from '@ant-design/icons/es/icons/CheckCircleOutlined';
+import EyeOutlined from '@ant-design/icons/es/icons/EyeOutlined';
+import LinkOutlined from '@ant-design/icons/es/icons/LinkOutlined';
+import ReloadOutlined from '@ant-design/icons/es/icons/ReloadOutlined';
 
 import type {
   SettingsCompatibleDataModelTemplate,

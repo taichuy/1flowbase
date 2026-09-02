@@ -1,14 +1,12 @@
 /* eslint-disable react-refresh/only-export-components */
 
 import type { FlowNodeDocument } from '@1flowbase/flow-schema';
-import {
-  BookOutlined,
-  DownOutlined,
-  EditOutlined,
-  HomeOutlined,
-  PlusOutlined,
-  QuestionCircleOutlined
-} from '@ant-design/icons';
+import BookOutlined from '@ant-design/icons/es/icons/BookOutlined';
+import DownOutlined from '@ant-design/icons/es/icons/DownOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import HomeOutlined from '@ant-design/icons/es/icons/HomeOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import QuestionCircleOutlined from '@ant-design/icons/es/icons/QuestionCircleOutlined';
 import {
   Button,
   Card,

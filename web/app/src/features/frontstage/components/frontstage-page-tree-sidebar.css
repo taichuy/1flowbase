@@ -1,6 +1,9 @@
 .frontstage-page-tree-sidebar {
   display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
   gap: 12px;
+  height: 100%;
+  min-height: 0;
   min-width: 0;
   padding-inline: 12px;
 }
@@ -23,6 +26,13 @@
   margin: 0;
   min-width: 0;
   padding: 0;
+}
+
+.frontstage-page-tree-sidebar__tree {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .frontstage-page-tree-sidebar__children {
@@ -256,7 +266,13 @@
 
 @media (max-width: 991px) {
   .frontstage-page-tree-sidebar {
+    height: auto;
+    min-height: auto;
     padding-inline: 0;
+  }
+
+  .frontstage-page-tree-sidebar__tree {
+    overflow: visible;
   }
 }
 

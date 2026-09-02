@@ -2,18 +2,16 @@ import { useMemo } from 'react';
 
 import { EChart } from '@1flowbase/charts';
 import type { EChartOption } from '@1flowbase/charts';
-import {
-  CloudServerOutlined,
-  ClusterOutlined,
-  DashboardOutlined,
-  DatabaseOutlined,
-  HistoryOutlined,
-  LockOutlined,
-  OrderedListOutlined,
-  PieChartOutlined,
-  SafetyCertificateOutlined,
-  UserOutlined
-} from '@ant-design/icons';
+import CloudServerOutlined from '@ant-design/icons/es/icons/CloudServerOutlined';
+import ClusterOutlined from '@ant-design/icons/es/icons/ClusterOutlined';
+import DashboardOutlined from '@ant-design/icons/es/icons/DashboardOutlined';
+import DatabaseOutlined from '@ant-design/icons/es/icons/DatabaseOutlined';
+import HistoryOutlined from '@ant-design/icons/es/icons/HistoryOutlined';
+import LockOutlined from '@ant-design/icons/es/icons/LockOutlined';
+import OrderedListOutlined from '@ant-design/icons/es/icons/OrderedListOutlined';
+import PieChartOutlined from '@ant-design/icons/es/icons/PieChartOutlined';
+import SafetyCertificateOutlined from '@ant-design/icons/es/icons/SafetyCertificateOutlined';
+import UserOutlined from '@ant-design/icons/es/icons/UserOutlined';
 import {
   Alert,
   Descriptions,
@@ -729,7 +727,11 @@ export function MemoryStatsOverviewPane({
   }
 
   return (
-    <Space orientation="vertical" size={16} className="host-memory-panel__stats">
+    <Space
+      orientation="vertical"
+      size={16}
+      className="host-memory-panel__stats"
+    >
       <div className="host-memory-panel__stats-report">
         <div className="host-memory-panel__stats-report-header">
           <Typography.Text strong>

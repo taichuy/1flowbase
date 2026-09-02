@@ -1,4 +1,6 @@
-import { BarsOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import BarsOutlined from '@ant-design/icons/es/icons/BarsOutlined';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { useMemo, useState, type DragEvent } from 'react';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -663,10 +665,7 @@ export function SettingsAuthCenterSection() {
       {overviewQuery.isError ? (
         <Alert
           type="error"
-          title={i18nText(
-            'settings',
-            'auto.auth_center_overview_load_failed'
-          )}
+          title={i18nText('settings', 'auto.auth_center_overview_load_failed')}
         />
       ) : null}
       {overviewQuery.data ? (

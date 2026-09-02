@@ -21,15 +21,13 @@ import {
   App
 } from 'antd';
 import type { TreeDataNode } from 'antd';
-import {
-  SearchOutlined,
-  PlusOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  SaveOutlined,
-  TeamOutlined,
-  SafetyCertificateOutlined
-} from '@ant-design/icons';
+import SearchOutlined from '@ant-design/icons/es/icons/SearchOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
+import EditOutlined from '@ant-design/icons/es/icons/EditOutlined';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import SaveOutlined from '@ant-design/icons/es/icons/SaveOutlined';
+import TeamOutlined from '@ant-design/icons/es/icons/TeamOutlined';
+import SafetyCertificateOutlined from '@ant-design/icons/es/icons/SafetyCertificateOutlined';
 
 import { useAuthStore } from '../../../state/auth-store';
 import {

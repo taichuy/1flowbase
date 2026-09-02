@@ -34,20 +34,31 @@ describe('native trusted block portal surface', () => {
     expect(first).not.toHaveProperty('update');
   });
 
-  test('AC-001 AC-002 contains wide block content inside the mount scroll owner', () => {
+  test('I1969-AC-001 I1969-AC-002 I1969-AC-008 exposes one unclipped flow root without a forced gutter boundary', () => {
     const root = createRoot();
     const surface = attachNativeTrustedBlockPortalSurface({
       root,
-      blockId: 'wide-content'
+      blockId: 'flow-content'
     });
 
+    expect(surface).not.toHaveProperty('slotElement');
+    expect(
+      surface.shadowRoot.querySelector(
+        '[data-flowbase-native-trusted-block-slot]'
+      )
+    ).toBeNull();
+    expect(surface.mountElement.parentNode).toBe(surface.shadowRoot);
+    expect(surface.mountElement.style.padding).toBe('');
+    expect(
+      surface.mountElement.dataset.flowbaseNativeTrustedBlockAllocationMode
+    ).toBeUndefined();
     expect(surface.mountElement).toHaveStyle({
       width: '100%',
       maxWidth: '100%',
       minWidth: '0',
+      height: '100%',
       boxSizing: 'border-box',
-      overflowX: 'auto',
-      overflowY: 'visible'
+      overflow: 'visible'
     });
 
     surface.dispose();
@@ -63,14 +74,20 @@ describe('native trusted block portal surface', () => {
     const shadowRoot = first.shadowRoot;
 
     expect(root).toHaveAttribute('data-flowbase-native-trusted-block-root', '');
-    expect(root).toHaveAttribute('data-flowbase-native-trusted-block-id', 'epoch-1');
+    expect(root).toHaveAttribute(
+      'data-flowbase-native-trusted-block-id',
+      'epoch-1'
+    );
 
     first.dispose();
     first.dispose();
 
     expect(shadowRoot.childNodes).toHaveLength(0);
     expect(root).not.toHaveAttribute('data-flowbase-native-trusted-block-root');
-    expect(root).toHaveAttribute('data-flowbase-native-trusted-block-id', 'host-value');
+    expect(root).toHaveAttribute(
+      'data-flowbase-native-trusted-block-id',
+      'host-value'
+    );
 
     const second = attachNativeTrustedBlockPortalSurface({
       root,

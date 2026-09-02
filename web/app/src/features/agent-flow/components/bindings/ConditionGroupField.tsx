@@ -1,4 +1,5 @@
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
+import DeleteOutlined from '@ant-design/icons/es/icons/DeleteOutlined';
+import PlusOutlined from '@ant-design/icons/es/icons/PlusOutlined';
 import { Button, Input, Select } from 'antd';
 import { useRef } from 'react';
 import type {
@@ -27,12 +28,12 @@ interface ConditionGroupFieldProps {
 
 const COMPARATOR_OPTIONS = [
   {
-    label: i18nText("agentFlow", "auto.value_comparison"),
+    label: i18nText('agentFlow', 'auto.value_comparison'),
     options: [
-      { label: i18nText("agentFlow", "auto.exists"), value: 'exists' },
-      { label: i18nText("agentFlow", "auto.empty"), value: 'empty' },
-      { label: i18nText("agentFlow", "auto.equals"), value: 'equals' },
-      { label: i18nText("agentFlow", "auto.not_equals"), value: 'not_equals' },
+      { label: i18nText('agentFlow', 'auto.exists'), value: 'exists' },
+      { label: i18nText('agentFlow', 'auto.empty'), value: 'empty' },
+      { label: i18nText('agentFlow', 'auto.equals'), value: 'equals' },
+      { label: i18nText('agentFlow', 'auto.not_equals'), value: 'not_equals' },
       { label: '>', value: 'greater_than' },
       { label: '>=', value: 'greater_than_or_equals' },
       { label: '<', value: 'less_than' },
@@ -40,12 +41,18 @@ const COMPARATOR_OPTIONS = [
     ]
   },
   {
-    label: i18nText("agentFlow", "auto.string"),
+    label: i18nText('agentFlow', 'auto.string'),
     options: [
-      { label: i18nText("agentFlow", "auto.contains"), value: 'contains' },
-      { label: i18nText("agentFlow", "auto.starts_with"), value: 'starts_with' },
-      { label: i18nText("agentFlow", "auto.ends_with"), value: 'ends_with' },
-      { label: i18nText("agentFlow", "auto.matches_regex"), value: 'matches_regex' }
+      { label: i18nText('agentFlow', 'auto.contains'), value: 'contains' },
+      {
+        label: i18nText('agentFlow', 'auto.starts_with'),
+        value: 'starts_with'
+      },
+      { label: i18nText('agentFlow', 'auto.ends_with'), value: 'ends_with' },
+      {
+        label: i18nText('agentFlow', 'auto.matches_regex'),
+        value: 'matches_regex'
+      }
     ]
   }
 ] satisfies Array<{
@@ -96,7 +103,10 @@ function selectorValueType(options: FlowSelectorOption[], selector: string[]) {
   )?.valueType;
 }
 
-function coerceConditionConstantValue(text: string, valueType: string | undefined) {
+function coerceConditionConstantValue(
+  text: string,
+  valueType: string | undefined
+) {
   const trimmed = text.trim();
 
   if (valueType === 'number') {
@@ -208,8 +218,14 @@ function RightValueField({
         aria-label={`${ariaLabel}-right-kind`}
         className="agent-flow-condition-group__right-kind"
         options={[
-          { label: i18nText("agentFlow", "auto.fixed_value"), value: 'constant' },
-          { label: i18nText("agentFlow", "auto.select_upstream_output"), value: 'selector' }
+          {
+            label: i18nText('agentFlow', 'auto.fixed_value'),
+            value: 'constant'
+          },
+          {
+            label: i18nText('agentFlow', 'auto.select_upstream_output'),
+            value: 'selector'
+          }
         ]}
         value={valueKind}
         onChange={(kind) =>
@@ -239,7 +255,7 @@ function RightValueField({
       ) : (
         <Input
           aria-label={`${ariaLabel}-right`}
-          placeholder={i18nText("agentFlow", "auto.comparison_value")}
+          placeholder={i18nText('agentFlow', 'auto.comparison_value')}
           value={conditionValueText(condition.right)}
           onChange={(event) =>
             onChange({
@@ -321,7 +337,7 @@ export function ConditionGroupField({
           type="dashed"
           onClick={appendCondition}
         >
-          {i18nText("agentFlow", "auto.new_conditions")}
+          {i18nText('agentFlow', 'auto.new_conditions')}
         </Button>
         <Button
           className="agent-flow-condition-group__add"
@@ -329,7 +345,7 @@ export function ConditionGroupField({
           type="dashed"
           onClick={appendGroup}
         >
-          {i18nText("agentFlow", "auto.add_condition_group")}
+          {i18nText('agentFlow', 'auto.add_condition_group')}
         </Button>
       </div>
       {value.conditions.map((condition, index) => {
@@ -348,7 +364,10 @@ export function ConditionGroupField({
                 }
               />
               <Button
-                aria-label={i18nText("agentFlow", "auto.delete_condition_group")}
+                aria-label={i18nText(
+                  'agentFlow',
+                  'auto.delete_condition_group'
+                )}
                 className="agent-flow-binding-row__delete"
                 danger
                 icon={<DeleteOutlined />}
@@ -420,7 +439,7 @@ export function ConditionGroupField({
               }
             />
             <Button
-              aria-label={i18nText("agentFlow", "auto.delete_condition")}
+              aria-label={i18nText('agentFlow', 'auto.delete_condition')}
               className="agent-flow-binding-row__delete"
               danger
               icon={<DeleteOutlined />}

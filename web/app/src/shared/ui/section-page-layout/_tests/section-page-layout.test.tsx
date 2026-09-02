@@ -261,6 +261,25 @@ describe('SectionPageLayout', () => {
     expect(viewportRailBlock).toContain('position: static;');
   });
 
+  test('AC-001 gives viewport sidebars a bounded scroll region', () => {
+    const sectionLayoutCss = fs.readFileSync(
+      path.resolve(import.meta.dirname, '../section-page-layout.css'),
+      'utf8'
+    );
+    const viewportRailBlock = sectionLayoutCss.match(
+      /\.section-page-layout--viewport \.section-page-layout__rail\s*\{[\s\S]*?\n\}/
+    )?.[0];
+    const viewportSidebarBlock = sectionLayoutCss.match(
+      /\.section-page-layout--viewport \.section-page-layout__sidebar-content\s*\{[\s\S]*?\n\}/
+    )?.[0];
+
+    expect(viewportRailBlock).toContain('height: 100%;');
+    expect(viewportRailBlock).toContain('min-height: 0;');
+    expect(viewportSidebarBlock).toContain('flex: 1 1 auto;');
+    expect(viewportSidebarBlock).toContain('min-height: 0;');
+    expect(viewportSidebarBlock).toContain('overflow: hidden;');
+  });
+
   test('lets full section layouts return to natural height on mobile', () => {
     const sectionLayoutCss = fs.readFileSync(
       path.resolve(import.meta.dirname, '../section-page-layout.css'),
