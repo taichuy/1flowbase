@@ -115,7 +115,7 @@ pub async fn require_settings_feature_permission(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::{panic::AssertUnwindSafe, sync::Arc};
 
     use access_control::{
         ConsoleAuthorization, ConsoleOperationOwner, ConsoleOperationRegistration,
@@ -123,15 +123,10 @@ mod tests {
         ResourceAccessRegistration, ResourceAccessScopeKind, SettingsFeatureLifecycle,
         SettingsFeatureOwnerKind, SettingsFeatureRegistry,
     };
-    use axum::{
-        body::Body,
-        http::{Request, StatusCode},
-    };
     use domain::{
         ActorContext, ConsoleOperationId, ConsoleOperationPolicy, ConsoleOperationRowScope,
         RoleConsoleGroupPolicy, RoleConsolePolicy,
     };
-    use tower::ServiceExt;
     use uuid::Uuid;
 
     use super::{authorize_compiled_console_access, compiled_console_route_access};
@@ -304,7 +299,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unregistered_mounted_console_route_returns_403_for_root_session() {
+    async fn unregistered_mounted_console_route_fails_catalog_publication() {
         let (base_state, _) = crate::_tests::support::test_api_state_with_database_url().await;
         let empty_settings = SettingsFeatureRegistry::compile([]).unwrap();
         let empty_registry =
@@ -313,21 +308,21 @@ mod tests {
             console_operation_registry: empty_registry,
             ..(*base_state).clone()
         });
-        let app = crate::app_with_state_and_config(state, &crate::_tests::support::test_config());
-        let (cookie, _) =
-            crate::_tests::support::login_and_capture_cookie(&app, "root", "change-me").await;
-
-        let response = app
-            .oneshot(
-                Request::builder()
-                    .method("GET")
-                    .uri("/api/console/frontend-blocks")
-                    .header("cookie", cookie)
-                    .body(Body::empty())
-                    .unwrap(),
-            )
-            .await
-            .unwrap();
-        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+            crate::app_with_state_and_config(state, &crate::_tests::support::test_config())
+        }));
+        let panic = match result {
+            Ok(_) => panic!("unknown Console authorization operation must fail publication"),
+            Err(panic) => panic,
+        };
+        let message = panic
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .or_else(|| panic.downcast_ref::<&str>().copied())
+            .expect("router publication panic must contain a message");
+        assert!(
+            message.contains("uses unknown authorization operation"),
+            "unexpected publication failure: {message}"
+        );
     }
 }

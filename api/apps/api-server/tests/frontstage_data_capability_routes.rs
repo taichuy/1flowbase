@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{panic::AssertUnwindSafe, sync::Arc};
 
 use api_server::{
     app_state::ApiState,
@@ -392,20 +392,26 @@ async fn sign_in_projects_cookie_only_after_complete_interface_boot() {
 }
 
 #[tokio::test]
-async fn sign_in_fails_closed_without_extension_boot_snapshot() {
+async fn router_publication_fails_closed_without_extension_boot_snapshot() {
     let (mut state, config, database) = fixture_state().await;
     Arc::get_mut(&mut state)
         .expect("fixture state must be uniquely owned before router assembly")
         .extension_boot_snapshot = None;
-    let app = app_with_state_and_config(state, &config);
-
-    let (status, cookie, payload) = sign_in(&app, "root", "change-me").await;
-    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR, "{payload}");
-    assert_eq!(payload["code"], "internal_error");
-    assert_eq!(payload["message"], "extension boot snapshot is unavailable");
+    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
+        app_with_state_and_config(state, &config)
+    }));
+    let panic = match result {
+        Ok(_) => panic!("missing ExtensionBootSnapshot must fail router publication"),
+        Err(panic) => panic,
+    };
+    let message = panic
+        .downcast_ref::<String>()
+        .map(String::as_str)
+        .or_else(|| panic.downcast_ref::<&str>().copied())
+        .expect("router publication panic must contain a message");
     assert!(
-        cookie.is_none(),
-        "fail-closed sign-in must not project Set-Cookie"
+        message.contains("extension boot snapshot is unavailable"),
+        "unexpected publication failure: {message}"
     );
     drop(database);
 }
