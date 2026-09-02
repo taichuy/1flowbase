@@ -696,6 +696,30 @@ function buildCoverageBackendCommands({ repoRoot, cargoParallelism, cargoTestThr
         ),
       ];
     }
+    if (entry.key === 'storage-postgres') {
+      return {
+        label: `backend-coverage-${entry.key}`,
+        command: 'cargo',
+        args: [
+          'llvm-cov',
+          '--package',
+          entry.packageName,
+          '--package',
+          'control-plane-postgres-tests',
+          '--exclude-from-report',
+          'control-plane-postgres-tests',
+          '--no-clean',
+          '--json',
+          '--summary-only',
+          '--output-path',
+          path.join(repoRoot, COVERAGE_ROOT, 'backend', `${entry.key}.json`),
+          '--',
+          `--test-threads=${cargoTestThreads}`,
+        ],
+        cwd: 'api',
+        env,
+      };
+    }
     return {
       label: `backend-coverage-${entry.key}`,
       command: 'cargo',
@@ -833,13 +857,27 @@ function collectFrontendCoverageFailures(summary) {
   });
 }
 
-function readBackendLinePct(summary) {
+function readBackendLinePct(summary, sourcePathMarker) {
+  const files = summary?.data?.[0]?.files;
+  if (sourcePathMarker && Array.isArray(files)) {
+    const ownedLines = files
+      .filter((file) => normalizeCoveragePath(file.filename || '').includes(sourcePathMarker))
+      .map((file) => file.summary?.lines)
+      .filter((lines) => Number.isFinite(lines?.count) && Number.isFinite(lines?.covered));
+    if (ownedLines.length > 0) {
+      const totals = ownedLines.reduce((accumulator, lines) => ({
+        count: accumulator.count + lines.count,
+        covered: accumulator.covered + lines.covered,
+      }), { count: 0, covered: 0 });
+      return totals.count === 0 ? 100 : (totals.covered / totals.count) * 100;
+    }
+  }
   return summary?.data?.[0]?.totals?.lines?.percent ?? 0;
 }
 
 function collectBackendCoverageFailures(summaries, backendKeys) {
   return selectBackendCoverageEntries(backendKeys).flatMap((threshold) => {
-    const actualPct = readBackendLinePct(summaries[threshold.key]);
+    const actualPct = readBackendLinePct(summaries[threshold.key], threshold.sourcePathMarker);
     const expectedPct = threshold.line;
 
     if (actualPct + Number.EPSILON >= expectedPct) {

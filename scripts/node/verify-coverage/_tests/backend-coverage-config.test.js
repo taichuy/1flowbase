@@ -36,15 +36,26 @@ test('coverage thresholds include critical runtime areas', () => {
   );
 });
 
-test('backend coverage uses the current storage durable postgres crate name', () => {
-  const storageCommand = buildBackendCommands({
+test('backend coverage includes the migrated PostgreSQL integration harness', () => {
+  const storageCommands = buildBackendCommands({
     repoRoot: '/repo-root',
     cargoParallelism: 4,
     cargoTestThreads: 2,
-  }).find((command) => command.label === 'backend-coverage-storage-postgres');
+    backendKeys: ['storage-postgres'],
+  });
 
-  assert.ok(storageCommand);
+  assert.equal(storageCommands.length, 1);
+  const [storageCommand] = storageCommands;
+  assert.equal(storageCommand.label, 'backend-coverage-storage-postgres');
   assert.equal(storageCommand.args[2], 'storage-durable-postgres');
+  assert.deepEqual(storageCommand.args.slice(1, 7), [
+    '--package',
+    'storage-durable-postgres',
+    '--package',
+    'control-plane-postgres-tests',
+    '--exclude-from-report',
+    'control-plane-postgres-tests',
+  ]);
   const outputPathIndex = storageCommand.args.indexOf('--output-path');
   assert.notEqual(outputPathIndex, -1);
   assert.match(

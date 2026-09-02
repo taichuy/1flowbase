@@ -48,6 +48,27 @@ function expectedBackendCoverageCommands({ repoRoot, entry, cargoParallelism, ca
     },
   };
   if (entry.key !== 'control-plane') {
+    if (entry.key === 'storage-postgres') {
+      return [{
+        ...baseCommand,
+        args: [
+          'llvm-cov',
+          '--package',
+          entry.packageName,
+          '--package',
+          'control-plane-postgres-tests',
+          '--exclude-from-report',
+          'control-plane-postgres-tests',
+          '--no-clean',
+          '--json',
+          '--summary-only',
+          '--output-path',
+          `${repoRoot}/tmp/test-governance/coverage/backend/${entry.key}.json`,
+          '--',
+          `--test-threads=${cargoTestThreads}`,
+        ],
+      }];
+    }
     return [baseCommand];
   }
 
@@ -253,6 +274,21 @@ test('collectBackendCoverageFailures compares line coverage per package only', (
       entry.key,
       { data: [{ totals: { lines: { percent: 100 } } }] },
     ])),
+  };
+  summaries['api-server'] = {
+    data: [{
+      totals: { lines: { percent: 30 } },
+      files: [
+        {
+          filename: '/repo/api/apps/api-server/src/lib.rs',
+          summary: { lines: { count: 100, covered: 61 } },
+        },
+        {
+          filename: '/repo/api/crates/storage/durable/postgres/src/lib.rs',
+          summary: { lines: { count: 100, covered: 0 } },
+        },
+      ],
+    }],
   };
 
   assert.deepEqual(collectBackendCoverageFailures(summaries), []);

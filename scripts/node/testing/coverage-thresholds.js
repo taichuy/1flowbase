@@ -43,7 +43,12 @@ const backendThresholds = [
   { key: 'orchestration-runtime', packageName: 'orchestration-runtime', line: 60 },
   { key: 'runtime-extension-host', packageName: 'runtime-extension-host', line: 55 },
   { key: 'storage-postgres', packageName: 'storage-durable-postgres', line: 65 },
-  { key: 'api-server', packageName: 'api-server', line: 60 },
+  {
+    key: 'api-server',
+    packageName: 'api-server',
+    sourcePathMarker: '/api/apps/api-server/src/',
+    line: 60,
+  },
 ];
 
 module.exports = {

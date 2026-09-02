@@ -4,6 +4,7 @@ const { spawnSync } = require('node:child_process');
 const { backendThresholds } = require('../testing/coverage-thresholds.js');
 
 const API_SERVER_PACKAGE = 'api-server';
+const API_SERVER_SOURCE_MARKER = '/api/apps/api-server/src/';
 const API_SERVER_LINE_THRESHOLD = backendThresholds.find(
   (entry) => entry.packageName === API_SERVER_PACKAGE
 )?.line;
@@ -90,7 +91,16 @@ function canonicalCoverageSummary(summary) {
 function validateCoverageSummary(summary) {
   const coverage = canonicalCoverageSummary(summary);
   const structuralMetrics = Object.keys(coverage.totals).sort();
-  const lines = coverage.totals.lines;
+  const ownedLines = coverage.files
+    .filter((file) => file.filename.replaceAll('\\', '/').includes(API_SERVER_SOURCE_MARKER))
+    .map((file) => file.summary.lines);
+  if (ownedLines.length === 0) {
+    throw new Error('merged API coverage contains no API-owned source files');
+  }
+  const lines = ownedLines.reduce((total, current) => ({
+    count: total.count + (current?.count ?? 0),
+    covered: total.covered + (current?.covered ?? 0),
+  }), { count: 0, covered: 0 });
   const lineCoveragePercent = lines.count === 0 ? 100 : (lines.covered / lines.count) * 100;
   if (!Number.isFinite(API_SERVER_LINE_THRESHOLD)
     || lineCoveragePercent < API_SERVER_LINE_THRESHOLD) {

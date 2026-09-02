@@ -11,6 +11,7 @@ const {
   mergeApiServerShadow,
   parseLlvmCovEnvironment,
   runApiServerShard,
+  validateCoverageSummary,
   validateShardInventories,
 } = require('../core.js');
 
@@ -112,7 +113,7 @@ test('merged coverage preserves structural totals and records scheduling-only co
     structuralMetrics: ['functions', 'lines', 'regions'],
     nondeterministicFiles: 0,
     coveredDeltas: { functions: 1, lines: -1, regions: -1 },
-    lineCoveragePercent: 70,
+    lineCoveragePercent: 80,
     minimumLineCoveragePercent: 60,
   });
 
@@ -123,10 +124,32 @@ test('merged coverage preserves structural totals and records scheduling-only co
   const belowRepositoryThreshold = structuredClone(summary);
   belowRepositoryThreshold.data[0].totals.lines.covered = 5;
   belowRepositoryThreshold.data[0].totals.lines.percent = 50;
+  belowRepositoryThreshold.data[0].files[0].summary.lines.covered = 5;
+  belowRepositoryThreshold.data[0].files[0].summary.lines.percent = 50;
   assert.throws(
     () => compareCoverageSummaries(summary, belowRepositoryThreshold),
     /merged API coverage lines 50\.00% is below 60\.00%/u
   );
+});
+
+test('API coverage threshold uses API-owned sources instead of dependency closure', () => {
+  const summary = {
+    data: [{
+      totals: { lines: { count: 200, covered: 100 } },
+      files: [
+        {
+          filename: '/repo/api/apps/api-server/src/lib.rs',
+          summary: { lines: { count: 100, covered: 61 } },
+        },
+        {
+          filename: '/repo/api/crates/storage/durable/postgres/src/lib.rs',
+          summary: { lines: { count: 100, covered: 39 } },
+        },
+      ],
+    }],
+  };
+
+  assert.equal(validateCoverageSummary(summary).lineCoveragePercent, 61);
 });
 
 test('shard orchestration fails closed when nextest execution fails', () => {
@@ -199,7 +222,10 @@ test('enforced merge gathers all profiles and writes standalone coverage evidenc
   const summary = {
     data: [{
       totals: { lines: { count: 1, covered: 1 }, functions: { count: 1, covered: 1 }, regions: { count: 1, covered: 1 } },
-      files: [{ filename: '/repo/lib.rs', summary: { lines: { count: 1, covered: 1 } } }],
+      files: [{
+        filename: '/repo/api/apps/api-server/src/lib.rs',
+        summary: { lines: { count: 1, covered: 1 } },
+      }],
     }],
   };
   let call = 0;
