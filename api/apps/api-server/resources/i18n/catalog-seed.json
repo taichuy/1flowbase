@@ -216,8 +216,6 @@
           "Discover MCP upstream connections in the system backend.",
           "Enable an installed executable extension",
           "Enable an installed executable extension in the system backend.",
-          "Enable auth center authenticators",
-          "Enable auth center authenticators in the system backend.",
           "Enable billing credit",
           "Enable billing credit in the system backend.",
           "Enable members",
@@ -574,6 +572,8 @@
           "Update auth center authenticator config in the system backend.",
           "Update auth center authenticator public UI block",
           "Update auth center authenticator public UI block in the system backend.",
+          "Update auth center authenticators enabled",
+          "Update auth center authenticators enabled in the system backend.",
           "Update billing pricing rules",
           "Update billing pricing rules in the system backend.",
           "Update data sources defaults",
@@ -867,8 +867,6 @@
           "Discover MCP upstream connections in the system backend.",
           "Enable an installed executable extension",
           "Enable an installed executable extension in the system backend.",
-          "Enable auth center authenticators",
-          "Enable auth center authenticators in the system backend.",
           "Enable billing credit",
           "Enable billing credit in the system backend.",
           "Enable members",
@@ -1225,6 +1223,8 @@
           "Update auth center authenticator config in the system backend.",
           "Update auth center authenticator public UI block",
           "Update auth center authenticator public UI block in the system backend.",
+          "Update auth center authenticators enabled",
+          "Update auth center authenticators enabled in the system backend.",
           "Update billing pricing rules",
           "Update billing pricing rules in the system backend.",
           "Update data sources defaults",
@@ -3098,20 +3098,6 @@
       "translations": {
         "en_US": "Enable an installed executable extension in the system backend.",
         "zh_Hans": "启用已安装的可执行扩展（系统后端）"
-      }
-    },
-    {
-      "key": "Enable auth center authenticators",
-      "translations": {
-        "en_US": "Enable auth center authenticators",
-        "zh_Hans": "启用认证中心认证器"
-      }
-    },
-    {
-      "key": "Enable auth center authenticators in the system backend.",
-      "translations": {
-        "en_US": "Enable auth center authenticators in the system backend.",
-        "zh_Hans": "启用认证中心认证器（系统后端）"
       }
     },
     {
@@ -6059,6 +6045,20 @@
       "translations": {
         "en_US": "Update auth center authenticator public UI block in the system backend.",
         "zh_Hans": "更新认证中心认证器公共界面区块（系统后端）"
+      }
+    },
+    {
+      "key": "Update auth center authenticators enabled",
+      "translations": {
+        "en_US": "Update auth center authenticators enabled",
+        "zh_Hans": "更新认证中心认证器启用状态"
+      }
+    },
+    {
+      "key": "Update auth center authenticators enabled in the system backend.",
+      "translations": {
+        "en_US": "Update auth center authenticators enabled in the system backend.",
+        "zh_Hans": "更新认证中心认证器启用状态（系统后端）"
       }
     },
     {

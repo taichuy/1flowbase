@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within
+} from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const authCenterApi = vi.hoisted(() => ({
@@ -249,6 +255,50 @@ describe('SettingsAuthCenterSection lifecycle', () => {
     authCenterApi.fetchSettingsAuthCenterOverview.mockResolvedValue(
       baseOverview
     );
+  });
+
+  test('updates enabled state in both directions from the table switches', async () => {
+    authCenterApi.updateSettingsAuthCenterAuthenticatorEnabled.mockImplementation(
+      async (authenticatorId: string, input: { enabled: boolean }) => ({
+        ...baseOverview.authenticators.find(
+          (authenticator) => authenticator.id === authenticatorId
+        ),
+        enabled: input.enabled
+      })
+    );
+
+    render(
+      <AppProviders>
+        <SettingsAuthCenterSection />
+      </AppProviders>
+    );
+
+    const passwordRow = (await screen.findByText('Password')).closest('tr');
+    const staffPasswordRow = screen.getByText('Staff Password').closest('tr');
+    expect(passwordRow).not.toBeNull();
+    expect(staffPasswordRow).not.toBeNull();
+
+    fireEvent.click(within(passwordRow!).getByRole('switch'));
+    await waitFor(() => {
+      expect(
+        authCenterApi.updateSettingsAuthCenterAuthenticatorEnabled
+      ).toHaveBeenCalledWith(
+        'auth-password-local',
+        { enabled: false },
+        'csrf-123'
+      );
+    });
+
+    fireEvent.click(within(staffPasswordRow!).getByRole('switch'));
+    await waitFor(() => {
+      expect(
+        authCenterApi.updateSettingsAuthCenterAuthenticatorEnabled
+      ).toHaveBeenCalledWith(
+        'auth-staff-password',
+        { enabled: true },
+        'csrf-123'
+      );
+    });
   });
 
   test('creates an authenticator with backend-supported auth types', async () => {
@@ -541,5 +591,4 @@ describe('SettingsAuthCenterSection lifecycle', () => {
       await within(dialog).findAllByText('invalid input: extension_config')
     ).toHaveLength(1);
   });
-
 });

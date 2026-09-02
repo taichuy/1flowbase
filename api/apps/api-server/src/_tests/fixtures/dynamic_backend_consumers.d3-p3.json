@@ -1558,12 +1558,6 @@
       "Create auth center authenticators"
     ],
     [
-      "auth_center.authenticators.enabled.update",
-      "PUT",
-      "/api/console/settings/auth-center/authenticators/:id/enabled",
-      "Update auth center authenticator enabled state"
-    ],
-    [
       "auth_center.authenticators.copy",
       "POST",
       "/api/console/settings/auth-center/authenticators/:id/copy",
@@ -2078,6 +2072,12 @@
       "PUT",
       "/api/console/settings/auth-center/authenticators/:id/config",
       "Update auth center authenticator config"
+    ],
+    [
+      "auth_center.authenticators.enabled.update",
+      "PUT",
+      "/api/console/settings/auth-center/authenticators/:id/enabled",
+      "Update auth center authenticators enabled"
     ],
     [
       "update_auth_center_authenticator_public_ui_block",

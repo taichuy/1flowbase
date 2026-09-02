@@ -1086,11 +1086,7 @@ describe('SettingsPage', () => {
     await waitFor(() => {
       expect(
         authCenterApi.updateSettingsAuthCenterAuthenticatorEnabled
-      ).toHaveBeenCalledWith(
-        'auth-oidc-main',
-        { enabled: false },
-        'csrf-123'
-      );
+      ).toHaveBeenCalledWith('auth-oidc-main', { enabled: false }, 'csrf-123');
     });
 
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
