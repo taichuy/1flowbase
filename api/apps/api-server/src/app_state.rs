@@ -384,6 +384,7 @@ pub struct ApiState {
     pub official_extension_catalog_source: Arc<dyn OfficialExtensionCatalogSourcePort>,
     pub official_i18n_catalog_update_service:
         Arc<control_plane::i18n_catalog::OfficialI18nCatalogUpdateService<MainDurableStore>>,
+    pub official_model_pricing_catalog_index_url: String,
     pub api_node_id: String,
     pub provider_install_root: String,
     pub provider_secret_master_key: String,

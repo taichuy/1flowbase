@@ -116,6 +116,13 @@ impl BillingRepository for RecordingBillingRepository {
         unreachable!("credit command service fixture does not write pricing rules")
     }
 
+    async fn insert_pricing_rule_if_absent(
+        &self,
+        _input: &UpsertPricingRuleInput,
+    ) -> anyhow::Result<Option<PricingRule>> {
+        unreachable!("credit command service fixture does not install pricing rules")
+    }
+
     async fn delete_pricing_rule(&self, _id: Uuid) -> anyhow::Result<bool> {
         unreachable!("credit command service fixture does not delete pricing rules")
     }

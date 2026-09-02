@@ -189,6 +189,10 @@ pub trait BillingRepository: Send + Sync {
         &self,
         input: &UpsertPricingRuleInput,
     ) -> anyhow::Result<PricingRule>;
+    async fn insert_pricing_rule_if_absent(
+        &self,
+        input: &UpsertPricingRuleInput,
+    ) -> anyhow::Result<Option<PricingRule>>;
     async fn delete_pricing_rule(&self, id: Uuid) -> anyhow::Result<bool>;
     async fn billing_enabled_at(
         &self,

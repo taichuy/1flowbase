@@ -1,10 +1,15 @@
-use crate::_tests::support::{create_member, login_and_capture_cookie, test_app};
+use crate::_tests::support::{
+    create_member, login_and_capture_cookie, test_app_with_model_pricing_catalog_url,
+};
 use axum::{
     body::{to_bytes, Body},
     http::{Request, StatusCode},
+    routing::get,
+    Json, Router,
 };
 use rust_decimal::Decimal;
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
 use std::str::FromStr;
 use tower::ServiceExt;
 
@@ -12,9 +17,90 @@ async fn response_json(response: axum::response::Response) -> Value {
     serde_json::from_slice(&to_bytes(response.into_body(), usize::MAX).await.unwrap()).unwrap()
 }
 
+async fn remote_model_pricing_fixture() -> (String, tokio::task::JoinHandle<()>) {
+    let page = json!({
+        "schema_version": "1flowbase.model-pricing-page/v1",
+        "catalog_version": "2026-08-18.1",
+        "currency_code": "USD",
+        "page": 1,
+        "rules": [{
+            "id": "10000000-0000-4000-8000-000000000001",
+            "provider_code": "zero",
+            "upstream_model_id": "any",
+            "input_token_unit_size": 1000000,
+            "input_token_unit_price": "0",
+            "output_token_unit_size": 1000000,
+            "output_token_unit_price": "0",
+            "cache_hit_token_unit_size": 1000000,
+            "cache_hit_token_unit_price": "0",
+            "currency_code": "USD",
+            "effective_from": "2026-08-17T00:00:00Z",
+            "effective_to": null,
+            "timezone": "UTC",
+            "weekday_mask": 127,
+            "local_time_start": null,
+            "local_time_end": null,
+            "priority": 0,
+            "enabled": true,
+            "rating_policy_enabled": false,
+            "rating_policy": {},
+            "source_kind": "official",
+            "source_catalog_id": "10000000-0000-4000-8000-000000000001",
+            "source_version": "2026-08-18.1",
+            "source_checksum": "sha256:fixture",
+            "extensions": {}
+        }]
+    });
+    let page_checksum = format!(
+        "sha256:{:x}",
+        Sha256::digest(serde_json::to_vec(&page).unwrap())
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base_url = format!("http://{}", listener.local_addr().unwrap());
+    let page_url = format!("{base_url}/model-pricing/catalog/v1/pages/1.json");
+    let index = json!({
+        "schema_version": "1flowbase.model-pricing-index/v1",
+        "catalog_version": "2026-08-18.1",
+        "currency_code": "USD",
+        "total_rules": 1,
+        "pages": [{
+            "page": 1,
+            "rule_count": 1,
+            "checksum": page_checksum,
+            "locator": page_url
+        }]
+    });
+    let app = Router::new()
+        .route(
+            "/model-pricing/catalog/v1/index.json",
+            get({
+                let index = index.clone();
+                move || {
+                    let index = index.clone();
+                    async move { Json(index) }
+                }
+            }),
+        )
+        .route(
+            "/model-pricing/catalog/v1/pages/1.json",
+            get(move || {
+                let page = page.clone();
+                async move { Json(page) }
+            }),
+        );
+    let server = tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    (
+        format!("{base_url}/model-pricing/catalog/v1/index.json"),
+        server,
+    )
+}
+
 #[tokio::test]
 async fn billing_routes_validate_pricing_and_manage_workspace_credit_ledger() {
-    let app = test_app().await;
+    let (catalog_index_url, catalog_server) = remote_model_pricing_fixture().await;
+    let app = test_app_with_model_pricing_catalog_url(catalog_index_url).await;
     let (cookie, csrf) = login_and_capture_cookie(&app, "root", "change-me").await;
     let member_id = create_member(&app, &cookie, &csrf, "billing-route-user", "temp-pass").await;
 
@@ -43,6 +129,32 @@ async fn billing_routes_validate_pricing_and_manage_workspace_credit_ledger() {
         catalog_payload["data"]["items"][0]["upstream_model_id"],
         "any"
     );
+
+    let install_catalog = app
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/api/console/settings/billing/pricing-catalog/import")
+                .header("cookie", &cookie)
+                .header("x-csrf-token", &csrf)
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    json!({
+                        "catalog_ids": ["10000000-0000-4000-8000-000000000001"]
+                    })
+                    .to_string(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(install_catalog.status(), StatusCode::OK);
+    let install_payload = response_json(install_catalog).await;
+    assert_eq!(install_payload["data"]["inserted"], 0);
+    assert_eq!(install_payload["data"]["skipped"], 1);
+    assert_eq!(install_payload["data"]["updated"], 0);
+    assert_eq!(install_payload["data"]["deleted"], 0);
 
     let create_rule = app
         .clone()
@@ -206,20 +318,42 @@ async fn billing_routes_validate_pricing_and_manage_workspace_credit_ledger() {
     assert_eq!(ledger.status(), StatusCode::OK);
     let ledger_payload = response_json(ledger).await;
     assert_eq!(ledger_payload["data"][0]["transaction_type"], "grant");
+    catalog_server.abort();
 }
 
 #[test]
-fn remote_pricing_catalog_cannot_downgrade_the_bundled_catalog() {
-    assert!(crate::routes::billing::catalog_version_is_at_least(
-        "2026-08-17.3",
-        "2026-08-17.3"
+fn model_pricing_builtin_source_contains_only_the_global_zero_fallback() {
+    let rules = crate::model_pricing_catalog::builtin_pricing_rules().unwrap();
+    assert_eq!(rules.len(), 1);
+    assert_eq!(rules[0].provider_code, "zero");
+    assert_eq!(rules[0].upstream_model_id, "any");
+}
+
+#[test]
+fn model_pricing_bootstrap_loader_reads_directory_sources_and_catalog_version() {
+    let fixture_root = std::env::temp_dir().join(format!(
+        "1flowbase-model-pricing-bootstrap-{}",
+        uuid::Uuid::now_v7()
     ));
-    assert!(crate::routes::billing::catalog_version_is_at_least(
-        "2026-08-17.10",
-        "2026-08-17.3"
-    ));
-    assert!(!crate::routes::billing::catalog_version_is_at_least(
-        "2026-08-17.2",
-        "2026-08-17.3"
-    ));
+    let fixture_model = fixture_root.join("@zero/any");
+    std::fs::create_dir_all(&fixture_model).unwrap();
+    std::fs::write(
+        fixture_root.join("catalog-source.json"),
+        r#"{"catalog_version":"fixture-v1"}"#,
+    )
+    .unwrap();
+    std::fs::copy(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("resources/model-pricing/@zero/any/pricing.json"),
+        fixture_model.join("pricing.json"),
+    )
+    .unwrap();
+
+    let rules = crate::model_pricing_catalog::load_bootstrap_pricing_rules(&fixture_root).unwrap();
+
+    std::fs::remove_dir_all(&fixture_root).unwrap();
+    assert_eq!(rules.len(), 1);
+    assert_eq!(rules[0].provider_code, "zero");
+    assert_eq!(rules[0].upstream_model_id, "any");
+    assert_eq!(rules[0].source_version.as_deref(), Some("fixture-v1"));
 }

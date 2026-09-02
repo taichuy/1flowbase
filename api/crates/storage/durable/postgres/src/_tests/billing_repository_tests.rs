@@ -373,3 +373,75 @@ async fn concurrent_pricing_rule_writes_cannot_create_an_overlapping_schedule() 
     }
     assert_eq!((accepted, conflicts), (1, 1));
 }
+
+#[tokio::test]
+async fn model_pricing_install_skips_existing_rule_without_overwriting_user_values() {
+    let (store, _workspace_id, user_id) = seeded_store().await;
+    let rule_id = Uuid::now_v7();
+    let source_catalog_id = rule_id.to_string();
+    let mut catalog_rule = PricingRule {
+        id: rule_id,
+        provider_code: "install-only-provider".into(),
+        upstream_model_id: "install-only-model".into(),
+        input_token_unit_size: 1_000_000,
+        input_token_unit_price: Decimal::ONE,
+        output_token_unit_size: 1_000_000,
+        output_token_unit_price: Decimal::from(2),
+        cache_hit_token_unit_size: 1_000_000,
+        cache_hit_token_unit_price: Decimal::ZERO,
+        currency_code: "USD".into(),
+        effective_from: OffsetDateTime::now_utc() - Duration::hours(1),
+        effective_to: None,
+        timezone: "UTC".into(),
+        weekday_mask: 127,
+        local_time_start: None,
+        local_time_end: None,
+        priority: 0,
+        enabled: true,
+        rating_policy_enabled: false,
+        rating_policy: json!({}),
+        source_kind: "official".into(),
+        source_catalog_id: Some(source_catalog_id),
+        source_version: Some("fixture-v1".into()),
+        source_checksum: Some("sha256:fixture-v1".into()),
+        extensions: json!({}),
+        created_by: Some(user_id),
+        created_at: OffsetDateTime::now_utc(),
+        updated_at: OffsetDateTime::now_utc(),
+    };
+
+    let inserted = store
+        .insert_pricing_rule_if_absent(&UpsertPricingRuleInput {
+            rule: catalog_rule.clone(),
+        })
+        .await
+        .unwrap();
+    assert!(inserted.is_some());
+
+    catalog_rule.input_token_unit_price = Decimal::from(9);
+    store
+        .upsert_pricing_rule(&UpsertPricingRuleInput {
+            rule: catalog_rule.clone(),
+        })
+        .await
+        .unwrap();
+
+    let mut stale_catalog_rule = catalog_rule;
+    stale_catalog_rule.input_token_unit_price = Decimal::ONE;
+    let skipped = store
+        .insert_pricing_rule_if_absent(&UpsertPricingRuleInput {
+            rule: stale_catalog_rule,
+        })
+        .await
+        .unwrap();
+    assert!(skipped.is_none());
+    assert_eq!(
+        store
+            .get_pricing_rule(rule_id)
+            .await
+            .unwrap()
+            .unwrap()
+            .input_token_unit_price,
+        Decimal::from(9)
+    );
+}

@@ -19,6 +19,7 @@ pub mod host_infrastructure;
 pub mod host_route_registry;
 pub mod host_worker_registry;
 pub mod middleware;
+pub(crate) mod model_pricing_catalog;
 pub mod network_egress_client;
 pub mod network_egress_probe;
 pub mod official_extension_catalog;
@@ -582,26 +583,30 @@ async fn app_and_runtime_host_from_config(
     system_metadata_bootstrap
         .ensure_builtin_model_pricing_rules(bootstrap_result.root_user_id)
         .await?;
-    routes::billing::sync_bundled_pricing_catalog(&store, bootstrap_result.root_user_id)
-        .await
-        .map_err(|error| error.0)?;
-    let catalog_url = format!(
-        "https://raw.githubusercontent.com/{}/main/model-pricing/catalog/v1/index.json",
-        config.official_plugin_repository
-    );
-    if let Err(error) = routes::billing::sync_remote_pricing_catalog(
+    let builtin_pricing_summary = model_pricing_catalog::install_pricing_rules_if_absent(
         &store,
         bootstrap_result.root_user_id,
-        &catalog_url,
+        model_pricing_catalog::builtin_pricing_rules()?,
     )
     .await
-    {
-        tracing::warn!(
-            catalog_url,
-            error = %error.0,
-            "remote model pricing catalog unavailable; bundled snapshot remains active"
-        );
-    }
+    .map_err(|error| error.0)?;
+    let image_pricing_rules = model_pricing_catalog::load_bootstrap_pricing_rules(
+        std::path::Path::new(&config.model_pricing_bootstrap_root),
+    )?;
+    let image_pricing_summary = model_pricing_catalog::install_pricing_rules_if_absent(
+        &store,
+        bootstrap_result.root_user_id,
+        image_pricing_rules,
+    )
+    .await
+    .map_err(|error| error.0)?;
+    tracing::info!(
+        builtin_inserted = builtin_pricing_summary.inserted,
+        builtin_skipped = builtin_pricing_summary.skipped,
+        image_inserted = image_pricing_summary.inserted,
+        image_skipped = image_pricing_summary.skipped,
+        "model pricing startup sources installed without updating existing rules"
+    );
     system_metadata_bootstrap
         .ensure_builtin_runtime_read_model_grants(
             bootstrap_result.root_user_id,
@@ -825,6 +830,9 @@ async fn app_and_runtime_host_from_config(
         official_mcp_bundle_source,
         official_extension_catalog_source,
         official_i18n_catalog_update_service,
+        official_model_pricing_catalog_index_url: config
+            .official_model_pricing_catalog_index_url
+            .clone(),
         api_node_id: config.api_node_id.clone(),
         provider_install_root: config.provider_install_root.clone(),
         provider_secret_master_key: config.provider_secret_master_key.clone(),

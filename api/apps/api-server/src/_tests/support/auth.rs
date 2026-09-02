@@ -331,6 +331,9 @@ async fn test_state_with_runtime_profile_state(
         official_extension_catalog_source: Arc::new(InMemoryOfficialExtensionCatalogSource),
         official_i18n_catalog_update_service:
             crate::app_state::build_official_i18n_catalog_update_service(store.clone(), &config),
+        official_model_pricing_catalog_index_url: config
+            .official_model_pricing_catalog_index_url
+            .clone(),
         api_node_id: config.api_node_id.clone(),
         provider_install_root: config.provider_install_root.clone(),
         provider_secret_master_key: config.provider_secret_master_key.clone(),
@@ -379,6 +382,14 @@ pub async fn test_app_with_database_url() -> (Router, String) {
 
 pub async fn test_app() -> Router {
     test_app_with_database_url().await.0
+}
+
+pub(crate) async fn test_app_with_model_pricing_catalog_url(catalog_index_url: String) -> Router {
+    let (mut state, _) = test_api_state_with_database_url().await;
+    Arc::get_mut(&mut state)
+        .expect("test API state should be uniquely owned before router construction")
+        .official_model_pricing_catalog_index_url = catalog_index_url;
+    crate::app_with_state_and_config(state, &default_test_config())
 }
 
 pub(crate) async fn test_app_with_official_extension_source(

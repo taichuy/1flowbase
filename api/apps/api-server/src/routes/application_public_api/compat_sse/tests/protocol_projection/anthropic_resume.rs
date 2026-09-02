@@ -124,6 +124,9 @@ async fn anthropic_resume_replay_terminal_returns_explicit_unsupported() {
         official_i18n_catalog_update_service: base_state
             .official_i18n_catalog_update_service
             .clone(),
+        official_model_pricing_catalog_index_url: base_state
+            .official_model_pricing_catalog_index_url
+            .clone(),
         api_node_id: base_state.api_node_id.clone(),
         provider_install_root: base_state.provider_install_root.clone(),
         provider_secret_master_key: base_state.provider_secret_master_key.clone(),

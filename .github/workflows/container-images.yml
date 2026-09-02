@@ -493,6 +493,19 @@ jobs:
             echo "buildcache_ref=ghcr.io/${{ github.repository_owner }}/1flowbase-api-server:buildcache"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Resolve official model pricing snapshot
+        id: model_pricing_snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          repository="taichuy/1flowbase-official-plugins"
+          commit="$(git ls-remote "https://github.com/${repository}.git" refs/heads/main | awk '{print $1}')"
+          test -n "$commit"
+          {
+            echo "repository=$repository"
+            echo "commit=$commit"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Build and push prebuilt api-server scan candidate
         uses: docker/build-push-action@v7
         with:
@@ -508,6 +521,9 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.version=${{ needs.select-api-server.outputs.image_tag }}
             org.opencontainers.image.title=1flowbase-api-server
+          build-args: |
+            MODEL_PRICING_REPOSITORY=${{ steps.model_pricing_snapshot.outputs.repository }}
+            MODEL_PRICING_REF=${{ steps.model_pricing_snapshot.outputs.commit }}
           build-contexts: |
             api_server_binaries=./tmp/api-server-binaries
           cache-from: |

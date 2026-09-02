@@ -722,7 +722,7 @@ fn api_config_reads_provider_secret_master_key() {
 }
 
 #[test]
-fn api_config_reads_official_plugin_repository_settings() {
+fn api_config_reads_official_plugin_and_model_pricing_settings() {
     let config = ApiConfig::from_env_map(&[
         (
             "API_DATABASE_URL",
@@ -743,6 +743,14 @@ fn api_config_reads_official_plugin_repository_settings() {
     assert_eq!(
         config.official_plugin_repository,
         "taichuy/1flowbase-official-plugins"
+    );
+    assert_eq!(
+        config.official_model_pricing_catalog_index_url,
+        "https://raw.githubusercontent.com/taichuy/1flowbase-official-plugins/main/model-pricing/catalog/v1/index.json"
+    );
+    assert_eq!(
+        config.model_pricing_bootstrap_root,
+        "/app/api/resources/model-pricing"
     );
 }
 

@@ -14,12 +14,13 @@ use storage_durable_postgres::MainDurableStore;
 use uuid::Uuid;
 
 use super::billing::{
-    body_to_rule, bundled_pricing_catalog, invalidate_pricing_rules_cache, CreditCommandBody,
-    ImportCatalogBody, PageQuery, PricingCatalogPageResponse, PricingCatalogQuery, PricingRuleBody,
-    PricingRuleQuery, PricingRuleResponse, PricingRulesPageResponse,
+    body_to_rule, invalidate_pricing_rules_cache, CreditCommandBody, ImportCatalogBody, PageQuery,
+    PricingCatalogPageResponse, PricingCatalogQuery, PricingRuleBody, PricingRuleQuery,
+    PricingRuleResponse, PricingRulesPageResponse,
 };
 use crate::{
     error_response::ApiError,
+    model_pricing_catalog::{fetch_remote_pricing_catalog, install_pricing_rules_if_absent},
     routes::console_interface::{
         self, ConsoleInterfaceDeclaration, ConsoleInterfaceFuture, ConsoleInterfacePort,
         ConsoleInterfaceTargetError,
@@ -94,7 +95,7 @@ impl InterfaceContract for BillingOutput {
 pub(crate) struct BillingDependencies {
     pub(crate) store: MainDurableStore,
     pub(crate) cache_store: Arc<dyn CacheStore>,
-    pub(crate) trusted_public_keys: Vec<plugin_framework::TrustedPublicKey>,
+    pub(crate) catalog_index_url: String,
 }
 
 struct BillingAdapter(BillingDependencies);
@@ -200,7 +201,7 @@ impl BillingAdapter {
                 ))
             }
             BillingInput::GetPricingCatalog(query) => {
-                let (_, catalog) = bundled_pricing_catalog(&self.0.trusted_public_keys)?;
+                let catalog = fetch_remote_pricing_catalog(&self.0.catalog_index_url).await?;
                 let provider_filter = query
                     .provider_code
                     .as_deref()
@@ -245,7 +246,7 @@ impl BillingAdapter {
                 }))
             }
             BillingInput::ImportPricingCatalog(body) => {
-                let (_, catalog) = bundled_pricing_catalog(&self.0.trusted_public_keys)?;
+                let catalog = fetch_remote_pricing_catalog(&self.0.catalog_index_url).await?;
                 let selected = catalog
                     .rules
                     .into_iter()
@@ -254,24 +255,15 @@ impl BillingAdapter {
                 if selected.len() != body.catalog_ids.len() {
                     return Err(ControlPlaneError::InvalidInput("pricing_catalog_id").into());
                 }
-                let mut imported = 0;
-                for item in selected {
-                    let rule = body_to_rule(item, actor.user_id, None)?;
-                    if rule.source_kind != "official" || rule.source_catalog_id.is_none() {
-                        return Err(ControlPlaneError::InvalidInput("official_catalog_rule").into());
-                    }
-                    let imported_rule = self
-                        .0
-                        .store
-                        .upsert_pricing_rule(&UpsertPricingRuleInput { rule })
+                let summary =
+                    install_pricing_rules_if_absent(&self.0.store, actor.user_id, selected).await?;
+                if summary.inserted > 0 {
+                    self.0
+                        .cache_store
+                        .clear_cache_domain("model-pricing")
                         .await?;
-                    invalidate_pricing_rules_cache(self.0.cache_store.as_ref(), &imported_rule)
-                        .await?;
-                    imported += 1;
                 }
-                Ok(BillingOutput::Imported(
-                    serde_json::json!({"imported": imported, "deleted": 0}),
-                ))
+                Ok(BillingOutput::Imported(serde_json::to_value(summary)?))
             }
             BillingInput::ListCreditAccounts(query) => Ok(BillingOutput::CreditAccounts(
                 self.0
