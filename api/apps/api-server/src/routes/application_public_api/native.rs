@@ -1522,7 +1522,7 @@ where
                     interface_runtime::AuthenticationAdapterReference::new(
                         "api-server.application-api-key",
                     )
-                    .unwrap(),
+                    .expect("static authentication adapter reference is valid"),
                     authentication_activation,
                     principal,
                     None,

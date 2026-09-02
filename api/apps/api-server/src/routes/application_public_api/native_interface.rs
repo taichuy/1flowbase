@@ -303,18 +303,22 @@ pub(crate) fn compile_registry(
         )?;
     }
     compiler.bind_handler::<ApplicationNativeRunInput, ApplicationNativeRunOutput, ApplicationNativeRunTargetError, ApplicationPrincipal>(
-        &InterfaceId::new(ASYNC_INTERFACE_ID).unwrap(),
-        HandlerReference::new(ASYNC_HANDLER_REFERENCE).unwrap(),
+        &InterfaceId::new(ASYNC_INTERFACE_ID).expect("static async interface id is valid"),
+        HandlerReference::new(ASYNC_HANDLER_REFERENCE)
+            .expect("static async handler reference is valid"),
         Arc::new(ApplicationNativeUnaryHandler { port: Arc::clone(&port), mode: ApplicationNativeRunHandlerMode::Async }),
     )?;
     compiler.bind_handler::<ApplicationNativeRunInput, ApplicationNativeRunOutput, ApplicationNativeRunTargetError, ApplicationPrincipal>(
-        &InterfaceId::new(BLOCKING_INTERFACE_ID).unwrap(),
-        HandlerReference::new(BLOCKING_HANDLER_REFERENCE).unwrap(),
+        &InterfaceId::new(BLOCKING_INTERFACE_ID)
+            .expect("static blocking interface id is valid"),
+        HandlerReference::new(BLOCKING_HANDLER_REFERENCE)
+            .expect("static blocking handler reference is valid"),
         Arc::new(ApplicationNativeUnaryHandler { port: Arc::clone(&port), mode: ApplicationNativeRunHandlerMode::Blocking }),
     )?;
     compiler.bind_stream_handler::<ApplicationNativeRunInput, ApplicationNativeRunStreamEvent, ApplicationNativeRunOutput, ApplicationNativeRunTargetError, ApplicationPrincipal>(
-        &InterfaceId::new(STREAM_INTERFACE_ID).unwrap(),
-        HandlerReference::new(STREAM_HANDLER_REFERENCE).unwrap(),
+        &InterfaceId::new(STREAM_INTERFACE_ID).expect("static stream interface id is valid"),
+        HandlerReference::new(STREAM_HANDLER_REFERENCE)
+            .expect("static stream handler reference is valid"),
         Arc::new(ApplicationNativeStreamHandler { port }),
     )?;
     compiler.compile()

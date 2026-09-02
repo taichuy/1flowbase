@@ -554,7 +554,8 @@ impl
 pub(crate) struct NativeReadAuthorization;
 impl InterfaceAuthorizationPort<ApplicationPrincipal> for NativeReadAuthorization {
     fn adapter_reference(&self) -> AuthorizationAdapterReference {
-        AuthorizationAdapterReference::new("api-server.application-native-read").unwrap()
+        AuthorizationAdapterReference::new("api-server.application-native-read")
+            .expect("static authorization adapter reference is valid")
     }
 
     fn authorize(
@@ -570,16 +571,23 @@ pub(crate) fn compile_registry(
     resume_port: Arc<dyn NativeResumePort>,
     file_port: Arc<dyn NativeFilePort>,
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
-    let owner = InterfaceOwner::new("api-server.application-public-api").unwrap();
+    let owner = InterfaceOwner::new("api-server.application-public-api")
+        .expect("static interface owner is valid");
     let operations = [
-        AuthorizationOperation::new("application.native.models.list").unwrap(),
-        AuthorizationOperation::new("application.native.runs.read").unwrap(),
-        AuthorizationOperation::new("application.native.runs.cancel").unwrap(),
-        AuthorizationOperation::new("application.native.runs.resume").unwrap(),
-        AuthorizationOperation::new("application.native.files.upload").unwrap(),
+        AuthorizationOperation::new("application.native.models.list")
+            .expect("static models authorization operation is valid"),
+        AuthorizationOperation::new("application.native.runs.read")
+            .expect("static run read authorization operation is valid"),
+        AuthorizationOperation::new("application.native.runs.cancel")
+            .expect("static run cancel authorization operation is valid"),
+        AuthorizationOperation::new("application.native.runs.resume")
+            .expect("static run resume authorization operation is valid"),
+        AuthorizationOperation::new("application.native.files.upload")
+            .expect("static file upload authorization operation is valid"),
     ];
     let mut compiler = RegistryCompiler::new(
-        GraphFingerprint::new("graph:application-native-read-v1").unwrap(),
+        GraphFingerprint::new("graph:application-native-read-v1")
+            .expect("static registry graph fingerprint is valid"),
         operations.clone(),
         [owner.clone()],
     );
@@ -590,7 +598,8 @@ pub(crate) fn compile_registry(
         "application.native.models.list",
         MODELS_BINDING_ID,
         "api-server.application-native-models.list",
-        RouteIdentity::new("GET", "/api/agent/v1/models").unwrap(),
+        RouteIdentity::new("GET", "/api/agent/v1/models")
+            .expect("static models route is valid"),
         "control-plane.application-publication.load-active",
         InterfaceAuditPolicy::ReadOnly,
     )?;
@@ -601,7 +610,8 @@ pub(crate) fn compile_registry(
         "application.native.runs.get",
         GET_RUN_BINDING_ID,
         "api-server.application-native-run.get",
-        RouteIdentity::new("GET", "/api/agent/v1/runs/:run_id").unwrap(),
+        RouteIdentity::new("GET", "/api/agent/v1/runs/:run_id")
+            .expect("static get run route is valid"),
         "control-plane.application-native-run.get",
         InterfaceAuditPolicy::ReadOnly,
     )?;
@@ -612,7 +622,8 @@ pub(crate) fn compile_registry(
         "application.native.runs.cancel",
         CANCEL_RUN_BINDING_ID,
         "api-server.application-native-run.cancel",
-        RouteIdentity::new("POST", "/api/agent/v1/runs/:run_id/cancel").unwrap(),
+        RouteIdentity::new("POST", "/api/agent/v1/runs/:run_id/cancel")
+            .expect("static cancel run route is valid"),
         "control-plane.application-native-run.cancel",
         InterfaceAuditPolicy::Mutating,
     )?;
@@ -623,7 +634,8 @@ pub(crate) fn compile_registry(
         "application.native.runs.resume",
         RESUME_RUN_BINDING_ID,
         "api-server.application-native-run.resume",
-        RouteIdentity::new("POST", "/api/agent/v1/runs/:run_id/resume").unwrap(),
+        RouteIdentity::new("POST", "/api/agent/v1/runs/:run_id/resume")
+            .expect("static resume run route is valid"),
         "control-plane.application-native-run.resume",
         InterfaceAuditPolicy::Mutating,
     )?;
@@ -634,37 +646,48 @@ pub(crate) fn compile_registry(
         "application.native.files.upload",
         UPLOAD_FILE_BINDING_ID,
         "api-server.application-native-file.upload",
-        RouteIdentity::new("POST", "/api/agent/v1/files").unwrap(),
+        RouteIdentity::new("POST", "/api/agent/v1/files")
+            .expect("static file upload route is valid"),
         "control-plane.file-upload.upload",
         InterfaceAuditPolicy::Mutating,
     )?;
     compiler.bind_handler::<NativeModelsInput, NativeModelsOutput, NativeReadTargetError, ApplicationPrincipal>(
-        &InterfaceId::new("application.native.models.list").unwrap(),
-        HandlerReference::new("api-server.application-native-models.list").unwrap(),
+        &InterfaceId::new("application.native.models.list")
+            .expect("static models interface id is valid"),
+        HandlerReference::new("api-server.application-native-models.list")
+            .expect("static models handler reference is valid"),
         Arc::new(NativeReadHandler {
             port: Arc::clone(&port),
         }),
     )?;
     compiler.bind_handler::<NativeGetRunInput, NativeGetRunOutput, NativeReadTargetError, ApplicationPrincipal>(
-        &InterfaceId::new("application.native.runs.get").unwrap(),
-        HandlerReference::new("api-server.application-native-run.get").unwrap(),
+        &InterfaceId::new("application.native.runs.get")
+            .expect("static get run interface id is valid"),
+        HandlerReference::new("api-server.application-native-run.get")
+            .expect("static get run handler reference is valid"),
         Arc::new(NativeGetRunHandler {
             port: Arc::clone(&port),
         }),
     )?;
     compiler.bind_handler::<NativeCancelRunInput, NativeCancelRunOutput, NativeReadTargetError, ApplicationPrincipal>(
-        &InterfaceId::new("application.native.runs.cancel").unwrap(),
-        HandlerReference::new("api-server.application-native-run.cancel").unwrap(),
+        &InterfaceId::new("application.native.runs.cancel")
+            .expect("static cancel run interface id is valid"),
+        HandlerReference::new("api-server.application-native-run.cancel")
+            .expect("static cancel run handler reference is valid"),
         Arc::new(NativeCancelRunHandler { port }),
     )?;
     compiler.bind_handler::<NativeResumeRunInput, NativeResumeRunOutput, NativeReadTargetError, ApplicationPrincipal>(
-        &InterfaceId::new("application.native.runs.resume").unwrap(),
-        HandlerReference::new("api-server.application-native-run.resume").unwrap(),
+        &InterfaceId::new("application.native.runs.resume")
+            .expect("static resume run interface id is valid"),
+        HandlerReference::new("api-server.application-native-run.resume")
+            .expect("static resume run handler reference is valid"),
         Arc::new(NativeResumeRunHandler { port: resume_port }),
     )?;
     compiler.bind_handler::<NativeUploadFileInput, NativeUploadFileOutput, NativeReadTargetError, ApplicationPrincipal>(
-        &InterfaceId::new("application.native.files.upload").unwrap(),
-        HandlerReference::new("api-server.application-native-file.upload").unwrap(),
+        &InterfaceId::new("application.native.files.upload")
+            .expect("static file upload interface id is valid"),
+        HandlerReference::new("api-server.application-native-file.upload")
+            .expect("static file upload handler reference is valid"),
         Arc::new(NativeUploadFileHandler { port: file_port }),
     )?;
     compiler.compile()
@@ -682,8 +705,11 @@ fn register<I: InterfaceContract, O: InterfaceContract>(
     target: &str,
     audit_policy: InterfaceAuditPolicy,
 ) -> Result<(), interface_runtime::RegistryCompilationError> {
-    let id = InterfaceId::new(interface_id).unwrap();
-    let identity = InterfaceIdentity::new(id.clone(), InterfaceVersion::new("1").unwrap());
+    let id = InterfaceId::new(interface_id).expect("static interface id is valid");
+    let identity = InterfaceIdentity::new(
+        id.clone(),
+        InterfaceVersion::new("1").expect("static interface version is valid"),
+    );
     let contracts = InterfaceContracts::unary(
         contract::<I>(),
         contract::<O>(),
@@ -700,8 +726,8 @@ fn register<I: InterfaceContract, O: InterfaceContract>(
         ),
         InterfaceExecution::new(
             InterfaceExecutionMode::Unary,
-            HandlerReference::new(handler).unwrap(),
-            TargetReference::new(target).unwrap(),
+            HandlerReference::new(handler).expect("static handler reference is valid"),
+            TargetReference::new(target).expect("static target reference is valid"),
         ),
         audit_policy,
         InterfaceErrorPolicy::TypedTarget,
@@ -713,7 +739,7 @@ fn register<I: InterfaceContract, O: InterfaceContract>(
         1,
         interface_runtime::InterfaceExtensionRegistration::new(
             interface_runtime::PluginIdentity::new("api-server.application-authentication")
-                .unwrap(),
+                .expect("static authentication plugin identity is valid"),
             interface_runtime::InterfaceExtensionTier::BuiltIn,
             interface_runtime::InterfaceExtensionPoint::AuthenticationAdapter,
             interface_runtime::InterfaceExtensionPermission::Authenticate,
@@ -721,34 +747,38 @@ fn register<I: InterfaceContract, O: InterfaceContract>(
             interface_runtime::InterfaceExtensionIsolation::TrustedInProcess,
             [],
         )
-        .unwrap(),
+        .expect("built-in authentication registration is valid"),
         interface_runtime::ActivatedAuthenticationAdapter::new(
             interface_runtime::PluginIdentity::new("api-server.application-authentication")
-                .unwrap(),
+                .expect("static authentication plugin identity is valid"),
             interface_runtime::InterfaceExtensionTier::BuiltIn,
-            AuthenticationAdapterReference::new("api-server.application-api-key").unwrap(),
+            AuthenticationAdapterReference::new("api-server.application-api-key")
+                .expect("static authentication adapter reference is valid"),
             interface_runtime::AuthenticationActivationIdentity::new(
                 "api-server.application-api-key.activation.v1",
             )
-            .unwrap(),
+            .expect("static authentication activation identity is valid"),
             interface_runtime::PrincipalProfile::Application,
         ),
     )?;
     compiler.register_binding(
         ProtocolBinding::new(
-            BindingId::new(binding_id).unwrap(),
+            BindingId::new(binding_id).expect("static binding id is valid"),
             identity,
             contracts,
             ProtocolProjection::http(route),
         ),
         InvocationAdapterPlan::new(
-            AuthenticationAdapterReference::new("api-server.application-api-key").unwrap(),
-            AuthorizationAdapterReference::new("api-server.application-native-read").unwrap(),
+            AuthenticationAdapterReference::new("api-server.application-api-key")
+                .expect("static authentication adapter reference is valid"),
+            AuthorizationAdapterReference::new("api-server.application-native-read")
+                .expect("static authorization adapter reference is valid"),
             None,
         ),
     )
 }
 
 fn contract<T: InterfaceContract>() -> ContractIdentity {
-    ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION).unwrap()
+    ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
+        .expect("static interface contract is valid")
 }

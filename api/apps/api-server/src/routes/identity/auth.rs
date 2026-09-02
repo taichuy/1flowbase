@@ -526,7 +526,8 @@ where
             InvocationLineage::root(InvocationId::now_v7()),
             binding_id,
             InterfaceProtocol::Http,
-            interface_runtime::AuthenticationAdapterReference::new("api-server.public").unwrap(),
+            interface_runtime::AuthenticationAdapterReference::new("api-server.public")
+                .expect("static authentication adapter reference is valid"),
             authentication_activation,
             principal,
             None,

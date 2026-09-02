@@ -312,7 +312,7 @@ impl PluginInterfaceAdapter {
                     .await?;
                 Ok(PluginInterfaceOutput::Catalog(PluginCatalogResponse {
                     locale_meta,
-                    i18n_catalog: serde_json::to_value(catalog.i18n_catalog).unwrap(),
+                    i18n_catalog: serde_json::to_value(catalog.i18n_catalog)?,
                     entries: catalog
                         .entries
                         .into_iter()
@@ -336,7 +336,7 @@ impl PluginInterfaceAdapter {
                 Ok(PluginInterfaceOutput::Families(
                     PluginFamilyCatalogResponse {
                         locale_meta,
-                        i18n_catalog: serde_json::to_value(families.i18n_catalog).unwrap(),
+                        i18n_catalog: serde_json::to_value(families.i18n_catalog)?,
                         entries: families
                             .entries
                             .into_iter()

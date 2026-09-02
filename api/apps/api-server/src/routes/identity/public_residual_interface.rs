@@ -140,11 +140,14 @@ pub(crate) fn compile_registry(
 ) -> Result<Arc<CompiledInterfaceRegistry>, interface_runtime::RegistryCompilationError> {
     let owner = InterfaceOwner::new("api-server.public-auth").expect("static owner is valid");
     let operations = [
-        AuthorizationOperation::new("public.auth.providers.read").unwrap(),
-        AuthorizationOperation::new("public.auth.sign-up").unwrap(),
+        AuthorizationOperation::new("public.auth.providers.read")
+            .expect("static providers authorization operation is valid"),
+        AuthorizationOperation::new("public.auth.sign-up")
+            .expect("static sign-up authorization operation is valid"),
     ];
     let mut compiler = RegistryCompiler::new(
-        GraphFingerprint::new("graph:public-auth-residual-v1").unwrap(),
+        GraphFingerprint::new("graph:public-auth-residual-v1")
+            .expect("static registry graph fingerprint is valid"),
         operations.clone(),
         [owner.clone()],
     );
@@ -173,13 +176,16 @@ pub(crate) fn compile_registry(
         InterfaceAuditPolicy::Mutating,
     )?;
     compiler.bind_handler::<PublicProvidersInput, PublicProvidersOutput, PublicResidualTargetError, PublicPrincipal>(
-        &InterfaceId::new("public.auth.providers.list").unwrap(),
-        HandlerReference::new("api-server.public-auth.providers").unwrap(),
+        &InterfaceId::new("public.auth.providers.list")
+            .expect("static providers interface id is valid"),
+        HandlerReference::new("api-server.public-auth.providers")
+            .expect("static providers handler reference is valid"),
         Arc::new(ProvidersHandler(providers)),
     )?;
     compiler.bind_handler::<PublicSignUpInput, PublicSignUpOutput, PublicResidualTargetError, PublicPrincipal>(
-        &InterfaceId::new("public.auth.sign-up").unwrap(),
-        HandlerReference::new("api-server.public-auth.sign-up").unwrap(),
+        &InterfaceId::new("public.auth.sign-up").expect("static sign-up interface id is valid"),
+        HandlerReference::new("api-server.public-auth.sign-up")
+            .expect("static sign-up handler reference is valid"),
         Arc::new(SignUpHandler(sign_up)),
     )?;
     compiler.compile()
@@ -198,9 +204,11 @@ fn register<I: InterfaceContract, O: InterfaceContract>(
     owner: InterfaceOwner,
     audit: InterfaceAuditPolicy,
 ) -> Result<(), interface_runtime::RegistryCompilationError> {
-    let interface_id = InterfaceId::new(interface).unwrap();
-    let identity =
-        InterfaceIdentity::new(interface_id.clone(), InterfaceVersion::new("1").unwrap());
+    let interface_id = InterfaceId::new(interface).expect("static interface id is valid");
+    let identity = InterfaceIdentity::new(
+        interface_id.clone(),
+        InterfaceVersion::new("1").expect("static interface version is valid"),
+    );
     let contracts = InterfaceContracts::unary(
         contract::<I>(),
         contract::<O>(),
@@ -217,8 +225,8 @@ fn register<I: InterfaceContract, O: InterfaceContract>(
         ),
         InterfaceExecution::new(
             InterfaceExecutionMode::Unary,
-            HandlerReference::new(handler).unwrap(),
-            TargetReference::new(target).unwrap(),
+            HandlerReference::new(handler).expect("static handler reference is valid"),
+            TargetReference::new(target).expect("static target reference is valid"),
         ),
         audit,
         InterfaceErrorPolicy::TypedTarget,
@@ -229,7 +237,8 @@ fn register<I: InterfaceContract, O: InterfaceContract>(
         &interface_id,
         1,
         interface_runtime::InterfaceExtensionRegistration::new(
-            interface_runtime::PluginIdentity::new("api-server.public-authentication").unwrap(),
+            interface_runtime::PluginIdentity::new("api-server.public-authentication")
+                .expect("static authentication plugin identity is valid"),
             interface_runtime::InterfaceExtensionTier::BuiltIn,
             interface_runtime::InterfaceExtensionPoint::AuthenticationAdapter,
             interface_runtime::InterfaceExtensionPermission::Authenticate,
@@ -237,33 +246,40 @@ fn register<I: InterfaceContract, O: InterfaceContract>(
             interface_runtime::InterfaceExtensionIsolation::TrustedInProcess,
             [],
         )
-        .unwrap(),
+        .expect("built-in authentication registration is valid"),
         interface_runtime::ActivatedAuthenticationAdapter::new(
-            interface_runtime::PluginIdentity::new("api-server.public-authentication").unwrap(),
+            interface_runtime::PluginIdentity::new("api-server.public-authentication")
+                .expect("static authentication plugin identity is valid"),
             interface_runtime::InterfaceExtensionTier::BuiltIn,
-            AuthenticationAdapterReference::new("api-server.public").unwrap(),
+            AuthenticationAdapterReference::new("api-server.public")
+                .expect("static authentication adapter reference is valid"),
             interface_runtime::AuthenticationActivationIdentity::new(
                 "api-server.public.activation.v1",
             )
-            .unwrap(),
+            .expect("static authentication activation identity is valid"),
             interface_runtime::PrincipalProfile::Public,
         ),
     )?;
     compiler.register_binding(
         ProtocolBinding::new(
-            BindingId::new(binding).unwrap(),
+            BindingId::new(binding).expect("static binding id is valid"),
             identity,
             contracts,
-            ProtocolProjection::http(RouteIdentity::new(method, path).unwrap()),
+            ProtocolProjection::http(
+                RouteIdentity::new(method, path).expect("static route identity is valid"),
+            ),
         ),
         InvocationAdapterPlan::new(
-            AuthenticationAdapterReference::new("api-server.public").unwrap(),
-            AuthorizationAdapterReference::new("api-server.public").unwrap(),
+            AuthenticationAdapterReference::new("api-server.public")
+                .expect("static authentication adapter reference is valid"),
+            AuthorizationAdapterReference::new("api-server.public")
+                .expect("static authorization adapter reference is valid"),
             None,
         ),
     )
 }
 
 fn contract<T: InterfaceContract>() -> ContractIdentity {
-    ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION).unwrap()
+    ContractIdentity::new(T::CONTRACT_ID, T::CONTRACT_VERSION)
+        .expect("static interface contract is valid")
 }
