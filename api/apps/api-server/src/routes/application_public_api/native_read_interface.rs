@@ -598,8 +598,7 @@ pub(crate) fn compile_registry(
         "application.native.models.list",
         MODELS_BINDING_ID,
         "api-server.application-native-models.list",
-        RouteIdentity::new("GET", "/api/agent/v1/models")
-            .expect("static models route is valid"),
+        RouteIdentity::new("GET", "/api/agent/v1/models").expect("static models route is valid"),
         "control-plane.application-publication.load-active",
         InterfaceAuditPolicy::ReadOnly,
     )?;
