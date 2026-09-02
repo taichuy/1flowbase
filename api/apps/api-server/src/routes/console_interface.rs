@@ -1,13 +1,15 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
 use interface_runtime::{
-    AuthenticationAdapterReference, AuthorizationAdapterReference, AuthorizationOperation,
-    BindingId, CompiledInterfaceRegistry, ContractIdentity, GraphFingerprint, HandlerReference,
-    InterfaceAccess, InterfaceAuditPolicy, InterfaceAuthenticationPolicy, InterfaceContract,
-    InterfaceContracts, InterfaceDefinition, InterfaceErrorPolicy, InterfaceExecution,
-    InterfaceExecutionMode, InterfaceHandler, InterfaceHandlerContext, InterfaceHandlerFuture,
-    InterfaceId, InterfaceIdentity, InterfaceLifecycle, InterfaceOwner, InterfaceProtocol,
-    InterfaceScope, InterfaceStreamHandler, InterfaceStreamHandlerFuture, InterfaceTargetFailure,
+    AdmissionAdapterReference, AuthenticationAdapterReference, AuthorizationAdapterReference,
+    AuthorizationOperation, BindingId, CompiledInterfaceRegistry, ContractIdentity,
+    GraphFingerprint, HandlerReference, InterfaceAccess, InterfaceAuditPolicy,
+    InterfaceAuthenticationPolicy, InterfaceContract, InterfaceContracts, InterfaceDefinition,
+    InterfaceErrorPolicy, InterfaceExecution, InterfaceExecutionMode, InterfaceHandler,
+    InterfaceHandlerContext, InterfaceHandlerFuture, InterfaceId, InterfaceIdentity,
+    InterfaceLifecycle, InterfaceOwner, InterfaceProtocol, InterfaceScope, InterfaceStreamHandler,
+    InterfaceStreamHandlerFuture, InterfaceTargetAdmissionError, InterfaceTargetAdmissionFuture,
+    InterfaceTargetAdmissionPort, InterfaceTargetAdmissionRequest, InterfaceTargetFailure,
     InterfaceVersion, InvocationAdapterPlan, InvocationEnvelope, InvocationId, InvocationLineage,
     ProtocolBinding, ProtocolProjection, RegistryCompiler, RouteIdentity, TargetReference,
     UserPrincipal,
@@ -82,6 +84,7 @@ impl ConsoleLocaleHints {
 const AUTHENTICATION_ADAPTER: &str = "api-server.console.require-session";
 const AUTHENTICATION_ACTIVATION: &str = "api-server.console.require-session.activation.v1";
 const AUTHORIZATION_ADAPTER: &str = "api-server.console.compiled-operation";
+const ADMISSION_ADAPTER: &str = "api-server.console.protocol-admission";
 
 pub(crate) struct ConsoleInterfaceDeclaration {
     pub(crate) interface_id: &'static str,
@@ -131,6 +134,42 @@ struct ConsoleInterfaceHandler<I, O> {
 
 struct ConsoleServerStreamHandler<I, S, O> {
     port: Arc<dyn ConsoleServerStreamPort<I, S, O>>,
+}
+
+struct ConsoleProtocolAdmissionPort {
+    result: std::sync::Mutex<Option<Result<(), ApiError>>>,
+}
+
+impl ConsoleProtocolAdmissionPort {
+    fn new(admission: crate::extension_bus::ConsoleProtocolAdmission) -> Self {
+        Self {
+            result: std::sync::Mutex::new(Some(admission.into_result())),
+        }
+    }
+}
+
+impl InterfaceTargetAdmissionPort for ConsoleProtocolAdmissionPort {
+    fn adapter_reference(&self) -> AdmissionAdapterReference {
+        AdmissionAdapterReference::new(ADMISSION_ADAPTER)
+            .expect("static Console admission adapter is valid")
+    }
+
+    fn admit(
+        &self,
+        _request: InterfaceTargetAdmissionRequest,
+    ) -> InterfaceTargetAdmissionFuture<'_> {
+        let result = self
+            .result
+            .lock()
+            .expect("Console admission lock must remain available")
+            .take()
+            .expect("Console admission executes exactly once");
+        Box::pin(async move {
+            result.map_err(|error| {
+                InterfaceTargetAdmissionError::with_source("console_protocol_admission", error)
+            })
+        })
+    }
 }
 
 impl<I, S, O> InterfaceStreamHandler<I, S, O, ConsoleInterfaceTargetError, UserPrincipal>
@@ -273,7 +312,10 @@ where
                     .expect("static Console authentication adapter is valid"),
                 AuthorizationAdapterReference::new(AUTHORIZATION_ADAPTER)
                     .expect("static Console authorization adapter is valid"),
-                None,
+                Some(
+                    AdmissionAdapterReference::new(ADMISSION_ADAPTER)
+                        .expect("static Console admission adapter is valid"),
+                ),
             ),
         )?;
     }
@@ -358,7 +400,10 @@ where
                     .expect("static Console authentication adapter is valid"),
                 AuthorizationAdapterReference::new(AUTHORIZATION_ADAPTER)
                     .expect("static Console authorization adapter is valid"),
-                None,
+                Some(
+                    AdmissionAdapterReference::new(ADMISSION_ADAPTER)
+                        .expect("static Console admission adapter is valid"),
+                ),
             ),
         )?;
         compiler.bind_stream_handler::<I, S, O, ConsoleInterfaceTargetError, UserPrincipal>(
@@ -426,14 +471,12 @@ where
     let activated = snapshot.authentication(&binding_id).cloned().ok_or(
         control_plane::errors::ControlPlaneError::NotFound("authentication_activation"),
     )?;
+    let (credential, admission) = credential.defer_protocol_admission();
     let principal: UserPrincipal = boot_snapshot
         .authenticate(&activated, credential)
         .await
         .map_err(ApiError::from)?;
-    let kernel = crate::routes::host_infrastructure::interface_operation::invocation_kernel(
-        Arc::clone(&state.console_policy_reader),
-        Arc::clone(&state.console_operation_registry),
-    );
+    let kernel = console_invocation_kernel(&state, admission);
     match kernel
         .invoke::<I, O, ConsoleInterfaceTargetError>(
             snapshot,
@@ -462,6 +505,9 @@ where
             interface_runtime::InterfaceInvocationError::AuthorizationRejected(error) => Err(error
                 .into_source::<ApiError>()
                 .unwrap_or_else(|| anyhow::anyhow!("Console authorization failed").into())),
+            interface_runtime::InterfaceInvocationError::AdmissionRejected(error) => Err(error
+                .into_source::<ApiError>()
+                .unwrap_or_else(|| anyhow::anyhow!("Console admission failed").into())),
             _ => Err(anyhow::anyhow!("Console interface invocation failed").into()),
         },
     }
@@ -483,7 +529,10 @@ where
     let snapshot = frozen_snapshot(&state)?;
     let binding_id = BindingId::new(binding_id).expect("static Console binding is valid");
     let activated = activated_authentication(&snapshot, &binding_id)?;
-    let kernel = console_invocation_kernel(&state);
+    let kernel = console_invocation_kernel(
+        &state,
+        crate::extension_bus::ConsoleProtocolAdmission::allowed(),
+    );
     match kernel
         .invoke::<I, O, ConsoleInterfaceTargetError>(
             snapshot,
@@ -529,6 +578,7 @@ where
     let activated = snapshot.authentication(&binding_id).cloned().ok_or(
         control_plane::errors::ControlPlaneError::NotFound("authentication_activation"),
     )?;
+    let (credential, admission) = credential.defer_protocol_admission();
     let principal: UserPrincipal = boot_snapshot
         .authenticate(&activated, credential)
         .await
@@ -540,7 +590,7 @@ where
         handler: plan.definition().handler_reference().clone(),
         target: plan.definition().target_reference().clone(),
     };
-    console_invocation_kernel(&state)
+    console_invocation_kernel(&state, admission)
         .invoke_server_stream_with_dispatch_target::<I, S, O, ConsoleInterfaceTargetError>(
             snapshot,
             InvocationEnvelope::with_principal(
@@ -580,10 +630,12 @@ fn activated_authentication(
 
 fn console_invocation_kernel(
     state: &ApiState,
+    admission: crate::extension_bus::ConsoleProtocolAdmission,
 ) -> Arc<interface_runtime::InterfaceInvocationKernel<UserPrincipal>> {
-    crate::routes::host_infrastructure::interface_operation::invocation_kernel(
+    crate::routes::host_infrastructure::interface_operation::invocation_kernel_with_admission(
         Arc::clone(&state.console_policy_reader),
         Arc::clone(&state.console_operation_registry),
+        Arc::new(ConsoleProtocolAdmissionPort::new(admission)),
     )
 }
 
@@ -596,6 +648,9 @@ fn console_invocation_error(error: interface_runtime::InterfaceInvocationError) 
         interface_runtime::InterfaceInvocationError::AuthorizationRejected(error) => error
             .into_source::<ApiError>()
             .unwrap_or_else(|| anyhow::anyhow!("Console authorization failed").into()),
+        interface_runtime::InterfaceInvocationError::AdmissionRejected(error) => error
+            .into_source::<ApiError>()
+            .unwrap_or_else(|| anyhow::anyhow!("Console admission failed").into()),
         _ => anyhow::anyhow!("Console interface invocation failed").into(),
     }
 }

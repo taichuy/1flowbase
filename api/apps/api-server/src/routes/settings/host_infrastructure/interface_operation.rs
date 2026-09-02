@@ -265,6 +265,20 @@ pub(crate) fn invocation_kernel(
     )))
 }
 
+pub(crate) fn invocation_kernel_with_admission(
+    policy_reader: Arc<dyn RoleConsolePolicyReader>,
+    console_registry: Arc<ConsoleOperationRegistry>,
+    admission: Arc<dyn interface_runtime::InterfaceTargetAdmissionPort>,
+) -> Arc<InterfaceInvocationKernel> {
+    Arc::new(InterfaceInvocationKernel::with_target_admission(
+        Arc::new(ConsoleInterfaceAuthorizationPort {
+            policy_reader,
+            console_registry,
+        }),
+        admission,
+    ))
+}
+
 pub(crate) async fn invoke_providers_view(
     state: Arc<ApiState>,
     credential: crate::extension_bus::ConsoleAuthenticationCredential,

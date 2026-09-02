@@ -4,7 +4,7 @@ use std::{
     future::Future,
     marker::PhantomData,
     pin::Pin,
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
 
 use anyhow::{bail, Context, Result};
@@ -253,7 +253,81 @@ pub(crate) enum ConsoleAuthenticationCredential {
         state: Arc<ApiState>,
         headers: HeaderMap,
     },
+    PreparedProtocolWithCsrf {
+        state: Arc<ApiState>,
+        headers: HeaderMap,
+        admission: ConsoleProtocolAdmission,
+    },
+    PreparedCookieSessionWithCsrf {
+        state: Arc<ApiState>,
+        headers: HeaderMap,
+        admission: ConsoleProtocolAdmission,
+    },
     ServerDelegation(domain::ActorContext),
+}
+
+#[derive(Clone)]
+pub(crate) struct ConsoleProtocolAdmission {
+    result: Arc<Mutex<Option<Result<(), crate::error_response::ApiError>>>>,
+}
+
+impl ConsoleProtocolAdmission {
+    fn deferred() -> Self {
+        Self {
+            result: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub(crate) fn allowed() -> Self {
+        Self {
+            result: Arc::new(Mutex::new(Some(Ok(())))),
+        }
+    }
+
+    fn record(&self, result: Result<(), crate::error_response::ApiError>) {
+        *self
+            .result
+            .lock()
+            .expect("Console protocol admission lock must remain available") = Some(result);
+    }
+
+    pub(crate) fn into_result(self) -> Result<(), crate::error_response::ApiError> {
+        self.result
+            .lock()
+            .expect("Console protocol admission lock must remain available")
+            .take()
+            .expect("Console authentication must resolve protocol admission")
+    }
+}
+
+impl ConsoleAuthenticationCredential {
+    pub(crate) fn defer_protocol_admission(self) -> (Self, ConsoleProtocolAdmission) {
+        match self {
+            Self::ProtocolWithCsrf { state, headers } => {
+                let admission = ConsoleProtocolAdmission::deferred();
+                (
+                    Self::PreparedProtocolWithCsrf {
+                        state,
+                        headers,
+                        admission: admission.clone(),
+                    },
+                    admission,
+                )
+            }
+            Self::CookieSessionWithCsrf { state, headers } => {
+                let admission = ConsoleProtocolAdmission::deferred();
+                (
+                    Self::PreparedCookieSessionWithCsrf {
+                        state,
+                        headers,
+                        admission: admission.clone(),
+                    },
+                    admission,
+                )
+            }
+            credential => (credential, ConsoleProtocolAdmission::allowed()),
+        }
+    }
 }
 
 pub(crate) struct McpUserApiKeyAuthenticationCredential {
@@ -363,6 +437,37 @@ fn built_in_authentication_factories() -> Result<Vec<AuthenticationAdapterFactor
                         context.cookie_session()?;
                         crate::middleware::require_csrf::require_csrf(&headers, &context)
                             .map_err(|error| error.0)?;
+                        Ok(context.interface_principal())
+                    }
+                    ConsoleAuthenticationCredential::PreparedProtocolWithCsrf {
+                        state,
+                        headers,
+                        admission,
+                    } => {
+                        let context = require_session(&state, &headers)
+                            .await
+                            .map_err(|error| error.0)?;
+                        let result =
+                            if matches!(context.credential, RequestCredential::CookieSession(_)) {
+                                crate::middleware::require_csrf::require_csrf(&headers, &context)
+                            } else {
+                                Ok(())
+                            };
+                        admission.record(result);
+                        Ok(context.interface_principal())
+                    }
+                    ConsoleAuthenticationCredential::PreparedCookieSessionWithCsrf {
+                        state,
+                        headers,
+                        admission,
+                    } => {
+                        let context = require_session(&state, &headers)
+                            .await
+                            .map_err(|error| error.0)?;
+                        context.cookie_session()?;
+                        admission.record(crate::middleware::require_csrf::require_csrf(
+                            &headers, &context,
+                        ));
                         Ok(context.interface_principal())
                     }
                     ConsoleAuthenticationCredential::ServerDelegation(actor) => {
@@ -558,6 +663,39 @@ fn identity_host_authentication_factories(
                             context.cookie_session()?;
                             crate::middleware::require_csrf::require_csrf(&headers, &context)
                                 .map_err(|error| error.0)?;
+                            Ok(context.interface_principal())
+                        }
+                        ConsoleAuthenticationCredential::PreparedProtocolWithCsrf {
+                            state,
+                            headers,
+                            admission,
+                        } => {
+                            let context = require_session(&state, &headers)
+                                .await
+                                .map_err(|error| error.0)?;
+                            let result = if matches!(
+                                context.credential,
+                                RequestCredential::CookieSession(_)
+                            ) {
+                                crate::middleware::require_csrf::require_csrf(&headers, &context)
+                            } else {
+                                Ok(())
+                            };
+                            admission.record(result);
+                            Ok(context.interface_principal())
+                        }
+                        ConsoleAuthenticationCredential::PreparedCookieSessionWithCsrf {
+                            state,
+                            headers,
+                            admission,
+                        } => {
+                            let context = require_session(&state, &headers)
+                                .await
+                                .map_err(|error| error.0)?;
+                            context.cookie_session()?;
+                            admission.record(crate::middleware::require_csrf::require_csrf(
+                                &headers, &context,
+                            ));
                             Ok(context.interface_principal())
                         }
                         ConsoleAuthenticationCredential::ServerDelegation(actor) => {
