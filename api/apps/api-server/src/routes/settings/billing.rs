@@ -513,7 +513,7 @@ pub(crate) fn bundled_pricing_catalog(
 fn bundled_pricing_catalog_payload(
 ) -> Result<(Value, BundledPricingCatalog, Vec<u8>, String), ApiError> {
     let value: Value = serde_json::from_str(include_str!(
-        "../../../assets/model-pricing/catalog.v1.json"
+        "../../../resources/model-pricing/catalog.v1.json"
     ))?;
     pricing_catalog_payload(value)
 }
