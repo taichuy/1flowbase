@@ -6,7 +6,7 @@ import {
   within
 } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const billingApi = vi.hoisted(() => ({
   settingsPricingRulesQueryKey: ['settings', 'billing', 'pricing-rules'],
@@ -43,6 +43,7 @@ vi.mock('../api/billing', () => billingApi);
 vi.mock('../api/members', () => membersApi);
 
 import { AppProviders } from '../../../app/AppProviders';
+import { loadApplicationI18nResources } from '../../../shared/i18n/app-i18n';
 import { resetAuthStore, useAuthStore } from '../../../state/auth-store';
 import { CreditManagementPanel } from '../components/billing/CreditManagementPanel';
 import { PricingCatalogPanel } from '../components/billing/PricingCatalogPanel';
@@ -77,6 +78,10 @@ function renderWithProviders(node: ReactNode) {
 }
 
 describe('billing settings panels', () => {
+  beforeAll(async () => {
+    await loadApplicationI18nResources();
+  });
+
   beforeEach(() => {
     resetAuthStore();
     authenticate();
@@ -155,7 +160,9 @@ describe('billing settings panels', () => {
       page_size: 20
     });
     billingApi.importSettingsPricingCatalog.mockResolvedValue({
-      imported: 1,
+      inserted: 1,
+      skipped: 0,
+      updated: 0,
       deleted: 0
     });
     membersApi.fetchSettingsMembers.mockResolvedValue([
@@ -200,13 +207,7 @@ describe('billing settings panels', () => {
 
     fireEvent.mouseDown(screen.getByRole('combobox', { name: '字段配置' }));
     const columnOptions = await screen.findByRole('listbox');
-    for (const name of [
-      '时区',
-      '适用星期',
-      '时段开始',
-      '时段结束',
-      '优先级'
-    ]) {
+    for (const name of ['时区', '适用星期', '时段开始', '时段结束', '优先级']) {
       expect(
         within(columnOptions).getByRole('option', { name })
       ).toBeInTheDocument();
@@ -243,16 +244,22 @@ describe('billing settings panels', () => {
     );
   });
 
-  test('loads and filters the official catalog through backend pagination', async () => {
+  test('loads, refreshes, and installs the remote official catalog without update semantics', async () => {
     renderWithProviders(<PricingCatalogPanel />);
     expect(await screen.findByText('zero')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /更\s*新/ }));
+    fireEvent.click(screen.getByRole('button', { name: /刷新远程目录/ }));
+    await waitFor(() =>
+      expect(billingApi.getSettingsPricingCatalog).toHaveBeenCalledTimes(2)
+    );
+    fireEvent.click(screen.getByRole('button', { name: /安装当前页/ }));
     await waitFor(() =>
       expect(billingApi.importSettingsPricingCatalog).toHaveBeenCalledWith(
         ['10000000-0000-4000-8000-000000000001'],
         'csrf-123'
       )
     );
+    expect(await screen.findByText('目录安装完成')).toBeInTheDocument();
+    expect(screen.getByText('已安装: 1; 已跳过: 0')).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText('厂家 Code'), {
       target: { value: 'openai' }
     });
@@ -280,7 +287,7 @@ describe('billing settings panels', () => {
     fireEvent.change(within(dialog).getByLabelText('原因'), {
       target: { value: 'test grant' }
     });
-    fireEvent.click(screen.getByRole('button', { name: '确 定' }));
+    fireEvent.click(screen.getByRole('button', { name: /^(?:OK|确 定)$/ }));
     await waitFor(() =>
       expect(billingApi.executeSettingsCreditCommand).toHaveBeenCalledWith(
         'user-1',

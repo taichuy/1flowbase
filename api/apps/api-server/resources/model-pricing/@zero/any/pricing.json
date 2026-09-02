@@ -1,0 +1,31 @@
+{
+  "schema_version": "1flowbase.model-pricing-source/v1",
+  "provider_code": "zero",
+  "upstream_model_id": "any",
+  "currency_code": "USD",
+  "rules": [
+    {
+      "id": "10000000-0000-4000-8000-000000000001",
+      "input_token_unit_size": 1000000,
+      "input_token_unit_price": "0",
+      "output_token_unit_size": 1000000,
+      "output_token_unit_price": "0",
+      "cache_hit_token_unit_size": 1000000,
+      "cache_hit_token_unit_price": "0",
+      "effective_from": "2026-08-17T00:00:00Z",
+      "effective_to": null,
+      "timezone": "UTC",
+      "weekday_mask": 127,
+      "local_time_start": null,
+      "local_time_end": null,
+      "priority": 0,
+      "enabled": true,
+      "rating_policy_enabled": false,
+      "rating_policy": {},
+      "extensions": {
+        "pricing_policy": "global_zero_fallback",
+        "owner": "model_pricing_catalog"
+      }
+    }
+  ]
+}

@@ -34,6 +34,21 @@ COPY scripts/shell/package-default-extension.sh /usr/local/bin/package-default-e
 
 RUN package-default-extension /tmp/default-extensions.lock.json "${TARGETARCH}" /default-extensions
 
+FROM alpine:3.22 AS model-pricing-bootstrap
+
+ARG MODEL_PRICING_REPOSITORY=taichuy/1flowbase-official-plugins
+ARG MODEL_PRICING_REF=main
+
+RUN apk add --no-cache ca-certificates git jq
+
+COPY scripts/shell/package-model-pricing-bootstrap.sh /usr/local/bin/package-model-pricing-bootstrap
+
+RUN chmod 0755 /usr/local/bin/package-model-pricing-bootstrap \
+  && package-model-pricing-bootstrap \
+      "${MODEL_PRICING_REPOSITORY}" \
+      "${MODEL_PRICING_REF}" \
+      /model-pricing
+
 FROM node:24-bookworm-slim AS runtime-base
 
 ARG APP_UID=1000
@@ -59,10 +74,12 @@ RUN apt-get update \
     --home /home/flowbase --move-home --shell /usr/sbin/nologin node
 
 ENV API_POSTGRES_PG_DUMP_PATH=/usr/lib/postgresql/18/bin/pg_dump \
-    API_POSTGRES_PG_RESTORE_PATH=/usr/lib/postgresql/18/bin/pg_restore
+    API_POSTGRES_PG_RESTORE_PATH=/usr/lib/postgresql/18/bin/pg_restore \
+    API_MODEL_PRICING_BOOTSTRAP_ROOT=/app/api/resources/model-pricing
 
 COPY api/plugins /app/api/plugins
 COPY --from=default-extension /default-extensions /app/api/plugins/bootstrap
+COPY --from=model-pricing-bootstrap /model-pricing /app/api/resources/model-pricing
 RUN mkdir -p \
     /app/api/storage \
     /app/api/plugins/packages \

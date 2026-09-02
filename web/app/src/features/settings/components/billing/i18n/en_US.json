@@ -1,5 +1,10 @@
 {
   "auto": {
-    "billing_import_catalog": "Update"
+    "billing_catalog_inserted": "Installed",
+    "billing_catalog_install_complete": "Catalog installation complete",
+    "billing_catalog_skipped": "Skipped",
+    "billing_install_catalog_page": "Install current page",
+    "billing_refresh_remote_catalog": "Refresh remote catalog",
+    "billing_remote_catalog_unavailable": "The remote pricing catalog is temporarily unavailable"
   }
 }

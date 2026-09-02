@@ -650,6 +650,9 @@ async fn anthropic_live_flow_started_is_not_duplicated_before_waiting_tool_use()
         official_i18n_catalog_update_service: base_state
             .official_i18n_catalog_update_service
             .clone(),
+        official_model_pricing_catalog_index_url: base_state
+            .official_model_pricing_catalog_index_url
+            .clone(),
         api_node_id: base_state.api_node_id.clone(),
         provider_install_root: base_state.provider_install_root.clone(),
         provider_secret_master_key: base_state.provider_secret_master_key.clone(),
@@ -760,6 +763,9 @@ async fn anthropic_same_answer_presentation_from_live_and_durable_is_emitted_onc
         official_extension_catalog_source: base_state.official_extension_catalog_source.clone(),
         official_i18n_catalog_update_service: base_state
             .official_i18n_catalog_update_service
+            .clone(),
+        official_model_pricing_catalog_index_url: base_state
+            .official_model_pricing_catalog_index_url
             .clone(),
         api_node_id: base_state.api_node_id.clone(),
         provider_install_root: base_state.provider_install_root.clone(),

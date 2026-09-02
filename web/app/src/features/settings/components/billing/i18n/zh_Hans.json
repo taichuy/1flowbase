@@ -1,5 +1,10 @@
 {
   "auto": {
-    "billing_import_catalog": "更新"
+    "billing_catalog_inserted": "已安装",
+    "billing_catalog_install_complete": "目录安装完成",
+    "billing_catalog_skipped": "已跳过",
+    "billing_install_catalog_page": "安装当前页",
+    "billing_refresh_remote_catalog": "刷新远程目录",
+    "billing_remote_catalog_unavailable": "远程计费目录暂时不可用"
   }
 }

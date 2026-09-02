@@ -307,7 +307,7 @@ pub(crate) fn production_interface_contributions(
         crate::routes::billing_interface::BillingDependencies {
             store: state.store.clone(),
             cache_store: state.infrastructure.cache_store(),
-            trusted_public_keys: state.official_plugin_source.trusted_public_keys(),
+            catalog_index_url: state.official_model_pricing_catalog_index_url.clone(),
         },
     );
     let console_application_orchestration =

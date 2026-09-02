@@ -53,6 +53,13 @@ export interface ConsolePricingCatalogFilter {
   page_size?: number;
 }
 
+export interface ConsolePricingCatalogInstallSummary {
+  inserted: number;
+  skipped: number;
+  updated: number;
+  deleted: number;
+}
+
 export interface ConsolePricingRulesFilter {
   provider_code?: string;
   upstream_model_id?: string;
@@ -198,7 +205,7 @@ export function importConsolePricingCatalog(
   csrfToken: string,
   baseUrl?: string
 ) {
-  return apiFetch<{ imported: number; deleted: number }>({
+  return apiFetch<ConsolePricingCatalogInstallSummary>({
     path: '/api/console/settings/billing/pricing-catalog/import',
     method: 'POST',
     body: { catalog_ids: catalogIds },

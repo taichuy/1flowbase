@@ -64,6 +64,8 @@ pub struct ApiConfig {
     pub official_plugin_github_proxy_url: Option<String>,
     pub official_plugin_signature_required: bool,
     pub official_plugin_trusted_public_keys_json: String,
+    pub official_model_pricing_catalog_index_url: String,
+    pub model_pricing_bootstrap_root: String,
     pub official_extension_catalog_sources:
         BTreeMap<String, ResolvedOfficialExtensionCatalogSourceConfig>,
     pub official_extension_source_connect_timeout: Duration,
@@ -215,6 +217,18 @@ impl ApiConfig {
             .get("API_OFFICIAL_PLUGIN_REPOSITORY")
             .cloned()
             .unwrap_or_else(|| "taichuy/1flowbase-official-plugins".to_string());
+        let official_model_pricing_catalog_index_url = map
+            .get("API_OFFICIAL_MODEL_PRICING_CATALOG_INDEX_URL")
+            .cloned()
+            .unwrap_or_else(|| {
+                format!(
+                    "https://raw.githubusercontent.com/{official_plugin_repository}/main/model-pricing/catalog/v1/index.json"
+                )
+            });
+        let model_pricing_bootstrap_root = map
+            .get("API_MODEL_PRICING_BOOTSTRAP_ROOT")
+            .cloned()
+            .unwrap_or_else(|| "/app/api/resources/model-pricing".to_owned());
         let official_plugin_default_registry_url = map
             .get("API_OFFICIAL_PLUGIN_DEFAULT_REGISTRY_URL")
             .cloned()
@@ -353,6 +367,8 @@ impl ApiConfig {
             official_plugin_github_proxy_url,
             official_plugin_signature_required,
             official_plugin_trusted_public_keys_json,
+            official_model_pricing_catalog_index_url,
+            model_pricing_bootstrap_root,
             official_extension_catalog_sources,
             official_extension_source_connect_timeout: parse_positive_duration_seconds(
                 "API_OFFICIAL_EXTENSION_SOURCE_CONNECT_TIMEOUT_SECONDS",

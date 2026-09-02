@@ -3,6 +3,7 @@ import * as transport from '../transport';
 import {
   executeConsoleCreditCommand,
   getConsolePricingCatalog,
+  importConsolePricingCatalog,
   listConsoleCreditAccounts,
   listConsolePricingRules
 } from '../console-billing';
@@ -28,6 +29,14 @@ describe('console billing client', () => {
     });
     await expect(listConsoleCreditAccounts()).resolves.toMatchObject({
       path: '/api/console/settings/billing/credit-accounts'
+    });
+    await expect(
+      importConsolePricingCatalog(['catalog-rule-1'], 'csrf')
+    ).resolves.toMatchObject({
+      path: '/api/console/settings/billing/pricing-catalog/import',
+      method: 'POST',
+      body: { catalog_ids: ['catalog-rule-1'] },
+      csrfToken: 'csrf'
     });
   });
 

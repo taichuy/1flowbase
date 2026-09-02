@@ -123,7 +123,7 @@ vi.mock('@1flowbase/api-client', () => ({
   }),
   importConsolePricingCatalog: vi
     .fn()
-    .mockResolvedValue({ imported: 0, deleted: 0 }),
+    .mockResolvedValue({ inserted: 0, skipped: 0, updated: 0, deleted: 0 }),
   listConsoleCreditAccounts: vi.fn().mockResolvedValue([]),
   listConsoleCreditLedger: vi.fn().mockResolvedValue([]),
   executeConsoleCreditCommand: vi

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Button, Empty, Flex, Input, Tag } from 'antd';
+import { Alert, Button, Empty, Flex, Input, Tag } from 'antd';
 import { Tabs } from 'antd';
 import { useNavigate } from '@tanstack/react-router';
 import { useAuthStore } from '../../../../state/auth-store';
@@ -231,6 +231,33 @@ export function PricingCatalogPanel() {
             </DataTableFilterForm>
           }
         >
+          {catalog.isError ? (
+            <Alert
+              showIcon
+              type="error"
+              message={i18nText(
+                'settingsBilling',
+                'auto.billing_remote_catalog_unavailable'
+              )}
+            />
+          ) : null}
+          {importing.data ? (
+            <Alert
+              showIcon
+              type="success"
+              message={i18nText(
+                'settingsBilling',
+                'auto.billing_catalog_install_complete'
+              )}
+              description={`${i18nText(
+                'settingsBilling',
+                'auto.billing_catalog_inserted'
+              )}: ${importing.data.inserted}; ${i18nText(
+                'settingsBilling',
+                'auto.billing_catalog_skipped'
+              )}: ${importing.data.skipped}`}
+            />
+          ) : null}
           <DataTable<PricingCatalogRule>
             columns={columns}
             configuration={tableConfiguration}
@@ -247,12 +274,27 @@ export function PricingCatalogPanel() {
             toolbar={
               <Flex justify="flex-end" gap={8} wrap>
                 <Button
+                  loading={catalog.isFetching}
+                  onClick={() => {
+                    importing.reset();
+                    void catalog.refetch();
+                  }}
+                >
+                  {i18nText(
+                    'settingsBilling',
+                    'auto.billing_refresh_remote_catalog'
+                  )}
+                </Button>
+                <Button
                   type="primary"
                   disabled={rows.length === 0}
                   loading={importing.isPending}
                   onClick={() => importing.mutate()}
                 >
-                  {i18nText('settingsBilling', 'auto.billing_import_catalog')}
+                  {i18nText(
+                    'settingsBilling',
+                    'auto.billing_install_catalog_page'
+                  )}
                 </Button>
                 <DataTableColumnSettings
                   columns={columns}

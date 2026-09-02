@@ -32,6 +32,13 @@ impl crate::ports::BillingRepository for InMemoryOrchestrationRuntimeRepository 
         anyhow::bail!("pricing rule fixture is not implemented")
     }
 
+    async fn insert_pricing_rule_if_absent(
+        &self,
+        _input: &crate::ports::UpsertPricingRuleInput,
+    ) -> Result<Option<crate::billing::PricingRule>> {
+        anyhow::bail!("pricing rule fixture is not implemented")
+    }
+
     async fn delete_pricing_rule(&self, _id: Uuid) -> Result<bool> {
         Ok(false)
     }
