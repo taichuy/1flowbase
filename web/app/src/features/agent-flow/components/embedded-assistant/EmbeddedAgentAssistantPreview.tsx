@@ -65,10 +65,8 @@ import type { WindowWorkspaceRect } from '../../../../shared/ui/window-workspace
 import { PageReferenceDraftRow } from '../debug-console/conversation/PageReferenceTag';
 import { formatLlmTokenCount } from '../../lib/model-options';
 import { useAssistantPageReferenceSelection } from './useAssistantPageReferenceSelection';
-import {
-  readAssistantWindowSize,
-  writeAssistantWindowSize
-} from './assistant-window-size-storage';
+import { writeAssistantWindowSize } from './assistant-window-size-storage';
+import { ASSISTANT_WINDOW_ID } from './assistant-window-geometry';
 import '../editor/styles/shell.css';
 import './embedded-assistant.css';
 
@@ -103,7 +101,6 @@ function hasChangedPreference(
   );
 }
 
-const ASSISTANT_WINDOW_ID = 'embedded-agent-assistant-preview';
 const ASSISTANT_HISTORY_DEFAULT_WIDTH = 280;
 const ASSISTANT_HISTORY_MIN_WIDTH = 180;
 const ASSISTANT_CONVERSATION_MIN_WIDTH = 220;
@@ -286,27 +283,6 @@ function assistantRunStatusIndicator(status: string | null) {
   return null;
 }
 
-function initialAssistantWindowRect(): WindowWorkspaceRect {
-  const viewport = getWindowWorkspaceViewport();
-  const storedSize = readAssistantWindowSize();
-  const width = Math.min(
-    Math.max(400, storedSize?.conversationWidth ?? 560),
-    Math.max(400, viewport.width - 32)
-  );
-  const height = storedSize
-    ? Math.min(
-        Math.max(320, storedSize.windowHeight),
-        Math.max(320, viewport.height - 16)
-      )
-    : Math.min(Math.max(480, viewport.height - 24), viewport.height - 16);
-  return {
-    left: Math.max(8, viewport.left + viewport.width - width - 16),
-    top: Math.max(viewport.top + 8, 56),
-    width,
-    height
-  };
-}
-
 export function EmbeddedAgentAssistantPreview({
   open,
   pageKey,
@@ -354,8 +330,6 @@ export function EmbeddedAgentAssistantPreview({
   const [form] = Form.useForm<ConsoleAssistantPreference>();
   const {
     activate,
-    close,
-    open: openWindow,
     setRect,
     state: windowWorkspaceState,
     toggleMaximized
@@ -387,6 +361,15 @@ export function EmbeddedAgentAssistantPreview({
       session.disconnectSession();
     }
   }, [open, session.disconnectSession, session.resumeActiveRun]);
+
+  useEffect(() => {
+    if (open) {
+      return;
+    }
+    historyExpansionSideRef.current = null;
+    historyExpansionWidthRef.current = 0;
+    historyLeftResizeWidthRef.current = 0;
+  }, [open]);
   const pageReferenceSelection = useAssistantPageReferenceSelection({
     active: open,
     duplicateMessage: i18nText(
@@ -441,24 +424,6 @@ export function EmbeddedAgentAssistantPreview({
     historyLeftResizeWidthRef.current = 0;
     setHistoryPage(null);
   }, [workspaceId]);
-
-  useEffect(() => {
-    if (!open) {
-      historyExpansionSideRef.current = null;
-      historyExpansionWidthRef.current = 0;
-      historyLeftResizeWidthRef.current = 0;
-      close(ASSISTANT_WINDOW_ID);
-      return;
-    }
-    openWindow({
-      id: ASSISTANT_WINDOW_ID,
-      owner: 'embedded-agent-assistant',
-      parent_id: null,
-      rect: initialAssistantWindowRect(),
-      dirty: false
-    });
-    return () => close(ASSISTANT_WINDOW_ID);
-  }, [close, open, openWindow]);
 
   useEffect(() => {
     const updateMobile = () => setMobile(window.innerWidth <= 640);
