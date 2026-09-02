@@ -13,14 +13,18 @@
       "method": "GET",
       "path": "/api/console/applications/{id}/logs/runs",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/log_handlers.rs",
-        "functionName": "list_application_runs"
+        "file": "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads.rs",
+        "functionName": "list_runs"
       },
       "repository": {
         "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/application_run_log_methods.rs",
         "functionName": "list_application_run_logs_page"
       },
       "extraSources": [
+        {
+          "file": "api/apps/api-server/src/routes/applications/application_runtime/log_handlers.rs",
+          "functionName": "list_application_runs"
+        },
         {
           "file": "api/apps/api-server/src/routes/applications/application_runtime/summary_responses.rs",
           "functionName": "application_runs_created_after"
@@ -31,7 +35,7 @@
           "description": "Application route scope and repository application_id filter.",
           "patterns": [
             "Path\\(id\\): Path<Uuid>",
-            "ensure_application_visible\\(&state, &context\\.actor, id\\)",
+            "visible_application\\(actor, application_id\\)",
             "where application_id = \\$1"
           ]
         },
@@ -63,14 +67,18 @@
       "method": "GET",
       "path": "/api/console/applications/{id}/monitoring/run-metrics",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/application_monitoring.rs",
-        "functionName": "get_application_run_monitoring_report"
+        "file": "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads.rs",
+        "functionName": "monitoring_report"
       },
       "repository": {
         "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/application_run_monitoring_methods.rs",
         "functionName": "get_application_run_monitoring_report"
       },
       "extraSources": [
+        {
+          "file": "api/apps/api-server/src/routes/applications/application_runtime/application_monitoring.rs",
+          "functionName": "get_application_run_monitoring_report"
+        },
         {
           "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/application_run_monitoring_methods.rs",
           "functionName": "application_run_monitoring_logs_query"
@@ -85,8 +93,7 @@
           "description": "Application route scope and repository application_id filter.",
           "patterns": [
             "Path\\(id\\): Path<Uuid>",
-            "ApplicationService::new\\(state\\.store\\.for_actor\\(context\\.actor\\.clone\\(\\)\\)\\)",
-            "get_application\\(context\\.user\\.id, id\\)",
+            "visible_application\\(actor, application_id\\)",
             "where application_id = \\$1"
           ]
         },
@@ -123,19 +130,25 @@
       "method": "GET",
       "path": "/api/console/applications/{id}/logs/conversations/{conversation_id}/messages",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/log_handlers.rs",
-        "functionName": "list_application_conversation_messages"
+        "file": "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads.rs",
+        "functionName": "conversation_messages"
       },
       "repository": {
         "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/read_methods.rs",
         "functionName": "list_application_conversation_runs_page"
       },
+      "extraSources": [
+        {
+          "file": "api/apps/api-server/src/routes/applications/application_runtime/log_handlers.rs",
+          "functionName": "list_application_conversation_messages"
+        }
+      ],
       "contract": {
         "scope": {
           "description": "Application scope plus external conversation id.",
           "patterns": [
             "Path\\(\\(id, conversation_id\\)\\): Path<\\(Uuid, String\\)>",
-            "ensure_application_visible\\(&state, &context\\.actor, id\\)",
+            "visible_application\\(actor, application_id\\)",
             "where messages\\.application_id = \\$1",
             "conversations\\.external_conversation_id = \\$2"
           ]
@@ -164,19 +177,25 @@
       "method": "GET",
       "path": "/api/console/applications/{id}/logs/runs/{run_id}/trace-tree",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/log_handlers.rs",
-        "functionName": "get_application_run_trace_tree"
+        "file": "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads.rs",
+        "functionName": "trace_tree"
       },
       "repository": {
         "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/application_run_trace_projection_methods.rs",
         "functionName": "list_application_run_trace_roots"
       },
+      "extraSources": [
+        {
+          "file": "api/apps/api-server/src/routes/applications/application_runtime/log_handlers.rs",
+          "functionName": "get_application_run_trace_tree"
+        }
+      ],
       "contract": {
         "scope": {
           "description": "Application access is checked and repository filters by flow_run_id.",
           "patterns": [
             "Path\\(\\(id, run_id\\)\\): Path<\\(Uuid, Uuid\\)>",
-            "ensure_application_visible\\(&state, &context\\.actor, id\\)",
+            "visible_application\\(actor, application_id\\)",
             "where flow_run_id = \\$1 and parent_trace_node_id is null"
           ]
         },
@@ -268,14 +287,18 @@
       "method": "GET",
       "path": "/api/console/applications/{id}/logs/runs/{run_id}/debug-stream",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/log_handlers.rs",
-        "functionName": "get_runtime_debug_stream"
+        "file": "api/apps/api-server/src/routes/applications/application_runtime/interface_runtime_reads.rs",
+        "functionName": "runtime_debug_stream"
       },
       "repository": {
         "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/read_methods.rs",
         "functionName": "list_runtime_event_backfill_page"
       },
       "extraSources": [
+        {
+          "file": "api/apps/api-server/src/routes/applications/application_runtime/log_handlers.rs",
+          "functionName": "get_runtime_debug_stream"
+        },
         {
           "file": "api/apps/api-server/src/routes/applications/application_runtime/debug_handlers.rs",
           "functionName": "debug_run_stream_from_sequence"
@@ -286,8 +309,8 @@
           "description": "Application access, flow_run ownership, and run-scoped runtime event page.",
           "patterns": [
             "Path\\(\\(id, run_id\\)\\): Path<\\(Uuid, Uuid\\)>",
-            "ensure_application_visible\\(&state, &context\\.actor, id\\)",
-            "get_flow_run\\(&state\\.store, id, run_id\\)",
+            "visible_application\\(actor, application_id\\)",
+            "get_flow_run\\(&self\\.store, application_id, run_id\\)",
             "where flow_run_id = \\$1"
           ]
         },
@@ -334,6 +357,10 @@
       },
       "extraSources": [
         {
+          "file": "api/apps/api-server/src/routes/applications/application_runtime/interface_debug_commands.rs",
+          "functionName": "subscribe_stream"
+        },
+        {
           "file": "api/apps/api-server/src/routes/applications/application_runtime/debug_handlers.rs",
           "functionName": "debug_run_stream_from_sequence"
         }
@@ -343,7 +370,7 @@
           "description": "Application access, flow_run ownership, and run-scoped runtime event backfill.",
           "patterns": [
             "Path\\(\\(id, run_id\\)\\): Path<\\(Uuid, Uuid\\)>",
-            "get_flow_run\\(id, run_id\\)",
+            "get_flow_run\\(application_id, run_id\\)",
             "where flow_run_id = \\$1"
           ]
         },
@@ -420,19 +447,25 @@
       "method": "POST",
       "path": "/api/console/applications/{id}/orchestration/debug-artifacts/resolve",
       "api": {
-        "file": "api/apps/api-server/src/routes/applications/application_runtime/debug_handlers.rs",
-        "functionName": "resolve_runtime_debug_artifacts"
+        "file": "api/apps/api-server/src/routes/applications/application_runtime/interface_debug_artifacts.rs",
+        "functionName": "execute_inner"
       },
       "repository": {
         "file": "api/crates/storage/durable/postgres/src/orchestration_runtime_repository/artifact_methods.rs",
         "functionName": "get_runtime_debug_artifact"
       },
+      "extraSources": [
+        {
+          "file": "api/apps/api-server/src/routes/applications/application_runtime/debug_handlers.rs",
+          "functionName": "resolve_runtime_debug_artifacts"
+        }
+      ],
       "contract": {
         "scope": {
           "description": "Batch artifact detail reads are scoped by workspace, application and artifact id.",
           "patterns": [
-            "ensure_application_visible\\(&state, &context\\.actor, id\\)",
-            "context\\.actor\\.current_workspace_id",
+            "visible_application\\(actor, application_id\\)",
+            "actor\\.current_workspace_id",
             "artifact_id",
             "where id = \\$1",
             "workspace_id = \\$2",
