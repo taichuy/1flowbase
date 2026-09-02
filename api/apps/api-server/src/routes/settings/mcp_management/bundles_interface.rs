@@ -176,10 +176,7 @@ impl McpBundlesAdapter {
         &self,
         principal: &UserPrincipal,
     ) -> Result<Vec<domain::McpInterfaceCatalogEntry>, ApiError> {
-        Ok(
-            mcp_interface_catalog_entries_with(&self.0.interface_catalog, principal.actor())
-                .await?,
-        )
+        mcp_interface_catalog_entries_with(&self.0.interface_catalog, principal.actor()).await
     }
 
     async fn parse(bytes: Vec<u8>) -> Result<domain::McpBundlePackage, ApiError> {

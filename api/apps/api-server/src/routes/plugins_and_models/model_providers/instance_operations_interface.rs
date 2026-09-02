@@ -40,6 +40,10 @@ impl InterfaceContract for ProviderInstanceOperationsInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed provider output is projected immediately into the console response"
+)]
 pub(crate) enum ProviderInstanceOperationsOutput {
     Authentication(AuthenticateModelProviderInstanceResponse),
     Usage(ModelProviderUsageWindowsResponse),

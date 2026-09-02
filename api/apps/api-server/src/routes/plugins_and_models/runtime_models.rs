@@ -643,7 +643,7 @@ async fn execute_descriptor_model_operation(
     let payload = if body.is_empty() {
         serde_json::json!({})
     } else {
-        serde_json::from_slice(&body)
+        serde_json::from_slice(body)
             .map_err(|_| control_plane::errors::ControlPlaneError::InvalidInput("payload"))?
     };
     let query = serde_json::to_value(parse_runtime_query(raw_query))?;

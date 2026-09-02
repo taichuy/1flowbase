@@ -10,7 +10,6 @@ pub(crate) const COMPILED_CONSOLE_OPERATION_SNAPSHOT_SCHEMA_V1: &str =
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ConsoleBindingOwnerKind {
-    Core,
     Family,
     HostExtension,
 }
@@ -80,6 +79,7 @@ pub(crate) struct CompiledConsoleOperationSnapshot {
 }
 
 impl CompiledConsoleOperationSnapshot {
+    #[cfg(test)]
     pub(crate) fn operation(&self, operation_id: &str) -> Option<&CompiledConsoleOperationRecord> {
         self.operations
             .binary_search_by(|operation| operation.operation_id.as_str().cmp(operation_id))

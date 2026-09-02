@@ -104,7 +104,7 @@ pub enum DispatchSuccess {
 
 pub enum DispatchError {
     Api(anyhow::Error),
-    Target(Response),
+    Target(Box<Response>),
 }
 
 impl From<anyhow::Error> for DispatchError {
@@ -533,7 +533,7 @@ async fn legacy_dispatch_result(
             .map_err(DispatchError::Api),
         Err(CallableDispatchError::Api(error)) => Err(DispatchError::Api(error)),
         Err(CallableDispatchError::Target(response)) => Err(response_from_typed(response)
-            .map(DispatchError::Target)
+            .map(|response| DispatchError::Target(Box::new(response)))
             .map_err(DispatchError::Api)?),
     }
 }

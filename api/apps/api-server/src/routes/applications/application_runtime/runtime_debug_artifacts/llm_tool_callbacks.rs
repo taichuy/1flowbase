@@ -152,10 +152,6 @@ pub(super) fn is_llm_rounds_field_path(field_path: &[String]) -> bool {
     field_path.len() == 1 && field_path[0] == "llm_rounds"
 }
 
-pub(super) fn is_llm_rounds_leaf_field_path(field_path: &[String]) -> bool {
-    field_path.last().is_some_and(|key| key == "llm_rounds")
-}
-
 pub(super) fn is_tool_calls_field_path(field_path: &[String]) -> bool {
     field_path.last().is_some_and(|key| key == "tool_calls")
 }

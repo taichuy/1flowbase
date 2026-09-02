@@ -57,6 +57,10 @@ impl InterfaceContract for NetworkPluginInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed plugin output is projected immediately into the console response"
+)]
 pub(crate) enum NetworkPluginOutput {
     Official(NetworkEgressOfficialPluginCatalogResponse),
     Families(Vec<NetworkEgressPluginFamilyResponse>),

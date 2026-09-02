@@ -245,12 +245,6 @@ impl ExtensionBootSnapshot {
         self.external_endpoint_catalog.get()
     }
 
-    pub(crate) fn console_operation_snapshot(
-        &self,
-    ) -> Option<&Arc<crate::console_operation_compilation::CompiledConsoleOperationSnapshot>> {
-        self.console_operation_snapshot.get()
-    }
-
     pub(crate) fn publish_complete_catalog(
         &self,
         state: &Arc<crate::app_state::ApiState>,

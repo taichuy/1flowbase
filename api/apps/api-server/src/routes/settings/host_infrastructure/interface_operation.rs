@@ -71,6 +71,7 @@ pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_HANDLER_REFERENCE: &str =
 pub const HOST_INFRASTRUCTURE_PROVIDERS_VIEW_TARGET_REFERENCE: &str =
     "control-plane.host-infrastructure.providers.view";
 
+#[derive(Default)]
 pub struct HostInfrastructureProvidersViewInput;
 
 impl HostInfrastructureProvidersViewInput {

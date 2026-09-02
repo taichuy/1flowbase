@@ -28,6 +28,10 @@ impl InterfaceContract for FrontstageCallableCatalogInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed catalog output is projected immediately into the frontstage response"
+)]
 pub(crate) enum FrontstageCallableCatalogOutput {
     Page(OpenApiCapabilityCatalogPage),
     Entry(OpenApiCapabilityCatalogEntry),

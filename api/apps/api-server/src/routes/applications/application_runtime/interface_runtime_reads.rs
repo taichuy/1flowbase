@@ -94,6 +94,10 @@ impl InterfaceContract for ApplicationRuntimeReadsInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed read output is projected immediately into the console response"
+)]
 pub(crate) enum ApplicationRuntimeReadsOutput {
     Runs(FlowRunSummaryPageResponse),
     ConversationMessages(ApplicationConversationMessagesPageResponse),

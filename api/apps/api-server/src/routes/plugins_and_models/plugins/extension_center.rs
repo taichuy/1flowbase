@@ -1321,7 +1321,7 @@ async fn install_or_update_official_extension(
     let mut managed_schema_declaration = None;
     if is_node_plugin_category(category) {
         let inspection = inspect_node_plugin(
-            &dependencies,
+            dependencies,
             &downloaded.file_name,
             &downloaded.artifact_bytes,
             source_kind,

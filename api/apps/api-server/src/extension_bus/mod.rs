@@ -1,5 +1,7 @@
 mod authentication_activation;
 mod boot_snapshot;
+#[cfg(test)]
+pub(crate) use boot_snapshot::DurableHostInfrastructureProvidersViewQuery;
 mod input_assembly;
 mod interface_contributions;
 
@@ -13,7 +15,6 @@ pub(crate) use authentication_activation::{
     PublicAuthenticationCredential, RuntimeModelAuthenticationCredential,
     CONSOLE_SESSION_CREDENTIAL_CONTRACT_ID, CONSOLE_SESSION_CREDENTIAL_CONTRACT_VERSION,
 };
-pub(crate) use boot_snapshot::DurableHostInfrastructureProvidersViewQuery;
 pub use boot_snapshot::{
     compile_extension_boot_snapshot, EffectiveExtensionPlan, ExtensionBootSnapshot,
     EFFECTIVE_EXTENSION_PLAN_SCHEMA_V1,

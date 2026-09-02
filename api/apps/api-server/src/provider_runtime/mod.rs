@@ -1727,12 +1727,12 @@ fn runtime_artifact_reference(
 ) -> anyhow::Result<RuntimeArtifactReference> {
     #[cfg(test)]
     {
-        return RuntimeArtifactReference::new(
+        RuntimeArtifactReference::new(
             installation
                 .local_path()
                 .ok_or(ControlPlaneError::Conflict("plugin_artifact_path_missing"))?,
         )
-        .map_err(Into::into);
+        .map_err(Into::into)
     }
     #[cfg(not(test))]
     {

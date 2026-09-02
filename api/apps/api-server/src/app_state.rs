@@ -114,14 +114,6 @@ pub(crate) fn request_catalog_locale(
         .expect("runtime profile must resolve a supported catalog locale")
 }
 
-pub(crate) async fn resolve_request_text(
-    state: &ApiState,
-    locale: &CatalogLocale,
-    key: &str,
-) -> Result<String, ApiError> {
-    resolve_request_text_with(&state.store, state.bootstrap_workspace_id, locale, key).await
-}
-
 pub(crate) async fn resolve_request_text_with(
     store: &MainDurableStore,
     bootstrap_workspace_id: uuid::Uuid,
@@ -137,22 +129,6 @@ pub(crate) async fn resolve_request_text_with(
         .value)
 }
 
-pub(crate) async fn project_canonical_display(
-    state: &ApiState,
-    locale: &CatalogLocale,
-    key: &'static str,
-    stored: &str,
-) -> Result<String, ApiError> {
-    project_canonical_display_with(
-        &state.store,
-        state.bootstrap_workspace_id,
-        locale,
-        key,
-        stored,
-    )
-    .await
-}
-
 pub(crate) async fn project_canonical_display_with(
     store: &MainDurableStore,
     bootstrap_workspace_id: uuid::Uuid,
@@ -164,20 +140,6 @@ pub(crate) async fn project_canonical_display_with(
         return Ok(stored.to_owned());
     }
     resolve_request_text_with(store, bootstrap_workspace_id, locale, key).await
-}
-
-pub(crate) async fn resolve_official_source_label(
-    state: &ApiState,
-    locale: &CatalogLocale,
-    source_kind: &str,
-    fallback: String,
-) -> Result<String, ApiError> {
-    let key = match source_kind {
-        "official_registry" => "Official source",
-        "mirror_registry" => "Mirror source",
-        _ => return Ok(fallback),
-    };
-    resolve_request_text(state, locale, key).await
 }
 
 pub(crate) async fn resolve_official_source_label_with(

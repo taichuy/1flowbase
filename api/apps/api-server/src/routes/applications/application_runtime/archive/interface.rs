@@ -56,6 +56,10 @@ pub(crate) struct ArchiveDownload {
     pub(crate) body: Vec<u8>,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed archive output is projected immediately into the console response"
+)]
 pub(crate) enum ApplicationRuntimeArchiveOutput {
     Download(ArchiveDownload),
     UploadSession(RunArchiveUploadSessionResponse),
@@ -194,14 +198,16 @@ impl ApplicationRuntimeArchiveAdapter {
         let session_id = Uuid::now_v7();
         persist_run_archive_upload_session(
             &self.dependencies.store,
-            session_id,
-            application.workspace_id,
-            application.id,
-            actor.user_id,
-            body.filename.as_deref(),
-            body.total_size_bytes,
-            expected_sha256,
-            chunk_size_bytes,
+            PersistRunArchiveUploadSessionInput {
+                session_id,
+                scope_id: application.workspace_id,
+                application_id: application.id,
+                actor_user_id: actor.user_id,
+                filename: body.filename.as_deref(),
+                total_size_bytes: body.total_size_bytes,
+                expected_sha256,
+                chunk_size_bytes,
+            },
         )
         .await?;
         let session =

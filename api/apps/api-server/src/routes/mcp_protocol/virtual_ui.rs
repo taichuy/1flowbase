@@ -302,32 +302,10 @@ impl RuntimeInternalToolInvokerFactory {
             assistant_client: None,
         })
     }
-
-    pub(crate) async fn create_forwarded(
-        &self,
-        headers: HeaderMap,
-        actor: domain::ActorContext,
-        run_level_instance_ids: Vec<String>,
-    ) -> Result<ApiMcpRuntimeToolInvoker, ApiError> {
-        let catalog = McpManagementService::new(self.dependencies.store.clone())
-            .read_catalog_for_actor(&actor)
-            .await?;
-        Ok(ApiMcpRuntimeToolInvoker {
-            dependencies: self.dependencies.clone(),
-            interface_catalog: self.interface_catalog.clone(),
-            interface_dispatch: self.interface_dispatch.clone(),
-            headers,
-            authorization: RuntimeMcpAuthorization::ForwardedActor(actor),
-            catalog,
-            run_level_instance_ids,
-            assistant_client: None,
-        })
-    }
 }
 
 #[derive(Clone)]
 enum RuntimeMcpAuthorization {
-    ForwardedActor(domain::ActorContext),
     ServerDelegation(RuntimeActorDelegation),
 }
 
@@ -375,17 +353,6 @@ impl ApiMcpRuntimeToolInvoker {
     ) -> Result<Self, ApiError> {
         factory
             .create_server_delegated(headers, actor, run_level_instance_ids)
-            .await
-    }
-
-    pub(crate) async fn new_with_forwarded_authorization(
-        factory: RuntimeInternalToolInvokerFactory,
-        headers: HeaderMap,
-        actor: domain::ActorContext,
-        run_level_instance_ids: Vec<String>,
-    ) -> Result<Self, ApiError> {
-        factory
-            .create_forwarded(headers, actor, run_level_instance_ids)
             .await
     }
 
@@ -489,21 +456,6 @@ impl RuntimeInternalToolInvoker for ApiMcpRuntimeToolInvoker {
         };
         let scope = VirtualMcpScope::single(instance_id.to_string());
         let outcome = match &self.authorization {
-            RuntimeMcpAuthorization::ForwardedActor(actor) => {
-                dispatch(
-                    &self.dependencies,
-                    self.interface_catalog.as_ref(),
-                    self.interface_dispatch.as_ref(),
-                    &self.headers,
-                    actor,
-                    &self.catalog,
-                    &scope,
-                    operation_name,
-                    arguments,
-                    self.assistant_client.as_deref(),
-                )
-                .await
-            }
             RuntimeMcpAuthorization::ServerDelegation(delegation) => {
                 let context = match delegation.request_context(&self.dependencies.store).await {
                     Ok(context) => context,
@@ -800,17 +752,17 @@ pub(crate) async fn dispatch(
             result(&dependencies.result_delivery, actor, &arguments).await
         }
         (_, Some(McpLlmOperation::Call)) => {
-            call(
+            call(McpCallRequest {
                 dependencies,
                 interface_catalog,
                 interface_dispatch,
                 headers,
                 actor,
                 catalog,
-                &effective_scope,
-                &arguments,
+                scope: &effective_scope,
+                arguments: &arguments,
                 assistant_client,
-            )
+            })
             .await
         }
         (MCP_LIST, None) => {
@@ -827,7 +779,7 @@ pub(crate) async fn dispatch(
         (MCP_GET, None) => Ok(get(catalog, scope, &arguments, allow_assistant_client)),
         (MCP_RESULT, None) => result(&dependencies.result_delivery, actor, &arguments).await,
         (MCP_CALL, None) => {
-            call(
+            call(McpCallRequest {
                 dependencies,
                 interface_catalog,
                 interface_dispatch,
@@ -835,9 +787,9 @@ pub(crate) async fn dispatch(
                 actor,
                 catalog,
                 scope,
-                &arguments,
+                arguments: &arguments,
                 assistant_client,
-            )
+            })
             .await
         }
         _ => Ok(VirtualToolOutcome::Error {
@@ -977,17 +929,30 @@ async fn result(
     ))
 }
 
-async fn call(
-    dependencies: &RuntimeInternalToolInvokerDependencies,
-    interface_catalog: &dyn McpInterfaceCatalogPort,
-    interface_dispatch: &dyn McpInterfaceDispatchPort,
-    headers: &HeaderMap,
-    actor: &domain::ActorContext,
-    catalog: &domain::McpCatalogSnapshot,
-    scope: &VirtualMcpScope,
-    arguments: &Value,
-    assistant_client: Option<&crate::routes::assistant::AssistantClientToolBridge>,
-) -> Result<VirtualToolOutcome, ApiError> {
+struct McpCallRequest<'a> {
+    dependencies: &'a RuntimeInternalToolInvokerDependencies,
+    interface_catalog: &'a dyn McpInterfaceCatalogPort,
+    interface_dispatch: &'a dyn McpInterfaceDispatchPort,
+    headers: &'a HeaderMap,
+    actor: &'a domain::ActorContext,
+    catalog: &'a domain::McpCatalogSnapshot,
+    scope: &'a VirtualMcpScope,
+    arguments: &'a Value,
+    assistant_client: Option<&'a crate::routes::assistant::AssistantClientToolBridge>,
+}
+
+async fn call(request: McpCallRequest<'_>) -> Result<VirtualToolOutcome, ApiError> {
+    let McpCallRequest {
+        dependencies,
+        interface_catalog,
+        interface_dispatch,
+        headers,
+        actor,
+        catalog,
+        scope,
+        arguments,
+        assistant_client,
+    } = request;
     let Some(tool_id) = string_argument(arguments, "tool_id") else {
         return Ok(VirtualToolOutcome::invalid("Invalid tool_id"));
     };

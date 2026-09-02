@@ -18,6 +18,10 @@ use crate::error_response::ApiError;
 pub(super) const INTERFACE_ID: &str = "mcp.user-api-key.invoke";
 const HANDLER_REFERENCE: &str = "api-server.mcp.invoke";
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the MCP command is consumed once by the typed protocol adapter"
+)]
 pub(super) enum McpInvocationInput {
     Initialize {
         instance_name: String,

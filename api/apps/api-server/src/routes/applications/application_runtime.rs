@@ -69,7 +69,7 @@ use runtime_debug_artifacts::{
     enrich_node_last_run_visible_internal_llm_route_traces, load_runtime_debug_artifact_content,
     load_runtime_debug_artifact_json_value_with_dependencies,
     offload_application_run_detail_artifacts_with_dependencies, RuntimeDebugArtifactContent,
-    RuntimeDebugArtifactPreviewRequest, RuntimeDebugArtifactReadDependencies,
+    RuntimeDebugArtifactReadDependencies,
 };
 
 pub(super) const APPLICATION_RUN_LOG_DEFAULT_TIME_RANGE_DAYS: i64 = 7;

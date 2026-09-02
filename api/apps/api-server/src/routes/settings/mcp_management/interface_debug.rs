@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use control_plane::{errors::ControlPlaneError, mcp_management::McpManagementService};
+use control_plane::mcp_management::McpManagementService;
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use serde_json::Value;
 

@@ -13,7 +13,6 @@ pub(crate) mod upstream;
 pub(crate) mod upstream_client;
 pub(crate) mod upstream_interface;
 
-pub(crate) use interface_catalog::bindable_mcp_interface;
 pub(crate) use interface_catalog::*;
 use projections::*;
 
@@ -49,7 +48,6 @@ use uuid::Uuid;
 use crate::{
     app_state::ApiState,
     error_response::ApiError,
-    middleware::{require_csrf::require_csrf, require_session::require_session},
     openapi_docs::DocsCatalogOperation,
     openapi_interface::{OpenApiCapabilityCatalogEntry, OpenApiParameterLocation},
     response::ApiSuccess,

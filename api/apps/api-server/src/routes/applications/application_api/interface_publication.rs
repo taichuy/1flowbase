@@ -61,6 +61,10 @@ impl InterfaceContract for ApplicationPublicationInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed output is projected immediately into the console response"
+)]
 pub(crate) enum ApplicationPublicationOutput {
     Mapping(ApplicationApiMappingBody),
     Publication(ApplicationPublicationResponse),

@@ -343,48 +343,6 @@ pub(crate) fn auth_center_overview_response(
     }
 }
 
-async fn localize_authenticator_response(
-    state: &ApiState,
-    locale: &domain::CatalogLocale,
-    response: &mut AuthCenterAuthenticatorResponse,
-) -> Result<(), ApiError> {
-    if response.id == domain::PASSWORD_LOCAL_AUTHENTICATOR_ID {
-        response.title =
-            crate::app_state::project_canonical_display(state, locale, "Password", &response.title)
-                .await?;
-        response
-            .config_values
-            .insert("title".to_owned(), Value::String(response.title.clone()));
-        if let Some(public_variables) = &mut response.public_variables {
-            public_variables.insert("title".to_owned(), Value::String(response.title.clone()));
-        }
-    }
-    for variable in &mut response.context_variables {
-        let key = match variable.member_path.as_str() {
-            "inputs.authenticator_id" => Some("Authenticator ID"),
-            "inputs.authenticator_selection_available" => Some("Authenticator selection available"),
-            "inputs.auth_event" => Some("Authentication event"),
-            "api" => Some("API"),
-            _ => None,
-        };
-        if let Some(key) = key {
-            variable.label = crate::app_state::resolve_request_text(state, locale, key).await?;
-        }
-    }
-    Ok(())
-}
-
-async fn localize_overview_response(
-    state: &ApiState,
-    locale: &domain::CatalogLocale,
-    response: &mut AuthCenterOverviewResponse,
-) -> Result<(), ApiError> {
-    for authenticator in &mut response.authenticators {
-        localize_authenticator_response(state, locale, authenticator).await?;
-    }
-    Ok(())
-}
-
 pub(crate) async fn localize_authenticator_response_with(
     store: &storage_durable_postgres::MainDurableStore,
     bootstrap_workspace_id: Uuid,
@@ -439,19 +397,6 @@ pub(crate) async fn localize_overview_response_with(
             .await?;
     }
     Ok(())
-}
-
-async fn localized_authenticator_response(
-    state: &ApiState,
-    headers: &HeaderMap,
-    preferred_locale: Option<String>,
-    authenticator: domain::AuthenticatorRecord,
-) -> Result<AuthCenterAuthenticatorResponse, ApiError> {
-    let locale = crate::app_state::request_catalog_locale(headers, preferred_locale);
-    let mut response =
-        to_auth_center_authenticator_response(authenticator, state.authenticator_registry.as_ref());
-    localize_authenticator_response(state, &locale, &mut response).await?;
-    Ok(response)
 }
 
 #[utoipa::path(

@@ -60,6 +60,10 @@ impl InterfaceContract for MemoryInspectionInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed inspection output is projected immediately into the console response"
+)]
 pub(crate) enum MemoryInspectionOutput {
     Overview(MemoryOverviewResponse),
     StatsOverview(MemoryStatsOverviewResponse),

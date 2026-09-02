@@ -81,6 +81,10 @@ pub(crate) struct CompatibilityBlockingInput {
     pub(crate) command: CompatibilityInvocationCommand,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the protocol command is consumed once by the typed compatibility adapter"
+)]
 pub(crate) enum CompatibilityInvocationCommand {
     Start {
         request: NativeRunRequest,
@@ -175,22 +179,24 @@ pub(crate) trait CompatibilityBlockingPort: Send + Sync + 'static {
         &'a self,
         principal: &'a ApplicationPrincipal,
         input: CompatibilityBlockingInput,
-    ) -> Pin<
-        Box<
-            dyn Future<
-                    Output = Result<
-                        InterfaceEventStream<
-                            CompatibilityStreamEvent,
-                            CompatibilityBlockingOutput,
-                            CompatibilityBlockingTargetError,
-                        >,
+    ) -> CompatibilityBlockingStreamFuture<'a>;
+}
+
+type CompatibilityBlockingStreamFuture<'a> = Pin<
+    Box<
+        dyn Future<
+                Output = Result<
+                    InterfaceEventStream<
+                        CompatibilityStreamEvent,
+                        CompatibilityBlockingOutput,
                         CompatibilityBlockingTargetError,
                     >,
-                > + Send
-                + 'a,
-        >,
-    >;
-}
+                    CompatibilityBlockingTargetError,
+                >,
+            > + Send
+            + 'a,
+    >,
+>;
 
 #[derive(Clone)]
 pub(crate) struct CompatibilityExecutionDependencies {
@@ -687,7 +693,7 @@ fn register_authentication(
     interface_id: &InterfaceId,
 ) -> Result<(), interface_runtime::RegistryCompilationError> {
     compiler.register_authentication_adapter(
-        &interface_id,
+        interface_id,
         1,
         interface_runtime::InterfaceExtensionRegistration::new(
             interface_runtime::PluginIdentity::new("api-server.application-authentication")

@@ -225,7 +225,7 @@ where
         .collect::<std::collections::BTreeSet<_>>();
     let operations = declaration_ids
         .iter()
-        .map(|interface_id| AuthorizationOperation::new(interface_id))
+        .map(AuthorizationOperation::new)
         .collect::<Result<Vec<_>, _>>()
         .expect("static Console family operations are valid");
     let mut compiler = RegistryCompiler::new(

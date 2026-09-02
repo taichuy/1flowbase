@@ -23,6 +23,10 @@ impl InterfaceContract for McpToolsInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed MCP tool output is projected immediately into the console response"
+)]
 pub(crate) enum McpToolsOutput {
     Tools(Vec<McpToolResponse>),
     Tool(McpToolResponse),

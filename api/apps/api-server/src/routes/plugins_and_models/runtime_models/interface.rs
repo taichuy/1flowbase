@@ -242,7 +242,7 @@ pub(crate) async fn invoke(
 ) -> Response {
     let Some((_route_method, _, raw_binding_id)) = binding_declarations()
         .into_iter()
-        .find(|(candidate, _, _)| candidate == &method)
+        .find(|(candidate, _, _)| candidate == method)
     else {
         return crate::error_response::ApiError::from(
             control_plane::errors::ControlPlaneError::NotFound("runtime_operation"),

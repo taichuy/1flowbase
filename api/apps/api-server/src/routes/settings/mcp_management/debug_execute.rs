@@ -156,7 +156,7 @@ pub async fn execute_with_console_router(
             return Err(McpDebugExecuteError::Api(error))
         }
         Err(crate::openapi_interface::DispatchError::Target(response)) => {
-            return Err(McpDebugExecuteError::TargetResponse(response))
+            return Err(McpDebugExecuteError::TargetResponse(*response))
         }
     };
     let tool_result = map_tool_result(&body.output_mapping, &interface_response);

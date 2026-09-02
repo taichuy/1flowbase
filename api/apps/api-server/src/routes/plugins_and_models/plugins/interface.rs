@@ -114,6 +114,10 @@ impl InterfaceContract for PluginInterfaceInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed plugin output is projected immediately into the console response"
+)]
 pub(crate) enum PluginInterfaceOutput {
     Catalog(PluginCatalogResponse),
     Families(PluginFamilyCatalogResponse),

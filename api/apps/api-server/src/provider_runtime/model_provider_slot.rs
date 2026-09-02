@@ -161,10 +161,10 @@ fn runtime_artifact_reference(
 ) -> anyhow::Result<String> {
     #[cfg(test)]
     {
-        return installation
+        installation
             .local_path()
             .map(str::to_string)
-            .ok_or_else(|| ControlPlaneError::Conflict("plugin_artifact_path_missing").into());
+            .ok_or_else(|| ControlPlaneError::Conflict("plugin_artifact_path_missing").into())
     }
     #[cfg(not(test))]
     {

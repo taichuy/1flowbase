@@ -63,7 +63,7 @@ enum BillingWrite {
         reason: String,
         idempotency_key: String,
     },
-    Execute(RecordedCreditCommand),
+    Execute(Box<RecordedCreditCommand>),
 }
 
 #[derive(Default)]
@@ -164,7 +164,9 @@ impl BillingRepository for RecordingBillingRepository {
             .state
             .lock()
             .expect("billing recording lock must not be poisoned");
-        state.writes.push(BillingWrite::Execute(command.clone()));
+        state
+            .writes
+            .push(BillingWrite::Execute(Box::new(command.clone())));
         if let Some((accepted, transaction)) = &state.accepted {
             if accepted.idempotency_key == command.idempotency_key {
                 if accepted == &command {
@@ -393,9 +395,9 @@ async fn plugin_credit_command_requires_capability_permission_and_remains_idempo
                 reason: "credit_command_permission_denied".into(),
                 idempotency_key: "checkin:user:2026-08-17".into(),
             },
-            BillingWrite::Execute(accepted_write.clone()),
-            BillingWrite::Execute(accepted_write),
-            BillingWrite::Execute(conflicting_write),
+            BillingWrite::Execute(Box::new(accepted_write.clone())),
+            BillingWrite::Execute(Box::new(accepted_write)),
+            BillingWrite::Execute(Box::new(conflicting_write)),
         ]
     );
 }

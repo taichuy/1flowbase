@@ -117,7 +117,7 @@ impl InterfaceContract for AssistantRunStreamEvent {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct AssistantRunStreamOutput(pub(crate) Uuid);
+pub(crate) struct AssistantRunStreamOutput;
 
 impl InterfaceContract for AssistantRunStreamOutput {
     const CONTRACT_ID: &'static str = "console-assistant-run-stream-output";
@@ -153,7 +153,7 @@ pub(crate) fn conversations_port(
     })
 }
 
-pub(crate) fn runs_port(dependencies: AssistantRunDependencies) -> Arc<AssistantRunAdapter> {
+fn runs_port(dependencies: AssistantRunDependencies) -> Arc<AssistantRunAdapter> {
     Arc::new(AssistantRunAdapter { dependencies })
 }
 
@@ -599,7 +599,7 @@ impl ConsoleServerStreamPort<AssistantRunInput, AssistantRunStreamEvent, Assista
                 }
                 let _ = publisher
                     .finish(interface_runtime::InterfaceStreamTerminal::Completed(
-                        AssistantRunStreamOutput(run_id),
+                        AssistantRunStreamOutput,
                     ))
                     .await;
             });

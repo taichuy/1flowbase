@@ -392,11 +392,13 @@ async fn create_response_for_endpoint(
     match dispatch_response_for_endpoint(
         state,
         headers,
-        route_path,
-        raw_query,
-        body,
-        endpoint,
-        OpenAiResponseDelivery::Http,
+        OpenAiResponseDispatchRequest {
+            route_path,
+            raw_query,
+            body,
+            endpoint,
+            delivery: OpenAiResponseDelivery::Http,
+        },
         None,
     )
     .await?
@@ -421,11 +423,13 @@ pub(crate) async fn prepare_typed_response_turn(
     match dispatch_response_for_endpoint(
         state,
         headers,
-        "/v1/responses".to_string(),
-        None,
-        body,
-        OpenAiResponsesEndpoint::Responses,
-        OpenAiResponseDelivery::TypedEvents,
+        OpenAiResponseDispatchRequest {
+            route_path: "/v1/responses".to_string(),
+            raw_query: None,
+            body,
+            endpoint: OpenAiResponsesEndpoint::Responses,
+            delivery: OpenAiResponseDelivery::TypedEvents,
+        },
         Some(principal),
     )
     .await?
@@ -441,16 +445,27 @@ pub(crate) async fn prepare_typed_response_turn(
     }
 }
 
-async fn dispatch_response_for_endpoint(
-    state: Arc<ApiState>,
-    headers: HeaderMap,
+struct OpenAiResponseDispatchRequest {
     route_path: String,
     raw_query: Option<String>,
     body: Bytes,
     endpoint: OpenAiResponsesEndpoint,
     delivery: OpenAiResponseDelivery,
+}
+
+async fn dispatch_response_for_endpoint(
+    state: Arc<ApiState>,
+    headers: HeaderMap,
+    request: OpenAiResponseDispatchRequest,
     preauthenticated_principal: Option<interface_runtime::ApplicationPrincipal>,
 ) -> Result<OpenAiResponseDispatch, OpenAiRouteError> {
+    let OpenAiResponseDispatchRequest {
+        route_path,
+        raw_query,
+        body,
+        endpoint,
+        delivery,
+    } = request;
     let route = match endpoint {
         OpenAiResponsesEndpoint::Responses => "responses",
         OpenAiResponsesEndpoint::ResponsesCompact => "responses_compact",

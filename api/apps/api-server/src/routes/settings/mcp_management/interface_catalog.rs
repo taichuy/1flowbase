@@ -213,20 +213,6 @@ pub(crate) async fn bindable_mcp_interface_with(
     Ok(entry)
 }
 
-pub(super) async fn mcp_interface_operation_map(
-    state: &ApiState,
-    actor: &domain::ActorContext,
-) -> Result<HashMap<String, String>, ApiError> {
-    Ok(mcp_interface_catalog_entries(state, actor)
-        .await?
-        .into_iter()
-        .map(|entry| {
-            let operation = interface_operation(&entry);
-            (entry.interface_id, operation)
-        })
-        .collect())
-}
-
 pub(super) async fn mcp_interface_operation_map_with(
     dependencies: &McpInterfaceCatalogDependencies,
     actor: &domain::ActorContext,

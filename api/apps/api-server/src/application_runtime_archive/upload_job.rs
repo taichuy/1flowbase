@@ -422,16 +422,20 @@ pub(super) fn header_value(headers: &HeaderMap, name: &str) -> Option<String> {
         .and_then(|value| value.to_str().ok())
         .map(ToString::to_string)
 }
+pub(super) struct PersistRunArchiveUploadSessionInput<'a> {
+    pub session_id: Uuid,
+    pub scope_id: Uuid,
+    pub application_id: Uuid,
+    pub actor_user_id: Uuid,
+    pub filename: Option<&'a str>,
+    pub total_size_bytes: i64,
+    pub expected_sha256: &'a str,
+    pub chunk_size_bytes: i64,
+}
+
 pub(super) async fn persist_run_archive_upload_session(
     store: &storage_durable_postgres::MainDurableStore,
-    session_id: Uuid,
-    scope_id: Uuid,
-    application_id: Uuid,
-    actor_user_id: Uuid,
-    filename: Option<&str>,
-    total_size_bytes: i64,
-    expected_sha256: &str,
-    chunk_size_bytes: i64,
+    input: PersistRunArchiveUploadSessionInput<'_>,
 ) -> Result<(), ApiError> {
     sqlx::query(
         r#"
@@ -441,15 +445,15 @@ pub(super) async fn persist_run_archive_upload_session(
         ) values ($1, $2, $3, $4, $5, $6, $7, $8, 'uploading', $9, $9)
         "#,
     )
-    .bind(session_id)
-    .bind(scope_id)
-    .bind(application_id)
-    .bind(actor_user_id)
-    .bind(filename)
-    .bind(total_size_bytes)
-    .bind(expected_sha256)
-    .bind(chunk_size_bytes)
-    .bind(actor_user_id)
+    .bind(input.session_id)
+    .bind(input.scope_id)
+    .bind(input.application_id)
+    .bind(input.actor_user_id)
+    .bind(input.filename)
+    .bind(input.total_size_bytes)
+    .bind(input.expected_sha256)
+    .bind(input.chunk_size_bytes)
+    .bind(input.actor_user_id)
     .execute(store.pool())
     .await?;
     Ok(())

@@ -4,7 +4,7 @@ use access_control::{
 };
 use domain::CatalogLocale;
 
-use crate::{app_state::ApiState, error_response::ApiError};
+use crate::error_response::ApiError;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct CoreConsoleDisplayText {
@@ -145,17 +145,6 @@ fn dynamic_display_key(key: &str) -> Option<&'static str> {
         .iter()
         .find(|text| text.key == key)
         .map(|text| text.key)
-}
-
-pub(super) async fn resolve_core_console_display(
-    state: &ApiState,
-    locale: &CatalogLocale,
-    key: &str,
-) -> Result<String, ApiError> {
-    let Some(resolved_key) = dynamic_display_key(key) else {
-        return Ok(key.to_string());
-    };
-    crate::app_state::resolve_request_text(state, locale, resolved_key).await
 }
 
 pub(crate) async fn resolve_core_console_display_with(

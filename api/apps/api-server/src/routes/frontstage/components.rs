@@ -198,6 +198,10 @@ impl InterfaceContract for FrontstageComponentsInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed component output is projected immediately into the frontstage response"
+)]
 pub(crate) enum FrontstageComponentsOutput {
     Page(FrontstageComponentPageResponse),
     Component(FrontstageComponentResponse),
@@ -292,7 +296,7 @@ impl
                         sha256,
                     })
                     .await
-                    .map_err(|error| ApiError(error.into()))
+                    .map_err(ApiError)
                     .map_err(crate::routes::console_interface::ConsoleInterfaceTargetError)?
                     .ok_or(ControlPlaneError::NotFound(
                         "frontend_component_module_asset",

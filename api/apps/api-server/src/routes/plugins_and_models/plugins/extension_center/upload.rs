@@ -340,7 +340,7 @@ pub(crate) async fn install_uploaded_artifact(
         control_plane::errors::ControlPlaneError::InvalidInput("extension_file"),
     )?;
     let artifact =
-        classify_uploaded_extension(&dependencies, &fields, &file_name, &artifact_bytes).await?;
+        classify_uploaded_extension(dependencies, &fields, &file_name, &artifact_bytes).await?;
     let identity = extension_identity(
         artifact.category,
         &artifact.organization,

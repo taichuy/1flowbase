@@ -91,6 +91,10 @@ impl InterfaceContract for FileStoragesInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed storage output is projected immediately into the console response"
+)]
 enum FileStoragesOutput {
     List(Vec<FileStorageResponse>),
     Item(FileStorageResponse),

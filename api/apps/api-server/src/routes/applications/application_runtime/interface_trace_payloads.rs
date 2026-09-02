@@ -33,20 +33,20 @@ use crate::{
 };
 
 pub(crate) enum ApplicationRuntimeTracePayloadsInput {
-    GetNodeContent {
+    NodeContent {
         application_id: Uuid,
         run_id: Uuid,
         trace_node_id: String,
         raw_query: Option<String>,
     },
-    GetNodeDetail {
+    NodeDetail {
         application_id: Uuid,
         run_id: Uuid,
         trace_node_id: String,
         detail_ref_id: String,
         raw_query: Option<String>,
     },
-    GetToolCallbackContent {
+    ToolCallbackContent {
         application_id: Uuid,
         run_id: Uuid,
         trace_node_id: String,
@@ -75,6 +75,9 @@ struct TracePayloadArtifactWriter {
     storage: domain::FileStorageRecord,
     driver: Arc<dyn storage_object::FileStorageDriver>,
 }
+
+type TracePayloadOffloadFuture<'a> =
+    Pin<Box<dyn Future<Output = Result<(Value, bool), ApiError>> + Send + 'a>>;
 
 impl TracePayloadArtifactWriter {
     async fn new(
@@ -155,7 +158,7 @@ impl TracePayloadArtifactWriter {
         value: Value,
         field_path: Vec<String>,
         preview: &'a TracePayloadPreview,
-    ) -> Pin<Box<dyn Future<Output = Result<(Value, bool), ApiError>> + Send + 'a>> {
+    ) -> TracePayloadOffloadFuture<'a> {
         Box::pin(async move {
             if is_runtime_debug_artifact_payload(&value)
                 || keep_runtime_field_inline(&field_path)
@@ -220,17 +223,7 @@ impl TracePayloadPreview {
 
     fn previews(&self, path: &[String]) -> bool {
         match self {
-            Self::Auto => {
-                matches!(
-                    path.last().map(String::as_str),
-                    Some("payload")
-                        | Some("input_payload")
-                        | Some("output_payload")
-                        | Some("error_payload")
-                        | Some("metrics_payload")
-                        | Some("debug_payload")
-                ) || matches!(path.last().map(String::as_str), Some(_)) && path.len() > 0
-            }
+            Self::Auto => !path.is_empty(),
             Self::Fields(paths) => paths.iter().any(|candidate| candidate.as_slice() == path),
         }
     }
@@ -640,7 +633,7 @@ impl ApplicationRuntimeTracePayloadsAdapter {
     ) -> Result<ApplicationRuntimeTracePayloadsOutput, ApiError> {
         let actor = principal.actor();
         match input {
-            ApplicationRuntimeTracePayloadsInput::GetNodeContent {
+            ApplicationRuntimeTracePayloadsInput::NodeContent {
                 application_id,
                 run_id,
                 trace_node_id,
@@ -649,7 +642,7 @@ impl ApplicationRuntimeTracePayloadsAdapter {
                 self.node_content(actor, application_id, run_id, trace_node_id, raw_query)
                     .await?,
             )),
-            ApplicationRuntimeTracePayloadsInput::GetNodeDetail {
+            ApplicationRuntimeTracePayloadsInput::NodeDetail {
                 application_id,
                 run_id,
                 trace_node_id,
@@ -666,7 +659,7 @@ impl ApplicationRuntimeTracePayloadsAdapter {
                 )
                 .await?,
             )),
-            ApplicationRuntimeTracePayloadsInput::GetToolCallbackContent {
+            ApplicationRuntimeTracePayloadsInput::ToolCallbackContent {
                 application_id,
                 run_id,
                 trace_node_id,

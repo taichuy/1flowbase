@@ -76,6 +76,10 @@ pub(crate) enum CompatibleResumeAdmission {
     StartNewTurnFromHistory,
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the compatibility turn command is consumed immediately and preserves typed actor ownership"
+)]
 enum CompatibleTurnAction {
     Start,
     ResumeForActor {

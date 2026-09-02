@@ -12,11 +12,10 @@ use axum::{
 };
 use control_plane::{
     application_public_api::{
-        api_keys::ApplicationApiKeyService,
         model_catalog::{AgentModelCapabilities, AgentModelDescriptor, AgentModelReasoning},
         native::{
-            translate_native_run_request, ApplicationNativeRunService, GetNativeRunCommand,
-            NativeRunRequest, NativeRunResult, NativeRunStatus, NativeRunValidationError,
+            translate_native_run_request, ApplicationNativeRunService, NativeRunRequest,
+            NativeRunResult, NativeRunStatus, NativeRunValidationError,
         },
         protocol_translation::{
             TranslatedNativeRunRequest, TranslationDecisionKind, TranslationProtocol,
@@ -26,8 +25,8 @@ use control_plane::{
     },
     orchestration_runtime::{OrchestrationRuntimeService, StartPublishedFlowRunCommand},
     ports::{
-        AuthRepository, ProviderProtocolContextSlotId, ProviderProtocolContextValue,
-        ProviderTransportStore, RuntimeEventStream,
+        ProviderProtocolContextSlotId, ProviderProtocolContextValue, ProviderTransportStore,
+        RuntimeEventStream,
     },
 };
 use plugin_framework::provider_contract::ProtocolContextEnvelope;
@@ -79,43 +78,6 @@ pub(crate) fn api_provider_runtime(state: &ApiState) -> ApiProviderRuntime {
         state.provider_runtime.clone(),
         state.runtime_activity.clone(),
     )
-}
-
-pub(crate) async fn public_mcp_runtime_invoker(
-    state: &Arc<ApiState>,
-    bearer_token: &str,
-) -> Result<Arc<virtual_ui::ApiMcpRuntimeToolInvoker>, NativeApiError> {
-    let api_actor = ApplicationApiKeyService::new(state.store.clone())
-        .authenticate_bearer_token(bearer_token)
-        .await
-        .map_err(service_error)?;
-    let actor =
-        AuthRepository::load_actor_context_for_user(&state.store, api_actor.creator_user_id)
-            .await
-            .map_err(service_error)?;
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        axum::http::header::AUTHORIZATION,
-        format!("Bearer {bearer_token}").parse().map_err(|_| {
-            NativeApiError::new(
-                StatusCode::UNAUTHORIZED,
-                "not_authenticated",
-                "invalid application API key",
-            )
-        })?,
-    );
-    Ok(Arc::new(
-        virtual_ui::ApiMcpRuntimeToolInvoker::new_with_forwarded_authorization(
-            crate::runtime_internal_tool_invoker_factory(state, &actor)
-                .await
-                .map_err(|error| service_error(error.0))?,
-            headers,
-            actor,
-            Vec::new(),
-        )
-        .await
-        .map_err(|error| service_error(error.0))?,
-    ))
 }
 
 pub(crate) async fn public_mcp_runtime_invoker_for_actor(
@@ -836,22 +798,6 @@ pub(crate) fn to_native_run_response(run: NativeRunResult) -> NativeRunResponse 
     }
 }
 
-pub(crate) async fn execute_blocking_native_run(
-    state: Arc<ApiState>,
-    bearer_token: String,
-    run: NativeRunResult,
-) -> Result<NativeRunResult, NativeApiError> {
-    execute_blocking_native_run_with_provider_transport(state, bearer_token, run, None).await
-}
-
-pub(crate) async fn execute_blocking_native_run_for_actor(
-    state: Arc<ApiState>,
-    actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
-    run: NativeRunResult,
-) -> Result<NativeRunResult, NativeApiError> {
-    execute_blocking_native_run_for_actor_with_provider_transport(state, actor, run, None).await
-}
-
 pub(crate) async fn execute_blocking_native_run_for_actor_with_dependencies(
     dependencies: ApplicationNativeRunDependencies,
     actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
@@ -888,115 +834,6 @@ pub(crate) async fn execute_blocking_native_run_for_actor_with_dependencies(
             ApplicationNativeRunService::new(dependencies.store)
                 .with_last_used_cache(dependencies.cache_store)
                 .get_native_run_for_actor(actor, run.id)
-                .await
-                .map_err(native_error)
-        }
-    }
-}
-
-pub(crate) async fn execute_blocking_native_run_for_actor_with_provider_transport(
-    state: Arc<ApiState>,
-    actor: control_plane::application_public_api::api_keys::ApplicationApiKeyActor,
-    run: NativeRunResult,
-    provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
-) -> Result<NativeRunResult, NativeApiError> {
-    let _execution_activity = state.runtime_activity.start(
-        run.application_id,
-        ApplicationActivityKind::ApplicationExecution,
-    );
-    let mcp_runtime_invoker = public_mcp_runtime_invoker_for_actor(&state, &actor).await?;
-    let runtime_service = OrchestrationRuntimeService::new(
-        state.store.clone(),
-        api_provider_runtime(&state),
-        state.runtime_engine.clone(),
-        state.provider_secret_master_key.clone(),
-    )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_file_storage_registry(state.file_storage_registry.clone())
-    .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
-    .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue())
-    .with_provider_transport_store(state.infrastructure.provider_transport_store());
-    let execution_result = scope_application_activity(
-        run.application_id,
-        runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
-            application_id: run.application_id,
-            flow_run_id: run.id,
-            provider_transport_slot,
-        }),
-    )
-    .await;
-    match execution_result {
-        Ok(detail) => Ok(native_result_from_run_detail(&detail, run.metadata.clone())),
-        Err(error) => {
-            error!(
-                application_id = %run.application_id,
-                flow_run_id = %run.id,
-                error = %error,
-                "blocking native published run reached failed runtime result"
-            );
-            ApplicationNativeRunService::new(state.store.clone())
-                .with_last_used_cache(state.infrastructure.cache_store())
-                .get_native_run_for_actor(actor, run.id)
-                .await
-                .map_err(native_error)
-        }
-    }
-}
-
-pub(crate) async fn execute_blocking_native_run_with_provider_transport(
-    state: Arc<ApiState>,
-    bearer_token: String,
-    run: NativeRunResult,
-    provider_transport_slot: Option<control_plane::ports::ProviderTransportSlotId>,
-) -> Result<NativeRunResult, NativeApiError> {
-    let _execution_activity = state.runtime_activity.start(
-        run.application_id,
-        ApplicationActivityKind::ApplicationExecution,
-    );
-    let mcp_runtime_invoker = public_mcp_runtime_invoker(&state, &bearer_token).await?;
-    let runtime_service = OrchestrationRuntimeService::new(
-        state.store.clone(),
-        api_provider_runtime(&state),
-        state.runtime_engine.clone(),
-        state.provider_secret_master_key.clone(),
-    )
-    .with_node_artifact_context(
-        state.api_node_id.clone(),
-        state.provider_install_root.clone(),
-    )
-    .with_file_storage_registry(state.file_storage_registry.clone())
-    .with_runtime_internal_tool_invoker(mcp_runtime_invoker)
-    .with_llm_routing_counter_store(state.infrastructure.cache_store())
-    .with_provider_request_log_queue(state.infrastructure.task_queue())
-    .with_provider_transport_store(state.infrastructure.provider_transport_store());
-    let execution_result = scope_application_activity(
-        run.application_id,
-        runtime_service.start_published_flow_run(StartPublishedFlowRunCommand {
-            application_id: run.application_id,
-            flow_run_id: run.id,
-            provider_transport_slot,
-        }),
-    )
-    .await;
-    match execution_result {
-        Ok(detail) => Ok(native_result_from_run_detail(&detail, run.metadata.clone())),
-        Err(error) => {
-            error!(
-                application_id = %run.application_id,
-                flow_run_id = %run.id,
-                error = %error,
-                "blocking native published run reached failed runtime result"
-            );
-            ApplicationNativeRunService::new(state.store.clone())
-                .with_last_used_cache(state.infrastructure.cache_store())
-                .get_native_run(GetNativeRunCommand {
-                    bearer_token,
-                    run_id: run.id,
-                })
                 .await
                 .map_err(native_error)
         }

@@ -542,14 +542,14 @@ async fn execute_command(
                 )
                 .into());
             };
-            return project_conversation_subscription(
+            project_conversation_subscription(
                 state,
                 authorization,
                 request_id,
                 frames,
                 subscription,
             )
-            .await;
+            .await
         }
         AssistantWebSocketCommand::Create {
             request_id,

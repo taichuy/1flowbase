@@ -370,7 +370,7 @@ pub async fn get_application_run_trace_node_content(
     Path((id, run_id, trace_node_id)): Path<(Uuid, Uuid, String)>,
     RawQuery(raw_query): RawQuery,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceNodeContentResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.trace-node.content.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_trace_payloads::ApplicationRuntimeTracePayloadsInput::GetNodeContent { application_id: id, run_id, trace_node_id, raw_query }).await?;
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.trace-node.content.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_trace_payloads::ApplicationRuntimeTracePayloadsInput::NodeContent { application_id: id, run_id, trace_node_id, raw_query }).await?;
     let interface_trace_payloads::ApplicationRuntimeTracePayloadsOutput::NodeContent(response) = output else { unreachable!("application trace node content binding returned a different output") };
     Ok(Json(ApiSuccess::new(response)))
 }
@@ -399,7 +399,7 @@ pub async fn get_application_run_trace_node_detail(
     Path((id, run_id, trace_node_id, detail_ref_id)): Path<(Uuid, Uuid, String, String)>,
     RawQuery(raw_query): RawQuery,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceNodeDetailResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.trace-node.detail.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_trace_payloads::ApplicationRuntimeTracePayloadsInput::GetNodeDetail { application_id: id, run_id, trace_node_id, detail_ref_id, raw_query }).await?;
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.trace-node.detail.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_trace_payloads::ApplicationRuntimeTracePayloadsInput::NodeDetail { application_id: id, run_id, trace_node_id, detail_ref_id, raw_query }).await?;
     let interface_trace_payloads::ApplicationRuntimeTracePayloadsOutput::NodeDetail(response) = output else { unreachable!("application trace node detail binding returned a different output") };
     Ok(Json(ApiSuccess::new(response)))
 }
@@ -425,7 +425,7 @@ pub async fn get_application_run_trace_tool_callback_content(
     headers: HeaderMap,
     Path((id, run_id, trace_node_id, tool_call_id)): Path<(Uuid, Uuid, String, String)>,
 ) -> Result<Json<ApiSuccess<ApplicationRunTraceToolCallbackContentResponse>>, ApiError> {
-    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.trace-tool-callback.content.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_trace_payloads::ApplicationRuntimeTracePayloadsInput::GetToolCallbackContent { application_id: id, run_id, trace_node_id, tool_call_id }).await?;
+    let output = crate::routes::console_interface::invoke(Arc::clone(&state), "http.console.applications.runtime.trace-tool-callback.content.get.v1", crate::extension_bus::ConsoleAuthenticationCredential::Protocol { state, headers }, interface_trace_payloads::ApplicationRuntimeTracePayloadsInput::ToolCallbackContent { application_id: id, run_id, trace_node_id, tool_call_id }).await?;
     let interface_trace_payloads::ApplicationRuntimeTracePayloadsOutput::ToolCallbackContent(response) = output else { unreachable!("application trace tool callback content binding returned a different output") };
     Ok(Json(ApiSuccess::new(response)))
 }

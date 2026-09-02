@@ -35,6 +35,10 @@ impl InterfaceContract for WorkflowExtensionInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed output is projected immediately into the public protocol response"
+)]
 pub(crate) enum WorkflowExtensionOutput {
     Accepted {
         run_id: uuid::Uuid,

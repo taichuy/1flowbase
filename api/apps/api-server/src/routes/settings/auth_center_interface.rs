@@ -59,6 +59,10 @@ impl InterfaceContract for AuthCenterInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed authentication output is projected immediately into the console response"
+)]
 pub(crate) enum AuthCenterOutput {
     Overview(auth_center::AuthCenterOverviewResponse),
     Authenticator(auth_center::AuthCenterAuthenticatorResponse),

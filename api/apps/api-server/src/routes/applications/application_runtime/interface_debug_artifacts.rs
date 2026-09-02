@@ -44,6 +44,10 @@ impl InterfaceContract for ApplicationRuntimeDebugArtifactsInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed debug output is projected immediately into the console response"
+)]
 pub(crate) enum ApplicationRuntimeDebugArtifactsOutput {
     Content(RuntimeDebugArtifactContent),
     Resolved(ResolveRuntimeDebugArtifactsResponse),

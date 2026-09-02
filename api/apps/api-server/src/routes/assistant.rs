@@ -267,7 +267,7 @@ pub struct AssistantRunActivityQuery {
     pub page_size: Option<usize>,
 }
 
-struct PreparedAssistantExecution {
+pub(super) struct PreparedAssistantExecution {
     application_id: Uuid,
     conversation_id: Uuid,
     actor: domain::ActorContext,
@@ -674,7 +674,7 @@ pub async fn start_run_stream(
         .keep_alive(KeepAlive::default()))
 }
 
-pub(crate) async fn launch_assistant_execution(
+pub(super) async fn launch_assistant_execution(
     dependencies: AssistantRunDependencies,
     execution: PreparedAssistantExecution,
     client_tool_bridge: Option<Arc<AssistantClientToolBridge>>,
@@ -1029,10 +1029,6 @@ async fn publish_assistant_conversation_summary(
     }
 }
 
-pub(super) fn abort_assistant_execution(state: &ApiState, run_id: Uuid) -> bool {
-    abort_assistant_execution_in(&state.assistant_executions, run_id)
-}
-
 fn abort_registered_assistant_execution(
     executions: &std::sync::Mutex<std::collections::HashMap<Uuid, tokio::task::AbortHandle>>,
     run_id: Uuid,
@@ -1056,7 +1052,7 @@ pub(crate) fn abort_assistant_execution_in(
     }
 }
 
-pub(crate) async fn prepare_assistant_execution(
+pub(super) async fn prepare_assistant_execution(
     store: &MainDurableStore,
     headers: &HeaderMap,
     actor: &domain::ActorContext,

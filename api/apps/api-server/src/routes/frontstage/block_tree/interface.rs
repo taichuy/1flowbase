@@ -33,6 +33,10 @@ impl InterfaceContract for FrontstageBlocksInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed block output is projected immediately into the frontstage response"
+)]
 pub(crate) enum FrontstageBlocksOutput {
     Open(FrontstageBlockOpenResponse),
     Nodes(Vec<FrontstageBlockNodeResponse>),

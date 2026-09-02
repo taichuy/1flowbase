@@ -36,8 +36,8 @@ use upload_job::{
     mark_run_archive_import_job_processing, mark_run_archive_import_job_succeeded,
     mark_upload_session_completed, persist_run_archive_chunk, persist_run_archive_upload_session,
     to_import_job_response, to_upload_session_response, CreateRunArchiveImportJobInput,
-    PersistRunArchiveChunkInput, RUN_ARCHIVE_UPLOAD_MAX_BYTES, RUN_ARCHIVE_UPLOAD_MAX_CHUNKS,
-    RUN_ARCHIVE_UPLOAD_MAX_CHUNK_BYTES,
+    PersistRunArchiveChunkInput, PersistRunArchiveUploadSessionInput, RUN_ARCHIVE_UPLOAD_MAX_BYTES,
+    RUN_ARCHIVE_UPLOAD_MAX_CHUNKS, RUN_ARCHIVE_UPLOAD_MAX_CHUNK_BYTES,
 };
 
 pub(crate) use routes::{

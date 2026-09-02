@@ -73,11 +73,19 @@ impl InterfaceContract for ApplicationRuntimeDebugCommandsInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed debug output is projected immediately into the console response"
+)]
 pub(crate) enum ApplicationRuntimeDebugCommandsOutput {
     Run(ApplicationRunDetailResponse),
     Node(NodeLastRunResponse),
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the stream command is consumed once by the typed debug adapter"
+)]
 pub(crate) enum ApplicationRuntimeDebugStreamInput {
     Start {
         application_id: Uuid,
@@ -104,7 +112,7 @@ impl InterfaceContract for ApplicationRuntimeDebugStreamEvent {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
-pub(crate) struct ApplicationRuntimeDebugStreamOutput(pub(crate) Uuid);
+pub(crate) struct ApplicationRuntimeDebugStreamOutput;
 
 impl InterfaceContract for ApplicationRuntimeDebugStreamOutput {
     const CONTRACT_ID: &'static str = "console-application-runtime-debug-stream-output";
@@ -601,7 +609,7 @@ impl ApplicationRuntimeDebugCommandsAdapter {
             }
             let _ = publisher
                 .finish(interface_runtime::InterfaceStreamTerminal::Completed(
-                    ApplicationRuntimeDebugStreamOutput(run_id),
+                    ApplicationRuntimeDebugStreamOutput,
                 ))
                 .await;
         });

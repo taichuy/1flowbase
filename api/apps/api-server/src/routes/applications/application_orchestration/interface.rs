@@ -63,6 +63,10 @@ impl InterfaceContract for ApplicationOrchestrationInput {
     const CONTRACT_VERSION: &'static str = "1";
 }
 
+#[expect(
+    clippy::large_enum_variant,
+    reason = "the typed orchestration output is short-lived and projected at the route boundary"
+)]
 pub(crate) enum ApplicationOrchestrationOutput {
     State(OrchestrationStateResponse),
     ArchivePreview(AgentFlowTemplatePreviewResponse),

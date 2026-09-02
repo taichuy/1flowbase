@@ -131,18 +131,17 @@ pub(crate) struct ExternalEndpointRow {
 }
 
 impl ExternalEndpointRow {
-    pub(crate) fn identity(&self) -> &ExternalEndpointIdentity {
-        &self.identity
-    }
-
+    #[cfg(test)]
     pub(crate) fn classification(&self) -> ExternalEndpointClassification {
         self.classification
     }
 
+    #[cfg(test)]
     pub(crate) fn sources(&self) -> &BTreeSet<String> {
         &self.sources
     }
 
+    #[cfg(test)]
     pub(crate) fn binding_id(&self) -> Option<&str> {
         self.binding_id.as_deref()
     }
@@ -164,6 +163,7 @@ pub(crate) enum ExternalEndpointCatalogError {
         second: String,
     },
     #[error("external endpoint is not an approved control: {identity:?}")]
+    #[cfg(test)]
     UnknownControl { identity: ExternalEndpointIdentity },
     #[error("external endpoint catalog contains unclassified rows: {identities:?}")]
     UnclassifiedRows {
@@ -536,6 +536,7 @@ impl ExternalEndpointCatalogCompiler {
         ExternalEndpointCatalogError::UnknownControl { identity }
     }
 
+    #[cfg(test)]
     pub(crate) fn compile(self) -> ExternalEndpointCatalog {
         ExternalEndpointCatalog { rows: self.rows }
     }
@@ -596,6 +597,7 @@ impl ExternalEndpointCatalog {
         self.rows.values()
     }
 
+    #[cfg(test)]
     pub(crate) fn row(&self, identity: &ExternalEndpointIdentity) -> Option<&ExternalEndpointRow> {
         self.rows.get(identity)
     }
