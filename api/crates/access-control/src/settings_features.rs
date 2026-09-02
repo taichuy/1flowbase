@@ -388,8 +388,8 @@ pub fn core_settings_feature_registrations() -> Vec<SettingsFeatureRegistration>
                     "/api/console/settings/auth-center/authenticators/order",
                 ),
                 (
-                    "POST",
-                    "/api/console/settings/auth-center/authenticators/{id}/actions/enable",
+                    "PUT",
+                    "/api/console/settings/auth-center/authenticators/{id}/enabled",
                 ),
                 (
                     "POST",

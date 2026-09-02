@@ -3,7 +3,7 @@ use std::sync::Arc;
 use control_plane::auth::settings::{
     AuthCenterSettingsService, CopyAuthCenterAuthenticatorCommand,
     CreateAuthCenterAuthenticatorCommand, UpdateAuthCenterAuthenticatorConfigCommand,
-    UpdateAuthCenterAuthenticatorPublicUiBlockCommand,
+    UpdateAuthCenterAuthenticatorEnabledCommand, UpdateAuthCenterAuthenticatorPublicUiBlockCommand,
 };
 use interface_runtime::{InterfaceContract, UserPrincipal};
 use storage_durable_postgres::MainDurableStore;
@@ -38,9 +38,10 @@ pub(crate) enum AuthCenterInput {
         locale: ConsoleLocaleHints,
         body: auth_center::ReorderAuthCenterAuthenticatorsBody,
     },
-    Enable {
+    UpdateEnabled {
         locale: ConsoleLocaleHints,
         id: Uuid,
+        body: auth_center::UpdateAuthCenterAuthenticatorEnabledBody,
     },
     UpdateConfig {
         locale: ConsoleLocaleHints,
@@ -208,8 +209,16 @@ impl AuthCenterAdapter {
                     self.overview_response(principal, locale, overview).await?,
                 ))
             }
-            AuthCenterInput::Enable { locale, id } => {
-                let record = service.enable_authenticator(actor, id).await?;
+            AuthCenterInput::UpdateEnabled { locale, id, body } => {
+                let record = service
+                    .update_authenticator_enabled(
+                        actor,
+                        UpdateAuthCenterAuthenticatorEnabledCommand {
+                            authenticator_id: id,
+                            enabled: body.enabled,
+                        },
+                    )
+                    .await?;
                 Ok(AuthCenterOutput::Authenticator(
                     self.authenticator_response(principal, locale, record)
                         .await?,
@@ -290,10 +299,10 @@ pub(crate) const DECLARATIONS: &[ConsoleInterfaceDeclaration] = &[
         mutating: true,
     },
     ConsoleInterfaceDeclaration {
-        interface_id: "auth_center.authenticators.enable",
-        binding_id: "http.console.auth-center.authenticators.enable.v1",
-        method: "POST",
-        path: "/api/console/settings/auth-center/authenticators/:id/actions/enable",
+        interface_id: "auth_center.authenticators.enabled.update",
+        binding_id: "http.console.auth-center.authenticators.enabled.update.v1",
+        method: "PUT",
+        path: "/api/console/settings/auth-center/authenticators/:id/enabled",
         mutating: true,
     },
     ConsoleInterfaceDeclaration {

@@ -1558,10 +1558,10 @@
       "Create auth center authenticators"
     ],
     [
-      "auth_center.authenticators.enable",
-      "POST",
-      "/api/console/settings/auth-center/authenticators/:id/actions/enable",
-      "Enable auth center authenticators"
+      "auth_center.authenticators.enabled.update",
+      "PUT",
+      "/api/console/settings/auth-center/authenticators/:id/enabled",
+      "Update auth center authenticator enabled state"
     ],
     [
       "auth_center.authenticators.copy",

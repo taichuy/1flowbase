@@ -49,6 +49,11 @@ pub struct UpdateAuthCenterAuthenticatorConfigCommand {
     pub extension_config: Option<Map<String, Value>>,
 }
 
+pub struct UpdateAuthCenterAuthenticatorEnabledCommand {
+    pub authenticator_id: Uuid,
+    pub enabled: bool,
+}
+
 pub struct UpdateAuthCenterAuthenticatorPublicUiBlockCommand {
     pub authenticator_id: Uuid,
     pub public_ui_block: String,
@@ -63,7 +68,8 @@ const AUTH_CENTER_OVERVIEW_VIEW_OPERATION_ID: &str = "auth_center.overview.view"
 const AUTH_CENTER_AUTHENTICATOR_CREATE_OPERATION_ID: &str = "auth_center.authenticators.create";
 const AUTH_CENTER_AUTHENTICATOR_COPY_OPERATION_ID: &str = "auth_center.authenticators.copy";
 const AUTH_CENTER_AUTHENTICATOR_DELETE_OPERATION_ID: &str = "auth_center.authenticators.delete";
-const AUTH_CENTER_AUTHENTICATOR_ENABLE_OPERATION_ID: &str = "auth_center.authenticators.enable";
+const AUTH_CENTER_AUTHENTICATOR_ENABLED_UPDATE_OPERATION_ID: &str =
+    "auth_center.authenticators.enabled.update";
 const AUTH_CENTER_AUTHENTICATOR_ORDER_OPERATION_ID: &str = "auth_center.authenticators.order";
 const AUTH_CENTER_AUTHENTICATOR_UPDATE_OPERATION_ID: &str = "auth_center.authenticators.update";
 
@@ -195,19 +201,19 @@ where
         })
     }
 
-    pub async fn enable_authenticator(
+    pub async fn update_authenticator_enabled(
         &self,
         actor: &domain::ActorContext,
-        authenticator_id: Uuid,
+        command: UpdateAuthCenterAuthenticatorEnabledCommand,
     ) -> Result<domain::AuthenticatorRecord> {
-        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_ENABLE_OPERATION_ID)
+        self.ensure_console_operation(actor, AUTH_CENTER_AUTHENTICATOR_ENABLED_UPDATE_OPERATION_ID)
             .await?;
         let mut authenticator = self
             .repository
-            .find_authenticator(authenticator_id)
+            .find_authenticator(command.authenticator_id)
             .await?
             .ok_or(ControlPlaneError::NotFound("authenticator"))?;
-        authenticator.enabled = true;
+        authenticator.enabled = command.enabled;
         self.repository
             .update_authenticator_config(&authenticator)
             .await?;

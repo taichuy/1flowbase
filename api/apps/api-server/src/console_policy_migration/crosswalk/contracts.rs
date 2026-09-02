@@ -109,7 +109,7 @@ pub(super) const CORE_OPERATION_GROUPS: &[ExpectedOperationGroup] = &[
             "auth_center.authenticators.copy",
             "auth_center.authenticators.create",
             "auth_center.authenticators.delete",
-            "auth_center.authenticators.enable",
+            "auth_center.authenticators.enabled.update",
             "auth_center.authenticators.order",
             "auth_center.authenticators.update",
             "auth_center.overview.view",

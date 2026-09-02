@@ -88,7 +88,7 @@ const personalAccessTokensApi = vi.hoisted(() => ({
 const authCenterApi = vi.hoisted(() => ({
   settingsAuthCenterOverviewQueryKey: ['settings', 'auth-center', 'overview'],
   fetchSettingsAuthCenterOverview: vi.fn(),
-  enableSettingsAuthCenterAuthenticator: vi.fn(),
+  updateSettingsAuthCenterAuthenticatorEnabled: vi.fn(),
   updateSettingsAuthCenterAuthenticatorConfig: vi.fn(),
   updateSettingsAuthCenterAuthenticatorPublicUiBlock: vi.fn(),
   createSettingsAuthCenterAuthenticator: vi.fn(),
@@ -560,7 +560,7 @@ describe('SettingsPage', () => {
         }
       ]
     });
-    authCenterApi.enableSettingsAuthCenterAuthenticator.mockResolvedValue(
+    authCenterApi.updateSettingsAuthCenterAuthenticatorEnabled.mockResolvedValue(
       undefined
     );
     authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockResolvedValue(
@@ -1030,7 +1030,7 @@ describe('SettingsPage', () => {
           id: 'auth-oidc-main',
           auth_type: 'oidc',
           title: 'OIDC',
-          enabled: false,
+          enabled: true,
           is_builtin: false,
           sort_order: 10,
           config_schema: [
@@ -1085,8 +1085,12 @@ describe('SettingsPage', () => {
     fireEvent.click(screen.getByRole('switch'));
     await waitFor(() => {
       expect(
-        authCenterApi.enableSettingsAuthCenterAuthenticator
-      ).toHaveBeenCalledWith('auth-oidc-main', 'csrf-123');
+        authCenterApi.updateSettingsAuthCenterAuthenticatorEnabled
+      ).toHaveBeenCalledWith(
+        'auth-oidc-main',
+        { enabled: false },
+        'csrf-123'
+      );
     });
 
     fireEvent.click(screen.getByRole('button', { name: '编辑' }));
@@ -1102,7 +1106,7 @@ describe('SettingsPage', () => {
     );
     expect(
       within(dialog).getByRole('switch', { name: 'Enabled' })
-    ).not.toBeChecked();
+    ).toBeChecked();
   });
 
   test('initializes auth center config form from authenticator fields', async () => {

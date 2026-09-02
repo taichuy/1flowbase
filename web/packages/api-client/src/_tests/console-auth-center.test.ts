@@ -5,9 +5,9 @@ import {
   copyConsoleAuthCenterAuthenticator,
   createConsoleAuthCenterAuthenticator,
   deleteConsoleAuthCenterAuthenticator,
-  enableConsoleAuthCenterAuthenticator,
   fetchConsoleAuthCenterOverview,
   reorderConsoleAuthCenterAuthenticators,
+  updateConsoleAuthCenterAuthenticatorEnabled,
   updateConsoleAuthCenterAuthenticatorConfig,
   updateConsoleAuthCenterAuthenticatorPublicUiBlock
 } from '../console-auth-center';
@@ -23,12 +23,17 @@ describe('console auth center client', () => {
     });
   });
 
-  test('enables an auth center authenticator', async () => {
+  test('updates whether an auth center authenticator is enabled', async () => {
     await expect(
-      enableConsoleAuthCenterAuthenticator('auth-password-local', 'csrf-123')
+      updateConsoleAuthCenterAuthenticatorEnabled(
+        'auth-password-local',
+        { enabled: false },
+        'csrf-123'
+      )
     ).resolves.toMatchObject({
-      path: '/api/console/settings/auth-center/authenticators/auth-password-local/actions/enable',
-      method: 'POST',
+      path: '/api/console/settings/auth-center/authenticators/auth-password-local/enabled',
+      method: 'PUT',
+      body: { enabled: false },
       csrfToken: 'csrf-123'
     });
   });

@@ -2,11 +2,12 @@ import {
   copyConsoleAuthCenterAuthenticator,
   createConsoleAuthCenterAuthenticator,
   deleteConsoleAuthCenterAuthenticator,
-  enableConsoleAuthCenterAuthenticator,
   fetchConsoleAuthCenterOverview,
   reorderConsoleAuthCenterAuthenticators,
   type ConsoleAuthCenterCopyAuthenticatorInput,
   type ConsoleAuthCenterCreateAuthenticatorInput,
+  type ConsoleAuthCenterAuthenticatorEnabledInput,
+  updateConsoleAuthCenterAuthenticatorEnabled,
   updateConsoleAuthCenterAuthenticatorConfig,
   updateConsoleAuthCenterAuthenticatorPublicUiBlock,
   type ConsoleAuthCenterAuthenticatorConfigInput,
@@ -26,11 +27,16 @@ export function fetchSettingsAuthCenterOverview() {
   return fetchConsoleAuthCenterOverview();
 }
 
-export function enableSettingsAuthCenterAuthenticator(
+export function updateSettingsAuthCenterAuthenticatorEnabled(
   authenticatorId: string,
+  input: ConsoleAuthCenterAuthenticatorEnabledInput,
   csrfToken: string
 ) {
-  return enableConsoleAuthCenterAuthenticator(authenticatorId, csrfToken);
+  return updateConsoleAuthCenterAuthenticatorEnabled(
+    authenticatorId,
+    input,
+    csrfToken
+  );
 }
 
 export function createSettingsAuthCenterAuthenticator(

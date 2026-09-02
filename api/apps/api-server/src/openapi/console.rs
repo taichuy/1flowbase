@@ -23,7 +23,7 @@ use utoipa::OpenApi;
         crate::routes::auth_center::copy_auth_center_authenticator,
         crate::routes::auth_center::delete_auth_center_authenticator,
         crate::routes::auth_center::reorder_auth_center_authenticators,
-        crate::routes::auth_center::enable_auth_center_authenticator,
+        crate::routes::auth_center::update_auth_center_authenticator_enabled,
         crate::routes::auth_center::update_auth_center_authenticator_config,
         crate::routes::auth_center::update_auth_center_authenticator_public_ui_block,
         crate::routes::system::get_release_status,

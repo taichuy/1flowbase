@@ -88,7 +88,7 @@ const personalAccessTokensApi = vi.hoisted(() => ({
 const authCenterApi = vi.hoisted(() => ({
   settingsAuthCenterOverviewQueryKey: ['settings', 'auth-center', 'overview'],
   fetchSettingsAuthCenterOverview: vi.fn(),
-  enableSettingsAuthCenterAuthenticator: vi.fn(),
+  updateSettingsAuthCenterAuthenticatorEnabled: vi.fn(),
   updateSettingsAuthCenterAuthenticatorConfig: vi.fn(),
   updateSettingsAuthCenterAuthenticatorPublicUiBlock: vi.fn(),
   createSettingsAuthCenterAuthenticator: vi.fn(),
@@ -560,7 +560,7 @@ describe('SettingsPage', () => {
         }
       ]
     });
-    authCenterApi.enableSettingsAuthCenterAuthenticator.mockResolvedValue(
+    authCenterApi.updateSettingsAuthCenterAuthenticatorEnabled.mockResolvedValue(
       undefined
     );
     authCenterApi.updateSettingsAuthCenterAuthenticatorConfig.mockResolvedValue(

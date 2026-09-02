@@ -266,9 +266,9 @@ fn ac_002_013_auth_center_route_bindings_are_explicit_and_stable() {
                 "auth_center.authenticators.order",
             ),
             (
-                "POST",
-                "/api/console/settings/auth-center/authenticators/:id/actions/enable",
-                "auth_center.authenticators.enable",
+                "PUT",
+                "/api/console/settings/auth-center/authenticators/:id/enabled",
+                "auth_center.authenticators.enabled.update",
             ),
             (
                 "POST",

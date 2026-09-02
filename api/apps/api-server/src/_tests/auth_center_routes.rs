@@ -220,6 +220,10 @@ async fn console_auth_center_overview_lists_authenticators_with_schema_form_valu
                 && !source.contains("function main")
         ));
     assert_eq!(
+        password_local["default_public_ui_block"],
+        password_local["public_ui_block"]
+    );
+    assert_eq!(
         password_local["public_variables"],
         json!({
             "title": "Password",
@@ -878,7 +882,7 @@ async fn console_auth_center_overview_requires_user_view_permission() {
 }
 
 #[tokio::test]
-async fn console_auth_center_enable_authenticator_requires_user_manage_permission() {
+async fn console_auth_center_updates_authenticator_enabled_state() {
     let (state, _database_url) = test_api_state_with_database_url().await;
     let oidc_id = Uuid::now_v7();
     state
@@ -887,7 +891,7 @@ async fn console_auth_center_enable_authenticator_requires_user_manage_permissio
             id: oidc_id,
             auth_type: "oidc".to_string(),
             title: "OIDC".to_string(),
-            enabled: false,
+            enabled: true,
             is_builtin: false,
             sort_order: 10,
             public_ui_block: "export default { main } satisfies BlockModule;".to_string(),
@@ -902,13 +906,14 @@ async fn console_auth_center_enable_authenticator_requires_user_manage_permissio
         .clone()
         .oneshot(
             Request::builder()
-                .method("POST")
+                .method("PUT")
                 .uri(format!(
-                    "/api/console/settings/auth-center/authenticators/{oidc_id}/actions/enable"
+                    "/api/console/settings/auth-center/authenticators/{oidc_id}/enabled"
                 ))
                 .header("cookie", &root_cookie)
                 .header("x-csrf-token", &root_csrf)
-                .body(Body::empty())
+                .header("content-type", "application/json")
+                .body(Body::from(json!({ "enabled": false }).to_string()))
                 .unwrap(),
         )
         .await
@@ -933,8 +938,8 @@ async fn console_auth_center_enable_authenticator_requires_user_manage_permissio
     let oidc = authenticators
         .iter()
         .find(|authenticator| authenticator["id"] == json!(oidc_id))
-        .expect("enabled authenticator should be visible");
-    assert_eq!(oidc["enabled"], json!(true));
+        .expect("updated authenticator should be visible");
+    assert_eq!(oidc["enabled"], json!(false));
 }
 
 #[tokio::test]

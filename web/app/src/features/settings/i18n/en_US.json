@@ -198,6 +198,8 @@
     "auth_center_self_registration": "Allow self registration",
     "auth_center_block_source": "Block source",
     "auth_center_public_ui_update_failed": "Failed to save the public authentication UI",
+    "auth_center_restore_default_ui": "Restore default",
+    "auth_center_restore_default_ui_confirm": "Restore the current built-in default authentication UI? The existing source will be overwritten.",
     "configuration": "{{value1}} configuration",
     "available_capabilities_exposed_provider_cache_domains_entries_values_currently_listed": "Available capabilities are exposed with the provider; cache domains, entries, or values ​​cannot currently be listed.",
     "recently_refreshed": "Recently refreshed",

@@ -60,6 +60,8 @@ pub struct AuthCenterAuthenticatorResponse {
     pub is_builtin: bool,
     pub sort_order: i32,
     pub public_ui_block: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_public_ui_block: Option<String>,
     pub interface_path_prefixes: Vec<String>,
     pub public_variables: Option<Map<String, Value>>,
     pub context_variables: Vec<AuthCenterContextVariableResponse>,
@@ -92,6 +94,11 @@ pub struct CopyAuthCenterAuthenticatorBody {
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct ReorderAuthCenterAuthenticatorsBody {
     pub ids: Vec<Uuid>,
+}
+
+#[derive(Debug, Deserialize, ToSchema)]
+pub struct UpdateAuthCenterAuthenticatorEnabledBody {
+    pub enabled: bool,
 }
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -138,10 +145,10 @@ pub fn route_assembly() -> ConsoleRouteAssembly<Arc<ApiState>> {
             ),
         )
         .route(
-            "/settings/auth-center/authenticators/:id/actions/enable",
-            console_post(
-                enable_auth_center_authenticator,
-                ConsoleOperation("auth_center.authenticators.enable".to_string()),
+            "/settings/auth-center/authenticators/:id/enabled",
+            console_put(
+                update_auth_center_authenticator_enabled,
+                ConsoleOperation("auth_center.authenticators.enabled.update".to_string()),
             ),
         )
         .route(
@@ -293,6 +300,9 @@ pub(crate) fn to_auth_center_authenticator_response(
         &config_schema,
     );
     let public_variables = registry.public_variables(&authenticator);
+    let default_public_ui_block = registry
+        .definition(&authenticator.auth_type)
+        .map(|definition| definition.default_public_ui_block.clone());
     let context_variables = registry
         .context_variables(&authenticator.auth_type)
         .into_iter()
@@ -318,6 +328,7 @@ pub(crate) fn to_auth_center_authenticator_response(
         is_builtin: authenticator.is_builtin,
         sort_order: authenticator.sort_order,
         public_ui_block: authenticator.public_ui_block,
+        default_public_ui_block,
         interface_path_prefixes: vec![crate::routes::PUBLIC_API_PATH_PREFIX.to_string()],
         public_variables,
         context_variables,
@@ -580,8 +591,9 @@ pub async fn reorder_auth_center_authenticators(
 }
 
 #[utoipa::path(
-    post,
-    path = "/api/console/settings/auth-center/authenticators/{id}/actions/enable",
+    put,
+    path = "/api/console/settings/auth-center/authenticators/{id}/enabled",
+    request_body = UpdateAuthCenterAuthenticatorEnabledBody,
     responses(
         (status = 200, body = AuthCenterAuthenticatorResponse),
         (status = 401, body = crate::error_response::ErrorBody),
@@ -589,25 +601,26 @@ pub async fn reorder_auth_center_authenticators(
         (status = 404, body = crate::error_response::ErrorBody)
     )
 )]
-pub async fn enable_auth_center_authenticator(
+pub async fn update_auth_center_authenticator_enabled(
     State(state): State<Arc<ApiState>>,
     Path(id): Path<Uuid>,
     headers: HeaderMap,
+    Json(body): Json<UpdateAuthCenterAuthenticatorEnabledBody>,
 ) -> Result<Json<ApiSuccess<AuthCenterAuthenticatorResponse>>, ApiError> {
     let locale = crate::routes::console_interface::ConsoleLocaleHints::from_headers(&headers);
     let output = crate::routes::console_interface::invoke(
         Arc::clone(&state),
-        "http.console.auth-center.authenticators.enable.v1",
+        "http.console.auth-center.authenticators.enabled.update.v1",
         crate::extension_bus::ConsoleAuthenticationCredential::ProtocolWithCsrf {
             state: Arc::clone(&state),
             headers,
         },
-        crate::routes::auth_center_interface::AuthCenterInput::Enable { locale, id },
+        crate::routes::auth_center_interface::AuthCenterInput::UpdateEnabled { locale, id, body },
     )
     .await?;
     let crate::routes::auth_center_interface::AuthCenterOutput::Authenticator(response) = output
     else {
-        return Err(anyhow::anyhow!("auth center enable output contract mismatch").into());
+        return Err(anyhow::anyhow!("auth center enabled update output contract mismatch").into());
     };
     Ok(Json(ApiSuccess::new(response)))
 }

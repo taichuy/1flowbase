@@ -198,6 +198,8 @@
     "auth_center_self_registration": "允许自行注册",
     "auth_center_block_source": "区块源码",
     "auth_center_public_ui_update_failed": "公开认证 UI 保存失败",
+    "auth_center_restore_default_ui": "恢复默认",
+    "auth_center_restore_default_ui_confirm": "恢复当前内置默认认证 UI？现有源码将被覆盖。",
     "configuration": "{{value1}} 配置",
     "available_capabilities_exposed_provider_cache_domains_entries_values_currently_listed": "可用能力会随 provider 暴露；当前无法列出缓存域、entry 或 value。",
     "recently_refreshed": "最近刷新",

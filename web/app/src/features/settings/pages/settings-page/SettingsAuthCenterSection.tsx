@@ -34,10 +34,10 @@ import { LoadingState } from '../../../../shared/ui/loading-state/LoadingState';
 import {
   createSettingsAuthCenterAuthenticator,
   deleteSettingsAuthCenterAuthenticator,
-  enableSettingsAuthCenterAuthenticator,
   fetchSettingsAuthCenterOverview,
   reorderSettingsAuthCenterAuthenticators,
   settingsAuthCenterOverviewQueryKey,
+  updateSettingsAuthCenterAuthenticatorEnabled,
   updateSettingsAuthCenterAuthenticatorConfig,
   updateSettingsAuthCenterAuthenticatorPublicUiBlock,
   type SettingsAuthCenterOverview
@@ -294,17 +294,41 @@ export function SettingsAuthCenterSection() {
     });
     setLifecycleModalOpen(true);
   };
-  const enableMutation = useMutation({
-    mutationFn: (authenticatorId: string) => {
+  const enabledMutation = useMutation({
+    mutationFn: (input: { authenticatorId: string; enabled: boolean }) => {
       if (!csrfToken) {
         throw new Error('missing csrf token');
       }
-      return enableSettingsAuthCenterAuthenticator(authenticatorId, csrfToken);
+      return updateSettingsAuthCenterAuthenticatorEnabled(
+        input.authenticatorId,
+        { enabled: input.enabled },
+        csrfToken
+      );
     },
-    onSuccess: async () => {
+    onMutate: () => {
+      setOperationErrorMessage(null);
+    },
+    onSuccess: async (authenticator) => {
+      queryClient.setQueryData<SettingsAuthCenterOverview>(
+        settingsAuthCenterOverviewQueryKey,
+        (overview) =>
+          overview
+            ? {
+                ...overview,
+                authenticators: overview.authenticators.map((row) =>
+                  row.id === authenticator.id ? authenticator : row
+                )
+              }
+            : overview
+      );
       await queryClient.invalidateQueries({
         queryKey: settingsAuthCenterOverviewQueryKey
       });
+    },
+    onError: (error) => {
+      setOperationErrorMessage(
+        error instanceof Error ? error.message : String(error)
+      );
     }
   });
   const configMutation = useMutation({
@@ -576,14 +600,16 @@ export function SettingsAuthCenterSection() {
       render: (enabled: boolean, row) => (
         <Switch
           checked={enabled}
-          disabled={enabled || !csrfToken || !canManageAuthenticators}
+          disabled={!csrfToken || !canManageAuthenticators}
           loading={
-            enableMutation.isPending && enableMutation.variables === row.id
+            enabledMutation.isPending &&
+            enabledMutation.variables?.authenticatorId === row.id
           }
           onChange={(checked) => {
-            if (checked && !enabled) {
-              enableMutation.mutate(row.id);
-            }
+            enabledMutation.mutate({
+              authenticatorId: row.id,
+              enabled: checked
+            });
           }}
         />
       )
@@ -765,6 +791,9 @@ export function SettingsAuthCenterSection() {
           authenticatorTitle={selectedUiAuthenticator.title}
           authType={selectedUiAuthenticator.auth_type}
           contextVariables={selectedUiAuthenticator.context_variables}
+          defaultSource={
+            selectedUiAuthenticator.default_public_ui_block ?? null
+          }
           description={
             typeof selectedUiAuthenticator.config_values.description ===
             'string'

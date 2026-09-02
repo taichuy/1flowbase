@@ -392,10 +392,12 @@ describe('AuthenticatorUiBlockStudio', () => {
     );
   });
 
-  test('D4-AC-006 does not save, preview, or rewrite a controlled legacy Auth source', () => {
+  test('AC-002 keeps legacy source blocked and restores the registered default on confirmation', async () => {
     const legacySource = `import { Form } from '@1flowbase/block-renderer/antd-facade';
 async function main(ctx) { return { view: <Form />, outputs: {} }; }
 export default { main } satisfies BlockModule;`;
+    const defaultSource =
+      'export default function PasswordLocalAuth() { return null; }';
     const onSave = vi.fn();
     render(
       <AuthenticatorUiBlockStudio
@@ -403,6 +405,7 @@ export default { main } satisfies BlockModule;`;
         authenticatorTitle="Password"
         authType="password_local"
         contextVariables={[]}
+        defaultSource={defaultSource}
         description={null}
         enabled
         errorMessage={null}
@@ -419,15 +422,25 @@ export default { main } satisfies BlockModule;`;
       />
     );
 
-    expect(screen.getByRole('textbox', { name: 'TSX source' })).toHaveValue(
-      legacySource
-    );
     expect(
       screen.getByText(LEGACY_BLOCK_MODULE_SOURCE_DIAGNOSTIC.message)
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /^运\s*行$/ }));
-    fireEvent.click(screen.getByRole('button', { name: /保\s*存/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'auto.run' }));
+    fireEvent.click(screen.getByRole('button', { name: 'auto.save' }));
     expect(onSave).not.toHaveBeenCalled();
     expect(trialPanelHook.render).not.toHaveBeenCalled();
+
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'auto.auth_center_restore_default_ui'
+      })
+    );
+    const confirmText = (await screen.findAllByText('auto.confirm')).find(
+      (element) => element.tagName === 'SPAN'
+    );
+    const confirmButton = confirmText?.closest('button');
+    expect(confirmButton).not.toBeNull();
+    fireEvent.click(confirmButton as HTMLElement);
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(defaultSource));
   });
 });

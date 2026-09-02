@@ -1,5 +1,6 @@
 import type { OnMount } from '@monaco-editor/react';
 import { diagnoseLegacyBlockModuleSource } from '@1flowbase/page-runtime';
+import { Alert, Button, Popconfirm } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { BlockSourceStudio } from '../../../../shared/code-block/BlockSourceStudio';
@@ -36,6 +37,7 @@ export interface AuthenticatorUiBlockStudioProps {
   enabled: boolean;
   errorMessage: string | null;
   contextVariables?: readonly JsxStudioContextVariable[];
+  defaultSource?: string | null;
   interfacePathPrefixes: readonly string[];
   publicVariables: Record<string, unknown> | null;
   open: boolean;
@@ -61,6 +63,7 @@ export function AuthenticatorUiBlockStudio({
   authenticatorTitle,
   authType,
   contextVariables,
+  defaultSource = null,
   description,
   enabled,
   errorMessage,
@@ -190,7 +193,40 @@ export function AuthenticatorUiBlockStudio({
     <BlockSourceStudio
       contextComment={AUTH_CONTEXT_COMMENT}
       dirty={draft !== source}
-      errorMessage={legacyDiagnostic?.message ?? errorMessage}
+      editorNotice={
+        legacyDiagnostic ? (
+          <Alert
+            action={
+              defaultSource ? (
+                <Popconfirm
+                  cancelText={i18nText('settings', 'auto.cancel')}
+                  okText={i18nText('settings', 'auto.confirm')}
+                  title={i18nText(
+                    'settings',
+                    'auto.auth_center_restore_default_ui_confirm'
+                  )}
+                  onConfirm={() => onSave(defaultSource)}
+                >
+                  <Button
+                    disabled={readOnly || saving}
+                    loading={saving}
+                    size="small"
+                  >
+                    {i18nText(
+                      'settings',
+                      'auto.auth_center_restore_default_ui'
+                    )}
+                  </Button>
+                </Popconfirm>
+              ) : null
+            }
+            showIcon
+            title={legacyDiagnostic.message}
+            type="error"
+          />
+        ) : undefined
+      }
+      errorMessage={errorMessage}
       extraLibs={editorProjection.monacoExtraLibs}
       initialSection="code"
       loading={false}

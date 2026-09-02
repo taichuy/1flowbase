@@ -135,7 +135,10 @@ pub(crate) static CORE_CONSOLE_OPERATION_SPECS: &[CoreConsoleOperationSpec] = &[
     settings("auth_center.authenticators.copy", "system.auth-center"),
     settings("auth_center.authenticators.create", "system.auth-center"),
     settings("auth_center.authenticators.delete", "system.auth-center"),
-    settings("auth_center.authenticators.enable", "system.auth-center"),
+    settings(
+        "auth_center.authenticators.enabled.update",
+        "system.auth-center",
+    ),
     settings("auth_center.authenticators.order", "system.auth-center"),
     settings("auth_center.authenticators.update", "system.auth-center"),
     settings("auth_center.overview.view", "system.auth-center"),

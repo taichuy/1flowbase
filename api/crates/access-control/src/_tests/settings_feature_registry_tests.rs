@@ -259,8 +259,8 @@ fn ac_001_explicit_core_settings_features_compile_exact_method_path_inventory() 
             ("GET", "/api/console/settings/auth-center/overview"),
             ("POST", "/api/console/settings/auth-center/authenticators"),
             (
-                "POST",
-                "/api/console/settings/auth-center/authenticators/{id}/actions/enable",
+                "PUT",
+                "/api/console/settings/auth-center/authenticators/{id}/enabled",
             ),
             (
                 "POST",
