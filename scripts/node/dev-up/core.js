@@ -54,6 +54,33 @@ function writeDevDatabaseMaintenanceHint(writeLog = log) {
   }
 }
 
+async function configurePostgresToolchain({
+  repoRoot,
+  apiService,
+  sourceEnv = process.env,
+  resolveImpl = resolvePostgresToolchain,
+  logImpl = log,
+}) {
+  const resolved = await resolveImpl({
+    repoRoot,
+    sourceEnv: buildServiceEnv(apiService, sourceEnv),
+    logImpl,
+  });
+  if (!resolved) {
+    return null;
+  }
+
+  apiService.envOverrides = {
+    ...(apiService.envOverrides || {}),
+    [EXPLICIT_DUMP_ENV]: resolved.pgDumpPath,
+    [EXPLICIT_RESTORE_ENV]: resolved.pgRestorePath,
+  };
+  logImpl(
+    `PostgreSQL ${resolved.source} backup toolchain ready${resolved.target ? ` for ${resolved.target}` : ''}`
+  );
+  return resolved;
+}
+
 async function main(argv = process.argv.slice(2)) {
   const options = parseCliArgs(argv);
   if (options.help) {
@@ -81,18 +108,11 @@ async function main(argv = process.argv.slice(2)) {
 
   if (shouldResolveForAction(options.action, serviceKeys)) {
     const apiService = serviceDefinitions['api-server'];
-    const resolved = await resolvePostgresToolchain({
+    await configurePostgresToolchain({
       repoRoot,
-      sourceEnv: buildServiceEnv(apiService),
+      apiService,
       logImpl: log,
     });
-    if (resolved) {
-      apiService.envOverrides[EXPLICIT_DUMP_ENV] = resolved.pgDumpPath;
-      apiService.envOverrides[EXPLICIT_RESTORE_ENV] = resolved.pgRestorePath;
-      log(
-        `PostgreSQL ${resolved.source} backup toolchain ready${resolved.target ? ` for ${resolved.target}` : ''}`
-      );
-    }
   }
 
   await manageServices(options.action, services);
@@ -104,6 +124,7 @@ module.exports = {
   DEFAULT_STARTUP_TIMEOUT_MS,
   buildDevDatabaseMaintenanceHintLines,
   buildServiceEnv,
+  configurePostgresToolchain,
   ensureServiceEnvFile,
   getRepoRoot,
   getRuntimePaths,

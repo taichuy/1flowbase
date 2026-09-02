@@ -9,6 +9,7 @@ const {
   CARGO_COLD_STARTUP_TIMEOUT_MS,
   DEFAULT_STARTUP_TIMEOUT_MS,
   buildDevDatabaseMaintenanceHintLines,
+  configurePostgresToolchain,
   parseCliArgs,
   shouldManageDocker,
   shouldShowDevDatabaseMaintenanceHint,
@@ -93,6 +94,54 @@ test('dev-up suggests manual development database maintenance for backend starts
   assert.match(hint, /test-schemas --dry-run --older-than 3d --keep 20/u);
   assert.match(hint, /backups --dry-run --keep 1 --older-than 7d/u);
   assert.match(hint, /postgres\.empty-\* \/ postgres\.backup-\*/u);
+});
+
+test('AC-001 configurePostgresToolchain creates the runtime env overlay when resolution succeeds', async () => {
+  const apiService = {
+    key: 'api-server',
+    envFile: null,
+  };
+  const logs = [];
+
+  const resolved = await configurePostgresToolchain({
+    repoRoot: '/fixture/repo',
+    apiService,
+    sourceEnv: { PATH: '/fixture/bin' },
+    resolveImpl: async () => ({
+      pgDumpPath: '/fixture/bin/pg_dump',
+      pgRestorePath: '/fixture/bin/pg_restore',
+      source: 'system',
+      target: 'fixture-target',
+    }),
+    logImpl: (message) => logs.push(message),
+  });
+
+  assert.equal(resolved.source, 'system');
+  assert.deepEqual(apiService.envOverrides, {
+    API_POSTGRES_PG_DUMP_PATH: '/fixture/bin/pg_dump',
+    API_POSTGRES_PG_RESTORE_PATH: '/fixture/bin/pg_restore',
+  });
+  assert.deepEqual(logs, [
+    'PostgreSQL system backup toolchain ready for fixture-target',
+  ]);
+});
+
+test('AC-002 configurePostgresToolchain leaves the service runnable when resolution is unavailable', async () => {
+  const apiService = {
+    key: 'api-server',
+    envFile: null,
+  };
+
+  const resolved = await configurePostgresToolchain({
+    repoRoot: '/fixture/repo',
+    apiService,
+    sourceEnv: {},
+    resolveImpl: async () => null,
+    logImpl() {},
+  });
+
+  assert.equal(resolved, null);
+  assert.equal(apiService.envOverrides, undefined);
 });
 
 test('getServiceDefinitions uses repo default ports and explicit backend binaries', () => {
