@@ -1,15 +1,15 @@
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
 };
 
 use anyhow::Result;
 use async_trait::async_trait;
 use control_plane::{
-    auth::{
-        AuthKernel, AuthenticatorProvider, AuthenticatorRegistry, LoginCommand, SessionIssuer,
-        VerifiedAuthentication,
-    },
+    auth::{AuthKernel, AuthenticatorProvider, AuthenticatorRegistry, LoginCommand, SessionIssuer},
     errors::ControlPlaneError,
     ports::AuthRepository,
 };
@@ -195,6 +195,38 @@ struct ExternalIdentityProvider {
     subject: &'static str,
 }
 
+struct PasswordLocalImpersonatingProvider {
+    called: Arc<AtomicBool>,
+}
+
+#[async_trait]
+impl AuthenticatorProvider for PasswordLocalImpersonatingProvider {
+    fn auth_type(&self) -> &'static str {
+        "password-local"
+    }
+
+    async fn authenticate(
+        &self,
+        _authenticator: &LoginEntryRecord,
+        _identifier: &str,
+        _password: &str,
+        _repository: &dyn AuthRepository,
+    ) -> Result<VerifiedExternalIdentity> {
+        self.called.store(true, Ordering::SeqCst);
+        Ok(VerifiedExternalIdentity::try_from(ExternalIdentityClaim {
+            connection_id: OTHER_EXTERNAL_AUTHENTICATOR_ID,
+            subject_type: "oidc_sub".to_string(),
+            subject_value: "forged-root".to_string(),
+            issuer: None,
+            realm: None,
+            profile: serde_json::json!({}),
+            verified: true,
+            metadata: serde_json::json!({}),
+        })
+        .expect("fixture external identity should be verified"))
+    }
+}
+
 #[async_trait]
 impl AuthenticatorProvider for ExternalIdentityProvider {
     fn auth_type(&self) -> &'static str {
@@ -207,7 +239,7 @@ impl AuthenticatorProvider for ExternalIdentityProvider {
         _identifier: &str,
         _password: &str,
         _repository: &dyn AuthRepository,
-    ) -> Result<VerifiedAuthentication> {
+    ) -> Result<VerifiedExternalIdentity> {
         let identity = VerifiedExternalIdentity::try_from(ExternalIdentityClaim {
             connection_id: self.connection_id,
             subject_type: "email".to_string(),
@@ -219,7 +251,7 @@ impl AuthenticatorProvider for ExternalIdentityProvider {
             metadata: serde_json::json!({}),
         })
         .expect("fixture claim should be verified");
-        Ok(VerifiedAuthentication::ExternalIdentity(identity))
+        Ok(identity)
     }
 }
 
@@ -395,6 +427,73 @@ async fn password_local_entries_share_the_local_credential_connection() {
         repository.password_login_calls(),
         vec![(domain::PASSWORD_LOCAL_CONNECTION_ID, "root".to_string())]
     );
+}
+
+#[tokio::test]
+async fn external_provider_cannot_replace_the_password_local_credential_verifier() {
+    let user = test_user();
+    let repository = InstanceAwareAuthRepository::new(
+        vec![authenticator(
+            STAFF_PASSWORD_AUTHENTICATOR_ID,
+            "Staff Password",
+            "password-local",
+        )],
+        user,
+    );
+    let called = Arc::new(AtomicBool::new(false));
+    let registry =
+        AuthenticatorRegistry::from_providers(vec![Arc::new(PasswordLocalImpersonatingProvider {
+            called: called.clone(),
+        })]);
+    let kernel = AuthKernel::with_registry(
+        repository,
+        SessionIssuer::new(MemorySessionStore::default(), 7),
+        registry,
+    );
+
+    kernel
+        .login(LoginCommand {
+            login_entry_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
+            identifier: "root".to_string(),
+            password: "change-me".to_string(),
+        })
+        .await
+        .unwrap();
+
+    assert!(!called.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn password_local_login_rejects_a_non_local_connection() {
+    let user = test_user();
+    let mut login_entry = authenticator(
+        STAFF_PASSWORD_AUTHENTICATOR_ID,
+        "Staff Password",
+        "password-local",
+    );
+    login_entry.connection_id = OTHER_EXTERNAL_AUTHENTICATOR_ID;
+    let repository = InstanceAwareAuthRepository::new(vec![login_entry], user);
+    let kernel = AuthKernel::new(
+        repository.clone(),
+        SessionIssuer::new(MemorySessionStore::default(), 7),
+    );
+
+    let result = kernel
+        .login(LoginCommand {
+            login_entry_id: STAFF_PASSWORD_AUTHENTICATOR_ID,
+            identifier: "root".to_string(),
+            password: "change-me".to_string(),
+        })
+        .await;
+
+    match result {
+        Ok(_) => panic!("password-local must not use a non-local connection"),
+        Err(error) => assert!(matches!(
+            error.downcast_ref::<ControlPlaneError>(),
+            Some(ControlPlaneError::NotAuthenticated)
+        )),
+    }
+    assert!(repository.password_login_calls().is_empty());
 }
 
 #[tokio::test]

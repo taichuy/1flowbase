@@ -42,11 +42,6 @@ pub struct LoginResult {
     pub session: SessionRecord,
 }
 
-pub enum VerifiedAuthentication {
-    InternalUserId(Uuid),
-    ExternalIdentity(domain::VerifiedExternalIdentity),
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UserApiKeyExpirationPolicy {
     ThirtyDays,
@@ -128,35 +123,23 @@ pub trait AuthenticatorProvider: Send + Sync {
         identifier: &str,
         password: &str,
         repository: &dyn AuthRepository,
-    ) -> Result<VerifiedAuthentication>;
+    ) -> Result<domain::VerifiedExternalIdentity>;
 }
 
-pub struct PasswordLocalAuthenticator;
+struct PasswordLocalCredentialVerifier;
 
-#[async_trait]
-impl AuthenticatorProvider for PasswordLocalAuthenticator {
-    fn auth_type(&self) -> &'static str {
-        "password-local"
-    }
-
-    fn default_public_ui_block(&self) -> &'static str {
-        public_ui::PASSWORD_LOCAL_PUBLIC_UI_BLOCK
-    }
-
-    fn public_variables(
-        &self,
-        authenticator: &domain::LoginEntryRecord,
-    ) -> serde_json::Map<String, serde_json::Value> {
-        public_ui::password_local_public_variables(&authenticator.options)
-    }
-
+impl PasswordLocalCredentialVerifier {
     async fn authenticate(
-        &self,
         login_entry: &domain::LoginEntryRecord,
         identifier: &str,
         password: &str,
         repository: &dyn AuthRepository,
-    ) -> Result<VerifiedAuthentication> {
+    ) -> Result<domain::UserRecord> {
+        if login_entry.auth_type != "password-local"
+            || login_entry.connection_id != domain::PASSWORD_LOCAL_CONNECTION_ID
+        {
+            return Err(ControlPlaneError::NotAuthenticated.into());
+        }
         let user = repository
             .find_user_for_password_login(login_entry.connection_id, identifier)
             .await?
@@ -166,7 +149,7 @@ impl AuthenticatorProvider for PasswordLocalAuthenticator {
         Argon2::default()
             .verify_password(password.as_bytes(), &parsed)
             .map_err(|_| ControlPlaneError::NotAuthenticated)?;
-        Ok(VerifiedAuthentication::InternalUserId(user.id))
+        Ok(user)
     }
 }
 
@@ -201,9 +184,7 @@ pub struct AuthenticatorRegistry {
 
 impl AuthenticatorRegistry {
     pub fn new() -> Self {
-        let password_provider: Arc<dyn AuthenticatorProvider> =
-            Arc::new(PasswordLocalAuthenticator);
-        let mut registry = Self::from_providers(vec![password_provider]);
+        let mut registry = Self::from_providers(Vec::new());
         let config_schema = public_ui::password_local_config_form_schema();
         let public_variable_keys = vec!["self_registration_enabled".to_string()];
         let public_variables_schema =
@@ -276,7 +257,9 @@ impl AuthenticatorRegistry {
         authenticator: &domain::LoginEntryRecord,
     ) -> Option<serde_json::Map<String, serde_json::Value>> {
         let definition = self.definition(&authenticator.auth_type);
-        let provider_variables = if let Some(provider) = self.provider(&authenticator.auth_type) {
+        let provider_variables = if authenticator.auth_type == "password-local" {
+            public_ui::password_local_public_variables(&authenticator.options)
+        } else if let Some(provider) = self.provider(&authenticator.auth_type) {
             provider.public_variables(authenticator)
         } else {
             let definition = definition?;
@@ -728,33 +711,34 @@ where
             return Err(ControlPlaneError::PermissionDenied("login_entry_disabled").into());
         }
 
-        let provider = self
-            .registry
-            .provider(&authenticator.auth_type)
-            .ok_or(ControlPlaneError::NotFound("auth_provider"))?;
-        let authentication = provider
-            .authenticate(
+        let user = if authenticator.auth_type == "password-local" {
+            PasswordLocalCredentialVerifier::authenticate(
                 &authenticator,
                 &command.identifier,
                 &command.password,
                 &self.repository,
             )
-            .await?;
-        let user = match authentication {
-            VerifiedAuthentication::InternalUserId(user_id) => self
-                .repository
-                .find_user_by_id(user_id)
-                .await?
-                .ok_or(ControlPlaneError::NotAuthenticated)?,
-            VerifiedAuthentication::ExternalIdentity(identity) => {
-                if identity.connection_id() != authenticator.connection_id {
-                    return Err(ControlPlaneError::NotAuthenticated.into());
-                }
-                self.repository
-                    .find_user_for_verified_external_identity(&identity)
-                    .await?
-                    .ok_or(ControlPlaneError::NotAuthenticated)?
+            .await?
+        } else {
+            let provider = self
+                .registry
+                .provider(&authenticator.auth_type)
+                .ok_or(ControlPlaneError::NotFound("auth_provider"))?;
+            let identity = provider
+                .authenticate(
+                    &authenticator,
+                    &command.identifier,
+                    &command.password,
+                    &self.repository,
+                )
+                .await?;
+            if identity.connection_id() != authenticator.connection_id {
+                return Err(ControlPlaneError::NotAuthenticated.into());
             }
+            self.repository
+                .find_user_for_verified_external_identity(&identity)
+                .await?
+                .ok_or(ControlPlaneError::NotAuthenticated)?
         };
         if matches!(user.status, UserStatus::Disabled) {
             return Err(ControlPlaneError::PermissionDenied("user_disabled").into());

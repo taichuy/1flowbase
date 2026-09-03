@@ -198,7 +198,11 @@ pub struct ExternalIdentityClaim {
     pub metadata: serde_json::Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+/// A process-local capability produced only after a credential verifier accepts a claim.
+///
+/// This type intentionally has no serde implementation: crossing a wire or persistence
+/// boundary must recreate it through `TryFrom<ExternalIdentityClaim>` and its validation.
+#[derive(Debug, Clone, PartialEq)]
 pub struct VerifiedExternalIdentity {
     connection_id: Uuid,
     subject_type: String,
