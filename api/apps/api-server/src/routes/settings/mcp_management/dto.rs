@@ -9,6 +9,7 @@ pub struct McpInstanceResponse {
     pub description_short: Option<String>,
     pub status: String,
     pub default_entry_path: String,
+    pub webmcp_exposure: String,
     pub managed_by: Option<McpManagedBundleSourceResponse>,
     pub created_by: String,
     pub updated_by: String,
@@ -230,6 +231,12 @@ pub struct CreateMcpInstanceBody {
     pub description_short: Option<String>,
     pub status: String,
     pub default_entry_path: String,
+    #[serde(default = "default_webmcp_exposure")]
+    pub webmcp_exposure: String,
+}
+
+fn default_webmcp_exposure() -> String {
+    "disabled".to_string()
 }
 
 #[derive(Debug, Deserialize, ToSchema)]

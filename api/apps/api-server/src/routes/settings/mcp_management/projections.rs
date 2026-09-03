@@ -78,6 +78,7 @@ pub(super) fn to_instance_response(record: domain::McpInstanceRecord) -> McpInst
         description_short: record.description_short,
         status: record.status.as_str().into(),
         default_entry_path: record.default_entry_path,
+        webmcp_exposure: record.webmcp_exposure.as_str().into(),
         managed_by: record.managed_by.map(to_managed_bundle_source_response),
         created_by: record.created_by.to_string(),
         updated_by: record.updated_by.to_string(),

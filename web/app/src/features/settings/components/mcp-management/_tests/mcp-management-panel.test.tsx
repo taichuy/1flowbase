@@ -420,6 +420,7 @@ function renderPanelWithMountedTool({
               description_short: null,
               status: 'enabled',
               default_entry_path: '/',
+              webmcp_exposure: 'disabled',
               managed_by: null,
               created_by: 'user-1',
               updated_by: 'user-1',
@@ -1003,6 +1004,43 @@ describe('McpManagementPanel', () => {
       directoryEditorButton.querySelector('.anticon-setting')
     ).toBeInTheDocument();
     expect(editButton.querySelector('.anticon-edit')).toBeInTheDocument();
+  });
+
+  test('enables authenticated WebMCP exposure from the instance editor', async () => {
+    mcpManagementApi.updateSettingsMcpInstance.mockResolvedValue({});
+    const dispatchEvent = vi.spyOn(window, 'dispatchEvent');
+    renderPanelWithMountedTool();
+
+    const instancesPanel = screen.getByRole('tabpanel');
+    fireEvent.click(
+      within(instancesPanel).getByRole('button', {
+        name: /^(?:编辑|auto\.edit)$/
+      })
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    const webMcpSwitch = within(dialog).getByRole('switch', {
+      name: 'WebMCP'
+    });
+    expect(webMcpSwitch).not.toBeChecked();
+
+    fireEvent.click(webMcpSwitch);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+
+    await waitFor(() => {
+      expect(mcpManagementApi.updateSettingsMcpInstance).toHaveBeenCalledWith(
+        'ops_mcp',
+        expect.objectContaining({
+          webmcp_exposure: 'authenticated_session'
+        }),
+        'csrf-123'
+      );
+    });
+    expect(dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: '1flowbase:webmcp-registrations-changed'
+      })
+    );
   });
 
   test('keeps three primary instance actions and moves the rest into more actions', async () => {

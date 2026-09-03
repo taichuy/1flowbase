@@ -997,7 +997,16 @@ fn to_instance_command(
         description_short: body.description_short,
         status: parse_instance_status(&body.status)?,
         default_entry_path: body.default_entry_path,
+        webmcp_exposure: parse_webmcp_exposure(&body.webmcp_exposure)?,
     })
+}
+
+fn parse_webmcp_exposure(value: &str) -> Result<domain::WebMcpExposure, ApiError> {
+    match value {
+        "disabled" => Ok(domain::WebMcpExposure::Disabled),
+        "authenticated_session" => Ok(domain::WebMcpExposure::AuthenticatedSession),
+        _ => Err(control_plane::errors::ControlPlaneError::InvalidInput("webmcp_exposure").into()),
+    }
 }
 
 fn to_create_tool_command(

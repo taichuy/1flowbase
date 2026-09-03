@@ -10,6 +10,7 @@ pub struct CreateMcpInstanceInput {
     pub description_short: Option<String>,
     pub status: domain::McpInstanceStatus,
     pub default_entry_path: String,
+    pub webmcp_exposure: domain::WebMcpExposure,
 }
 
 #[derive(Debug, Clone)]
@@ -21,6 +22,7 @@ pub struct UpdateMcpInstanceInput {
     pub description_short: Option<String>,
     pub status: domain::McpInstanceStatus,
     pub default_entry_path: String,
+    pub webmcp_exposure: domain::WebMcpExposure,
 }
 
 #[derive(Debug, Clone)]

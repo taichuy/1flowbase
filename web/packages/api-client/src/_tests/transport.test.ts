@@ -34,6 +34,27 @@ describe('apiFetch', () => {
     );
   });
 
+  test('apiFetch propagates an AbortSignal to browser fetch', async () => {
+    const signal = new AbortController().signal;
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ data: { ok: true }, meta: null }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      })
+    );
+
+    await apiFetch({
+      path: '/api/webmcp/registrations',
+      signal,
+      baseUrl: 'http://127.0.0.1:7800'
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:7800/api/webmcp/registrations',
+      expect.objectContaining({ signal })
+    );
+  });
+
   test('apiFetch throws ApiClientError for non-2xx responses', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(

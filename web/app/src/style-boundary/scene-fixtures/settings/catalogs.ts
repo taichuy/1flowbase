@@ -36,6 +36,7 @@ export const styleBoundaryMcpCatalog = {
       description_short: 'Workspace MCP instance',
       status: 'enabled',
       default_entry_path: '/',
+      webmcp_exposure: 'authenticated_session',
       managed_by: null,
       created_by: 'user-1',
       updated_by: 'user-1',

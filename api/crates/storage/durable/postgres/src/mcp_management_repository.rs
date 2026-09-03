@@ -511,10 +511,11 @@ impl McpManagementRepository for PgControlPlaneStore {
                 description_short,
                 status,
                 default_entry_path,
+                webmcp_exposure,
                 created_by,
                 updated_by
             ) values (
-                $1, $2, $3, $4, $5, $6, $7, $8, $8
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $9
             )
             returning *
             "#,
@@ -526,6 +527,7 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(&input.description_short)
         .bind(input.status.as_str())
         .bind(&input.default_entry_path)
+        .bind(input.webmcp_exposure.as_str())
         .bind(input.actor_user_id)
         .fetch_one(&mut *transaction)
         .await
@@ -563,8 +565,8 @@ impl McpManagementRepository for PgControlPlaneStore {
             r#"
             insert into mcp_instances (
                 id, workspace_id, instance_id, name, description_short, status,
-                default_entry_path, created_by, updated_by
-            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+                default_entry_path, webmcp_exposure, created_by, updated_by
+            ) values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
             returning *
             "#,
         )
@@ -575,6 +577,7 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(&instance.description_short)
         .bind(instance.status.as_str())
         .bind(&instance.default_entry_path)
+        .bind(instance.webmcp_exposure.as_str())
         .bind(instance.actor_user_id)
         .fetch_one(&mut *transaction)
         .await
@@ -680,7 +683,8 @@ impl McpManagementRepository for PgControlPlaneStore {
                 description_short = $4,
                 status = $5,
                 default_entry_path = $6,
-                updated_by = $7,
+                webmcp_exposure = $7,
+                updated_by = $8,
                 updated_at = now()
             where workspace_id = $1 and instance_id = $2
             returning *
@@ -692,6 +696,7 @@ impl McpManagementRepository for PgControlPlaneStore {
         .bind(&input.description_short)
         .bind(input.status.as_str())
         .bind(&input.default_entry_path)
+        .bind(input.webmcp_exposure.as_str())
         .bind(input.actor_user_id)
         .fetch_one(self.pool())
         .await?;

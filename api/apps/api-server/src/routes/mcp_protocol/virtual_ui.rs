@@ -664,7 +664,7 @@ pub(crate) fn provider_tools(
         .collect()
 }
 
-fn apply_catalog_registration_capabilities(
+pub(crate) fn apply_catalog_registration_capabilities(
     catalog: &domain::McpCatalogSnapshot,
     registration: &mut control_plane::mcp_management::McpLlmRegistration,
 ) {
@@ -1339,6 +1339,7 @@ mod tests {
                 description_short: None,
                 status: McpInstanceStatus::Enabled,
                 default_entry_path: "/".to_string(),
+                webmcp_exposure: domain::WebMcpExposure::Disabled,
                 managed_by: None,
                 created_by: workspace_id,
                 updated_by: workspace_id,

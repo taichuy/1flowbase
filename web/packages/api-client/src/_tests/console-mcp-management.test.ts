@@ -376,7 +376,8 @@ describe('console-mcp-management client', () => {
             name: 'Workspace Ops',
             description_short: null,
             status: 'enabled',
-            default_entry_path: '/'
+            default_entry_path: '/',
+            webmcp_exposure: 'authenticated_session'
           },
           'csrf-123'
         ),
@@ -410,7 +411,8 @@ describe('console-mcp-management client', () => {
             name: 'Slash Instance',
             description_short: null,
             status: 'enabled',
-            default_entry_path: '/'
+            default_entry_path: '/',
+            webmcp_exposure: 'disabled'
           },
           'csrf-123'
         ),
